@@ -8,7 +8,7 @@ Before implementation, `docs/cli-transcripts.md` gets a set of **complete, annot
 - Build a machine from scratch interactively: add boards, hit a port collision, find it with `SHOW BUS IO`, fix it, `CONFIG SAVE`.
 - Load a hand-assembled program at 0x0100, breakpoint, single-step, dump registers, patch a byte, continue.
 - Load the DBL PROM into a ROM board (`RAW`), and inspect a phantomed-out board the CPU cannot see.
-- Pull a `.COM` out of a mounted disk image without booting the machine.
+- ~~Pull a `.COM` out of a mounted disk image without booting the machine.~~ **Cut.** Host-side CP/M filesystem access is deferred (`DESIGN.md` §12.2): it needs the *controller's* sector layout **and** the *image's* DPB and skew, and no generic command can infer that pair. The `DISK` verbs are gone from the monitor.
 - The same session driven from MCP, showing the JSON in and out.
 
 **Why:** the board API can be validated on paper by hand-tracing. A CLI cannot — it is judged by whether it is pleasant to actually use, and you only learn that by using it. Reading these transcripts is how you discover that a verb is wrong, a default is annoying, or output is unreadable, at the cost of editing Markdown rather than refactoring a command dispatcher.
@@ -17,9 +17,51 @@ Before implementation, `docs/cli-transcripts.md` gets a set of **complete, annot
 
 ---
 
-## Milestone 1 — the walking skeleton
+## Milestone 1a — the smallest thing that is really a simulator
 
-**CLI + MCP + 8080 + bus (including interrupts) + RAM + one 88-2SIO. Nothing else.**
+**CLI + bus + the `memory` board + MCP. No CPU.**
+
+> ### ✅ Built, 2026-07-11. It runs.
+>
+> `cmake -S . -B build && cmake --build build` → `altairsim`, `altairsim -c script.cmd`, `altairsim --mcp`. 77 unit checks, all passing, no warnings.
+>
+> **MCP came in with it**, not after. That was Patrick's call and it was the right one: the CLI and the MCP server sit on the *same* `Machine` and the *same* `Board::properties()`, so building only one of them would have let the reflection layer be shaped by a single consumer — and the whole claim of §11 is that it has two. `board_get`'s schema is *generated* from `properties()`; nobody hand-wrote an enum list, and `CONFIG SAVE` round-trips `phantom`/`fill` through a serializer that was never written for them.
+>
+> **The acceptance tests earned their keep on day one.** The default configuration — a ROM shadowing RAM, `honors_phantom=true`, `phantom=all` — did not work, and *the bug was in this design document*, not just the code. `MemoryBoard::decodes()` read `if (c.phantom && honorsPhantom_) return false;`, so a ROM card pulled PHANTOM\*, **honored its own assertion, and switched itself off**; nobody drove FF00 and the PROM read back as `FF`. The fix is `&& !assertsPhantom(c)` — a card does not shut itself off with a signal it is itself driving. It stays board-local, the bus still arbitrates nothing, and §4.2 now carries the scar deliberately.
+
+*Added 2026-07-11, at Patrick's direction: milestone 1 as originally written (below) was still too much to build before anything could be used. Start smaller.*
+
+The insight that makes this a real milestone rather than a stub: **with no CPU in the machine, the monitor is the bus master.** `DEPOSIT` and `DUMP` originate genuine bus cycles against a genuine board — which is exactly what the Altair front panel did. So milestone 1a is not a mock; it exercises the bus, the decode tables, `Board`, `properties()`, both resets, contention detection, the floating bus, and most of the memory CLI, with **one board and no processor.**
+
+The board is `memory` (`docs/boards/memory.md`): a card holding a list of **regions**, each `ram` (writes stored) or `rom` (writes **not decoded**), at 256-byte page granularity. Everything a memory card can be — a partly-populated RAM board, a PROM card of four sockets with two of them empty, a combo card with both — is that one list. Plus **banking**, in the five real flavors that actually shipped.
+
+**Two things make this milestone worth doing early, and neither needs a CPU.**
+
+**Banking.** Five real cards bank in five different ways — three ports, two encodings, one card with seven banks instead of eight, and a Vector card that decodes `0x41`/`0x42` because OASIS writes them. If the board API can express all five with no bus special case and no monitor change, the central claim of the whole design is proven **before a single CPU instruction is executed.**
+
+**ROM regions and PHANTOM\*.** A `rom` region doesn't decode writes, and a card can pull PHANTOM\* to shadow another. Those two facts are what §4.2 stakes its whole argument on — *the bus arbitrates nothing; boards switch themselves off.* They are testable with two boards, a hex file, and no processor. And they are worth testing **before** a CPU exists, because the three phantom straps differ *silently*: get one wrong and the symptom is a guest that misbehaves ten thousand instructions later.
+
+### Acceptance
+
+1. A 48K `ram` region; `DUMP C000-C0FF` returns **all `FF`**. The hole is real and reads float.
+2. `LOAD`/`DUMP`/`SAVE` round-trips a file byte-for-byte (binary and Intel HEX).
+3. `RESET` preserves memory and clears `bank` to 0; **only `POWER` loses it** — and `POWER` re-reads ROM images from their files.
+4. `CONFIG SAVE` → `CONFIG LOAD` reproduces the regions, page map, and bank config exactly.
+5. **A `rom` region at FF00 from a 256-byte file decodes FF00–FFFF and nothing else.** `DEPOSIT FF00 41` (a bus write) does not change it, and the monitor **says so** instead of silently succeeding. `LOAD other.hex RAW mem0` **does** change it — the operator has a PROM burner; the guest does not.
+6. **An empty socket between two ROM regions reads `FF`**, exactly like unpopulated RAM. One mechanism, not two.
+7. **All three PHANTOM\* straps, because the difference is silent.** `phantom=all`: a write over the shadowed RAM **vanishes**. `phantom=read`: the same write **lands in the RAM beneath** while reads still come from ROM (shadow-RAM — read it back through the bus and you get the ROM byte; read it `RAW` and you get `41`). `honors_phantom=false` on the card beneath: **both drive → contention reported.** And a phantom shadow is **not** reported as contention — only the real collision is.
+8. Two `memory` cards at overlapping bases → **contention reported**, naming both.
+9. **Banking, all five types.** Binary vs one-hot select; Cromemco's 7-bank `& 0x7F` mask; the Vector/OASIS `0x41`/`0x42` quirk; an undecodable select leaves the bank unchanged and logs it.
+10. **Two banked cards both claiming port 0x40** (three of the five real cards do) → **I/O contention reported**, naming both.
+11. `fill=random` with a fixed `seed` is **byte-identical across runs**, and the seed survives `SNAPSHOT`/`RESTORE`.
+
+**Then use it.** The CLI findings in `docs/cli-transcripts.md` (F1–F12) get settled against something real before a CPU exists to distract from them.
+
+---
+
+## Milestone 1b — the walking skeleton
+
+**MCP + 8080 + interrupts + one 88-2SIO, on top of 1a.**
 
 Deliberately lopsided: nearly the entire interface, and the smallest machine that can prove it.
 
@@ -60,7 +102,8 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 
 | Milestone | Adds | Proven by |
 |---|---|---|
-| **1 — skeleton** | CLI + MCP, 8080 (incl. interrupts), bus, RAM, 88-2SIO | BASIC answers `PRINT 2+2` via console, socket, and host serial; interrupt-driven echo; two 2SIO boards at once |
+| **1a — memory bench** | CLI, bus, `memory` board (ram + rom regions, banking, PHANTOM\*). **No CPU.** | Monitor acts as bus master: unpopulated pages read `FF`; a ROM region doesn't decode writes; all three phantom straps behave; contention detected; `RESET` keeps RAM, only `POWER` loses it |
+| **1b — skeleton** | MCP, 8080 (incl. interrupts), 88-2SIO | BASIC answers `PRINT 2+2` via console, socket, and host serial; interrupt-driven echo; two 2SIO boards at once |
 | 2 — CPU gate | (none) | TST8080 / 8080PRE / CPUTEST / **8080EXM** pass in CI on all four platforms; the no-`#ifdef` lint is green |
 | 3 — disk | 88-DCDD | Cold-boot CP/M 2.2 from `CPM22-8MB-56K-SIM.DSK` to `A0>`; run `M80`/`L80` |
 | 4 — memory model | ROM board, PHANTOM, banking | DBL PROM at 0xFF00 overlays RAM; `SHOW BUS MAP` shows it; bank switching works |
@@ -96,7 +139,7 @@ The design is "done" when it answers, without hand-waving: *how do I add a new S
 Validate by hand-tracing four boards against the board API and host services on paper:
 
 1. **88-2SIO** — simple I/O, one `ByteStream` per channel.
-2. **88-DCDD** — I/O + rotation timing (`EventQueue`) + mounted media (`BlockDevice`).
+2. **88-DCDD** — I/O + rotation timing (`EventQueue`) + mounted media (`DiskImage`). Specifically: can the board declare a **hard-sector** 137-byte-slot format, and could a *soft-sector* controller with a single-density track 0 declare its own, without either one special-casing the service?
 3. **PMMI MM-103** — the hard one (see above).
 4. **A DMA card (Dazzler-shaped)** — bus mastering, cycle stealing.
 
@@ -105,7 +148,7 @@ For each, check that **all** of the following fall out with no special-casing:
 - The bus decodes it, and `SHOW BUS MAP` / `SHOW BUS IO` / `WHO` describe it correctly.
 - Every setting is reachable via generic `SET`/`SHOW` through `properties()`, with no monitor changes — and the MCP schema is generated, not written.
 - It honors both `Reset::PowerOn` and `Reset::Bus`, and the doc says *concretely* what each does to it.
-- It reaches the host only through `ByteStream` / `BlockDevice` / `Display` / `EventQueue` — never a raw socket, file handle, or `chrono::now()`.
+- It reaches the host only through `ByteStream` / `DiskImage` / `Display` / `EventQueue` — never a raw socket, file handle, or `chrono::now()`.
 - It serializes and restores byte-exactly, and replays deterministically.
 
 **If any of the four needs a special case inside the bus, needs the monitor to learn a new command, or needs to reach around the host-services layer, the API is wrong and needs another pass before any code is written.** That is the whole point of doing this as a document first.

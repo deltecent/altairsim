@@ -41,7 +41,8 @@ The mapping from real hardware to this design's primitives:
 
 - Which bus cycles it decodes.
 - What it does on `tick()`, and what it schedules on the `EventQueue`.
-- Which `ByteStream` / `BlockDevice` / `Display` it uses.
+- Which `ByteStream` / `DiskImage` / `Display` it uses.
+- If it has media: **hard-sector or soft-sector?** What `sectorSize`, `startSector`, and per-track formats does it declare (`DESIGN.md` §7.3)? How does it probe geometry from image size — and what does it do when the size is ambiguous?
 - How it interrupts: `pINT` or a VI line; what the `interrupt` property accepts.
 - Whether it masters the bus (DMA).
 - Its `properties()`.

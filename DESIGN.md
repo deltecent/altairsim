@@ -90,7 +90,7 @@ Rules that make this hold:
 
 **Enforcement:** a CI lint greps for `_WIN32`, `__APPLE__`, `__linux__`, `__unix__`, `_MSC_VER` anywhere outside `src/platform/*/` and **fails the build**. Without the lint this rule decays within a month: the first time someone needs one small thing on Windows an `#ifdef` appears "just this once," and you are SIMH again.
 
-Payoff: a board author writes against `ByteStream`, `BlockDevice`, `Display`, `EventQueue` and **never sees an OS detail on any platform** — but only if the OS layer is genuinely sealed.
+Payoff: a board author writes against `ByteStream`, `DiskImage`, `Display`, `EventQueue` and **never sees an OS detail on any platform** — but only if the OS layer is genuinely sealed.
 
 ---
 
@@ -156,12 +156,19 @@ public:
     virtual const char* type() const = 0;
 
     // Decode: does this board respond to this cycle?
+    // Returns false when the board is disabled, banked away, or is honoring
+    // an asserted PHANTOM* — see §4.2. Decode is STATE, not just address math.
     virtual bool     decodes(const BusCycle&) const = 0;
     virtual uint8_t  read (const BusCycle&)       = 0;
     virtual void     write(const BusCycle&)       = 0;
 
     // Clocked work: baud generation, disk rotation, timers. dt in T-states.
     virtual void     tick(uint64_t dt) {}
+
+    // PHANTOM* (S-100 pin 67). A board may PULL it for a given cycle — that is
+    // how a boot ROM shuts off the RAM beneath it. The bus does NOT pick an
+    // overlay winner; it carries the signal and the RAM disables itself. §4.2.
+    virtual bool     assertsPhantom(const BusCycle&) const { return false; }
 
     // Interrupts. A board may drive pINT directly, and/or assert one of VI0-VI7.
     // The bus does NOT invent a vector — see §4.4.
@@ -189,13 +196,126 @@ public:
 
 A board declares I/O port ranges and memory address ranges at construction (from its TOML config). The bus builds decode tables. `decodes()` is the second-level check for boards whose decode is conditional (bank-enabled, phantomed, drive-selected).
 
-### 4.2 PHANTOM
+### 4.2 PHANTOM* is a signal a board pulls — the bus does not arbitrate an overlay
 
-A memory board's phantom mode is `none | read | write | both`. A ROM board with `phantom = "read"` overlays the RAM beneath it for reads while writes fall through to the RAM — exactly how the Altair turnkey boot PROM at 0xFF00 coexists with a full 64K RAM board. Document it with that worked example.
+**An earlier draft got this wrong in exactly the way §4.4 warns about.** It said a memory board has a "phantom mode" of `none | read | write | both`, and that a ROM board with `phantom = "read"` *"overlays the RAM beneath it for reads while writes fall through."* That describes the **bus** looking at two boards, picking a winner, and routing reads to one and writes to the other. The bus does not do that, any more than it invents an interrupt vector.
 
-### 4.3 Banking
+**What actually happens on the backplane:** PHANTOM\* is **S-100 pin 67**, a line any board may pull low. A boot ROM pulls it; memory boards that are strapped to honor it **disable their own drivers** while it is low. Nobody arbitrates. The overlay is *emergent* — the ROM is the only board still answering, because the RAM switched itself off.
 
-RAM boards optionally register a bank-select I/O port; a write selects which of N pages is live. This is an ordinary I/O board write that mutates the board's own decode state — **not** a bus special case.
+So the model is two ordinary board behaviors, and no bus special case:
+
+```cpp
+// Pull PHANTOM* for the cycles I mean to shadow. A board strap:
+//   phantom = none | read | all      (see docs/boards/memory.md)
+bool MemoryBoard::assertsPhantom(const BusCycle& c) const {
+    const Region* r = owner(c.addr);
+    if (!r || r->kind != Rom) return false;          // only my ROM shadows anything
+    return phantom_ == All || (phantom_ == Read && c.type == Cycle::MemRead);
+}
+
+// If SOMEONE ELSE pulls PHANTOM* and I honor it, I am not here.
+bool MemoryBoard::decodes(const BusCycle& c) const {
+    // `!assertsPhantom(c)` is load-bearing: a ROM card pulls PHANTOM* to shadow
+    // the RAM under it, and a card must not switch itself off with a signal it is
+    // ITSELF driving -- or nobody drives the address and the ROM reads back FF.
+    if (c.phantom && honorsPhantom_ && !assertsPhantom(c)) return false;
+    const Region* r = owner(c.addr);
+    if (!r) return false;                            // unpopulated page / empty socket
+    if (c.type == Cycle::MemWrite && r->kind == Rom) return false;   // ROM never answers a write
+    return true;
+}
+```
+
+> **That `!assertsPhantom(c)` clause was missing from the first draft of this document, and it was a real bug** — caught by the acceptance test for the *default* configuration, which is the one everybody would have used. It is worth keeping the scar visible: the board still answers only questions about *itself* (its own output pin), so the rule is board-local and the bus is still not involved. The fix is one clause, in the board, where it belongs.
+
+The bus's whole job is a **three-pass cycle**: ask every board whether it pulls PHANTOM\*, set `BusCycle::phantom`, run the decode, and then **show the finished cycle to every board** (`snoop()`, §4.2.2). Carrying a signal, running a decode, and letting the cards watch. No decisions.
+
+**A ROM does not decode a write.** It does not reject the write, or ignore it, or log it — it never answers the cycle. Everything else follows from that and needs no rule of its own:
+
+| What else covers the address | ROM's `phantom` strap | The write |
+|---|---|---|
+| Nothing | any | Nobody latches it. It is gone. |
+| Another card's RAM | `read` | **Lands in that RAM.** Reads still come from ROM — shadow-RAM. This is the **Tarbell** boot PROM writing the sector it is loading into the RAM it is sitting on top of. |
+| Another card's RAM | `all` | That card honors PHANTOM\* and switches off for writes too. The write vanishes. |
+
+**The read/write distinction lives on the *asserting* board, because that is where the gate physically is.** A card that ANDs PHANTOM\* with its read strobe simply does not pull the pin during a write cycle, so memory answers the write like any other and the byte lands in RAM. **`honors_phantom` is therefore a plain bool and must never grow a `read` mode** — the honoring card has no idea any of this is going on, which is exactly why it works with *any* card that pulls the pin.
+
+Payoffs, which is how you know it is right:
+- **"Writes fall through" is no longer a special rule.** It is what happens when a ROM asserts PHANTOM\* on reads and not on writes. Shadowing *both* is equally expressible, and neither is a case in the bus.
+- **`honors_phantom` is a board strap, because on real hardware it is a jumper.** A memory board that ignores PHANTOM\* keeps driving, you get contention (§4.6), and the simulator reports the same bug the real backplane would have handed you.
+- **The operator can still write ROM, and the guest still cannot** — because `RAW <id>` (§10.2) reaches behind the bus into the board's store. Burning a PROM is not a bus operation on real hardware either; you pull the chip. Model it as a bus write and the bus would have to know *who originated a cycle*, which a real backplane cannot know and no board should ever have to ask.
+- **Any new board can shadow memory** without the bus learning about it.
+
+### 4.2.1 Boards enable and disable — including ROMs that vanish after boot
+
+**Decode is state, not address arithmetic.** A memory board is not merely "at 0000–1FFF"; it is at 0000–1FFF *when it is enabled*, on *the live bank*, and *when PHANTOM\* is not shutting it off.
+
+This is not a corner case — it is how S-100 machines boot. **A boot ROM commonly appears at low memory on reset, runs, and is then switched out so the RAM underneath becomes visible**, often by the boot code writing to the ROM board's own I/O port as nearly its last act. The address the ROM occupied is *supposed* to become RAM.
+
+So a memory board needs to be able to turn itself on and off, and there are exactly three honest ways it happens — all of which are ordinary board behavior:
+
+| Trigger | Mechanism |
+|---|---|
+| **The guest writes to the board's port** | An ordinary `IoOut` the board decodes, mutating its own decode state. The boot ROM disabling itself. **Not a bus special case** — same shape as bank select (§4.3). |
+| **Reset** | `reset(PowerOn)` restores the power-up state — which for a boot ROM means **enabled again**, because that is the point of a boot ROM. `reset(Bus)` may or may not, and the board's `.md` must say **concretely** which (§6). Get this wrong and you get the classic "boots from power-on but not from the reset button." |
+| **The operator** | `SET mem1 ENABLED=OFF` — a runtime `properties()` value like any other, for debugging. |
+
+`enabled` is therefore a **standard runtime property on every memory board**, and `SHOW BUS MAP` must show it, because a board that is present but decoding nothing is otherwise invisible and maddening:
+
+```
+altairsim> SHOW BUS MAP
+  range        board    type    state                             notes
+  ---------------------------------------------------------------------------------
+  0000-BFFF    mem0     memory  enabled, ram, bank 0/4, honors PHANTOM*
+  F000-F7FF    mem1     memory  enabled, rom, asserts PHANTOM* on all
+  FF00-FFFF    mem1     memory  enabled, rom, asserts PHANTOM* on all
+  C000-EFFF    —        —       unpopulated                       reads FF
+```
+
+Note that one board occupies **two disjoint ranges**, because a real card carries several populated regions and empty sockets between them (`docs/boards/memory.md`). The map is per-*range*, not per-board.
+
+> **Open — needs a manual, per §0.1.** *Which* boards disable themselves, at *which* port, with *what* bit? That is board-specific and I will not guess it. The mechanism above is general and costs nothing; the specific straps get filled in per board as the manuals arrive. **Patrick: which board do you want first?**
+
+### 4.2.2 `snoop()` — every board sees every cycle
+
+**The address bus is not addressed to anyone.** It is simply present, and any card may watch it whether or not it answers. So `Board` has a third bus method, called **once per completed cycle, on every board**:
+
+```cpp
+virtual bool assertsPhantom(const BusCycle&) const;   // COMBINATIONAL. Pure.
+virtual bool decodes(const BusCycle&) const;          // COMBINATIONAL. Pure.
+virtual void snoop(const BusCycle&);                  // CLOCKED. Latch here, and only here.
+```
+
+The first two are called **several times per cycle** — once to resolve PHANTOM\*, again inside each board's own decode — so they must have no side effects. `snoop()` is the clocked half, and it is the **only** place a board may latch what it saw.
+
+**The card that forced this is the Tarbell** (`docs/boards/tarbell.md`). Its 32-byte boot PROM shadows RAM from POC\*, and it releases PHANTOM\* permanently the first time it sees a memory read with **A5 high**. Both halves are load-bearing:
+
+- The release must be **combinational**, because the bootstrap's own first fetch out of the PROM *is* the read with A5 high. If the release waited a cycle, that fetch would happen while memory was still shadowed, read `0xFF` off the floating bus, and no Tarbell would ever have booted.
+- The release must also **latch**, or a later data read below `0x20` would re-shadow the PROM over the sector just loaded there.
+
+The bus does not know any of this happened. It is one flip-flop, on one card, and that is the point: a real backplane has no "notify" mechanism, so neither does this one — `snoop()` is not a callback, it is a card looking at wires that were in front of it the whole time.
+
+### 4.3 Banking — the strongest evidence in this document that boards must own their decode
+
+A banked memory board registers a bank-select I/O port; a guest write selects which plane is live. This is an ordinary `IoOut` that mutates the board's **own** state — **not** a bus special case, and the same mechanism as §4.2.1's enable/disable.
+
+**What a bank select *does* is the board's business, and this document states no rule about it.** On the five cards below it swaps the 64K plane. On some other card it might not. The bus carries the `OUT` and the board decides — that is the entire point.
+
+If you are ever tempted to hoist banking into the bus or the monitor, read this table first. These are five **real** cards (`docs/boards/memory.md`, sourced from `s100_bram.c`):
+
+| Card | Port | Banks | The data written selects the bank how? |
+|---|---|---|---|
+| SD Systems ExpandoRAM | **0xFF** | 8 | **Binary** — the byte *is* the bank number |
+| Vector Graphic | **0x40** | 8 | **One-hot** — `0x01`→0, `0x02`→1, `0x04`→2, … `0x80`→7 |
+| Cromemco | **0x40** | **7** | One-hot, masked `& 0x7F` — **bit 7 is not a bank select** |
+| North Star Horizon | **0xC0** | 16 | **Binary** |
+| AB Digital Design B810 | **0x40** | 16 | **Binary** |
+
+**Three ports. Two encodings. One card with seven banks.** `OUT 40,04` means *bank 4* on an ExpandoRAM and *bank 2* on a Vector. And the Vector additionally decodes `0x41`/`0x42` as banks 0/1 — not by design, but because **OASIS writes those values** and the card tolerates them; miss it and OASIS does not boot.
+
+No generic "bank number" abstraction survives that table. Any `BANK=<n>` in the monitor (§10.2) or any bank arbitration in the bus would have to pick one card's convention and be silently wrong about the rest. **The board owns its decode, or the model is a lie.**
+
+One more thing the table gives us for free: **three of the five cards sit on port 0x40**, so two of them in one machine is a genuine I/O collision — which §4.6's contention detector catches and names, exactly as a real backplane would have.
 
 ### 4.4 Two interrupt models — both required
 
@@ -222,6 +342,42 @@ A board asserts `pHOLD`; the bus grants (`pHLDA`) at the next instruction bounda
 When two boards `decodes()` the same cycle, log a diagnostic naming both board `id`s and the address, and return the wire-AND of the drivers (real tri-state / open-collector contention pulls low). This is a **feature** — it is the bug you'd chase on a real backplane, surfaced immediately.
 
 `SET BUS CONTENTION=WARN|ERROR|SILENT`.
+
+**A PHANTOM\* shadow is not contention, and must not be reported as such.** Two boards *registered* at one address is normal and correct — a boot ROM over RAM is the whole point of §4.2. Contention is when two boards **both actually `decodes()`** the same cycle, and under PHANTOM\* the RAM returns `false`, so only one board answers. The distinction falls out of the model for free: contention is decided *after* the phantom pass, on who is really driving.
+
+The failure that *does* deserve a warning is a memory board strapped **not** to honor PHANTOM\* sitting under a ROM that asserts it. Then both really do drive, and you get the real bug the real backplane would have handed you.
+
+### 4.6.1 The floating bus — one rule, three consequences
+
+> **If no board drives the bus, it floats high. Every read of an unmapped address or port returns `0xFF`. Writes go nowhere.**
+
+This is a single rule, and three things the design would otherwise need special cases for fall straight out of it:
+
+| Situation | What happens | Why it matters |
+|---|---|---|
+| **Unpopulated memory** | Reads `0xFF` | Period software **sizes memory by reading**. Return `0x00` instead and every machine looks like it has 64K, and CP/M builds itself wrong. A zero-filled hole also disassembles as a field of `NOP`s, which is a uniquely confusing thing to stare at. |
+| **Unmapped I/O port** | Reads `0xFF` | A guest probing for a board that isn't there gets the same answer real hardware gives it. |
+| **`IntAck` with no board driving** | Reads `0xFF` = **`RST 7`** | §4.4. Not a fallback hack — it is *why* the PMMI's factory jumper straight to pin 73 gives RST 7 with no vector logic anywhere. |
+
+Model the floating bus honestly once and all three are free. Fake any one of them and you will fake the other two differently.
+
+#### `0xFF` belongs to the bus, and to nothing else
+
+> **Providing `0xFF` when no board answered is the ONLY thing the bus does that a board does not.** That is the entire bus/board overlap, and it stays that size. — *Patrick, 2026-07-11*
+
+So **no board may ever manufacture `0xFF`**, and in particular **no board may seed its own store with it.** A RAM chip does not power up holding `0xFF`; it powers up holding whatever it feels like, which is what `fill = random` is for, and *what a card's chips contain is that card's business* (`docs/boards/memory.md`). The bus does not initialize anyone's memory and has never heard of `fill`.
+
+The failure this prevents is a quiet one, and it was in this code until Patrick caught it. Seed a board's store with `0xFF` — it is the obvious "uninitialized" filler — and `DUMP` shows `FF` for a card whose RAM is fine, `FF` for a card whose RAM was never filled, and `FF` for a card that **isn't in the machine**. One symptom, three causes, and you chase the wrong one. The moment a board can produce `0xFF`, the single signal the bus has stops being a signal.
+
+`tests/test_boundary.cpp` enforces it. Shared *helpers* that several boards call are fine — that is code reuse, not the bus growing opinions.
+
+**But silence is how an unimplemented device becomes an unexplained hang.** The behavior above is correct and must stay; the *diagnostic* is separate. `SET BUS UNCLAIMED=WARN|ERROR|SILENT` (default `WARN`) names the port and the PC:
+
+```
+warning: OUT 0FE <- 01 at PC=0113: no board decodes port 0xFE. reads float to 0xFF.
+```
+
+Memory reads are **not** warned by default — guests scan memory constantly, and it is normal.
 
 ### 4.7 Fast path
 
@@ -257,18 +413,26 @@ Consequences, all of which must be stated in the doc:
 
 ## 6. RESET semantics
 
-The S-100 bus has two distinct reset lines, and boards must honor both. Conflating them is the classic source of "works from power-on but not from the reset button" bugs.
+The Altair bus has two distinct reset lines, and boards must honor both. Conflating them is the classic source of "works from power-on but not from the reset button" bugs.
 
 ```cpp
 enum class Reset {
-    PowerOn,   // POC* — power-on clear. Cold. Every board returns to power-up state.
+    PowerOn,   // POC* (pin 76) — power-on clear. What it does is BOARD-SPECIFIC;
+               // the board just needs to know it happened. Nothing in software can
+               // assert it — only the power supply does.
     Bus,       // RESET* — the front-panel reset button. Warm. CPU PC<-0, boards reset
                // their logic, but memory contents SURVIVE and mounted media / connected
                // streams stay attached.
 };
 ```
 
-Each board's `.md` must say **concretely** what each reset does to it. Examples:
+**Neither reset clears memory. Only removing power does.** This is not a nuance, it is the rule, and the memory array is the proof: a RAM chip has no POC\* pin. Its contents are indeterminate at power-up because *the chips just powered up*, not because a signal arrived. POC\* and power coming up coincide on real hardware — which is why they share the `POWER` command — but they are different things, and a board that clears its store in its `Reset::PowerOn` handler is modeling a machine nobody built. Model the fill as belonging to **power**, and let both resets leave the store alone.
+
+Get this backwards and it shows up as *"my program vanished when I hit reset"* — which reads like a memory-model bug rather than a reset bug, and costs you a day.
+
+**What POC\* does is board-specific**, and each board's `.md` must say **concretely** what each reset does to it. Examples:
+- **`memory`**: both resets clear the bank-select latch to 0 and touch nothing else. `POWER` re-fills RAM regions per `fill` and re-reads ROM regions from their files. See `docs/boards/memory.md`.
+- **A boot ROM that disables itself** (§4.2.1): `PowerOn` **re-enables it** — otherwise the machine boots exactly once and never again. Whether `Bus` (the front-panel reset button) also re-enables it is a **board-specific strap, and the board's `.md` must say which.** This is the single most likely place to produce the classic "works from power-on, dead from the reset button" bug, because a warm reset that leaves the ROM switched out drops the CPU onto RAM at 0000 and it executes garbage.
 - **88-2SIO**: 6850 master reset on both (clears RDRF/TDRE, drops RTS), but **keeps its `ByteStream` connected**.
 - **88-DCDD**: deselects all drives, unloads the head, invalidates the sector counter on both — but **keeps images mounted**, and does *not* seek to track 0 on a warm reset (real drives don't).
 - A DMA board must release the bus.
@@ -278,7 +442,8 @@ CLI:
 ```
 RESET        RESET* / pRESET — "press the reset button". Warm; memory survives.
 RESET CPU    CPU only; boards untouched (a debugging convenience, not a real signal).
-POWER        POC* — full cold start.
+POWER        Power-cycle: RAM contents are lost, ROM images are re-read, and POC* is
+             pulsed. The only thing that clears memory.
 ```
 
 `RESET` must be safe at any point — the bus asserts it at the next instruction boundary, never mid-cycle.
@@ -334,25 +499,65 @@ A `ByteStream` like any other, so a board connecting to it needs no special code
 
 **Arbitration:** exactly one unit may hold the console at a time. `CONNECT sio2a:a console` steals it, warning who had it.
 
-### 7.3 `BlockDevice` — the generic mountable medium
+### 7.3 `DiskImage` — the generic mountable medium
 
-Every disk/tape board (88-DCDD, 88-HDSK, minidisk, any future controller) sees only this. `MOUNT` binds an implementation to a unit.
+Every disk/tape board (88-DCDD, 88-HDSK, Tarbell, Disk 1A, North Star, any future controller) sees only this. `MOUNT` binds an implementation to a unit.
+
+**The interface is CHS, not LBA, and the format is per-track.** Both of those are forced by real disks, and an LBA interface with a single global geometry cannot express them:
 
 ```cpp
-class BlockDevice {
+enum class Density { SD, DD };
+
+class DiskImage {
 public:
-    virtual bool     readBlock (uint64_t lba, uint8_t* buf, size_t n) = 0;
-    virtual bool     writeBlock(uint64_t lba, const uint8_t* buf, size_t n) = 0;
-    virtual uint64_t size() const = 0;
-    virtual bool     readOnly() const = 0;
-    virtual void     sync() = 0;
-    virtual Geometry geometry() const = 0;   // probed from file size, or forced
+    // The BOARD describes the medium: overall shape, then one or more TRACK RANGES.
+    void init(int tracks, int heads, bool interleaved);
+    void initFormat(int trackLo, int trackHi, int headLo, int headHi,
+                    Density, int sectors, int sectorSize, int startSector);
+
+    virtual bool readSector (int t, int h, int s, uint8_t* buf, size_t* n) = 0;
+    virtual bool writeSector(int t, int h, int s, const uint8_t* buf, size_t* n) = 0;
+
+    virtual bool   readOnly() const = 0;
+    virtual void   sync() = 0;
+    virtual size_t size() const = 0;
 };
 ```
 
-Implementations: `RawImageFile` (the common case — buffered, dirty write-back, geometry probed with a `media=` override), `ReadOnlyImage`, `MemoryDisk`, and later `ImdImage`/`Td0Image`.
+Why each piece is there — each corresponds to a disk that exists:
 
-**Geometry probing lives here, once** — not duplicated in each controller. The 88-DCDD's byte-offset math (`137 * spt * track + 137 * sector`) stays in the *board*, because that is the controller's business; file access is the service's.
+- **CHS, not LBA.** Every controller in the catalog addresses track/head/sector. An LBA interface would force each board to invent a flattening the hardware never had, and then invert it.
+- **Format is declared over *track ranges*, not once for the disk.** Sector size and density genuinely vary *within* one image: a double-density soft-sector controller keeps **track 0 single-density** so the boot PROM can read it. One `Geometry` for the whole disk cannot say that; two `initFormat` calls can.
+- **`startSector`.** The 88-DCDD numbers sectors from **0**; most soft-sector controllers number from **1**. This is exactly the off-by-one that silently corrupts a disk.
+- **`interleaved`.** Whether a two-sided image stores `T0H0, T0H1, T1H0…` or all of head 0 followed by all of head 1 is a property of the *image*, and it varies by the tool that wrote it.
+
+**Hard-sector vs soft-sector needs no flag** — it falls out of `sectorSize`:
+
+| | `sectorSize` | What the image holds |
+|---|---|---|
+| **88-DCDD** (hard sector) | **137** | The *whole slot*: sync byte, track/sector header, 128-byte payload, checksum, stop byte, trailer. |
+| Tarbell, Disk 1A, North Star… (soft sector) | **128** / 256 | **Payload only.** The header and checksum were in the inter-sector gaps on real media and never made it into the image. |
+
+The board still owns what is *inside* the slot — for the DCDD, that the payload starts at offset 7 on a data track and 3 on a system track, and that a checksum sits at [4]. That is the controller's business, exactly as `docs/boards/88-dcdd.md` says.
+
+> **Geometry probing belongs to the BOARD, not to this service.** An earlier draft of this section said the opposite — *"geometry probing lives here, once"* — and that was **wrong**. Geometry is a function of **controller × image size**, and the service does not know the controller. 337,568 bytes means a 77-track 8″ floppy *only because* it is a DCDD; 8,978,432 means a 2,048-track FDC+ *only because* it is a DCDD. The same byte count on a Tarbell means something else. So the **board** probes the size, picks among the formats *it* knows, and calls `init`/`initFormat`. The service does offsets and I/O and nothing else.
+
+Worked example — the board configuring the medium:
+
+```cpp
+// 88-DCDD, 8 MB FDC+ image. The board knows it is hard-sector.
+img.init(2048, 1, /*interleaved=*/false);
+img.initFormat(0, 2047, 0, 0, Density::SD, 32, 137, 0);   // whole 137-byte slot
+
+// A soft-sector DD controller whose boot track must stay single-density.
+img.init(77, 1, false);
+img.initFormat(0,  0, 0, 0, Density::SD, 26, 128, 1);     // track 0
+img.initFormat(1, 76, 0, 0, Density::DD, 26, 256, 1);     // everything after
+```
+
+Implementations: `RawImageFile` (the common case — buffered, dirty write-back), `ReadOnlyImage`, `MemoryDisk`, and later `ImdImage`/`Td0Image` (which carry their own per-track format, and so fit this shape rather than fighting it).
+
+*Modeled on `simh.mdsk/Altair8800/altair8800_dsk.c` (© 2025 Patrick A. Linstruth) — our own prior art, not another project's.*
 
 ### 7.4 `Display` and `Audio` — SDL
 
@@ -407,7 +612,7 @@ One structured diagnostic sink with per-board and per-category masks (`IN`, `OUT
 ### 7.7 The two consequences worth stating explicitly
 
 - **A new board written against these services is automatically cross-platform and automatically replayable.** That is the point of the layer, and it is the acceptance test for the API.
-- **`CONNECT` and `MOUNT` are generic**, not per-board commands. The monitor resolves an endpoint string to a `ByteStream` or a file to a `BlockDevice` and hands it to whichever board declared a unit of that type — so a board written next year gets `MOUNT`/`CONNECT` for free without touching the monitor.
+- **`CONNECT` and `MOUNT` are generic**, not per-board commands. The monitor resolves an endpoint string to a `ByteStream` or a file to a `DiskImage` and hands it to whichever board declared a unit of that type — so a board written next year gets `MOUNT`/`CONNECT` for free without touching the monitor. Note the division of labor: the *monitor* opens the file; the *board* decides what its bytes mean (§7.3).
 
 ---
 
@@ -424,7 +629,7 @@ One structured diagnostic sink with per-board and per-category masks (`IN`, `OUT
 - A board declares typed **units**. A disk unit accepts `MOUNT id:unit <hostfile>` (`DISMOUNT` to release); a serial unit accepts `CONNECT id:unit <endpoint>` (`DISCONNECT`).
 - Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `file:path` | `null`.
 - Exactly one unit may hold `console` at a time; the monitor arbitrates.
-- Disk images are buffered and written back. Geometry auto-detected by file size, overridable with `media = "8in" | "minidisk" | "fdc8mb"`. `readonly` supported (the real board's write-protect).
+- Disk images are buffered and written back. **The board** probes the image size against the formats *it* knows and declares the layout to `DiskImage` (§7.3); `media = "8in" | "minidisk" | "fdc8mb"` forces the choice when the size is ambiguous. `readonly` supported (the real board's write-protect).
 
 ---
 
@@ -440,7 +645,9 @@ CONFIGURATION
   BOARD TYPES                      every board type compiled in, with its properties
   BOARD ADD <type> <id> [k=v ...]  BOARD REMOVE <id>
   SHOW <id>                        every property: value, units, legal range, runtime?
-  SET <id> <k>=<v>                 generic; e.g. SET sio2a BAUD=9600, SET rom0 PHANTOM=read
+  SET <id> <k>=<v>                 generic; e.g. SET sio2a BAUD=9600, SET mem0 PHANTOM=read
+  SHOW ROMS                        every ROM compiled in: name, size, CRC32, description
+                                   (use as mount = "builtin:<name>" — see §10.3.1)
 
 INTROSPECTION
   SHOW BUS                         CPU, clock, T-states, pending IRQ, DMA state
@@ -453,7 +660,6 @@ INTROSPECTION
 MEDIA AND CONNECTIONS
   MOUNT <id>:<u> <file> [RO]       DISMOUNT <id>:<u>
   CONNECT <id>:<u> <endpoint>      DISCONNECT <id>:<u>
-  DISK LS|GET|PUT <id>:<u> ...     host-side CP/M filesystem access to a mounted image
 
 CONSOLE
   SHOW CONSOLE                     every property, value, legal values
@@ -464,18 +670,28 @@ CONSOLE
 MEMORY
   LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [RAW <id>]    format autodetected
   SAVE <file> <range> [FORMAT=BIN|HEX] [RAW <id>]
-  DUMP <range> [WIDTH=16]           hex + ASCII
+  DUMP [<addr>|<range>] [WIDTH=16]  hex + ASCII. A bare <addr> runs to the END OF ITS
+                                    PAGE (D 0001 -> 0001-00FF); bare DUMP continues
+                                    from there. Page-aligned in and out, so the rows
+                                    and the columns both stay put.
   DISASM <range>|<addr> [n]         mnemonics follow the selected CPU
   EDIT <addr>                       interactive: show byte, type new value, Enter advances
+  EXAMINE [<addr>]                  ONE byte: hex, ASCII, bits. Bare = EXAMINE NEXT,
+                                    the front-panel switch. Its own cursor, not DUMP's.
   DEPOSIT <addr> <bytes...>
   FILL <range> <byte>
   SEARCH <range> <bytes...>|"str"
   COMPARE <range> <addr> | COMPARE <range> <file>
   MOVE <range> <dest>
-  All of the above take an optional BANK=<n> to reach a non-live bank.
+  All of the above take an optional RAW <id> to address one board's store directly (§10.2).
+
+I/O
+  IN <port>                         run a real IN cycle -- with real side effects
+  OUT <port> <byte>                 run a real OUT cycle
+  WHO IO <port>                     who WOULD answer -- looks without touching
 
 EXECUTION
-  GO [addr] | STEP [n] | STOP | BOOT <id>[:u]
+  GO [addr] | STEP [n] | STOP
   RESET | RESET CPU | POWER
   SET CPU 8080|8085|Z80            SET CLOCK <hz>|UNLIMITED
 
@@ -489,16 +705,82 @@ DEBUG
 
 `altairsim -c script.cmd` runs a command script non-interactively and exits with a status code — the CI/regression entry point.
 
+### 10.0.1 The number base: on the wire → hex, never on the wire → decimal
+
+**Settled 2026-07-11 by Patrick.** This closes open finding **F3**.
+
+> **The base is a property of the OPERAND, not of the command line.**
+
+| | |
+|---|---|
+| **HEX** — the machine sees it | addresses, ports, data bytes, register values, opcodes |
+| **DECIMAL** — only you see it | step counts, dump widths, history depth, sizes, baud rates, unit numbers |
+
+`DUMP 100` starts at `0100h`. `STEP 20` steps twenty times. `SET sio0 baud=9600` is nine thousand six hundred. The 8080 never holds a step count or a baud rate, so those are not hex; it holds an address on sixteen pins, so that is.
+
+**A single global base was never actually on the table.** `baud=9600` cannot mean 38400, so the rule was always going to bend somewhere — and given that, it bends where it *means* something instead of where it happened to fall. This is also why the alternative ("everything in a command is hex") was rejected: it buys one sentence of simplicity and pays for it with `STEP 20` stepping 32 times, silently, forever.
+
+**Overrides work everywhere, in both directions**, because a rule you cannot type your way out of is a trap: `0x20` / `$20` / `20h` force hex, `#32` forces decimal, `0b1010` is binary, `1_000` is spacing.
+
+**A `K`/`M` suffix is always behind a decimal number** (Patrick) — `10K` is 10,240, never 16K, which is why in fifty years nobody has had to ask. The suffix therefore carries its own base and overrides the caller's default. `0x10K` demands hex *and* a suffix that is decimal by definition; there is no right answer, so **it is rejected rather than guessed at**.
+
+**There is exactly one parser** — `parseNumber(text, out, err, base)` in `core/value.cpp` — and the caller passes the default base, because the caller is the only one who knows what kind of quantity it is. Properties carry theirs as `radix` (§10.4), which is the same rule reaching the same answer through the reflection layer. **No call site may pre-chew its input to get the base it wanted**; three of them used to (the CLI prepended `"0x"` to `at=`, the property layer prepended `"0x"` to any radix-16 value, and the region parser stripped its own `K`), and all three were quietly wrong in a different way.
+
+Pinned by `tests/test_numbers.cpp`. The failures this catches are all silent: every one of these tokens parses fine under the wrong base, so nothing crashes — you just size a card at 16K when you wrote 10K, and find out much later.
+
+### 10.0 There is no `BOOT` command. The config file runs commands instead.
+
+An earlier draft listed `BOOT <id>[:u]`. **It is removed, because it has no honest meaning.**
+
+The 8080 begins at `0000`; a boot PROM lives at `FF00`. Something must bridge that, and a simulator has only two ways to do it:
+
+1. **Synthesize a bootstrap internally** and jam it into memory (what SIMH's `BOOT` does). **Forbidden by §0.1** — it is fabricated hardware, and it means the machine boots in a way no real Altair ever booted.
+2. **Do what the operator does: start execution at the PROM.** `GO FF00`.
+
+The real hardware does it with a **power-on jump**: a turnkey/PROM board that forces the processor to the PROM address after a reset. That is a genuine S-100 feature and it may eventually be modeled as a **board property** — but it needs the 88-TURNKEY manual first (§17), and no simulator convenience should stand in for it in the meantime.
+
+So the monitor keeps only the honest verb, `GO <addr>` — and to spare you typing it every session, **a machine config can carry a list of monitor commands to run once the backplane is built**:
+
+```toml
+[machine]
+name     = "cpm-dev"
+clock_hz = 2_000_000
+sense    = 0x00                 # port 0xFF front-panel sense switches
+
+startup = [                     # monitor commands, run in order after boards are created
+  "GO FF00",                    # the DBL PROM. This is the operator's keystroke, not fake hardware.
+]
+```
+
+Three things fall out of this, and they are the reason it is the right shape:
+
+- **The config language and the script language become one language.** A `startup` entry is an ordinary monitor command, so anything you can type, a config can do — and `altairsim -c script.cmd` and `CONFIG LOAD` stop being two different worlds.
+- **`BOOT`'s special-casing disappears.** No verb needs to know what a "boot device" is, and a new disk controller written next year needs no monitor change to be bootable.
+- **It is transparent.** `SHOW MACHINE` prints the startup commands; `CONFIG SAVE` round-trips them verbatim. Nothing happens that the user cannot see written down.
+
+> **Caution, and it must be in the docs:** `CONFIG LOAD` on a machine file now *executes commands*. Loading a `.toml` from an untrusted source runs whatever is in its `startup` list. Keep `startup` to monitor commands only, and say so out loud.
+
 ### 10.1 `SET`/`SHOW` are generic
 
 Implemented once against `Board::properties()`; they know nothing about baud rates, phantom modes, or disk geometry. Adding a board adds its settings to the CLI for free. Config-time vs runtime settability is enforced by the board and displayed by `SHOW`, so `SET fdc DRIVES=8` on a running machine is rejected clearly rather than half-applied.
 
 ### 10.2 Memory access: through the bus, or behind it?
 
-- **Default: through the bus.** `DUMP`, `DISASM`, `DEPOSIT`, `EXAMINE` see exactly what the CPU sees — live bank, PHANTOM overlays applied, ROM boards rejecting writes, contention reported. This is the only view that tells the truth about a misbehaving decode.
-- **`RAW <id>`: behind the bus**, straight into one board's backing store. This is how you `LOAD dbl.bin AT 0xFF00 RAW turnkey` — a ROM board correctly refuses a bus write, so loading its image *must* bypass the bus. Same mechanism reaches a non-selected bank, and lets you inspect a phantomed-out board the CPU cannot see.
+- **Default: through the bus.** `DUMP`, `DISASM`, `DEPOSIT` see exactly what the CPU sees — live bank, PHANTOM overlays applied, ROM not decoding writes, contention reported. Addresses are **bus addresses**, 0x0000–0xFFFF. This is the only view that tells the truth about a misbehaving decode.
+- **`RAW <id>`: behind the bus**, straight into one board's backing store. Addresses are **board-local offsets** into that board's store, which may be far larger than 64K. This is how you inspect a phantomed-out board the CPU cannot see — and how you get bytes *into* a ROM.
 
-`DUMP`/`DISASM` annotate output when bytes came from a phantom overlay or a non-live bank, so a confusing read explains itself.
+**`RAW` is the PROM burner, and that is not a metaphor.** A ROM region does not decode a write cycle (§4.2), so `DEPOSIT FF00 41` cannot possibly reach it — nor should it, because on real hardware a bus write can't program a PROM either. You pull the chip and put it in a programmer, which is *not a bus operation*. `LOAD dbl.hex RAW mem0` is exactly that, and it is why **the operator can write ROM while the guest cannot**, with no `writable` flag to leak and no originator tag on the bus.
+
+The alternative — giving `BusCycle` an `origin = Cpu | Monitor | Dma` field so ROM could accept "monitor" writes — was rejected. A real backplane cycle carries no such tag; that is *why* a front-panel DEPOSIT is indistinguishable from a CPU write, and why a real ROM ignores both. Add the tag and every board built hereafter has to reason about it.
+
+**There is no `BANK=` qualifier, and there must not be one.** Bank *count*, bank *size*, and the bank-select *port* are all board-specific: Cromemco, CompuPro, and Alpha Micro memory boards bank in incompatible ways. A `BANK=<n>` argument in the monitor would hardcode one banking model into a CLI that is supposed to know nothing board-specific — the same error as a bus that invents interrupt vectors (§4.4).
+
+Instead, **banking is reached through the board, two ways, both of which already exist**:
+
+1. **`RAW <id>` addresses the board's store linearly.** On a 4 × 64K banked memory board, bank 3 simply *is* offset `0x30000`. `DUMP 30000-300FF RAW mem0` needs no new syntax and no new concept.
+2. **The live bank is a `properties()` value like any other.** `SHOW mem0` reports `banks` and `bank`; a board whose banking is software-selectable exposes `bank` as a runtime property. The generic `SET`/`SHOW` layer (§5) carries it, so the monitor, the TOML loader, MCP, and tab completion all get it for free — and a memory board with a scheme nobody has thought of yet still works.
+
+`DUMP`/`DISASM` annotate output when bytes came from a phantom overlay or from a bank that is not currently live, so a confusing read explains itself.
 
 ### 10.3 Intel HEX
 
@@ -509,6 +791,29 @@ Writer emits 00/01 with a configurable record length (default 16) and an `03` st
 Binary is a flat image: `LOAD` needs `AT <addr>`, `SAVE` needs an explicit range. Autodetection sniffs for a leading `:` and printable HEX records; `FORMAT=` forces it.
 
 The same engine backs the MCP tools (`mem_load`, `mem_save`, `mem_dump`, `disasm`) — one implementation, two front ends.
+
+### 10.3.1 Built-in ROMs
+
+**The common ROMs are compiled into the binary.** There is no portable place to keep ROM images across the four targets — `/usr/share`, `~/Library`, `%APPDATA%`, and "next to the executable" are four different answers, each of which becomes a support question and a platform special case in exactly the code §2.1 exists to keep clean. ROMs are small (a boot PROM is 256 bytes), so embedding them makes the problem vanish: a fresh checkout boots on any OS with nothing to download.
+
+Source images live in **`roms/`** in the repo. At build time CMake turns each into a byte array in a generated translation unit, and a registry maps `builtin:<name>` → `{span<const uint8_t>, crc32, description}`.
+
+```toml
+  [[board.region]]
+  type  = "rom"
+  at    = 0xFF00
+  mount = "builtin:dbl"      # compiled in
+# mount = "roms/mine.bin"    # a bare path is a host file, and it always wins
+```
+
+`builtin:` reuses the scheme idiom already established for `connect` (`socket:`, `serial:`, `file:`), so it adds no grammar. Consequences worth stating:
+
+- **The board never knows the difference.** A region takes a `span<const uint8_t>`; whether it came from `.rodata` or from a file the host service read is not the board's business (§7). `builtin:` is resolved by the config loader, above the board.
+- **No filesystem access at runtime** for a built-in.
+- **`CONFIG SAVE` round-trips the name, not the bytes.**
+- **Built-ins are a convenience, never a lock-in** — a path overrides, so anyone with a different dump of the same part uses it without patching the simulator.
+
+**Every built-in ROM has a provenance row in `docs/roms.md`** — source, exact size, CRC32 — and a unit test verifies the CRC at build time. This is §0.1 applied to binaries: **a ROM image is a hardware fact**, and an embedded blob of unknown lineage is the worst kind of second-hand fact, because every piece of software above it would then be debugged against the wrong ground truth and it would look like a software bug for a very long time. Nothing is embedded without a source.
 
 ### 10.4 Line editing and history
 
@@ -535,8 +840,8 @@ The high-value tools are borrowed from the Python prototype's agent API, which i
 - `expect(pattern, max_steps, idle_threshold) -> {found, steps, output}` — run until the pattern appears; on failure return the tail of captured output
 - `screen() -> {rows, cols, grid}` — VT100/ANSI screen emulator, so a test asserts on a **screen grid** rather than a byte stream. Essential for full-screen guest apps.
 - `step`, `regs`, `breakpoints`, `snapshot`, `restore`, `bus_trace`
-- `mem_dump`, `mem_deposit`, `mem_load`, `mem_save`, `mem_search`, `mem_fill`, `disasm` — same `raw`/`bank` qualifiers as the monitor, same engine
-- `mount`, `connect`, `disk_ls`, `disk_get`, `disk_put`
+- `mem_dump`, `mem_deposit`, `mem_load`, `mem_save`, `mem_search`, `mem_fill`, `disasm` — same `raw` qualifier as the monitor, same engine
+- `mount`, `connect`
 - `reset(kind: bus|cpu|power)`
 - `board_list`, `board_types`, `board_get(id)`, `board_set(id, key, value)` — **schemas generated from `Board::properties()`**
 - `bus_map()`, `bus_io()`, `bus_irq()`, `bus_contention()`, `who(addr)` — structured, not the ASCII table
@@ -561,11 +866,20 @@ It is also **the project's first genuinely new piece of hardware**, which makes 
 
 Guest-side utilities (`HGET.COM`, `HPUT.COM`, `HDIR.COM`) are ours, written in 8080 assembly and assembled with the period toolchain.
 
-### 12.2 MCP disk-image tools (host-initiated)
+### 12.2 Host-side filesystem access to an image — **deferred, and here is the hard part**
 
-The Python prototype's `DiskImage` already knew how to walk the CP/M directory, decode extents, and `extract_file`/`write_file`. Lift that into a host-side CP/M filesystem library and expose it over MCP: `disk_ls(id:unit)`, `disk_get(id:unit, name)`, `disk_put(id:unit, name, bytes)`.
+The intent is real: read and write files in a mounted image **with the guest not running at all** — no boot, no console driving. For Claude that is far more efficient than typing at a CP/M prompt, and it is the right way to stage a test fixture or pull out a build artifact.
 
-This works on a **mounted image with the guest not running at all** — no `R.COM`, no console driving, no boot. For Claude this is far more efficient than typing at a CP/M prompt, and it is the right tool for staging a test fixture or pulling out a build artifact.
+**But `DISK LS` cannot be a generic monitor command, and an earlier draft of this design had it as one. That was wrong.** Reading a file out of an image requires *two* independent facts, and the simulator holds neither in a place a generic command can reach:
+
+1. **The sector layout** — which is a property of the **controller**. The 88-DCDD is **hard-sector**: its images contain the entire 137-byte slot, headers and checksum included, so the payload lives at offset 7 of each slot (3 on a system track). Tarbell, Disk 1A, and North Star are **soft-sector**: their images hold the payload *only*, because the headers lived in the inter-sector gaps and never reached the file. A reader that does not know which kind it is holding reads garbage.
+2. **The CP/M filesystem parameters** — the DPB, the reserved-track offset, and the BIOS *software* skew. These belong to the **image's CP/M**, not to the controller, and two images on the same controller can legitimately differ.
+
+So a naive `DISK LS` needs a wrapper per controller **×** per image format. Its apparent genericity would be a lie, and the failure mode is the worst kind: it produces a plausible-looking directory listing off a misparsed image.
+
+**Therefore: no `DISK` verbs in the monitor and no `disk_*` tools over MCP, for now.** The capability is deferred, not cancelled; §7.3's `DiskImage` gives it a foundation (the *controller* declares the layout, so half the problem is already solved in the right place), and the remaining half — a named CP/M filesystem descriptor supplying DPB and skew — is a later design task. `cpmtools`' `diskdefs` is the precedent, and it exists precisely because this cannot be inferred.
+
+Until then, **§12.1's Host Bridge is the supported path**, and host-side image surgery is what `cpmtools` is for.
 
 ---
 
@@ -621,6 +935,7 @@ See `docs/porting-notes.md` for the full list. The ones that will bite:
 | **88-VI / RTC** | Register layout, priority scheme, RST vector generation. Nothing at all in the tree. | Milestone 6 |
 | **88-HDSK** | Ports, command protocol, geometry, image format. Nothing at all in the tree. | Milestone 7 |
 | **PMMI** (deferred) | The **E1–E7 pad → VI0–VI7 correspondence** — the manual says only to consult your CPU/VI card manual. Everything else is recovered. | If/when PMMI is built |
+| **88-TURNKEY / PROM** | **How power-on jump works.** A turnkey board forces the CPU to the PROM address after reset; the mechanism is undocumented in the tree. Nothing is blocked — `startup = ["GO FF00"]` covers it honestly (§10.0) — but modeling POJ as a real board property is the correct long-run answer, and it would test whether a `Board` can claim an `OpFetch` cycle the way the 88-VI claims an `IntAck`. | Nice-to-have; blocks nothing |
 
 **Available and sufficient:** the 88-2SIO (MITS *Theory of Operation* manual, `s100-manuals/MITS/ALTAIR_8800/`), the 88-DCDD (`mits_dsk.c` + `BIOS.ASM` + `CLAUDE.md`), and the PMMI (its manual, `pmmi-cpm22/`).
 

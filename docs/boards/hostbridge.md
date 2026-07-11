@@ -10,7 +10,9 @@ AltairZ80 solves this with a "SIMH pseudo device" at port 0xFE and a pair of gue
 
 Instead we design our own card. That is, after all, what this project is *for* — and it makes the Host Bridge **the first genuinely new piece of hardware built against the board API**, which is a far better test of that API than reimplementing a card whose shape we already know.
 
-> **Note:** most host↔guest file movement should use the **MCP disk tools** (`disk_ls` / `disk_get` / `disk_put`), which operate on a mounted image **with the machine not even running** — no guest cooperation, no booting, no console driving. The Host Bridge is for the case where the *guest* must initiate.
+> **Note (revised):** an earlier draft said most host↔guest file movement should instead use MCP disk tools (`disk_ls`/`disk_get`/`disk_put`) operating directly on a mounted image. **Those tools are deferred** — reading a file out of an image requires knowing both the *controller's* sector layout (hard-sector images carry whole 137-byte slots; soft-sector images carry payload only) **and** the *image's* CP/M DPB and software skew, and nothing in the simulator can infer that pair. See `DESIGN.md` §12.2.
+>
+> **Consequence: the Host Bridge is the supported guest↔host file path**, not a fallback for when the guest must initiate. That raises its priority, and it means its sandbox (principle 2 below) is load-bearing rather than defensive. For host-side surgery on an image with the machine off, use `cpmtools`.
 
 ## Design principles
 

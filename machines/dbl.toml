@@ -1,0 +1,22 @@
+# A 1a machine: 48K of RAM, and the real DBL 4.1 boot PROM shadowing the top page.
+# There is no CPU yet -- the monitor is the bus master.
+[machine]
+name     = "dbl-bench"
+clock_hz = 2_000_000
+sense    = 0x00
+
+[[board]]
+type           = "memory"
+id             = "mem0"
+honors_phantom = true
+fill           = "random"      # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0x0000
+  size = "48K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = 0xFF00
+  mount = "builtin:dbl"        # compiled in. Nothing to download, same on every OS.

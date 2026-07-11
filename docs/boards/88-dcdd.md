@@ -90,7 +90,20 @@ Read side reads 137 bytes from port 0x0A.
 
 **Minidisk is auto-detected purely by image size** (`MINI_DISK_SIZE ± MINI_DISK_DELTA` → 16 sectors/track, else 32) and **ignores head-unload**.
 
-Geometry probing belongs in the `BlockDevice` service (once), not in this board. The offset math above stays in the board — that is the controller's business.
+**The 88-DCDD is a HARD-SECTOR controller, and that is the fact everything else follows from.** Its images contain the **entire 137-byte slot** — sync byte, track/sector header, 128-byte payload, checksum, stop byte, trailer — not just the payload. Soft-sector controllers (Tarbell, Disk 1A, North Star) store the **payload only**, because on real media their headers and checksums lived in the inter-sector gaps and never reached the image file. Anything that reads a `.DSK` without knowing which kind of controller wrote it reads garbage.
+
+In the `DiskImage` service (`DESIGN.md` §7.3) this needs no special flag — it is just `sectorSize = 137` where a soft-sector board would say `128`:
+
+```cpp
+img.init(2048, 1, /*interleaved=*/false);                 // 8 MB FDC+
+img.initFormat(0, 2047, 0, 0, Density::SD, 32, 137, 0);   // startSector = 0
+```
+
+Note `startSector = 0`: the DCDD numbers sectors **from zero**, where most soft-sector controllers number **from one**.
+
+**Geometry probing belongs to THIS BOARD, not to the `DiskImage` service.** Image size alone is not enough — 337,568 bytes means a 77-track 8″ floppy *because it is a DCDD*, and the same byte count on another controller means something else. Only the board knows which formats are even candidates. So the board probes size, picks among *its* known formats (8″, minidisk, 8 MB FDC+), and declares the result. The service does offsets and I/O and nothing else.
+
+The slot-internal offset math above (payload at 7 on a data track, 3 on a system track) also stays in the board — that is the controller's business.
 
 ## Sector slot layout (the raw 137 bytes)
 
@@ -139,7 +152,7 @@ They are **separate and both apply.** Document this loudly.
 ## How it is simulated
 
 - Decodes `IoIn`/`IoOut` on 0x08–0x0A.
-- Media via **`BlockDevice`** (`MOUNT fdc:0 cpm.dsk`), one per drive unit, up to `drives` (property, 1–16).
+- Media via **`DiskImage`** (`MOUNT fdc:0 cpm.dsk`), one per drive unit, up to `drives` (property, 1–16). The board declares the format; see Geometry above.
 - Rotation via **`EventQueue`**, not a per-instruction poll.
 - `interrupt` property exists but the real controller's interrupt bits were ignored by period software and by `mits_dsk.c`; model the bits, don't wire them by default.
 
