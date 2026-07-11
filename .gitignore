@@ -1,0 +1,37 @@
+# Build
+build/
+out/
+cmake-build-*/
+_deps/
+CMakeUserPresets.json
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+.cache/
+compile_commands.json
+
+# macOS
+.DS_Store
+.AppleDouble
+Icon?
+._*
+
+# Windows
+Thumbs.db
+*.pdb
+*.ilk
+
+# Simulator artifacts
+*.snap
+*.replay
+altairsim.log
+.altairsim_history
+
+# Disk/tape images are large and usually not ours to redistribute.
+# Commit them deliberately with `git add -f` if a test genuinely needs one.
+*.dsk
+*.DSK
+*.cas
+*.img
