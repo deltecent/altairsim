@@ -66,7 +66,7 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 | 4 — memory model | ROM board, PHANTOM, banking | DBL PROM at 0xFF00 overlays RAM; `SHOW BUS MAP` shows it; bank switching works |
 | 5 — rest of serial | 88-SIO, 88-ACR, 88-LPC | MITS BASIC from a cassette image; SIO's **inverted** status alongside 2SIO's true-sense |
 | 6 — interrupt board & DMA | 88-VI, RTC | VI priority across *several* boards; a DMA card steals cycles and the clock notices |
-| 7 — parallel, host bridge | 88-PIO, 88-4PIO, SIMH device | `R.COM`/`W.COM` move files to and from the host |
+| 7 — parallel, host bridge | 88-PIO, 88-4PIO, **Host Bridge** (our own design) | `HGET`/`HPUT`/`HDIR` move files to and from the host; sandbox escape attempts are refused |
 | 8 — more cores | 8085, Z80 | ZEXALL / ZEXDOC; a Z80 CP/M binary runs |
 | *later* | PMMI MM-103, VDM-1, Dazzler | see below |
 

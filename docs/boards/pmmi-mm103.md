@@ -24,7 +24,8 @@ A **Bell 103** originate/answer modem on an S-100 card, with an on-board pulse d
 | **Manual** (legible OCR; full spec in §7.3 / §7.4) | `../pmmi-cpm22/pmmi-mm-103-modem-and-comm-adapter.pdf` |
 | MEX overlay (corroborating equates) | `../pmmi-cpm22/MXO-PM22.ASM` |
 | AltairZ80 config | `../pmmi-cpm22/pmmi.sim` — `set pmmi enable`, `attach pmmi connect=<serial\|host:port>` |
-| **`s100_pmmi.c`** | **Patrick Linstruth's own SIMH implementation.** Not in this tree — pull from open-simh. **Cross-check the whole map against it.** |
+
+The manual is sufficient — the full register map below was recovered from it. **No other simulator's source is used or needed** (`DESIGN.md` §0.1).
 
 ## Base address
 

@@ -128,15 +128,15 @@ drives = 4
   mount = "disks/scratch.dsk"
 
 [[board]]
-type    = "simh"           # host file transfer: R.COM / W.COM
-id      = "simh"
-port    = 0xFE
-hostdir = "./hostfiles"    # SANDBOX. Guest filenames cannot escape this root.
+type    = "hostbridge"     # guest-initiated host file transfer (our own design)
+id      = "host"
+port    = 0xFE             # 2 ports
+hostdir = "./hostfiles"    # SANDBOX. Required. Guest filenames cannot escape this root.
 ```
 
 ## Notes
 
 - **`id` is what monitor commands address.** Sub-units are `id:unit` — `MOUNT fdc:0 cpm.dsk`, `CONNECT sio2a:b socket:2323`, `SET sio2a:a BAUD=9600`.
-- **Port collisions are detected**, not silently resolved. The bus reports contention naming both boards and the address. `SHOW BUS IO` shows the full map; `WHO IO 0x10` is the reverse lookup. (Note the 88-VI's default port must **not** be 0xFE — that is the SIMH device.)
+- **Port collisions are detected**, not silently resolved. The bus reports contention naming both boards and the address. `SHOW BUS IO` shows the full map; `WHO IO 0x10` is the reverse lookup.
 - **Config-time vs runtime properties:** `SHOW <id>` displays which is which. Setting a config-time property on a running machine is rejected with a clear message rather than half-applied.
 - **Disk geometry** is probed from the image file size by the `BlockDevice` service; `media` forces it.

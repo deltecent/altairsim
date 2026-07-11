@@ -5,6 +5,28 @@
 
 ---
 
+## 0. Ground rules
+
+### 0.1 Where hardware facts come from
+
+**Period manuals and first-hand artifacts only.** Register maps, bit layouts, and timings are sourced from original vendor documentation (MITS and other manufacturers' manuals), from period software's own equate blocks and disassembled PROMs, or from hardware in hand.
+
+**We do not read other emulators' source code to learn how hardware works.** That includes SIMH / AltairZ80. Second-hand facts inherit second-hand mistakes, and the whole value of this project rests on the hardware model being *right*, not on it matching somebody else's model.
+
+> **If a spec is missing, ask Patrick — he will source the manual.** Do not guess, do not reconstruct from memory, and do not go read another simulator. A wrong bit layout that "seems to work" is the most expensive kind of bug in a project like this, because the software will paper over it until one day it doesn't.
+
+When two sources disagree, say so in the board's `.md` and say which one won and why.
+
+Consequences already baked into this design:
+- **AltairZ80's port-0xFE "SIMH pseudo device" is not implemented**, and `R.COM`/`W.COM` are not supported. See §12.
+- Boards with no manual in the tree (88-HDSK, 88-VI, 88-ACR, 88-PIO/4PIO) are **blocked on documentation**, not on code. See §17. None of them block milestone 1.
+
+### 0.2 Doc discipline
+
+Every board ships with a `docs/boards/<board>.md` on the standard template (§14). No board is merged without one. The **Limitations** and **Quirks** sections are the load-bearing ones.
+
+---
+
 ## 1. Purpose, goals, non-goals
 
 `altairsim` is a C++ simulator of the MITS Altair 8800 and the S-100 bus, running on Intel Mac, Apple Silicon Mac, Linux, and Windows, built with CMake.
@@ -525,19 +547,19 @@ The high-value tools are borrowed from the Python prototype's agent API, which i
 
 ## 12. Host file transfer
 
-Two complementary mechanisms. **Build both** — they serve different needs.
+Two complementary mechanisms, serving different needs.
 
-### 12.1 The SIMH pseudo device (guest-initiated)
+> **We do not implement AltairZ80's port-0xFE "SIMH pseudo device", and `R.COM`/`W.COM` are not supported.** That device is not real Altair hardware — it is another simulator's invention, and its only purpose is compatibility with that simulator's own guest utilities. Reimplementing it would mean deriving from AltairZ80's source, which this project does not do (§0.1). Instead we design our own host bridge as if it were a real S-100 card — which is, after all, what this project is *for*.
 
-AltairZ80 exposes a non-hardware "SIMH" device on **port 0xFE**, and ships `R.COM` / `W.COM`, CP/M utilities that read and write host files through it. Model it as an ordinary board of type `simh` — it registers a port like any other, not a bus special case.
+### 12.1 The Host Bridge board (guest-initiated)
 
-The protocol is a command byte written to 0xFE followed by parameter/result bytes; the command set covers host file open/read/write (the PTR/PTP attach path `R.COM`/`W.COM` drive) plus a grab-bag of host services: RTC get/set (ZSDOS and CP/M 3 formats), stopwatch/timer, timer interrupts, bank select, host OS path separator, host filename enumeration, and a `SIMHSleep` that yields the host CPU.
+A board of our own design (`docs/boards/hostbridge.md`), documented to the same standard as any period card. It is an ordinary `Board` — it claims two I/O ports, has `properties()`, honors both resets, and serializes. No bus special cases.
 
-**Source the exact command codes from AltairZ80's `altairz80_sio.c`** — do not reconstruct them from memory; `R.COM`/`W.COM` compatibility depends on byte-exactness. Decide explicitly which grab-bag commands to implement vs reject, and document that list.
+It is also **the project's first genuinely new piece of hardware**, which makes it a real test of the board API rather than a rehash of a known card.
 
-Two things to get right that AltairZ80 doesn't:
-- **Sandbox the host filesystem.** Guest-supplied filenames resolve against a configured root (`hostdir` in TOML) and cannot escape it. A guest program must not be able to write anywhere on your disk.
-- The clock/timer/bank-select commands overlap with things this design models as real boards. Where they do, the SIMH device **delegates** to those boards rather than keeping a second copy of the state — otherwise snapshots and replay diverge.
+**Sandboxing is a hard requirement**, not a nicety: guest-supplied filenames resolve against a configured `hostdir` root and **cannot escape it**. A guest program must never be able to write anywhere on the host disk.
+
+Guest-side utilities (`HGET.COM`, `HPUT.COM`, `HDIR.COM`) are ours, written in 8080 assembly and assembled with the period toolchain.
 
 ### 12.2 MCP disk-image tools (host-initiated)
 
@@ -588,14 +610,21 @@ See `docs/porting-notes.md` for the full list. The ones that will bite:
 
 ---
 
-## 17. Open items to resolve before the boards that need them
+## 17. Blocked on documentation
 
-1. **88-HDSK** ports / protocol / geometry — not documented anywhere in the tree. Source needed.
-2. **88-VI / RTC** register layout and priority scheme — not in the tree. Source needed. Pick a default port that is **not** 0xFE (the SIMH device).
-3. **88-ACR / 88-PIO / 88-4PIO bit layouts** — only port numbers are known; handshake semantics and the ACR's motor control (if any) are undocumented here.
-4. **SIMH pseudo-device command codes** — transcribe byte-exact from `altairz80_sio.c` for `R.COM`/`W.COM` compatibility.
-5. **PMMI** — register map recovered (`docs/boards/pmmi-mm103.md`), but the **E1–E7 pad → VI0–VI7 mapping** is not stated in the manual, and the whole map should be cross-checked against **your own `s100_pmmi.c`** in open-simh.
-6. **88-DCDD status-bit discrepancy** between the Python sim and `BIOS.ASM` (I and Z bit positions) — reconcile against `mits_dsk.c`, which is authoritative.
+**None of these block milestone 1.** Per §0.1, each is blocked on a *manual*, not on code. **Ask Patrick and he will source it** — do not reconstruct, guess, or read another simulator.
+
+| Board | What's missing | Needed by |
+|---|---|---|
+| **88-ACR** | Cassette-specific control bits (motor control, if any). Only the port numbers (0x06/0x07) and the inverted-SIO bit sense are known. | Milestone 5 |
+| **88-PIO / 88-4PIO** | Bit layouts and handshake (CA1/CB2) semantics. Only port numbers are known: PIO 0x04/0x05; 4PIO 0x20–0x23. | Milestone 7 |
+| **88-VI / RTC** | Register layout, priority scheme, RST vector generation. Nothing at all in the tree. | Milestone 6 |
+| **88-HDSK** | Ports, command protocol, geometry, image format. Nothing at all in the tree. | Milestone 7 |
+| **PMMI** (deferred) | The **E1–E7 pad → VI0–VI7 correspondence** — the manual says only to consult your CPU/VI card manual. Everything else is recovered. | If/when PMMI is built |
+
+**Available and sufficient:** the 88-2SIO (MITS *Theory of Operation* manual, `s100-manuals/MITS/ALTAIR_8800/`), the 88-DCDD (`mits_dsk.c` + `BIOS.ASM` + `CLAUDE.md`), and the PMMI (its manual, `pmmi-cpm22/`).
+
+**One inconsistency to settle:** the Python prototype and `BIOS.ASM` disagree on the 88-DCDD's `I` and `Z` status-bit positions. `mits_dsk.c` is authoritative — reconcile against it (§`docs/boards/88-dcdd.md`).
 
 ---
 
