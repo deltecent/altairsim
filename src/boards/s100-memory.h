@@ -26,6 +26,27 @@ namespace altair {
 
 enum class RegionKind { Ram, Rom };
 enum class PhantomAssert { None, Read, All };
+
+// WHAT I DO WHEN SOMEONE ELSE PULLS PHANTOM* -- and it has the same three
+// positions as the assert strap, because it is the same kind of jumper.
+//
+//   none  I ignore the pin. I keep driving. (If a ROM is shadowing me, that is
+//         two boards driving one cycle, and the bus reports the contention.)
+//   read  I switch off for READS and keep answering WRITES. THIS IS THE TARBELL
+//         CASE: its PROM shadows my reads while the byte still lands in my RAM
+//         underneath, which is how the bootstrap deposits a sector into the very
+//         addresses the PROM is covering.
+//   all   I switch off entirely for the cycle.
+//
+// The read/write distinction lives HERE, on the HONORING board, and an earlier
+// version of this file said in bold that it must never do so -- that the
+// asserting card should gate PHANTOM* with its read strobe instead. That was
+// wrong, and it was wrong because it was reasoned rather than sourced. PATRICK
+// READ THE TARBELL SCHEMATIC (2026-07-12): the card holds PHANTOM* asserted like
+// an interrupt, continuously, from RESET until A5 releases it -- it does not gate
+// the pin with MEMR at all. The memory card is what is strapped to ignore it on
+// writes.
+enum class PhantomHonor { None, Read, All };
 enum class Fill { Zero, Random };
 
 enum class BankType { None, Eram, Vram, Cram, Hram, B810 };
@@ -63,6 +84,9 @@ public:
     // ---- bus (DESIGN.md 4.2) ----
     bool assertsPhantom(const BusCycle& c) const override;
     bool decodes(const BusCycle& c) const override;
+
+    // Do I switch off for this cycle when someone else pulls PHANTOM*?
+    bool honors(const BusCycle& c) const;
     uint8_t read(const BusCycle& c) override;
     void write(const BusCycle& c) override;
 
@@ -147,7 +171,7 @@ private:
     int owner_[256];              // page table: which region covers each page, or -1
     std::vector<uint8_t> store_;  // banks_ * 64K. Bank 3 simply IS offset 0x30000.
 
-    bool honorsPhantom_ = true;
+    PhantomHonor honors_ = PhantomHonor::All;
     PhantomAssert phantom_ = PhantomAssert::All;
 
     BankType bankType_ = BankType::None;

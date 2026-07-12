@@ -188,13 +188,13 @@ void test_memory() {
         auto* r = addMem(m, "ram0");
         r->addRegion(ram(0x0000, 0x10000), err);
         std::string e2;
-        setProperty(*r, "honors_phantom", "false", e2);
+        setProperty(*r, "honors_phantom", "none", e2);
         auto* o = addMem(m, "rom0");
         o->addRegion(rom(0xFF00, "builtin:dbl"), err);
         m.power();
 
         CHECK(m.bus.respondersTo({Cycle::MemRead, 0xFF00, 0, false}).size() == 2,
-              "honors_phantom=false: the RAM keeps driving under the ROM -- real contention");
+              "honors_phantom=none: the RAM keeps driving under the ROM -- real contention");
     }
 
     SECTION("banking -- five real cards, and no two alike");

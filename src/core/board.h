@@ -81,19 +81,62 @@ public:
     // resolve the signal, once more inside each board's decodes()), so it must
     // not latch anything. The clocked half is snoop(), below.
     //
-    // Whether PHANTOM* is pulled for READS ONLY or for reads and writes is
-    // decided HERE, by the asserting board -- because that is where the gate
-    // physically is. A card that gates PHANTOM* with the read strobe simply does
-    // not pull it during a write cycle, so memory answers the write normally and
-    // the byte lands in RAM under the shadow. The honoring board needs no strap
-    // for this and must never grow one. See the Tarbell (docs/boards/tarbell-sd.md).
+    // PHANTOM* IS A LEVEL. A card that shadows another asserts it and HOLDS it --
+    // like an interrupt -- until something releases it. It is not gated with the
+    // read strobe, and the asserting card has no opinion about what a write should
+    // do: the READ/WRITE DISTINCTION LIVES ON THE HONORING BOARD, which is why the
+    // memory card's jumper is `honors_phantom = none | read | all` and not a bool.
+    // `read` = off for reads, still answering writes, so the byte lands in the RAM
+    // under the shadow. See the Tarbell (docs/boards/tarbell-sd.md).
+    //
+    // (This comment used to say the exact opposite, in bold, and it was wrong:
+    // reasoned instead of sourced. Patrick read the schematic, 2026-07-12.)
     virtual bool assertsPhantom(const BusCycle&) const { return false; }
 
     // Do I drive the bus for this cycle? Everything board-specific lives behind
     // this one question: my address range, my ports, my bank, whether I honor
     // PHANTOM*, and whether the thing at this address is ROM (which never
     // answers a write).
+    //
+    // TWO CONTRACTS, BOTH LOAD-BEARING, because the bus CACHES this answer:
+    //
+    //   1. PURE. Same board state, same cycle -> same answer, no side effects.
+    //      (assertsPhantom() too. The clocked half is snoop().)
+    //
+    //   2. PURE, again, and that is the only contract. Decode at ANY granularity
+    //      you like -- see decodeIsPageUniform() below, which is how a card that
+    //      decodes a low address line says so.
+    //
+    // AND IF YOUR DECODE CHANGES, SAY SO -- call decodeChanged(). A bank strap, a
+    // PHANTOM* jumper, a chip pulled from a socket, going enabled/disabled. Forget
+    // it and the bus's cached tables go stale, which is a lie told quietly. Run
+    // with Bus::setVerifyDecode(true) and it stops being quiet.
     virtual bool decodes(const BusCycle&) const { return false; }
+
+    // IS MY MEMORY DECODE THE SAME FOR EVERY ADDRESS IN A 256-BYTE PAGE?
+    //
+    // Nearly always yes: S-100 memory decoding comes off the HIGH address lines,
+    // and a card selected at 1K or 4K granularity answers a whole page or none of
+    // it. The bus caches the decode one entry per page on the strength of that.
+    //
+    // The Tarbell is the card that says NO, and it is not an edge case -- it is in
+    // the boot path. Its PROM and its PHANTOM* are gated by **A5**, one address
+    // line, so it decodes 0x0000-0x001F and NOT 0x0020-0x003F: two different
+    // answers inside page 0. (0x0040 does not release it either -- bit 5 is clear.
+    // It is a WIRE, not a threshold.)
+    //
+    // Say false and the bus PROBES every address of every page you might be in,
+    // and any page where the answer is not uniform is served by the exact,
+    // uncached two-pass path -- combinational PHANTOM* settle and all. You lose
+    // nothing but the cache, and only on the pages you actually touch.
+    virtual bool decodeIsPageUniform() const { return true; }
+
+    // Do I WATCH cycles I do not answer? Almost no card does, so this is false and
+    // the bus skips you entirely -- snoop() on every card on every cycle was N
+    // virtual calls to reach a do-nothing default. Say true and you get every
+    // cycle, exactly as before. The Tarbell says true: it releases PHANTOM* the
+    // first time it sees a memory read with A5 high.
+    virtual bool wantsSnoop() const { return false; }
 
     virtual uint8_t read(const BusCycle&) { return 0xFF; }
     virtual void write(const BusCycle&) {}
@@ -159,8 +202,16 @@ public:
 
     // Runtime enable. A boot ROM that switches itself out after boot sets this
     // false; POWER restores it (DESIGN.md 4.2.1).
-    virtual bool enabled() const { return enabled_; }
-    virtual void setEnabled(bool e) { enabled_ = e; }
+    //
+    // A disabled card drives nothing, so this changes the decode -- hence the
+    // announcement. It is not virtual any more: an override that forgot to tell
+    // the bus would be a stale-table bug, and there was no reason for one.
+    bool enabled() const { return enabled_; }
+    void setEnabled(bool e) {
+        if (enabled_ == e) return;
+        enabled_ = e;
+        decodeChanged();
+    }
 
     // ---- Reflection (DESIGN.md 5) ----
     // The single source of truth for SET, SHOW, TOML, CONFIG SAVE, MCP schemas,
@@ -263,9 +314,29 @@ public:
         return false;
     }
 
+    // The backplane this card is plugged into, or null on the bench. Set by
+    // Bus::attach().
+    void attachBus(Bus* b) { bus_ = b; }
+
+    // "MY DECODE JUST CHANGED." Tell the backplane so it can re-derive the wiring.
+    // Cheap: it sets a flag, and the tables are rebuilt lazily on the next cycle.
+    // Call it liberally -- a spurious rebuild costs microseconds, a missed one
+    // costs you a day.
+    //
+    // Public because setProperty() calls it FOR every board, on every successful
+    // set: `port`, `phantom`, `honors_phantom`, `bank_type`, `enabled` all change
+    // the decode, and rather than trust each board to remember that, the one path
+    // by which any property is EVER set announces it centrally. A board still calls
+    // it directly for changes that do not come through a property -- a guest OUT
+    // that moves a bank strap, a chip pulled from a socket.
+    void decodeChanged() {
+        if (bus_) bus_->invalidateDecode();
+    }
+
 protected:
     bool   enabled_ = true;
     Clock* clock_   = nullptr;
+    Bus*   bus_     = nullptr;
 };
 
 // ---------------------------------------------------------------------------

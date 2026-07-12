@@ -94,6 +94,36 @@ public:
     void detach(Board* b);
     const std::vector<Board*>& boards() const { return boards_; }
 
+    // ---- The decode is CACHED, because on real hardware it is WIRED ----
+    //
+    // A card's address decoder is combinational logic -- a PAL, a row of gates --
+    // wired to the address lines and to the status lines sMEMR/sINP/sOUT. It does
+    // not "answer a question" per cycle. It settles, and it only CHANGES when
+    // something latches: a bank strap, PHANTOM*, a card pulled from the backplane.
+    //
+    // Re-deriving it on every cycle was costing more than everything else in the
+    // simulator combined, AND it was asking cards questions they are not even
+    // wired for: an I/O-only 2SIO was asked to decode every memory read, and its
+    // first act was to throw the question away (mits-2sio.cpp:296). A real 2SIO
+    // has no connection to the memory read strobe. It is not in that conversation.
+    //
+    // So the bus asks the SAME questions -- decodes(), assertsPhantom(), of every
+    // board, in slot order -- and asks them ONCE, storing the answer. The board
+    // still owns the entire decision. The bus still invents nothing. It just
+    // stopped asking sixty-five thousand times a second.
+    //
+    // A board whose decode changes MUST say so (Board::decodeChanged()). If one
+    // forgets, the tables go stale and the machine lies quietly -- so that is not
+    // left to trust: setVerifyDecode(true) re-derives the decode the slow way on
+    // every single cycle and screams if it disagrees with the table. The test
+    // suite and the CPU validation gate both run with it on.
+    void invalidateDecode() { dirty_ = true; }
+
+    // Paranoid mode: check every cached decode against a fresh one, every cycle.
+    // Slower than the original code. That is fine -- it is a proof, not a path.
+    void setVerifyDecode(bool on) { verify_ = on; }
+    bool verifyDecode() const { return verify_; }
+
     // The four cycles. Each is a two-pass affair:
     //   pass 1: ask every board whether it pulls PHANTOM* -> BusCycle::phantom
     //   pass 2: ask every board whether it decodes; exactly one should answer
@@ -160,8 +190,70 @@ public:
 
 private:
     bool anyAssertsPhantom(const BusCycle& c) const;
+
+    // THE SAME QUESTION AS decoders(), WITHOUT THE VECTOR.
+    //
+    // decoders() returns its answer by value, so asking it costs a heap
+    // allocation -- and the cycle functions ask it on EVERY guest read and EVERY
+    // guest write. That malloc/free pair was measured at two thirds of the cost of
+    // a memory access (72ns -> 26ns when removed), which is to say: most of the
+    // time this simulator spent was spent allocating a vector to hold the number 1.
+    //
+    // Nothing about the MODEL changes here. Every board is still asked, in slot
+    // order, and the board still owns the whole decision. We just stopped putting
+    // the answer on the heap.
+    //
+    // One decoder is the overwhelming case, so that is the case with no allocation
+    // at all. Contention is rare, already a fault, and about to print a line of
+    // text -- it can afford decoders().
+    struct Decode {
+        Board* first = nullptr;  // the first board in slot order that drives
+        int n = 0;               // how many drive. >1 is contention.
+    };
+    Decode scan(const BusCycle& c) const;
+
     std::vector<Board*> decoders(const BusCycle& c) const;
     void reportContention(const BusCycle& c, const std::vector<Board*>& who);
+
+    // ---- The cached decode ----
+    //
+    // One entry per 256-byte page (memory) or per port (I/O), per cycle class.
+    // Four tables, because a card is wired to sMEMR, sINP and sOUT separately and
+    // a ROM region famously does not decode a WRITE at all -- so "who answers
+    // here" has a different answer for a read than for a write, and that fell out
+    // of the model rather than being bolted onto it.
+    struct Slot {
+        Board* who = nullptr;   // the single board that drives. null: nobody -> floats 0xFF
+        bool phantom = false;   // PHANTOM* as resolved for this page and this cycle class
+        bool slow = false;      // more than one driver. Contention: take the exact path.
+    };
+
+    // MEMORY DECODE IS PAGE-GRANULAR (256 bytes), and that is a CONTRACT on
+    // Board::decodes(), written down in board.h. It is not a guess: real S-100
+    // memory decoding is done from the high address lines at 1K granularity at the
+    // very finest, and our own MemoryBoard is built on a 256-entry page map
+    // already. I/O needs no such contract -- all 256 ports are stored exactly.
+    Slot memRead_[256], memWrite_[256];
+    Slot ioRead_[256], ioWrite_[256];
+
+    Slot resolve(Cycle t, uint16_t addr) const;
+    void rebuild();
+    void verifySlot(const BusCycle& c, const Slot& s) const;
+
+    // The exact path. THIS IS THE DEFINITION OF CORRECTNESS; the tables above are
+    // a cache OF it, and the verifier checks them AGAINST it.
+    uint8_t memReadExact(uint16_t addr);
+    void memWriteExact(uint16_t addr, uint8_t data);
+    uint8_t ioReadExact(uint8_t port);
+    void ioWriteExact(uint8_t port, uint8_t data);
+
+    bool dirty_ = true;
+    bool verify_ = false;
+
+    // Boards that WATCH cycles they do not answer. Almost none do -- the Tarbell
+    // does -- so calling snoop() on every card on every cycle was N virtual calls
+    // to reach a do-nothing default. They opt in with Board::wantsSnoop().
+    std::vector<Board*> snoopers_;
 
     // Third pass, once per cycle: show the completed cycle to every board.
     // The bus is not notifying anyone -- the cycle was on the backplane the whole

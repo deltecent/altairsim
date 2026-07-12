@@ -57,7 +57,9 @@ Protect was standing in for *"load a HEX file and treat it as ROM."* It is the w
 [[board]]
 type = "memory"
 id   = "mem0"
-honors_phantom = true          # a jumper: another board pulls PHANTOM*, do I switch off?
+honors_phantom = "all"         # a jumper: another board pulls PHANTOM*, do I switch off?
+                               #   none | read | all.  "read" = off for reads, still
+                               #   answering writes -- what a Tarbell needs beneath it.
 
   [[board.region]]
   type = "ram"
@@ -204,7 +206,9 @@ A **write** to an unclaimed address is the mirror image: nobody latches it, and 
 >
 > **This box used to say the opposite,** and the history is worth keeping. Earlier drafts justified `read` by claiming it was "what the DBL boot PROM wants." **I fabricated that**, and the ROM disproves it: DBL copies itself to `2C00` and runs there, so it never writes to `FFxx` at all. The strap was right; my reason for it was invented. The lesson is not "the guess worked out" — it is that a fabricated citation was **indistinguishable from a real one** until someone checked, and the real one turned out to be a different card doing a different thing for a different reason. §0.1 stands.
 >
-> Note where the read/write distinction **lives**: on the **asserting** board, because that is where the gate physically is. A card that ANDs PHANTOM\* with its read strobe simply does not pull the pin during a write cycle, so memory answers the write like any other cycle and the byte lands in RAM. **`honors_phantom` stays a plain bool and must never grow a `read` mode** — the honoring card has no idea any of this is happening, which is precisely why it works with any card that pulls the pin.
+> **Where the read/write distinction lives — corrected 2026-07-12 by Patrick, from the Tarbell schematic.** It lives on the **honoring** board, which is why `honors_phantom` is `none | read | all` and not a bool. The Tarbell holds PHANTOM\* asserted continuously, like an interrupt, from RESET until A5 releases it — on reads *and* writes. It does **not** AND the pin with its read strobe.
+>
+> This box previously argued the reverse, in bold, and told the reader that `honors_phantom` "must never grow a `read` mode." That was reasoned, not sourced. And the quote directly above it — *"the memory boards installed in the system must allow writes to their RAM, but not reads"* — was saying so all along. **The memory boards.** Reading past a source to keep an argument is the same failure as inventing one.
 
 ## Banking — five real cards, and no two alike
 

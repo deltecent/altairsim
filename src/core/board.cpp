@@ -69,7 +69,9 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
 // what it accepts.
 bool setUnitProperty(Board& b, const std::string& unit, const std::string& key,
                      const std::string& text, std::string& err) {
-    return setOne(b.unitProperties(unit), b.id + ":" + unit, key, text, err);
+    bool ok = setOne(b.unitProperties(unit), b.id + ":" + unit, key, text, err);
+    if (ok) b.decodeChanged();
+    return ok;
 }
 
 // The console is not a Board -- it is the host's keyboard -- but it has
@@ -80,8 +82,18 @@ bool setPropertyIn(std::vector<Property> props, const std::string& who, const st
     return setOne(std::move(props), who, key, text, err);
 }
 
+// EVERY successful set announces a decode change, without asking what was set.
+//
+// `port`, `phantom`, `honors_phantom`, `bank_type` and `enabled` all rewire the
+// card; `baud` and `upper` do not. We do not try to tell them apart, and that is
+// deliberate: the distinction is per-board knowledge, it would have to be kept in
+// step by hand forever, and getting it wrong is SILENT -- a stale decode table
+// that answers the wrong board. A needless rebuild costs microseconds, and this
+// path is an operator typing at a prompt. Buy the safety; it is not expensive.
 bool setProperty(Board& b, const std::string& key, const std::string& text, std::string& err) {
-    return setOne(b.properties(), b.id, key, text, err);
+    bool ok = setOne(b.properties(), b.id, key, text, err);
+    if (ok) b.decodeChanged();
+    return ok;
 }
 
 } // namespace altair

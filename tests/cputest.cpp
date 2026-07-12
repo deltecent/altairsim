@@ -52,6 +52,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -169,6 +170,14 @@ struct Rig {
         m.add("8080", "cpu0", err);
         cpu = m.cpu();
         cpu->reset(Reset::PowerOn);
+
+        // ALTAIR_VERIFY_DECODE=1 re-derives every decode the slow way and compares
+        // it to the bus's cached tables, on every cycle. Four billion of them. If a
+        // board ever changes its decode without saying so, this is what finds out.
+        if (std::getenv("ALTAIR_VERIFY_DECODE")) {
+            m.bus.setVerifyDecode(true);
+            std::printf("[decode cache verification ON -- every cycle checked]\n");
+        }
     }
 
     ~Rig() { m.bus.detach(con); }

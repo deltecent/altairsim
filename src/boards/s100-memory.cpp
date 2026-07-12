@@ -224,6 +224,15 @@ void MemoryBoard::growStore() {
     if (want > had) fillRam();  // the new planes; the old bytes are already right
 }
 
+// THE choke point: every region change, socket mount, socket unmount and bank_type
+// change ends up here. So this is where the backplane is told the card is wired
+// differently now -- one call, and none of the callers have to remember.
+//
+// NOTE that a BANK SELECT does not come through here and does not need to: moving
+// the bank strap changes plane(), which is WHERE IN THE STORE a read lands. It
+// does not change WHICH PAGES THIS CARD ANSWERS -- owner_ is untouched. The card
+// decodes the same addresses; a different 64K of silicon is behind them. That is
+// what makes the guest's hot bank-switch free of any table rebuild.
 void MemoryBoard::rebuildPageMap() {
     for (int& o : owner_) o = -1;
     for (size_t i = 0; i < regions_.size(); ++i) {
@@ -234,11 +243,20 @@ void MemoryBoard::rebuildPageMap() {
         for (size_t p = first; p <= last && p < 256; ++p) owner_[p] = (int)i;
     }
     growStore();
+    decodeChanged();
 }
 
 // ---------------------------------------------------------------------------
 // The bus interface. This is the whole board.
 // ---------------------------------------------------------------------------
+
+// Do I switch off for THIS cycle when someone else pulls the pin? `read` keeps me
+// answering writes, which is what puts the Tarbell's boot sector into the RAM the
+// PROM is shadowing.
+bool MemoryBoard::honors(const BusCycle& c) const {
+    if (honors_ == PhantomHonor::All) return true;
+    return honors_ == PhantomHonor::Read && c.type == Cycle::MemRead;
+}
 
 bool MemoryBoard::assertsPhantom(const BusCycle& c) const {
     if (c.type != Cycle::MemRead && c.type != Cycle::MemWrite) return false;
@@ -265,7 +283,7 @@ bool MemoryBoard::decodes(const BusCycle& c) const {
     // and the ROM would read back as FF. A card does not shut itself off with a
     // signal it is itself driving. This stays board-local knowledge: the board
     // is asking about its OWN output pin, and the bus is still not involved.
-    if (c.phantom && honorsPhantom_ && !assertsPhantom(c)) return false;
+    if (c.phantom && honors(c) && !assertsPhantom(c)) return false;
 
     const Region* r = owner(c.addr);
     if (!r) return false;  // unpopulated page / empty socket -> floats to 0xFF
@@ -386,11 +404,19 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "honors_phantom";
-        x.help = "A JUMPER. Another board pulls PHANTOM* -- do I switch off?";
-        x.kind = Kind::Bool;
-        x.get = [this] { return Value::ofBool(honorsPhantom_); };
+        x.help = "A JUMPER. Another board pulls PHANTOM* -- do I switch off? "
+                 "none | read | all";
+        x.kind = Kind::Enum;
+        x.choices = {"none", "read", "all"};
+        x.get = [this] {
+            return Value::ofStr(honors_ == PhantomHonor::None   ? "none"
+                                : honors_ == PhantomHonor::Read ? "read"
+                                                                : "all");
+        };
         x.set = [this](const Value& v, std::string&) {
-            honorsPhantom_ = v.b();
+            honors_ = v.s() == "none"   ? PhantomHonor::None
+                      : v.s() == "read" ? PhantomHonor::Read
+                                        : PhantomHonor::All;
             return true;
         };
         p.push_back(std::move(x));

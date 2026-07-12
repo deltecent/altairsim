@@ -15,15 +15,53 @@ Because of thirty-two bytes. The Tarbell's boot PROM is the reason `phantom = re
 3. While PHANTOM\* is asserted, **the memory boards in the system must allow writes to their RAM, but not reads.**
 4. **As soon as the Tarbell sees a memory read with A5 set**, it knows the PROM is no longer needed and **disables PHANTOM\***.
 
+## The PROM itself — `roms/TARBELL-SD/TARPROM.ASM` (Patrick, 2026-07-12)
+
+We have the source. It is **exactly 32 bytes**, `0000-001F`, ending on the `HLT` — it fits the PROM with nothing to spare. And it does not merely illustrate the three claims below, it **proves** them:
+
+```asm
+BOOT:   IN   WAIT       ; 0000  wait for home
+        XRA  A
+        MOV  L,A        ; HL = 0000  <-- the sector loads OVER THE PROM
+        MOV  H,A
+        INR  A
+        OUT  SECT       ; sector = 1
+        MVI  A,0CH
+        OUT  DCOM       ; read sector
+RLOOP:  IN   WAIT       ; 000C  <-- the loop FETCHES ITSELF from the PROM...
+        ORA  A
+        JP   RDONE
+        IN   DDATA
+        MOV  M,A        ; ...while WRITING through 0020, 0021, ... 007F
+        INX  H
+        JMP  RLOOP
+RDONE:  IN   DSTAT      ; 0019
+        ORA  A
+        JZ   07DH       ; 001C  <-- 0x7D = 0111_1101. A5 IS SET.
+        HLT             ; 001F
+```
+
+**It writes through itself.** `HL` starts at `0000` and `MOV M,A` walks it upward, so the sector lands in the RAM the PROM is shadowing. Reads come from the PROM; writes must reach RAM. That is `honors_phantom = "read"`, and it is why the strap lives on the **memory** board.
+
+**Only a READ releases PHANTOM\*, never a write** — and this one is load-bearing in a way that is easy to miss. The load loop writes to `0020` and beyond *while still fetching itself* from `000C-0018`. If a **write** with A5 high dropped the shadow, the PROM would vanish in the middle of the load, the next fetch at `RLOOP` would come from RAM — which by then holds sector bytes, not the loader — and **the bootstrap would eat itself.**
+
+**The release is combinational.** The last instruction is `JZ 07DH`, and `0x7D` is `0111_1101`: **A5 is set.** The jump into the sector it just loaded *is itself* the first read with A5 high. If the flip-flop only took effect on the following cycle, that fetch would still be shadowed and would come back from the PROM. The release is armed by the address of the code it is jumping to — which is a lovely piece of engineering, and it means the release **must** land on the cycle that triggers it.
+
+All three are asserted in `tests/test_phantom.cpp`, with these exact addresses.
+
 ## What that implies, and why the design bends to it
 
 ### The bootstrap writes *through* itself
 
 Point 3 is the whole reason `phantom = read` exists (`memory.md`). A 32-byte bootstrap cannot do anything useful except **load a real boot sector from disk into RAM** — and the RAM it is loading into is the RAM its own PROM is shadowing. So writes *must* reach the RAM while reads are still coming back from the PROM.
 
-The mechanism is not a special case anywhere. The Tarbell **gates PHANTOM\* with the read strobe**: it does not pull the pin during a write cycle at all. So the memory board never sees PHANTOM\* asserted on a write, and answers it like any other write.
+The mechanism is not a special case anywhere, but it does **not** live where an earlier draft of this file claimed.
 
-**The honoring board needs no strap for this, and must never grow one.** `honors_phantom` stays a bool. The read/write distinction lives on the *asserting* card, because that is where the gate physically is.
+**The Tarbell holds PHANTOM\* asserted continuously — like an interrupt.** From RESET until A5 releases it, on reads *and* on writes. It does **not** gate the pin with the read strobe, and it has no opinion at all about what a write should do.
+
+**The read/write distinction lives on the MEMORY board:** `honors_phantom = "read"` means *stop answering reads, keep answering writes*. That is the jumper that lets the bootstrap's sector land in the RAM the PROM is shadowing.
+
+> **Corrected 2026-07-12 by Patrick, from the schematic.** This file previously said in bold that the honoring board "must never grow" a read mode, and that the Tarbell ANDed PHANTOM\* with MEMR. Both were **wrong**, and both were *reasoned* rather than *sourced* — §0.1 exactly. Worse, the Tarbell's own documentation was quoted two files away and says the opposite in plain words: *"the memory boards installed in the system must allow writes to their RAM, but not reads."* **The memory boards.** The sentence was right there.
 
 ### The release is combinational, not clocked
 
