@@ -171,12 +171,14 @@ struct Rig {
         cpu = m.cpu();
         cpu->reset(Reset::PowerOn);
 
-        // ALTAIR_VERIFY_DECODE=1 re-derives every decode the slow way and compares
-        // it to the bus's cached tables, on every cycle. Four billion of them. If a
-        // board ever changes its decode without saying so, this is what finds out.
-        if (std::getenv("ALTAIR_VERIFY_DECODE")) {
-            m.bus.setVerifyDecode(true);
-            std::printf("[decode cache verification ON -- every cycle checked]\n");
+        // ALTAIR_VERIFY=1 re-derives the bus's two caches the slow way and compares
+        // them to what it has stored -- the DECODE on every cycle (four billion of
+        // them) and the pINT WIRE on every instruction (nearly three billion). If a
+        // board ever changes its decode or moves its interrupt pin without saying
+        // so, this is the thing that finds out, over the largest workload we have.
+        if (std::getenv("ALTAIR_VERIFY")) {
+            m.bus.setVerify(true);
+            std::printf("[bus verification ON -- every decode and every interrupt checked]\n");
         }
     }
 

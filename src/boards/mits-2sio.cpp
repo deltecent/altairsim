@@ -210,6 +210,35 @@ bool Acia::irq(const Clock& clk) const {
     return false;
 }
 
+// WHEN COULD THIS PIN MOVE ON ITS OWN? Zero means never.
+uint64_t Acia::nextEdge(const Clock& clk) const {
+    uint64_t best = 0;
+    auto consider = [&](uint64_t when) {
+        if (when <= clk.now()) return;  // already past: irq() is showing it already
+        if (!best || when < best) best = when;
+    };
+
+    // The transmitter drains on its own clock. TDRE goes true at txFreeAt_, and
+    // with the transmit interrupt jumpered on, IRQ rises with it -- WITH NOBODY
+    // TOUCHING THE CHIP. That is the case the old poll-every-instruction model was
+    // quietly covering for, and it is exactly the case a guest sitting in a HLT is
+    // waiting on.
+    if ((control_ & kTxCtlMask) == kTxIrqEnabled) consider(txFreeAt_);
+
+    // The receiver fills on its own too -- but only if there is actually a
+    // character on the line to fill it with. If the host has sent nothing, there is
+    // no edge coming and no timer to set: a byte appearing out of nowhere is not a
+    // deadline, it is an event in the OUTSIDE WORLD, and pump() is the one door the
+    // outside world comes through (DESIGN.md 7.1).
+    //
+    // This is the asymmetry that makes both mechanisms necessary, and it is why the
+    // answer to "event queue or periodic timer?" is "both, and you already had the
+    // second one."
+    if ((control_ & kRie) && !rdrf_ && stream_->readable()) consider(rxNextAt_);
+
+    return best;
+}
+
 std::vector<Property> Acia::properties() {
     std::vector<Property> p;
 
@@ -289,6 +318,13 @@ Sio2Board::Sio2Board() {
     b_.disconnect();
 }
 
+Sio2Board::~Sio2Board() {
+    // The queue is holding a lambda with `this` inside it. A card can be pulled out
+    // of a RUNNING machine (`BOARDS REMOVE sio0`), and a deadline that fires into a
+    // destroyed board is a use-after-free with a two-week fuse on it.
+    if (clock_) clock_->cancel(wake_);
+}
+
 // Four ports: BA+0..BA+3. Channel A is BA+0 (control/status) and BA+1 (data);
 // channel B is BA+2 and BA+3.
 bool Sio2Board::decodes(const BusCycle& c) const {
@@ -313,7 +349,9 @@ uint8_t Sio2Board::read(const BusCycle& c) {
     Clock&  clk = clock_ ? *clock_ : deadCard();
     uint8_t off = (uint8_t)(c.port() - base_);
     Acia&   ch  = (off < 2) ? a_ : b_;
-    return (off & 1) ? ch.readData(clk) : ch.readStatus(clk);
+    uint8_t v   = (off & 1) ? ch.readData(clk) : ch.readStatus(clk);
+    refresh();  // reading the data register CLEARS RDRF -- and with it, the interrupt
+    return v;
 }
 
 void Sio2Board::write(const BusCycle& c) {
@@ -322,26 +360,64 @@ void Sio2Board::write(const BusCycle& c) {
     Acia&   ch  = (off < 2) ? a_ : b_;
     if (off & 1) ch.writeData(c.data, clk);
     else ch.writeControl(c.data, clk);
+    refresh();  // a character went out (TDRE falls), or the interrupt enables moved
 }
 
-// pINT (pin 73) is a WIRE-OR: this card pulls it if either chip is asking AND the
-// jumper for that chip actually goes to pin 73. A `vi*` jumper goes to a vectored
-// interrupt line instead, which nothing watches until an 88-VI card exists -- so
-// it correctly does nothing, exactly as a wire to an empty slot would.
+// PIN 73, COMBINATIONAL AND PURE. This card pulls it if either chip is asking AND
+// that chip's jumper actually goes to pin 73. A `vi*` jumper goes to a vectored
+// interrupt line instead, which nothing watches until an 88-VI card exists -- so it
+// correctly does nothing, exactly as a wire into an empty slot would.
 //
-// THE RECEIVERS ARE ADVANCED HERE, and that is the point of assertsInt() not
-// being const. An interrupt-driven driver NEVER reads the status port -- it is
-// interrupt-driven precisely so it does not have to -- so if a character only
-// arrived when the guest looked at a register, an interrupt-driven console would
-// sit there forever with the operator typing at it and nothing happening. The
-// 6850's receive shift register fills on its own clock and owes the CPU nothing.
-bool Sio2Board::assertsInt() {
-    if (!enabled_ || !clock_) return false;
-    a_.poll(*clock_);
-    b_.poll(*clock_);
+// No work happens here. It reads two chips' pins and ORs them. The receiver used to
+// be advanced in this function -- see refresh(), which is where that went, and
+// board.h, which explains why it had to move.
+bool Sio2Board::assertsInt() const {
+    if (!clock_) return false;  // no crystal: the chips are not running at all
     if (a_.jumper == IrqJumper::Int && a_.irq(*clock_)) return true;
     if (b_.jumper == IrqJumper::Int && b_.irq(*clock_)) return true;
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// THE CARD'S OWN CLOCK. This is the heart of the board now.
+//
+// THE RECEIVERS ARE ADVANCED HERE, and that is the load-bearing line. An
+// interrupt-driven driver NEVER reads the status port -- being interrupt-driven is
+// precisely so that it does not have to -- so a 6850 that only ingested a character
+// when the guest looked at a register would never ingest one, never raise IRQ, and
+// the operator could type forever with nothing happening. The receive shift
+// register fills on the 6850's own clock and owes the CPU nothing.
+//
+// That used to happen inside assertsInt(), which the bus called once per
+// instruction. It worked, and it was backwards: no backplane interrogates a card
+// for its interrupt status. So the card now runs on its own -- on a deadline it
+// sets for itself, and on pump(), which is where the host's keystrokes get in --
+// and the bus simply reads the wire the card is pulling.
+//
+// Re-arming from scratch every time, rather than tracking which deadline changed,
+// is deliberate: there is exactly one outstanding timer per card, it is always the
+// earliest edge of the two chips, and a scheme that cannot leak a timer is worth
+// more than one that saves a heap push per character.
+// ---------------------------------------------------------------------------
+void Sio2Board::refresh() {
+    if (!clock_) return;
+
+    a_.poll(*clock_);
+    b_.poll(*clock_);
+
+    intChanged();  // drive pin 73 -- the bus is not going to come and ask
+
+    clock_->cancel(wake_);
+    wake_ = Clock::kNone;
+
+    uint64_t ea   = a_.nextEdge(*clock_);
+    uint64_t eb   = b_.nextEdge(*clock_);
+    uint64_t next = !ea ? eb : (!eb ? ea : (ea < eb ? ea : eb));
+
+    // Usually there is no edge coming and we set no timer at all: a quiet line with
+    // the transmitter idle has nothing whatever to do next. The old model paid the
+    // full price of a poll for precisely this, the commonest case in the machine.
+    if (next) wake_ = clock_->at(next, [this] { refresh(); });
 }
 
 void Sio2Board::reset(Reset) {
@@ -350,13 +426,34 @@ void Sio2Board::reset(Reset) {
     if (!clock_) return;
     a_.masterReset(*clock_);
     b_.masterReset(*clock_);
+
+    // ...and refresh() CANCELS the outstanding deadline before re-arming, which is
+    // why wake_ must not be cleared here. POWER empties the queue under us, but
+    // RESET* does not: a character was going out when the button was pressed, and
+    // its alarm is still on the books. Zeroing the handle first would orphan it --
+    // the timer would still fire, into a chip that has been master-reset out from
+    // under it. A leaked deadline is a quiet bug; the cancel is not optional.
+    refresh();
 }
 
 void Sio2Board::power() { reset(Reset::PowerOn); }
 
+// THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1). A character
+// arriving from the host is not a deadline -- nothing in emulated time predicted
+// it -- so no timer could have been set for it. This is where it gets in, and it is
+// why the answer to "event queue, or periodic timer?" turned out to be both.
 void Sio2Board::pump() {
     a_.pump();
     b_.pump();
+    refresh();
+}
+
+// A jumper moved: `interrupt` (which wire the IRQ is soldered to), `baud` (how long
+// a character takes, so every deadline we have set is now aimed at the wrong
+// T-state), or `connect` (a new line, which may already have something on it).
+void Sio2Board::configChanged() {
+    decodeChanged();  // `port` may have moved the card in the I/O space
+    refresh();        // ...and refresh() re-drives the pin and re-aims the timer
 }
 
 Acia* Sio2Board::channel(const std::string& name) {
@@ -417,6 +514,7 @@ bool Sio2Board::connect(const std::string& unit, const std::string& endpoint, st
     auto s = g_resolver(endpoint, err);
     if (!s) return false;
     ch->connect(std::move(s));
+    refresh();  // a new line, and it may already have something waiting on it
     return true;
 }
 
@@ -455,6 +553,7 @@ bool Sio2Board::disconnect(const std::string& unit, std::string& err) {
         return false;
     }
     ch->disconnect();
+    refresh();  // the line went dead: no more characters are coming off it
     return true;
 }
 

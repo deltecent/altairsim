@@ -245,12 +245,15 @@ public:
     // overlay winner; it carries the signal and the RAM disables itself. §4.2.
     virtual bool     assertsPhantom(const BusCycle&) const { return false; }
 
-    // Interrupts. A board may drive pINT directly, and/or assert one of VI0-VI7.
-    // The bus does NOT invent a vector — see §4.4.
+    // Interrupts. A board PULLS pINT and holds it; the bus reads the wire and does
+    // NOT invent a vector — see §4.4 and §4.4.1.
     //
-    // NOT const, and that is load-bearing (corrected 2026-07-11 — see below).
-    virtual bool     assertsInt() { return false; }         // pINT (S-100 pin 73)
+    // COMBINATIONAL AND PURE, exactly like decodes(). The board announces a change
+    // with intChanged(); the bus caches the wire-OR. (This was non-const, and there
+    // was a section defending that. Reversed 2026-07-12 — see §4.4.1.)
+    virtual bool     assertsInt() const { return false; }   // pINT (S-100 pin 73)
     virtual int      assertsVi()  const { return -1; }      // VI0..VI7, or -1
+    void             intChanged();                          // "my pin moved"
 
     // Bus mastering (DMA): assert pHOLD; when granted pHLDA, the bus calls
     // busMaster() and this board drives cycles itself, exactly as the CPU does.
@@ -416,19 +419,45 @@ Everything else is a board. The 88-VI is then just another board with no special
 
 A board declares its jumpering as a property: `interrupt = none | int | vi0 … vi7`. An 88-2SIO with `interrupt = int` gives RST 7 with no VI board present; the same board with `interrupt = vi2` in a machine containing an 88-VI gives `RST 2`.
 
-#### 4.4.1 `assertsInt()` is not `const` — and the reason is a bug it let through
+#### 4.4.1 The board **pulls** pin 73. The bus does not go and ask.
 
-**Corrected 2026-07-11**, when the 2SIO's acceptance test (an interrupt-driven echo, no VI board) failed.
+**Corrected 2026-07-12 by Patrick, and this reverses what this section used to say:**
 
-A board may have to **do something** to answer "am I pulling pINT?" honestly. A 6850 has to notice that a character has finished arriving — which happens on **the chip's own clock**, with no help from the CPU and no bus cycle involved.
+> "Does the bus poll each board for interrupt status, or does a board set interrupt flags that the bus simply checks? **In a real system, the bus doesn't poll a board for interrupt status. The board sets high/low signals on the bus that the CPU reads from the bus. The board then clears the int signal based on its design.**"
 
-The first 2SIO only took a character off the line when the guest **read a register**. That is fine for a polled driver and catastrophic for an interrupt-driven one:
+He was describing the hardware. He was also describing a bug.
+
+`Bus::intPending()` used to walk the backplane and ask every card `assertsInt()`, **once per instruction** — sixty million times a second, to compute a boolean that changes perhaps a thousand times a second on a busy machine. Once the decode was cached (§4.7) it was the single largest per-instruction cost left in the simulator, and it grew with every card you added: **6.6 ns with two boards, 15.6 ns with six.**
+
+**The interface now is the exact analogue of the decode**, and the two hard-won rules turn out to be one rule:
+
+| | combinational, pure | "it moved" | the bus |
+|---|---|---|---|
+| address decode | `decodes()` | `decodeChanged()` | caches a page table |
+| interrupt | `assertsInt() const` | `intChanged()` | caches a wire-OR count |
+
+> **A board's outputs are pure functions of its state. When its state changes, it says so. The bus caches the rest.**
+
+Reading pin 73 is now an integer test — **1.8 ns, flat in the number of cards in the machine.**
+
+##### What the poll was secretly doing, and where it went
+
+This section previously argued — at length, and correctly, as far as it went — that `assertsInt()` **could not be `const`**, because a board may have to *do something* to answer honestly. A 6850 has to notice that a character has finished arriving, which happens **on the chip's own clock**, with no help from the CPU and no bus cycle involved. The bug that established it is real and is still worth reading:
 
 > **An interrupt-driven driver never reads the status port. Not reading it is the entire point of being interrupt-driven.** So `RDRF` was never set, IRQ never rose, the interrupt never fired, and the operator could type forever with nothing happening.
 
-Every *polled* test passed throughout. Only the interrupt test could catch it, which is why the acceptance list has one.
+All of that is true. The mistake was the conclusion. **The card's free-running work is real; making a query do it was not.** The receiver was being advanced inside `assertsInt()` for one reason only: *being asked was the only thing that ever woke the card up.* The poll was serving as the card's clock.
 
-**The general rule this establishes:** the bus's questions to a board are not all pure. `decodes()` and `assertsPhantom()` are combinational and must stay `const` — the bus calls them several times per cycle. `assertsInt()` is asked **once per instruction boundary**, and a board is entitled to advance its own free-running hardware there. That is not a hack around the model; it is the model admitting that a peripheral has a clock of its own.
+So the work moved to where it belongs, and `assertsInt()` became `const` and pure:
+
+- a **deadline** the card sets for itself (`Clock::at`, §7.5) — for anything emulated time can predict, such as the transmit register draining;
+- **`pump()`** — for anything it cannot, such as a human touching a key.
+
+**And that made the model *more* capable, not less.** With the poll, the card could only ever act at a moment when someone was already asking it something. A guest that jumpers the transmit interrupt, sends a character and halts — an entirely ordinary driver — was **declared finished by the run loop**, two thousand T-states before the interrupt it was waiting for. Nothing was pulling pin 73 *yet*, and the old `HLT` check could not tell "nobody is interrupting" apart from "nothing ever will." A card that owns a deadline can. See `tests/test_sio2.cpp` — *"NOBODY IS ASKING: the card acts on its own deadline."*
+
+##### The stale wire is not left to trust
+
+A board that moves its interrupt pin and forgets to call `intChanged()` hangs the guest forever, waiting for an interrupt that already happened — and presents as *"the emulator locks up sometimes"*, which is worth a week of anyone's life. So it is checked, exactly as the decode cache is: **`Bus::setVerify(true)`** re-derives the whole wire from every board's `assertsInt()` on every instruction and aborts on the first disagreement. The unit suites run with it on permanently; the CPU validation gate runs with it under `ALTAIR_VERIFY=1`, over 2.9 billion instructions.
 
 ### 4.5 DMA is bus mastering
 
@@ -711,22 +740,50 @@ class Clock {
 public:
     uint64_t now() const;              // T-states since POWER. Only power resets it.
     void     advance(uint64_t dt);     // the run loop, with StepResult::tStates
+
+    using Handle = uint64_t;           // an integer, so a stale one is merely stale
+    Handle at(uint64_t when, std::function<void()> fn);     // "call me AT T"
+    Handle after(uint64_t dt, std::function<void()> fn);
+    void   cancel(Handle h);           // cancelling a dead handle is legal
+    bool   pending(Handle h) const;
+    size_t queued() const;
+
     long long hz() const;              // published by the CPU card
     uint64_t tStatesPer(long long perSecond) const;   // the ONE place that division lives
+    void     power();                  // time restarts; every deadline is gone
 };
 ```
 
-#### The `EventQueue` is gone, and this is a deliberate reversal — argue with it
+Two properties the boards depend on:
 
-**This section previously specified an `EventQueue`:** `schedule(delta, fn)` / `cancel(h)`, with boards registering **callbacks** for future work. It has not been built, and the 2SIO — the first board that genuinely needs time — did not want it.
+- **Order is total and deterministic.** Events fire in `(when, scheduling order)` — the handle is a monotone counter and breaks the tie. Two boards with deadlines on the same T-state fire in the same order in every replay, on every host. Without an explicit tiebreak this is a divergence that appears once a month and can never be reproduced.
+- **Inside a callback, `now()` is when the event was *due*** — not where the instruction that carried time past it happened to end. An instruction is up to 17 T-states long; a board that re-arms with `now() + charTime` would otherwise drift a little further with every character it ever sent.
 
-**The reason: in this architecture a board is already polled for everything the bus can observe about it.** `decodes()` is asked on every cycle; `assertsInt()` on every instruction boundary. So a board never needs to be *woken*. It needs to be able to answer *"what time is it?"* when someone finally asks.
+#### The `EventQueue` came back, and the board cited as proving it unnecessary is the board that proved it necessary
 
-And that is what the hardware is actually like. **When a 6850's transmit shift register drains, nothing happens in the world** — no wire moves, nobody is notified. TDRE is simply true the next time the guest reads the status port. It is a **deadline, not an event**. Modeling it as a callback would fire one per character even when nobody ever looks: slower, and less true. The disk's index pulse and its sector timing are deadlines by the same argument, and an interrupt is a **level** that `assertsInt()` already polls.
+**Reversed 2026-07-12.** This section previously *deleted* the `EventQueue` and argued the case at length. The argument was:
 
-So `schedule()` had no user, and **unused API is a liability** — it gets designed against a board that does not exist yet, and it is always wrong when the board arrives. If a real one turns up that genuinely cannot be expressed as a deadline, add it *then*, with that board as the proof it was needed.
+> In this architecture a board is already **polled** for everything the bus can observe about it. `decodes()` is asked on every cycle; `assertsInt()` on every instruction boundary. So a board never needs to be *woken* — it needs to answer *"what time is it?"* when someone finally asks.
 
-**Patrick: this is the one place tonight's work reversed a design decision rather than implementing it. It is reversible and it is cheap to add back.**
+**That argument was circular, and the circle was hiding the bug.** The board did not need waking *because we were polling it sixty million times a second*. The poll was not evidence that the queue was unnecessary. **The poll *was* the queue**, run at enormous cost and called something else.
+
+And the poll had to go, because it was never how the machine worked (§4.4): a bus does not interrogate a card for its interrupt status. A card **pulls pin 73 and holds it**. Take the poll away and the board is left holding a deadline it has no way to be present for:
+
+> A 6850 with the transmit interrupt jumpered raises IRQ when its shift register drains. **Nobody touches it. No bus cycle happens.** And the guest is sitting in a `HLT` waiting for precisely that interrupt. If the only way the card can act is to *be asked*, and the only thing that would ask is the CPU that is halted waiting for it, **then nothing ever happens again.**
+
+That is not hypothetical — `tests/test_sio2.cpp` runs exactly that machine, and it is the test that fails without a queue.
+
+**What was right in the old argument, and still is:** TDRE *is* a deadline, not an event, and a board that can answer "what time is it?" when the guest finally reads the status port should do exactly that and **schedule nothing**. The 6850 still does, for the polled case — `nextEdge()` returns "never" on a quiet line with an idle transmitter, which is the commonest state in the machine, and the old model paid the full price of a poll for it. You come to the queue only for a state change that must be **visible to someone else the instant it happens**, and on this bus there is exactly one such thing: **a wire**.
+
+#### And a periodic pump, because a deadline cannot predict a keystroke
+
+Patrick asked whether boards want an event queue, a periodic timer, or both. **Both — and the second one already existed.**
+
+They are not alternatives; they answer different questions. A **deadline** is something emulated time already knows is coming (a character finishing transmission, a disk sector arriving under the head). A **keystroke from the host** is not in emulated time at all — nothing could have scheduled it — so it arrives through `Board::pump()`, once per time slice, which is the one door the outside world comes through (§7.1).
+
+The 6850 needs both, in the same function: `pump()` takes the byte off the line, and if the line has not yet had time to deliver it, sets a **deadline** for when it will.
+
+**No threads.** Board logic stays in emulated time, single-threaded, or `RECORD`/`REPLAY` is dead (§13). Host I/O may thread *behind* the `ByteStream`, where it belongs — that is what the interface is for.
 
 ### 7.6 `Log` / `Trace`
 

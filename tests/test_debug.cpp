@@ -12,24 +12,40 @@ namespace {
 //
 // THIS IS THE 88-VI, IN MINIATURE, AND IT NEEDED NO BUS CHANGE TO WRITE. That is
 // the claim DESIGN.md 4.4 makes, and this board is what tests it: an interrupting
-// card is an ordinary Board that says yes to assertsInt(), and a VECTORING card
-// is one that additionally decodes Cycle::IntAck and drives a byte -- claiming
-// that cycle exactly like any other. The bus picks no winner and hands out no
-// vector, so a machine with no VI card in it gets the real Altair's behaviour for
-// free rather than by special case.
+// card is an ordinary Board that PULLS THE WIRE, and a VECTORING card is one that
+// additionally decodes Cycle::IntAck and drives a byte -- claiming that cycle
+// exactly like any other. The bus picks no winner and hands out no vector, so a
+// machine with no VI card in it gets the real Altair's behaviour for free rather
+// than by special case.
+//
+// Note the shape of it, which is the whole of the interrupt model in six lines:
+// assertsInt() is PURE -- it reports the state of a pin and does nothing -- and
+// raise() is what actually moves the wire. A board that changed `raised` without
+// calling intChanged() would be lying to the backplane, and Bus::setVerify(true)
+// (on, below) aborts the instant it does.
 class IntBoard : public Board {
 public:
-    bool raised = false;
     bool vectors = false;   // do I drive the data bus during the acknowledge?
     uint8_t vector = 0xD7;  // RST 2
 
     std::string type() const override { return "test-int"; }
-    bool assertsInt() override { return raised; }
+
+    bool assertsInt() const override { return raised_; }
+
+    // The board pulls pin 73, and HOLDS it. Nobody comes and asks.
+    void raise(bool on) {
+        raised_ = on;
+        intChanged();
+    }
+
     bool decodes(const BusCycle& c) const override {
         return vectors && c.type == Cycle::IntAck;
     }
     uint8_t read(const BusCycle&) override { return vector; }
     std::vector<Property> properties() override { return {}; }
+
+private:
+    bool raised_ = false;
 };
 
 struct Rig {
@@ -39,6 +55,13 @@ struct Rig {
 
     Rig() {
         std::string err;
+        // THE WIRE IS CHECKED ON EVERY INSTRUCTION. intPending() reads a cached
+        // wire-OR count; this re-derives it from every board's assertsInt() and
+        // aborts on the first disagreement. A board that moved its interrupt pin
+        // and forgot to say so hangs the guest forever, and "the emulator locks up
+        // sometimes" is a bug worth a week. It is not left to trust.
+        m.bus.setVerify(true);
+
         Board* b = m.add("memory", "mem0", err);
         mem = dynamic_cast<MemoryBoard*>(b);
         Region r;
@@ -163,7 +186,7 @@ void test_debug() {
     CHECK(u.cpu->interruptsEnabled(), "EI took effect after the following instruction");
     CHECK(!u.m.bus.intPending(), "and nobody is interrupting yet");
 
-    ib1.raised = true;
+    ib1.raise(true);
     CHECK(u.m.bus.intPending(), "the board pulls pINT, and the bus carries it as a wire-OR");
 
     uint16_t before = u.cpu->pc();
@@ -186,7 +209,7 @@ void test_debug() {
     v.load({0xFB, 0x00, 0x00, 0x00});
     v.cpu->setPc(0);
     v.m.debug.run(2);
-    ib2.raised = true;
+    ib2.raise(true);
     v.m.debug.run(1);
     CHECK(v.cpu->pc() == 0x0010, "vectored: the VI board drove RST 2, so we are at 0010");
 
@@ -205,7 +228,12 @@ void test_debug() {
     Rig h2;
     IntBoard ib3;
     ib3.id = "int0";
-    ib3.raised = true;   // something IS holding pINT down
+    // PULLED BEFORE IT WAS PLUGGED IN, on purpose. The wire-OR is a COUNT the bus
+    // maintains incrementally, so a card that is ALREADY asserting when it enters
+    // the backplane has to be counted on the way in -- a card does not stop asking
+    // to be serviced just because you moved it to another slot. Get that wrong and
+    // this HLT never wakes.
+    ib3.raise(true);
     h2.m.bus.attach(&ib3);
     h2.load({0x76});
     h2.cpu->setPc(0);

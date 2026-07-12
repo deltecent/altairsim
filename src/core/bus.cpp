@@ -11,13 +11,20 @@ namespace altair {
 void Bus::attach(Board* b) {
     boards_.push_back(b);
     b->attachBus(this);
+    // It may ALREADY be pulling pin 73 -- a card does not stop asking to be
+    // serviced because you moved it to another slot, and a card built on the bench
+    // arrives with its pins in whatever state it left them in. (intWire() already
+    // accounts for enabled: a disabled card drives nothing, and says so when it is
+    // disabled, not when it is asked.)
+    if (b->intWire()) ++intCount_;
     invalidateDecode();  // a card went into a slot: the wiring changed
 }
 
 void Bus::detach(Board* b) {
     boards_.erase(std::remove(boards_.begin(), boards_.end(), b), boards_.end());
+    if (b->intWire()) --intCount_;  // and it takes its interrupt out with it
     b->attachBus(nullptr);
-    invalidateDecode();  // ...and it changed again when it came out
+    invalidateDecode();  // ...and the wiring changed again when it came out
 }
 
 bool Bus::anyAssertsPhantom(const BusCycle& c) const {
@@ -120,10 +127,52 @@ void Bus::unobserve(int handle) {
                      observers_.end());
 }
 
+// READ PIN 73. Is anybody pulling it down?
+//
+// Not a question we ask the boards -- they TOLD us, when it changed. That is what
+// a wire is, and it is the whole difference between this and a survey.
 bool Bus::intPending() const {
-    for (Board* b : boards_)
-        if (b->enabled() && b->assertsInt()) return true;  // wire-OR, and nothing more
-    return false;
+    if (verify_) verifyInt();
+    return intCount_ > 0;
+}
+
+// The proof, and the exact counterpart of verifySlot(). Re-derive the wire from
+// every board's combinational assertsInt() and compare it to what each board says
+// it is driving, and to the running count.
+//
+// A board that changed its interrupt state and forgot to call intChanged() dies
+// HERE, loudly, at the next instruction -- rather than hanging the guest in a HLT
+// forever, waiting for an interrupt that already happened and was never carried.
+// That is a bug worth days, and it would present as "the emulator locks up
+// sometimes", which is worth several more.
+void Bus::verifyInt() const {
+    int live = 0;
+    for (Board* b : boards_) {
+        bool actual = b->enabled() && b->assertsInt();
+        if (b->intWire()) ++live;
+        if (actual == b->intWire()) continue;
+
+        std::fprintf(stderr,
+                     "\npINT WIRE IS STALE -- board '%s'\n"
+                     "  the wire says: %s\n"
+                     "  the board says: %s\n"
+                     "It changed its interrupt state and did not call intChanged().\n",
+                     b->id.c_str(), b->intWire() ? "pulling" : "not pulling",
+                     actual ? "pulling" : "not pulling");
+        std::abort();
+    }
+
+    // ...and the count itself, which attach()/detach() maintain by hand. Two
+    // boards whose errors cancel would sail past the loop above; a bad count would
+    // not, and this is the only place either could be caught.
+    if (live == intCount_) return;
+    std::fprintf(stderr,
+                 "\npINT WIRE-OR COUNT IS WRONG\n"
+                 "  the bus thinks %d board(s) are pulling pin 73\n"
+                 "  %d actually are\n"
+                 "A card went into or out of the backplane without the count following.\n",
+                 intCount_, live);
+    std::abort();
 }
 
 // ---------------------------------------------------------------------------

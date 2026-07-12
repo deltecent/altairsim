@@ -89,6 +89,7 @@ add_library(altair_core STATIC
   src/core/crc32.cpp
   src/core/hex.cpp
   src/core/bus.cpp
+  src/core/clock.cpp
   src/core/board.cpp
   src/core/machine.cpp
   src/core/roms.cpp
@@ -126,6 +127,7 @@ enable_testing()
 add_executable(altair_tests
   tests/main.cpp
   tests/test_bus.cpp
+  tests/test_clock.cpp
   tests/test_memory.cpp
   tests/test_hex.cpp
   tests/test_roms.cpp

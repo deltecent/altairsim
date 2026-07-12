@@ -132,7 +132,7 @@ void test_phantom() {
     // decode mid-run (the flip-flop). If the bus's cached tables can be wrong
     // anywhere, they can be wrong here. This re-derives every decode the slow way
     // and aborts on the first disagreement.
-    bus.setVerifyDecode(true);
+    bus.setVerify(true);
 
     auto* tar = new TarbellBoot();
     auto* mem = ram64k("mem0");
@@ -208,7 +208,7 @@ void test_phantom() {
 
     // --- A5 is a WIRE, not a threshold. ---
     Bus b2;
-    b2.setVerifyDecode(true);
+    b2.setVerify(true);
     auto* t2 = new TarbellBoot();
     auto* m2 = ram64k("mem1");
     t2->id = "tar";

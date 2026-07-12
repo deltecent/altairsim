@@ -18,6 +18,7 @@ int main() {
 
     test_hex();
     test_roms();
+    test_clock();
     test_bus();
     test_memory();
     test_phantom();

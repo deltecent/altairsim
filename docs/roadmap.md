@@ -171,11 +171,19 @@ What landed, in dependency order:
 
 ### Three things this got wrong first, and what they taught
 
-**1. `assertsInt()` had to stop being `const`.** The interrupt-driven echo test failed because the ACIA only ingested a character when the guest *read a register* — and **an interrupt-driven driver never reads the status port; that is the entire point of it.** So RDRF never set, IRQ never rose, nothing ever happened. Every polled test passed throughout. The general rule: a board is entitled to advance its own free-running hardware when asked whether it is pulling pINT, because a peripheral has a clock of its own. (DESIGN.md §4.4.1.)
+**1. A card's receiver fills on its own clock, and the interface has to let it.** The interrupt-driven echo test failed because the ACIA only ingested a character when the guest *read a register* — and **an interrupt-driven driver never reads the status port; that is the entire point of it.** So RDRF never set, IRQ never rose, nothing ever happened. Every polled test passed throughout.
+
+The first fix made `assertsInt()` non-`const` and advanced the receiver inside it, on the strength of the bus polling every board once per instruction. **That was half a fix, and it was reversed on 2026-07-12** — the free-running work was real, but a *query* was the wrong place for it, and the poll was the wrong shape for a bus (§4.4.1). The work moved to a `Clock` deadline the card sets itself, plus `pump()`; `assertsInt()` went back to being `const` and pure; and the card now **pulls pin 73** rather than being asked about it. See lesson 3.
 
 **2. A `ByteStream` is not a serial line.** The first ACIA synthesized OVRN by pulling a byte every character-time whether or not the guest had read the last one — and **immediately lost data**, because while ALTMON was echoing `DUMP ` it was not reading the receiver, so the address you typed went on the floor. A stream is *buffered and flow-controlled*; inventing an overrun from it manufactures data loss the host does not have. (`docs/boards/mits-2sio.md`.)
 
-**3. The `EventQueue` was never needed.** DESIGN §7.5 specified callbacks. The 2SIO wanted a **deadline**: when a 6850's shift register drains, *nothing happens in the world* — TDRE is simply true next time anyone looks. Boards are already polled for everything the bus can see, so they never need waking. `schedule()` is not built; the reasoning is written down, and **it is flagged for Patrick as the one design decision this work reversed.**
+**3. The `EventQueue` was "never needed" — and the argument was circular.** DESIGN §7.5 specified callbacks; the first pass deleted them, reasoning that a board is already **polled** for everything the bus can see (`decodes()` every cycle, `assertsInt()` every instruction), so it never needs *waking* — it only needs to answer *"what time is it?"* when asked.
+
+**The board did not need waking because we were polling it sixty million times a second.** The poll was not evidence the queue was unnecessary; **the poll *was* the queue**, run at enormous cost under another name. Take it away — and it had to go, because no backplane interrogates a card for its interrupt status — and the hole is obvious: a 6850 whose transmit register drains **while the guest sits in a `HLT` waiting for exactly that interrupt** has no way to be present for its own deadline. If the only thing that would ask is the CPU that is halted waiting for it, the machine is dead.
+
+**Restored 2026-07-12**, with that board as the proof it was needed, and `tests/test_sio2.cpp` runs the machine that fails without it. The old argument's *correct* half survives: TDRE really is a deadline, not an event, and on a quiet line the card schedules **nothing at all**.
+
+**And the answer to "event queue, or periodic timer?" is both** — they answer different questions. A deadline is something emulated time can predict (a character finishing transmission). A keystroke is not in emulated time at all, so it arrives through `pump()`. The second one already existed.
 
 ### Still open in 1b
 

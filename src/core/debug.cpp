@@ -167,8 +167,23 @@ RunResult Debugger::run(uint64_t maxSteps) {
         // HLT with nobody to wake it is the end of the program. HLT with a live
         // interrupt source is NOT -- the CPU is parked, time still passes, and the
         // board that will interrupt it is clocked by the very T-states we are
-        // still counting. So we only stop if nothing can ever raise pINT.
-        if (s.status == RunStatus::Halted && !m_.bus.intPending()) {
+        // still counting.
+        //
+        // AND NEITHER IS A HLT WITH A DEADLINE STILL ON THE BOOKS, which is the half
+        // this used to get wrong. The old code asked "is anyone pulling pINT RIGHT
+        // NOW?" and called that "can anything ever wake it?". They are not the same
+        // question, and a 2SIO tells them apart: jumper its transmit interrupt, send
+        // a character, and halt -- which is an entirely ordinary thing for a driver
+        // to do. At the instant of the HLT nothing is pulling pINT, because the
+        // character is still going out. The interrupt is two thousand T-states away
+        // and absolutely certain to arrive. The old test declared that program
+        // finished, and it would have been right about the wire and wrong about the
+        // machine.
+        //
+        // The clock knows better: if anything at all is still scheduled, this
+        // machine has a future. And it terminates -- a queue with nothing in it is
+        // the honest definition of a machine that will never do anything again.
+        if (s.status == RunStatus::Halted && !m_.bus.intPending() && m_.clock.queued() == 0) {
             r.why = StopReason::Halted;
             break;
         }

@@ -1,11 +1,11 @@
 #pragma once
 //
-// Clock -- the single source of emulated time (DESIGN.md 7.5).
+// Clock -- the single source of emulated time, and the queue of things that are
+// going to happen in it (DESIGN.md 7.5).
 //
 // Time is measured in T-STATES, never in milliseconds, and it advances only
 // when the CPU retires an instruction. Nothing in the simulator may ask the host
-// what time it is; if a board could, replay would be dead the first time one
-// did.
+// what time it is; if a board could, replay would be dead the first time one did.
 //
 // The crystal is on the CPU CARD (DESIGN.md 3, 8) -- there is no machine clock
 // rate. The card publishes its `clock_hz` here, which is how a board that needs
@@ -14,46 +14,86 @@
 // there is one at all.
 //
 // ---------------------------------------------------------------------------
-// AMENDMENT TO DESIGN.md 7.5 -- FLAGGED FOR PATRICK, NOT SLIPPED IN
+// THE EVENT QUEUE IS BACK, AND THE BOARD CITED AS PROVING IT UNNECESSARY IS THE
+// BOARD THAT PROVED IT NECESSARY (Patrick, 2026-07-12).
 //
-// The design specifies an EventQueue: `schedule(delta, fn)` / `cancel(h)`, with
-// boards registering CALLBACKS for future work. This class implements `now()`
-// and `advance()` and DOES NOT implement `schedule()`. That is deliberate, it is
-// a simplification of the design, and it should be argued with rather than
-// assumed correct.
+// A previous version of this file deleted `schedule()` from the design and
+// argued the point at length, right here. The argument was: a board is already
+// POLLED for everything the bus can observe about it -- `decodes()` on every
+// cycle, `assertsInt()` on every instruction boundary -- so a board never needs
+// to be WOKEN. It only needs to answer "what time is it?" when someone asks.
 //
-// The reason: in this architecture a board is already POLLED for everything the
-// bus can observe about it. `decodes()` is asked on every cycle; `assertsInt()`
-// is asked on every instruction boundary. So a board never needs to be WOKEN --
-// it needs to be able to answer "what time is it?" when someone finally asks.
+// THAT ARGUMENT WAS CIRCULAR, and the circle was hiding the bug. The board did
+// not need waking BECAUSE WE WERE POLLING IT SIXTY MILLION TIMES A SECOND. The
+// poll was not evidence that the queue was unnecessary; the poll WAS the queue,
+// run at enormous cost and called something else.
 //
-// And that is what the hardware is actually like. When a 6850's transmit shift
-// register drains, NOTHING HAPPENS in the world: no wire moves, nobody is
-// notified. TDRE is simply true the next time the guest reads the status port.
-// It is a DEADLINE, not an EVENT -- and modeling it as a callback would fire one
-// per character even when nobody ever looks, which is both slower and less true.
-// The disk's index pulse and sector timing are deadlines by the same argument,
-// and an interrupt is a LEVEL that `assertsInt()` already polls.
+// And the poll had to go, because it was never how the machine worked: a bus
+// does not interrogate a card for its interrupt status. A card PULLS pin 73 and
+// HOLDS it, and the CPU reads the wire (Patrick, 2026-07-12). Take the poll away
+// and the board is left holding a deadline it has no way to be present for:
 //
-// So `schedule()` has no user, and unused API is a liability -- it gets designed
-// against a board that does not exist yet, and it is always wrong when the board
-// arrives. If a real one turns up that genuinely cannot be expressed as a
-// deadline, add it THEN, with that board as the proof it was needed.
+//   A 6850 with the transmit interrupt jumpered raises IRQ when its shift
+//   register drains. Nobody touches it. No bus cycle happens. And the guest is
+//   sitting in a HLT waiting for precisely that interrupt. If the only way the
+//   card can act is to BE ASKED, and the only thing that would ask is the CPU
+//   that is halted waiting for it, then nothing ever happens again.
+//
+// So a deadline needs a way to arrive on its own. That is this queue.
+//
+// What was RIGHT in the old argument, and still is: TDRE is a DEADLINE, not an
+// event. A board that can answer "what time is it?" when the guest finally reads
+// the status port should do exactly that and schedule nothing -- and the 6850
+// still does, for the polled case. You come here only for the state changes that
+// must be VISIBLE TO SOMEONE ELSE the instant they happen, and on this bus there
+// is exactly one such thing: a wire.
 // ---------------------------------------------------------------------------
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <unordered_map>
+#include <vector>
 
 namespace altair {
 
 class Clock {
 public:
+    // A scheduled thing, cancellable. AN INTEGER AND NOT A POINTER, on purpose:
+    // a handle that outlives its event is then merely stale, and cancelling it is
+    // a no-op instead of a use-after-free. Handles are never reused.
+    using Handle = uint64_t;
+    static constexpr Handle kNone = 0;
+
     // T-states since power was applied. Monotonic; only POWER resets it.
     uint64_t now() const { return t_; }
 
-    // One instruction retired. Called by the run loop with StepResult::tStates,
+    // ONE INSTRUCTION RETIRED. Called by the run loop with StepResult::tStates,
     // and by nobody else -- which is what makes emulated time a pure function of
     // the instruction stream.
-    void advance(uint64_t dt) { t_ += dt; }
+    //
+    // Anything that came due during those T-states fires HERE, in time order --
+    // and WITH now() SET TO THE MOMENT IT WAS DUE, not to the end of the
+    // instruction. An instruction is up to 17 T-states long, and a board that asked
+    // the time inside its own callback and was told the wrong one would drift a
+    // little further with every character it sent. The clock is the one thing here
+    // that must never lie about the time.
+    //
+    // The BUS, on the other hand, only observes a board at the instruction boundary
+    // -- which is not a compromise either: the 8080 samples INT at an instruction
+    // boundary too, so there is no finer grain to be seen at.
+    void advance(uint64_t dt);
+
+    // "CALL ME AT T." For the state changes a board cannot otherwise be present
+    // for -- see the header comment. `at` takes an absolute T-state; `after` a
+    // delta from now.
+    Handle at(uint64_t when, std::function<void()> fn);
+    Handle after(uint64_t dt, std::function<void()> fn) { return at(t_ + dt, std::move(fn)); }
+
+    // Cancelling kNone, or a handle that has already fired, is legal and does
+    // nothing. Boards re-arm constantly and should not have to track which.
+    void cancel(Handle h);
+    bool pending(Handle h) const;
 
     // The crystal on the CPU card. Defaults to the 88-CPU's 2 MHz so that a
     // machine with no processor in it still gives a board a sane number to divide
@@ -70,11 +110,43 @@ public:
         return (uint64_t)(hz_ / perSecond);
     }
 
-    void power() { t_ = 0; }
+    // Power APPLIED. Time restarts, and every pending deadline is gone: the
+    // machine that scheduled them does not exist any more.
+    //
+    // Handles keep counting UP across a power cycle rather than restarting, so a
+    // board still holding a handle from the last life cannot cancel some innocent
+    // event in this one by number collision.
+    void power();
+
+    // How many events are live. For tests, and for the assertion that a board
+    // which re-arms on every character is not LEAKING one per character.
+    size_t queued() const { return live_.size(); }
 
 private:
-    uint64_t t_ = 0;
-    long long hz_ = 2000000;
+    // A binary min-heap keyed by (when, handle).
+    //
+    // THE HANDLE IS THE TIEBREAK, and it is a monotonically increasing counter, so
+    // two events due at the same T-state fire IN THE ORDER THEY WERE SCHEDULED --
+    // every time, on every host, in every replay. There is no other tiebreak
+    // available here, and an unstable one would be a replay divergence that shows
+    // up once a month and cannot be reproduced.
+    struct Item {
+        uint64_t when = 0;
+        Handle   h    = 0;
+        bool operator>(const Item& o) const { return when != o.when ? when > o.when : h > o.h; }
+    };
+
+    void drain();
+
+    std::vector<Item> heap_;
+    // The authority on what is still live. Cancelling erases from here and leaves
+    // the heap entry behind as a tombstone -- it costs one hash lookup to skip
+    // when it surfaces, which is cheaper than finding and removing it now.
+    std::unordered_map<Handle, std::function<void()>> live_;
+
+    Handle   next_ = 0;  // ++next_, so kNone (0) is never issued
+    uint64_t t_    = 0;
+    long long hz_  = 2000000;
 };
 
 } // namespace altair

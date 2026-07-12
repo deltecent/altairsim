@@ -119,10 +119,11 @@ public:
     // suite and the CPU validation gate both run with it on.
     void invalidateDecode() { dirty_ = true; }
 
-    // Paranoid mode: check every cached decode against a fresh one, every cycle.
-    // Slower than the original code. That is fine -- it is a proof, not a path.
-    void setVerifyDecode(bool on) { verify_ = on; }
-    bool verifyDecode() const { return verify_; }
+    // Paranoid mode: re-derive the decode AND the interrupt wire the slow way, and
+    // check them against what we cached -- on every cycle and every instruction.
+    // Slower than the original code. That is fine: it is a proof, not a path.
+    void setVerify(bool on) { verify_ = on; }
+    bool verify() const { return verify_; }
 
     // The four cycles. Each is a two-pass affair:
     //   pass 1: ask every board whether it pulls PHANTOM* -> BusCycle::phantom
@@ -137,18 +138,33 @@ public:
     // as RST 7. Same floating-bus rule as unmapped memory -- not a special case.
     uint8_t intAck();
 
-    // pINT (pin 73), carried as the WIRE-OR of every board asserting it. That is
-    // all the bus does with an interrupt: it does not pick a winner and it does
-    // not hand anyone a vector (DESIGN.md 4.4). If it did, the 88-VI board could
-    // not be written AS A BOARD, and every machine without one would be getting
-    // vectored behavior its hardware never had.
+    // ---- pINT (pin 73) -- A WIRE, NOT A POLL ----
+    //
+    // "In a real system, the bus doesn't poll a board for interrupt status. The
+    //  board sets high/low signals on the bus that the CPU reads from the bus. The
+    //  board then clears the int signal based on its design." (Patrick, 2026-07-12)
+    //
+    // He was describing the hardware; he was also describing a bug. This used to
+    // walk the backplane and ask every card `assertsInt()` -- ONCE PER INSTRUCTION,
+    // sixty million times a second, to compute a boolean that changes about a
+    // thousand times a second on a busy machine. It cost more per instruction than
+    // the entire rest of the bus once the decode was cached.
+    //
+    // Now a board PULLS the pin (Board::intChanged()) and the bus keeps the
+    // wire-OR as a running count. Reading pin 73 is an integer test. The bus still
+    // does exactly what it did before -- carry the OR of every board asserting it,
+    // pick no winner, hand out no vector (DESIGN.md 4.4) -- it just stopped
+    // conducting a survey to find out what was already on the wire.
     //
     // The vector, if there is one, comes from whoever claims the IntAck CYCLE --
     // like any other cycle. Nobody claims it in a machine with no VI card, so the
-    // bus floats to 0xFF and the 8080 executes RST 7. That is not a fallback
-    // hack; it is what the metal does, and it is why the PMMI's factory jumper
-    // straight to pin 73 yields RST 7 with no vector logic anywhere.
+    // bus floats to 0xFF and the 8080 executes RST 7. That is not a fallback hack;
+    // it is what the metal does, and it is why the PMMI's factory jumper straight
+    // to pin 73 yields RST 7 with no vector logic anywhere.
     bool intPending() const;
+
+    // A board's pin moved. Called by Board::intChanged(), and by nothing else.
+    void intWireChanged(bool pulling) { intCount_ += pulling ? 1 : -1; }
 
     // ---- The cycle stream (DESIGN.md 3.0.3, 4.2.2) ----
     //
@@ -239,6 +255,11 @@ private:
     Slot resolve(Cycle t, uint16_t addr) const;
     void rebuild();
     void verifySlot(const BusCycle& c, const Slot& s) const;
+    void verifyInt() const;
+
+    // pINT as a WIRE-OR: how many enabled boards are pulling it down right now.
+    // Maintained by intWireChanged(); never recomputed on the hot path.
+    int intCount_ = 0;
 
     // The exact path. THIS IS THE DEFINITION OF CORRECTNESS; the tables above are
     // a cache OF it, and the verifier checks them AGAINST it.

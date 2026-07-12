@@ -147,6 +147,7 @@ If a **host serial port** endpoint ever lands, an overrun there is a genuine har
 | 3 | Same over a **host serial port** | **not yet** — `serial:` endpoints are unimplemented |
 | 4 | An **interrupt-driven** console echo, with **no VI board** | **DONE** — `tests/test_sio2.cpp` |
 | 5 | **Two 2SIO boards at once**, four channels, independently configured | **DONE** — the base port is a jumper, and two cards coexist |
+| 6 | The card raises an interrupt **while nobody is asking it anything** | **DONE** — the guest halts; the card's own deadline wakes it |
 
 ### Test 4 is the one that mattered, and it found a real bug
 
@@ -156,4 +157,25 @@ The first implementation **failed it**, and the failure is worth recording:
 
 > The ACIA only took a character off the line when the guest **read a register**. But an interrupt-driven driver *never reads the status port* — not reading it is the entire point of being interrupt-driven. So `RDRF` was never set, IRQ never rose, and the interrupt never fired. The operator could type forever and nothing would happen.
 
-The fix is why `Board::assertsInt()` **is not `const`**: a board may have to *do* something to answer honestly. A 6850's receive shift register fills on the chip's own clock and owes the CPU nothing, and the interface has to be able to say so. Every polled test in the suite passed throughout — only this one could have caught it.
+A 6850's receive shift register fills **on the chip's own clock** and owes the CPU nothing. The interface has to be able to say so. Every *polled* test in the suite passed throughout — only this one could have caught it.
+
+### Test 6 is where that fix turned out to be half a fix
+
+**The card's free-running work was real. Putting it inside `assertsInt()` was not.**
+
+The receiver was advanced inside that query for exactly one reason: being asked was the only thing that ever woke the card up. The bus called `assertsInt()` on every instruction, and the card quietly used the poll as its clock. It worked, and it was the wrong shape — no backplane interrogates a card for its interrupt status (**DESIGN.md §4.4.1**, and Patrick, who said so). A card **pulls pin 73 and holds it**.
+
+Take the poll away and the hole is obvious:
+
+> The transmit interrupt is jumpered. The guest writes a character and **halts**. TDRE goes true when the character has finished going out — and at that moment **nobody is touching the chip.** No bus cycle runs. No register is read. The CPU is parked in a `HLT` waiting for exactly this interrupt.
+>
+> If the only way the card can act is to *be asked*, and the only thing that would ask is the CPU that is halted waiting for it, **the machine is dead.**
+
+That is an entirely ordinary driver, and the old run loop **declared it finished** — two thousand T-states before the interrupt it was waiting for. So the card now owns its own clock:
+
+- **`Acia::nextEdge()`** — the next moment this chip's IRQ pin could move *with nobody touching it*. The card sets a `Clock` deadline for it (**§7.5**) and wakes itself. On a quiet line with an idle transmitter the answer is **"never"**, and no timer is set at all — which is the commonest state in the machine, and precisely the one the poll was paying full price for.
+- **`pump()`** — for the thing a deadline cannot predict: a human touching a key. Nothing in emulated time saw that coming, so no timer could have been set for it.
+
+Both, and they are not alternatives — they answer different questions. It is the same function on this card (`Sio2Board::refresh()`), and it is the answer to *"event queue, or periodic timer?"*: **both, and you already had the second one.**
+
+`assertsInt()` is now `const` and **pure**: it reads two pins and ORs them, filtered by what is actually soldered to the wire. It does no work. The card tells the backplane when the pin moves (`Board::intChanged()`), and forgetting to is caught by `Bus::setVerify(true)`, which this suite runs with permanently on.

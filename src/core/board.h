@@ -170,26 +170,61 @@ public:
     // one card, which is the whole point.
     virtual void snoop(const BusCycle&) {}
 
-    // Am I pulling pINT (pin 73) right now? A UART with a character waiting and
-    // its interrupt jumper installed says yes, and keeps saying yes until the
-    // guest reads the character -- an interrupt is a LEVEL on a wire, not an event
-    // that gets queued and delivered. Model it as a level and a board cannot
-    // "lose" an interrupt, because there was never a queue to lose it from.
+    // ---- pINT (pin 73). A LEVEL ON A WIRE, AND THE BOARD DRIVES IT. ----
+
+    // Am I pulling pin 73 right now? A UART with a character waiting and its
+    // interrupt jumper installed says yes, and keeps saying yes until the guest
+    // reads the character -- an interrupt is a LEVEL, not an event that gets
+    // queued and delivered. Model it as a level and a board cannot "lose" an
+    // interrupt, because there was never a queue to lose it from.
+    //
+    // COMBINATIONAL AND PURE, exactly like decodes(). It reports the settled state
+    // of a pin, computed from the state of the chip and nothing else. It does not
+    // advance a receiver, take a byte off a line, or do any work the guest has not
+    // paid for.
+    //
+    // IT USED TO DO ALL THREE, and there was a whole section of DESIGN.md (4.4.1)
+    // defending that. A 6850 has to notice a character has finished arriving --
+    // which happens on the chip's own clock, with no help from the CPU -- and the
+    // only thing that ever woke the card up was being asked this question, so the
+    // card advanced its receiver here. It worked. It was the wrong shape, and
+    // Patrick named it (2026-07-12):
+    //
+    //     "In a real system, the bus doesn't poll a board for interrupt status.
+    //      The board sets high/low signals on the bus that the CPU reads from
+    //      the bus. The board then clears the int signal based on its design."
+    //
+    // So the card does its free-running work on its OWN schedule now -- a Clock
+    // deadline it sets itself, and pump(), which is where the host's keystrokes get
+    // in -- and this is only ever asked what the pin SAYS. Which is what a wire is.
     //
     // The board does NOT supply a vector here. If it wants to drive one, it claims
     // the IntAck cycle like any other cycle (DESIGN.md 4.4).
+    virtual bool assertsInt() const { return false; }
+
+    // "MY INTERRUPT PIN MAY HAVE MOVED." The exact analogue of decodeChanged(),
+    // and for the same reason: the bus CACHES the wire -- it keeps a running
+    // wire-OR count, so intPending() is one integer test per instruction instead of
+    // a virtual call to every board in the backplane -- and a cache nobody
+    // invalidates is a lie told quietly.
     //
-    // NOT const, and that is load-bearing. A board may have to DO something to
-    // answer honestly -- a 6850 has to notice that a character has finished
-    // arriving on its receive line. That happens on the chip's own clock, with no
-    // help from the CPU, which is exactly why it cannot be folded into read().
-    //
-    // This is not a hypothetical. It is the bug this comment was written after: an
-    // INTERRUPT-DRIVEN driver never reads the status port -- that is the whole
-    // point of it -- so a UART that only ingested characters when the guest looked
-    // at a register would never ingest one, never raise IRQ, and the interrupt
-    // would never fire. The board must be able to advance its own receiver here.
-    virtual bool assertsInt() { return false; }
+    // Call it after ANYTHING that could change assertsInt(): a register written, a
+    // character taken off the line, a deadline coming due, a jumper moved. A
+    // spurious call costs a virtual call. A MISSING one hangs the guest forever,
+    // waiting for an interrupt that already happened -- so this is not left to
+    // trust either: Bus::setVerify(true) re-derives the whole wire the slow way on
+    // every instruction and aborts the moment a board disagrees with it.
+    void intChanged() {
+        bool now = enabled_ && assertsInt();
+        if (now == intWire_) return;
+        intWire_ = now;
+        if (bus_) bus_->intWireChanged(now);
+    }
+
+    // What this card is ACTUALLY driving onto pin 73 -- the latched wire, not a
+    // fresh computation. Bus::attach()/detach() read it to keep the wire-OR honest
+    // across a card going into or coming out of the backplane.
+    bool intWire() const { return intWire_; }
 
     // ---- Lifecycle (DESIGN.md 6) ----
 
@@ -211,6 +246,7 @@ public:
         if (enabled_ == e) return;
         enabled_ = e;
         decodeChanged();
+        intChanged();  // a card that is out of the machine is not pulling pin 73
     }
 
     // ---- Reflection (DESIGN.md 5) ----
@@ -333,10 +369,30 @@ public:
         if (bus_) bus_->invalidateDecode();
     }
 
+    // "SOMEONE MOVED A JUMPER ON ME." Called by the ONE property path (below) after
+    // every successful SET, on every board, without trying to work out which
+    // properties actually matter -- because the moment it tries, it is wrong about
+    // some board it has never heard of.
+    //
+    // The default covers what the bus caches: the decode and the interrupt wire. A
+    // board with its own cached state or its own timers overrides this and re-arms
+    // them -- the 2SIO does, because `baud` changes a character time, `interrupt`
+    // changes which wire the chip's IRQ is soldered to, and `connect` changes what
+    // is on the end of the line. All three move a deadline the card has already set.
+    virtual void configChanged() {
+        decodeChanged();
+        intChanged();
+    }
+
 protected:
     bool   enabled_ = true;
     Clock* clock_   = nullptr;
     Bus*   bus_     = nullptr;
+
+private:
+    // What we are driving onto pin 73. Latched, not computed: this is a WIRE, and
+    // the bus reads it rather than asking us about it every instruction.
+    bool intWire_ = false;
 };
 
 // ---------------------------------------------------------------------------

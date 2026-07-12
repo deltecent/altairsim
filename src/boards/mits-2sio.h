@@ -74,6 +74,22 @@ public:
     // interface has to be able to say that.
     void poll(const Clock& clk);
 
+    // THE NEXT MOMENT THIS CHIP'S IRQ PIN COULD MOVE WITH NOBODY TOUCHING IT.
+    // Zero means never: nothing will happen here until the guest reads a register
+    // or the host puts a character on the line.
+    //
+    // This is the whole of what the event queue needs to know, and it is the line
+    // between a deadline and a poll. We are not asking "has it happened yet?" sixty
+    // million times a second. We are saying, once, "wake me AT this T-state" -- and
+    // the answer is usually "there is nothing to wake up for", which is the case
+    // the poll was paying full price for.
+    //
+    // ALWAYS STRICTLY IN THE FUTURE. A deadline already past is already showing in
+    // irq(); there is nothing left to wake up for, and arming a timer for now()
+    // would fire inside the drain loop that is running us, and arm it again, and
+    // never stop.
+    uint64_t nextEdge(const Clock& clk) const;
+
 private:
     // How long one character occupies the line, in T-states. Falls out of the
     // word-select bits the guest wrote to the control register -- so a guest that
@@ -111,6 +127,7 @@ private:
 class Sio2Board : public Board {
 public:
     Sio2Board();
+    ~Sio2Board() override;
 
     std::string type() const override { return "2sio"; }
 
@@ -118,11 +135,14 @@ public:
     uint8_t read(const BusCycle& c) override;
     void    write(const BusCycle& c) override;
 
-    bool assertsInt() override;
+    // PIN 73, combinational and pure. What the chips are asking for, filtered by
+    // what is actually soldered to the wire.
+    bool assertsInt() const override;
 
     void reset(Reset) override;
     void power() override;
     void pump() override;
+    void configChanged() override;
 
     std::vector<Property> properties() override;
     std::vector<Property> unitProperties(const std::string& unit) override;
@@ -151,9 +171,23 @@ public:
     Acia* channel(const std::string& name);
 
 private:
+    // EVERYTHING THAT COULD HAVE MOVED PIN 73 HAS JUST HAPPENED. Advance the
+    // receivers, re-drive the pin, and set the alarm clock for the next moment
+    // either chip could move it with nobody touching it.
+    //
+    // Called after every register access, on pump(), on reset, when a jumper moves
+    // -- and from the alarm clock itself, which is what lets the card act while the
+    // CPU is halted waiting for it to.
+    void refresh();
+
     Acia a_{"a"};
     Acia b_{"b"};
     uint8_t base_ = 0x10;
+
+    // The one outstanding deadline, for whichever chip's edge comes first. ONE, not
+    // one per chip: a card has a state, and re-deriving the earliest edge from
+    // scratch on every refresh is both simpler and impossible to leak.
+    Clock::Handle wake_ = Clock::kNone;
 };
 
 } // namespace altair

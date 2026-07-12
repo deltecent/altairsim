@@ -28,6 +28,14 @@ struct Rig {
     Rig(uint8_t port = 0x10) {
         std::string err;
 
+        // PARANOID MODE, PERMANENTLY ON IN THIS SUITE. The 2SIO is the card that
+        // drives pin 73, and it is the one that has to remember to say so -- after a
+        // register access, after a character lands, when a deadline comes due, when
+        // a jumper moves. Miss one and the guest waits forever for an interrupt that
+        // already happened. This re-derives the whole wire on every instruction and
+        // aborts the moment the card and the backplane disagree about it.
+        m.bus.setVerify(true);
+
         mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
         Region r;
         r.kind = RegionKind::Ram;
@@ -218,11 +226,16 @@ void test_sio2() {
         // floats FF, and the 8080 executes RST 7. No vector logic exists anywhere,
         // and none is needed.
         Rig g;
-        Acia* a = g.sio->channel("a");
+        std::string err;
 
         CHECK(!g.m.bus.intPending(), "quiet to start with");
 
-        a->jumper = IrqJumper::Int;
+        // Through the PROPERTY PATH, which is how an operator moves this jumper --
+        // and which is what tells the card to re-settle its pin and re-aim its
+        // timers. Poking the field directly would work here and would be a lie about
+        // how the card is configured.
+        CHECK(setUnitProperty(*g.sio, "a", "interrupt", "int", err), "jumper A -> pINT");
+
         g.m.bus.ioWrite(0x10, 0x91);  // RIE (bit 7) + 8N2, receive interrupt enabled
         CHECK(!g.m.bus.intPending(), "RIE on, but nothing has arrived");
 
@@ -239,12 +252,51 @@ void test_sio2() {
 
         // The un-jumpered case: the CHIP still raises IRQ (it is a pin, and it does
         // not care what you soldered to it), but the WIRE goes nowhere.
-        a->jumper = IrqJumper::None;
+        CHECK(setUnitProperty(*g.sio, "a", "interrupt", "none", err), "jumper A pulled");
         g.tty->feed("?");
         g.lineTime();  // the next character has to physically arrive
         (void)g.m.bus.ioRead(0x10);
         CHECK((g.m.bus.ioRead(0x10) & 0x80) != 0, "chip still raises IRQ in its status");
         CHECK(!g.m.bus.intPending(), "but with no jumper, pINT stays high");
+    }
+
+    SECTION("88-2SIO -- NOBODY IS ASKING: the card acts on its own deadline");
+    {
+        // THE CASE THE OLD MODEL COULD NOT HAVE HANDLED, and the reason the event
+        // queue came back (DESIGN.md 7.5).
+        //
+        // The transmit interrupt is jumpered. The guest writes a character and
+        // HALTS. TDRE goes true when the character has finished going out -- and at
+        // that moment NOBODY IS TOUCHING THE CHIP. No bus cycle happens. No register
+        // is read. The CPU is parked in a HLT waiting for exactly this interrupt.
+        //
+        // If the only way the card could act were to be asked, and the only thing
+        // that would ask is the CPU that is halted waiting for it, the machine would
+        // be dead. It wakes because the card set itself an alarm.
+        Rig g;
+        std::string err;
+        CHECK(setUnitProperty(*g.sio, "a", "interrupt", "int", err), "jumper A -> pINT");
+
+        // Control: 8N2, transmit interrupt ENABLED (bits 5-6 = 01), RIE off.
+        g.m.bus.ioWrite(0x10, 0x36);
+        CHECK(g.m.bus.intPending(), "TDRE is true on an idle transmitter, so it is already asking");
+
+        g.m.bus.ioWrite(0x11, 'A');  // a character goes out; the register is now busy
+        CHECK(!g.m.bus.intPending(), "TDRE fell: the character is still on the wire");
+
+        // EI ; HLT. The guest is now doing nothing whatever, and neither is the bus:
+        // no cycle runs, no register is touched, and the CPU is parked. The ONLY
+        // thing left in the machine that can still act is the alarm the card set for
+        // itself -- and the interrupt is still ~2,000 T-states away.
+        g.load({0xFB, 0x76});
+        g.m.debug.add(BreakKind::Pc, 0x0038, 0x0038);  // where RST 7 lands
+
+        RunResult r = g.m.debug.run(2000);
+        CHECK(r.why == StopReason::Breakpoint,
+              "the HLT did NOT end the program: the card woke it with nobody asking");
+        CHECK(g.m.cpu()->pc() == 0x0038, "unvectored -> the floating bus reads FF = RST 7");
+        CHECK(g.m.clock.now() >= 2000,
+              "and it really did have to WAIT -- a whole character time at 9600 baud");
     }
 
     SECTION("88-2SIO -- an unconnected line is not an error");
