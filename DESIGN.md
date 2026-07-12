@@ -96,7 +96,7 @@ Payoff: a board author writes against `ByteStream`, `DiskImage`, `Display`, `Eve
 
 ## 3. The CPU is a board
 
-In a real Altair the processor *is* a card: the MITS **88-CPU** (8080A), and later the Z80 cards (Ithaca, Cromemco ZPU, TDL) people swapped in. So the CPU lives in `boards/` with everything else and gets `properties()` (`SET cpu0 CLOCK=2000000`, `SHOW cpu0`), `reset(PowerOn|Bus)`, `serialize()`, a slot, and a line in `BOARD LIST` — no special cases.
+In a real Altair the processor *is* a card: the MITS **88-CPU** (8080A), and later the Z80 cards (Ithaca, Cromemco ZPU, TDL) people swapped in. So the CPU lives in `boards/` with everything else and gets `properties()` (`SET cpu0 CLOCK=2000000`, `SHOW cpu0`), `reset(PowerOn|Bus)`, `serialize()`, a slot, and a line in `BOARDS` — no special cases.
 
 But there is a distinction to draw, and drawing it is what makes DMA clean:
 
@@ -117,17 +117,19 @@ cannot distinguish "this instruction legitimately took N cycles" from "something
 went wrong", and §16 records what that cost the prototype.)*
 
 **Built, 2026-07-11.** `src/isa/isa8080.cpp`, `src/cpu/cpu8080.cpp`,
-`src/boards/cpu8080.cpp`, and the debugger in `src/core/debug.cpp`. The card
-decodes nothing — `BOARD LIST` shows `cpu0  8080  mem:-  io:-`, and that is the
-truth about a processor card, not a gap in the table. See `docs/boards/88-cpu.md`.
+`src/boards/mits-88cpu.cpp`, and the debugger in `src/core/debug.cpp`. The card
+decodes nothing — `BOARDS` shows it with no memory and no I/O, and that is the
+truth about a processor card, not a gap in the table. It still has a *unit*
+(`1 cpu: 8080`), because the processor on the card is a unit like any other. See
+`docs/boards/mits-88cpu.md`.
 
 **The payoff is DMA.** S-100 has `pHOLD`/`pHLDA` precisely because a backplane can have more than one bus master — a disk controller or a Dazzler takes the bus away from the processor. With `BusMaster` as a first-class concept, a DMA card is simply a `Board` that *becomes* a `BusMaster` when granted the bus. DMA is not a bolted-on path in the bus; it is the same mechanism the CPU already uses. (It also leaves the door open to master/slave multiprocessor S-100 setups without designing for them now.)
 
 **The chip is not the card:**
 - `src/cpu/` — `Cpu8080`, `Cpu8085`, `CpuZ80`: pure instruction cores behind one `CpuCore` interface. No bus, no board, no config. Independently testable, which is what makes the 8080EXM/ZEXALL gate easy to run.
-- `src/boards/cpu_88.cpp` — the **88-CPU card**: hosts a `CpuCore`, plugs into the bus, owns the clock property, handles `pINT`/`IntAck`, honors both resets, serializes.
+- `src/boards/mits-88cpu.cpp` — the **88-CPU card**: hosts a `CpuCore`, plugs into the bus, owns the clock property, handles `pINT`/`IntAck`, honors both resets, serializes.
 
-A card's cores are **units** (§3.0.1) — a plain 88-CPU has exactly one, and a dual-processor card has two with one active. Swapping the *card* is `BOARD REMOVE` / `BOARD ADD`, exactly as you'd swap the physical thing.
+A card's cores are **units** (§3.0.1) — a plain 88-CPU has exactly one, and a dual-processor card has two with one active. Swapping the *card* is `BOARDS REMOVE` / `BOARDS ADD`, exactly as you'd swap the physical thing.
 
 **The clock is the CPU board's property**, not the machine's: `SET cpu0 clock_hz=2000000`. It belongs to the card because that is where the crystal is, and because a backplane with no CPU card in it — which is what milestone 1a runs — has no clock rate to speak of.
 
@@ -170,7 +172,7 @@ which = the explicit CPU= argument
 
 The fallout: on the dual-CPU card above, when the guest `OUT`s to switch from the 8080 to the 8085, **`DISASM` follows automatically** — "which instruction set" and "which core is active" are the same question, and it is already being asked.
 
-*(The word `CPU` does double duty — `DISASM ... CPU=8080` names an instruction set, while `BOARD ADD 8080 cpu0` names a card. That is deliberate: `CPU=` is the word everyone already uses, and inventing a second one to be precise about a distinction the user does not have to care about would cost more than it buys.)*
+*(The word `CPU` does double duty — `DISASM ... CPU=8080` names an instruction set, while `BOARDS ADD 8080 cpu0` names a card. That is deliberate: `CPU=` is the word everyone already uses, and inventing a second one to be precise about a distinction the user does not have to care about would cost more than it buys.)*
 
 ### 3.0.3 Registers are reflection, and the debugger is a bus observer
 
@@ -281,7 +283,7 @@ So the model is two ordinary board behaviors, and no bus special case:
 
 ```cpp
 // Pull PHANTOM* for the cycles I mean to shadow. A board strap:
-//   phantom = none | read | all      (see docs/boards/memory.md)
+//   phantom = none | read | all      (see docs/boards/s100-memory.md)
 bool MemoryBoard::assertsPhantom(const BusCycle& c) const {
     const Region* r = owner(c.addr);
     if (!r || r->kind != Rom) return false;          // only my ROM shadows anything
@@ -347,7 +349,7 @@ altairsim> SHOW BUS MAP
   C000-EFFF    —        —       unpopulated                       reads FF
 ```
 
-Note that one board occupies **two disjoint ranges**, because a real card carries several populated regions and empty sockets between them (`docs/boards/memory.md`). The map is per-*range*, not per-board.
+Note that one board occupies **two disjoint ranges**, because a real card carries several populated regions and empty sockets between them (`docs/boards/s100-memory.md`). The map is per-*range*, not per-board.
 
 > **Open — needs a manual, per §0.1.** *Which* boards disable themselves, at *which* port, with *what* bit? That is board-specific and I will not guess it. The mechanism above is general and costs nothing; the specific straps get filled in per board as the manuals arrive. **Patrick: which board do you want first?**
 
@@ -363,7 +365,7 @@ virtual void snoop(const BusCycle&);                  // CLOCKED. Latch here, an
 
 The first two are called **several times per cycle** — once to resolve PHANTOM\*, again inside each board's own decode — so they must have no side effects. `snoop()` is the clocked half, and it is the **only** place a board may latch what it saw.
 
-**The card that forced this is the Tarbell** (`docs/boards/tarbell.md`). Its 32-byte boot PROM shadows RAM from POC\*, and it releases PHANTOM\* permanently the first time it sees a memory read with **A5 high**. Both halves are load-bearing:
+**The card that forced this is the Tarbell** (`docs/boards/tarbell-sd.md`). Its 32-byte boot PROM shadows RAM from POC\*, and it releases PHANTOM\* permanently the first time it sees a memory read with **A5 high**. Both halves are load-bearing:
 
 - The release must be **combinational**, because the bootstrap's own first fetch out of the PROM *is* the read with A5 high. If the release waited a cycle, that fetch would happen while memory was still shadowed, read `0xFF` off the floating bus, and no Tarbell would ever have booted.
 - The release must also **latch**, or a later data read below `0x20` would re-shadow the PROM over the sector just loaded there.
@@ -380,7 +382,7 @@ A banked memory board registers a bank-select I/O port; a guest write selects wh
 
 **What a bank select *does* is the board's business, and this document states no rule about it.** On the five cards below it swaps the 64K plane. On some other card it might not. The bus carries the `OUT` and the board decides — that is the entire point.
 
-If you are ever tempted to hoist banking into the bus or the monitor, read this table first. These are five **real** cards (`docs/boards/memory.md`, sourced from `s100_bram.c`):
+If you are ever tempted to hoist banking into the bus or the monitor, read this table first. These are five **real** cards (`docs/boards/s100-memory.md`, sourced from `s100_bram.c`):
 
 | Card | Port | Banks | The data written selects the bank how? |
 |---|---|---|---|
@@ -458,7 +460,7 @@ Model the floating bus honestly once and all three are free. Fake any one of the
 
 > **Providing `0xFF` when no board answered is the ONLY thing the bus does that a board does not.** That is the entire bus/board overlap, and it stays that size. — *Patrick, 2026-07-11*
 
-So **no board may ever manufacture `0xFF`**, and in particular **no board may seed its own store with it.** A RAM chip does not power up holding `0xFF`; it powers up holding whatever it feels like, which is what `fill = random` is for, and *what a card's chips contain is that card's business* (`docs/boards/memory.md`). The bus does not initialize anyone's memory and has never heard of `fill`.
+So **no board may ever manufacture `0xFF`**, and in particular **no board may seed its own store with it.** A RAM chip does not power up holding `0xFF`; it powers up holding whatever it feels like, which is what `fill = random` is for, and *what a card's chips contain is that card's business* (`docs/boards/s100-memory.md`). The bus does not initialize anyone's memory and has never heard of `fill`.
 
 The failure this prevents is a quiet one, and it was in this code until Patrick caught it. Seed a board's store with `0xFF` — it is the obvious "uninitialized" filler — and `DUMP` shows `FF` for a card whose RAM is fine, `FF` for a card whose RAM was never filled, and `FF` for a card that **isn't in the machine**. One symptom, three causes, and you chase the wrong one. The moment a board can produce `0xFF`, the single signal the bus has stops being a signal.
 
@@ -527,7 +529,7 @@ enum class Reset {
 Get this backwards and it shows up as *"my program vanished when I hit reset"* — which reads like a memory-model bug rather than a reset bug, and costs you a day.
 
 **What POC\* does is board-specific**, and each board's `.md` must say **concretely** what each reset does to it. Examples:
-- **`memory`**: both resets clear the bank-select latch to 0 and touch nothing else. `POWER` re-fills RAM regions per `fill` and re-reads ROM regions from their files. See `docs/boards/memory.md`.
+- **`memory`**: both resets clear the bank-select latch to 0 and touch nothing else. `POWER` re-fills RAM regions per `fill` and re-reads ROM regions from their files. See `docs/boards/s100-memory.md`.
 - **A boot ROM that disables itself** (§4.2.1): `PowerOn` **re-enables it** — otherwise the machine boots exactly once and never again. Whether `Bus` (the front-panel reset button) also re-enables it is a **board-specific strap, and the board's `.md` must say which.** This is the single most likely place to produce the classic "works from power-on, dead from the reset button" bug, because a warm reset that leaves the ROM switched out drops the CPU onto RAM at 0000 and it executes garbage.
 - **88-2SIO**: 6850 master reset on both (clears RDRF/TDRE, drops RTS), but **keeps its `ByteStream` connected**.
 - **88-DCDD**: deselects all drives, unloads the head, invalidates the sector counter on both — but **keeps images mounted**, and does *not* seek to track 0 on a warm reset (real drives don't).
@@ -558,7 +560,7 @@ Every board that moves characters (88-SIO, 88-2SIO, 88-ACR, 88-LPC, paper tape, 
 
 > **An unconnected line is not an error, and there is no null pointer in the stream path.** A disconnected unit is bound to a `NullStream`, because that is what an unconnected 6850 on a real card *is*: it sits there with TDRE set forever, and software that writes to it works fine and talks to nobody. So no board contains a branch for "what if nothing is plugged in" — there was never a case to handle.
 
-> **A `ByteStream` is NOT a serial line.** It is a *buffered, flow-controlled* source — a pipe, a socket, an OS keyboard queue. It will hold a byte until you take it. A board that models it as a free-running wire (and therefore synthesizes overruns from it) manufactures data loss that the host transport does not have. This cost real debugging; see `docs/boards/88-2sio.md`.
+> **A `ByteStream` is NOT a serial line.** It is a *buffered, flow-controlled* source — a pipe, a socket, an OS keyboard queue. It will hold a byte until you take it. A board that models it as a free-running wire (and therefore synthesizes overruns from it) manufactures data loss that the host transport does not have. This cost real debugging; see `docs/boards/mits-2sio.md`.
 
 ```cpp
 class ByteStream {
@@ -644,7 +646,7 @@ Why each piece is there — each corresponds to a disk that exists:
 | **88-DCDD** (hard sector) | **137** | The *whole slot*: sync byte, track/sector header, 128-byte payload, checksum, stop byte, trailer. |
 | Tarbell, Disk 1A, North Star… (soft sector) | **128** / 256 | **Payload only.** The header and checksum were in the inter-sector gaps on real media and never made it into the image. |
 
-The board still owns what is *inside* the slot — for the DCDD, that the payload starts at offset 7 on a data track and 3 on a system track, and that a checksum sits at [4]. That is the controller's business, exactly as `docs/boards/88-dcdd.md` says.
+The board still owns what is *inside* the slot — for the DCDD, that the payload starts at offset 7 on a data track and 3 on a system track, and that a checksum sits at [4]. That is the controller's business, exactly as `docs/boards/mits-dcdd.md` says.
 
 > **Geometry probing belongs to the BOARD, not to this service.** An earlier draft of this section said the opposite — *"geometry probing lives here, once"* — and that was **wrong**. Geometry is a function of **controller × image size**, and the service does not know the controller. 337,568 bytes means a 77-track 8″ floppy *only because* it is a DCDD; 8,978,432 means a 2,048-track FDC+ *only because* it is a DCDD. The same byte count on a Tarbell means something else. So the **board** probes the size, picks among the formats *it* knows, and calls `init`/`initFormat`. The service does offsets and I/O and nothing else.
 
@@ -764,9 +766,10 @@ SIMH/AltairZ80-flavored, stable and greppable.
 CONFIGURATION
   CONFIG LOAD <file.toml>          CONFIG SAVE <file.toml>
                                    (bare LOAD/SAVE mean *memory* — see below)
-  BOARD LIST                       instances: id, type, ports, memory, status
-  BOARD TYPES                      every board type compiled in, with its properties
-  BOARD ADD <type> <id> [k=v ...]  BOARD REMOVE <id>
+  BOARDS                           the backplane: id, type, i/o, units, memory
+                                   (BOARD too: it is a prefix of BOARDS, not an alias)
+  BOARDS TYPES                     every board type compiled in, with its properties
+  BOARDS ADD <type> <id> [k=v ...] BOARDS REMOVE <id>
   SHOW <id>                        every property: value, units, legal range
   SET <id> <k>=<v>                 generic; e.g. SET sio2a BAUD=9600, SET mem0 PHANTOM=read
   SHOW ROMS                        every ROM compiled in: name, size, CRC32, description
@@ -853,7 +856,7 @@ EXECUTION
   ATTN (^E) IS THE STOP KEY, NOT ^C. Ctrl-C belongs to the guest. ATTN does not stop
   the machine -- it takes the keyboard back, and a bare RUN resumes where you were.
   RESET | RESET CPU | POWER
-  There is NO `SET CPU`. The CPU is a CARD (§3): BOARD ADD 8080 cpu0, and the clock
+  There is NO `SET CPU`. The CPU is a CARD (§3): BOARDS ADD 8080 cpu0, and the clock
   is that board's property -- SET cpu0 clock_hz=2000000. A card carrying both an
   8080 and an 8085 exposes them as UNITS and switches between them itself (§3.0.1).
 
@@ -1142,7 +1145,7 @@ See `docs/porting-notes.md` for the full list. The ones that will bite:
 
 **Available and sufficient:** the 88-2SIO (MITS *Theory of Operation* manual, `s100-manuals/MITS/ALTAIR_8800/`), the 88-DCDD (`mits_dsk.c` + `BIOS.ASM` + `CLAUDE.md`), and the PMMI (its manual, `pmmi-cpm22/`).
 
-**One inconsistency to settle:** the Python prototype and `BIOS.ASM` disagree on the 88-DCDD's `I` and `Z` status-bit positions. `mits_dsk.c` is authoritative — reconcile against it (§`docs/boards/88-dcdd.md`).
+**One inconsistency to settle:** the Python prototype and `BIOS.ASM` disagree on the 88-DCDD's `I` and `Z` status-bit positions. `mits_dsk.c` is authoritative — reconcile against it (§`docs/boards/mits-dcdd.md`).
 
 ---
 

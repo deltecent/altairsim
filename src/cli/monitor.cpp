@@ -3,7 +3,7 @@
 #include "cli/commands.h"
 #include "cli/lineedit.h"
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "boards/registry.h"
 #include "config/toml.h"
 #include "core/crc32.h"
@@ -144,7 +144,7 @@ bool Monitor::range(const std::string& t, uint32_t& lo, uint32_t& hi, std::ostre
 Board* Monitor::board(const std::string& id, std::ostream& err) {
     Board* b = m_.find(id);
     if (!b) {
-        err << "no board '" << id << "'. BOARD LIST shows what is in the machine.\n";
+        err << "no board '" << id << "'. BOARDS shows what is in the machine.\n";
         failed_ = true;
     }
     return b;
@@ -274,6 +274,144 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
                       p.get().text(p.radix).c_str(), legal.c_str());
         out << buf << "\n";
     }
+}
+
+// ---------------------------------------------------------------------------
+// BOARDS -- the backplane.
+//
+// The old listing printed `mem:0000-DFFF,FF00-FFFF` and stopped there, which is
+// the one question it cannot answer: WHICH of those is the ROM, and WHICH ROM is
+// it? Both facts were already in the MapEntry (`what` and `note`) and were being
+// thrown away. So each decoded range gets its own line -- a card carries several,
+// and squashing them into one comma list was what hid the difference.
+// ---------------------------------------------------------------------------
+
+// "56K", or "512 bytes" -- because a 256-byte region is not "0K", and integer
+// division reporting a real region as nothing costs somebody an afternoon.
+static std::string sizeText(uint32_t n) {
+    char b[32];
+    if (n >= 1024 && n % 1024 == 0)
+        std::snprintf(b, sizeof b, "%uK", (unsigned)(n / 1024));
+    else
+        std::snprintf(b, sizeof b, "%u bytes", (unsigned)n);
+    return b;
+}
+
+// The chip in the socket, by the name a person would say: `roms/dbl.hex` and
+// `builtin:dbl` are both "dbl.hex" / "dbl". The full path is in SHOW <id>.
+static std::string chipName(const std::string& note, std::string& extra) {
+    std::string s = note;
+    size_t gap = s.find("  ");  // the board separates its own trailing notes by two spaces
+    if (gap != std::string::npos) {
+        extra = s.substr(gap + 2);
+        s = s.substr(0, gap);
+    }
+    if (s.rfind("builtin:", 0) == 0) s = s.substr(8);
+    size_t slash = s.find_last_of("/\\");
+    if (slash != std::string::npos) s = s.substr(slash + 1);
+    return s;
+}
+
+void Monitor::showBoards(std::ostream& out) {
+    char buf[256];
+
+    struct Row {
+        std::string id, type, io, units;
+        std::vector<std::string> mem;  // one line per DECODED range
+        bool disabled = false;
+    };
+    std::vector<Row> rows;
+    bool anyConsole = false;
+
+    for (const auto& b : m_.boards()) {
+        Row r;
+        r.id = b->id;
+        r.type = b->type();
+        r.disabled = !b->enabled();
+
+        for (const auto& e : b->ioMap()) {
+            std::snprintf(buf, sizeof buf, "%s%02X", r.io.empty() ? "" : ",", e.lo);
+            r.io += buf;
+        }
+
+        for (const auto& e : b->memMap()) {
+            std::string detail, extra;
+            if (e.what == "rom") {
+                detail = chipName(e.note, extra);
+                if (!extra.empty()) detail += "  " + extra;
+            } else {
+                detail = sizeText(e.hi - e.lo + 1);
+                if (!e.note.empty()) detail += "  " + e.note;  // "bank 3 of 8"
+            }
+            std::snprintf(buf, sizeof buf, "%04X-%04X  %-3s  %s", e.lo, e.hi, e.what.c_str(),
+                          detail.c_str());
+            r.mem.push_back(buf);
+        }
+
+        // Units, grouped by kind and IN THE BOARD'S OWN ORDER: "2 serial: a*, b".
+        // The count is what Patrick asked for; the designations are what you have
+        // to type at MOUNT and CONNECT, so both are here or neither is useful.
+        std::vector<std::pair<UnitKind, std::vector<std::string>>> byKind;
+        for (const auto& u : b->units()) {
+            std::string name = u.name;
+            if (isMountable(u.kind) && u.state == "(empty)") name += "(empty)";
+            if (u.kind == UnitKind::Serial && u.state == "console") {
+                name += "*";
+                anyConsole = true;
+            }
+            auto it = std::find_if(byKind.begin(), byKind.end(),
+                                   [&](const auto& g) { return g.first == u.kind; });
+            if (it == byKind.end())
+                byKind.push_back({u.kind, {name}});
+            else
+                it->second.push_back(name);
+        }
+        for (const auto& [kind, names] : byKind) {
+            std::string list;
+            for (const auto& n : names) list += (list.empty() ? "" : ", ") + n;
+            if (!r.units.empty()) r.units += "; ";
+            r.units += std::to_string(names.size()) + " " + unitKindName(kind) + ": " + list;
+        }
+
+        rows.push_back(std::move(r));
+    }
+
+    // Widths from the DATA, so nothing is ever truncated and nothing is padded to
+    // a width that a longer id would have blown out anyway.
+    size_t wId = 2, wType = 4, wIo = 3, wUn = 5, wMem = 6;
+    for (const auto& r : rows) {
+        wId = std::max(wId, r.id.size());
+        wType = std::max(wType, r.type.size());
+        wIo = std::max(wIo, r.io.empty() ? 1 : r.io.size());
+        wUn = std::max(wUn, r.units.empty() ? 1 : r.units.size());
+        for (const auto& m : r.mem) wMem = std::max(wMem, m.size());
+    }
+
+    std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %-*s  %-*s  %s", (int)wId, "ID", (int)wType,
+                  "TYPE", (int)wIo, "I/O", (int)wUn, "UNITS", "MEMORY");
+    out << buf << "\n";
+
+    std::string rule = "  " + std::string(wId, '-') + "  " + std::string(wType, '-') + "  " +
+                       std::string(wIo, '-') + "  " + std::string(wUn, '-') + "  " +
+                       std::string(wMem, '-');
+    out << rule << "\n";
+
+    // Where a continuation line has to start to sit under MEMORY.
+    const size_t memCol = 2 + wId + 2 + wType + 2 + wIo + 2 + wUn + 2;
+
+    for (const auto& r : rows) {
+        std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %-*s  %-*s  %s", (int)wId, r.id.c_str(),
+                      (int)wType, r.type.c_str(), (int)wIo, r.io.empty() ? "-" : r.io.c_str(),
+                      (int)wUn, r.units.empty() ? "-" : r.units.c_str(),
+                      r.mem.empty() ? "-" : r.mem[0].c_str());
+        out << buf;
+        if (r.disabled) out << "   [DISABLED]";
+        out << "\n";
+        for (size_t i = 1; i < r.mem.size(); ++i)
+            out << std::string(memCol, ' ') << r.mem[i] << "\n";
+    }
+
+    if (anyConsole) out << "\n  * holds the console\n";
 }
 
 static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& out);
@@ -637,7 +775,7 @@ CpuCore* Monitor::needCpu(std::ostream& err) {
     if (!c) {
         // Not an internal error -- a fact about the machine. An empty backplane is
         // a machine you can build, and it is the one milestone 1a ran.
-        err << "no CPU in this machine.  BOARD ADD 8080 cpu0\n";
+        err << "no CPU in this machine.  BOARDS ADD 8080 cpu0\n";
         failed_ = true;
     }
     return c;
@@ -710,7 +848,7 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         out << "^C -- stopped at the instruction boundary. The machine is intact.\n";
         break;
     case StopReason::NoCpu:
-        out << "no CPU in this machine.  BOARD ADD 8080 cpu0\n";
+        out << "no CPU in this machine.  BOARDS ADD 8080 cpu0\n";
         break;
     case StopReason::Steps:
         break;
@@ -845,9 +983,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     // ---------------- BOARD ----------------
-    if (cmd == "BOARD") {
-        if (!need(2, "BOARD LIST|TYPES|ADD|REMOVE")) return true;
-        std::string sub = upper(a[1]);
+    if (cmd == "BOARDS") {
+        // A bare BOARDS is the list. It is the question people actually ask, and
+        // making them type the word LIST to ask it is a toll booth.
+        std::string sub = (a.size() < 2) ? "LIST" : upper(a[1]);
 
         if (sub == "TYPES") {
             for (const auto& t : boardTypes()) {
@@ -868,26 +1007,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 out << "(empty backplane)\n";
                 return true;
             }
-            for (const auto& b : m_.boards()) {
-                std::string mem, io;
-                for (const auto& e : b->memMap()) {
-                    std::snprintf(buf, sizeof buf, "%s%04X-%04X", mem.empty() ? "" : ",", e.lo,
-                                  e.hi);
-                    mem += buf;
-                }
-                for (const auto& e : b->ioMap()) {
-                    std::snprintf(buf, sizeof buf, "%s%02X", io.empty() ? "" : ",", e.lo);
-                    io += buf;
-                }
-                std::snprintf(buf, sizeof buf, "  %-8s %-8s mem:%-24s io:%-8s %s", b->id.c_str(),
-                              b->type().c_str(), mem.empty() ? "-" : mem.c_str(),
-                              io.empty() ? "-" : io.c_str(), b->enabled() ? "" : "[DISABLED]");
-                out << buf << "\n";
-            }
+            showBoards(out);
             return true;
         }
         if (sub == "ADD") {
-            if (!need(4, "BOARD ADD <type> <id> [key=value ...]")) return true;
+            if (!need(4, "BOARDS ADD <type> <id> [key=value ...]")) return true;
             std::string err;
             Board* b = m_.add(a[2], a[3], err);
             if (!b) {
@@ -909,7 +1033,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (sub == "REMOVE") {
-            if (!need(3, "BOARD REMOVE <id>")) return true;
+            if (!need(3, "BOARDS REMOVE <id>")) return true;
             std::string err;
             if (!m_.remove(a[2], err)) {
                 out << err << "\n";
@@ -919,7 +1043,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
             return true;
         }
-        out << "BOARD LIST|TYPES|ADD|REMOVE\n";
+        out << "BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>\n";
         failed_ = true;
         return true;
     }

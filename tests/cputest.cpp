@@ -46,8 +46,8 @@
 // mysterious wrong answer half an hour later.
 //
 
-#include "boards/cpu8080.h"
-#include "boards/memory.h"
+#include "boards/mits-88cpu.h"
+#include "boards/s100-memory.h"
 #include "core/machine.h"
 
 #include <chrono>

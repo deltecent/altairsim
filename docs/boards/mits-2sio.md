@@ -1,6 +1,6 @@
 # 88-2SIO — MITS Dual Serial Interface
 
-**Status: BUILT, 2026-07-11.** `src/boards/sio2.cpp`, `tests/test_sio2.cpp`.
+**Status: BUILT, 2026-07-11.** `src/boards/mits-2sio.cpp`, `tests/test_sio2.cpp`.
 
 **The proof vehicle** — a fully-modeled 2SIO exercises every interface in the design (console, TCP socket, host serial, interrupts, multi-unit boards, multiple instances), which is why it is the only peripheral in milestone 1.
 

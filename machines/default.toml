@@ -29,7 +29,7 @@
 # execute from. It never writes to FFxx at all. So no write needs to fall through
 # to RAM underneath, hence no reason for the PROM to pull PHANTOM*, and there is
 # not even any RAM up there to shadow: 56K stops at DFFF. (The board can still
-# assert PHANTOM* -- see docs/boards/memory.md. It is a real S-100 signal and
+# assert PHANTOM* -- see docs/boards/s100-memory.md. It is a real S-100 signal and
 # other cards need it. This one does not, and saying so is cheaper than a week
 # spent debugging a machine that was never wrong.)
 #
@@ -58,7 +58,7 @@ sense    = 00                 # port FF. DBL reads bit 4 to pick the 2SIO's stop
 
 # THE CPU IS A CARD, because in a real Altair it was one -- the MITS 88-CPU -- and
 # people pulled it out and put a Z80 in its place. So it has properties, both
-# resets, and a line in BOARD LIST, with no special cases anywhere.
+# resets, and a line in BOARDS, with no special cases anywhere.
 #
 # It decodes NOTHING. It is not being coy: a plain 88-CPU has nothing on it that a
 # bus cycle can reach. It ORIGINATES cycles instead, which is what a bus master is,

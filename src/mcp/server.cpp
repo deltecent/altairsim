@@ -1,6 +1,6 @@
 #include "mcp/server.h"
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "boards/registry.h"
 #include "cli/monitor.h"
 #include "core/crc32.h"

@@ -14,7 +14,7 @@ Three facts about real cards drive this design. The first two are commonly misse
 
 ## Why one board and not two
 
-An earlier draft had a `ram` board and planned a separate `rom` board. That is wrong, and fact 3 is why: a real card may hold **two ROM areas and two RAM areas**, and modeling it as four boards would put four lines in `BOARD LIST` for one physical card — breaking the premise the whole bus model rests on, that a board *is* a card.
+An earlier draft had a `ram` board and planned a separate `rom` board. That is wrong, and fact 3 is why: a real card may hold **two ROM areas and two RAM areas**, and modeling it as four boards would put four lines in `BOARDS` for one physical card — breaking the premise the whole bus model rests on, that a board *is* a card.
 
 So there is **one `memory` board, holding a list of regions.** A region is *an area of the card that is populated with something*:
 
@@ -120,6 +120,14 @@ altairsim> MOUNT mem0:rom0 newdbl.hex
 mem0:2 — rom, FF00-FFFF (256 bytes, 1 page), from newdbl.hex
 ```
 
+### An empty socket is still a socket
+
+A `rom` region with **no `mount`** is a socket with no chip in it, and that is an ordinary thing for a card to be — a four-socket PROM board with two chips in it is a machine somebody actually owned. It decodes nothing, so those pages float; it still has a unit name, so you can `MOUNT` a chip into it.
+
+**`UNMOUNT` pulls the chip. It does not unsolder the socket.** The region stays, empty, and keeps its name. This is not fussiness: the sockets are **numbered**, so erasing the region would renumber every socket behind it — pull the chip out of `rom0` and the chip sitting in `rom1` would silently *become* `rom0`, and `MOUNT mem0:rom0` would then put it in the wrong socket. You cannot unsolder a socket by pulling its chip.
+
+`BOARDS` shows it as `rom1(empty)` in UNITS, and it is **absent from the memory column** — because the memory map is a map of what is decoded, and an empty socket is not.
+
 ## How it is simulated
 
 **The page is the unit of everything: 256 bytes (100H).** A 64K space is 256 pages, `00`–`FF`. The board keeps one page map — *which region, if any, owns this page?* — and it drives `decodes()`:
@@ -192,7 +200,7 @@ A **write** to an unclaimed address is the mirror image: nobody latches it, and 
 
 > ### `phantom = read` — sourced. The card is the Tarbell.
 >
-> **Settled 2026-07-11 by Patrick.** The **Tarbell single-density floppy disk controller** carries a 32-byte boot PROM and asserts PHANTOM\* **on reads only**: while it is shadowing, *"the memory boards installed in the system must allow writes to their RAM, but not reads."* That is `phantom = read`, exactly, and it is a real card doing a real job — the bootstrap needs to **write the sector it is loading into the RAM underneath itself.** See `docs/boards/tarbell.md`.
+> **Settled 2026-07-11 by Patrick.** The **Tarbell single-density floppy disk controller** carries a 32-byte boot PROM and asserts PHANTOM\* **on reads only**: while it is shadowing, *"the memory boards installed in the system must allow writes to their RAM, but not reads."* That is `phantom = read`, exactly, and it is a real card doing a real job — the bootstrap needs to **write the sector it is loading into the RAM underneath itself.** See `docs/boards/tarbell-sd.md`.
 >
 > **This box used to say the opposite,** and the history is worth keeping. Earlier drafts justified `read` by claiming it was "what the DBL boot PROM wants." **I fabricated that**, and the ROM disproves it: DBL copies itself to `2C00` and runs there, so it never writes to `FFxx` at all. The strap was right; my reason for it was invented. The lesson is not "the guess worked out" — it is that a fabricated citation was **indistinguishable from a real one** until someone checked, and the real one turned out to be a different card doing a different thing for a different reason. §0.1 stands.
 >

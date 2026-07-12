@@ -76,6 +76,7 @@ private:
     void showRegs(std::ostream& out);
 
     void showBoard(Board* b, std::ostream& out);
+    void showBoards(std::ostream& out);  // the backplane: BOARDS
     void showProps(const std::vector<Property>& ps, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);
 

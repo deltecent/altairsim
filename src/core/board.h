@@ -86,7 +86,7 @@ public:
     // physically is. A card that gates PHANTOM* with the read strobe simply does
     // not pull it during a write cycle, so memory answers the write normally and
     // the byte lands in RAM under the shadow. The honoring board needs no strap
-    // for this and must never grow one. See the Tarbell (docs/boards/tarbell.md).
+    // for this and must never grow one. See the Tarbell (docs/boards/tarbell-sd.md).
     virtual bool assertsPhantom(const BusCycle&) const { return false; }
 
     // Do I drive the bus for this cycle? Everything board-specific lives behind
@@ -271,7 +271,7 @@ protected:
 // ---------------------------------------------------------------------------
 // The ONE path by which any property is ever set.
 //
-// SET, the TOML loader, BOARD ADD's k=v arguments, and the MCP board_set tool
+// SET, the TOML loader, BOARDS ADD's k=v arguments, and the MCP board_set tool
 // all call this. That is why they cannot disagree about what is legal or what
 // base a number is in -- there is only one answer, and it is computed from the
 // board's own metadata.

@@ -135,9 +135,17 @@ static const std::vector<CommandDef> kCommands = {
      "and no card is poked. Reports contention, and reports PHANTOM*.\n"
      "  WHO FF00\n"
      "  WHO IO 10"},
-    {"BOARD", true, nullptr, "BOARD LIST|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>",  // BO
-     "  BOARD TYPES              every card, and its properties\n"
-     "  BOARD ADD memory mem0"},
+    // The name is PLURAL, so both spellings work and neither is an alias: BOARD is
+    // a prefix of BOARDS, and a prefix is what this table resolves. `BO` too.
+    {"BOARDS", true, nullptr, "BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>",  // BO
+     "The backplane: what is in it, what each card answers to, and what is in its\n"
+     "sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a\n"
+     "ROM range says which image is in it -- an empty socket decodes nothing, so it\n"
+     "is not in the memory column at all; it is in UNITS, marked (empty).\n"
+     "  BOARDS                   the backplane\n"
+     "  BOARD                    the same thing: a prefix of BOARDS\n"
+     "  BOARDS TYPES             every card, and its properties\n"
+     "  BOARDS ADD memory mem0"},
     {"REGS", true, nullptr, "REGS | SET REG <r>=<v>",  // REG (beats REGION)
      "The flags are registers too, so SET REG CY=1 works. A register value is on\n"
      "the wire, so it is HEX.\n"

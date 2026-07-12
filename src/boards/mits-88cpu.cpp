@@ -1,4 +1,4 @@
-#include "boards/cpu8080.h"
+#include "boards/mits-88cpu.h"
 
 namespace altair {
 

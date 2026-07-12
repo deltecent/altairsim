@@ -15,7 +15,7 @@
 // RAM was never filled, and FF for a card that is not there. One symptom, three
 // causes, and you will chase the wrong one.
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "core/bus.h"
 #include "test.h"
 

@@ -62,7 +62,12 @@ void test_cli() {
     CHECK(R("STO") == "STOP", "STO stops");
     CHECK(R("SN") == "SNAPSHOT", "SN snapshots");
     CHECK(R("HE") == "HELP", "HE helps");
-    CHECK(R("BO") == "BOARD", "BO is the board command");
+    // The command is PLURAL, and that is what makes both spellings work: BOARD is a
+    // prefix of BOARDS, and prefixes are the whole resolver. No alias, no second
+    // table entry, nothing to keep in sync.
+    CHECK(R("BO") == "BOARDS", "BO is the board command");
+    CHECK(R("BOARD") == "BOARDS", "BOARD resolves -- it is a prefix of BOARDS");
+    CHECK(R("BOARDS") == "BOARDS", "and so does BOARDS");
     // EXAMINE and DEPOSIT are the front panel's two switches, so they get the short
     // keys: DE and EX. E stays with EDIT, which outranks both.
     CHECK(R("EX") == "EXAMINE", "EX examines -- the front-panel switch, not the door");
@@ -171,8 +176,8 @@ void test_cli() {
     std::ostringstream sink;
     // The CPU is here because EXAMINE needs one below -- the panel's EXAMINE is a
     // bus cycle the PROCESSOR drives (see the next section). DUMP does not need it.
-    mon.exec("BOARD ADD 8080 cpu0", sink);
-    mon.exec("BOARD ADD memory mem0", sink);
+    mon.exec("BOARDS ADD 8080 cpu0", sink);
+    mon.exec("BOARDS ADD memory mem0", sink);
     mon.exec("SET mem0 fill=zero", sink);
     mon.exec("REGION ADD mem0 type=ram at=0 size=1K", sink);
     mon.exec("DEPOSIT 0 41 42 43", sink);
@@ -257,7 +262,7 @@ void test_cli() {
         Machine bare;
         Monitor mb(bare);
         std::ostringstream o;
-        mb.exec("BOARD ADD memory mem0", o);
+        mb.exec("BOARDS ADD memory mem0", o);
         mb.exec("REGION ADD mem0 type=ram at=0 size=1K", o);
         std::ostringstream e;
         mb.exec("EX 0", e);
@@ -283,8 +288,8 @@ void test_cli() {
     Machine m2;
     Monitor mon2(m2);
     std::ostringstream s2;
-    mon2.exec("BOARD ADD 8080 cpu0", s2);
-    mon2.exec("BOARD ADD memory mem0", s2);
+    mon2.exec("BOARDS ADD 8080 cpu0", s2);
+    mon2.exec("BOARDS ADD memory mem0", s2);
     mon2.exec("SET mem0 fill=zero", s2);
     mon2.exec("REGION ADD mem0 type=ram at=0 size=64K", s2);
     mon2.exec("POWER ON", s2);
@@ -313,4 +318,60 @@ void test_cli() {
     uint16_t before = c->pc();
     mon2.exec("EX 0400 RAW mem0", s2);
     CHECK(c->pc() == before, "EXAMINE RAW does not touch the PC -- it is not a bus cycle");
+
+    // -----------------------------------------------------------------------
+    // BOARDS names the RAM and the ROM apart, and says WHICH ROM.
+    //
+    // The old listing printed `mem:0000-DFFF,FF00-FFFF` -- two ranges squashed
+    // into one comma list, with no way to tell which was the ROM or what was in
+    // it. Both facts were in the MapEntry all along and were being dropped.
+    // -----------------------------------------------------------------------
+    SECTION("BOARDS -- RAM and ROM are named apart, and the ROM says which chip");
+
+    Machine m3;
+    Monitor mon3(m3);
+    std::ostringstream s3;
+    mon3.exec("BOARDS ADD memory mem0", s3);
+    mon3.exec("REGION ADD mem0 type=ram at=0 size=56K", s3);
+    mon3.exec("REGION ADD mem0 type=rom at=FF00 mount=builtin:dbl", s3);
+    mon3.exec("REGION ADD mem0 type=rom at=F800", s3);  // a socket with no chip in it
+
+    std::ostringstream bl;
+    mon3.exec("BOARDS", bl);
+    std::string L = bl.str();
+    CHECK(L.find("UNITS") != std::string::npos && L.find("MEMORY") != std::string::npos,
+          "BOARDS has a header");
+    CHECK(L.find("0000-DFFF  ram  56K") != std::string::npos, "the RAM says it is RAM, and how big");
+    CHECK(L.find("FF00-FFFF  rom  dbl") != std::string::npos,
+          "the ROM says it is ROM, and WHICH ROM is in it");
+    CHECK(L.find("2 rom: rom0, rom1(empty)") != std::string::npos,
+          "the units are counted and named, and the empty socket says so");
+
+    // AN EMPTY SOCKET DECODES NOTHING, so it is not in the memory column at all --
+    // those pages float, exactly as they do on the bench.
+    CHECK(L.find("F800") == std::string::npos, "an empty socket is not in the memory map");
+
+    // Both spellings run, because BOARD is a prefix of BOARDS.
+    std::ostringstream bs;
+    mon3.exec("BOARD", bs);
+    CHECK(bs.str() == L, "BOARD and BOARDS are the same command");
+
+    // UNMOUNT PULLS THE CHIP; IT DOES NOT UNSOLDER THE SOCKET. Erasing the region
+    // would renumber the sockets behind it -- pull rom0 and the chip sitting in
+    // rom1 silently BECOMES rom0, so MOUNTing rom0 back would put it in the wrong
+    // socket. The socket stays, empty, and keeps its name.
+    std::ostringstream um;
+    mon3.exec("UNMOUNT mem0:rom0", um);
+    std::ostringstream b2;
+    mon3.exec("BOARDS", b2);
+    CHECK(b2.str().find("rom0(empty)") != std::string::npos, "the socket survives its chip");
+    CHECK(b2.str().find("FF00") == std::string::npos,
+          "and stops decoding: the pages it held now float");
+
+    std::ostringstream rm;
+    mon3.exec("MOUNT mem0:rom0 builtin:dbl", rm);
+    std::ostringstream b3;
+    mon3.exec("BOARDS", b3);
+    CHECK(b3.str().find("FF00-FFFF  rom  dbl") != std::string::npos,
+          "and the chip goes back into the SAME socket it came out of");
 }

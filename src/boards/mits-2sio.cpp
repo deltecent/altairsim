@@ -1,4 +1,4 @@
-#include "boards/sio2.h"
+#include "boards/mits-2sio.h"
 
 #include "host/stream.h"
 
@@ -115,7 +115,7 @@ void Acia::disconnect() { connect(std::make_unique<NullStream>()); }
 // is timed against) -- but only ever take a byte when the register is free.
 //
 // The honest consequence is that status bit 5 is always zero, and that is
-// written down in docs/boards/88-2sio.md as a limitation rather than left for
+// written down in docs/boards/mits-2sio.md as a limitation rather than left for
 // someone to discover. If a HOST SERIAL PORT endpoint ever lands, an overrun
 // there is a genuine hardware event and the stream can report it -- from the
 // place that actually knows, which is not here.
@@ -346,7 +346,7 @@ bool Sio2Board::assertsInt() {
 
 void Sio2Board::reset(Reset) {
     // Both resets do a 6850 master reset on both chips, and both KEEP THE
-    // ENDPOINTS CONNECTED (docs/boards/88-2sio.md).
+    // ENDPOINTS CONNECTED (docs/boards/mits-2sio.md).
     if (!clock_) return;
     a_.masterReset(*clock_);
     b_.masterReset(*clock_);

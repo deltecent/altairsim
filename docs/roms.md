@@ -52,7 +52,7 @@ It expects **itself at F800**, **RAM below C000** (it sets its stack there and p
 
 **One caveat, stated plainly.** The chain is *EPROM → Eberhard's disassembly → reassembly*, not a raw dump. The bytes are therefore only as faithful as the disassembly, and I cannot close that last link without the physical part. This is still far better than a bare `.bin`, because the listing makes every byte auditable — but it is not the same as a dump, and the table should not pretend it is.
 
-**What DBL actually does, since it keeps getting mis-cited.** DBL copies *itself* from `FF13` into RAM at `2C00` (`EB` bytes) and jumps there, because — its own header says so — "BECAUSE OF THE SLOW EPROM ACCESS TIME." **It never writes to `FFxx`.** It therefore has *no* opinion about PHANTOM\* write-through, and any claim that DBL "needs shadow RAM" is false. Earlier drafts of `DESIGN.md` §4.2, `docs/config.md`, and `docs/boards/memory.md` all said exactly that; it was fabricated and has been removed. It reads the sense switches at `FF22` (`IN 0FFH`, bit 4) to pick the 2SIO stop-bit setting — *that* part is real and is why `[machine] sense` exists.
+**What DBL actually does, since it keeps getting mis-cited.** DBL copies *itself* from `FF13` into RAM at `2C00` (`EB` bytes) and jumps there, because — its own header says so — "BECAUSE OF THE SLOW EPROM ACCESS TIME." **It never writes to `FFxx`.** It therefore has *no* opinion about PHANTOM\* write-through, and any claim that DBL "needs shadow RAM" is false. Earlier drafts of `DESIGN.md` §4.2, `docs/config.md`, and `docs/boards/s100-memory.md` all said exactly that; it was fabricated and has been removed. It reads the sense switches at `FF22` (`IN 0FFH`, bit 4) to pick the 2SIO stop-bit setting — *that* part is real and is why `[machine] sense` exists.
 
 ## Licensing
 
@@ -72,4 +72,4 @@ At build time, CMake turns each file in `roms/` into a byte array in a generated
 ## References
 
 - `DESIGN.md` §0.1 (where hardware facts come from), §7 (host services), §10.2 (`RAW` — how you get bytes into a ROM at runtime).
-- `docs/boards/memory.md` — the board that holds them.
+- `docs/boards/s100-memory.md` — the board that holds them.

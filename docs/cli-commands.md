@@ -42,7 +42,7 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `COM` | COMPARE | |
 | `MOV` | MOVE | |
 | `W` | WHO | |
-| `BO` | BOARD | |
+| `BO` | BOARDS | `BOARD` works too — it is a prefix, not an alias |
 | `REG` | REGS | beats REGION |
 | `REGI` | REGION | |
 | `DI` | DISASM | |
@@ -143,12 +143,34 @@ F800  3E 03   MVI A,03
 
 ```
 altairsim> EX 0
-no CPU in this machine.  BOARD ADD 8080 cpu0
+no CPU in this machine.  BOARDS ADD 8080 cpu0
 ```
 
 **`RAW <id>` is the exception, and only because it is not a bus cycle at all.** That is the PROM burner reaching behind the bus into a board's store (§10.2) — it needs no CPU, touches no PC, and carries its own cursor. Which is precisely why it can write a ROM when a bus write cannot.
 
 **EXAMINE is the only memory command that needs a CPU.** DUMP, DEPOSIT, FILL, SEARCH, COMPARE and MOVE all work on an empty backplane, because you have to be able to debug the simulator without a processor in it. Patrick: *"All commands that manipulate memory other than EX are fine without a CPU because we need to be able to debug the simulator without a CPU."*
+
+## BOARDS is the backplane
+
+**The command is plural, and both spellings work.** `BOARD` is a *prefix* of `BOARDS`, and prefixes are the whole resolver — so `BOARDS`, `BOARD` and `BO` are one command, with no alias, no second table entry, and nothing to keep in sync. A bare `BOARDS` lists them; you do not have to say `LIST`.
+
+```
+altairsim> BOARDS
+  ID    TYPE    I/O    UNITS            MEMORY
+  ----  ------  -----  ---------------  ---------------------------
+  cpu0  8080    -      1 cpu: 8080      -
+  sio0  2sio    10,12  2 serial: a*, b  -
+  mem0  memory  -      1 rom: rom0      0000-DFFF  ram  56K
+                                        FF00-FFFF  rom  dbl  phantom:all
+
+  * holds the console
+```
+
+**Each decoded range gets its own line, and says what it is.** The old listing printed `mem:0000-DFFF,FF00-FFFF` and stopped there — which cannot answer the only question worth asking about that card: *which of those is the ROM, and which ROM is in it?* Both facts were in the map all along and were being thrown away. A card carries several regions, and squashing them into one comma list is exactly what hid the difference.
+
+**An empty socket is not in the memory column, because it decodes nothing.** It shows up in UNITS instead, as `rom1(empty)` — there is a socket, and there is no chip in it. Those pages float to `FF`, as they do on the bench.
+
+**UNITS is what you type at `MOUNT` and `CONNECT`**, which is why the designations are there and not merely the count. `*` marks the unit holding the console.
 
 ## RUN is the switch on the panel
 

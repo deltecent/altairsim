@@ -64,7 +64,7 @@ public:
     // to cope with a null, and the compiler makes sure they do.
     //
     // They are also recomputed on every call rather than cached. That is what lets
-    // BOARD REMOVE cpu0 work while the monitor is sitting there, and what will let
+    // BOARDS REMOVE cpu0 work while the monitor is sitting there, and what will let
     // a dual-processor card switch cores under the debugger's feet without the
     // debugger noticing anything unusual.
     BusMaster* master();

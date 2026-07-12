@@ -1,4 +1,4 @@
-#include "boards/sio2.h"
+#include "boards/mits-2sio.h"
 #include "cli/monitor.h"
 #include "config/toml.h"
 #include "core/machine.h"
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
     } else {
         // -n: an empty backplane. Every read floats to FF, because nothing is
         // driving anything. That is not a broken machine, it is an empty one --
-        // and it is where you start if you are building one up with BOARD ADD.
+        // and it is where you start if you are building one up with BOARDS ADD.
         m.name = "none";
         m.power();
     }

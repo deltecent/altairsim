@@ -3,7 +3,7 @@
 The processor card. An 8080A at 2 MHz, and in a real Altair it *was* a card —
 people pulled it out and put a Z80 in its place, which is why it lives in
 `boards/` with everything else and gets `properties()`, both resets, and a line in
-`BOARD LIST` with no special cases anywhere.
+`BOARDS` with no special cases anywhere.
 
 **Sources:** Intel *8080 Assembly Language Programming Manual* (1975) and the
 *8080 Microcomputer Systems User's Manual*, for the opcodes, the T-states and the
@@ -12,7 +12,7 @@ from another emulator (DESIGN.md §0.1).
 
 ## It decodes nothing
 
-    altairsim> BOARD LIST
+    altairsim> BOARDS
       cpu0     8080     mem:-                        io:-
 
 That is not a gap in the table. **Boards respond to bus cycles; a bus master

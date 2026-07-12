@@ -33,7 +33,7 @@ Before implementation, `docs/cli-transcripts.md` gets a set of **complete, annot
 
 The insight that makes this a real milestone rather than a stub: **with no CPU in the machine, the monitor is the bus master.** `DEPOSIT` and `DUMP` originate genuine bus cycles against a genuine board — which is exactly what the Altair front panel did. So milestone 1a is not a mock; it exercises the bus, the decode tables, `Board`, `properties()`, both resets, contention detection, the floating bus, and most of the memory CLI, with **one board and no processor.**
 
-The board is `memory` (`docs/boards/memory.md`): a card holding a list of **regions**, each `ram` (writes stored) or `rom` (writes **not decoded**), at 256-byte page granularity. Everything a memory card can be — a partly-populated RAM board, a PROM card of four sockets with two of them empty, a combo card with both — is that one list. Plus **banking**, in the five real flavors that actually shipped.
+The board is `memory` (`docs/boards/s100-memory.md`): a card holding a list of **regions**, each `ram` (writes stored) or `rom` (writes **not decoded**), at 256-byte page granularity. Everything a memory card can be — a partly-populated RAM board, a PROM card of four sockets with two of them empty, a combo card with both — is that one list. Plus **banking**, in the five real flavors that actually shipped.
 
 **Two things make this milestone worth doing early, and neither needs a CPU.**
 
@@ -66,8 +66,8 @@ The board is `memory` (`docs/boards/memory.md`): a card holding a list of **regi
 2SIO and 3's disk. The gate was closed the same day — see "the gate is passed",
 below.)*
 
-`src/isa/` (a stateless disassembler), `src/cpu/` (the core), `src/boards/cpu8080.cpp`
-(the card), `src/core/debug.cpp` (the debugger). `docs/boards/88-cpu.md`.
+`src/isa/` (a stateless disassembler), `src/cpu/` (the core), `src/boards/mits-88cpu.cpp`
+(the card), `src/core/debug.cpp` (the debugger). `docs/boards/mits-88cpu.md`.
 449 unit checks, all passing, no warnings.
 
 **The three-layer split earned its keep immediately.** `DISASM` runs against an
@@ -125,7 +125,7 @@ from real silicon.
 That matters more than the three suites before it, because the core was
 previously validated only by tests its own author wrote — precisely the tests
 that share its blind spots. The three flag rules called out in
-`docs/boards/88-cpu.md` as most likely to be wrong (`ANA`'s half-carry,
+`docs/boards/mits-88cpu.md` as most likely to be wrong (`ANA`'s half-carry,
 subtraction through the one adder, even parity) are exactly what 8080EXM's
 `aluop` groups check, and `<daa,cma,stc,cmc>` is exactly what the Python
 prototype admitted it had never tested. All green, no changes to the core.
@@ -147,7 +147,7 @@ job is to decide whether we implement them correctly.
 
 ## The 88-2SIO — the console, and the first machine you can talk to
 
-**Built, 2026-07-11.** `src/host/` (the host services layer), `src/boards/sio2.cpp`, `src/core/clock.h`, `tests/test_sio2.cpp`. `docs/boards/88-2sio.md`.
+**Built, 2026-07-11.** `src/host/` (the host services layer), `src/boards/mits-2sio.cpp`, `src/core/clock.h`, `tests/test_sio2.cpp`. `docs/boards/mits-2sio.md`.
 
 ```
 $ altairsim altmon
@@ -173,7 +173,7 @@ What landed, in dependency order:
 
 **1. `assertsInt()` had to stop being `const`.** The interrupt-driven echo test failed because the ACIA only ingested a character when the guest *read a register* — and **an interrupt-driven driver never reads the status port; that is the entire point of it.** So RDRF never set, IRQ never rose, nothing ever happened. Every polled test passed throughout. The general rule: a board is entitled to advance its own free-running hardware when asked whether it is pulling pINT, because a peripheral has a clock of its own. (DESIGN.md §4.4.1.)
 
-**2. A `ByteStream` is not a serial line.** The first ACIA synthesized OVRN by pulling a byte every character-time whether or not the guest had read the last one — and **immediately lost data**, because while ALTMON was echoing `DUMP ` it was not reading the receiver, so the address you typed went on the floor. A stream is *buffered and flow-controlled*; inventing an overrun from it manufactures data loss the host does not have. (`docs/boards/88-2sio.md`.)
+**2. A `ByteStream` is not a serial line.** The first ACIA synthesized OVRN by pulling a byte every character-time whether or not the guest had read the last one — and **immediately lost data**, because while ALTMON was echoing `DUMP ` it was not reading the receiver, so the address you typed went on the floor. A stream is *buffered and flow-controlled*; inventing an overrun from it manufactures data loss the host does not have. (`docs/boards/mits-2sio.md`.)
 
 **3. The `EventQueue` was never needed.** DESIGN §7.5 specified callbacks. The 2SIO wanted a **deadline**: when a 6850's shift register drains, *nothing happens in the world* — TDRE is simply true next time anyone looks. Boards are already polled for everything the bus can see, so they never need waking. `schedule()` is not built; the reasoning is written down, and **it is flagged for Patrick as the one design decision this work reversed.**
 

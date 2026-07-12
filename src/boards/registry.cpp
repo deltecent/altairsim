@@ -1,8 +1,8 @@
 #include "boards/registry.h"
 
-#include "boards/cpu8080.h"
-#include "boards/memory.h"
-#include "boards/sio2.h"
+#include "boards/mits-88cpu.h"
+#include "boards/s100-memory.h"
+#include "boards/mits-2sio.h"
 
 namespace altair {
 
@@ -15,7 +15,7 @@ namespace altair {
 // get one wrong and the symptom is a guest misbehaving ten thousand
 // instructions later.
 // The type name is the CHIP, because that is the word an operator reaches for --
-// `BOARD ADD 8080 cpu0`. Nobody asks for an 88-CPU by its catalog number, and
+// `BOARDS ADD 8080 cpu0`. Nobody asks for an 88-CPU by its catalog number, and
 // when the Z80 cards land they will be `z80`, which is what people called those
 // too. The card's identity lives in its .md, where it belongs.
 std::vector<BoardType> boardTypes() {

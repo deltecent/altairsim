@@ -1,8 +1,8 @@
 #include "test.h"
 
-#include "boards/cpu8080.h"
-#include "boards/memory.h"
-#include "boards/sio2.h"
+#include "boards/mits-88cpu.h"
+#include "boards/s100-memory.h"
+#include "boards/mits-2sio.h"
 #include "core/machine.h"
 #include "core/roms.h"
 #include "host/console.h"
@@ -380,7 +380,7 @@ void test_sio2() {
 
     SECTION("88-2SIO -- an INTERRUPT-DRIVEN echo, end to end, with no VI board");
     {
-        // ACCEPTANCE TEST 4 (docs/boards/88-2sio.md), and the one the whole
+        // ACCEPTANCE TEST 4 (docs/boards/mits-2sio.md), and the one the whole
         // interrupt design stands or falls on. Nothing here is arranged: the 6850
         // raises IRQ because a character arrived, the jumper takes that to pINT,
         // the 8080 acknowledges at an instruction boundary, NOBODY claims the

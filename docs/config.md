@@ -146,7 +146,7 @@ phantom = "all"            # What I ASSERT over my rom regions: none | read | al
                            #   ROM and writes vanish. DBL doesn't care either way — it
                            #   copies itself to RAM at 2C00 and runs there, and never
                            #   writes to FFxx at all. ("read" is an UNSOURCED strap; see
-                           #   docs/boards/memory.md.) The bus picks no winner — §4.2.
+                           #   docs/boards/s100-memory.md.) The bus picks no winner — §4.2.
 enabled = true             # runtime. A boot ROM that switches itself out after boot
                            #   (an OUT to its own port) sets this false; POWER restores it.
 
@@ -211,14 +211,14 @@ hostdir = "./hostfiles"    # SANDBOX. Required. Guest filenames cannot escape th
 
 ## Memory regions
 
-A `memory` card carries a list of **regions** — the areas that are actually populated. This is not a convenience: a real card may hold **several ROM areas and several RAM areas at once** (a PROM card is a row of sockets at F000/F400/F800/FC00, any of which may be empty), and one card must be one board or `BOARD LIST` stops describing the machine.
+A `memory` card carries a list of **regions** — the areas that are actually populated. This is not a convenience: a real card may hold **several ROM areas and several RAM areas at once** (a PROM card is a row of sockets at F000/F400/F800/FC00, any of which may be empty), and one card must be one board or `BOARDS` stops describing the machine.
 
 | Region key | Meaning |
 |---|---|
 | `type` | `ram` — writes are stored. `rom` — **writes are not decoded at all.** |
 | `at` | Start address. Page-aligned (multiple of 100H). |
 | `size` | `ram` only. `1K`…`64K`, or a hex byte count. |
-| `mount` | `rom` only. **`builtin:<name>`** for a ROM compiled into the simulator, or a path to a `.hex`/`.bin` on the host. **The region's size comes from the image**, rounded up to a page. |
+| `mount` | `rom` only. **`builtin:<name>`** for a ROM compiled into the simulator, or a path to a `.hex`/`.bin` on the host. **The region's size comes from the image**, rounded up to a page. **Omit it and the region is an empty socket:** it decodes nothing, and you can `MOUNT` a chip into it later. |
 
 **`builtin:` ROMs are compiled in**, because there is no portable place to keep ROM images across macOS, Linux, and Windows. `SHOW ROMS` lists them; `docs/roms.md` records each one's source, size, and CRC32. A bare path always overrides — built-ins are a convenience, never a lock-in.
 
@@ -226,7 +226,7 @@ A `memory` card carries a list of **regions** — the areas that are actually po
 
 **Regions are sub-units**, so the existing `id:unit` addressing reloads one: `MOUNT mem0:rom0 newdbl.hex`.
 
-See `docs/boards/memory.md` for banking (five real cards, no two alike), `fill`, and the three PHANTOM\* straps.
+See `docs/boards/s100-memory.md` for banking (five real cards, no two alike), `fill`, and the three PHANTOM\* straps.
 
 ## Notes
 

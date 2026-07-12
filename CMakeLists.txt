@@ -101,9 +101,9 @@ add_library(altair_core STATIC
   src/host/filter.cpp
   src/host/console.cpp
   src/host/endpoint.cpp
-  src/boards/memory.cpp
-  src/boards/cpu8080.cpp
-  src/boards/sio2.cpp
+  src/boards/s100-memory.cpp
+  src/boards/mits-88cpu.cpp
+  src/boards/mits-2sio.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp

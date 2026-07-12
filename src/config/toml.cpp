@@ -1,6 +1,6 @@
 #include "config/toml.h"
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "boards/registry.h"
 #include "host/console.h"
 
@@ -380,9 +380,12 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
                 f << "  type = \"" << (r.kind == RegionKind::Rom ? "rom" : "ram") << "\"\n";
                 std::snprintf(buf, sizeof buf, "  at   = 0x%04X\n", r.at);
                 f << buf;
-                if (r.kind == RegionKind::Rom)
-                    f << "  mount = \"" << r.mount << "\"\n";
-                else {
+                if (r.kind == RegionKind::Rom) {
+                    // No mount is an EMPTY SOCKET, and the way to write that down is
+                    // to write nothing down. `mount = ""` would round-trip, but it
+                    // reads like a bug and invites someone to "fix" it.
+                    if (!r.mount.empty()) f << "  mount = \"" << r.mount << "\"\n";
+                } else {
                     if (r.size % 1024 == 0)
                         f << "  size = \"" << (r.size / 1024) << "K\"\n";
                     else {

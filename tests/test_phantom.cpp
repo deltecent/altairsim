@@ -1,4 +1,4 @@
-// The Tarbell boot sequence -- the card that settles PHANTOM* (docs/boards/tarbell.md).
+// The Tarbell boot sequence -- the card that settles PHANTOM* (docs/boards/tarbell-sd.md).
 //
 // This is not a Tarbell disk controller. It is the PHANTOM*/boot-PROM half of one,
 // which is the half that constrains the BUS, and it lives here rather than in src/
@@ -22,7 +22,7 @@
 //      below 0x20 would fall back into the PROM.
 //   5. POC* re-arms it. That is how you boot the machine twice.
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "core/bus.h"
 #include "test.h"
 

@@ -1,6 +1,6 @@
 #include "core/machine.h"
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "boards/registry.h"
 
 #include <algorithm>
@@ -20,7 +20,7 @@ Board* Machine::add(const std::string& type, const std::string& id, std::string&
     }
     auto b = makeBoard(type);
     if (!b) {
-        err = "no board type '" + type + "'. BOARD TYPES lists them.";
+        err = "no board type '" + type + "'. BOARDS TYPES lists them.";
         return nullptr;
     }
     b->id = id;

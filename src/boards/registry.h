@@ -1,6 +1,6 @@
 #pragma once
 //
-// Board type registry -- backs BOARD TYPES, BOARD ADD, and the MCP board_types
+// Board type registry -- backs BOARDS TYPES, BOARDS ADD, and the MCP board_types
 // tool. Adding a board type is one line here and nothing anywhere else.
 
 #include "core/board.h"

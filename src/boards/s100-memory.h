@@ -1,6 +1,6 @@
 #pragma once
 //
-// The `memory` board -- docs/boards/memory.md.
+// The `memory` board -- docs/boards/s100-memory.md.
 //
 // ONE BOARD IS ONE CARD. A card carrying 48K of RAM and three PROM sockets is
 // one board, so this class holds a LIST OF REGIONS, each `ram` or `rom`. That

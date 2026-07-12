@@ -1,6 +1,6 @@
 #include "test.h"
 
-#include "boards/sio2.h"
+#include "boards/mits-2sio.h"
 #include "host/endpoint.h"
 
 #include <cstdio>

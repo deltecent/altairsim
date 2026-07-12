@@ -1,10 +1,10 @@
 #pragma once
 //
-// The MITS 88-CPU -- docs/boards/88-cpu.md.
+// The MITS 88-CPU -- docs/boards/mits-88cpu.md.
 //
 // THE CARD, NOT THE CHIP. In a real Altair the processor IS a card, and people
 // pulled it out and put a Z80 card in its place. So it lives in boards/ with
-// everything else and gets properties(), both resets, a line in BOARD LIST, and
+// everything else and gets properties(), both resets, a line in BOARDS, and
 // no special cases anywhere (DESIGN.md 3).
 //
 // It is a Board AND a BusMaster, and that pair of words is the whole design:

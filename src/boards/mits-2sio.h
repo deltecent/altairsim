@@ -1,7 +1,7 @@
 #pragma once
 //
 // 88-2SIO -- MITS Dual Serial Interface. Two Motorola 6850 ACIAs on one card.
-// See docs/boards/88-2sio.md.
+// See docs/boards/mits-2sio.md.
 //
 // THE PROOF VEHICLE. A fully-modeled 2SIO exercises every interface in the
 // design at once -- ByteStream, units, per-unit properties, interrupts, multiple

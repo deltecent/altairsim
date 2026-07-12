@@ -1,4 +1,4 @@
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 
 #include "core/roms.h"
 
@@ -10,7 +10,7 @@
 namespace altair {
 
 // ---------------------------------------------------------------------------
-// Banking -- five real cards, and no two alike (docs/boards/memory.md).
+// Banking -- five real cards, and no two alike (docs/boards/s100-memory.md).
 //
 // Read this table twice before you are tempted to generalize it. Three ports,
 // two encodings, and Cromemco has SEVEN banks because bit 7 is not a bank
@@ -41,7 +41,9 @@ bool parseBankType(const std::string& s, BankType& out) {
 
 std::string Region::describe() const {
     char buf[128];
-    if (kind == RegionKind::Rom)
+    if (kind == RegionKind::Rom && size == 0)
+        std::snprintf(buf, sizeof buf, "rom  %04X       (empty socket)", at);
+    else if (kind == RegionKind::Rom)
         std::snprintf(buf, sizeof buf, "rom  %04X-%04X  %s", at,
                       (unsigned)(at + size - 1), mount.c_str());
     else if (size >= 1024 && size % 1024 == 0)
@@ -68,10 +70,11 @@ bool MemoryBoard::addRegion(Region r, std::string& err) {
     }
 
     if (r.kind == RegionKind::Rom) {
-        if (r.mount.empty()) {
-            err = "a rom region needs `mount` (a file, or builtin:<name>)";
-            return false;
-        }
+        // A rom region with no `mount` is an EMPTY SOCKET, and that is a legal
+        // thing for a card to have: a 4-socket PROM board with two chips in it is
+        // an ordinary machine. It decodes nothing (size stays 0), so those pages
+        // float -- and it still gets a unit name, so you can MOUNT a chip into it.
+        //
         // None of the five real banked cards carries ROM, so whether a combo
         // card's ROM swaps with the RAM planes is UNKNOWN. We do not guess
         // (DESIGN.md 0.1) -- we refuse, and say why.
@@ -92,7 +95,7 @@ bool MemoryBoard::addRegion(Region r, std::string& err) {
     size_t idx = regions_.size() - 1;
 
     if (regions_[idx].kind == RegionKind::Rom) {
-        if (!loadRomRegion(idx, err)) {
+        if (!regions_[idx].mount.empty() && !loadRomRegion(idx, err)) {
             regions_.pop_back();
             return false;
         }
@@ -225,6 +228,7 @@ void MemoryBoard::rebuildPageMap() {
     for (int& o : owner_) o = -1;
     for (size_t i = 0; i < regions_.size(); ++i) {
         const Region& r = regions_[i];
+        if (r.size == 0) continue;  // an empty socket claims no pages: they float
         size_t first = page(r.at);
         size_t last = page((uint16_t)(r.at + r.size - 1));
         for (size_t p = first; p <= last && p < 256; ++p) owner_[p] = (int)i;
@@ -426,7 +430,7 @@ std::vector<Property> MemoryBoard::properties() {
             for (const auto& r : regions_)
                 if (r.kind == RegionKind::Rom && t != BankType::None) {
                     err = "this card has a rom region; banking a card with ROM is unsourced "
-                          "and rejected (docs/boards/memory.md)";
+                          "and rejected (docs/boards/s100-memory.md)";
                     return false;
                 }
             bankType_ = t;
@@ -529,6 +533,10 @@ std::vector<Property> MemoryBoard::properties() {
 std::vector<MapEntry> MemoryBoard::memMap() const {
     std::vector<MapEntry> out;
     for (const auto& r : regions_) {
+        // The map is a map of what is DECODED. An empty socket is not, so it is
+        // not here -- it shows up in units() as `(empty)`, which is the truth:
+        // there is a socket, and there is no chip in it.
+        if (r.size == 0) continue;
         MapEntry e;
         e.lo = r.at;
         e.hi = r.at + r.size - 1;
@@ -654,7 +662,13 @@ bool MemoryBoard::unmount(const std::string& unit, std::string& err) {
     // Pulling the chip. The socket is now EMPTY, so the board stops decoding
     // those pages entirely and they float to 0xFF -- which is exactly what an
     // empty socket does on the bench.
-    regions_.erase(regions_.begin() + (long)i);
+    //
+    // THE SOCKET STAYS. Erasing the region would erase the socket with it, and
+    // the sockets are NUMBERED: pull the chip out of rom0 and the chip sitting in
+    // rom1 would silently become rom0, so MOUNTing rom0 back would put it in the
+    // wrong socket. You cannot unsolder a socket by pulling its chip.
+    regions_[i].mount.clear();
+    regions_[i].size = 0;
     rebuildPageMap();
     return true;
 }

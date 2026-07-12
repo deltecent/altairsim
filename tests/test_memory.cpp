@@ -1,6 +1,6 @@
 #include "test.h"
 
-#include "boards/memory.h"
+#include "boards/s100-memory.h"
 #include "core/machine.h"
 
 using namespace altair;
