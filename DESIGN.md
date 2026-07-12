@@ -540,6 +540,9 @@ Consequences, all of which must be stated in the doc:
 - **MCP tool schemas are generated from `properties()`** — Claude gets typed, constrained, self-documenting board config instead of guessing at free text.
 - **The TOML loader and `CONFIG SAVE` are the same code path.** A board's config keys *are* its properties, so round-tripping is automatic and cannot drift.
 - **Tab completion is generated from `properties()`** too (§10.4).
+- **A LIST of things is a sub-unit, and it round-trips the same way** — regions on a memory card, drives on a controller. `subUnitTables()` + `addSubUnit()` read them; **`subUnits()` writes them back** (built 2026-07-12). The board renders its own text, because only the board knows that an address is hex and zero-padded (`at = 0x0400`) while a size is decimal with a suffix (`size = "48K"`) — `Value::text(16)` produces neither, and a writer that guessed would be a second, worse copy of what the board already knows. The claim "`subUnits()` is `addSubUnit()`'s inverse" is therefore one a test can simply *execute*: render, feed it straight back in, compare.
+
+  **This closed the last board-specific line in the config layer.** `CONFIG SAVE` used to reach for a `dynamic_cast<MemoryBoard*>` to write `[[board.region]]`, which meant any *other* board with a sub-unit table — a disk controller with four `[[board.drive]]` entries — would **load and silently not save**. You would configure the machine, save it, and get a controller with no drives. `src/config/toml.cpp` now includes no board header at all, and it should never include one again.
 - **THERE IS NO CONFIG-TIME-ONLY PROPERTY** (Patrick, 2026-07-12). Every property can be set, always. There was a `runtime` flag here that rejected a SET while the machine ran; it is gone, for two reasons and the second is the real one:
   - **You can only type at the prompt when the machine is STOPPED** — by ATTN, by a breakpoint, by a HLT. That is the front panel's STOP switch. There is no moment at which a `SET` races a running CPU.
   - **On real hardware the rule would be a fiction anyway.** A card being worked on sits on an **extender**, out where you can reach it, and its jumpers get moved with the power on. Patrick: *"In the real world, when working on boards, they are often accessed on an extender card and changed while the power is on."*
@@ -861,6 +864,34 @@ They are not alternatives; they answer different questions. A **deadline** is so
 The 6850 needs both, in the same function: `pump()` takes the byte off the line, and if the line has not yet had time to deliver it, sets a **deadline** for when it will.
 
 **No threads.** Board logic stays in emulated time, single-threaded, or `RECORD`/`REPLAY` is dead (§13). Host I/O may thread *behind* the `ByteStream`, where it belongs — that is what the interface is for.
+
+### 7.5.1 `Spindle` — the disk turns whether or not anyone is looking at it
+
+**Built 2026-07-12** (`src/core/spindle.h`), ahead of the two floppy boards that need it, because they need the *same* arithmetic and it should exist once.
+
+A floppy rotates on its own. So the sector under the head is **not state a controller advances — it is a reading taken off the clock**:
+
+```
+sector = (now / tPerSector) % sectorsPerTrack
+```
+
+**There is no hidden counter and no advance-on-read**, and that is the whole design. The tempting alternative — a counter the card bumps when the guest reads the sector-position port — makes the disk's rotation depend on *how often the guest polls*: a tight loop spins the platter faster than a slow one, the drive runs at the speed of the software watching it, and a recorded session stops replaying identically. Deriving it from `Clock` kills all three at once, and costs less code than the counter would have.
+
+**Two cards need it, for different reasons, which is why it is neither card's:**
+
+- the **88-DCDD** hands the sector number straight to the guest at `IN 0x09`;
+- the **Tarbell** never exposes it — but its FD1771's `Read Address` (0xC4) must answer *"which sector is under the head right now"* so the buffered CP/M BIOS can begin a track read where the head already is. A static answer spins that BIOS forever.
+
+It lives in `src/core/` (Patrick, 2026-07-12) because it is **pure time math over a `Clock` and knows nothing else** — not a board, not a `MediaFile`, not a sector's contents. It is not a chip (§7.8: nothing solders a spindle to a card), and it does not belong in `src/host/` beside `DiskImage`, which is bytes and offsets with no notion of time.
+
+**It hands back a 0-based INDEX, and stops there.** A controller that numbers sectors from 1 (the Tarbell does; the DCDD does not) adds its own `startSector`. That off-by-one is the one that **silently corrupts a disk** (§7.3), so it stays in the board where it is visible, and is deliberately *not* buried in here where a reader would have to go looking.
+
+Two invariants it enforces so no board has to:
+
+- **`nextBoundary()` is strictly future**, at every instant of a revolution — by construction, not by a hand-written guard. A deadline armed for `now()` fires inside the drain loop that is running it, re-arms, and the machine never advances again. The UART's `nextEdge()` enforces the same rule by hand (§7.5); here it falls out of the arithmetic.
+- **The sector is the unit, not the revolution.** Everything derives from `tPerSector`, so `sectorAt()` and `nextBoundary()` cannot round apart — a board that wakes on the deadline it was given always finds the sector it was promised, at that sector's first T-state. Deriving both independently from `tPerRev` would let them disagree by a T-state, occasionally, which is the worst kind of bug to own.
+
+**The motor does not care what crystal the CPU has.** Rotation comes from `Clock::hz()`, so a 4 MHz machine executes twice as fast and still turns its disks 360 times a minute. Expressing rotation in raw T-states would make overclocking the CPU spin the floppy faster, which is nonsense.
 
 ### 7.6 `Log` / `Trace`
 

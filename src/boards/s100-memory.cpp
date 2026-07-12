@@ -633,6 +633,44 @@ bool MemoryBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
     return addRegion(std::move(r), err);
 }
 
+// addSubUnit()'s inverse: every region, rendered the way this card wants it read
+// back. CONFIG SAVE writes exactly what this returns and knows nothing about what a
+// region is -- which is the point, and is why a DCDD's drives will round-trip
+// through the same four lines without the config layer learning what a drive is.
+//
+// The rendering is the card's, because only the card knows it: an address is HEX and
+// zero-padded to four places because that is how an S-100 address is read; a size is
+// DECIMAL with a K because that is how an operator says it. (§10.0.1: on the wire ->
+// hex, never on the wire -> decimal.)
+std::vector<Board::SubUnit> MemoryBoard::subUnits() const {
+    std::vector<SubUnit> out;
+    char buf[32];
+    for (const auto& r : regions_) {
+        SubUnit su;
+        su.table = "region";
+        su.fields.push_back({"type", r.kind == RegionKind::Rom ? "rom" : "ram", true});
+
+        std::snprintf(buf, sizeof buf, "0x%04X", r.at);
+        su.fields.push_back({"at", buf, false});
+
+        if (r.kind == RegionKind::Rom) {
+            // No mount is an EMPTY SOCKET, and the way to write that down is to write
+            // nothing down. `mount = ""` would round-trip, but it reads like a bug and
+            // invites someone to "fix" it.
+            if (!r.mount.empty()) su.fields.push_back({"mount", r.mount, true});
+        } else if (r.size % 1024 == 0) {
+            // QUOTED, and it has to be: `size = 48K` bare is not TOML, and the
+            // suffix is exactly what makes this legible.
+            su.fields.push_back({"size", std::to_string(r.size / 1024) + "K", true});
+        } else {
+            std::snprintf(buf, sizeof buf, "0x%X", r.size);
+            su.fields.push_back({"size", buf, false});
+        }
+        out.push_back(std::move(su));
+    }
+    return out;
+}
+
 // The card's units are its ROM SOCKETS, named rom0, rom1... in region order. RAM
 // regions are deliberately absent: a unit is something you can put a chip into.
 std::vector<UnitDef> MemoryBoard::units() const {

@@ -138,6 +138,7 @@ add_library(altair_core STATIC
   src/core/machines.cpp
   src/core/value.cpp
   src/core/debug.cpp
+  src/core/spindle.cpp
   src/isa/isa8080.cpp
   src/cpu/cpu8080.cpp
   src/host/stream.cpp
@@ -200,7 +201,8 @@ add_executable(altair_tests
   tests/test_sio2.cpp
   tests/test_88sio.cpp
   tests/test_lines.cpp
-  tests/test_wd17xx.cpp)
+  tests/test_wd17xx.cpp
+  tests/test_spindle.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 

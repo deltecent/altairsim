@@ -125,6 +125,7 @@ public:
 
     std::vector<std::string> subUnitTables() const override { return {"region"}; }
     bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
+    std::vector<SubUnit> subUnits() const override;
 
     // A ROM region is a SOCKET, and a socket is a unit: `MOUNT mem0:rom0 dbl.hex`.
     //

@@ -1,6 +1,7 @@
 #include "config/toml.h"
 
-#include "boards/s100-memory.h"
+// NOTE: no board header is included here, and none should ever be again. The config
+// layer knows Board, and nothing about what any particular one of them is.
 #include "boards/registry.h"
 #include "host/console.h"
 
@@ -366,34 +367,18 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
             }
         }
 
-        // Sub-units.
+        // Sub-units: [[board.region]], [[board.drive]].
         //
-        // TODO: this dynamic_cast is the last board-specific line in the config
-        // layer, and it should not survive. A memory REGION is a sub-unit like any
-        // other; it needs `addSubUnit`'s inverse -- a generic `subUnits()` that
-        // hands back table name + key/values -- and then this whole block is four
-        // lines and knows nothing about memory. Not tonight, but it is a wart and
-        // it is written down as one.
-        if (auto* mem = dynamic_cast<MemoryBoard*>(b.get())) {
-            for (const auto& r : mem->regions()) {
-                f << "\n  [[board.region]]\n";
-                f << "  type = \"" << (r.kind == RegionKind::Rom ? "rom" : "ram") << "\"\n";
-                std::snprintf(buf, sizeof buf, "  at   = 0x%04X\n", r.at);
-                f << buf;
-                if (r.kind == RegionKind::Rom) {
-                    // No mount is an EMPTY SOCKET, and the way to write that down is
-                    // to write nothing down. `mount = ""` would round-trip, but it
-                    // reads like a bug and invites someone to "fix" it.
-                    if (!r.mount.empty()) f << "  mount = \"" << r.mount << "\"\n";
-                } else {
-                    if (r.size % 1024 == 0)
-                        f << "  size = \"" << (r.size / 1024) << "K\"\n";
-                    else {
-                        std::snprintf(buf, sizeof buf, "  size = 0x%X\n", r.size);
-                        f << buf;
-                    }
-                }
-            }
+        // The TODO that used to live here -- "this dynamic_cast is the last
+        // board-specific line in the config layer, and it should not survive" -- is
+        // discharged. It is these four lines now, and they know nothing about memory,
+        // about disks, or about anything else a board might keep a list of. The board
+        // rendered the text; this writes it down.
+        for (const auto& su : b->subUnits()) {
+            f << "\n  [[board." << su.table << "]]\n";
+            for (const auto& fl : su.fields)
+                f << "  " << fl.key << " = "
+                  << (fl.quoted ? "\"" + fl.text + "\"" : fl.text) << "\n";
         }
     }
     return true;

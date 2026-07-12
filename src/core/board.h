@@ -355,6 +355,37 @@ public:
         return false;
     }
 
+    // THE INVERSE OF addSubUnit(), and the last board-specific line in the config
+    // layer went away when this arrived. CONFIG SAVE used to reach for a
+    // `dynamic_cast<MemoryBoard*>` to write [[board.region]] back out, which meant a
+    // controller with four [[board.drive]] entries would LOAD AND SILENTLY NOT SAVE
+    // -- you would configure the machine, save it, and get a disk controller with no
+    // drives. Both floppy boards have sub-unit tables, so both need this, and
+    // neither is testable end to end without it.
+    //
+    // THE BOARD RENDERS ITS OWN TEXT, and that is the whole design. `at = 0x0400` is
+    // zero-padded to four places, `size = "48K"` carries a suffix; Value::text(16)
+    // produces neither, and a writer that tried to guess would be a second, worse
+    // copy of knowledge the board already has. So a field hands back the EXACT string
+    // that addSubUnit() will parse back, and the round trip is then something a test
+    // can just... do: feed subUnits() straight into addSubUnit() and compare.
+    //
+    // `quoted` is the one thing the board cannot leave to the writer, because TOML
+    // cannot tell a string from a literal by looking: `type = "rom"` must have its
+    // quotes and `at = 0x0400` must not, and "48K" would parse as a NUMBER if it were
+    // bare (the size suffix is legal to parseNumber). It is not a TOML detail leaking
+    // into the board -- it is the board saying which of its values are text.
+    struct SubUnitField {
+        std::string key;
+        std::string text;      // exactly what addSubUnit() will parse back
+        bool        quoted = false;
+    };
+    struct SubUnit {
+        std::string               table;   // "region", "drive" -- no "board." prefix
+        std::vector<SubUnitField> fields;
+    };
+    virtual std::vector<SubUnit> subUnits() const { return {}; }
+
     // Every unit this card has, in the board's own order and by the board's own
     // names. THIS IS THE ONLY LIST -- SHOW, MOUNT, CONNECT, the MCP schemas and tab
     // completion all read it, so they cannot disagree about what units exist.
