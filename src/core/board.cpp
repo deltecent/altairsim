@@ -32,16 +32,22 @@ bool Board::findUnit(const std::string& name, UnitDef& out) const {
     return false;
 }
 
-bool setProperty(Board& b, const std::string& key, const std::string& text, bool running,
-                 std::string& err) {
-    auto props = b.properties();
+// The one property-setting path, over a list of properties from wherever.
+//
+// `who` is only ever used to write a good error message -- "sio0:a has no
+// property 'bawd'" rather than "unknown property". That is the entire reason it
+// is a parameter: a board, a unit and the console all need the same six checks
+// in the same order, and the only thing that differs between them is what you
+// call the thing that refused.
+static bool setOne(std::vector<Property> props, const std::string& who, const std::string& key,
+                   const std::string& text, bool running, std::string& err) {
     const Property* p = nullptr;
     std::string k = lower(key);
     for (const auto& x : props)
         if (lower(x.name) == k) p = &x;
 
     if (!p) {
-        err = b.id + " has no property '" + key + "'. Known:";
+        err = who + " has no property '" + key + "'. Known:";
         for (const auto& x : props) err += " " + x.name;
         return false;
     }
@@ -63,6 +69,28 @@ bool setProperty(Board& b, const std::string& key, const std::string& text, bool
     if (!parseValue(text, p->kind, v, err, p->radix)) return false;
     if (!validate(*p, v, err)) return false;
     return p->set(v, err);
+}
+
+// A UNIT's property -- `SET sio0:a BAUD=9600` (DESIGN.md 7.2). Same six checks,
+// same one parser, same radix rule. There is no second schema and no second
+// validator, which is why a unit property cannot drift from a board property in
+// what it accepts.
+bool setUnitProperty(Board& b, const std::string& unit, const std::string& key,
+                     const std::string& text, bool running, std::string& err) {
+    return setOne(b.unitProperties(unit), b.id + ":" + unit, key, text, running, err);
+}
+
+// The console is not a Board -- it is the host's keyboard -- but it has
+// properties and must obey exactly the same rules about them. Hence this: the
+// same path, over a property list from anywhere at all.
+bool setPropertyIn(std::vector<Property> props, const std::string& who, const std::string& key,
+                   const std::string& text, bool running, std::string& err) {
+    return setOne(std::move(props), who, key, text, running, err);
+}
+
+bool setProperty(Board& b, const std::string& key, const std::string& text, bool running,
+                 std::string& err) {
+    return setOne(b.properties(), b.id, key, text, running, err);
 }
 
 } // namespace altair

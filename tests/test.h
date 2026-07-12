@@ -29,3 +29,4 @@ void test_machines();
 void test_isa();
 void test_cpu();
 void test_debug();
+void test_sio2();

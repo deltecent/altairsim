@@ -10,15 +10,19 @@
 #include "core/debug.h"
 #include "core/hex.h"
 #include "core/roms.h"
+#include "host/console.h"
+#include "host/endpoint.h"
 #include "isa/isa.h"
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 namespace altair {
 
@@ -233,8 +237,25 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         }
     }
 
+    showProps(b->properties(), out);
+
+    // A UNIT's properties are the unit's, not the board's (DESIGN.md 7.2). The
+    // two 6850s on a 2SIO have independent baud rates and independent transforms
+    // because they are two independent chips, and printing them in one flat list
+    // would be printing the PCB instead of the parts on it.
+    for (const auto& u : us) {
+        auto up = b->unitProperties(u.name);
+        if (up.empty()) continue;
+        out << "\n  " << b->id << ":" << u.name << "\n";
+        showProps(up, out);
+    }
+}
+
+void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
+    if (ps.empty()) return;
+    char buf[256];
     out << "\n  property         value            runtime?  legal\n";
-    for (const auto& p : b->properties()) {
+    for (const auto& p : ps) {
         std::string legal;
         if (p.kind == Kind::Enum) {
             for (const auto& c : p.choices) legal += (legal.empty() ? "" : "|") + c;
@@ -247,6 +268,123 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         std::snprintf(buf, sizeof buf, "  %-16s %-16s %-9s %s", p.name.c_str(),
                       p.get().text(p.radix).c_str(), p.runtime ? "yes" : "config", legal.c_str());
         out << buf << "\n";
+    }
+}
+
+static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& out);
+
+// ---------------------------------------------------------------------------
+// CONSOLE mode -- the guest owns the keyboard.
+//
+// THE ONE THING THAT MATTERS HERE IS THAT YOU CAN GET OUT. Once the guest has
+// the keyboard it has ALL of it, and every period monitor, BASIC and CP/M prompt
+// sits in a tight loop reading the console -- so the guest would happily swallow
+// any key we tried to use as an escape. ATTN is intercepted by the Console
+// itself, below the filter and below the board, and the guest is never offered
+// the byte. See src/host/console.cpp.
+//
+// The loop also THROTTLES to the CPU card's actual clock (DESIGN.md 8). Two
+// reasons, and the second is the real one:
+//
+//   1. It stops a guest's idle poll loop from pinning a host core at 100%.
+//   2. IT MAKES THE MACHINE RUN AT THE SPEED IT ACTUALLY RAN AT. We emulate ~40
+//      MHz worth of 8080; unthrottled, a 2 MHz machine would do everything
+//      twenty times too fast and every timing-dependent thing on the screen --
+//      a cursor, a banner, a Teletype's pace -- would be a lie.
+// ---------------------------------------------------------------------------
+void Monitor::consoleMode(std::ostream& out) {
+    CpuCore* cpu = needCpu(out);
+    if (!cpu) return;
+
+    // Say so if nobody is listening, rather than dropping the operator into a
+    // dead terminal and letting them work out why.
+    bool anyConsole = false;
+    for (const auto& b : m_.boards())
+        for (const auto& u : b->units())
+            if (u.kind == UnitKind::Serial && u.state == "console") anyConsole = true;
+    if (!anyConsole) {
+        out << "no unit is connected to the console -- you would be typing at nothing.\n"
+               "   CONNECT <id>:<unit> console\n";
+        failed_ = true;
+        return;
+    }
+
+    Console& con = Console::instance();
+    char attn = (char)con.attn();
+    out << "[console -- ^" << (char)('A' + attn - 1) << " returns to the monitor]\n";
+    out.flush();
+
+    con.enterRaw();
+
+    using clk = std::chrono::steady_clock;
+    const long long hz     = m_.clock.hz();
+    const uint64_t  startT = m_.clock.now();
+    const auto      start  = clk::now();
+    const bool      tty    = con.isTty();
+
+    RunResult r;
+    uint64_t lastWritten = con.written();
+    int      quiet       = 0;
+
+    for (;;) {
+        // A slice, then a look around. Short enough that ATTN feels instant and a
+        // keystroke is picked up promptly; long enough that the per-slice overhead
+        // is noise.
+        r = m_.debug.run(2000);
+
+        m_.pump();
+
+        if (con.takeAttn()) {
+            r.why = StopReason::Interrupted;
+            break;
+        }
+        if (r.why != StopReason::Steps) break;  // breakpoint, HLT, ^C
+
+        // ---- Knowing when to stop, WITH NOBODY THERE TO TELL US ----
+        //
+        // A terminal never ends. A PIPE does, and a scripted CONSOLE that did not
+        // notice would run the guest's input poll loop until the heat death of the
+        // universe -- which is exactly what the first version of this did.
+        //
+        // So: once input has genuinely ENDED (not merely gone quiet -- see
+        // Console::pollByte), give the guest a few more slices to finish saying
+        // whatever it was saying, and leave when it falls silent. That way the
+        // last command in a script still gets its answer printed.
+        if (!tty && con.eof()) {
+            uint64_t w = con.written();
+            quiet      = (w == lastWritten) ? quiet + 1 : 0;
+            lastWritten = w;
+            if (quiet >= 3) {
+                r.why = StopReason::Interrupted;
+                break;
+            }
+        }
+
+        // Throttle to the crystal on the CPU card -- but ONLY for a human. A
+        // script has nobody to keep in step with, and making the test suite wait
+        // in real time for a 2 MHz machine would be absurd.
+        if (tty && hz > 0) {
+            double want = (double)(m_.clock.now() - startT) / (double)hz;
+            double got  = std::chrono::duration<double>(clk::now() - start).count();
+            if (want > got) {
+                std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
+            }
+        }
+    }
+
+    con.leaveRaw();
+    out << "\n";
+
+    // ATTN is not a stop -- the machine is exactly where you left it and GO or
+    // CONSOLE resumes it. Say that, because "Interrupted" on its own reads like
+    // something went wrong.
+    if (r.why == StopReason::Interrupted) {
+        char buf[96];
+        std::snprintf(buf, sizeof buf, "[monitor -- the machine is still at %04X. CONSOLE resumes]",
+                      r.pc);
+        out << buf << "\n";
+    } else {
+        reportStop(r, m_.debug, out);
     }
 }
 
@@ -757,6 +895,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             showRoms(out);
             return true;
         }
+        if (sub == "CONSOLE") {
+            out << "console  (the host keyboard and screen)\n";
+            showProps(Console::instance().properties(), out);
+            out << "\n  The transforms (UPPER, CRLF, BSDEL, ECHO...) are properties of the\n"
+                   "  LINE, not of the console -- so they work on a socket too. They live on\n"
+                   "  the unit: SHOW sio0, then SET sio0:a UPPER=ON.\n";
+            return true;
+        }
         if (sub == "MACHINE") {
             out << "name      " << m_.name << "\n";
             std::snprintf(buf, sizeof buf, "sense     0x%02X  (port FF, front-panel switches)",
@@ -853,22 +999,54 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
 
-        Board* b = board(a[1], out);
-        if (!b) return true;
-        // key=value, or `key value`
+        // key=value, or `key value` -- worked out before we know WHAT we are
+        // setting, because the grammar is the same for a board, a unit and the
+        // console, and there is no reason for three copies of it.
         std::string k, v;
-        size_t eq = a[2].find('=');
-        if (eq != std::string::npos) {
-            k = a[2].substr(0, eq);
-            v = a[2].substr(eq + 1);
-        } else if (a.size() >= 4) {
-            k = a[2];
-            v = a[3];
-        } else {
-            out << "usage: SET <id> <key>=<value>\n";
-            failed_ = true;
+        {
+            size_t eq = a[2].find('=');
+            if (eq != std::string::npos) {
+                k = a[2].substr(0, eq);
+                v = a[2].substr(eq + 1);
+            } else if (a.size() >= 4) {
+                k = a[2];
+                v = a[3];
+            } else {
+                out << "usage: SET <id>[:<unit>] <key>=<value>  |  SET CONSOLE <key>=<value>\n";
+                failed_ = true;
+                return true;
+            }
+        }
+
+        if (is(a[1], "CONSOLE")) {
+            std::string err;
+            if (!setPropertyIn(Console::instance().properties(), "console", k, v, m_.running,
+                               err)) {
+                out << err << "\n";
+                failed_ = true;
+            } else {
+                out << "console: " << k << "=" << v << "\n";
+            }
             return true;
         }
+
+        // SET <id>:<unit> <k>=<v> -- a unit is a real thing with real settings.
+        if (a[1].find(':') != std::string::npos) {
+            Board* b;
+            UnitDef u;
+            if (!subunit(a[1], b, u, false, out)) return true;
+            std::string err;
+            if (!setUnitProperty(*b, u.name, k, v, m_.running, err)) {
+                out << err << "\n";
+                failed_ = true;
+            } else {
+                out << b->id << ":" << u.name << ": " << k << "=" << v << "\n";
+            }
+            return true;
+        }
+
+        Board* b = board(a[1], out);
+        if (!b) return true;
         std::string err;
         if (!setProperty(*b, k, v, m_.running, err)) {
             out << err << "\n";
@@ -876,6 +1054,93 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         } else {
             out << b->id << ": " << k << "=" << v << "\n";
         }
+        return true;
+    }
+
+    // ---------------- CONNECT / DISCONNECT ----------------
+    //
+    // GENERIC, not per-board (DESIGN.md 7.7). The monitor resolves the endpoint
+    // string; the board is handed a ByteStream and never learns what a socket is.
+    // A serial card written next year gets both of these for free.
+    if (cmd == "CONNECT") {
+        std::string usage = "CONNECT <id>:<unit> <endpoint>   -- " + endpointHelp();
+        if (!need(3, usage.c_str())) return true;
+        Board* b;
+        UnitDef u;
+        if (!subunit(a[1], b, u, false, out)) return true;
+        if (u.kind != UnitKind::Serial) {
+            out << b->id << ":" << u.name << " is a " << unitKindName(u.kind)
+                << " unit -- there is nothing to connect to it. Use MOUNT.\n";
+            failed_ = true;
+            return true;
+        }
+
+        // EXACTLY ONE UNIT MAY HOLD THE CONSOLE (DESIGN.md 7.2, 9). Two boards
+        // reading one keyboard would each get half the characters -- which is not
+        // hypothetical, it is what happens the first time a machine has two 2SIOs
+        // and you forget. So taking it says who you took it from.
+        //
+        // `is()` UPPERCASES ITS TOKEN AND COMPARES -- so the literal must be
+        // uppercase or it can never match. This read `is(a[2], "console")` and was
+        // therefore dead code, silently: two units held the console and neither
+        // said so. Every other call site passes an uppercase keyword; this one
+        // looked like an endpoint name, which is lowercase by convention, and that
+        // is exactly how it slipped through.
+        if (is(a[2], "CONSOLE")) {
+            for (const auto& other : m_.boards()) {
+                for (const auto& ou : other->units()) {
+                    if (ou.kind != UnitKind::Serial || ou.state != "console") continue;
+                    if (other.get() == b && ou.name == u.name) continue;
+                    std::string err;
+                    other->disconnect(ou.name, err);
+                    out << "console taken from " << other->id << ":" << ou.name << "\n";
+                }
+            }
+        }
+
+        std::string err;
+        if (!b->connect(u.name, a[2], err)) {
+            out << err << "\n";
+            failed_ = true;
+        } else {
+            out << b->id << ":" << u.name << ": connected to " << a[2] << "\n";
+        }
+        return true;
+    }
+
+    if (cmd == "DISCONNECT") {
+        if (!need(2, "DISCONNECT <id>:<unit>")) return true;
+        Board* b;
+        UnitDef u;
+        if (!subunit(a[1], b, u, false, out)) return true;
+        std::string err;
+        if (!b->disconnect(u.name, err)) {
+            out << err << "\n";
+            failed_ = true;
+        } else {
+            // Not an error state, and it must not look like one: an unconnected
+            // 6850 sits there with TDRE set forever and software that writes to it
+            // works fine and talks to nobody.
+            out << b->id << ":" << u.name << ": disconnected (the line now goes nowhere)\n";
+        }
+        return true;
+    }
+
+    // ---------------- CONSOLE ----------------
+    //
+    // `CONSOLE F800` sets the PC first. That is not a convenience -- it is the
+    // front-panel action, which is EXAMINE the address and then RUN, done while
+    // you are already sitting at the teletype. A bare `CONSOLE` resumes from
+    // wherever the machine already is, which is the other half of the same panel.
+    if (cmd == "CONSOLE") {
+        if (a.size() >= 2) {
+            CpuCore* c = needCpu(out);
+            if (!c) return true;
+            uint32_t at;
+            if (!addr(a[1], at, out)) return true;
+            c->setPc((uint16_t)at);
+        }
+        consoleMode(out);
         return true;
     }
 

@@ -37,12 +37,20 @@
 # in this file, with nothing else about the machine moving. `GO FF00` runs the
 # boot PROM, and it really does copy itself to 2C00 and jump there.
 #
-# It cannot finish booting yet, and that is honest: there is no 88-DCDD for it to
-# read a disk from and no 2SIO for it to talk to, so DBL relocates itself, starts
-# polling a disk controller that is not in the backplane, and spins. Every IN it
-# does reads a floating FF, because nobody is driving those ports. That is not a
-# bug -- it is what an Altair with no disk controller in it does, and you can watch
-# it happen with BREAK IO R 08. Those two cards are milestones 1b and 3.
+# THE 2SIO IS HERE NOW TOO, so the console CP/M will print its banner on is in the
+# backplane and connected.
+#
+# It still cannot finish booting, and that is honest: there is no 88-DCDD for it to
+# read a disk from. DBL relocates itself, starts polling a disk controller that is
+# not in the backplane, and spins. Every IN it does reads a floating FF, because
+# nobody is driving those ports. That is not a bug -- it is what an Altair with no
+# disk controller in it does, and you can watch it happen with BREAK IO R 08.
+#
+# The disk is milestone 3. When it lands, THIS FILE GROWS ONE MORE [[board]] and
+# nothing else about it changes -- which is the claim the whole design is making,
+# and the 8080 and the 2SIO have both now arrived exactly that way.
+#
+# In the meantime, `altairsim altmon` is a machine you can actually talk to today.
 
 [machine]
 name     = "default"
@@ -60,6 +68,26 @@ type     = "8080"
 id       = "cpu0"
 clock_hz = 2000000            # 2 MHz. The crystal is ON THIS CARD, which is why the
                               # clock is the board's property and not the machine's.
+
+# The console. CP/M's BIOS talks to a 2SIO at port 10, and so does DBL: it reads
+# the sense switches at FF22 to decide the 2SIO's stop bits, which is why `sense`
+# above is not decorative.
+#
+# Channel B is left unconnected on purpose. That is not a gap -- an unconnected
+# 6850 sits there with TDRE set forever, and software that writes to it works fine
+# and talks to nobody, exactly as the card does with nothing in the second socket.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
 
 [[board]]
 type = "memory"

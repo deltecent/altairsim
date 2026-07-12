@@ -37,6 +37,15 @@ public:
 
     Bus bus;
 
+    // Emulated time (DESIGN.md 7.5). Advanced ONLY by the run loop, by exactly
+    // the T-states the CPU reported retiring -- so a board's sense of time and
+    // the guest's are the same sense of time, and a session replays identically.
+    Clock clock;
+
+    // Give every board's host endpoints a turn: drain a keyboard, accept a
+    // socket. Once per time slice, never inside a bus cycle (DESIGN.md 7.7).
+    void pump();
+
     Board* find(const std::string& id);
     Board* add(const std::string& type, const std::string& id, std::string& err);
     bool remove(const std::string& id, std::string& err);

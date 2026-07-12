@@ -39,13 +39,23 @@ void test_machines() {
     CHECK(loadMachine(*d, m, err), "and it loads through the ordinary TOML parser");
     CHECK(m.name == "default", "it knows its name");
 
-    // A CPU card and a memory card -- and the 8080 arrived as ONE MORE [[board]]
-    // in the .toml, with nothing else about the machine moving. That was the
-    // prediction the file made when there was no CPU, and it held.
-    CHECK(m.boards().size() == 2, "a CPU and a memory card");
+    // A CPU, a serial card and a memory card. BOTH the 8080 and the 2SIO arrived
+    // as ONE MORE [[board]] each, with nothing else about the machine moving --
+    // which is the prediction this file made back when it had neither, and it has
+    // now held twice. The 88-DCDD is the third and last test of it.
+    CHECK(m.boards().size() == 3, "a CPU, a 2SIO and a memory card");
     CHECK(m.cpu() != nullptr, "there is a processor in the default machine now");
     CHECK(m.isa() == "8080", "and it speaks 8080, so DISASM never has to be told");
     CHECK(m.master() != nullptr, "and it can drive the bus");
+
+    // The console CP/M will print its banner on is in the backplane and connected.
+    Board* sio = m.find("sio0");
+    CHECK(sio != nullptr, "and a 2SIO, because CP/M needs somewhere to talk");
+    if (sio) {
+        UnitDef u;
+        CHECK(sio->findUnit("a", u), "channel a exists");
+        CHECK(u.state == "console", "and it is connected to the console");
+    }
 
     // RAM at 0000-DFFF, and NOTHING above it. The top 8K is where the PROM and
     // the memory-mapped I/O lived; a machine claiming 64K of RAM would be lying

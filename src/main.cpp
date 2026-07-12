@@ -1,7 +1,9 @@
+#include "boards/sio2.h"
 #include "cli/monitor.h"
 #include "config/toml.h"
 #include "core/machine.h"
 #include "core/machines.h"
+#include "host/endpoint.h"
 #include "mcp/server.h"
 
 #include <algorithm>
@@ -129,6 +131,12 @@ int main(int argc, char** argv) {
         builtin = "default";  // no machine named: you get one anyway, and it is honest
     }
 
+    // THE COMPOSITION ROOT. The monitor knows the endpoint grammar; the boards do
+    // not, and must not (DESIGN.md 7.7). Wiring the two together is main's job and
+    // nobody else's -- a board that could reach `resolveEndpoint` itself would be
+    // one `#include` away from knowing what a socket is.
+    Sio2Board::setResolver(resolveEndpoint);
+
     Machine m;
     std::string err;
 
@@ -192,8 +200,14 @@ int main(int argc, char** argv) {
 
     if (ran && !interactive) return rc;
 
-    std::cout << kVersion << " -- no CPU yet; the monitor is the bus master.\n"
-              << "machine: " << m.name << ".  HELP for commands.\n";
+    // The banner reports what is ACTUALLY in the backplane, because a machine with
+    // no CPU card in it is a real machine you can build -- it is the one milestone
+    // 1a ran, with the monitor as bus master -- and saying so is more useful than a
+    // fixed string that goes stale the moment a card lands.
+    std::cout << kVersion << " -- ";
+    if (CpuCore* c = m.cpu()) std::cout << c->isa() << ", " << m.clock.hz() / 1000000.0 << " MHz.\n";
+    else std::cout << "no CPU in the backplane; the monitor is the bus master.\n";
+    std::cout << "machine: " << m.name << ".  HELP for commands.\n";
     // Line editing, history and BOTH backspace bytes live in cli/lineedit.cpp.
     // TODO: tab completion, driven by properties() (DESIGN.md 10.4).
     return mon.repl(std::cin, std::cout, true);

@@ -76,7 +76,12 @@ private:
     void showRegs(std::ostream& out);
 
     void showBoard(Board* b, std::ostream& out);
+    void showProps(const std::vector<Property>& ps, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);
+
+    // CONSOLE mode: the guest owns the keyboard until ATTN. Returns when the
+    // operator asks for the monitor back, or the machine stops.
+    void consoleMode(std::ostream& out);
     void showRoms(std::ostream& out);
     void flush(std::ostream& out);  // print anything the bus or a board said
 

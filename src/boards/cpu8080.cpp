@@ -22,12 +22,26 @@ std::vector<Property> Cpu8080Board::properties() {
         x.get = [this] { return Value::ofInt(clockHz_); };
         x.set = [this](const Value& v, std::string&) {
             clockHz_ = v.i();
+            publishClock();
             return true;
         };
         p.push_back(std::move(x));
     }
 
     return p;
+}
+
+// THE CRYSTAL IS ON THIS CARD, and the machine's Clock is where everyone else
+// looks for it (DESIGN.md 3, 7.5, 8). A 6850 converting a baud rate into T-states
+// must not have to go hunting through the backplane for whichever board happens
+// to hold the oscillator -- it asks the clock, and the clock was told by us.
+//
+// Published on power AND on every SET, because `SET cpu0 clock_hz=1000000` is a
+// runtime property: slowing the machine down to watch it is the first thing an
+// operator reaches for, and the UART's timing has to slow down with it or the
+// baud rate would silently double.
+void Cpu8080Board::publishClock() {
+    if (clock_) clock_->setHz(clockHz_);
 }
 
 std::vector<UnitDef> Cpu8080Board::units() const {

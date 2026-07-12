@@ -25,9 +25,17 @@ Board* Machine::add(const std::string& type, const std::string& id, std::string&
     }
     b->id = id;
     Board* raw = b.get();
+    // Into the backplane, and onto the clock. A card that has nothing
+    // time-dependent on it never looks at the clock; a UART cannot work without
+    // it (DESIGN.md 7.5).
+    raw->attachClock(&clock);
     boards_.push_back(std::move(b));
     bus.attach(raw);
     return raw;
+}
+
+void Machine::pump() {
+    for (auto& b : boards_) b->pump();
 }
 
 bool Machine::remove(const std::string& id, std::string& err) {
@@ -51,6 +59,10 @@ void Machine::reset(Reset r) {
 }
 
 void Machine::power() {
+    // Time starts now. THE ONLY thing that resets the clock is power -- a front
+    // panel RESET does not un-elapse the hours the machine has been on, and a
+    // board timing a disk's rotation would be very surprised if it did.
+    clock.power();
     for (auto& b : boards_) b->power();
     for (auto& b : boards_) b->reset(Reset::PowerOn);
 }

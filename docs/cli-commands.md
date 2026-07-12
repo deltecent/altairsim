@@ -19,14 +19,14 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | Type | Command | Notes |
 |---|---|---|
 | `D` | DUMP | |
-| `S` | STEP | *waiting on the CPU* |
+| `S` | STEP | |
 | `R` | RESET | |
 | `H` | HISTORY | *waiting on the debugger* |
 | `M` | MOUNT | |
-| `B` | BREAK | *waiting on the debugger* |
+| `B` | BREAK | |
 | `E` | EDIT | *waiting on the line editor* |
 | `C` | CONFIG | |
-| `G` | GO | *waiting on the CPU* |
+| `G` | GO | |
 | `SE` | SET | beats SEARCH — you type it far more often |
 | `SH` | SHOW | |
 | `DE` | DEPOSIT | the front panel keeps its word; it costs one letter |
@@ -41,21 +41,21 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `MOV` | MOVE | |
 | `W` | WHO | |
 | `BO` | BOARD | |
-| `REG` | REGS | beats REGION *(waiting on the CPU)* |
+| `REG` | REGS | beats REGION |
 | `REGI` | REGION | |
-| `DI` | DISASM | *waiting on the CPU* |
+| `DI` | DISASM | |
 | `U` | UNMOUNT | not DISMOUNT — see above |
-| `DISC` | DISCONNECT | *waiting on the serial boards* |
-| `CONS` | CONSOLE | *waiting on the serial boards* |
-| `CONN` | CONNECT | *waiting on the serial boards* |
+| `DISC` | DISCONNECT | |
+| `CONS` | CONSOLE | `CONSOLE [addr]` — the guest takes the keyboard; **ATTN (^E)** gives it back |
+| `CONN` | CONNECT | `console \| null \| loopback` today |
 | `P` | POWER | |
 | `T` | TRACE | *waiting on the debugger* |
-| `STO` | STOP | *waiting on the CPU* |
+| `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves CONSOLE today* |
 | `SN` | SNAPSHOT | *waiting on the debugger* |
 | `REST` | RESTORE | *waiting on the debugger* |
 | `REC` | RECORD | *waiting on the debugger* |
 | `REP` | REPLAY | *waiting on the debugger* |
-| `N` | NOBREAK | *waiting on the debugger* |
+| `N` | NOBREAK | |
 | `HE` | HELP | or `?` |
 | `Q` | QUIT | the only way out — there is no EXIT |
 
@@ -131,11 +131,11 @@ altairsim> EX 8000
 
 ## Commands that do not exist yet still resolve
 
-STEP, GO, BREAK, HISTORY and the rest are all in the table, and typing `S` today prints:
+TRACE, SNAPSHOT, RECORD, HISTORY and the rest are all in the table, and typing `T` today prints:
 
 ```
-altairsim> S
-STEP: not implemented yet -- waiting on the CPU.
+altairsim> T
+TRACE: not implemented yet -- waiting on the debugger.
 ```
 
 **This is the point, not an oversight.** If only the built commands were listed, `S` would mean SHOW today and silently start meaning STEP the day the CPU lands — and someone's fingers would keep typing `S` and get something else. Abbreviations are a contract with muscle memory, so the contract is fixed now, before anyone has any muscle memory to break.

@@ -13,75 +13,106 @@ In TOML these appear as the `mount` and `connect` keys; at the monitor they are 
 
 ## Endpoints (for `connect`)
 
-| Endpoint | Meaning |
-|---|---|
-| `console` | The host keyboard and screen. Exactly one unit may hold it. |
-| `socket:2323` | Listening TCP socket — a terminal emulator connects *in*. |
-| `socket:host:port` | Outbound TCP connection. |
-| `serial:/dev/cu.usbserial-X` | Real host serial port (POSIX). |
-| `serial:COM3` | Real host serial port (Windows). |
-| `file:path` | A file, for paper tape. |
-| `null` | Discard. |
+| Endpoint | Meaning | |
+|---|---|---|
+| `console` | The host keyboard and screen. Exactly one unit may hold it — connecting a second **steals** it, and says who from. | **built** |
+| `null` | Discard. What an unconnected unit is bound to, which is why an unconnected line is not an error. | **built** |
+| `loopback` | A jumper between TX and RX. The guest hears itself. | **built** |
+| `socket:2323` | Listening TCP socket — a terminal emulator connects *in*. | not yet |
+| `socket:host:port` | Outbound TCP connection. | not yet |
+| `serial:/dev/cu.usbserial-X` | Real host serial port (POSIX). | not yet |
+| `serial:COM3` | Real host serial port (Windows). | not yet |
+| `file:path` | A file, for paper tape. | not yet |
 
-## Example — a milestone-1 machine
+Asking for one that is not built yet **says so by name**, rather than failing as though you had mistyped it.
+
+## Example — the machine that exists today
+
+This is `machines/altmon.toml`, and it runs: `altairsim altmon`.
 
 ```toml
 [machine]
-name     = "basic-dev"
-clock_hz = 2_000_000       # 0 = run flat out (host-idle aware)
+name    = "altmon"
+sense   = 00               # port FF, the front-panel switches
+startup = ["CONSOLE F800"] # anything you can type, a config can do
 
-# The CPU is a board like any other (DESIGN.md §3).
+# The CPU is a board like any other (DESIGN.md §3) -- and THE CRYSTAL IS ON IT,
+# which is why clock_hz is this board's property and NOT the machine's.
 [[board]]
-type = "88-cpu"
-id   = "cpu0"
-cpu  = "8080"              # 8080 | 8085 | z80
+type     = "8080"
+id       = "cpu0"
+clock_hz = 2000000         # 0 = run flat out
+
+# Two 6850 ACIAs on one card. They share NOTHING -- separate baud jumpers,
+# separate endpoints, separate interrupt straps -- so almost everything here is a
+# UNIT property, not a board one.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10                  # HEX: a port is on the wire. Occupies 10-13.
+
+  [board.unit.a]
+  connect   = "console"
+  baud      = 9600         # DECIMAL: a baud rate never is.
+  interrupt = "none"       # none | int | vi0..vi7
+                           #   "int" = pINT (pin 73). With no VI board in the machine
+                           #   the IntAck cycle floats to 0xFF = RST 7. Real Altair.
+
+  [board.unit.b]
+  connect = "null"         # NOT an error: an unconnected 6850 sits there with TDRE
+                           #   set forever and talks to nobody, exactly as the card
+                           #   does with nothing in the second socket.
 
 [[board]]
 type = "memory"
 id   = "mem0"
-honors_phantom = true      # A JUMPER on real cards: when another board pulls
-                           #   PHANTOM* (pin 67), do I switch off? Strap this false
-                           #   and a ROM shadowing you produces real bus contention —
-                           #   which the simulator will report, as it should.
+fill = "random"            # real static RAM does not come up zeroed
 
   [[board.region]]         # A card carries one or more POPULATED regions.
   type = "ram"             #   ram = writes are stored.  rom = writes are not decoded.
-  at   = 0x0000
-  size = "64K"
+  at   = 0000
+  size = "48K"             # ALTMON puts its stack at C000 and pushes DOWN
 
-[[board]]
-type      = "88-2sio"
-id        = "sio2a"
-port      = 0x10           # occupies 0x10-0x13
-interrupt = "int"          # none | int | vi0..vi7
-                           #   "int" = pINT (pin 73). With no VI board in the machine,
-                           #   the IntAck cycle floats to 0xFF = RST 7. Real Altair behavior.
+  [[board.region]]
+  type  = "rom"
+  at    = F800
+  mount = "builtin:altmon" # compiled in: nothing to download, same on every OS
+```
 
+### The transform chain is on the LINE, not on the console
+
+`UPPER`, `CRLF`, `BSDEL` and the rest are **unit** properties, so they work identically on a socket or a real serial port — that is the whole point (DESIGN.md §7.2).
+
+```toml
   [board.unit.a]
-  connect = "console"
-  baud    = 9600
+  connect   = "console"
+  upper     = true         # fold keyboard input to uppercase -- MITS BASIC wants caps
+  strip7in  = true
+  bsdel     = "bs"         # off | bs (fold DEL->BS) | del. A perennial CP/M annoyance.
+  crlf      = false        # usually WRONG to turn on: period software sends its own LF
+  echo      = false        # local echo, for half-duplex hardware
+  bell      = true
+```
 
-  [board.unit.b]
-  connect = "socket:2323"
-  baud    = 19200
+At the monitor that is `SET sio0:a UPPER=ON`, and `SHOW sio0` prints it.
 
-# A second 2SIO — same type, own config, different base port.
-[[board]]
-type = "88-2sio"
-id   = "sio2b"
-port = 0x14
+`[console]` holds only what is genuinely about a *terminal*:
 
-  [board.unit.a]
-  connect = "serial:/dev/cu.usbserial-1410"
-  baud    = 1200
-
+```toml
 [console]
-upper    = true            # fold keyboard input to uppercase — MITS BASIC wants caps
-strip7in = true
-bsdel    = "del"
-attn     = "ctrl-e"        # drops from the console back to the monitor
-rows     = 24
-cols     = 80
+attn = 05                  # HEX. The key that drops from CONSOLE back to the monitor.
+                           #   The guest NEVER SEES this byte, so it cannot disable it.
+```
+
+`rows`, `cols`, `pace`, `ansi`, `tabs` and `log` are specified in DESIGN.md §7.2 but **not built yet**.
+
+### A second 2SIO — same type, own config, different base port
+
+```toml
+[[board]]
+type = "2sio"
+id   = "sio1"
+port = 14
 ```
 
 ## Example — a CP/M machine (milestone 3+)

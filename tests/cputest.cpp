@@ -239,6 +239,14 @@ bool run(const Suite& s, const std::string& dir) {
         StepResult r = master->step(rig.m.bus);
         ++insns;
         tStates += r.tStates;
+
+        // Nothing in THIS harness reads the clock -- the console card is a plain
+        // character sink with no timing on it. It is advanced anyway, because
+        // "emulated time moves when the CPU retires an instruction" is either true
+        // everywhere or it is not a rule, and the day somebody puts a real 2SIO in
+        // here to test an interrupt-driven suite, it must already be true.
+        rig.m.clock.advance(r.tStates);
+
         if (r.status == RunStatus::Halted) {
             halted = true;
             break;

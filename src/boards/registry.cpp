@@ -2,6 +2,7 @@
 
 #include "boards/cpu8080.h"
 #include "boards/memory.h"
+#include "boards/sio2.h"
 
 namespace altair {
 
@@ -21,12 +22,14 @@ std::vector<BoardType> boardTypes() {
     return {
         {"memory", "RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes"},
         {"8080", "MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus"},
+        {"2sio", "MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3"},
     };
 }
 
 std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "memory") return std::make_unique<MemoryBoard>();
     if (type == "8080") return std::make_unique<Cpu8080Board>();
+    if (type == "2sio") return std::make_unique<Sio2Board>();
     return nullptr;
 }
 

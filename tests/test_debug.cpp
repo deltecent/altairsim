@@ -24,7 +24,7 @@ public:
     uint8_t vector = 0xD7;  // RST 2
 
     std::string type() const override { return "test-int"; }
-    bool assertsInt() const override { return raised; }
+    bool assertsInt() override { return raised; }
     bool decodes(const BusCycle& c) const override {
         return vectors && c.type == Cycle::IntAck;
     }

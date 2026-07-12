@@ -148,17 +148,39 @@ static const std::vector<CommandDef> kCommands = {
      "The socket is then EMPTY -- those pages float to FF, exactly as a card with\n"
      "no chip in it does.\n"
      "  U dsk:0"},
-    {"DISCONNECT", false, "the serial boards", "DISCONNECT <id>:<u>", nullptr},  // DISC
-    {"CONSOLE", false, "the serial boards", "CONSOLE  -- enter it; ATTN returns", nullptr},  // CONS
-    {"CONNECT", false, "the serial boards", "CONNECT <id>:<u> <endpoint>", nullptr},  // CONN
+    {"DISCONNECT", true, nullptr, "DISCONNECT <id>:<u>",  // DISC
+     "The line then goes nowhere. NOT an error: an unconnected 6850 sits there with\n"
+     "TDRE set forever, and a program that writes to it works fine and talks to\n"
+     "nobody -- which is exactly what the card does with no cable in it.\n"
+     "  DISC sio0:b"},
+    {"CONSOLE", true, nullptr, "CONSOLE  -- enter it; ATTN (^E) returns",  // CONS
+     "Hand the keyboard to the GUEST. It gets every key, including ^C -- which a\n"
+     "CP/M program is entitled to read -- so the way back is ATTN, which the host\n"
+     "intercepts before the guest is ever offered the byte. The guest cannot\n"
+     "disable it, because the guest never sees it.\n"
+     "\n"
+     "The machine runs at the CPU card's real clock, so it is as fast as an Altair\n"
+     "was and no faster. ATTN does not STOP the machine -- CONSOLE resumes it.\n"
+     "  SET CONSOLE ATTN=05     change the key (hex; a control character)"},
+    {"CONNECT", true, nullptr, "CONNECT <id>:<u> <endpoint>",  // CONN
+     "Endpoints: console | null | loopback. (socket: and serial: are coming.)\n"
+     "\n"
+     "Exactly ONE unit may hold the console; connecting a second STEALS it and says\n"
+     "who from. Two boards reading one keyboard would each get half the characters.\n"
+     "  CONN sio0:a console\n"
+     "  CONN sio0:b null"},
     {"POWER", true, nullptr, "POWER",
      "Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on\n"
      "real hardware it does not."},
     {"TRACE", false, "the debugger", "TRACE ON|OFF [file] [MASK=...]", nullptr},
-    // STOP is NOT waiting on the CPU any more -- it is waiting on there being a way
-    // to type at the monitor WHILE the machine runs, which is CONSOLE mode. Until
-    // then a GO owns the terminal and ^C is what stops it, which is what GO says.
-    {"STOP", false, "CONSOLE mode -- today, ^C stops a GO", "STOP", nullptr},  // STO
+    // STOP is still reserved, and CONSOLE mode has now made it MORE clearly a
+    // separate thing rather than less. The machine runs while you are in CONSOLE,
+    // but the monitor is not there -- the guest has the keyboard. STOP is for the
+    // day the monitor and a running machine coexist, which needs a second thread
+    // or a multiplexed input loop, and neither exists yet. ATTN is the way out
+    // today, and it does not stop the machine: it takes the keyboard back.
+    {"STOP", false, "a monitor that runs alongside the machine (ATTN leaves CONSOLE today)",
+     "STOP", nullptr},  // STO
     {"SNAPSHOT", false, "the debugger", "SNAPSHOT <file>", nullptr},      // SN
     {"RESTORE", false, "the debugger", "RESTORE <file>", nullptr},        // REST
     {"RECORD", false, "the debugger", "RECORD <file>", nullptr},          // REC

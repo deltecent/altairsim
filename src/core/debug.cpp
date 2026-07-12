@@ -133,6 +133,12 @@ RunResult Debugger::run(uint64_t maxSteps) {
         ++r.steps;
         r.tStates += s.tStates;
 
+        // EMULATED TIME ADVANCES HERE AND NOWHERE ELSE (DESIGN.md 7.5). Exactly
+        // the T-states the CPU said it took -- so the UART's idea of when a
+        // character has finished going out is derived from the same instruction
+        // stream the guest is timing it with, and the two cannot drift.
+        m_.clock.advance(s.tStates);
+
         // A CYCLE breakpoint fired somewhere inside that instruction. We finish the
         // instruction and stop at the boundary -- never mid-instruction, because
         // real hardware cannot do that either, and a half-executed instruction is

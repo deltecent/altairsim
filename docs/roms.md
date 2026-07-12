@@ -31,6 +31,22 @@ So **every built-in ROM has a row in the table below**, and no ROM is embedded w
 | `builtin:` name | Part | Size | CRC32 | Source | Verified against |
 |---|---|---|---|---|---|
 | `dbl` | Altair Disk Boot Loader 4.1 | **256 B** (`FF00`–`FFFF`) | **`8E658905`** | `roms/DBL/` — `DBL.ASM` / `DBL.HEX` / `DBL.PRN`. Disassembled by **Martin Eberhard, 4 March 2012**, from an EPROM labeled "DBL 4.1" found socketed in a **MITS Turnkey board**. | `DBL.PRN` listing, **all 256 bytes**, byte-for-byte. |
+| `altmon` | ALTMON 1.3 — 1K Altair monitor | **1013 B** (`F800`–`FBF4`) | **`705203BE`** | `roms/ALTMON/` — `ALTMON.ASM` / `ALTMON.HEX` / `ALTMON.PRN`. **Mike Douglas**, 2016–2024, based on the Vector Graphic 2.0C monitor, reworked to drive an **88-2SIO**. | Its own `ALTMON.ASM` source, which is in the repository. **And it runs**: `altairsim altmon` prints its banner, takes commands, and dumps memory. |
+
+**`altmon` is the one ROM here that is verified by *execution*, not just by listing.** It is not a data structure we assert things about — it is a program, written for real hardware by someone who owns one, and it either works on our 8080 and our 2SIO or it does not. It does:
+
+```
+$ altairsim altmon
+ALTMON 1.3
+*DUMP F800 F80F
+F800 3E 03 D3 10 D3 12 3E 11 D3 10 D3 12 31 00 C0 CD  >.....>.....1...
+```
+
+Those sixteen bytes are ALTMON's own first sixteen — `MVI A,3 / OUT 10 / OUT 12 / MVI A,11 / OUT 10 / OUT 12` — so this is the ROM reading its own 2SIO initialization back to us *through the card it initializes*, and it agrees with `ALTMON.HEX` byte for byte.
+
+It expects **itself at F800**, **RAM below C000** (it sets its stack there and pushes down), and an **88-2SIO at port 10** with the console on channel A. Those are not choices; they are what the listing requires, and `machines/altmon.toml` is the machine that satisfies it.
+
+> **A trap, from ALTMON's own listing.** Its `ahex` routine reads exactly four hex digits and **aborts to the prompt on any byte below `'0'`** — so a space is not a separator, it is a *cancel*. Type `DF800F80F`, not `D F800 F80F`. The spaces in ALTMON's own printed command summary are typography, not grammar.
 
 **How `dbl` was verified.** All 16 Intel HEX records checksum clean and cover `FF00`–`FFFF` contiguously with no gaps and no overlap. Every one of the 256 bytes in `DBL.HEX` matches the address/opcode columns of the `DBL.PRN` assembler listing exactly. The image ends `... C9 00 00` — the trailing zeros are the listing's own `DW 00H` ("FILLS THE EPROM OUT WITH 00'S"), so this is a **complete 256-byte part, not a truncated one**.
 

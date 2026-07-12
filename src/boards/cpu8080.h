@@ -44,7 +44,10 @@ public:
     // false is the truth for this card.
 
     void reset(Reset r) override { core_->reset(r); }
-    void power() override { core_->reset(Reset::PowerOn); }
+    void power() override {
+        publishClock();  // the crystal, announced to the machine's Clock
+        core_->reset(Reset::PowerOn);
+    }
 
     std::vector<Property> properties() override;
 
@@ -60,6 +63,8 @@ public:
     std::vector<UnitDef> units() const override;
 
 private:
+    void publishClock();
+
     std::unique_ptr<Cpu8080> core_;
     long long clockHz_ = 2000000;  // 2 MHz: the Altair's 88-CPU, as shipped
 };

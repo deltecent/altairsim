@@ -2,6 +2,7 @@
 
 #include "boards/memory.h"
 #include "boards/registry.h"
+#include "host/console.h"
 
 #include <cctype>
 #include <cstdio>
@@ -235,7 +236,18 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
             continue;
         }
 
-        if (t.name == "console") continue;  // no console board yet (milestone 1b)
+        // [console] -- the HOST's keyboard and screen, not a board. Its properties
+        // go through the same one path as everything else (DESIGN.md 7.2), which
+        // is why a config file cannot set something the monitor would refuse.
+        if (t.name == "console") {
+            for (const auto& [k, v] : t.kv) {
+                if (!setPropertyIn(Console::instance().properties(), "console", k, v, false, err)) {
+                    err = path + ": [console]: " + err;
+                    return false;
+                }
+            }
+            continue;
+        }
 
         err = path + ": unknown table [" + t.name + "]";
         return false;
@@ -295,7 +307,41 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
             else
                 f << p.name << " = " << probe.text(p.radix) << "\n";
         }
+        // ---- Unit properties: `[board.unit.a]` ----
+        //
+        // Generic, over units() and unitProperties(). A card added next year that
+        // declares units with settings round-trips through CONFIG SAVE with no
+        // change here -- which is the whole bet the reflection layer is making.
+        //
+        // NOTE WHAT THIS DELIBERATELY DOES NOT DO: it does not probe for
+        // read-only properties by calling set(get()), the way the board walk above
+        // does. That trick is safe for a port jumper and NOT safe here, because
+        // `connect` has a side effect -- setting it RE-RESOLVES THE ENDPOINT. On a
+        // console that means tearing the terminal down and rebuilding it; on a
+        // socket it would mean rebinding a live port. Saving a config file must not
+        // perturb the machine it is describing.
+        for (const auto& u : b->units()) {
+            auto up = b->unitProperties(u.name);
+            if (up.empty()) continue;
+            f << "\n  [board.unit." << u.name << "]\n";
+            for (const auto& p : up) {
+                if (!p.set) continue;
+                Value v = p.get();
+                if (p.kind == Kind::Str || p.kind == Kind::Enum)
+                    f << "  " << p.name << " = \"" << v.text(p.radix) << "\"\n";
+                else
+                    f << "  " << p.name << " = " << v.text(p.radix) << "\n";
+            }
+        }
+
         // Sub-units.
+        //
+        // TODO: this dynamic_cast is the last board-specific line in the config
+        // layer, and it should not survive. A memory REGION is a sub-unit like any
+        // other; it needs `addSubUnit`'s inverse -- a generic `subUnits()` that
+        // hands back table name + key/values -- and then this whole block is four
+        // lines and knows nothing about memory. Not tonight, but it is a wart and
+        // it is written down as one.
         if (auto* mem = dynamic_cast<MemoryBoard*>(b.get())) {
             for (const auto& r : mem->regions()) {
                 f << "\n  [[board.region]]\n";

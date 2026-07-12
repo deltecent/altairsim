@@ -1,0 +1,72 @@
+# An Altair with a monitor in ROM and a terminal on it.
+#
+# THE SMALLEST MACHINE THAT IS ACTUALLY USABLE BY A HUMAN. `4k` has no ROM and no
+# terminal -- you toggle it in, as you did in 1975. `default` is aimed at booting
+# CP/M off a disk that does not exist yet. This one you can just TALK to:
+#
+#     altairsim altmon
+#     CONSOLE
+#
+# ...and ALTMON prints its banner and a prompt, and D, M, E, S and the rest work.
+#
+# ALTMON is Mike Douglas's 1K monitor for the Altair (roms/ALTMON), based on the
+# Vector Graphic 2.0C monitor and reworked to drive an 88-2SIO. It expects:
+#
+#   - itself at F800 (its `org`),
+#   - a stack at C000, which it sets on entry -- so there must be RAM below that,
+#   - an 88-2SIO at port 10, console on channel A. It initializes BOTH channels,
+#     because it can load Intel HEX over either one.
+#
+# So this file is not a set of choices. It is what the ROM requires, and every
+# line of it is dictated by the listing in roms/ALTMON/ALTMON.ASM.
+
+[machine]
+name    = "altmon"
+sense   = 00
+
+# It runs on its own the moment the machine is switched on -- because that is
+# what a monitor PROM in a turnkey machine DID. There is no BOOT command
+# (DESIGN.md 10.0): a config that should start says so with the operator's own
+# keystroke, written down.
+startup = ["CONSOLE F800"]
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 2000000
+
+# The terminal. Channel A is the console; channel B is a second line ALTMON will
+# also happily take an Intel HEX file on, and it is left unconnected here -- which
+# is not an error and not a gap. An unconnected 6850 sits there with TDRE set
+# forever and ALTMON's initialization of it works fine and talks to nobody,
+# exactly as the card does with no cable in the second socket.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  # 48K, so the stack ALTMON puts at C000 has RAM underneath it. (It pushes
+  # DOWNWARD from C000, so the top byte it touches is BFFF -- the last byte of
+  # this region, which is not a coincidence: that is how you sized a stack.)
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = F800
+  mount = "builtin:altmon"

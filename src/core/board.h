@@ -8,6 +8,7 @@
 // is answered here, by the card, using knowledge only the card has.
 
 #include "core/bus.h"
+#include "core/clock.h"
 #include "core/value.h"
 
 #include <cstdint>
@@ -134,7 +135,18 @@ public:
     //
     // The board does NOT supply a vector here. If it wants to drive one, it claims
     // the IntAck cycle like any other cycle (DESIGN.md 4.4).
-    virtual bool assertsInt() const { return false; }
+    //
+    // NOT const, and that is load-bearing. A board may have to DO something to
+    // answer honestly -- a 6850 has to notice that a character has finished
+    // arriving on its receive line. That happens on the chip's own clock, with no
+    // help from the CPU, which is exactly why it cannot be folded into read().
+    //
+    // This is not a hypothetical. It is the bug this comment was written after: an
+    // INTERRUPT-DRIVEN driver never reads the status port -- that is the whole
+    // point of it -- so a UART that only ingested characters when the guest looked
+    // at a register would never ingest one, never raise IRQ, and the interrupt
+    // would never fire. The board must be able to advance its own receiver here.
+    virtual bool assertsInt() { return false; }
 
     // ---- Lifecycle (DESIGN.md 6) ----
 
@@ -154,6 +166,36 @@ public:
     // The single source of truth for SET, SHOW, TOML, CONFIG SAVE, MCP schemas,
     // and tab completion. There is no second schema anywhere.
     virtual std::vector<Property> properties() = 0;
+
+    // The properties of ONE UNIT -- `SET sio2a:a BAUD=9600` (DESIGN.md 7.2, and
+    // the 88-2SIO's own doc). A unit is a real thing with real settings: the two
+    // halves of a 2SIO have independent baud rates and independent transforms,
+    // because they are two independent 6850s with their own crystals-worth of
+    // jumpers. Folding them into the board's properties() as `a_baud`/`b_baud`
+    // would work for a 2SIO and fall apart on the first card with eight ports.
+    //
+    // Empty for a board whose units have no settings, which is most of them.
+    virtual std::vector<Property> unitProperties(const std::string& unit) {
+        (void)unit;
+        return {};
+    }
+
+    // ---- Host services ----
+
+    // Give the host a turn: accept a socket connection, drain a keyboard. Called
+    // once per time slice by the run loop, NEVER from inside a bus cycle.
+    //
+    // This is the seam that keeps a board pure. A board's read()/write() are
+    // pure computation over state; anything that has to TALK TO THE OUTSIDE WORLD
+    // happens here, at a known point in emulated time -- which is what makes a
+    // recorded session replay identically instead of depending on when the host
+    // scheduler happened to deliver a packet.
+    virtual void pump() {}
+
+    // The machine's clock, set when the card goes into the backplane (DESIGN.md
+    // 7.5). A card with nothing time-dependent on it never looks at this, and
+    // most don't. A UART absolutely does: TDRE is a deadline, not a flag.
+    void attachClock(Clock* c) { clock_ = c; }
 
     // ---- RAW: behind the bus (DESIGN.md 10.2) ----
     //
@@ -222,7 +264,8 @@ public:
     }
 
 protected:
-    bool enabled_ = true;
+    bool   enabled_ = true;
+    Clock* clock_   = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -238,5 +281,15 @@ protected:
 // ---------------------------------------------------------------------------
 bool setProperty(Board& b, const std::string& key, const std::string& text, bool running,
                  std::string& err);
+
+// The same path for a UNIT's properties -- `SET sio0:a BAUD=9600`.
+bool setUnitProperty(Board& b, const std::string& unit, const std::string& key,
+                     const std::string& text, bool running, std::string& err);
+
+// ...and for anything else with properties that is not a board at all. The host
+// console has properties (ATTN) and must obey the same rules about them; making
+// it a fake Board to get that would have been the wrong way round.
+bool setPropertyIn(std::vector<Property> props, const std::string& who, const std::string& key,
+                   const std::string& text, bool running, std::string& err);
 
 } // namespace altair

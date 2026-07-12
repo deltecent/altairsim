@@ -145,6 +145,44 @@ job is to decide whether we implement them correctly.
 
 ---
 
+## The 88-2SIO — the console, and the first machine you can talk to
+
+**Built, 2026-07-11.** `src/host/` (the host services layer), `src/boards/sio2.cpp`, `src/core/clock.h`, `tests/test_sio2.cpp`. `docs/boards/88-2sio.md`.
+
+```
+$ altairsim altmon
+startup> CONSOLE F800
+
+ALTMON 1.3
+*DUMP F800 F80F
+F800 3E 03 D3 10 D3 12 3E 11 D3 10 D3 12 31 00 C0 CD  >.....>.....1...
+```
+
+**That is a real 1K monitor PROM, written for real hardware, driving a real 6850 over the real bus** — and the bytes it dumped are its own first sixteen, which are `MVI A,3 / OUT 10 / OUT 12 / MVI A,11 / OUT 10 / OUT 12`: the ROM reading its own 2SIO initialization back to us *through the card it is initializing*.
+
+What landed, in dependency order:
+
+- **`Clock`** (`src/core/clock.h`) — emulated time in T-states, advanced only by the run loop, by exactly what the CPU reported. The crystal is on the CPU card, so the card publishes its `clock_hz` here.
+- **`ByteStream`** (`src/host/stream.h`) — the generic serial endpoint. `NullStream`, `LoopbackStream`, `ScriptedStream`, `Console`.
+- **`FilterStream`** (`src/host/filter.cpp`) — the transform chain, **on the line rather than on the console**, so `SET sio0:a UPPER=ON` works identically on a socket.
+- **`Console`** (`src/host/console.cpp`) — raw mode, and the **ATTN** key, intercepted by the host before the guest is ever offered the byte.
+- **The 88-2SIO** — two independent 6850s that share nothing.
+- **The monitor**: `CONNECT`, `DISCONNECT`, `CONSOLE [addr]`, `SET <id>:<unit> k=v`, `SHOW CONSOLE`, and `[board.unit.a]` in a config file, round-tripped by `CONFIG SAVE`.
+
+### Three things this got wrong first, and what they taught
+
+**1. `assertsInt()` had to stop being `const`.** The interrupt-driven echo test failed because the ACIA only ingested a character when the guest *read a register* — and **an interrupt-driven driver never reads the status port; that is the entire point of it.** So RDRF never set, IRQ never rose, nothing ever happened. Every polled test passed throughout. The general rule: a board is entitled to advance its own free-running hardware when asked whether it is pulling pINT, because a peripheral has a clock of its own. (DESIGN.md §4.4.1.)
+
+**2. A `ByteStream` is not a serial line.** The first ACIA synthesized OVRN by pulling a byte every character-time whether or not the guest had read the last one — and **immediately lost data**, because while ALTMON was echoing `DUMP ` it was not reading the receiver, so the address you typed went on the floor. A stream is *buffered and flow-controlled*; inventing an overrun from it manufactures data loss the host does not have. (`docs/boards/88-2sio.md`.)
+
+**3. The `EventQueue` was never needed.** DESIGN §7.5 specified callbacks. The 2SIO wanted a **deadline**: when a 6850's shift register drains, *nothing happens in the world* — TDRE is simply true next time anyone looks. Boards are already polled for everything the bus can see, so they never need waking. `schedule()` is not built; the reasoning is written down, and **it is flagged for Patrick as the one design decision this work reversed.**
+
+### Still open in 1b
+
+`socket:` and `serial:` endpoints (the code says so when you ask for one, rather than failing obscurely); MCP `send`/`expect`; 4K BASIC; the `pace`, `ansi`, `tabs`, `log` console transforms; idle detection (§8) — CONSOLE currently throttles to the real clock instead, which solves the same problem for a human but not for an automated build.
+
+---
+
 ## Milestone 1b — the walking skeleton
 
 **MCP + 8080 + interrupts + one 88-2SIO, on top of 1a.**

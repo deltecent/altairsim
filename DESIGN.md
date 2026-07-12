@@ -245,7 +245,9 @@ public:
 
     // Interrupts. A board may drive pINT directly, and/or assert one of VI0-VI7.
     // The bus does NOT invent a vector — see §4.4.
-    virtual bool     assertsInt() const { return false; }   // pINT (S-100 pin 73)
+    //
+    // NOT const, and that is load-bearing (corrected 2026-07-11 — see below).
+    virtual bool     assertsInt() { return false; }         // pINT (S-100 pin 73)
     virtual int      assertsVi()  const { return -1; }      // VI0..VI7, or -1
 
     // Bus mastering (DMA): assert pHOLD; when granted pHLDA, the bus calls
@@ -410,6 +412,20 @@ Everything else is a board. The 88-VI is then just another board with no special
 
 A board declares its jumpering as a property: `interrupt = none | int | vi0 … vi7`. An 88-2SIO with `interrupt = int` gives RST 7 with no VI board present; the same board with `interrupt = vi2` in a machine containing an 88-VI gives `RST 2`.
 
+#### 4.4.1 `assertsInt()` is not `const` — and the reason is a bug it let through
+
+**Corrected 2026-07-11**, when the 2SIO's acceptance test (an interrupt-driven echo, no VI board) failed.
+
+A board may have to **do something** to answer "am I pulling pINT?" honestly. A 6850 has to notice that a character has finished arriving — which happens on **the chip's own clock**, with no help from the CPU and no bus cycle involved.
+
+The first 2SIO only took a character off the line when the guest **read a register**. That is fine for a polled driver and catastrophic for an interrupt-driven one:
+
+> **An interrupt-driven driver never reads the status port. Not reading it is the entire point of being interrupt-driven.** So `RDRF` was never set, IRQ never rose, the interrupt never fired, and the operator could type forever with nothing happening.
+
+Every *polled* test passed throughout. Only the interrupt test could catch it, which is why the acceptance list has one.
+
+**The general rule this establishes:** the bus's questions to a board are not all pure. `decodes()` and `assertsPhantom()` are combinational and must stay `const` — the bus calls them several times per cycle. `assertsInt()` is asked **once per instruction boundary**, and a board is entitled to advance its own free-running hardware there. That is not a hack around the model; it is the model admitting that a peripheral has a clock of its own.
+
 ### 4.5 DMA is bus mastering
 
 A board asserts `pHOLD`; the bus grants (`pHLDA`) at the next instruction boundary; the board then acts as a `BusMaster` — the same interface the CPU uses — and drives its own cycles. Stolen T-states are charged to the clock, so the CPU genuinely loses time rather than getting DMA for free. When the board releases, the CPU resumes mastering.
@@ -533,7 +549,13 @@ Boards must **never** touch a socket, a file handle, or `termios` directly. Ever
 
 ### 7.1 `ByteStream` — the generic serial endpoint
 
+**Built, 2026-07-11** (`src/host/stream.h`). Implemented: `NullStream`, `LoopbackStream`, `ScriptedStream`, `Console`. Still to come: `TcpListenStream`, `TcpConnectStream`, `HostSerialStream`, `FileStream`, `ReplayStream`.
+
 Every board that moves characters (88-SIO, 88-2SIO, 88-ACR, 88-LPC, paper tape, PMMI) talks only to this. `CONNECT` binds an implementation to a unit.
+
+> **An unconnected line is not an error, and there is no null pointer in the stream path.** A disconnected unit is bound to a `NullStream`, because that is what an unconnected 6850 on a real card *is*: it sits there with TDRE set forever, and software that writes to it works fine and talks to nobody. So no board contains a branch for "what if nothing is plugged in" — there was never a case to handle.
+
+> **A `ByteStream` is NOT a serial line.** It is a *buffered, flow-controlled* source — a pipe, a socket, an OS keyboard queue. It will hold a byte until you take it. A board that models it as a free-running wire (and therefore synthesizes overruns from it) manufactures data loss that the host transport does not have. This cost real debugging; see `docs/boards/88-2sio.md`.
 
 ```cpp
 class ByteStream {
@@ -553,7 +575,11 @@ Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, o
 
 ### 7.2 `Console` — the host keyboard and screen
 
+**Built, 2026-07-11** (`src/host/console.cpp`, `src/host/filter.cpp`). Implemented: `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell`, `bsdel`, and `attn`. Not yet: `tabs`, `ansi`, `rows`/`cols`, `pace`, `log`.
+
 A `ByteStream` like any other, so a board connecting to it needs no special code. But it is the only stream with a human on the far end, so it owns a configurable **transform chain**, applied inbound from the keyboard and outbound to the screen. Properties are declared through the same `Property` layer as boards, so `SET`/`SHOW`/MCP/completion work on it for free.
+
+> **The transforms went on the LINE, not on the console** — a `FilterStream` wrapping whatever the unit is connected to. That is what the design asked for ("`SET sio2b UPPER=ON` on a socket-connected line works for free") and it is why they are **unit** properties: `SET sio0:a UPPER=ON`, `[board.unit.a]` in a config file. The console owns only what is genuinely about a *terminal*: raw mode and `attn`.
 
 | Property | Meaning |
 |---|---|
@@ -667,20 +693,33 @@ Two constraints that are painful to retrofit:
 
 **Keystrokes from an SDL window are an *input*** — they go through the recorded event queue like everything else, or replay breaks the first time a Dazzler game is involved.
 
-### 7.5 `Clock` / `EventQueue` — the single source of time
+### 7.5 `Clock` — the single source of time
 
-Nothing in the simulator may call `std::chrono::now()` except this. Boards schedule future work in **T-states**, not milliseconds:
+Nothing in the simulator may call `std::chrono::now()` except this. Time is measured in **T-states**, never milliseconds, and it advances only when the CPU retires an instruction — by exactly the count the CPU reported. That is what makes replay deterministic, and it is why the UART's idea of when a character has finished going out is derived from the very instruction stream the guest is timing it against; the two cannot drift.
+
+The crystal is on the **CPU card** (§3, §8), so the card publishes its `clock_hz` here. A board converting a real-world rate (a baud rate, a disk RPM) into T-states asks the clock, and never has to go hunting through the backplane for whichever card holds the oscillator — or discover there isn't one.
 
 ```cpp
-class EventQueue {
+class Clock {
 public:
-    Handle schedule(uint64_t deltaTStates, std::function<void()> fn);
-    void   cancel(Handle);
-    void   advance(uint64_t tStates);   // fires everything due
+    uint64_t now() const;              // T-states since POWER. Only power resets it.
+    void     advance(uint64_t dt);     // the run loop, with StepResult::tStates
+    long long hz() const;              // published by the CPU card
+    uint64_t tStatesPer(long long perSecond) const;   // the ONE place that division lives
 };
 ```
 
-This is what makes replay deterministic and what lets `tick()` be cheap — a board with nothing to do until sector 7 rotates under the head schedules one event instead of being polled every instruction.
+#### The `EventQueue` is gone, and this is a deliberate reversal — argue with it
+
+**This section previously specified an `EventQueue`:** `schedule(delta, fn)` / `cancel(h)`, with boards registering **callbacks** for future work. It has not been built, and the 2SIO — the first board that genuinely needs time — did not want it.
+
+**The reason: in this architecture a board is already polled for everything the bus can observe about it.** `decodes()` is asked on every cycle; `assertsInt()` on every instruction boundary. So a board never needs to be *woken*. It needs to be able to answer *"what time is it?"* when someone finally asks.
+
+And that is what the hardware is actually like. **When a 6850's transmit shift register drains, nothing happens in the world** — no wire moves, nobody is notified. TDRE is simply true the next time the guest reads the status port. It is a **deadline, not an event**. Modeling it as a callback would fire one per character even when nobody ever looks: slower, and less true. The disk's index pulse and its sector timing are deadlines by the same argument, and an interrupt is a **level** that `assertsInt()` already polls.
+
+So `schedule()` had no user, and **unused API is a liability** — it gets designed against a board that does not exist yet, and it is always wrong when the board arrives. If a real one turns up that genuinely cannot be expressed as a deadline, add it *then*, with that board as the proof it was needed.
+
+**Patrick: this is the one place tonight's work reversed a design decision rather than implementing it. It is reversible and it is cheap to add back.**
 
 ### 7.6 `Log` / `Trace`
 
@@ -708,8 +747,8 @@ One structured diagnostic sink with per-board and per-category masks (`IN`, `OUT
   **ONE CARD IS NOT ONE KIND OF THING.** A card may carry drives *and* ROM sockets *and* a serial port — the Tarbell we already model carries a boot PROM and a floppy controller, and a controller with its own PROM, scratch RAM and a serial port on one board was a completely ordinary 1977 product. Nothing in the bus model ever assumed otherwise: `decodes()` is asked about every cycle and `BusCycle::type` distinguishes memory from I/O, so one card answers both. `tests/test_units.cpp` builds exactly such a card and proves it.
 
   So units are named and typed — `MOUNT dj:drive0`, `MOUNT dj:rom0`, `CONNECT dj:tty` — and **the kind is checked**: mounting a disk image onto a serial port is an error with a sentence explaining it. The integer scheme could not be made safe, which is why it is gone: with a flat namespace, `MOUNT dj:4` on a serial unit can only *fail*, never *explain*, because the board has nothing left to distinguish 4-the-drive from 4-the-port. `SHOW <id>` lists the units, and it reads `Board::units()` — the same list MOUNT reads, so they cannot disagree.
-- Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `file:path` | `null`.
-- Exactly one unit may hold `console` at a time; the monitor arbitrates.
+- Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `file:path` | `null`. **Built so far: `console`, `null`, `loopback`.** The resolver **names the unbuilt ones when you ask for one**, rather than failing as though you had mistyped it — a user who types `socket:2323` has a specific expectation and deserves to be told it is not here yet, not left wondering about their syntax.
+- Exactly one unit may hold `console` at a time; the monitor arbitrates. **Connecting a second STEALS it and says who from** — two boards reading one keyboard would each get half the characters, which is not hypothetical: it is what happens the first time a machine has two 2SIOs and you forget.
 - Disk images are buffered and written back. **The board** probes the image size against the formats *it* knows and declares the layout to `DiskImage` (§7.3); `media = "8in" | "minidisk" | "fdc8mb"` forces the choice when the size is ambiguous. `readonly` supported (the real board's write-protect).
 
 ---
