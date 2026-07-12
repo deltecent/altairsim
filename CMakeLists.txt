@@ -149,6 +149,9 @@ add_library(altair_core STATIC
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
+  # The chips. A chip is not a card: it is modeled from its DATA SHEET, it knows
+  # nothing about S-100, and it is shared by every card that has one soldered to it.
+  src/chips/mc6850.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
   src/boards/mits-2sio.cpp

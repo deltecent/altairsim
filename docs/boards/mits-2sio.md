@@ -1,6 +1,6 @@
 # 88-2SIO — MITS Dual Serial Interface
 
-**Status: BUILT, 2026-07-11.** `src/boards/mits-2sio.cpp`, `tests/test_sio2.cpp`.
+**Status: BUILT, 2026-07-11.** `src/boards/mits-2sio.cpp`, `tests/test_sio2.cpp`. **The 6850 itself moved out to `src/chips/mc6850.cpp` on 2026-07-12** (DESIGN.md §7.8) — a chip is not a card, and the next card with a 6850 on it inherits the DCD latch and the CTS-inhibits-TDRE rule already right. What is left in `mits-2sio.cpp` is what the *card* does: where the ports are, where the IRQ is jumpered, which chip answers which address.
 
 **The proof vehicle** — a fully-modeled 2SIO exercises every interface in the design (console, TCP socket, host serial, interrupts, multi-unit boards, multiple instances), which is why it is the only peripheral in milestone 1.
 
@@ -250,7 +250,7 @@ Take the poll away and the hole is obvious:
 
 That is an entirely ordinary driver, and the old run loop **declared it finished** — two thousand T-states before the interrupt it was waiting for. So the card now owns its own clock:
 
-- **`Acia::nextEdge()`** — the next moment this chip's IRQ pin could move *with nobody touching it*. The card sets a `Clock` deadline for it (**§7.5**) and wakes itself. On a quiet line with an idle transmitter the answer is **"never"**, and no timer is set at all — which is the commonest state in the machine, and precisely the one the poll was paying full price for.
+- **`Mc6850::nextEdge()`** — the next moment this chip's IRQ pin could move *with nobody touching it*. The card sets a `Clock` deadline for it (**§7.5**) and wakes itself. On a quiet line with an idle transmitter the answer is **"never"**, and no timer is set at all — which is the commonest state in the machine, and precisely the one the poll was paying full price for.
 - **`pump()`** — for the thing a deadline cannot predict: a human touching a key. Nothing in emulated time saw that coming, so no timer could have been set for it.
 
 Both, and they are not alternatives — they answer different questions. It is the same function on this card (`Sio2Board::refresh()`), and it is the answer to *"event queue, or periodic timer?"*: **both, and you already had the second one.**

@@ -331,7 +331,7 @@ void test_lines() {
 
         // The jumper moves, and the wire follows it.
         std::string err;
-        std::vector<Property> ps = g.u.properties();
+        std::vector<Property> ps = g.u.properties(resolveEndpoint);
         for (auto& p : ps)
             if (p.name == "baud") CHECK(p.set(Value::ofInt(300), err), "restrap to 300 baud");
         CHECK(g.line->params_.baud == 300, "the WIRE is reprogrammed to 300 too");
@@ -353,7 +353,7 @@ void test_lines() {
     {
         Chip g;
         bool found = false;
-        for (auto& p : g.u.properties())
+        for (auto& p : g.u.properties(resolveEndpoint))
             if (p.name == "lines") {
                 found = true;
                 CHECK(!p.set, "no setter: it reports the far end, it does not drive it");

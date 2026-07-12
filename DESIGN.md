@@ -859,6 +859,18 @@ One structured diagnostic sink with per-board and per-category masks (`IN`, `OUT
 
 ---
 
+## 7.8 A chip is not a card (`src/chips/`)
+
+**A board is a PCB with chips on it, and the code says so** (Patrick, 2026-07-12). `src/chips/` holds the parts that get soldered to more than one card: `mc6850.h` (the 6850 ACIA, on both halves of the 88-2SIO), and — as they land — `uart1602` (the 88-SIO *and* the 88-ACR: the same chip on the same PCB) and `wd17xx` (the FD1771, on the Tarbell and on the controllers after it).
+
+**Each chip is modeled from its DATA SHEET, and each board from its MANUAL.** That line is the whole reason the directory exists. A chip built instead from the one BIOS that happens to drive it will implement exactly the subset that BIOS touches and quietly get the rest wrong — and it will look finished while doing it. §0.1 applies to a chip's registers exactly as it applies to a card's ports.
+
+A chip knows nothing about S-100. It has a clock, some pins, and (if it moves bytes) a `ByteStream`. It never learns the endpoint *grammar* either: the monitor installs a resolver on the board, and the board hands the **function** down — which is §7.7's division of labor holding one level further in.
+
+**This does not license sharing between cards that merely resemble each other.** The 88-SIO and the 88-2SIO still share no code, on purpose: they are *different chips with opposite status polarity*, and a common helper with a `bool` flipping the sense is precisely the trap that rule was written to prevent. What licenses sharing is being **the same part**, not filling the same role.
+
+---
+
 ## 8. Timing and host idling
 
 - Clock is the **CPU board's** `clock_hz` (default 2,000,000) or `0` for free-running — not the machine's (§3). The crystal is on the card, and a backplane with no CPU card has no clock rate at all.
