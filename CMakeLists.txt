@@ -153,6 +153,7 @@ add_library(altair_core STATIC
   # nothing about S-100, and it is shared by every card that has one soldered to it.
   src/chips/mc6850.cpp
   src/chips/uart1602.cpp
+  src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
   src/boards/mits-2sio.cpp
@@ -198,7 +199,8 @@ add_executable(altair_tests
   tests/test_debug.cpp
   tests/test_sio2.cpp
   tests/test_88sio.cpp
-  tests/test_lines.cpp)
+  tests/test_lines.cpp
+  tests/test_wd17xx.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 

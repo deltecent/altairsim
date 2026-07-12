@@ -2,7 +2,11 @@
 
 **Status: not implemented.** The disk-controller half of this card is a later milestone. The **boot PROM and PHANTOM\* half is specified here now**, because it is the card that settles what PHANTOM\* means for the whole bus, and it is already proven against the bus API by `tests/test_phantom.cpp`.
 
-> **Do not implement the FDC half from this document.** It contains nothing about the FD1771, the ports, or the disk format, because none of that has been sourced yet. See §0.1: ask Patrick, he will find the manual.
+> **Do not implement the FDC half from this document.** It contains nothing about the card's ports, its decode, or the disk format — that is still to be written up, and it is what the FDC milestone starts with.
+>
+> **The CHIP, however, is done.** The FD1771 was sourced (`reference/Western Digital FD1771 - Datasheet.pdf`, and the same sheet is reprinted as §7-2 of the Tarbell manual) and is implemented in `src/chips/wd17xx.{h,cpp}` with `tests/test_wd17xx.cpp`. This card's FDC half does not model a controller chip — **it wires one up**: it gives `Wd1771` a `FloppyDrive` and points the chip's pins at whichever drive its select latch has chosen. Read `wd17xx.h` before starting, and note in particular that the FD1771 has **no drive-select and no side-select pin** — both are the card's, which is why the chip has an `attach()` and not an index.
+>
+> ⚠️ And do **not** build it from `reference/Western Digital WD177X-00 - Datasheet.pdf`. That is a *different chip* (WD1770/72/73) and it will give you the wrong step rates. See `wd17xx.h`.
 
 ## Why this card matters out of all proportion to its size
 
