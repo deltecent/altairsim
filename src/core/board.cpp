@@ -20,6 +20,37 @@ const char* unitKindName(UnitKind k) {
     return "?";
 }
 
+// THE `interrupt` STRAP, FOR EVERY BOARD THAT HAS ONE.
+//
+// Ten choices, one spelling, one place. The 2SIO has two of these straps (one per
+// 6850) and the 88-SIO has two (one for its input device, one for its output
+// device, and the manual is explicit that they may sit at different VI
+// priorities) -- so this was going to be copied four times before the first disk
+// controller even arrived.
+Property irqJumperProperty(std::string name, std::string help, IrqJumper& j) {
+    Property x;
+    x.name    = std::move(name);
+    x.help    = std::move(help);
+    x.kind    = Kind::Enum;
+    x.choices = {"none", "int", "vi0", "vi1", "vi2", "vi3", "vi4", "vi5", "vi6", "vi7"};
+    x.get     = [&j] {
+        switch (j) {
+        case IrqJumper::None: return Value::ofStr("none");
+        case IrqJumper::Int:  return Value::ofStr("int");
+        default:
+            return Value::ofStr("vi" + std::to_string((int)j - (int)IrqJumper::Vi0));
+        }
+    };
+    x.set = [&j](const Value& v, std::string&) {
+        const std::string& s = v.s();
+        if (s == "none") j = IrqJumper::None;
+        else if (s == "int") j = IrqJumper::Int;
+        else j = (IrqJumper)((int)IrqJumper::Vi0 + (s[2] - '0'));
+        return true;
+    };
+    return x;
+}
+
 // A unit's name is the board's, and the board is the only one who knows them.
 // Nothing here guesses, and nothing accepts an index.
 bool Board::findUnit(const std::string& name, UnitDef& out) const {

@@ -21,16 +21,8 @@
 
 namespace altair {
 
-// Where a channel's interrupt request is jumpered (DESIGN.md 4.4).
-enum class IrqJumper {
-    None,  // the wire is not installed. The IRQ bit still shows in the status
-           // register -- it is the CHIP's pin, and it does not care what you
-           // did or did not solder to it.
-    Int,   // straight to pINT (pin 73). No VI board present -> nobody claims the
-           // IntAck cycle -> the bus floats 0xFF -> the 8080 executes RST 7.
-           // That is not a fallback. That IS the Altair.
-    Vi0, Vi1, Vi2, Vi3, Vi4, Vi5, Vi6, Vi7,
-};
+// `IrqJumper` -- where a channel's IRQ is soldered -- is a BUS strap, and lives in
+// core/board.h with the rest of pin 73's vocabulary (DESIGN.md 4.4).
 
 // ---------------------------------------------------------------------------
 // One 6850. The card has two, and they share NOTHING -- separate baud jumpers,

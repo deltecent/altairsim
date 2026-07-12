@@ -258,29 +258,8 @@ std::vector<Property> Acia::properties() {
         };
         p.push_back(std::move(x));
     }
-    {
-        Property x;
-        x.name    = "interrupt";
-        x.help    = "Where this channel's IRQ is jumpered: none | int | vi0..vi7";
-        x.kind    = Kind::Enum;
-        x.choices = {"none", "int", "vi0", "vi1", "vi2", "vi3", "vi4", "vi5", "vi6", "vi7"};
-        x.get     = [this] {
-            switch (jumper) {
-            case IrqJumper::None: return Value::ofStr("none");
-            case IrqJumper::Int:  return Value::ofStr("int");
-            default:
-                return Value::ofStr("vi" + std::to_string((int)jumper - (int)IrqJumper::Vi0));
-            }
-        };
-        x.set = [this](const Value& v, std::string&) {
-            const std::string& s = v.s();
-            if (s == "none") jumper = IrqJumper::None;
-            else if (s == "int") jumper = IrqJumper::Int;
-            else jumper = (IrqJumper)((int)IrqJumper::Vi0 + (s[2] - '0'));
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
+    p.push_back(irqJumperProperty(
+        "interrupt", "Where this channel's IRQ is jumpered: none | int | vi0..vi7", jumper));
     {
         Property x;
         x.name    = "connect";

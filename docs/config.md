@@ -63,6 +63,31 @@ port = 10                  # HEX: a port is on the wire. Occupies 10-13.
                            #   set forever and talks to nobody, exactly as the card
                            #   does with nothing in the second socket.
 
+# The OTHER serial card -- MITS's first, and the one whose status bits are
+# INVERTED (bit CLEAR = ready). One port, so unlike the 2SIO every jumper is a
+# BOARD property: that is what they are on the PCB. See docs/boards/mits-88sio.md.
+[[board]]
+type      = "sio"
+id        = "sio1"
+port      = 0              # HEX, and MUST BE EVEN. Control at 00, data at 01.
+rev       = "1"            # 1 = the errata mod done at the factory. THE DEFAULT.
+                           #   On a rev 0 the UART's own flags ALSO appear at
+                           #   status bits 5 (DAV) and 1 (TBMT); rev 1 drops them.
+baud      = 9600           # DECIMAL. A jumper: software cannot change it.
+data_bits = 8              # the NDB1/NDB2 pads. Soldered, not programmable --
+stop_bits = 1              #   the NSB pad                 there is no control
+parity    = "none"         #   the NPB/POE pads            register on this card.
+connect   = "console"
+
+  # TWO straps, not one. The manual is explicit that the input device and the
+  # output device may be jumpered to DIFFERENT VI priorities; the card's "BH"
+  # (both) pad is just one wire instead of two for the case where they agree.
+in_int    = "int"          # the IN pad  (receiver):    none | int | vi0..vi7
+out_int   = "none"         # the OUT pad (transmitter): none | int | vi0..vi7
+                           #   Software must ALSO enable the interrupt, by writing
+                           #   D0 (in) / D1 (out) to the control channel. The strap
+                           #   is the wire; the enable is the flip-flop.
+
 [[board]]
 type = "memory"
 id   = "mem0"

@@ -235,11 +235,11 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 | Milestone | Adds | Proven by |
 |---|---|---|
 | **1a — memory bench** | CLI, bus, `memory` board (ram + rom regions, banking, PHANTOM\*). **No CPU.** | Monitor acts as bus master: unpopulated pages read `FF`; a ROM region doesn't decode writes; all three phantom straps behave; contention detected; `RESET` keeps RAM, only `POWER` loses it |
-| **1b — skeleton** | MCP, 8080 (incl. interrupts), 88-2SIO | BASIC answers `PRINT 2+2` via console, socket, and host serial; interrupt-driven echo; two 2SIO boards at once |
+| **1b — skeleton** | MCP, 8080 (incl. interrupts), 88-2SIO, **88-SIO** | BASIC answers `PRINT 2+2` via console, socket, and host serial; interrupt-driven echo; two 2SIO boards at once |
 | 2 — CPU gate | (none) | **DONE 2026-07-11** — TST8080 / 8080PRE / CPUTEST / **8080EXM** all pass (`ctest`, plus `ctest -L slow` for 8080EXM). Still to do: run them in CI on all four platforms; the no-`#ifdef` lint is green |
 | 3 — disk | 88-DCDD | Cold-boot CP/M 2.2 from `CPM22-8MB-56K-SIM.DSK` to `A0>`; run `M80`/`L80` |
 | 4 — memory model | ROM board, PHANTOM, banking | DBL PROM at 0xFF00 overlays RAM; `SHOW BUS MAP` shows it; bank switching works |
-| 5 — rest of serial | 88-SIO, 88-ACR, 88-LPC | MITS BASIC from a cassette image; SIO's **inverted** status alongside 2SIO's true-sense |
+| 5 — rest of serial | ~~88-SIO~~ (**built 2026-07-12, in 1b**), 88-ACR, 88-LPC | MITS BASIC from a cassette image; SIO's **inverted** status alongside 2SIO's true-sense |
 | 6 — interrupt board & DMA | 88-VI, RTC | VI priority across *several* boards; a DMA card steals cycles and the clock notices |
 | 7 — parallel, host bridge | 88-PIO, 88-4PIO, **Host Bridge** (our own design) | `HGET`/`HPUT`/`HDIR` move files to and from the host; sandbox escape attempts are refused |
 | 8 — more cores | 8085, Z80 | ZEXALL / ZEXDOC; a Z80 CP/M binary runs |

@@ -105,6 +105,7 @@ add_library(altair_core STATIC
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
   src/boards/mits-2sio.cpp
+  src/boards/mits-88sio.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp
@@ -140,7 +141,8 @@ add_executable(altair_tests
   tests/test_isa.cpp
   tests/test_cpu.cpp
   tests/test_debug.cpp
-  tests/test_sio2.cpp)
+  tests/test_sio2.cpp
+  tests/test_88sio.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 

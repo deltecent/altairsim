@@ -65,6 +65,34 @@ inline bool isMountable(UnitKind k) {
     return k == UnitKind::Disk || k == UnitKind::Rom || k == UnitKind::Tape;
 }
 
+// ---------------------------------------------------------------------------
+// WHERE A BOARD'S INTERRUPT REQUEST IS SOLDERED (DESIGN.md 4.4).
+//
+// This describes a BUS STRAP, not a chip -- which is why it lives here and not
+// beside some particular UART. Pin 73 and VI0-VI7 are the backplane's wires, and
+// every interrupting card in the machine is strapped to one of them with the same
+// vocabulary: `interrupt = none | int | vi0 .. vi7`.
+//
+// It lived in mits-2sio.h until the 88-SIO needed it too, and an 88-SIO that had
+// to `#include "boards/mits-2sio.h"` to learn what pin 73 is called would be
+// saying something false about the hardware.
+// ---------------------------------------------------------------------------
+enum class IrqJumper {
+    None,  // the wire is not installed. The chip's own IRQ pin still does whatever
+           // it does -- it has no idea what you did or did not solder to it, and a
+           // status register that reports it must still report it.
+    Int,   // straight to pINT (pin 73). No VI board present -> nobody claims the
+           // IntAck cycle -> the bus floats 0xFF -> the 8080 executes RST 7.
+           // That is not a fallback. That IS the Altair.
+    Vi0, Vi1, Vi2, Vi3, Vi4, Vi5, Vi6, Vi7,
+};
+
+// The `interrupt` property, written once. Every interrupting board strap gets the
+// same ten choices, the same spelling, and the same tab completion -- and a card
+// with TWO straps (the 88-SIO has one for its input device and one for its output
+// device, at independent VI priorities) gets them both for free.
+Property irqJumperProperty(std::string name, std::string help, IrqJumper& j);
+
 class Board {
 public:
     virtual ~Board() = default;

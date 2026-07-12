@@ -1,4 +1,5 @@
 #include "boards/mits-2sio.h"
+#include "boards/mits-88sio.h"
 #include "cli/monitor.h"
 #include "config/toml.h"
 #include "core/machine.h"
@@ -136,6 +137,7 @@ int main(int argc, char** argv) {
     // nobody else's -- a board that could reach `resolveEndpoint` itself would be
     // one `#include` away from knowing what a socket is.
     Sio2Board::setResolver(resolveEndpoint);
+    SioBoard::setResolver(resolveEndpoint);
 
     Machine m;
     std::string err;
