@@ -157,6 +157,7 @@ add_library(altair_core STATIC
   src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
+  src/boards/mits-88dcdd.cpp
   src/boards/mits-2sio.cpp
   src/boards/mits-88sio.cpp
   src/boards/registry.cpp

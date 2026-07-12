@@ -1,6 +1,7 @@
 #include "boards/registry.h"
 
 #include "boards/mits-88cpu.h"
+#include "boards/mits-88dcdd.h"
 #include "boards/s100-memory.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-88sio.h"
@@ -25,6 +26,7 @@ std::vector<BoardType> boardTypes() {
         {"8080", "MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus"},
         {"2sio", "MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3"},
         {"sio", "MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits"},
+        {"dcdd", "MITS 88-DCDD: 8\" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits"},
     };
 }
 
@@ -33,6 +35,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "8080") return std::make_unique<Cpu8080Board>();
     if (type == "2sio") return std::make_unique<Sio2Board>();
     if (type == "sio") return std::make_unique<SioBoard>();
+    if (type == "dcdd") return std::make_unique<DcddBoard>();
     return nullptr;
 }
 

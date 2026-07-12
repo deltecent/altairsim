@@ -1,0 +1,642 @@
+#include "boards/mits-88dcdd.h"
+
+#include "host/media.h"
+
+#include <cstdio>
+#include <cstring>
+
+namespace altair {
+
+// ---------------------------------------------------------------------------
+// THE CARD'S ONE-SHOTS, IN MICROSECONDS, FROM THE MANUAL.
+//
+// These are not derived, chosen, or reasoned. They are RC networks on the card, and
+// the MITS manual prints both the nominal values and the ranges a working board must
+// calibrate to. Every one of them is a 74123 monostable.
+//
+// An earlier version of this file DERIVED sector-true instead: it made the signal
+// last for the whole inter-sector gap (1,648 T), because that was self-consistent,
+// tidy, and "what the signal must mean". It is 30 microseconds -- SIXTY T-states, a
+// 0.58% duty cycle -- and the difference is a factor of twenty-seven. CP/M booted
+// either way, which is the entire problem with inventing a number: a too-generous
+// window is forgiving, so the guest never complains and the bug never surfaces. The
+// manual was in the tree the whole time. (DESIGN.md 0.1, once more.)
+// ---------------------------------------------------------------------------
+
+// Sector True: "D0 - SR0 - Sector True - True when = 0, and is 30 us long."
+// IC F4 (74123), C8 = .01 uF, R11 = 10K. Calibrates to 20-40 us.
+static constexpr uint64_t kSectorTrueUs = 30;
+
+// The READ CLEAR one-shot (IC F1, R5 10K / C3 .047 uF, nominal 140 us) holds the read
+// path cleared after the sector hole. "Read data will be available 140 us after SR0
+// goes true."
+//
+// THE MANUAL CONTRADICTS ITSELF HERE and does not reconcile it: the prose says the
+// first byte lands at 140 us, while the READ/WRITE timing diagram dimensions the
+// first NRDA at 280 us. We take the prose, because it agrees with the one-shot the
+// schematic actually shows. Nothing observable rides on the choice -- the BIOS polls
+// NRDA rather than counting -- and either value leaves the 137 bytes room to finish
+// inside the sector.
+static constexpr uint64_t kReadStartUs = 140;
+
+// "ENWD goes true every 32 us" -- one byte per 32 us is 250,000 bits/sec, the 8"
+// single-density rate, and it is what BOOT.ASM's cycle-counted transfer loop is
+// timed against ("data at 64 and 128" T-states).
+static constexpr uint64_t kByteUs = 32;
+
+// "Write data will be requested 280 us after D0 goes true."
+static constexpr uint64_t kWriteStartUs = 280;
+
+// ---------------------------------------------------------------------------
+// The three media this card knows, and nothing else knows for it (DESIGN.md 7.3).
+//
+// All three come from BOOT.ASM's own equates -- NUMTRK / NUMSEC / DATATRK, under
+// `if MINIDSK` and `if NOT MINIDSK` -- which is a period artifact written against
+// the real drive, not a reconstruction.
+// ---------------------------------------------------------------------------
+const std::vector<DcddFormat>& dcddFormats() {
+    static const std::vector<DcddFormat> f = {
+        {"8in",      77, 32, 6,   77ull * 32 * kDcddSectorBytes},  //   337,568
+        {"minidisk", 35, 16, 4,   35ull * 16 * kDcddSectorBytes},  //    76,720
+        {"fdc8mb", 2048, 32, 6, 2048ull * 32 * kDcddSectorBytes},  // 8,978,432
+    };
+    return f;
+}
+
+DcddBoard::DcddBoard() { drive_.resize((size_t)drives_); }
+
+// ---------------------------------------------------------------------------
+// Decode. Three ports: select/status, command/sector, data.
+// ---------------------------------------------------------------------------
+bool DcddBoard::decodes(const BusCycle& c) const {
+    if (!enabled_) return false;
+    if (c.type != Cycle::IoRead && c.type != Cycle::IoWrite) return false;
+    uint8_t p = c.port();
+    return p >= port_ && p < port_ + 3;
+}
+
+std::vector<MapEntry> DcddBoard::ioMap() const {
+    return {
+        {port_,     port_,     "select/status", "out: drive select   in: status (INVERTED)"},
+        {port_ + 1u, port_ + 1u, "command/sector", "out: step/head/write   in: sector position"},
+        {port_ + 2u, port_ + 2u, "data",          "137-byte sector slots"},
+    };
+}
+
+DcddBoard::Drive*       DcddBoard::selected()       { return sel_ < 0 ? nullptr : &drive_[(size_t)sel_]; }
+const DcddBoard::Drive* DcddBoard::selected() const { return sel_ < 0 ? nullptr : &drive_[(size_t)sel_]; }
+
+// A microsecond of WALL time, in T-states of whatever crystal the CPU has. The card's
+// one-shots are RC networks: they do not know or care what the processor is doing, so
+// a 4 MHz machine executes twice as many instructions inside the same 30 us window.
+uint64_t DcddBoard::tFromUs(uint64_t us) const {
+    if (!clock_) return 1;
+    uint64_t t = (uint64_t)clock_->hz() * us / 1000000;  // multiply FIRST
+    return t ? t : 1;
+}
+
+uint64_t DcddBoard::tPerByte() const { return tFromUs(kByteUs); }
+
+// ---------------------------------------------------------------------------
+// WHERE THE HEAD IS -- the one place rotation is computed.
+//
+// The sector is a reading taken off the Clock; nothing here advances anything. Inside
+// one 5,200 us sector the card's one-shots lay out like this (T-states at 2 MHz):
+//
+//   0        60                    280                                    9,048
+//   |--------|----------------------|--------------------------------------|
+//   | SECTOR |                      | byte 0 | byte 1 | ... | byte 136     |  ~1,368 T
+//   | TRUE   |    (read clear)      |<------ 137 bytes x 64 T ------------>|  of slack
+//   | 30 us  |      140 us          |                                      |
+//   |<--------------------------- 10,416 T (5.2 ms) ---------------------->|
+//
+// SECTOR TRUE IS A 30 MICROSECOND ONE-SHOT -- 60 T-states, 0.58% of the sector -- and
+// NOT the inter-sector gap. The BIOS catches it with a 24-T `in`/`rar`/`jc` loop, so
+// it has about two and a half spins of margin. That is tight ON PURPOSE: the manual
+// tells the programmer "the write mode should begin as close as possible to the time
+// that D0 goes true." The hardware expected software to be right on the edge, and a
+// simulator with a luxuriously wide window is not being kind, it is being wrong --
+// it hides exactly the races the real card would punish.
+// ---------------------------------------------------------------------------
+DcddBoard::Position DcddBoard::where() const {
+    Position p;
+    const Drive* d = selected();
+    if (!d || !d->img || !clock_ || !d->spindle.spinning()) return p;
+
+    p.spinning = true;
+    p.sector   = d->spindle.sectorAt(*clock_);
+
+    uint64_t into  = d->spindle.intoSector(*clock_);
+    uint64_t start = tFromUs(kReadStartUs);
+
+    p.sectorTrue = into < tFromUs(kSectorTrueUs);
+
+    if (into < start) {
+        p.byteIndex = -1;  // the read path is still held cleared
+    } else {
+        uint64_t i  = (into - start) / tPerByte();
+        p.byteIndex = (int)(i < (uint64_t)kDcddSectorBytes ? i : kDcddSectorBytes - 1);
+    }
+
+    // The write circuit asks for its first byte 280 us in, and another every 32 us
+    // after that. ENWD is that request, so the guest cannot run ahead of the head any
+    // more than it can on the read side.
+    uint64_t wstart = tFromUs(kWriteStartUs);
+    if (into < wstart) {
+        p.writeIndex = -1;
+    } else {
+        uint64_t i    = (into - wstart) / tPerByte();
+        p.writeIndex  = (int)(i < (uint64_t)kDcddSectorBytes ? i : kDcddSectorBytes - 1);
+    }
+    return p;
+}
+
+// ---------------------------------------------------------------------------
+// Read.
+// ---------------------------------------------------------------------------
+uint8_t DcddBoard::read(const BusCycle& c) {
+    uint8_t p = (uint8_t)(c.port() - port_);
+    Drive*  d = selected();
+
+    // ---- base+0: STATUS. Inverted, and 0xFF when nothing is selected. ----
+    if (p == 0) {
+        if (!d) return 0xFF;  // ~0x00: every flag false. Which is the truth.
+
+        Position pos = where();
+
+        st_.dsken  = true;
+        st_.track0 = (d->track == 0);
+        st_.hdstat = d->loaded;
+        st_.moveok = true;  // no step-settling delay is modeled; see Limitations
+
+        // ENWD -- "the write circuit wants the next byte". Paced by the head, exactly
+        // like NRDA: first at 280 us, then one every 32 us.
+        st_.enwd = writing_ && pos.spinning && pos.writeIndex >= 0 &&
+                   writePos_ < kDcddSectorBytes && writePos_ <= pos.writeIndex;
+
+        // NRDA: has the disk turned past a byte the guest has not taken yet? The
+        // guest cannot read ahead of the medium -- that is the whole point of the
+        // flag, and it is what paces BOOT.ASM's cycle-counted transfer loop.
+        st_.nrda = d->loaded && pos.spinning && pos.byteIndex >= 0 &&
+                   readPos_ < kDcddSectorBytes && readPos_ <= pos.byteIndex;
+
+        uint8_t v = 0x10;  // D4: "Not Used, = 0" -- and it means it. The bit reads ZERO
+                           // on an enabled controller, so it has to be SET here, before
+                           // the inversion. (D3 is the same idea and the software agrees
+                           // with the manual by accident: the manual calls it "not used,
+                           // = 0", DBL calls it ENABLD and tests it for 0, and both are
+                           // one fact -- an enabled card pulls the bit low, and a card
+                           // that is not there floats the whole byte to FF.)
+        if (st_.enwd)   v |= 0x01;
+        if (st_.moveok) v |= 0x02;
+        if (st_.hdstat) v |= 0x04;
+        if (st_.dsken)  v |= 0x08;
+        if (st_.inten)  v |= 0x20;
+        if (st_.track0) v |= 0x40;
+        if (st_.nrda)   v |= 0x80;
+        return (uint8_t)~v;  // THE INVERSION. Once, here, on the way out.
+    }
+
+    // ---- base+1: SECTOR POSITION. ----
+    //
+    //     | 1 | 1 | sector[4:0] | T |     T = sector true, ACTIVE LOW
+    //
+    // The sector sits in bits 5..1 so that the BIOS's single RAR can drop T into
+    // carry AND shift the sector number down into bits 4..0 in one instruction.
+    if (p == 1) {
+        if (!d || !d->loaded) return 0xFF;  // "head not loaded" -- nothing is true
+        Position pos = where();
+        if (!pos.spinning) return 0xFF;
+
+        // A new sector under the head means a new slot to serve. Load it once, here,
+        // and reset how much of it the guest has taken.
+        if (pos.sector != bufSector_) {
+            flushWrite();  // the position we are about to leave is the one it needs
+            bufSector_ = pos.sector;
+            readPos_   = 0;
+            std::memset(buf_, 0, sizeof buf_);
+            if (d->img) {
+                size_t n = sizeof buf_;
+                if (!d->img->readSector(d->track, 0, pos.sector, buf_, &n)) {
+                    char m[128];
+                    std::snprintf(m, sizeof m, "%s: read failed at track %d sector %d",
+                                  id.c_str(), d->track, pos.sector);
+                    say(m);
+                }
+            }
+        }
+
+        uint8_t v = 0xC0;                                   // bits 7,6 read as 1
+        v |= (uint8_t)((pos.sector << 1) & 0x3E);           // sector in bits 5..1
+        if (!pos.sectorTrue) v |= 0x01;                     // T is LOW when true
+        return v;
+    }
+
+    // ---- base+2: DATA. ----
+    if (!d || !d->loaded || readPos_ >= kDcddSectorBytes) return 0xFF;
+    return buf_[readPos_++];
+}
+
+// ---------------------------------------------------------------------------
+// Write.
+// ---------------------------------------------------------------------------
+void DcddBoard::write(const BusCycle& c) {
+    uint8_t p = (uint8_t)(c.port() - port_);
+
+    if (p == 0) { selectDrive((c.data & 0x80) ? -1 : (c.data & 0x0F)); return; }
+    if (p == 1) { command(c.data); return; }
+
+    // ---- base+2: DATA. Exactly 137 bytes, then commit. ----
+    if (!writing_) return;  // not armed: the byte goes nowhere, as on the real card
+    if (writePos_ < kDcddSectorBytes) wbuf_[writePos_++] = c.data;
+    if (writePos_ == kDcddSectorBytes) flushWrite();
+}
+
+// ---------------------------------------------------------------------------
+// Drive select. base+0 OUT: bit 7 set deselects; otherwise bits 3..0 pick 0..15.
+//
+// The flush comes FIRST, before anything is invalidated -- the buffer being flushed
+// is positioned at the track and sector we are about to forget. Do it the other way
+// round and the write lands wherever the new selection happens to be, which is the
+// doc's "silently corrupts disks".
+// ---------------------------------------------------------------------------
+void DcddBoard::selectDrive(int n) {
+    flushWrite();
+
+    if (n < 0) {  // deselect
+        sel_ = -1;
+        st_  = Status{};
+        invalidatePosition();
+        return;
+    }
+    if (n >= drives_) {
+        char m[96];
+        std::snprintf(m, sizeof m, "%s: no drive %d (this card has %d)", id.c_str(), n, drives_);
+        say(m);
+        sel_ = -1;
+        invalidatePosition();
+        return;
+    }
+    if (n != sel_) {
+        sel_ = n;
+        invalidatePosition();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// base+1 OUT: the command bits. They are INDEPENDENT bits, not an opcode -- more
+// than one can arrive in the same byte, and the BIOS does exactly that.
+// ---------------------------------------------------------------------------
+void DcddBoard::command(uint8_t v) {
+    Drive* d = selected();
+    if (!d) return;
+
+    // Any STEP invalidates the sector and byte position -- and the flush has to
+    // happen first, for the same reason as in selectDrive(): the pending write
+    // belongs to the track we are about to leave.
+    if (v & 0x03) {
+        flushWrite();
+        if (v & 0x01) {  // cSTEPI -- in, toward the spindle
+            if (d->track < d->fmt.tracks - 1) d->track++;
+        }
+        if (v & 0x02) {  // cSTEPO -- out, toward track 0. Stops there.
+            if (d->track > 0) d->track--;
+        }
+        invalidatePosition();
+    }
+
+    if (v & 0x04) {  // cHDLOAD (and cRESTMR on the minidisk -- same bit, same card)
+        d->loaded = true;
+    }
+    if (v & 0x08) {  // cHDUNLD. The minidisk ignores it (motor timer, not a solenoid).
+        if (d->fmt.sectors != 16) {
+            flushWrite();
+            d->loaded = false;
+            invalidatePosition();
+        }
+    }
+
+    if (v & 0x10) st_.inten = true;   // decoded, never wired to pin 73 by default
+    if (v & 0x20) st_.inten = false;
+    // 0x40 cHCSON -- reduce head current. Decoded and ignored, exactly as software
+    // cannot tell the difference on real hardware either.
+
+    if (v & 0x80) {  // cWRTEN -- arm the write. 137 bytes, starting now.
+        Position pos = where();
+        if (d->img && d->img->readOnly()) {
+            char m[128];
+            std::snprintf(m, sizeof m, "%s: drive%d is write-protected", id.c_str(), sel_);
+            say(m);
+            return;
+        }
+        writing_  = true;
+        writePos_ = 0;
+        wTrack_   = d->track;
+        wSector_  = pos.spinning ? pos.sector : -1;
+        std::memset(wbuf_, 0, sizeof wbuf_);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// COMMIT A PENDING WRITE -- and the partial ones are the whole point.
+//
+// A system sector is 133 bytes (SSECLEN) and NEVER reaches 137. A card that waited
+// for the 137th byte before committing would lose every system sector ever written
+// -- which is the doc's "System tracks corrupt on write", and it would only show up
+// on a disk you had booted from. So: whatever the guest gave us, we write, padded
+// with the zeros the slot was cleared to.
+//
+// Called BEFORE any invalidation, from every path that moves the head or the
+// selection: select, step, head-unload, and crossing a sector boundary.
+// ---------------------------------------------------------------------------
+void DcddBoard::flushWrite() {
+    if (!writing_) return;
+    writing_ = false;
+
+    Drive* d = selected();
+    if (!d || !d->img || writePos_ == 0 || wSector_ < 0) { writePos_ = 0; return; }
+
+    // THE TAIL OF A SHORT WRITE IS THE LAST BYTE, NOT ZERO -- and that is the card,
+    // not a convention. The manual: "Write circuit will continue writing LAST BYTE
+    // OUTPUTTED on CH #012 to the end of that sector." The shift register simply keeps
+    // re-clocking whatever it was last handed. Which is why the manual also tells the
+    // programmer that "the last or 138th byte written must be a 000" -- that trailing
+    // zero is not a terminator, it is the FILL PATTERN, and the reason a 133-byte
+    // system sector ends up with four zeros after it on real media.
+    //
+    // Software does write the zero, so memset would have produced the same bytes here
+    // in every period case. It is written this way round because the card's rule is
+    // the one that is true, and the next person to read this should not have to
+    // rediscover that the zeros were a coincidence.
+    for (int i = writePos_; i < kDcddSectorBytes; ++i) wbuf_[i] = wbuf_[writePos_ - 1];
+
+    size_t n = kDcddSectorBytes;
+    if (!d->img->writeSector(wTrack_, 0, wSector_, wbuf_, &n)) {
+        char m[128];
+        std::snprintf(m, sizeof m, "%s: write failed at track %d sector %d",
+                      id.c_str(), wTrack_, wSector_);
+        say(m);
+    } else {
+        d->img->sync();
+    }
+    writePos_ = 0;
+    if (bufSector_ == wSector_) bufSector_ = -1;  // the buffer we hold is now stale
+}
+
+void DcddBoard::invalidatePosition() {
+    bufSector_ = -1;
+    readPos_   = 0;
+    st_.nrda   = false;
+}
+
+// ---------------------------------------------------------------------------
+// RESET (DESIGN.md 6.1). Deselect, unload, invalidate -- but KEEP THE IMAGES
+// MOUNTED and DO NOT SEEK TO TRACK 0. A real drive does not move its head because
+// the CPU was reset, and a warm reset that homed every drive would be inventing a
+// convenience the hardware never had.
+// ---------------------------------------------------------------------------
+void DcddBoard::reset(Reset) {
+    flushWrite();
+    sel_ = -1;
+    st_  = Status{};
+    for (auto& d : drive_) d.loaded = false;
+    invalidatePosition();
+}
+
+// ---------------------------------------------------------------------------
+// The probe. THE BOARD DOES THIS, not DiskImage (DESIGN.md 7.3).
+// ---------------------------------------------------------------------------
+bool DcddBoard::probe(Drive& d, std::string& err) {
+    uint64_t got = d.img->size();
+
+    const DcddFormat* hit = nullptr;
+    for (const auto& f : dcddFormats()) {
+        if (!d.forced.empty()) {
+            if (d.forced == f.name) hit = &f;
+            continue;
+        }
+        // sizeMatches(), NOT `==`: both 8" images in the tree are XMODEM-padded to
+        // 337,664 and a strict compare rejects the only disks we have.
+        if (sizeMatches(got, f.bytes)) { hit = &f; break; }
+    }
+
+    if (!hit) {
+        char m[192];
+        std::snprintf(m, sizeof m,
+                      "%llu bytes matches no 88-DCDD format (8in=%llu, minidisk=%llu, "
+                      "fdc8mb=%llu). Set `media` to force one.",
+                      (unsigned long long)got,
+                      (unsigned long long)dcddFormats()[0].bytes,
+                      (unsigned long long)dcddFormats()[1].bytes,
+                      (unsigned long long)dcddFormats()[2].bytes);
+        err = m;
+        return false;
+    }
+
+    d.fmt = *hit;
+    d.img->init(hit->tracks, 1, /*interleaved=*/false);
+    d.img->initFormat(0, hit->tracks - 1, 0, 0, Density::SD, hit->sectors, kDcddSectorBytes,
+                      /*startSector=*/0);  // ZERO. The Tarbell's is one.
+
+    // 360 RPM, and the sector count is the medium's -- which is why the Spindle is
+    // per drive: a minidisk turns 16 sectors past the head where an 8" turns 32.
+    d.spindle.configure(360, hit->sectors);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Units, MOUNT, UNMOUNT.
+// ---------------------------------------------------------------------------
+std::vector<UnitDef> DcddBoard::units() const {
+    std::vector<UnitDef> u;
+    for (int i = 0; i < drives_; ++i) {
+        UnitDef x;
+        x.name  = "drive" + std::to_string(i);
+        x.kind  = UnitKind::Disk;
+        x.state = drive_[(size_t)i].img ? drive_[(size_t)i].path : "(empty)";
+        u.push_back(std::move(x));
+    }
+    return u;
+}
+
+// "drive3" -> 3, or -1.
+static int driveIndex(const std::string& unit, int count) {
+    if (unit.rfind("drive", 0) != 0) return -1;
+    const std::string n = unit.substr(5);
+    if (n.empty()) return -1;
+    for (char ch : n)
+        if (ch < '0' || ch > '9') return -1;
+    int i = std::stoi(n);
+    return (i >= 0 && i < count) ? i : -1;
+}
+
+bool DcddBoard::mount(const std::string& unit, const std::string& path, bool ro, std::string& err) {
+    int i = driveIndex(unit, drives_);
+    if (i < 0) {
+        err = "no unit `" + unit + "` on " + id + " (it has drive0.." +
+              std::to_string(drives_ - 1) + ")";
+        return false;
+    }
+
+    auto media = openMedia(path, ro, err);
+    if (!media) return false;
+
+    Drive& d = drive_[(size_t)i];
+    Drive  fresh;                       // probe into a FRESH drive: a probe that fails
+    fresh.forced = d.forced;            // must not leave the old disk half-replaced
+    fresh.track  = d.track;
+    fresh.img    = std::make_unique<DiskImage>(std::move(media));
+    fresh.path   = path;
+
+    if (!probe(fresh, err)) return false;
+
+    if (fresh.img->readOnlyForced()) {
+        char m[192];
+        std::snprintf(m, sizeof m, "%s: drive%d mounted READ-ONLY -- the host will not let us write %s",
+                      id.c_str(), i, path.c_str());
+        say(m);
+    }
+
+    if (sel_ == i) { flushWrite(); invalidatePosition(); }
+    d.img  = std::move(fresh.img);
+    d.path = std::move(fresh.path);
+    d.fmt  = fresh.fmt;
+    d.spindle = fresh.spindle;
+    return true;
+}
+
+bool DcddBoard::unmount(const std::string& unit, std::string& err) {
+    int i = driveIndex(unit, drives_);
+    if (i < 0) { err = "no unit `" + unit + "` on " + id; return false; }
+
+    Drive& d = drive_[(size_t)i];
+    if (!d.img) { err = id + ":" + unit + " is empty"; return false; }
+
+    if (sel_ == i) { flushWrite(); invalidatePosition(); }
+    d.img->sync();
+    d.img.reset();
+    d.path.clear();
+    d.spindle.stop();   // no disk, no rotation. sectorAt() reads 0 and arms nothing.
+    d.loaded = false;
+    return true;
+}
+
+std::vector<std::string> DcddBoard::drainLog() {
+    auto out = std::move(log_);
+    log_.clear();
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Properties, and the [[board.drive]] sub-unit table.
+// ---------------------------------------------------------------------------
+std::vector<Property> DcddBoard::properties() {
+    std::vector<Property> p;
+    {
+        Property x;
+        x.name  = "port";
+        x.help  = "Base address. The card decodes three ports: BASE+0 .. BASE+2";
+        x.kind  = Kind::Int;
+        x.radix = 16;  // ON THE WIRE -> HEX (DESIGN.md 10.0.1)
+        x.min   = 0;
+        x.max   = 0xFD;
+        x.get   = [this] { return Value::ofInt(port_); };
+        x.set   = [this](const Value& v, std::string&) {
+            port_ = (uint16_t)v.i();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name  = "drives";
+        x.help  = "Drives on the daisy chain";
+        x.kind  = Kind::Int;
+        x.radix = 10;  // NEVER on the wire -> DECIMAL. It is a count of things.
+        x.min   = 1;
+        x.max   = 16;
+        x.get   = [this] { return Value::ofInt(drives_); };
+        x.set   = [this](const Value& v, std::string& err) {
+            int n = (int)v.i();
+            for (int i = n; i < (int)drive_.size(); ++i) {
+                if (drive_[(size_t)i].img) {
+                    err = "drive" + std::to_string(i) + " still has a disk in it";
+                    return false;
+                }
+            }
+            if (sel_ >= n) sel_ = -1;
+            drives_ = n;
+            drive_.resize((size_t)n);
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    p.push_back(irqJumperProperty("interrupt", "Where the card's interrupt is soldered", irq_));
+    return p;
+}
+
+bool DcddBoard::addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
+    if (table != "drive") {
+        err = "dcdd has no [[board." + table + "]] table";
+        return false;
+    }
+
+    int         unit = -1;
+    std::string path, media;
+    bool        ro = false;
+
+    for (const auto& [k, v] : kv) {
+        if (k == "unit") {
+            unit = std::stoi(v);
+        } else if (k == "mount") {
+            path = v;
+        } else if (k == "readonly") {
+            ro = (v == "true" || v == "1" || v == "yes");
+        } else if (k == "media") {
+            bool ok = false;
+            for (const auto& f : dcddFormats())
+                if (v == f.name) ok = true;
+            if (!ok) {
+                err = "unknown media `" + v + "` (8in, minidisk, fdc8mb)";
+                return false;
+            }
+            media = v;
+        } else {
+            err = "[[board.drive]] has no `" + k + "`";
+            return false;
+        }
+    }
+
+    if (unit < 0 || unit >= drives_) {
+        err = "[[board.drive]] needs unit = 0.." + std::to_string(drives_ - 1);
+        return false;
+    }
+
+    drive_[(size_t)unit].forced = media;
+    if (path.empty()) return true;
+    return mount("drive" + std::to_string(unit), path, ro, err);
+}
+
+// The inverse (DESIGN.md 5). An EMPTY drive with no forced media has nothing to
+// say, so it writes no table at all -- a machine with four drives and one disk in
+// it should save as one [[board.drive]], not four, three of which are noise.
+std::vector<Board::SubUnit> DcddBoard::subUnits() const {
+    std::vector<SubUnit> out;
+    for (int i = 0; i < drives_; ++i) {
+        const Drive& d = drive_[(size_t)i];
+        if (!d.img && d.forced.empty()) continue;
+
+        SubUnit su;
+        su.table = "drive";
+        su.fields.push_back({"unit", std::to_string(i), false});  // DECIMAL: a count
+        if (!d.forced.empty()) su.fields.push_back({"media", d.forced, true});
+        if (d.img) {
+            su.fields.push_back({"mount", d.path, true});
+            if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+        }
+        out.push_back(std::move(su));
+    }
+    return out;
+}
+
+} // namespace altair

@@ -117,9 +117,9 @@ sector = (now / tPerSector) % 32
 > software polling it: a tight BIOS loop outruns a slow one, and a recorded session stops replaying
 > identically. See the `mits_dsk.c` note at the top of this file.
 
-### The timing, and where it comes from
+### The timing — and it is the MANUAL's, not arithmetic
 
-`BOOT.ASM`'s own cycle-count comments are the source, and they close the model exactly:
+`BOOT.ASM`'s cycle-count comments give the byte rate directly:
 
 ```asm
 ; The sector transfer loop is 116 cycles for two bytes read (has to be less than 128)
@@ -127,25 +127,56 @@ sector = (now / tPerSector) % 32
         in   DRVDATA   ;(10) read at 70-94 cycles (data at 64 and 128)
 ```
 
-**A byte every 64 T-states** at 2 MHz — which is 32 µs, i.e. exactly **250,000 bits/sec**, the
-standard 8" single-density rate. So the byte clock is the *medium's*, and like rotation it derives
-from `Clock::hz()`: a 4 MHz CPU does not make the disk read faster.
+**A byte every 64 T-states** at 2 MHz — 32 µs, i.e. exactly **250,000 bits/sec**, the standard 8"
+single-density rate, and the manual says the same thing in words: *"ENWD goes true every 32 µs."*
+So the byte clock is the **medium's**, and like rotation it derives from `Clock::hz()`: a 4 MHz CPU
+does not make the disk read faster.
 
-And now the sector's whole anatomy falls out, with nothing left to invent:
+Everything else is an **RC one-shot on the card** — a 74123 with a resistor and a capacitor — and the
+MITS manual prints both the nominal value and the range a working board must calibrate to:
 
-| | T-states @ 2 MHz | |
-|---|---|---|
-| One revolution | 333,333 | 360 RPM |
-| **One sector** | **10,416** | ÷ 32 hard sectors |
-| — its data | 8,768 | 137 bytes × 64 T |
-| — its gap | **1,648** | what is left: 10,416 − 8,768 |
+| Signal | Nominal | IC (74123) | Manual |
+|---|---|---|---|
+| **Sector True** | **30 µs** (= **60 T** @ 2 MHz) | F4, C8 = .01 µF, R11 = 10K | *"D0 – SR0 – Sector True – True when = 0, **and is 30 µs long**."* Calibrates 20–40 µs. |
+| Read Clear | 140 µs | F1, R5 = 10K, C3 = .047 µF | *"Read data will be available 140 µs after SR0 goes true."* |
+| Write Enable | 280 µs | F4 (other half) | *"Write data will be requested 280 µs after D0 goes true."* |
+| Head settle | 40 ms | B1, Board #2 | *"HS – True 40 ms after head loaded."* |
 
-**`sector_true` IS the gap.** The head is past the sector hole and the data has not started yet —
-which is precisely what "positioned for read/write" means. It is 1,648 T-states wide, and the BIOS
-polls it with a 24-T-state loop (`in`/`rar`/`jc`), so it cannot be missed. Nothing here was chosen
-for convenience; the three numbers add up because they are the same three numbers the drive had.
+So one sector looks like this (T-states at 2 MHz):
 
-`sNRDA` then goes true once per byte-time, 137 times, through the data window.
+```
+ 0        60                   280                                        9,048
+ |--------|---------------------|------------------------------------------|
+ | SECTOR |                     | byte 0 | byte 1 | ... | byte 136          |  ~1,368 T
+ | TRUE   |   (read clear)      |<------- 137 bytes x 64 T = 8,768 T ------>|  of slack
+ | 30 us  |     140 us          |                                           |
+ |<---------------------------- 10,416 T  (5.2 ms) ------------------------>|
+```
+
+> ### ⚠️ Sector True is a 30 µs ONE-SHOT. It is NOT the inter-sector gap.
+>
+> This section previously derived it: 10,416 − 8,768 = 1,648 T of gap, therefore sector-true is
+> 1,648 T wide, *"and the three numbers add up because they are the same three numbers the drive
+> had."* That was **wrong by a factor of twenty-seven**, and it was wrong in the most dangerous
+> possible way — it was tidy, self-consistent, and it **booted CP/M perfectly**. A window that is too
+> generous is *forgiving*: the guest never complains, so nothing ever tells you.
+>
+> The real window is **60 T-states against a 24-T-state poll loop — about two and a half spins of
+> margin.** That tightness is deliberate. The manual instructs the programmer: *"The write mode
+> should begin **as close as possible** to the time that D0 goes true."* The hardware expected
+> software to be right on the edge, and a simulator with a luxurious window is not being kind to the
+> guest, it is lying to it — it hides exactly the races a real card would punish.
+>
+> The manual was in `reference/` the whole time. DESIGN.md §0.1, one more time, and this one is mine.
+
+`sNRDA` goes true once per byte-time through the data window, and `sENWD` does the same on the write
+side, starting at 280 µs.
+
+**One thing the manual contradicts itself about, and does not reconcile:** the prose says the first
+byte is readable **140 µs** after sector-true, while the READ/WRITE timing diagram dimensions the
+first NRDA at **280 µs**. We take the prose, because it matches the READ CLEAR one-shot the schematic
+actually shows. Nothing observable rides on it — the BIOS polls NRDA rather than counting — and
+either figure leaves the 137 bytes room to finish inside the sector.
 
 ### Write sequence
 1. Step to the desired track.
@@ -260,8 +291,10 @@ They are **separate and both apply.** Document this loudly.
 |---|---|
 | Status bits are **inverted** on read | Nothing works, immediately and confusingly. |
 | The sector comes from the **clock**, and reading 0x09 does not advance it | Reading a port must never turn the disk. Bump a counter here and the platter spins at the speed of whatever loop is polling it, and a replay stops reproducing. (**This row used to say the opposite** — see the rotation section.) |
-| Sector True is **low** when positioned, and it is **the inter-sector gap** | Reads/writes land on the wrong sector — or, if the window is too narrow, software never sees it and spins forever. |
+| Sector True is **low** when positioned, and is a **30 µs one-shot** — not the gap | Too narrow and software never sees it. **Too WIDE and everything works, which is worse** — you have built a card that forgives races the real one punished, and nothing will ever tell you. |
 | The byte clock is **250 kbit/s (64 T @ 2 MHz)**, not the CPU's | Overclock the CPU and the disk reads faster, which is nonsense. `BOOT.ASM`'s transfer loop is cycle-counted against the real rate and breaks if you change it. |
+| A **short write is padded with the LAST BYTE**, not with zeros | *"Write circuit will continue writing last byte outputted... to the end of that sector."* The trailing `00` software writes is not a terminator — **it is the fill pattern**, which is why a 133-byte system sector ends in zeros on real media. Get this backwards and it only shows on a disk written by something that did not write the zero. |
+| Status **bit 4 reads 0** when the card is enabled | *"D4 – Not Used, = Ø."* An unused bit that reads 1 is a bit you have inverted by accident. |
 | Write sequence consumes **exactly 137 bytes** | Partial sectors, corrupted disks. |
 | Any step **invalidates** sector/byte position | Stale positions cause writes to the wrong place. |
 | Dirty-buffer flush ordering: `out08` (select), `in09` (sector), `out09` (step) **all flush first**, in that order relative to invalidating position | **Silently corrupts disks.** |
