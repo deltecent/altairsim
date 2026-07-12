@@ -49,7 +49,7 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `U` | UNMOUNT | not DISMOUNT — see above |
 | `DISC` | DISCONNECT | |
 | `CONS` | CONSOLE | **configures** the console. It does not start the machine — RUN does |
-| `CONN` | CONNECT | `console \| null \| loopback` today |
+| `CONN` | CONNECT | `console | null | loopback | socket:PORT | socket:HOST:PORT | serial:DEVICE` |
 | `P` | POWER | |
 | `T` | TRACE | *waiting on the debugger* |
 | `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves a RUN today* |
@@ -224,6 +224,21 @@ altairsim> CONSOLE attn=1D          ← make it ^]
 There is no "runtime vs config-time" column, and no property that `SET` will refuse. **You can only type at the prompt when the machine is stopped** — by ATTN, by a breakpoint, by a HLT, which is the panel's STOP switch — so there is no moment at which a `SET` could race a running CPU. And on real hardware the rule would be a fiction anyway: Patrick — *"when working on boards, they are often accessed on an extender card and changed while the power is on."*
 
 There *was* such a gate. It never once fired, because nothing in the simulator ever set the flag it was conditioned on. A rule the code only pretends to enforce is worse than no rule at all.
+
+### The endpoints
+
+`CONNECT <id>:<unit> <endpoint>`. The **monitor** knows this grammar and no board is permitted to, which is why `CONNECT sio0:a serial:/dev/tty.usbserial-AL009KFH` needed **not one line of code in the 2SIO**.
+
+| Endpoint | What it is |
+|---|---|
+| `console` | The host keyboard and screen. Exactly one unit may hold it. |
+| `null` | A DB-25 with nothing behind it. Writes vanish; reads are quiet. Not an error — an unconnected 6850 works fine and talks to nobody. |
+| `loopback` | TX jumpered to RX — **and RTS→CTS, DTR→DCD/DSR**, exactly like the loopback plug in the drawer. The one endpoint that can test modem control with no hardware. |
+| `socket:2323` | **Listen.** One client at a time; the listener survives a disconnect, so the next telnet is the phone ringing again. **A client connecting *is* carrier appearing.** |
+| `socket:host:port` | **Call out.** Non-blocking: a session still being established is a phone still ringing, and the card correctly sees no carrier yet. |
+| `serial:/dev/tty…` | A **real serial port**, and the one place where the pins are the pins. The card programs its baud and frame; `SET sio0:a cts=wired` and the far end can genuinely stop your transmitter. |
+
+A device that is not there does **not** silently become a `NullStream` — it is an error, and `serial:` lists the ports that *are* on the host, because a cable that enumerated under a different name is ten minutes of a person doubting the simulator.
 
 ### Which unit is the console?
 

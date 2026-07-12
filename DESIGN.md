@@ -59,6 +59,12 @@ It is a **hardware development bench** that happens to run period software. The 
 
 **Hard architectural rule, enforced by CI.** SIMH is riddled with conditional compilation and the result is code you cannot read without mentally executing the preprocessor. We are not doing that.
 
+> **`src/platform/` EXISTS as of 2026-07-12** — `serial.h` + `socket.h` (pure declarations, zero conditionals, **no OS type in any signature**: no `int fd`, no `HANDLE`), with `posix/` built and proved against two FTDI cables and a null modem, and `win32/` **written but unbuilt** (`docs/porting-notes.md` says so plainly). CMake picks the directory; that `if(WIN32)` in `CMakeLists.txt` is the only place in the project that asks what OS it is on.
+>
+> **The rule earned its keep immediately.** The POSIX socket file wanted `MSG_NOSIGNAL` (Linux) / `SO_NOSIGPIPE` (macOS) to stop a hung-up client from killing the process with SIGPIPE — a genuine macOS/Linux divergence, which by this section's own rules would need its own *file*. `signal(SIGPIPE, SIG_IGN)` is plain POSIX, works on both, and needs no branch at all. **The right answer to a platform conditional is usually to stop needing it.**
+>
+> **Still outstanding:** the CI lint does not exist yet, and `src/cli/lineedit.cpp` still has a `#if defined(_WIN32)` — raw-mode terminal handling has not been moved into `src/platform/` (`terminal.h`). The lint cannot be turned on until it is, and turning it on is what stops this decaying.
+
 OS differences are expressed as **an interface in a header with no conditionals at all**, plus **one implementation file per OS**, selected by CMake at configure time:
 
 ```
@@ -585,9 +591,39 @@ Boards must **never** touch a socket, a file handle, or `termios` directly. Ever
 
 ### 7.1 `ByteStream` — the generic serial endpoint
 
-**Built, 2026-07-11** (`src/host/stream.h`). Implemented: `NullStream`, `LoopbackStream`, `ScriptedStream`, `Console`. Still to come: `TcpListenStream`, `TcpConnectStream`, `HostSerialStream`, `FileStream`, `ReplayStream`.
+**Built, 2026-07-11** (`src/host/stream.h`). **Sockets, real serial ports and modem control landed 2026-07-12.** Implemented: `NullStream`, `LoopbackStream`, `ScriptedStream`, `Console`, **`TcpListenStream`, `TcpConnectStream` (`src/host/tcp.cpp`), `HostSerialStream` (`src/host/hostserial.cpp`)**. Still to come: `FileStream`, `ReplayStream`.
 
 Every board that moves characters (88-SIO, 88-2SIO, 88-ACR, 88-LPC, paper tape, PMMI) talks only to this. `CONNECT` binds an implementation to a unit.
+
+#### The line goes BOTH WAYS (2026-07-12)
+
+`LineStatus` was carrier/CTS/DSR and **input-only**, so RTS was decoded out of the 6850's control register and dropped on the floor — there was nowhere for it to go. Now:
+
+```cpp
+struct LineStatus  { bool carrier, cts, dsr, ring; };   // INPUTS  -- the far end drives these
+struct LineControl { bool rts, dtr, brk; };              // OUTPUTS -- the CARD drives these
+struct LineParams  { long long baud; int dataBits, stopBits; LineParity parity; };
+
+virtual LineStatus status() const;
+virtual void setControl(const LineControl&);
+virtual bool setParams(const LineParams&, std::string& err);   // false -> the card says so out loud
+```
+
+**`true` is ASSERTED, everywhere, in both structs.** The pin-level inversions are real — the 6850's are `/DCD` and `/CTS`, active low — but they are a fact about *that chip's pins* and they stay inside the chip that has them. A stream that exported one chip's polarity would make the 88-SIO wrong for free.
+
+**The stream reports LEVELS; the chip latches EDGES.** The same division as PHANTOM\*: the wire carries a level, and the honoring card decides what it means. The stream says *"carrier is down"* and says it for as long as it is down; the **6850** is what latches that, interrupts on it, holds it after the pin returns, and clears it only on status-then-data. Put the latching in the stream and every stream re-implements it slightly differently.
+
+**The strap lives on the CARD** — `SET sio0:a dcd=wired`, default `ground`. See `docs/boards/mits-2sio.md`.
+
+#### There is ONE baud rate, and it is the card's (Patrick, 2026-07-12)
+
+> *"Do we need emulated character timing with a real serial port attached? The real serial port is the limiting factor."*
+
+The plan called for two — a card baud and an independent endpoint baud. **That is struck.** There is exactly one line rate in a serial card and it is the UART's clock, a jumper; the frame format is whatever the guest wrote into the control register, because those bits *are* what goes on the wire. So **`CONNECT … serial:/dev/tty…` programs the host port from the chip**, and re-programs it whenever the guest rewrites the control register. A card strapped for 300 driving a terminal set to 9600 does not give you a fast link on real hardware — it gives you garbage, and a second baud rate could only ever configure the garbage.
+
+The emulated character timing **stays**: it is the *same* duration the real port takes, not an extra one, and it must stay because the guest can **measure** it (the Mike Douglas BIOS times TDRE to infer the line speed).
+
+And there is **no `flow = rtscts` endpoint setting**, for the same reason: hardware flow control in `termios` hands RTS/CTS to the *OS driver*, and the 6850 owns those pins. Two owners for one pin is a bug that shows up under load. **XON/XOFF was never a board option at all** (Patrick: *"that is always a function of software"*) — it is bytes in the data stream, which makes it the guest's business, and a card that filtered them would be eating the guest's data.
 
 > **An unconnected line is not an error, and there is no null pointer in the stream path.** A disconnected unit is bound to a `NullStream`, because that is what an unconnected 6850 on a real card *is*: it sits there with TDRE set forever, and software that writes to it works fine and talks to nobody. So no board contains a branch for "what if nothing is plugged in" — there was never a case to handle.
 
@@ -605,7 +641,13 @@ public:
 };
 ```
 
-Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, one client, survive disconnect/reconnect), `TcpConnectStream` (`socket:host:port`), `HostSerialStream` (termios vs `SetCommState`/DCB; exposes baud/parity/stop/flow), `FileStream` (paper tape), `NullStream`, `LoopbackStream` (testing), `ReplayStream` (recorded bytes at recorded T-state stamps).
+Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, one client, survive disconnect/reconnect), `TcpConnectStream` (`socket:host:port`), `HostSerialStream` (termios vs `SetCommState`/DCB), `FileStream` (paper tape), `NullStream`, `LoopbackStream` (testing), `ReplayStream` (recorded bytes at recorded T-state stamps).
+
+> **A CLIENT CONNECTING *IS* CARRIER APPEARING**, and everything else falls out of it: a telnet client closes its window and DCD drops (and the 6850 latches that, and interrupts); the guest drops DTR and we hang up on the client; the TCP send buffer fills and CTS falls, so TDRE stays clear and the **guest waits rather than losing a byte**. That is what every terminal server ever built did, and it is what will let a PMMI work over a socket without the board learning what TCP is.
+>
+> **No threads.** §7.5 permits blocking host I/O behind a `ByteStream`, and it turned out not to be needed: a socket and a serial port can both be asked, without waiting, whether they have anything. A thread would buy nothing and would cost the determinism RECORD/REPLAY is built on — the bytes would arrive at whatever T-state the host scheduler felt like. They arrive in `pump()`, at a known point in emulated time.
+>
+> **RECORD/REPLAY must capture line transitions, not just bytes.** A recording that logs only characters diverges the first time a carrier drop drives an interrupt. `ReplayStream` will replay `(tState, byte)` **and** `(tState, LineStatus)`. Impossible to retrofit; the interface is shaped for it now.
 
 **Discipline: the board asks `readable()`/`writable()`; it never blocks.** All actual I/O is drained/filled by the event loop once per time slice, so `tick()` is pure computation.
 

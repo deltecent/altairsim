@@ -33,3 +33,4 @@ void test_cpu();
 void test_debug();
 void test_sio2();
 void test_88sio();
+void test_lines();

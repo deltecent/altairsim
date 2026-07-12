@@ -151,7 +151,7 @@ bool SioBoard::txBufferEmpty() const {
 // receive register is free to take it.
 //
 // IT DOES NOT SYNTHESIZE AN OVERRUN, and the long version of why is in
-// mits-2sio.cpp over Acia::poll(). The short version: a ByteStream is NOT a serial
+// mits-2sio.cpp over Mc6850::poll(). The short version: a ByteStream is NOT a serial
 // line. It is a buffered, flow-controlled source that will hold the byte until we
 // take it, and inventing an overrun from it does not reproduce a hardware
 // behaviour -- it MANUFACTURES data loss the host transport does not have. The

@@ -22,14 +22,63 @@
 
 namespace altair {
 
-// The modem control lines, as seen from the board. A console or a file has none
-// of these in any real sense, so it simply asserts them -- which is exactly what
-// wiring DCD and CTS to ground on the connector does, and what period installers
-// did constantly.
+// ---------------------------------------------------------------------------
+// THE MODEM CONTROL LINES, AND THEY GO BOTH WAYS.
+//
+// TRUE IS ALWAYS "ASSERTED", in both structs and on every stream. The pin-level
+// inversions are real -- the 6850's are /DCD and /CTS, active low -- but they are
+// a fact about THAT CHIP'S PINS, and they stay inside the chip that has them
+// (mits-2sio.cpp). A stream that reported "carrier = true, meaning the pin is
+// high, meaning there ISN'T one" would be exporting one chip's polarity to every
+// other card in the machine, and the 88-SIO would be wrong for free.
+//
+// A console or a file has none of these in any real sense, so it ASSERTS them all
+// -- which is exactly what strapping DCD and CTS to ground on the connector does,
+// and what period installers did constantly. That is why there is still no "what
+// if nothing is plugged in" branch anywhere in any board.
+// ---------------------------------------------------------------------------
+
+// INPUTS -- what the far end is driving at us.
 struct LineStatus {
-    bool carrier = true;  // DCD
-    bool cts     = true;  // clear to send
-    bool dsr     = true;  // data set ready
+    bool carrier = true;   // DCD
+    bool cts     = true;   // clear to send
+    bool dsr     = true;   // data set ready
+    bool ring    = false;  // RI -- the PMMI counts ring bursts to answer the phone
+};
+
+// OUTPUTS -- what the CARD is driving at the far end. New: RTS was decoded out of
+// the 6850's control register and then dropped on the floor, because there was
+// nowhere for it to go.
+struct LineControl {
+    bool rts = false;  // 6850 control bits 5-6
+    bool dtr = false;  // dropping it HANGS UP -- a socket closes, a modem lets go
+    bool brk = false;  // transmit break: hold the line spacing
+};
+
+// WHAT THE CARD IS PROGRAMMED TO, WHICH IS WHAT IS ON THE WIRE (Patrick,
+// 2026-07-12: "the real serial port is the limiting factor").
+//
+// There is exactly ONE line rate in a serial card and it is the UART's clock -- a
+// jumper. The frame format is whatever the guest wrote into the control register.
+// So when a unit is CONNECTed to a real host serial port, the CARD PROGRAMS THE
+// PORT: `SET sio0:a BAUD=300` restraps the card and the host UART follows, and a
+// guest that reconfigures the chip for 7E1 reconfigures the wire for 7E1, exactly
+// as it would on the bench.
+//
+// The alternative -- a second, independent baud rate on the endpoint -- was in the
+// plan and is now struck. It could only ever configure a MISMATCH, and a 6850
+// strapped for 300 driving a terminal set to 9600 does not give you a fast link on
+// real hardware. It gives you garbage.
+//
+// Every stream but a real serial port ignores this: a socket has no baud rate, and
+// pretending it did would be pacing an emulation against a fiction.
+enum class LineParity { None, Even, Odd };
+
+struct LineParams {
+    long long  baud     = 9600;
+    int        dataBits = 8;
+    int        stopBits = 1;
+    LineParity parity   = LineParity::None;
 };
 
 class ByteStream {
@@ -49,7 +98,33 @@ public:
     virtual bool writable() const = 0;  // -> drives TDRE
 
     virtual void flush() {}
+
+    // The far end's pins. A LEVEL, with no memory: the stream says "carrier is
+    // down", and it says it for as long as carrier is down. THE CHIP DOES THE
+    // LATCHING -- the 6850 holds a DCD flag after the pin comes back, and clears it
+    // only on a status-then-data read (data sheet, and mits-2sio.cpp). Put that in
+    // the stream and every stream re-implements it slightly differently.
+    //
+    // The same division as PHANTOM*: the wire carries a level, the honoring card
+    // decides what it means.
     virtual LineStatus status() const { return {}; }
+
+    // The card's pins. Most streams ignore it -- a file has no RTS.
+    virtual void setControl(const LineControl&) {}
+
+    // The card programs the line. See LineParams: only a real serial port cares,
+    // and it is the only one that can REFUSE -- an FTDI cable that cannot do 76800
+    // baud is a fact about the world, and the card must be able to say so out loud
+    // (Board::drainLog()) rather than run at the wrong speed in silence.
+    //
+    // False + err means "the wire is not what you asked for". It does NOT mean the
+    // connection failed: the card is still strapped to what it is strapped to, and
+    // it goes on pacing the guest at that rate, because that pacing is the half the
+    // guest can actually measure.
+    virtual bool setParams(const LineParams&, std::string& err) {
+        (void)err;
+        return true;
+    }
 
     // Called once per time slice by the run loop, NOT by the board. This is where
     // a stream may talk to the host: accept a connection, drain a socket, poll a
@@ -85,6 +160,13 @@ public:
 // Write to it, read it straight back. A jumper between TX and RX -- which is
 // what you actually put on a suspect card before you accuse the software. The
 // guest sees its own bytes come back.
+//
+// AND IT LOOPS THE MODEM PINS BACK TOO, because that is what the plug in the
+// drawer does: a loopback plug is TX-RX, RTS-CTS, and DTR-DCD-DSR. So a card
+// strapped `cts=wired` onto a loopback sees its OWN RTS as clear-to-send, and a
+// card that drops DTR watches its own carrier drop. That makes the loopback the
+// one endpoint that can test modem control with no hardware at all -- which is
+// exactly what it is for.
 class LoopbackStream : public ByteStream {
 public:
     std::string describe() const override { return "loopback"; }
@@ -93,8 +175,19 @@ public:
     bool readable() const override { return !q_.empty(); }
     bool writable() const override { return true; }
 
+    LineStatus status() const override {
+        LineStatus s;
+        s.cts     = ctl_.rts;  // RTS-CTS, soldered across the plug
+        s.carrier = ctl_.dtr;  // DTR-DCD
+        s.dsr     = ctl_.dtr;  // ...and DSR
+        s.ring    = false;     // nothing on a loopback plug can ring
+        return s;
+    }
+    void setControl(const LineControl& c) override { ctl_ = c; }
+
 private:
     std::string q_;
+    LineControl ctl_;
 };
 
 // A terminal with a script instead of a human. NOT a loopback -- the two

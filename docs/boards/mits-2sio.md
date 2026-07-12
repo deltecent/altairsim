@@ -80,15 +80,18 @@ Period software writes `0x03` (master reset) then `0x11` (÷16, 8N2). An **inter
 
 The board has one. **Everything else belongs to a unit**, because everything else is genuinely per-chip: `SHOW sio0` prints all three tables.
 
-| Property | Scope | Runtime? | Notes |
-|---|---|---|---|
-| `port` | board | config | Base address. Hex — it is on the wire. |
-| `baud` | unit | **yes** | `SET sio0:a BAUD=9600`. Decimal — it never is. |
-| `interrupt` | unit | config | `none \| int \| vi0..vi7` |
-| `connect` | unit | yes | Endpoint. `CONNECT` sets it. |
-| `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell`, `bsdel` | unit | yes | The transform chain (DESIGN.md §7.2) — **the LINE's, not the console's**, so they work identically on a socket. |
+| Property | Scope | Notes |
+|---|---|---|
+| `port` | board | Base address. Hex — it is on the wire. |
+| `baud` | unit | `SET sio0:a BAUD=9600`. Decimal — it never is. |
+| `interrupt` | unit | `none \| int \| vi0..vi7` |
+| `dcd` | unit | **`ground` (default) \| `wired`** — where the 6850's `/DCD` pin goes. |
+| `cts` | unit | **`ground` (default) \| `wired`** — likewise `/CTS`. Wired, it **gates the transmitter**. |
+| `connect` | unit | Endpoint. `CONNECT` sets it. |
+| `lines` | unit | **Read-only.** The live pin state: `DCD CTS RTS brk` (capitals = asserted). A pin is not a jumper, so it has no setter, and `SET` says so. |
+| `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell`, `bsdel` | unit | The transform chain (DESIGN.md §7.2) — **the LINE's, not the console's**, so they work identically on a socket. |
 
-In a config file that is `[board.unit.a]`, and `CONFIG SAVE` round-trips all of it.
+In a config file that is `[board.unit.a]`, and `CONFIG SAVE` round-trips all of it (`lines` excepted — you cannot save a pin).
 
 ```toml
 [[board]]
@@ -99,7 +102,44 @@ port = 10
   [board.unit.a]
   connect = "console"
   baud    = 9600
+
+  [board.unit.b]
+  connect = "serial:/dev/tty.usbserial-AL009KFH"
+  baud    = 300
+  dcd     = "wired"    # believe the far end
+  cts     = "wired"    # ...and let it stop our transmitter
 ```
+
+### The modem control lines — and the strap lives on the CARD
+
+This is the PHANTOM\* lesson again: **the read/write distinction lived on the honoring board.** The 2SIO manual's hardwire table gives CTS, DCD and RTS each their own **jumper pads** — whether the 6850's pin reaches the connector or is strapped to ground is a fact about *the card*, not about whatever is plugged into it, and period installers grounded them constantly.
+
+So it is a **unit property, not a stream behavior**, and the default is `ground`: the pin is tied asserted on the card, the far end is never asked, and **every config that existed before this landed keeps working untouched.**
+
+It also dissolves the "what if there is no real serial port" question. There is no unconnected case to handle: an unplugged unit is a `NullStream`, which asserts everything, and a card strapped to `ground` never even looks. No board grows a "what if nothing is plugged in" branch — which is exactly what §7.1 demands.
+
+**What each endpoint drives** (`true` = asserted, always; the `/DCD` and `/CTS` inversions live in the chip, which is the only thing with those pins):
+
+| Endpoint | DCD | CTS | RTS out |
+|---|---|---|---|
+| `null`, `console` | asserted | asserted | ignored |
+| `loopback` | = our DTR | = our RTS | fed back — *a loopback plug crosses the pins, so it is the one endpoint that can test modem control with no hardware* |
+| `socket:PORT` | **a client is connected** | send buffer has room | ignored |
+| `serial:/dev/tty…` | **the real pin** | **the real pin** | **the real pin** |
+
+**A telnet client connecting *is* carrier appearing**, and hanging up *is* carrier dropping. That is what every terminal server ever built did, and it is what will let a PMMI work over a socket without the board learning what TCP is.
+
+### The card programs the wire (there is only one baud rate)
+
+`CONNECT sio0:b serial:/dev/tty.usbserial-XXXX` opens the port and then **the card immediately programs it**: `baud` from the strap, and the frame (8N1, 7E2, …) from the **word-select bits the guest wrote into the control register** — because those bits *are* what goes on the wire. A guest that reconfigures the chip for 7E1 reconfigures the cable for 7E1, exactly as it would on the bench.
+
+> **There is no second, independent baud rate on the endpoint, and the plan's "two baud rates" section is struck** (Patrick, 2026-07-12: *"do we need emulated character timing with a real serial port attached? The real serial port is the limiting factor."*). A card strapped for 300 driving a terminal set to 9600 does not give you a fast link on real hardware — it gives you garbage. A second baud rate could only ever configure the garbage.
+>
+> The emulated character timing **stays**, and it is not double-counting: it is the *same* duration the real port takes, not an extra one. It has to stay because **the guest can measure it** — see the Mike Douglas BIOS, below.
+
+If the host cannot do the strapped rate (an FTDI cable and 76800 baud), the card **says so** through `Board::drainLog()` and goes on pacing the guest at what it is jumpered to. What must never happen is the silent version.
+
+**There is no `flow = rtscts` setting, either.** Hardware flow control in `termios` means the *OS driver* owns RTS and CTS — and the 6850 owns those pins: RTS is control bits 5–6, and CTS gates TDRE. Two owners for one pin is a bug that only shows up under load. The port is opened with flow control off and the chip drives the pins itself, which is the only arrangement in which `cts=wired` can mean anything at all.
 
 ### Reset
 
@@ -118,11 +158,28 @@ Hardwire TDRE and you **silently change what the guest decides to do**. So a wri
 
 **Honor the control register.** Master reset (`0x03`) must actually reset — ALTMON's very first two instructions are `MVI A,3 / OUT 10h`, so if that write does nothing, every machine that starts with a master reset starts wrong. The interrupt-enable bits must actually enable interrupts; that is acceptance test 4, and it caught a real bug (above).
 
+**`/CTS` INHIBITS TDRE. It does not merely report.** The data sheet: *"In the high state, the Transmit Data Register Empty bit is inhibited."* And since the transmit interrupt is *derived* from TDRE, a negated CTS inhibits that too — so a card whose far end is not clear-to-send does not spin the guest through an interrupt handler it has nowhere to transmit into. A model that only set status bit 3 would look right and would never actually stop the transmitter, which is the entire function of the pin.
+
+The same bit carries **endpoint backpressure**: a full TCP send buffer or a full serial driver buffer is physically the same situation as a modem holding CTS low, so it lands in the same place and the guest simply *waits*. That keeps §7.1's rule intact — we never manufacture data loss the transport does not have.
+
+**`/DCD` is three behaviors, and only the first is obvious.** The data sheet again:
+
+> *"The DCD input inhibits and initializes the receiver section of the ACIA when high. A low-to-high transition of DCD initiates an interrupt to the MPU to indicate the occurrence of a loss of carrier when the Receive Interrupt Enable bit is set… It remains high after the DCD input is returned low until cleared by first reading the Status Register and then the Data Register, or until a master reset occurs."*
+
+1. **The status bit is LATCHED on the edge** and survives the pin coming back. A guest that was not looking when the line dropped still finds out — which is the whole point.
+2. **It raises an INTERRUPT** (a *receive* interrupt: RIE arms RDRF, OVRN **and** DCD). That is how a modem program sitting in a `HLT` learns the call ended.
+3. **While the pin is high the receiver is DEAD** — inhibited *and initialized*, and *"Data Carrier Detect being high also causes RDRF to indicate empty."*
+
+Number 3 would never have been guessed. A modem program that checked RDRF after the call dropped would, on a card that merely set a bit, go on cheerfully reading garbage out of the receive register.
+
+**The clear is two steps — status, then data — and the data read that clears the latch is the same read that takes the character.** There is only one data register. (A test here originally asserted the received byte *survived* the acknowledge sequence; the test was wrong, not the chip.) If the pin is still high afterwards, the interrupt clears but **the bit stays set and thereafter follows the pin**. And a master reset does *not* put the carrier back: *"clears the Status Register (except for external conditions on CTS and DCD)"* — a reset button on the front panel does not dial the phone.
+
 ## Limitations
 
 - Baud is a board jumper on real hardware, so `baud` is a property rather than a register. Software cannot change it, which is correct.
-- DCD and CTS are driven from the `ByteStream`'s `status()`. The pins are `/DCD` and `/CTS` — **the status bit is SET when the line is NEGATED** — and a console or a file has no modem control in any real sense, so both are asserted and both bits read 0. That is exactly what strapping the pins to ground on the connector does, and what period installers did constantly.
-- Parity and framing errors are not synthesized. They report **line noise**, and there is no line: a `ByteStream` delivers the byte that was sent or it delivers nothing. Synthesizing them would mean inventing a noise model, which would mean inventing a probability — the kind of number §0.1 says to *ask* about rather than make up.
+- **The 6850 has no DTR pin and no RI pin.** It has `/CTS`, `/DCD` and `RTS`, and that is all — so **this card cannot hang up a phone and cannot hear one ring**, and no amount of wanting it to changes what is soldered to the chip. The `ByteStream` layer carries DTR and RI because the **PMMI** has both (DTR *is* its hang-up, and it counts ring bursts to answer), and a `socket:` endpoint implements the hangup — but nothing in the machine drives DTR today. The data sheet notes RTS *"can also be used for Data Terminal Ready"*, i.e. a card **may** wire it that way; the 88-2SIO's hardwire table is not in front of us, and §0.1 says **ask, do not reason**. So it is not modeled.
+- **A `socket:` endpoint auto-answers; RI is always false.** Ringing would mean *not* answering until the card raises DTR — and since no card in the machine has a DTR pin, every socket would sit there ringing forever, unanswerable. The PMMI is the card that will make a ring mean something.
+- Parity and framing errors are not synthesized. They report **line noise**, and there is no line: a `ByteStream` delivers the byte that was sent or it delivers nothing. Synthesizing them would mean inventing a noise model, which would mean inventing a probability — the kind of number §0.1 says to *ask* about rather than make up. (A **real serial port** genuinely has framing and parity errors, and that is a real hardware event a `HostSerialStream` could one day report — from the place that actually knows, which is not here.)
 
 ### OVRN is never set, and that is a correction
 
@@ -143,11 +200,31 @@ If a **host serial port** endpoint ever lands, an overrun there is a genuine har
 | | | |
 |---|---|---|
 | 1 | 4K MITS BASIC answers `PRINT 2+2` on the console | **not yet** — ALTMON runs instead, which proves the same path |
-| 2 | Same session over a **TCP socket** | **not yet** — `socket:` endpoints are unimplemented |
-| 3 | Same over a **host serial port** | **not yet** — `serial:` endpoints are unimplemented |
+| 2 | Same session over a **TCP socket** | **DONE** — `socket:` lands; `tests/test_lines.cpp` runs a real client over real TCP |
+| 3 | Same over a **host serial port** | **DONE, ON REAL HARDWARE** — `tests/serialtest.cpp`, below |
 | 4 | An **interrupt-driven** console echo, with **no VI board** | **DONE** — `tests/test_sio2.cpp` |
 | 5 | **Two 2SIO boards at once**, four channels, independently configured | **DONE** — the base port is a jumper, and two cards coexist |
 | 6 | The card raises an interrupt **while nobody is asking it anything** | **DONE** — the guest halts; the card's own deadline wakes it |
+
+### The modem-control acceptance is a CABLE, and it is tested with one
+
+Everything else in this project is provable with a `ScriptedStream` and a `MemoryMedia`, and should be. **Whether RTS on one card actually raises CTS on another is a question about a cable**, and the only honest way to answer it is to put a volt down one.
+
+So `tests/serialtest.cpp` is real hardware, opt-in, and it skips loudly when the hardware is absent — *a hardware test that quietly passes with no hardware is a green tick that means nothing.* Two USB serial adapters, a null modem between them (Patrick, 2026-07-12):
+
+```
+ALTAIR_SERIAL_A=/dev/tty.usbserial-AL009KFH \
+ALTAIR_SERIAL_B=/dev/tty.usbserial-AB0NW409 ctest -L hw
+```
+
+A null modem crosses `A RTS → B CTS` and `A DTR → B DSR + B DCD`. So **the far end raising DTR is a carrier appearing at the card** — not an analogy: to a 6850 strapped `dcd=wired`, it is indistinguishable from a modem. The test drives one end by hand and puts a **real 2SIO in a real backplane** on the other, and asserts, across the wire:
+
+- the guest's `OUT 11h` comes out of the cable as bytes;
+- a byte typed into the cable raises RDRF **and pulls pin 73**;
+- the far end dropping **RTS** inhibits TDRE — *the emulated transmitter stops because a physical pin went low*;
+- the far end dropping **DTR** is a carrier loss: **latched**, interrupting, and cleared only by status-then-data.
+
+It passed on the first run, which is suspicious enough to be worth checking — so it was also run with the far end pointed at a **different, unconnected port**, where it collapses into twelve failures. The green run is real.
 
 ### Test 4 is the one that mattered, and it found a real bug
 

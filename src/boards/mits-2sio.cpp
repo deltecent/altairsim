@@ -51,40 +51,197 @@ Sio2Board::EndpointResolver g_resolver;
 void Sio2Board::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
 
 // ---------------------------------------------------------------------------
-// Acia
+// Mc6850
 // ---------------------------------------------------------------------------
 
-// A character on the wire is a start bit, the data bits, maybe a parity bit, and
-// the stop bits. The guest told us which when it wrote the control register, and
-// getting this from the register rather than assuming 8N1 is what makes the baud
-// timing come out right for a Teletype configured 7E2.
-int Acia::bitsPerChar() const {
-    switch ((control_ & kWordMask) >> 2) {
-    case 0: return 1 + 7 + 1 + 2;  // 7 data, even parity, 2 stop
-    case 1: return 1 + 7 + 1 + 2;  // 7 data, odd  parity, 2 stop
-    case 2: return 1 + 7 + 1 + 1;  // 7 data, even parity, 1 stop
-    case 3: return 1 + 7 + 1 + 1;  // 7 data, odd  parity, 1 stop
-    case 4: return 1 + 8 + 0 + 2;  // 8 data, no parity,   2 stop  <- ALTMON writes this
-    case 5: return 1 + 8 + 0 + 1;  // 8 data, no parity,   1 stop
-    case 6: return 1 + 8 + 1 + 1;  // 8 data, even parity, 1 stop
-    default: return 1 + 8 + 1 + 1; // 8 data, odd  parity, 1 stop
-    }
+// THE WORD-SELECT BITS ARE THE FRAME ON THE WIRE. One table, read two ways: as a
+// BIT COUNT (how long a character occupies the line, which is what paces the
+// emulation) and as a FRAME (data bits, parity, stop bits -- which is what a real
+// host UART has to be programmed with). They cannot be allowed to disagree, so they
+// are not allowed to be two tables.
+namespace {
+struct WordFormat {
+    int        dataBits;
+    LineParity parity;
+    int        stopBits;
+};
+
+// MC6850 data sheet, Word Select Bits (CR2, CR3, CR4).
+constexpr WordFormat kWordFormats[8] = {
+    {7, LineParity::Even, 2},
+    {7, LineParity::Odd,  2},
+    {7, LineParity::Even, 1},
+    {7, LineParity::Odd,  1},
+    {8, LineParity::None, 2},  // <- ALTMON writes this
+    {8, LineParity::None, 1},
+    {8, LineParity::Even, 1},
+    {8, LineParity::Odd,  1},
+};
+} // namespace
+
+int Mc6850::bitsPerChar() const {
+    const WordFormat& w = kWordFormats[(control_ & kWordMask) >> 2];
+    return 1 + w.dataBits + (w.parity == LineParity::None ? 0 : 1) + w.stopBits;
 }
 
-uint64_t Acia::charTStates(const Clock& clk) const {
+LineParams Mc6850::params() const {
+    const WordFormat& w = kWordFormats[(control_ & kWordMask) >> 2];
+    LineParams p;
+    p.baud     = baud_;
+    p.dataBits = w.dataBits;
+    p.parity   = w.parity;
+    p.stopBits = w.stopBits;
+    return p;
+}
+
+uint64_t Mc6850::charTStates(const Clock& clk) const {
     if (baud_ <= 0) return 0;
     return (uint64_t)(clk.hz() * (long long)bitsPerChar() / baud_);
 }
 
-void Acia::connect(std::unique_ptr<ByteStream> s) {
+// PUSH THE CARD'S STRAP AND THE GUEST'S FRAME AT THE WIRE. Ignored by every
+// endpoint but a real serial port, which is the only one that HAS a baud rate.
+void Mc6850::programLine() {
+    std::string err;
+    if (stream_->setParams(params(), err)) return;
+
+    // The host refused. Say it once, in a sentence, and go on running at the strap --
+    // because the strap is what the guest can measure, and it is still what the card
+    // is jumpered to. Silence here would be a wire running at a speed nobody chose.
+    log_.push_back(name_ + ": " + err);
+}
+
+void Mc6850::connect(std::unique_ptr<ByteStream> s) {
     // EVERY endpoint gets the transform chain, whatever it is (DESIGN.md 7.2).
     // The filter is not a console feature that a socket has to do without.
     auto f   = std::make_unique<FilterStream>(std::move(s));
     filter_  = f.get();
     stream_  = std::move(f);
+
+    // A NEW LINE STARTS WHERE THE CARD ALREADY IS. The 6850 does not reset because
+    // you plugged something into it: RTS is still whatever bits 5-6 say, the baud is
+    // still the jumper, and the frame is still whatever the guest programmed. So the
+    // wire is brought up to the chip's state, not the other way round.
+    programLine();
+    driveControl();
+
+    // The pin state is whatever THIS endpoint says -- and it may already differ. Take
+    // it as the new baseline WITHOUT raising a carrier-loss interrupt: plugging a
+    // cable in is not a modem dropping the call, and a spurious DCD interrupt at
+    // CONNECT would be a phantom hangup on a line that was never up.
+    dcdPinLost_ = !carrier();
+    ctsPin_     = ctsNow();
+    txRoom_     = stream_->writable();
 }
 
-void Acia::disconnect() { connect(std::make_unique<NullStream>()); }
+void Mc6850::disconnect() { connect(std::make_unique<NullStream>()); }
+
+std::vector<std::string> Mc6850::drainLog() {
+    auto out = std::move(log_);
+    log_.clear();
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// THE PINS, WITH THE STRAP APPLIED. This is the only place the strap is consulted,
+// and everything downstream -- the status bits, the interrupt, the receiver, the
+// transmitter -- reads the pin through it.
+//
+// `ground` means the pin never reaches the connector: it is tied to its ASSERTED
+// state on the card, and the far end is not asked. That is why a 2SIO on the console
+// works today, why it goes on working, and why no board has a "what if nothing is
+// plugged in" branch.
+// ---------------------------------------------------------------------------
+bool Mc6850::carrier() const {
+    if (dcdStrap == PinStrap::Ground) return true;
+    return stream_->status().carrier;
+}
+
+// THE SAMPLE, not the pin. See the header: assertsInt() must be pure, and it reads
+// this. The sample is refreshed in poll(), which is the card's own clock.
+bool Mc6850::clearToSend() const { return ctsPin_; }
+
+// The live pin, for poll() to sample and for nothing else.
+bool Mc6850::ctsNow() const {
+    if (ctsStrap == PinStrap::Ground) return true;
+    return stream_->status().cts;
+}
+
+// ---------------------------------------------------------------------------
+// /DCD, AND IT IS NOT A STATUS BIT. The data sheet:
+//
+//   "The DCD input inhibits and initializes the receiver section of the ACIA when
+//    high. A low-to-high transition of DCD initiates an interrupt to the MPU to
+//    indicate the occurrence of a loss of carrier when the Receive Interrupt Enable
+//    bit is set." ... "It remains high after the DCD input is returned low until
+//    cleared by first reading the Status Register and then the Data Register, or
+//    until a master reset occurs."
+//
+// THREE distinct behaviours, and only the first is obvious:
+//
+//   1. the status bit is LATCHED on the edge, and survives the pin coming back;
+//   2. it raises an INTERRUPT (a carrier drop wakes a program that was not looking);
+//   3. while the pin is high the RECEIVER IS DEAD -- inhibited and initialized, and
+//      "Data Carrier Detect being high also causes RDRF to indicate empty."
+//
+// Number 3 is the one that would never have been guessed. A modem program that
+// checked RDRF after the call dropped would, on a card that only set a bit, go on
+// happily reading garbage out of the receive register.
+//
+// Sampled here, on the card's own schedule (pump() and the deadline), NOT when the
+// guest happens to read a register -- a carrier drop is an event in the outside
+// world, and a guest sitting in a HLT waiting for the interrupt would otherwise wait
+// forever for a pin nobody was watching.
+// ---------------------------------------------------------------------------
+void Mc6850::sampleDcd() {
+    bool lost = !carrier();
+
+    if (lost && !dcdPinLost_) {  // the low-to-high transition: THE CALL JUST DROPPED
+        dcdFlag_       = true;
+        dcdIrq_        = true;
+        dcdFollow_     = false;  // LATCHED now: it will outlive the pin
+        dcdStatusRead_ = false;
+        rdrf_          = false;  // "inhibits and initializes the receiver section"
+        ovrn_          = false;
+    }
+    dcdPinLost_ = lost;
+
+    // Acknowledged: the bit is a level again, and tracks the pin until the next edge
+    // latches it afresh.
+    if (dcdFollow_) dcdFlag_ = lost;
+}
+
+// TDRE -- and the two things that inhibit it. See the header.
+bool Mc6850::tdre(const Clock& clk) const {
+    if (clk.now() < txFreeAt_) return false;  // the character has not finished leaving
+    if (!ctsPin_) return false;               // "the TDRE bit is inhibited" -- data sheet
+    if (!txRoom_) return false;               // ...and the far end has nowhere to put it
+    return true;
+}
+
+// RTS, and BREAK, out to the wire. Transmit control field (bits 5-6), data sheet:
+//
+//   00  RTS low  (asserted), transmit interrupt disabled
+//   01  RTS low  (asserted), transmit interrupt ENABLED
+//   10  RTS HIGH (negated),  transmit interrupt disabled
+//   11  RTS low  (asserted), transmit a BREAK, interrupt disabled
+//
+// This is where RTS finally GOES somewhere. It was decoded here before and dropped
+// on the floor, because ByteStream had no output path at all.
+//
+// There is no DTR. The 6850 has three modem pins -- /CTS, /DCD, RTS -- and DTR is
+// not among them, so this card cannot hang up a phone. (The data sheet notes RTS
+// "can also be used for Data Terminal Ready", i.e. a card MAY wire it that way; the
+// 88-2SIO's hardwire table is not in front of us, and DESIGN.md 0.1 says ask rather
+// than reason. So: not modeled, and the PMMI is the card that needs it.)
+void Mc6850::driveControl() {
+    uint8_t txctl = (control_ & kTxCtlMask) >> 5;
+    LineControl c;
+    c.rts = (txctl != 0b10);
+    c.brk = (txctl == 0b11);
+    c.dtr = false;
+    stream_->setControl(c);
+}
 
 // Pull a byte off the line, if the line has had time to deliver one AND the
 // receive register is free to take it.
@@ -120,7 +277,22 @@ void Acia::disconnect() { connect(std::make_unique<NullStream>()); }
 // there is a genuine hardware event and the stream can report it -- from the
 // place that actually knows, which is not here.
 // ---------------------------------------------------------------------------
-void Acia::poll(const Clock& clk) {
+void Mc6850::poll(const Clock& clk) {
+    // SAMPLE THE INPUT PINS. They may have moved while nobody was looking -- a real
+    // /CTS is a voltage on a cable and owes the CPU nothing. Everything downstream
+    // (the status bits, TDRE, the interrupt) reads the SAMPLE, which is what keeps
+    // assertsInt() pure and replay deterministic. See the header.
+    ctsPin_ = ctsNow();
+    txRoom_ = stream_->writable();
+
+    sampleDcd();  // ...and /DCD, which is a great deal more than a level. See below.
+
+    // THE RECEIVER IS DEAD WITH NO CARRIER. Not "delivers a bad byte" -- dead: the
+    // data sheet says /DCD high "inhibits and initializes the receiver section".
+    // The bytes stay on the line, and the guest sees an empty receive register,
+    // which is what it should see when the call has dropped.
+    if (!carrier()) return;
+
     if (rdrf_) return;                  // the register is still full: the line waits
     if (clk.now() < rxNextAt_) return;  // the character has not finished arriving
     if (!stream_->readable()) return;
@@ -133,38 +305,60 @@ void Acia::poll(const Clock& clk) {
     rxNextAt_ = clk.now() + charTStates(clk);
 }
 
-uint8_t Acia::readStatus(const Clock& clk) {
+uint8_t Mc6850::readStatus(const Clock& clk) {
     poll(clk);
 
     uint8_t s = 0;
     if (rdrf_) s |= kRdrf;
-    if (clk.now() >= txFreeAt_) s |= kTdre;
+    if (tdre(clk)) s |= kTdre;
     if (ovrn_) s |= kOvrn;
 
-    // /DCD and /CTS are INPUTS, and the status bit is SET when the line is
-    // negated. A ByteStream that has a human or a file on the end of it has no
-    // modem control in any real sense, so it asserts both -- which is exactly
-    // what strapping the pins to ground on the connector does, and what period
-    // installers did constantly.
-    LineStatus ls = stream_->status();
-    if (!ls.carrier) s |= kDcd;
-    if (!ls.cts) s |= kCts;
+    // /DCD and /CTS are INPUTS, and the status bit is SET when the line is NEGATED --
+    // the pins are active-low, and this is the one place in the program that knows
+    // it. Everything upstream of here speaks in "asserted = true", so each layer
+    // inverts exactly once, in the place that owns the polarity.
+    //
+    // DCD reads the LATCH, not the pin: a carrier loss the guest has not acknowledged
+    // is still reported after the carrier comes back. See sampleDcd().
+    if (dcdFlag_) s |= kDcd;
+    if (!clearToSend()) s |= kCts;
 
     if (irq(clk)) s |= kIrq;
+
+    // STEP ONE OF THE TWO-STEP CLEAR. Reading the status register ARMS the DCD flag's
+    // release; reading the data register is what actually springs it. The guest has
+    // to look at the bit before it is allowed to forget it, which is the whole point
+    // of the sequence -- an interrupt that could be cleared without being read would
+    // be an interrupt you could miss.
+    if (dcdFlag_) dcdStatusRead_ = true;
+
     return s;
 }
 
-uint8_t Acia::readData(const Clock& clk) {
+uint8_t Mc6850::readData(const Clock& clk) {
     poll(clk);
+
     // Reading the data register clears RDRF and OVRN. Note it clears them EVEN IF
     // RDRF was not set: a read of an empty receive register on a real 6850 gives
     // you whatever was last there, and does not error.
     rdrf_ = false;
     ovrn_ = false;
+
+    // ...AND STEP TWO. Status-then-data: the interrupt goes, and the latch lets go
+    // and becomes a level again. If the pin is STILL high -- the call is still down --
+    // the bit stays set, because it now follows the pin. The guest is not told the
+    // carrier is back merely because it acknowledged that it went.
+    if (dcdStatusRead_ && dcdFlag_) {
+        dcdIrq_        = false;
+        dcdStatusRead_ = false;
+        dcdFollow_     = true;
+        dcdFlag_       = dcdPinLost_;
+    }
+
     return rxData_;
 }
 
-void Acia::writeControl(uint8_t v, const Clock& clk) {
+void Mc6850::writeControl(uint8_t v, const Clock& clk) {
     if ((v & kDivideMask) == kMasterReset) {
         // The guest asked for a master reset. Do it -- the Python prototype
         // ignored the control register entirely, and this is the write that
@@ -175,9 +369,16 @@ void Acia::writeControl(uint8_t v, const Clock& clk) {
         return;
     }
     control_ = v;
+
+    // THE CONTROL REGISTER IS THE WIRE. Bits 5-6 are RTS and BREAK -- real pins, and
+    // they go out now. Bits 2-4 are the word format, which IS the frame a real serial
+    // port has to be programmed with: a guest that reconfigures the chip for 7E1
+    // reconfigures the cable for 7E1, exactly as it would on the bench.
+    driveControl();
+    programLine();
 }
 
-void Acia::writeData(uint8_t v, const Clock& clk) {
+void Mc6850::writeData(uint8_t v, const Clock& clk) {
     stream_->write(&v, 1);
     stream_->flush();
 
@@ -187,16 +388,39 @@ void Acia::writeData(uint8_t v, const Clock& clk) {
     txFreeAt_ = clk.now() + charTStates(clk);
 }
 
-void Acia::masterReset(const Clock& clk) {
+void Mc6850::masterReset(const Clock& clk) {
     control_  = 0;
     rdrf_     = false;
     ovrn_     = false;
     rxData_   = 0;
     txFreeAt_ = clk.now();   // transmitter is immediately ready
     rxNextAt_ = clk.now();
+
+    // "Master reset ... clears the Status Register (EXCEPT for external conditions on
+    // CTS and DCD)" -- data sheet. Those two are PINS: a reset button on the front
+    // panel does not put a carrier back on a line that has dropped, and a chip that
+    // pretended otherwise would let a guest clear a hangup by resetting itself. So
+    // the latch is released and the bit goes back to following the pin, which may
+    // very well still be high.
+    dcdIrq_        = false;
+    dcdStatusRead_ = false;
+    dcdFollow_     = true;
+    dcdPinLost_    = !carrier();
+    dcdFlag_       = dcdPinLost_;
+
+    // Re-sample the input pins. "Master reset does not affect the Clear-to-Send status
+    // bit" (data sheet) -- it is a PIN, and a reset does not reach across the cable.
+    ctsPin_ = ctsNow();
+    txRoom_ = stream_->writable();
+
     // The endpoint STAYS CONNECTED. A warm reset does not unplug the terminal --
     // and a guest that reset its UART and found the console gone would be a
     // baffling thing to debug.
+    //
+    // But the RESET DOES REACH THE WIRE: control_ is now 0, so RTS is asserted and
+    // BREAK is off, and those are pins the far end can see.
+    driveControl();
+    programLine();
 }
 
 // The chip's IRQ pin. Note this is asked WITHOUT reference to the jumper: the
@@ -204,14 +428,27 @@ void Acia::masterReset(const Clock& clk) {
 // anywhere is a question about the WIRE, which is the board's business, not the
 // chip's. Keeping the two separate is why the status register's IRQ bit reads
 // correctly even on a channel whose interrupt is not jumpered at all.
-bool Acia::irq(const Clock& clk) const {
-    if ((control_ & kRie) && rdrf_) return true;
-    if ((control_ & kTxCtlMask) == kTxIrqEnabled && clk.now() >= txFreeAt_) return true;
+//
+// THE RECEIVE INTERRUPT ENABLE ARMS THREE THINGS, NOT ONE. The data sheet: an
+// interrupt occurs when "the Receiver Interrupt Enable is set and the Receive Data
+// Register Full bit is high, an Overrun has occurred, or Data Carrier Detect (/DCD)
+// has gone high." A CARRIER DROP IS A RECEIVE INTERRUPT -- which is exactly how a
+// modem program sitting in a HLT finds out that the call ended.
+bool Mc6850::irq(const Clock& clk) const {
+    if (control_ & kRie) {
+        if (rdrf_) return true;
+        if (ovrn_) return true;
+        if (dcdIrq_) return true;
+    }
+    // The transmit interrupt is DERIVED from TDRE -- so /CTS inhibiting TDRE inhibits
+    // this too. A card whose far end is not clear-to-send does not spin the guest
+    // through an interrupt handler it has nowhere to transmit into.
+    if ((control_ & kTxCtlMask) == kTxIrqEnabled && tdre(clk)) return true;
     return false;
 }
 
 // WHEN COULD THIS PIN MOVE ON ITS OWN? Zero means never.
-uint64_t Acia::nextEdge(const Clock& clk) const {
+uint64_t Mc6850::nextEdge(const Clock& clk) const {
     uint64_t best = 0;
     auto consider = [&](uint64_t when) {
         if (when <= clk.now()) return;  // already past: irq() is showing it already
@@ -223,7 +460,12 @@ uint64_t Acia::nextEdge(const Clock& clk) const {
     // TOUCHING THE CHIP. That is the case the old poll-every-instruction model was
     // quietly covering for, and it is exactly the case a guest sitting in a HLT is
     // waiting on.
-    if ((control_ & kTxCtlMask) == kTxIrqEnabled) consider(txFreeAt_);
+    //
+    // Only if the line will actually TAKE the character, though. With /CTS negated,
+    // TDRE is inhibited and no amount of waiting produces it: that edge is not coming
+    // from the clock, it is coming from the far end raising a pin, and that arrives
+    // through pump() like every other event in the outside world.
+    if ((control_ & kTxCtlMask) == kTxIrqEnabled && ctsPin_ && txRoom_) consider(txFreeAt_);
 
     // The receiver fills on its own too -- but only if there is actually a
     // character on the line to fill it with. If the host has sent nothing, there is
@@ -234,12 +476,30 @@ uint64_t Acia::nextEdge(const Clock& clk) const {
     // This is the asymmetry that makes both mechanisms necessary, and it is why the
     // answer to "event queue or periodic timer?" is "both, and you already had the
     // second one."
-    if ((control_ & kRie) && !rdrf_ && stream_->readable()) consider(rxNextAt_);
+    //
+    // ...and only while there is a carrier. With /DCD high the receiver is inhibited,
+    // so no character can arrive to raise RDRF however long we wait.
+    if ((control_ & kRie) && !rdrf_ && carrier() && stream_->readable()) consider(rxNextAt_);
 
     return best;
 }
 
-std::vector<Property> Acia::properties() {
+// The pin strap, once, for both pins that have one. `SET sio0:a dcd=wired`.
+static Property pinStrapProperty(std::string name, std::string help, PinStrap& s) {
+    Property x;
+    x.name    = std::move(name);
+    x.help    = std::move(help);
+    x.kind    = Kind::Enum;
+    x.choices = {"ground", "wired"};
+    x.get     = [&s] { return Value::ofStr(s == PinStrap::Ground ? "ground" : "wired"); };
+    x.set     = [&s](const Value& v, std::string&) {
+        s = (v.s() == "wired") ? PinStrap::Wired : PinStrap::Ground;
+        return true;
+    };
+    return x;
+}
+
+std::vector<Property> Mc6850::properties() {
     std::vector<Property> p;
 
     {
@@ -254,12 +514,41 @@ std::vector<Property> Acia::properties() {
         x.get     = [this] { return Value::ofInt(baud_); };
         x.set     = [this](const Value& v, std::string&) {
             baud_ = v.i();
+            programLine();  // the jumper moved, so the WIRE moves: see programLine()
             return true;
         };
         p.push_back(std::move(x));
     }
     p.push_back(irqJumperProperty(
         "interrupt", "Where this channel's IRQ is jumpered: none | int | vi0..vi7", jumper));
+
+    p.push_back(pinStrapProperty(
+        "dcd", "/DCD pin: grounded on the card, or wired to the connector", dcdStrap));
+    p.push_back(pinStrapProperty(
+        "cts", "/CTS pin: grounded on the card, or wired -- and then it gates the transmitter",
+        ctsStrap));
+
+    // THE PINS THEMSELVES, READ-ONLY, because a pin is not a jumper. You want this
+    // within an hour of plugging in the first real cable: it is the whole difference
+    // between "the guest has stopped transmitting" and "the far end is not asserting
+    // CTS, so the chip has not raised TDRE, and it is RIGHT not to."
+    {
+        Property x;
+        x.name = "lines";
+        x.help = "Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK";
+        x.kind = Kind::Str;
+        x.get  = [this] {
+            uint8_t     txctl = (control_ & kTxCtlMask) >> 5;
+            std::string s;
+            s += carrier() ? "DCD " : "dcd ";
+            s += clearToSend() ? "CTS " : "cts ";
+            s += (txctl != 0b10) ? "RTS " : "rts ";
+            s += (txctl == 0b11) ? "BRK" : "brk";
+            return Value::ofStr(s);
+        };
+        // NO SETTER, and that is the point: you cannot SET what the far end is doing.
+        p.push_back(std::move(x));
+    }
     {
         Property x;
         x.name    = "connect";
@@ -327,7 +616,7 @@ static Clock& deadCard() {
 uint8_t Sio2Board::read(const BusCycle& c) {
     Clock&  clk = clock_ ? *clock_ : deadCard();
     uint8_t off = (uint8_t)(c.port() - base_);
-    Acia&   ch  = (off < 2) ? a_ : b_;
+    Mc6850&   ch  = (off < 2) ? a_ : b_;
     uint8_t v   = (off & 1) ? ch.readData(clk) : ch.readStatus(clk);
     refresh();  // reading the data register CLEARS RDRF -- and with it, the interrupt
     return v;
@@ -336,7 +625,7 @@ uint8_t Sio2Board::read(const BusCycle& c) {
 void Sio2Board::write(const BusCycle& c) {
     Clock&  clk = clock_ ? *clock_ : deadCard();
     uint8_t off = (uint8_t)(c.port() - base_);
-    Acia&   ch  = (off < 2) ? a_ : b_;
+    Mc6850&   ch  = (off < 2) ? a_ : b_;
     if (off & 1) ch.writeData(c.data, clk);
     else ch.writeControl(c.data, clk);
     refresh();  // a character went out (TDRE falls), or the interrupt enables moved
@@ -417,6 +706,18 @@ void Sio2Board::reset(Reset) {
 
 void Sio2Board::power() { reset(Reset::PowerOn); }
 
+// What the chips have to say -- and today there is exactly one thing either of them
+// CAN say: "this cable cannot do that baud rate". The card says it, rather than
+// running the wire at a speed nobody chose, in silence. (Board::drainLog() is
+// virtual as of 59a175b; before that, a card that was not the memory card had no
+// way to speak at all.)
+std::vector<std::string> Sio2Board::drainLog() {
+    auto out = a_.drainLog();
+    for (auto& s : b_.drainLog()) out.push_back(std::move(s));
+    for (auto& s : out) s = id + ":" + s;
+    return out;
+}
+
 // THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1). A character
 // arriving from the host is not a deadline -- nothing in emulated time predicted
 // it -- so no timer could have been set for it. This is where it gets in, and it is
@@ -435,7 +736,7 @@ void Sio2Board::configChanged() {
     refresh();        // ...and refresh() re-drives the pin and re-aims the timer
 }
 
-Acia* Sio2Board::channel(const std::string& name) {
+Mc6850* Sio2Board::channel(const std::string& name) {
     if (name == "a") return &a_;
     if (name == "b") return &b_;
     return nullptr;
@@ -462,7 +763,7 @@ std::vector<Property> Sio2Board::properties() {
 }
 
 std::vector<Property> Sio2Board::unitProperties(const std::string& unit) {
-    if (Acia* ch = channel(unit)) return ch->properties();
+    if (Mc6850* ch = channel(unit)) return ch->properties();
     return {};
 }
 
@@ -481,7 +782,7 @@ std::vector<MapEntry> Sio2Board::ioMap() const {
 }
 
 bool Sio2Board::connect(const std::string& unit, const std::string& endpoint, std::string& err) {
-    Acia* ch = channel(unit);
+    Mc6850* ch = channel(unit);
     if (!ch) {
         err = "2sio has no unit '" + unit + "' -- it has 'a' and 'b'";
         return false;
@@ -508,7 +809,7 @@ bool Sio2Board::addSubUnit(const std::string& table, const KeyValues& kv, std::s
     for (const auto& [k, v] : kv)
         if (k == "unit") which = v;
 
-    Acia* ch = channel(which);
+    Mc6850* ch = channel(which);
     if (!ch) {
         err = which.empty() ? "which channel? use [board.unit.a] or [board.unit.b]"
                             : "2sio has no channel '" + which + "' -- it has 'a' and 'b'";
@@ -526,7 +827,7 @@ bool Sio2Board::addSubUnit(const std::string& table, const KeyValues& kv, std::s
 }
 
 bool Sio2Board::disconnect(const std::string& unit, std::string& err) {
-    Acia* ch = channel(unit);
+    Mc6850* ch = channel(unit);
     if (!ch) {
         err = "2sio has no unit '" + unit + "' -- it has 'a' and 'b'";
         return false;

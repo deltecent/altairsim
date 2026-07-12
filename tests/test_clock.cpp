@@ -155,7 +155,7 @@ void test_clock() {
     }
 
     // An event scheduled for a time ALREADY PAST fires in the same drain, not never.
-    // A board should not schedule one (Acia::nextEdge is written to guarantee it --
+    // A board should not schedule one (Mc6850::nextEdge is written to guarantee it --
     // it is how you write an infinite loop), but if a board does, it must not
     // silently vanish. Losing an interrupt is worse than being late with one.
     {

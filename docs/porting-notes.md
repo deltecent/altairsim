@@ -1,5 +1,15 @@
 # Porting notes — what the prior work taught us
 
+> ## ⚠ `src/platform/win32/` IS WRITTEN, UNBUILT AND UNTESTED
+>
+> **Added 2026-07-12, on macOS, where no compiler has ever looked at it.** `serial_win32.cpp` (`SetCommState` / `GetCommModemStatus` / `EscapeCommFunction`) and `socket_win32.cpp` (Winsock) exist so that a Windows build **links** and so that the porting work is a debugging job rather than a design job.
+>
+> **Do not mistake it for working code.** Its absence of `#ifdef`s is not evidence that it runs. The POSIX half was proved against two FTDI cables and a null modem (`tests/serialtest.cpp`, `ctest -L hw`); this half has had none of that, and the first person to build on Windows should expect to spend an afternoon in it.
+>
+> Things most likely to be wrong, in order: the `COMMTIMEOUTS` idiom for a non-blocking read (`MAXDWORD/0/0`); whether `EscapeCommFunction` and `RTS_CONTROL_ENABLE` fight each other over RTS; and `select()` on a connecting socket, where Winsock genuinely uses the *except* set that POSIX ignores.
+>
+> **Related, and still open:** `src/cli/lineedit.cpp` still carries a `#if defined(_WIN32)`, because terminal raw-mode handling has not been moved into `src/platform/` (it wants a `terminal.h`). **The §2.1 CI lint cannot be switched on until it is** — and until the lint is on, the rule decays.
+
 Lessons from the Python prototype (`../AltairClaude/cpm_sim`), its `SIMULATOR.md` and `CLAUDE.md`, and `mits_dsk.c`. **Read this before writing the CPU or the disk controller.**
 
 ## What to steal

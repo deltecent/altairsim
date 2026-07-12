@@ -97,13 +97,13 @@ private:
     void refresh();
 
     // Take a character off the line if one has finished arriving and the receive
-    // register is free to hold it. Same contract as the 2SIO's Acia::poll(), and
+    // register is free to hold it. Same contract as the 2SIO's Mc6850::poll(), and
     // the same hard-won rule behind it: a ByteStream is NOT a serial line, so this
     // never synthesizes an overrun.
     void pollRx();
 
     // The next T-state at which the UART's interrupt request could move on its own.
-    // Zero means never. ALWAYS STRICTLY IN THE FUTURE (see Acia::nextEdge).
+    // Zero means never. ALWAYS STRICTLY IN THE FUTURE (see Mc6850::nextEdge).
     uint64_t nextEdge() const;
 
     int      bitsPerChar() const;

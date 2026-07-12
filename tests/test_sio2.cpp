@@ -444,7 +444,7 @@ void test_sio2() {
         // vector logic in the bus, the board, or the CPU -- and this test would
         // fail if anybody added some.
         Rig g;
-        Acia* a = g.sio->channel("a");
+        Mc6850* a = g.sio->channel("a");
         a->jumper = IrqJumper::Int;
 
         // RST 7 lands at 0038. Read the character and send it straight back.

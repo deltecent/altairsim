@@ -83,9 +83,31 @@ add_custom_command(
   VERBATIM)
 
 # ---------------------------------------------------------------------------
+# The platform layer (DESIGN.md 2.1). NO #ifdefs -- ANYWHERE.
+#
+# OS differences are one interface header with zero conditionals in it, plus one
+# implementation file per OS, and CMAKE picks the directory. This block is the
+# entire mechanism, and it is the only place in the build that asks what OS it is
+# on. Nothing in src/ ever does.
+#
+# The win32 half is WRITTEN BUT UNBUILT on this machine -- see docs/porting-notes.md,
+# which says so plainly rather than letting someone discover it on a Windows box.
+# ---------------------------------------------------------------------------
+if(WIN32)
+  set(PLATFORM_SOURCES
+    src/platform/win32/serial_win32.cpp
+    src/platform/win32/socket_win32.cpp)
+else()
+  set(PLATFORM_SOURCES
+    src/platform/posix/serial_posix.cpp
+    src/platform/posix/socket_posix.cpp)
+endif()
+
+# ---------------------------------------------------------------------------
 # Core library -- everything except main(). Tests link this.
 # ---------------------------------------------------------------------------
 add_library(altair_core STATIC
+  ${PLATFORM_SOURCES}
   src/core/crc32.cpp
   src/core/hex.cpp
   src/core/bus.cpp
@@ -102,6 +124,8 @@ add_library(altair_core STATIC
   src/host/filter.cpp
   src/host/console.cpp
   src/host/endpoint.cpp
+  src/host/hostserial.cpp
+  src/host/tcp.cpp
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
@@ -146,9 +170,32 @@ add_executable(altair_tests
   tests/test_cpu.cpp
   tests/test_debug.cpp
   tests/test_sio2.cpp
-  tests/test_88sio.cpp)
+  tests/test_88sio.cpp
+  tests/test_lines.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
+
+# ---------------------------------------------------------------------------
+# The serial-line hardware gate. TWO REAL PORTS, A NULL MODEM BETWEEN THEM.
+#
+# Everything else in this project can be proved with a ScriptedStream and a
+# MemoryMedia, and should be. Modem control cannot: whether RTS on one card really
+# raises CTS on another is a question about a CABLE, and the only honest way to
+# answer it is to send a volt down one.
+#
+# So this test is REAL HARDWARE, and it is opt-in -- CI has no serial ports and
+# neither does a fresh checkout. Point it at the two ends of a null modem:
+#
+#   ALTAIR_SERIAL_A=/dev/tty.usbserial-AL009KFH \
+#   ALTAIR_SERIAL_B=/dev/tty.usbserial-AB0NW409 ctest -L hw
+#
+# Unset, it SKIPS and says so. A hardware test that silently passes when the
+# hardware is absent is worse than no hardware test at all.
+# ---------------------------------------------------------------------------
+add_executable(altair_serialtest tests/serialtest.cpp)
+target_link_libraries(altair_serialtest PRIVATE altair_core)
+add_test(NAME serial-hw COMMAND altair_serialtest)
+set_tests_properties(serial-hw PROPERTIES LABELS hw)
 
 # ---------------------------------------------------------------------------
 # The 8080 validation gate (DESIGN.md 3.2). Period CP/M test suites, run against

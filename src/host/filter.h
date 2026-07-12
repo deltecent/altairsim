@@ -56,8 +56,16 @@ public:
     bool readable() const override { return inner_->readable(); }
     bool writable() const override { return inner_->writable(); }
     void flush() override { inner_->flush(); }
-    LineStatus status() const override { return inner_->status(); }
     void pump() override { inner_->pump(); }
+
+    // The modem pins and the line settings pass STRAIGHT THROUGH, untransformed.
+    // The filter chain mangles DATA -- it folds case, it maps a rubout. A pin is not
+    // data, and a filter that had an opinion about carrier would be inventing one.
+    LineStatus status() const override { return inner_->status(); }
+    void setControl(const LineControl& c) override { inner_->setControl(c); }
+    bool setParams(const LineParams& p, std::string& err) override {
+        return inner_->setParams(p, err);
+    }
 
     // The transform set. Declared once, consumed by everything.
     std::vector<Property> properties();

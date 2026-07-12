@@ -41,6 +41,7 @@ int main() {
     test_debug();
     test_sio2();
     test_88sio();
+    test_lines();
 
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;

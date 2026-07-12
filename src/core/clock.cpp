@@ -39,7 +39,7 @@ bool Clock::pending(Handle h) const { return live_.find(h) != live_.end(); }
 // drain. Which is correct, and is also precisely how you would write an infinite
 // loop: a board that re-arms at now() every time never lets go. So boards schedule
 // STRICTLY IN THE FUTURE, and it is the board's job to guarantee it (see
-// Acia::nextEdge, which is written to).
+// Mc6850::nextEdge, which is written to).
 void Clock::advance(uint64_t dt) {
     const uint64_t target = t_ + dt;
 

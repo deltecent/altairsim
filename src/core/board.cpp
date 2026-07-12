@@ -83,6 +83,19 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
         return false;
     }
 
+    // A PROPERTY WITH NO SETTER IS A PIN, NOT A JUMPER. The 6850's `lines` reports
+    // what /DCD and /CTS are doing right now -- and you cannot SET what the far end
+    // is doing, any more than you can set the temperature by moving the thermometer.
+    //
+    // Refusing here, in the ONE property path, is what makes read-only work
+    // everywhere at once: SET says this sentence, CONFIG SAVE already skips them
+    // (config/toml.cpp), and MCP gets it for free. There is no second rule to keep in
+    // step.
+    if (!p->set) {
+        err = who + ": '" + p->name + "' is read-only -- it reports a pin, not a jumper";
+        return false;
+    }
+
     // The property's own `radix` IS the rule: 16 for the things the machine sees
     // (a port, an address), 10 for the things only the operator sees (a baud rate,
     // a count). It is handed to the one number parser as the default base -- this

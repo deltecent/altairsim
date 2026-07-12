@@ -265,6 +265,9 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
         } else if (p.kind == Kind::Bool) {
             legal = "true|false";
         }
+        // No setter -> it is a PIN, not a jumper. Say so in the column that tells you
+        // what you may type, because that is the question being asked there.
+        if (!p.set) legal = "(read-only)";
         // There is no "runtime?" column any more (Patrick, 2026-07-12). EVERY
         // property can be set, always: you can only type at the prompt when the
         // machine is stopped, and a real card being worked on sits on an EXTENDER
