@@ -96,12 +96,32 @@ add_custom_command(
 if(WIN32)
   set(PLATFORM_SOURCES
     src/platform/win32/serial_win32.cpp
-    src/platform/win32/socket_win32.cpp)
+    src/platform/win32/socket_win32.cpp
+    src/platform/win32/terminal_win32.cpp)
 else()
   set(PLATFORM_SOURCES
     src/platform/posix/serial_posix.cpp
-    src/platform/posix/socket_posix.cpp)
+    src/platform/posix/socket_posix.cpp
+    src/platform/posix/terminal_posix.cpp)
 endif()
+
+# ---------------------------------------------------------------------------
+# ...AND THE LINT THAT KEEPS IT TRUE (DESIGN.md 2.1).
+#
+# The rule above is worth exactly as much as its enforcement. Without this, the first
+# time somebody needs one small thing on Windows an #ifdef appears "just this once",
+# and inside a month you are SIMH.
+#
+# It is a BUILD dependency of the library, not a test, because 2.1 says "fails the
+# build" -- a rule you can merge and fix later is a rule you have already lost. It
+# greps for OS macros AND for OS headers; cmake/lint_platform.cmake explains why the
+# second half is not optional.
+# ---------------------------------------------------------------------------
+add_custom_target(platform_lint
+  COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_SOURCE_DIR}
+                           -P ${CMAKE_SOURCE_DIR}/cmake/lint_platform.cmake
+  COMMENT "DESIGN.md 2.1: checking the OS has not escaped src/platform/"
+  VERBATIM)
 
 # ---------------------------------------------------------------------------
 # Core library -- everything except main(). Tests link this.
@@ -144,6 +164,9 @@ add_library(altair_core STATIC
   "${MACHINES_GENERATED}")
 
 target_include_directories(altair_core PUBLIC src)
+
+# Nothing links until the OS is where it belongs.
+add_dependencies(altair_core platform_lint)
 
 add_executable(altairsim src/main.cpp)
 target_link_libraries(altairsim PRIVATE altair_core)

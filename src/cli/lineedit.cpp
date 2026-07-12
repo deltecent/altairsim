@@ -1,71 +1,51 @@
 #include "cli/lineedit.h"
 
-#include <cstdio>
-#include <iostream>
+#include "platform/terminal.h"
 
-#if defined(_WIN32)
-#define ALTAIR_NO_TERMIOS 1
-#else
-#include <termios.h>
-#include <unistd.h>
-#endif
+#include <iostream>
 
 namespace altair {
 
-#ifdef ALTAIR_NO_TERMIOS
-
-// No termios: behave exactly as before. Windows gets a line editor when someone
-// with a Windows box wants one badly enough to test it, and not before.
-bool LineEditor::interactive() { return false; }
-
-#else
-
-bool LineEditor::interactive() { return isatty(STDIN_FILENO) && isatty(STDOUT_FILENO); }
+// NO CONDITIONAL COMPILATION IN THIS FILE, and it used to be the only one in the tree
+// that had any. Raw mode is src/platform/terminal.h's job now (DESIGN.md 2.1), and the
+// editor below is the SAME editor on every OS -- Windows included, where it used to be
+// switched off wholesale on the grounds that nobody had tested it.
+//
+// (Which means Windows now gets a line editor for the first time, out of exactly the
+// same code. It has never been run there -- src/platform/win32/ has never been
+// compiled -- but the fallback is honest: if the console cannot be put in raw mode,
+// interactive() is false and this degrades to std::getline, as it always did.)
 
 namespace {
 
-// Raw mode, restored on the way out no matter how we leave -- including through
-// an exception or an early return. A monitor that leaves your terminal in raw
-// mode when it exits is a monitor you only run once.
-class RawMode {
+// Raw mode, given back on the way out no matter how we leave -- including through an
+// exception, an early return, or a signal (terminal.h arms the handlers). A monitor
+// that leaves your terminal in raw mode when it exits is a monitor you run once.
+class RawLine {
 public:
-    RawMode() {
-        if (tcgetattr(STDIN_FILENO, &saved_) != 0) return;
-        ok_ = true;
-        termios raw = saved_;
-        raw.c_lflag &= (tcflag_t) ~(ICANON | ECHO);  // we echo, and we edit
-        raw.c_cc[VMIN] = 1;
-        raw.c_cc[VTIME] = 0;
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
-    }
-    ~RawMode() {
-        if (ok_) tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_);
+    RawLine() : ok_(platform::enterTermMode(platform::TermMode::LineEdit)) {}
+    ~RawLine() {
+        if (ok_) platform::restoreTerm();
     }
     bool ok() const { return ok_; }
 
 private:
-    termios saved_{};
-    bool ok_ = false;
+    bool ok_;
 };
 
-int readByte() {
-    unsigned char c;
-    ssize_t n = ::read(STDIN_FILENO, &c, 1);
-    if (n != 1) return -1;
-    return c;
-}
+void put(const std::string& s) { platform::writeOutput((const uint8_t*)s.data(), s.size()); }
 
 // Repaint from the prompt: \r, prompt, line, clear to EOL, then park the cursor.
 void redraw(const std::string& prompt, const std::string& buf, size_t cur) {
     std::string s = "\r" + prompt + buf + "\x1b[K";
     size_t back = buf.size() - cur;
     if (back) s += "\x1b[" + std::to_string(back) + "D";
-    (void)!::write(STDOUT_FILENO, s.data(), s.size());
+    put(s);
 }
 
 } // namespace
 
-#endif // ALTAIR_NO_TERMIOS
+bool LineEditor::interactive() { return platform::stdinIsTty() && platform::stdoutIsTty(); }
 
 bool LineEditor::read(const std::string& prompt, std::string& line, std::istream& in) {
     // Not a terminal: a script, a pipe, or the test suite. The driver is not
@@ -76,11 +56,7 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         return true;
     }
 
-#ifdef ALTAIR_NO_TERMIOS
-    std::cout << prompt << std::flush;
-    return (bool)std::getline(in, line);
-#else
-    RawMode raw;
+    RawLine raw;
     if (!raw.ok()) {
         std::cout << prompt << std::flush;
         return (bool)std::getline(in, line);
@@ -94,9 +70,9 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
     redraw(prompt, buf, cur);
 
     for (;;) {
-        int c = readByte();
+        int c = platform::readInputBlocking();
         if (c < 0) {  // EOF on the tty
-            (void)!::write(STDOUT_FILENO, "\n", 1);
+            put("\n");
             return false;
         }
 
@@ -113,21 +89,25 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         }
 
         if (c == '\r' || c == '\n') {
-            (void)!::write(STDOUT_FILENO, "\n", 1);
+            put("\n");
             line = buf;
             if (!buf.empty() && (history_.empty() || history_.back() != buf))
                 history_.push_back(buf);
             return true;
         }
 
-        if (c == 0x03) {  // Ctrl-C -- abandon this line, keep the monitor
-            (void)!::write(STDOUT_FILENO, "^C\n", 3);
-            line.clear();
-            return true;
-        }
+        // THERE IS NO ^C CASE HERE, and that is not an oversight. LineEdit mode leaves
+        // ISIG ON (platform/terminal.h), so Ctrl-C at the monitor prompt is a SIGNAL and
+        // never a byte: it cannot reach this loop, and a branch for it would be code that
+        // can never run. It kills the process, exactly as it did before there was a CPU
+        // (monitor.cpp says the same) -- and the handler in the platform layer gives the
+        // terminal back on the way out, which is the part that used to be missing.
+        //
+        // Ctrl-C IS a byte to the GUEST, in Guest mode, where ISIG is off. Two modes,
+        // opposite answers, and this is the one where ^C is a way out.
         if (c == 0x04) {  // Ctrl-D -- EOF, but only on an empty line
             if (buf.empty()) {
-                (void)!::write(STDOUT_FILENO, "\n", 1);
+                put("\n");
                 return false;
             }
             continue;
@@ -151,7 +131,7 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         if (c == 0x05) { cur = buf.size(); redraw(prompt, buf, cur); continue; }     // Ctrl-E
 
         if (c == 0x1B) {  // ESC [ ... -- arrows
-            int a = readByte(), b = readByte();
+            int a = platform::readInputBlocking(), b = platform::readInputBlocking();
             if (a != '[') continue;
             if (b == 'D' && cur > 0) { --cur; redraw(prompt, buf, cur); }
             else if (b == 'C' && cur < buf.size()) { ++cur; redraw(prompt, buf, cur); }
@@ -166,7 +146,7 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
                 cur = buf.size();
                 redraw(prompt, buf, cur);
             } else if (b == '3') {  // ESC[3~ -- the Delete key, forward-delete
-                if (readByte() == '~' && cur < buf.size()) {
+                if (platform::readInputBlocking() == '~' && cur < buf.size()) {
                     buf.erase(cur, 1);
                     redraw(prompt, buf, cur);
                 }
@@ -182,7 +162,6 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         // Anything else -- a stray control byte -- is DROPPED, not inserted. That
         // is how ^H got into the line in the first place.
     }
-#endif
 }
 
 } // namespace altair

@@ -177,8 +177,6 @@ private:
     mutable std::deque<uint8_t> in_;
     mutable bool                attnSeen_ = false;
     mutable bool                eof_      = false;
-
-    bool pollByte(uint8_t& out) const;
 };
 
 // A non-owning handle to the one Console, so it can be handed to a FilterStream

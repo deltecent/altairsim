@@ -2,13 +2,19 @@
 
 > ## ⚠ `src/platform/win32/` IS WRITTEN, UNBUILT AND UNTESTED
 >
-> **Added 2026-07-12, on macOS, where no compiler has ever looked at it.** `serial_win32.cpp` (`SetCommState` / `GetCommModemStatus` / `EscapeCommFunction`) and `socket_win32.cpp` (Winsock) exist so that a Windows build **links** and so that the porting work is a debugging job rather than a design job.
+> **Added 2026-07-12, on macOS, where no compiler has ever looked at it.** `serial_win32.cpp` (`SetCommState` / `GetCommModemStatus` / `EscapeCommFunction`), `socket_win32.cpp` (Winsock) and `terminal_win32.cpp` (`SetConsoleMode`) exist so that a Windows build **links** and so that the porting work is a debugging job rather than a design job.
 >
-> **Do not mistake it for working code.** Its absence of `#ifdef`s is not evidence that it runs. The POSIX half was proved against two FTDI cables and a null modem (`tests/serialtest.cpp`, `ctest -L hw`); this half has had none of that, and the first person to build on Windows should expect to spend an afternoon in it.
+> **Do not mistake it for working code.** Its absence of `#ifdef`s is not evidence that it runs. The POSIX half was proved against two FTDI cables and a null modem (`tests/serialtest.cpp`, `ctest -L hw`) and, for the terminal, against a pty; this half has had none of that, and the first person to build on Windows should expect to spend an afternoon in it.
 >
-> Things most likely to be wrong, in order: the `COMMTIMEOUTS` idiom for a non-blocking read (`MAXDWORD/0/0`); whether `EscapeCommFunction` and `RTS_CONTROL_ENABLE` fight each other over RTS; and `select()` on a connecting socket, where Winsock genuinely uses the *except* set that POSIX ignores.
->
-> **Related, and still open:** `src/cli/lineedit.cpp` still carries a `#if defined(_WIN32)`, because terminal raw-mode handling has not been moved into `src/platform/` (it wants a `terminal.h`). **The §2.1 CI lint cannot be switched on until it is** — and until the lint is on, the rule decays.
+> Things most likely to be wrong, in order: the `COMMTIMEOUTS` idiom for a non-blocking read (`MAXDWORD/0/0`); whether `EscapeCommFunction` and `RTS_CONTROL_ENABLE` fight each other over RTS; `select()` on a connecting socket, where Winsock genuinely uses the *except* set that POSIX ignores; and, in the terminal, `readInput()`'s peek-and-discard loop over the console input queue (`ReadFile` on a console **blocks**, and that peek is the only thing preventing it — if keystrokes vanish or input hangs, start there) and `ENABLE_VIRTUAL_TERMINAL_INPUT`, which is what turns the arrow keys into the `ESC [ A` sequences `lineedit.cpp` already parses. A Windows too old for it fails `SetConsoleMode`, and the code falls back rather than growing a conditional.
+
+### The §2.1 lint is ON (2026-07-12)
+
+The terminal was the **last** thing in the tree with an OS underneath it, and it has moved into `src/platform/terminal.h`. `src/cli/lineedit.cpp`'s `#if defined(_WIN32)` is gone — Windows now gets the *same* line editor from the *same* code, degrading to `std::getline` if the console cannot be put in raw mode.
+
+So `cmake/lint_platform.cmake` now runs **as a build dependency of `altair_core`** — not a test, because §2.1 says *fails the build*, and a rule you can merge and fix later is a rule you have already lost.
+
+It greps for OS **headers** as well as OS **macros**, and that half is not gold-plating: when the terminal moved there were two offenders, and only one had a conditional. `src/host/console.cpp` simply `#include`d `<termios.h>` in the open, with no `#ifdef` at all — a macro-only lint would have called it **clean**. It would have compiled on macOS and Linux forever and failed on Windows the day someone tried. **The `#ifdef` is the symptom; reaching for the OS outside the platform layer is the disease.**
 
 Lessons from the Python prototype (`../AltairClaude/cpm_sim`), its `SIMULATOR.md` and `CLAUDE.md`, and `mits_dsk.c`. **Read this before writing the CPU or the disk controller.**
 

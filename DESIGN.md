@@ -59,11 +59,13 @@ It is a **hardware development bench** that happens to run period software. The 
 
 **Hard architectural rule, enforced by CI.** SIMH is riddled with conditional compilation and the result is code you cannot read without mentally executing the preprocessor. We are not doing that.
 
-> **`src/platform/` EXISTS as of 2026-07-12** — `serial.h` + `socket.h` (pure declarations, zero conditionals, **no OS type in any signature**: no `int fd`, no `HANDLE`), with `posix/` built and proved against two FTDI cables and a null modem, and `win32/` **written but unbuilt** (`docs/porting-notes.md` says so plainly). CMake picks the directory; that `if(WIN32)` in `CMakeLists.txt` is the only place in the project that asks what OS it is on.
+> **`src/platform/` EXISTS as of 2026-07-12** — `serial.h` + `socket.h` + `terminal.h` (pure declarations, zero conditionals, **no OS type in any signature**: no `int fd`, no `HANDLE`, no `termios`), with `posix/` built and proved against two FTDI cables, a null modem and a pty, and `win32/` **written but unbuilt** (`docs/porting-notes.md` says so plainly). CMake picks the directory; that `if(WIN32)` in `CMakeLists.txt` is the only place in the project that asks what OS it is on.
 >
 > **The rule earned its keep immediately.** The POSIX socket file wanted `MSG_NOSIGNAL` (Linux) / `SO_NOSIGPIPE` (macOS) to stop a hung-up client from killing the process with SIGPIPE — a genuine macOS/Linux divergence, which by this section's own rules would need its own *file*. `signal(SIGPIPE, SIG_IGN)` is plain POSIX, works on both, and needs no branch at all. **The right answer to a platform conditional is usually to stop needing it.**
 >
-> **Still outstanding:** the CI lint does not exist yet, and `src/cli/lineedit.cpp` still has a `#if defined(_WIN32)` — raw-mode terminal handling has not been moved into `src/platform/` (`terminal.h`). The lint cannot be turned on until it is, and turning it on is what stops this decaying.
+> **THE LINT IS ON, as of 2026-07-12** (`cmake/lint_platform.cmake`, a build dependency of `altair_core` — not a test, because this section says *fails the build*). The terminal was the last thing in the tree with an OS underneath it; it is now `src/platform/terminal.h`, and `lineedit.cpp`'s `#if defined(_WIN32)` — the only conditional compilation in the project — is gone with it.
+>
+> **The lint greps for OS *headers*, not just OS *macros*, and that is the half that mattered.** Moving the terminal turned up two offenders and only one had a conditional: `src/host/console.cpp` simply `#include`d `<termios.h>` in the open, no `#ifdef` anywhere near it. A macro-only lint — the one this section originally specified — would have called that file **clean**, and it would have compiled here forever and failed on Windows the day someone tried. The `#ifdef` is the symptom. **Reaching for the OS outside the platform layer is the disease**, and the lint is aimed at the disease.
 
 OS differences are expressed as **an interface in a header with no conditionals at all**, plus **one implementation file per OS**, selected by CMake at configure time:
 
