@@ -312,6 +312,17 @@ public:
     // most don't. A UART absolutely does: TDRE is a deadline, not a flag.
     void attachClock(Clock* c) { clock_ = c; }
 
+    // WHAT THE CARD WANTS SAID OUT LOUD. A bank select it could not decode, a ROM
+    // that failed to load, a sector whose checksum did not match. Drained by the
+    // monitor after every command and after every run, and cleared by the draining.
+    //
+    // VIRTUAL, AND ON Board, because it used to be a `dynamic_cast<MemoryBoard*>` in
+    // Machine::drainBoardLog() -- which meant a disk controller with something to say
+    // about a bad sector had NO WAY to say it, and would have had to grow a second
+    // channel or teach the machine about a second board type. Both are the same bug:
+    // a general facility with one card's name compiled into it.
+    virtual std::vector<std::string> drainLog() { return {}; }
+
     // ---- RAW: behind the bus (DESIGN.md 10.2) ----
     //
     // Straight into the card's backing store, bypassing decode entirely.

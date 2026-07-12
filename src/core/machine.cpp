@@ -100,13 +100,14 @@ std::string Machine::isa() {
     return c ? c->isa() : "";
 }
 
+// EVERY board gets to speak, not just the memory card. This was a
+// dynamic_cast<MemoryBoard*> and it was a wall: the disk controllers this exists
+// for -- a bad checksum, a write to a protected disk -- could not have got a word
+// through it. Board::drainLog() is virtual and the default is silence.
 std::vector<std::string> Machine::drainBoardLog() {
     std::vector<std::string> out;
-    for (auto& b : boards_) {
-        if (auto* m = dynamic_cast<MemoryBoard*>(b.get())) {
-            for (auto& s : m->takeLog()) out.push_back(s);
-        }
-    }
+    for (auto& b : boards_)
+        for (auto& s : b->drainLog()) out.push_back(s);
     return out;
 }
 

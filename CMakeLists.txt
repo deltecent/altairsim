@@ -102,6 +102,9 @@ add_library(altair_core STATIC
   src/host/filter.cpp
   src/host/console.cpp
   src/host/endpoint.cpp
+  src/host/media.cpp
+  src/host/disk.cpp
+  src/host/tape.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
   src/boards/mits-2sio.cpp
@@ -131,6 +134,7 @@ add_executable(altair_tests
   tests/test_clock.cpp
   tests/test_memory.cpp
   tests/test_hex.cpp
+  tests/test_media.cpp
   tests/test_roms.cpp
   tests/test_phantom.cpp
   tests/test_cli.cpp

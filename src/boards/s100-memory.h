@@ -146,7 +146,7 @@ public:
 
     // Messages the board wants said out loud (a bank select it could not
     // decode, a ROM that failed to load). Drained by the monitor.
-    std::vector<std::string> takeLog();
+    std::vector<std::string> drainLog() override;
 
 private:
     static constexpr uint32_t kPage = 0x100;

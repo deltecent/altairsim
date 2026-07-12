@@ -5,6 +5,7 @@
 #include "core/machine.h"
 #include "core/machines.h"
 #include "host/endpoint.h"
+#include "host/media.h"
 #include "mcp/server.h"
 
 #include <algorithm>
@@ -138,6 +139,11 @@ int main(int argc, char** argv) {
     // one `#include` away from knowing what a socket is.
     Sio2Board::setResolver(resolveEndpoint);
     SioBoard::setResolver(resolveEndpoint);
+
+    // The same seam for the other kind of endpoint: a disk board asks openMedia()
+    // for a path and gets a medium back, and this is the one line that decides the
+    // medium is a file on the host. A test replaces it with one made of RAM.
+    setMediaResolver(openHostFile);
 
     Machine m;
     std::string err;

@@ -3,6 +3,7 @@
 #include "boards/mits-2sio.h"
 #include "boards/mits-88sio.h"
 #include "host/endpoint.h"
+#include "host/media.h"
 
 #include <cstdio>
 
@@ -18,7 +19,13 @@ int main() {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
 
+    // The REAL media resolver, for the same reason. A test that wants a disk
+    // without a filesystem installs a MemoryMedia resolver for the length of the
+    // test and puts this one back -- see test_media.cpp.
+    altair::setMediaResolver(altair::openHostFile);
+
     test_hex();
+    test_media();
     test_roms();
     test_clock();
     test_bus();

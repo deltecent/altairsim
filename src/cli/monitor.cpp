@@ -1429,16 +1429,37 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- MOUNT ----------------
     if (cmd == "MOUNT") {
-        if (!need(3, "MOUNT <id>:<unit> <file>")) return true;
+        if (!need(3, "MOUNT <id>:<unit> <file> [RO]")) return true;
         Board* b;
         UnitDef u;
         if (!subunit(a[1], b, u, true, out)) return true;
+
+        // RO IS THE WRITE-PROTECT TAB, and until now it was documented in HELP and
+        // silently thrown away here (`readOnly = false`, hardcoded). That is fine
+        // for a ROM, which cannot be written anyway -- and it is a disk you are
+        // about to let CP/M loose on.
+        //
+        // Anything else in the slot is a typo, and a typo that we accepted would
+        // mount the disk READ/WRITE while the operator believed they had protected
+        // it. Refuse it.
+        bool readOnly = false;
+        if (a.size() > 3) {
+            if (!is(a[3], "RO")) {
+                out << "MOUNT: '" << a[3] << "': the only option is RO. "
+                    << "usage: MOUNT <id>:<unit> <file> [RO]\n";
+                failed_ = true;
+                return true;
+            }
+            readOnly = true;
+        }
+
         std::string err;
-        if (!b->mount(u.name, a[2], false, err)) {
+        if (!b->mount(u.name, a[2], readOnly, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
-            out << b->id << ":" << u.name << ": mounted " << a[2] << "\n";
+            out << b->id << ":" << u.name << ": mounted " << a[2]
+                << (readOnly ? " (read-only)" : "") << "\n";
         }
         return true;
     }

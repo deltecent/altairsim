@@ -388,7 +388,7 @@ bool MemoryBoard::blit(const Image& img, std::string& err) {
     return true;
 }
 
-std::vector<std::string> MemoryBoard::takeLog() {
+std::vector<std::string> MemoryBoard::drainLog() {
     auto v = std::move(log_);
     log_.clear();
     return v;

@@ -44,9 +44,11 @@ static const std::vector<CommandDef> kCommands = {
      "backplane resets the processor and nothing else."},
     {"HISTORY", false, "the debugger", "HISTORY [n]", nullptr},
     {"MOUNT", true, nullptr, "MOUNT <id>:<u> <file> [RO]",
-     "Put a disk in a drive, or an image in a ROM socket.\n"
-     "  MOUNT dsk:0 disks/cpm.dsk\n"
-     "  MOUNT mem0:1 roms/monitor.bin"},
+     "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
+     "RO is the write-protect tab: the guest may read it and may not write it.\n"
+     "  MOUNT dcdd0:drive0 disks/cpm.dsk\n"
+     "  MOUNT dcdd0:drive1 disks/master.dsk RO\n"
+     "  MOUNT mem0:rom0 roms/monitor.bin"},
     {"BREAK", true, nullptr, "BREAK [<addr> | MEM R|W <addr> | IO R|W <port>]",
      "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
      "other two watch BUS CYCLES, so they catch a DMA transfer too, and they work\n"

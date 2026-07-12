@@ -649,17 +649,20 @@ enum class Density { SD, DD };
 
 class DiskImage {
 public:
+    explicit DiskImage(std::unique_ptr<MediaFile>);   // the host file lives BELOW this
+
     // The BOARD describes the medium: overall shape, then one or more TRACK RANGES.
     void init(int tracks, int heads, bool interleaved);
     void initFormat(int trackLo, int trackHi, int headLo, int headHi,
                     Density, int sectors, int sectorSize, int startSector);
 
-    virtual bool readSector (int t, int h, int s, uint8_t* buf, size_t* n) = 0;
-    virtual bool writeSector(int t, int h, int s, const uint8_t* buf, size_t* n) = 0;
+    bool readSector (int t, int h, int s, uint8_t* buf, size_t* n);
+    bool writeSector(int t, int h, int s, const uint8_t* buf, size_t* n);
 
-    virtual bool   readOnly() const = 0;
-    virtual void   sync() = 0;
-    virtual size_t size() const = 0;
+    bool     readOnly() const;
+    bool     readOnlyForced() const;   // the host would not let us write it
+    void     sync();
+    uint64_t size() const;
 };
 ```
 
@@ -694,9 +697,25 @@ img.initFormat(0,  0, 0, 0, Density::SD, 26, 128, 1);     // track 0
 img.initFormat(1, 76, 0, 0, Density::DD, 26, 256, 1);     // everything after
 ```
 
-Implementations: `RawImageFile` (the common case — buffered, dirty write-back), `ReadOnlyImage`, `MemoryDisk`, and later `ImdImage`/`Td0Image` (which carry their own per-track format, and so fit this shape rather than fighting it).
+**Underneath it: `MediaFile` (`src/host/media.h`) — the host file, and the only thing in the program that opens one.** Buffered, dirty write-back, a write-protect tab, a sync. This is the layer a disk and a tape genuinely *share*.
+
+**And `DiskImage` is ONE CLASS, not a base class** — every implementation this section used to name has dissolved. `ReadOnlyImage` was never a different *image*; it is a medium that says no. `MemoryDisk` was never a different image either; it is a `MemoryMedia`. And **`ImdImage`/`Td0Image` are never coming** (Patrick, 2026-07-12): *"I will never support IMD files, only raw disk images. The only way I would support an IMD file is if it was converted to a raw file before using."* Those container formats were the **entire** reason `readSector`/`writeSector` were virtual — a format that carries its own per-track sector map needs to override the arithmetic — so with them ruled out, the virtuals go. The image is sector-linear, always. A hook left in for a possibility the owner has ruled out is not extensibility; it is a hook nobody will ever pull, and the next reader has to work out why it is there.
+
+**Write-protect mounts, it does not refuse** (Patrick, 2026-07-12: *"just enable the RO flag automatically and let the user know"*). A file the host will not let us write is a disk with the tab out, which is an ordinary disk — so it mounts read-only. What must not happen is the *silent* version: the operator typed no `RO`, so `readOnlyForced()` is true and the board **says so** through `Board::drainLog()`. Discovering it at `sync()` instead — after CP/M has spent an afternoon writing to it and the flush fails with the work gone — is the failure this prevents.
+
+`openMedia(path, readOnly, err)` is the **one seam**, installed by `setMediaResolver()` in `src/main.cpp` and `tests/main.cpp` — the exact shape of `resolveEndpoint()`/`Sio2Board::setResolver()`, and for the same reason: a board asks for a path and gets a medium, and a test swaps the filesystem out for RAM without the board noticing.
+
+**The XMODEM pad.** Both 8″ DCDD images in the tree are 337,664 bytes, not the 337,568 that 77 × 32 × 137 predicts — XMODEM padded them to a 128-byte block boundary. A strict `size == exact` probe therefore rejects **both of the only 8″ disks we have**. Every format match is `exact <= size < exact + 128` (`sizeMatches()`, in `disk.h`, because the trap is in the file format and not in any one controller). The pad is never data, and a write never reaches it: `DiskImage` bounds every access against the declared geometry, and a disk never grows under a write.
 
 *Modeled on `simh.mdsk/Altair8800/altair8800_dsk.c` (© 2025 Patrick A. Linstruth) — our own prior art, not another project's.*
+
+### 7.3.1 `TapeImage` — the sequential medium, and why it is not a `DiskImage`
+
+A cassette has exactly one thing a disk has not: **a position**. It is not that a tape is a worse disk — it is that the head is where it is, and the only way back to the start of the program is to **rewind**. That is the whole of the difference, and it is why `TapeImage` (`src/host/tape.h`) is its own class over the same `MediaFile`: `read`/`write`/`rewind`/`pos`/`atEnd`. The CLI gets a verb, `SHOW` gets a number, and the guest gets the bytes in the order they were recorded.
+
+**And then the adapter that makes the 88-ACR nearly free: a tape *is* a `ByteStream`.** `TapeStream` is 20 lines, and with it the shared 1602 UART needs no cassette-specific code at all — the ACR hands it a `TapeStream` where the 88-SIO hands it a socket, and the only difference left is that the unit is `UnitKind::Tape` (MOUNT) rather than `UnitKind::Serial` (CONNECT). That is §7.1's promise being cashed: the board knows it has a serial line, and does not know what is on the end of it.
+
+`readable()` is *there is more tape*, so the byte **waits for the card** — a tape that dropped a byte because the guest was slow would be manufacturing data loss the host does not have, which §7.1 forbids. A real recorder keeps rolling and *can* drop data; we do not model that, and the board's `.md` says so under Limitations.
 
 ### 7.4 `Display` and `Audio` — SDL
 
