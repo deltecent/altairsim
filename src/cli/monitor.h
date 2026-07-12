@@ -55,7 +55,11 @@ private:
     bool range(const std::string& t, uint32_t& lo, uint32_t& hi, std::ostream& err);
 
     Board* board(const std::string& id, std::ostream& err);
-    bool subunit(const std::string& spec, Board*& b, int& unit, std::ostream& err);
+
+    // `id:unit` -> board + NAMED unit, with the kind checked against the command.
+    // `wantMountable` is true for MOUNT/UNMOUNT, false for CONNECT/DISCONNECT.
+    bool subunit(const std::string& spec, Board*& b, UnitDef& u, bool wantMountable,
+                 std::ostream& err);
 
     void showBoard(Board* b, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);

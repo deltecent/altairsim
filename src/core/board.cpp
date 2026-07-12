@@ -9,6 +9,28 @@ static std::string lower(std::string s) {
     return s;
 }
 
+const char* unitKindName(UnitKind k) {
+    switch (k) {
+    case UnitKind::Disk:   return "disk";
+    case UnitKind::Rom:    return "rom";
+    case UnitKind::Serial: return "serial";
+    case UnitKind::Tape:   return "tape";
+    }
+    return "?";
+}
+
+// A unit's name is the board's, and the board is the only one who knows them.
+// Nothing here guesses, and nothing accepts an index.
+bool Board::findUnit(const std::string& name, UnitDef& out) const {
+    std::string n = lower(name);
+    for (const auto& u : units())
+        if (lower(u.name) == n) {
+            out = u;
+            return true;
+        }
+    return false;
+}
+
 bool setProperty(Board& b, const std::string& key, const std::string& text, bool running,
                  std::string& err) {
     auto props = b.properties();

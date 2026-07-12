@@ -90,12 +90,22 @@ public:
     std::vector<MapEntry> memMap() const override;
     std::vector<MapEntry> ioMap() const override;
 
-    // Regions are sub-units, so `MOUNT mem0:2 dbl.hex` reloads one socket with
-    // no new monitor syntax (DESIGN.md 9).
     std::vector<std::string> subUnitTables() const override { return {"region"}; }
     bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
-    bool mount(int unit, const std::string& path, bool ro, std::string& err) override;
-    bool dismount(int unit, std::string& err) override;
+
+    // A ROM region is a SOCKET, and a socket is a unit: `MOUNT mem0:rom0 dbl.hex`.
+    //
+    // A RAM region is NOT a unit. There is no chip to pull and nothing to mount
+    // into it, and offering `mem0:ram0` would be offering something that can only
+    // ever fail. (To put bytes in RAM you LOAD them, exactly as the CPU would.)
+    std::vector<UnitDef> units() const override;
+    bool mount(const std::string& unit, const std::string& path, bool ro,
+               std::string& err) override;
+    bool unmount(const std::string& unit, std::string& err) override;
+
+    // "rom1" -> its index in regions_. regions_.size() means this card has no such
+    // unit -- the caller reports it; this does not guess.
+    size_t romRegionIndex(const std::string& unit) const;
 
     // Load an image into the store, behind the bus. Used by power-up ROM
     // loading and by `LOAD ... RAW`.

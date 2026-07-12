@@ -190,4 +190,4 @@ The 8 MB Altair CP/M BIOS does **not** write to the DCDD when CP/M closes a file
 
 - Cold-boot CP/M 2.2 from `CPM22-8MB-56K-SIM.DSK` to the `A0>` prompt.
 - Run `M80` / `L80` and compare output against a golden log.
-- Write a file, return to the prompt, dismount, and verify the image on the host.
+- Write a file, return to the prompt, unmount, and verify the image on the host.

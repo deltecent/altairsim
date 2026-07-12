@@ -19,6 +19,43 @@ namespace altair {
 // The key/value pairs of one TOML sub-unit table, in file order.
 using KeyValues = std::vector<std::pair<std::string, std::string>>;
 
+// ---------------------------------------------------------------------------
+// UNITS ARE NAMED AND TYPED (Patrick, 2026-07-11).
+//
+// ONE CARD IS NOT ONE KIND OF THING. A card may carry drives AND ROM sockets AND
+// a serial port -- the Tarbell already carries a boot PROM and a disk controller
+// -- and nothing in the bus model ever said otherwise.
+//
+// So a unit is a NAME, not an index. `MOUNT dj:drive0` and `CONNECT dj:tty`, not
+// `MOUNT dj:0` and `MOUNT dj:4` with a numbering convention buried in the card's
+// documentation. The kind is checked: mounting a disk image onto a serial port is
+// an ERROR with a sentence explaining it, not undefined behaviour that half-works.
+//
+// The index scheme was not merely inconvenient -- it could not be made safe. With
+// a flat integer namespace, `MOUNT dj:4` on a serial unit can only fail; it can
+// never explain, because the board has nothing to distinguish 4-the-drive from
+// 4-the-port.
+// ---------------------------------------------------------------------------
+enum class UnitKind {
+    Disk,   // MOUNT / UNMOUNT a host image
+    Rom,    // MOUNT / UNMOUNT an image into a socket -- a region on a memory card
+    Serial, // CONNECT / DISCONNECT an endpoint
+    Tape,   // MOUNT / UNMOUNT
+};
+
+const char* unitKindName(UnitKind k);
+
+struct UnitDef {
+    std::string name;  // "drive0", "rom0", "tty" -- the board's own word
+    UnitKind kind = UnitKind::Disk;
+    std::string state; // what is in it now: a path, or "(empty)"
+};
+
+// Can this kind of unit be MOUNTed (as opposed to CONNECTed)?
+inline bool isMountable(UnitKind k) {
+    return k == UnitKind::Disk || k == UnitKind::Rom || k == UnitKind::Tape;
+}
+
 class Board {
 public:
     virtual ~Board() = default;
@@ -117,14 +154,37 @@ public:
         return false;
     }
 
-    virtual bool mount(int unit, const std::string& path, bool readOnly, std::string& err) {
+    // Every unit this card has, in the board's own order and by the board's own
+    // names. THIS IS THE ONLY LIST -- SHOW, MOUNT, CONNECT, the MCP schemas and tab
+    // completion all read it, so they cannot disagree about what units exist.
+    virtual std::vector<UnitDef> units() const { return {}; }
+
+    // Find a unit by name, case-insensitively. False if this card has no such unit.
+    bool findUnit(const std::string& name, UnitDef& out) const;
+
+    virtual bool mount(const std::string& unit, const std::string& path, bool readOnly,
+                       std::string& err) {
         (void)unit; (void)path; (void)readOnly;
         err = type() + " has nothing to mount";
         return false;
     }
-    virtual bool dismount(int unit, std::string& err) {
+    virtual bool unmount(const std::string& unit, std::string& err) {
         (void)unit;
-        err = type() + " has nothing to dismount";
+        err = type() + " has nothing to unmount";
+        return false;
+    }
+
+    // The character-device half. No board implements these yet -- the serial cards
+    // are not written -- but the UNIT MODEL has to know that Serial is a kind, or
+    // `MOUNT dj:tty` could not be rejected with a reason.
+    virtual bool connect(const std::string& unit, const std::string& endpoint, std::string& err) {
+        (void)unit; (void)endpoint;
+        err = type() + " has nothing to connect";
+        return false;
+    }
+    virtual bool disconnect(const std::string& unit, std::string& err) {
+        (void)unit;
+        err = type() + " has nothing to disconnect";
         return false;
     }
 

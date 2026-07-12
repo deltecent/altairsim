@@ -118,7 +118,67 @@ class Cpu88 : public Board, public BusMaster { ... };   // the 88-CPU card
 - `src/cpu/` — `Cpu8080`, `Cpu8085`, `CpuZ80`: pure instruction cores behind one `CpuCore` interface. No bus, no board, no config. Independently testable, which is what makes the 8080EXM/ZEXALL gate easy to run.
 - `src/boards/cpu_88.cpp` — the **88-CPU card**: hosts a `CpuCore`, plugs into the bus, owns the clock property, handles `pINT`/`IntAck`, honors both resets, serializes.
 
-The board's `cpu` property selects the core (`8080` in milestone 1; `8085`/`z80` later) — exactly how you'd swap the physical card.
+A card's cores are **units** (§3.0.1) — a plain 88-CPU has exactly one, and a dual-processor card has two with one active. Swapping the *card* is `BOARD REMOVE` / `BOARD ADD`, exactly as you'd swap the physical thing.
+
+**The clock is the CPU board's property**, not the machine's: `SET cpu0 clock_hz=2000000`. It belongs to the card because that is where the crystal is, and because a backplane with no CPU card in it — which is what milestone 1a runs — has no clock rate to speak of.
+
+### 3.0.1 A card may carry more than one processor, and they are units
+
+**Settled 2026-07-11 by Patrick.** A card with an 8080 *and* an 8085 on it — switching itself, or switching when a program does an `OUT` — is a real thing. So **cores are units** (§9), of kind `Cpu`, exactly one of them active:
+
+```
+altairsim> SHOW cpu0
+  unit   kind   holds
+    8080   cpu    active
+    8085   cpu    (idle)
+```
+
+**This needs no new bus concept whatsoever.** The card decodes the `OUT`, sets its own latch, and reports a different active core. That is structurally identical to bank switching on a memory card (§4.3) and to the Tarbell releasing PHANTOM\* on A5 (§4.2): *the board keeps its own state, and the bus arbitrates nothing.* `Machine` asks the backplane which board is the bus master and which core is live; two cards claiming it is contention and we say so; **no CPU card at all is a real machine you can build**, and it is the one milestone 1a runs.
+
+### 3.0.2 The disassembler belongs to the instruction set — not to the CPU, and certainly not to the card
+
+**Patrick, 2026-07-11:** *"If I make an 8080 board with an onboard serial port, and another 8080 board without one, they should be able to utilize the same 8080 CPU glue and disassembly."*
+
+So "CPU" is three things wearing one name, and they are separated:
+
+| Layer | What it is | Lives in |
+|---|---|---|
+| **Instruction set** | a **stateless** disassembler: bytes in, text + length out. No registers, no state, no board. Named `"8080"`, `"8085"`, `"z80"` — a registry key, exactly like `"memory"` is for `makeBoard()`. | `src/isa/` — `disassemblerFor("8080")` |
+| **Core** | registers + execute. A plain object; **not** a `Board`. | `src/cpu/` — `Cpu8080`, `Cpu8085` |
+| **Card** | the thing you pull out with your hand: one or more cores, plus the serial port / boot PROM / CPU-select port that happen to be on *this* card. | `src/boards/` |
+
+Two 8080 cards that differ only in an onboard serial port share the instruction set and the core **completely**, and differ only in the card — which is the only place they differ in reality. The thing they have in common is not the chip and not the board: it is *the way bytes decode*, and that is why it needs a name of its own to be shared by.
+
+**A stateless disassembler runs with no CPU in the machine.** `DISASM FF00 CPU=8080` works *today*, in milestone 1a, against the DBL ROM — the same argument that made the bus testable before the CPU existed (§15), and it means the 8080 decode tables get exercised long before anything executes them.
+
+**But naming the CPU is not the normal case, and must not be** (Patrick). The active core reports which instruction set it speaks, and `DISASM` asks the machine:
+
+```
+which = the explicit CPU= argument
+      | the active core's own answer      <- THE NORMAL CASE: you never type it
+      | error: "no CPU in the machine -- say CPU=8080"
+```
+
+The fallout: on the dual-CPU card above, when the guest `OUT`s to switch from the 8080 to the 8085, **`DISASM` follows automatically** — "which instruction set" and "which core is active" are the same question, and it is already being asked.
+
+*(The word `CPU` does double duty — `DISASM ... CPU=8080` names an instruction set, while `BOARD ADD 8080 cpu0` names a card. That is deliberate: `CPU=` is the word everyone already uses, and inventing a second one to be precise about a distinction the user does not have to care about would cost more than it buys.)*
+
+### 3.0.3 Registers are reflection, and the debugger is a bus observer
+
+**Registers use the same trick as `properties()` (§5).** A core exposes `registers()` — name, width, get, set — and *not* an `Regs8080` struct the monitor knows about:
+
+```cpp
+struct RegDef { const char* name; int bits; /* get, set */ };
+```
+
+Then `REGS`, `SET REG A=3F`, breakpoint conditions (`BREAK 100 IF A==0`), `SNAPSHOT`, and the MCP schema **all work for a Z80 or a 6502 the day it lands, with no monitor change.** It is the same bet that already paid for `SET`/`SHOW`/TOML/MCP: one schema, no second copy to drift.
+
+**Breakpoints and tracing are NOT CPU features.** If a core owned them, every core would reimplement them and they would differ in subtle ways. They don't belong there:
+
+- **`BREAK IO`, `BREAK MEM R|W`, `TRACE`, `HISTORY`** are questions about **bus cycles**, and the bus already broadcasts every cycle to every board (`snoop()`, §4.2.2). The debugger watches that same stream. **CPU-agnostic, and the machinery already exists.**
+- **`BREAK <addr>`** is the only CPU-flavoured one, and it is just *"PC equals X after a step"* — one comparison against a register the reflection layer already exposes.
+
+So the debugger lives in `Machine`, drives `cpu->step(bus)`, and asks only generic questions. **An 8085 card inherits the entire debugger for free.**
 
 ### 3.1 Core semantics
 
@@ -618,7 +678,7 @@ One structured diagnostic sink with per-board and per-category masks (`IN`, `OUT
 
 ## 8. Timing and host idling
 
-- Clock is `clock_hz` (default 2,000,000) or `0` for free-running.
+- Clock is the **CPU board's** `clock_hz` (default 2,000,000) or `0` for free-running — not the machine's (§3). The crystal is on the card, and a backplane with no CPU card has no clock rate at all.
 - Throttle by comparing accumulated T-states against a monotonic host clock in ~1 ms slices and **sleeping** the remainder — never spin.
 - **Idle detection** — steal this from the Python prototype; it is what makes automation work. Count consecutive console-status reads that return RDRF=0 **with no intervening I/O of any kind**. Any data read, char write, or disk port access resets the counter. Past a threshold, the machine is *provably parked at a prompt*: the run loop reports `idle`, and **the host process sleeps instead of emulating a spin loop.** This is what stops a CP/M prompt from pinning a core, and what lets automated builds terminate promptly instead of burning 20M steps.
 
@@ -626,7 +686,11 @@ One structured diagnostic sink with per-board and per-category masks (`IN`, `OUT
 
 ## 9. Devices, `MOUNT`, and `CONNECT`
 
-- A board declares typed **units**. A disk unit accepts `MOUNT id:unit <hostfile>` (`DISMOUNT` to release); a serial unit accepts `CONNECT id:unit <endpoint>` (`DISCONNECT`).
+- A board declares typed **units**, and **a unit is a NAME, not an index** (Patrick, 2026-07-11). A disk unit accepts `MOUNT id:unit <hostfile>` (`UNMOUNT` to release); a serial unit accepts `CONNECT id:unit <endpoint>` (`DISCONNECT`).
+
+  **ONE CARD IS NOT ONE KIND OF THING.** A card may carry drives *and* ROM sockets *and* a serial port — the Tarbell we already model carries a boot PROM and a floppy controller, and a controller with its own PROM, scratch RAM and a serial port on one board was a completely ordinary 1977 product. Nothing in the bus model ever assumed otherwise: `decodes()` is asked about every cycle and `BusCycle::type` distinguishes memory from I/O, so one card answers both. `tests/test_units.cpp` builds exactly such a card and proves it.
+
+  So units are named and typed — `MOUNT dj:drive0`, `MOUNT dj:rom0`, `CONNECT dj:tty` — and **the kind is checked**: mounting a disk image onto a serial port is an error with a sentence explaining it. The integer scheme could not be made safe, which is why it is gone: with a flat namespace, `MOUNT dj:4` on a serial unit can only *fail*, never *explain*, because the board has nothing left to distinguish 4-the-drive from 4-the-port. `SHOW <id>` lists the units, and it reads `Board::units()` — the same list MOUNT reads, so they cannot disagree.
 - Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `file:path` | `null`.
 - Exactly one unit may hold `console` at a time; the monitor arbitrates.
 - Disk images are buffered and written back. **The board** probes the image size against the formats *it* knows and declares the layout to `DiskImage` (§7.3); `media = "8in" | "minidisk" | "fdc8mb"` forces the choice when the size is ambiguous. `readonly` supported (the real board's write-protect).
@@ -658,7 +722,7 @@ INTROSPECTION
   WHO <addr> | WHO IO <port>       reverse lookup: who responds here, and why
 
 MEDIA AND CONNECTIONS
-  MOUNT <id>:<u> <file> [RO]       DISMOUNT <id>:<u>
+  MOUNT <id>:<u> <file> [RO]       UNMOUNT <id>:<u>
   CONNECT <id>:<u> <endpoint>      DISCONNECT <id>:<u>
 
 CONSOLE
@@ -674,7 +738,10 @@ MEMORY
                                     PAGE (D 0001 -> 0001-00FF); bare DUMP continues
                                     from there. Page-aligned in and out, so the rows
                                     and the columns both stay put.
-  DISASM <range>|<addr> [n]         mnemonics follow the selected CPU
+  DISASM <range>|<addr> [n] [CPU=8080]
+                                    Mnemonics follow the ACTIVE CPU -- you never type
+                                    CPU=. It is the override for a machine with no CPU
+                                    card in it, or for looking at foreign code (§3.0.2).
   EDIT <addr>                       interactive: show byte, type new value, Enter advances
   EXAMINE [<addr>]                  ONE byte: hex, ASCII, bits. Bare = EXAMINE NEXT,
                                     the front-panel switch. Its own cursor, not DUMP's.
@@ -693,11 +760,14 @@ I/O
 EXECUTION
   GO [addr] | STEP [n] | STOP
   RESET | RESET CPU | POWER
-  SET CPU 8080|8085|Z80            SET CLOCK <hz>|UNLIMITED
+  There is NO `SET CPU`. The CPU is a CARD (§3): BOARD ADD 8080 cpu0, and the clock
+  is that board's property -- SET cpu0 clock_hz=2000000. A card carrying both an
+  8080 and an 8085 exposes them as UNITS and switches between them itself (§3.0.1).
 
 DEBUG
   BREAK <addr> [IF <expr>] | BREAK IO <port> | BREAK MEM R|W <range> | NOBREAK
-  REGS | SET REG <r>=<v>
+  REGS | SET REG <r>=<v>            Generic: registers are reflection (§3.0.3), so a
+                                    Z80 works the day it lands with no monitor change.
   TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]   HISTORY [n]
   SNAPSHOT <file> | RESTORE <file> | RECORD <file> | REPLAY <file>
   SET BUS CONTENTION=WARN|ERROR|SILENT

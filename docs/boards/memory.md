@@ -116,7 +116,7 @@ Built-ins are a **convenience, never a lock-in**: a path always overrides, so an
 **Regions are sub-units**, exactly like the 88-DCDD's drives and the 88-2SIO's units, so the existing `id:unit` addressing already reloads a socket with no new monitor syntax:
 
 ```
-altairsim> MOUNT mem0:2 newdbl.hex
+altairsim> MOUNT mem0:rom0 newdbl.hex
 mem0:2 — rom, FF00-FFFF (256 bytes, 1 page), from newdbl.hex
 ```
 

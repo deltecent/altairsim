@@ -6,7 +6,9 @@
 
 **The table is in priority order, and the first command whose name starts with what you typed wins.** That is the whole algorithm — there is no minimum-abbreviation column, no priority number, and nothing that treats a one-letter word specially. One letter is just a short prefix.
 
-`D` dumps because DUMP is listed above DEPOSIT, DISASM, DISMOUNT and DISCONNECT. It follows, without anyone deciding it, that DEPOSIT needs `DE` and DISASM needs `DI`. Reorder the table and every abbreviation in the monitor re-derives itself, including the ones printed by HELP.
+`D` dumps because DUMP is listed above DEPOSIT, DISASM and DISCONNECT. It follows, without anyone deciding it, that DEPOSIT needs `DE` and DISASM needs `DI`. Reorder the table and every abbreviation in the monitor re-derives itself, including the ones printed by HELP.
+
+This is why **UNMOUNT is not called DISMOUNT**: it's the plainer word, it takes `U` (which nothing else wanted), and removing it from the D-cluster is what let DISASM fall from `DISA` to `DI`. Nobody worked that out — the table did.
 
 **The one invariant:** no command name may be a strict prefix of another. If one were, its full, correctly-spelled name would resolve to whichever came first and there would be no way left to type the other. Renaming REGS to REG would break exactly this; `tests/test_cli.cpp` fails if anyone tries.
 
@@ -42,7 +44,7 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `REG` | REGS | beats REGION *(waiting on the CPU)* |
 | `REGI` | REGION | |
 | `DI` | DISASM | *waiting on the CPU* |
-| `DISM` | DISMOUNT | |
+| `U` | UNMOUNT | not DISMOUNT — see above |
 | `DISC` | DISCONNECT | *waiting on the serial boards* |
 | `CONS` | CONSOLE | *waiting on the serial boards* |
 | `CONN` | CONNECT | *waiting on the serial boards* |
@@ -62,6 +64,42 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 **`D` dumps.** SIMH's `D` is DEPOSIT and its `E` is EXAMINE; on the Altair itself, DEPOSIT and EXAMINE are the two front-panel switches. Patrick: *"Most ROM monitors use D for dump. It has always annoyed me that SIMH's D was Deposit."* It also puts the shortest key on the keyboard on the command that cannot destroy anything, and makes you type two letters to change memory. That is the better default regardless of heritage.
 
 **`E` edits and `EX` examines.** There is no EXIT — `QUIT` is the one word for leaving, so `E` and `EX` go to the two commands you actually type.
+
+## HELP has two forms
+
+**Bare `HELP` lists the names and nothing else** — the whole set in about ten lines:
+
+```
+altairsim> HELP
+
+  D[UMP]            S[TEP]*           R[ESET]           H[ISTORY]*
+  M[OUNT]           B[REAK]*          E[DIT]*           C[ONFIG]
+  G[O]*             SE[T]             SH[OW]            DE[POSIT]
+  EX[AMINE]         I[N]              O[UT]             L[OAD]
+  ...
+```
+
+When you type HELP you are almost always hunting for a name you half-remember, and a wall of usage lines is the worst possible shape for that: it doesn't fit on a screen, so the thing you were looking for scrolls off the top. `*` marks a command that resolves but isn't built yet.
+
+**`HELP <command>`** is where the usage and the examples live:
+
+```
+altairsim> HELP D
+
+  D[UMP]
+  DUMP [<addr>|<range>] [WIDTH=16]
+
+  Hex and ASCII. A bare address runs to the END OF ITS PAGE, and a bare DUMP
+  continues from there -- so the rows and the columns both stay page-aligned
+  however you first landed. WIDTH is a count, so it is decimal.
+    D 100        0100-01FF, a whole page
+    D 0001       0001-00FF: stops on the boundary, last line full
+    D            the next page
+```
+
+Note that `HELP D` works — the argument goes through the same prefix resolver as everything else, so you never have to spell a command out just to ask about it.
+
+**Both forms are generated from the command table.** A hand-written help text is a second list of commands, and a second list of commands is a list that is wrong.
 
 ## EXAMINE and DEPOSIT are the front panel's two switches
 

@@ -193,13 +193,13 @@ A `memory` card carries a list of **regions** — the areas that are actually po
 
 **Addresses no region covers are unpopulated** — an empty socket, a missing chip — so the board does not decode them, nothing drives the bus, and they read `0xFF`. Unpopulated RAM and an empty ROM socket are the same case, handled the same way.
 
-**Regions are sub-units**, so the existing `id:unit` addressing reloads one: `MOUNT mem0:2 newdbl.hex`.
+**Regions are sub-units**, so the existing `id:unit` addressing reloads one: `MOUNT mem0:rom0 newdbl.hex`.
 
 See `docs/boards/memory.md` for banking (five real cards, no two alike), `fill`, and the three PHANTOM\* straps.
 
 ## Notes
 
-- **`id` is what monitor commands address.** Sub-units are `id:unit` — `MOUNT fdc:0 cpm.dsk`, `CONNECT sio2a:b socket:2323`, `SET sio2a:a BAUD=9600`, `MOUNT mem0:2 dbl.hex`.
+- **`id` is what monitor commands address.** Sub-units are `id:unit` — `MOUNT fdc:drive0 cpm.dsk`, `CONNECT sio2a:b socket:2323`, `SET sio2a:a BAUD=9600`, `MOUNT mem0:rom0 dbl.hex`.
 - **A reset never clears RAM. Only powering off does** (`DESIGN.md` §6). `RESET` is the front-panel button; `POWER` is a power cycle, and it is the only thing that loses memory (and the only thing that re-reads ROM images from disk).
 - **Port collisions are detected**, not silently resolved. The bus reports contention naming both boards and the address. `SHOW BUS IO` shows the full map; `WHO IO 0x10` is the reverse lookup.
 - **Config-time vs runtime properties:** `SHOW <id>` displays which is which. Setting a config-time property on a running machine is rejected with a clear message rather than half-applied.

@@ -14,6 +14,7 @@ int main() {
     test_cli();
     test_boundary();
     test_numbers();
+    test_units();
 
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;

@@ -607,40 +607,62 @@ bool MemoryBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
     return addRegion(std::move(r), err);
 }
 
-bool MemoryBoard::mount(int unit, const std::string& path, bool ro, std::string& err) {
+// The card's units are its ROM SOCKETS, named rom0, rom1... in region order. RAM
+// regions are deliberately absent: a unit is something you can put a chip into.
+std::vector<UnitDef> MemoryBoard::units() const {
+    std::vector<UnitDef> u;
+    int n = 0;
+    for (const auto& r : regions_) {
+        if (r.kind != RegionKind::Rom) continue;
+        UnitDef d;
+        d.name = "rom" + std::to_string(n++);
+        d.kind = UnitKind::Rom;
+        d.state = r.mount.empty() ? "(empty)" : r.mount;
+        u.push_back(d);
+    }
+    return u;
+}
+
+// Map a unit name back to its index in regions_. regions_.size() means "not mine".
+size_t MemoryBoard::romRegionIndex(const std::string& unit) const {
+    std::string want;
+    for (char c : unit) want += (char)std::tolower((unsigned char)c);
+    int n = 0;
+    for (size_t i = 0; i < regions_.size(); ++i) {
+        if (regions_[i].kind != RegionKind::Rom) continue;
+        if (want == "rom" + std::to_string(n++)) return i;
+    }
+    return regions_.size();
+}
+
+bool MemoryBoard::mount(const std::string& unit, const std::string& path, bool ro,
+                        std::string& err) {
     (void)ro;
-    if (unit < 0 || (size_t)unit >= regions_.size()) {
-        err = "no region " + std::to_string(unit) + " on " + id;
+    size_t i = romRegionIndex(unit);
+    if (i >= regions_.size()) {
+        err = "no unit '" + unit + "' on " + id + ". SHOW " + id + " lists them.";
         return false;
     }
-    if (regions_[unit].kind != RegionKind::Rom) {
-        err = "region " + std::to_string(unit) + " is ram -- nothing to mount. "
-              "(To put bytes in RAM: LOAD <file>.)";
-        return false;
-    }
-    std::string saved = regions_[unit].mount;
-    regions_[unit].mount = path;
-    if (!loadRomRegion((size_t)unit, err)) {
-        regions_[unit].mount = saved;
+    std::string saved = regions_[i].mount;
+    regions_[i].mount = path;
+    if (!loadRomRegion(i, err)) {
+        regions_[i].mount = saved;
         return false;
     }
     rebuildPageMap();
     return true;
 }
 
-bool MemoryBoard::dismount(int unit, std::string& err) {
-    if (unit < 0 || (size_t)unit >= regions_.size()) {
-        err = "no region " + std::to_string(unit) + " on " + id;
-        return false;
-    }
-    if (regions_[unit].kind != RegionKind::Rom) {
-        err = "region " + std::to_string(unit) + " is ram";
+bool MemoryBoard::unmount(const std::string& unit, std::string& err) {
+    size_t i = romRegionIndex(unit);
+    if (i >= regions_.size()) {
+        err = "no unit '" + unit + "' on " + id + ". SHOW " + id + " lists them.";
         return false;
     }
     // Pulling the chip. The socket is now EMPTY, so the board stops decoding
     // those pages entirely and they float to 0xFF -- which is exactly what an
     // empty socket does on the bench.
-    regions_.erase(regions_.begin() + unit);
+    regions_.erase(regions_.begin() + (long)i);
     rebuildPageMap();
     return true;
 }

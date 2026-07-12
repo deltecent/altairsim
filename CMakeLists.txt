@@ -85,6 +85,7 @@ add_executable(altair_tests
   tests/test_phantom.cpp
   tests/test_cli.cpp
   tests/test_boundary.cpp
-  tests/test_numbers.cpp)
+  tests/test_numbers.cpp
+  tests/test_units.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)

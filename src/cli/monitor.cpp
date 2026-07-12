@@ -143,23 +143,51 @@ Board* Monitor::board(const std::string& id, std::ostream& err) {
     return b;
 }
 
-bool Monitor::subunit(const std::string& spec, Board*& b, int& unit, std::ostream& err) {
+// Resolve `id:unit` to a board and a NAMED unit, and check the unit is the kind
+// the command can actually act on.
+//
+// The kind check is the whole reason units are named. `MOUNT dj:tty disk.dsk` is a
+// mistake with a cause, and this can say what the cause was; under the old integer
+// scheme `MOUNT dj:4` could only fail, because nothing distinguished 4-the-drive
+// from 4-the-serial-port.
+bool Monitor::subunit(const std::string& spec, Board*& b, UnitDef& u, bool wantMountable,
+                      std::ostream& err) {
     size_t c = spec.find(':');
     if (c == std::string::npos) {
-        err << "expected <id>:<unit>, got '" << spec << "'\n";
+        err << "expected <id>:<unit>, got '" << spec << "'. SHOW <id> lists the units.\n";
         failed_ = true;
         return false;
     }
     b = board(spec.substr(0, c), err);
     if (!b) return false;
-    uint32_t u;
-    std::string ue;
-    if (!parseNum(spec.substr(c + 1), u, 10, ue)) {  // a unit number is not on any wire
-        err << "bad unit number in '" << spec << "'\n";
+
+    std::string name = spec.substr(c + 1);
+    if (!b->findUnit(name, u)) {
+        auto all = b->units();
+        err << b->id << " has no unit '" << name << "'.";
+        if (all.empty()) {
+            err << " This card has no units at all.\n";
+        } else {
+            err << " It has:";
+            for (const auto& x : all) err << " " << x.name;
+            err << "\n";
+        }
         failed_ = true;
         return false;
     }
-    unit = (int)u;
+
+    if (wantMountable && !isMountable(u.kind)) {
+        err << b->id << ":" << u.name << " is a " << unitKindName(u.kind)
+            << " unit -- there is nothing to mount into it. Use CONNECT.\n";
+        failed_ = true;
+        return false;
+    }
+    if (!wantMountable && u.kind != UnitKind::Serial) {
+        err << b->id << ":" << u.name << " is a " << unitKindName(u.kind)
+            << " unit, not a serial port. Use MOUNT.\n";
+        failed_ = true;
+        return false;
+    }
     return true;
 }
 
@@ -187,6 +215,18 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
                 std::snprintf(buf, sizeof buf, "    %zu  %s", i, rs[i].describe().c_str());
                 out << buf << "\n";
             }
+        }
+    }
+
+    // The units, by the board's own names -- this is the list you type at MOUNT and
+    // CONNECT, so it has to come from the same place they read (Board::units()).
+    auto us = b->units();
+    if (!us.empty()) {
+        out << "\n  unit     kind    holds\n";
+        for (const auto& u : us) {
+            std::snprintf(buf, sizeof buf, "    %-7s %-7s %s", u.name.c_str(),
+                          unitKindName(u.kind), u.state.c_str());
+            out << buf << "\n";
         }
     }
 
@@ -399,36 +439,67 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         return false;
     }
 
+    // ---------------- HELP ----------------
+    //
+    // BOTH FORMS ARE GENERATED FROM THE COMMAND TABLE. A hand-written help text is
+    // a second list of commands, and a second list of commands is a list that is
+    // wrong. The abbreviation is DERIVED (commands.cpp), never stored, so it is
+    // right by construction and stays right when the table is reordered.
+    //
+    // Bare HELP lists the NAMES AND NOTHING ELSE. When you type HELP you are almost
+    // always hunting for a name you half-remember, and a wall of usage lines is the
+    // worst possible shape for that -- it does not fit on a screen, so the thing you
+    // were looking for scrolls off the top. The whole set fits in a few lines now.
+    // `HELP <cmd>` is where the usage and the examples live.
     if (cmd == "HELP") {
-        // GENERATED FROM THE COMMAND TABLE. A hand-written help text is a second
-        // list of commands, and a second list of commands is a list that is wrong.
-        //
-        // The abbreviation shown is DERIVED, not stored: the shortest prefix that
-        // resolves back to this command. So it is right by construction, and it
-        // stays right when the table is reordered.
-        for (const CommandDef& c : commands()) {
-            std::string abbrev = c.name;
-            for (size_t n = 1; n <= abbrev.size(); ++n) {
-                std::string p = std::string(c.name).substr(0, n);
-                const CommandDef* r = resolveCommand(p);
-                if (r && std::string(r->name) == c.name) {
-                    abbrev = p;
-                    break;
-                }
+        if (a.size() >= 2) {
+            const CommandDef* h = (a[1] == "?") ? resolveCommand("HELP") : resolveCommand(a[1]);
+            if (!h) {
+                out << upper(a[1]) << ": no such command. HELP lists them.\n";
+                failed_ = true;
+                return true;
             }
-            std::string full = c.name;
-            std::string shown = abbrev + full.substr(abbrev.size());
-            // Mark where the abbreviation ends: DU[MP], DE[POSIT].
-            shown = abbrev + (abbrev.size() < full.size() ? "[" + full.substr(abbrev.size()) + "]"
-                                                          : "");
-            std::snprintf(buf, sizeof buf, "  %-14s %s", shown.c_str(), c.help);
-            out << buf;
-            if (!c.built) out << "   -- not yet: waiting on " << c.waiting;
+            out << "\n  " << abbreviation(*h) << "\n";
+            out << "  " << h->usage << "\n";
+            if (!h->built)
+                out << "\n  NOT IMPLEMENTED YET -- waiting on " << h->waiting << ".\n"
+                    << "  It resolves today so that its abbreviation cannot change under\n"
+                    << "  your fingers once it lands.\n";
+            if (h->detail) {
+                out << "\n";
+                // Indent every line of the detail block by two, including the examples.
+                std::string d = h->detail;
+                out << "  ";
+                for (char ch : d) {
+                    out << ch;
+                    if (ch == '\n') out << "  ";
+                }
+                out << "\n";
+            }
             out << "\n";
+            return true;
         }
-        out << "\nThe part before the [brackets] is enough to type. Addresses are hex;\n"
-               "#123 is decimal. Ranges are LO-HI or LO/LEN. A bare DUMP shows the next\n"
-               "256 bytes. Memory commands take RAW <id> to go BEHIND the bus.\n";
+
+        // The list. Names only, in table order -- which IS the priority order, so it
+        // doubles as the answer to "why does D mean DUMP".
+        out << "\n";
+        int col = 0;
+        for (const CommandDef& c : commands()) {
+            std::string shown = abbreviation(c);
+            if (!c.built) shown += "*";
+            std::snprintf(buf, sizeof buf, "  %-16s", shown.c_str());
+            out << buf;
+            if (++col == 4) {
+                out << "\n";
+                col = 0;
+            }
+        }
+        if (col) out << "\n";
+        out << "\n  Type the part before the [brackets]. * = not built yet; it will say so.\n"
+               "  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n\n"
+               "  Numbers: on the wire is HEX (addresses, ports, bytes), never on the\n"
+               "  wire is DECIMAL (counts, widths, sizes). 0x/$/h force hex, # forces\n"
+               "  decimal, and a K/M suffix is always decimal.\n";
         return true;
     }
 
@@ -568,8 +639,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "MACHINE") {
             out << "name      " << m_.name << "\n";
+            // The clock belongs to the CPU CARD (DESIGN.md 3) -- that is where the
+            // crystal is. There is no CPU card yet, so this value is inert, and
+            // saying so is cheaper than letting a config file look like it did
+            // something. It moves to `SET cpu0 clock_hz=` when the 8080 lands.
             std::snprintf(buf, sizeof buf, "clock_hz  %lld%s", m_.clockHz,
-                          m_.clockHz == 0 ? "  (flat out)" : "");
+                          m_.clockHz == 0 ? "  (flat out)" : "  (inert: no CPU card)");
             out << buf << "\n";
             std::snprintf(buf, sizeof buf, "sense     0x%02X  (port FF, front-panel switches)",
                           m_.sense);
@@ -675,29 +750,29 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "MOUNT") {
         if (!need(3, "MOUNT <id>:<unit> <file>")) return true;
         Board* b;
-        int u;
-        if (!subunit(a[1], b, u, out)) return true;
+        UnitDef u;
+        if (!subunit(a[1], b, u, true, out)) return true;
         std::string err;
-        if (!b->mount(u, a[2], false, err)) {
+        if (!b->mount(u.name, a[2], false, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
-            out << b->id << ":" << u << ": mounted " << a[2] << "\n";
+            out << b->id << ":" << u.name << ": mounted " << a[2] << "\n";
         }
         return true;
     }
-    if (cmd == "DISMOUNT") {
-        if (!need(2, "DISMOUNT <id>:<unit>")) return true;
+    if (cmd == "UNMOUNT") {
+        if (!need(2, "UNMOUNT <id>:<unit>")) return true;
         Board* b;
-        int u;
-        if (!subunit(a[1], b, u, out)) return true;
+        UnitDef u;
+        if (!subunit(a[1], b, u, true, out)) return true;
         std::string err;
-        if (!b->dismount(u, err)) {
+        if (!b->unmount(u.name, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
-            out << b->id << ":" << u << ": dismounted (the socket is now EMPTY -- those pages "
-                                        "float to FF)\n";
+            out << b->id << ":" << u.name
+                << ": unmounted (the socket is now EMPTY -- those pages float to FF)\n";
         }
         return true;
     }
@@ -744,7 +819,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         for (size_t i = 2; i < a.size(); ++i) {
             std::string k = upper(a[i]);
             if (k.compare(0, 6, "WIDTH=") != 0) {
-                out << "DUMP: don't know '" << a[i] << "'. " << c->help << "\n";
+                out << "DUMP: don't know '" << a[i] << "'. " << c->usage << "\n";
                 failed_ = true;
                 return true;
             }

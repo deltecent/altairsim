@@ -77,9 +77,16 @@ void test_cli() {
     CHECK(R("CONS") == "CONSOLE", "CONS is the console");
     CHECK(R("CONN") == "CONNECT", "CONN connects");
     CHECK(R("COM") == "COMPARE", "COM compares");
-    CHECK(R("DIS") == "DISASM", "DIS disassembles (DISASM outranks DISMOUNT/DISCONNECT)");
-    CHECK(R("DISM") == "DISMOUNT", "DISM dismounts");
-    CHECK(R("DISC") == "DISCONNECT", "DISC disconnects");
+    // UNMOUNT, not DISMOUNT: the plain word, and it takes `U`, which nothing else
+    // wanted. It also gets out of DISASM's way -- with the D-cluster one shorter,
+    // DISASM drops from DISA to DI, and nobody had to decide that either.
+    CHECK(R("U") == "UNMOUNT", "U unmounts");
+    CHECK(R("DI") == "DISASM", "DI disassembles -- UNMOUNT left the D-cluster");
+    CHECK(R("DISC") == "DISCONNECT", "and DISC still disconnects");
+    bool hasDismount = false;
+    for (const CommandDef& c : commands())
+        if (std::string(c.name) == "DISMOUNT") hasDismount = true;
+    CHECK(!hasDismount, "DISMOUNT does not exist");
 
     // ---- an exact spelling ALWAYS wins, whatever it is ranked ----
     for (const CommandDef& c : commands())

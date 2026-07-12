@@ -7,8 +7,8 @@
 //
 // There is no "minimum abbreviation" column and there is no priority number,
 // because both would be a second thing to keep true. `D` DUMPs because DUMP is
-// listed above DEPOSIT, DISASM, DISMOUNT and DISCONNECT -- so DEPOSIT needs `DE`
-// and DISASM needs `DISA`, and nobody worked that out or wrote it down. Reorder
+// listed above DEPOSIT, DISASM and DISCONNECT -- so DEPOSIT needs `DE` and DISASM
+// needs `DI`, and nobody worked that out or wrote it down. Reorder
 // the table and every abbreviation in the monitor re-derives itself. Nothing
 // singles out single-character commands; one letter is just a short prefix.
 //
@@ -32,7 +32,8 @@ struct CommandDef {
     const char* name;
     bool built;          // false: resolves, and says which milestone it waits for
     const char* waiting; // "the CPU", "the debugger", ...
-    const char* help;
+    const char* usage;   // one line, shown by `HELP <cmd>` and on a usage error
+    const char* detail;  // the long form and the examples. May be null.
 };
 
 // In priority order. First prefix match wins.
@@ -40,5 +41,10 @@ const std::vector<CommandDef>& commands();
 
 // Case-insensitive prefix match. Null if nothing in the table starts with `word`.
 const CommandDef* resolveCommand(const std::string& word);
+
+// The shortest prefix that resolves back to this command -- DERIVED, never stored,
+// so it is right by construction and stays right when the table is reordered.
+// Returns the whole name marked up: "D[UMP]", "DE[POSIT]", "GO".
+std::string abbreviation(const CommandDef& c);
 
 } // namespace altair
