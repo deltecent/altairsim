@@ -61,10 +61,27 @@ static const std::vector<CommandDef> kCommands = {
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "SAVE writes the machine you are actually running, so it round-trips.\n"
      "  CONFIG SAVE machines/mine.toml"},
-    {"GO", true, nullptr, "GO [addr]",
-     "Run until a breakpoint, a HLT nothing can wake, or ^C. It ALWAYS says which.\n"
-     "  GO           from wherever PC is\n"
-     "  GO FF00      boot the DBL PROM"},
+    // RUN is the front panel's switch, and it REPLACED GO (Patrick, 2026-07-12).
+    // There was never a second thing for GO to be: a headless run is not a mode the
+    // operator chooses, it is what happens when no unit holds the console -- and the
+    // machine already knows that. Whether your keys reach the guest is a fact about
+    // the backplane, not a question for you. RESET owns R, so RUN costs RU.
+    {"RUN", true, nullptr, "RUN [addr]",  // RU
+     "Start the machine. `RUN <addr>` is EXAMINE + RUN -- it loads the PC first,\n"
+     "exactly as you would on the panel.\n"
+     "\n"
+     "If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,\n"
+     "including ^C, which a CP/M program is entitled to read -- and the machine runs\n"
+     "at the CPU card's real clock, so it is as fast as an Altair was and no faster.\n"
+     "The way back is ATTN (^E), which the host takes before the guest is ever\n"
+     "offered the byte, so the guest cannot disable it. ATTN does NOT stop the\n"
+     "machine: a bare RUN resumes it.\n"
+     "\n"
+     "With no console connected there is no keyboard to hand over, so it simply runs\n"
+     "-- full speed, ^C stops it. Either way it stops on a breakpoint or on a HLT\n"
+     "nothing can wake, and it ALWAYS says which.\n"
+     "  RUN F800     boot the monitor PROM\n"
+     "  RUN          carry on from wherever the PC is"},
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id> <k>=<v>",  // SE (beats SEARCH)
@@ -153,15 +170,20 @@ static const std::vector<CommandDef> kCommands = {
      "TDRE set forever, and a program that writes to it works fine and talks to\n"
      "nobody -- which is exactly what the card does with no cable in it.\n"
      "  DISC sio0:b"},
-    {"CONSOLE", true, nullptr, "CONSOLE  -- enter it; ATTN (^E) returns",  // CONS
-     "Hand the keyboard to the GUEST. It gets every key, including ^C -- which a\n"
-     "CP/M program is entitled to read -- so the way back is ATTN, which the host\n"
-     "intercepts before the guest is ever offered the byte. The guest cannot\n"
-     "disable it, because the guest never sees it.\n"
+    // CONSOLE CONFIGURES the console. It does not run the machine (Patrick,
+    // 2026-07-12) -- RUN runs the machine, and a command that quietly started the
+    // CPU because you asked to look at a setting is a trap.
+    {"CONSOLE", true, nullptr, "CONSOLE [<k>=<v>...]",  // CONS
+     "The host's terminal: what it is, who holds it, and how you get back from it.\n"
+     "Bare CONSOLE shows it; CONSOLE k=v sets it. (SHOW CONSOLE and SET CONSOLE are\n"
+     "the same thing said the long way.)\n"
      "\n"
-     "The machine runs at the CPU card's real clock, so it is as fast as an Altair\n"
-     "was and no faster. ATTN does not STOP the machine -- CONSOLE resumes it.\n"
-     "  SET CONSOLE ATTN=05     change the key (hex; a control character)"},
+     "ATTN is the key that takes the keyboard BACK from a running guest. The host\n"
+     "intercepts it before the guest is ever offered the byte, so the guest cannot\n"
+     "disable it -- and that is why it must not be a key the guest needs.\n"
+     "  CONSOLE            what it is set to, and which unit holds it\n"
+     "  CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)\n"
+     "To choose WHICH unit the console is wired to, that is CONNECT."},
     {"CONNECT", true, nullptr, "CONNECT <id>:<u> <endpoint>",  // CONN
      "Endpoints: console | null | loopback. (socket: and serial: are coming.)\n"
      "\n"

@@ -384,7 +384,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.name = "honors_phantom";
         x.help = "A JUMPER. Another board pulls PHANTOM* -- do I switch off?";
         x.kind = Kind::Bool;
-        x.runtime = false;
         x.get = [this] { return Value::ofBool(honorsPhantom_); };
         x.set = [this](const Value& v, std::string&) {
             honorsPhantom_ = v.b();
@@ -398,7 +397,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.help = "What I ASSERT over my rom regions: none | read | all";
         x.kind = Kind::Enum;
         x.choices = {"none", "read", "all"};
-        x.runtime = true;
         x.get = [this] {
             return Value::ofStr(phantom_ == PhantomAssert::None   ? "none"
                                 : phantom_ == PhantomAssert::Read ? "read"
@@ -418,7 +416,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.help = "none|eram|vram|cram|hram|b810 -- five real cards, no two alike";
         x.kind = Kind::Enum;
         x.choices = {"none", "eram", "vram", "cram", "hram", "b810"};
-        x.runtime = false;
         x.get = [this] { return Value::ofStr(bankSpec(bankType_).name); };
         x.set = [this](const Value& v, std::string& err) {
             BankType t;
@@ -445,7 +442,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.name = "banks";
         x.help = "How many banks this card has (set by bank_type)";
         x.kind = Kind::Int;
-        x.runtime = false;
         x.get = [this] { return Value::ofInt(banks_); };
         x.set = [](const Value&, std::string& err) {
             err = "banks is set by bank_type -- the card decides, not you";
@@ -458,7 +454,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.name = "bank";
         x.help = "The live bank";
         x.kind = Kind::Int;
-        x.runtime = true;
         x.min = 0;
         x.max = 15;
         x.get = [this] { return Value::ofInt(bank_); };
@@ -478,7 +473,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.help = "RAM contents at power-on: zero | random (real RAM is not zeroed)";
         x.kind = Kind::Enum;
         x.choices = {"zero", "random"};
-        x.runtime = false;
         x.get = [this] { return Value::ofStr(fill_ == Fill::Zero ? "zero" : "random"); };
         x.set = [this](const Value& v, std::string&) {
             fill_ = (v.s() == "zero") ? Fill::Zero : Fill::Random;
@@ -491,7 +485,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.name = "seed";
         x.help = "Seed for fill=random. Goes in the snapshot, or replay is dead.";
         x.kind = Kind::Int;
-        x.runtime = false;
         x.get = [this] { return Value::ofInt((long long)seed_); };
         x.set = [this](const Value& v, std::string&) {
             seed_ = (uint64_t)v.i();
@@ -504,7 +497,6 @@ std::vector<Property> MemoryBoard::properties() {
         x.name = "pages";
         x.help = "Composite page map -- which pages this card answers for (derived)";
         x.kind = Kind::Str;
-        x.runtime = false;
         x.get = [this] {
             std::string s;
             int run = -1;

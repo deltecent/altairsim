@@ -40,7 +40,7 @@ bool Board::findUnit(const std::string& name, UnitDef& out) const {
 // in the same order, and the only thing that differs between them is what you
 // call the thing that refused.
 static bool setOne(std::vector<Property> props, const std::string& who, const std::string& key,
-                   const std::string& text, bool running, std::string& err) {
+                   const std::string& text, std::string& err) {
     const Property* p = nullptr;
     std::string k = lower(key);
     for (const auto& x : props)
@@ -49,14 +49,6 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
     if (!p) {
         err = who + " has no property '" + key + "'. Known:";
         for (const auto& x : props) err += " " + x.name;
-        return false;
-    }
-
-    // A config-time property set on a RUNNING machine is rejected outright, not
-    // half-applied. Half-applying it is how you get a machine whose SHOW output
-    // is a lie (DESIGN.md 10.1).
-    if (running && !p->runtime) {
-        err = p->name + " is config-time only; the machine is running. STOP first.";
         return false;
     }
 
@@ -76,21 +68,20 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
 // validator, which is why a unit property cannot drift from a board property in
 // what it accepts.
 bool setUnitProperty(Board& b, const std::string& unit, const std::string& key,
-                     const std::string& text, bool running, std::string& err) {
-    return setOne(b.unitProperties(unit), b.id + ":" + unit, key, text, running, err);
+                     const std::string& text, std::string& err) {
+    return setOne(b.unitProperties(unit), b.id + ":" + unit, key, text, err);
 }
 
 // The console is not a Board -- it is the host's keyboard -- but it has
 // properties and must obey exactly the same rules about them. Hence this: the
 // same path, over a property list from anywhere at all.
 bool setPropertyIn(std::vector<Property> props, const std::string& who, const std::string& key,
-                   const std::string& text, bool running, std::string& err) {
-    return setOne(std::move(props), who, key, text, running, err);
+                   const std::string& text, std::string& err) {
+    return setOne(std::move(props), who, key, text, err);
 }
 
-bool setProperty(Board& b, const std::string& key, const std::string& text, bool running,
-                 std::string& err) {
-    return setOne(b.properties(), b.id, key, text, running, err);
+bool setProperty(Board& b, const std::string& key, const std::string& text, std::string& err) {
+    return setOne(b.properties(), b.id, key, text, err);
 }
 
 } // namespace altair

@@ -75,7 +75,7 @@ MemoryBoard* ram64k(const char* id) {
     auto* m = new MemoryBoard();
     m->id = id;
     std::string err;
-    CHECK(setProperty(*m, "fill", "zero", false, err), "fill=zero");
+    CHECK(setProperty(*m, "fill", "zero", err), "fill=zero");
     Region r;
     r.kind = RegionKind::Ram;
     r.at = 0x0000;

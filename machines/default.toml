@@ -34,7 +34,7 @@
 # spent debugging a machine that was never wrong.)
 #
 # THE 8080 IS HERE NOW, and it arrived exactly as predicted: as one more [[board]]
-# in this file, with nothing else about the machine moving. `GO FF00` runs the
+# in this file, with nothing else about the machine moving. `RUN FF00` runs the
 # boot PROM, and it really does copy itself to 2C00 and jump there.
 #
 # THE 2SIO IS HERE NOW TOO, so the console CP/M will print its banner on is in the

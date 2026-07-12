@@ -34,7 +34,7 @@ This is `machines/altmon.toml`, and it runs: `altairsim altmon`.
 [machine]
 name    = "altmon"
 sense   = 00               # port FF, the front-panel switches
-startup = ["CONSOLE F800"] # anything you can type, a config can do
+startup = ["RUN F800"]     # anything you can type, a config can do
 
 # The CPU is a board like any other (DESIGN.md §3) -- and THE CRYSTAL IS ON IT,
 # which is why clock_hz is this board's property and NOT the machine's.
@@ -126,7 +126,7 @@ sense    = 0x00            # port 0xFF — front-panel sense switches.
                            #   and uses bit 4 to pick the 2SIO's stop-bit setting.
 
 startup = [                # monitor commands, run in order once the boards exist.
-  "GO FF00",               #   start the DBL boot PROM. There is no BOOT command
+  "RUN FF00",              #   start the DBL boot PROM. There is no BOOT command
 ]                          #   (DESIGN.md §10.0) — this is the operator's keystroke,
                            #   written down. Anything you can type, a config can do.
 
@@ -203,7 +203,7 @@ hostdir = "./hostfiles"    # SANDBOX. Required. Guest filenames cannot escape th
 | `name` | Machine name, shown by `SHOW MACHINE`. |
 | `clock_hz` | CPU clock. `0` = run flat out (host-idle aware). |
 | `sense` | **Port 0xFF front-panel sense switches.** Read by real period software — the DBL boot PROM reads it to configure the 2SIO. Defaults to `0x00`. |
-| `startup` | **A list of monitor commands, executed in order once the backplane is built.** This is how a machine starts itself: there is no `BOOT` command (`DESIGN.md` §10.0), so a config that should boot says `startup = ["GO FF00"]`. |
+| `startup` | **A list of monitor commands, executed in order once the backplane is built.** This is how a machine starts itself: there is no `BOOT` command (`DESIGN.md` §10.0), so a config that should boot says `startup = ["RUN FF00"]`. |
 
 **`startup` makes the config language and the script language the same language.** Anything you can type at the monitor, a config file can do — and `CONFIG SAVE` round-trips the list verbatim.
 

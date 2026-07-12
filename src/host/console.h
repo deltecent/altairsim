@@ -26,10 +26,52 @@
 // hypothetical -- it is what happens the moment a machine has two 2SIOs and you
 // forget. Hence `Console::instance()` and the monitor's arbitration: connecting a
 // second unit to the console STEALS it, and says who from.
+//
+// ---------------------------------------------------------------------------
+// THE KEYBOARD BUFFER (Patrick, 2026-07-12)
+//
+// The HOST owns the keyboard, not the board. Keys go into a buffer here, and a
+// card that wants a character takes one from it. It is the arrangement AltairZ80
+// uses, and it buys three things that all matter:
+//
+//   1. ATTN IS WATCHED WHETHER OR NOT ANYBODY IS READING. `poll()` runs every
+//      slice of a RUN, so the key works while the guest is busy computing, while
+//      it is spinning on a disk, and -- the case that broke the first version of
+//      this -- while there is no console board in the machine at all.
+//
+//   2. BYTES CAN BE INJECTED. `inject()` puts characters in the buffer as though
+//      they were typed, and no board can tell the difference, because at the level
+//      the board sees there IS no difference. That is what MCP's send/expect and a
+//      scripted boot are made of, and it costs nothing here.
+//
+//   3. NO LATCH TO JAM. The old design peeked ONE byte and held it for a guest to
+//      collect. With no guest, the latch stayed full, the poll stopped looking, and
+//      ATTN went dead exactly when you most needed it.
+//
+// The buffer is the HOST's, not the card's -- so it does not make the UART any
+// less real. The 6850 still holds exactly one character in RDR, still sets RDRF
+// when it does, and still takes the next byte only when the guest has cleared it.
+// The buffer is the line, and a line is buffered and flow-controlled (DESIGN.md
+// 7.1). It is a real keyboard buffer, so it is FINITE: type past the end and the
+// keys are dropped, as they are on any terminal that ever beeped at you.
+//
+// ---------------------------------------------------------------------------
+// ATTN IS TRACKED ON CONSOLE INPUT AND NOWHERE ELSE (Patrick, 2026-07-12).
+//
+// It lives in this class, and this class is the host's keyboard. A unit connected
+// to a socket, a serial port, or a loopback IS NOT THE CONSOLE, and its data goes
+// through UNALTERED -- 0x05 down a socket is a byte of somebody's protocol, and
+// scanning a modem line for a key that only exists on the operator's terminal
+// would be a corruption of the data, not a feature.
+//
+// So: nothing outside this file may look for ATTN. Not FilterStream, not the
+// 2SIO, not the endpoint layer. If you find yourself adding it there, the answer
+// is no.
 
 #include "core/value.h"
 #include "host/stream.h"
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -47,7 +89,7 @@ public:
     bool   readable() const override;
     bool   writable() const override { return true; }
     void   flush() override;
-    void   pump() override {}
+    void   pump() override { poll(); }
 
     // ---- The human half ----
 
@@ -59,9 +101,31 @@ public:
     void leaveRaw();
     bool raw() const { return raw_; }
 
+    // Drain the keyboard into the buffer, and catch ATTN on the way past. Never
+    // waits. Call it every slice of a run -- that is what makes ATTN work while the
+    // guest is busy, and what makes it work with no console board in the machine.
+    //
+    // CALLER MUST NOT CALL THIS UNDER A PIPE UNLESS A UNIT HOLDS THE CONSOLE. There,
+    // stdin is the MONITOR's own script, not the guest's keyboard, and draining it
+    // would eat the next command.
+    void poll() const;
+
     // Did the operator hit ATTN? Consumes the flag: asking clears it, so the
-    // monitor cannot re-trigger on a stale press.
+    // monitor cannot re-trigger on a stale press. ATTN is never buffered -- the
+    // guest is not offered the byte, so the guest cannot swallow it.
     bool takeAttn();
+
+    // Type FOR the operator. The bytes land in the keyboard buffer and no board can
+    // tell them from a human's: at the level a board sees, there is no difference.
+    // This is what MCP's send/expect and a scripted boot are built on.
+    void inject(const uint8_t* buf, size_t n);
+    void inject(const std::string& s);
+
+    // What is waiting in the buffer, and what has been dropped because it was full.
+    // A dropped keystroke that nobody ever mentions is a bug report about "flaky
+    // input" six months from now.
+    size_t   pending() const { return in_.size(); }
+    uint64_t dropped() const { return dropped_; }
 
     uint8_t attn() const { return attn_; }
 
@@ -87,23 +151,32 @@ public:
 private:
     Console() = default;
 
+    // A real keyboard buffer, and real ones are finite. 256 is a teletype's worth:
+    // far more than a human can get ahead of a 2 MHz machine, and enough that an
+    // injected command line never truncates.
+    static constexpr size_t kMaxIn = 256;
+
     uint8_t  attn_     = 0x05;  // Ctrl-E
     bool     raw_      = false;
+    // Is stdin OURS? enterRaw() takes it (and makes it non-blocking); until then the
+    // monitor owns it, and reading it would steal a command or block the simulator.
+    // Distinct from raw_, which is false for a PIPE -- and a piped guest still reads.
+    bool     taken_    = false;
     int      rawDepth_ = 0;
     uint64_t written_  = 0;
+    uint64_t dropped_  = 0;
 
     // MUTABLE, and they earn it. `readable()` is const because "is a character
     // ready?" is a question, not a mutation -- but ANSWERING it means going to the
     // keyboard, and once you have taken a byte off the OS you cannot put it back.
-    // So the byte gets latched here, and the ATTN key gets caught here, and both
-    // happen inside a const method.
+    // So it lands in the buffer here, and ATTN gets caught here, inside a const
+    // method.
     //
-    // That is not a compromise of the model; it is the model. These are HARDWARE
-    // LATCHES. A UART's receive register fills whether or not anybody asks.
-    mutable bool    attnSeen_ = false;
-    mutable bool    peeked_   = false;
-    mutable uint8_t peekByte_ = 0;
-    mutable bool    eof_      = false;
+    // That is not a compromise of the model; it is the model. This is HARDWARE: a
+    // UART's receive register fills whether or not anybody asks it to.
+    mutable std::deque<uint8_t> in_;
+    mutable bool                attnSeen_ = false;
+    mutable bool                eof_      = false;
 
     bool pollByte(uint8_t& out) const;
 };

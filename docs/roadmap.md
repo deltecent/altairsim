@@ -97,7 +97,7 @@ already exposes.
 ### It runs the boot PROM
 
     altairsim> BREAK IO R 08
-    altairsim> GO FF00
+    altairsim> RUN FF00
     breakpoint 1 (io r   08) -- stopped at 2C21
     1433 instructions, 9344 T-states.
 
@@ -151,7 +151,7 @@ job is to decide whether we implement them correctly.
 
 ```
 $ altairsim altmon
-startup> CONSOLE F800
+startup> RUN F800
 
 ALTMON 1.3
 *DUMP F800 F80F

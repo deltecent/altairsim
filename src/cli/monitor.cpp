@@ -254,7 +254,7 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
 void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
     if (ps.empty()) return;
     char buf[256];
-    out << "\n  property         value            runtime?  legal\n";
+    out << "\n  property         value            legal\n";
     for (const auto& p : ps) {
         std::string legal;
         if (p.kind == Kind::Enum) {
@@ -265,8 +265,13 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
         } else if (p.kind == Kind::Bool) {
             legal = "true|false";
         }
-        std::snprintf(buf, sizeof buf, "  %-16s %-16s %-9s %s", p.name.c_str(),
-                      p.get().text(p.radix).c_str(), p.runtime ? "yes" : "config", legal.c_str());
+        // There is no "runtime?" column any more (Patrick, 2026-07-12). EVERY
+        // property can be set, always: you can only type at the prompt when the
+        // machine is stopped, and a real card being worked on sits on an EXTENDER
+        // with its jumpers moved live anyway. A column that always said "yes" was
+        // just a column, and the gate behind it never once fired.
+        std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(),
+                      p.get().text(p.radix).c_str(), legal.c_str());
         out << buf << "\n";
     }
 }
@@ -292,35 +297,101 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
 //      twenty times too fast and every timing-dependent thing on the screen --
 //      a cursor, a banner, a Teletype's pace -- would be a lie.
 // ---------------------------------------------------------------------------
-void Monitor::consoleMode(std::ostream& out) {
+// ---------------------------------------------------------------------------
+// ^C.
+//
+// The handler does ONE thing: set a lock-free flag. It does not print, it does
+// not touch the machine, and it does not throw -- those are all undefined in a
+// signal handler, and the bug they produce is a hang or a corrupted heap once in
+// a hundred runs, which is the worst kind there is.
+//
+// It is installed only for the duration of a RUN or a STEP, and the previous
+// handler is put back afterwards, so ^C at the monitor prompt still kills the
+// process exactly as it did before there was a CPU.
+//
+// ON A TERMINAL IT NEVER FIRES, and that is deliberate (Patrick, 2026-07-12): raw
+// mode clears ISIG, because Ctrl-C is a byte CP/M is entitled to read. ATTN is the
+// stop key. This guard is what is left for a PIPED run, where there is no raw mode
+// and no ATTN, and the signal is the only way to stop a program that never ends.
+// ---------------------------------------------------------------------------
+static void onSigint(int) { Debugger::interrupt(); }
+
+namespace {
+struct SigintGuard {
+    void (*prev)(int) = nullptr;
+    SigintGuard() { prev = std::signal(SIGINT, onSigint); }
+    ~SigintGuard() { std::signal(SIGINT, prev); }
+};
+} // namespace
+
+// ---------------------------------------------------------------------------
+// RUN. The switch on the front panel, and the ONLY way to start the machine
+// (Patrick, 2026-07-12 -- this absorbed GO, which was the same loop with the
+// terminal left alone).
+//
+// THERE IS ONE BRANCH IN HERE AND IT IS NOT A MODE. Whether your keystrokes
+// reach the guest is not a question for the operator: it is a fact about the
+// backplane. If a unit is connected to the console, the guest has the keyboard
+// and the machine runs at the CPU card's crystal, because that is what the
+// hardware does. If nothing is, there is no keyboard to hand over, so it just
+// runs -- and ^C is still yours, because no guest is competing for it.
+//
+// Both paths stop on a breakpoint, on a HLT nothing can wake, and on ^C, and
+// both report through the same reportStop. That is why GO had nothing left to be.
+// ---------------------------------------------------------------------------
+void Monitor::runMachine(std::ostream& out) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
 
-    // Say so if nobody is listening, rather than dropping the operator into a
-    // dead terminal and letting them work out why.
     bool anyConsole = false;
     for (const auto& b : m_.boards())
         for (const auto& u : b->units())
             if (u.kind == UnitKind::Serial && u.state == "console") anyConsole = true;
-    if (!anyConsole) {
-        out << "no unit is connected to the console -- you would be typing at nothing.\n"
-               "   CONNECT <id>:<unit> console\n";
-        failed_ = true;
-        return;
-    }
 
     Console& con = Console::instance();
-    char attn = (char)con.attn();
-    out << "[console -- ^" << (char)('A' + attn - 1) << " returns to the monitor]\n";
-    out.flush();
-
-    con.enterRaw();
+    char     buf[96];
 
     using clk = std::chrono::steady_clock;
     const long long hz     = m_.clock.hz();
     const uint64_t  startT = m_.clock.now();
     const auto      start  = clk::now();
     const bool      tty    = con.isTty();
+    const char      attn   = (char)('A' + con.attn() - 1);
+
+    // ATTN IS THE STOP KEY, CONSOLE OR NO CONSOLE -- ^C IS NOT (Patrick,
+    // 2026-07-12). Ctrl-C belongs to the guest: CP/M reads it, and a stop key the
+    // guest also wants is a stop key that either breaks the guest or gets eaten by
+    // it. ATTN is a key on the FRONT PANEL. It is the same key whatever is in the
+    // backplane, so there is one thing to know and it is always true.
+    //
+    // The host owns the keyboard (host/console.h), so watching for ATTN is just
+    // polling the buffer every slice -- it does not matter whether a board is
+    // reading, or whether one exists. Raw mode is what makes it instant, so we take
+    // the terminal even with no console connected.
+    //
+    // UNDER A PIPE WITH NO CONSOLE WE MUST NOT TOUCH STDIN: it is the monitor's own
+    // script there, not a keyboard, and draining it would eat the next command.
+    const bool watchKeys = anyConsole || tty;
+    const bool takeTty   = watchKeys;
+
+    if (anyConsole) {
+        out << "[console -- ^" << attn << " returns to the monitor]\n";
+    } else {
+        // Not an error, and it must not read like one: a machine with nothing
+        // connected to a terminal is a machine that runs perfectly well. It is how
+        // you run a ROM that talks to a disk, or a CPU test that talks to nobody.
+        std::string stop = tty ? std::string("^") + attn + " stops it." : "^C stops it.";
+        std::snprintf(buf, sizeof buf, "running from %04X.  %s  (no console connected)", cpu->pc(),
+                      stop.c_str());
+        out << buf << "\n";
+    }
+    out.flush();
+    if (takeTty) con.enterRaw();
+
+    // ^C still stops a PIPED run, because there raw mode never happened and the
+    // signal is all there is. On a terminal ISIG is off and this never fires --
+    // which is the point: the guest gets that byte.
+    SigintGuard guard;
 
     RunResult r;
     uint64_t lastWritten = con.written();
@@ -332,8 +403,15 @@ void Monitor::consoleMode(std::ostream& out) {
         // is noise.
         r = m_.debug.run(2000);
 
+        // Every board with a line on it gets its slice of wall time, console or no
+        // console: a 2SIO wired to a socket is still moving bytes when nobody is
+        // sitting at the terminal.
         m_.pump();
 
+        // The keyboard, once, for everybody: keys land in the host's buffer and ATTN
+        // is taken out of the stream before the guest is ever offered it. One line,
+        // and it is the same line whether a 2SIO is reading or the backplane is empty.
+        if (watchKeys) con.poll();
         if (con.takeAttn()) {
             r.why = StopReason::Interrupted;
             break;
@@ -342,7 +420,7 @@ void Monitor::consoleMode(std::ostream& out) {
 
         // ---- Knowing when to stop, WITH NOBODY THERE TO TELL US ----
         //
-        // A terminal never ends. A PIPE does, and a scripted CONSOLE that did not
+        // A terminal never ends. A PIPE does, and a scripted run that did not
         // notice would run the guest's input poll loop until the heat death of the
         // universe -- which is exactly what the first version of this did.
         //
@@ -350,7 +428,7 @@ void Monitor::consoleMode(std::ostream& out) {
         // Console::pollByte), give the guest a few more slices to finish saying
         // whatever it was saying, and leave when it falls silent. That way the
         // last command in a script still gets its answer printed.
-        if (!tty && con.eof()) {
+        if (anyConsole && !tty && con.eof()) {
             uint64_t w = con.written();
             quiet      = (w == lastWritten) ? quiet + 1 : 0;
             lastWritten = w;
@@ -360,10 +438,12 @@ void Monitor::consoleMode(std::ostream& out) {
             }
         }
 
-        // Throttle to the crystal on the CPU card -- but ONLY for a human. A
-        // script has nobody to keep in step with, and making the test suite wait
-        // in real time for a 2 MHz machine would be absurd.
-        if (tty && hz > 0) {
+        // Throttle to the crystal on the CPU card -- but only when a HUMAN is at a
+        // terminal. A script has nobody to keep in step with, and making the test
+        // suite wait in real time for a 2 MHz machine would be absurd. With no
+        // console at all there is nothing to pace against either: it runs flat out,
+        // which is what GO always did and what a CPU test wants.
+        if (anyConsole && tty && hz > 0) {
             double want = (double)(m_.clock.now() - startT) / (double)hz;
             double got  = std::chrono::duration<double>(clk::now() - start).count();
             if (want > got) {
@@ -372,20 +452,45 @@ void Monitor::consoleMode(std::ostream& out) {
         }
     }
 
-    con.leaveRaw();
-    out << "\n";
+    if (takeTty) con.leaveRaw();
+    if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
-    // ATTN is not a stop -- the machine is exactly where you left it and GO or
-    // CONSOLE resumes it. Say that, because "Interrupted" on its own reads like
-    // something went wrong.
-    if (r.why == StopReason::Interrupted) {
-        char buf[96];
-        std::snprintf(buf, sizeof buf, "[monitor -- the machine is still at %04X. CONSOLE resumes]",
+    // ATTN IS NOT A STOP. The machine is exactly where you left it and a bare RUN
+    // resumes it. Say so, because "Interrupted" on its own reads like something
+    // went wrong -- and here nothing did; you asked for the keyboard back.
+    if (r.why == StopReason::Interrupted && anyConsole) {
+        std::snprintf(buf, sizeof buf, "[monitor -- the machine is still at %04X. RUN resumes]",
                       r.pc);
         out << buf << "\n";
     } else {
         reportStop(r, m_.debug, out);
+        std::snprintf(buf, sizeof buf, "%llu instructions, %llu T-states.",
+                      (unsigned long long)r.steps, (unsigned long long)r.tStates);
+        out << buf << "\n";
     }
+}
+
+// The console is the host's terminal, and this is everything about it: what it
+// is, what it is set to, and WHO HOLDS IT -- which is the question you actually
+// have, and which lives on the units, not on the console.
+void Monitor::showConsole(std::ostream& out) {
+    Console& con = Console::instance();
+    out << "console  (the host keyboard and screen" << (con.isTty() ? "" : " -- not a tty")
+        << ")\n";
+    showProps(con.properties(), out);
+
+    std::string holder;
+    for (const auto& b : m_.boards())
+        for (const auto& u : b->units())
+            if (u.kind == UnitKind::Serial && u.state == "console") {
+                if (!holder.empty()) holder += ", ";
+                holder += b->id + ":" + u.name;
+            }
+    out << "\n  held by  " << (holder.empty() ? "(nobody -- CONNECT <id>:<unit> console)" : holder)
+        << "\n";
+    out << "\n  The transforms (UPPER, CRLF, BSDEL, ECHO...) are properties of the\n"
+           "  LINE, not of the console -- so they work on a socket too. They live on\n"
+           "  the unit: SHOW sio0, then SET sio0:a UPPER=ON.\n";
 }
 
 void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
@@ -580,28 +685,6 @@ void Monitor::showRegs(std::ostream& out) {
 
     if (const Disassembler* d = disassemblerFor(c->isa())) disasmLine(c->pc(), *d, out);
 }
-
-// ---------------------------------------------------------------------------
-// ^C.
-//
-// The handler does ONE thing: set a lock-free flag. It does not print, it does
-// not touch the machine, and it does not throw -- those are all undefined in a
-// signal handler, and the bug they produce is a hang or a corrupted heap once in
-// a hundred runs, which is the worst kind there is.
-//
-// It is installed only for the duration of a GO or a STEP, and the previous
-// handler is put back afterwards, so ^C at the monitor prompt still kills the
-// process exactly as it did before there was a CPU.
-// ---------------------------------------------------------------------------
-static void onSigint(int) { Debugger::interrupt(); }
-
-namespace {
-struct SigintGuard {
-    void (*prev)(int) = nullptr;
-    SigintGuard() { prev = std::signal(SIGINT, onSigint); }
-    ~SigintGuard() { std::signal(SIGINT, prev); }
-};
-} // namespace
 
 // What stopped it, said out loud. A run that just... comes back, with no reason
 // given, is a debugger you cannot trust.
@@ -817,7 +900,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 if (eq == std::string::npos) continue;
                 std::string k = a[i].substr(0, eq), v = a[i].substr(eq + 1);
                 std::string e2;
-                if (!setProperty(*b, k, v, m_.running, e2)) {
+                if (!setProperty(*b, k, v, e2)) {
                     out << e2 << "\n";
                     failed_ = true;
                 }
@@ -896,11 +979,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (sub == "CONSOLE") {
-            out << "console  (the host keyboard and screen)\n";
-            showProps(Console::instance().properties(), out);
-            out << "\n  The transforms (UPPER, CRLF, BSDEL, ECHO...) are properties of the\n"
-                   "  LINE, not of the console -- so they work on a socket too. They live on\n"
-                   "  the unit: SHOW sio0, then SET sio0:a UPPER=ON.\n";
+            showConsole(out);
             return true;
         }
         if (sub == "MACHINE") {
@@ -1020,7 +1099,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         if (is(a[1], "CONSOLE")) {
             std::string err;
-            if (!setPropertyIn(Console::instance().properties(), "console", k, v, m_.running,
+            if (!setPropertyIn(Console::instance().properties(), "console", k, v,
                                err)) {
                 out << err << "\n";
                 failed_ = true;
@@ -1036,7 +1115,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             UnitDef u;
             if (!subunit(a[1], b, u, false, out)) return true;
             std::string err;
-            if (!setUnitProperty(*b, u.name, k, v, m_.running, err)) {
+            if (!setUnitProperty(*b, u.name, k, v, err)) {
                 out << err << "\n";
                 failed_ = true;
             } else {
@@ -1048,7 +1127,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         Board* b = board(a[1], out);
         if (!b) return true;
         std::string err;
-        if (!setProperty(*b, k, v, m_.running, err)) {
+        if (!setProperty(*b, k, v, err)) {
             out << err << "\n";
             failed_ = true;
         } else {
@@ -1128,19 +1207,42 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- CONSOLE ----------------
     //
-    // `CONSOLE F800` sets the PC first. That is not a convenience -- it is the
-    // front-panel action, which is EXAMINE the address and then RUN, done while
-    // you are already sitting at the teletype. A bare `CONSOLE` resumes from
-    // wherever the machine already is, which is the other half of the same panel.
+    // CONSOLE CONFIGURES THE CONSOLE. IT DOES NOT RUN THE MACHINE (Patrick,
+    // 2026-07-12). It used to do both, and that was wrong twice over: a command
+    // that starts the CPU because you asked to look at a setting is a trap, and
+    // "start the machine" already has a name -- the switch on the panel says RUN.
     if (cmd == "CONSOLE") {
-        if (a.size() >= 2) {
-            CpuCore* c = needCpu(out);
-            if (!c) return true;
-            uint32_t at;
-            if (!addr(a[1], at, out)) return true;
-            c->setPc((uint16_t)at);
+        if (a.size() < 2) {
+            showConsole(out);
+            return true;
         }
-        consoleMode(out);
+        for (size_t i = 1; i < a.size(); ++i) {
+            size_t eq = a[i].find('=');
+            if (eq == std::string::npos) {
+                // The one mistake worth catching BY NAME: `CONSOLE F800` is what this
+                // command did until today, and somebody's startup script still says
+                // it. Silently rejecting it as a bad key would send them hunting.
+                bool looksLikeAddress =
+                    !a[i].empty() && a[i].find_first_not_of("0123456789abcdefABCDEF") ==
+                                         std::string::npos;
+                if (looksLikeAddress)
+                    out << "CONSOLE configures the console; it does not start the machine.\n"
+                           "   RUN "
+                        << a[i] << "\n";
+                else
+                    out << "usage: CONSOLE [<key>=<value>...]   (CONSOLE alone shows it)\n";
+                failed_ = true;
+                return true;
+            }
+            std::string k = a[i].substr(0, eq), v = a[i].substr(eq + 1);
+            std::string err;
+            if (!setPropertyIn(Console::instance().properties(), "console", k, v, err)) {
+                out << err << "\n";
+                failed_ = true;
+                return true;
+            }
+            out << "console: " << k << "=" << v << "\n";
+        }
         return true;
     }
 
@@ -1749,29 +1851,27 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         return true;
     }
 
-    // GO -- run until something stops it, and it always says what did.
-    if (cmd == "GO") {
+    // RUN -- the switch on the panel. `RUN <addr>` is EXAMINE + RUN: it loads the
+    // PC exactly as EXAMINE does, because on the panel that is literally the pair of
+    // switches you throw. Everything else is in runMachine().
+    if (cmd == "RUN") {
         CpuCore* c = needCpu(out);
         if (!c) return true;
 
         if (a.size() >= 2) {
             uint32_t at;
             if (!addr(a[1], at, out)) return true;
+            if (at > 0xFFFF) {
+                out << "address is 16 bits: 0000-FFFF\n";
+                failed_ = true;
+                return true;
+            }
             c->setPc((uint16_t)at);
+            examNext_ = (at + 1) & 0xFFFF;
         }
 
-        char b[64];
-        std::snprintf(b, sizeof b, "running from %04X.  ^C stops it.", c->pc());
-        out << b << "\n";
-        out.flush();
+        runMachine(out);
 
-        SigintGuard guard;
-        RunResult r = m_.debug.run(0);
-
-        reportStop(r, m_.debug, out);
-        std::snprintf(b, sizeof b, "%llu instructions, %llu T-states.",
-                      (unsigned long long)r.steps, (unsigned long long)r.tStates);
-        out << b << "\n";
         flush(out);
         disasmNext_ = c->pc();
         showRegs(out);

@@ -123,7 +123,7 @@ void test_memory() {
         CHECK(zeros < 100, "fill=random really is random (not a zeroed bench)");
 
         std::string e2;
-        CHECK(setProperty(*b, "fill", "zero", false, e2), "fill=zero");
+        CHECK(setProperty(*b, "fill", "zero", e2), "fill=zero");
         b->power();
         CHECK(m.bus.memRead(0x0800) == 0, "and now it is zeroed, for when you want reproducible");
     }
@@ -155,7 +155,7 @@ void test_memory() {
         auto* o = addMem(m, "rom0");
         o->addRegion(rom(0xFF00, "builtin:dbl"), err);
         std::string e2;
-        setProperty(*o, "phantom", "read", false, e2);
+        setProperty(*o, "phantom", "read", e2);
         m.power();
 
         m.bus.memWrite(0xFF00, 0x42);
@@ -172,7 +172,7 @@ void test_memory() {
         auto* o = addMem(m, "rom0");
         o->addRegion(rom(0xFF00, "builtin:dbl"), err);
         std::string e2;
-        setProperty(*o, "phantom", "none", false, e2);
+        setProperty(*o, "phantom", "none", e2);
         m.power();
 
         CHECK(m.bus.respondersTo({Cycle::MemRead, 0xFF00, 0, false}).size() == 2,
@@ -188,7 +188,7 @@ void test_memory() {
         auto* r = addMem(m, "ram0");
         r->addRegion(ram(0x0000, 0x10000), err);
         std::string e2;
-        setProperty(*r, "honors_phantom", "false", false, e2);
+        setProperty(*r, "honors_phantom", "false", e2);
         auto* o = addMem(m, "rom0");
         o->addRegion(rom(0xFF00, "builtin:dbl"), err);
         m.power();
@@ -205,7 +205,7 @@ void test_memory() {
         std::string e2;
 
         // ExpandoRAM: port FF, BINARY. `data` IS the bank number.
-        CHECK(setProperty(*b, "bank_type", "eram", false, e2), "bank_type=eram");
+        CHECK(setProperty(*b, "bank_type", "eram", e2), "bank_type=eram");
         b->addRegion(ram(0x0000, 0x10000), err);
         m.power();
         m.bus.ioWrite(0xFF, 3);
@@ -217,7 +217,7 @@ void test_memory() {
         // about the other four.
         Machine m2;
         auto* v = addMem(m2, "mem0");
-        CHECK(setProperty(*v, "bank_type", "vram", false, e2), "bank_type=vram");
+        CHECK(setProperty(*v, "bank_type", "vram", e2), "bank_type=vram");
         v->addRegion(ram(0x0000, 0x10000), err);
         m2.power();
         m2.bus.ioWrite(0x40, 0x04);
@@ -243,7 +243,7 @@ void test_memory() {
         Machine m;
         auto* b = addMem(m, "mem0");
         std::string e2;
-        setProperty(*b, "bank_type", "cram", false, e2);
+        setProperty(*b, "bank_type", "cram", e2);
         CHECK(getProp(b, "banks") == 7, "cram has 7 banks, not 8");
     }
 
@@ -253,7 +253,7 @@ void test_memory() {
             Machine m;
             auto* b = addMem(m, "mem0");
             std::string e2;
-            setProperty(*b, "bank_type", t, false, e2);
+            setProperty(*b, "bank_type", t, e2);
             b->addRegion(ram(0x0000, 0x10000), err);
             m.power();
             uint8_t port = (std::string(t) == "hram") ? 0xC0 : 0x40;
@@ -268,8 +268,8 @@ void test_memory() {
         Machine m;
         auto* b = addMem(m, "mem0");
         std::string e2;
-        setProperty(*b, "bank_type", "eram", false, e2);
-        setProperty(*b, "fill", "zero", false, e2);
+        setProperty(*b, "bank_type", "eram", e2);
+        setProperty(*b, "fill", "zero", e2);
         b->addRegion(ram(0x0000, 0x10000), err);
         m.power();
 
@@ -295,8 +295,8 @@ void test_memory() {
         auto* a = addMem(m, "mem0");
         auto* b = addMem(m, "mem1");
         std::string e2;
-        setProperty(*a, "bank_type", "vram", false, e2);
-        setProperty(*b, "bank_type", "b810", false, e2);
+        setProperty(*a, "bank_type", "vram", e2);
+        setProperty(*b, "bank_type", "b810", e2);
         a->addRegion(ram(0x0000, 0x1000), err);
         b->addRegion(ram(0x2000, 0x1000), err);
         m.power();
@@ -318,8 +318,8 @@ void test_memory() {
         a->addRegion(ram(0x0000, 0x1000), err);
         b->addRegion(ram(0x0000, 0x1000), err);
         std::string e2;
-        setProperty(*a, "seed", "12345", false, e2);
-        setProperty(*b, "seed", "12345", false, e2);
+        setProperty(*a, "seed", "12345", e2);
+        setProperty(*b, "seed", "12345", e2);
         m1.power();
         m2.power();
         bool same = true;
@@ -327,7 +327,7 @@ void test_memory() {
             if (m1.bus.memRead((uint16_t)k) != m2.bus.memRead((uint16_t)k)) same = false;
         CHECK(same, "fill=random with the same seed is byte-identical across runs");
 
-        setProperty(*b, "seed", "999", false, e2);
+        setProperty(*b, "seed", "999", e2);
         m2.power();
         int diff = 0;
         for (uint32_t k = 0; k < 0x1000; ++k)
@@ -341,7 +341,7 @@ void test_memory() {
         Machine m;
         auto* b = addMem(m, "mem0");
         std::string e2;
-        setProperty(*b, "bank_type", "eram", false, e2);
+        setProperty(*b, "bank_type", "eram", e2);
         CHECK(!b->addRegion(rom(0xFF00, "builtin:dbl"), err),
               "a rom region on a banked card is REJECTED, not invented");
         CHECK(err.find("unsourced") != std::string::npos, "and the error says why");

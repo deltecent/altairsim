@@ -37,7 +37,18 @@ void test_cli() {
     CHECK(R("B") == "BREAK", "B breaks");
     CHECK(R("E") == "EDIT", "E edits");
     CHECK(R("C") == "CONFIG", "C configures");
-    CHECK(R("G") == "GO", "G goes");
+
+    // ---- RUN REPLACED GO (Patrick, 2026-07-12) ----
+    // There was never a second thing for GO to be. A headless run is not a mode the
+    // operator picks -- it is what happens when nothing holds the console, and the
+    // machine already knows that. RESET owns R (it is in the nine), so RUN costs RU.
+    CHECK(R("G") == "", "G is nothing now: GO is gone, and the panel's switch says RUN");
+    bool hasGo = false;
+    for (const CommandDef& c : commands())
+        if (std::string(c.name) == "GO") hasGo = true;
+    CHECK(!hasGo, "there is exactly ONE way to start the machine, and it is RUN");
+    CHECK(R("RU") == "RUN", "RU runs (RESET keeps R)");
+    CHECK(R("RUN") == "RUN", "and RUN");
 
     // ---- and the losers, at the cost of exactly one more letter ----
     CHECK(R("DE") == "DEPOSIT", "DE deposits -- the front panel keeps its word");
@@ -257,6 +268,16 @@ void test_cli() {
         mb.exec("EX 0 RAW mem0", r);
         CHECK(r.str().compare(0, 4, "0000") == 0,
               "EXAMINE RAW needs no CPU -- it reaches behind the bus into the store");
+
+        // AND EVERY OTHER MEMORY COMMAND STILL WORKS WITHOUT ONE (Patrick,
+        // 2026-07-12): "we need to be able to debug the simulator without a CPU."
+        // EXAMINE is the sole exception, and only because it IS the CPU.
+        std::ostringstream w;
+        mb.exec("DEPOSIT 0 41 42", w);
+        mb.exec("FILL 2-3 5A", w);
+        mb.exec("D 0-3", w);
+        CHECK(w.str().find("41 42 5A 5A") != std::string::npos,
+              "DEPOSIT, FILL and DUMP all work on a backplane with no processor");
     }
 
     Machine m2;

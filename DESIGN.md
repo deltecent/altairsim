@@ -489,18 +489,21 @@ struct Property {
     std::string  description;  // "Serial line rate"
     std::string  units;        // "bps"
     Constraint   constraint;   // range, or enum value list
-    bool         runtime;      // settable while running, vs config-time only
     Getter       get;
     Setter       set;          // returns an error string on reject
 };
 ```
 
 Consequences, all of which must be stated in the doc:
-- `SET <id> <k>=<v>` and `SHOW <id>` are **fully generic**. `SHOW` prints every property with value, units, legal range, and whether it is runtime-settable.
+- `SET <id> <k>=<v>` and `SHOW <id>` are **fully generic**. `SHOW` prints every property with value, units and legal range.
 - **MCP tool schemas are generated from `properties()`** — Claude gets typed, constrained, self-documenting board config instead of guessing at free text.
 - **The TOML loader and `CONFIG SAVE` are the same code path.** A board's config keys *are* its properties, so round-tripping is automatic and cannot drift.
 - **Tab completion is generated from `properties()`** too (§10.4).
-- `runtime = false` properties are rejected with a clear message while the machine runs, rather than silently taking effect at the next reset.
+- **THERE IS NO CONFIG-TIME-ONLY PROPERTY** (Patrick, 2026-07-12). Every property can be set, always. There was a `runtime` flag here that rejected a SET while the machine ran; it is gone, for two reasons and the second is the real one:
+  - **You can only type at the prompt when the machine is STOPPED** — by ATTN, by a breakpoint, by a HLT. That is the front panel's STOP switch. There is no moment at which a `SET` races a running CPU.
+  - **On real hardware the rule would be a fiction anyway.** A card being worked on sits on an **extender**, out where you can reach it, and its jumpers get moved with the power on. Patrick: *"In the real world, when working on boards, they are often accessed on an extender card and changed while the power is on."*
+
+  It was also never enforced: nothing in the simulator ever set the flag the gate was conditioned on, so it had never once fired. A rule the code only pretends to enforce is worse than no rule.
 
 ---
 
@@ -764,7 +767,7 @@ CONFIGURATION
   BOARD LIST                       instances: id, type, ports, memory, status
   BOARD TYPES                      every board type compiled in, with its properties
   BOARD ADD <type> <id> [k=v ...]  BOARD REMOVE <id>
-  SHOW <id>                        every property: value, units, legal range, runtime?
+  SHOW <id>                        every property: value, units, legal range
   SET <id> <k>=<v>                 generic; e.g. SET sio2a BAUD=9600, SET mem0 PHANTOM=read
   SHOW ROMS                        every ROM compiled in: name, size, CRC32, description
                                    (use as mount = "builtin:<name>" — see §10.3.1)
@@ -781,11 +784,26 @@ MEDIA AND CONNECTIONS
   MOUNT <id>:<u> <file> [RO]       UNMOUNT <id>:<u>
   CONNECT <id>:<u> <endpoint>      DISCONNECT <id>:<u>
 
-CONSOLE
-  SHOW CONSOLE                     every property, value, legal values
-  SET CONSOLE <k>=<v>              UPPER, STRIP7IN, STRIP7OUT, CRLF, BSDEL, TABS, ECHO,
-                                   ANSI, ROWS, COLS, PACE, ATTN, LOG, BELL  (list will grow)
-  CONSOLE                          enter the console; ATTN key returns to the monitor
+CONSOLE  -- it CONFIGURES the console; it does not start the machine (RUN does).
+  CONSOLE                          show it: properties, and WHICH UNIT HOLDS IT
+  CONSOLE <k>=<v>                  set it.  SHOW/SET CONSOLE are the same, said long
+  ATTN                             the key that takes the keyboard BACK from a running
+                                   guest (default ^E). Tracked on CONSOLE INPUT ONLY:
+                                   a unit on a socket or a serial port is not the
+                                   console, and its data passes through UNALTERED.
+  The transforms -- UPPER, STRIP7IN, STRIP7OUT, CRLF, BSDEL, TABS, ECHO, ANSI, ROWS,
+  COLS, PACE, LOG, BELL -- are properties of the LINE, not of the console, so they
+  work on a socket too: SET sio0:a UPPER=ON.
+
+  WHICH UNIT IS THE CONSOLE? The one CONNECTed to it. Exactly one may hold it (there
+  is one keyboard); connecting a second STEALS it and says who from. A config file
+  that names two is REFUSED -- interactively the last cable you plug in is the one
+  you meant, but in a file there is no "last": it is a typo.
+
+  THE KEYBOARD IS BUFFERED BY THE HOST. Keys land in a buffer here and a card takes
+  characters from it. That is what lets ATTN be watched whether or not anybody is
+  reading -- including with no serial card in the machine at all -- and what lets
+  MCP inject input that no board can tell from a human's.
 
 MEMORY
   LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [RAW <id>]    format autodetected
@@ -821,7 +839,19 @@ I/O
   WHO IO <port>                     who WOULD answer -- looks without touching
 
 EXECUTION
-  GO [addr] | STEP [n] | STOP
+  RUN [addr] | STEP [n] | STOP
+  RUN is the switch on the panel, and the ONLY way to start the machine. `RUN <addr>`
+  is EXAMINE + RUN: it loads the PC first, exactly as the panel does.
+    - A unit holds the console -> the GUEST GETS THE KEYBOARD (every key, including
+      ^C, which CP/M is entitled to read), and it runs at the CPU card's real clock.
+    - Nothing holds it       -> there is nothing to hand over, so it just runs.
+  That is not a mode the operator picks. It is a fact about the backplane, and the
+  machine already knows it -- which is why GO was DELETED (Patrick, 2026-07-12):
+  a "headless run" was never a second thing to be. Both paths stop on a breakpoint,
+  on a HLT nothing can wake, and on ATTN, and both say which.
+
+  ATTN (^E) IS THE STOP KEY, NOT ^C. Ctrl-C belongs to the guest. ATTN does not stop
+  the machine -- it takes the keyboard back, and a bare RUN resumes where you were.
   RESET | RESET CPU | POWER
   There is NO `SET CPU`. The CPU is a CARD (§3): BOARD ADD 8080 cpu0, and the clock
   is that board's property -- SET cpu0 clock_hz=2000000. A card carrying both an
@@ -934,7 +964,7 @@ Three things fall out of this, and they are the reason it is the right shape:
 
 ### 10.1 `SET`/`SHOW` are generic
 
-Implemented once against `Board::properties()`; they know nothing about baud rates, phantom modes, or disk geometry. Adding a board adds its settings to the CLI for free. Config-time vs runtime settability is enforced by the board and displayed by `SHOW`, so `SET fdc DRIVES=8` on a running machine is rejected clearly rather than half-applied.
+Implemented once against `Board::properties()`; they know nothing about baud rates, phantom modes, or disk geometry. Adding a board adds its settings to the CLI for free. **Every property is settable** — see §5: you can only type at the prompt when the machine is already stopped, and a real card on an extender has its jumpers moved with the power on.
 
 ### 10.2 Memory access: through the bus, or behind it?
 

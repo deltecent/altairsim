@@ -43,6 +43,7 @@ void Console::enterRaw() {
         g_savedFlOk = true;
         fcntl(STDIN_FILENO, F_SETFL, g_savedFl | O_NONBLOCK);
     }
+    taken_ = true;  // stdin is OURS now, and only now may we read it
 
     if (!isatty(STDIN_FILENO)) return;
     if (tcgetattr(STDIN_FILENO, &g_saved) != 0) return;
@@ -65,6 +66,7 @@ void Console::enterRaw() {
 void Console::leaveRaw() {
     if (rawDepth_ > 0 && --rawDepth_ > 0) return;
 
+    taken_ = false;  // stdin goes back to the monitor's command line
     if (g_savedFlOk) {
         fcntl(STDIN_FILENO, F_SETFL, g_savedFl);
         g_savedFlOk = false;
@@ -83,6 +85,18 @@ void Console::leaveRaw() {
 // run stops the instant the writer pauses; treat EOF as EAGAIN and it never
 // stops at all.
 bool Console::pollByte(uint8_t& out) const {
+    // WE READ THE KEYBOARD ONLY WHEN WE HAVE TAKEN IT. Outside a RUN, stdin belongs
+    // to the monitor -- it is the operator's command line, or a script being piped
+    // in -- and it is in blocking mode. A board that peeked at it there would either
+    // steal the next command or block the whole simulator until somebody pressed
+    // Enter, and "the emulator hangs when you STEP a program that reads the console"
+    // is a bug I would rather not write twice.
+    //
+    // enterRaw() is what makes stdin ours (and non-blocking). Until then the
+    // keyboard is quiet, and injected bytes are the only input there is -- which is
+    // exactly right for a test and for MCP.
+    if (!taken_) return false;
+
     uint8_t b = 0;
     ssize_t n = ::read(STDIN_FILENO, &b, 1);
     if (n == 0) {
@@ -101,36 +115,55 @@ bool Console::pollByte(uint8_t& out) const {
 // this belongs to the guest: a filter could be told to swallow it, a board could
 // be in a state where it is not reading, and the guest could simply be ignoring
 // its UART. None of those may be allowed to disable the one key that gets you
-// out. So the check happens before anybody is offered the character at all.
+// out. So the check happens before the character is even put in the buffer.
 // ---------------------------------------------------------------------------
-bool Console::readable() const {
-    if (peeked_) return true;
-
+void Console::poll() const {
     uint8_t b = 0;
-    if (!pollByte(b)) return false;
-
-    if (b == attn_) {
-        // The guest is never offered this byte, and so it can never swallow it.
-        // The answer to "is a character ready?" is no -- and for this key it will
-        // stay no however long anyone waits.
-        attnSeen_ = true;
-        return false;
+    while (pollByte(b)) {
+        if (b == attn_) {
+            attnSeen_ = true;  // never buffered: the guest is not offered it, ever
+            continue;
+        }
+        if (in_.size() >= kMaxIn) {
+            // Typing faster than the guest can read. A real terminal drops it too --
+            // but a DROPPED KEYSTROKE MUST BE COUNTED, or it becomes a bug report
+            // about "flaky input" that nobody can reproduce.
+            const_cast<Console*>(this)->dropped_++;
+            continue;
+        }
+        in_.push_back(b);
     }
+}
 
-    peekByte_ = b;
-    peeked_   = true;
-    return true;
+bool Console::readable() const {
+    poll();
+    return !in_.empty();
 }
 
 size_t Console::read(uint8_t* buf, size_t n) {
     if (!n) return 0;
+    poll();
+    if (in_.empty()) return 0;
 
-    if (!peeked_ && !readable()) return 0;
-    if (!peeked_) return 0;
-
-    buf[0]  = peekByte_;
-    peeked_ = false;
+    // ONE BYTE. The card asking is a UART with a single receive register, and
+    // handing it a block would be handing it something no 6850 ever had.
+    buf[0] = in_.front();
+    in_.pop_front();
     return 1;
+}
+
+void Console::inject(const uint8_t* buf, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        if (in_.size() >= kMaxIn) {
+            dropped_++;
+            continue;
+        }
+        in_.push_back(buf[i]);
+    }
+}
+
+void Console::inject(const std::string& s) {
+    inject(reinterpret_cast<const uint8_t*>(s.data()), s.size());
 }
 
 size_t Console::write(const uint8_t* buf, size_t n) {
@@ -142,12 +175,9 @@ size_t Console::write(const uint8_t* buf, size_t n) {
 void Console::flush() { ::fflush(stdout); }
 
 bool Console::takeAttn() {
-    // A poll may be needed to notice the key at all: a guest sitting in a tight
-    // spin loop reads the status port constantly, so readable() runs and catches
-    // it -- but a guest that is busy computing never asks, and the operator would
-    // find ATTN dead exactly when they most want it.
-    if (!attnSeen_ && !peeked_) (void)readable();
-
+    // It does NOT poll. The run loop does that every slice -- which is the whole
+    // point of the buffer, and is why the key works when the guest is busy
+    // computing, and when there is no console board in the machine to ask.
     bool a    = attnSeen_;
     attnSeen_ = false;
     return a;
@@ -163,7 +193,6 @@ std::vector<Property> Console::properties() {
         x.radix   = 16;
         x.min     = 1;
         x.max     = 0x1F;  // a control character, or the guest could never type it
-        x.runtime = true;
         x.get     = [this] { return Value::ofInt(attn_); };
         x.set     = [this](const Value& v, std::string&) {
             attn_ = (uint8_t)v.i();

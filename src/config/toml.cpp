@@ -200,7 +200,7 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
             // baud rates and never will.
             for (auto& [k, v] : t.kv) {
                 if (k == "type" || k == "id") continue;
-                if (!setProperty(*current, k, v, m.running, err)) {
+                if (!setProperty(*current, k, v, err)) {
                     err = path + ": [[board]] " + id + ": " + err;
                     return false;
                 }
@@ -241,7 +241,7 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
         // is why a config file cannot set something the monitor would refuse.
         if (t.name == "console") {
             for (const auto& [k, v] : t.kv) {
-                if (!setPropertyIn(Console::instance().properties(), "console", k, v, false, err)) {
+                if (!setPropertyIn(Console::instance().properties(), "console", k, v, err)) {
                     err = path + ": [console]: " + err;
                     return false;
                 }
@@ -251,6 +251,38 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
 
         err = path + ": unknown table [" + t.name + "]";
         return false;
+    }
+
+    // ---- EXACTLY ONE UNIT MAY HOLD THE CONSOLE, AND A CONFIG FILE IS NOT EXEMPT
+    // (Patrick, 2026-07-12: "assuming several serial boards with multiple ports
+    // each, how is the console determined?")
+    //
+    // The monitor's CONNECT has arbitrated this from the start -- connecting a
+    // second unit STEALS the console and says who from. This path did not, and a
+    // rule enforced on one of two paths is not a rule: a file could cable two ports
+    // to one terminal, and each would get half the operator's keystrokes, silently.
+    //
+    // But it must NOT steal here. Interactively, `CONNECT sio1:a console` is you
+    // moving the cable, and the last one you plug in is the one you meant. A FILE
+    // that names two consoles is not a decision, it is a typo -- there is no "last"
+    // about it -- so it is refused, and both are named.
+    {
+        std::vector<std::string> holders;
+        for (const auto& b : m.boards())
+            for (const auto& u : b->units())
+                if (u.kind == UnitKind::Serial && u.state == "console")
+                    holders.push_back(b->id + ":" + u.name);
+
+        if (holders.size() > 1) {
+            err = path + ": " + std::to_string(holders.size()) +
+                  " units are cabled to the console (";
+            for (size_t i = 0; i < holders.size(); ++i) err += (i ? ", " : "") + holders[i];
+            err +=
+                ").  There is one keyboard, so they would each get half of what you\n"
+                "   type.  Connect ONE to `console`; the others can take null, loopback,\n"
+                "   a socket or a serial port.";
+            return false;
+        }
     }
 
     m.power();  // a machine that has just been built has just been switched on

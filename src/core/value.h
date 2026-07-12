@@ -73,10 +73,6 @@ struct Property {
     std::string help;                   // one line, shown by SHOW
     Kind kind = Kind::Int;
 
-    // Settable while the machine is running? DESIGN.md 10.1: a config-time
-    // property set on a running machine is REJECTED, never half-applied.
-    bool runtime = true;
-
     std::vector<std::string> choices;   // Kind::Enum -- also feeds tab completion
     long long min = 0, max = 0;         // Kind::Int; min==max means unbounded
     int radix = 10;                     // 16 for addresses, so SHOW reads right

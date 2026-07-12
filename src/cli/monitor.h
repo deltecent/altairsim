@@ -79,9 +79,12 @@ private:
     void showProps(const std::vector<Property>& ps, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);
 
-    // CONSOLE mode: the guest owns the keyboard until ATTN. Returns when the
-    // operator asks for the monitor back, or the machine stops.
-    void consoleMode(std::ostream& out);
+    // RUN. The machine runs until a breakpoint, a HLT nothing can wake, or ATTN.
+    // If a unit holds the console the guest owns the keyboard while it does; if
+    // none does, there is nothing to hand over and it simply runs. That is not a
+    // mode -- it is a fact about the backplane, and the machine already knows it.
+    void runMachine(std::ostream& out);
+    void showConsole(std::ostream& out);
     void showRoms(std::ostream& out);
     void flush(std::ostream& out);  // print anything the bus or a board said
 

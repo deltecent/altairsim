@@ -70,7 +70,6 @@ std::vector<Property> FilterStream::properties() {
         x.name    = name;
         x.help    = help;
         x.kind    = Kind::Bool;
-        x.runtime = true;
         x.get     = [slot] { return Value::ofBool(*slot); };
         x.set     = [slot](const Value& v, std::string&) {
             *slot = v.b();
@@ -93,7 +92,6 @@ std::vector<Property> FilterStream::properties() {
         x.help    = "Rubout key: off | bs (fold DEL->BS) | del (fold BS->DEL)";
         x.kind    = Kind::Enum;
         x.choices = {"off", "bs", "del"};
-        x.runtime = true;
         x.get     = [this] {
             return Value::ofStr(bsmap_ == BsMap::Bs    ? "bs"
                                 : bsmap_ == BsMap::Del ? "del"

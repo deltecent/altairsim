@@ -5,6 +5,7 @@
 #include "boards/sio2.h"
 #include "core/machine.h"
 #include "core/roms.h"
+#include "host/console.h"
 #include "host/endpoint.h"
 #include "cli/monitor.h"
 #include "host/stream.h"
@@ -33,7 +34,7 @@ struct Rig {
         r.at   = 0;
         r.size = 0x10000;
         mem->addRegion(r, err);
-        setProperty(*mem, "fill", "zero", false, err);
+        setProperty(*mem, "fill", "zero", err);
 
         sio = dynamic_cast<Sio2Board*>(m.add("2sio", "sio0", err));
 
@@ -45,7 +46,7 @@ struct Rig {
         // possible reason. The rule is not decoration.
         char hex[8];
         std::snprintf(hex, sizeof hex, "%02X", port);
-        CHECK(setProperty(*sio, "port", hex, false, err), "the base port is a hex jumper");
+        CHECK(setProperty(*sio, "port", hex, err), "the base port is a hex jumper");
 
         auto s = std::make_unique<ScriptedStream>();
         tty    = s.get();
@@ -262,7 +263,7 @@ void test_sio2() {
     {
         Rig g;
         std::string err;
-        CHECK(setUnitProperty(*g.sio, "a", "upper", "true", false, err), "SET sio0:a UPPER=ON");
+        CHECK(setUnitProperty(*g.sio, "a", "upper", "true", err), "SET sio0:a UPPER=ON");
 
         g.tty->feed("abc");
         (void)g.m.bus.ioRead(0x10);
@@ -270,6 +271,81 @@ void test_sio2() {
 
         // ...and this is a ScriptedStream, not a console. That is the whole point:
         // the fold lives on the line, so it works on a socket too (DESIGN.md 7.2).
+    }
+
+    // -----------------------------------------------------------------------
+    // THE HOST'S KEYBOARD BUFFER (Patrick, 2026-07-12)
+    // -----------------------------------------------------------------------
+    // The host owns the keyboard; a card takes characters FROM it. That is what
+    // lets the simulator watch for ATTN whether or not anybody is reading, and it
+    // is what lets anything -- a script, MCP's send/expect -- type for you.
+    SECTION("the console is a keyboard buffer, and a board cannot tell who typed");
+    {
+        Machine m;
+        std::string err;
+        m.add("2sio", "sio0", err);
+        m.add("memory", "mem0", err);
+        m.power();
+
+        Monitor mon(m);
+        std::ostringstream out;
+        mon.exec("CONNECT sio0:a console", out);
+
+        Console& con = Console::instance();
+        CHECK(con.pending() == 0, "the buffer starts empty");
+
+        // Type for the operator. The board is reading a REAL console -- there is no
+        // test double anywhere in this path.
+        con.inject("HI");
+        CHECK(con.pending() == 2, "two keys are waiting");
+
+        // THE LINE STILL PACES THEM. The host's buffer does not give the 6850 a FIFO
+        // it never had: the card takes ONE character, and the next cannot land until
+        // a character time has passed at the configured baud rate. Reading both back
+        // to back with no clock between them is asking a 9600-baud line to deliver
+        // two characters in zero time -- and the first draft of this test did exactly
+        // that, and hung forever waiting for a byte that was not due yet.
+        (void)m.bus.ioRead(0x10);
+        CHECK((m.bus.ioRead(0x10) & 0x01) != 0, "the 6850 says a character is ready");
+        CHECK(m.bus.ioRead(0x11) == 'H', "and the guest reads it");
+        CHECK(con.pending() == 1, "one key still on the line -- the UART holds ONE");
+
+        m.clock.advance(5000);  // a character time at 9600 baud, and then some
+        (void)m.bus.ioRead(0x10);
+        CHECK(m.bus.ioRead(0x11) == 'I', "the next one arrives in its own time");
+        CHECK(con.pending() == 0, "and the buffer is drained");
+        CHECK((m.bus.ioRead(0x10) & 0x01) == 0, "RDRF goes clear again");
+
+        // A REAL keyboard buffer is finite, and a dropped keystroke is COUNTED --
+        // not silently swallowed, which is how you get a bug report about "flaky
+        // input" that nobody can ever reproduce.
+        uint64_t before = con.dropped();
+        con.inject(std::string(1000, 'x'));
+        CHECK(con.dropped() > before,
+              "typing past the end of the buffer drops keys, and says how many");
+        CHECK(con.pending() == 256, "and holds a teletype's worth: 256");
+
+        // Drain it: the Console is a singleton, because there is exactly one
+        // keyboard, and the next test must not inherit this one's typing.
+        while (con.pending()) {
+            m.clock.advance(5000);
+            (void)m.bus.ioRead(0x10);
+            (void)m.bus.ioRead(0x11);
+        }
+    }
+
+    // ATTN IS THE CONSOLE'S, AND ONLY THE CONSOLE'S (Patrick, 2026-07-12).
+    SECTION("a line that is not the console passes ATTN through as data");
+    {
+        // 0x05 down a socket is a byte of somebody's protocol. A line that scanned
+        // for a key which only exists on the operator's terminal would be corrupting
+        // the data, and it would do it silently.
+        Rig g;
+        CHECK(Console::instance().attn() == 0x05, "ATTN is ^E");
+
+        g.tty->feed("\x05");  // a ScriptedStream: a socket, a modem, anything but the console
+        (void)g.m.bus.ioRead(0x10);
+        CHECK(g.m.bus.ioRead(0x11) == 0x05, "the guest gets the 05 -- unaltered, uneaten");
     }
 
     SECTION("EXACTLY ONE unit may hold the console");
@@ -287,7 +363,7 @@ void test_sio2() {
         std::string err;
         auto* s0 = dynamic_cast<Sio2Board*>(m.add("2sio", "sio0", err));
         auto* s1 = dynamic_cast<Sio2Board*>(m.add("2sio", "sio1", err));
-        CHECK(setProperty(*s1, "port", "14", false, err), "the second card moves out of the way");
+        CHECK(setProperty(*s1, "port", "14", err), "the second card moves out of the way");
 
         Monitor mon(m);
         std::ostringstream out;
@@ -358,7 +434,7 @@ void test_sio2() {
         ram.at   = 0;
         ram.size = 0xC000;  // 48K -- ALTMON puts its stack at C000 and pushes DOWN
         mem->addRegion(ram, err);
-        setProperty(*mem, "fill", "zero", false, err);
+        setProperty(*mem, "fill", "zero", err);
 
         Region rom;
         rom.kind  = RegionKind::Rom;

@@ -272,24 +272,38 @@ protected:
 // The ONE path by which any property is ever set.
 //
 // SET, the TOML loader, BOARD ADD's k=v arguments, and the MCP board_set tool
-// all call this. That is why they cannot disagree about what is legal, what is
-// runtime-settable, or what base a number is in -- there is only one answer,
-// and it is computed from the board's own metadata.
+// all call this. That is why they cannot disagree about what is legal or what
+// base a number is in -- there is only one answer, and it is computed from the
+// board's own metadata.
 //
 // A property's `radix` decides how bare digits are read: PORT=10 is port 0x10,
 // BAUD=9600 is nine thousand six hundred. 0x forces hex, # forces decimal.
+//
+// THERE IS NO "CONFIG-TIME ONLY" PROPERTY (Patrick, 2026-07-12). Every property
+// can be set, always. Two reasons, and the second is the real one:
+//
+//   - You can only type at the prompt when the machine is STOPPED -- by ATTN, by a
+//     breakpoint, by a HLT. That is the front panel's STOP switch, and there is no
+//     moment at which a SET would be racing a running CPU.
+//
+//   - And even on real hardware the gate would be a fiction. A card being worked on
+//     sits on an EXTENDER, out where you can reach it, and its jumpers get moved
+//     with the power on. That is how it was actually done.
+//
+// The old `runtime` flag was rejected-if-running, and it never once fired: nothing
+// ever set the flag it was gated on. Deleting it removes a rule the simulator was
+// only pretending to enforce.
 // ---------------------------------------------------------------------------
-bool setProperty(Board& b, const std::string& key, const std::string& text, bool running,
-                 std::string& err);
+bool setProperty(Board& b, const std::string& key, const std::string& text, std::string& err);
 
 // The same path for a UNIT's properties -- `SET sio0:a BAUD=9600`.
 bool setUnitProperty(Board& b, const std::string& unit, const std::string& key,
-                     const std::string& text, bool running, std::string& err);
+                     const std::string& text, std::string& err);
 
 // ...and for anything else with properties that is not a board at all. The host
 // console has properties (ATTN) and must obey the same rules about them; making
 // it a fake Board to get that would have been the wrong way round.
 bool setPropertyIn(std::vector<Property> props, const std::string& who, const std::string& key,
-                   const std::string& text, bool running, std::string& err);
+                   const std::string& text, std::string& err);
 
 } // namespace altair

@@ -157,7 +157,7 @@ struct Rig {
         r.at   = 0;
         r.size = 0x10000;  // 64K. A .COM expects the whole address space to be there.
         mem->addRegion(r, err);
-        setProperty(*mem, "fill", "zero", false, err);
+        setProperty(*mem, "fill", "zero", err);
         mem->power();
 
         auto owned = std::make_unique<ConsoleBoard>();

@@ -222,7 +222,6 @@ std::vector<Property> Acia::properties() {
         x.min     = 50;
         x.max     = 76800;
         x.unit    = "baud";
-        x.runtime = true;
         x.get     = [this] { return Value::ofInt(baud_); };
         x.set     = [this](const Value& v, std::string&) {
             baud_ = v.i();
@@ -236,7 +235,6 @@ std::vector<Property> Acia::properties() {
         x.help    = "Where this channel's IRQ is jumpered: none | int | vi0..vi7";
         x.kind    = Kind::Enum;
         x.choices = {"none", "int", "vi0", "vi1", "vi2", "vi3", "vi4", "vi5", "vi6", "vi7"};
-        x.runtime = false;
         x.get     = [this] {
             switch (jumper) {
             case IrqJumper::None: return Value::ofStr("none");
@@ -259,7 +257,6 @@ std::vector<Property> Acia::properties() {
         x.name    = "connect";
         x.help    = "The endpoint on the other end of the line (CONNECT sets this)";
         x.kind    = Kind::Str;
-        x.runtime = true;
         x.get     = [this] { return Value::ofStr(stream_->describe()); };
         x.set     = [this](const Value& v, std::string& err) {
             if (!g_resolver) {
@@ -378,7 +375,6 @@ std::vector<Property> Sio2Board::properties() {
         x.radix   = 16;  // ON THE WIRE -> HEX (DESIGN.md 10.0.1)
         x.min     = 0;
         x.max     = 0xFC;
-        x.runtime = false;
         x.get     = [this] { return Value::ofInt(base_); };
         x.set     = [this](const Value& v, std::string&) {
             base_ = (uint8_t)v.i();
@@ -447,7 +443,7 @@ bool Sio2Board::addSubUnit(const std::string& table, const KeyValues& kv, std::s
     // the monitor. A config file cannot set something the monitor would refuse.
     for (const auto& [k, v] : kv) {
         if (k == "unit") continue;
-        if (!setUnitProperty(*this, which, k, v, false, err)) return false;
+        if (!setUnitProperty(*this, which, k, v, err)) return false;
     }
     return true;
 }

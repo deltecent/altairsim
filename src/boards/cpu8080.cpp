@@ -16,7 +16,6 @@ std::vector<Property> Cpu8080Board::properties() {
         x.unit = "Hz";
         x.min = 0;
         x.max = 100000000;
-        x.runtime = true;   // Real operators really did slow a machine down to
                             // watch it, and it is the first thing you want when a
                             // guest is misbehaving.
         x.get = [this] { return Value::ofInt(clockHz_); };

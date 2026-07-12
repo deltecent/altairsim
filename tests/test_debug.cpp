@@ -46,7 +46,7 @@ struct Rig {
         r.at = 0;
         r.size = 0x10000;
         mem->addRegion(r, err);
-        setProperty(*mem, "fill", "zero", false, err);
+        setProperty(*mem, "fill", "zero", err);
         mem->power();
         m.add("8080", "cpu0", err);
         cpu = m.cpu();

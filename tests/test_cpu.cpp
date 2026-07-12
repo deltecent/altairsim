@@ -26,7 +26,7 @@ struct Rig {
         r.at = 0;
         r.size = 0x10000;
         mem->addRegion(r, err);
-        setProperty(*mem, "fill", "zero", false, err);
+        setProperty(*mem, "fill", "zero", err);
         mem->power();
 
         m.add("8080", "cpu0", err);
@@ -228,7 +228,7 @@ void test_cpu() {
     r4.at = 0;
     r4.size = 0x1000;  // 4K, and NOTHING above it
     dynamic_cast<MemoryBoard*>(hm)->addRegion(r4, err);
-    setProperty(*hm, "fill", "zero", false, err);
+    setProperty(*hm, "fill", "zero", err);
     hm->power();
     h.add("8080", "cpu0", err);
     CpuCore* hc = h.cpu();

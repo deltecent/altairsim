@@ -184,8 +184,7 @@ Json propsJson(Board* b) {
         j["name"] = Json(p.name);
         j["help"] = Json(p.help);
         j["value"] = Json(p.get().text(p.radix));
-        j["runtime"] = Json(p.runtime);
-        switch (p.kind) {
+                switch (p.kind) {
         case Kind::Bool: j["kind"] = Json("bool"); break;
         case Kind::Int:
             j["kind"] = Json("int");
@@ -300,7 +299,7 @@ Json callTool(Machine& m, const std::string& name, const Json& args) {
         Board* b = m.find(args.at("id").str());
         if (!b) return textResult("no board '" + args.at("id").str() + "'", true);
         std::string err;
-        if (!setProperty(*b, args.at("key").str(), args.at("value").str(), m.running, err))
+        if (!setProperty(*b, args.at("key").str(), args.at("value").str(), err))
             return textResult(err, true);
         return dataResult(propsJson(b), b->id + ": " + args.at("key").str() + "=" +
                                             args.at("value").str());

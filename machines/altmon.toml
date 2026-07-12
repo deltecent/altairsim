@@ -28,7 +28,7 @@ sense   = 00
 # what a monitor PROM in a turnkey machine DID. There is no BOOT command
 # (DESIGN.md 10.0): a config that should start says so with the operator's own
 # keystroke, written down.
-startup = ["CONSOLE F800"]
+startup = ["RUN F800"]
 
 [[board]]
 type     = "8080"

@@ -16,6 +16,8 @@ This is why **UNMOUNT is not called DISMOUNT**: it's the plainer word, it takes 
 
 The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY, MOUNT, BREAK, EDIT, CONFIG, GO.**
 
+> **GO is gone (Patrick, 2026-07-12).** `RUN` is the switch on the front panel, and there was never a second thing for GO to be — see [RUN](#run-is-the-switch-on-the-panel) below. RESET keeps `R`, so RUN costs `RU`.
+
 | Type | Command | Notes |
 |---|---|---|
 | `D` | DUMP | |
@@ -26,7 +28,7 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `B` | BREAK | |
 | `E` | EDIT | *waiting on the line editor* |
 | `C` | CONFIG | |
-| `G` | GO | |
+| `RU` | RUN | RESET owns `R`; `G` now names nothing at all |
 | `SE` | SET | beats SEARCH — you type it far more often |
 | `SH` | SHOW | |
 | `DE` | DEPOSIT | the front panel keeps its word; it costs one letter |
@@ -46,11 +48,11 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `DI` | DISASM | |
 | `U` | UNMOUNT | not DISMOUNT — see above |
 | `DISC` | DISCONNECT | |
-| `CONS` | CONSOLE | `CONSOLE [addr]` — the guest takes the keyboard; **ATTN (^E)** gives it back |
+| `CONS` | CONSOLE | **configures** the console. It does not start the machine — RUN does |
 | `CONN` | CONNECT | `console \| null \| loopback` today |
 | `P` | POWER | |
 | `T` | TRACE | *waiting on the debugger* |
-| `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves CONSOLE today* |
+| `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves a RUN today* |
 | `SN` | SNAPSHOT | *waiting on the debugger* |
 | `REST` | RESTORE | *waiting on the debugger* |
 | `REC` | RECORD | *waiting on the debugger* |
@@ -72,9 +74,9 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 ```
 altairsim> HELP
 
-  D[UMP]            S[TEP]*           R[ESET]           H[ISTORY]*
-  M[OUNT]           B[REAK]*          E[DIT]*           C[ONFIG]
-  G[O]*             SE[T]             SH[OW]            DE[POSIT]
+  D[UMP]            S[TEP]            R[ESET]           H[ISTORY]*
+  M[OUNT]           B[REAK]           E[DIT]*           C[ONFIG]
+  RU[N]             SE[T]             SH[OW]            DE[POSIT]
   EX[AMINE]         I[N]              O[UT]             L[OAD]
   ...
 ```
@@ -126,7 +128,7 @@ EXAMINE keeps **its own cursor**, separate from DUMP's. They step by different a
 
 The panel has **no address latch of its own.** EXAMINE stops the processor, jams the address switches into the **program counter**, and the CPU drives the address lines and MEMR\*. Everything else follows from that one fact.
 
-**`EX <addr>` is a `JMP <addr>` you can see the destination of.** It loads the PC, so STEP afterwards executes *there* — which is also why `CONSOLE <addr>` is exactly EXAMINE followed by RUN.
+**`EX <addr>` is a `JMP <addr>` you can see the destination of.** It loads the PC, so STEP afterwards executes *there* — and `RUN <addr>` is exactly EXAMINE followed by RUN, which is the pair of switches you throw on the panel.
 
 ```
 altairsim> EX F800
@@ -145,6 +147,81 @@ no CPU in this machine.  BOARD ADD 8080 cpu0
 ```
 
 **`RAW <id>` is the exception, and only because it is not a bus cycle at all.** That is the PROM burner reaching behind the bus into a board's store (§10.2) — it needs no CPU, touches no PC, and carries its own cursor. Which is precisely why it can write a ROM when a bus write cannot.
+
+**EXAMINE is the only memory command that needs a CPU.** DUMP, DEPOSIT, FILL, SEARCH, COMPARE and MOVE all work on an empty backplane, because you have to be able to debug the simulator without a processor in it. Patrick: *"All commands that manipulate memory other than EX are fine without a CPU because we need to be able to debug the simulator without a CPU."*
+
+## RUN is the switch on the panel
+
+**`RUN [addr]` is the only way to start the machine**, and `RUN <addr>` is EXAMINE + RUN — it loads the PC first, exactly as you would on the panel.
+
+**GO was deleted for it (2026-07-12).** There was never a second thing for GO to be. A *headless* run — no terminal handover, ^C to stop — is not a mode the operator picks; it is simply what happens when **nothing holds the console**, and the machine already knows that. Whether your keys reach the guest is a fact about the backplane, not a question for you:
+
+| the backplane | what RUN does |
+|---|---|
+| a unit holds the console | the guest gets the keyboard — every key, including ^C — and the machine runs at the CPU card's real clock |
+| nothing holds the console | there is nothing to hand over, so it just runs, flat out |
+
+Both stop on a breakpoint, on a HLT nothing can wake, and on ATTN, and both say which. That is why GO had nothing left to be.
+
+### ATTN is the stop key. ^C is not.
+
+**Ctrl-C belongs to the guest** — CP/M reads it, and a stop key the guest also wants is one that either breaks the guest or gets eaten by it. So the way out is **ATTN (^E)**, and it is the same key whatever is in the backplane: with a console, with no console, on a terminal, always.
+
+The host intercepts it before the guest is ever offered the byte, so **the guest cannot disable it** — it is a key on the *front panel*, not on the terminal. And **ATTN does not stop the machine**: it takes the keyboard back, and a bare `RUN` resumes from exactly where you were.
+
+```
+altairsim> RUN F800
+[console -- ^E returns to the monitor]
+
+ALTMON 1.3
+*
+                                    ← you press ^E
+[monitor -- the machine is still at F83C. RUN resumes]
+```
+
+**ATTN is tracked on console input and nowhere else.** A unit on a socket, a serial port or a loopback is *not* the console, and its data passes through untouched — `05` down a socket is a byte of somebody's protocol, and scanning a modem line for a key that only exists on the operator's terminal would be corrupting the data, not a feature.
+
+## CONSOLE configures the console — it does not run the machine
+
+```
+altairsim> CONSOLE
+console  (the host keyboard and screen)
+
+  property         value            legal
+  attn             0x5              1..31
+
+  held by  sio0:a
+
+altairsim> CONSOLE attn=1D          ← make it ^]
+```
+
+`CONSOLE k=v` sets, bare `CONSOLE` shows. (`SET CONSOLE` and `SHOW CONSOLE` are the same thing said the long way.) It used to *enter* console mode, and that was wrong twice over: a command that starts the CPU because you asked to look at a setting is a trap, and "start the machine" already has a name.
+
+### Every property is settable
+
+There is no "runtime vs config-time" column, and no property that `SET` will refuse. **You can only type at the prompt when the machine is stopped** — by ATTN, by a breakpoint, by a HLT, which is the panel's STOP switch — so there is no moment at which a `SET` could race a running CPU. And on real hardware the rule would be a fiction anyway: Patrick — *"when working on boards, they are often accessed on an extender card and changed while the power is on."*
+
+There *was* such a gate. It never once fired, because nothing in the simulator ever set the flag it was conditioned on. A rule the code only pretends to enforce is worse than no rule at all.
+
+### Which unit is the console?
+
+**The one that is cabled to it** — the console is an endpoint like any other, so with three 2SIOs and six ports it is simply whichever unit you connected:
+
+```
+altairsim> CONNECT sio0:a console
+altairsim> CONNECT sio1:b console
+console: taken from sio0:a
+```
+
+**Exactly one unit may hold it, because there is exactly one keyboard.** Two boards reading it would each get half your keystrokes — invisible until you are debugging why every other character vanished. Interactively, connecting a second one **steals** it and says who from: you are moving the cable, and the last port you plug in is the one you meant.
+
+**A config file that names two consoles is refused.** There is no "last" about a file — it is a typo, not a decision — so it fails the load and names both offenders.
+
+### The keyboard is buffered by the host
+
+Keys land in a buffer belonging to the *host*, and a card takes characters from it. That is what lets ATTN be watched whether or not anybody is reading — while the guest is busy computing, and even when there is no serial card in the machine at all. It is also what lets anything *type for you*: an injected byte and a human's are indistinguishable to the board, because at the level the board sees, there is no difference. MCP's `send`/`expect` will be built on exactly that.
+
+It does not make the UART any less real: the 6850 still holds **one** character, still sets RDRF when it does, and still takes the next only when the guest has cleared the last. The buffer is the *line*, and a line is buffered and flow-controlled. It is a real keyboard buffer, so it is finite — type past the end and the keys are dropped, and the drop is counted rather than silently swallowed.
 
 And because looking at one byte is exactly when you need to know it *is* a byte:
 

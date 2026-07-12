@@ -30,7 +30,7 @@ void test_boundary() {
     bus.attach(&mem);
 
     std::string err;
-    CHECK(setProperty(mem, "fill", "zero", false, err), "fill=zero");
+    CHECK(setProperty(mem, "fill", "zero", err), "fill=zero");
 
     Region r;
     r.kind = RegionKind::Ram;
@@ -63,7 +63,7 @@ void test_boundary() {
     MemoryBoard bad;
     bad.id = "mem1";
     std::string e2;
-    CHECK(setProperty(bad, "fill", "random", false, e2), "fill=random");
+    CHECK(setProperty(bad, "fill", "random", e2), "fill=random");
     Region r2;
     r2.kind = RegionKind::Ram;
     r2.at = 0x8000;
