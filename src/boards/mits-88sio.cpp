@@ -16,7 +16,16 @@ namespace altair {
 // factor out "a UART" is exactly the mistake that produces a shared helper with a
 // bool flipping its polarity, and then a card that gets the flag wrong once.
 //
-// So they are two files, and this constant block is the reason.
+// THE CHIPS ARE SHARED. THE STATUS WORD IS NOT, AND THAT IS THE POINT.
+//
+// This card's UART now lives in src/chips/uart1602.h, and the 88-ACR will use the
+// same one -- but nothing about the polarity went with it. At the COM2502's pins the
+// status word is TRUE SENSE: RDA high means a character is waiting, TBMT high means
+// the transmit buffer is free. Everything below -- the inversion, which bit each
+// signal lands on, the Rev0/Rev1 difference -- happens between the chip's pins and
+// the S-100 bus, on THIS PCB, and it is exactly what the next card with a COM2502 on
+// it will do differently. So the chip is shared and the wiring is not, which is what
+// "a chip is not a card" means when it stops being a slogan (DESIGN.md 7.8).
 //
 // From the manual's Theory of Operation, "Bit Definition", as amended by the
 // errata sheet (see SioRev in the header):
@@ -96,20 +105,10 @@ Clock& deadCard() {
 
 void SioBoard::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
 
-// THE ONE PLACE THE LINE IS EVER REPLACED. Four callers (the constructor, CONNECT,
-// DISCONNECT, and the `connect` property) each used to rebuild the filter chain by
-// hand, which is four chances to forget the FilterStream wrapper and silently lose
-// every transform on that endpoint.
-void SioBoard::attachStream(std::unique_ptr<ByteStream> s) {
-    auto f  = std::make_unique<FilterStream>(std::move(s));
-    filter_ = f.get();
-    stream_ = std::move(f);
-}
-
 SioBoard::SioBoard() {
     // -> NullStream. There is no null pointer in the stream path, ever: a card with
     // nothing plugged into it is a card with a DEAD line, not a dangling one.
-    attachStream(std::make_unique<NullStream>());
+    u_.disconnect();
 }
 
 SioBoard::~SioBoard() {
@@ -120,58 +119,12 @@ SioBoard::~SioBoard() {
 }
 
 // ---------------------------------------------------------------------------
-// Timing
+// The status word: five pins on the chip, one byte on the bus, and everything
+// interesting happens in between. THIS IS THE CARD'S JOB AND NOT THE CHIP'S.
 // ---------------------------------------------------------------------------
-
-// A character on the wire is a start bit, the data bits, maybe a parity bit, and
-// the stop bits. On this card every one of those is a SOLDERED PAD (NDB1/NDB2,
-// NPB/POE, NSB) -- the guest cannot change them, which is the deepest difference
-// between this board and the 2SIO, where the same numbers come out of a control
-// register the guest wrote.
-int SioBoard::bitsPerChar() const {
-    return 1 + dataBits_ + (parity_ == Parity::None ? 0 : 1) + stopBits_;
-}
-
-uint64_t SioBoard::charTStates() const {
-    if (baud_ <= 0) return 0;
-    const Clock& c = clock_ ? *clock_ : deadCard();
-    return (uint64_t)(c.hz() * (long long)bitsPerChar() / baud_);
-}
 
 bool SioBoard::txBufferEmpty() const {
-    const Clock& c = clock_ ? *clock_ : deadCard();
-    return c.now() >= txFreeAt_;
-}
-
-// ---------------------------------------------------------------------------
-// The UART
-// ---------------------------------------------------------------------------
-
-// Pull a byte off the line, if the line has had time to deliver one AND the
-// receive register is free to take it.
-//
-// IT DOES NOT SYNTHESIZE AN OVERRUN, and the long version of why is in
-// mits-2sio.cpp over Mc6850::poll(). The short version: a ByteStream is NOT a serial
-// line. It is a buffered, flow-controlled source that will hold the byte until we
-// take it, and inventing an overrun from it does not reproduce a hardware
-// behaviour -- it MANUFACTURES data loss the host transport does not have. The
-// first 2SIO did exactly that and lost typed characters immediately.
-//
-// The honest consequence is that status bit 4 (Data Overflow) is always zero, and
-// that is written down in the board's .md as a limitation rather than left for
-// someone to discover.
-void SioBoard::pollRx() {
-    if (dav_) return;                         // register still full: the line waits
-    const Clock& c = clock_ ? *clock_ : deadCard();
-    if (c.now() < rxNextAt_) return;          // the character has not finished arriving
-    if (!stream_->readable()) return;
-
-    uint8_t b = 0;
-    if (stream_->read(&b, 1) != 1) return;
-
-    rxData_   = b;
-    dav_      = true;
-    rxNextAt_ = c.now() + charTStates();
+    return u_.txBufferEmpty(clock_ ? *clock_ : deadCard());
 }
 
 uint8_t SioBoard::statusByte() const {
@@ -192,9 +145,15 @@ uint8_t SioBoard::statusByte() const {
         if (txReady()) s |= kRev0TxBufferEmpty;
     }
 
-    (void)kOverflow;
-    (void)kFramingError;
-    (void)kParityError;  // always clear -- see the constant block
+    // The three error bits, straight off the chip's status word and NOT inverted --
+    // they are true-sense on this card, unlike the two ready bits above. They are
+    // always false today (there is no line to have noise on), but the wiring is here
+    // so that the day a host serial port reports a real framing error, it lands
+    // where the manual says it lands.
+    if (u_.overrun()) s |= kOverflow;
+    if (u_.framingError()) s |= kFramingError;
+    if (u_.parityError()) s |= kParityError;
+
     return s;
 }
 
@@ -211,18 +170,12 @@ bool SioBoard::decodes(const BusCycle& c) const {
 }
 
 uint8_t SioBoard::read(const BusCycle& c) {
-    pollRx();  // the receiver runs on the UART's clock, not on ours
+    const Clock& clk = clock_ ? *clock_ : deadCard();
+    u_.poll(clk);  // the receiver runs on the UART's clock, not on ours
 
-    uint8_t v;
-    if ((c.port() - base_) & 1) {
-        // The DATA channel. Reading it clears the RDAV flip-flop -- and clears it
-        // whether or not it was set: a read of an empty receive register on a real
-        // UART hands you whatever was last in it and does not error.
-        v    = rxData_;
-        dav_ = false;
-    } else {
-        v = statusByte();
-    }
+    // The DATA channel is where the read strobe is wired to the chip's /RDAR pin, so
+    // reading it clears Data Available. The other one is /SWE -- the status word.
+    uint8_t v = ((c.port() - base_) & 1) ? u_.readData() : statusByte();
 
     refresh();  // reading the data channel cleared DAV -- and with it, the interrupt
     return v;
@@ -230,15 +183,13 @@ uint8_t SioBoard::read(const BusCycle& c) {
 
 void SioBoard::write(const BusCycle& c) {
     if ((c.port() - base_) & 1) {
-        // The DATA channel. The character goes out, and the transmit buffer is BUSY
-        // until it has had time to leave. TBMT is a DEADLINE, not a flag.
-        uint8_t b = c.data;
-        stream_->write(&b, 1);
-        stream_->flush();
-        const Clock& clk = clock_ ? *clock_ : deadCard();
-        txFreeAt_ = clk.now() + charTStates();
+        // The DATA channel -- the chip's /TDS strobe. The character goes out, and the
+        // transmit buffer is BUSY until it has had time to leave.
+        u_.writeData(c.data, clock_ ? *clock_ : deadCard());
     } else {
-        // The CONTROL channel, and the only two bits of it that exist.
+        // The CONTROL channel, and the only two bits of it that exist. THESE ARE NOT
+        // IN THE UART -- they are a pair of flip-flops on the card (IC B), and the
+        // COM2502 has no interrupt pin for them to have come from.
         inIntEnabled_  = (c.data & kInIntEnable) != 0;
         outIntEnabled_ = (c.data & kOutIntEnable) != 0;
     }
@@ -277,7 +228,7 @@ bool SioBoard::assertsInt() const {
 void SioBoard::refresh() {
     if (!clock_) return;
 
-    pollRx();
+    u_.poll(*clock_);
     intChanged();  // drive pin 73 -- the bus is not going to come and ask
 
     clock_->cancel(wake_);
@@ -290,6 +241,11 @@ void SioBoard::refresh() {
 }
 
 // WHEN COULD THE REQUEST MOVE ON ITS OWN? Zero means never.
+//
+// THE CHIP REPORTS THE DEADLINE; THE CARD DECIDES IF ANYONE IS LISTENING. The COM2502
+// has no interrupt pin, so unlike the 6850 it cannot answer this question itself: it
+// knows when TBMT rises and when the next character lands, and it knows nothing about
+// the two enable flip-flops or the wire to pin 73, both of which are out here.
 uint64_t SioBoard::nextEdge() const {
     const Clock& clk = clock_ ? *clock_ : deadCard();
 
@@ -303,25 +259,32 @@ uint64_t SioBoard::nextEdge() const {
     };
 
     // The transmitter drains on its own clock, and the request rises with it.
-    if (outIntEnabled_) consider(txFreeAt_);
+    if (outIntEnabled_) consider(u_.txFreeAt());
 
     // The receiver fills on its own too -- but ONLY if there is actually a character
-    // on the line to fill it with. If the host has sent nothing, there is no edge
-    // coming and no timer to set: a byte appearing out of nowhere is not a deadline,
-    // it is an event in the OUTSIDE WORLD, and pump() is the one door the outside
-    // world comes through.
-    if (inIntEnabled_ && !dav_ && stream_->readable()) consider(rxNextAt_);
+    // on the line to fill it with (u_.rxWaiting()). If the host has sent nothing, there
+    // is no edge coming and no timer to set: a byte appearing out of nowhere is not a
+    // deadline, it is an event in the OUTSIDE WORLD, and pump() is the one door the
+    // outside world comes through.
+    if (inIntEnabled_ && u_.rxWaiting()) consider(u_.rxNextAt());
 
     return best;
 }
 
+// ---------------------------------------------------------------------------
+// RESET. Unlike the 6850 (which has no reset pin at all -- see Sio2Board::reset), the
+// COM2502 HAS one: MR, pin 21. So a card CAN reset this UART from the backplane, and
+// the data sheet says what happens when it does -- "sets TSO, TEOC and TBMT high, and
+// clears RDA, RPE, RFE, ROR", which is exactly Uart1602::masterReset().
+//
+// Whether the 88-SIO actually strapped RESET* to MR is not something the manual we
+// have says in so many words, and it is flagged in the .md. We do it, because a card
+// that comes out of a reset with a stale byte in the receiver is a card nobody built.
+// ---------------------------------------------------------------------------
 void SioBoard::reset(Reset) {
     if (!clock_) return;
 
-    dav_      = false;
-    rxData_   = 0;
-    txFreeAt_ = clock_->now();  // transmitter is immediately ready
-    rxNextAt_ = clock_->now();
+    u_.masterReset(*clock_);
 
     // POC* clears the interrupt-enable flip-flops. We do the same on RESET*, which
     // is an ASSUMPTION and is flagged in the .md: the manual documents the flip-flops
@@ -330,14 +293,14 @@ void SioBoard::reset(Reset) {
     inIntEnabled_  = false;
     outIntEnabled_ = false;
 
-    // The endpoint STAYS CONNECTED. A warm reset does not unplug the terminal, and a
-    // guest that reset its UART and found the console gone would be a baffling thing
-    // to debug.
+    // The endpoint STAYS CONNECTED -- Uart1602::masterReset() is careful about that.
+    // A warm reset does not unplug the terminal, and a guest that reset its UART and
+    // found the console gone would be a baffling thing to debug.
 
     // refresh() CANCELS the outstanding deadline before re-arming, which is why
     // wake_ must not be cleared here: POWER empties the queue under us, but RESET*
-    // does not. A character was going out when the button was pressed, and its alarm
-    // is still on the books. Zeroing the handle first would ORPHAN it.
+    // does not. A character was going out when the switch was hit, and its alarm is
+    // still on the books. Zeroing the handle first would ORPHAN it.
     refresh();
 }
 
@@ -345,7 +308,7 @@ void SioBoard::power() { reset(Reset::PowerOn); }
 
 // THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1).
 void SioBoard::pump() {
-    stream_->pump();
+    u_.pump();
     refresh();
 }
 
@@ -401,6 +364,8 @@ std::vector<Property> SioBoard::properties() {
         };
         p.push_back(std::move(x));
     }
+    // ---- THE FORMAT PADS. They live ON THE CHIP (they are pins on it), and the card
+    // presents them, because a pad is what an operator with a soldering iron sees.
     {
         Property x;
         x.name  = "baud";
@@ -410,9 +375,9 @@ std::vector<Property> SioBoard::properties() {
         x.min   = 50;
         x.max   = 25000;  // "The maximum BAUD rate is (400K/16) 25,000 BAUD"
         x.unit  = "baud";
-        x.get   = [this] { return Value::ofInt(baud_); };
+        x.get   = [this] { return Value::ofInt(u_.baud); };
         x.set   = [this](const Value& v, std::string&) {
-            baud_ = v.i();
+            u_.baud = v.i();
             return true;
         };
         p.push_back(std::move(x));
@@ -425,9 +390,9 @@ std::vector<Property> SioBoard::properties() {
         x.radix = 10;
         x.min   = 5;
         x.max   = 8;
-        x.get   = [this] { return Value::ofInt(dataBits_); };
+        x.get   = [this] { return Value::ofInt(u_.dataBits); };
         x.set   = [this](const Value& v, std::string&) {
-            dataBits_ = (int)v.i();
+            u_.dataBits = (int)v.i();
             return true;
         };
         p.push_back(std::move(x));
@@ -440,9 +405,9 @@ std::vector<Property> SioBoard::properties() {
         x.radix = 10;
         x.min   = 1;
         x.max   = 2;
-        x.get   = [this] { return Value::ofInt(stopBits_); };
+        x.get   = [this] { return Value::ofInt(u_.stopBits); };
         x.set   = [this](const Value& v, std::string&) {
-            stopBits_ = (int)v.i();
+            u_.stopBits = (int)v.i();
             return true;
         };
         p.push_back(std::move(x));
@@ -454,15 +419,17 @@ std::vector<Property> SioBoard::properties() {
         x.kind    = Kind::Enum;
         x.choices = {"none", "odd", "even"};
         x.get     = [this] {
-            switch (parity_) {
-            case Parity::Odd:  return Value::ofStr("odd");
-            case Parity::Even: return Value::ofStr("even");
-            default:           return Value::ofStr("none");
+            switch (u_.parity) {
+            case LineParity::Odd:  return Value::ofStr("odd");
+            case LineParity::Even: return Value::ofStr("even");
+            default:               return Value::ofStr("none");
             }
         };
         x.set = [this](const Value& v, std::string&) {
             const std::string& s = v.s();
-            parity_ = (s == "odd") ? Parity::Odd : (s == "even") ? Parity::Even : Parity::None;
+            u_.parity = (s == "odd")    ? LineParity::Odd
+                        : (s == "even") ? LineParity::Even
+                                        : LineParity::None;
             return true;
         };
         p.push_back(std::move(x));
@@ -487,7 +454,7 @@ std::vector<Property> SioBoard::properties() {
         x.name = "connect";
         x.help = "The endpoint on the other end of the line (CONNECT sets this)";
         x.kind = Kind::Str;
-        x.get  = [this] { return Value::ofStr(stream_->describe()); };
+        x.get  = [this] { return Value::ofStr(u_.endpoint()); };
         x.set  = [this](const Value& v, std::string& err) {
             if (!g_resolver) {
                 err = "no endpoint resolver installed";
@@ -495,7 +462,7 @@ std::vector<Property> SioBoard::properties() {
             }
             auto s = g_resolver(v.s(), err);
             if (!s) return false;
-            attachStream(std::move(s));
+            u_.connect(std::move(s));
             return true;
         };
         p.push_back(std::move(x));
@@ -505,7 +472,7 @@ std::vector<Property> SioBoard::properties() {
     // (DESIGN.md 7.2). They are the FILTER's properties, and the board passes them
     // through, which is why `SET sio0 UPPER=ON` works on a socket exactly as it does
     // on the console, with no code here.
-    for (Property& f : filter_->properties()) p.push_back(std::move(f));
+    for (Property& f : u_.filter()->properties()) p.push_back(std::move(f));
 
     return p;
 }
@@ -514,7 +481,7 @@ std::vector<Property> SioBoard::properties() {
 // there is nothing to disambiguate -- every jumper on it is a BOARD property, which
 // is exactly what it is on the PCB. The unit exists because CONNECT names one.
 std::vector<UnitDef> SioBoard::units() const {
-    return {{"tty", UnitKind::Serial, stream_->describe()}};
+    return {{"tty", UnitKind::Serial, u_.endpoint()}};
 }
 
 std::vector<MapEntry> SioBoard::ioMap() const {

@@ -45,6 +45,8 @@ and it is the whole reason the `rev` property exists.
 | Serial I/O Board Assembly Procedure, "I/O Device Interconnections" (doc p. 19) | same, p. 51 | **Authoritative** for the handshake lines (`SRIN`/`SROT`/`SBIN`/`SBOT`). |
 | I/O Address Selection Chart | same, pp. 53, 55, 57 | **Partial.** Chart pages 2 and 4 were not scanned; addresses 062–142 and 226–306 are missing from the file. The encoding is mechanical (pad `In` → `An` for a 1 bit, `Ān` for a 0) and the surviving pages agree with it, so nothing is lost. |
 | I/O Baud Rate Selection Chart | same, p. 15 (errata) | **Authoritative**, and *only* on the errata sheet — the chart in the manual body is the one the errata says to discard. 110, 150, 300, 600, 1200, 2400, 4800, 9600, 19200. |
+| Serial I/O Board **Parts List**, April 1975, BAG 1 | same, p. 3 | **Authoritative** — and the *only* place in 58 pages that names the UART: `1  COM2502  101065` (MITS stock number), with its 40-pin socket in BAG 4. The schematic, the assembly steps and the theory of operation call it "IC M" and nothing else. |
+| COM2502/COM2017 data sheet (SMC) | `reference/com2502.pdf` | **Authoritative** for the chip: the 40-pin pinout, the `/SWE`-gated status word (RPE, RFE, ROR, RDA, TBMT), the format pins (NDB1/NDB2, NSB, NPB, POE), `/RDAR`, `/TDS`, and **MR (pin 21)**. Modeled in `src/chips/uart1602.{h,cpp}`. |
 | `SIOECHO.ASM`, `SIOINT.ASM` | [deramp.com](https://deramp.com/downloads/altair/software/utilities/other/) | **Period software, written by someone who owns the hardware.** Independently corroborates the ports (00/01), the inverted bit 0, D0 = receive interrupt enable, and RST 7. Both run in `tests/test_88sio.cpp`, unmodified. |
 
 **The manual states no default address and no factory word format.** The ticked boxes in our
@@ -91,6 +93,22 @@ Concretely, an idle card with nothing typed reads **`0x63` on a Rev 1** and **`0
 
 ## How it is simulated
 
+### Where the chip stops and the card starts
+
+The COM2502 lives in **`src/chips/uart1602.{h,cpp}`** (DESIGN.md §7.8 — a chip is not a card). The 88-ACR has the same part on it, under the name its own manual uses (AY-5-1013/TR1602), and it will get this one rather than a second hand-rolled half of it.
+
+**The chip owns** the line, the receive holding register, Data Available (RDA), the transmit deadline (TBMT), the format pins (NDB1/NDB2, NSB, NPB/POE) and the master-reset pin (MR).
+
+**The card owns everything that makes the status word look like *this* card's status word** — and that is the whole point of the split:
+
+| | |
+|---|---|
+| **the inversion** | At the chip's pins the status word is **true sense**: RDA high = a character is waiting, TBMT high = the buffer is free. This card runs both through inverting buffers on the way to the bus. The 88-2SIO (a different chip) does not invert at all. **A shared "UART" helper with a `bool invert` is exactly the bug this split exists to prevent.** |
+| **where the bits land** | Bit 7 and bit 0 here; the Rev 0 duplicates at bits 5 and 1; the error bits at 4/3/2. All PCB wiring. |
+| **Rev 0 vs Rev 1** | Two revisions of the *card*, one unchanged chip. |
+| **the interrupt enables** | A separate IC (IC B). **The COM2502 has no interrupt pin at all** — the card derives its two requests from RDA and TBMT and gates them with these flip-flops. Which is why the chip publishes its raw deadlines (`txFreeAt()`, `rxNextAt()`) and the *board* computes `nextEdge()`. |
+| **the port decode** | Obviously. |
+
 - **Decodes** `IoRead`/`IoWrite` at `BASE` and `BASE+1`. No memory. `port` **must be even** —
   the decode ignores A0 and uses it to select the channel, so an odd base is not a card you
   could build, and setting one is refused with a sentence saying why.
@@ -124,11 +142,12 @@ unrepresentable.
 
 ### Reset
 
-- **`Reset::PowerOn`** (POC*, cold) — UART cleared, DAV cleared, transmitter immediately
-  ready, **interrupt enables cleared**. The endpoint stays connected.
-- **`Reset::Bus`** (RESET*, warm) — identical. **The endpoint stays connected**: a warm reset
-  does not unplug the terminal, and a guest that reset its UART and found the console gone
-  would be a baffling thing to debug.
+**Unlike the 88-2SIO, this card's UART really can be reset from the backplane.** The COM2502 has an **MR pin (21)**, and the data sheet says what it does: *"sets TSO, TEOC and TBMT high, and clears RDA, RPE, RFE, ROR."* So the transmitter comes up ready and the receiver comes up empty — which is `Uart1602::masterReset()`, and it is what both resets call. (Contrast `docs/boards/mits-2sio.md`: the MC6850 has **no** reset pin, so a bus reset there does nothing to the chip at all. Same slot, same backplane, opposite answer — because they are different chips.)
+
+- **`Reset::PowerOn`** (POC\*, cold) — UART master reset (DAV cleared, transmitter immediately ready), **interrupt enables cleared**. The endpoint stays connected.
+- **`Reset::Bus`** (RESET\*, warm) — identical. **The endpoint stays connected**: a bus reset does not unplug the terminal, and a guest that reset its UART and found the console gone would be a baffling thing to debug.
+
+> **Two assumptions, flagged rather than buried.** (1) The manual documents the interrupt-enable flip-flops (IC B) but not their clear line; we clear them on both resets. (2) It does not say in so many words that `RESET*` is strapped to the UART's MR pin — the chip *has* the pin, and a card that came out of a reset with a stale byte in the receiver is a card nobody built, so we drive it. Every period driver enables its own interrupts and initializes its own UART after a reset, so nothing period-correct should be able to tell either way.
 
 ## Quirks reproduced
 
