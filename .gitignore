@@ -35,3 +35,14 @@ altairsim.log
 *.DSK
 *.cas
 *.img
+
+# Scanned manuals and datasheets. Same reasoning as the disk images, and then
+# some: they are enormous (the 88-DCDD manual alone is 52 MB) and they are not
+# ours. They are the SOURCE the boards were built from, not part of the build --
+# keep them here on disk, cite them by filename in the code, and let
+# docs/sources.md say where each one came from. See [altair-hardware-sources].
+#
+# This was decided once, and then a `git add -A` put 83 MB of them in history
+# anyway; that history has been rewritten out. If you find yourself typing
+# `git add -f reference/...`, you are about to do it a third time.
+reference/
