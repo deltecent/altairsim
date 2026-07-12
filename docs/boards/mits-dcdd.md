@@ -10,12 +10,34 @@ The MITS 88-DCDD is the Altair's 8" floppy controller, driving up to 16 daisy-ch
 
 | Source | Path | Authority |
 |---|---|---|
-| `mits_dsk.c` | `../AltairClaude/reference/mits_dsk.c` | **Authoritative.** Patrick Linstruth's own SIMH module (2025), from Owen (1997) / Schorn (2002-23), minidisk by Mike Douglas. Its header comment is a cleaner spec than the MITS manual. |
-| `BIOS.ASM` | `../AltairClaude/reference/BIOS.ASM` | Mike Douglas 48K/8Mb Altair CP/M 2.2b BIOS — authoritative equates. |
-| `boot.asm`, `dbl.prn` | `../AltairClaude/reference/` | 2nd-stage loader; DBL 4.1 boot PROM disassembled by Martin Eberhard. |
-| `CLAUDE.md` | `../AltairClaude/CLAUDE.md` | 628 lines, binary-verified. Disk geometry, skew, DPB/DPH. |
+| `BOOT.ASM` | `disks/mits-88dcdd/cpm22/buffered/BOOT.ASM` | **Authoritative, and in the tree.** Mike Douglas's Altair CP/M 2.2b loader. Carries the complete equate block, and its cycle-count comments carry the *timing* (below). A period artifact written against real hardware — DESIGN.md §0.1's first-hand source. |
+| `BIOS.ASM` | `disks/mits-88dcdd/cpm22/buffered/BIOS.ASM` | **Authoritative.** The same equates, plus the real read/write/seek loops. |
+| `DBL.ASM` | `roms/DBL/DBL.ASM` | The 4.1 boot PROM, disassembled by Martin Eberhard. **Independently agrees** with the equates above — two sources, one answer. |
+| MITS manual | `reference/Altair Floppy (88-DCDD) Manual.pdf` | The card's own documentation. A 52 MB scan with no text layer; read it as page images. |
+| `mits_dsk.c` | `../AltairClaude/reference/mits_dsk.c` | **NOT a source. It is SIMH.** See the note below. |
 
-> **Unresolved:** the Python prototype and `BIOS.ASM` disagree on the positions of the `I` (interrupts-enabled) and `Z` (track 0) status bits. **Reconcile against `mits_dsk.c`.** The table below follows `BIOS.ASM`/`mits_dsk.c`.
+> ### `mits_dsk.c` is not authoritative, and this doc used to say it was
+>
+> The row above used to read *"**Authoritative.** Patrick Linstruth's own SIMH module… a cleaner
+> spec than the MITS manual."* It is a fine emulator and it is Patrick's own work, but **DESIGN.md
+> §0.1 says hardware facts never come from another emulator's source, and it names SIMH.** The rule
+> exists because a simulator is full of decisions that are *about simulating* and not about the
+> hardware — and this card is where that bit.
+>
+> Specifically: `mits_dsk.c` advances the sector counter **on every second read of port 0x09**, and
+> this doc faithfully copied that and called it *"the entire rotating-disk simulation. Subtle, and
+> load-bearing."* **It is neither.** It is a way to fake rotation when you have no trustworthy cycle
+> clock. No 88-DCDD ever advanced its sector counter because the CPU read a status port — the counter
+> is driven by 32 sector holes going past a photodetector, and it turns whether the guest is looking
+> or not. We have a T-state clock, so we model the disk (`Spindle`, DESIGN.md §7.5.1) and the
+> question does not arise.
+>
+> Keep the file for cross-checking a bit map. Do not take behaviour from it.
+
+> **RESOLVED 2026-07-12** (this note used to say the `I` and `Z` status bits were unresolved): the
+> Python prototype was **wrong** and the table below is **right**. `BOOT.ASM` and `DBL.ASM` agree
+> independently — `sINTEN equ 20h`, `sTRACK0 equ 40h`. Note also that **status bit 4 (0x10) is
+> genuinely unassigned**: the `10h` in the equates is `cINTEN`, which lives on the *control* port.
 
 ## Register reference
 
@@ -66,7 +88,64 @@ return ((sector << 1) & 0x3E) | 0xC0 | sector_true;
 
 Bit 0 (`sNEWSEC` / T) is **Sector True, and it is LOW (0) when the sector is positioned** for read/write. Returns `0xFF` if the head is not loaded.
 
-**The rotation model:** `sector_true` toggles on each read, and the sector counter advances (mod 32) only on **every second read**. That is the entire rotating-disk simulation. Subtle, and load-bearing.
+The layout looks arbitrary until you see the BIOS read it, and then it is beautiful:
+
+```asm
+dnLoop  in   DRVSEC   ;read sector position register
+        rar           ;wait for sector true (0=true)
+        jc   dnLoop
+        ani  SECMASK  ;A=sector number found
+```
+
+One `RAR` drops T into carry **and** shifts the 5-bit sector number from bits 5..1 down into bits
+4..0, where the mask is waiting for it. The sector sits in the middle of the byte *so that this
+works*. Note too that the BIOS does **not** wait for a particular sector — it waits for *any*
+sector boundary and takes whichever one it lands on, because it buffers the whole track.
+
+### The rotation model — THE DISK TURNS ON ITS OWN
+
+**The sector under the head is a reading taken off the clock, not a counter this card advances**
+(`Spindle`, DESIGN.md §7.5.1):
+
+```
+sector = (now / tPerSector) % 32
+```
+
+> **This paragraph used to say the exact opposite**, in bold, and call it *"the entire rotating-disk
+> simulation. Subtle, and load-bearing."* What it described — the counter advancing on every second
+> read of this port — is **SIMH's**, not the card's. It makes the platter spin at the speed of the
+> software polling it: a tight BIOS loop outruns a slow one, and a recorded session stops replaying
+> identically. See the `mits_dsk.c` note at the top of this file.
+
+### The timing, and where it comes from
+
+`BOOT.ASM`'s own cycle-count comments are the source, and they close the model exactly:
+
+```asm
+; The sector transfer loop is 116 cycles for two bytes read (has to be less than 128)
+        in   DRVDATA   ;(10) read first byte at 24-48 cycles
+        in   DRVDATA   ;(10) read at 70-94 cycles (data at 64 and 128)
+```
+
+**A byte every 64 T-states** at 2 MHz — which is 32 µs, i.e. exactly **250,000 bits/sec**, the
+standard 8" single-density rate. So the byte clock is the *medium's*, and like rotation it derives
+from `Clock::hz()`: a 4 MHz CPU does not make the disk read faster.
+
+And now the sector's whole anatomy falls out, with nothing left to invent:
+
+| | T-states @ 2 MHz | |
+|---|---|---|
+| One revolution | 333,333 | 360 RPM |
+| **One sector** | **10,416** | ÷ 32 hard sectors |
+| — its data | 8,768 | 137 bytes × 64 T |
+| — its gap | **1,648** | what is left: 10,416 − 8,768 |
+
+**`sector_true` IS the gap.** The head is past the sector hole and the data has not started yet —
+which is precisely what "positioned for read/write" means. It is 1,648 T-states wide, and the BIOS
+polls it with a 24-T-state loop (`in`/`rar`/`jc`), so it cannot be missed. Nothing here was chosen
+for convenience; the three numbers add up because they are the same three numbers the drive had.
+
+`sNRDA` then goes true once per byte-time, 137 times, through the data window.
 
 ### Write sequence
 1. Step to the desired track.
@@ -79,16 +158,31 @@ Read side reads 137 bytes from port 0x0A.
 
 ## Geometry
 
-| | |
-|---|---|
-| Bytes per sector slot | **137** (`DSK_SECTSIZE` / `TSECLEN`) |
-| Sectors per track | **32** (16 on minidisk) |
-| Tracks | **77** (standard 8"); **2048** on the 8 MB FDC+ serial drive |
-| Full 8" image | 77 × 32 × 137 = **337,568 bytes** |
-| 8 MB FDC+ image | 2048 × 32 × 137 = **8,978,432 bytes** |
-| Byte offset | `137 * sectors_per_track * track + 137 * sector` |
+Every slot is **137 bytes**, on every format. Sectors are numbered **from 0** (`startSector = 0` —
+the Tarbell numbers from 1, and DESIGN.md §7.3 calls that the off-by-one that silently corrupts a
+disk). Byte offset is `137 * sectorsPerTrack * track + 137 * sector`.
 
-**Minidisk is auto-detected purely by image size** (`MINI_DISK_SIZE ± MINI_DISK_DELTA` → 16 sectors/track, else 32) and **ignores head-unload**.
+| Format | Tracks | Sectors | `DATATRK` | Bytes | `media =` |
+|---|---|---|---|---|---|
+| **8"** | 77 | 32 | 6 | 77 × 32 × 137 = **337,568** | `8in` |
+| **Minidisk** | **35** | **16** | **4** | 35 × 16 × 137 = **76,720** | `minidisk` |
+| **FDC+ 8 MB** | 2048 | 32 | 6 | 2048 × 32 × 137 = **8,978,432** | `fdc8mb` |
+
+> **The minidisk row is three facts, and this doc used to have only one of them** (the 16 sectors).
+> Tracks are **35**, not 77, and **`DATATRK` is 4, not 6** — so the system/data boundary moves, and a
+> minidisk read with the 8" `DATATRK` decodes data sectors with the system layout and returns
+> garbage. Source: `BOOT.ASM`'s `MINIDSK` equates.
+
+The minidisk also **ignores head-unload**, and its `cHDLOAD` bit doubles as `cRESTMR` — restart the
+motor-off timer (see the control table).
+
+> ### The size probe needs a tolerance, and without it BOTH of our 8" disks are rejected
+>
+> The two 8" images in the tree are **337,664 bytes, not 337,568** — XMODEM padded them up to a
+> 128-byte block boundary. A strict `size == exact` probe rejects both. Match with **`sizeMatches()`**
+> (`src/host/disk.h`): `exact <= size < exact + 128`. The pad is never data and a write never reaches
+> it. The other two formats are already clean multiples of 128, so only the 8" disk shows the trap —
+> which is exactly how a strict probe survives review and then fails on the only disks anyone has.
 
 **The 88-DCDD is a HARD-SECTOR controller, and that is the fact everything else follows from.** Its images contain the **entire 137-byte slot** — sync byte, track/sector header, 128-byte payload, checksum, stop byte, trailer — not just the payload. Soft-sector controllers (Tarbell, Disk 1A, North Star) store the **payload only**, because on real media their headers and checksums lived in the inter-sector gaps and never reached the image file. Anything that reads a `.DSK` without knowing which kind of controller wrote it reads garbage.
 
@@ -165,8 +259,9 @@ They are **separate and both apply.** Document this loudly.
 | Quirk | If you get it wrong |
 |---|---|
 | Status bits are **inverted** on read | Nothing works, immediately and confusingly. |
-| Sector advances every **second** read of 0x09 | Software spins forever waiting for a sector that never arrives — or the disk appears to spin at double speed. |
-| Sector True is **low** when positioned | Reads/writes land on the wrong sector. |
+| The sector comes from the **clock**, and reading 0x09 does not advance it | Reading a port must never turn the disk. Bump a counter here and the platter spins at the speed of whatever loop is polling it, and a replay stops reproducing. (**This row used to say the opposite** — see the rotation section.) |
+| Sector True is **low** when positioned, and it is **the inter-sector gap** | Reads/writes land on the wrong sector — or, if the window is too narrow, software never sees it and spins forever. |
+| The byte clock is **250 kbit/s (64 T @ 2 MHz)**, not the CPU's | Overclock the CPU and the disk reads faster, which is nonsense. `BOOT.ASM`'s transfer loop is cycle-counted against the real rate and breaks if you change it. |
 | Write sequence consumes **exactly 137 bytes** | Partial sectors, corrupted disks. |
 | Any step **invalidates** sector/byte position | Stale positions cause writes to the wrong place. |
 | Dirty-buffer flush ordering: `out08` (select), `in09` (sector), `out09` (step) **all flush first**, in that order relative to invalidating position | **Silently corrupts disks.** |
@@ -178,7 +273,15 @@ They are **separate and both apply.** Document this loudly.
 
 - Interrupt bits (`cINTEN`/`cINTDIS`/`sINTEN`) are decoded but not wired to `pINT` by default — no period software used them.
 - Head-current control (`cHCSON`) is decoded and ignored, as on real hardware from software's point of view.
-- No modeling of index pulses, write splice, or actual bit-cell timing. Sector timing is the two-reads-per-sector model above. Software that measures rotation with a real-time clock would notice; nothing period does.
+- **Rotation and the byte clock are modeled; bit cells are not.** Sector position, the sector-true
+  gap and the 250 kbit/s byte rate all derive from the clock (above), so software that *times* the
+  disk sees the right answers. What is not modeled is anything below the byte: no write splice, no
+  MFM/FM cell encoding, no CRC on the wire. A sector is transferred as bytes, and the 137-byte slot
+  in the image is the whole of the medium. Nothing period looks below that line — the checksum the
+  BIOS verifies is a byte *inside* the slot, and it is really there.
+- **The head-load and step delays are not modeled**, so `sMOVEOK` and `sHDSTAT` come true at once.
+  Period software polls them rather than counting, so it cannot tell — but a formatter that *timed*
+  a seek would. If the MITS manual's numbers turn up, they belong here.
 
 ## The BIOS track-buffer trap (not a board bug, but it will bite you)
 
