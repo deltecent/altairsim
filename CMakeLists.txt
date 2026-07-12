@@ -135,3 +135,28 @@ add_executable(altair_tests
   tests/test_debug.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
+
+# ---------------------------------------------------------------------------
+# The 8080 validation gate (DESIGN.md 3.2). Period CP/M test suites, run against
+# our core. Separate from the unit tests because these are the tests we did NOT
+# write, which is the entire reason they are worth anything.
+#
+# They read their .COM files off disk at runtime rather than being embedded --
+# the ONE EXECUTABLE rule is about `altairsim`, and this is not it.
+# ---------------------------------------------------------------------------
+add_executable(altair_cputest tests/cputest.cpp)
+target_link_libraries(altair_cputest PRIVATE altair_core)
+target_compile_definitions(altair_cputest
+  PRIVATE ALTAIR_CPU_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/cpu")
+
+# Each suite is its own test, so a failure names the suite. `ctest` runs ALL of
+# them, 8080EXM included -- it is the gate, and a gate you have to remember to
+# run is not a gate. It costs ~10 minutes (2.9 billion instructions).
+#
+# While iterating, skip it with `ctest -LE slow`. Run it alone with `ctest -L slow`.
+add_test(NAME cpu-tst8080 COMMAND altair_cputest TST8080)
+add_test(NAME cpu-8080pre COMMAND altair_cputest 8080PRE)
+add_test(NAME cpu-cputest COMMAND altair_cputest CPUTEST)
+add_test(NAME cpu-8080exm COMMAND altair_cputest 8080EXM)
+set_tests_properties(cpu-8080exm PROPERTIES LABELS slow TIMEOUT 1800)
+set_tests_properties(cpu-cputest PROPERTIES TIMEOUT 600)

@@ -136,14 +136,35 @@ rest of the listing. A *run* of starred opcodes almost always means you are look
 at data, or at a Z80 binary, and being able to see that at a glance is the point of
 the mark.
 
-## Not yet done, and it is a gate
+## The gate is passed (2026-07-11)
 
-**The core is not "done" until TST8080, 8080PRE, CPUTEST and 8080EXM pass**
-(DESIGN.md §3.2). Those test programs are not in this repository — see
-`docs/roadmap.md`. Until they run, the tests here are the author's own, and a
-core's own tests are exactly the ones that share its blind spots. 8080EXM in
-particular checks every flag of every ALU operation against a table of CRCs and
-does not care how confident anybody was.
+**TST8080, 8080PRE, CPUTEST and 8080EXM all pass** (DESIGN.md §3.2). The suites
+live in `tests/cpu/`, the harness is `tests/cputest.cpp`, and `ctest` runs the
+first three on every build; 8080EXM is labelled `slow` and is run with
+`ctest -L slow`.
+
+| Suite | Result | Cost |
+|---|---|---|
+| TST8080 (Microcosm, 1980) | CPU IS OPERATIONAL | 1,217 instructions |
+| 8080PRE (Bartholomew & Cringle) | tests complete | 1,254 instructions |
+| CPUTEST (SuperSoft Diagnostics II, 1981) | CPU TESTS OK | 34.0M instructions |
+| **8080EXM** | **all 25 CRC groups PASS** | 2.92B instructions, 23.8B T-states |
+
+**8080EXM is the one that counts.** It runs every instruction against every
+interesting operand pair and CRCs the result *including all five flags*, then
+compares against CRCs captured from real silicon. It does not care how confident
+anybody was. Of its 25 groups, the two worth naming here are `aluop
+<b,c,d,e,h,l,m,a>` — which is what proves the `ANA` half-carry rule and the
+inverted borrow described above, and which would have failed for a single wrong
+operand pair — and `<daa,cma,stc,cmc>`, which is precisely the instruction the
+Python prototype's own notes admitted was "complex, not fully tested".
+
+**The T-states are corroborated independently of the CRCs.** SuperSoft's own
+documentation says CPUTEST's timing section takes about two minutes on a 2 MHz
+8080. Our run of it costs 255,660,114 T-states, which at 2 MHz is **127.8
+seconds** of simulated time. Nothing in the CRC checks constrains that number —
+it comes out right because the cycle counts are right, and it is the only
+evidence we have that they are.
 
 ## Open questions
 

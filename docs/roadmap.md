@@ -61,9 +61,10 @@ The board is `memory` (`docs/boards/memory.md`): a card holding a list of **regi
 
 ## The 8080 — the CPU card, single-stepping, and breakpoints
 
-**Built, 2026-07-11.** *(Out of order: milestone 2 is the CPU **validation gate**,
-and the chip itself was always going to be needed for 1b's 2SIO and 3's disk. See
-"the gate is not passed yet", below.)*
+**Built and VALIDATED, 2026-07-11.** *(Out of order: milestone 2 is the CPU
+**validation gate**, and the chip itself was always going to be needed for 1b's
+2SIO and 3's disk. The gate was closed the same day — see "the gate is passed",
+below.)*
 
 `src/isa/` (a stateless disassembler), `src/cpu/` (the core), `src/boards/cpu8080.cpp`
 (the card), `src/core/debug.cpp` (the debugger). `docs/boards/88-cpu.md`.
@@ -112,22 +113,35 @@ of a six-instruction, 39-T-state loop (9165). The T-states are not approximately
 right — they are right, which matters because they will drive the baud rate and the
 disk rotation.
 
-### The gate is NOT passed yet — and this is the debt to watch
+### The gate is PASSED (2026-07-11)
 
-**TST8080, 8080PRE, CPUTEST and 8080EXM are not in this repository**, so the core
-is validated only by tests its own author wrote — which are precisely the tests
-that share its blind spots. Until those four run, "the 8080 works" is an opinion.
+Patrick supplied the source: **altairclone.com/downloads/cpu_tests/**. The four
+suites are committed under `tests/cpu/` *with their period assembler source*, the
+harness is `tests/cputest.cpp`, and **all four pass** — including all 25 CRC
+groups of 8080EXM, which checks every instruction against every interesting
+operand and CRCs the result *including all five flags* against values captured
+from real silicon.
 
-8080EXM in particular checks every flag of every ALU operation against a table of
-CRCs, and it does not care how confident anybody was. The three flag rules most
-likely to be wrong are already written down in `docs/boards/88-cpu.md` (`ANA`'s
-half-carry, subtraction through the one adder, even parity) precisely *because*
-they are invisible in ordinary code.
+That matters more than the three suites before it, because the core was
+previously validated only by tests its own author wrote — precisely the tests
+that share its blind spots. The three flag rules called out in
+`docs/boards/88-cpu.md` as most likely to be wrong (`ANA`'s half-carry,
+subtraction through the one adder, even parity) are exactly what 8080EXM's
+`aluop` groups check, and `<daa,cma,stc,cmc>` is exactly what the Python
+prototype admitted it had never tested. All green, no changes to the core.
 
-**They are CP/M `.COM` files and need a harness** — load at `0100`, stub the BDOS
-at `0005` for function 2/9 — which is a small job, but the binaries have to come
-from somewhere first. **This is a question for Patrick** (see §0.1: do not guess,
-ask).
+**The T-states got corroborated for free.** SuperSoft's docs say CPUTEST's timing
+section takes ~2 minutes on a real 2 MHz 8080; our run of it costs 255,660,114
+T-states = **127.8 seconds** at 2 MHz. No CRC constrains that number. It is right
+because the cycle counts are right.
+
+**How the CP/M programs run with no CP/M and no console card:** a BDOS stub at
+`F000` written in *real 8080 machine code*, reached through the real `JMP` at
+`0005`, doing its output with a real `OUT` to a real board in the backplane. It
+would have been less code to trap `PC == 0005` in C++ — and that was rejected,
+because it would mean the `CALL`, the `RET`, the stack it unwinds, the `LDAX D`
+and the `OUT` were all being faked by the harness, in the one program whose whole
+job is to decide whether we implement them correctly.
 
 ---
 
@@ -176,7 +190,7 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 |---|---|---|
 | **1a — memory bench** | CLI, bus, `memory` board (ram + rom regions, banking, PHANTOM\*). **No CPU.** | Monitor acts as bus master: unpopulated pages read `FF`; a ROM region doesn't decode writes; all three phantom straps behave; contention detected; `RESET` keeps RAM, only `POWER` loses it |
 | **1b — skeleton** | MCP, 8080 (incl. interrupts), 88-2SIO | BASIC answers `PRINT 2+2` via console, socket, and host serial; interrupt-driven echo; two 2SIO boards at once |
-| 2 — CPU gate | (none) | TST8080 / 8080PRE / CPUTEST / **8080EXM** pass in CI on all four platforms; the no-`#ifdef` lint is green |
+| 2 — CPU gate | (none) | **DONE 2026-07-11** — TST8080 / 8080PRE / CPUTEST / **8080EXM** all pass (`ctest`, plus `ctest -L slow` for 8080EXM). Still to do: run them in CI on all four platforms; the no-`#ifdef` lint is green |
 | 3 — disk | 88-DCDD | Cold-boot CP/M 2.2 from `CPM22-8MB-56K-SIM.DSK` to `A0>`; run `M80`/`L80` |
 | 4 — memory model | ROM board, PHANTOM, banking | DBL PROM at 0xFF00 overlays RAM; `SHOW BUS MAP` shows it; bank switching works |
 | 5 — rest of serial | 88-SIO, 88-ACR, 88-LPC | MITS BASIC from a cassette image; SIO's **inverted** status alongside 2SIO's true-sense |

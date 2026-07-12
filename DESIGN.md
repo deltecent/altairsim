@@ -199,9 +199,13 @@ So the debugger lives in `Machine`, drives `cpu->step(bus)`, and asks only gener
 
 ### 3.2 Validation is a gate, not a nice-to-have
 
-The CPU is not "done" until **TST8080, 8080PRE, CPUTEST, and 8080EXM** pass (and ZEXALL/ZEXDOC for Z80). These run in CI as a headless `altairsim` batch script.
+The CPU is not "done" until **TST8080, 8080PRE, CPUTEST, and 8080EXM** pass (and ZEXALL/ZEXDOC for Z80).
 
-*The Python prototype's own notes say these were never run and that DAA is "not fully tested." Do not inherit that debt.*
+**PASSED for the 8080, 2026-07-11.** All four, including all 25 CRC groups of 8080EXM. Suites and their period source in `tests/cpu/` (from altairclone.com); harness in `tests/cputest.cpp`; `ctest` runs the quick three, `ctest -L slow` runs 8080EXM (~9 minutes, 2.9 billion instructions).
+
+**The harness runs the CP/M `.COM` files with no CP/M and no console card**, via a BDOS stub at `F000` written in *real 8080 machine code*, reached through the real `JMP` at `0005`, writing to a real port on a real board. Trapping `PC == 0005` in C++ would have been less code and was rejected: it would fake the `CALL`, the `RET`, the stack and the `OUT` inside the one program whose job is to check that we implement them correctly. **A validation harness may not emulate the thing it is validating.**
+
+*The Python prototype's own notes say these were never run and that DAA is "not fully tested." That debt is not inherited: `<daa,cma,stc,cmc>` is one of the 25 groups, and it passes.*
 
 ---
 

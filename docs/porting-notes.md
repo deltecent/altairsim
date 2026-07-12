@@ -51,6 +51,8 @@ The prototype's own notes say `DAA` is "complex, not fully tested" and that **TS
 
 **Validation is a hard CI gate (milestone 2), not a to-do.**
 
+> **Settled 2026-07-11.** All four suites run and pass against the C++ core — 8080EXM included, all 25 CRC groups, `<daa,cma,stc,cmc>` among them. See `tests/cputest.cpp`.
+
 ### 3. No interrupts at all
 
 `EI`/`DI` set `self.interrupts_enabled`, and **nothing ever reads it.** There is no `interrupt()` method, no INT pin, no vector injection. This is what happens when a simulator is built polled and interrupts are "added later."
