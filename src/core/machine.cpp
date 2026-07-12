@@ -55,6 +55,39 @@ void Machine::power() {
     for (auto& b : boards_) b->reset(Reset::PowerOn);
 }
 
+// ---------------------------------------------------------------------------
+// Who is driving the bus, and which chip is doing it.
+//
+// Note what these DON'T do: they do not look for a board called "cpu0", and they
+// do not look for a board whose type() is "8080". They ask what the board IS --
+// can it master the bus, does it carry a core -- so a Z80 card, or a card with an
+// 8080 and an 8085 on it, or a DMA controller that takes the bus away, all work
+// here without this file learning their names.
+// ---------------------------------------------------------------------------
+std::vector<Board*> Machine::masters() {
+    std::vector<Board*> out;
+    for (auto& b : boards_)
+        if (dynamic_cast<BusMaster*>(b.get())) out.push_back(b.get());
+    return out;
+}
+
+BusMaster* Machine::master() {
+    for (auto& b : boards_)
+        if (auto* m = dynamic_cast<BusMaster*>(b.get())) return m;
+    return nullptr;  // no processor. A REAL machine, and the one 1a ran.
+}
+
+CpuCore* Machine::cpu() {
+    for (auto& b : boards_)
+        if (auto* c = dynamic_cast<CpuCard*>(b.get())) return c->activeCore();
+    return nullptr;
+}
+
+std::string Machine::isa() {
+    CpuCore* c = cpu();
+    return c ? c->isa() : "";
+}
+
 std::vector<std::string> Machine::drainBoardLog() {
     std::vector<std::string> out;
     for (auto& b : boards_) {

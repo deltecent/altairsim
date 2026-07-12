@@ -15,6 +15,7 @@ const char* unitKindName(UnitKind k) {
     case UnitKind::Rom:    return "rom";
     case UnitKind::Serial: return "serial";
     case UnitKind::Tape:   return "tape";
+    case UnitKind::Cpu:    return "cpu";
     }
     return "?";
 }

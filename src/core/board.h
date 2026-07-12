@@ -41,6 +41,14 @@ enum class UnitKind {
     Rom,    // MOUNT / UNMOUNT an image into a socket -- a region on a memory card
     Serial, // CONNECT / DISCONNECT an endpoint
     Tape,   // MOUNT / UNMOUNT
+    Cpu,    // a PROCESSOR on the card. Neither mounted nor connected: it is
+            // SOLDERED ON. A card with an 8080 and an 8085 on it, switching
+            // between them when the guest does an OUT, is a real product -- so
+            // cores are units, exactly one active (DESIGN.md 3.0.1). This needs no
+            // new bus concept at all: the card decodes the OUT, sets its own
+            // latch, and reports a different active core, which is structurally
+            // identical to a memory card switching banks. The bus arbitrates
+            // nothing, here as everywhere.
 };
 
 const char* unitKindName(UnitKind k);
@@ -89,6 +97,21 @@ public:
     virtual uint8_t read(const BusCycle&) { return 0xFF; }
     virtual void write(const BusCycle&) {}
 
+    // LOOK WITHOUT TOUCHING. Not a bus cycle: no strobe, no side effect, no snoop.
+    //
+    // A read() can CONSUME -- an IN from a UART's data port takes the byte and the
+    // guest never sees it -- so DISASM and TRACE must never be built on one. They
+    // would work perfectly on RAM and then quietly eat the console's input the
+    // first time someone disassembled a page with a UART mapped into it.
+    //
+    // A board that cannot answer without side effects returns FALSE, and that is
+    // an honest answer, not a failure: the byte on a real bus is only defined
+    // DURING a cycle. The caller shows FF, which is what it would have floated to.
+    virtual bool peek(uint16_t addr, uint8_t& out) const {
+        (void)addr; (void)out;
+        return false;
+    }
+
     // EVERY BOARD SEES EVERY CYCLE. That is what a backplane IS: the address bus
     // is not addressed TO anyone, it is simply present, and any card may watch it
     // whether or not it answers.
@@ -102,6 +125,16 @@ public:
     // a bus feature and the bus does not know it happened. It is one flip-flop on
     // one card, which is the whole point.
     virtual void snoop(const BusCycle&) {}
+
+    // Am I pulling pINT (pin 73) right now? A UART with a character waiting and
+    // its interrupt jumper installed says yes, and keeps saying yes until the
+    // guest reads the character -- an interrupt is a LEVEL on a wire, not an event
+    // that gets queued and delivered. Model it as a level and a board cannot
+    // "lose" an interrupt, because there was never a queue to lose it from.
+    //
+    // The board does NOT supply a vector here. If it wants to drive one, it claims
+    // the IntAck cycle like any other cycle (DESIGN.md 4.4).
+    virtual bool assertsInt() const { return false; }
 
     // ---- Lifecycle (DESIGN.md 6) ----
 

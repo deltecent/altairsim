@@ -7,11 +7,14 @@
 #include "boards/registry.h"
 #include "config/toml.h"
 #include "core/crc32.h"
+#include "core/debug.h"
 #include "core/hex.h"
 #include "core/roms.h"
+#include "isa/isa.h"
 
 #include <algorithm>
 #include <cctype>
+#include <csignal>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -377,6 +380,123 @@ void Monitor::showRoms(std::ostream& out) {
 }
 
 // ---------------------------------------------------------------------------
+// The CPU, as the monitor sees it.
+//
+// NOTHING BELOW KNOWS WHAT AN 8080 IS. It asks the machine for the active core,
+// the core for its registers and its instruction set, and the registry for a
+// disassembler by name. The day an 8085 or a Z80 card lands, REGS, SET REG, STEP,
+// GO, BREAK and DISASM all work against it with no change here -- which is the
+// entire payoff of making registers reflection (DESIGN.md 3.0.3).
+// ---------------------------------------------------------------------------
+
+CpuCore* Monitor::needCpu(std::ostream& err) {
+    CpuCore* c = m_.cpu();
+    if (!c) {
+        // Not an internal error -- a fact about the machine. An empty backplane is
+        // a machine you can build, and it is the one milestone 1a ran.
+        err << "no CPU in this machine.  BOARD ADD 8080 cpu0\n";
+        failed_ = true;
+    }
+    return c;
+}
+
+uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& out) {
+    // PEEK, never read: DISASM must not consume a byte from a UART that happens to
+    // live in the range you asked about.
+    auto peek = [this](uint16_t a) { return m_.bus.peek(a); };
+    Insn in = d.at((uint16_t)at, peek);
+
+    std::string bytes;
+    char b[8];
+    for (int i = 0; i < in.len; ++i) {
+        std::snprintf(b, sizeof b, "%02X ", peek((uint16_t)(at + (uint32_t)i)));
+        bytes += b;
+    }
+
+    char buf[96];
+    std::snprintf(buf, sizeof buf, "%04X  %-9s %s", (unsigned)at & 0xFFFF, bytes.c_str(),
+                  in.text.c_str());
+    out << buf << "\n";
+    return in.len;
+}
+
+void Monitor::showRegs(std::ostream& out) {
+    CpuCore* c = m_.cpu();
+    if (!c) return;
+
+    // Generic over registers(). The wide registers on one line, the 1-bit flags on
+    // the next -- and the ONLY thing this code knows is the width, which the core
+    // told it. It has never heard of an accumulator.
+    std::string wide, flags;
+    char buf[32];
+    for (const RegDef& r : c->registers()) {
+        if (r.bits > 1) {
+            std::snprintf(buf, sizeof buf, "%s=%0*X ", r.name.c_str(), r.bits / 4, r.get());
+            wide += buf;
+        } else {
+            std::snprintf(buf, sizeof buf, "%s=%u ", r.name.c_str(), r.get());
+            flags += buf;
+        }
+    }
+    out << wide << "\n" << flags << "\n";
+
+    if (const Disassembler* d = disassemblerFor(c->isa())) disasmLine(c->pc(), *d, out);
+}
+
+// ---------------------------------------------------------------------------
+// ^C.
+//
+// The handler does ONE thing: set a lock-free flag. It does not print, it does
+// not touch the machine, and it does not throw -- those are all undefined in a
+// signal handler, and the bug they produce is a hang or a corrupted heap once in
+// a hundred runs, which is the worst kind there is.
+//
+// It is installed only for the duration of a GO or a STEP, and the previous
+// handler is put back afterwards, so ^C at the monitor prompt still kills the
+// process exactly as it did before there was a CPU.
+// ---------------------------------------------------------------------------
+static void onSigint(int) { Debugger::interrupt(); }
+
+namespace {
+struct SigintGuard {
+    void (*prev)(int) = nullptr;
+    SigintGuard() { prev = std::signal(SIGINT, onSigint); }
+    ~SigintGuard() { std::signal(SIGINT, prev); }
+};
+} // namespace
+
+// What stopped it, said out loud. A run that just... comes back, with no reason
+// given, is a debugger you cannot trust.
+static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& out) {
+    char buf[120];
+    switch (r.why) {
+    case StopReason::Breakpoint: {
+        std::string what = "?";
+        for (const Breakpoint& b : dbg.breakpoints())
+            if (b.id == r.bp) what = b.describe();
+        std::snprintf(buf, sizeof buf, "breakpoint %d (%s) -- stopped at %04X", r.bp,
+                      what.c_str(), r.pc);
+        out << buf << "\n";
+        break;
+    }
+    case StopReason::Halted:
+        std::snprintf(buf, sizeof buf,
+                      "HLT at %04X, and nothing can interrupt it -- no board is pulling pINT.",
+                      r.pc);
+        out << buf << "\n";
+        break;
+    case StopReason::Interrupted:
+        out << "^C -- stopped at the instruction boundary. The machine is intact.\n";
+        break;
+    case StopReason::NoCpu:
+        out << "no CPU in this machine.  BOARD ADD 8080 cpu0\n";
+        break;
+    case StopReason::Steps:
+        break;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // exec
 // ---------------------------------------------------------------------------
 
@@ -639,19 +759,33 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "MACHINE") {
             out << "name      " << m_.name << "\n";
-            // The clock belongs to the CPU CARD (DESIGN.md 3) -- that is where the
-            // crystal is. There is no CPU card yet, so this value is inert, and
-            // saying so is cheaper than letting a config file look like it did
-            // something. It moves to `SET cpu0 clock_hz=` when the 8080 lands.
-            std::snprintf(buf, sizeof buf, "clock_hz  %lld%s", m_.clockHz,
-                          m_.clockHz == 0 ? "  (flat out)" : "  (inert: no CPU card)");
-            out << buf << "\n";
             std::snprintf(buf, sizeof buf, "sense     0x%02X  (port FF, front-panel switches)",
                           m_.sense);
             out << buf << "\n";
             out << "startup   " << (m_.startup.empty() ? "(none)" : "") << "\n";
             for (const auto& s : m_.startup) out << "            " << s << "\n";
-            out << "cpu       (none -- milestone 1a: the monitor is the bus master)\n";
+
+            // THE CLOCK IS NOT PRINTED HERE, and there is no machine-level clock to
+            // print. The crystal is on the CPU card (DESIGN.md 3, 8), so the rate is
+            // that card's property and `SHOW cpu0` is where it lives. A backplane
+            // with no CPU in it has no clock rate at all -- which is not a missing
+            // value, it is the truth about the machine.
+            std::vector<Board*> cpus = m_.masters();
+            if (cpus.empty()) {
+                out << "cpu       (none -- the monitor is the bus master, and that is a\n"
+                       "            real machine: DEPOSIT and DUMP run real bus cycles)\n";
+            } else {
+                for (Board* c : cpus) {
+                    std::string isa = "?";
+                    if (auto* card = dynamic_cast<CpuCard*>(c))
+                        if (CpuCore* core = card->activeCore()) isa = core->isa();
+                    std::snprintf(buf, sizeof buf, "cpu       %s (%s)  -- SHOW %s for its clock",
+                                  c->id.c_str(), isa.c_str(), c->id.c_str());
+                    out << buf << "\n";
+                }
+                if (cpus.size() > 1)
+                    out << "          TWO BUS MASTERS. That is contention, not a feature.\n";
+            }
             return true;
         }
         Board* b = board(a[1], out);
@@ -675,6 +809,50 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             failed_ = true;
             return true;
         }
+
+        // SET REG A=3F -- and the flags are registers too, so SET REG CY=1 works
+        // and nothing here had to be told what a flag is.
+        //
+        // A register value IS on the wire, so it is HEX (DESIGN.md 10.0.1). `SET
+        // REG A=10` is sixteen, exactly as `EX 10` is address sixteen.
+        if (is(a[1], "REG")) {
+            CpuCore* c = needCpu(out);
+            if (!c) return true;
+            std::string k, v;
+            size_t eq = a[2].find('=');
+            if (eq != std::string::npos) {
+                k = a[2].substr(0, eq);
+                v = a[2].substr(eq + 1);
+            } else if (a.size() >= 4) {
+                k = a[2];
+                v = a[3];
+            } else {
+                out << "usage: SET REG <r>=<v>\n";
+                failed_ = true;
+                return true;
+            }
+            for (const RegDef& r : c->registers()) {
+                if (upper(r.name) != upper(k)) continue;
+                uint32_t val;
+                if (!addr(v, val, out)) return true;
+                uint32_t max = r.bits >= 32 ? 0xFFFFFFFFu : (1u << r.bits) - 1;
+                if (val > max) {
+                    char e[96];
+                    std::snprintf(e, sizeof e, "%s is %d bits -- %X does not fit.",
+                                  r.name.c_str(), r.bits, val);
+                    out << e << "\n";
+                    failed_ = true;
+                    return true;
+                }
+                r.set(val);
+                showRegs(out);
+                return true;
+            }
+            out << upper(k) << ": no such register. REGS lists them.\n";
+            failed_ = true;
+            return true;
+        }
+
         Board* b = board(a[1], out);
         if (!b) return true;
         // key=value, or `key value`
@@ -1171,8 +1349,229 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         return true;
     }
 
+    // ---------------- THE CPU ----------------
+
+    if (cmd == "REGS") {
+        if (!needCpu(out)) return true;
+        showRegs(out);
+        return true;
+    }
+
+    // DISASM. It needs an instruction set, NOT a CPU -- which is why it worked in
+    // milestone 1a against the DBL PROM with an empty backplane, and why the 8080
+    // decode tables were exercised long before anything executed them.
+    //
+    // You do not normally name the CPU, and must not have to: the active core says
+    // which instruction set it speaks and DISASM asks it (DESIGN.md 3.0.2).
+    if (cmd == "DISASM") {
+        std::string want;
+        for (size_t i = 1; i < a.size(); ++i) {
+            if (upper(a[i]).rfind("CPU=", 0) == 0) {
+                want = a[i].substr(4);
+                a.erase(a.begin() + (long)i);
+                break;
+            }
+        }
+        if (want.empty()) want = m_.isa();
+        if (want.empty()) {
+            out << "no CPU in this machine, so I do not know how to decode these bytes.\n"
+                   "Say which: DISASM " << (a.size() > 1 ? a[1] : "<addr>") << " CPU=8080\n";
+            failed_ = true;
+            return true;
+        }
+        const Disassembler* d = disassemblerFor(want);
+        if (!d) {
+            out << "no instruction set '" << want << "'. Known:";
+            for (const auto& s : instructionSets()) out << " " << s;
+            out << "\n";
+            failed_ = true;
+            return true;
+        }
+
+        uint32_t lo = disasmNext_, hi = 0;
+        uint32_t n = 16;  // a screenful, and a count -- so it is DECIMAL
+        bool haveRange = false;
+        if (a.size() >= 2) {
+            if (a[1].find('-') != std::string::npos || a[1].find('/') != std::string::npos) {
+                if (!range(a[1], lo, hi, out)) return true;
+                haveRange = true;
+            } else if (!addr(a[1], lo, out)) {
+                return true;
+            }
+        }
+        if (a.size() >= 3 && !haveRange && !count(a[2], n, out)) return true;
+
+        uint32_t at = lo;
+        for (uint32_t i = 0; haveRange ? at <= hi : i < n; ++i) {
+            at += disasmLine(at, *d, out);
+            if (at > 0xFFFF) break;  // ran off the top of memory; do not wrap silently
+        }
+        disasmNext_ = at & 0xFFFF;
+        return true;
+    }
+
+    // STEP -- one instruction, with real bus cycles, through the real decode.
+    if (cmd == "STEP") {
+        CpuCore* c = needCpu(out);
+        if (!c) return true;
+
+        uint32_t n = 1;
+        if (a.size() >= 2 && !count(a[1], n, out)) return true;  // a count: DECIMAL
+
+        const Disassembler* d = disassemblerFor(c->isa());
+        SigintGuard guard;
+
+        // Printing every instruction is what STEP is FOR -- watching them go by is
+        // the point. Past a screenful or two that stops being a trace and starts
+        // being a flood, so we run quietly and report. The cutoff is arbitrary; the
+        // behaviour is not, and it is stated rather than discovered.
+        const uint32_t kEcho = 32;
+        bool echo = n <= kEcho;
+
+        RunResult total;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (echo && d) disasmLine(c->pc(), *d, out);  // what it is ABOUT to do
+            RunResult r = m_.debug.run(1);
+            total.steps += r.steps;
+            total.tStates += r.tStates;
+            total.pc = r.pc;
+            if (r.why != StopReason::Steps) {
+                reportStop(r, m_.debug, out);
+                break;
+            }
+        }
+        flush(out);
+        if (!echo) {
+            char b[96];
+            std::snprintf(b, sizeof b, "%llu instructions, %llu T-states.",
+                          (unsigned long long)total.steps, (unsigned long long)total.tStates);
+            out << b << "\n";
+        }
+        disasmNext_ = c->pc();
+        showRegs(out);
+        return true;
+    }
+
+    // GO -- run until something stops it, and it always says what did.
+    if (cmd == "GO") {
+        CpuCore* c = needCpu(out);
+        if (!c) return true;
+
+        if (a.size() >= 2) {
+            uint32_t at;
+            if (!addr(a[1], at, out)) return true;
+            c->setPc((uint16_t)at);
+        }
+
+        char b[64];
+        std::snprintf(b, sizeof b, "running from %04X.  ^C stops it.", c->pc());
+        out << b << "\n";
+        out.flush();
+
+        SigintGuard guard;
+        RunResult r = m_.debug.run(0);
+
+        reportStop(r, m_.debug, out);
+        std::snprintf(b, sizeof b, "%llu instructions, %llu T-states.",
+                      (unsigned long long)r.steps, (unsigned long long)r.tStates);
+        out << b << "\n";
+        flush(out);
+        disasmNext_ = c->pc();
+        showRegs(out);
+        return true;
+    }
+
+    // BREAK. Three kinds, and only ONE of them is about the CPU:
+    //
+    //   BREAK <addr>          PC lands here -- one comparison against a register
+    //   BREAK MEM R|W <addr>  a bus CYCLE touched this address
+    //   BREAK IO R|W <port>   a bus CYCLE touched this port
+    //
+    // The last two are bus observers (DESIGN.md 3.0.3), so they catch a DMA
+    // transfer as readily as a processor, and they will work unchanged on a Z80.
+    if (cmd == "BREAK") {
+        if (a.size() < 2) {
+            const auto& bps = m_.debug.breakpoints();
+            if (bps.empty()) {
+                out << "no breakpoints.\n";
+                return true;
+            }
+            out << " id  what          hits\n";
+            for (const Breakpoint& b : bps) {
+                std::snprintf(buf, sizeof buf, "%3d  %-12s %5llu", b.id, b.describe().c_str(),
+                              (unsigned long long)b.hits);
+                out << buf << "\n";
+            }
+            return true;
+        }
+
+        BreakKind kind = BreakKind::Pc;
+        size_t argi = 1;
+        bool io = is(a[1], "IO"), mem = is(a[1], "MEM");
+        if (io || mem) {
+            if (!need(3, "BREAK MEM|IO R|W <addr>")) return true;
+            bool w = is(a[2], "W") || is(a[2], "WRITE");
+            bool rd_ = is(a[2], "R") || is(a[2], "READ");
+            if (!w && !rd_) {
+                out << "which? BREAK " << upper(a[1]) << " R <addr>   or   ... W <addr>\n";
+                failed_ = true;
+                return true;
+            }
+            kind = io ? (w ? BreakKind::IoWrite : BreakKind::IoRead)
+                      : (w ? BreakKind::MemWrite : BreakKind::MemRead);
+            argi = 3;
+        }
+        if (a.size() <= argi) {
+            out << "usage: BREAK <addr> | BREAK MEM R|W <addr> | BREAK IO R|W <port>\n";
+            failed_ = true;
+            return true;
+        }
+
+        uint32_t lo, hi;
+        if (a[argi].find('-') != std::string::npos || a[argi].find('/') != std::string::npos) {
+            if (!range(a[argi], lo, hi, out)) return true;
+        } else {
+            if (!addr(a[argi], lo, out)) return true;
+            hi = lo;
+        }
+
+        int id = m_.debug.add(kind, lo, hi);
+        for (const Breakpoint& b : m_.debug.breakpoints())
+            if (b.id == id) out << "breakpoint " << id << ": " << b.describe() << "\n";
+        return true;
+    }
+
+    if (cmd == "NOBREAK") {
+        if (a.size() < 2) {
+            size_t n = m_.debug.breakpoints().size();
+            m_.debug.clear();
+            out << n << " breakpoint(s) cleared.\n";
+            return true;
+        }
+        uint32_t id;
+        if (!count(a[1], id, out)) return true;  // an id is not on the wire: DECIMAL
+        std::string err;
+        if (!m_.debug.remove((int)id, err)) {
+            out << err << "\n";
+            failed_ = true;
+            return true;
+        }
+        out << "breakpoint " << id << " cleared.\n";
+        return true;
+    }
+
     // ---------------- EXECUTION ----------------
     if (cmd == "RESET") {
+        // RESET CPU is a DEBUGGING CONVENIENCE AND NOT A REAL SIGNAL (DESIGN.md 6).
+        // There is no wire on the backplane that resets the processor and nothing
+        // else, and saying so is the difference between a tool and a lie.
+        if (a.size() >= 2 && is(a[1], "CPU")) {
+            CpuCore* c = needCpu(out);
+            if (!c) return true;
+            c->reset(Reset::Bus);
+            out << "CPU reset: PC=0000, interrupts off. The other boards were NOT told.\n";
+            return true;
+        }
         m_.reset(Reset::Bus);
         out << "RESET* pulsed. (Memory is UNTOUCHED -- only POWER loses RAM.)\n";
         return true;

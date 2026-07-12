@@ -105,12 +105,21 @@ But there is a distinction to draw, and drawing it is what makes DMA clean:
 Two concepts; a CPU card is both:
 
 ```cpp
-class BusMaster {                       // drives cycles onto the bus
-    virtual uint64_t step(Bus&) = 0;    // run one instruction; returns T-states consumed
+class BusMaster {                        // drives cycles onto the bus
+    virtual StepResult step(Bus&) = 0;   // one instruction: T-states, and WHY it stopped
 };
 
-class Cpu88 : public Board, public BusMaster { ... };   // the 88-CPU card
+class Cpu8080Board : public Board, public BusMaster, public CpuCard { ... };  // the 88-CPU
 ```
+
+*(`step()` returns a `StepResult`, never a bare T-state count — §3.1. A count alone
+cannot distinguish "this instruction legitimately took N cycles" from "something
+went wrong", and §16 records what that cost the prototype.)*
+
+**Built, 2026-07-11.** `src/isa/isa8080.cpp`, `src/cpu/cpu8080.cpp`,
+`src/boards/cpu8080.cpp`, and the debugger in `src/core/debug.cpp`. The card
+decodes nothing — `BOARD LIST` shows `cpu0  8080  mem:-  io:-`, and that is the
+truth about a processor card, not a gap in the table. See `docs/boards/88-cpu.md`.
 
 **The payoff is DMA.** S-100 has `pHOLD`/`pHLDA` precisely because a backplane can have more than one bus master — a disk controller or a Dazzler takes the bus away from the processor. With `BusMaster` as a first-class concept, a DMA card is simply a `Board` that *becomes* a `BusMaster` when granted the bus. DMA is not a bolted-on path in the bus; it is the same mechanism the CPU already uses. (It also leaves the door open to master/slave multiprocessor S-100 setups without designing for them now.)
 
@@ -354,6 +363,10 @@ The first two are called **several times per cycle** — once to resolve PHANTOM
 - The release must also **latch**, or a later data read below `0x20` would re-shadow the PROM over the sector just loaded there.
 
 The bus does not know any of this happened. It is one flip-flop, on one card, and that is the point: a real backplane has no "notify" mechanism, so neither does this one — `snoop()` is not a callback, it is a card looking at wires that were in front of it the whole time.
+
+**And the debugger watches the same stream from outside the backplane.** `Bus::observe()` hands a callback the very cycles the cards see, and that is the entire implementation of `BREAK IO`, `BREAK MEM`, `TRACE` and `HISTORY` (§3.0.3). They are therefore **not CPU features**, they cost the cores nothing, they work on any processor the day it lands — and they catch a **DMA** transfer or a front-panel `DEPOSIT` just as readily as a `MOV`, because a cycle is a cycle no matter who originated it.
+
+An observer is **armed only while the machine is running.** The monitor's own `DUMP` and `DEPOSIT` are real bus cycles — that is the point of them — so an always-armed `BREAK MEM W` would "fire" on the operator's own `DEPOSIT`, with no program running to stop and nothing sensible to report.
 
 ### 4.3 Banking — the strongest evidence in this document that boards must own their decode
 
@@ -875,7 +888,8 @@ Implemented once against `Board::properties()`; they know nothing about baud rat
 
 ### 10.2 Memory access: through the bus, or behind it?
 
-- **Default: through the bus.** `DUMP`, `DISASM`, `DEPOSIT` see exactly what the CPU sees — live bank, PHANTOM overlays applied, ROM not decoding writes, contention reported. Addresses are **bus addresses**, 0x0000–0xFFFF. This is the only view that tells the truth about a misbehaving decode.
+- **Default: through the bus.** `DUMP`, `DEPOSIT`, `IN`, `OUT` see exactly what the CPU sees — live bank, PHANTOM overlays applied, ROM not decoding writes, contention reported. Addresses are **bus addresses**, 0x0000–0xFFFF. This is the only view that tells the truth about a misbehaving decode, and it is why `IN 10` really does consume a UART's character: that is what an `IN` *is*.
+- **`peek`: through the decode, but *without a cycle*.** Same PHANTOM\* resolution, same bank, same board — but no strobe, no side effect, no `snoop()`. **`DISASM`, `WHO` and the debugger's display use this, and they must.** *(Corrected 2026-07-11: §10.2 originally put `DISASM` in the first group. That was wrong, and quietly so — a disassembler built on real reads works perfectly against RAM and then, the first time someone disassembles a page with a UART mapped into it, **eats the console's input**. The bug would only appear when the memory map was unlucky.)* A board that cannot answer without side effects returns false, and the byte reads `FF` — which is honest, because on real hardware the data bus is only defined *during* a cycle.
 - **`RAW <id>`: behind the bus**, straight into one board's backing store. Addresses are **board-local offsets** into that board's store, which may be far larger than 64K. This is how you inspect a phantomed-out board the CPU cannot see — and how you get bytes *into* a ROM.
 
 **`RAW` is the PROM burner, and that is not a metaphor.** A ROM region does not decode a write cycle (§4.2), so `DEPOSIT FF00 41` cannot possibly reach it — nor should it, because on real hardware a bus write can't program a PROM either. You pull the chip and put it in a programmer, which is *not a bus operation*. `LOAD dbl.hex RAW mem0` is exactly that, and it is why **the operator can write ROM while the guest cannot**, with no `writable` flag to leak and no originator tag on the bus.

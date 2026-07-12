@@ -1,0 +1,540 @@
+#include "cpu/cpu8080.h"
+
+namespace altair {
+
+// ---------------------------------------------------------------------------
+// Fetch and store. Every one of these is a REAL bus cycle.
+// ---------------------------------------------------------------------------
+uint8_t Cpu8080::fetch(Bus& bus) {
+    if (intFetch_) return bus.intAck();  // and the PC does not move
+    return bus.memRead(pc_++);
+}
+
+uint16_t Cpu8080::fetch16(Bus& bus) {
+    uint8_t lo = fetch(bus);
+    uint8_t hi = fetch(bus);
+    return (uint16_t)(lo | (hi << 8));  // low byte first: the 8080 stores it that way
+}
+
+void Cpu8080::push(Bus& bus, uint16_t v) {
+    bus.memWrite(--sp_, (uint8_t)(v >> 8));
+    bus.memWrite(--sp_, (uint8_t)(v & 0xFF));
+}
+
+uint16_t Cpu8080::pop(Bus& bus) {
+    uint8_t lo = bus.memRead(sp_++);
+    uint8_t hi = bus.memRead(sp_++);
+    return (uint16_t)(lo | (hi << 8));
+}
+
+uint8_t Cpu8080::getR(Bus& bus, int i) {
+    switch (i) {
+    case 0: return b_;
+    case 1: return c_;
+    case 2: return d_;
+    case 3: return e_;
+    case 4: return h_;
+    case 5: return l_;
+    case 6: return bus.memRead(hl());  // M -- a memory operand, through the bus
+    default: return a_;
+    }
+}
+
+void Cpu8080::setR(Bus& bus, int i, uint8_t v) {
+    switch (i) {
+    case 0: b_ = v; break;
+    case 1: c_ = v; break;
+    case 2: d_ = v; break;
+    case 3: e_ = v; break;
+    case 4: h_ = v; break;
+    case 5: l_ = v; break;
+    case 6: bus.memWrite(hl(), v); break;
+    default: a_ = v; break;
+    }
+}
+
+bool Cpu8080::cond(int i) const {
+    switch (i) {
+    case 0: return !z_;
+    case 1: return z_;
+    case 2: return !cy_;
+    case 3: return cy_;
+    case 4: return !p_;   // PO -- parity odd
+    case 5: return p_;    // PE -- parity even
+    case 6: return !s_;   // P  -- plus
+    default: return s_;   // M  -- minus
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The flags: S Z 0 AC 0 P 1 CY.
+//
+// P is PARITY, and it is EVEN parity -- set when the number of 1 bits is even.
+// It is not the low bit and it is not odd parity, and getting it backwards is
+// invisible until something does a JPE.
+// ---------------------------------------------------------------------------
+void Cpu8080::setSZP(uint8_t v) {
+    s_ = (v & 0x80) != 0;
+    z_ = (v == 0);
+    int bits = 0;
+    for (int i = 0; i < 8; ++i)
+        if (v & (1 << i)) ++bits;
+    p_ = (bits % 2) == 0;
+}
+
+uint8_t Cpu8080::psw() const {
+    // Bit 1 reads back as 1 and bits 3 and 5 as 0. Always, on real silicon -- so
+    // PUSH PSW / POP PSW round-trips through those constants, and 8080EXM checks it.
+    uint8_t f = 0x02;
+    if (cy_) f |= 0x01;
+    if (p_)  f |= 0x04;
+    if (ac_) f |= 0x10;
+    if (z_)  f |= 0x40;
+    if (s_)  f |= 0x80;
+    return f;
+}
+
+void Cpu8080::setPsw(uint8_t f) {
+    cy_ = (f & 0x01) != 0;
+    p_  = (f & 0x04) != 0;
+    ac_ = (f & 0x10) != 0;
+    z_  = (f & 0x40) != 0;
+    s_  = (f & 0x80) != 0;
+}
+
+void Cpu8080::add(uint8_t v, bool carryIn) {
+    unsigned r = (unsigned)a_ + v + (carryIn ? 1 : 0);
+    ac_ = ((a_ & 0x0F) + (v & 0x0F) + (carryIn ? 1 : 0)) > 0x0F;
+    cy_ = r > 0xFF;
+    a_ = (uint8_t)r;
+    setSZP(a_);
+}
+
+// SUBTRACTION IS ADDITION OF THE TWO'S COMPLEMENT, AND THAT IS NOT AN
+// OPTIMIZATION -- IT IS WHAT THE CHIP DOES.
+//
+// The 8080 has one adder. `SUB B` feeds it A + ~B + 1, and both CY and AC fall
+// out of that addition rather than out of a separate "borrow" rule:
+//
+//   CY is the INVERTED carry-out. A carry out means no borrow was needed.
+//   AC is the carry out of bit 3 of THAT SAME addition -- not inverted.
+//
+// Write it as `a - v` and compute AC from a borrow rule that looks reasonable,
+// and you get an AC that is wrong on exactly the operands nobody tries by hand.
+// 8080EXM catches it; a CP/M boot does not, for about a week.
+void Cpu8080::sub(uint8_t v, bool borrowIn) {
+    uint8_t nv = (uint8_t)~v;
+    unsigned carryIn = borrowIn ? 0 : 1;
+    unsigned r = (unsigned)a_ + nv + carryIn;
+    ac_ = ((a_ & 0x0F) + (nv & 0x0F) + carryIn) > 0x0F;
+    cy_ = !(r > 0xFF);
+    a_ = (uint8_t)r;
+    setSZP(a_);
+}
+
+void Cpu8080::cmp(uint8_t v) {
+    uint8_t save = a_;
+    sub(v, false);   // flags from the difference...
+    a_ = save;       // ...and the difference itself is thrown away
+}
+
+// ANA's half-carry is the 8080's strangest documented rule: AC comes out as the
+// OR of bit 3 of the two operands. It is not zero, and it is not the AND. This
+// one line is the difference between passing 8080EXM and not, and it is the
+// classic 8080-vs-8085 divergence (the 8085 clears AC here instead).
+void Cpu8080::ana(uint8_t v) {
+    ac_ = ((a_ | v) & 0x08) != 0;
+    a_ &= v;
+    cy_ = false;
+    setSZP(a_);
+}
+
+void Cpu8080::xra(uint8_t v) {
+    a_ ^= v;
+    cy_ = false;
+    ac_ = false;
+    setSZP(a_);
+}
+
+void Cpu8080::ora(uint8_t v) {
+    a_ |= v;
+    cy_ = false;
+    ac_ = false;
+    setSZP(a_);
+}
+
+// INR and DCR TOUCH EVERY FLAG BUT CARRY. That exception is the point of them:
+// it is what lets a loop counter be decremented inside a multi-byte add without
+// destroying the carry it is propagating.
+uint8_t Cpu8080::inr(uint8_t v) {
+    uint8_t r = (uint8_t)(v + 1);
+    ac_ = (r & 0x0F) == 0;   // a carry out of bit 3 happened iff the nibble wrapped
+    setSZP(r);
+    return r;
+}
+
+uint8_t Cpu8080::dcr(uint8_t v) {
+    uint8_t r = (uint8_t)(v - 1);
+    // -1 is +0xFF: bit 3 carries out unless the low nibble was already 0.
+    ac_ = (r & 0x0F) != 0x0F;
+    setSZP(r);
+    return r;
+}
+
+// DAD affects CARRY AND NOTHING ELSE. Every other 16-bit op affects no flags at
+// all, which is why `INX H` cannot be used to test for zero and every 1970s loop
+// does `MOV A,H / ORA L` instead.
+void Cpu8080::dad(uint16_t v) {
+    unsigned r = (unsigned)hl() + v;
+    cy_ = r > 0xFFFF;
+    h_ = (uint8_t)(r >> 8);
+    l_ = (uint8_t)(r & 0xFF);
+}
+
+// DAA: the one instruction where AC is load-bearing rather than decorative.
+//
+// The 8080 has no N flag, so DAA cannot tell an add from a subtract and DOES NOT
+// TRY -- it always adds. (That is a real limitation of the chip, not of this
+// model: decimal subtraction on an 8080 is done by adding the ten's complement.
+// The Z80 added the N flag precisely because of this.)
+void Cpu8080::daa() {
+    uint8_t add = 0;
+    bool carry = cy_;
+
+    if (ac_ || (a_ & 0x0F) > 9) add = 0x06;
+    if (carry || (a_ >> 4) > 9 || ((a_ >> 4) == 9 && (a_ & 0x0F) > 9)) {
+        add |= 0x60;
+        carry = true;   // and once set, DAA never clears it
+    }
+
+    ac_ = ((a_ & 0x0F) + (add & 0x0F)) > 0x0F;
+    a_ = (uint8_t)(a_ + add);
+    setSZP(a_);
+    cy_ = carry;
+}
+
+// ---------------------------------------------------------------------------
+// Reflection (DESIGN.md 3.0.3). REGS, SET REG, breakpoint conditions, SNAPSHOT
+// and the MCP schema are all written against THIS -- generically -- and know
+// nothing about an 8080.
+//
+// The flags are here as 1-bit registers, which is not a cute trick: it is what
+// makes `SET REG CY=1` work, and what will make `BREAK 100 IF Z==1` work, without
+// the monitor ever learning what a flag is.
+// ---------------------------------------------------------------------------
+std::vector<RegDef> Cpu8080::registers() {
+    auto r8 = [](const char* n, const char* help, uint8_t* p) {
+        return RegDef{n, 8, help, [p] { return (uint32_t)*p; },
+                      [p](uint32_t v) { *p = (uint8_t)v; }};
+    };
+    auto flag = [](const char* n, const char* help, bool* p) {
+        return RegDef{n, 1, help, [p] { return (uint32_t)(*p ? 1 : 0); },
+                      [p](uint32_t v) { *p = v != 0; }};
+    };
+
+    return {
+        r8("A", "accumulator", &a_),
+        r8("B", "", &b_), r8("C", "", &c_),
+        r8("D", "", &d_), r8("E", "", &e_),
+        r8("H", "", &h_), r8("L", "", &l_),
+        {"SP", 16, "stack pointer", [this] { return (uint32_t)sp_; },
+         [this](uint32_t v) { sp_ = (uint16_t)v; }},
+        {"PC", 16, "program counter", [this] { return (uint32_t)pc_; },
+         [this](uint32_t v) { pc_ = (uint16_t)v; }},
+        {"F", 8, "flags: S Z 0 AC 0 P 1 CY", [this] { return (uint32_t)psw(); },
+         [this](uint32_t v) { setPsw((uint8_t)v); }},
+        flag("S", "sign", &s_),
+        flag("Z", "zero", &z_),
+        flag("AC", "auxiliary (half) carry", &ac_),
+        flag("P", "parity -- EVEN parity", &p_),
+        flag("CY", "carry", &cy_),
+        {"IE", 1, "interrupts enabled (INTE)", [this] { return (uint32_t)(ie_ ? 1 : 0); },
+         [this](uint32_t v) { ie_ = v != 0; }},
+    };
+}
+
+// Both resets do the same thing to the CPU, and it is a SHORT list: PC to zero,
+// interrupts off, out of HLT. The registers are NOT cleared -- the 8080's reset
+// does not touch them, and neither does ours (DESIGN.md 6).
+void Cpu8080::reset(Reset) {
+    pc_ = 0;
+    ie_ = false;
+    eiPending_ = false;
+    halted_ = false;
+    intFetch_ = false;
+}
+
+// ---------------------------------------------------------------------------
+// One instruction.
+//
+// A switch, not a chain of bit-pattern tests (DESIGN.md 3.1) -- the compiler
+// turns this into a jump table, and the prototype's linear scan is exactly the
+// thing being avoided. The MOV and ALU blocks are decoded structurally because
+// that is how the opcode map is actually laid out: `MOV dst,src` IS 01dddsss,
+// and writing out 64 cases would be 64 chances to typo one.
+// ---------------------------------------------------------------------------
+StepResult Cpu8080::step(Bus& bus) {
+    // ---- The interrupt, at the instruction boundary and nowhere else ----
+    //
+    // pINT is a LEVEL, so we look at the wire; nothing was queued and nothing can
+    // be lost. If the line is up and INTE is set, we run an IntAck cycle and
+    // EXECUTE WHATEVER THE BUS DRIVES -- normally an RST from a VI board, and a
+    // floating 0xFF (= RST 7) when nobody drives it at all, which is the real
+    // Altair with no vector-interrupt card in it.
+    if (ie_ && bus.intPending()) {
+        ie_ = false;      // the 8080 disables on acknowledge; the handler re-enables
+        eiPending_ = false;
+        halted_ = false;  // an interrupt is the way out of HLT
+        intFetch_ = true;
+        // Fall through into the decode below: the opcode comes from the bus.
+    } else if (halted_) {
+        // HLT holds the processor until an interrupt or a reset. Time still
+        // passes -- which matters, because the interrupt that wakes it comes from
+        // a board whose own clock is fed by these very T-states.
+        return {4, RunStatus::Halted};
+    }
+
+    bool takingInterrupt = intFetch_;
+    bool eiWasPending = eiPending_;
+
+    uint8_t op = fetch(bus);
+    uint32_t t = 4;
+
+    // ---- MOV dst,src -- 01dddsss, with 76 punched out for HLT ----
+    if (op >= 0x40 && op <= 0x7F) {
+        if (op == 0x76) {
+            halted_ = true;
+            intFetch_ = false;
+            if (eiWasPending) { ie_ = true; eiPending_ = false; }
+            return {7, RunStatus::Halted};
+        }
+        int dst = (op >> 3) & 7, src = op & 7;
+        setR(bus, dst, getR(bus, src));
+        t = (dst == 6 || src == 6) ? 7 : 5;
+    }
+    // ---- ALU A,src -- 10ppp sss ----
+    else if (op >= 0x80 && op <= 0xBF) {
+        int kind = (op >> 3) & 7, src = op & 7;
+        uint8_t v = getR(bus, src);
+        switch (kind) {
+        case 0: add(v, false); break;   // ADD
+        case 1: add(v, cy_);   break;   // ADC
+        case 2: sub(v, false); break;   // SUB
+        case 3: sub(v, cy_);   break;   // SBB
+        case 4: ana(v);        break;
+        case 5: xra(v);        break;
+        case 6: ora(v);        break;
+        default: cmp(v);       break;
+        }
+        t = (src == 6) ? 7 : 4;
+    } else {
+        switch (op) {
+        // ---- the ten undocumented opcodes. Real silicon runs them, so we do. ----
+        case 0x00: case 0x08: case 0x10: case 0x18:
+        case 0x20: case 0x28: case 0x30: case 0x38:
+            t = 4;  // NOP
+            break;
+
+        // ---- 16-bit loads ----
+        case 0x01: { uint16_t v = fetch16(bus); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 10; break; }
+        case 0x11: { uint16_t v = fetch16(bus); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 10; break; }
+        case 0x21: { uint16_t v = fetch16(bus); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 10; break; }
+        case 0x31: sp_ = fetch16(bus); t = 10; break;
+
+        case 0x02: bus.memWrite(bc(), a_); t = 7; break;   // STAX B
+        case 0x12: bus.memWrite(de(), a_); t = 7; break;   // STAX D
+        case 0x0A: a_ = bus.memRead(bc()); t = 7; break;   // LDAX B
+        case 0x1A: a_ = bus.memRead(de()); t = 7; break;   // LDAX D
+
+        case 0x32: { uint16_t a = fetch16(bus); bus.memWrite(a, a_); t = 13; break; }  // STA
+        case 0x3A: { uint16_t a = fetch16(bus); a_ = bus.memRead(a); t = 13; break; }  // LDA
+
+        case 0x22: {  // SHLD -- L first, then H. The 8080 is little-endian here too.
+            uint16_t a = fetch16(bus);
+            bus.memWrite(a, l_);
+            bus.memWrite((uint16_t)(a + 1), h_);
+            t = 16;
+            break;
+        }
+        case 0x2A: {  // LHLD
+            uint16_t a = fetch16(bus);
+            l_ = bus.memRead(a);
+            h_ = bus.memRead((uint16_t)(a + 1));
+            t = 16;
+            break;
+        }
+
+        // ---- INX / DCX -- NO FLAGS AT ALL, not even zero ----
+        case 0x03: { uint16_t v = (uint16_t)(bc() + 1); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 5; break; }
+        case 0x13: { uint16_t v = (uint16_t)(de() + 1); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 5; break; }
+        case 0x23: { uint16_t v = (uint16_t)(hl() + 1); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 5; break; }
+        case 0x33: ++sp_; t = 5; break;
+        case 0x0B: { uint16_t v = (uint16_t)(bc() - 1); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 5; break; }
+        case 0x1B: { uint16_t v = (uint16_t)(de() - 1); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 5; break; }
+        case 0x2B: { uint16_t v = (uint16_t)(hl() - 1); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 5; break; }
+        case 0x3B: --sp_; t = 5; break;
+
+        case 0x09: dad(bc());  t = 10; break;
+        case 0x19: dad(de());  t = 10; break;
+        case 0x29: dad(hl());  t = 10; break;
+        case 0x39: dad(sp_);   t = 10; break;
+
+        // ---- INR / DCR -- 00rrr10x ----
+        case 0x04: case 0x0C: case 0x14: case 0x1C:
+        case 0x24: case 0x2C: case 0x34: case 0x3C: {
+            int r = (op >> 3) & 7;
+            setR(bus, r, inr(getR(bus, r)));
+            t = (r == 6) ? 10 : 5;
+            break;
+        }
+        case 0x05: case 0x0D: case 0x15: case 0x1D:
+        case 0x25: case 0x2D: case 0x35: case 0x3D: {
+            int r = (op >> 3) & 7;
+            setR(bus, r, dcr(getR(bus, r)));
+            t = (r == 6) ? 10 : 5;
+            break;
+        }
+
+        // ---- MVI r,d8 -- 00rrr110 ----
+        case 0x06: case 0x0E: case 0x16: case 0x1E:
+        case 0x26: case 0x2E: case 0x36: case 0x3E: {
+            int r = (op >> 3) & 7;
+            setR(bus, r, fetch(bus));
+            t = (r == 6) ? 10 : 7;
+            break;
+        }
+
+        // ---- rotates. CARRY ONLY -- S, Z, P and AC are untouched. ----
+        case 0x07: cy_ = (a_ & 0x80) != 0; a_ = (uint8_t)((a_ << 1) | (cy_ ? 1 : 0)); break;      // RLC
+        case 0x0F: cy_ = (a_ & 0x01) != 0; a_ = (uint8_t)((a_ >> 1) | (cy_ ? 0x80 : 0)); break;   // RRC
+        case 0x17: { bool c = cy_; cy_ = (a_ & 0x80) != 0; a_ = (uint8_t)((a_ << 1) | (c ? 1 : 0)); break; }     // RAL
+        case 0x1F: { bool c = cy_; cy_ = (a_ & 0x01) != 0; a_ = (uint8_t)((a_ >> 1) | (c ? 0x80 : 0)); break; }  // RAR
+
+        case 0x27: daa(); break;
+        case 0x2F: a_ = (uint8_t)~a_; break;        // CMA -- no flags
+        case 0x37: cy_ = true;  break;              // STC
+        case 0x3F: cy_ = !cy_;  break;              // CMC
+
+        // ---- immediate ALU ----
+        case 0xC6: add(fetch(bus), false); t = 7; break;   // ADI
+        case 0xCE: add(fetch(bus), cy_);   t = 7; break;   // ACI
+        case 0xD6: sub(fetch(bus), false); t = 7; break;   // SUI
+        case 0xDE: sub(fetch(bus), cy_);   t = 7; break;   // SBI
+        case 0xE6: ana(fetch(bus)); t = 7; break;          // ANI
+        case 0xEE: xra(fetch(bus)); t = 7; break;          // XRI
+        case 0xF6: ora(fetch(bus)); t = 7; break;          // ORI
+        case 0xFE: cmp(fetch(bus)); t = 7; break;          // CPI
+
+        // ---- jumps. A conditional jump costs 10 EITHER WAY -- the 8080 has
+        // already fetched the address by the time it decides. Only CALL and RET
+        // charge differently for taken and not-taken. ----
+        case 0xC3: case 0xCB: pc_ = fetch16(bus); t = 10; break;   // JMP (CB: undocumented)
+        case 0xC2: case 0xCA: case 0xD2: case 0xDA:
+        case 0xE2: case 0xEA: case 0xF2: case 0xFA: {
+            uint16_t a = fetch16(bus);
+            if (cond((op >> 3) & 7)) pc_ = a;
+            t = 10;
+            break;
+        }
+
+        // ---- calls: 17 taken, 11 not ----
+        case 0xCD: case 0xDD: case 0xED: case 0xFD: {  // CALL (DD/ED/FD: undocumented)
+            uint16_t a = fetch16(bus);
+            push(bus, pc_);
+            pc_ = a;
+            t = 17;
+            break;
+        }
+        case 0xC4: case 0xCC: case 0xD4: case 0xDC:
+        case 0xE4: case 0xEC: case 0xF4: case 0xFC: {
+            uint16_t a = fetch16(bus);
+            if (cond((op >> 3) & 7)) {
+                push(bus, pc_);
+                pc_ = a;
+                t = 17;
+            } else {
+                t = 11;
+            }
+            break;
+        }
+
+        // ---- returns: 11 taken, 5 not ----
+        case 0xC9: case 0xD9: pc_ = pop(bus); t = 10; break;  // RET (D9: undocumented)
+        case 0xC0: case 0xC8: case 0xD0: case 0xD8:
+        case 0xE0: case 0xE8: case 0xF0: case 0xF8:
+            if (cond((op >> 3) & 7)) {
+                pc_ = pop(bus);
+                t = 11;
+            } else {
+                t = 5;
+            }
+            break;
+
+        // ---- RST n -- and this is the one an interrupt normally lands on ----
+        case 0xC7: case 0xCF: case 0xD7: case 0xDF:
+        case 0xE7: case 0xEF: case 0xF7: case 0xFF:
+            push(bus, pc_);
+            pc_ = (uint16_t)(op & 0x38);
+            t = 11;
+            break;
+
+        // ---- stack ----
+        case 0xC5: push(bus, bc()); t = 11; break;
+        case 0xD5: push(bus, de()); t = 11; break;
+        case 0xE5: push(bus, hl()); t = 11; break;
+        case 0xF5: push(bus, (uint16_t)((a_ << 8) | psw())); t = 11; break;
+        case 0xC1: { uint16_t v = pop(bus); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 10; break; }
+        case 0xD1: { uint16_t v = pop(bus); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 10; break; }
+        case 0xE1: { uint16_t v = pop(bus); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 10; break; }
+        case 0xF1: { uint16_t v = pop(bus); a_ = (uint8_t)(v >> 8); setPsw((uint8_t)v); t = 10; break; }
+
+        case 0xE3: {  // XTHL -- swap HL with the top of stack. 18 T-states, the
+                      // most expensive instruction the 8080 has.
+            uint8_t lo = bus.memRead(sp_);
+            uint8_t hi = bus.memRead((uint16_t)(sp_ + 1));
+            bus.memWrite(sp_, l_);
+            bus.memWrite((uint16_t)(sp_ + 1), h_);
+            l_ = lo;
+            h_ = hi;
+            t = 18;
+            break;
+        }
+        case 0xEB: {  // XCHG
+            uint8_t th = h_, tl = l_;
+            h_ = d_; l_ = e_;
+            d_ = th; e_ = tl;
+            break;
+        }
+        case 0xE9: pc_ = hl(); t = 5; break;   // PCHL
+        case 0xF9: sp_ = hl(); t = 5; break;   // SPHL
+
+        // ---- I/O. Real cycles, real side effects: an IN from a UART's data port
+        // CONSUMES the byte, which is why the monitor's WHO exists to look without
+        // touching. ----
+        case 0xDB: a_ = bus.ioRead(fetch(bus)); t = 10; break;   // IN
+        case 0xD3: bus.ioWrite(fetch(bus), a_);  t = 10; break;  // OUT
+
+        case 0xF3: ie_ = false; eiPending_ = false; break;  // DI -- immediate
+        case 0xFB: eiPending_ = true; break;                // EI -- one instruction later
+
+        default:
+            // Unreachable: all 256 opcodes are accounted for above. If this ever
+            // fires, the table has a hole, and a silent NOP would hide it.
+            t = 4;
+            break;
+        }
+    }
+
+    // EI's one-instruction delay. `eiWasPending` was latched BEFORE this
+    // instruction ran, so the EI that set the flag does not enable itself -- the
+    // instruction after it does.
+    if (eiWasPending && op != 0xFB) {
+        ie_ = true;
+        eiPending_ = false;
+    }
+
+    if (takingInterrupt) intFetch_ = false;
+    return {t, halted_ ? RunStatus::Halted : RunStatus::Ok};
+}
+
+} // namespace altair

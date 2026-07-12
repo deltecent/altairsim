@@ -32,20 +32,39 @@ static const std::vector<CommandDef> kCommands = {
      "  D FF00-FF0F  an explicit range means exactly what it says\n"
      "  D 100/20     0100-011F (LEN is part of the address expression: hex)\n"
      "  D 0 WIDTH=8  eight bytes per line"},
-    {"STEP", false, "the CPU", "STEP [n]", nullptr},
+    {"STEP", true, nullptr, "STEP [n]",
+     "One instruction, with REAL bus cycles through the real decode. Prints each\n"
+     "instruction as it goes; past 32 it runs quietly and reports. `n` is a count,\n"
+     "so it is decimal.\n"
+     "  S            one instruction\n"
+     "  S 10         ten of them"},
     {"RESET", true, nullptr, "RESET [CPU]",
-     "A reset does NOT clear memory. Only removing power does that -- see POWER."},
+     "A reset does NOT clear memory. Only removing power does that -- see POWER.\n"
+     "RESET CPU is a debugging convenience, NOT a real signal: no wire on the\n"
+     "backplane resets the processor and nothing else."},
     {"HISTORY", false, "the debugger", "HISTORY [n]", nullptr},
     {"MOUNT", true, nullptr, "MOUNT <id>:<u> <file> [RO]",
      "Put a disk in a drive, or an image in a ROM socket.\n"
      "  MOUNT dsk:0 disks/cpm.dsk\n"
      "  MOUNT mem0:1 roms/monitor.bin"},
-    {"BREAK", false, "the debugger", "BREAK <addr> [IF <expr>] | BREAK IO <port>", nullptr},
+    {"BREAK", true, nullptr, "BREAK [<addr> | MEM R|W <addr> | IO R|W <port>]",
+     "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
+     "other two watch BUS CYCLES, so they catch a DMA transfer too, and they work\n"
+     "unchanged on any processor.\n"
+     "  BREAK FF13       stop when PC gets there\n"
+     "  BREAK 2C00-2CFF  ...anywhere in a range\n"
+     "  BREAK MEM W 100  stop when anything WRITES 0100\n"
+     "  BREAK IO R 10    stop on an IN from port 10\n"
+     "(BREAK ... IF <expr> is not built yet -- it is waiting on the expression\n"
+     "parser, and the registers it will read are already reflected.)"},
     {"EDIT", false, "the line editor", "EDIT <addr>  -- interactive; Enter advances", nullptr},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "SAVE writes the machine you are actually running, so it round-trips.\n"
      "  CONFIG SAVE machines/mine.toml"},
-    {"GO", false, "the CPU", "GO [addr]", nullptr},
+    {"GO", true, nullptr, "GO [addr]",
+     "Run until a breakpoint, a HLT nothing can wake, or ^C. It ALWAYS says which.\n"
+     "  GO           from wherever PC is\n"
+     "  GO FF00      boot the DBL PROM"},
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id> <k>=<v>",  // SE (beats SEARCH)
@@ -102,14 +121,26 @@ static const std::vector<CommandDef> kCommands = {
     {"BOARD", true, nullptr, "BOARD LIST|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>",  // BO
      "  BOARD TYPES              every card, and its properties\n"
      "  BOARD ADD memory mem0"},
-    {"REGS", false, "the CPU", "REGS | SET REG <r>=<v>", nullptr},  // REG (beats REGION)
+    {"REGS", true, nullptr, "REGS | SET REG <r>=<v>",  // REG (beats REGION)
+     "The flags are registers too, so SET REG CY=1 works. A register value is on\n"
+     "the wire, so it is HEX.\n"
+     "  REGS\n"
+     "  SET REG A=3F\n"
+     "  SET REG PC=FF00"},
     {"REGION", true, nullptr, "REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]",  // REGI
      "A region is a POPULATED part of a card. What is not covered by one is an\n"
      "empty socket: it decodes nothing and floats to FF. `at` is an address, so it\n"
      "is hex; `size` is a size, so it is decimal, and K/M work.\n"
      "  REGI ADD mem0 type=ram at=0 size=48K\n"
      "  REGI ADD mem0 type=rom at=FF00 mount=builtin:dbl"},
-    {"DISASM", false, "the CPU", "DISASM <range>|<addr> [n]", nullptr},  // DI
+    {"DISASM", true, nullptr, "DISASM [<addr>|<range>] [n] [CPU=8080]",  // DI
+     "It needs an INSTRUCTION SET, not a CPU -- so it works on an empty backplane.\n"
+     "You normally never type CPU=: the active core says what it speaks, and DISASM\n"
+     "asks it. It PEEKS, so it cannot consume a byte from a UART in the range.\n"
+     "  DI FF00      sixteen instructions of the boot PROM\n"
+     "  DI           carry on from there\n"
+     "  DI 0-2F      exactly that range\n"
+     "  DI FF00 CPU=8080   when there is no CPU in the machine to ask"},
     // UNMOUNT, not DISMOUNT (Patrick, 2026-07-11). It is the plain word, it takes U
     // -- which nothing else wanted -- and it gets out of DISASM's way, which drops
     // to DI now that the D-cluster is one shorter.
@@ -124,12 +155,18 @@ static const std::vector<CommandDef> kCommands = {
      "Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on\n"
      "real hardware it does not."},
     {"TRACE", false, "the debugger", "TRACE ON|OFF [file] [MASK=...]", nullptr},
-    {"STOP", false, "the CPU", "STOP", nullptr},                          // STO
+    // STOP is NOT waiting on the CPU any more -- it is waiting on there being a way
+    // to type at the monitor WHILE the machine runs, which is CONSOLE mode. Until
+    // then a GO owns the terminal and ^C is what stops it, which is what GO says.
+    {"STOP", false, "CONSOLE mode -- today, ^C stops a GO", "STOP", nullptr},  // STO
     {"SNAPSHOT", false, "the debugger", "SNAPSHOT <file>", nullptr},      // SN
     {"RESTORE", false, "the debugger", "RESTORE <file>", nullptr},        // REST
     {"RECORD", false, "the debugger", "RECORD <file>", nullptr},          // REC
     {"REPLAY", false, "the debugger", "REPLAY <file>", nullptr},          // REP
-    {"NOBREAK", false, "the debugger", "NOBREAK", nullptr},
+    {"NOBREAK", true, nullptr, "NOBREAK [id]",
+     "Bare NOBREAK clears them all. An id is not on the wire, so it is decimal.\n"
+     "  NOBREAK 2\n"
+     "  NOBREAK"},
     {"HELP", true, nullptr, "HELP [<command>]",  // HE (HISTORY has H)
      "Bare HELP lists the commands and nothing else -- the whole set on a few\n"
      "lines, which is what you want when you are hunting for the name. HELP with a\n"

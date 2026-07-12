@@ -10,12 +10,14 @@
 // add "if (board is a ROM)" here, you have found a bug in your board instead.
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace altair {
 
 class Board;
+class Bus;
 
 enum class Cycle { MemRead, MemWrite, IoRead, IoWrite, IntAck };
 
@@ -49,6 +51,36 @@ enum class Reset {
 
 enum class Contention { Silent, Warn, Error };
 
+// ---------------------------------------------------------------------------
+// BOARDS RESPOND TO BUS CYCLES. A BUS MASTER ORIGINATES THEM. (DESIGN.md 3)
+//
+// Two concepts, and a CPU card is both. This lives with the bus and not with the
+// CPU on purpose: S-100 has pHOLD/pHLDA precisely BECAUSE a backplane can have
+// more than one master, so when a DMA card arrives (a Dazzler, a disk controller
+// stealing cycles) it is a Board that BECOMES a BusMaster when granted the bus,
+// driving the very same cycles through the very same interface. DMA is then not
+// a bolted-on path through the bus -- it is the mechanism the CPU already uses.
+// ---------------------------------------------------------------------------
+enum class RunStatus {
+    Ok,      // an instruction retired
+    Halted,  // HLT. The CPU is still powered and still watching pINT.
+};
+
+// An explicit result, NEVER a sentinel T-state count (DESIGN.md 3.1, 16). The
+// prototype's `return 0 means something went wrong` is exactly how the RLC/RRC
+// bug hid: a legal instruction that happened to take zero cycles was
+// indistinguishable from a failure, so nobody looked.
+struct StepResult {
+    uint32_t tStates = 0;
+    RunStatus status = RunStatus::Ok;
+};
+
+class BusMaster {
+public:
+    virtual ~BusMaster() = default;
+    virtual StepResult step(Bus&) = 0;
+};
+
 // A row of SHOW BUS MAP / SHOW BUS IO.
 struct MapEntry {
     uint32_t lo = 0, hi = 0;  // inclusive
@@ -74,6 +106,39 @@ public:
     // An unvectored interrupt acknowledge floats to 0xFF, which the 8080 reads
     // as RST 7. Same floating-bus rule as unmapped memory -- not a special case.
     uint8_t intAck();
+
+    // pINT (pin 73), carried as the WIRE-OR of every board asserting it. That is
+    // all the bus does with an interrupt: it does not pick a winner and it does
+    // not hand anyone a vector (DESIGN.md 4.4). If it did, the 88-VI board could
+    // not be written AS A BOARD, and every machine without one would be getting
+    // vectored behavior its hardware never had.
+    //
+    // The vector, if there is one, comes from whoever claims the IntAck CYCLE --
+    // like any other cycle. Nobody claims it in a machine with no VI card, so the
+    // bus floats to 0xFF and the 8080 executes RST 7. That is not a fallback
+    // hack; it is what the metal does, and it is why the PMMI's factory jumper
+    // straight to pin 73 yields RST 7 with no vector logic anywhere.
+    bool intPending() const;
+
+    // ---- The cycle stream (DESIGN.md 3.0.3, 4.2.2) ----
+    //
+    // Every board already sees every cycle -- that is what a backplane IS. An
+    // observer watches the SAME stream from outside the backplane, and that is
+    // the whole implementation of BREAK IO, BREAK MEM, TRACE and HISTORY.
+    //
+    // So those are NOT CPU features and must never live in a core: they are
+    // questions about bus cycles, they are answered here, and an 8085 or a Z80
+    // inherits every one of them on the day it lands without writing a line.
+    using Observer = std::function<void(const BusCycle&)>;
+    int observe(Observer fn);   // returns a handle
+    void unobserve(int handle);
+
+    // Look without running a cycle -- for DISASM, TRACE and the debugger's
+    // display, none of which are allowed to have side effects. Runs the SAME
+    // decode (PHANTOM* and all), so a shadowed board is invisible to it exactly
+    // as it is to a real read; it just never strobes anybody. Floats to 0xFF when
+    // nobody can answer, which is what the bus would have done anyway.
+    uint8_t peek(uint16_t addr) const;
 
     // Reverse lookup: who answers here, and why. Backs WHO and the contention
     // detector. Returns every board that ACTUALLY decodes -- so a board that is
@@ -107,6 +172,9 @@ private:
     std::vector<std::string> log_;
     Contention policy_ = Contention::Warn;
     bool unclaimed_ = false;
+
+    std::vector<std::pair<int, Observer>> observers_;
+    int nextObserver_ = 1;
 };
 
 } // namespace altair

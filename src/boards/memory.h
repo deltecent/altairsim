@@ -66,6 +66,15 @@ public:
     uint8_t read(const BusCycle& c) override;
     void write(const BusCycle& c) override;
 
+    // RAM and ROM can always be looked at without being disturbed -- that is what
+    // makes them memory. (An unpopulated page is not covered by a region, so the
+    // bus never asks this board about it in the first place.)
+    bool peek(uint16_t addr, uint8_t& out) const override {
+        if (!owner(addr)) return false;
+        out = store_[plane(addr)];
+        return true;
+    }
+
     // ---- lifecycle (DESIGN.md 6) ----
     void reset(Reset r) override;
     void power() override;

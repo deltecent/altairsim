@@ -59,6 +59,78 @@ The board is `memory` (`docs/boards/memory.md`): a card holding a list of **regi
 
 ---
 
+## The 8080 — the CPU card, single-stepping, and breakpoints
+
+**Built, 2026-07-11.** *(Out of order: milestone 2 is the CPU **validation gate**,
+and the chip itself was always going to be needed for 1b's 2SIO and 3's disk. See
+"the gate is not passed yet", below.)*
+
+`src/isa/` (a stateless disassembler), `src/cpu/` (the core), `src/boards/cpu8080.cpp`
+(the card), `src/core/debug.cpp` (the debugger). `docs/boards/88-cpu.md`.
+449 unit checks, all passing, no warnings.
+
+**The three-layer split earned its keep immediately.** `DISASM` runs against an
+instruction set, not a CPU — so it worked on the DBL PROM in milestone 1a, with an
+empty backplane, and the 8080 decode tables were exercised long before anything
+executed them.
+
+**The debugger is a bus observer, not a CPU feature** (DESIGN.md §3.0.3).
+`BREAK MEM`/`BREAK IO` watch the cycle stream every board already sees, so they
+cost the cores nothing and will work on a Z80 the day it lands. Only `BREAK <addr>`
+is CPU-flavoured, and it is one comparison against a register the reflection layer
+already exposes.
+
+**Two bugs this found in the design document, not just in the code:**
+
+- **§10.2 put `DISASM` in the "through the bus" group.** That is wrong, and quietly
+  so: a disassembler built on real bus reads works perfectly against RAM and then
+  **eats the console's input** the first time someone disassembles a page with a
+  UART mapped into it. There is now a third access mode — `peek`, which runs the
+  full decode but no cycle — and §10.2 carries the correction.
+- **`clock_hz` existed in two places**: on `[machine]` and on the CPU card. While
+  there was no CPU that was harmless; the moment there was one it became two
+  places to say one thing, and the day they disagreed the machine would run at
+  whichever was written last. The machine-level key is **gone**, and a config that
+  still uses it is **refused with a message**, not silently ignored.
+
+### It runs the boot PROM
+
+    altairsim> BREAK IO R 08
+    altairsim> GO FF00
+    breakpoint 1 (io r   08) -- stopped at 2C21
+    1433 instructions, 9344 T-states.
+
+DBL copies itself out of the PROM into RAM at 2C00, jumps there, and starts polling
+a disk controller that is not in the backplane — reading a floating `FF` every time,
+because nobody is driving those ports. **That is not a bug; it is what an Altair
+with no disk controller in it does**, and you can watch it happen. The 88-DCDD is
+milestone 3.
+
+The self-relocation loop is **1413 instructions and 9192 T-states**, and the
+datasheet predicts exactly that: three setup instructions (27) plus 235 iterations
+of a six-instruction, 39-T-state loop (9165). The T-states are not approximately
+right — they are right, which matters because they will drive the baud rate and the
+disk rotation.
+
+### The gate is NOT passed yet — and this is the debt to watch
+
+**TST8080, 8080PRE, CPUTEST and 8080EXM are not in this repository**, so the core
+is validated only by tests its own author wrote — which are precisely the tests
+that share its blind spots. Until those four run, "the 8080 works" is an opinion.
+
+8080EXM in particular checks every flag of every ALU operation against a table of
+CRCs, and it does not care how confident anybody was. The three flag rules most
+likely to be wrong are already written down in `docs/boards/88-cpu.md` (`ANA`'s
+half-carry, subtraction through the one adder, even parity) precisely *because*
+they are invisible in ordinary code.
+
+**They are CP/M `.COM` files and need a harness** — load at `0100`, stub the BDOS
+at `0005` for function 2/9 — which is a small job, but the binaries have to come
+from somewhere first. **This is a question for Patrick** (see §0.1: do not guess,
+ask).
+
+---
+
 ## Milestone 1b — the walking skeleton
 
 **MCP + 8080 + interrupts + one 88-2SIO, on top of 1a.**

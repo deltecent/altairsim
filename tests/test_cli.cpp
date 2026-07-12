@@ -107,11 +107,32 @@ void test_cli() {
     CHECK(offender.empty(), offender.empty() ? "no command is a strict prefix of another"
                                              : offender.c_str());
 
-    // Reserved commands RESOLVE -- that is the point. `S` means STEP today, before
-    // there is a CPU, so it cannot quietly stop meaning SHOW once there is one.
+    // THE ABBREVIATION CONTRACT HELD, AND HERE IS THE PROOF.
+    //
+    // `S` meant STEP when STEP did not exist -- that is why it was in the table
+    // reserved, rather than being left out until the CPU landed. The CPU has now
+    // landed, STEP is built, and `S` means exactly what it always meant. Nobody's
+    // fingers had to relearn anything, which was the entire point of paying for the
+    // reservation up front.
     const CommandDef* s = resolveCommand("S");
-    CHECK(s && !s->built, "STEP resolves but is not built yet");
-    CHECK(s && std::string(s->waiting) == "the CPU", "and says what it is waiting on");
+    CHECK(s && std::string(s->name) == "STEP", "S is STEP -- as it was before STEP existed");
+    CHECK(s && s->built, "and now it is built");
+
+    // Reserved commands still RESOLVE and still say what they wait on. TRACE and
+    // HISTORY are genuinely not here yet, and they hold their prefixes so that the
+    // day they arrive they do not steal one from something else.
+    const CommandDef* tr = resolveCommand("TR");
+    CHECK(tr && !tr->built, "TRACE resolves but is not built yet");
+    CHECK(tr && tr->waiting && std::string(tr->waiting) == "the debugger",
+          "and says what it is waiting on");
+
+    // Every command in the table is either BUILT (and then it needs no excuse) or
+    // RESERVED (and then it must say what it is waiting for). A reserved command
+    // with nothing to say is a dead entry nobody can act on -- and, until a moment
+    // ago, a null pointer this loop walked straight into.
+    for (const CommandDef& c : commands())
+        CHECK(c.built || (c.waiting && *c.waiting),
+              c.built ? "built" : "a reserved command says what it waits on");
 
     CHECK(resolveCommand("ZORK") == nullptr, "an unknown word is unknown");
     CHECK(resolveCommand("") == nullptr, "and so is nothing at all");

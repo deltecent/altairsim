@@ -8,6 +8,8 @@
 
 #include "core/board.h"
 #include "core/bus.h"
+#include "core/debug.h"
+#include "cpu/cpu.h"
 
 #include <memory>
 #include <string>
@@ -18,7 +20,11 @@ namespace altair {
 class Machine {
 public:
     std::string name = "altair";
-    long long clockHz = 2000000;
+
+    // THERE IS NO MACHINE CLOCK, and there must never be one again. The crystal is
+    // on the CPU card, so `clock_hz` is that BOARD's property (DESIGN.md 3, 8).
+    // A machine-level copy would be a second place to say one thing, and the day
+    // the two disagreed the machine would run at whichever was written last.
 
     // Port 0xFF, the front-panel sense switches. NOT decorative: the DBL boot
     // PROM does `IN 0FFH` at FF22 and uses bit 4 to pick the 2SIO's stop bits.
@@ -41,10 +47,36 @@ public:
     // Power applied. THE ONLY THING THAT LOSES RAM (DESIGN.md 6).
     void power();
 
-    // There is no CPU yet (milestone 1a). `running` is false and stays false, so
-    // every property is settable -- and when a CPU lands, config-time properties
-    // start being rejected on a running machine without one line changing here.
+    // ---- Who is driving? (DESIGN.md 3) ----
+    //
+    // Both of these ASK THE BACKPLANE and are allowed to answer "nobody". A
+    // machine with no CPU card in it is a real machine you can build -- it is the
+    // one milestone 1a ran, with the monitor as bus master -- so every caller has
+    // to cope with a null, and the compiler makes sure they do.
+    //
+    // They are also recomputed on every call rather than cached. That is what lets
+    // BOARD REMOVE cpu0 work while the monitor is sitting there, and what will let
+    // a dual-processor card switch cores under the debugger's feet without the
+    // debugger noticing anything unusual.
+    BusMaster* master();
+    CpuCore* cpu();
+
+    // The instruction set the machine currently speaks -- the active core's own
+    // answer. Empty when there is no CPU, which is why DISASM in a CPU-less
+    // machine asks you to say CPU=8080 rather than guessing (DESIGN.md 3.0.2).
+    std::string isa();
+
+    // Two boards both claiming to drive the bus is contention, and we say so
+    // rather than picking one. Same rule as two boards decoding one address.
+    std::vector<Board*> masters();
+
+    // True only while the debugger's run loop is turning. Config-time properties
+    // are rejected while it is (DESIGN.md 10.1) -- which is why they were all
+    // settable in milestone 1a and start being refused the moment a CPU runs,
+    // without one line here changing.
     bool running = false;
+
+    Debugger debug{*this};
 
     // Collected board chatter (bad bank selects, ROM load failures), drained by
     // whichever front end is listening.

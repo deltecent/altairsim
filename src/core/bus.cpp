@@ -32,6 +32,16 @@ std::vector<Board*> Bus::respondersTo(const BusCycle& in) const {
     return decoders(c);
 }
 
+uint8_t Bus::peek(uint16_t addr) const {
+    BusCycle c{Cycle::MemRead, addr, 0, false};
+    c.phantom = anyAssertsPhantom(c);
+    for (Board* b : decoders(c)) {
+        uint8_t v = 0xFF;
+        if (b->peek(addr, v)) return v;
+    }
+    return 0xFF;  // nobody could answer without side effects. Neither can we.
+}
+
 static const char* cycleName(Cycle t) {
     switch (t) {
     case Cycle::MemRead: return "read";
@@ -67,6 +77,31 @@ void Bus::reportContention(const BusCycle& c, const std::vector<Board*>& who) {
 void Bus::settle(const BusCycle& c) {
     for (Board* b : boards_)
         if (b->enabled()) b->snoop(c);
+
+    // And anyone watching from OUTSIDE the backplane -- the debugger, the tracer.
+    // They see exactly what the cards see, because it is the same stream. That is
+    // why BREAK IO and BREAK MEM needed no new machinery and cost no CPU support:
+    // a bus cycle is a bus cycle no matter who originated it, so they work against
+    // a DMA transfer and a front-panel DEPOSIT, not just against the processor.
+    for (const auto& o : observers_) o.second(c);
+}
+
+int Bus::observe(Observer fn) {
+    int h = nextObserver_++;
+    observers_.emplace_back(h, std::move(fn));
+    return h;
+}
+
+void Bus::unobserve(int handle) {
+    observers_.erase(std::remove_if(observers_.begin(), observers_.end(),
+                                    [&](const auto& o) { return o.first == handle; }),
+                     observers_.end());
+}
+
+bool Bus::intPending() const {
+    for (Board* b : boards_)
+        if (b->enabled() && b->assertsInt()) return true;  // wire-OR, and nothing more
+    return false;
 }
 
 // ---------------------------------------------------------------------------

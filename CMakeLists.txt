@@ -94,7 +94,11 @@ add_library(altair_core STATIC
   src/core/roms.cpp
   src/core/machines.cpp
   src/core/value.cpp
+  src/core/debug.cpp
+  src/isa/isa8080.cpp
+  src/cpu/cpu8080.cpp
   src/boards/memory.cpp
+  src/boards/cpu8080.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp
@@ -125,6 +129,9 @@ add_executable(altair_tests
   tests/test_boundary.cpp
   tests/test_numbers.cpp
   tests/test_units.cpp
-  tests/test_machines.cpp)
+  tests/test_machines.cpp
+  tests/test_isa.cpp
+  tests/test_cpu.cpp
+  tests/test_debug.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)

@@ -61,6 +61,20 @@ private:
     bool subunit(const std::string& spec, Board*& b, UnitDef& u, bool wantMountable,
                  std::ostream& err);
 
+    // One line of disassembly, in a listing's shape: address, the raw bytes, the
+    // instruction. Returns the instruction's length so the caller can walk on.
+    //
+    // It PEEKS. A disassembler that ran real bus cycles would consume a byte from
+    // a UART sitting in the range you asked about -- so DISASM would silently eat
+    // the console's input, and only when the memory map happened to be unlucky.
+    uint8_t disasmLine(uint32_t addr, const class Disassembler& d, std::ostream& out);
+
+    // The active core, or null with a message already printed. Every CPU command
+    // starts here, and none of them assume the machine has a processor -- because
+    // a backplane without one is a machine you can build and the one 1a ran.
+    CpuCore* needCpu(std::ostream& err);
+    void showRegs(std::ostream& out);
+
     void showBoard(Board* b, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);
     void showRoms(std::ostream& out);
@@ -72,6 +86,14 @@ private:
 
     // Where a bare DUMP resumes. A range moves it; nothing else does.
     uint32_t dumpNext_ = 0;
+
+    // Where a bare DISASM resumes -- its own cursor, for the same reason EXAMINE
+    // has one: you disassemble forward through a routine while dumping the table
+    // it points at, and neither should drag the other along.
+    //
+    // A STEP or a GO moves it to the PC, because after the machine stops the thing
+    // you want to look at is what it is about to do next, every time.
+    uint32_t disasmNext_ = 0;
 
     // The front panel's address latch, for EXAMINE. Bare EXAMINE is EXAMINE NEXT.
     // It is DELIBERATELY separate from dumpNext_: DUMP walks a page at a time and

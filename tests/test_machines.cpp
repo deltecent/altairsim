@@ -38,7 +38,14 @@ void test_machines() {
     std::string err;
     CHECK(loadMachine(*d, m, err), "and it loads through the ordinary TOML parser");
     CHECK(m.name == "default", "it knows its name");
-    CHECK(m.boards().size() == 1, "one memory card");
+
+    // A CPU card and a memory card -- and the 8080 arrived as ONE MORE [[board]]
+    // in the .toml, with nothing else about the machine moving. That was the
+    // prediction the file made when there was no CPU, and it held.
+    CHECK(m.boards().size() == 2, "a CPU and a memory card");
+    CHECK(m.cpu() != nullptr, "there is a processor in the default machine now");
+    CHECK(m.isa() == "8080", "and it speaks 8080, so DISASM never has to be told");
+    CHECK(m.master() != nullptr, "and it can drive the bus");
 
     // RAM at 0000-DFFF, and NOTHING above it. The top 8K is where the PROM and
     // the memory-mapped I/O lived; a machine claiming 64K of RAM would be lying

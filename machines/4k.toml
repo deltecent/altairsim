@@ -8,11 +8,26 @@
 # It is here as the small end of the range. If a bug only shows up when almost
 # nothing is populated -- an unowned page floating to FF, a region map that
 # assumed 64K -- this machine finds it and `default` does not.
+#
+# NO ROM, and that is the whole point of this machine. A bare Altair had none: you
+# entered the bootstrap on the FRONT PANEL, in binary, with your fingers, and if
+# you got it wrong you did it again. The DBL boot PROM came with the disk system,
+# which is why it lives in `default` and not here.
+#
+# So DEPOSIT is not a debugging convenience on this machine -- it IS the loader,
+# and it is doing exactly what the toggle switches did.
 
 [machine]
-name     = "4k"
+name  = "4k"
+sense = 00
+
+# An 88-CPU, because of course there was one: a 4K Altair was a complete computer,
+# not a memory bench. (The bench with no processor in it is `altairsim -n`, and it
+# is a real machine too -- the monitor is the bus master.)
+[[board]]
+type     = "8080"
+id       = "cpu0"
 clock_hz = 2000000
-sense    = 00
 
 [[board]]
 type = "memory"

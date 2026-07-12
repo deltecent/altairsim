@@ -147,10 +147,22 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
             for (auto& [k, v] : t.kv) {
                 if (k == "name") m.name = v;
                 else if (k == "clock_hz") {
-                    // 2000000 is two million. Nobody has ever meant 0x2000000 Hz.
-                    long long n;
-                    if (!parseNumber(v, n, err, 10)) return false;
-                    m.clockHz = n;
+                    // THE CLOCK IS THE CPU CARD'S, because that is where the crystal
+                    // physically is (DESIGN.md 3, 8). While there was no CPU this key
+                    // sat here doing nothing; now that there is one, keeping it would
+                    // mean two places to say one thing -- and the day they disagreed,
+                    // the machine would run at whichever the last writer won.
+                    //
+                    // So it is an ERROR, not an ignored key. A setting that is quietly
+                    // dropped is worse than one that is refused: the config LOOKS like
+                    // it slowed the machine down, and it did not.
+                    err = path + ": clock_hz belongs to the CPU CARD, not to [machine] --\n"
+                          "  the crystal is on the card. Put it in the CPU's [[board]]:\n"
+                          "      [[board]]\n"
+                          "      type     = \"8080\"\n"
+                          "      id       = \"cpu0\"\n"
+                          "      clock_hz = " + v;
+                    return false;
                 } else if (k == "sense") {
                     // The front-panel sense switches, which the guest reads through
                     // port FF. It is a byte on the wire, so it is hex.
@@ -254,7 +266,9 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
 
     f << "[machine]\n";
     f << "name     = \"" << m.name << "\"\n";
-    f << "clock_hz = " << m.clockHz << "\n";
+    // No clock_hz here. It is written out as the CPU board's property, by the same
+    // generic properties() walk that writes every other board's -- which is why
+    // CONFIG SAVE round-trips and cannot drift from what SET accepts.
     std::snprintf(buf, sizeof buf, "sense    = 0x%02X\n", m.sense);
     f << buf;
     if (!m.startup.empty()) {
