@@ -8,9 +8,12 @@
 //   ALTAIR_SERIAL_A=/dev/tty.usbserial-AL009KFH \
 //   ALTAIR_SERIAL_B=/dev/tty.usbserial-AB0NW409 ctest -L hw
 //
-// Unset, it SKIPS, and says so, and passes. A hardware test that quietly passes
+// Unset, it SKIPS, and says so, and exits 77 so that CTEST SAYS SO TOO (see the
+// SKIP_RETURN_CODE property in CMakeLists.txt). A hardware test that quietly passes
 // when the hardware is absent is worse than not having one -- it is a green tick
 // that means nothing, which is the only kind of test result that can lie to you.
+// Printing "SKIPPED" and then returning 0 is that same lie in a smaller font: the
+// message scrolls past and the summary line still reads `Passed`.
 //
 // WHAT A NULL MODEM CROSSES (and it is the whole reason this test can exist):
 //
@@ -77,6 +80,11 @@ void settle(platform::SerialPort& a, platform::SerialPort& b) {
     while (b.read(junk, sizeof junk)) {}
 }
 
+// The exit code CMakeLists.txt hands to ctest as SKIP_RETURN_CODE. 77 is the
+// automake convention, and ctest has no opinion of its own -- any code the two
+// files agree on would do.
+constexpr int kSkip = 77;
+
 } // namespace
 
 int main() {
@@ -89,7 +97,7 @@ int main() {
             "  This test needs TWO serial ports with a null modem between them:\n"
             "    ALTAIR_SERIAL_A=/dev/tty.usbserial-XXXX \\\n"
             "    ALTAIR_SERIAL_B=/dev/tty.usbserial-YYYY ctest -L hw\n");
-        return 0;
+        return kSkip;
     }
 
     std::printf("A = %s\nB = %s\n", pathA, pathB);

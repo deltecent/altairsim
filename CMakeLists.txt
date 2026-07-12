@@ -213,12 +213,15 @@ add_test(NAME unit COMMAND altair_tests)
 #   ALTAIR_SERIAL_B=/dev/tty.usbserial-AB0NW409 ctest -L hw
 #
 # Unset, it SKIPS and says so. A hardware test that silently passes when the
-# hardware is absent is worse than no hardware test at all.
+# hardware is absent is worse than no hardware test at all -- so it exits 77 and
+# SKIP_RETURN_CODE turns that into a `Skipped` in ctest's summary. Without this the
+# run reads `serial-hw ... Passed` on a machine with no serial ports at all, which
+# is a green tick for a cable nobody plugged in.
 # ---------------------------------------------------------------------------
 add_executable(altair_serialtest tests/serialtest.cpp)
 target_link_libraries(altair_serialtest PRIVATE altair_core)
 add_test(NAME serial-hw COMMAND altair_serialtest)
-set_tests_properties(serial-hw PROPERTIES LABELS hw)
+set_tests_properties(serial-hw PROPERTIES LABELS hw SKIP_RETURN_CODE 77)
 
 # ---------------------------------------------------------------------------
 # The 8080 validation gate (DESIGN.md 3.2). Period CP/M test suites, run against
