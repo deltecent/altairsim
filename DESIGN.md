@@ -805,13 +805,14 @@ Two things follow, and both are requirements rather than conveniences:
 
 **File or built-in is decided by SPELLING, never by probing the filesystem.** If the answer depended on the working directory, `altairsim default` would mean one thing today and something else the day somebody saves a file called `default` next to it. A command line whose meaning changes with its surroundings is a trap, and it is the kind that gets sprung at 2am. `-f ./default` and `-m default` never guess.
 
-The built-ins, as of milestone 1a — all three are honest about having **no CPU card**, because there is no 8080 yet:
+The built-ins, as of milestone 1a — both are honest about having **no CPU card**, because there is no 8080 yet:
 
 | | |
 |---|---|
-| `default` | 56K RAM, `0000-DFFF`. What you get with no arguments. |
-| `4k` | 4K RAM. The Altair as MITS shipped it; the machine 4K BASIC was written for. |
-| `dbl` | `default` plus the real DBL 4.1 boot PROM at `FF00`. |
+| `default` | 56K RAM at `0000-DFFF`, **and the real DBL 4.1 boot PROM at `FF00`**. What you get with no arguments. |
+| `4k` | 4K RAM, no ROM. The Altair as MITS shipped it; the machine 4K BASIC was written for. |
+
+**`default` carries the boot PROM, and `4k` carries the period accuracy.** A bare Altair 8800 had no ROM at all — you toggled the bootstrap in from the front panel, and the DBL PROM only existed if you had bought the disk system. That machine is `4k`, and having it frees `default` to be a different thing: *the machine you actually want when you type `altairsim` and nothing else.* On a real disk Altair the PROM was there, and a default with an empty `FF00` is a machine you must repair before it is any use — which is the opposite of what a default is for. So `altairsim` followed by `D FF00` shows you the boot loader, as it should.
 
 ### 10.0.1 The number base: on the wire → hex, never on the wire → decimal
 

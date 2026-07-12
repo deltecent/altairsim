@@ -71,18 +71,17 @@ void test_machines() {
     CHECK(findMachine("DEFAULT") != nullptr, "a machine name is not case-sensitive");
     CHECK(findMachine("sol20") == nullptr, "and one we have no manuals for is simply not there");
 
-    SECTION("the `dbl` machine -- the real boot PROM, on the real bus");
+    SECTION("the default machine's boot PROM -- the real DBL, on the real bus");
 
+    // `altairsim` then `D FF00` SHOWS YOU THE BOOT PROM. That is the whole point
+    // of a default: the machine you get for free is the one you wanted.
+    //
     // The ROM is compiled in, decoded by the ordinary Intel HEX loader, and put
     // on the bus by the ordinary memory board. Every one of those steps is tested
     // in isolation elsewhere; this checks they are actually WIRED TOGETHER, which
     // is the one thing unit tests routinely fail to notice has come apart.
-    const BuiltinMachine* b = findMachine("dbl");
-    CHECK(b != nullptr, "the dbl machine is compiled in");
-    if (!b) return;
-
     Machine md;
-    CHECK(loadMachine(*b, md, err), "dbl loads");
+    CHECK(loadMachine(*d, md, err), "the default machine loads");
 
     // DBL's first act, read through the bus, one byte at a time, as a CPU would:
     //     FF00  21 13 FF   LXI H,FF13    ; source: myself

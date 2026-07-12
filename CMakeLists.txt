@@ -24,13 +24,20 @@ endif()
 # built-in cannot drift from a mounted file, and CMake never learns what Intel
 # HEX is. Provenance and CRC32 for every ROM live in docs/roms.md.
 # ---------------------------------------------------------------------------
+# CONFIGURE_DEPENDS: re-glob on every BUILD, not just on configure. Without it,
+# dropping a new ROM into roms/ does nothing until someone remembers to re-run
+# cmake -- and DELETING one breaks the build outright, with an error naming a
+# file you just deliberately removed. Both are ten confusing minutes, and both
+# are avoidable for one word.
 set(ROMS_GENERATED "${CMAKE_BINARY_DIR}/generated/roms_generated.cpp")
-file(GLOB ROM_DIRS RELATIVE "${CMAKE_SOURCE_DIR}/roms" "${CMAKE_SOURCE_DIR}/roms/*")
+file(GLOB ROM_DIRS RELATIVE "${CMAKE_SOURCE_DIR}/roms"
+     CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/roms/*")
 
 set(ROM_IMAGE_FILES "")
 foreach(d ${ROM_DIRS})
   if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/roms/${d}")
-    file(GLOB img "${CMAKE_SOURCE_DIR}/roms/${d}/*.HEX" "${CMAKE_SOURCE_DIR}/roms/${d}/*.hex"
+    file(GLOB img CONFIGURE_DEPENDS
+                  "${CMAKE_SOURCE_DIR}/roms/${d}/*.HEX" "${CMAKE_SOURCE_DIR}/roms/${d}/*.hex"
                   "${CMAKE_SOURCE_DIR}/roms/${d}/*.BIN" "${CMAKE_SOURCE_DIR}/roms/${d}/*.bin")
     list(APPEND ROM_IMAGE_FILES ${img})
   endif()
@@ -63,7 +70,7 @@ add_custom_command(
 # So they double as worked examples, and they cannot drift from the format.
 # ---------------------------------------------------------------------------
 set(MACHINES_GENERATED "${CMAKE_BINARY_DIR}/generated/machines_generated.cpp")
-file(GLOB MACHINE_FILES "${CMAKE_SOURCE_DIR}/machines/*.toml")
+file(GLOB MACHINE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/machines/*.toml")
 
 add_custom_command(
   OUTPUT "${MACHINES_GENERATED}"

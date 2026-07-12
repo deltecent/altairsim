@@ -1,25 +1,61 @@
-# The machine you get when you name none.
+# The machine you get when you name none: 56K, and the DBL boot PROM at FF00.
 #
-# 56K of RAM, 0000-DFFF. That is the classic CP/M Altair: RAM stops at E000 to
-# leave the top 8K for the PROM/turnkey board and the memory-mapped I/O that a
-# real machine put up there. It is not 64K, and it never was -- CP/M's own
-# "56K" in the sign-on banner is this number.
+# This is the CP/M-era Altair, not a stock 1975 one. A bare Altair 8800 had NO
+# ROM -- you toggled the bootstrap in from the front panel -- and that machine is
+# here too, as `4k`. It carries the period-accuracy job, which frees this one to
+# carry a different one: being the machine you actually want when you type
+# `altairsim` and nothing else. On a real disk Altair the boot PROM was there,
+# and a default with an empty FF00 is a machine you have to repair before it is
+# any use, which is the opposite of what a default is for.
+#
+# 56K of RAM, 0000-DFFF. RAM stops at E000 to leave the top 8K for the PROM and
+# the memory-mapped I/O a real machine put up there. It is not 64K and it never
+# was -- the "56K" in CP/M's own sign-on banner is this number.
+#
+# NOTHING IS SHADOWED HERE, AND DBL DOES NOT NEED IT TO BE.
+#
+# An earlier machine file said the PROM "shadows the top page" and set
+# honors_phantom to make a point of it. That was fiction, and it is worth spelling
+# out because it is the exact failure DESIGN.md 0.1 exists to prevent: a plausible
+# story about hardware, believed because it sounded like how things ought to work.
+#
+# The truth is in the PROM itself. DBL's first three instructions are
+#
+#     FF00  21 13 FF     LXI  H,FF13     ; source: myself, from FF13
+#     FF03  11 00 2C     LXI  D,2C00     ; destination: RAM at 2C00
+#     FF06  0E EB        MVI  C,0EBH     ; 235 bytes
+#
+# -- it copies itself into RAM and runs there, because the EPROM was too slow to
+# execute from. It never writes to FFxx at all. So no write needs to fall through
+# to RAM underneath, hence no reason for the PROM to pull PHANTOM*, and there is
+# not even any RAM up there to shadow: 56K stops at DFFF. (The board can still
+# assert PHANTOM* -- see docs/boards/memory.md. It is a real S-100 signal and
+# other cards need it. This one does not, and saying so is cheaper than a week
+# spent debugging a machine that was never wrong.)
 #
 # THERE IS NO CPU CARD IN HERE, and that is not an oversight to be papered over.
-# The 8080 does not exist yet (docs/roadmap.md, milestone 2), so this machine
-# says what it is: a backplane with memory in it, driven by the monitor. When
-# the 8080 card lands it becomes a [[board]] in this file and nothing else moves.
+# The 8080 does not exist yet (docs/roadmap.md, milestone 2), so nothing jumps to
+# FF00 on its own and there is no disk for DBL to boot from yet either. The
+# monitor is the bus master, and DUMP is how you read the PROM. When the 8080 and
+# the 88-DCDD land they become [[board]] entries in this file, and nothing else
+# about it moves.
 
 [machine]
 name     = "default"
 clock_hz = 2000000            # 2 MHz. Inert until there is a CPU card to consume it.
-sense    = 00                 # front-panel sense switches (port FF)
+sense    = 00                 # port FF. DBL reads bit 4 to pick the 2SIO's stop bits.
 
 [[board]]
 type = "memory"
 id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
 
   [[board.region]]
   type = "ram"
   at   = 0000
-  size = "56K"
+  size = "56K"                # 0000-DFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:dbl"       # compiled in: nothing to download, same on every OS
