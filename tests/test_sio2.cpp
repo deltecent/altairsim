@@ -187,7 +187,34 @@ void test_sio2() {
 
         g.m.bus.ioWrite(0x10, 0x03);  // divide field == 11 == MASTER RESET
         CHECK((g.m.bus.ioRead(0x10) & 0x01) == 0, "master reset clears RDRF");
-        CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "master reset leaves TDRE set");
+
+        // ...AND THE CHIP IS NOW HELD IN RESET, WHICH INHIBITS TDRE (MC6850 data
+        // sheet, reference/6850.pdf: the TDRE bit "indicates the current status of the
+        // Transmit Data Register except when inhibited by Clear-to-Send being high or
+        // the ACIA being maintained in the Reset condition").
+        //
+        // This test used to assert the OPPOSITE -- "master reset leaves TDRE set" --
+        // and the data sheet says otherwise, so the data sheet wins (DESIGN.md 0.1).
+        // The divide field is not a pulse, it is a LATCH: 11 sits there holding the
+        // chip down until a second write selects a real ratio. Which is precisely why
+        // every 6850 driver does two OUTs, and why ALTMON's `MVI A,3` is only half an
+        // init sequence.
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "held in reset: TDRE is INHIBITED");
+
+        g.m.bus.ioWrite(0x10, 0x15);  // /16, 8 data, 1 stop -- the other half of the init
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "...and released, the transmitter is ready");
+
+        // A master reset does NOT clear the rest of the byte it arrived in: "Master
+        // reset does not affect other Control Register bits" (data sheet). So the
+        // receive interrupt enable in bit 7 survives the reset it was written with.
+        g.m.bus.ioWrite(0x10, 0x83);  // master reset + RIE, in one OUT. Legal.
+        g.m.bus.ioWrite(0x10, 0x95);  // release, keeping RIE
+        // RIE is write-only, so we read it back the only way the guest can: arm it,
+        // put a character on the line, and see the chip raise its IRQ bit. With RIE
+        // thrown away by the reset -- the old behaviour -- bit 7 would stay clear.
+        g.tty->feed("Q");
+        g.sio->pump();
+        CHECK((g.m.bus.ioRead(0x10) & 0x80) != 0, "RIE survived the reset it rode in on");
 
         // ...and it does NOT unplug the terminal. A warm reset that dropped the
         // console would be a baffling thing to debug.

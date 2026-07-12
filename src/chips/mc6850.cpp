@@ -38,6 +38,24 @@ constexpr uint8_t kWordMask   = 0x1C;   // bits 2-4
 constexpr uint8_t kTxCtlMask  = 0x60;   // bits 5-6
 constexpr uint8_t kRie        = 0x80;   // bit 7: receive interrupt enable
 
+// THE DIVIDE RATIO IS NOT MODELED, AND HERE IS THE HONEST ACCOUNT OF IT.
+//
+// CR1:CR0 select the counter divide -- 00 is /1, 01 is /16, 10 is /64, and 11 is
+// the master reset. We decode 11 and IGNORE the other three: `baud` is the rate on
+// the wire, full stop, and a guest that reprograms /16 to /64 gets no change where
+// a real card would slow down by a factor of four.
+//
+// That is a divergence, not an oversight, and the reason is that fixing it needs a
+// fact this data sheet does not have. The 6850 divides a clock it is GIVEN, and what
+// the 88-2SIO gives it is a jumper on the card -- so to honour the divide ratio,
+// `baud` would have to stop meaning "the line rate" and start meaning "the crystal",
+// and the conversion between them is in the 2SIO manual's strapping table, not here.
+// Guessing at it would be exactly the kind of invented number DESIGN.md 0.1 forbids.
+//
+// Nothing in period software has been observed to care: a driver picks a divide ratio
+// once, at init, and the jumper was cut to match. It is written down in
+// docs/boards/mits-2sio.md as a known limitation rather than left to be discovered.
+
 // Transmit control field (bits 5-6), from the datasheet:
 //   00  RTS low,  transmit interrupt DISABLED
 //   01  RTS low,  transmit interrupt ENABLED
@@ -208,8 +226,14 @@ void Mc6850::sampleDcd() {
     if (dcdFollow_) dcdFlag_ = lost;
 }
 
-// TDRE -- and the two things that inhibit it. See the header.
+// The divide field IS the reset, and it LATCHES. See the header: this is a state the
+// chip sits in until a second control write lets it out.
+bool Mc6850::inReset() const { return (control_ & kDivideMask) == kMasterReset; }
+
+// TDRE -- and the three things that inhibit it. See the header.
 bool Mc6850::tdre(const Clock& clk) const {
+    if (inReset()) return false;              // "...or the ACIA being maintained in the
+                                              // Reset condition" -- data sheet
     if (clk.now() < txFreeAt_) return false;  // the character has not finished leaving
     if (!ctsPin_) return false;               // "the TDRE bit is inhibited" -- data sheet
     if (!txRoom_) return false;               // ...and the far end has nowhere to put it
@@ -290,6 +314,13 @@ void Mc6850::poll(const Clock& clk) {
     // which is what it should see when the call has dropped.
     if (!carrier()) return;
 
+    // ...and it is dead while the chip is held in reset, for the same reason and by
+    // the same words: the master reset "initializes both the receiver and
+    // transmitter". A chip sitting in the reset condition is not listening to the
+    // line, so the bytes wait on it. (The PINS above are sampled anyway: /CTS and
+    // /DCD are external conditions, and a reset does not reach across a cable.)
+    if (inReset()) return;
+
     if (rdrf_) return;                  // the register is still full: the line waits
     if (clk.now() < rxNextAt_) return;  // the character has not finished arriving
     if (!stream_->readable()) return;
@@ -355,17 +386,19 @@ uint8_t Mc6850::readData(const Clock& clk) {
     return rxData_;
 }
 
+// EVERY BIT OF THE BYTE LATCHES, INCLUDING ON A MASTER RESET. The data sheet is flat
+// about it -- "Master reset does not affect other Control Register bits" -- and it
+// used to be got wrong here: a master-reset write was swallowed whole and the control
+// register zeroed, so a guest that wrote 0x83 (reset AND arm the receive interrupt, in
+// one OUT, which is legal and which some drivers do) got its interrupt enable thrown
+// away. The reset is a thing the write REQUESTS, not a thing the write IS.
+//
+// And the reset LASTS. The divide field stays 11 until a second control write clears
+// it, and until then the chip is held in reset -- see inReset(), and note that this is
+// why nothing works until ALTMON's second OUT.
 void Mc6850::writeControl(uint8_t v, const Clock& clk) {
-    if ((v & kDivideMask) == kMasterReset) {
-        // The guest asked for a master reset. Do it -- the Python prototype
-        // ignored the control register entirely, and this is the write that
-        // matters most: ALTMON's very first instruction is `mvi a,3 / out 10h`.
-        masterReset(clk);
-        // A master reset does NOT latch the rest of the byte; the guest follows
-        // up with a second write to set the word format. ALTMON does exactly that.
-        return;
-    }
     control_ = v;
+    if (inReset()) resetAction(clk);
 
     // THE CONTROL REGISTER IS THE WIRE. Bits 5-6 are RTS and BREAK -- real pins, and
     // they go out now. Bits 2-4 are the word format, which IS the frame a real serial
@@ -385,12 +418,14 @@ void Mc6850::writeData(uint8_t v, const Clock& clk) {
     txFreeAt_ = clk.now() + charTStates(clk);
 }
 
-void Mc6850::masterReset(const Clock& clk) {
-    control_  = 0;
+// The reset itself, with the control register left alone. Called two ways -- by a
+// guest writing 11 into the divide field, and by the card at power-on -- and they
+// disagree about the control register, so it is not this function's business.
+void Mc6850::resetAction(const Clock& clk) {
     rdrf_     = false;
     ovrn_     = false;
     rxData_   = 0;
-    txFreeAt_ = clk.now();   // transmitter is immediately ready
+    txFreeAt_ = clk.now();   // "initializes both the receiver and transmitter"
     rxNextAt_ = clk.now();
 
     // "Master reset ... clears the Status Register (EXCEPT for external conditions on
@@ -409,6 +444,11 @@ void Mc6850::masterReset(const Clock& clk) {
     // bit" (data sheet) -- it is a PIN, and a reset does not reach across the cable.
     ctsPin_ = ctsNow();
     txRoom_ = stream_->writable();
+}
+
+void Mc6850::masterReset(const Clock& clk) {
+    control_ = 0;
+    resetAction(clk);
 
     // The endpoint STAYS CONNECTED. A warm reset does not unplug the terminal --
     // and a guest that reset its UART and found the console gone would be a
@@ -451,6 +491,12 @@ uint64_t Mc6850::nextEdge(const Clock& clk) const {
         if (when <= clk.now()) return;  // already past: irq() is showing it already
         if (!best || when < best) best = when;
     };
+
+    // A chip held in reset has no edges of its own AT ALL: the receiver is initialized
+    // and TDRE is inhibited, so no amount of waiting moves the pin. The only thing that
+    // gets it out of this state is the guest, writing a divide ratio -- and a register
+    // write is not a deadline.
+    if (inReset()) return 0;
 
     // The transmitter drains on its own clock. TDRE goes true at txFreeAt_, and
     // with the transmit interrupt jumpered on, IRQ rises with it -- WITH NOBODY

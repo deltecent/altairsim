@@ -40,6 +40,17 @@ monit   mvi  a,3          ;reset 6850 uart
 
 `roms/DBL/DBL.ASM` (the boot PROM's own 2SIO equates). Both are in this repository — first-hand period artifacts, which is what §0.1 asks for.
 
+### The data sheet cross-check (2026-07-12)
+
+`src/chips/mc6850.cpp` was written before the data sheet was in hand, from the manual and from what ALTMON does. `reference/6850.pdf` (Motorola MC6850/68A50/68B50, pages 4-527…4-535) has now been read against it, line by line. What it **confirmed**: the status and control bit maps (Table 1), all eight rows of the word-select table, the RTS decode (`low` unless CR6=1 and CR5=0; break on `11`), `/CTS` inhibiting TDRE, the entire `/DCD` latch — edge-triggered interrupt, two-step status-then-data clear, follow-the-pin afterwards, receiver dead and RDRF forced empty while the pin is high — and RIE arming RDRF **and** OVRN **and** DCD together.
+
+What it **corrected**, and the data sheet won in both cases (§0.1):
+
+1. **A master reset does not zero the control register**, and it *latches* — see the two notes under the control register above. The old code swallowed the master-reset byte whole and zeroed `control_`, which threw away any other bits the guest wrote in the same `OUT`, and left TDRE *set* on a chip that a real 6850 would be holding down. `tests/test_sio2.cpp` asserted that wrong behaviour explicitly (*"master reset leaves TDRE set"*); the assertion has been inverted and now cites the sheet.
+2. **The divide ratio is a known divergence** — see Limitations.
+
+Still open, and deliberately not changed here: **the 6850 has no RESET pin.** Its 24 pins are Vss, RxData, RxCLK, TxCLK, RTS, TxData, IRQ, CS0–2, RS, Vcc, R/W, E, D0–D7, DCD and CTS, and that is all of them. Reset is internal power-on logic only, *"released by means of the bus-programmed master reset"* — so the S-100 `RESET*` line **physically cannot** master-reset this chip, and a front-panel reset should leave the control register and RDRF untouched. `Sio2Board::reset()` master-resets both chips anyway. See Reset, below.
+
 ## Register reference
 
 ### Control register (write) — the Python prototype ignored this entirely; don't.
@@ -52,6 +63,10 @@ monit   mvi  a,3          ;reset 6850 uart
 | 7 | **RIE** — receive interrupt enable |
 
 Period software writes `0x03` (master reset) then `0x11` (÷16, 8N2). An **interrupt-driven** driver sets bit 7 and/or the `01` transmit-control field — that is the path milestone 1 must prove.
+
+**Why it is always *two* writes, and never one.** The divide field is not a pulse, it is a **latch**: `11` sits there *holding the chip in reset* until a second write selects a real ratio. And a chip held in reset has its transmitter inhibited — the data sheet lists the reset condition alongside `/CTS` as a thing that suppresses TDRE. So a guest that master-resets and then polls for TDRE without programming the word format **waits forever**, on the real chip and on this one. That is why ALTMON's `MVI A,3 / OUT 10h` is only half an initialization sequence, and why every 6850 driver ever written does two `OUT`s.
+
+**A master reset does not clear the rest of the byte it arrived in.** *"Master reset does not affect other Control Register bits"* — so `0x83` (reset **and** arm the receive interrupt, in one `OUT`, which is legal) latches RIE and resets; it does not throw the interrupt enable away. The reset is a thing the write *requests*, not a thing the write *is*.
 
 ### Status register (read) — **true sense**
 
@@ -146,6 +161,8 @@ If the host cannot do the strapped rate (an FTDI cable and 76800 baud), the card
 - `Reset::PowerOn` and `Reset::Bus` both: 6850 master reset — clear RDRF, leave the transmitter ready.
 - **Both keep the `ByteStream` connected.** A warm reset does not unplug the terminal, and a guest that reset its UART and found the console gone would be a baffling thing to debug.
 
+> **This contradicts the data sheet, and it is a known open item, not a decision.** The 6850 has no RESET pin (see the cross-check under Sources), so on real hardware `RESET*` reaches this card's decode logic and *nothing else* — the ACIA keeps its control register and its RDRF across a front-panel reset, and only a bus-programmed `0x03` clears it. In practice it makes little difference (guest software master-resets the ACIA itself; it is ALTMON's first instruction), which is why this has not been changed in the same breath as the rest. It is being handled separately.
+
 ## Quirks reproduced (and what breaks if you don't)
 
 **TDRE is a deadline, not a flag.** The Python prototype hardwired `TDRE = 1` (always ready to send). That is not merely an approximation:
@@ -177,6 +194,7 @@ Number 3 would never have been guessed. A modem program that checked RDRF after 
 ## Limitations
 
 - Baud is a board jumper on real hardware, so `baud` is a property rather than a register. Software cannot change it, which is correct.
+- **The clock divide ratio (CR1:CR0 = ÷1 / ÷16 / ÷64) is decoded but not honored.** We act on `11` (master reset) and ignore the other three: `baud` is the rate *on the wire*, so a guest that reprograms ÷16 to ÷64 gets no change where a real card would slow down fourfold. This is a **divergence from the data sheet**, kept deliberately, because closing it needs a fact the data sheet does not have. The 6850 divides a clock it is *given*, and what the 88-2SIO gives it is a **jumper**; to honor the ratio, `baud` would have to stop meaning "the line rate" and start meaning "the crystal", and the conversion between the two is in the 2SIO manual's strapping table, not in the chip's data sheet. Guessing at it would be exactly the invented number §0.1 forbids. No period software has been observed to care — a driver picks a ratio once, at init, and the jumper was cut to match.
 - **The 6850 has no DTR pin and no RI pin.** It has `/CTS`, `/DCD` and `RTS`, and that is all — so **this card cannot hang up a phone and cannot hear one ring**, and no amount of wanting it to changes what is soldered to the chip. The `ByteStream` layer carries DTR and RI because the **PMMI** has both (DTR *is* its hang-up, and it counts ring bursts to answer), and a `socket:` endpoint implements the hangup — but nothing in the machine drives DTR today. The data sheet notes RTS *"can also be used for Data Terminal Ready"*, i.e. a card **may** wire it that way; the 88-2SIO's hardwire table is not in front of us, and §0.1 says **ask, do not reason**. So it is not modeled.
 - **A `socket:` endpoint auto-answers; RI is always false.** Ringing would mean *not* answering until the card raises DTR — and since no card in the machine has a DTR pin, every socket would sit there ringing forever, unanswerable. The PMMI is the card that will make a ring mean something.
 - Parity and framing errors are not synthesized. They report **line noise**, and there is no line: a `ByteStream` delivers the byte that was sent or it delivers nothing. Synthesizing them would mean inventing a noise model, which would mean inventing a probability — the kind of number §0.1 says to *ask* about rather than make up. (A **real serial port** genuinely has framing and parity errors, and that is a real hardware event a `HostSerialStream` could one day report — from the place that actually knows, which is not here.)

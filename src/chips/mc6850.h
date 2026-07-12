@@ -78,6 +78,22 @@ public:
     void masterReset(const Clock& clk);
     bool irq(const Clock& clk) const;   // the chip's IRQ pin, jumper or no jumper
 
+    // HELD IN RESET, WHICH IS A STATE AND NOT AN EVENT (MC6850 data sheet).
+    //
+    // The divide field IS the reset: while CR1:CR0 read 11 the chip is "maintained
+    // in the Reset condition", and it STAYS there until the guest writes a second
+    // control byte that selects a real divide ratio. That is why every 6850 driver
+    // ever written does two OUTs, not one -- ALTMON's `MVI A,3 / OUT 10h` is only
+    // half of the sequence, and the machine does not come up until the other half
+    // lands.
+    //
+    // While it holds, the transmitter is inhibited: "The TDRE status bit indicates
+    // the current status of the Transmit Data Register except when inhibited by
+    // Clear-to-Send being high OR THE ACIA BEING MAINTAINED IN THE RESET CONDITION."
+    // So a guest that master-resets and then polls for TDRE without programming the
+    // format waits forever, on the real chip and now on this one.
+    bool inReset() const;
+
     IrqJumper jumper = IrqJumper::None;
 
     // The card's straps for the two modem INPUTS the 6850 actually has pins for.
@@ -175,6 +191,15 @@ private:
     // Sample /DCD and do what the data sheet says a 6850 does with it -- which is a
     // great deal more than set a status bit. See the .cpp.
     void sampleDcd();
+
+    // WHAT A RESET ACTUALLY DOES, minus the control register -- because a master
+    // reset does NOT clear the control register (data sheet: "Master reset does not
+    // affect other Control Register bits"). The reset is REQUESTED by a control
+    // write, and the rest of the bits in that same write latch normally. Two callers,
+    // and they disagree about the control register, which is the whole reason this is
+    // its own function: writeControl() keeps the byte the guest wrote; masterReset()
+    // zeroes it, because it is the power-on path and there is no byte.
+    void resetAction(const Clock& clk);
 
     // The LIVE /CTS pin, strap applied. Only poll() may call it; everything else reads
     // the sample. See ctsPin_.
