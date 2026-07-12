@@ -124,17 +124,18 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
 
 } // namespace
 
-bool loadToml(const std::string& path, Machine& m, std::string& err) {
-    std::ifstream f(path);
-    if (!f) {
-        err = "cannot open '" + path + "'";
-        return false;
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
+// A BUILT-IN MACHINE IS A TOML FILE THAT HAPPENS TO LIVE IN .rodata.
+//
+// This is the same bargain as the built-in ROMs, and for the same reason: there
+// is ONE machine language, and a built-in cannot drift from a file because it
+// travels the identical parser. `source` is only ever used to name the thing in
+// an error message -- "builtin:turnkey: ..." reads exactly like a path would.
+bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
+                  std::string& err) {
+    const std::string& path = source;
 
     std::vector<Table> tabs;
-    if (!parse(ss.str(), tabs, err)) {
+    if (!parse(text, tabs, err)) {
         err = path + ": " + err;
         return false;
     }
@@ -230,6 +231,17 @@ bool loadToml(const std::string& path, Machine& m, std::string& err) {
 
     m.power();  // a machine that has just been built has just been switched on
     return true;
+}
+
+bool loadToml(const std::string& path, Machine& m, std::string& err) {
+    std::ifstream f(path);
+    if (!f) {
+        err = "cannot open '" + path + "'";
+        return false;
+    }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return loadTomlText(ss.str(), path, m, err);
 }
 
 bool saveToml(const std::string& path, Machine& m, std::string& err) {

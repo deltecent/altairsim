@@ -23,7 +23,7 @@ Before implementation, `docs/cli-transcripts.md` gets a set of **complete, annot
 
 > ### ✅ Built, 2026-07-11. It runs.
 >
-> `cmake -S . -B build && cmake --build build` → `altairsim`, `altairsim -c script.cmd`, `altairsim --mcp`. 77 unit checks, all passing, no warnings.
+> `cmake -S . -B build && cmake --build build` → `altairsim` (three built-in machines, no config file needed), `altairsim -s script.cmd`, `altairsim --mcp`. 313 unit checks, all passing, no warnings.
 >
 > **MCP came in with it**, not after. That was Patrick's call and it was the right one: the CLI and the MCP server sit on the *same* `Machine` and the *same* `Board::properties()`, so building only one of them would have let the reflection layer be shaped by a single consumer — and the whole claim of §11 is that it has two. `board_get`'s schema is *generated* from `properties()`; nobody hand-wrote an enum list, and `CONFIG SAVE` round-trips `phantom`/`fill` through a serializer that was never written for them.
 >
@@ -118,7 +118,7 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 - **The interrupt mechanism is in milestone 1**, not milestone 6. Milestone 6 adds the 88-VI *board* and multi-board priority, but `pINT`/`IntAck`/floating-bus-RST-7 exist and are proven from the start, because the 2SIO already needs them.
 - **The CPU validation gate is milestone 2**, not milestone 1: get the interface in front of you first, then make the core provably correct — but both before a single disk sector is read, so no board is ever built on an unvalidated 8080.
 
-Each milestone has a **written acceptance test that runs headless in CI on all four platforms** via `altairsim -c script.cmd`, so "it works" is never an opinion.
+Each milestone has a **written acceptance test that runs headless in CI on all four platforms** via `altairsim -s script.cmd`, so "it works" is never an opinion.
 
 ---
 

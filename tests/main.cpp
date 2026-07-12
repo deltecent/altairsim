@@ -15,6 +15,7 @@ int main() {
     test_boundary();
     test_numbers();
     test_units();
+    test_machines();
 
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;

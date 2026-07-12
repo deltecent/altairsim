@@ -1,0 +1,25 @@
+# The machine you get when you name none.
+#
+# 56K of RAM, 0000-DFFF. That is the classic CP/M Altair: RAM stops at E000 to
+# leave the top 8K for the PROM/turnkey board and the memory-mapped I/O that a
+# real machine put up there. It is not 64K, and it never was -- CP/M's own
+# "56K" in the sign-on banner is this number.
+#
+# THERE IS NO CPU CARD IN HERE, and that is not an oversight to be papered over.
+# The 8080 does not exist yet (docs/roadmap.md, milestone 2), so this machine
+# says what it is: a backplane with memory in it, driven by the monitor. When
+# the 8080 card lands it becomes a [[board]] in this file and nothing else moves.
+
+[machine]
+name     = "default"
+clock_hz = 2000000            # 2 MHz. Inert until there is a CPU card to consume it.
+sense    = 00                 # front-panel sense switches (port FF)
+
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"

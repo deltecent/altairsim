@@ -1,22 +1,51 @@
-# A 1a machine: 48K of RAM, and the real DBL 4.1 boot PROM shadowing the top page.
-# There is no CPU yet -- the monitor is the bus master.
+# The 56K machine plus the real Altair Disk Boot Loader 4.1 PROM at FF00.
+#
+# This is `default` with a boot PROM in it, and it is the machine you want if you
+# are looking at the DBL: `DUMP FF00` shows the actual bytes MITS shipped.
+#
+# NOTHING IS SHADOWED HERE, AND DBL DOES NOT NEED IT TO BE.
+#
+# An earlier draft of this file said the PROM "shadows the top page" and set
+# honors_phantom to make a point of it. That was fiction, and worth spelling out
+# because it is the exact failure DESIGN.md 0.1 exists to prevent -- a plausible
+# story about hardware, believed because it sounded like how it ought to work.
+#
+# The truth is in the PROM itself. DBL's first three instructions are
+#
+#     FF00  21 13 FF     LXI  H,FF13     ; source: myself, from FF13
+#     FF03  11 00 2C     LXI  D,2C00     ; destination: RAM at 2C00
+#     FF06  0E EB        MVI  C,0EBH     ; 235 bytes
+#
+# -- it copies itself into RAM and runs there, because the EPROM was too slow to
+# execute from. It never writes to FFxx at all. So there is no write that needs to
+# fall through to RAM underneath, hence no reason for the PROM to pull PHANTOM*,
+# and in this machine there is not even any RAM up there to shadow: 56K stops at
+# DFFF. The top 8K is exactly the hole the PROM and the memory-mapped I/O lived in
+# on a real machine, which is WHY 56K is the number and not 64K.
+#
+# (The board can still assert PHANTOM* -- see docs/boards/memory.md. It is a real
+# S-100 signal and other cards genuinely need it. This one does not, and saying so
+# is cheaper than a week of debugging a machine that was never wrong.)
+#
+# There is no CPU yet, so nothing jumps to FF00 on its own (milestone 2). The
+# monitor is the bus master, and DUMP is how you read the PROM.
+
 [machine]
-name     = "dbl-bench"
+name     = "dbl"
 clock_hz = 2_000_000
-sense    = 0x00
+sense    = 0x00               # port FF. DBL reads bit 4 to pick the 2SIO's stop bits.
 
 [[board]]
-type           = "memory"
-id             = "mem0"
-honors_phantom = true
-fill           = "random"      # real static RAM does not come up zeroed
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
 
   [[board.region]]
   type = "ram"
   at   = 0x0000
-  size = "48K"
+  size = "56K"                # 0000-DFFF
 
   [[board.region]]
   type  = "rom"
   at    = 0xFF00
-  mount = "builtin:dbl"        # compiled in. Nothing to download, same on every OS.
+  mount = "builtin:dbl"       # compiled in: nothing to download, same on every OS

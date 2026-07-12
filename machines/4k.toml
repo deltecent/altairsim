@@ -1,0 +1,24 @@
+# The Altair as it actually left Albuquerque.
+#
+# A 1975 Altair 8800 shipped with 256 BYTES on the CPU card. The first thing
+# anybody bought was memory, and the machine that made the Altair famous -- the
+# one Altair 4K BASIC was written for, and the one Gates and Allen sold to MITS
+# -- is this one: 4K of RAM at 0000-0FFF and nothing else in the backplane.
+#
+# It is here as the small end of the range. If a bug only shows up when almost
+# nothing is populated -- an unowned page floating to FF, a region map that
+# assumed 64K -- this machine finds it and `default` does not.
+
+[machine]
+name     = "4k"
+clock_hz = 2000000
+sense    = 00
+
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "4K"

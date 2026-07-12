@@ -25,3 +25,4 @@ void test_cli();
 void test_boundary();
 void test_numbers();
 void test_units();
+void test_machines();

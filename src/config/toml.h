@@ -22,6 +22,13 @@
 namespace altair {
 
 bool loadToml(const std::string& path, Machine& m, std::string& err);
+
+// The same parser, over text that never had a path. A BUILT-IN MACHINE IS A TOML
+// FILE THAT LIVES IN .rodata (core/machines.h) -- `source` only names it in
+// errors. One machine language, no second dialect for the things we ship.
+bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
+                  std::string& err);
+
 bool saveToml(const std::string& path, Machine& m, std::string& err);
 
 } // namespace altair

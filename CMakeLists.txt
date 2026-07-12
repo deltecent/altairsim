@@ -47,6 +47,35 @@ add_custom_command(
   VERBATIM)
 
 # ---------------------------------------------------------------------------
+# Built-in machines (DESIGN.md 10.0)
+#
+# machines/*.toml are BUILD-TIME INPUTS, exactly like a .cpp file. They are read
+# here, at compile time, and emitted as byte arrays that link into .rodata.
+#
+# THE SHIPPED BINARY IS SELF-CONTAINED. It never looks for a machines/ directory,
+# never consults an install prefix, and does not care where it was copied to --
+# `altairsim default` works from a USB stick. That is a hard requirement: this
+# ships as ONE EXECUTABLE plus documentation, and a simulator that cannot find
+# its own default machine is a simulator that does not start.
+#
+# The .toml files are still real TOML, in the real config format, because they
+# are parsed at runtime by the same loadTomlText() that reads your config file.
+# So they double as worked examples, and they cannot drift from the format.
+# ---------------------------------------------------------------------------
+set(MACHINES_GENERATED "${CMAKE_BINARY_DIR}/generated/machines_generated.cpp")
+file(GLOB MACHINE_FILES "${CMAKE_SOURCE_DIR}/machines/*.toml")
+
+add_custom_command(
+  OUTPUT "${MACHINES_GENERATED}"
+  COMMAND ${CMAKE_COMMAND}
+          -DMACHINES_DIR=${CMAKE_SOURCE_DIR}/machines
+          -DOUT=${MACHINES_GENERATED}
+          -P ${CMAKE_SOURCE_DIR}/cmake/embed_machines.cmake
+  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_machines.cmake ${MACHINE_FILES}
+  COMMENT "Embedding machines from machines/"
+  VERBATIM)
+
+# ---------------------------------------------------------------------------
 # Core library -- everything except main(). Tests link this.
 # ---------------------------------------------------------------------------
 add_library(altair_core STATIC
@@ -56,6 +85,7 @@ add_library(altair_core STATIC
   src/core/board.cpp
   src/core/machine.cpp
   src/core/roms.cpp
+  src/core/machines.cpp
   src/core/value.cpp
   src/boards/memory.cpp
   src/boards/registry.cpp
@@ -65,7 +95,8 @@ add_library(altair_core STATIC
   src/cli/lineedit.cpp
   src/util/json.cpp
   src/mcp/server.cpp
-  "${ROMS_GENERATED}")
+  "${ROMS_GENERATED}"
+  "${MACHINES_GENERATED}")
 
 target_include_directories(altair_core PUBLIC src)
 
@@ -86,6 +117,7 @@ add_executable(altair_tests
   tests/test_cli.cpp
   tests/test_boundary.cpp
   tests/test_numbers.cpp
-  tests/test_units.cpp)
+  tests/test_units.cpp
+  tests/test_machines.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)

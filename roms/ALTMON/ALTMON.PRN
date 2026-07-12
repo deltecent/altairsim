@@ -1,0 +1,931 @@
+
+
+                ;-------------------------------------------------------------------------
+                ;
+                ;  ALTMON.ASM - 1K ROM monitor for the Altair 8800.
+                ; 
+                ;     This monitor is based on the 2.0C monitor from Vector Graphic. The
+                ;     original version has been updated to use Altair 2SIO serial ports
+                ;     for I/O and several commands have been added and/or modified. 
+                ;
+                ;     A typical location for this PROM in an Altair is at F800, though
+                ;     it can be assembled at most any address. The stack is typically
+                ;     placed at the top of the minimum RAM you expect to have in your
+                ;     system. Set the equate SPTR for the desired stack location.
+                ;
+                ;  Version     Date	Author
+                ;  -------  ----------	---------------------------------------
+                ;    1.0    01/10/2016  Mike Douglas  (Original)
+                ;
+                ;    1.1    02/29/2016  Mike Douglas
+                ;		Fix bug in DUMP code that caused improper range of bytes
+                ;		to display. Also in DUMP, display '.' for all characters
+                ;		7Fh or above.
+                ;
+                ;		Initialize 2nd 2SIO port so that loading of Intel HEX
+                ;		files works over the 2nd port. Only flush hex file
+                ;		input on the console serial port to free up code space
+                ;		and because it's not really required for the 2nd port.
+                ;
+                ;    1.2    05/05/2016  Mike Douglas
+                ;		By setting the Turnkey disable equate (TKYDSBL) to 1,
+                ;		ALTMON will read the sense switch (port 0FFh) during
+                ;		initialization to disable PROM on a Turnkey board. This
+                ;		is useful if the PROM board on which ALTMON is running
+                ; 		includes the desired PROMs for FC00-FFFF. In this case,
+                ;		the Turnkey board (if present) is used only for the auto-
+                ;		start jump to ALTMON.
+                ;
+                ;		"R" command jumps to "R"OM at FC00. Useful for a non-
+                ;		Altair boot ROM at FC00. Previously "R" was a duplicate
+                ;		of the "N" (non-destructive memory test) command.
+                ;
+                ;    1.3    02/13/2024  Mike Douglas
+                ;		Make the "T" command (memory test) work like the Vector
+                ;		Graphic 4.0 monitor. ESC to abort and space to pause work
+                ;		immediately when typed and the dot pacifier is displayed
+                ;		after each full test of memory instead of before.
+                ;
+                ;-------------------------------------------------------------------------
+                ;
+                ;   Following is a summary of changes from the original VG 2.0c monitor:
+                ;
+                ;	All commands immediately echo a full command name as soon as the 
+                ;	first command letter is typed (e.g., typing "M" immediately
+                ;	displays "MOVE"). This makes it easier to identify commands 
+                ;	without a list of commands present.
+                ;
+                ;	The ESC key can be pressed to abort input or commands as in
+                ;	the later 4.x monitors from VG. The original ctrl-c abort is
+                ;	still present as well.
+                ;
+                ;	The B (boot) command jumps to the Altair disk boot loader PROM
+                ;	at FF00 instead of the North Star boot ROM.
+                ;
+                ;	A (ASCII dump) command removed and D (hex dump) updated to display
+                ;	both hex and ASCII.
+                ;
+                ;	X (exchange) command changed to the E command.
+                ;
+                ;	H command added to load Intel hex file via either serial port
+                ;	on a 2SIO. The L (load and go from tape) does a hex file load
+                ;	as well (all tape commands eliminated).
+                ;
+                ;	J treated as jump (i.e., go to) command instead of jump to North
+                ;	Star DOS.
+                ;
+                ;	K treated as fill memory with "K"onstant instead of jump to zero
+                ;	(was the Z command which has been removed).
+                ;
+                ;	R jumps to the "R"OM at FC00 (e.g., boot a non-Altair disk)
+                ;
+                ;	The Y command (Vector Graphic relocating loader) command has been
+                ;	removed.
+                ;
+                ;	The T test memory command skips the 256 byte page the stack is on
+                ;	to prevent crashing the program. A "." pacifier is displayed 
+                ;	after each cycle through the memory test range is completed
+                ;
+                ;-------------------------------------------------------------------------
+                ;
+                ;  Command Summary:
+                ;
+                ;	B jump to Altair disk boot loader (FF00)
+                ;	C SSSS FFFF CCCC compare blocks
+                ;	D SSSS FFFF dump in hex and ASCII
+                ;	E SSSS FFFF DDDD exchange block
+                ;	F SSSS FFFF DD DD find two byte sequence
+                ;	G SSSS go to and execute
+                ;	H P load Intel hex file from 2SIO port 0 or 1
+                ;	I PP input from I/O port
+                ;	J SSSS go to and execute (G)
+                ;	K SSSS FFFF DD fill with "K"onstant
+                ;	L P load Intel hex file from 2SIO port 0 or 1
+                ;	M SSSS FFFF DDDD move block
+                ;	N non destructive memory test (size RAM)
+                ;	O PP DD output to port
+                ;	P LLLL program memory
+                ;	Q SSSS FFFF compute checksum
+                ;	R jump to "R"OM at FC00
+                ;	S SSSS FFFF DD search for single byte sequence
+                ;	T SSSS FFFF test memory
+                ;
+                ;-------------------------------------------------------------------------
+                ;
+                ; Memory location equates
+                
+ F800           	org	0F800h		;ROM location
+                
+ C000 =         SPTR	equ	0C000h		;stack pointer (use 256 byte boundary)
+                
+ BFE0 =         SIOPORT	equ	SPTR-32		;saved 2SIO port during hex load
+ FF00 =         ALTBOOT	equ	0FF00h		;Altair disk boot loader ROM
+                
+                ; Turnkey Board - set TKYDSBL to 1 to disable Turnkey PROMs. This is
+                ;    done by reading the sense switch input port during initialization.
+                
+ 0000 =         TKYDSBL	equ	0		;non-zero = disable turnkey PROMs
+ 00FF =         SENSESW	equ	0FFh		;sense switch input port
+                
+                ; 88-2SIO equates
+                
+ 0010 =         CONS	equ	10h		;console status port
+ 0011 =         COND	equ	11h		;console data port
+ 0002 =         TBE	equ	2		;transmit buffer entry
+ 0001 =         RDA	equ	1		;receive data available
+                
+                ; Misc Equates
+                
+ 000D =         CR	equ	13		;ASCII carriage return
+ 000A =         LF	equ	10		;ASCII line feed
+ 0003 =         CTRLC	equ	3		;ASCII control-c
+ 001B =         ESC	equ	27		;ASCII ESCAPE
+                
+                ;---------------------------------------------------------
+                ;  monit - monitor entry point
+                ;---------------------------------------------------------
+ F800 3E03      monit	mvi	a,3		;reset 6850 uart
+ F802 D310      	out	CONS
+ F804 D312      	out	CONS+2		;2nd 2SIO port as well
+ F806 3E11      	mvi	a,11h		;8N2
+ F808 D310      	out	CONS
+ F80A D312      	out	CONS+2		;2nd 2SIO port as well
+                
+                 if TKYDSBL	
+                	in	SENSESW		;disable Turnkey PROM
+                 endif
+                
+ F80C 3100C0    	lxi	sp,SPTR
+ F80F CDA5FB    	call	dspMsg		;display welcome banner
+ F812 0D0A0A414C	db	CR,LF,LF,'ALTMON 1.','3'+80h
+                
+                ; start - command processing loop
+                
+ F81F 3100C0    start	lxi	sp,SPTR		;re-init stack pointer
+ F822 211FF8    	lxi	h,start		;RET's go back to start
+ F825 E5        	push	h
+                
+ F826 CD63FB    	call	crlf		;display '*' prompt after CR/LF
+ F829 3E2A      	mvi	a,'*'
+ F82B CD48FB    	call	ptcn
+                
+ F82E CDBCFB    	call	getCon		;read command from keyboard
+ F831 E65F      	ani	05FH		;lower case to upper case
+ F833 FE42      	cpi	'B'
+ F835 D8        	rc			;too small
+ F836 FE55      	cpi	'U'
+ F838 D0        	rnc			;too large
+                
+ F839 21C0F8    	lxi	h,cmdTbl+100h-2*'B'	;'B' indexes to start of cmdtbl
+ F83C 87        	add	a		;2 bytes per entry
+ F83D 85        	add	l
+ F83E 6F        	mov	l,a
+                
+ F83F 5E        	mov	e,m		;e=lsb of jump address
+ F840 23        	inx	h
+ F841 56        	mov	d,m		;d=high byte of jump address
+ F842 EB        	xchg
+ F843 E9        	pchl			;away we go
+                
+                ; Command Table
+                
+ F844 76F8      cmdTbl	dw	doboot		;B jump to Altair disk boot loader
+ F846 CFF9      	dw	compr		;C SSSS FFFF CCCC compare blocks
+ F848 F1F8      	dw	disp		;D SSSS FFFF dump in hex
+ F84A 8FF9      	dw	exchg		;E SSSS FFFF DDDD exchange block
+ F84C FBF9      	dw	srch2		;F SSSS FFFF DD DD two byte search
+ F84E 6AF8      	dw	exec		;G SSSS go to and execute
+ F850 76FA      	dw	hexLoad		;H P load Intel hex file from port
+ F852 5CFA      	dw	pinpt		;I PP input from I/O port
+ F854 6AF8      	dw	exec		;J SSSS jump to and execute (G)
+ F856 69F9      	dw	fill		;K SSSS FFFF DD fill RAM with "k"onstant
+ F858 76FA      	dw	hexLoad		;L P load Intel hex file from port
+ F85A 84F9      	dw	moveb		;M SSSS FFFF DDDD move block
+ F85C B6F9      	dw	ndmt		;N non destructive memory test (RAM size)
+ F85E 3FFA      	dw	poutp		;O PP DD output to port
+ F860 32F9      	dw	pgm		;P LLLL program memory
+ F862 80F8      	dw	chksum		;Q SSSS FFFF compute checksum
+ F864 00FC      	dw	0FC00h		;R jump to ROM at FC00
+ F866 EFF9      	dw	srch1		;S SSSS FFFF DD search for single byte
+ F868 99F8      	dw	tmem		;T SSSS FFFF test memory
+                
+                ;--------------------------------------------------------------------------
+                ; exec (G or J) - execute the program at the address
+                ;--------------------------------------------------------------------------
+ F86A CDA5FB    exec	call	dspMsg
+ F86D 474F54CF  	db	'GOT','O'+80h
+                
+ F871 CD20FB    	call	ahex		;read address from keyboard
+ F874 EB        	xchg
+ F875 E9        	pchl
+                
+                ;--------------------------------------------------------------------------
+                ; doBoot (B) - boot Altair floppy disk by jumping to DBL PROM at FF00
+                ;--------------------------------------------------------------------------
+ F876 CDA5FB    doBoot	call	dspMsg
+ F879 424F4FD4  	db	'BOO','T'+80h
+                
+ F87D C300FF    	jmp	ALTBOOT
+                
+                ;--------------------------------------------------------------------------
+                ; chksum (Q) - compute checksum
+                ;--------------------------------------------------------------------------
+ F880 CDA5FB    chksum	call	dspMsg
+ F883 435355CD  	db	'CSU','M'+80h
+                
+ F887 CD1DFB    	call	tahex
+ F88A 0600      	mvi	b,0		;start checksum = 0
+                
+ F88C 7E        csloop	mov	a,m		;get data from memory
+ F88D 80        	add	b		;add to checksum
+ F88E 47        	mov	b,a
+ F88F CDEAFB    	call	bmp
+ F892 C28CF8    	jnz	csloop		;repeat loop
+                
+ F895 78        	mov	a,b		;a=checksum
+ F896 C379FB    	jmp	pt2		;print checksum and exit
+                
+                ;--------------------------------------------------------------------------
+                ; tmem (T) - memory test routine
+                ;--------------------------------------------------------------------------
+ F899 CDA5FB    tmem	call	dspMsg
+ F89C 544553D4  	db	'TES','T'+80h
+                
+ F8A0 CD1DFB    	call	tahex		;read addresses
+ F8A3 015A5A    	lxi	b,05a5ah	;init b,c
+                
+ F8A6 CDDFF8    cycl	call	rndm
+ F8A9 C5        	push	b		;keep all registers
+ F8AA E5        	push	h
+ F8AB D5        	push	d
+                
+ F8AC 7C        tlop	mov	a,h		;on stack page?
+ F8AD FEBF      	cpi	(SPTR shr 8)-1	;compare to msb of stack
+ F8AF CAB6F8    	jz	skipWr		;in stack, skip write
+ F8B2 CDDFF8    	call	rndm
+ F8B5 70        	mov	m,b		;write in memory
+ F8B6 CDEAFB    skipWr	call	bmp
+ F8B9 C2ACF8    	jnz	tlop		;repeat loop
+                
+ F8BC D1        	pop	d		
+ F8BD E1        	pop	h		;restore original
+ F8BE C1        	pop	b		;values
+ F8BF E5        	push	h
+ F8C0 D5        	push	d
+                
+ F8C1 7C        rlop	mov	a,h		;on stack page?
+ F8C2 FEBF      	cpi	(SPTR shr 8)-1	;compare to msb of stack
+ F8C4 CACFF8    	jz	skipRd		;in stack, skip the read
+ F8C7 CDDFF8    	call	rndm		;generate new sequence
+ F8CA 7E        	mov	a,m		;read memory
+ F8CB B8        	cmp	b		;compare memory
+ F8CC C46DFB    	cnz	err		;call error routine
+ F8CF CDEAFB    skipRd	call	bmp
+ F8D2 C2C1F8    	jnz	rlop
+                
+ F8D5 D1        	pop	d
+ F8D6 E1        	pop	h
+ F8D7 3E2E      	mvi	a,'.'		;display '.' before each cycle
+ F8D9 CD48FB    	call	ptcn
+ F8DC C3A6F8    	jmp	cycl
+                
+                ; rndm - this routine generates random numbers
+                
+ F8DF CDC7FB    rndm	call	pause		;check for exit
+ F8E2 78        	mov	a,b		;look at b
+ F8E3 E6B4      	ani	0b4h		;mask bits
+ F8E5 A7        	ana	a		;clear carry
+ F8E6 EAEAF8    	jpe	peve		;jump if even
+ F8E9 37        	stc
+ F8EA 79        peve	mov	a,c		;look at c
+ F8EB 17        	ral			;rotate carry in
+ F8EC 4F        	mov	c,a		;restore c
+ F8ED 78        	mov	a,b		;look at b
+ F8EE 17        	ral			;rotate carry in
+ F8EF 47        	mov	b,a		;restore b
+ F8F0 C9        	ret			;return with new b,c
+                
+                ;--------------------------------------------------------------------------
+                ; disp (D) - display memory contents
+                ;--------------------------------------------------------------------------
+ F8F1 CDA5FB    disp	call	dspMsg
+ F8F4 44554DD0  	db	'DUM','P'+80h
+                
+ F8F8 CD1DFB    	call	tahex		;read addresses
+                
+ F8FB E5        dmpLine	push	h		;save address at start of line
+ F8FC 0E10      	mvi	c,16		;16 locations per line
+ F8FE CD81FB    	call	ptad		;print current address
+                
+                ; dump line in hex
+                
+ F901 7E        dmpHex	mov	a,m		;a=byte to display
+ F902 CD79FB    	call	pt2		;display it
+ F905 CD46FB    	call	spce
+ F908 23        	inx	h	
+ F909 0D        	dcr	c		;decrement line byte count
+ F90A C201F9    	jnz	dmpHex		;loop until 16 bytes done
+                
+                ; dump line in ASCII
+                
+ F90D CD46FB    	call	spce
+ F910 E1        	pop	h		;hl->start of line
+ F911 0E10      	mvi	c,16		;16 locations per line
+                
+ F913 7E        dmpAsc	mov	a,m		;a=byte to display
+ F914 FE7F      	cpi	7Fh		;test if >= 7Fh
+ F916 D21EF9    	jnc	dspDot		;non printable, show '.'
+                
+ F919 FE20      	cpi	' '		;displayable character?
+ F91B D220F9    	jnc	dspAsc		;yes, go display it
+                
+ F91E 3E2E      dspDot	mvi	a,'.'		;display '.' instead
+                
+ F920 CD48FB    dspAsc	call	ptcn		;display the character
+ F923 CDEAFB    	call	bmp		;increment hl, possibly de
+ F926 0D        	dcr	c		;decrement line byte count
+ F927 C213F9    	jnz	dmpAsc		;loop until 16 bytes done
+                
+ F92A CDEAFB    	call	bmp		;done?
+ F92D C8        	rz			;yes
+ F92E 2B        	dcx	h		;undo extra bump of hl
+ F92F C3FBF8    	jmp	dmpLine		;do another line	
+                
+                ;--------------------------------------------------------------------------
+                ; pgm (P) - program memory
+                ;--------------------------------------------------------------------------
+ F932 CDA5FB    pgm	call	dspMsg
+ F935 5047CD    	db	'PG','M'+80h
+                
+ F938 CD20FB    	call	ahex		;read address
+ F93B EB        	xchg
+ F93C CD63FB    	call	crlf
+                		
+ F93F 7E        pglp	mov	a,m		;read memory
+ F940 CD79FB    	call	pt2		;print 2 digits
+ F943 3E2D      	mvi	a,'-'		;load dash
+ F945 CD48FB    	call	ptcn		;print dash
+                
+ F948 CDB3FB    crig	call	rdcn		;get user input
+ F94B FE20      	cpi	' '		;space
+ F94D CA65F9    	jz	con2		;skip if space
+ F950 FE0D      	cpi	CR		;skip if CR
+ F952 C25BF9    	jnz	con1
+ F955 CD63FB    	call	crlf		;print CR,LF
+ F958 C348F9    	jmp	crig		;back for more
+                
+ F95B EB        con1	xchg			;HL->DE
+ F95C 210000    	lxi	h,0		;get 16 bit zero
+ F95F 0E02      	mvi	c,2		;count 2 digits
+ F961 CD28FB    	call	ahexNr		;convert to hex (no read)
+ F964 73        	mov	m,e
+ F965 23        con2	inx	h
+ F966 C33FF9    	jmp	pglp
+                
+                ;--------------------------------------------------------------------------
+                ; fill (K) - fill memory with a constant
+                ;--------------------------------------------------------------------------
+ F969 CDA5FB    fill	call	dspMsg
+ F96C 46494CCC  	db	'FIL','L'+80h
+                
+ F970 CD1DFB    	call	tahex		;read addresses
+ F973 E5        	push	h		;start addr on stack
+ F974 0E02      	mvi	c,2		;reading 2 digits
+ F976 CD22FB    	call	ahe0		;input fill byte
+ F979 EB        	xchg			;byte to write from e to l
+ F97A E3        	xthl			;hl=start addr, stack=fill byte
+ F97B C1        	pop	b		;c=fill byte from stack
+                		
+ F97C 71        zloop	mov	m,c		;write into memory
+ F97D CDEAFB    	call	bmp		;compare address, increment h
+ F980 C8        	rz
+ F981 C37CF9    	jmp	zloop
+                
+                ;--------------------------------------------------------------------------
+                ; moveb (M) - move a block of memory
+                ; exchg (E) - exhange block of memory
+                ;--------------------------------------------------------------------------
+ F984 CDA5FB    moveb	call	dspMsg
+ F987 4D4F56C5  	db	'MOV','E'+80h
+ F98B AF        	xra	a		;a=0 means "move" command
+ F98C C396F9    	jmp	doMove
+                
+ F98F CDA5FB    exchg	call	dspMsg
+ F992 455843C8  	db	'EXC','H'+80h
+                				;a returned <> 0 means "exchange" command
+                		
+ F996 47        doMove	mov	b,a		;save move/exchange flag in b
+ F997 CD1DFB    	call	tahex		;read addresses
+ F99A E5        	push	h
+ F99B CD20FB    	call	ahex
+ F99E EB        	xchg
+ F99F E3        	xthl			;HL->start, DE->end, stack has dest
+                
+ F9A0 4E        mloop	mov	c,m		;c=byte from source
+ F9A1 E3        	xthl			;hl->destination
+                
+ F9A2 78        	mov	a,b		;move or exchange?
+ F9A3 B7        	ora	a
+ F9A4 CAABF9    	jz	nexch		;0 means move only
+                
+ F9A7 7E        	mov	a,m		;a=from destination
+ F9A8 E3        	xthl			;hl->source
+ F9A9 77        	mov	m,a		;move destination to source
+ F9AA E3        	xthl			;hl->destination
+                
+ F9AB 71        nexch	mov	m,c		;move source to destination
+ F9AC 23        	inx	h		;increment destination
+ F9AD E3        	xthl			;hl->source
+ F9AE CDEAFB    	call	bmp		;increment source and compare to end
+ F9B1 C2A0F9    	jnz	mloop
+                
+ F9B4 E1        	pop	h		;remove temp pointer from stack
+ F9B5 C9        	ret			;and exit
+                
+                ;--------------------------------------------------------------------------
+                ; ndmt (N or R) - non destructive memory test (size RAM)
+                ;--------------------------------------------------------------------------
+ F9B6 CDA5FB    ndmt	call	dspMsg
+ F9B9 52414D544F	db	'RAMTO','P'+80h
+                
+ F9BF 21FFFF    	lxi	h,0ffffh	;start at zero
+                
+ F9C2 23        ndlop	inx	h
+ F9C3 7E        	mov	a,m		;read from address in hl
+ F9C4 47        	mov	b,a		;save original value in b
+ F9C5 2F        	cma			;form and write inverted value
+ F9C6 77        	mov	m,a
+ F9C7 BE        	cmp	m		;read and compare
+ F9C8 70        	mov	m,b		;restore original value
+ F9C9 CAC2F9    	jz	ndlop		;keep going if still RAM
+                
+ F9CC C36DFB    	jmp	err		;display end of RAM
+                
+                ;--------------------------------------------------------------------------
+                ; compr (C) - compare two blocks of memory
+                ;--------------------------------------------------------------------------
+ F9CF CDA5FB    compr	call	dspMsg
+ F9D2 434F4DD0  	db	'COM','P'+80h
+                
+ F9D6 CD1DFB    	call	tahex		;read addresses
+ F9D9 E5        	push	h		;source start on stack
+ F9DA CD20FB    	call	ahex
+ F9DD EB        	xchg			;de=source end, hl=compare start
+                
+ F9DE 7E        vmlop	mov	a,m		;a=compare byte
+ F9DF 23        	inx	h
+ F9E0 E3        	xthl			;hl->source byte
+ F9E1 BE        	cmp	m		;same?
+ F9E2 46        	mov	b,m		;b=source byte
+ F9E3 C46DFB    	cnz	err		;display the error
+ F9E6 CDEAFB    	call	bmp		;increment pointers
+ F9E9 E3        	xthl			;hl->compare byte
+ F9EA C2DEF9    	jnz	vmlop
+                
+ F9ED E1        	pop	h		;remove temp pointer from stack
+ F9EE C9        	ret			;and exit
+                
+                ;--------------------------------------------------------------------------
+                ; srch1 (S) - search for one byte
+                ; srch2 (F) - search for two bytes
+                ;--------------------------------------------------------------------------
+ F9EF CDA5FB    srch1	call	dspMsg
+ F9F2 46494E44B1	db	'FIND','1'+80h
+ F9F7 AF        	xra	a		;zero flag means one byte search
+ F9F8 C303FA    	jmp	doSrch
+                
+ F9FB CDA5FB    srch2	call	dspMsg
+ F9FE 46494E44B2	db	'FIND','2'+80h
+                				;a returned <> 0 means two byte search
+                
+ FA03 F5        doSrch	push	psw		;save 1/2 byte flag on stack
+ FA04 CD1DFB    	call	tahex
+                
+ FA07 E5        	push	h		;save h, getting 1st byte to find
+ FA08 0E02      	mvi	c,2		;reading 2 hex digits
+ FA0A CD22FB    	call	ahe0		;
+ FA0D EB        	xchg			;h=code, d=f
+ FA0E 45        	mov	b,l		;put code in b
+ FA0F E1        	pop	h		;restore h
+                
+ FA10 F1        	pop	psw		;a=one/two byte flag
+ FA11 B7        	ora	a		;zero true if one byte search
+ FA12 F5        	push	psw
+ FA13 CA1FFA    	jz	cont
+                
+ FA16 E5        	push	h		;save h, getting 2nd byte to find
+ FA17 0E02      	mvi	c,2
+ FA19 CD22FB    	call	ahe0
+ FA1C EB        	xchg
+ FA1D 4D        	mov	c,l
+ FA1E E1        	pop	h
+                
+ FA1F 7E        cont	mov	a,m		;read memory
+ FA20 B8        	cmp	b		;compare to code
+ FA21 C237FA    	jnz	skp		;skip if no compare
+                
+ FA24 F1        	pop	psw		;a=one/two byte flag
+ FA25 B7        	ora	a		;zero true if one byte serach
+ FA26 F5        	push	psw
+ FA27 CA31FA    	jz	obcp
+                
+ FA2A 23        	inx	h		;two byte search
+ FA2B 7E        	mov	a,m
+ FA2C 2B        	dcx	h
+ FA2D B9        	cmp	c
+ FA2E C237FA    	jnz	skp
+                
+ FA31 23        obcp	inx	h
+ FA32 7E        	mov	a,m		;read next byte
+ FA33 2B        	dcx	h		;decr address
+ FA34 CD6DFB    	call	err		;print data found
+                
+ FA37 CDEAFB    skp	call	bmp		;check if done
+ FA3A C21FFA    	jnz	cont		;back for more
+ FA3D F1        	pop	psw		;remove flag saved on stack
+ FA3E C9        	ret
+                
+                ;--------------------------------------------------------------------------
+                ; poutp (O) - output data to a port
+                ;--------------------------------------------------------------------------
+ FA3F CDA5FB    poutp	call	dspMsg
+ FA42 4F55D4    	db	'OU','T'+80h
+                
+ FA45 0E02      	mvi	c,2
+ FA47 CD22FB    	call	ahe0		;port number in e
+                
+ FA4A 0E02      	mvi	c,2
+ FA4C CD22FB    	call	ahe0		;port to l, data in e
+                
+ FA4F 55        	mov	d,l		;d=port
+ FA50 21D0BF    	lxi	h,SPTR-30h	;form OUT nn, RET in memory at h
+ FA53 36C9      	mvi	m,0c9h		;RET opcode
+ FA55 2B        	dcx	h
+ FA56 72        	mov	m,d		;output port for OUT instruction
+ FA57 2B        	dcx	h
+ FA58 36D3      	mvi	m,0D3H		;OUT opcode
+ FA5A 7B        	mov	a,e
+ FA5B E9        	pchl			;call OUT, RET
+                
+                ;--------------------------------------------------------------------------
+                ; pinpt (I) - input data from a port
+                ;--------------------------------------------------------------------------
+ FA5C CDA5FB    pinpt	call	dspMsg
+ FA5F 49CE      	db	'I','N'+80h
+                
+ FA61 0E02      	mvi	c,2
+ FA63 CD22FB    	call	ahe0		;port number to e
+                
+ FA66 21D0BF    	lxi	h,SPTR-30H	;form IN nn, RET in memory at h
+ FA69 36C9      	mvi	m,0C9H		;RET opcode
+ FA6B 2B        	dcx	h
+ FA6C 73        	mov	m,e		;input port of IN instruction
+ FA6D 2B        	dcx	h
+ FA6E 36DB      	mvi	m,0DBH		;IN opcode
+ FA70 CDCEBF    	call	SPTR-32H
+ FA73 C379FB    	jmp	pt2
+                
+                ;---------------------------------------------------------------------
+                ; hexLoad (H or L) - load intel hex through 2SIO serial port 0 or 1
+                ;---------------------------------------------------------------------
+ FA76 CDA5FB    hexload	call	dspMsg
+ FA79 4845584C4F	db	'HEXLOA','D'+80h
+                
+ FA80 0E01      	mvi	c,1		;read one hex digit
+ FA82 CD22FB    	call	ahe0		;digit is in e
+ FA85 21E0BF    	lxi	h,SIOPORT	;hl->location on stack to save port
+ FA88 73        	mov	m,e		;SIOPORT = 0 or 1
+                
+                ; rcvLine - receive a hex file line
+                
+ FA89 CD63FB    rcvLine	call	crlf
+ FA8C 0E00      	mvi	c,0		;clear echo character flag
+                
+ FA8E CDF3FA    wtMark	call	getChar		;read next character
+ FA91 D63A      	sui	':'		;record marker?
+ FA93 C28EFA    	jnz	wtMark		;no, keep looking
+                
+                ; Have start of new record. Save the byte count and load address.
+                ;   The load address is echoed to the screen so the user can
+                ;   see the file load progress.
+                
+ FA96 57        	mov	d,a		;init checksum in D to zero
+                
+ FA97 CDD5FA    	call	iByte		;input two hex digits (byte count)
+ FA9A 7B        	mov	a,e		;test for zero byte count
+ FA9B B7        	ora	a
+ FA9C CAC3FA    	jz	flush		;count of 0 means end
+                
+ FA9F 43        	mov	b,e		;B = byte count on line
+                
+ FAA0 0C        	inr	c		;set echo flag for address bytes
+ FAA1 CDD5FA    	call	iByte		;get MSB of address
+ FAA4 63        	mov	h,e		;H = address MSB
+ FAA5 CDD5FA    	call	iByte		;get LSB of address
+ FAA8 6B        	mov	l,e		;L = address LSB
+ FAA9 0D        	dcr	c		;clear echo flag
+                
+ FAAA CDD5FA    	call	iByte		;ignore/discard record type
+                
+                ; Receive the data bytes of the record and move to memory
+                
+ FAAD CDD5FA    data	call	iByte		;read a data byte (2 hex digits)
+ FAB0 73        	mov	m,e		;store in memory
+ FAB1 23        	inx	h
+ FAB2 05        	dcr	b
+ FAB3 C2ADFA    	jnz	data
+                
+                ; Validate checksum
+                
+ FAB6 CDD5FA    	call	iByte		;read and add checksum
+ FAB9 CA89FA    	jz	rcvLine		;checksum good, receive next line
+                
+ FABC CDA5FB    	call	dspMsg		;display error message
+ FABF 204552D2  	db	' ER','R'+80h
+                				;fall into flush
+                
+                ; flush - flush rest of file as it comes in until no characters
+                ;    received for about 1/4 second to prevent incoming file
+                ;    data looking like typed monitor commands. Only the console
+                ;    port needs to be flushed. 
+                
+ FAC3 DB11      flush	in	COND		;clear possible received char
+ FAC5 11B128    	lxi	d,10417		;.25s timeout for 48 cycle loop
+                
+ FAC8 DB10      flshLp	in	CONS		;(10) look for character on console
+ FACA 0F        	rrc			;(4) data flag in carry
+ FACB DAC3FA    	jc	flush		;(10) data received, restart
+                
+ FACE 1B        	dcx	d		;(5) decrement timeout
+ FACF 7A        	mov	a,d		;(5)
+ FAD0 B3        	ora	e		;(4)
+ FAD1 C2C8FA    	jnz	flshLp		;(10) loop until zero
+ FAD4 C9        	ret			;done
+                
+                ;-----------------------------------------------------------
+                ; iByte	- read two ascii hex bytes and return binary
+                ;    value in e. 
+                ;-----------------------------------------------------------
+ FAD5 CDF3FA    iByte	call	getChar		;get a character
+ FAD8 CDEBFA    	call	asc2Bin		;ascii hex digit to binary
+ FADB 87        	add	a		;put in msn, zero lsn
+ FADC 87        	add	a
+ FADD 87        	add	a
+ FADE 87        	add	a
+ FADF 5F        	mov	e,a		;save byte with MSN in E
+                
+                ; 2nd byte (LSN)
+                
+ FAE0 CDF3FA    	call	getChar		;get a character
+ FAE3 CDEBFA    	call	asc2Bin		;ascii hex digit to binary
+ FAE6 83        	add	e		;combine msn and lsn
+ FAE7 5F        	mov	e,a		;save in EH
+ FAE8 82        	add	d		;add character to checksum
+ FAE9 57        	mov	d,a
+ FAEA C9        	ret		
+                
+                ;-------------------------------------------------------------
+                ; asc2Bin - ASCII hex digit to binary conversion. Digit
+                ;    passed in a, returned in a. Errors ignored as checksum
+                ;    will eventually kick this out.
+                ;-------------------------------------------------------------
+ FAEB D630      asc2Bin	sui	'0'		;'0' to 0
+ FAED FE0A      	cpi	10		;0-9 ?
+ FAEF D8        	rc
+                
+ FAF0 D607      	sui	7		;'A-F' to A-F
+ FAF2 C9        	ret
+                
+                ;-------------------------------------------------------------
+                ; getChar - read a character from the 2SIO port specified in
+                ;    SIOPORT. The character is also echoed to the console port
+                ;    if the echo flag (c) is set (non-zero)
+                ;-------------------------------------------------------------
+ FAF3 C5        getChar	push	b		;save b,c
+ FAF4 3AE0BF    	lda	SIOPORT		;a=pseudo port to use
+ FAF7 B7        	ora	a		;port zero?
+ FAF8 C204FB    	jnz	inWait1		;no, use port 1
+                
+                ; in through 1st port (0) on 2SIO
+                
+ FAFB CDD6FB    inWait0	call	cntlc		;test for character from console
+ FAFE CAFBFA    	jz	inWait0
+ FB01 C30FFB    	jmp	haveChr
+                
+                ; in through 2nd port (1) on 2SIO, check for ctrl-c on console
+                ;    while waiting
+                
+ FB04 CDD6FB    inWait1	call	cntlc		;look for ctrl-c on console
+ FB07 DB12      	in	CONS+2		;wait for character on 2nd 2SIO
+ FB09 0F        	rrc			;data flag in carry
+ FB0A D204FB    	jnc	inWait1
+ FB0D DB13      	in	COND+2		;a=character read
+                
+                ; process new character in a. Echo to console if c is non-zero
+                
+ FB0F 47        haveChr	mov	b,a		;save character in b
+ FB10 79        	mov	a,c		;echo flag (c) set?
+ FB11 B7        	ora	a
+ FB12 CA1AFB    	jz	noEcho		;no echo
+                
+ FB15 78        	mov	a,b		;a=character to send
+ FB16 C1        	pop	b		;restore b,c
+ FB17 C348FB    	jmp	ptcn		;display character and exit
+                
+ FB1A 78        noEcho	mov	a,b		;a=byte read
+ FB1B C1        	pop	b		;restore b,c
+ FB1C C9        	ret
+                
+                ;********************************************************************
+                ;
+                ;  Type conversion, input, output subroutines
+                ;
+                ;********************************************************************
+                
+                ;------------------------------------------------------------
+                ; tahex - read two 16 bit addresses. 1st returned in HL, 2nd in DE
+                ;------------------------------------------------------------
+ FB1D CD20FB    tahex	call	ahex		;get first address param
+                				;fall into ahex to get 2nd param
+                
+                ;------------------------------------------------------------
+                ; ahex - read up to 4 hex digits to binary, return in de
+                ;------------------------------------------------------------
+ FB20 0E04      ahex	mvi	c,4		;count of 4 digits
+ FB22 210000    ahe0	lxi	h,0		;16 bit zero
+ FB25 CDB3FB    ahe1	call	rdcn		;read a byte
+ FB28 FE30      ahexNr	cpi	'0'
+ FB2A DA1FF8    	jc	start		;below '0', abort
+ FB2D FE3A      	cpi	':'
+ FB2F D456FB    	cnc	alph
+ FB32 29        	dad	h
+ FB33 29        	dad	h
+ FB34 29        	dad	h
+ FB35 29        	dad	h
+ FB36 D630      	sui	'0'		;ascii bias
+ FB38 FE0A      	cpi	10		;digit 0-10
+ FB3A DA3FFB    	jc	alf
+ FB3D D607      	sui	7		;alpha bias
+ FB3F 85        alf	add	l
+ FB40 6F        	mov	l,a
+ FB41 0D        	dcr	c
+ FB42 C225FB    	jnz	ahe1		;keep reading
+ FB45 EB        	xchg			;result in de
+                				;fall through to print a space
+                ;------------------------------------------------------------
+                ; spce - print a space
+                ; ptcn - print character passed in a
+                ;------------------------------------------------------------
+ FB46 3E20      spce	mvi	a,' '		;print space
+ FB48 F5        ptcn	push	psw
+                
+ FB49 DB10      ptlop	in	CONS		;wait for OK to transmit
+ FB4B E602      	ani	TBE
+ FB4D CA49FB    	jz	ptlop
+                
+ FB50 F1        	pop	psw		;recover a
+ FB51 E67F      	ani	07fh		;get rid of msbit
+ FB53 D311      	out	COND		;and print it
+ FB55 C9        	ret			;return from ptcn
+                
+                ;------------------------------------------------------------
+                ; alph - verify valid hex digit, abort to command loop if not
+                ;------------------------------------------------------------
+ FB56 FE41      alph	cpi	'A'
+ FB58 DA1FF8    	jc	start
+ FB5B E65F      	ani	05fh
+ FB5D FE47      	cpi	'G'
+ FB5F D21FF8    	jnc	start
+ FB62 C9        	ret
+                
+                ;------------------------------------------------------------
+                ; crlf - print CR/LF
+                ;------------------------------------------------------------
+ FB63 3E0D      crlf	mvi	a,CR
+ FB65 CD48FB    	call	ptcn
+ FB68 3E0A      	mvi	a,LF	
+ FB6A C348FB    	jmp	ptcn
+                
+                ;------------------------------------------------------------
+                ; err - display the address in hl followed by the value
+                ;    in b, then the value in a.
+                ;------------------------------------------------------------
+ FB6D F5        err	push	psw		;save A
+ FB6E CD81FB    	call	ptad		;print address
+ FB71 78        	mov	a,b		;print B
+ FB72 CD79FB    	call	pt2
+ FB75 CD46FB    	call	spce
+ FB78 F1        	pop	psw		;print A
+ FB79 F5        pt2	push	psw
+ FB7A CD93FB    	call	binh
+ FB7D F1        	pop	psw
+ FB7E C397FB    	jmp	binl
+                
+                ;------------------------------------------------------------
+                ; ptad - display the address in h
+                ;------------------------------------------------------------
+ FB81 CD63FB    ptad	call	crlf		;print cr,lf
+ FB84 CDC7FB    	call	pause
+ FB87 7C        	mov	a,h		;print
+ FB88 CD79FB    	call	pt2		;ascii
+ FB8B 7D        	mov	a,l		;codes
+ FB8C CD79FB    	call	pt2		;for
+ FB8F CD46FB    	call	spce		;address
+ FB92 C9        	ret
+                
+                ;------------------------------------------------------------
+                ; binh - print MSN of byte passed in A
+                ; binl - print LSN of byte passed in A
+                ;------------------------------------------------------------
+ FB93 1F        binh	rar
+ FB94 1F        	rar
+ FB95 1F        	rar
+ FB96 1F        	rar
+ FB97 E60F      binl	ani	0fh		;low 4 bits
+ FB99 C630      	adi	'0'		;ascii bias
+ FB9B FE3A      	cpi	03ah		;digit 0-9
+ FB9D DA48FB    	jc	ptcn
+ FBA0 C607      	adi	7		;digit A-F
+ FBA2 C348FB    	jmp	ptcn
+                
+                ;------------------------------------------------------------
+                ; dspMsg - display in-line message. String terminated by byte
+                ;      with msbit set.
+                ;------------------------------------------------------------
+ FBA5 E1        dspMsg	pop	h		;hl->string to display
+                
+ FBA6 7E        dspLoop	mov	a,m		;a=next character to display
+ FBA7 CD48FB    	call	ptcn		;display character
+ FBAA B6        	ora	m		;MSB set? (last byte)
+ FBAB 23        	inx	h		;point to next character
+ FBAC F2A6FB    	jp	dspLoop		;no, keep looping
+                
+ FBAF CD46FB    	call	spce		;display a trailing space
+ FBB2 E9        	pchl			;return past the string
+                
+                ;------------------------------------------------------------
+                ; rdcn - read from console to A with echo to screen
+                ; getCon - read from console to A without echo
+                ;------------------------------------------------------------
+ FBB3 CDBCFB    rdcn	call	getCon		;get character from console
+ FBB6 FE1B      	cpi	ESC		;ESC confuses smart terminals
+ FBB8 C8        	rz			;    so don't echo escape
+ FBB9 C348FB    	jmp	ptcn		;echo onto printer
+                
+ FBBC DB10      getCon	in	CONS		;read keyboard status
+ FBBE 0F        	rrc			;data available flag in carry
+ FBBF D2BCFB    	jnc	getCon
+                
+ FBC2 DB11      	in	COND		;read from keyboard
+ FBC4 E67F      	ani	07fh		;strip off msb
+ FBC6 C9        	ret
+                
+                ;------------------------------------------------------------
+                ; pause - pause/resume with spacebar. Also look for a ctrl-c
+                ;    or ESC to abort.
+                ;------------------------------------------------------------
+ FBC7 CDD6FB    pause	call	cntlc		;look for abort or other character
+ FBCA FE20      	cpi	' '
+ FBCC C0        	rnz			;return if not space or abort
+                
+ FBCD CDD6FB    ploop	call	cntlc		;loop here until space or abort pressed
+ FBD0 FE20      	cpi	' '
+ FBD2 C2CDFB    	jnz	ploop
+ FBD5 C9        	ret
+                
+                ;------------------------------------------------------------
+                ; cntlc - see if a character has been typed. If not, return
+                ;   zero true. If ctrl-c or ESC typed, abort and return to 
+                ;   the command loop. Otherwise, return the character typed.
+                ;------------------------------------------------------------
+ FBD6 DB10      cntlc	in	CONS		;anything typed?
+ FBD8 E601      	ani	RDA
+ FBDA C8        	rz			;no, exit with zero true
+                
+ FBDB DB11      	in	COND		;get the typed character
+ FBDD E67F      	ani	07fh
+ FBDF FE03      	cpi	CTRLC		;abort with ctrl-c (2.0 style)
+ FBE1 CA1FF8    	jz	start
+ FBE4 FE1B      	cpi	ESC		;or ESC (4.x style)
+ FBE6 CA1FF8    	jz	start
+ FBE9 C9        	ret
+                
+                ;------------------------------------------------------------
+                ; bmp - compare address and increment h. Return zero true
+                ;   if hl=de. Once hl=de, then de is incremented each time
+                ;   so the comparison remains true for subsequent calls.
+                ;------------------------------------------------------------
+ FBEA 7B        bmp	mov	a,e		;compare lsb's of hl,de
+ FBEB 95        	sub	l
+ FBEC C2F1FB    	jnz	goon		;not equal
+                
+ FBEF 7A        	mov	a,d		;compare msb's of hl,de
+ FBF0 9C        	sbb	h		;gives zero true if equal
+                
+ FBF1 23        goon	inx	h		;increment hl
+ FBF2 C0        	rnz			;exit if hl <> de yet
+                
+ FBF3 13        	inx	d		;increase de as well so it will
+ FBF4 C9        	ret			;    still be equal next time
+                
+ FBF5           	end

@@ -773,7 +773,45 @@ DEBUG
   SET BUS CONTENTION=WARN|ERROR|SILENT
 ```
 
-`altairsim -c script.cmd` runs a command script non-interactively and exits with a status code — the CI/regression entry point.
+### 10.0.0 The command line, and the built-in machines
+
+**Settled 2026-07-11 by Patrick.** This closes open finding **F4** (the command-line grammar was undefined).
+
+```
+altairsim [options] [<machine>]
+
+  <machine>            a BUILT-IN name, or a FILE if it has a '/' in it or ends .toml.
+                       Omitted: `default`.
+  -m, --machine <n>    ALWAYS a built-in name -- never a file.
+  -f, --file <path>    ALWAYS a file -- never a built-in name.
+  -n, --none           empty backplane. No boards at all.
+  -l, --list           list the built-in machines and exit.
+
+  -s, --script <file>  run a command script, then exit with its status.  (was `-c`)
+  -x, --exec <cmd>     run one monitor command (repeatable), then exit.
+  -i, --interactive    after --script/--exec, stay in the monitor.
+      --mcp            MCP server on stdio.
+  -v, --version        -h, --help
+```
+
+`-s script.cmd` is the CI/regression entry point: a script that fails exits non-zero. `-x` is the same thing for one-liners, which is what makes a bug report reproducible in a single pasteable line.
+
+**A built-in machine is a TOML file that lives in `.rodata`.** `machines/*.toml` are build-time inputs — CMake embeds them byte-for-byte, exactly as it does the ROM images, and `loadTomlText()` parses them at runtime with the *same* parser that reads a config off disk.
+
+Two things follow, and both are requirements rather than conveniences:
+
+- **The shipped binary is self-contained.** altairsim is delivered as **one executable plus documentation**. It must never go looking for a `machines/` directory, an install prefix, or anything relative to `argv[0]` — a simulator that cannot find its own default machine when copied to a USB stick is a simulator that does not start. `tests/test_machines.cpp` passes with the source tree deleted.
+- **There is exactly one machine language.** Building the default machine in C++ (`m.add("memory", "mem0")`) would have been fewer lines and a quiet second dialect that nobody could copy, edit, or diff. Instead the machines we ship are written in the format users write, so they double as worked examples and *cannot drift from it* — if the config format changes under them, they stop loading and a test goes red.
+
+**File or built-in is decided by SPELLING, never by probing the filesystem.** If the answer depended on the working directory, `altairsim default` would mean one thing today and something else the day somebody saves a file called `default` next to it. A command line whose meaning changes with its surroundings is a trap, and it is the kind that gets sprung at 2am. `-f ./default` and `-m default` never guess.
+
+The built-ins, as of milestone 1a — all three are honest about having **no CPU card**, because there is no 8080 yet:
+
+| | |
+|---|---|
+| `default` | 56K RAM, `0000-DFFF`. What you get with no arguments. |
+| `4k` | 4K RAM. The Altair as MITS shipped it; the machine 4K BASIC was written for. |
+| `dbl` | `default` plus the real DBL 4.1 boot PROM at `FF00`. |
 
 ### 10.0.1 The number base: on the wire → hex, never on the wire → decimal
 
@@ -824,7 +862,7 @@ startup = [                     # monitor commands, run in order after boards ar
 
 Three things fall out of this, and they are the reason it is the right shape:
 
-- **The config language and the script language become one language.** A `startup` entry is an ordinary monitor command, so anything you can type, a config can do — and `altairsim -c script.cmd` and `CONFIG LOAD` stop being two different worlds.
+- **The config language and the script language become one language.** A `startup` entry is an ordinary monitor command, so anything you can type, a config can do — and `altairsim -s script.cmd` and `CONFIG LOAD` stop being two different worlds.
 - **`BOOT`'s special-casing disappears.** No verb needs to know what a "boot device" is, and a new disk controller written next year needs no monitor change to be bootable.
 - **It is transparent.** `SHOW MACHINE` prints the startup commands; `CONFIG SAVE` round-trips them verbatim. Nothing happens that the user cannot see written down.
 
