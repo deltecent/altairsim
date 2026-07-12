@@ -8,6 +8,7 @@
 #include "cli/commands.h"
 #include "cli/monitor.h"
 #include "core/machine.h"
+#include "cpu/cpu.h"
 #include "test.h"
 
 #include <sstream>
@@ -157,6 +158,9 @@ void test_cli() {
     Machine m;
     Monitor mon(m);
     std::ostringstream sink;
+    // The CPU is here because EXAMINE needs one below -- the panel's EXAMINE is a
+    // bus cycle the PROCESSOR drives (see the next section). DUMP does not need it.
+    mon.exec("BOARD ADD 8080 cpu0", sink);
     mon.exec("BOARD ADD memory mem0", sink);
     mon.exec("SET mem0 fill=zero", sink);
     mon.exec("REGION ADD mem0 type=ram at=0 size=1K", sink);
@@ -225,4 +229,67 @@ void test_cli() {
     // populated at 8000, so the bus floats it -- and EXAMINE says so.
     CHECK(run("EX 8000").find("nobody drives this") != std::string::npos,
           "EXAMINE distinguishes a real FF from an empty slot");
+
+    // ---------------------------------------------------------------------
+    // EXAMINE *IS* THE CPU (Patrick, 2026-07-12)
+    // ---------------------------------------------------------------------
+    // On the panel this is not a side effect, it is what the switch is FOR: it
+    // jams the address switches into the PROGRAM COUNTER, and the CPU drives the
+    // address lines and MEMR. Two things follow, and both are tested here.
+    //   1. `EX FF00` is a JMP you can see the destination of -- STEP executes THERE.
+    //   2. With no CPU card, nothing drives the bus. There is no examine to do.
+    SECTION("EXAMINE loads the PC, exactly as the front-panel switch does");
+
+    // Take the CPU out and the switch stops working -- as it must. Nothing is
+    // putting an address on the bus.
+    {
+        Machine bare;
+        Monitor mb(bare);
+        std::ostringstream o;
+        mb.exec("BOARD ADD memory mem0", o);
+        mb.exec("REGION ADD mem0 type=ram at=0 size=1K", o);
+        std::ostringstream e;
+        mb.exec("EX 0", e);
+        CHECK(e.str().find("no CPU") != std::string::npos,
+              "EXAMINE with no CPU is an error: nothing drives the address lines");
+        // But the PROM burner still works, because it never touches the bus at all.
+        std::ostringstream r;
+        mb.exec("EX 0 RAW mem0", r);
+        CHECK(r.str().compare(0, 4, "0000") == 0,
+              "EXAMINE RAW needs no CPU -- it reaches behind the bus into the store");
+    }
+
+    Machine m2;
+    Monitor mon2(m2);
+    std::ostringstream s2;
+    mon2.exec("BOARD ADD 8080 cpu0", s2);
+    mon2.exec("BOARD ADD memory mem0", s2);
+    mon2.exec("SET mem0 fill=zero", s2);
+    mon2.exec("REGION ADD mem0 type=ram at=0 size=64K", s2);
+    mon2.exec("POWER ON", s2);
+    // 3C = INR A. One at FF00, one at 0100, so we can tell WHICH one ran.
+    mon2.exec("DEPOSIT FF00 3C", s2);
+    mon2.exec("DEPOSIT 0100 00", s2);
+
+    CpuCore* c = m2.cpu();
+    CHECK(c && c->pc() == 0x0000, "power-on leaves the PC at 0000");
+
+    mon2.exec("EX FF00", s2);
+    CHECK(c->pc() == 0xFF00, "EX FF00 loads the PC -- the switch latches the address");
+
+    std::ostringstream st;
+    mon2.exec("STEP", st);
+    CHECK(st.str().compare(0, 4, "FF00") == 0, "so STEP executes AT FF00, not wherever it was");
+
+    // EXAMINE NEXT drags the PC with it. The panel's counter IS the cursor -- it
+    // has no other, which is why the switch is wired to it in the first place.
+    mon2.exec("EX 0200", s2);
+    mon2.exec("EX", s2);
+    CHECK(c->pc() == 0x0201, "EXAMINE NEXT steps the PC too -- it is the same counter");
+
+    // RAW is the PROM burner reaching behind the bus (DESIGN.md 10.2). No bus
+    // cycle happens, so the CPU never sees an address and the PC does not move.
+    uint16_t before = c->pc();
+    mon2.exec("EX 0400 RAW mem0", s2);
+    CHECK(c->pc() == before, "EXAMINE RAW does not touch the PC -- it is not a bus cycle");
 }

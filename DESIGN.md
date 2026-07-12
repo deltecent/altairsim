@@ -799,8 +799,15 @@ MEMORY
                                     CPU=. It is the override for a machine with no CPU
                                     card in it, or for looking at foreign code (§3.0.2).
   EDIT <addr>                       interactive: show byte, type new value, Enter advances
-  EXAMINE [<addr>]                  ONE byte: hex, ASCII, bits. Bare = EXAMINE NEXT,
-                                    the front-panel switch. Its own cursor, not DUMP's.
+  EXAMINE [<addr>]                  ONE byte: hex, ASCII, bits. Bare = EXAMINE NEXT.
+                                    THE PANEL'S SWITCH IS THE CPU: it jams the address
+                                    into the PROGRAM COUNTER and the CPU drives the
+                                    address lines and MEMR*. So EX LOADS THE PC (`EX
+                                    F800` + RUN starts a ROM, and CONSOLE <addr> is
+                                    exactly EXAMINE + RUN), the PC *is* the cursor, and
+                                    with NO CPU CARD IT IS AN ERROR -- nothing is driving
+                                    the bus. RAW is the exception: not a bus cycle at
+                                    all (10.2), so no CPU, no PC, its own cursor.
   DEPOSIT <addr> <bytes...>
   FILL <range> <byte>
   SEARCH <range> <bytes...>|"str"

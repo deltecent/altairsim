@@ -1313,10 +1313,41 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     //
     // Bare EXAMINE is the panel's EXAMINE NEXT: it steps one byte. `EX 100` then
     // `EX`, `EX`, `EX` walks memory a byte at a time, exactly as the switch does.
+    //
+    // EXAMINE also LOADS THE PC. On the panel that is not a side effect, it is what
+    // the switch is for: EXAMINE jams the address switches into the program counter
+    // and then reads the byte the CPU is now pointing at. `EX F800` followed by RUN
+    // is how you start a ROM, and it is why CONSOLE <addr> above is EXAMINE + RUN.
+    // So `EX FF00` then STEP executes at FF00, and EXAMINE NEXT drags the PC along
+    // with it -- the panel's counter is the only cursor it has.
+    //
+    // RAW does NOT touch the PC. That is the PROM burner reaching behind the bus
+    // (10.2); no bus cycle happens, so the CPU never sees an address at all.
     if (cmd == "EXAMINE") {
+        // EXAMINE *IS* THE CPU (Patrick, 2026-07-12). The panel has no address
+        // latch of its own: it stops the processor, jams the switches into the
+        // PROGRAM COUNTER, and the CPU drives the address lines and MEMR. So
+        //
+        //   - EXAMINE with no CPU card is not a thing that can happen. Nothing is
+        //     driving the bus. It is an error, not a degraded mode.
+        //   - THE PC IS THE CURSOR. Not a copy of it -- the thing itself. Two
+        //     counters, one writing to the other, is a split brain: EXAMINE NEXT
+        //     would step a private latch while the PC sat somewhere else, and then
+        //     quietly drag the PC BACKWARDS to it.
+        //
+        // RAW is the one exception, and only because it is not a bus cycle at all
+        // (10.2): the PROM burner reaches behind the bus into a board's store, so
+        // it needs no CPU, touches no PC, and carries its own offset cursor.
+        CpuCore* pcOwner = nullptr;
+        if (!raw) {
+            pcOwner = needCpu(out);
+            if (!pcOwner) return true;
+        }
+
         uint32_t A;
         if (a.size() < 2) {
-            A = examNext_;
+            // EXAMINE NEXT: the panel steps the counter and shows what is there.
+            A = pcOwner ? (uint32_t)((pcOwner->pc() + 1) & 0xFFFF) : examNext_;
         } else if (!addr(a[1], A, out)) {
             return true;
         }
@@ -1325,7 +1356,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             failed_ = true;
             return true;
         }
-        examNext_ = (A + 1) & 0xFFFF;  // wraps off the top, like the panel's latch
+        examNext_ = (A + 1) & 0xFFFF;  // the burner's cursor; the PC is the panel's
+        if (pcOwner) pcOwner->setPc((uint16_t)A);
 
         uint8_t v = rd(A);
         std::snprintf(buf, sizeof buf, "%04X  %02X  %c  %c%c%c%c%c%c%c%c", A, v,

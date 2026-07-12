@@ -122,6 +122,30 @@ The bits are there because the panel showed them on eight LEDs, and because when
 
 EXAMINE keeps **its own cursor**, separate from DUMP's. They step by different amounts — a byte versus a page — and sharing one latch would mean a `D` silently threw your examine position 256 bytes down the road.
 
+### EXAMINE *is* the CPU
+
+The panel has **no address latch of its own.** EXAMINE stops the processor, jams the address switches into the **program counter**, and the CPU drives the address lines and MEMR\*. Everything else follows from that one fact.
+
+**`EX <addr>` is a `JMP <addr>` you can see the destination of.** It loads the PC, so STEP afterwards executes *there* — which is also why `CONSOLE <addr>` is exactly EXAMINE followed by RUN.
+
+```
+altairsim> EX F800
+F800  3E  >  00111110
+altairsim> STEP
+F800  3E 03   MVI A,03
+```
+
+**The PC is the cursor** — not a copy of it. Bare `EX` (EXAMINE NEXT) steps the program counter, because that is the only counter the panel has. Keeping a private latch beside it would mean a bare `EX` after a STEP quietly dragged the PC *backwards* to wherever the latch had been left.
+
+**With no CPU card, EXAMINE is an error, not a degraded mode.** Nothing is driving the address lines. Patrick: *"it is the CPU that drives the address lines and memory read bus signals. No CPU, none of that works."*
+
+```
+altairsim> EX 0
+no CPU in this machine.  BOARD ADD 8080 cpu0
+```
+
+**`RAW <id>` is the exception, and only because it is not a bus cycle at all.** That is the PROM burner reaching behind the bus into a board's store (§10.2) — it needs no CPU, touches no PC, and carries its own cursor. Which is precisely why it can write a ROM when a bus write cannot.
+
 And because looking at one byte is exactly when you need to know it *is* a byte:
 
 ```
