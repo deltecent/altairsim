@@ -221,6 +221,58 @@ void test_sio2() {
         CHECK(g.sio->channel("a")->endpoint() == "scripted", "the endpoint survives a reset");
     }
 
+    SECTION("88-2SIO -- the RESET switch cannot touch a 6850, because there is no pin");
+    {
+        // THE MC6850 HAS NO RESET PIN. Twenty-four pins: Vss, RxD, RxCLK, TxCLK, RTS,
+        // TxD, IRQ, CS0-CS2, RS, Vcc, R/W, E, D0-D7, /DCD, /CTS. That is the whole
+        // list, and RESET is not on it (reference/6850.pdf). So the S-100 RESET* line
+        // reaches this card's address decoding and NOTHING ELSE: a bus reset leaves the
+        // control register, the word format, the interrupt enables and even a character
+        // sitting in the receive register exactly where they were.
+        //
+        // This card used to reset both chips on a bus reset, and it was wrong twice
+        // over -- it threw away the guest's configuration, and it ate a received byte.
+        // (DESIGN.md 0.1 and 6.1: the data sheet wins, and a bus reset does what the
+        // board actually does, which here is nothing.)
+        Rig g;
+
+        g.m.bus.ioWrite(0x10, 0x03);  // master reset...
+        g.m.bus.ioWrite(0x10, 0x95);  // ...then /16, 8N1, RIE on. The guest's setup.
+
+        g.tty->feed("K");
+        g.sio->pump();
+        CHECK((g.m.bus.ioRead(0x10) & 0x01) != 0, "a character is waiting in the receiver");
+
+        g.sio->reset(Reset::Bus);  // THE RESET SWITCH
+
+        CHECK((g.m.bus.ioRead(0x10) & 0x01) != 0, "the received byte is STILL THERE");
+        CHECK(g.m.bus.ioRead(0x11) == 'K', "...and it is the byte that was sent");
+
+        // RIE is write-only, so read it back the only way a guest can -- put another
+        // character on the line and watch the chip raise the IRQ bit in the status
+        // register. If the bus reset had zeroed the control register, RIE would be gone.
+        //
+        // lineTime() is not decoration here, and its absence is what this test caught
+        // first: the receiver is PACED, and 'K' left rxNextAt_ a character time into the
+        // future. A bus reset does not rewind that -- there is no pin for it to rewind
+        // it WITH -- so the line needs its character time exactly as it would on the
+        // bench. (The master-reset section above gets away without this only because a
+        // master reset really does reinitialize the receiver.)
+        g.tty->feed("W");
+        g.lineTime();
+        g.sio->pump();
+        CHECK((g.m.bus.ioRead(0x10) & 0x80) != 0, "RIE survived the RESET switch");
+
+        // And the word format survived with it -- the chip is not back in the reset
+        // condition, so the transmitter is still ready.
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "the transmitter is still programmed");
+
+        // POWER, though, is a different signal. The machine was switched OFF and ON.
+        g.m.power();
+        CHECK((g.m.bus.ioRead(0x10) & 0x01) == 0, "power-on-clear: the receiver IS empty");
+        CHECK(g.sio->channel("a")->endpoint() == "scripted", "...and the terminal is still plugged in");
+    }
+
     SECTION("88-2SIO -- both channels, independent");
     {
         Rig g;

@@ -75,7 +75,29 @@ public:
     void    writeControl(uint8_t v, const Clock& clk);
     void    writeData(uint8_t v, const Clock& clk);
 
-    void masterReset(const Clock& clk);
+    // POWER-ON-CLEAR, AND IT IS THE ONLY RESET THAT REACHES THIS CHIP FROM OUTSIDE.
+    //
+    // THE MC6850 HAS NO RESET PIN. Its 24 pins are Vss, RxD, RxCLK, TxCLK, RTS, TxD,
+    // IRQ, CS0-CS2, RS, Vcc, R/W, E, D0-D7, /DCD and /CTS -- that is the whole list.
+    // So the S-100 BUS RESET (RESET*, the front-panel switch) has nowhere to land on
+    // this chip, and the card must NOT touch it on a bus reset: the control register,
+    // the word format, RTS, the interrupt enables and RDRF all survive one, exactly as
+    // they do on the bench. See Sio2Board::reset(), which does nothing for Reset::Bus.
+    //
+    // Do not confuse this with the MASTER RESET, which is the GUEST's -- 11 in the
+    // divide field, via writeControl(). That one does NOT clear the control register,
+    // it latches the byte it rode in on, and it HOLDS the chip until a second control
+    // write (see inReset(), below). It is the only way anything resets a 6850, and it
+    // is why every driver ever written does two OUTs.
+    //
+    // What powerOn() models is the machine being SWITCHED ON. The real chip has an
+    // internal power-on reset that holds it until the guest's first master reset
+    // releases it; we do not model the holding, because nothing can observe it that
+    // does not also program the chip. We just put it in a known good state at once --
+    // control register zeroed, receiver empty, transmitter ready, endpoint still
+    // connected -- so the card is usable the instant the machine comes up. DESIGN.md 6.1.
+    void powerOn(const Clock& clk);
+
     bool irq(const Clock& clk) const;   // the chip's IRQ pin, jumper or no jumper
 
     // HELD IN RESET, WHICH IS A STATE AND NOT AN EVENT (MC6850 data sheet).
@@ -197,8 +219,8 @@ private:
     // affect other Control Register bits"). The reset is REQUESTED by a control
     // write, and the rest of the bits in that same write latch normally. Two callers,
     // and they disagree about the control register, which is the whole reason this is
-    // its own function: writeControl() keeps the byte the guest wrote; masterReset()
-    // zeroes it, because it is the power-on path and there is no byte.
+    // its own function: writeControl() keeps the byte the guest wrote; powerOn() zeroes
+    // it, because the machine was switched on and there is no byte.
     void resetAction(const Clock& clk);
 
     // The LIVE /CTS pin, strap applied. Only poll() may call it; everything else reads

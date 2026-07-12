@@ -44,12 +44,11 @@ monit   mvi  a,3          ;reset 6850 uart
 
 `src/chips/mc6850.cpp` was written before the data sheet was in hand, from the manual and from what ALTMON does. `reference/6850.pdf` (Motorola MC6850/68A50/68B50, pages 4-527…4-535) has now been read against it, line by line. What it **confirmed**: the status and control bit maps (Table 1), all eight rows of the word-select table, the RTS decode (`low` unless CR6=1 and CR5=0; break on `11`), `/CTS` inhibiting TDRE, the entire `/DCD` latch — edge-triggered interrupt, two-step status-then-data clear, follow-the-pin afterwards, receiver dead and RDRF forced empty while the pin is high — and RIE arming RDRF **and** OVRN **and** DCD together.
 
-What it **corrected**, and the data sheet won in both cases (§0.1):
+What it **corrected**, and the data sheet won every time (§0.1):
 
 1. **A master reset does not zero the control register**, and it *latches* — see the two notes under the control register above. The old code swallowed the master-reset byte whole and zeroed `control_`, which threw away any other bits the guest wrote in the same `OUT`, and left TDRE *set* on a chip that a real 6850 would be holding down. `tests/test_sio2.cpp` asserted that wrong behaviour explicitly (*"master reset leaves TDRE set"*); the assertion has been inverted and now cites the sheet.
 2. **The divide ratio is a known divergence** — see Limitations.
-
-Still open, and deliberately not changed here: **the 6850 has no RESET pin.** Its 24 pins are Vss, RxData, RxCLK, TxCLK, RTS, TxData, IRQ, CS0–2, RS, Vcc, R/W, E, D0–D7, DCD and CTS, and that is all of them. Reset is internal power-on logic only, *"released by means of the bus-programmed master reset"* — so the S-100 `RESET*` line **physically cannot** master-reset this chip, and a front-panel reset should leave the control register and RDRF untouched. `Sio2Board::reset()` master-resets both chips anyway. See Reset, below.
+3. **The RESET switch cannot touch a 6850, because there is no pin for it to touch.** The chip's 24 pins are Vss, RxData, RxCLK, TxCLK, RTS, TxData, IRQ, CS0–2, RS, Vcc, R/W, E, D0–D7, DCD and CTS, and that is all of them — no RESET. Reset is internal power-on logic only, *"released by means of the bus-programmed master reset."* So the S-100 `RESET*` line reaches this card's address decoding and **nothing else**. `Sio2Board::reset()` used to reset both ACIAs on a bus reset, and it was destructive twice over: it threw away the guest's word format and interrupt enables, and it **ate a character out of the receive register** — on a card where the real thing would have preserved every bit of it. `Reset::Bus` is now a no-op on the chips. See Reset, below, and DESIGN.md §6.1.
 
 ## Register reference
 
@@ -158,10 +157,21 @@ If the host cannot do the strapped rate (an FTDI cable and 76800 baud), the card
 
 ### Reset
 
-- `Reset::PowerOn` and `Reset::Bus` both: 6850 master reset — clear RDRF, leave the transmitter ready.
-- **Both keep the `ByteStream` connected.** A warm reset does not unplug the terminal, and a guest that reset its UART and found the console gone would be a baffling thing to debug.
+**Two different resets live on this card, and calling them both "master reset" is how you end up reading the wrong page of the data sheet.**
 
-> **This contradicts the data sheet, and it is a known open item, not a decision.** The 6850 has no RESET pin (see the cross-check under Sources), so on real hardware `RESET*` reaches this card's decode logic and *nothing else* — the ACIA keeps its control register and its RDRF across a front-panel reset, and only a bus-programmed `0x03` clears it. In practice it makes little difference (guest software master-resets the ACIA itself; it is ALTMON's first instruction), which is why this has not been changed in the same breath as the rest. It is being handled separately.
+**Three things get called a reset here, and only two of them can touch this card. Keeping them apart is the whole of it.**
+
+| | who does it | what it does |
+|---|---|---|
+| **Master reset** | the **guest**, writing `11` into the divide field | The only thing that resets a 6850. It does **not** clear the control register — *"Master reset does not affect other Control Register bits"* — it latches the whole byte it rode in on (write `0x83` and RIE survives), and it **holds the chip down** until a second control write. Modeled to the letter; see the two notes under the control register. |
+| **Bus reset** (`Reset::Bus`, the RESET switch) | the **backplane**, `RESET*` | **Nothing.** The 6850 has no RESET pin. The control register, the word format, RTS, the interrupt enables and any character in the receive register all survive it. |
+| **Power-on-clear** (`Reset::PowerOn`, POC\*) | the **power supply** | `Mc6850::powerOn`: zeroes the control register, clears RDRF, empties the receiver, leaves the transmitter ready, asserts RTS. |
+
+- **Neither bus signal unplugs the `ByteStream`.** A guest that reset its UART and found the console gone would be a baffling thing to debug.
+
+> **`Reset::Bus` being a no-op is not laziness — it is the hardware** (see the cross-check under Sources, and DESIGN.md §6.1). This card used to reset both ACIAs on `RESET*`, which lost the guest's configuration *and destroyed a received byte*. `tests/test_sio2.cpp` now pins it: hit RESET with a character in the receiver and RIE armed, and both are still there afterwards.
+>
+> The one thing we do **not** model literally is power-on-clear's internals. A real 6850 comes up held in an internal reset that only the guest's first master reset releases; we skip the holding — nothing can observe it that does not also program the chip — and simply come up in a known good state at once, so the machine is usable the moment it is switched on.
 
 ## Quirks reproduced (and what breaks if you don't)
 

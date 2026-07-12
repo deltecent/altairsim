@@ -446,16 +446,36 @@ void Mc6850::resetAction(const Clock& clk) {
     txRoom_ = stream_->writable();
 }
 
-void Mc6850::masterReset(const Clock& clk) {
+// POWER-ON-CLEAR. NOT the master reset, and NOT a bus reset -- it used to be called
+// masterReset() and the name was a lie that pointed straight at the wrong data sheet
+// page. Three different things, and only two of them can touch this chip:
+//
+//   - THE MASTER RESET is the GUEST's: 11 in the divide field. It does NOT clear the
+//     control register -- "Master reset does not affect other Control Register bits" --
+//     it latches the whole byte it arrived in, and it HOLDS the chip down until a
+//     second control write. That is writeControl(), modeled to the letter, because
+//     guest software can see, time and depend on every part of it.
+//
+//   - THE BUS RESET (RESET*, the front-panel switch) DOES NOT REACH THIS CHIP AT ALL.
+//     The 6850 has no reset pin. Nothing here happens on one, and the card must not
+//     invent it -- see Sio2Board::reset().
+//
+//   - THIS is the machine being switched on. It zeroes the control register, which no
+//     external pin on the real chip can do, because the real chip HAS NO SUCH PIN: at
+//     power-up an internal reset holds the ACIA until the guest's first master reset
+//     releases it. We do not model the holding (nothing can observe it that does not
+//     also program the chip) -- we simply come up in a known good state, at once, so
+//     that a machine is usable the moment it is switched on. DESIGN.md 6.1.
+void Mc6850::powerOn(const Clock& clk) {
     control_ = 0;
     resetAction(clk);
 
-    // The endpoint STAYS CONNECTED. A warm reset does not unplug the terminal --
-    // and a guest that reset its UART and found the console gone would be a
-    // baffling thing to debug.
+    // The endpoint STAYS CONNECTED. Switching the machine on does not unplug the
+    // terminal -- and a guest that found the console gone would be a baffling thing
+    // to debug.
     //
-    // But the RESET DOES REACH THE WIRE: control_ is now 0, so RTS is asserted and
-    // BREAK is off, and those are pins the far end can see.
+    // But it DOES REACH THE WIRE: control_ is now 0, so RTS is asserted and BREAK is
+    // off, and those are pins the far end can see.
     driveControl();
     programLine();
 }

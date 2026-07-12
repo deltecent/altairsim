@@ -127,18 +127,41 @@ void Sio2Board::refresh() {
     if (next) wake_ = clock_->at(next, [this] { refresh(); });
 }
 
-void Sio2Board::reset(Reset) {
-    // Both resets do a 6850 master reset on both chips, and both KEEP THE
-    // ENDPOINTS CONNECTED (docs/boards/mits-2sio.md).
+// ---------------------------------------------------------------------------
+// A BUS RESET DOES NOTHING TO THIS CARD, AND THE DATA SHEET SETTLES IT: THERE IS NO PIN.
+//
+// The MC6850's twenty-four pins are Vss, RxD, RxCLK, TxCLK, RTS, TxD, IRQ, CS0-CS2, RS,
+// Vcc, R/W, E, D0-D7, /DCD and /CTS. No RESET. So the S-100 RESET* line reaches this
+// card's address decoding and NOTHING ELSE -- there is no wire to run it down, and no
+// card circuitry could fake one short of forging a bus write. A 6850 is reset by the
+// GUEST, by writing 11 into the divide field, and by nothing else in the world.
+//
+// This used to reset both chips on BOTH kinds of reset, and the difference is not
+// academic: hit RESET on a running machine and the 2SIO would lose its word format, its
+// RTS, its interrupt enables and any character sitting in the receive register. On the
+// real card it loses NOTHING, and a monitor that reset the machine and then read the
+// console port got back a byte that should still have been there. (DESIGN.md 0.1: the
+// data sheet wins. It won.)
+//
+// POWER-ON-CLEAR is different -- the machine was switched ON, and a card coming up must
+// be usable at once (DESIGN.md 6.1), so the chips get put in a known good state.
+//
+// refresh() runs EITHER WAY, because pin 73 is the CARD's: the backplane's interrupt
+// wire has to be re-driven whether or not anything happened to the chips.
+// ---------------------------------------------------------------------------
+void Sio2Board::reset(Reset r) {
     if (!clock_) return;
-    a_.masterReset(*clock_);
-    b_.masterReset(*clock_);
+
+    if (r == Reset::PowerOn) {
+        a_.powerOn(*clock_);
+        b_.powerOn(*clock_);
+    }
 
     // ...and refresh() CANCELS the outstanding deadline before re-arming, which is
     // why wake_ must not be cleared here. POWER empties the queue under us, but
-    // RESET* does not: a character was going out when the button was pressed, and
-    // its alarm is still on the books. Zeroing the handle first would orphan it --
-    // the timer would still fire, into a chip that has been master-reset out from
+    // RESET* does not: a character was going out when the switch was hit, and its
+    // alarm is still on the books. Zeroing the handle first would orphan it -- the
+    // timer would still fire, into a chip whose transmitter had been reinitialized
     // under it. A leaked deadline is a quiet bug; the cancel is not optional.
     refresh();
 }

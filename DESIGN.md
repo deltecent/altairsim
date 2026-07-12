@@ -567,10 +567,24 @@ enum class Reset {
 
 Get this backwards and it shows up as *"my program vanished when I hit reset"* — which reads like a memory-model bug rather than a reset bug, and costs you a day.
 
+### 6.1 A bus reset does what the board does — and if the board does nothing, it does nothing.
+
+The vocabulary, because two of these get called "reset" and they are not the same signal:
+
+- **Bus reset** — `RESET*`, the front-panel RESET switch. `Reset::Bus`.
+- **Power-on-clear** — POC\*, the delayed clear that comes up with the power supply. `Reset::PowerOn`. Nothing in software can assert it.
+- **Software reset** — whatever the *guest* writes to a chip to reset it. Not a bus signal at all, and not this section's business — except to say it is **modeled exactly**, because guest software can see, time and depend on every part of it. The 6850's master reset is the worked example: writing `11` into the divide field *latches*, holds the chip down, and inhibits TDRE until a second control write releases it, which is why every 6850 driver does two `OUT`s and why the card is dead after only the first. Round that corner and period software mysteriously half-works.
+
+**The rule for the two bus signals: a board does on a reset exactly what the real board does — and a board that does nothing does nothing.** It is tempting to have every card scrub itself clean on `RESET*` because it feels safe, and it is exactly backwards: a card that resets more of itself than the hardware's reset line physically reaches is inventing a machine nobody built, and the invention is *destructive*. The 88-2SIO is the case that proves it. The MC6850 **has no RESET pin** — 24 pins, and RESET is not among them — so `RESET*` reaches that card's address decoding and nothing else. This tree used to reset both ACIAs on `Bus` anyway, which threw away the guest's word format and interrupt enables *and ate a byte out of the receive register*, on a card where a real bus reset would have preserved all of it.
+
+So: **what a board does on each of the two signals is a fact about the board, it comes from the manual and the data sheet like every other fact (§0.1), and the board's `.md` must state it concretely.**
+
+**What we do *not* model is the exact timing or the internal sequencing of power-on-clear.** A real 6850 comes up held in an internal reset that is only released by the guest's first master reset; we don't reproduce that, because nothing can observe it that does not also program the chip. `Reset::PowerOn` simply leaves every card in a known good state **immediately**, so that a machine is usable the moment it is switched on. That is the one place a bus reset is allowed to be pragmatic rather than literal.
+
 **What POC\* does is board-specific**, and each board's `.md` must say **concretely** what each reset does to it. Examples:
 - **`memory`**: both resets clear the bank-select latch to 0 and touch nothing else. `POWER` re-fills RAM regions per `fill` and re-reads ROM regions from their files. See `docs/boards/s100-memory.md`.
 - **A boot ROM that disables itself** (§4.2.1): `PowerOn` **re-enables it** — otherwise the machine boots exactly once and never again. Whether `Bus` (the front-panel reset button) also re-enables it is a **board-specific strap, and the board's `.md` must say which.** This is the single most likely place to produce the classic "works from power-on, dead from the reset button" bug, because a warm reset that leaves the ROM switched out drops the CPU onto RAM at 0000 and it executes garbage.
-- **88-2SIO**: 6850 master reset on both (clears RDRF/TDRE, drops RTS), but **keeps its `ByteStream` connected**.
+- **88-2SIO**: `Bus` does **nothing at all** to the two 6850s — the chip has no reset pin, so `RESET*` reaches the card's decode logic and stops there. `PowerOn` puts each chip in a known good state (`Mc6850::powerOn` — clears RDRF, zeroes the control register, asserts RTS) and **keeps the `ByteStream` connected**. Neither is the 6850's *master* reset, which is the guest's, arrives as a control byte, and does not clear the control register. See §6.1.
 - **88-DCDD**: deselects all drives, unloads the head, invalidates the sector counter on both — but **keeps images mounted**, and does *not* seek to track 0 on a warm reset (real drives don't).
 - A DMA board must release the bus.
 - CPU: PC←0, interrupts disabled; Z80 also `I`/`R`←0 and IM 0.

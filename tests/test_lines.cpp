@@ -73,7 +73,7 @@ struct Chip {
         auto s = std::make_unique<PinStream>();
         line   = s.get();
         u.connect(std::move(s));
-        u.masterReset(clk);
+        u.powerOn(clk);  // power-on-clear, NOT the guest's master reset. See mc6850.h.
     }
 
     // The control register, written the way a guest writes it. 8N1, and the transmit
@@ -286,8 +286,10 @@ void test_lines() {
         CHECK((g.status() & kDcd) != 0, "no carrier");
 
         // "Master reset ... clears the Status Register (except for external conditions
-        // on CTS and DCD)." A reset button on the front panel does not dial the phone.
-        g.u.masterReset(g.clk);
+        // on CTS and DCD)." Switching the machine off and on again does not dial the
+        // phone. (It has to be the power-on-clear: a BUS reset cannot touch a 6850 at
+        // all -- the chip has no reset pin. See Sio2Board::reset.)
+        g.u.powerOn(g.clk);
         CHECK((g.status() & kDcd) != 0, "still no carrier: a reset cannot fake a pin");
         CHECK(!g.u.irq(g.clk), "...but the pending INTERRUPT is gone, which reset does clear");
     }
