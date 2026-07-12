@@ -959,13 +959,25 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
 
-        // The list. Names only, in table order -- which IS the priority order, so it
-        // doubles as the answer to "why does D mean DUMP".
+        // The list. Names only, ALPHABETICAL, reading left to right across the row.
+        // The table itself is in priority order (commands.cpp), and printing it in
+        // that order made the list unusable for its one job: you come here hunting a
+        // name you half-remember, and hunting means scanning, and scanning needs the
+        // alphabet. Priority order is a fact about the RESOLVER, not about the reader.
+        // Sorting a copy of the pointers leaves the table -- and every abbreviation
+        // derived from it -- untouched.
+        std::vector<const CommandDef*> sorted;
+        for (const CommandDef& c : commands()) sorted.push_back(&c);
+        std::sort(sorted.begin(), sorted.end(),
+                  [](const CommandDef* x, const CommandDef* y) {
+                      return std::string(x->name) < std::string(y->name);
+                  });
+
         out << "\n";
         int col = 0;
-        for (const CommandDef& c : commands()) {
-            std::string shown = abbreviation(c);
-            if (!c.built) shown += "*";
+        for (const CommandDef* c : sorted) {
+            std::string shown = abbreviation(*c);
+            if (!c->built) shown += "*";
             std::snprintf(buf, sizeof buf, "  %-16s", shown.c_str());
             out << buf;
             if (++col == 4) {
