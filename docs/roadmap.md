@@ -241,14 +241,14 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 | 4 — memory model | ROM board, PHANTOM, banking | DBL PROM at 0xFF00 overlays RAM; `SHOW BUS MAP` shows it; bank switching works |
 | 5 — rest of serial | ~~88-SIO~~ (**built 2026-07-12, in 1b**), ~~88-ACR~~ (**built 2026-07-12** — `docs/boards/mits-88acr.md`; it *is* an 88-SIO B, plus an FSK modem the guest cannot observe), 88-LPC | MITS BASIC from a cassette image; SIO's **inverted** status alongside 2SIO's true-sense |
 | 5½ — the front panel | **`fp`** (**built 2026-07-12** — `docs/boards/mits-frontpanel.md`) | `IN 0FFH` reads the SENSE switches, and **DBL reads a switch instead of a floating wire for the first time.** Not a planned milestone: it was a *bug*. `[machine] sense` parsed into a byte nothing put on the bus (see the F6 note in `docs/cli-transcripts.md`), and the fix was to put the switches on the card that carries them |
-| 6 — interrupt board & DMA | 88-VI, RTC | VI priority across *several* boards; a DMA card steals cycles and the clock notices |
+| 6 — interrupt board & DMA | ~~88-VI, RTC~~ (**built 2026-07-13** — `docs/boards/mits-88virtc.md`; one card, `virtc`), DMA | VI priority across *several* boards; a DMA card steals cycles and the clock notices. **The VI half is done:** MITS Programming System II runs with interrupts enabled, its console vectored through VI7 → `RST 7`, and Ctrl-C breaks a runaway program back to the monitor (`acceptance-ps2-int`). DMA remains. |
 | 7 — parallel, host bridge | 88-PIO, 88-4PIO, **Host Bridge** (our own design) | `HGET`/`HPUT`/`HDIR` move files to and from the host; sandbox escape attempts are refused |
 | 8 — more cores | 8085, Z80 | ZEXALL / ZEXDOC; a Z80 CP/M binary runs |
 | *later* | PMMI MM-103, VDM-1, Dazzler | see below |
 
 **Two things about this ordering:**
 
-- **The interrupt mechanism is in milestone 1**, not milestone 6. Milestone 6 adds the 88-VI *board* and multi-board priority, but `pINT`/`IntAck`/floating-bus-RST-7 exist and are proven from the start, because the 2SIO already needs them.
+- **The interrupt mechanism is in milestone 1**, not milestone 6. Milestone 6 adds the 88-VI *board* and multi-board priority, but `pINT`/`IntAck`/floating-bus-RST-7 exist and are proven from the start, because the 2SIO already needs them. **This paid off exactly as predicted** (2026-07-13): the 88-VI needed *no new bus concept* — it claims the `IntAck` cycle that had been there since milestone 1, and the only thing the bus had to grow was the eight VI wires themselves. The card was additive, as promised.
 - **The CPU validation gate is milestone 2**, not milestone 1: get the interface in front of you first, then make the core provably correct — but both before a single disk sector is read, so no board is ever built on an unvalidated 8080.
 
 Each milestone has a **written acceptance test that runs headless in CI on all four platforms** via `altairsim -s script.cmd`, so "it works" is never an opinion.

@@ -170,6 +170,32 @@ public:
     // A board's pin moved. Called by Board::intChanged(), and by nothing else.
     void intWireChanged(bool pulling) { intCount_ += pulling ? 1 : -1; }
 
+    // ---- VI0-VI7 (pins 4-11) -- EIGHT MORE WIRES, CARRIED AND NOT ARBITRATED ----
+    //
+    // The bus does for these exactly what it does for pin 73 and NOT ONE THING MORE:
+    // it carries the wire-OR of every board pulling each line, and it hands out no
+    // vector, picks no winner and applies no mask. Priority IS a chip -- an 8214, on
+    // an 88-VI card -- and pretending the backplane knows about it would be the same
+    // mistake §4.4 warns about with PHANTOM*.
+    //
+    // So an 88-VI is an ordinary board that happens to READ these wires, drive pin 73
+    // itself, and claim the IntAck cycle. With no 88-VI in the machine the eight
+    // lines go nowhere, which is what an empty slot does.
+    uint8_t viLines() const;
+
+    // A board's VI pins moved: it WAS pulling `before`, it is NOW pulling `after`.
+    // Called by Board::intChanged(), and by nothing else.
+    void viWireChanged(uint8_t before, uint8_t after) {
+        uint8_t was = viMask_;
+        for (int i = 0; i < 8; ++i) {
+            uint8_t bit = (uint8_t)(1u << i);
+            if ((before & bit) == (after & bit)) continue;
+            viCount_[i] += (after & bit) ? 1 : -1;
+        }
+        recomputeVi();
+        if (viMask_ != was) notifyViWatchers();
+    }
+
     // ---- The cycle stream (DESIGN.md 3.0.3, 4.2.2) ----
     //
     // Every board already sees every cycle -- that is what a backplane IS. An
@@ -264,6 +290,26 @@ private:
     // pINT as a WIRE-OR: how many enabled boards are pulling it down right now.
     // Maintained by intWireChanged(); never recomputed on the hot path.
     int intCount_ = 0;
+
+    // The same, eight times over, for VI0-VI7 -- plus the bitmask an 88-VI actually
+    // reads, kept in step so that viLines() is a load and not a loop.
+    int     viCount_[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t viMask_     = 0;
+    void    recomputeVi() {
+        uint8_t m = 0;
+        for (int i = 0; i < 8; ++i)
+            if (viCount_[i] > 0) m |= (uint8_t)(1u << i);
+        viMask_ = m;
+    }
+    void verifyVi() const;
+
+    // A VI line moved, so every card WATCHING those lines has a pin 73 that may have
+    // moved with it. The guard is not paranoia: a watcher's intChanged() can itself
+    // land back here (an 88-VI whose own RTC sits on a VI line), and one bounce is
+    // enough -- its VI output does not depend on the VI inputs, so it settles.
+    // (Out of line: Board is only forward-declared up here.)
+    bool inViNotify_ = false;
+    void notifyViWatchers();
 
     // The exact path. THIS IS THE DEFINITION OF CORRECTNESS; the tables above are
     // a cache OF it, and the verifier checks them AGAINST it.

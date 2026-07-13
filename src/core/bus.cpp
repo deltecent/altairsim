@@ -17,12 +17,14 @@ void Bus::attach(Board* b) {
     // accounts for enabled: a disabled card drives nothing, and says so when it is
     // disabled, not when it is asked.)
     if (b->intWire()) ++intCount_;
+    viWireChanged(0, b->viWire());  // ...and whatever VI lines it arrived pulling
     invalidateDecode();  // a card went into a slot: the wiring changed
 }
 
 void Bus::detach(Board* b) {
     boards_.erase(std::remove(boards_.begin(), boards_.end(), b), boards_.end());
     if (b->intWire()) --intCount_;  // and it takes its interrupt out with it
+    viWireChanged(b->viWire(), 0);  // ...and its VI lines go with it
     b->attachBus(nullptr);
     invalidateDecode();  // ...and the wiring changed again when it came out
 }
@@ -149,6 +151,26 @@ bool Bus::intPending() const {
     return intCount_ > 0;
 }
 
+// READ VI0-VI7. Which of the eight are being pulled down?
+//
+// Same wire, same rules, same cache. The bus reports the lines and stops there; an
+// 88-VI decides what they MEAN.
+// It does NOT verify here, and that is deliberate: an 88-VI reads this from inside
+// its own assertsInt(), which verifyInt() is in the middle of calling. Verifying the
+// VI wires from verifyInt() instead (where it happens once per instruction) checks
+// exactly the same thing without a card being asked to prove itself mid-answer.
+uint8_t Bus::viLines() const { return viMask_; }
+
+// A VI line moved. Tell the cards that watch them -- an 88-VI's pin 73 is a function
+// of these eight wires, and it was not the one who moved them.
+void Bus::notifyViWatchers() {
+    if (inViNotify_) return;
+    inViNotify_ = true;
+    for (Board* b : boards_)
+        if (b->watchesVi()) b->intChanged();
+    inViNotify_ = false;
+}
+
 // The proof, and the exact counterpart of verifySlot(). Re-derive the wire from
 // every board's combinational assertsInt() and compare it to what each board says
 // it is driving, and to the running count.
@@ -178,14 +200,50 @@ void Bus::verifyInt() const {
     // ...and the count itself, which attach()/detach() maintain by hand. Two
     // boards whose errors cancel would sail past the loop above; a bad count would
     // not, and this is the only place either could be caught.
-    if (live == intCount_) return;
-    std::fprintf(stderr,
-                 "\npINT WIRE-OR COUNT IS WRONG\n"
-                 "  the bus thinks %d board(s) are pulling pin 73\n"
-                 "  %d actually are\n"
-                 "A card went into or out of the backplane without the count following.\n",
-                 intCount_, live);
-    std::abort();
+    if (live != intCount_) {
+        std::fprintf(stderr,
+                     "\npINT WIRE-OR COUNT IS WRONG\n"
+                     "  the bus thinks %d board(s) are pulling pin 73\n"
+                     "  %d actually are\n"
+                     "A card went into or out of the backplane without the count following.\n",
+                     intCount_, live);
+        std::abort();
+    }
+
+    // Pin 73 is not the only interrupt wire any more, and a VI line that goes stale
+    // hangs the guest in exactly the same way. Checked from here so it is checked
+    // every instruction (intPending() is), not only when an 88-VI happens to look.
+    verifyVi();
+}
+
+// The same proof, eight wires wide.
+void Bus::verifyVi() const {
+    int live[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    for (Board* b : boards_) {
+        uint8_t actual = b->enabled() ? b->assertsVi() : 0;
+        for (int i = 0; i < 8; ++i)
+            if (b->viWire() & (1u << i)) ++live[i];
+        if (actual == b->viWire()) continue;
+
+        std::fprintf(stderr,
+                     "\nVI WIRES ARE STALE -- board '%s'\n"
+                     "  the wires say: %02X\n"
+                     "  the board says: %02X\n"
+                     "It changed its interrupt state and did not call intChanged().\n",
+                     b->id.c_str(), b->viWire(), actual);
+        std::abort();
+    }
+
+    for (int i = 0; i < 8; ++i) {
+        if (live[i] == viCount_[i]) continue;
+        std::fprintf(stderr,
+                     "\nVI%d WIRE-OR COUNT IS WRONG\n"
+                     "  the bus thinks %d board(s) are pulling it\n"
+                     "  %d actually are\n"
+                     "A card went into or out of the backplane without the count following.\n",
+                     i, viCount_[i], live[i]);
+        std::abort();
+    }
 }
 
 // ---------------------------------------------------------------------------

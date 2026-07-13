@@ -47,6 +47,7 @@ int main() {
     test_dcdd();
     test_88acr();
     test_frontpanel();
+    test_virtc();
 
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;

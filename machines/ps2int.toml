@@ -1,0 +1,111 @@
+# MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it.
+#
+#   altairsim ps2int
+#   MOUNT acr0:tape "tapes/MitsPS2/PS2-MON.TAP"
+#   LOAD  "tapes/MitsPS2/LDRPS2.HEX"
+#   RUN 0
+#   ->   ?
+#
+# Everything in machines/ps2.toml applies here too -- the same 4K-3.2 bootstrap (NOT the
+# 8K one), the same two-spaces-and-a-'?' prompt, the same rule that a word the monitor does
+# not recognise is a PROGRAM NAME it will hunt for on the cassette forever. Read that file.
+#
+# WHAT THIS ONE BUYS YOU is the ReadMe's promise, and it is exactly the escape hatch from
+# that trap:
+#
+#     "By enabling interrupts, a Ctrl-C can be typed to return control from a program
+#      directly back to the monitor."
+#
+# Type a bogus command in `ps2` and the machine is dead. Type one here and Ctrl-C gets you
+# your prompt back. That is the whole difference, and tests/acceptance/ps2-int.exp is
+# nothing but those two sentences, executed.
+
+[machine]
+name = "ps2int"
+
+# SENSE = 0x8C -- ps2's 0x8E with A9 DOWN.
+#
+#     A15 -> bit 7 = 0x80    cassette load
+#     A11 -> bit 3 = 0x08  \ 2SIO terminal
+#     A10 -> bit 2 = 0x04  /
+#     A9  -> bit 1 = 0x00    DOWN: the monitor DOES use serial input interrupts
+#
+# A9 is inverted from what you would guess: UP means "no interrupts". See machines/ps2.toml,
+# which is this machine with that one switch flipped the other way.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x8C
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
+
+# ---------------------------------------------------------------------------
+# THE 88-VI/RTC. This is the board the package "assumes is present".
+#
+# It watches the eight VI lines, prioritizes them (VI0 highest, VI7 lowest), pulls pin 73,
+# and jams RST n onto the bus during the interrupt acknowledge. The console below is
+# strapped to VI7, so it vectors through RST 7 to 0x0038 -- where the monitor really does
+# have a handler (`PUSH PSW / JMP 08DB`). That is what the ReadMe means by "vector 7".
+#
+# rtc_interrupt = "none" IS THE LOAD-BEARING LINE IN THIS FILE.
+#
+#     "The programming package assumes the 88-VI/RTC board is present and enables real-time
+#      clock interrupts from the board, yet doesn't provide an interrupt handler for the
+#      RTC. In order to run with interrupts enabled, interrupts from the RTC on the
+#      88-VI/RTC must be disabled..."
+#
+# And the monitor really does enable them -- its ISR does `ORI C0`, which sets the RTC
+# enable bit, every single time, and you cannot talk it out of it. So how do you disable an
+# interrupt the software insists on enabling? YOU DO NOT SOLDER THE WIRE. On the real card
+# the RTC's interrupt output ("RI") is jumpered to one of the eight levels; leave it
+# unjumpered and the flip-flop sets and sets and nothing is listening. `none` is that
+# missing jumper, and it is why no special case appears anywhere in the C++.
+[[board]]
+type          = "virtc"
+id            = "vi0"
+port          = 0xFE      # 376 octal. Write-only.
+rtc_interrupt = "none"    # RI not strapped -- see above. Do not "fix" this.
+
+# The console: an 88-2SIO at 0x10, as in `ps2` -- but its 6850 is now soldered to VI7
+# instead of to nothing. In `ps2` this strap is absent and the chip's IRQ pin goes nowhere,
+# which is correct for a machine that polls.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect   = "console"
+  baud      = 9600
+  interrupt = "vi7"   # -> RST 7 -> 0x0038. "Serial port 1 set to vector 7."
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# The cassette, unchanged from `ps2`. The ACR takes no part in interrupts: MITS said so --
+# "If the 88-ACR is used with MITS software, interrupts are not used. Do not make any
+# connections to interrupt lines."
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "16K"
+
+# The terminal. Identical to `ps2` -- and `strip7out` is not cosmetic here either: the
+# monitor computes EVEN PARITY into bit 7 of every character it sends, in software. See
+# machines/ps2.toml for the arithmetic.
+[console]
+strip7out = true
+upper     = true

@@ -72,8 +72,7 @@ void Sio2Board::write(const BusCycle& c) {
 
 // PIN 73, COMBINATIONAL AND PURE. This card pulls it if either chip is asking AND
 // that chip's jumper actually goes to pin 73. A `vi*` jumper goes to a vectored
-// interrupt line instead, which nothing watches until an 88-VI card exists -- so it
-// correctly does nothing, exactly as a wire into an empty slot would.
+// interrupt line instead -- see assertsVi().
 //
 // No work happens here. It reads two chips' pins and ORs them. The receiver used to
 // be advanced in this function -- see refresh(), which is where that went, and
@@ -83,6 +82,20 @@ bool Sio2Board::assertsInt() const {
     if (a_.jumper == IrqJumper::Int && a_.irq(*clock_)) return true;
     if (b_.jumper == IrqJumper::Int && b_.irq(*clock_)) return true;
     return false;
+}
+
+// VI0-VI7, and the reason this card has TWO straps and not one: the 6850s are
+// independent, so 'a' can sit on VI7 while 'b' sits on VI2, and both can be asking
+// at once. That is why the wire is a bitmask (board.h).
+//
+// Nothing watched these lines until the 88-VI arrived; the strap was accepted,
+// saved, tab-completed, and went into an empty slot. Now it goes somewhere.
+uint8_t Sio2Board::assertsVi() const {
+    if (!clock_) return 0;  // no crystal: the chips are not running at all
+    uint8_t m = 0;
+    if (a_.irq(*clock_)) m |= viBit(a_.jumper);
+    if (b_.irq(*clock_)) m |= viBit(b_.jumper);
+    return m;  // viBit() is 0 for `none` and for `int` -- pin 73 is not a VI line
 }
 
 // ---------------------------------------------------------------------------

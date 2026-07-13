@@ -45,6 +45,10 @@ public:
     // what is actually soldered to the wire.
     bool assertsInt() const override;
 
+    // ...and the same for VI0-VI7. The two 6850s are independently strapped, so
+    // this card can be pulling two lines at once -- hence a bitmask.
+    uint8_t assertsVi() const override;
+
     void reset(Reset) override;
     void power() override;
     void pump() override;

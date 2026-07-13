@@ -95,6 +95,14 @@ enum class IrqJumper {
 // device, at independent VI priorities) gets them both for free.
 Property irqJumperProperty(std::string name, std::string help, IrqJumper& j);
 
+// Which of the eight VI lines this strap lands on, as a bit. `none` and `int` are
+// not VI lines and land on nothing -- pin 73 is a different wire, and a strap to it
+// is not a quiet vi0.
+inline uint8_t viBit(IrqJumper j) {
+    if (j < IrqJumper::Vi0) return 0;
+    return (uint8_t)(1u << ((int)j - (int)IrqJumper::Vi0));
+}
+
 class Board {
 public:
     virtual ~Board() = default;
@@ -262,6 +270,35 @@ public:
     // the IntAck cycle like any other cycle (DESIGN.md 4.4).
     virtual bool assertsInt() const { return false; }
 
+    // ---- VI0-VI7 (S-100 pins 4-11). EIGHT MORE WIRES, AND THE SAME RULES. ----
+    //
+    // Which VI lines am I pulling right now, as a BITMASK: bit n = VIn. Same
+    // contract as assertsInt() in every respect -- combinational, pure, a level and
+    // not an event, announced with intChanged() and cached by the bus.
+    //
+    // A BITMASK, not the `int` level DESIGN.md 4.4 originally sketched, because a
+    // card can pull TWO of them at once: the 88-SIO straps its input device and its
+    // output device independently, and the manual is explicit that they may sit at
+    // different priorities. A single level would have to pick one and drop the
+    // other -- silently, and only when both fired, which is the worst possible way
+    // to lose an interrupt. (DESIGN.md 4.4 updated to match.)
+    //
+    // The bus CARRIES these and nothing more. It does not prioritize them, mask
+    // them, or turn one into a vector: that is an 88-VI's whole job, and it does it
+    // by watching Bus::viLines() and claiming the IntAck cycle like any other card.
+    // With no 88-VI in the machine these eight wires go nowhere -- exactly as they
+    // do in an Altair with an empty slot.
+    virtual uint8_t assertsVi() const { return 0; }
+
+    // "I WATCH THE VI LINES." An 88-VI says yes; nothing else does.
+    //
+    // A card that pulls a VI line announces it with intChanged(), and the bus updates
+    // its wire-OR -- but the card WATCHING those lines is a third party who was told
+    // nothing, and whose own pin 73 has just gone stale. So the bus calls intChanged()
+    // on each watcher whenever a VI line actually moves. Opt-in, because otherwise it
+    // is a virtual call to every board in the backplane on every keystroke.
+    virtual bool watchesVi() const { return false; }
+
     // "MY INTERRUPT PIN MAY HAVE MOVED." The exact analogue of decodeChanged(),
     // and for the same reason: the bus CACHES the wire -- it keeps a running
     // wire-OR count, so intPending() is one integer test per instruction instead of
@@ -274,17 +311,30 @@ public:
     // waiting for an interrupt that already happened -- so this is not left to
     // trust either: Bus::setVerify(true) re-derives the whole wire the slow way on
     // every instruction and aborts the moment a board disagrees with it.
+    // It covers pin 73 AND the eight VI lines, because a board does not know which
+    // of them its jumper is in today -- and a card that had to remember to announce
+    // each wire separately would eventually forget one.
     void intChanged() {
         bool now = enabled_ && assertsInt();
-        if (now == intWire_) return;
-        intWire_ = now;
-        if (bus_) bus_->intWireChanged(now);
+        if (now != intWire_) {
+            intWire_ = now;
+            if (bus_) bus_->intWireChanged(now);
+        }
+        uint8_t vi = enabled_ ? assertsVi() : 0;
+        if (vi != viWire_) {
+            uint8_t was = viWire_;
+            viWire_ = vi;
+            if (bus_) bus_->viWireChanged(was, vi);
+        }
     }
 
     // What this card is ACTUALLY driving onto pin 73 -- the latched wire, not a
     // fresh computation. Bus::attach()/detach() read it to keep the wire-OR honest
     // across a card going into or coming out of the backplane.
     bool intWire() const { return intWire_; }
+
+    // ...and the same, for the eight VI lines.
+    uint8_t viWire() const { return viWire_; }
 
     // ---- Lifecycle (DESIGN.md 6) ----
 
@@ -534,6 +584,9 @@ private:
     // What we are driving onto pin 73. Latched, not computed: this is a WIRE, and
     // the bus reads it rather than asking us about it every instruction.
     bool intWire_ = false;
+
+    // ...and onto VI0-VI7. Same reason, eight more wires.
+    uint8_t viWire_ = 0;
 };
 
 // ---------------------------------------------------------------------------

@@ -59,6 +59,10 @@ public:
     // wire.
     bool assertsInt() const override;
 
+    // ...and the same for VI0-VI7. Two straps, independently jumpered, so this card
+    // can be pulling two lines at once -- which is why the wire is a bitmask.
+    uint8_t assertsVi() const override;
+
     void reset(Reset) override;
     void power() override;
     void pump() override;

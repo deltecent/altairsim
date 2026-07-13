@@ -1,0 +1,110 @@
+#!/usr/bin/expect -f
+#
+# MITS PROGRAMMING SYSTEM II, WITH INTERRUPTS -- through a real 88-VI/RTC.
+#
+# `acceptance-ps2` proves the monitor boots with interrupts OFF. This proves the thing the
+# ReadMe says interrupts are FOR, and it is the one behavior that cannot be faked:
+#
+#     "By enabling interrupts, a Ctrl-C can be typed to return control from a program
+#      directly back to the monitor."
+#
+# The scenario is the ReadMe's own booby trap, sprung on purpose:
+#
+#     "STOP! Do not type any commands to see 'what happens.' If what is typed is not a
+#      command, the monitor tries loading a program of that name from the cassette and
+#      hangs there until you provide that program. If the ABS device has been set to
+#      audio-cassette (AC), then Ctrl-C will return to the monitor prompt IF INTERRUPTS
+#      WERE ENABLED during the boot process."
+#
+# So: hang the machine on purpose, then rescue it. Every byte of that rescue goes through
+# hardware that did not exist before -- the 6850 pulls VI7, the 88-VI prioritizes it and
+# pulls pin 73, the 8080 acknowledges, the 88-VI claims the IntAck cycle and jams RST 7
+# onto the data bus, and the monitor's handler at 0x0038 reads the character, finds 0x03,
+# and longjmps back to its command loop.
+#
+# `machines/ps2.toml` (A9 up) is the negative control and it is a REAL one: run this same
+# script against it and the machine stays hung, because nothing is delivering anything.
+#
+# ---------------------------------------------------------------------------
+# TRAPS, ALL OF WHICH HAVE ALREADY BITTEN ME ONCE:
+#
+#   1. `expect` PATTERNS ARE GLOBS. `expect "*"` matches ANY output. Every literal below
+#      is `-ex`. Do not "simplify" one back.
+#   2. DO NOT TYPE INTO A RACE. After the break, the monitor prints its banner and only
+#      THEN re-arms its input routine. Sending the next command the instant the first byte
+#      appears loses it, and the script then "proves" that Ctrl-C did not work.
+#   3. THE BREAK BANNER IS "C*?", NOT THE PROMPT. The monitor loads 'C' (0x43, at 0931:
+#      `MVI L,43`) and prints it. It does NOT then print "\r\n  ?" on its own -- it is
+#      already sitting at its prompt, waiting. Do not wait for "  ?"; it never comes.
+#
+# usage: expect -f ps2-int.exp <altairsim> [machine] [timeout]
+#
+# The timeout is an argument because the NEGATIVE CONTROL only ever ends by timing out --
+# a hung machine hangs -- and a control that spends a full minute proving it is still hung
+# doubles the runtime of the whole fast suite to say something it can say in ten seconds.
+
+set timeout 60
+log_user 0
+
+set sim [lindex $argv 0]
+set mach "ps2int"
+if {[llength $argv] > 1} { set mach [lindex $argv 1] }
+if {[llength $argv] > 2} { set timeout [lindex $argv 2] }
+
+spawn $sim $mach
+
+expect -ex "altairsim> "
+send "MOUNT acr0:tape \"tapes/MitsPS2/PS2-MON.TAP\"\r"
+expect -ex "altairsim> "
+send "LOAD \"tapes/MitsPS2/LDRPS2.HEX\"\r"
+expect -ex "altairsim> "
+send "RUN 0\r"
+
+# The monitor boots. With A9 DOWN it runs `EI` on the way in -- the boot itself is the
+# first proof that interrupts do not break it.
+expect {
+    -ex "  ?" { puts "### booted with interrupts enabled" }
+    timeout   { puts "### FAIL: no monitor prompt"; exit 1 }
+}
+
+# The program-load device has to be the cassette for the trap to be a trap.
+send "OPN ABS,AC\r"
+expect {
+    -re "OPN ABS,AC\[\r\n\]+  \\?" { puts "### OPN ABS,AC parsed" }
+    timeout { puts "### FAIL: OPN not parsed"; exit 1 }
+}
+
+# ---- SPRING THE TRAP. "ZZZ" is not a command, so the monitor goes to the tape hunting a
+# program by that name, and will sit there until the heat death of the universe.
+send "ZZZ\r"
+after 1500
+
+# ---- THE RESCUE. This byte has to travel through the entire interrupt chain.
+send "\003"
+expect {
+    -ex "C*?" { puts "### Ctrl-C landed: the monitor's break banner" }
+    timeout {
+        puts "### FAIL: the machine is still hung. No interrupt was delivered."
+        exit 1
+    }
+}
+
+# The banner IS the whole response -- the monitor is at its prompt now and prints nothing
+# further until spoken to. Give it a beat (trap 2) and then ask it to prove it is alive.
+after 500
+
+# THE ASSERTION THAT MATTERS. A banner could be printed by a crashing machine; parsing a
+# command afterwards could not. This is "control returned to the monitor", tested.
+send "OPN ABS,AC\r"
+expect {
+    -re "OPN ABS,AC\[\r\n\]+  \\?" {
+        puts "### CONTROL IS BACK AT THE MONITOR -- it parsed a command after the break"
+    }
+    timeout { puts "### FAIL: broke out, but the monitor is not taking commands"; exit 1 }
+}
+
+send "\005"
+expect -ex "altairsim> "
+send "QUIT\r"
+expect eof
+puts "### ALL STEPS PASSED"

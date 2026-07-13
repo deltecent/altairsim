@@ -18,8 +18,8 @@
 When two sources disagree, say so in the board's `.md` and say which one won and why.
 
 Consequences already baked into this design:
-- **AltairZ80's port-0xFE "SIMH pseudo device" is not implemented**, and `R.COM`/`W.COM` are not supported. See §12.
-- Boards with no manual in the tree (88-HDSK, 88-VI, 88-PIO/4PIO) are **blocked on documentation**, not on code. See §17. None of them block milestone 1. (The **88-ACR** was on this list; its manual is now in the tree and the card is built.)
+- **AltairZ80's port-0xFE "SIMH pseudo device" is not implemented**, and `R.COM`/`W.COM` are not supported. See §12. *(This aged well: as of 2026-07-13 port 0xFE is the **88-VI/RTC's real control register** — 376 octal, straight out of the MITS manual. AltairZ80 put its pseudo-device on top of a port that belongs to an actual MITS card, and we would have had to evict it.)*
+- Boards with no manual in the tree (88-HDSK, 88-PIO/4PIO) are **blocked on documentation**, not on code. See §17. None of them block milestone 1. (The **88-ACR** and the **88-VI/RTC** were on this list; both manuals are now in the tree and both cards are built.)
 
 ### 0.2 Doc discipline
 
@@ -261,7 +261,8 @@ public:
     // with intChanged(); the bus caches the wire-OR. (This was non-const, and there
     // was a section defending that. Reversed 2026-07-12 — see §4.4.1.)
     virtual bool     assertsInt() const { return false; }   // pINT (S-100 pin 73)
-    virtual int      assertsVi()  const { return -1; }      // VI0..VI7, or -1
+    virtual uint8_t  assertsVi()  const { return 0; }       // VI0..VI7, as a BITMASK
+    virtual bool     watchesVi()  const { return false; }   // an 88-VI says yes
     void             intChanged();                          // "my pin moved"
 
     // Bus mastering (DMA): assert pHOLD; when granted pHLDA, the bus calls
@@ -434,6 +435,8 @@ Everything else is a board. The 88-VI is then just another board with no special
 
 A board declares its jumpering as a property: `interrupt = none | int | vi0 … vi7`. An 88-2SIO with `interrupt = int` gives RST 7 with no VI board present; the same board with `interrupt = vi2` in a machine containing an 88-VI gives `RST 2`.
 
+**Both halves are now BUILT** — see `docs/boards/mits-88virtc.md`, `machines/ps2int.toml`, and the MITS manual in `reference/88-VI-RTC.pdf`. The design above survived contact with the hardware unchanged: the 88-VI needed no new bus concept beyond the eight wires, because `IntAck` was already a cycle any board could claim.
+
 #### 4.4.1 The board **pulls** pin 73. The bus does not go and ask.
 
 **Corrected 2026-07-12 by Patrick, and this reverses what this section used to say:**
@@ -473,6 +476,21 @@ So the work moved to where it belongs, and `assertsInt()` became `const` and pur
 ##### The stale wire is not left to trust
 
 A board that moves its interrupt pin and forgets to call `intChanged()` hangs the guest forever, waiting for an interrupt that already happened — and presents as *"the emulator locks up sometimes"*, which is worth a week of anyone's life. So it is checked, exactly as the decode cache is: **`Bus::setVerify(true)`** re-derives the whole wire from every board's `assertsInt()` on every instruction and aborts on the first disagreement. The unit suites run with it on permanently; the CPU validation gate runs with it under `ALTAIR_VERIFY=1`, over 2.9 billion instructions.
+
+#### 4.4.2 `assertsVi()` is a **bitmask**, not a level — and that is a correction
+
+The sketch in §4.2 originally read `virtual int assertsVi() const { return -1; }` — one level, or nothing. **That is wrong, and the 88-SIO is the counterexample.** It has *two* interrupt straps, one for its input device and one for its output device, and the manual is explicit that they may sit at **different VI priorities**. Both can be asking in the same instant — a character has arrived *and* the transmitter has gone empty — so the card is pulling two of the eight wires at once. An `int` return could only ever have reported one of them, and would have dropped the other silently, and *only* in the case where both fired. That is the worst way to lose an interrupt: rare, timing-dependent, and invisible.
+
+So the wire is what the backplane says it is — **eight independent lines** — and a board reports the subset it is pulling:
+
+```cpp
+virtual uint8_t assertsVi() const { return 0; }   // bit n = pulling VIn
+virtual bool    watchesVi() const { return false; }
+```
+
+`watchesVi()` is the other half, and it is not decoration. A card that *pulls* a VI line announces it with `intChanged()`; the card *watching* those lines is a third party who was told nothing, and whose own `pINT` has just gone stale. The bus therefore calls `intChanged()` on each watcher when a VI line actually moves. It is opt-in because otherwise it is a virtual call to every board in the backplane on every keystroke.
+
+`Bus::setVerify(true)` covers all nine wires, not just pin 73: it re-derives the eight VI lines from every board's `assertsVi()` too, and aborts the same way. A stale VI line hangs the guest exactly as a stale `pINT` does, and is even harder to see.
 
 ### 4.5 DMA is bus mastering
 
@@ -1375,7 +1393,7 @@ See `docs/porting-notes.md` for the full list. The ones that will bite:
 |---|---|---|
 | ~~**88-ACR**~~ | ~~Cassette-specific control bits (motor control, if any).~~ **DISCHARGED 2026-07-12 — the card is BUILT.** The manual is in the tree, and the answer to the open question was **there is no motor control at all**: no transport register, nothing the guest can write that reaches the recorder, and an operator who pressed the buttons with their finger. The row had also guessed wrong about *what* was unknown — the ports and the bit sense were never the interesting part. See `docs/boards/mits-88acr.md`. | ~~Milestone 5~~ |
 | **88-PIO / 88-4PIO** | Bit layouts and handshake (CA1/CB2) semantics. Only port numbers are known: PIO 0x04/0x05; 4PIO 0x20–0x23. | Milestone 7 |
-| **88-VI / RTC** | Register layout, priority scheme, RST vector generation. Nothing at all in the tree. | Milestone 6 |
+| ~~**88-VI / RTC**~~ | ~~Register layout, priority scheme, RST vector generation. Nothing at all in the tree.~~ **DISCHARGED 2026-07-13 — the card is BUILT.** The manual is in the tree (`reference/88-VI-RTC.pdf`) and answered all three: one write-only control port at **376Q (0xFE)**, **VI0 highest / VI7 lowest**, level *n* → `RST n`. It also **contradicted itself**, and the tie was broken by disassembling the only real client we have — the PS2 monitor's own service routine — which proved bits 0–2 are the *ones-complement* of the level and that bit 3 gates the compare. **When the document and the artifact disagree, disassemble the artifact.** See `docs/boards/mits-88virtc.md`. | ~~Milestone 6~~ |
 | **88-HDSK** | Ports, command protocol, geometry, image format. Nothing at all in the tree. | Milestone 7 |
 | **PMMI** (deferred) | The **E1–E7 pad → VI0–VI7 correspondence** — the manual says only to consult your CPU/VI card manual. Everything else is recovered. | If/when PMMI is built |
 | **88-TURNKEY / PROM** | **How power-on jump works.** A turnkey board forces the CPU to the PROM address after reset; the mechanism is undocumented in the tree. Nothing is blocked — `startup = ["GO FF00"]` covers it honestly (§10.0) — but modeling POJ as a real board property is the correct long-run answer, and it would test whether a `Board` can claim an `OpFetch` cycle the way the 88-VI claims an `IntAck`. | Nice-to-have; blocks nothing |

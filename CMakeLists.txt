@@ -165,6 +165,7 @@ add_library(altair_core STATIC
   # this list is not ordered. It is listed after it so the reader sees the pair.
   src/boards/mits-88acr.cpp
   src/boards/mits-frontpanel.cpp
+  src/boards/mits-88virtc.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp
@@ -211,7 +212,8 @@ add_executable(altair_tests
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
-  tests/test_frontpanel.cpp)
+  tests/test_frontpanel.cpp
+  tests/test_virtc.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 
@@ -344,6 +346,32 @@ if(EXPECT_EXECUTABLE)
                        LABELS acceptance TIMEOUT 120
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+  # MITS Programming System II WITH INTERRUPTS, through a real 88-VI/RTC: the console
+  # 6850 pulls VI7, the 88-VI prioritizes it and pulls pin 73, and claims the IntAck
+  # cycle to jam RST 7 onto the bus. The test hangs the monitor on purpose (a word it
+  # does not know is a program name it hunts for on the tape, forever) and rescues it
+  # with Ctrl-C -- which is the one thing the ReadMe says interrupts are for.
+  add_test(NAME acceptance-ps2-int
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ps2-int.exp
+                   $<TARGET_FILE:altairsim> ps2int)
+  set_tests_properties(acceptance-ps2-int PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ...AND THE NEGATIVE CONTROL, which is the only reason to believe the test above.
+  #
+  # The SAME script against `ps2` -- A9 up, no 88-VI, nothing strapped to an interrupt --
+  # must FAIL: the machine stays hung and Ctrl-C is just a character nobody delivers. If
+  # this ever starts passing, then acceptance-ps2-int is passing on something that is not
+  # an interrupt, and it is worthless. WILL_FAIL makes ctest assert exactly that.
+  add_test(NAME acceptance-ps2-int-control
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ps2-int.exp
+                   $<TARGET_FILE:altairsim> ps2 10)
+  set_tests_properties(acceptance-ps2-int-control PROPERTIES
+                       LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 else()
   message(STATUS "expect not found -- SKIPPING the interactive CLI test (acceptance-cli). "
                  "The tty paths (prompt echo, ATTN, clock pacing) will not be covered.")

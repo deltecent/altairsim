@@ -201,14 +201,27 @@ void SioBoard::write(const BusCycle& c) {
 //
 // Three things have to line up: the UART is asking, software enabled that
 // interrupt, and the corresponding pad is actually soldered to pin 73. An `in_int`
-// strapped to `vi3` goes to a vectored interrupt line instead, which nothing
-// watches until an 88-VI card exists -- so it correctly does nothing, exactly as a
-// wire into an empty slot would.
+// strapped to `vi3` goes to a vectored interrupt line instead -- see assertsVi().
 bool SioBoard::assertsInt() const {
     if (!clock_) return false;  // no crystal: the chip is not running at all
     if (inIntEnabled_ && inIrq_ == IrqJumper::Int && rxReady()) return true;
     if (outIntEnabled_ && outIrq_ == IrqJumper::Int && txReady()) return true;
     return false;
+}
+
+// VI0-VI7. THIS IS THE CARD THAT FORCED THE WIRE TO BE A BITMASK.
+//
+// The 88-SIO has two independent straps -- one for its input device, one for its
+// output device -- and the manual is explicit that they may sit at DIFFERENT VI
+// priorities. Both can be asking at the same instant (a character has arrived and
+// the transmitter has gone empty), so this card can be pulling VI2 and VI5 at once.
+// A single "which level am I on" could only ever have reported one of them.
+uint8_t SioBoard::assertsVi() const {
+    if (!clock_) return 0;  // no crystal: the chip is not running at all
+    uint8_t m = 0;
+    if (inIntEnabled_ && rxReady()) m |= viBit(inIrq_);
+    if (outIntEnabled_ && txReady()) m |= viBit(outIrq_);
+    return m;  // viBit() is 0 for `none` and for `int` -- pin 73 is not a VI line
 }
 
 // ---------------------------------------------------------------------------

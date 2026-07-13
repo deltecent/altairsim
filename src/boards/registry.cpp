@@ -3,6 +3,7 @@
 #include "boards/mits-88acr.h"
 #include "boards/mits-88cpu.h"
 #include "boards/mits-88dcdd.h"
+#include "boards/mits-88virtc.h"
 #include "boards/mits-frontpanel.h"
 #include "boards/s100-memory.h"
 #include "boards/mits-2sio.h"
@@ -31,6 +32,7 @@ std::vector<BoardType> boardTypes() {
         {"dcdd", "MITS 88-DCDD: 8\" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits"},
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb"},
         {"fp", "Altair front panel: the SENSE switches at port FF (read-only), and the lamps"},
+        {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
     };
 }
 
@@ -42,6 +44,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "dcdd") return std::make_unique<DcddBoard>();
     if (type == "acr") return std::make_unique<AcrBoard>();
     if (type == "fp") return std::make_unique<FrontPanelBoard>();
+    if (type == "virtc") return std::make_unique<VirtcBoard>();
     return nullptr;
 }
 
