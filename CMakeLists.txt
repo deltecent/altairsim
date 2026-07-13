@@ -336,6 +336,7 @@ set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
 add_test(NAME acceptance-cwdconfig
          COMMAND ${CMAKE_COMMAND}
                  -DSIM=$<TARGET_FILE:altairsim>
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
 set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
 

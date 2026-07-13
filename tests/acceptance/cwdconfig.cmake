@@ -9,9 +9,14 @@
 #
 # So the negative cases below are not padding. They are the test.
 #
-# Expects: -DSIM=<altairsim>
-
-set(work "${CMAKE_CURRENT_LIST_DIR}/../../build/cwdconfig-work")
+# Expects: -DSIM=<altairsim> -DBIN=<binary dir>
+#
+# BIN IS PASSED IN, and this file climbs out of its own directory to find NOTHING. It used
+# to say `${CMAKE_CURRENT_LIST_DIR}/../../build`, which is two lies in one line: that the
+# tree above it is ours to walk, and that the build directory is called `build` (configure
+# into `out/` and the test scribbles somewhere that does not exist). CMake knows where it
+# put things -- ask it, in CMakeLists.txt, and pass the answer. Same bargain as -DSIM.
+set(work "${BIN}/cwdconfig-work")
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}/proj" "${work}/empty")
 
