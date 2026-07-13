@@ -78,6 +78,15 @@ struct Property {
     int radix = 10;                     // 16 for addresses, so SHOW reads right
     std::string unit;                   // "Hz", "bytes" -- display only
 
+    // "I AM AN INTERRUPT STRAP." Set by irqJumperProperty() and by nothing else.
+    //
+    // The eight VI lines are the one part of the backplane you cannot see, and a
+    // strap that lands nowhere fails in total silence. SHOW BUS IRQ has to find
+    // every strap in the machine to say so -- and since every one of them is born
+    // in irqJumperProperty(), marking that single function marks all of them, on
+    // boards that do not exist yet, without a board-type list anywhere.
+    bool irqJumper = false;
+
     std::function<Value()> get;
     // Return false + err to reject. The board validates what only it can know;
     // kind/choices/range are checked generically before this is ever called.

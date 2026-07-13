@@ -103,6 +103,27 @@ inline uint8_t viBit(IrqJumper j) {
     return (uint8_t)(1u << ((int)j - (int)IrqJumper::Vi0));
 }
 
+// The instruction an acknowledged level-n interrupt executes: RST n, vectoring to 8n.
+//
+// This is the 8080's encoding, not any card's. An 88-VI jams it onto the data bus
+// during IntAck; an UNCLAIMED IntAck floats to FF, which is already RST 7. Same table,
+// reached two completely different ways -- which is why a `vi7` strap and an `int`
+// strap in a VI-less machine both land on 0038, and why that is a coincidence rather
+// than a fallback to lean on.
+inline uint8_t rstOpcode(int level) { return (uint8_t)(0xC7 | ((level & 7) << 3)); }
+
+// Text -> strap: the exact inverse of what irqJumperProperty() renders, and the
+// property's own setter is written in terms of it. Anything that reads a strap back
+// out of the reflection layer (SHOW BUS IRQ) goes through here too, so the two
+// directions cannot drift apart. Unrecognized text is `none` -- validate() has
+// already rejected it against `choices` long before this is reached.
+inline IrqJumper irqJumperFromText(const std::string& s) {
+    if (s == "int") return IrqJumper::Int;
+    if (s.size() == 3 && s[0] == 'v' && s[1] == 'i' && s[2] >= '0' && s[2] <= '7')
+        return (IrqJumper)((int)IrqJumper::Vi0 + (s[2] - '0'));
+    return IrqJumper::None;
+}
+
 class Board {
 public:
     virtual ~Board() = default;
@@ -298,6 +319,17 @@ public:
     // on each watcher whenever a VI line actually moves. Opt-in, because otherwise it
     // is a virtual call to every board in the backplane on every keystroke.
     virtual bool watchesVi() const { return false; }
+
+    // "OF THE LINES BEING PULLED, WHICH ONE WOULD I ACKNOWLEDGE?" -- the level, or -1.
+    //
+    // Only a priority encoder has an opinion, so only an 88-VI answers. This exists
+    // for SHOW BUS IRQ, which must be able to say WHICH line wins without knowing what
+    // an 88-VI is: the alternative was a dynamic_cast to a specific card in the
+    // monitor, and the monitor does not get to know about cards.
+    //
+    // PURE AND SIDE-EFFECT-FREE, like assertsInt(), which is derived from exactly the
+    // same state. A SHOW command must not perturb the machine it is describing.
+    virtual int intWinner() const { return -1; }
 
     // "MY INTERRUPT PIN MAY HAVE MOVED." The exact analogue of decodeChanged(),
     // and for the same reason: the bus CACHES the wire -- it keeps a running

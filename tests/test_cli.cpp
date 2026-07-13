@@ -5,13 +5,18 @@
 // the whole scheme safe: an exact spelling always wins, and a command is never
 // silently reinterpreted because a newer command was added above it.
 
+#include "boards/mits-2sio.h"
+#include "boards/mits-88virtc.h"
 #include "boards/registry.h"
+#include "boards/s100-memory.h"
 #include "cli/commands.h"
 #include "cli/monitor.h"
 #include "core/machine.h"
 #include "cpu/cpu.h"
+#include "host/stream.h"
 #include "test.h"
 
+#include <memory>
 #include <sstream>
 
 using namespace altair;
@@ -459,5 +464,151 @@ void test_cli() {
         mon4.exec("REW acr0:tape", gone);
         CHECK(gone.str().find("unknown command") != std::string::npos,
               "pull the card and REWIND goes with it");
+    }
+
+    // -----------------------------------------------------------------------
+    // SHOW BUS IRQ (DESIGN.md 10, cli/monitor.cpp).
+    //
+    // The interrupt wiring is the one part of the backplane with no other window
+    // onto it: eight wires and a pin, none of them addressable, and the two ways
+    // of mis-wiring it BOTH FAIL IN SILENCE. So the warnings are tested as hard as
+    // the table is -- a view that renders a dead wire beautifully and says nothing
+    // about it being dead would be worse than no view.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW BUS IRQ -- the eight wires, and the two silent ways to get them wrong");
+    {
+        // A machine wired like machines/ps2int.toml: 88-VI at FE, console 6850 on VI7.
+        struct Rig {
+            Machine         m;
+            VirtcBoard*     vi  = nullptr;
+            Sio2Board*      sio = nullptr;
+            ScriptedStream* tty = nullptr;
+
+            explicit Rig(bool withVi) {
+                std::string err;
+                m.bus.setVerify(true);  // eight wires: re-derive them all, every step
+                auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+                Region r;
+                r.kind = RegionKind::Ram;
+                r.at   = 0;
+                r.size = 0x10000;
+                mem->addRegion(r, err);
+                m.add("8080", "cpu0", err);
+                if (withVi) vi = dynamic_cast<VirtcBoard*>(m.add("virtc", "vi0", err));
+                sio = dynamic_cast<Sio2Board*>(m.add("2sio", "sio0", err));
+                setProperty(*sio, "port", "10", err);
+                auto s = std::make_unique<ScriptedStream>();
+                tty    = s.get();
+                sio->channel("a")->connect(std::move(s));
+                m.power();
+            }
+            std::string irq() {
+                Monitor           mon(m);
+                std::ostringstream o;
+                mon.exec("SHOW BUS IRQ", o);
+                return o.str();
+            }
+            // Through the MONITOR, not through setUnitProperty -- so the CLI path that
+            // an operator actually uses is the one under test.
+            void strap(const char* where) {
+                Monitor            mon(m);
+                std::ostringstream o;
+                mon.exec(std::string("SET sio0:a interrupt=") + where, o);
+            }
+            void ctl(uint8_t v) { m.bus.ioWrite(0xFE, v); }
+        };
+
+        // ---- the vector table. A row a floating bus could not have produced. ----
+        {
+            Rig         g(true);
+            std::string s = g.irq();
+            CHECK(s.find("VI0   RST 0  C7 -> 0000") != std::string::npos,
+                  "VI0 is RST 0 at 0000 -- and it is the HIGHEST priority, not the lowest");
+            CHECK(s.find("VI2   RST 2  D7 -> 0010") != std::string::npos,
+                  "VI2 is RST 2 (D7) at 0010");
+            CHECK(s.find("VI7   RST 7  FF -> 0038") != std::string::npos,
+                  "VI7 is RST 7 at 0038 -- which is what the PS2 ReadMe means by 'vector 7'");
+        }
+
+        // ---- the strap is found generically, through Property::irqJumper ----
+        {
+            Rig g(true);
+            g.strap("vi7");
+            std::string s = g.irq();
+            CHECK(s.find("VI7   RST 7  FF -> 0038  sio0:a") != std::string::npos,
+                  "the 6850 on channel a is named on the line it is soldered to");
+            CHECK(s.find("88-VI   vi0") != std::string::npos, "and the card that watches it");
+            CHECK(s.find("WARNINGS") == std::string::npos,
+                  "a correctly wired machine is not nagged at");
+        }
+
+        // ---- THE DEAD WIRE. This tree shipped it for months. ----
+        {
+            Rig g(false);  // no 88-VI in the machine
+            g.strap("vi7");
+            std::string s = g.irq();
+            CHECK(s.find("WARNINGS") != std::string::npos,
+                  "a vi* strap with nothing watching the VI lines is a BUG, and is reported");
+            CHECK(s.find("sio0:a is strapped to VI7") != std::string::npos &&
+                      s.find("goes nowhere") != std::string::npos,
+                  "...by name, and by line, and it says exactly what is wrong with it");
+        }
+
+        // ---- THE FORBIDDEN MIX. The manual is blunt about it. ----
+        {
+            Rig g(true);
+            g.strap("int");
+            std::string s = g.irq();
+            CHECK(s.find("strapped to pINT while an 88-VI (vi0) is present") != std::string::npos,
+                  "an `int` strap in a VI machine is forbidden, and SHOW BUS IRQ quotes the "
+                  "manual saying so");
+        }
+
+        // ---- LIVE: a character arrives, and the whole chain lights up ----
+        {
+            Rig g(true);
+            g.strap("vi7");
+            g.ctl(0x80);  // bit 7: enable the VI structure. Compare off (bit 3 clear).
+
+            g.m.bus.ioWrite(0x10, 0x03);  // 6850 master reset
+            g.m.bus.ioWrite(0x10, 0x95);  // 8N2, and the RECEIVE INTERRUPT enabled
+            g.tty->feed("A");
+            g.sio->pump();
+            for (int i = 0; i < 200; ++i) g.m.clock.advance(1000);  // it clocks in on its own
+
+            std::string s = g.irq();
+            CHECK(g.vi->intWinner() == 7, "the encoder picks VI7");
+            CHECK(s.find("pINT    ASSERTED") != std::string::npos, "pin 73 is pulled...");
+            CHECK(s.find("pulled by vi0") != std::string::npos, "...by the 88-VI, not by the 6850");
+            CHECK(s.find("VI7   RST 7  FF -> 0038  sio0:a               WINS") != std::string::npos,
+                  "and VI7 is the line that wins");
+            CHECK(s.find("vi0 will jam FF") != std::string::npos,
+                  "and the view says which byte the acknowledge will produce");
+
+            // ---- MASKED: the same wire, still pulled, and now refused. ----
+            //
+            // This is what the PS2 monitor's own ISR does on entry (level 7, bit 3
+            // set) so that another level 7 cannot interrupt it -- and it is invisible
+            // in every other view: the wire is still pulled, the CPU just never sees
+            // it. Getting this wrong looks exactly like a lost interrupt.
+            g.ctl(0x88);  // level 7, and bit 3 makes the compare live
+            std::string t = g.irq();
+            CHECK(g.vi->intWinner() == -1, "nothing at or below the current level may interrupt");
+            CHECK(t.find("MASKED") != std::string::npos,
+                  "the line is still PULLED -- and the view says it is masked, not idle");
+            CHECK(t.find("pINT    idle") != std::string::npos, "and pin 73 has dropped");
+        }
+
+        // ---- a backplane with no CPU is legal, and still has wiring worth seeing ----
+        {
+            Machine            m5;
+            Monitor            mon5(m5);
+            std::ostringstream o;
+            mon5.exec("SHOW BUS IRQ", o);
+            CHECK(o.str().find("CPU     (none)") != std::string::npos,
+                  "no processor: say so, and print the wires anyway");
+            CHECK(o.str().find("88-VI   (none)") != std::string::npos,
+                  "no 88-VI: an acknowledged interrupt would float FF = RST 7");
+        }
     }
 }

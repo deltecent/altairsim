@@ -145,6 +145,9 @@ public:
     // ...and we WATCH all eight, which is the entire point of the card.
     bool watchesVi() const override { return true; }
 
+    // ...and we are the one who decides which of them wins. SHOW BUS IRQ asks.
+    int intWinner() const override;
+
     void reset(Reset) override;
     void power() override;
     void configChanged() override;
@@ -158,8 +161,9 @@ public:
     // VI0 wins over VI7: LOWER NUMBER IS HIGHER PRIORITY.
     int winner() const;
 
-    // The RST opcode for a level: RST n = 0xC7 | (n << 3), landing at 8n.
-    static uint8_t rstFor(int level) { return (uint8_t)(0xC7 | ((level & 7) << 3)); }
+    // The RST opcode for a level. The encoding is the 8080's, not ours -- we only jam
+    // it onto the bus -- so it lives in board.h and we forward to it.
+    static uint8_t rstFor(int level) { return rstOpcode(level); }
 
 private:
     // Every VI line being pulled right now, INCLUDING OUR OWN RTC's. Ours is OR'd in

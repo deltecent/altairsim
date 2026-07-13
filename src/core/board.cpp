@@ -33,6 +33,9 @@ Property irqJumperProperty(std::string name, std::string help, IrqJumper& j) {
     x.help    = std::move(help);
     x.kind    = Kind::Enum;
     x.choices = {"none", "int", "vi0", "vi1", "vi2", "vi3", "vi4", "vi5", "vi6", "vi7"};
+    // ...and this is what lets SHOW BUS IRQ find it. Every strap in the machine is
+    // born here, so one flag here finds them all -- see Property::irqJumper.
+    x.irqJumper = true;
     x.get     = [&j] {
         switch (j) {
         case IrqJumper::None: return Value::ofStr("none");
@@ -42,10 +45,7 @@ Property irqJumperProperty(std::string name, std::string help, IrqJumper& j) {
         }
     };
     x.set = [&j](const Value& v, std::string&) {
-        const std::string& s = v.s();
-        if (s == "none") j = IrqJumper::None;
-        else if (s == "int") j = IrqJumper::Int;
-        else j = (IrqJumper)((int)IrqJumper::Vi0 + (s[2] - '0'));
+        j = irqJumperFromText(v.s());
         return true;
     };
     return x;

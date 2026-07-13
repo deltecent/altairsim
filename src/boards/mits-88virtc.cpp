@@ -90,6 +90,11 @@ bool VirtcBoard::assertsInt() const { return viEnabled_ && winner() >= 0; }
 // PS2 package is meant to be run.
 uint8_t VirtcBoard::assertsVi() const { return rtcInt_ ? viBit(rtcJumper_) : 0; }
 
+// Which level we would acknowledge, for SHOW BUS IRQ. Derived from exactly the state
+// assertsInt() is derived from, and pure like it: a DISABLED structure acknowledges
+// nothing, and must say -1 rather than name a level it would not actually drive.
+int VirtcBoard::intWinner() const { return viEnabled_ ? winner() : -1; }
+
 // ---------------------------------------------------------------------------
 // THE RTC's DIVIDER CHAIN.
 //
@@ -225,6 +230,42 @@ std::vector<Property> VirtcBoard::properties() {
             }
             return inner(v, err);
         };
+        p.push_back(std::move(x));
+    }
+
+    // ---- THE CONTROL REGISTER, AS PINS. Read-only: these are not jumpers. ----
+    //
+    // Everything above is a strap the operator sets with a soldering iron. Everything
+    // below is what the GUEST has written to port 0xFE and is live right now -- and
+    // there is no way to see it otherwise, because the port is write-only and the card
+    // has no IN. A SET here would be the monitor reaching into the 8214 and pretending
+    // the program had done it, so these have no setter, SHOW prints them "(read-only)",
+    // and CONFIG SAVE skips them (toml.cpp: `if (!p.set) continue`) -- so a saved
+    // machine still round-trips to the same STRAPS and none of this live state leaks
+    // into it.
+    auto pin = [&p](const char* name, const char* help, std::function<Value()> get) {
+        Property x;
+        x.name = name;
+        x.help = help;
+        x.kind = Kind::Bool;
+        x.get  = std::move(get);
+        p.push_back(std::move(x));
+    };
+    pin("vi_enabled", "LIVE: is the 88-VI structure enabled? (control bit 7; POC clears it)",
+        [this] { return Value::ofBool(viEnabled_); });
+    pin("level_live", "LIVE: is the current-level comparison in circuit? (control bit 3)",
+        [this] { return Value::ofBool(levelLive_); });
+    pin("rtc_pending", "LIVE: has the RTC's interrupt flip-flop set? (cleared by control bit 4)",
+        [this] { return Value::ofBool(rtcInt_); });
+    {
+        Property x;
+        x.name = "current_level";
+        x.help = "LIVE: the current interrupt level (control bits 0-2, ones-complement on "
+                 "the wire). Nothing at this level or below may interrupt while level_live";
+        x.kind = Kind::Int;
+        x.min  = 0;
+        x.max  = 7;
+        x.get  = [this] { return Value::ofInt(curLevel_); };
         p.push_back(std::move(x));
     }
     return p;

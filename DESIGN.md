@@ -1021,7 +1021,9 @@ INTROSPECTION
   SHOW BUS                         CPU, clock, T-states, pending IRQ, DMA state
   SHOW BUS MAP                     memory decode map: range -> board, type, phantom, bank
   SHOW BUS IO                      I/O decode map: port -> board, direction
-  SHOW BUS IRQ                     VI0-VI7 assignments, pending lines, priority
+  SHOW BUS IRQ                     VI0-VI7: who is strapped where, who is pulling,
+                                   who WINS -- and the two silent mis-wirings (a vi*
+                                   strap with no 88-VI; an `int` strap with one)
   SHOW BUS CONTENTION              every address/port claimed by more than one board
   WHO <addr> | WHO IO <port>       reverse lookup: who responds here, and why
 

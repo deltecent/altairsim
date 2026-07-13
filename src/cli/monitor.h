@@ -111,6 +111,10 @@ private:
     void showProps(const std::vector<Property>& ps, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);
 
+    // SHOW BUS IRQ -- the eight VI lines, who is strapped to them, who is pulling
+    // them, and who wins. `table` is false for the summary bare SHOW BUS prints.
+    void showBusIrq(std::ostream& out, bool table);
+
     // RUN. The machine runs until a breakpoint, a HLT nothing can wake, or ATTN.
     // If a unit holds the console the guest owns the keyboard while it does; if
     // none does, there is nothing to hand over and it simply runs. That is not a

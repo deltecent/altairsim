@@ -172,6 +172,38 @@ altairsim> BOARDS
 
 **UNITS is what you type at `MOUNT` and `CONNECT`**, which is why the designations are there and not merely the count. `*` marks the unit holding the console.
 
+## SHOW BUS IRQ is the only window onto the interrupt wiring
+
+`SHOW BUS` has four views: `MAP` (memory), `IO` (ports), `CONTENTION` (who collides), and `IRQ`. The first three describe things you could find out another way — a wrong decode collides, or reads `FF`, and either way *something happens*. **The interrupt wiring is different: it is eight wires and a pin, none of them addressable, and getting it wrong fails in total silence.**
+
+```
+altairsim> SHOW BUS IRQ
+INTERRUPTS
+  CPU     INTE on          an acknowledged interrupt will be taken
+  pINT    ASSERTED         pin 73, pulled by vi0
+  88-VI   vi0              enabled, current level 7 (live)
+
+  LINE  VECTOR             STRAPPED             NOW
+  VI0   RST 0  C7 -> 0000  --                   --
+  ...
+  VI7   RST 7  FF -> 0038  sio0:a               WINS  <-- vi0 will jam FF
+```
+
+**VI0 is the highest priority and VI7 the lowest**, level *n* vectors to `8n`, and `VI7 → RST 7 → 0038` is what the MITS Programming System II ReadMe means by *"the console serial port must be set to vector 7."*
+
+`MASKED` is the row worth knowing about: the line is **still being pulled**, and the 88-VI's current-level register is refusing it. That is exactly what a service routine does to itself on entry (so that its own level cannot interrupt it), and in every other view it is indistinguishable from a lost interrupt.
+
+### It tells you when your machine is wrong
+
+Like `SHOW BUS CONTENTION`, this view has opinions, because the two ways of mis-wiring interrupts both produce a machine that runs, looks right, and never interrupts:
+
+- **A `vi*` strap with no 88-VI in the machine.** Nothing watches the VI lines, so the card pulls its wire and the wire goes nowhere. *This simulator shipped that bug for months:* a `vi3` strap parsed, validated, saved, and drove nothing.
+- **An `int` strap *with* an 88-VI present.** The manual forbids it outright — *"A system designed to use the 88-VI may not have any I/O board strapped for single level interrupt"* — and it fails as a wrong vector rather than an error.
+
+Both are reported by name under `WARNINGS`, along with a pin 73 that is asserted while the CPU has interrupts disabled.
+
+**Straps are found generically.** Every interrupt jumper in the machine — the 2SIO's (one per channel), the 88-SIO's two, the disk controller's, the 88-VI's own RTC — comes from one constructor, so a board added next year appears in this view for free, with no list to maintain anywhere. A bare `SHOW BUS` prints a short `INTERRUPTS` summary of the same thing.
+
 ## RUN is the switch on the panel
 
 **`RUN [addr]` is the only way to start the machine**, and `RUN <addr>` is EXAMINE + RUN — it loads the PC first, exactly as you would on the panel.

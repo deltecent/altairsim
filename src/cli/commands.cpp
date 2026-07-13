@@ -96,9 +96,11 @@ static const std::vector<CommandDef> kCommands = {
      "is decimal.\n"
      "  SET mem0 fill=zero\n"
      "  SET mem0 phantom=read"},
-    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|CONTENTION]|ROMS|MACHINE",
+    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|CONSOLE|MACHINE",
      "  SHOW mem0        regions and properties\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
+     "  SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins\n"
+     "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
      "  SHOW ROMS        the built-in images and their provenance"},
     {"DEPOSIT", true, nullptr, "DEPOSIT <addr> <bytes...>",  // DE
      "The front-panel switch. Runs a REAL bus write, so if no board decodes the\n"

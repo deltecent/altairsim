@@ -98,6 +98,23 @@ So we asked the only real client of this card that exists — **the PS2 monitor'
 | `rtc_divide` | `1` \| `10` \| `100` \| `1000` | `1` | |
 | `rtc_interrupt` | `none` \| `vi0`…`vi7` | **`none`** | The `RI` strap. `none` is what MITS Programming System II needs. |
 
+Those four are **straps** — things you set with a soldering iron. The card also publishes its live control register as four **read-only** properties, because port `0xFE` is write-only and there is otherwise no way to see what the guest has programmed into it:
+
+| Property | Meaning |
+|---|---|
+| `vi_enabled` | Is the VI structure enabled? (control bit 7; POC clears it) |
+| `level_live` | Is the current-level comparison in circuit? (control bit 3) |
+| `current_level` | The current interrupt level, decoded (control bits 0–2) |
+| `rtc_pending` | Has the RTC's interrupt flip-flop set? (cleared by control bit 4) |
+
+They have no setter, so `SHOW vi0` prints them `(read-only)` and `CONFIG SAVE` skips them — a saved machine round-trips to the same *straps*, and none of this live state leaks into it. Setting one would be the monitor reaching into the 8214 and pretending the guest had done it.
+
+### Seeing the wiring: `SHOW BUS IRQ`
+
+This card is the reason `SHOW BUS IRQ` exists (`docs/cli-commands.md`). It prints the eight lines, what is strapped to each, which are being pulled, and which one **wins** — the last of those coming from `Board::intWinner()`, which only a priority encoder answers, so the monitor never has to know what an 88-VI is. A line that is pulled but refused by the current-level register reads `MASKED`, which is otherwise indistinguishable from a lost interrupt.
+
+It also enforces the manual's rule from the *other* side: strap any card to `int` while this one is in the backplane and the view says so, quoting the manual.
+
 ### Reset
 
 - **`Reset::PowerOn` (POC*, cold):** everything off. *"POC (power-on-clear) ensures that all functions on the 88-VI (RTC) are disabled when power is first applied."* VI structure disabled, RTC interrupt disabled, the flip-flop cleared, the divider stopped.

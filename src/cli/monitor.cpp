@@ -753,6 +753,203 @@ void Monitor::showConsole(std::ostream& out) {
            "  What a card has instead is line coding: SHOW sio0 (baud, data_bits...).\n";
 }
 
+// ---------------------------------------------------------------------------
+// SHOW BUS IRQ -- the only part of the backplane you cannot otherwise see.
+//
+// Memory and I/O decoding are visible: a wrong one collides, or reads FF, and either
+// way something happens. The interrupt wiring is different. It is EIGHT WIRES AND A
+// PIN, none of them addressable, and the two ways of getting it wrong both fail in
+// total silence:
+//
+//   * A `vi*` strap with no 88-VI in the machine. Nothing watches the VI lines, so the
+//     card pulls its wire and the wire goes nowhere. THIS TREE SHIPPED THAT FOR MONTHS:
+//     a vi3 strap parsed, validated, saved, and drove nothing.
+//   * An `int` strap WITH an 88-VI present. The manual forbids it outright, and the
+//     failure is a wrong vector rather than an error.
+//
+// Neither shows up in SHOW BUS, SHOW <id>, or BOARDS. So this view reports the wiring
+// AND, like SHOW BUS CONTENTION, tells you when your machine is wrong.
+//
+// IT IS READ-ONLY, and that is load-bearing: it reads the LATCHED wires (intWire(),
+// viWire(), Bus::viLines()) and asks the priority encoder intWinner(), all of which are
+// pure. A SHOW command that perturbed the machine it was describing would be a debugger
+// that lies.
+namespace {
+
+// A strap: where it is soldered, and what to call the thing that has it.
+struct Strap {
+    std::string who;  // "sio0:a", "vi0.rtc_interrupt", "dsk0"
+    IrqJumper   where = IrqJumper::None;
+};
+
+// EVERY strap in the machine, found generically. No board-type list, no dynamic_cast:
+// a strap is any property flagged irqJumper (Property::irqJumper), and every one of
+// them is born in irqJumperProperty(). A board added next year appears here for free.
+//
+// Both levels, because both are real: the 88-SIO has two straps on the BOARD (its input
+// and output devices, at independent priorities) while the 2SIO has one per UNIT.
+std::vector<Strap> strapsOf(Board* b) {
+    std::vector<Strap> out;
+    auto take = [&](const Property& p, const std::string& owner) {
+        if (!p.irqJumper) return;
+        // A card with one strap just calls it `interrupt`; naming it again would be
+        // noise. A card with two has to say which.
+        std::string who = owner + (p.name == "interrupt" ? "" : "." + p.name);
+        out.push_back({who, irqJumperFromText(p.get().s())});
+    };
+    for (const auto& p : b->properties()) take(p, b->id);
+    for (const auto& u : b->units())
+        for (const auto& p : b->unitProperties(u.name)) take(p, b->id + ":" + u.name);
+    return out;
+}
+
+// Read one of a board's live-state properties by name. Optional by design: a future
+// priority encoder that does not publish these simply gets a shorter header line,
+// rather than the monitor having to know what an 88-VI is.
+bool propBool(Board* b, const char* name) {
+    for (const auto& p : b->properties())
+        if (p.name == name) return p.get().b();
+    return false;
+}
+long long propInt(Board* b, const char* name) {
+    for (const auto& p : b->properties())
+        if (p.name == name) return p.get().i();
+    return 0;
+}
+
+} // namespace
+
+void Monitor::showBusIrq(std::ostream& out, bool table) {
+    char buf[256];
+
+    std::vector<Strap> straps;
+    std::vector<Board*> watchers;  // an 88-VI. Nothing else says yes.
+    std::vector<std::string> pin73;
+    for (const auto& b : m_.boards()) {
+        for (auto& s : strapsOf(b.get()))
+            if (s.where != IrqJumper::None) straps.push_back(std::move(s));
+        if (b->enabled() && b->watchesVi()) watchers.push_back(b.get());
+        if (b->intWire()) pin73.push_back(b->id);  // the LATCHED wire, disabled-aware
+    }
+
+    // Who wins. The encoder decides; we only ask. -1 = nothing would be acknowledged.
+    int win = -1;
+    Board* encoder = nullptr;
+    for (Board* w : watchers) {
+        int v = w->intWinner();
+        if (v >= 0) {
+            win     = v;
+            encoder = w;
+            break;
+        }
+    }
+
+    out << "INTERRUPTS\n";
+
+    // INTE. A backplane with no CPU is legal (milestone 1a ran one) and still has
+    // wiring worth printing, so this is the one thing that may be absent.
+    if (CpuCore* c = m_.cpu())
+        out << (c->interruptsEnabled()
+                    ? "  CPU     INTE on          an acknowledged interrupt will be taken\n"
+                    : "  CPU     INTE off         interrupts are DISABLED; nothing will be "
+                      "acknowledged\n");
+    else
+        out << "  CPU     (none)          this backplane has no processor\n";
+
+    if (pin73.empty()) {
+        out << "  pINT    idle             pin 73\n";
+    } else {
+        std::string ids;
+        for (const auto& i : pin73) ids += " " + i;
+        std::snprintf(buf, sizeof buf, "  pINT    ASSERTED         pin 73, pulled by%s",
+                      ids.c_str());
+        out << buf << "\n";
+    }
+
+    for (Board* w : watchers) {
+        bool on = propBool(w, "vi_enabled");
+        std::snprintf(buf, sizeof buf, "  88-VI   %-8s         %s", w->id.c_str(),
+                      on ? "enabled" : "DISABLED (POC leaves it so until the guest enables it)");
+        out << buf;
+        if (on) {
+            std::snprintf(buf, sizeof buf, ", current level %lld%s", propInt(w, "current_level"),
+                          propBool(w, "level_live") ? " (live)" : " (compare off)");
+            out << buf;
+        }
+        out << "\n";
+    }
+    if (watchers.empty())
+        out << "  88-VI   (none)          nothing watches VI0-VI7; an acknowledged interrupt\n"
+               "                          floats to FF, which the 8080 executes as RST 7\n";
+
+    // ---- the eight wires ----
+    uint8_t lines = m_.bus.viLines();
+    if (table) out << "\n  LINE  VECTOR             STRAPPED             NOW\n";
+
+    for (int i = 0; i < 8; ++i) {
+        std::string who;
+        for (const auto& s : straps)
+            if (s.where == (IrqJumper)((int)IrqJumper::Vi0 + i)) who += (who.empty() ? "" : ",") + s.who;
+        bool pulling = (lines >> i) & 1;
+
+        // A summary prints only the lines that exist; the table prints the backplane.
+        if (!table && who.empty() && !pulling) continue;
+
+        const char* now = "--";
+        std::string tail;
+        if (pulling) {
+            if (win == i) {
+                now = "WINS";
+                std::snprintf(buf, sizeof buf, "  <-- %s will jam %02X",
+                              encoder ? encoder->id.c_str() : "?", rstOpcode(i));
+                tail = buf;
+            } else if (win >= 0) {
+                now = "pending";  // a higher-priority line is winning right now
+            } else if (watchers.empty()) {
+                now  = "PULLING";
+                tail = "  <-- and nothing is listening";
+            } else {
+                // The lowest line asking IS this one (winner() takes the lowest set
+                // bit), yet nothing wins -- so the current-level compare refused it.
+                now = "MASKED";
+            }
+        }
+
+        std::snprintf(buf, sizeof buf, "  VI%d   RST %d  %02X -> %04X  %-20s %s%s", i, i,
+                      rstOpcode(i), i * 8, who.empty() ? "--" : who.c_str(), now,
+                      tail.c_str());
+        out << buf << "\n";
+    }
+
+    // ---- and now the part that earns the command its keep ----
+    std::vector<std::string> warn;
+    for (const auto& s : straps) {
+        if (s.where >= IrqJumper::Vi0 && watchers.empty()) {
+            std::snprintf(buf, sizeof buf,
+                          "%s is strapped to VI%d, but no board in this machine watches the VI\n"
+                          "  lines. This interrupt goes nowhere.",
+                          s.who.c_str(), (int)s.where - (int)IrqJumper::Vi0);
+            warn.push_back(buf);
+        }
+        if (s.where == IrqJumper::Int && !watchers.empty()) {
+            std::snprintf(buf, sizeof buf,
+                          "%s is strapped to pINT while an 88-VI (%s) is present. The 88-VI\n"
+                          "  manual forbids this: \"A system designed to use the 88-VI may not have\n"
+                          "  any I/O board strapped for single level interrupt.\"",
+                          s.who.c_str(), watchers.front()->id.c_str());
+            warn.push_back(buf);
+        }
+    }
+    if (!pin73.empty() && m_.cpu() && !m_.cpu()->interruptsEnabled())
+        warn.push_back("pin 73 is asserted but the CPU has interrupts disabled (DI). Nothing\n"
+                       "  will be acknowledged until the guest runs EI.");
+
+    if (!warn.empty()) {
+        out << "\nWARNINGS\n";
+        for (const auto& w : warn) out << "  " << w << "\n";
+    }
+}
+
 void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
     char buf[200];
     std::string what = a.size() > 2 ? upper(a[2]) : "";
@@ -810,6 +1007,13 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
         if (what == "IO") return;
     }
 
+    if (what == "IRQ" || what.empty()) {
+        // Bare SHOW BUS gets the summary -- the wires that exist and anything wrong
+        // with them. The full eight-row backplane is SHOW BUS IRQ's.
+        showBusIrq(out, /*table=*/what == "IRQ");
+        if (what == "IRQ") return;
+    }
+
     if (what == "CONTENTION") {
         // Walk every address and ask who ACTUALLY drives. A phantom overlay is
         // not contention -- the shadowed board returns false from decodes(), so
@@ -853,8 +1057,8 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
         return;
     }
 
-    if (!what.empty() && what != "MAP" && what != "IO") {
-        out << "SHOW BUS [MAP|IO|CONTENTION]\n";
+    if (!what.empty() && what != "MAP" && what != "IO" && what != "IRQ") {
+        out << "SHOW BUS [MAP|IO|IRQ|CONTENTION]\n";
         failed_ = true;
     }
 }
@@ -1265,7 +1469,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- SHOW / SET ----------------
     if (cmd == "SHOW") {
-        if (!need(2, "SHOW <id> | SHOW BUS [MAP|IO|CONTENTION] | SHOW ROMS | SHOW MACHINE"))
+        if (!need(2, "SHOW <id> | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS | SHOW MACHINE"))
             return true;
         std::string sub = upper(a[1]);
         if (sub == "BUS") {
