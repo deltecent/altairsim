@@ -9,9 +9,11 @@
 
 #include "core/bus.h"
 #include "core/clock.h"
+#include "core/command.h"
 #include "core/value.h"
 
 #include <cstdint>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -447,6 +449,45 @@ public:
     virtual bool disconnect(const std::string& unit, std::string& err) {
         (void)unit;
         err = type() + " has nothing to disconnect";
+        return false;
+    }
+
+    // ---- VERBS THE CARD BRINGS WITH IT (DESIGN.md 5.4) ------------------------
+    //
+    // A cassette can be REWOUND and a disk cannot, so `REWIND` should exist when
+    // there is an 88-ACR in the machine and not otherwise. Putting it in the
+    // built-in table would mean a verb that is always spelled and never usable --
+    // and the monitor would have to know what a tape is, which is exactly the
+    // knowledge DESIGN.md 7.7 keeps out of it.
+    //
+    // A STATIC TABLE, like the built-in one, and for the same reason: these are
+    // literals, and the monitor holds the pointer only for the length of a command.
+    //
+    // THE STATIC MENU ALWAYS WINS. The monitor prefix-resolves against the built-in
+    // table FIRST, unchanged, and only asks the boards when nothing built-in
+    // matched. So no card can shorten, shadow or destabilize a built-in
+    // abbreviation by being plugged in: `D` is DUMP and `RE` is RESET on every
+    // machine, whatever is in the slots. The cost is that a card CAN declare a verb
+    // nobody can reach (one a built-in always matches first) -- which is caught at
+    // BOARDS ADD, where it is cheap, rather than discovered by a user who types it.
+    //
+    // `built` is true and `waiting` is null on a board's verbs. The built-in table
+    // carries unbuilt commands so that abbreviations are stable across milestones
+    // (cli/commands.h); a card that is IN THE MACHINE has no unbuilt verbs.
+    virtual std::vector<CommandDef> commands() const { return {}; }
+
+    // Run one. `args` is the whole line, tokenized, ARGV-STYLE: args[0] is the verb
+    // as the user spelled it (possibly abbreviated), args[1..] are its arguments.
+    //
+    // BY CONVENTION args[1] NAMES THIS BOARD -- `<id>` or `<id>:<unit>`, exactly as
+    // MOUNT and CONNECT read it. It has to: two 88-ACRs both declare REWIND, and the
+    // verb alone cannot say which tape to rewind. The monitor uses that argument to
+    // find the board and then hands the whole line down, so the board can parse the
+    // rest however it likes.
+    virtual bool runCommand(const std::string& name, const std::vector<std::string>& args,
+                            std::ostream& out, std::string& err) {
+        (void)name; (void)args; (void)out;
+        err = type() + " has no commands";
         return false;
     }
 

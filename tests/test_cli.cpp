@@ -5,6 +5,7 @@
 // the whole scheme safe: an exact spelling always wins, and a command is never
 // silently reinterpreted because a newer command was added above it.
 
+#include "boards/registry.h"
 #include "cli/commands.h"
 #include "cli/monitor.h"
 #include "core/machine.h"
@@ -123,6 +124,39 @@ void test_cli() {
         }
     CHECK(offender.empty(), offender.empty() ? "no command is a strict prefix of another"
                                              : offender.c_str());
+
+    // ---- AND THE SAME INVARIANT, FOR THE VERBS THE CARDS BRING (core/board.h) ----
+    //
+    // THE STATIC MENU ALWAYS WINS: the monitor resolves the built-in table first and
+    // asks the boards only when nothing there matched. That is what makes a board
+    // safe to plug in -- it cannot move `D` or `RE` under your fingers.
+    //
+    // The price is that a card CAN declare a verb that NOBODY CAN EVER TYPE: one whose
+    // every prefix, up to and including its full name, a built-in claims first. A
+    // board named its verb SHOW and it would simply never run.
+    //
+    // A USER CANNOT CREATE THAT. Only a board AUTHOR can -- so it is caught HERE, as a
+    // merge gate, and not at runtime where the message would be about a word somebody
+    // typed instead of about the card that is wrong. boardAbbreviation() returns the
+    // bare name with no [brackets] exactly when the verb is unreachable.
+    for (const BoardType& t : boardTypes()) {
+        auto b = makeBoard(t.name);
+        if (!b) continue;
+        for (const CommandDef& v : b->commands()) {
+            std::string full = v.name;
+            std::string ab   = boardAbbreviation(v);
+            CHECK(ab != full || full.size() == 1,
+                  (t.name + " declares an UNREACHABLE verb: a built-in prefix-matches " +
+                   full + " first. Rename it.")
+                      .c_str());
+            // And it must actually resolve to nothing, which is the same claim from
+            // the other side: that is *how* the monitor reaches the card at all.
+            std::string typed = ab.substr(0, ab.find('['));
+            CHECK(!resolveCommand(typed),
+                  (t.name + ": `" + typed + "` reaches the card, because no built-in claims it")
+                      .c_str());
+        }
+    }
 
     // THE ABBREVIATION CONTRACT HELD, AND HERE IS THE PROOF.
     //
@@ -374,4 +408,56 @@ void test_cli() {
     mon3.exec("BOARDS", b3);
     CHECK(b3.str().find("FF00-FFFF  rom  dbl") != std::string::npos,
           "and the chip goes back into the SAME socket it came out of");
+
+    // -----------------------------------------------------------------------
+    // A VERB EXISTS ONLY WHILE THE CARD THAT BRINGS IT IS IN A SLOT (core/board.h).
+    //
+    // This is the whole claim of board-injected commands, and it is why REWIND is not
+    // in the static table: a machine with no cassette in it cannot rewind anything,
+    // and should say so rather than offer a verb that always fails.
+    // -----------------------------------------------------------------------
+    SECTION("cli: the cards bring their own verbs, and take them away again");
+    {
+        Machine m4;
+        Monitor mon4(m4);
+
+        // No 88-ACR in the machine: there is no such command. Not "no tape" -- no
+        // COMMAND. Nothing in this machine has ever heard of rewinding.
+        std::ostringstream no;
+        mon4.exec("REW", no);
+        CHECK(no.str().find("unknown command") != std::string::npos,
+              "with no cassette card in the machine, REW is not a command at all");
+
+        std::string err;
+        m4.add("acr", "acr0", err);
+
+        // ...and now it is. Nothing was recompiled and no table was edited.
+        std::ostringstream yes;
+        mon4.exec("REW acr0:tape", yes);
+        CHECK(yes.str().find("unknown command") == std::string::npos,
+              "plug the card in and the verb is there");
+        CHECK(yes.str().find("no cassette") != std::string::npos,
+              "...and it runs, and complains about the TAPE -- not about the word");
+
+        // THE STATIC MENU STILL WINS, and this is the guarantee that lets a card be
+        // plugged in safely at all. RESET owns R, RE and RES. The cassette gets REW,
+        // and only because nothing built-in claims those three letters.
+        std::ostringstream re;
+        mon4.exec("RE", re);
+        CHECK(re.str().find("unknown") == std::string::npos && no.str() != re.str(),
+              "RE is still RESET -- a card cannot move a built-in abbreviation");
+
+        // HELP finds it, or a verb you can type is a verb you cannot look up.
+        std::ostringstream h;
+        mon4.exec("HELP REW", h);
+        CHECK(h.str().find("REW[IND]") != std::string::npos,
+              "HELP REW shows the abbreviation the resolver actually honours");
+
+        // And when the card comes out, so does the verb.
+        m4.remove("acr0", err);
+        std::ostringstream gone;
+        mon4.exec("REW acr0:tape", gone);
+        CHECK(gone.str().find("unknown command") != std::string::npos,
+              "pull the card and REWIND goes with it");
+    }
 }

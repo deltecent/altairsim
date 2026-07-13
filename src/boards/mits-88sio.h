@@ -88,7 +88,26 @@ public:
     bool    dataAvailable() const { return u_.dataAvailable(); }
     bool    txBufferEmpty() const;
 
-private:
+    // ---- PROTECTED, FOR ONE CARD, AND THAT CARD IS THE 88-ACR ------------------
+    //
+    // The 88-ACR is not *like* an 88-SIO. It IS one: "The 88-ACR consists of two
+    // separate PC boards mated to each other... One of these is the ACR Modem Board
+    // and the other is the 88-SIO B, Serial TTL level I/O Board." The ACR manual then
+    // REPRINTS this card's documentation as its own assembly chapter, and its Bit
+    // Definition table is this card's status word, Rev 1, bit for bit.
+    //
+    // So AcrBoard derives from this one (see boards/mits-88acr.h), and the status word
+    // below is written ONCE. That is not the "shared UART helper with a bool invert"
+    // that the .cpp warns about at length -- that trap is about the 88-2SIO, a
+    // DIFFERENT card with a DIFFERENT chip whose bits are the other way up. The trap
+    // HERE is the opposite one: two copies of the SAME PCB, which drift the day
+    // somebody fixes a bug in one status word and not the other, and then the machine
+    // has two different 88-SIO Bs in it.
+    //
+    // The modem changes nothing on this side of the connector. It is an analog FSK
+    // pair -- 2400 Hz for a 1, 1850 Hz for a 0 -- hung off the UART's serial pins, and
+    // the guest cannot observe one thing about it.
+protected:
     // Everything that could have moved pin 73 has just happened: advance the
     // receiver, re-drive the pin, and set the alarm clock for the next moment the
     // UART could move it with nobody touching the card (DESIGN.md 7.5).

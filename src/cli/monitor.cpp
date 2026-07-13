@@ -157,7 +157,7 @@ Board* Monitor::board(const std::string& id, std::ostream& err) {
 // mistake with a cause, and this can say what the cause was; under the old integer
 // scheme `MOUNT dj:4` could only fail, because nothing distinguished 4-the-drive
 // from 4-the-serial-port.
-bool Monitor::subunit(const std::string& spec, Board*& b, UnitDef& u, bool wantMountable,
+bool Monitor::subunit(const std::string& spec, Board*& b, UnitDef& u, UnitUse use,
                       std::ostream& err) {
     size_t c = spec.find(':');
     if (c == std::string::npos) {
@@ -183,17 +183,101 @@ bool Monitor::subunit(const std::string& spec, Board*& b, UnitDef& u, bool wantM
         return false;
     }
 
-    if (wantMountable && !isMountable(u.kind)) {
+    if (use == UnitUse::Mount && !isMountable(u.kind)) {
         err << b->id << ":" << u.name << " is a " << unitKindName(u.kind)
             << " unit -- there is nothing to mount into it. Use CONNECT.\n";
         failed_ = true;
         return false;
     }
-    if (!wantMountable && u.kind != UnitKind::Serial) {
+    if (use == UnitUse::Connect && u.kind != UnitKind::Serial) {
         err << b->id << ":" << u.name << " is a " << unitKindName(u.kind)
             << " unit, not a serial port. Use MOUNT.\n";
         failed_ = true;
         return false;
+    }
+    // UnitUse::Any asks nothing. `SET acr0:tape mode=record` is a property of a
+    // recorder, and what KIND the unit is has no bearing on whether it has settings.
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// A VERB A CARD BROUGHT WITH IT (DESIGN.md 5.4).
+//
+// REACHED ONLY WHEN THE BUILT-IN TABLE HAS ALREADY SAID NO. That ordering is the
+// whole safety property: the static menu is resolved first, in its own priority
+// order, by code that has never heard of boards -- so plugging in a card cannot
+// shorten, shadow or destabilize a single built-in abbreviation. `RE` is RESET in
+// every machine ever booted, and `REW` reaches the cassette only because nothing
+// built-in begins with those three letters.
+//
+// The price of that ordering is that a card can declare a verb no one can reach.
+// We do not pay it here -- BOARDS ADD refuses such a card, where the message can
+// still be about the CARD instead of about a word the user typed.
+// ---------------------------------------------------------------------------
+// Deduped by NAME and returned BY VALUE -- see the header for the crash that taught
+// me the difference.
+std::vector<std::pair<std::string, CommandDef>> Monitor::boardVerbs() const {
+    std::vector<std::pair<std::string, CommandDef>> v;
+    for (const auto& b : m_.boards())
+        for (const CommandDef& d : b->commands()) {
+            bool seen = false;
+            for (auto& x : v) seen = seen || std::string(x.second.name) == d.name;
+            if (!seen) v.emplace_back(b->type(), d);
+        }
+    return v;
+}
+
+bool Monitor::boardCommand(const std::vector<std::string>& a, std::ostream& out) {
+    std::string w = upper(a[0]);
+
+    // Which verbs start with what was typed? Two 88-ACRs both declare REWIND: that is
+    // ONE verb on two cards, not an ambiguity -- boardVerbs() has already folded them
+    // together. What WOULD be ambiguous is two DIFFERENT verb names sharing a prefix.
+    std::vector<CommandDef> hits;
+    for (auto& v : boardVerbs())
+        if (std::string(v.second.name).compare(0, w.size(), w) == 0) hits.push_back(v.second);
+
+    if (hits.empty()) return false;  // nobody answers to it -- and that is the truth
+    if (hits.size() > 1) {
+        out << upper(a[0]) << ": ambiguous --";
+        for (const CommandDef& h : hits) out << " " << h.name;
+        out << "\n";
+        failed_ = true;
+        return true;
+    }
+
+    const CommandDef* def = &hits[0];
+
+    // WHICH CARD? The verb cannot say. Two cassettes both answer to REWIND, and the
+    // tape that gets rewound is the one you name -- so a board verb's first argument
+    // is `<id>` or `<id>:<unit>`, read exactly as MOUNT and CONNECT read it. The
+    // convention is enforced here, once, so no board has to reimplement it.
+    if (a.size() < 2) {
+        out << "usage: " << def->usage << "\n";
+        failed_ = true;
+        return true;
+    }
+    std::string spec = a[1];
+    std::string id   = spec.substr(0, spec.find(':'));
+
+    Board* b = board(id, out);
+    if (!b) return true;  // board() has already said so
+
+    // The card exists -- but is it one of the cards that brought this verb? `REWIND
+    // mem0:tape` is a mistake with a cause, and the cause is worth saying.
+    bool declared = false;
+    for (const CommandDef& d : b->commands()) declared = declared || std::string(d.name) == def->name;
+    if (!declared) {
+        out << b->id << " (" << b->type() << ") has no " << def->name
+            << ". That verb is here because some OTHER card in the machine brought it.\n";
+        failed_ = true;
+        return true;
+    }
+
+    std::string err;
+    if (!b->runCommand(def->name, a, out, err)) {
+        out << b->id << ": " << err << "\n";
+        failed_ = true;
     }
     return true;
 }
@@ -876,6 +960,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     } else {
         c = resolveCommand(a[0]);
         if (!c) {
+            // THE STATIC MENU HAS SAID NO -- so now, and only now, ask the cards.
+            // A verb like REWIND exists exactly while the card that brings it is in
+            // a slot, which is why it cannot live in the table above.
+            if (boardCommand(a, out)) return true;
+
             out << upper(a[0]) << ": unknown command. HELP lists them.\n";
             failed_ = true;
             return true;
@@ -936,12 +1025,30 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "HELP") {
         if (a.size() >= 2) {
             const CommandDef* h = (a[1] == "?") ? resolveCommand("HELP") : resolveCommand(a[1]);
+
+            // The cards, in the same order the resolver asks them: built-ins first,
+            // always. `HELP REW` has to reach the cassette, or a verb you can type is
+            // a verb you cannot look up.
+            //
+            // `found` OUTLIVES the pointer into it. See boardVerbs().
+            bool                    fromBoard = false;
+            std::vector<CommandDef> found;
+            if (!h) {
+                std::string w = upper(a[1]);
+                for (auto& v : boardVerbs())
+                    if (found.empty() && std::string(v.second.name).compare(0, w.size(), w) == 0)
+                        found.push_back(v.second);
+                if (!found.empty()) {
+                    h         = &found[0];
+                    fromBoard = true;
+                }
+            }
             if (!h) {
                 out << upper(a[1]) << ": no such command. HELP lists them.\n";
                 failed_ = true;
                 return true;
             }
-            out << "\n  " << abbreviation(*h) << "\n";
+            out << "\n  " << (fromBoard ? boardAbbreviation(*h) : abbreviation(*h)) << "\n";
             out << "  " << h->usage << "\n";
             if (!h->built)
                 out << "\n  NOT IMPLEMENTED YET -- waiting on " << h->waiting << ".\n"
@@ -994,6 +1101,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                "  Numbers: on the wire is HEX (addresses, ports, bytes), never on the\n"
                "  wire is DECIMAL (counts, widths, sizes). 0x/$/h force hex, # forces\n"
                "  decimal, and a K/M suffix is always decimal.\n";
+
+        // ---- AND THE VERBS THE CARDS BROUGHT WITH THEM ----
+        //
+        // Listed SEPARATELY, and never folded into the table above, because they are
+        // not the same kind of thing: these exist only while the card that brings
+        // them is in a slot. Pull the 88-ACR and REWIND is gone -- correctly, because
+        // there is then nothing in the machine that can rewind.
+        auto verbs = boardVerbs();
+        if (!verbs.empty()) {
+            out << "\n  From the cards in the machine right now:\n\n";
+            for (auto& v : verbs) {
+                std::snprintf(buf, sizeof buf, "  %-16s %s", boardAbbreviation(v.second).c_str(),
+                              v.second.usage);
+                out << buf << "  (" << v.first << ")\n";
+            }
+            out << "\n";
+        }
         return true;
     }
 
@@ -1252,7 +1376,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (a[1].find(':') != std::string::npos) {
             Board* b;
             UnitDef u;
-            if (!subunit(a[1], b, u, false, out)) return true;
+            if (!subunit(a[1], b, u, UnitUse::Any, out)) return true;
             std::string err;
             if (!setUnitProperty(*b, u.name, k, v, err)) {
                 out << err << "\n";
@@ -1285,7 +1409,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!need(3, usage.c_str())) return true;
         Board* b;
         UnitDef u;
-        if (!subunit(a[1], b, u, false, out)) return true;
+        if (!subunit(a[1], b, u, UnitUse::Connect, out)) return true;
         if (u.kind != UnitKind::Serial) {
             out << b->id << ":" << u.name << " is a " << unitKindName(u.kind)
                 << " unit -- there is nothing to connect to it. Use MOUNT.\n";
@@ -1330,7 +1454,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!need(2, "DISCONNECT <id>:<unit>")) return true;
         Board* b;
         UnitDef u;
-        if (!subunit(a[1], b, u, false, out)) return true;
+        if (!subunit(a[1], b, u, UnitUse::Connect, out)) return true;
         std::string err;
         if (!b->disconnect(u.name, err)) {
             out << err << "\n";
@@ -1435,7 +1559,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!need(3, "MOUNT <id>:<unit> <file> [RO]")) return true;
         Board* b;
         UnitDef u;
-        if (!subunit(a[1], b, u, true, out)) return true;
+        if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;
 
         // RO IS THE WRITE-PROTECT TAB, and until now it was documented in HELP and
         // silently thrown away here (`readOnly = false`, hardcoded). That is fine
@@ -1470,7 +1594,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!need(2, "UNMOUNT <id>:<unit>")) return true;
         Board* b;
         UnitDef u;
-        if (!subunit(a[1], b, u, true, out)) return true;
+        if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;
         std::string err;
         if (!b->unmount(u.name, err)) {
             out << b->id << ": " << err << "\n";

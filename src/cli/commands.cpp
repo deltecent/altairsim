@@ -247,6 +247,20 @@ std::string abbreviation(const CommandDef& c) {
     return full;  // unreachable: a name always resolves to itself
 }
 
+// The shortest prefix NOTHING BUILT-IN CLAIMS -- see the header. `REW[IND]`.
+std::string boardAbbreviation(const CommandDef& c) {
+    std::string full = c.name;
+    for (size_t n = 1; n <= full.size(); ++n) {
+        std::string p = full.substr(0, n);
+        if (!resolveCommand(p))  // the table declined it -- so the cards get asked
+            return n < full.size() ? p + "[" + full.substr(n) + "]" : full;
+    }
+    // Every prefix of it, up to and including the whole name, is claimed by a
+    // built-in. The verb cannot be typed at all. test_cli.cpp fails if a board ever
+    // ships one.
+    return full;
+}
+
 const CommandDef* resolveCommand(const std::string& word) {
     if (word.empty()) return nullptr;
 

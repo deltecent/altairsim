@@ -19,7 +19,7 @@ When two sources disagree, say so in the board's `.md` and say which one won and
 
 Consequences already baked into this design:
 - **AltairZ80's port-0xFE "SIMH pseudo device" is not implemented**, and `R.COM`/`W.COM` are not supported. See §12.
-- Boards with no manual in the tree (88-HDSK, 88-VI, 88-ACR, 88-PIO/4PIO) are **blocked on documentation**, not on code. See §17. None of them block milestone 1.
+- Boards with no manual in the tree (88-HDSK, 88-VI, 88-PIO/4PIO) are **blocked on documentation**, not on code. See §17. None of them block milestone 1. (The **88-ACR** was on this list; its manual is now in the tree and the card is built.)
 
 ### 0.2 Doc discipline
 
@@ -555,6 +555,24 @@ Consequences, all of which must be stated in the doc:
 
   It was also never enforced: nothing in the simulator ever set the flag the gate was conditioned on, so it had never once fired. A rule the code only pretends to enforce is worse than no rule.
 
+### 5.4 A card can bring a VERB with it (built 2026-07-12)
+
+**`REWIND` should exist when there is a cassette in the machine, and not otherwise.** Putting it in the static command table would mean a verb that is always spelled and never usable on most machines — and the monitor would have to know what a tape *is*, which is exactly the knowledge §7.7 keeps out of it.
+
+```cpp
+virtual std::vector<CommandDef> commands() const { return {}; }   // a static table; empty for most
+virtual bool runCommand(const std::string& name, const std::vector<std::string>& args,
+                        std::ostream& out, std::string& err);
+```
+
+`CommandDef` moved from `cli/commands.h` down to **`core/command.h`**, and that move is the whole layering argument: a board may declare a verb, and **a board must never include the CLI**. The dependency runs `cli → core`, one way. The *table* of built-in commands stays up in `cli/`, where it is the monitor's business and nothing in `core` has an opinion about it.
+
+**THE STATIC MENU ALWAYS WINS.** The monitor prefix-resolves against the built-in table first, in its existing priority order, by code that has never heard of boards. Only when *nothing* built-in matches does it ask the cards. So **no card can shorten, shadow or destabilize a built-in abbreviation by being plugged in**: `D` is DUMP and `RE` is RESET on every machine ever booted, whatever is in the slots. `REWIND` is reachable at **`REW`** precisely because `RESET` already owns `R`, `RE` and `RES`.
+
+That ordering has a price, and it is paid in the right place. A card *can* declare a verb **nobody can ever type** — one whose every prefix a built-in claims first. **A user cannot create that; only a board author can**, so it is caught as a **merge gate** in `tests/test_cli.cpp` (over every type in the registry), not at runtime where the error message would be about a word somebody typed rather than about the card that is wrong. This is the same shape as the older invariant it sits next to — *no command name may be a strict prefix of another* — which is also a test and not a runtime check.
+
+**A board verb's first argument names the board** (`<id>` or `<id>:<unit>`), read exactly as MOUNT and CONNECT read it. It has to: two 88-ACRs both declare `REWIND`, and the verb alone cannot say which tape to wind. The monitor enforces that convention once, so no board reimplements it.
+
 ---
 
 ## 6. RESET semantics
@@ -781,6 +799,12 @@ img.initFormat(1, 76, 0, 0, Density::DD, 26, 256, 1);     // everything after
 A cassette has exactly one thing a disk has not: **a position**. It is not that a tape is a worse disk — it is that the head is where it is, and the only way back to the start of the program is to **rewind**. That is the whole of the difference, and it is why `TapeImage` (`src/host/tape.h`) is its own class over the same `MediaFile`: `read`/`write`/`rewind`/`pos`/`atEnd`. The CLI gets a verb, `SHOW` gets a number, and the guest gets the bytes in the order they were recorded.
 
 **And then the adapter that makes the 88-ACR nearly free: a tape *is* a `ByteStream`.** `TapeStream` is 20 lines, and with it the shared 1602 UART needs no cassette-specific code at all — the ACR hands it a `TapeStream` where the 88-SIO hands it a socket, and the only difference left is that the unit is `UnitKind::Tape` (MOUNT) rather than `UnitKind::Serial` (CONNECT). That is §7.1's promise being cashed: the board knows it has a serial line, and does not know what is on the end of it.
+
+> **The prediction held — the card came in at ~250 lines and inherits its whole bus half from the 88-SIO, because it *is* an 88-SIO B. But "the only difference left is the unit kind" was one word short, and the missing word cost a silent data corruption.**
+>
+> A `TapeStream` also needs a **MODE**. A cassette has ONE head, so read and write share ONE position — they must; it is the same piece of tape. And a UART receives **eagerly**: it pulls a byte off its line the moment it has room, because that is how DAV and an interrupt-driven loader work. So a tape that was readable *and* writable at once had its first byte pulled away by the card **before the guest ever ran**, the head sat at 1, and **every recording began at byte one**. Playback worked perfectly the whole time, which is why no load test could ever have found it.
+>
+> The fix was the hardware's own and cost nothing: the 88-ACR has **no motor control** — a human pressed the buttons — and a recorder is in PLAY *or* in RECORD, never both. Making that exclusive makes the corruption **unrepresentable** rather than merely unlikely. `tests/test_media.cpp` had asserted the *opposite* (`CHECK(bs.writable())` on a readable stream); that is how it got in. See `docs/boards/mits-88acr.md`.
 
 `readable()` is *there is more tape*, so the byte **waits for the card** — a tape that dropped a byte because the guest was slow would be manufacturing data loss the host does not have, which §7.1 forbids. A real recorder keeps rolling and *can* drop data; we do not model that, and the board's `.md` says so under Limitations.
 
@@ -1327,16 +1351,23 @@ See `docs/porting-notes.md` for the full list. The ones that will bite:
 
 | Board | What's missing | Needed by |
 |---|---|---|
-| **88-ACR** | Cassette-specific control bits (motor control, if any). Only the port numbers (0x06/0x07) and the inverted-SIO bit sense are known. | Milestone 5 |
+| ~~**88-ACR**~~ | ~~Cassette-specific control bits (motor control, if any).~~ **DISCHARGED 2026-07-12 — the card is BUILT.** The manual is in the tree, and the answer to the open question was **there is no motor control at all**: no transport register, nothing the guest can write that reaches the recorder, and an operator who pressed the buttons with their finger. The row had also guessed wrong about *what* was unknown — the ports and the bit sense were never the interesting part. See `docs/boards/mits-88acr.md`. | ~~Milestone 5~~ |
 | **88-PIO / 88-4PIO** | Bit layouts and handshake (CA1/CB2) semantics. Only port numbers are known: PIO 0x04/0x05; 4PIO 0x20–0x23. | Milestone 7 |
 | **88-VI / RTC** | Register layout, priority scheme, RST vector generation. Nothing at all in the tree. | Milestone 6 |
 | **88-HDSK** | Ports, command protocol, geometry, image format. Nothing at all in the tree. | Milestone 7 |
 | **PMMI** (deferred) | The **E1–E7 pad → VI0–VI7 correspondence** — the manual says only to consult your CPU/VI card manual. Everything else is recovered. | If/when PMMI is built |
 | **88-TURNKEY / PROM** | **How power-on jump works.** A turnkey board forces the CPU to the PROM address after reset; the mechanism is undocumented in the tree. Nothing is blocked — `startup = ["GO FF00"]` covers it honestly (§10.0) — but modeling POJ as a real board property is the correct long-run answer, and it would test whether a `Board` can claim an `OpFetch` cycle the way the 88-VI claims an `IntAck`. | Nice-to-have; blocks nothing |
 
-**Available and sufficient:** the 88-2SIO (MITS *Theory of Operation* manual, `s100-manuals/MITS/ALTAIR_8800/`), the 88-DCDD (`mits_dsk.c` + `BIOS.ASM` + `CLAUDE.md`), and the PMMI (its manual, `pmmi-cpm22/`).
+**Available and sufficient:** the 88-2SIO, the 88-SIO, the 88-ACR, the 88-DCDD and the Tarbell — every one of them from a **period manual**, all now in `reference/` and listed in `docs/sources.md`.
 
-**One inconsistency to settle:** the Python prototype and `BIOS.ASM` disagree on the 88-DCDD's `I` and `Z` status-bit positions. `mits_dsk.c` is authoritative — reconcile against it (§`docs/boards/mits-dcdd.md`).
+> **🔴 THIS SECTION USED TO NAME `mits_dsk.c` AS AUTHORITATIVE FOR THE 88-DCDD, AND IT WAS FLATLY WRONG.**
+> `mits_dsk.c` is **SIMH**, and §0.1 — the first rule in this document — says we do not learn hardware
+> from another emulator's source. The line sat here contradicting the rule it shares a document with,
+> and it cost real time: the DCDD's rotation was modeled on SIMH's advance-on-read counter, which makes
+> the platter spin at the speed of whatever loop is polling it. **Both the "inconsistency to settle"
+> and its recommended arbiter are struck.** The `I`/`Z` status bits were settled from the 88-DCDD
+> manual and the in-tree `BOOT.ASM`/`BIOS.ASM`, and `docs/boards/mits-dcdd.md` records which source won
+> and why.
 
 ---
 

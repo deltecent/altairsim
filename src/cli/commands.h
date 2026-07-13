@@ -23,18 +23,12 @@
 // something else. Reserved commands resolve, then say what they are waiting for.
 // Abbreviations are a contract, and the contract is fixed now.
 
+#include "core/command.h"  // CommandDef itself -- a BOARD can declare one, so it lives in core
+
 #include <string>
 #include <vector>
 
 namespace altair {
-
-struct CommandDef {
-    const char* name;
-    bool built;          // false: resolves, and says which milestone it waits for
-    const char* waiting; // "the CPU", "the debugger", ...
-    const char* usage;   // one line, shown by `HELP <cmd>` and on a usage error
-    const char* detail;  // the long form and the examples. May be null.
-};
 
 // In priority order. First prefix match wins.
 const std::vector<CommandDef>& commands();
@@ -46,5 +40,19 @@ const CommandDef* resolveCommand(const std::string& word);
 // so it is right by construction and stays right when the table is reordered.
 // Returns the whole name marked up: "D[UMP]", "DE[POSIT]", "GO".
 std::string abbreviation(const CommandDef& c);
+
+// The same, for a verb a BOARD brought with it (Board::commands()) -- and it is the
+// MIRROR IMAGE of the rule above, which is why it cannot be the same function.
+//
+// A built-in is reached by MATCHING the table. A board verb is reached by the table
+// FAILING to match, because the monitor asks the cards only after the static menu has
+// said no. So a board verb's abbreviation is the shortest prefix that resolves to
+// NOTHING: `REW[IND]`, because RESET already answers to R, RE and RES.
+//
+// If every prefix is shadowed -- including the full name -- the verb is UNREACHABLE
+// and this returns the bare name with no brackets. That is a bug in the BOARD, not in
+// a user's typing, so it is caught by tests/test_cli.cpp as a merge gate rather than
+// at runtime: a user cannot create one, only a board author can.
+std::string boardAbbreviation(const CommandDef& c);
 
 } // namespace altair

@@ -65,20 +65,48 @@ private:
 // a byte because the guest was slow would be manufacturing data loss the host does
 // not have -- the very thing DESIGN.md 7.1 forbids. A real recorder does drop
 // data, and we do not model that. It is in the board's .md, under Limitations.
+//
+// ---- AND IT IS IN EXACTLY ONE MODE AT A TIME, BECAUSE A RECORDER IS ----------
+//
+// PLAY or RECORD. Not both. This is not a simplification, it is the machine: the
+// 88-ACR has NO MOTOR CONTROL -- there is no register for it, the guest cannot
+// reach the transport, and the operator worked the buttons with their finger. A
+// recorder in PLAY is not recording, and one in RECORD is not handing you back what
+// used to be on the tape.
+//
+// AND WITHOUT IT, RECORDING SILENTLY CORRUPTS THE TAPE. There is ONE head and so
+// ONE position (see pos_ above -- read and write share it, as they must). The UART
+// receives EAGERLY: it pulls a byte off its line the moment it has room, because
+// that is how DAV and an interrupt-driven loader work. So a tape mounted for
+// writing would have its first byte read away by the card before the guest ever
+// ran, the position would sit at 1, and the guest's recording would begin at byte
+// ONE. Off by one, on every tape, in the direction nobody checks.
+//
+// The mode makes that unrepresentable rather than merely unlikely: in PLAY the
+// stream is not writable, in RECORD it is not readable, and so nothing can advance
+// the head except the thing the operator asked for.
 // ---------------------------------------------------------------------------
 class TapeStream : public ByteStream {
 public:
-    explicit TapeStream(TapeImage& t) : tape_(t) {}
+    // The buttons on the front of the recorder. The CARD cannot press them.
+    enum class Mode { Play, Record };
+
+    explicit TapeStream(TapeImage& t, Mode m = Mode::Play) : tape_(t), mode_(m) {}
 
     std::string describe() const override { return tape_.describe(); }
     size_t read(uint8_t* buf, size_t n) override;
     size_t write(const uint8_t* buf, size_t n) override;
-    bool   readable() const override { return !tape_.atEnd(); }
-    bool   writable() const override { return !tape_.readOnly(); }
-    void   flush() override { tape_.sync(); }
+
+    // Nothing plays back out of a recorder that is recording, and nothing is cut
+    // into a tape that is merely playing. The write-protect tab is a SECOND, and
+    // independent, reason a tape may refuse to record.
+    bool readable() const override { return mode_ == Mode::Play && !tape_.atEnd(); }
+    bool writable() const override { return mode_ == Mode::Record && !tape_.readOnly(); }
+    void flush() override { tape_.sync(); }
 
 private:
     TapeImage& tape_;
+    Mode       mode_;
 };
 
 } // namespace altair

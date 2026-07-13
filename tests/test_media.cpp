@@ -330,12 +330,11 @@ void test_media() {
         // ByteStream and never learns it is a cassette.
         std::vector<uint8_t> t = {0x7D, 0x7D, 0xC3};
         TapeImage  tape(std::make_unique<MemoryMedia>("4kbasic.tap", t));
-        TapeStream s(tape);
+        TapeStream s(tape);  // PLAY, by default -- see below
         ByteStream& bs = s;  // what the chip will actually hold
 
         CHECK(bs.describe() == "4kbasic.tap", "SHOW says what is mounted");
         CHECK(bs.readable(), "there is tape: RDRF will set");
-        CHECK(bs.writable(), "and it is not protected: TDRE will set");
 
         uint8_t buf[2] = {};
         CHECK(bs.read(buf, 2) == 2 && buf[0] == 0x7D, "the leader");
@@ -348,5 +347,55 @@ void test_media() {
         tape.rewind();
         CHECK(bs.readable() && bs.readByte() == 0x7D, "rewound, and the leader is back");
         CHECK(bs.readByte() == 0x7D, "byte held until taken -- no loss, ever");
+    }
+
+    // -----------------------------------------------------------------------
+    // 🔴 PLAY OR RECORD. NEVER BOTH -- AND THIS TEST USED TO ASSERT THE OPPOSITE.
+    //
+    // It said `CHECK(bs.writable(), "and it is not protected")` on a stream that was
+    // also readable, and that was wrong in a way nothing could see until a real card
+    // used it. A cassette has ONE head, so read and write share ONE position (they
+    // must -- it is the same piece of tape). The 88-ACR's UART reads EAGERLY: it pulls
+    // a byte off its line the moment it has room, because that is how DAV works.
+    //
+    // So a tape that was readable AND writable at once had its first byte pulled away
+    // by the card before the guest ever ran, the head sat at 1, and every recording
+    // began at byte ONE. Silently, on every tape, in the one direction nobody checks.
+    //
+    // The fix is the hardware's own, and it costs nothing: the 88-ACR has NO MOTOR
+    // CONTROL -- a human pressed the buttons -- and a recorder is in PLAY or in
+    // RECORD. Making that exclusive here makes the corruption UNREPRESENTABLE rather
+    // than merely unlikely.
+    // -----------------------------------------------------------------------
+    SECTION("tape: a recorder is in PLAY or in RECORD, and never in both");
+    {
+        std::vector<uint8_t> t = {'O', 'L', 'D'};
+        auto  media = std::make_unique<MemoryMedia>("t.tap", t);
+        auto* raw   = media.get();
+        TapeImage tape(std::move(media));
+
+        {
+            TapeStream play(tape, TapeStream::Mode::Play);
+            CHECK(play.readable(), "PLAY: the tape plays back");
+            CHECK(!play.writable(), "PLAY: and NOTHING is cut into it -- the head cannot move");
+        }
+        {
+            TapeStream rec(tape, TapeStream::Mode::Record);
+            CHECK(!rec.readable(), "RECORD: a recording deck plays nothing back...");
+            CHECK(rec.writable(), "RECORD: ...it records");
+
+            // And it records from where the head IS -- which, having never played, is 0.
+            CHECK(tape.pos() == 0, "the head never moved while it was not playing");
+            const uint8_t nu[3] = {'N', 'E', 'W'};
+            CHECK(rec.write(nu, 3) == 3, "three bytes go down");
+            CHECK(std::string(raw->bytes().begin(), raw->bytes().end()) == "NEW",
+                  "and they land at byte ZERO -- off by one here corrupts every tape");
+        }
+        {
+            // The write-protect tab is a SECOND and INDEPENDENT reason to refuse.
+            TapeImage  ro(std::make_unique<MemoryMedia>("t.tap", t, /*readOnly=*/true));
+            TapeStream rec(ro, TapeStream::Mode::Record);
+            CHECK(!rec.writable(), "RECORD is pressed, but the tab is out: nothing is recorded");
+        }
     }
 }

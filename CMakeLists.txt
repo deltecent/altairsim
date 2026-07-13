@@ -160,6 +160,10 @@ add_library(altair_core STATIC
   src/boards/mits-88dcdd.cpp
   src/boards/mits-2sio.cpp
   src/boards/mits-88sio.cpp
+  # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
+  # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
+  # this list is not ordered. It is listed after it so the reader sees the pair.
+  src/boards/mits-88acr.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp
@@ -201,6 +205,7 @@ add_executable(altair_tests
   tests/test_debug.cpp
   tests/test_sio2.cpp
   tests/test_88sio.cpp
+  tests/test_88acr.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp

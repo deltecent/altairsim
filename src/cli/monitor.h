@@ -56,10 +56,41 @@ private:
 
     Board* board(const std::string& id, std::ostream& err);
 
+    // WHAT THE COMMAND IS ABOUT TO DO WITH THE UNIT -- which is the only thing that
+    // decides whether the unit's KIND is legal. It was a `bool wantMountable`, and
+    // the bool had a third case hiding inside its `false`: SET is neither mounting
+    // nor connecting, and it was being told a cassette is "not a serial port". Every
+    // unit the 2SIO has is a serial one, so nothing noticed until a tape turned up.
+    enum class UnitUse {
+        Mount,    // MOUNT/UNMOUNT: media only -- a disk, a ROM, a tape
+        Connect,  // CONNECT/DISCONNECT: a serial line only
+        Any,      // SET/SHOW: a unit is a unit. Its properties are its own business.
+    };
+
     // `id:unit` -> board + NAMED unit, with the kind checked against the command.
-    // `wantMountable` is true for MOUNT/UNMOUNT, false for CONNECT/DISCONNECT.
-    bool subunit(const std::string& spec, Board*& b, UnitDef& u, bool wantMountable,
+    bool subunit(const std::string& spec, Board*& b, UnitDef& u, UnitUse use,
                  std::ostream& err);
+
+    // Every verb the cards in the machine declare right now, deduped by name, each
+    // with the type of a card that brings it. Empty on a machine with no such card --
+    // which is the point of the whole mechanism.
+    //
+    // BY VALUE, AND THAT IS NOT A STYLE CHOICE -- IT IS A SEGFAULT I ALREADY WROTE.
+    // Board::commands() returns its table BY VALUE, so a `const CommandDef*` taken
+    // into it dangles the moment the temporary dies, which is at the end of the very
+    // loop that collected it. `REW` crashed the monitor. The struct is five
+    // `const char*` pointing at string LITERALS: copying it is free, and the literals
+    // outlive every board in the machine.
+    std::vector<std::pair<std::string, CommandDef>> boardVerbs() const;
+
+    // A VERB A CARD BROUGHT WITH IT (Board::commands()). Called ONLY after the
+    // built-in table has failed to prefix-match, so the static menu always wins and
+    // no card can move a built-in abbreviation by being plugged in.
+    //
+    // False means "nothing in the machine answers to this word" -- and the caller
+    // then prints `unknown command`, which is the truth: with no 88-ACR in a slot
+    // there IS no REWIND. True means it was handled, including handled badly.
+    bool boardCommand(const std::vector<std::string>& a, std::ostream& out);
 
     // One line of disassembly, in a listing's shape: address, the raw bytes, the
     // instruction. Returns the instruction's length so the caller can walk on.
