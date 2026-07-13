@@ -323,6 +323,23 @@ add_test(NAME acceptance-ps2
 set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # ---------------------------------------------------------------------------
+# WHICH MACHINE DID I GET? ./altairsim.toml, found in the working directory.
+#
+# The one file the simulator FINDS rather than is GIVEN -- and the only thing keeping
+# that from being the trap looksLikeFile() refuses to walk into is that it happens ONLY
+# on a command line that names nothing. So most of this test is the negative controls:
+# `altairsim basic4k`, `-m default` and `-n` must all be stone deaf to the directory
+# they run in. If they ever are not, `altairsim basic4k` has started meaning different
+# things in different places, which is precisely the 2am bug the CLI is arranged to
+# prevent -- reintroduced by the back door, by a convenience.
+# ---------------------------------------------------------------------------
+add_test(NAME acceptance-cwdconfig
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
+set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
 # THE INTERACTIVE ONE. Everything above drives the CLI through a PIPE, and a pipe is not
 # a terminal -- so three things that only exist on a tty go untested by all of them: the
 # echoed prompt and line editing, ATTN (^E) taking the console back from a running guest,

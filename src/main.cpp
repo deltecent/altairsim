@@ -19,13 +19,19 @@ using namespace altair;
 
 static const char* kVersion = "altairsim 0.1.0";
 
+// The machine you get when you name none: the working directory's, if it has one.
+// See the comment on the fallback in main() for why this is the ONLY file the
+// simulator ever finds rather than is given.
+static const char* kCwdConfig = "./altairsim.toml";
+
 static void usage(std::ostream& o) {
     o << kVersion << " -- an Altair 8800 / S-100 simulator\n"
          "\n"
          "usage: altairsim [options] [machine]\n"
          "\n"
          "  machine            a built-in name (altairsim 4k), or a config file if it\n"
-         "                     has a '/' in it or ends in .toml. Omitted: `default`.\n"
+         "                     has a '/' in it or ends in .toml. Omitted: ./altairsim.toml\n"
+         "                     if the working directory has one, else `default`.\n"
          "\n"
          "  -m, --machine <n>  ALWAYS a built-in name -- never a file.\n"
          "  -f, --file <path>  ALWAYS a file -- never a built-in name.\n"
@@ -126,11 +132,34 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    // THE ONE FILE THE SIMULATOR FINDS RATHER THAN IS GIVEN -- and it is found only when
+    // the command line NAMES NOTHING.
+    //
+    // looksLikeFile() (core/machines.h) refuses to probe the disk, and the reason is
+    // load-bearing: `altairsim default` must not become a different machine the day
+    // somebody saves a file called `default` next to it. A command line that changes
+    // meaning because of its surroundings is a trap. That argument holds for every
+    // command that names a machine -- and `altairsim`, alone, names none. It is not
+    // asking for `default`; it is asking for whatever machine is sensible here, and
+    // letting the directory answer that is the make(1) bargain rather than the trap.
+    //
+    // So the rule stays exact where it matters: `altairsim basic4k` is basic4k in every
+    // directory on earth, and so is -m, -f and -n. Only the empty command line looks
+    // around. And it says so out loud -- see the notice below -- because the failure
+    // this can cause is spending twenty minutes on a machine you did not know you were
+    // running, which is the same thing the `give ONE machine` check above exists to stop.
+    bool discovered = false;
+
     if (!positional.empty()) {
         if (looksLikeFile(positional)) file = positional;
         else builtin = positional;
     } else if (ways == 0) {
-        builtin = "default";  // no machine named: you get one anyway, and it is honest
+        if (std::ifstream(kCwdConfig)) {
+            file       = kCwdConfig;
+            discovered = true;
+        } else {
+            builtin = "default";  // no machine named, and none to hand: you get one anyway
+        }
     }
 
     // THE COMPOSITION ROOT. The monitor knows the endpoint grammar; the boards do
@@ -165,6 +194,13 @@ int main(int argc, char** argv) {
             return 2;
         }
     } else if (!file.empty()) {
+        // NEVER SILENTLY. This is the only machine nobody asked for by name, so it is the
+        // only one that has to introduce itself -- and BEFORE the load, so that a broken
+        // file names itself too. It goes to stderr: a `-s` script's stdout is a CI
+        // contract and stays exactly what the script printed.
+        if (discovered)
+            std::cerr << "altairsim: no machine named -- using " << kCwdConfig
+                      << " (`-m default` for the built-in).\n";
         if (!loadToml(file, m, err)) {
             std::cerr << err << "\n";
             return 2;

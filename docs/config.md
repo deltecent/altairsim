@@ -4,6 +4,33 @@ A machine is described by a TOML file. The **same state** is reachable at runtim
 
 **The TOML keys for a board *are* its `properties()`** (see `DESIGN.md` §5) — there is no separate config schema per board. The loader and `CONFIG SAVE` are the same code path, so they cannot drift, and a board added next year is configurable the day it lands with no changes here.
 
+## Which machine you get
+
+| You type | You get |
+|---|---|
+| `altairsim basic4k` | the built-in `basic4k` — **in every directory on earth** |
+| `altairsim cfg/mine.toml`, `altairsim -f mine` | that file |
+| `altairsim -m default` | the built-in, always |
+| `altairsim -n` | an empty backplane |
+| `altairsim` | **`./altairsim.toml` if the working directory has one**, else the built-in `default` |
+
+**`./altairsim.toml` is the only file the simulator *finds* rather than is *given*, and it is found only when the command line names nothing at all.** That restriction is the whole licence for the feature. `looksLikeFile()` (`src/core/machines.h`) refuses to probe the disk on purpose — `altairsim default` must not become a different machine the day somebody saves a file called `default` next to it, because a command line that changes meaning because of its surroundings is a trap. That argument applies to every command that *names* a machine. A bare `altairsim` names none: it is not asking for `default`, it is asking for whatever machine is sensible *here*, and letting the directory answer is the `make(1)` bargain rather than the trap.
+
+**It is never silent.** When the working directory's file is used, the simulator says so on **stderr** — because the failure this can otherwise cause is spending twenty minutes on a machine you did not know you were running. It goes to stderr and not stdout so that a `-s` script's output stays exactly what the script printed.
+
+A found file is an *ordinary* config file, so it can `base` off a built-in and say only what is different:
+
+```toml
+# ./altairsim.toml -- the project's machine. Just `altairsim` boots it.
+[machine]
+name = "myproject"
+base = "default"
+
+[[board]]
+id    = "dsk0"          # the default's floppy controller...
+mount = "disks/cpm.dsk" # ...with this project's disk in it
+```
+
 ## Verbs
 
 - **`MOUNT`** refers to **host files** (disk and tape images).

@@ -24,7 +24,12 @@ if {$sim eq ""} { puts "usage: cli.exp <altairsim>"; exit 2 }
 proc ok   {msg} { puts "ok    -- $msg" }
 proc fail {msg} { puts "FAIL  -- $msg"; puts "--- last seen ---"; puts $::expect_out(buffer); exit 1 }
 
-spawn $sim
+# `-m default` AND NOT A BARE `$sim`, which is what this was. A bare command line now
+# looks for ./altairsim.toml (src/main.cpp) -- and this test runs in the BUILD directory,
+# so the day anything drops a config there, every expectation below would be running
+# against somebody else's machine. This test is about the TTY, not about machine
+# selection; tests/acceptance/cwdconfig.cmake is the one that tests the looking.
+spawn $sim -m default
 
 # ---- 1. It comes up, on a terminal, with a prompt. ----
 expect {
