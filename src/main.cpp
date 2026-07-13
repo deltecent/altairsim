@@ -247,7 +247,15 @@ int main(int argc, char** argv) {
     // 1a ran, with the monitor as bus master -- and saying so is more useful than a
     // fixed string that goes stale the moment a card lands.
     std::cout << kVersion << " -- ";
-    if (CpuCore* c = m.cpu()) std::cout << c->isa() << ", " << m.clock.hz() / 1000000.0 << " MHz.\n";
+    if (CpuCore* c = m.cpu()) {
+        std::cout << c->isa() << ", ";
+        // hz() IS A DIVISOR AND IS NEVER 0 (core/clock.h), so it cannot answer this
+        // question -- it reads 2 MHz on a card with no crystal on it, which is how this
+        // line came to report a paced machine while the run loop was flat out. free() is
+        // the policy, and the policy is what an operator wants read back.
+        if (m.clock.free()) std::cout << "full speed.\n";
+        else                std::cout << m.clock.hz() / 1000000.0 << " MHz.\n";
+    }
     else std::cout << "no CPU in the backplane; the monitor is the bus master.\n";
     std::cout << "machine: " << m.name << ".  HELP for commands.\n";
     // Line editing, history and BOTH backspace bytes live in cli/lineedit.cpp.

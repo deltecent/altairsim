@@ -31,13 +31,23 @@ proc fail {msg} { puts "FAIL  -- $msg"; puts "--- last seen ---"; puts $::expect
 # selection; tests/acceptance/cwdconfig.cmake is the one that tests the looking.
 spawn $sim -m default
 
-# ---- 1. It comes up, on a terminal, with a prompt. ----
+# ---- 1. THE BANNER REPORTS THE POLICY, NOT THE DIVISOR. ----
+# The last survivor of the `clock_hz = 0` lie. The machinery, SHOW and the docs were all
+# fixed on 2026-07-13; the banner went on printing hz()/1e6 -- and hz() is a DIVISOR that is
+# never 0 (core/clock.h), so a flat-out machine could only ever say "2 MHz". Nothing asserted
+# on this string, which is exactly how it survived. It is asserted now.
+expect {
+    -ex "8080, full speed." { ok "the banner says full speed, not 2 MHz" }
+    timeout                 { fail "the banner does not report a free-running machine" }
+}
+
+# ---- 2. It comes up, on a terminal, with a prompt. ----
 expect {
     -ex "altairsim> " { ok "the monitor prompts on a tty" }
     timeout           { fail "no prompt" }
 }
 
-# ---- 2. A command runs, and the machine describes itself. ----
+# ---- 3. A command runs, and the machine describes itself. ----
 send "BOARDS\r"
 expect {
     -ex "cpu0"  { ok "BOARDS lists the CPU card" }
@@ -45,7 +55,7 @@ expect {
 }
 expect -ex "altairsim> "
 
-# ---- 3. FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13). ----
+# ---- 4. FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13). ----
 # The crystal is a property of the CPU card, and with no crystal the run loop does not
 # sleep. This is the line that used to be a lie: `clock_hz = 0` was documented as "runs
 # flat out" while Clock::setHz coerced it back to 2 MHz and the loop paced anyway.
@@ -56,7 +66,7 @@ expect {
 }
 expect -ex "altairsim> "
 
-# ---- 4. A guest that TALKS. ----
+# ---- 5. A guest that TALKS. ----
 # Toggled in at the front panel, exactly as a human would: initialise the 2SIO (master
 # reset, then 8N2 / divide-by-16), wait for the transmit register to empty, send 'H', halt.
 #
@@ -84,7 +94,7 @@ expect {
     timeout           { fail "the machine never came back from a HLT" }
 }
 
-# ---- 5. ATTN (^E) -- the guest has the keyboard, and the host takes it anyway. ----
+# ---- 6. ATTN (^E) -- the guest has the keyboard, and the host takes it anyway. ----
 # This is the one the scripted harness CANNOT test: under a pipe, the console reads stdin
 # eagerly and acts on ^E the instant it appears in the buffer -- so a keystroke FILE fires
 # it before the guest has even booted. On a tty it arrives when a human presses it.
@@ -111,4 +121,22 @@ expect -ex "altairsim> "
 
 send "QUIT\r"
 expect eof
+
+# ---- 7. ...AND A CRYSTAL IS STILL REPORTED AS A CRYSTAL. ----
+# The other half of check 1, and the reason it is a separate spawn: the banner prints ONCE,
+# at startup, so buying the crystal on the command line is the only way to watch it take the
+# other branch. `-i` IS LOAD-BEARING -- without it `-x` runs the command and exits before the
+# banner is ever printed (src/main.cpp: `if (ran && !interactive) return rc;`), and this check
+# would then pass by matching nothing at all.
+#
+# Without this, "full speed." could be hardcoded and check 1 would still pass -- which is the
+# same shape of bug as the one this file is here to catch: a display that no longer asks.
+spawn $sim -m default -x "SET cpu0 clock_hz=2000000" -i
+expect {
+    -ex "8080, 2 MHz." { ok "a card WITH a crystal still banners its rate" }
+    timeout            { fail "SET cpu0 clock_hz=2000000 did not reach the banner" }
+}
+send "QUIT\r"
+expect eof
+
 puts "\nALL INTERACTIVE CLI CHECKS PASSED"
