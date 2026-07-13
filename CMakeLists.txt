@@ -264,3 +264,22 @@ add_test(NAME cpu-cputest COMMAND altair_cputest CPUTEST)
 add_test(NAME cpu-8080exm COMMAND altair_cputest 8080EXM)
 set_tests_properties(cpu-8080exm PROPERTIES LABELS slow TIMEOUT 1800)
 set_tests_properties(cpu-cputest PROPERTIES TIMEOUT 600)
+
+# ---------------------------------------------------------------------------
+# THE ACCEPTANCE TESTS -- period software, on the whole machine, through the CLI.
+#
+# A board test proves a card against its manual. This proves the MACHINE against an
+# artifact somebody shipped in 1975, running unmodified: `altairsim basic4k`, a real
+# cassette image, and the bootstrap MITS printed in the manual. It is the test the
+# 88-ACR was built to pass, and it is the only one that can fail for a reason no unit
+# test can see -- a card that is right in isolation and wrong in a backplane.
+#
+# It drives the REAL binary, so it also covers the monitor: MOUNT, LOAD, RUN, and a
+# quoted path with spaces in it (which every period artifact has).
+# ---------------------------------------------------------------------------
+add_test(NAME acceptance-basic4k
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/basic4k.cmake)
+set_tests_properties(acceptance-basic4k PROPERTIES LABELS acceptance TIMEOUT 120)

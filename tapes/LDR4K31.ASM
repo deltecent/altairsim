@@ -1,7 +1,9 @@
+	org	0
 ;
-; SIO Loader for 4K BASIC Version 3.1
+; Cassette Loader for 4K BASIC Version 3.1
 ; 
-;   ** Set all sense switches OFF **
+;   ** Set A15 on (cassette load) **
+;   ** All other switches off **
 ;
 ; H = msb of load address
 ; L = lsb of load address = length of loader = leader byte
@@ -18,11 +20,11 @@
 ;	lxi	h,7EC2h		;Extended Disk BASIC v5.0
 
 loop	lxi	sp,stack	;init SP so a RET jumps to loop
-	in	00h		;get sio status
+	in	06h		;get sio status
 	rrc			;new byte available?
 	rc			;no (jumps back to loop)
 
-	in	01h		;get the byte
+	in	07h		;get the byte
 	cmp	l		;new byte = leader byte?
 	rz			;yes (jumps back to loop)
 

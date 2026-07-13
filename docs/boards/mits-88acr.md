@@ -217,9 +217,58 @@ does not exist, and would then "discover" the motor control this card does not h
 an 88-ACR is in a slot, `RE` is still `RESET` with one plugged in, and pulling the card takes
 the verb with it.
 
-**Still owed: the acceptance test.** Load 4K BASIC off a period `.TAP` via `LDR4K31.HEX` to the
-`MEMORY SIZE?` prompt, then `REW` and load it again. The period artifact runs unmodified — if it
-fails, the board is wrong, not the tape.
+## ✅ The acceptance test, and it PASSES
+
+**Altair 4K BASIC v3.1 boots off a period cassette through this card, and runs a program.**
+`ctest -R acceptance` — `tests/acceptance/basic4k.cmake`, the machine `basic4k`, the tape
+`tapes/4K BASIC Ver 3-1.tap`, and the bootstrap `tapes/LDR4K31.ASM`. **Nothing was modified.**
+
+```
+MEMORY SIZE?
+TERMINAL WIDTH?
+WANT SIN? Y
+ 742 BYTES FREE
+ALTAIR BASIC VERSION 3.1
+[FOUR-K VERSION]
+OK
+```
+
+**The straps in the manual are the straps that work.** The card sits at **006** — not the 000
+this document's plan once feared it would have to be jumpered to. The bootstrap does `IN 06` /
+`IN 07`; the manual says "wire address select for 006"; they agree, and *because* they agree the
+console can be an 88-SIO at **000**, which is where 4K BASIC looks for it. There was never a port
+collision — the collision was in a paper-tape loader that had been mistaken for the cassette one.
+
+The sense switches are **`0x80`** — SA15 up — and that is the bootstrap's own header
+(*"Set A15 on (cassette load), all other switches off"*), not a guess. See
+`docs/boards/mits-frontpanel.md`.
+
+**What the test actually proved about this card**, beyond "it works": the inverted status bit and
+the leader skip are exercised for 4,439 real bytes rather than the handful a unit test feeds
+them; the image arrives byte-exact (a tape that dropped or duplicated **one** byte does not print
+its own banner); and `REW` genuinely rewinds — the same tape loads a second time in the same
+session.
+
+**It found three bugs that no unit test could have.** All three were in the machine around the
+card, not in the card, which is the entire reason an acceptance test exists:
+
+- **`CONNECT` silently reset the transform chain.** Both chips built a *fresh* `FilterStream` for
+  every endpoint, so `upper`, `strip7*`, `crlf`, `echo`, `bell` and `bsdel` all snapped back to
+  their defaults the moment anything was plugged in — and a machine file that set a transform
+  before `connect` (the loader applies keys in file order) had it thrown away before the machine
+  ever started. `FilterStream::reconnect()` now swaps the endpoint and keeps the chain, which is
+  what DESIGN.md §7.2 claimed all along. **This is the one that mattered**: the transforms belong
+  to the line, not to what is on the far end of it.
+- **A scripted run killed the machine three slices into the load.** The monitor took "the guest
+  has stopped printing" for "the guest has finished" — and a cassette bootstrap prints *nothing*
+  for the length of a tape.
+- **A quoted path could not be opened.** `MOUNT`/`LOAD`/`SAVE` never stripped the quote, so no
+  file with a space in its name would open — which is every artifact in `tapes/`.
+
+It also surfaced MITS BASIC's **bit-7 string terminator**, and the *wrong* fix for it is so
+tempting that it has its own section in `docs/boards/mits-88sio.md`. Short version: the terminal
+ignores the high bit (`strip7out`); the card does not strip it (`data_bits = 7` would corrupt
+XMODEM).
 
 ## References
 

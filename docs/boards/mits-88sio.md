@@ -109,6 +109,29 @@ The COM2502 lives in **`src/chips/uart1602.{h,cpp}`** (DESIGN.md §7.8 — a chi
 | **the interrupt enables** | A separate IC (IC B). **The COM2502 has no interrupt pin at all** — the card derives its two requests from RDA and TBMT and gates them with these flip-flops. Which is why the chip publishes its raw deadlines (`txFreeAt()`, `rxNextAt()`) and the *board* computes `nextEdge()`. |
 | **the port decode** | Obviously. |
 
+### MITS BASIC's high bit: the TERMINAL ignores it, the CARD does not strip it
+
+> **MITS BASIC ends a message by setting bit 7 of its LAST character.** `MEMORY SIZE?` leaves
+> BASIC as `...'S','I','Z','E'|0x80` — the high bit is the *string terminator*, not data. Send it
+> to a modern terminal and the prompt reads **`MEMORY SIZ?`**, and so does every other prompt in
+> the machine.
+
+The obvious fix is the wrong one, and it is worth writing down why, because it is *very*
+tempting: `tapes/Basic Versions.pdf` says **"7 bit serial comm"** against every one of these
+builds, the ticked boxes on the scanned card are **7 data bits / 2 stop bits**, and strapping
+`data_bits = 7` makes the prompt come out clean.
+
+**Don't.** A 7-bit strap that masks the data inside the UART would fix BASIC and silently corrupt
+everything else the port ever carries — **XMODEM above all, which is 8-bit binary.** The port is
+not BASIC's. And it isn't what the hardware did anyway: the card sent all eight bits, and the
+**Teletype ignored the eighth** — on a Model 33 that is the parity position and the printing
+mechanism never decodes it. Nothing was stripped; something on the far end simply didn't look.
+
+So the ignoring belongs to the **terminal**, and it is spelled `strip7out` — a `FilterStream`
+transform, a property of the endpoint on the line (DESIGN.md §7.2), not a strap on the chip.
+`machines/basic4k.toml` sets it; `tests/acceptance/basic4k.cmake` fails if the high bit ever
+reaches the terminal again. `data_bits` stays what it always was: **a duration, not a width.**
+
 - **Decodes** `IoRead`/`IoWrite` at `BASE` and `BASE+1`. No memory. `port` **must be even** —
   the decode ignores A0 and uses it to select the channel, so an odd base is not a card you
   could build, and setting one is refused with a sentence saying why.
@@ -156,6 +179,7 @@ unrepresentable.
 | **The ready bits are INVERTED.** Bit 7 clear = ready to send; bit 0 clear = a byte is waiting. The 88-2SIO's are true-sense, and both cards can be in the same machine. | A driver polls forever, or transmits into a busy register and drops every other character. This is *the* trap of this board and it is why it shares no code with the 2SIO. |
 | **There is no control register.** The only thing an `OUT` to the control channel can change is the two interrupt-enable flip-flops. Word format and baud are soldered pads. | A port of a 2SIO driver "configures" the UART with a control byte, silently enables an interrupt it never meant to (bits 0/1 of whatever it wrote), and hangs on an unhandled `RST 7`. |
 | **TBMT is a deadline, not a flag.** The transmitter is busy for one character time. | A BIOS that *times* the line to work out its speed reaches a different conclusion. Hardwiring "always ready" is the easy lie. |
+| **MITS software sets bit 7 of the last character of a message.** It is a string terminator. The card passes it; a Teletype ignores it. Use `strip7out` on the line — **not** `data_bits = 7`. | Every prompt in the machine ends in a garbage byte (`MEMORY SIZ?`) — or, if you "fix" it in the UART, it comes out clean and every 8-bit binary transfer through the port (XMODEM) is silently corrupted instead. Caught by `tests/acceptance/basic4k.cmake`. |
 | **The interrupt fires with nobody touching the card.** A driver that enables the output interrupt, sends a character and `HLT`s is ordinary, and only a deadline the card set for itself can wake it. | The run loop declares the machine *finished* ~2000 T-states before its interrupt arrives. This is a real bug we shipped and fixed; see DESIGN.md §4.4.1. |
 | **A `vi*` strap goes nowhere** until an 88-VI card exists — correctly, exactly as a wire into an empty slot does. | Fabricated vectored behaviour on a machine that has no VI card in it. |
 

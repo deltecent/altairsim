@@ -94,6 +94,13 @@ void Console::poll() const {
 
 bool Console::readable() const {
     poll();
+
+    // The guest came to the keyboard and the keyboard is empty AND ENDED. That is a
+    // guest waiting for a byte that cannot arrive -- count it. Nothing else counts:
+    // a guest busy reading a cassette never gets here, however long it takes and
+    // however little it says. See Console::starved().
+    if (in_.empty() && eof_) ++starved_;
+
     return !in_.empty();
 }
 

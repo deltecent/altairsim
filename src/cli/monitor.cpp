@@ -52,6 +52,14 @@ std::vector<std::string> tokenize(const std::string& line) {
     return t;
 }
 
+// A quoted token keeps its opening `"` so SEARCH can tell a string from a byte list.
+// A filename does not want that sentinel -- and a filename is the one place a quote is
+// not decoration but the only way to write a path with a space in it, which the period
+// artifacts ("4K BASIC Ver 3-1.tap") all have.
+static std::string unquote(const std::string& s) {
+    return (!s.empty() && s[0] == '"') ? s.substr(1) : s;
+}
+
 static std::string upper(std::string s) {
     for (auto& c : s) c = (char)std::toupper((unsigned char)c);
     return s;
@@ -620,6 +628,7 @@ void Monitor::runMachine(std::ostream& out) {
 
     RunResult r;
     uint64_t lastWritten = con.written();
+    uint64_t lastStarved = con.starved();
     int      quiet       = 0;
 
     for (;;) {
@@ -653,10 +662,25 @@ void Monitor::runMachine(std::ostream& out) {
         // Console::pollByte), give the guest a few more slices to finish saying
         // whatever it was saying, and leave when it falls silent. That way the
         // last command in a script still gets its answer printed.
+        //
+        // BUT SILENT IS NOT THE SAME AS FINISHED, and the first version of this got
+        // that wrong. It left as soon as the guest stopped PRINTING -- and a cassette
+        // bootstrap prints nothing at all for the whole of a 4,439-byte tape. Under
+        // `-s`, loading 4K BASIC died three slices in, at PC=0003, before the loader
+        // had read its second byte. The machine was not finished; it was BUSY.
+        //
+        // The guest is finished when it has stopped talking AND started BEGGING: gone
+        // to the keyboard, found the pipe empty and ended, and come back for more. A
+        // guest that is reading a tape never asks, so it is never cut off, however
+        // long it takes and however little it says.
         if (anyConsole && !tty && con.eof()) {
             uint64_t w = con.written();
-            quiet      = (w == lastWritten) ? quiet + 1 : 0;
+            uint64_t s = con.starved();
+            bool     spoke  = (w != lastWritten);
+            bool     begged = (s != lastStarved);
+            quiet       = (begged && !spoke) ? quiet + 1 : 0;
             lastWritten = w;
+            lastStarved = s;
             if (quiet >= 3) {
                 r.why = StopReason::Interrupted;
                 break;
@@ -1580,11 +1604,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
 
         std::string err;
-        if (!b->mount(u.name, a[2], readOnly, err)) {
+        if (!b->mount(u.name, unquote(a[2]), readOnly, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
-            out << b->id << ":" << u.name << ": mounted " << a[2]
+            out << b->id << ":" << u.name << ": mounted " << unquote(a[2])
                 << (readOnly ? " (read-only)" : "") << "\n";
         }
         return true;
@@ -1923,6 +1947,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     if (cmd == "LOAD") {
         if (!need(2, "LOAD <file> [AT <addr>] [RAW <id>]")) return true;
+        a[1] = unquote(a[1]);  // and every message below now names the file, not the quote
         uint32_t at = 0;
         bool haveAt = false;
         for (size_t i = 2; i + 1 < a.size(); ++i)
@@ -2008,6 +2033,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     if (cmd == "SAVE") {
         if (!need(3, "SAVE <file> <range> [RAW <id>]")) return true;
+        a[1] = unquote(a[1]);
         uint32_t lo, hi;
         if (!range(a[2], lo, hi, out)) return true;
         Image img;

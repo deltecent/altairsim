@@ -37,6 +37,13 @@ void Uart1602::connect(std::unique_ptr<ByteStream> s) {
     // EVERY endpoint gets the transform chain, whatever it is (DESIGN.md 7.2) --
     // including the null one, so `filter_` is never dangling and the filter properties
     // never vanish from SHOW just because nothing is plugged in.
+    //
+    // KEEP the chain across a reconnect -- see FilterStream::reconnect(). Building a
+    // new one here silently reset every transform on the line.
+    if (filter_) {
+        filter_->reconnect(std::move(s));
+        return;
+    }
     auto f  = std::make_unique<FilterStream>(std::move(s));
     filter_ = f.get();
     stream_ = std::move(f);

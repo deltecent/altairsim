@@ -129,9 +129,17 @@ void Mc6850::programLine() {
 void Mc6850::connect(std::unique_ptr<ByteStream> s) {
     // EVERY endpoint gets the transform chain, whatever it is (DESIGN.md 7.2).
     // The filter is not a console feature that a socket has to do without.
-    auto f   = std::make_unique<FilterStream>(std::move(s));
-    filter_  = f.get();
-    stream_  = std::move(f);
+    //
+    // KEEP the chain across a reconnect -- see FilterStream::reconnect(). Building a
+    // new one here silently reset every transform on the line, which is the same bug
+    // the comment below is at pains to avoid for the pins.
+    if (filter_) {
+        filter_->reconnect(std::move(s));
+    } else {
+        auto f  = std::make_unique<FilterStream>(std::move(s));
+        filter_ = f.get();
+        stream_ = std::move(f);
+    }
 
     // A NEW LINE STARTS WHERE THE CARD ALREADY IS. The 6850 does not reset because
     // you plugged something into it: RTS is still whatever bits 5-6 say, the baud is

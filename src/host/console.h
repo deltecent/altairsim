@@ -146,6 +146,19 @@ public:
     // knows the guest has finished answering and it is safe to leave.
     uint64_t written() const { return written_; }
 
+    // How many times the guest has ASKED FOR A BYTE THAT WILL NEVER COME -- polled the
+    // keyboard, after the input ended, and found it empty. This is the difference
+    // between a guest that is BUSY and a guest that is BEGGING, and CONSOLE mode cannot
+    // work without it.
+    //
+    // "Silent" is not the same as "finished". A cassette bootstrap is silent for the
+    // whole of a 4,439-byte tape -- it is reading the ACR and has nothing to say -- and
+    // a scripted run that took silence for completion killed the machine three slices
+    // into the load, at PC=0003, before BASIC ever printed a character. That is exactly
+    // what this counter exists to prevent: it only moves when the guest is waiting on
+    // the KEYBOARD, so a busy machine can be as quiet as it likes.
+    uint64_t starved() const { return starved_; }
+
     std::vector<Property> properties();
 
 private:
@@ -165,6 +178,7 @@ private:
     int      rawDepth_ = 0;
     uint64_t written_  = 0;
     uint64_t dropped_  = 0;
+    mutable uint64_t starved_ = 0;  // counted in readable(), which is const -- see below
 
     // MUTABLE, and they earn it. `readable()` is const because "is a character
     // ready?" is a question, not a mutation -- but ANSWERING it means going to the

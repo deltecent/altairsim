@@ -46,6 +46,21 @@ public:
 
     ByteStream* inner() { return inner_.get(); }
 
+    // SWAP THE ENDPOINT AND KEEP THE TRANSFORMS. This is the whole claim in the
+    // header comment above, and it is only true if the chain SURVIVES a CONNECT.
+    //
+    // Both chips used to build a fresh FilterStream every time something was plugged
+    // in, which quietly reset upper/strip7*/crlf/echo/bell/bsdel to their defaults --
+    // so `SET sio0 UPPER=ON` followed by `CONNECT sio0:tty socket` lost the fold, with
+    // no message, and a machine file that set a transform BEFORE `connect` (the loader
+    // applies keys in file order) had it thrown away before the machine ever started.
+    //
+    // The transforms belong to the LINE, not to what is on the far end of it. The
+    // 6850's own connect() already says so about its pins -- "a new line starts where
+    // the card already is" -- and the chain is no different: unplugging a Teletype and
+    // plugging in a VT100 does not unsolder anything.
+    void reconnect(std::unique_ptr<ByteStream> inner) { inner_ = std::move(inner); }
+
     // The chain is transparent about what it wraps: SHOW says `console`, not
     // `filter(console)`. The filter is not a thing the operator plugged in.
     std::string describe() const override { return inner_->describe(); }
