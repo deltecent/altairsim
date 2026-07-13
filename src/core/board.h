@@ -157,6 +157,8 @@ public:
     // and any page where the answer is not uniform is served by the exact,
     // uncached two-pass path -- combinational PHANTOM* settle and all. You lose
     // nothing but the cache, and only on the pages you actually touch.
+    //
+    // ---- NO SHIPPING BOARD OVERRIDES THIS TODAY. See the note under wantsSnoop(). ----
     virtual bool decodeIsPageUniform() const { return true; }
 
     // Do I WATCH cycles I do not answer? Almost no card does, so this is false and
@@ -164,6 +166,34 @@ public:
     // virtual calls to reach a do-nothing default. Say true and you get every
     // cycle, exactly as before. The Tarbell says true: it releases PHANTOM* the
     // first time it sees a memory read with A5 high.
+    //
+    // ---------------------------------------------------------------------------
+    // NO SHIPPING BOARD OVERRIDES wantsSnoop() OR decodeIsPageUniform(), AND THAT IS
+    // SAID OUT LOUD ON PURPOSE.
+    //
+    // The only card that needs either is the TARBELL, and the Tarbell is DEFERRED
+    // (Patrick, 2026-07-12 -- see docs/boards/tarbell-sd.md, which says why). The only
+    // thing overriding them today is `TarbellBoot`, a fixture in tests/test_phantom.cpp.
+    //
+    // So: is this dead machinery? DiskImage's own header lays down the rule --
+    // "a virtual left in place for a possibility the owner has RULED OUT is not
+    // extensibility; it is a hook that will never be pulled" -- and that is why
+    // readSector() is not virtual. The test here is RULED OUT, not merely absent:
+    //
+    //   - IMD/TD0 were ruled out. "I will never support IMD files." Hook deleted.
+    //   - The Tarbell is DEFERRED, which is a different word. The card exists, the
+    //     hardware does this, the behaviour is fully sourced from its manual, and both
+    //     hooks are EXECUTED by a test that fails if you break them.
+    //
+    // A hook that is specified, sourced and tested is not speculation -- it is a
+    // feature whose only consumer is currently on the shelf. Deleting it would delete
+    // the only executable description we have of how a card that shadows low memory
+    // actually behaves, and we would have to rediscover the combinational-release trap
+    // (DESIGN.md 4.2.1) from scratch. That trap cost a day the first time.
+    //
+    // If the Tarbell is ever ruled OUT rather than deferred, delete both, and delete
+    // tests/test_phantom.cpp with them. Not before.
+    // ---------------------------------------------------------------------------
     virtual bool wantsSnoop() const { return false; }
 
     virtual uint8_t read(const BusCycle&) { return 0xFF; }

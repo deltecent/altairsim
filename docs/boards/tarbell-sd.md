@@ -1,8 +1,47 @@
 # Tarbell single-density floppy disk controller
 
+# ⛔ NOT BUILT — DEFERRED (Patrick, 2026-07-12)
+
+> *"Let's remove the Tarbell for now, but retain what was learned about it."*
+>
+> **There is no `dcdd`-style board for this card and there never was.** `TarbellBoot` in
+> `tests/test_phantom.cpp` is a **test fixture** — it proved the *bus API* could support the card,
+> not that the card exists. `src/boards/tarbell-sd.{h,cpp}` has never existed. Building it means
+> **both halves from scratch**, not "bolt an FDC onto the existing card."
+>
+> **Why it was dropped:** the card's shadow mechanism is **not PHANTOM\***. It is a **July 1977,
+> pre-IEEE-696** design that asserts **STATUS DISABLE\*** and drives the S-100 status lines itself
+> (see below). Modelling that honestly means building S-100 status lines *in order to have something
+> to disable*; modelling it as PHANTOM\* works and is observationally identical, but it is an
+> abstraction we would be carrying under the card's name. Rather than pick between an anachronism and
+> a pile of new bus machinery for one card, it waits. **The 88-DCDD is the disk this project needs,
+> and it is built and booting.**
+>
+> **This file is the retained learning, and it is the expensive part.** The spec below is complete
+> and fully sourced from the manual — it is what a rebuild would start from, and it already contains
+> two things that a *reasoned* implementation would have got wrong (`RST*` is a drive line, not the
+> chip's reset; `E52` is the second drive-select bit, not a spare). **Do not delete it to tidy up.**
+
+## What it left behind in the bus, and why that stays
+
+The card is dropped; the design it forced is not, because it was **right** and it is **tested**:
+
+| | Still used by | Verdict |
+|---|---|---|
+| **PHANTOM\*** — assert + `honors_phantom = none\|read\|all` | **The memory board**, for an ordinary ROM-shadows-RAM card. All three straps are covered by `tests/test_memory.cpp`. | **Keep.** Never was Tarbell-only. |
+| **`Board::snoop()` / `wantsSnoop()`** | **Nothing that ships.** Only `TarbellBoot`. | **Keep, honestly labelled.** It is *specified and executed*, not speculative — see `board.h`. |
+| **`decodeIsPageUniform()`** | **Nothing that ships.** Only `TarbellBoot` (A5 splits page 0). | Same. |
+| **`startSector`** (§7.3) | **The 88-DCDD**, which sets it to 0 *because* something else sets it to 1. | **Keep.** The off-by-one is only visible as a parameter. |
+
+The last row is the point: half of what this card taught is load-bearing in the **DCDD**, which does
+exist. The DCDD numbers sectors from zero, reads status inverted, and stores 137-byte slots — and
+every one of those facts is only *meaningful* because the Tarbell is the card that does the opposite.
+Keep the contrast.
+
+---
+
 Board **#1011**, Tarbell Electronics, first shipped **2 July 1977**. One card, two things: a
-**32-byte boot PROM** that shadows low memory, and an **FD1771B-01** floppy controller. The PROM half
-was built first because it is the card that settles what PHANTOM\* means for the whole bus.
+**32-byte boot PROM** that shadows low memory, and an **FD1771B-01** floppy controller.
 
 **Sourced from `reference/Tarbell_Floppy_Disk_Interface_Manual.pdf`** (78 pp, real text layer), which
 also reprints the FD1771 data sheet as its §7-2. Page citations below are **PDF pages**.
