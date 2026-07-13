@@ -42,4 +42,30 @@ void test_roms() {
     CHECK(flat[3] == 0x11 && flat[4] == 0x00 && flat[5] == 0x2C, "FF03: LXI D,2C00");
     CHECK(flat[6] == 0x0E && flat[7] == 0xEB, "FF06: MVI C,EB  (235 bytes to copy)");
     CHECK(flat[0x10] == 0xC3 && flat[0x11] == 0x00 && flat[0x12] == 0x2C, "FF10: JMP 2C00");
+
+    // ---- MDBL: the MINIdisk boot loader, and it is NOT the same PROM ----------------
+    //
+    // Same address, same size, same self-relocating trick -- and it will not read an 8"
+    // floppy any more than DBL will read a minidisk. The two are one instruction apart at
+    // FF03 and a whole controller apart in fact, which is exactly why they both get a CRC
+    // here: put the wrong one at FF00 and nothing announces it. The machine just hangs.
+    const BuiltinRom* mdbl = findRom("mdbl");
+    CHECK(mdbl != nullptr, "builtin:mdbl exists");
+    if (!mdbl) return;
+
+    Image m;
+    CHECK(decodeRom(*mdbl, 0, m, err), "MDBL.HEX decodes (every record checksums)");
+    CHECK(m.size() == 256, "MDBL is exactly 256 bytes");
+    CHECK(m.lo() == 0xFF00 && m.hi() == 0xFFFF, "MDBL lives at FF00-FFFF, same socket as DBL");
+    CHECK(m.contiguous(), "MDBL has no gaps");
+
+    auto mf = m.flat();
+    CHECK(crc32(mf) == 0x3BC20ADDu, "MDBL CRC32 == 3BC20ADD (docs/roms.md)");
+
+    // The same opening move as DBL -- copy myself into RAM, because a 1702A is too slow to
+    // run from -- but to 4C00, not 2C00, and 227 bytes, not 235. THAT is the whole tell.
+    CHECK(mf[0] == 0x21 && mf[1] == 0x13 && mf[2] == 0xFF, "FF00: LXI H,FF13  (same as DBL)");
+    CHECK(mf[3] == 0x11 && mf[4] == 0x00 && mf[5] == 0x4C, "FF03: LXI D,4C00  -- and DBL says 2C00");
+    CHECK(mf[6] == 0x0E && mf[7] == 0xE3, "FF06: MVI C,E3  (227 bytes -- DBL copies 235)");
+    CHECK(mf != flat, "so they are DIFFERENT PROMS, and the CRCs above are what keep them apart");
 }

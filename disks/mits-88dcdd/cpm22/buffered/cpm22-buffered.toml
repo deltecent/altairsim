@@ -1,0 +1,95 @@
+# Altair track-buffered CP/M 2.2b v2.3, on an 8" floppy.
+#
+#     altairsim disks/mits-88dcdd/cpm22/buffered/cpm22-buffered.toml
+#     -> 56K CP/M 2.2b v2.3
+#        For Altair 8" Floppy
+#        A>
+#
+# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
+# not against this file.
+#
+# THIS FILE IS A DELTA. `base = "default"` brings the machine -- front panel, 8080,
+# 88-2SIO console at 0x10, 88-DCDD at 0x08 with four empty drives, 56K of RAM, DBL boot
+# PROM at FF00 -- which IS the CP/M Altair. All this file adds is the floppy in drive 0,
+# because that is the only thing that makes this machine different from the default one.
+# See machines/default.toml for what the base actually contains, or just run `BOARDS`.
+#
+# THE DISK IMAGE IS NOT IN GIT. `*.dsk` is in .gitignore -- deliberately, they are large
+# and not ours to redistribute -- so there is NO UNDO on this file. CP/M writes to A: for
+# anything you create, and drive 0 is mounted read/write because that is what a real
+# machine is; a read-only A: is a CP/M that fails on its first PIP. If you are about to
+# test writes in anger, copy the image first, or add `readonly = true` below.
+#
+# THE SOURCES ARE SITTING BESIDE THIS FILE -- BOOT.ASM and BIOS.ASM, Mike Douglas's own,
+# and the very listings the 88-DCDD was built from (docs/boards/mits-dcdd.md cites them as
+# authoritative). Nothing here is a guess.
+
+[machine]
+name = "cpm22-buffered"
+base = "default"
+
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0) -- a machine
+# that should start says so with the operator's own keystroke, and on a disk Altair that
+# keystroke was EXAMINE FF00 / RUN.
+#
+# DBL reads sectors 0 and 2 of track 0 into RAM; THAT loader (BOOT.ASM, beside this file)
+# pulls the CP/M image into high memory and jumps into the BIOS.
+#
+# RUN hands the GUEST the keyboard, so you land at CP/M's prompt. ATTN (^E) gets you back
+# to the monitor, and the guest cannot take it from you -- which matters, because ^C
+# belongs to CP/M (it is warm boot) and CP/M is entitled to read it.
+startup = ["RUN FF00"]
+
+# THE DISK. `id` with NO `type` means "the card already in this machine" -- the base's
+# 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a second
+# controller.
+#
+# NO `media` KEY, AND THE REASON IS SHARPER HERE THAN ON THE 8 MB DISK. This image is
+# 337,664 bytes and an 8" floppy is 77 x 32 x 137 = 337,568 -- it does NOT match. It is
+# XMODEM-padded: the file came off a real machine through a protocol that pads to a block
+# boundary, and the 96 bytes on the end are the padding. The card knows that (sizeMatches()
+# in src/boards/mits-88dcdd.cpp) and probes it as `8in` anyway. A strict compare would
+# reject the only 8" disks we have.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+
+  # B: is left empty. There is no blank 8" image in the tree to put in it -- FORMAT one
+  # from inside CP/M, or drop your own in:
+  #
+  #     MOUNT dsk0:drive1 "my-scratch.dsk"
+
+# THE 24K MACHINE, which is the other image in this directory and the one place this file
+# would need to say something about memory.
+#
+# 56K is what the base already is, and it is exactly what cpm22b23-56k.dsk was built for
+# -- arithmetic straight out of BOOT.ASM:
+#
+#     MEMSIZE  equ 56              BIOSLEN equ 1900h   (8" floppy; a minidisk is 1000h)
+#     CCPBASE  = 56*1024 - 1900 - 0E00 - 0800 = B100
+#     BIOSBAS  = B100 + 0800 + 0E00           = C700   ...and C700 + 1900 = E000
+#
+# The BIOS ends at exactly E000, which is where the default machine's RAM stops. They
+# agree, so this file says nothing about memory at all.
+#
+# cpm22b23-24k.dsk is the same CP/M relocated for a smaller machine: the same sum gives
+# BIOSBAS 4700 and an end of 6000, so it needs 24K and it will not boot in 56K. To run it,
+# mount it above INSTEAD of the 56K image, and re-fit the memory card:
+#
+#     [[board]]
+#     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,
+#     id   = "mem0"        # which is what you want: regions are a LIST, and adding a
+#     fill = "random"      # second one would OVERLAP the base's 56K, not replace it.
+#
+#       [[board.region]]
+#       type = "ram"
+#       at   = 0000
+#       size = "24K"
+#
+#       [[board.region]]
+#       type  = "rom"      # ...and you must re-state the PROM, because you replaced the
+#       at    = FF00       # whole card. Leave it out and there is nothing at FF00 to RUN.
+#       mount = "builtin:dbl"

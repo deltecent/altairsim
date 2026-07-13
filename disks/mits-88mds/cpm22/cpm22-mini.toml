@@ -1,0 +1,80 @@
+# CP/M 2.2b on a 5.25" Altair Minidisk, in an 88-MDS.
+#
+#     altairsim disks/mits-88mds/cpm22/cpm22-mini.toml
+#     -> 56K CP/M 2.2b v2.3
+#        For Altair Mini Disk
+#        A>DIR
+#
+# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory, not
+# against this file.
+#
+# THE DISK IMAGES ARE NOT IN GIT -- download them first. See README.md, beside this file.
+#
+# This is a delta on `minidisk`, which is the MACHINE: an 88-MDS at 08, four drives, 56K, and
+# MDBL in the PROM socket (machines/minidisk.toml -- and read it, the header explains why the
+# 8" card has to come OUT and why the boot PROM is an interesting story). Everything left to
+# say here is which disks are in the drives, which is all a config file should ever have to
+# say.
+
+[machine]
+name = "cpm22-mini"
+base = "minidisk"
+
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0) -- a machine that
+# should start says so with the operator's own keystroke, and on a disk Altair that keystroke
+# was EXAMINE FF00 / RUN.
+#
+# MDBL relocates itself to 4C00, steps out to track 0, and reads sectors 0 and 2. THAT loader
+# (BOOT.ASM, beside this file) pulls the CP/M image out of the system tracks into high memory
+# and jumps into the BIOS.
+#
+# RUN hands the GUEST the keyboard, so you land at CP/M's prompt. ATTN (^E) gets you back to
+# the monitor, and the guest cannot take it from you -- which matters here, because ^C belongs
+# to CP/M (it is warm boot) and CP/M is entitled to read it.
+startup = ["RUN FF00"]
+
+[[board]]
+id = "mds0"
+
+  # A: the system disk. NO `media` KEY, AND THAT IS DELIBERATE: the file is 76,800 bytes and
+  # the card PROBES it. 35 x 16 x 137 = 76,720, plus the 80 bytes XMODEM padded on to reach a
+  # 128-byte boundary. Geometry probing belongs to the BOARD (DESIGN.md 7.3).
+  #
+  # This is the format that needs the pad tolerance MOST, and the doc used to claim the
+  # opposite: 76,720 is not a multiple of 128 (it is 599.375 blocks), so EVERY real minidisk
+  # image is padded. There was simply no minidisk image in the tree to disprove it with.
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88mds/cpm22/CPM56K-1.DSK"
+
+  # B: the second disk of the set. A minidisk holds 71,680 bytes -- a fourteenth of an 8"
+  # floppy -- so CP/M for it SHIPS AS TWO DISKS. MBASIC, the word processor and the sweep
+  # utility are over here.
+  [[board.drive]]
+  unit  = 1
+  mount = "disks/mits-88mds/cpm22/CPM56K-2.DSK"
+
+  # WANT THE REAL MOTOR? Uncomment. The card takes a second to spin a stopped drive up and
+  # stops it after 6.4 seconds of neglect -- which is why the period BIOS pokes TIMER RESET
+  # before every read. CP/M boots and runs either way; `free` is the default because flat out
+  # is the default here for the same reason it is on the CPU (machines/default.toml).
+  #
+  # motor = "real"
+
+# NOTHING ABOUT THE MEMORY IS SAID HERE, and it is worth saying why not. The base is 56K, and
+# 56K is what CPM56K-1.DSK was built for -- the BIOS is linked to the top of RAM, so the disk
+# and the machine have to agree or CP/M loads into nothing. To boot the 24K images beside it
+# (CPM24K-1.DSK), replace the memory card with a 24K one and keep the ROM:
+#
+#     [[board]]
+#     type = "memory"
+#     id   = "mem0"
+#     fill = "random"
+#       [[board.region]]
+#       type = "ram"
+#       at   = 0000
+#       size = "24K"
+#       [[board.region]]
+#       type  = "rom"          # must be re-stated -- you replaced the whole card
+#       at    = FF00
+#       mount = "builtin:mdbl"

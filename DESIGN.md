@@ -996,7 +996,7 @@ A chip knows nothing about S-100. It has a clock, some pins, and (if it moves by
   So units are named and typed — `MOUNT dj:drive0`, `MOUNT dj:rom0`, `CONNECT dj:tty` — and **the kind is checked**: mounting a disk image onto a serial port is an error with a sentence explaining it. The integer scheme could not be made safe, which is why it is gone: with a flat namespace, `MOUNT dj:4` on a serial unit can only *fail*, never *explain*, because the board has nothing left to distinguish 4-the-drive from 4-the-port. `SHOW <id>` lists the units, and it reads `Board::units()` — the same list MOUNT reads, so they cannot disagree.
 - Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `file:path` | `null`. **Built so far: `console`, `null`, `loopback`.** The resolver **names the unbuilt ones when you ask for one**, rather than failing as though you had mistyped it — a user who types `socket:2323` has a specific expectation and deserves to be told it is not here yet, not left wondering about their syntax.
 - Exactly one unit may hold `console` at a time; the monitor arbitrates. **Connecting a second STEALS it and says who from** — two boards reading one keyboard would each get half the characters, which is not hypothetical: it is what happens the first time a machine has two 2SIOs and you forget.
-- Disk images are buffered and written back. **The board** probes the image size against the formats *it* knows and declares the layout to `DiskImage` (§7.3); `media = "8in" | "minidisk" | "fdc8mb"` forces the choice when the size is ambiguous. `readonly` supported (the real board's write-protect).
+- Disk images are buffered and written back. **The board** probes the image size against the formats *it* knows and declares the layout to `DiskImage` (§7.3); `media = ...` forces the choice when the size is ambiguous, and **the choices belong to the card**: an 88-DCDD takes `8in` and `fdc8mb`, an 88-MDS takes `minidisk`. Naming another card's medium is an error, not a probe — the two controllers are register-compatible (`docs/boards/mits-88mds.md`), so nothing else would have caught it. `readonly` supported (the real board's write-protect).
 
 ---
 
@@ -1219,6 +1219,38 @@ Three things fall out of this, and they are the reason it is the right shape:
 - **The config language and the script language become one language.** A `startup` entry is an ordinary monitor command, so anything you can type, a config can do — and `altairsim -s script.cmd` and `CONFIG LOAD` stop being two different worlds.
 - **`BOOT`'s special-casing disappears.** No verb needs to know what a "boot device" is, and a new disk controller written next year needs no monitor change to be bootable.
 - **It is transparent.** `SHOW MACHINE` prints the startup commands; `CONFIG SAVE` round-trips them verbatim. Nothing happens that the user cannot see written down.
+
+**"Anything you can type" has to be literally true, or it is a slogan.** A `startup` entry is a command line, and a command line **quotes its filenames** — the monitor's tokenizer requires it, because every period artifact in the tree has a space in its name (`4K BASIC Ver 3-1.tap`). For a long time the array parser toggled on every `"` with no escape handling, so `MOUNT acr0:tape \"...\"` was silently cut at the backslash and the machine came up with an empty recorder. The one thing `startup` exists for could not be expressed. `\"` and `\\` are now understood on both sides — and **any other escape is refused rather than quietly eaten**, so a Windows path written with single separators fails here instead of somewhere else, later, as a shorter and wrong path.
+
+### 10.0.2 `base` — a config file may be a DELTA on another machine
+
+A CP/M machine is *the default Altair with a floppy in drive 0*. Before `base`, saying that took a five-card backplane restated by hand — and **hand-copying a backplane is a defect class, not a chore**: the two CP/M files that motivated this shipped with the 2SIO left out, booted CP/M into a terminal that was not there, and looked fine doing it.
+
+```toml
+[machine]
+name = "cpm22-8mb"
+base = "default"          # fp0, cpu0, sio0, dsk0 (88-DCDD), mem0 (56K + DBL PROM)
+
+startup = ["RUN FF00"]
+
+[[board]]                 # no `type` -> the card ALREADY in the machine with this id
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
+```
+
+**The base is named, never assumed** (Patrick, 2026-07-13). An implicit default was the other option and it is the wrong one: `4k` is a machine **defined by what it does not have**, so it would have to *remove* a floppy controller, a 2SIO and 52K of RAM to describe a bare 1975 Altair, and **silence would stop meaning "nothing"**. A file with no `base` is a complete machine, exactly as before; one line at the top tells you what a delta starts from, and without that line the file *is* the backplane.
+
+The four `[[board]]` forms — **add** (`type` + a new id), **replace** (`type` + an id from the base), **modify in place** (no `type`), and **remove** (`remove = true`) — are documented in `docs/config.md`. Two of them are load-bearing:
+
+- **Replace exists because a list cannot be amended into a smaller one.** Regions are a *list*, so adding a 24K region to a base's 56K memory board would **overlap** it — two boards driving `0000–5FFF`, which is contention — not shrink it. Naming a card's `type` means *"this is the whole card now."*
+- **A duplicate id within one file is still an error**, and replace is scoped around that check on purpose. A second `[[board]]` with a copy-pasted id is a **typo**; the same thing against a base is **intent**. Conflating them would discard the one diagnostic that catches the commonest mistake in a hand-written machine file.
+
+**`CONFIG SAVE` never writes a `base`.** It writes the backplane it can see — every card, inherited or not — so a saved machine stands on its own. That is the only honest thing it can do, because a base may be a *file*, and a file can change under you.
+
+**This is what makes `default` a contract.** The machine `base = "default"` starts from is a front panel, an 8080, an 88-2SIO console, an **88-DCDD**, 56K, and the DBL PROM. Adding a card to it is no longer free — other files now depend on what is in it.
 
 > **Caution, and it must be in the docs:** `CONFIG LOAD` on a machine file now *executes commands*. Loading a `.toml` from an untrusted source runs whatever is in its `startup` list. Keep `startup` to monitor commands only, and say so out loud.
 

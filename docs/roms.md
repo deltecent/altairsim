@@ -31,7 +31,40 @@ So **every built-in ROM has a row in the table below**, and no ROM is embedded w
 | `builtin:` name | Part | Size | CRC32 | Source | Verified against |
 |---|---|---|---|---|---|
 | `dbl` | Altair Disk Boot Loader 4.1 | **256 B** (`FF00`–`FFFF`) | **`8E658905`** | `roms/DBL/` — `DBL.ASM` / `DBL.HEX` / `DBL.PRN`. Disassembled by **Martin Eberhard, 4 March 2012**, from an EPROM labeled "DBL 4.1" found socketed in a **MITS Turnkey board**. | `DBL.PRN` listing, **all 256 bytes**, byte-for-byte. |
+| `mdbl` | Altair **Mini**disk Boot Loader | **256 B** (`FF00`–`FFFF`) | **`3BC20ADD`** | `roms/MDBL/` — `MDBL.ASM` / `MDBL.HEX` / `MDBL.PRN`. Disassembled by **M. Eberhard, 5 May 2014**, from MITS EPROMs. Fetched 2026-07-13 from deramp.com (`.../altair/software/roms/orginal_roms/`). | Its own `MDBL.PRN` listing. **And it boots**: `altairsim minidisk` loads CP/M 2.2b off a real period `.DSK` through this PROM and reaches `A>`. |
 | `altmon` | ALTMON 1.3 — 1K Altair monitor | **1013 B** (`F800`–`FBF4`) | **`705203BE`** | `roms/ALTMON/` — `ALTMON.ASM` / `ALTMON.HEX` / `ALTMON.PRN`. **Mike Douglas**, 2016–2024, based on the Vector Graphic 2.0C monitor, reworked to drive an **88-2SIO**. | Its own `ALTMON.ASM` source, which is in the repository. **And it runs**: `altairsim altmon` prints its banner, takes commands, and dumps memory. |
+
+> ### `dbl` and `mdbl` are more interchangeable than they look, and finding that out was the point
+>
+> DBL is the 8″ floppy's bootstrap and MDBL is the minidisk's. Both live at `FF00`, both are 256
+> bytes, and both open by copying themselves into RAM — a 1702A EPROM was too slow to execute
+> from — differing in where they land and how much they move:
+>
+> ```
+> DBL   FF00  21 13 FF   LXI H,FF13     MDBL  FF00  21 13 FF   LXI H,FF13
+>       FF03  11 00 2C   LXI D,2C00           FF03  11 00 4C   LXI D,4C00
+>       FF06  0E EB      MVI C,0EBH           FF06  0E E3      MVI C,0E3H
+> ```
+>
+> MDBL relocates to `4C00` rather than `2C00` because **Minidisk BASIC loads low** and would land
+> on top of it.
+>
+> **I expected DBL to be unable to read a minidisk. It reads one perfectly well.** It went into
+> `machines/minidisk.toml` as a negative control — an 8″ PROM on a 5.25″ machine, which surely
+> hangs — and CP/M booted and listed both drives. Mike Douglas's own `BOOT.ASM`, the loader on
+> that very disk, says why in its header: *"This code is loaded from sectors 0 and 2 into RAM by
+> the disk boot loader PROM (DBL)."* DBL interleaves 2:1, so it reads sector 0 and then sector 2 —
+> exactly where the loader sits — and DBL's `cHDLOAD` arrives at an 88-MDS as `TIMER RESET`, which
+> is harmless.
+>
+> A bootstrap written for one controller runs on the other **because MITS built the 88-MDS to
+> present the 88-DCDD's programming model** (`docs/boards/mits-88mds.md`). That is precisely the
+> compatibility that let a minidisk hide inside the 8″ controller in this tree for months. So the
+> minidisk acceptance test's negative control swaps the **card**, not the PROM — that is the
+> variable that actually matters.
+>
+> Use `mdbl` on a minidisk machine anyway: it is the PROM MITS shipped for that subsystem
+> (88-MDS manual §1-3.B), and it is the one that will boot Minidisk BASIC when that lands.
 
 **`altmon` is the one ROM here that is verified by *execution*, not just by listing.** It is not a data structure we assert things about — it is a program, written for real hardware by someone who owns one, and it either works on our 8080 and our 2SIO or it does not. It does:
 

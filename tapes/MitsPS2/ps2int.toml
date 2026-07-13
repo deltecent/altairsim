@@ -1,0 +1,37 @@
+# MITS Programming System II, WITH INTERRUPTS -- tape in, loader in, running.
+#
+#     altairsim tapes/MitsPS2/ps2int.toml
+#     ->   ?
+#
+# RUN IT FROM THE REPO ROOT. The paths below are resolved against the PROCESS's working
+# directory, not against this file.
+#
+# WHAT THE INTERRUPTS BUY YOU is exactly one thing, and it is the ReadMe's own promise:
+#
+#     "By enabling interrupts, a Ctrl-C can be typed to return control from a program
+#      directly back to the monitor."
+#
+# Type a bogus command in ps2.toml and the machine is dead -- the monitor decides the word
+# is a PROGRAM NAME and hunts the cassette for it forever, and nothing can interrupt it.
+# Type one here and Ctrl-C gets you your prompt back. That is the whole difference, and it
+# costs one card (an 88-VI/RTC) and one sense switch (A9, down).
+#
+# THIS FILE IS THE OPERATOR, AND `base` IS THE MACHINE. machines/ps2int.toml has the
+# hardware and the argument for it -- in particular why the 88-VI's `rtc_interrupt` is
+# strapped to "none", which is the load-bearing line in that file and is not a bug.
+#
+# `SHOW BUS IRQ` shows you the whole chain once it is running: the console's VI7 strap, the
+# line it pulls, and who wins.
+
+[machine]
+name = "ps2int-tape"
+base = "ps2int"
+
+# The same tape and the same loader as ps2.toml -- the 4K BASIC 3.2 one (`lxi h,0FAEh`),
+# NOT LDR8K32.HEX. The 0xAE leader byte both tapes share is the LOW half of the load
+# address and settles nothing; PS2-MON.TAP's second stage is assembled for page 0F.
+startup = [
+  "MOUNT acr0:tape \"tapes/MitsPS2/PS2-MON.TAP\"",
+  "LOAD \"tapes/MitsPS2/LDRPS2.HEX\"",
+  "RUN 0",
+]

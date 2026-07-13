@@ -1,0 +1,59 @@
+# Burcon CP/M 2.2 for the Altair 8800, 56K.
+#
+#     altairsim disks/mits-88dcdd/cpm22/burcon/cpm22-burcon.toml
+#
+# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
+# not against this file.
+#
+# A DELTA. `base = "default"` brings the whole machine -- front panel, 8080, 88-2SIO
+# console at 0x10, 88-DCDD at 0x08 with four empty drives, 56K of RAM, DBL boot PROM at
+# FF00 -- and all this file adds is the floppy in drive 0. See machines/default.toml for
+# what is in the base, or just run `BOARDS`.
+#
+# THE DISK IMAGE IS NOT IN GIT. See README.md beside this file for where to get it. CP/M
+# writes to A: for anything you create, and drive 0 is mounted read/write because that is
+# what a real machine is -- so there is no undo. Copy the image before testing writes.
+
+[machine]
+name = "cpm22-burcon"
+base = "default"
+
+# The boot PROM IS the boot command -- there is no BOOT verb (DESIGN.md 10.0). DBL reads
+# sectors 0 and 2 of track 0, and that loader pulls CP/M into high RAM.
+startup = ["RUN FF00"]
+
+# `id` with no `type` = the card ALREADY in the machine (the base's 88-DCDD), so this puts
+# a disk in an existing drive rather than fitting a second controller.
+#
+# No `media` key: the card probes it. 337,664 bytes is the XMODEM-padded 8" floppy
+# (77 x 32 x 137 = 337,568 plus the protocol's block padding), and the board knows that.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88dcdd/cpm22/burcon/cpm56k.dsk"
+
+# THE 48K IMAGE is the other disk in this directory, and it is the one place this file
+# would need to say something about memory. cpm48k.dsk is the same CP/M sized for a 48K
+# machine, and it will NOT boot in 56K -- the BIOS lands at MSIZE*1024 - BIOSLEN, so the
+# size of the RAM and the size CP/M was built for must agree. To run it, mount it above
+# instead, and re-fit the memory card:
+#
+#     [[board]]
+#     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,
+#     id   = "mem0"        # which is what you want: regions are a LIST, and adding a
+#     fill = "random"      # second one would OVERLAP the base's 56K, not replace it.
+#
+#       [[board.region]]
+#       type = "ram"
+#       at   = 0000
+#       size = "48K"
+#
+#       [[board.region]]
+#       type  = "rom"      # ...and re-state the PROM, because you replaced the whole card.
+#       at    = FF00       # Leave it out and there is nothing at FF00 to RUN.
+#       mount = "builtin:dbl"
+#
+# Or run MOVCPM from inside CP/M and SYSGEN it back, which is what the ReadMe tells you to
+# do and what a 1977 owner would have done.

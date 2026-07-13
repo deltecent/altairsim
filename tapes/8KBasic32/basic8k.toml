@@ -1,0 +1,30 @@
+# Altair 8K BASIC 3.2, with the tape in the recorder and the bootstrap toggled in.
+#
+#     altairsim tapes/8KBasic32/basic8k.toml
+#     -> MEMORY SIZE?
+#
+# RUN IT FROM THE REPO ROOT. The paths below are resolved against the PROCESS's working
+# directory, not against this file.
+#
+# THIS FILE IS THE OPERATOR, AND `base` IS THE MACHINE. machines/basic8k.toml describes the
+# HARDWARE -- the 2SIO console at 0x10, the ACR at 006, 16K of RAM, the sense switches at
+# 0x8C -- and stops there, because which cassette is in the recorder is not hardware. Read
+# that file for why every one of those numbers is what it is; `BOARDS` will tell you what
+# ended up in the backplane.
+#
+# What is left is what a human did: put the tape in, press PLAY (that is MOUNT), toggle in
+# the bootstrap, and run it from 0.
+
+[machine]
+name = "basic8k-tape"
+base = "basic8k"
+
+# The same three lines as tests/acceptance/basic8k.cmd, because a config file and a script
+# are the same language (docs/config.md).
+#
+# RUN hands the GUEST the keyboard, so you land at BASIC's prompt. ATTN (^E) is the way back.
+startup = [
+  "MOUNT acr0:tape \"tapes/8KBasic32/8K BASIC Ver 3-2.tap\"",
+  "LOAD \"tapes/8KBasic32/LDR8K32.HEX\"",
+  "RUN 0",
+]

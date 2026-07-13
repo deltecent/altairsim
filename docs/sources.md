@@ -38,7 +38,37 @@ period artifacts and test programs written for real silicon — not somebody's e
 | `Altair 8800 front panel schematic.pdf` | Schematic **880-106**, "Computer Front Panel Control" | `docs/boards/mits-frontpanel.md`, and **authoritative for the port FF decode**: the `sINP` + A8–A15 8-input NAND, and the three banks of 7405 buffers. **No text layer** — read it as a page image. |
 | `Altair 8800 Operators Manual.pdf` | MITS Altair 8800 Operator's Manual, **searchable** | The switch and LED inventory. Note it never uses the phrase "sense switch" — the Theory of Operation and the schematic are where that lives. |
 | `88-HDSK.pdf` | MITS 88-HDSK hard disk manual | Nothing yet — the board is M7. |
+| `FDC+ Manual.pdf` | Altair **FDC+** User's Manual, 23 pp, **real text layer**. v2.0, 26-Jan-2026. Fetched 2026-07-13 from deramp.com (`.../altair/hardware/fdc+/FDC+ Manual.pdf`). | `docs/boards/mits-dcdd.md`. The FDC+ is a modern *"100% compatible drop-in replacement"* for the 88-DCDD, so it is not a source for the original card's registers — but it **is** the authority on the **8 MB medium**, which is the one thing the period manuals cannot describe. §3.7.4: drive type **7**, and *"the 8Mb drive looks like an Altair 8 inch drive with 2048 tracks instead of 77."* It also documents the arrangement period software expects — **8 MB on drives A/B, ordinary 77-track floppies on C/D**, mixed on one controller — which is the real justification for the per-drive `Spindle`. |
 | `TurnKey Board.pdf` | MITS Turnkey Module manual | Nothing yet. But see `docs/boards/mits-frontpanel.md`: the Turnkey board switches its PROM out on an `IN` from port `0xFF`, which it **snoops** rather than answers — so it will not contend with the panel for the port. |
+| `88-MDS Minidisk Manual.pdf` | MITS 88-MDS Minidisk System manual, 110 pp. **No text layer** — read as page images. Fetched 2026-07-13 from deramp.com (`.../altair/hardware/minidisk/`). | `docs/boards/mits-88mds.md`, `src/boards/mits-88mds.{h,cpp}`. **Everything about the card**: the port map (p29), the status bits (pp. 30–31, and *"When a bit is True, it is a logic Ø"*), the control bits (pp. 31–32), the sector register (Table 3-B, p34), 300 RPM / 125 kbit/s / 64 µs a byte / 12.5 ms a sector (p4), the **6.4 s Disk Disable Timer** (p68 — a **4020** clocked by the sector pulse, so 12.5 ms × 512 = 6.4 s *exactly*), and the **1 second motor-on delay** (p58, p69). **⚠ IT CONTRADICTS ITSELF THREE TIMES** — see below. **And do not miss the unnumbered handwritten one-shot sheet bound in after p79** ("MINI DISK CONTROLLER BOARD TIMING", signed "Shep"): it is the complete 74123 timing table, with min/max, and it is not in the table of contents. |
+| `88-MDS Minidisk Schematics.pdf` | MITS 88-MDS schematics, 6 sheets. **No text layer, and the scan is too coarse to read most R/C values** — say so rather than guess. | `docs/boards/mits-88mds.md`, for **structure, not numbers**: the port decode is hard-wired (`74L30`/`74L10` gates annotated *"= 1 WHEN ADDRESS = 010₈ / 011₈ / 012₈"*, i.e. 08/09/0A, with **no address jumper anywhere on the controller**); the byte clock is divided down from the **S-100 2 MHz bus clock** (pin 49 → ÷2 → ÷8 → 125 kHz), not a crystal; the status buffers are **non-inverting 8T97** (the *signals* are active-low instead — same byte on the bus, different mechanism from the 88-DCDD's 7405s); and the motor-off timer is a **4020B ripple counter (IC B2)**, not a one-shot. |
+| `Minidisk Info from MITS.pdf` | MITS technical-information sheet, 1 p, **scanned**. | The system description: two controller boards, 71,680 formatted bytes, the **MDBL** and **DRWT** PROMs. **Wrong on the timer** — it says five seconds where the manual's engineering sections and two pieces of period software all say **6.4**. Marketing, not engineering. |
+
+## `disks/` — the CP/M images, and the listings that came with them
+
+`disks/` follows the same rule as `reference/`, and `.gitignore` enforces it as an **allowlist**:
+the disk images and the vendor ReadMes are **not in git** (20 MB, and not ours to redistribute),
+while the `.ASM` listings the boards were *built from* **are** — they are first-hand period
+artifacts, they are cited by path in `docs/boards/*.md`, and a citation to a file that is not in
+the tree is worthless.
+
+Every directory carries a `README.md` with the exact download URL and how to run it, so a fresh
+clone knows what it is missing and why. All of it is Mike Douglas's work, from **deramp.com**
+(verified 2026-07-13):
+
+| Directory | Source | Runs as |
+|---|---|---|
+| `mits-88dcdd/cpm22/buffered/` | `…/8_inch_floppy/CPM/CPM 2.2/CPM 2.2B/` | `cpm22-buffered.toml` → `56K CP/M 2.2b v2.3`. **`BOOT.ASM` + `BIOS.ASM` here are the 88-DCDD's authoritative source.** |
+| `mits-88dcdd/cpm22/8mb/` | `…/8_inch_floppy/CPM/CPM 2.2/FDC+ 8Mb CPM 2.2/` | `cpm22-8mb.toml` → `A0>`. Authoritative for the **8 MB medium** — which is the *same* hard-sector format, just 2048 tracks (see `docs/boards/mits-dcdd.md`). |
+| `mits-88dcdd/cpm22/burcon/` | `…/8_inch_floppy/CPM/CPM 2.2/Burcon CPM/` | `cpm22-burcon.toml` → `56K CP/M Version 2.2mits`, © 1980 Burcon. |
+| `mits-88dcdd/cpm22/lifeboat/` | `…/8_inch_floppy/CPM/CPM 2.2/Lifeboat CPM/` | `cpm22-lifeboat.toml` → Lifeboat `CONFIG` v4.8. A **48K** build, so it re-fits the memory card. |
+| `mits-88dcdd/cpm22/pcgetput/` | `…/8_inch_floppy/CPM/CPM 2.2/PCGET and PCPUT/` | No machine file — CP/M-side XMODEM tools. Already on both `.dsk` images above. |
+| `mits-88mds/cpm22/` | `…/minidisk/CPM 2.2/` | `cpm22-mini.toml` → `56K CP/M 2.2b v2.3 / For Altair Mini Disk / A>`. **A DIFFERENT CONTROLLER** — the 88-MDS, not the 88-DCDD. **`BOOT.ASM` + `BIOS.ASM` here are authoritative** for the minidisk's geometry (`MINIDSK`: 35 tracks, 16 sectors, `DATATRK` 4) and for the card's own account of itself. Ships as **two disks** because a minidisk holds a fourteenth of an 8″ floppy. |
+| `tarbell-sd/cpm22/buffered/` | `…/tarbell_floppy_controllers/single_density_controller/CPM 2.2B (track buffered)/` | **Nothing.** The Tarbell is not built. `BIOS (1).ASM` is kept only because `docs/boards/tarbell-sd.md` cites it for the grounded-E30 finding. |
+
+`tapes/` is **fully tracked** — a `.tap` is small, and the two BASIC tapes and `PS2-MON.TAP` are
+what the acceptance tests boot. The rule was never "media is untracked"; it is "*huge* media that
+is not ours is untracked."
 
 ## Traps, paid for once
 
@@ -59,6 +89,31 @@ Operation** and in **schematic 880-106**, and nowhere else. A plausible story ab
 switches feed the port would have been very easy to write and would have had a 50% chance of being
 backwards. See `docs/boards/mits-frontpanel.md`, which shows *why* it is the top eight (that buffer
 bank already existed, to serve EXAMINE).
+
+**A MANUAL CAN BE A FOSSIL OF THE MANUAL IT WAS EDITED FROM.** The 88-MDS manual was clearly written
+by editing the 88-DCDD's, and three of its numbers did not get changed:
+
+- **p45: *"a new byte of Write Data is requested every 32 microseconds."*** That is the **8″ card's**
+  rate. Everywhere else — p4, p30, p31, p33, p54, p60, and Figures 4-7 and 4-10 — says **64 µs**, and
+  125,000 bit/s ÷ 8 = 15,625 byte/s = 64 µs closes it arithmetically.
+- **pp. 27–28: the sample driver sends `MVI A,8 ; UNLOAD HEAD / OUT 9`** — on the bit **p32 of the same
+  manual calls "Not used"**, for a head **p31 of the same manual says is "always loaded when the Drive
+  is enabled."** There is no head solenoid on a minidisk. (p26 does it again: *"ENABLE WRITE WITHOUT
+  SPECIAL CURRENT"*, which is the 88-DCDD's D6, also "Not used" here.)
+- **The motor timer is 6.4 s, 6 s, and 5 s**, depending on which page you open — p31/p32/p68 vs. p3/p73
+  vs. the MITS marketing sheet. **6.4 wins because it is DERIVED**: p68 says the timer is a **4020**
+  ripple counter *"clocked every 12.5ms by the START OF SECTOR CLR pulse"*, and 12.5 ms × 512 = 6.4 s
+  exactly. A number you can compute beats two round numbers you cannot.
+
+**Prefer the number you can derive, then the schematic, then the tables, then the prose — and the
+sample code last of all.** The sample code is the *only* source here that is flatly, checkably wrong,
+and it is wrong in the most seductive way: it is real software that really ran.
+
+**AND THIS SIMULATOR MADE THE SAME MISTAKE, FOR THE SAME REASON.** The minidisk lived inside the
+88-DCDD as one format row plus `if (d->fmt.sectors != 16)`, and nothing failed — because the two
+controllers are register-compatible *by design*, so wrong-card code runs. That compatibility is real
+(DBL, the 8″ boot PROM, boots a minidisk perfectly well — `docs/roms.md`), which is exactly what makes
+it dangerous: **the thing that works is not evidence that the model is right.**
 
 **Check for a text layer before spending an hour on a scan:** `pdftotext file.pdf - | wc -c`.
 Several of these are pure page images and yield nothing. When that happens, the Read tool

@@ -233,7 +233,9 @@ drives = 4
   [[board.drive]]
   unit     = 0
   mount    = "disks/CPM22-8MB-56K-SIM.DSK"
-  media    = "fdc8mb"      # 8in | minidisk | fdc8mb — else probed by the BOARD from file size
+  media    = "fdc8mb"      # dcdd: 8in | fdc8mb.  mds: minidisk.  Else probed by the BOARD
+                           # from the file size. The choices are the CARD's -- `minidisk` on a
+                           # dcdd is an error, because it is a different controller.
   readonly = false
 
   [[board.drive]]
@@ -252,6 +254,7 @@ hostdir = "./hostfiles"    # SANDBOX. Required. Guest filenames cannot escape th
 | Key | Meaning |
 |---|---|
 | `name` | Machine name, shown by `SHOW MACHINE`. |
+| `base` | **Start from another machine, then say what is different.** A built-in name (`"default"`) or a path to a `.toml`. Must come before the first `[[board]]`. See below. |
 | `startup` | **A list of monitor commands, executed in order once the backplane is built.** This is how a machine starts itself: there is no `BOOT` command (`DESIGN.md` §10.0), so a config that should boot says `startup = ["RUN FF00"]`. |
 
 **That is the whole table, and it is short on purpose.** A `[machine]` key is a thing that is true
@@ -271,7 +274,76 @@ like it set the switches and did not is worse than one that will not load.
 
 **`startup` makes the config language and the script language the same language.** Anything you can type at the monitor, a config file can do — and `CONFIG SAVE` round-trips the list verbatim.
 
+**A `startup` entry is a command line, so it can quote a filename** — `\"` and `\\` are the two escapes the parser knows, and it refuses any other rather than quietly eating the backslash:
+
+```toml
+startup = [
+  "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
+  "LOAD \"tapes/4KBasic31/LDR4K31.HEX\"",
+  "RUN 0",
+]
+```
+
+The quotes are not decoration. The monitor's tokenizer needs them because **every period tape in the tree has a space in its name**, so until the escape existed this could not be written at all: each `"` toggled the string, the entry was cut at the backslash, and the machine came up with an empty recorder and no error. `CONFIG SAVE` escapes on the way out too, or it would write a file it could not read back.
+
 > **Caution:** because `startup` runs commands, `CONFIG LOAD` on a `.toml` from an untrusted source executes whatever is in it. Keep `startup` to monitor commands, and treat a machine file like a script, because it is one.
+
+## `base` — start from a machine, and say what is different
+
+A CP/M machine is *the default Altair with a floppy in drive 0*. That is the whole of it, and `base` lets the file say exactly that and nothing else:
+
+```toml
+[machine]
+name = "cpm22-8mb"
+base = "default"          # fp0, cpu0, sio0 (console), dsk0 (88-DCDD), mem0 (56K + DBL PROM)
+
+startup = ["RUN FF00"]
+
+[[board]]                 # no `type` -> the card ALREADY in the machine with this id
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
+```
+
+**This is not a convenience, it is a defect class.** Hand-copying a five-card backplane is how you end up with a machine that boots CP/M into a terminal that is not there — because the one card you forgot to copy was the 2SIO. That is not hypothetical; it is what happened to the two files this feature replaced, and both booted far enough to look fine.
+
+**A file with no `base` is a complete machine, exactly as before.** The key is explicit rather than assumed, and that is a deliberate call: if every file silently inherited the default, then `4k` — a machine *defined by what it does not have* — would have to **remove** a floppy controller, a 2SIO and 52K of RAM to describe a bare 1975 Altair, and silence would stop meaning "nothing". One line at the top tells you what the backplane starts as; without that line, the file **is** the backplane.
+
+A base may be a **built-in name** or a **path**, decided by spelling and never by probing the disk (`looksLikeFile()`) — the same rule the command line uses, so `base = "default"` cannot change meaning the day somebody saves a file called `default` in the working directory. Bases may nest, up to 8 deep; two files that name each other are an error, not a hang.
+
+### The four `[[board]]` forms
+
+| Form | Means |
+|---|---|
+| `type` + a **new** `id` | **Add** a card. The only form that exists in a file with no `base`, and the only one that existed at all before `base` did. |
+| `type` + an `id` **from the base** | **Replace** it outright. Naming a card's type means you are specifying the whole card, not amending it. |
+| **no `type`** + an `id` | **Modify in place** — properties, unit properties, and anything appended to its lists. This is the common one: *"the base's floppy controller, with a disk in it."* |
+| `remove = true` | **Pull the card out** of the slot. |
+
+**Replace exists because a list cannot be amended into a smaller one.** Regions are a list, so adding a 24K region to a base's 56K memory board would *overlap* it — two boards answering `0000–5FFF`, which is bus contention — rather than replace it. Re-declaring the card with its `type` says "this is the whole card now":
+
+```toml
+[[board]]
+type = "memory"      # `type` on an id the base brought -> a FRESH card
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "24K"
+
+  [[board.region]]
+  type  = "rom"      # ...and you must re-state the PROM, because you replaced the whole
+  at    = FF00       # card. Leave it out and there is nothing at FF00 to RUN.
+  mount = "builtin:dbl"
+```
+
+**A duplicate `id` within one file is still an error**, and replace is deliberately scoped around that check: a second `[[board]]` with a copy-pasted id is a *typo*, while the same thing against a base is *intent*. Conflating them would have thrown away the one diagnostic that catches the commonest mistake in a hand-written machine file.
+
+**`CONFIG SAVE` never writes a `base`.** It writes the backplane it can see — every card, inherited or not — so a saved machine stands on its own. That is the only honest thing it can do, because a base may be a file, and a file can change under you.
 
 ## Memory regions
 

@@ -12,6 +12,7 @@ The MITS 88-DCDD is the Altair's 8" floppy controller, driving up to 16 daisy-ch
 |---|---|---|
 | `BOOT.ASM` | `disks/mits-88dcdd/cpm22/buffered/BOOT.ASM` | **Authoritative, and in the tree.** Mike Douglas's Altair CP/M 2.2b loader. Carries the complete equate block, and its cycle-count comments carry the *timing* (below). A period artifact written against real hardware — DESIGN.md §0.1's first-hand source. |
 | `BIOS.ASM` | `disks/mits-88dcdd/cpm22/buffered/BIOS.ASM` | **Authoritative.** The same equates, plus the real read/write/seek loops. |
+| `BIOS.ASM`, `BOOT.ASM`, `FORMAT8M.ASM` | `disks/mits-88dcdd/cpm22/8mb/` | **Authoritative, and in the tree** — for the 8 MB medium specifically. The geometry (2048 × 32 × 137), the CP/M DPB below, the `ANI 7Fh` 128-track wrap, and the **track-buffer trap** all come from these. They were being relied on without being cited, which is the failure this table exists to prevent. |
 | `DBL.ASM` | `roms/DBL/DBL.ASM` | The 4.1 boot PROM, disassembled by Martin Eberhard. **Independently agrees** with the equates above — two sources, one answer. |
 | MITS manual | `reference/Altair Floppy (88-DCDD) Manual.pdf` | The card's own documentation. A 52 MB scan with no text layer; read it as page images. |
 | `mits_dsk.c` | `../AltairClaude/reference/mits_dsk.c` | **NOT a source. It is SIMH.** See the note below. |
@@ -70,7 +71,7 @@ Keep internal flags true-sense and complement on read (`(~flags) & 0xFF`). Retur
 |---|---|---|
 | 0x01 | `cSTEPI` | Step head IN one track |
 | 0x02 | `cSTEPO` | Step head OUT one track (sets track-0 flag at 0) |
-| 0x04 | `cHDLOAD` | Load head. **Also `cRESTMR`** (restart motor-off timer) on the minidisk. |
+| 0x04 | `cHDLOAD` | Load head — a real solenoid, on this card. (On the **88-MDS** the same bit is `TIMER RESET` and there is no solenoid at all. Different card: `docs/boards/mits-88mds.md`.) |
 | 0x08 | `cHDUNLD` | Unload head |
 | 0x10 | `cINTEN` | Enable interrupts (ignored) |
 | 0x20 | `cINTDIS` | Disable interrupts (ignored) |
@@ -196,24 +197,69 @@ disk). Byte offset is `137 * sectorsPerTrack * track + 137 * sector`.
 | Format | Tracks | Sectors | `DATATRK` | Bytes | `media =` |
 |---|---|---|---|---|---|
 | **8"** | 77 | 32 | 6 | 77 × 32 × 137 = **337,568** | `8in` |
-| **Minidisk** | **35** | **16** | **4** | 35 × 16 × 137 = **76,720** | `minidisk` |
 | **FDC+ 8 MB** | 2048 | 32 | 6 | 2048 × 32 × 137 = **8,978,432** | `fdc8mb` |
 
-> **The minidisk row is three facts, and this doc used to have only one of them** (the 16 sectors).
-> Tracks are **35**, not 77, and **`DATATRK` is 4, not 6** — so the system/data boundary moves, and a
-> minidisk read with the 8" `DATATRK` decodes data sectors with the system layout and returns
-> garbage. Source: `BOOT.ASM`'s `MINIDSK` equates.
+> ### THE MINIDISK IS NOT ON THIS CARD, and it used to be
+>
+> `{"minidisk", 35, 16, 4, 76720}` was the third row of this table, and `cHDUNLD` was guarded by
+> `if (d->fmt.sectors != 16)` — **an 8″ controller asking the disk in the drive which controller it
+> was.** It is now the **88-MDS** (`docs/boards/mits-88mds.md`), which is what it always was: two
+> S-100 boards, 300 RPM instead of 360, a byte every 64 µs instead of 32, no head solenoid, and a
+> motor that stops after 6.4 seconds.
+>
+> Nothing ever failed, because no minidisk image was ever in the tree. `media = "minidisk"` on a
+> `dcdd` is now an **error** that names the card that will take it, and `tests/test_dcdd.cpp` pins
+> the 76,720 probe as a **refusal**.
 
-The minidisk also **ignores head-unload**, and its `cHDLOAD` bit doubles as `cRESTMR` — restart the
-motor-off timer (see the control table).
+> ### The 8 MB row is not a different card, and it is not an emulator's invention
+>
+> (Patrick, 2026-07-13; then confirmed against **`reference/FDC+ Manual.pdf` §3.7.4**, which has a
+> real text layer.) The **FDC+** is a modern card that *emulates the 88-DCDD* — *"a 100% compatible
+> drop-in replacement"* — and its **serial disk server**, drive type **7**, is what can hand a machine
+> an image this large. But the image is still in **this card's own hard-sector format**: the same
+> 137-byte slot, the same 32 sectors to a track. The manual says it in one line:
+>
+> > *"The 8Mb drive looks like an Altair 8 inch drive with **2048 tracks instead of 77**."*
+>
+> **The controller cannot tell.** It steps the head and shifts bytes, and nothing in it asks how big
+> the disk is supposed to be — which is precisely why `fdc8mb` is one more row in the table above
+> rather than a mode, a flag, or a fork of the driver. The disk boots through the **stock** card at
+> `08/09/0A` with the **stock** DBL PROM, exactly as an 8" floppy does.
+>
+> The one place the size *does* bite is the `(track & 0x7F)` system/data wrap (below) — real, and
+> easy to miss, because it only shows up past track 127 and there is no such track on a floppy.
+>
+> ### …and MIXED GEOMETRY on one controller is the intended arrangement
+>
+> Same section of the manual:
+>
+> > *"CP/M for these drives expects an 8Mb drive image to be mounted on drives **A and B** (0 and 1)
+> > and **normal 77 track Altair images on drives C and D** (2 and 3)."*
+>
+> **This is why the `Spindle` and the format are per drive, and not per board** — and it is now the
+> ONLY reason, which is worth saying out loud. The justification used to be "a minidisk turns 16
+> sectors past the head where an 8" turns 32", and that was never a reason at all: **a minidisk goes
+> in a different card** (`docs/boards/mits-88mds.md`). Strip that away and the real one is still
+> standing: a 2048-track disk and a 77-track floppy sit in the *same daisy chain*, on the *same card*,
+> at the same time, and period software expects exactly that. A board-wide geometry could not answer
+> "which sector is under the head" for both.
+>
+> Verified: `CPM22-8MB-56K.DSK` on drive 0 and `cpm22b23-56k.dsk` on drive 2 boots to `A0>` and
+> `DIR C:` lists the floppy.
 
 > ### The size probe needs a tolerance, and without it BOTH of our 8" disks are rejected
 >
 > The two 8" images in the tree are **337,664 bytes, not 337,568** — XMODEM padded them up to a
 > 128-byte block boundary. A strict `size == exact` probe rejects both. Match with **`sizeMatches()`**
 > (`src/host/disk.h`): `exact <= size < exact + 128`. The pad is never data and a write never reaches
-> it. The other two formats are already clean multiples of 128, so only the 8" disk shows the trap —
-> which is exactly how a strict probe survives review and then fails on the only disks anyone has.
+> it. The 8 MB format is already a clean multiple of 128, so on *this* card only the 8" disk shows the
+> trap — which is exactly how a strict probe survives review and then fails on the only disks anyone has.
+>
+> **This doc used to claim the trap was the 8" disk's alone**, on the grounds that "the other two
+> formats are already clean multiples of 128." That was wrong about the minidisk: 76,720 is **599.375**
+> blocks, so *every* real minidisk image is padded — and the claim survived because there was no
+> minidisk image in the tree to disprove it with. The minidisk now lives on the 88-MDS, and its four
+> real images are all 76,800.
 
 **The 88-DCDD is a HARD-SECTOR controller, and that is the fact everything else follows from.** Its images contain the **entire 137-byte slot** — sync byte, track/sector header, 128-byte payload, checksum, stop byte, trailer — not just the payload. Soft-sector controllers (Tarbell, Disk 1A, North Star) store the **payload only**, because on real media their headers and checksums lived in the inter-sector gaps and never reached the image file. Anything that reads a `.DSK` without knowing which kind of controller wrote it reads garbage.
 
@@ -226,7 +272,7 @@ img.initFormat(0, 2047, 0, 0, Density::SD, 32, 137, 0);   // startSector = 0
 
 Note `startSector = 0`: the DCDD numbers sectors **from zero**, where most soft-sector controllers number **from one**.
 
-**Geometry probing belongs to THIS BOARD, not to the `DiskImage` service.** Image size alone is not enough — 337,568 bytes means a 77-track 8″ floppy *because it is a DCDD*, and the same byte count on another controller means something else. Only the board knows which formats are even candidates. So the board probes size, picks among *its* known formats (8″, minidisk, 8 MB FDC+), and declares the result. The service does offsets and I/O and nothing else.
+**Geometry probing belongs to THIS BOARD, not to the `DiskImage` service.** Image size alone is not enough — 337,568 bytes means a 77-track 8″ floppy *because it is a DCDD*, and the same byte count on another controller means something else. Only the board knows which formats are even candidates. So the board probes size, picks among *its* known formats (8″ and the 8 MB FDC+ — **not** the minidisk, which is another controller entirely), and declares the result. The service does offsets and I/O and nothing else.
 
 The slot-internal offset math above (payload at 7 on a data track, 3 on a system track) also stays in the board — that is the controller's business.
 

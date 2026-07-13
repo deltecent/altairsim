@@ -40,17 +40,34 @@
 # THE 2SIO IS HERE NOW TOO, so the console CP/M will print its banner on is in the
 # backplane and connected.
 #
-# It still cannot finish booting, and that is honest: there is no 88-DCDD for it to
-# read a disk from. DBL relocates itself, starts polling a disk controller that is
-# not in the backplane, and spins. Every IN it does reads a floating FF, because
-# nobody is driving those ports. That is not a bug -- it is what an Altair with no
-# disk controller in it does, and you can watch it happen with BREAK IO R 08.
+# AND SO IS THE 88-DCDD. The claim this file made three cards ago -- "when the disk
+# lands, THIS FILE GROWS ONE MORE [[board]] and nothing else about it changes" -- has
+# now held four times. The controller is in the machine with NO DISK IN IT, which is
+# the honest default: an Altair shipped with a drive cable, not with your floppy.
 #
-# The disk is milestone 3. When it lands, THIS FILE GROWS ONE MORE [[board]] and
-# nothing else about it changes -- which is the claim the whole design is making,
-# and the 8080 and the 2SIO have both now arrived exactly that way.
+# So `altairsim` + `RUN FF00` still does not reach CP/M, and it is no longer lying
+# about why. DBL relocates itself, selects drive 0, finds no disk, and spins. Put one
+# in and it boots:
 #
-# In the meantime, `altairsim altmon` is a machine you can actually talk to today.
+#     altairsim
+#     MOUNT dsk0:drive0 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+#     RUN FF00
+#     -> 56K CP/M 2.2b v2.3
+#
+# ...which is precisely what `base = "default"` exists to write down. The two CP/M
+# machine files next to those disk images are this machine plus one mounted drive, and
+# they say so in three lines (docs/config.md).
+#
+# THIS IS THE MACHINE A DELTA STARTS FROM, so what is in it is now a decision that
+# other files depend on: a front panel, an 8080, a 2SIO, an 88-DCDD, 56K, and DBL.
+#
+# The historical note, kept because it explains the shape of the file: before the
+# controller existed, DBL polled ports that no card decoded, and every IN read a floating
+# FF because nobody was driving them. You could watch it with BREAK IO R 08. That was not
+# a bug -- it is what an Altair with no disk controller in it does -- and the difference
+# now is that the card answers, and says there is no disk.
+#
+# `altairsim altmon` is still the machine you can talk to with nothing mounted at all.
 
 [machine]
 name     = "default"
@@ -117,6 +134,34 @@ port = 10
   [board.unit.b]
   connect = "null"
   baud    = 9600
+
+# THE FLOPPY CONTROLLER -- an 88-DCDD at 0x08, which is not a choice: the boot PROM
+# above is hard-wired to it (DBL selects drive 0 at port 08 and shifts the first sector
+# in through 0A), and so is every Altair CP/M BIOS ever written.
+#
+# FOUR DRIVES, AND NO DISKS IN THEM. That is what an Altair shipped as -- the controller
+# and the cable were the product; the floppy was yours -- and it is the honest default
+# for the same reason `fill = "random"` is: an empty drive is a real state, and it is the
+# state this machine is in until you put something in it.
+#
+#     MOUNT dsk0:drive0 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+#     RUN FF00
+#
+# The card PROBES what you mount -- 337,568 bytes (or the XMODEM-padded 337,664 that
+# every real image turns out to be) is an 8" floppy, 76,720 is a minidisk, and 8,978,432
+# is an 8 MB image. Geometry belongs to the BOARD (DESIGN.md 7.3), so nothing here has to
+# say which.
+#
+# THE 8 MB DISK IS NOT A DIFFERENT CARD. It is the same 137-byte hard-sector format, 32
+# sectors to a track, with 2048 tracks -- more than would fit on a physical platter, but
+# the controller only steps the head and shifts bytes and cannot tell. (It comes from the
+# FDC+, a modern card that emulates this one and whose serial disk server serves images
+# that big.) So it is one more row in the format table, not a mode.
+[[board]]
+type   = "dcdd"
+id     = "dsk0"
+port   = 08
+drives = 4
 
 [[board]]
 type = "memory"

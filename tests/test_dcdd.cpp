@@ -250,9 +250,14 @@ void test_dcdd() {
         CHECK(probes(337568 + 127), "the tolerance is the whole 128-byte block...");
         CHECK(!probes(337568 + 128), "...and not one byte more -- 128 over is a DIFFERENT disk");
 
-        CHECK(probes(76720), "35 x 16 x 137 = 76,720 is a minidisk (35 tracks, not 77!)");
         CHECK(probes(8978432), "2048 x 32 x 137 = 8,978,432 is the FDC+ 8 MB drive");
         CHECK(!probes(123456), "and a size that is no format at all is an error, not a guess");
+
+        // THE MINIDISK IS NOT A MEDIUM OF THIS CARD, and this is the tripwire that keeps it
+        // from coming back. It used to probe here -- one row in dcddFormats() -- and a card
+        // that accepted it turned the platter at 360 RPM instead of 300 and clocked bytes at
+        // twice the real rate. A 5.25" minidisk goes in an 88-MDS (tests/test_mds.cpp).
+        CHECK(!probes(76720), "76,720 is a MINIDISK, and it is NOT an 8-inch controller's disk");
     }
 
     SECTION("88-DCDD -- sectors are numbered FROM ZERO (the Tarbell's are not)");
@@ -393,11 +398,21 @@ void test_dcdd() {
         Clock     c;
         DcddBoard b;
         b.attachClock(&c);
-        withDisk(76720);
+        withDisk(8978432);
 
         std::string err;
-        CHECK(b.addSubUnit("drive", {{"unit", "0"}, {"mount", "m.dsk"}, {"media", "minidisk"}}, err),
+        CHECK(b.addSubUnit("drive", {{"unit", "0"}, {"mount", "m.dsk"}, {"media", "fdc8mb"}}, err),
               "a [[board.drive]] with a forced media loads");
+
+        // ...and the media this card does NOT have is refused BY NAME, rather than quietly
+        // probing into a wrong geometry. `minidisk` is an 88-MDS word now.
+        DcddBoard bad;
+        bad.attachClock(&c);
+        std::string e2;
+        CHECK(!bad.addSubUnit("drive", {{"unit", "0"}, {"media", "minidisk"}}, e2),
+              "`media = \"minidisk\"` on a dcdd is an ERROR -- it is a different controller");
+        CHECK(e2.find("minidisk") != std::string::npos && e2.find("dcdd") != std::string::npos,
+              "and the error names both the media and the card that will not take it");
 
         auto su = b.subUnits();
         CHECK(su.size() == 1, "an empty drive writes NO table -- four drives and one disk saves as one");

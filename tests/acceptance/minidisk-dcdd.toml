@@ -1,0 +1,54 @@
+# THE NEGATIVE CONTROL for acceptance-minidisk. THIS MACHINE MUST NOT BOOT.
+#
+# It is `cpm22-mini` with exactly one thing changed: an 88-DCDD in the slot where the 88-MDS
+# belongs. Same disk, same PROM, same RAM, same console -- the 8" floppy controller, with a
+# 5.25" minidisk in drive 0.
+#
+# THAT IS THE BUG THIS ENTIRE CARD EXISTS TO REMOVE, so it is the thing the acceptance test
+# has to be measured against. For months the tree did exactly this and it WORKED -- `minidisk`
+# was a row in the 88-DCDD's format table -- and the machine turned the platter at 360 RPM
+# instead of 300 and clocked a byte every 32 us instead of 64, and nothing ever said a word.
+#
+# Now it refuses at MOUNT: 76,800 bytes matches no format an 88-DCDD knows, and the card says
+# so instead of guessing. ctest runs this with WILL_FAIL. If it ever starts booting again, the
+# minidisk has crept back into the 8" controller and acceptance-minidisk is no longer testing
+# the 88-MDS at all.
+#
+# ---------------------------------------------------------------------------------------
+# THE CONTROL I TRIED FIRST, AND WHY IT WAS WRONG -- keep this, it is the interesting half.
+#
+# My first control put DBL (the 8" boot PROM) at FF00 instead of MDBL, on the theory that DBL
+# "cannot read a minidisk". IT BOOTED. CP/M came up and read both drives.
+#
+# And it should have: Mike Douglas's own BOOT.ASM -- the loader on the very disk we boot --
+# says in its header, "This code is loaded from sectors 0 and 2 into RAM by the disk boot
+# loader PROM (DBL)." DBL interleaves 2:1, so it reads sector 0 and then sector 2, which is
+# precisely where that loader lives; and DBL's cHDLOAD (bit 2) arrives at the 88-MDS as TIMER
+# RESET, which is harmless. The two PROMs differ where it does not matter here -- MDBL
+# relocates itself to 4C00 rather than 2C00, because Minidisk BASIC loads low and would land
+# on top of it.
+#
+# So a bootstrap written for one controller runs on the other, WHICH IS THE ENTIRE POINT OF
+# THIS CARD: MITS made the 88-MDS register-compatible with the 88-DCDD on purpose. The same
+# compatibility that makes DBL work here is the compatibility that let a 5.25" minidisk hide
+# inside an 8" controller for months without anyone noticing.
+#
+# The PROM was never the variable. The CARD is.
+
+[machine]
+name = "minidisk-dcdd-control"
+base = "disks/mits-88mds/cpm22/cpm22-mini.toml"
+
+[[board]]
+id     = "mds0"
+remove = true
+
+[[board]]
+type   = "dcdd"      # <-- THE WHOLE EXPERIMENT. An 8" controller, with a minidisk in it.
+id     = "dsk0"
+port   = 08
+drives = 4
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88mds/cpm22/CPM56K-1.DSK"

@@ -36,6 +36,37 @@ altairsim.log
 *.cas
 *.img
 
+# disks/ IS AN ALLOWLIST, and it is deliberately the other way round from everything
+# above (Patrick, 2026-07-13: "the only files we need tracked in the /disks directory
+# are the TOML files").
+#
+# What lives there is somebody else's: 20 MB of CP/M images, vendor ReadMes, and the
+# .PRN listings that come with them. A denylist would have to guess at every extension
+# a future download brings, and a single `git add -A` on a miss puts 20 MB in history
+# forever -- which has already happened once in this repo, with reference/, and had to
+# be rewritten out. So NOTHING under disks/ is tracked unless it is named here.
+#
+# Three kinds of thing earn a line:
+#   - the machine files, which ARE ours;
+#   - one README per directory, saying where to download the images (deramp.com) and
+#     how to run them -- so a fresh clone knows exactly what it is missing and why;
+#   - the .ASM listings the BOARDS WERE BUILT FROM. Those are first-hand period sources
+#     under DESIGN.md 0.1 and are cited by path in docs/boards/*.md. Losing them would
+#     mean the 88-DCDD's register map, its timing, and the Tarbell's grounded-E30
+#     finding all cite a file that is not there.
+disks/**
+!disks/**/
+!disks/**/*.toml
+!disks/**/README.md
+!disks/mits-88dcdd/cpm22/buffered/BIOS.ASM
+!disks/mits-88dcdd/cpm22/buffered/BOOT.ASM
+!disks/mits-88dcdd/cpm22/8mb/BIOS.ASM
+!disks/mits-88dcdd/cpm22/8mb/BOOT.ASM
+!disks/mits-88dcdd/cpm22/8mb/FORMAT8M.ASM
+!disks/mits-88mds/cpm22/BIOS.ASM
+!disks/mits-88mds/cpm22/BOOT.ASM
+!disks/tarbell-sd/cpm22/buffered/BIOS (1).ASM
+
 # Scanned manuals and datasheets. Same reasoning as the disk images, and then
 # some: they are enormous (the 88-DCDD manual alone is 52 MB) and they are not
 # ours. They are the SOURCE the boards were built from, not part of the build --

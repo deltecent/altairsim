@@ -1,0 +1,102 @@
+# The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk.
+#
+#     altairsim disks/mits-88mds/cpm22/cpm22-mini.toml
+#     -> 56K CP/M 2.2b v2.3
+#        For Altair Mini Disk
+#        A>
+#
+# THE DRIVES ARE EMPTY HERE, AND THAT IS THE RULE, not an oversight. A built-in machine is
+# compiled into the binary and has to load on any machine, from any directory, with nothing
+# downloaded -- so it may not name a file outside itself. machines/default.toml ships its
+# 88-DCDD with four empty drives for exactly this reason.
+#
+# So this file is the MACHINE -- an Altair with a minidisk controller and MDBL in the socket --
+# and the disk goes in from a config that sits next to it:
+# disks/mits-88mds/cpm22/cpm22-mini.toml, which is three lines of `base = "minidisk"`.
+#
+#     altairsim minidisk
+#     MOUNT mds0:drive0 "disks/mits-88mds/cpm22/CPM56K-1.DSK"
+#     RUN FF00
+#
+# THIS IS A DELTA, AND IT IS THE FIRST MACHINE THAT HAD TO REMOVE SOMETHING.
+#
+# `base = "default"` brings the CP/M Altair: a front panel, an 8080, a 2SIO console at 0x10,
+# an 88-DCDD at 0x08, 56K, and DBL at FF00. Two of those change here.
+#
+#   - THE 88-DCDD COMES OUT. It and the 88-MDS both decode 08/09/0A, so they CANNOT COEXIST;
+#     a real Altair had one controller or the other, and so does this file. `remove = true`
+#     takes the 8" card out of the backplane. Leave it in and the two cards contend for the
+#     port, and the bus says so.
+#
+#   - THE PROM BECOMES MDBL, which is the minidisk's own bootstrap (the 88-MDS manual, 1-3.B:
+#     "MDBL PROM: Minidisk Bootstrap Loader ... to be used with the 88-PMC PROM Memory Card").
+#
+# BUT DBL WOULD ALSO HAVE WORKED, AND THAT IS NOT A DISAPPOINTMENT -- IT IS THE THESIS.
+#
+# I put DBL here as a negative control, expecting a hang. CP/M booted. Mike Douglas's own
+# BOOT.ASM -- the loader on this very disk -- says why, in its header: "This code is loaded
+# from sectors 0 and 2 into RAM by the disk boot loader PROM (DBL)." DBL interleaves 2:1, so
+# it reads sector 0 and then sector 2, which is exactly where that loader sits; and DBL's
+# cHDLOAD (bit 2) lands on an 88-MDS as TIMER RESET, harmlessly. The two PROMs differ where it
+# does not matter here -- MDBL relocates itself to 4C00 instead of 2C00, because Minidisk
+# BASIC loads low and would land on top of it.
+#
+# A bootstrap written for one controller runs on the other, BECAUSE MITS BUILT THE 88-MDS TO
+# PRESENT THE 88-DCDD'S PROGRAMMING MODEL. That is the same compatibility that let a 5.25"
+# minidisk hide inside an 8" controller in this tree for months. The PROM was never the
+# variable. The CARD is -- see tests/acceptance/minidisk-dcdd.toml.
+
+[machine]
+name = "minidisk"
+base = "default"
+
+# THE 8" CONTROLLER COMES OUT. Not disabled -- OUT. It is not in this machine.
+[[board]]
+id     = "dsk0"
+remove = true
+
+# ...AND THE MINIDISK CONTROLLER GOES IN ITS SLOT.
+#
+# Two S-100 boards on the real thing (the manual, p4: "Number of slots required in 8800 bus -
+# 2"), but nothing a program can reach tells them apart, so they are one card here.
+#
+# THE PORT IS NOT A CHOICE. The schematic decodes 010/011/012 octal in copper -- there is no
+# address jumper on the controller at all; the only DIP switch in the whole system is on the
+# buffer board in the drive cabinet, and it selects the DRIVE. We expose `port` anyway,
+# because the base class does and because it costs nothing; no period software would move it.
+[[board]]
+type   = "mds"
+id     = "mds0"
+port   = 08
+drives = 4
+
+  # THE MOTOR IS FREE, AND THAT IS THE DEFAULT (so this line is only here to point at it).
+  #
+  # The real card takes ONE SECOND to spin a stopped drive up, and turns the motor off after
+  # 6.4 SECONDS with no access -- which is why the period BIOS pokes TIMER RESET before every
+  # single read. The card models both exactly. It just does not make you live through them:
+  #
+  #     motor = "real"     # 1 s spin-up, and it stops after 6.4 s
+  #
+  # Flat out is the default here for the same reason it is on the CPU (`clock_hz = 0`).
+
+# THE BOOT PROM. The memory card is REPLACED, not modified, because a region list is a list:
+# swapping the ROM means restating the RAM under it. 56K is not a preference -- CPM56K-1.DSK
+# was BUILT for it (BOOT.ASM: MEMSIZE, and the BIOS is linked to the top of RAM), so the disk
+# and the machine have to agree or CP/M loads into nothing. The 24K images beside it are the
+# same disk built for a 24K machine, and a config that mounts those must say `size = "24K"`.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"                # 0000-DFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:mdbl"      # The minidisk's OWN bootstrap. `builtin:dbl` also boots this
+                              # particular disk -- see the header, it is worth knowing why.

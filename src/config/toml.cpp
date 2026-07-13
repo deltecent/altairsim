@@ -3,11 +3,13 @@
 // NOTE: no board header is included here, and none should ever be again. The config
 // layer knows Board, and nothing about what any particular one of them is.
 #include "boards/registry.h"
+#include "core/machines.h"  // `base = "default"` -- a built-in is a config file too
 #include "host/console.h"
 
 #include <cctype>
 #include <cstdio>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 namespace altair {
@@ -42,6 +44,31 @@ struct Table {
     bool hasList = false;
 };
 
+// Drop a trailing `# comment`, honoring quotes so a path with a '#' survives -- and
+// honoring the BACKSLASH inside them, so an escaped quote does not flip us back out of
+// the string and expose the rest of the line to the '#' test. The backslash itself is
+// KEPT: the value parser below is the one that resolves the escape, not us.
+std::string stripComment(const std::string& line) {
+    std::string s;
+    bool q = false, esc = false;
+    for (char c : line) {
+        if (esc) {
+            s += c;
+            esc = false;
+            continue;
+        }
+        if (q && c == '\\') {
+            s += c;
+            esc = true;
+            continue;
+        }
+        if (c == '"') q = !q;
+        if (c == '#' && !q) break;
+        s += c;
+    }
+    return s;
+}
+
 bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
     std::istringstream in(text);
     std::string line;
@@ -52,15 +79,7 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
 
     while (std::getline(in, line)) {
         ++lineNo;
-        // Strip comments, honoring quotes so a path with a '#' survives.
-        std::string s;
-        bool q = false;
-        for (char c : line) {
-            if (c == '"') q = !q;
-            if (c == '#' && !q) break;
-            s += c;
-        }
-        s = trim(s);
+        std::string s = trim(stripComment(line));
         if (s.empty()) continue;
 
         if (s.front() == '[') {
@@ -90,20 +109,46 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
             std::string acc = v;
             while (acc.find(']') == std::string::npos && std::getline(in, line)) {
                 ++lineNo;
-                std::string t2;
-                bool q2 = false;
-                for (char c : line) {
-                    if (c == '"') q2 = !q2;
-                    if (c == '#' && !q2) break;
-                    t2 += c;
-                }
-                acc += " " + trim(t2);
+                acc += " " + trim(stripComment(line));
             }
             size_t lb = acc.find('['), rb = acc.rfind(']');
             std::string body = acc.substr(lb + 1, rb - lb - 1);
+
+            // ---- A STARTUP ENTRY IS A COMMAND LINE, AND A COMMAND LINE QUOTES ITS
+            // FILENAMES. So `\"` has to survive to the monitor, and until it did, this
+            // could not be written at all:
+            //
+            //     startup = ["MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\""]
+            //
+            // Every `"` toggled, escape or not, so the entry was cut at the backslash and
+            // the machine came up with an empty recorder. That is not an exotic case: the
+            // monitor's tokenizer needs the quotes precisely BECAUSE the period artifacts
+            // all have spaces in their names (cli/monitor.cpp), so EVERY tape in the tree
+            // was unmountable from a config file -- while docs/config.md promised "anything
+            // you can type, a config can do".
+            //
+            // Two escapes, and no more. `\"` and `\\` are what a command line needs; the
+            // rest of TOML's basic-string alphabet (\n, \t, \uXXXX) means nothing to a
+            // monitor command, and quietly eating an unknown one would turn a Windows path
+            // typed with single backslashes into a shorter, wrong path. Say so instead.
             std::string item;
-            bool inq = false;
+            bool        inq = false, esc = false;
             for (char c : body) {
+                if (esc) {
+                    if (c != '"' && c != '\\') {
+                        err = "line " + std::to_string(lineNo) + ": unknown escape `\\" +
+                              std::string(1, c) + "` in " + k +
+                              " (this parser knows \\\" and \\\\)";
+                        return false;
+                    }
+                    item += c;
+                    esc = false;
+                    continue;
+                }
+                if (inq && c == '\\') {
+                    esc = true;
+                    continue;
+                }
                 if (c == '"') {
                     inq = !inq;
                     if (!inq) {
@@ -124,16 +169,57 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
     return true;
 }
 
-} // namespace
-
-// A BUILT-IN MACHINE IS A TOML FILE THAT HAPPENS TO LIVE IN .rodata.
+// ---------------------------------------------------------------------------
+// `base = "default"` -- START FROM A MACHINE AND SAY WHAT IS DIFFERENT.
 //
-// This is the same bargain as the built-in ROMs, and for the same reason: there
-// is ONE machine language, and a built-in cannot drift from a file because it
-// travels the identical parser. `source` is only ever used to name the thing in
-// an error message -- "builtin:turnkey: ..." reads exactly like a path would.
-bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
-                  std::string& err) {
+// A config file with no `base` is a COMPLETE MACHINE, exactly as it always was, and
+// that is why the key is explicit rather than assumed. If every file silently
+// inherited the default, then `4k` -- a machine defined by what it does NOT have --
+// would have to REMOVE a floppy controller, a 2SIO and 52K of RAM to describe a bare
+// 1975 Altair, and silence would stop meaning "nothing". One line at the top of a file
+// tells you what its backplane starts as; without that line, the file IS the backplane.
+//
+// The depth guard is not paranoia: `base` can name a FILE, and two files can name each
+// other. That is a hang, and a hang at startup is the worst kind.
+// ---------------------------------------------------------------------------
+constexpr int kMaxBaseDepth = 8;
+
+bool loadInto(const std::string& text, const std::string& source, Machine& m,
+              std::string& err, int depth);
+
+bool loadBase(const std::string& name, Machine& m, std::string& err, int depth) {
+    if (depth >= kMaxBaseDepth) {
+        err = "base = \"" + name + "\": more than " + std::to_string(kMaxBaseDepth) +
+              " levels deep -- do two files name each other?";
+        return false;
+    }
+
+    // A FILE OR A BUILT-IN, decided by SPELLING and never by probing the disk -- the
+    // same rule the command line uses (looksLikeFile(), core/machines.h), and for the
+    // same reason: `base = "default"` must not change meaning the day somebody saves a
+    // file called `default` in the working directory.
+    if (looksLikeFile(name)) {
+        std::ifstream f(name);
+        if (!f) {
+            err = "base: cannot open '" + name + "'";
+            return false;
+        }
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return loadInto(ss.str(), name, m, err, depth + 1);
+    }
+
+    const BuiltinMachine* b = findMachine(name);
+    if (!b) {
+        err = "base: no built-in machine called '" + name + "' (try --list)";
+        return false;
+    }
+    return loadInto(std::string(b->toml, b->size), "builtin:" + std::string(b->name), m, err,
+                    depth + 1);
+}
+
+bool loadInto(const std::string& text, const std::string& source, Machine& m,
+              std::string& err, int depth) {
     const std::string& path = source;
 
     std::vector<Table> tabs;
@@ -144,9 +230,31 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
 
     Board* current = nullptr;
 
+    // WHICH CARDS CAME FROM THE BASE, and which this file created itself. The whole
+    // delta grammar turns on that difference -- see the [[board]] branch below.
+    std::set<std::string> fromBase, declared;
+
     for (auto& t : tabs) {
         if (t.name == "machine" || t.name.empty()) {
+            // BASE FIRST, whatever order the keys are written in. It builds the machine
+            // that every other line in this file is a change TO, so it cannot run after
+            // the `name` it would otherwise overwrite.
             for (auto& [k, v] : t.kv) {
+                if (k != "base") continue;
+                if (!m.boards().empty()) {
+                    err = path + ": `base` must come before the first [[board]] -- it is "
+                                 "what the boards are a change TO";
+                    return false;
+                }
+                if (!loadBase(v, m, err, depth)) {
+                    err = path + ": " + err;
+                    return false;
+                }
+                for (const auto& b : m.boards()) fromBase.insert(b->id);
+            }
+
+            for (auto& [k, v] : t.kv) {
+                if (k == "base") continue;
                 if (k == "name") m.name = v;
                 else if (k == "clock_hz") {
                     // THE CLOCK IS THE CPU CARD'S, because that is where the crystal
@@ -191,26 +299,97 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
             continue;
         }
 
+        // ---- [[board]] -- ADD a card, MODIFY one the base brought, REPLACE it, or
+        // ---- PULL IT OUT. Which of the four is decided by `type` and `remove`:
+        //
+        //   type + a new id          ADD. The only form that exists in a file with no
+        //                            `base`, and the only one that existed at all before
+        //                            `base` did.
+        //   type + an id from base   REPLACE, outright: naming a card's TYPE means you
+        //                            are specifying the whole card, not amending it. The
+        //                            base's settings on it are gone, which is what you
+        //                            want when you re-fit a memory board from 56K to 24K
+        //                            -- regions are a LIST, and appending a second one
+        //                            would overlap the first rather than replace it.
+        //   no type + an id          MODIFY IN PLACE. Properties, unit properties, and
+        //                            anything added to its lists. This is the common one:
+        //                            "the base's floppy controller, with a disk in it".
+        //   remove = true            Pull the card out of the slot.
+        //
+        // AND `type` + AN ID THIS FILE ALREADY DECLARED IS STILL AN ERROR. That check is
+        // load-bearing -- it is what catches a copy-pasted [[board]] whose id was never
+        // changed -- so REPLACE is deliberately scoped to ids that came from the base.
+        // A duplicate within one file is a typo; a duplicate against the base is intent.
         if (t.name == "board") {
             std::string type, id;
+            bool        wantRemove = false;
             for (auto& [k, v] : t.kv) {
                 if (k == "type") type = v;
-                if (k == "id") id = v;
+                else if (k == "id") id = v;
+                else if (k == "remove") wantRemove = (v == "true" || v == "1" || v == "yes");
             }
-            if (type.empty() || id.empty()) {
-                err = path + ": every [[board]] needs `type` and `id`";
+            if (id.empty()) {
+                err = path + ": every [[board]] needs an `id`";
                 return false;
             }
-            current = m.add(type, id, err);
-            if (!current) {
-                err = path + ": " + err;
-                return false;
+
+            if (wantRemove) {
+                if (!type.empty()) {
+                    err = path + ": [[board]] " + id +
+                          ": `remove` and `type` contradict each other -- one takes the "
+                          "card out, the other fits a new one";
+                    return false;
+                }
+                for (auto& [k, v] : t.kv) {
+                    (void)v;
+                    if (k != "id" && k != "remove") {
+                        err = path + ": [[board]] " + id + ": `" + k +
+                              "` on a board that is being removed -- it would set a "
+                              "property on a card that is about to leave the machine";
+                        return false;
+                    }
+                }
+                if (!m.remove(id, err)) {
+                    err = path + ": [[board]] " + id + ": " + err;
+                    return false;
+                }
+                fromBase.erase(id);
+                current = nullptr;  // ...so a stray [[board.region]] after this is caught
+                continue;
             }
+
+            if (type.empty()) {
+                current = m.find(id);
+                if (!current) {
+                    err = path + ": [[board]] " + id + ": no board with that id" +
+                          (fromBase.empty()
+                               ? " -- this file has no `base`, so there is nothing to "
+                                 "modify. Give it a `type` to fit the card."
+                               : " in the base. Give it a `type` to fit a new card, or "
+                                 "check the spelling.");
+                    return false;
+                }
+            } else {
+                if (fromBase.count(id) && !declared.count(id)) {
+                    if (!m.remove(id, err)) {  // REPLACE: out with the base's, in with ours
+                        err = path + ": [[board]] " + id + ": " + err;
+                        return false;
+                    }
+                    fromBase.erase(id);
+                }
+                current = m.add(type, id, err);  // a dup WITHIN this file still lands here
+                if (!current) {
+                    err = path + ": " + err;
+                    return false;
+                }
+                declared.insert(id);
+            }
+
             // Everything else is a PROPERTY, resolved against the board's own
             // properties(). The loader knows nothing about phantom straps or
             // baud rates and never will.
             for (auto& [k, v] : t.kv) {
-                if (k == "type" || k == "id") continue;
+                if (k == "type" || k == "id" || k == "remove") continue;
                 if (!setProperty(*current, k, v, err)) {
                     err = path + ": [[board]] " + id + ": " + err;
                     return false;
@@ -335,8 +514,28 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
         }
     }
 
-    m.power();  // a machine that has just been built has just been switched on
+    // A machine that has just been built has just been switched on -- ONCE, at the
+    // outermost file. A `base` is not a machine that ran and was then modified; it is
+    // the first half of building this one, and powering it up mid-build would mean the
+    // cards the base brought saw POWER before the cards this file adds even existed.
+    if (depth == 0) m.power();
     return true;
+}
+
+} // namespace
+
+// A BUILT-IN MACHINE IS A TOML FILE THAT HAPPENS TO LIVE IN .rodata.
+//
+// This is the same bargain as the built-in ROMs, and for the same reason: there
+// is ONE machine language, and a built-in cannot drift from a file because it
+// travels the identical parser. `source` is only ever used to name the thing in
+// an error message -- "builtin:turnkey: ..." reads exactly like a path would.
+//
+// ...which is also what makes `base = "default"` cost nothing: a built-in and a file are
+// the same text through the same parser, so a base can be either one.
+bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
+                  std::string& err) {
+    return loadInto(text, source, m, err, /*depth=*/0);
 }
 
 bool loadToml(const std::string& path, Machine& m, std::string& err) {
@@ -377,9 +576,21 @@ std::string saveTomlText(Machine& m) {
     // written out by the same generic properties() walk that writes every other
     // board's, which is why CONFIG SAVE round-trips and cannot drift from what SET
     // accepts.
+    // ...and the startup list, ESCAPED, because a startup entry is a command line and a
+    // command line quotes its filenames. Write `MOUNT acr0:tape "4K BASIC Ver 3-1.tap"`
+    // out raw and the quotes around the path close the TOML string early -- CONFIG SAVE
+    // produces a file CONFIG LOAD cannot read, which is the same asymmetry the unit
+    // tables had. The reader knows exactly these two escapes and no others.
     if (!m.startup.empty()) {
         f << "startup  = [\n";
-        for (const auto& s : m.startup) f << "  \"" << s << "\",\n";
+        for (const auto& s : m.startup) {
+            f << "  \"";
+            for (char c : s) {
+                if (c == '"' || c == '\\') f << '\\';
+                f << c;
+            }
+            f << "\",\n";
+        }
         f << "]\n";
     }
 

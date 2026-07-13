@@ -1,0 +1,444 @@
+
+
+                ;==============================================================
+                ;= Altair Minidisk Boot Loader                                =
+                ;= (Disassembled from Altair EPROMs)                          =
+                ;=                                                            =
+                ;= Loads software (e.g. Minidisk BASIC) from the Altair       =
+                ;= Minidisk subsystem. Execution is at FF00h, and the sense   =
+                ;= switches must be set of the correct Terminal port, as      =
+                ;= described in the MDBL manual (which is the same as Altair  =
+                ;= BASIC 4.X Terminal port switch settings).                  =
+                ;=                                                            =
+                ;= REVISION HISTORY                                           =
+                ;=                                                            =
+                ;=  VERS.    DATE     AUTHOR          NOTES                   =
+                ;=  4.1?  05May2014  M. Eberhard   Disassembled from MITS     =
+                ;=                                                            =
+                ;= Because of the slow 1702A EPROM access time, this program  =
+                ;= first copies itself into RAM at address 4C00 (RUNLOC),     =
+                ;= and then executes there.                                   =
+                ;=                                                            =
+                ;= Once in RAM, this program reads from disk, starting at     =
+                ;= track 00, sector 00. Sector data (which includes the       =
+                ;= actual data payload, as well as header and trailer bytes)  =
+                ;= is first loaded into a RAM buffer (SECBUF) that is located =
+                ;= just after the RAM version of this program. The data       =
+                ;= payload then gets moved to its final RAM location,         =
+                ;= starting at 0000h (DMAADR), checking the checksum along    =
+                ;= the way.                                                   =
+                ;=                                                            =
+                ;= Each sector has a 16-bit value in its header, which is the =
+                ;= byte count for the file being loaded: this many bytes are  =
+                ;= read from the disk and written to RAM. When done (assuming =
+                ;= no errors), this program then jumps to 0000h (DMAADR) to   =
+                ;= execute the loaded code.                                   =
+                ;=                                                            =
+                ;= Sectors are interleaved 2:1 on the disk. The even sectors  =
+                ;= are read first, followed by the odd sectors.               =
+                ;=                                                            =
+                ;= When data is moved from the RAM buffer to its final RAM    =
+                ;= locatation, it is also read back, to verify correct writes.=
+                ;= Any write-verify failure will terminate the load with an   =
+                ;= 'M' error.                                                 =
+                ;=                                                            =
+                ;= Any read errors (either a checksum error or an incorrect   =
+                ;= marker byte) will cause a retry of that sector read. After =
+                ;= 10h retries, the load will terminate with a 'C' error.     =
+                ;=                                                            =
+                ;= If the load terminates with an error, then it will also    =
+                ;= turn on the INTE LED on the front panel, as an indicator.  =
+                ;=                                                            =
+                ;= DISK SECTOR FORMAT                                         =
+                ;=                                                            =
+                ;=   BYTE(s)     FUNCTION              BUFFER ADDRESS         =
+                ;=     0       Track number+80h          RAMCOD+EBh           =
+                ;=     1       File size low byte        RAMCOD+ECh           =
+                ;=     2       File size High Byte       RAMCOD+EDh           =
+                ;=   3-130     Sector data               RAMCOD+EEh           =
+                ;=    131      Checksum Marker (0FFh)    RAMCOD+16Eh          =
+                ;=    132      Checksum                  RAMCOD+16Fh          =
+                ;=    133      Spare read at end (?)     RAMCOD+170h          =
+                ;==============================================================
+                ;---------------------
+                ; Minidisk Parameters
+                ;---------------------
+ 0010 =         SPT	equ	16		;sectors/track
+ 0080 =         SECSIZ	equ	128		;data bytes/sector
+ 0010 =         RETRYS	equ	16		;max retries 
+                
+                ;-------------------
+                ; Memory Parameters
+                ;-------------------
+ 0000 =         DMAADR	equ	0		;Disk load address
+ FF00 =         PROMAD	equ	0FF00H		;Address of MDBL EPROM
+ 4C00 =         RUNLOC	equ	4C00H		;RAM Execution address of MDBL
+ 0008 =         SSIZE	equ	8		;stack size
+                
+                ;-----------------------------------------------------------
+                ; Sense Switches - either a front panel or a Turnkey Module
+                ;-----------------------------------------------------------
+ 00FF =         SWTCHS	equ	0FFH		;Sense Switches
+                
+                ;---------------
+                ;88-SIO Equates	
+                ;---------------
+ 0000 =         SIOCTL	EQU	00		;Control
+ 0000 =         SIOSTA	EQU	00		;Status
+ 0001 =         SIODAT	EQU	01		;RX/TX Data
+                
+                ;-----------------------------------------------
+                ; 88-2SIO port 0, Turnkey Module, and 88-UIO
+                ; Equates (all based on the Motorola 6850 ACIA)
+                ;-----------------------------------------------
+                
+ 0010 =         ACCTRL	equ	10h		;ACIA Control output port
+ 0010 =         ACSTAT	equ	10h		;ACIA Status input port
+ 0011 =         ACDATA	equ	11h		;ACIA TX/RX Data register
+                
+ 0003 =         ACRST	equ	00000011b	;Master reset
+ 0001 =         ACRDF	equ	00000001b	;RX Data register full
+ 0002 =         ACTDE	equ	00000010b	;TX Data register empty
+ 0011 =         ACINIT	equ	00010001b	;/16, 8bit, No Parity, 2Stops
+                
+                ;---------------
+                ;88-PIO Equates
+                ;---------------	
+                
+ 0004 =         PIOCTL	EQU	04		;Control
+ 0004 =         PIOSTA	EQU	04		;Status
+ 0005 =         PIODAT	EQU	05		;TX/RX Data
+                
+                ;----------------
+                ;88-4PIO equates	
+                ;----------------
+ 0020 =         P4CA0	equ	20H		;Port 0 Section A Ctrl/Status
+ 0021 =         P4DA0	equ	21H		;Port 0 Section A Data
+ 0022 =         P4CB0	equ	22H		;Port 0 Section B Ctrl/Status
+ 0023 =         P4DB0	equ	23H		;Port 0 Section B Data
+                
+                ;-----------------------------------------
+                ; Altair 8800 Minidisk Controller Equates
+                ;-----------------------------------------
+ 0008 =         MDENBL	equ	08H		;Drive Enable output
+ 0080 =         DDISBL	  equ	  80h		  ;Disable all disks
+                
+ 0008 =         MDSTAT	equ	08H		;Status input (active low)
+ 0001 =         ENWDAT	  equ	  01H		  ;-Enter Write Data
+ 0002 =         MVHEAD	  equ	  02H		  ;-Move Head
+ 0004 =         HDSTAT	  equ	  04H		  ;-Head Status
+ 0008 =         DRVRDY	  equ	  08H		  ;-Drive Ready
+ 0020 =         INTSTA	  equ	  20H		  ;-Interrupts Enabled
+ 0040 =         TRACK0	  equ	  40H		  ;-Track 0 detected
+ 0080 =         NRDA	  equ	  80H		  ;-New Read Data Available
+                
+ 0009 =         MDCTRL	equ	09H		  ;Drive Control output
+ 0001 =         STEPIN	  equ	  01H		  ;Step-In
+ 0002 =         STPOUT	  equ	  02H		  ;Step-Out
+ 0004 =         TMRSET	  equ	  04H		  ;Reset 6.4 sec disable timer
+ 0010 =         IENABL	  equ	  10H		  ;Enable sector interrupt
+ 0020 =         IDSABL	  equ	  20H		  ;Disable interrupts
+ 0080 =         WENABL	  equ	  80H		  ;Enable drive write circuits
+                
+ 0009 =         MDSECT	equ	09H		;Sector Position input
+ 0001 =         SECVAL	  equ	  01h		  ;Sector Valid (1st 30 uS
+                				  ;..of sector pulse)
+ 003E =         SECMSK	  equ	  3Eh		  ;Sector mask for MDSEC
+                
+ 000A =         MDDATA	equ	0AH		;Disk Data (input/output)
+                
+                ;--------------------------------------------------------------
+                ;SINGLE-BYTE ERROR MESSAGES
+                ;--------------------------------------------------------------
+ 0043 =         CERMSG	equ	'C'	;checksum error
+ 004D =         MERMSG	equ	'M'	;memory error
+                
+                ;==============================================================
+ FF00           	ORG	PROMAD
+                ;==============================================================
+                
+                ;--------------------------------------------------------------
+                ; Copy MDBL code image into RAM and run it from there, because
+                ; 1702A EPROMs are too slow to keep up with the disk data.
+                ;--------------------------------------------------------------
+ FF00 2113FF    	lxi	h,RCODE		;HL= ROM address of MDBL image
+ FF03 11004C    	lxi	d,RUNLOC	;DE= RAM execution address
+ FF06 0EE3      	mvi	c,MOVSIZ	;number of bytes to move
+                
+ FF08 7E        MLOOP:	mov	a,m		;Get next EPROM byte
+ FF09 12        	stax	d		;Store it in RAM
+ FF0A 23        	inx	h		;Bump EPROM address
+ FF0B 13        	inx	d		;Bump RAM address
+ FF0C 0D        	dcr	c		;More program data to copy?
+ FF0D C208FF    	jnz	MLOOP		;yes: loop
+                
+ FF10 C3004C    	jmp	RCODE-OFFSET	;no: go run the loaded code
+                
+                ;==============================================================
+                ; RAM Code Image
+                ; All of the following code gets copied into RAM and run there.
+                ;==============================================================
+ B313 =         OFFSET	equ	$-RUNLOC	;address offset for moved code
+                
+ FF13 F3        RCODE:	di			;Turn off INTE LED
+                				;(i.e. no errors yet)
+                
+                ;---------------------------------------------
+                ; Initialize all known I/O ports (or at least
+                ; the ones that need initialization).
+                ;---------------------------------------------
+                
+ FF14 AF        	xra	a		;Initialize 4PIO
+ FF15 D322      	out	P4CB0		  ;Port 0 section B is output
+ FF17 2F        	cma			  ;All output bits high
+ FF18 D323      	out	P4DB0 
+ FF1A 3E2C      	mvi	a,2CH		  ;set up handshake bits
+ FF1C D322      	out	P4CB0
+                
+ FF1E 3E03      	mvi	a,ACRST		;Initialize 2SIO/Turnkey/UIO
+ FF20 D310      	out	ACCTRL		  ;reset first
+                
+ FF22 DBFF      	in	SWTCHS		  ;Read the sense switches
+ FF24 E611      	ani	ACINIT		  ;..to get stop bits
+ FF26 0F        	rrc			  ;put bit in place for ACIA
+ FF27 0F        	rrc
+ FF28 C610      	adi	10H		  ;isolate bit
+ FF2A D310      	out	ACCTRL		  ;set stop bits accordingly
+                
+                ;------------------------------------
+                ; Wait for user to insert a diskette
+                ;------------------------------------
+ FF2C 31714D    	lxi	sp,STACK-OFFSET	;Initialize the stack
+                
+ FF2F AF        WAITEN:	xra	a		;Enable drive zero
+ FF30 D308      	out	MDENBL
+ FF32 DB08      	in	MDSTAT		;Read drive status
+ FF34 E608      	ani	DRVRDY		;Diskette in drive?
+ FF36 C21C4C    	jnz	WAITEN-OFFSET	;no: wait for drive ready
+                
+                ;--------------
+                ; Seek track 0
+                ;--------------
+ FF39 3E04      	mvi	a,TMRSET	;Reset the 6.4 second timer
+ FF3B D309      	out	MDCTRL
+ FF3D C3384C    	jmp	CHK00-OFFSET	;test for track 0 1st
+                
+ FF40 DB08      SEEK00:	in	MDSTAT		;Allowed to move disk head?
+ FF42 E602      	ani	MVHEAD
+ FF44 C22D4C    	jnz	SEEK00-OFFSET	;no: wait for head to settle
+                
+ FF47 3E02      	mvi	a,STPOUT	;Issue STEP-OUT command
+ FF49 D309      	out	MDCTRL
+                
+ FF4B DB08      CHK00:	in	MDSTAT		;Read drive status
+ FF4D E640      	ani	TRACK0		;Are we at track 00?
+ FF4F C22D4C    	jnz	SEEK00-OFFSET	;no: step-out again
+                
+                ;--------------------------------------------------------
+                ; Load disk data into memory, starting at address DMAADR
+                ; Each sector has the file size in its header. Done when
+                ; the next address is higher than the file size.
+                ;--------------------------------------------------------
+ FF52 110000    	lxi	d,DMAADR	;DE = load address
+                
+                ;------------------------------------------
+                ; Read in all sectors on the current track
+                ;------------------------------------------
+ FF55 0600      NXTRAC:	mvi	b,0		;B = Sector to load
+                
+                ;---------------------------------------------------------
+                ; Read the current sector over and over, until either the
+                ; checksum is right, or there have been too many retries
+                ;---------------------------------------------------------
+ FF57 3E10      NXTSEC:	mvi	a,RETRYS	;Initialize sector retries
+                
+                ;----------------------------------------------------------
+                ; Begin Sector Read: Read three header bytes, plus 128 data
+                ; bytes (with checksum), plus three trailer bytes from the
+                ; current sector, into the sector buffer.
+                ;----------------------------------------------------------
+ FF59 F5        RDSECT:	push	psw		;Retry count remaining
+ FF5A D5        	push	d		;Load address
+ FF5B C5        	push	b		;Current sector
+                
+ FF5C D5        	push	d		;Load address
+ FF5D 118680    	lxi	d,SECSIZ*256+86h ;E= bytes/sector
+                				 ; + header & trailer bytes
+                				 ;(unnecessary load of d)
+                
+ FF60 21E34C    	lxi	h,SECBUF-OFFSET	;hl= Sector buffer address
+                
+                ;---------------------------------------
+                ; Sector Read: first, Hunt for sector b
+                ;---------------------------------------
+ FF63 DB09      FNDSEC:	in	MDSECT		;Read the sector position
+ FF65 1F        	rar			;Put SECVAL bit into carry
+ FF66 DA504C    	jc	FNDSEC-OFFSET	;Sector value valid?
+                
+ FF69 E61F      	ani	SECMSK/2	;yes: Mask sector bits
+ FF6B B8        	cmp	b		;Found the desired sector?
+ FF6C C2504C    	jnz	FNDSEC-OFFSET	;no: wait for it
+                
+                ;---------------------------------------------------------
+                ; Sector Read: Second, read sector data into SECBUF at hl
+                ;---------------------------------------------------------
+ FF6F DB08      DWAIT:	in	MDSTAT		;Read the drive status
+ FF71 B7        	ora	a		;New Read Data Available?
+ FF72 FA5C4C    	jm	DWAIT-OFFSET	;no: wait for data
+                
+ FF75 DB0A      	in	MDDATA		;Read data byte
+ FF77 77        	mov	m,a		;Store it in the sector buffer
+ FF78 23        	inx	h		;Move to next buffer address
+ FF79 1D        	dcr	e		;bump byte count
+ FF7A C25C4C    	jnz	DWAIT-OFFSET	;Loop if more data
+                
+                ;------------------------------------------------------------
+                ; Sector Read: Third, move the sector data from SECBUF, into
+                ;              memory. The next memory address is on the
+                ;              stack. Compute the sector checksum as we go.
+                ;------------------------------------------------------------
+ FF7D E1        	pop	h		;Get current load address
+ FF7E 11E64C    	lxi	d,SECBUF+3-OFFSET ;de= address of sector data
+                				  ;..within the sector buffer
+ FF81 018000    	lxi	b,SECSIZ	 ;b= Checksum, c= byte count
+                
+ FF84 1A        MOVLUP:	ldax	d		;Get sector buffer byte
+ FF85 77        	mov	m,a		;Store it at the destination
+ FF86 BE                cmp	m		;Did it store correctly?
+ FF87 C2C34C    	jnz	MEMERR-OFFSET	;no: abort with memory error
+                
+ FF8A 80        	add	b		;update checksum
+ FF8B 47        	mov	b,a		;Save the updated checksum
+ FF8C 13        	inx	d		;Bump sector buffer pointer
+ FF8D 23        	inx	h		;Bump destination pointer
+ FF8E 0D        	dcr	c		;More data bytes to copy?
+ FF8F C2714C    	jnz	MOVLUP-OFFSET	;yes: loop
+                
+                ;------------------------------------------------------------
+                ; Sector Read: fourth, compare computed checksum against
+                ;              sector's checksum and retry/abort if mismatch
+                ;------------------------------------------------------------
+ FF92 1A        	ldax	d		;Marker byte follows sec data
+ FF93 FEFF      	cpi	0FFH		;Is it a checksum marker?
+ FF95 C2884C    	jnz	RDDONE-OFFSET	;no: handle bad checksum
+                
+ FF98 13        	inx	d		;checksum follows marker byte
+ FF99 1A        	ldax	d		;Get the sector's checksum
+ FF9A B8        	cmp	b		;Compare to computed checksum
+                
+ FF9B C1        RDDONE:	pop	b		;Sector to load
+ FF9C EB        	xchg			;de gets current load address
+ FF9D C2BA4C    	jnz	BADSEC-OFFSET	;NZ: checksum error
+                
+ FFA0 F1        	pop	psw		;Clean up stack
+ FFA1 F1        	pop	psw
+                
+ FFA2 2AE44C            lhld	SECBUF+1-OFFSET	;hl=File size
+                
+ FFA5 CDDD4C    	call	CMP16-OFFSET	;compare to next memory address
+ FFA8 D2B34C    	jnc	LDDONE-OFFSET	;done loading if de >= hl
+                
+                ;------------------------------------------------------------
+                ; Next sector: The sectors are interleaved by two. Read all
+                ;              the even sectors first, then the odd sectors.
+                ;------------------------------------------------------------
+ FFAB 04        	inr	b		;Our interleave is 2
+ FFAC 04        	inr	b		;..so bump sector by 2
+ FFAD 78        	mov	a,b		;Have we read 1/2 of the track?
+ FFAE FE10      	cpi	SPT
+ FFB0 DA444C    	jc	NXTSEC-OFFSET	;no: go read next sector
+                
+ FFB3 0601      	mvi	b,01H		;1st odd sector number
+ FFB5 CA444C    	jz	NXTSEC-OFFSET	;Z: must read odd sectors now
+                
+                ;-------------------------------------
+                ; Next Track: Step in, and read again
+                ;-------------------------------------
+ FFB8 DB08      WAITHD:	in	MDSTAT		;Can we move the head now?
+ FFBA E602      	ani	MVHEAD
+ FFBC C2A54C    	jnz	WAITHD-OFFSET	;no: wait for head to settle
+                
+ FFBF 3E01      	mvi	a,STEPIN	;step to the next track
+ FFC1 D309      	out	MDCTRL
+ FFC3 C3424C    	jmp	NXTRAC-OFFSET	;And go read it in
+                
+                ;----------------------------------------------
+                ; Done loading: Disable the disk controller,
+                ;               and go execute the loaded code
+                ;----------------------------------------------
+ FFC6 3E80      LDDONE:	mvi	a,DDISBL	;Disable the Minidisk system
+ FFC8 D308      	out	MDENBL
+ FFCA C30000    	jmp	DMAADR		;Execute the loaded program
+                
+                ;--------------------------------------------------------
+                ; Checksum error: attempt retry if not too many already.
+                ;                 Otherwise, abort, reporting the error 
+                ;--------------------------------------------------------
+ FFCD D1        BADSEC:	pop	d		;Current sector load address
+ FFCE F1        	pop	psw		;Current retry count
+ FFCF 3D        	dcr	a		;Any more retries left?
+ FFD0 C2464C    	jnz	RDSECT-OFFSET	;yes: try reading it again
+                
+                ;----------------------------------------------------------
+                ; Irrecoverable checksum error in sector: too many retries
+                ;----------------------------------------------------------
+ FFD3 3E43      	mvi	a,CERMSG	;no: Signal Checksum error
+ FFD5 01        	db	01H		;Hack to ignore next opcode
+                				;to go to RPTERR
+                ;--------------------------------------
+                ; Memory error: memory readback failed
+                ;--------------------------------------
+ FFD6 3E4D      MEMERR:	mvi	a,MERMSG	;Signal Memory Error
+                
+                ; Fall into RPTERR
+                
+                ;---------------------------------------------------------
+                ; Report an error: turn the INTE light on, turn the disk
+                ; controller off, and then loop forever writing the error
+                ; code (in register a) to all known Terminal ports
+                ;---------------------------------------------------------
+ FFD8 FB        RPTERR:	ei			;Signal error on the INTE LED
+ FFD9 320000    	sta	0		;Store the error code
+ FFDC 220100    	shld	1		;Store the bad address
+ FFDF 47        	mov	b,a		;Save the error code
+ FFE0 3E80      	mvi	a,DDISBL	;Disable the Minidisk system
+ FFE2 D308      	out	MDENBL
+ FFE4 78        	mov	a,b		;recover the error code
+                
+ FFE5 D301      ERHANG:	out	SIODAT		;SIO
+ FFE7 D311      	out	ACDATA		;2SIO/Turnkey/UIO
+ FFE9 D305      	out	PIODAT		;PIO
+ FFEB D323      	out	P4DB0		;4PIO
+ FFED C3D24C    	jmp	ERHANG-OFFSET	;Keep printing error code
+                
+                ;***Subroutine*******************
+                ; Compare de to hl
+                ;
+                ; On Exit:
+                ; Z flag set if DE = HL
+                ; C flag set if DE < HL
+                ;********************************
+ FFF0 7A        CMP16:	mov	a,d		;Get the MSB of DE
+ FFF1 BC        	cmp	h		;Is it equal to the MSB of HL?
+ FFF2 C0        	rnz			;no: return
+                
+ FFF3 7B        	mov	a,e		;Get the LSB of DE
+ FFF4 BD        	cmp	l		;Is it equal to the LSB of HL?
+ FFF5 C9        	ret			;Return with flags set
+                
+ 00E3 =         MOVSIZ	equ	$-RCODE	;# of bytes to move into RAM
+                
+                ;==============================================================
+                ; Sector buffer, holds sector data and metadata
+                ;==============================================================
+ FFF6 0000000000SECBUF:	db	0,0,0,0,0	;fill to end of EPROM
+ FFFB 0000000000	db	0,0,0,0,0
+ 0000           	ds	SECSIZ+6-10	;account for 10 NOPs above too
+                
+                ;==============================================================
+                ; Stack
+                ;==============================================================
+ 007C           	ds	SSIZE		;space for stack
+                STACK:
+                           
+ 0084                       END

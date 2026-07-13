@@ -1,0 +1,42 @@
+# Altair 4K BASIC 3.1, with the tape in the recorder and the bootstrap toggled in.
+#
+#     altairsim tapes/4KBasic31/basic4k.toml
+#     -> MEMORY SIZE?
+#
+# RUN IT FROM THE REPO ROOT. The paths below are the ones you would have typed at the
+# monitor, and the monitor resolves them against the PROCESS's working directory -- not
+# against this file. `cd` somewhere else and the MOUNT will not find the tape.
+#
+# THIS FILE IS THE OPERATOR, AND `base` IS THE MACHINE.
+#
+# machines/basic4k.toml describes the HARDWARE and stops there -- deliberately, because
+# which cassette is in the recorder is not hardware, and there is no motor control on the
+# card to make it one. So there is nothing here about the SIO at port 0, the ACR at 006,
+# the 4K of RAM or the sense switches at 0x80: `base` brings all of it, and if you want to
+# know what is in the backplane, that file says, or `BOARDS` will tell you.
+#
+# What is left is the three things a HUMAN did in 1975: put the tape in, press PLAY (that
+# is MOUNT), toggle in the bootstrap, and run it from 0. A config file and a script are
+# the same language (docs/config.md), so those three things are simply written down.
+
+[machine]
+name = "basic4k-tape"
+base = "basic4k"
+
+# The same three lines as the acceptance test (tests/acceptance/basic4k.cmd), because they
+# are the same three lines.
+#
+# RUN hands the GUEST the keyboard, so you land at BASIC's own prompt with nothing between
+# you and it. ATTN (^E) is the way back to the monitor, and the guest cannot take it from you.
+#
+# The tape comes off in about a second rather than the 110 the real 300-baud cassette took,
+# because `clock_hz = 0` is flat out. `SET cpu0 clock_hz=2000000` buys back the 2 MHz
+# machine AND its 110 seconds -- BASIC cannot tell the difference either way.
+#
+# REWIND acr0:tape puts the cassette back at the start; the card has no motor control, so
+# that verb is your finger on the recorder.
+startup = [
+  "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
+  "LOAD \"tapes/4KBasic31/LDR4K31.HEX\"",
+  "RUN 0",
+]

@@ -45,6 +45,7 @@ int main() {
     test_wd17xx();
     test_spindle();
     test_dcdd();
+    test_mds();
     test_88acr();
     test_frontpanel();
     test_virtc();

@@ -1,0 +1,105 @@
+#!/usr/bin/expect -f
+#
+# THE 88-MDS ACCEPTANCE TEST: boot CP/M 2.2b off a 5.25" Altair minidisk.
+#
+# tests/test_mds.cpp proves the CARD against the manual, with a MemoryMedia and no filesystem.
+# This proves the whole MACHINE against artifacts: a real period .DSK, and MDBL -- the boot
+# PROM MITS burned, disassembled from the EPROM -- running UNMODIFIED.
+#
+# WHY THIS ONE EARNS ITS KEEP. The minidisk lived in this tree for months as a row in the
+# 88-DCDD's format table plus one `if`, and NOTHING EVER FAILED, because nothing ever mounted
+# a minidisk image. Meanwhile that card turned the platter at 360 RPM instead of 300 and
+# clocked a byte every 32 us instead of 64. Both errors are SILENT. The only thing that could
+# ever have caught them is a real disk, in a real controller, running real software.
+#
+# So the banner below is not a smoke test. Reaching it is simultaneous proof of:
+#
+#   the geometry     35 x 16 x 137, probed from a 76,800-byte image whose true size is 76,720
+#                    -- which is not even a multiple of 128, so the XMODEM pad tolerance is
+#                    load-bearing here in a way it never was for the 8" disks
+#   the byte clock   64 us. At 32 the BIOS's cycle-counted transfer loop reads garbage.
+#   the rotation     300 RPM. At 360 the sector under the head is simply the wrong one.
+#   the command byte bit 2 is TIMER RESET -- and bit 3, WHICH THE BIOS SENDS, must do nothing
+#
+# WHAT IT DOES *NOT* PROVE, AND I HAD TO BE SHOWN THIS BY THE CONTROL: it does not prove MDBL
+# is required. My first negative control put DBL -- the 8" PROM -- at FF00 expecting a hang,
+# AND CP/M BOOTED ANYWAY. Mike Douglas's own BOOT.ASM, on this very disk, says so in its
+# header: "This code is loaded from sectors 0 and 2 into RAM by the disk boot loader PROM
+# (DBL)." DBL interleaves 2:1, so it reads sectors 0 and 2, which is exactly where that loader
+# lives -- and DBL's cHDLOAD arrives at an 88-MDS as TIMER RESET, harmlessly.
+#
+# A bootstrap written for one controller runs on the other, WHICH IS THE POINT OF THIS CARD:
+# MITS made the 88-MDS register-compatible with the 88-DCDD deliberately. The same
+# compatibility that makes DBL work here is what let a minidisk hide inside an 8" controller
+# for months. So the control is a CARD swap, not a PROM swap (minidisk-dcdd.toml).
+#
+# IF THIS FAILS, THE BOARD IS WRONG, NOT THE DISK.
+#
+# WHY IT MUST BE AN EXPECT TEST AND NOT A PIPED ONE -- and this cost me an hour:
+#
+#   CP/M's DIR polls the console between directory entries and ABORTS the listing if a key is
+#   waiting. Feed it a buffered keystroke file and the SECOND command, sitting in the pipe
+#   behind the first, silently truncates the FIRST command's output. You get one filename and
+#   a prompt, and it looks exactly like a disk that only read one sector -- i.e. like a bug in
+#   the card you are trying to test. It is not. Pace the input, or the test lies to you.
+#
+#   (The sacrificial NUL that basic4k.keys needs is the same family of trap, from the other
+#   end: a byte already in the buffer when the guest's cold start clears the UART.)
+#
+# usage: expect -f minidisk.exp <altairsim> [machine]
+#
+# The `machine` argument is how the NEGATIVE CONTROL reuses this script: run it against
+# tests/acceptance/minidisk-dbl.toml -- the same machine with the 8" PROM in the socket -- and
+# every expect below must TIME OUT. ctest asserts exactly that with WILL_FAIL.
+#
+set timeout 60
+log_user 0
+
+set machine "disks/mits-88mds/cpm22/cpm22-mini.toml"
+if {[llength $argv] > 1} { set machine [lindex $argv 1] }
+
+spawn [lindex $argv 0] $machine
+
+# MDBL relocates itself to 4C00, reads track 0 sectors 0 and 2, and that loader pulls CP/M
+# into high RAM. Every literal is `-ex`: expect patterns are GLOBS, and a bare "*" would
+# match a machine doing nothing at all.
+expect {
+    -ex "56K CP/M 2.2b" {}
+    eof     { puts "FAIL: the machine did not even start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: CP/M never printed its banner -- the 88-MDS is wrong"; exit 1 }
+}
+
+# ...AND IT IS THE MINIDISK BIOS. This string lives in the `if MINIDSK` half of BIOS.ASM --
+# the 8" build of the very same source prints "For Altair 8\" Floppy" instead. So this is the
+# DISK telling us which controller it thinks it is talking to.
+expect {
+    -ex "For Altair Mini Disk" {}
+    eof     { puts "FAIL: died before the BIOS banner"; exit 1 }
+    timeout { puts "FAIL: CP/M booted, but not the MINIDISK BIOS"; exit 1 }
+}
+
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: died before the prompt"; exit 1 }
+    timeout { puts "FAIL: no CP/M prompt"; exit 1 }
+}
+
+# A DIRECTORY READ: the head stepped off track 0 and came back with real data. The 35-track
+# clamp, the 50 ms step settle and the sector layout all had to be right to get here.
+send "DIR\r"
+expect {
+    -ex "MOVCPM5" {}
+    timeout { puts "FAIL: DIR did not list the disk -- the head stepped, but the data is wrong"; exit 1 }
+}
+expect -ex "A>"
+
+# ...and drive B: -- a SECOND disk, in a SECOND drive, on the same card. A minidisk holds
+# 71,680 bytes, a fourteenth of an 8" floppy, so minidisk CP/M SHIPS AS TWO DISKS.
+send "DIR B:\r"
+expect {
+    -ex "MBASIC" {}
+    timeout { puts "FAIL: drive B: did not read -- drive select is wrong"; exit 1 }
+}
+
+puts "OK: CP/M 2.2b booted off a 5.25\" minidisk through MDBL, and read both drives."
+exit 0

@@ -1,0 +1,59 @@
+# Lifeboat CP/M 2.2 for the Altair 8800, 48K.
+#
+#     altairsim disks/mits-88dcdd/cpm22/lifeboat/cpm22-lifeboat.toml
+#
+# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
+# not against this file.
+#
+# A DELTA, AND THE ONE THAT SHOWS BOTH HALVES OF THE GRAMMAR: it MODIFIES the base's disk
+# controller (to put a floppy in it) and REPLACES the base's memory card (because this CP/M
+# is a 48K build and the default machine is 56K). See docs/config.md for the four forms.
+#
+# THE DISK IMAGE IS NOT IN GIT. See README.md beside this file for where to get it. CP/M
+# writes to A: for anything you create, and drive 0 is mounted read/write -- so there is no
+# undo. Copy the image before testing writes.
+
+[machine]
+name = "cpm22-lifeboat"
+base = "default"
+
+# The boot PROM IS the boot command -- there is no BOOT verb (DESIGN.md 10.0).
+startup = ["RUN FF00"]
+
+# `id` with NO `type` = the card ALREADY in the machine. This puts a disk in the base's
+# 88-DCDD rather than fitting a second controller.
+#
+# No `media` key: the card probes it. 337,664 bytes is the XMODEM-padded 8" floppy
+# (77 x 32 x 137 = 337,568 plus the protocol's block padding).
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88dcdd/cpm22/lifeboat/LIFEBOAT-CPM22-48K.DSK"
+
+# 48K, AND IT IS NOT A PREFERENCE -- the image is a 48K build and will not boot in the
+# base's 56K. BOOT.ASM, beside this file, puts the BIOS at `MSIZE*1024 - BIOSLEN`, so the
+# RAM and the size CP/M was linked for have to agree or CP/M loads into nothing.
+#
+# `type` ON AN ID THE BASE BROUGHT REPLACES THE CARD OUTRIGHT, and that is exactly what is
+# wanted here: regions are a LIST, so ADDING a 48K region to the base's 56K board would
+# OVERLAP it -- two boards driving 0000-BFFF, which is bus contention -- rather than shrink
+# it. Naming the type says "this is the whole card now".
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"                # 0000-BFFF
+
+  # AND THE PROM HAS TO BE RE-STATED, because the card it was on has just been replaced.
+  # Leave this out and there is nothing at FF00 for `RUN FF00` to run -- the machine would
+  # load fine and then execute a floating bus.
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:dbl"

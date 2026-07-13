@@ -1,0 +1,41 @@
+# MITS Programming System II, POLLED (no interrupts) -- tape in, loader in, running.
+#
+#     altairsim tapes/MitsPS2/ps2.toml
+#     ->   ?
+#
+# RUN IT FROM THE REPO ROOT. The paths below are resolved against the PROCESS's working
+# directory, not against this file.
+#
+# The interrupt-driven version of this same machine is ps2int.toml, beside this file. The
+# only difference is sense switch A9 and an 88-VI/RTC card -- and it is the difference
+# between a typo killing the machine and Ctrl-C getting you your prompt back. See below.
+#
+# THIS FILE IS THE OPERATOR, AND `base` IS THE MACHINE. machines/ps2.toml describes the
+# hardware -- the 2SIO console at 0x10, the ACR at 006, 16K of RAM, the sense switches at
+# 0x8E -- and carries the full argument for every one of those numbers.
+
+[machine]
+name = "ps2-tape"
+base = "ps2"
+
+# TWO THINGS ABOUT THIS LIST, and the second one will cost you an afternoon.
+#
+# THE LOADER IS THE 4K BASIC 3.2 ONE (LDRPS2.HEX, `lxi h,0FAEh`), NOT LDR8K32.HEX. Both
+# tapes lead with 0xAE, which proves nothing -- that byte is just the LOW half of the load
+# address, and 0FAE and 1FAE share it. PS2-MON.TAP's second stage is assembled for page 0F.
+# Boot this with the 8K loader and it lands 4K high, prints nothing, and spins forever.
+#
+# THE MONITOR'S PROMPT IS TWO SPACES AND A '?'. That is the whole banner. And do not type
+# anything at it that is not a command: an unrecognised word is not an error, it is a
+# PROGRAM NAME, and the monitor will hunt the cassette for it forever. In THIS machine
+# that is fatal -- there are no interrupts, so nothing can take control back. That is what
+# ps2int.toml is for.
+#
+# The tape stays in the recorder: the monitor reads the editor, the assembler and the
+# debugger off this same cassette ("OPN ABS,AC"). REWIND acr0:tape when you need the start
+# of it again.
+startup = [
+  "MOUNT acr0:tape \"tapes/MitsPS2/PS2-MON.TAP\"",
+  "LOAD \"tapes/MitsPS2/LDRPS2.HEX\"",
+  "RUN 0",
+]

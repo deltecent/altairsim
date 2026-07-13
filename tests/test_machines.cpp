@@ -89,16 +89,20 @@ void test_machines() {
     CHECK(loadMachine(*d, m, err), "and it loads through the ordinary TOML parser");
     CHECK(m.name == "default", "it knows its name");
 
-    // A front panel, a CPU, a serial card and a memory card. The 8080, the 2SIO and
-    // now the PANEL each arrived as ONE MORE [[board]], with nothing else about the
-    // machine moving -- which is the prediction this file made back when it had none
-    // of them, and it has now held three times.
+    // A front panel, a CPU, a serial card, a FLOPPY CONTROLLER and a memory card. The
+    // 8080, the 2SIO, the PANEL and now the 88-DCDD each arrived as ONE MORE [[board]],
+    // with nothing else about the machine moving -- which is the prediction this file
+    // made back when it had none of them, and it has now held four times.
     //
-    // The panel is the sharpest of the three, because it is the one that took
-    // something AWAY: `[machine] sense` was a byte on the Machine, and it went out
-    // with the card that replaced it. The count went 3 -> 4 and the struct got
-    // SMALLER.
-    CHECK(m.boards().size() == 4, "a panel, a CPU, a 2SIO and a memory card");
+    // The panel is still the sharpest of them, because it is the one that took something
+    // AWAY: `[machine] sense` was a byte on the Machine, and it went out with the card
+    // that replaced it. The count went 3 -> 4 and the struct got SMALLER.
+    //
+    // The DCDD is the one with consequences beyond this line, though: the default machine
+    // is what `base = "default"` STARTS FROM, so its card list is now a contract that
+    // other config files depend on. Adding a card here is no longer free.
+    CHECK(m.boards().size() == 5, "a panel, a CPU, a 2SIO, an 88-DCDD and a memory card");
+    CHECK(m.find("dsk0") != nullptr, "the floppy controller DBL boots from is in the backplane");
     CHECK(m.find("fp0") != nullptr, "the front panel is a card in the backplane");
     CHECK(m.cpu() != nullptr, "there is a processor in the default machine now");
     CHECK(m.isa() == "8080", "and it speaks 8080, so DISASM never has to be told");
@@ -202,4 +206,189 @@ void test_machines() {
     CHECK(looksLikeFile("./default"), "a path is a file, even with a built-in's name");
     CHECK(looksLikeFile("cfg/x"), "a slash anywhere makes it a file");
     CHECK(!looksLikeFile("toml"), "and 'toml' alone is not a .toml -- do not match a bare suffix");
+
+    SECTION("a startup entry is a COMMAND LINE, so it can quote a filename");
+
+    // EVERY PERIOD TAPE IN THE TREE HAS A SPACE IN ITS NAME -- "4K BASIC Ver 3-1.tap",
+    // "8K BASIC Ver 3-2.tap" -- so the monitor's tokenizer needs the quotes around a path,
+    // and says so in as many words (cli/monitor.cpp: "a filename is the one place a quote
+    // is not decoration but the only way to write a path with a space in it").
+    //
+    // Which meant that until the escape below existed, THE ONE THING `startup` IS FOR
+    // could not be written. Every `"` toggled the string, escape or not, so
+    //
+    //     startup = ["MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\""]
+    //
+    // parsed as `MOUNT acr0:tape \` and the machine booted with an empty recorder -- no
+    // error, just a tape that was never in the drive. docs/config.md's promise ("anything
+    // you can type, a config can do") was false for every artifact we ship.
+    const char* kQuoted = R"(
+[machine]
+name    = "quoted"
+startup = [
+  "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
+  "LOAD \"tapes/4KBasic31/LDR4K31.HEX\"",
+  "RUN 0",
+]
+)";
+
+    Machine     mq;
+    std::string eq;
+    CHECK(loadTomlText(kQuoted, "quoted", mq, eq), "a startup entry parses with escaped quotes");
+    CHECK(mq.startup.size() == 3, "...all three of them, and the escape does not split one in two");
+    if (mq.startup.size() == 3) {
+        CHECK(mq.startup[0] == "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
+              "...and the QUOTES REACH THE MONITOR, which is the whole point: without them "
+              "the tokenizer sees three arguments and the path dies at the first space");
+        CHECK(mq.startup[2] == "RUN 0", "...and an entry with no escape in it is untouched");
+    }
+
+    // The round trip, which is where this broke the SAME way CONFIG SAVE broke on units:
+    // the writer emitted the quotes raw, so the file it produced closed the TOML string
+    // early and would not load back.
+    std::string qtext = saveTomlText(mq);
+    Machine     qback;
+    std::string eq2;
+    CHECK(loadTomlText(qtext, "quoted (saved)", qback, eq2),
+          "...and CONFIG SAVE's own output loads back in -- the writer escapes what the "
+          "reader unescapes, or it is not a round trip");
+    CHECK(qback.startup == mq.startup, "...with every command byte-identical");
+
+    // AN UNKNOWN ESCAPE IS AN ERROR, NOT A SHRUG. `\n` and `\t` mean nothing to a monitor
+    // command, and silently dropping the backslash would turn a Windows path written with
+    // single separators into a shorter, wrong path that fails somewhere else entirely.
+    Machine     mbad;
+    std::string ebad;
+    CHECK(!loadTomlText("[machine]\nname = \"x\"\nstartup = [\"LOAD \\nope\"]\n", "bad", mbad, ebad),
+          "an escape this parser does not know is refused");
+    CHECK(ebad.find("\\n") != std::string::npos, "...and the message names the offender");
+
+    SECTION("base = \"default\" -- start from a machine and say what is DIFFERENT");
+
+    // THE MACHINE IS THE HARD PART TO GET RIGHT, AND IT IS THE PART NOBODY WANTS TO
+    // RETYPE. A CP/M config is the default Altair with a floppy in drive 0 -- that is the
+    // whole of it -- and before `base` existed it had to restate five cards to say so.
+    //
+    // This is not a convenience. Hand-copying a backplane is how you end up with a machine
+    // that boots CP/M into a terminal that is not there, because the one card you forgot to
+    // copy was the 2SIO. That happened, to the very files this feature replaced.
+
+    const char* kDelta = R"(
+[machine]
+name = "delta"
+base = "default"
+
+[[board]]
+id = "dsk0"
+)";
+    Machine     md2;
+    std::string ed;
+    CHECK(loadTomlText(kDelta, "delta", md2, ed), "a delta on the default machine loads");
+    CHECK(md2.name == "delta", "...and `name` beats the base's, whatever order the keys are in");
+    CHECK(md2.boards().size() == 5, "...with every card the base brought still in the backplane");
+    CHECK(md2.find("sio0") != nullptr, "...including the console you did not have to remember");
+
+    // `id` WITH NO `type` IS "THE ONE ALREADY IN THE MACHINE". It must not fit a second
+    // card, and it must not silently do nothing.
+    Board* dsk = md2.find("dsk0");
+    CHECK(dsk != nullptr && dsk->type() == "dcdd", "an [[board]] with no `type` found the base's card");
+
+    // ...and it is an ERROR when there is nothing to find, rather than a quiet no-op --
+    // which is the difference between a typo you fix now and a machine that is missing a
+    // card you will look for later.
+    Machine     mno;
+    std::string eno;
+    CHECK(!loadTomlText("[machine]\nname = \"x\"\nbase = \"default\"\n\n[[board]]\nid = \"nope0\"\n",
+                        "x", mno, eno),
+          "...and an id that is in no base is refused, not ignored");
+
+    // TYPE + AN ID THE BASE BROUGHT = REPLACE THE CARD OUTRIGHT. This is what makes a
+    // memory board re-fittable: regions are a LIST, so appending a 24K region to a 56K
+    // board would OVERLAP it, not replace it. Naming the type says "this is the whole
+    // card now".
+    const char* kReplace = R"(
+[machine]
+name = "small"
+base = "default"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "24K"
+)";
+    Machine     ms;
+    std::string es;
+    CHECK(loadTomlText(kReplace, "small", ms, es), "re-fitting a card the base brought loads");
+    CHECK(ms.boards().size() == 5, "...and REPLACES it -- there is not a second memory board");
+    ms.bus.memWrite(0x5FFF, 0x42);
+    CHECK(ms.bus.memRead(0x5FFF) == 0x42, "5FFF is the top of the new 24K");
+    (void)ms.bus.memRead(0x6000);
+    CHECK(ms.bus.lastUnclaimed(),
+          "...and 6000 is EMPTY: the base's 56K region is gone, not overlapped by the new "
+          "one. Two boards both answering 0000-5FFF is bus contention, and it is exactly "
+          "what appending would have built");
+    (void)ms.bus.memRead(0xFF00);
+    CHECK(ms.bus.lastUnclaimed(),
+          "...and the DBL PROM went with the card it was on. Replace means replace: if you "
+          "want the ROM back, re-state it");
+
+    // REMOVE takes a card out of the slot.
+    const char* kRemove = R"(
+[machine]
+name = "nodisk"
+base = "default"
+
+[[board]]
+id     = "dsk0"
+remove = true
+)";
+    Machine     mr;
+    std::string er;
+    CHECK(loadTomlText(kRemove, "nodisk", mr, er), "a delta can pull a card out");
+    CHECK(mr.boards().size() == 4, "...and the backplane really is one card lighter");
+    CHECK(mr.find("dsk0") == nullptr, "...the floppy controller is gone");
+    (void)mr.bus.ioRead(0x08);
+    CHECK(mr.bus.lastUnclaimed(), "...and nobody answers port 08 any more -- it FLOATS, as an "
+                                  "empty slot does");
+
+    // A DUPLICATE ID WITHIN ONE FILE IS STILL AN ERROR, and this is the check REPLACE was
+    // deliberately scoped around. A second [[board]] with a copy-pasted id is a typo; the
+    // same thing against a BASE is intent. Conflating them would have thrown away the one
+    // diagnostic that catches the commonest mistake in a hand-written machine file.
+    Machine     mdup;
+    std::string edup;
+    CHECK(!loadTomlText("[machine]\nname = \"d\"\n\n[[board]]\ntype = \"memory\"\nid = \"mem0\"\n"
+                        "\n[[board]]\ntype = \"memory\"\nid = \"mem0\"\n",
+                        "dup", mdup, edup),
+          "two [[board]] tables with one id, in one file, is still refused");
+
+    // `remove` and `type` contradict each other, and saying both is not a preference.
+    Machine     mc;
+    std::string ec;
+    CHECK(!loadTomlText("[machine]\nname = \"c\"\nbase = \"default\"\n\n[[board]]\ntype = \"dcdd\"\n"
+                        "id = \"dsk0\"\nremove = true\n",
+                        "c", mc, ec),
+          "`remove` and `type` together are refused -- one takes the card out, the other "
+          "fits a new one");
+
+    // A BASE THAT DOES NOT EXIST IS AN ERROR, not an empty machine.
+    Machine     mb;
+    std::string eb;
+    CHECK(!loadTomlText("[machine]\nname = \"x\"\nbase = \"sol20\"\n", "x", mb, eb),
+          "a base we have no machine for is refused");
+
+    // AND A SAVED DELTA IS A MACHINE, NOT A DELTA. CONFIG SAVE writes the backplane it can
+    // see -- every card, base or not -- so the saved file has no `base` key and stands on
+    // its own. That is the only honest thing it can do: the base may be a FILE, and a file
+    // can change under you.
+    std::string dtext = saveTomlText(md2);
+    CHECK(dtext.find("base") == std::string::npos, "a saved machine does not refer to a base");
+    Machine     dback;
+    std::string ed2;
+    CHECK(loadTomlText(dtext, "delta (saved)", dback, ed2), "...and it loads on its own");
+    CHECK(dback.boards().size() == md2.boards().size(), "...with all five cards written out");
 }

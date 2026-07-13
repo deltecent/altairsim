@@ -157,7 +157,15 @@ add_library(altair_core STATIC
   src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
+  # The two MITS hard-sector floppy controllers, and the register model they share.
+  # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
+  # programming model, and the period BOOT.ASM declares the ports and every status/command
+  # bit OUTSIDE its `if MINIDSK` blocks to prove it. What the two cards do NOT share --
+  # 360 vs 300 RPM, 32 vs 64 us a byte, a head solenoid vs a motor that stops -- is what
+  # each .cpp below actually contains. See src/boards/mits-hardsector.h.
+  src/boards/mits-hardsector.cpp
   src/boards/mits-88dcdd.cpp
+  src/boards/mits-88mds.cpp
   src/boards/mits-2sio.cpp
   src/boards/mits-88sio.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
@@ -212,6 +220,7 @@ add_executable(altair_tests
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
+  tests/test_mds.cpp
   tests/test_frontpanel.cpp
   tests/test_virtc.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
@@ -372,6 +381,50 @@ if(EXPECT_EXECUTABLE)
   set_tests_properties(acceptance-ps2-int-control PROPERTIES
                        LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE 88-MDS: CP/M 2.2b off a 5.25" Altair minidisk.
+  #
+  # IT HAS TO BE AN EXPECT TEST. CP/M's DIR polls the console between directory entries and
+  # ABORTS the listing if a key is waiting -- so a buffered keystroke file has its SECOND
+  # command silently truncate its FIRST command's output. You get one filename, and it looks
+  # exactly like a card that only read one sector. The input must be paced.
+  #
+  # AND IT IS GATED ON THE DISK, which is not in git (disks/ is an allowlist -- see
+  # .gitignore). A test that quietly passes because its input is missing is worse than no
+  # test, so if the image is not there we say so and skip.
+  # ---------------------------------------------------------------------------
+  set(MDS_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88mds/cpm22/CPM56K-1.DSK")
+  if(EXISTS "${MDS_DISK}")
+    add_test(NAME acceptance-minidisk
+             COMMAND ${EXPECT_EXECUTABLE}
+                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
+                     $<TARGET_FILE:altairsim>)
+    set_tests_properties(acceptance-minidisk PROPERTIES
+                         LABELS acceptance TIMEOUT 120
+                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # ...AND THE NEGATIVE CONTROL, which is the only reason to believe the test above.
+    #
+    # The SAME script against the SAME disk in an 88-DCDD -- which is what this tree actually
+    # did for months -- must FAIL. It now refuses at MOUNT: 76,800 bytes matches no format an
+    # 8" controller knows. If this ever starts booting, the minidisk has crept back into the
+    # wrong card and acceptance-minidisk has stopped testing the 88-MDS.
+    #
+    # (My FIRST control swapped the PROM instead -- DBL for MDBL -- and IT BOOTED, because the
+    # two controllers are register-compatible and Mike's own loader says DBL loads it. The
+    # control did its job: it disproved my claim, not the card. See minidisk-dcdd.toml.)
+    add_test(NAME acceptance-minidisk-control
+             COMMAND ${EXPECT_EXECUTABLE}
+                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
+                     $<TARGET_FILE:altairsim> tests/acceptance/minidisk-dcdd.toml)
+    set_tests_properties(acceptance-minidisk-control PROPERTIES
+                         LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
+                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  else()
+    message(STATUS "disks/mits-88mds/cpm22/CPM56K-1.DSK not found -- SKIPPING the 88-MDS "
+                   "acceptance test. See disks/mits-88mds/cpm22/README.md to download it.")
+  endif()
 else()
   message(STATUS "expect not found -- SKIPPING the interactive CLI test (acceptance-cli). "
                  "The tty paths (prompt echo, ATTN, clock pacing) will not be covered.")

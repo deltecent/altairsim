@@ -1,0 +1,110 @@
+# Altair CP/M 2.2 on an 8 MB disk, in the ordinary 88-DCDD.
+#
+# AND IT REALLY IS THE ORDINARY CARD -- there is no second controller here, and no special
+# case in the board. The FDC+ is a modern card that EMULATES the 88-DCDD, and its serial
+# disk server can hand it 8 MB images -- but those images are still in the 88-DCDD's own
+# HARD-SECTOR FORMAT: the same 137-byte slot, the same 32 sectors to a track. There are
+# simply more tracks than would fit on a physical 8" platter (2048 of them).
+#
+# The controller cannot tell. It steps the head and shifts bytes; it never asks how big the
+# disk is supposed to be. That is why `fdc8mb` is just another row in the card's format
+# table beside `8in` and `minidisk` (src/boards/mits-88dcdd.cpp) and not a mode, a quirk,
+# or a fork of the driver.
+#
+#     altairsim disks/mits-88dcdd/cpm22/8mb/cpm22-8mb.toml
+#     -> 56K CP/M 2.2b v1.0
+#        For Altair 8Mb Virtual Drive
+#        A0>
+#
+# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
+# not against this file.
+#
+# THIS FILE IS A DELTA, AND THAT IS THE WHOLE POINT OF IT.
+#
+# `base = "default"` brings the machine: a front panel, an 8080, an 88-2SIO console at
+# 0x10, an 88-DCDD at 0x08 with four empty drives, 56K of RAM and the DBL boot PROM at
+# FF00. That IS the CP/M Altair. The only thing this file has to say is which disk is in
+# drive 0 -- because the only thing that distinguishes this machine from the default one
+# is that somebody put a floppy in it.
+#
+# Everything the base brings is documented in machines/default.toml, and if you want to
+# know what is actually in the backplane, `BOARDS` will tell you.
+#
+# THE DISK IMAGE IS NOT IN GIT. `*.DSK` is in .gitignore -- deliberately, they are large
+# and not ours to redistribute -- so there is NO UNDO on this file. CP/M writes to A: for
+# anything you create, and drive 0 is mounted read/write because that is what a real
+# machine is; a read-only A: is a CP/M that fails on its first PIP. If you are about to
+# test writes in anger, copy the image first, or add `readonly = true` below.
+
+[machine]
+name = "cpm22-8mb"
+base = "default"
+
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0) -- a machine
+# that should start says so with the operator's own keystroke, and on a disk Altair that
+# keystroke was EXAMINE FF00 / RUN.
+#
+# DBL reads sectors 0 and 2 of track 0 into RAM; THAT loader (BOOT.ASM, beside this file)
+# pulls the CP/M image into high memory and jumps into the BIOS.
+#
+# RUN hands the GUEST the keyboard, so you land at CP/M's prompt. ATTN (^E) gets you back
+# to the monitor, and the guest cannot take it from you -- which matters here, because ^C
+# belongs to CP/M (it is warm boot) and CP/M is entitled to read it.
+startup = ["RUN FF00"]
+
+# THE DISK. `id` with NO `type` means "the card that is already in this machine" -- the
+# base's 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a
+# second controller. (Give it a `type` and you would REPLACE the card outright.)
+#
+# NO `media` KEY, AND THAT IS DELIBERATE. The image is 8,978,432 bytes and the card PROBES
+# it: 2048 tracks x 32 sectors x 137 = exactly that, so it can only be `fdc8mb`. Geometry
+# probing belongs to the BOARD (DESIGN.md 7.3) -- the same byte count on another
+# controller would mean something else. Force `media` only when the size cannot decide.
+#
+# It boots to `A0>`: the 8 MB BIOS prints the drive's unit number after the letter, so
+# that is drive A, unit 0, and not a typo.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
+
+  # THE OTHER THREE DRIVES, AND THE ARRANGEMENT THIS CP/M ACTUALLY EXPECTS. The FDC+
+  # manual is explicit about it (reference/FDC+ Manual.pdf, 3.7.4):
+  #
+  #     "CP/M for these drives expects an 8Mb drive image to be mounted on drives A and B
+  #      (0 and 1) and normal 77 track Altair images on drives C and D (2 and 3)."
+  #
+  # So the machine is MIXED GEOMETRY on purpose: two 2048-track disks and two 77-track
+  # floppies, in one backplane, on one controller. That works here because the format and
+  # the Spindle are PER DRIVE (src/boards/mits-88dcdd.h) -- a 2048-track disk and a
+  # 77-track one turn the same 32 sectors past the head, and the card never asks how big
+  # either is supposed to be.
+  #
+  # It is also the practical way to get files in and out of an 8 MB system: put an ordinary
+  # CP/M floppy in C: and PIP between them.
+  #
+  #     MOUNT dsk0:drive2 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+  #     A0> DIR C:
+  #
+  # B: is left empty. The BLANK image beside this file is the pristine master for making
+  # new 8 MB disks, and mounting it would let CP/M WRITE to it -- so mount a COPY:
+  #
+  #     MOUNT dsk0:drive1 "my-scratch-8mb.dsk"
+  #
+  # AND MIND THE TRACK BUFFER (docs/boards/mits-dcdd.md). This BIOS does not write to the
+  # card when CP/M closes a file -- it copies into an in-memory trkBuf and flushes on the
+  # next CONSOLE INPUT. So never pull the image out right after a file operation: get back
+  # to the `A0>` prompt first, and the directory update will have landed.
+
+# NOTHING ABOUT THE MEMORY IS SAID HERE, and it is worth saying why not. The base is 56K,
+# and 56K is exactly what this image was built for -- it is arithmetic out of BOOT.ASM:
+#
+#     MEMSIZE  equ 56              BIOSLEN equ 1C00h
+#     CCPBASE  = 56*1024 - 1C00 - 0E00 - 0800 = AE00
+#     BIOSBAS  = AE00 + 0800 + 0E00           = C400   ...and C400 + 1C00 = E000
+#
+# The BIOS ends at exactly E000, which is where the default machine's RAM stops. They
+# agree, so there is nothing to change. Give this machine less RAM and CP/M loads into
+# nothing.
