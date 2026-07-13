@@ -114,6 +114,14 @@ clock_hz = 0                  # FLAT OUT, and that is the default. The crystal i
                               # 2000000` gives you the real 88-CPU's 2 MHz back, with
                               # the real waiting that goes with it. Emulated time is
                               # identical either way; only the sleeping differs.
+                              #
+                              # FLAT OUT STILL STANDS DOWN AT A PROMPT: `idle` is on by
+                              # default, and it is a SEPARATE policy from the crystal.
+                              # A guest waiting for a key polls an empty UART and does
+                              # nothing else, and running that as fast as the host can
+                              # go cost an entire core -- CP/M at `A0>` pinned a CPU.
+                              # Now it costs ~3%, and no guest can tell the difference:
+                              # only the HOST sleeps. `SET cpu0 idle=off` for the spin.
 
 # The console. CP/M's BIOS talks to a 2SIO at port 10, and so does DBL: it reads
 # the sense switches at FF22 to decide the 2SIO's stop bits, which is why `sense`

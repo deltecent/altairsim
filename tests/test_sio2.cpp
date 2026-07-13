@@ -477,6 +477,62 @@ void test_sio2() {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // THE IDLE SIGNAL (Patrick, 2026-07-13) -- host/console.h, DESIGN.md 8.
+    // -----------------------------------------------------------------------
+    // A guest at a prompt does nothing but read the status register, and before this
+    // the run loop obliged it at forty million instructions a second: 8 MB CP/M
+    // sitting at `A0>` pinned a host core at 100%. The run loop can only stand down
+    // if it can TELL, and this is what it asks: how often did the guest come to the
+    // keyboard and find nothing there.
+    SECTION("a status read on an empty keyboard is the guest saying it has nothing to do");
+    {
+        Machine m;
+        std::string err;
+        m.add("2sio", "sio0", err);
+        m.add("memory", "mem0", err);
+        m.power();
+
+        Monitor mon(m);
+        std::ostringstream out;
+        mon.exec("CONNECT sio0:a console", out);
+
+        Console& con = Console::instance();
+        CHECK(con.pending() == 0, "nobody has typed");
+
+        // The guest polls the status register: exactly what a CP/M CONIN loop does,
+        // three instructions at a time, for as long as you leave it there.
+        uint64_t hungry0 = con.hungry();
+        (void)m.bus.ioRead(0x10);
+        (void)m.bus.ioRead(0x10);
+        CHECK(con.hungry() > hungry0, "asking an empty keyboard COUNTS -- that is the signal");
+
+        // ...AND IT IS NOT starved(). starved() means empty AND ENDED -- a guest begging
+        // at a pipe that has hung up, which is how a SCRIPTED run knows it may leave. A
+        // terminal never ends, so a machine at a prompt is not begging; it is waiting for
+        // you. Widen starved() to mean this and a cassette load dies three slices in.
+        CHECK(con.starved() == 0, "a live keyboard never starves, however long it sits idle");
+
+        // A key arrives. Now the guest is NOT waiting -- it has work -- and the counter
+        // must go still, or the run loop would nap through the operator's typing.
+        con.inject("K");
+        uint64_t hungry1   = con.hungry();
+        uint64_t consumed0 = con.consumed();
+        (void)m.bus.ioRead(0x10);
+        CHECK((m.bus.ioRead(0x10) & 0x01) != 0, "the 6850 has the key");
+        CHECK(con.hungry() == hungry1, "a keyboard with a key in it is not an idle one");
+        CHECK(m.bus.ioRead(0x11) == 'K', "and the guest reads it");
+
+        // AND THE BYTE ITSELF IS COUNTED, which is the signal that saves a TRANSFER.
+        //
+        // A guest receiving XMODEM is hungry hundreds of times a slice (it is waiting on
+        // the next byte, 130 us away at 76,800 bps) and says nothing for a whole block --
+        // so by hungry() and written() alone it is a prompt, and the run loop napped
+        // straight through one until this counter existed. The difference is that bytes
+        // ARE ARRIVING, and here is where that becomes visible.
+        CHECK(con.consumed() == consumed0 + 1, "a byte crossing into the guest is counted");
+    }
+
     // ATTN IS THE CONSOLE'S, AND ONLY THE CONSOLE'S (Patrick, 2026-07-12).
     SECTION("a line that is not the console passes ATTN through as data");
     {

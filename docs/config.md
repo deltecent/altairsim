@@ -246,6 +246,13 @@ startup = [                # monitor commands, run in order once the boards exis
 type     = "8080"
 id       = "cpu0"
 clock_hz = 2_000_000
+idle     = true          # ...and so is the OTHER sleeping policy, and it is the DEFAULT.
+                         # A guest at a prompt does nothing but poll an empty keyboard,
+                         # and running that flat out cost a whole host core. Now it costs
+                         # about 3%. The guest cannot tell -- no board behaves differently
+                         # and emulated time is untouched; only the HOST sleeps. It is
+                         # independent of clock_hz (a 2 MHz machine idles too), and
+                         # `idle = false` gets the spin back.
 
 # ...and so is the front panel, which is where the SENSE switches live. DBL reads
 # them at FF22 (`IN 0FFH`, bit 4) to pick the 2SIO's stop bits, so this is not

@@ -33,6 +33,21 @@ The chip, the instruction set, and the card are three separate things: DESIGN.md
 | Property | Default | Runtime? | What it is |
 |---|---|---|---|
 | `clock_hz` | `0` | yes | The crystal, **which is on this card** — that is why the clock is the board's property and not the machine's. **`0` runs flat out, and that is the default.** `SET cpu0 clock_hz=2000000` buys back the real 88-CPU's 2 MHz *and the real waiting that goes with it* — a 3,200-byte cassette then takes its full 110 seconds, because that is how long it took. Emulated time is identical either way (the ACR still spends 66,666 T-states on a 300-baud byte), so only the **sleeping** differs and the guest cannot tell. A backplane with no CPU in it has no clock rate to speak of. |
+| `idle` | `on` | yes | **Stand down when the guest has nothing to do but wait for a key.** Every prompt ever written — `A0>`, `OK`, `.` — is a two-instruction spin on a UART status bit, and running it flat out pinned a host core at 100% to no purpose: 8 MB CP/M sitting at `A0>` cost a whole CPU. With `idle` on it costs about 3%. It is a **host** policy, exactly like the sleeping `clock_hz` decides — emulated time, the 6850's registers and every board's behaviour are untouched, and **the guest cannot tell**. It is also **orthogonal to `clock_hz`**: a 2 MHz machine idles too. `SET cpu0 idle=off` gets the spin back, which is what you want if you are measuring the host and nothing else. |
+
+### What `idle` will *not* do
+
+It will not nap on a machine that is **working**, and the distinction is sharper than it
+looks. A guest receiving XMODEM **down the console line** polls an empty keyboard
+hundreds of times per slice — at 76,800 bps the next byte is 130 µs away — and prints
+nothing at all for a whole 128-byte block. By the obvious measures it is
+indistinguishable from a prompt, and a transfer napped 4 ms at a time would fall from
+7.7 kB/s to 250 B/s.
+
+So the run loop does not ask "is it polling?". It asks three things, and all must hold:
+the guest **said** nothing, **received** nothing, and polled an empty keyboard at least
+once every 32 instructions — and even then, only after the machine has been that way for
+20 ms without interruption. A byte arriving resets it. A transfer never gets near it.
 
 ## Units
 

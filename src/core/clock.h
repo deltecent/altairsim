@@ -120,6 +120,25 @@ public:
         hz_   = hz > 0 ? hz : 2000000;
     }
 
+    // THE SECOND POLICY, AND IT IS ORTHOGONAL TO THE FIRST (Patrick, 2026-07-13).
+    //
+    // free() says whether the run loop sleeps to KEEP TIME. idle() says whether it
+    // sleeps when the guest HAS NOTHING TO DO -- when the only thing it is doing is
+    // asking an empty keyboard for a byte, which is what every prompt in every guest
+    // ever written spends its life doing. Flat out means "as fast as the host can go
+    // WHEN THERE IS ANYTHING TO DO"; it never meant "burn a core on an empty poll
+    // loop", and before this it did exactly that: CP/M at `A0>` pinned a CPU.
+    //
+    // It is a HOST policy, like free(). No hardware behaves differently, emulated time
+    // is unchanged, and the guest cannot tell -- the 6850 still sets RDRF when a byte
+    // lands, and the byte still lands. Only the host thread sleeps.
+    //
+    // On by default, and it lives here rather than in the run loop because this is
+    // where the loop already comes to ask whether to sleep, and because the crystal it
+    // sits beside is published by the same card (boards/mits-88cpu.h, `idle`).
+    bool idle() const { return idle_; }
+    void setIdle(bool on) { idle_ = on; }
+
     // Convert a rate in things-per-second into T-states-per-thing. THE ONE PLACE
     // that division is written: a baud rate, a disk RPM, and a UART's character
     // time are all the same arithmetic, and doing it in each board is how they
@@ -167,6 +186,7 @@ private:
     uint64_t t_    = 0;
     long long hz_  = 2000000;   // the DIVISOR. Never 0. See setHz().
     bool     free_ = true;      // ...and by default we do not pace against it.
+    bool     idle_ = true;      // ...but we DO stand down when the guest is only waiting.
 };
 
 } // namespace altair

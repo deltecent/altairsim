@@ -21,7 +21,22 @@ std::vector<Property> Cpu8080Board::properties() {
         x.get = [this] { return Value::ofInt(clockHz_); };
         x.set = [this](const Value& v, std::string&) {
             clockHz_ = v.i();
-            publishClock();
+            publishPolicy();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+
+    {
+        Property x;
+        x.name = "idle";
+        x.help = "Stand down when the guest is only polling an empty keyboard. On by "
+                 "default -- the guest cannot tell, and a prompt stops burning a core.";
+        x.kind = Kind::Bool;
+        x.get  = [this] { return Value::ofBool(idle_); };
+        x.set  = [this](const Value& v, std::string&) {
+            idle_ = v.b();
+            publishPolicy();
             return true;
         };
         p.push_back(std::move(x));
@@ -35,12 +50,19 @@ std::vector<Property> Cpu8080Board::properties() {
 // must not have to go hunting through the backplane for whichever board happens
 // to hold the oscillator -- it asks the clock, and the clock was told by us.
 //
-// Published on power AND on every SET, because `SET cpu0 clock_hz=1000000` is a
-// runtime property: slowing the machine down to watch it is the first thing an
-// operator reaches for, and the UART's timing has to slow down with it or the
-// baud rate would silently double.
-void Cpu8080Board::publishClock() {
-    if (clock_) clock_->setHz(clockHz_);
+// THE RUN LOOP'S TWO SLEEPING POLICIES BOTH LIVE ON THIS CARD, and they both arrive
+// at the Clock by this one path: the crystal (`clock_hz` -> setHz, which also decides
+// free()) and the idle nap (`idle` -> setIdle). They are separate questions -- keep
+// time / stand down when there is nothing to do -- and either can be set without the
+// other, which is why setHz() must never touch idle_.
+//
+// Published on power AND on every SET, because both are runtime properties: slowing
+// the machine down to watch it is the first thing an operator reaches for, and the
+// UART's timing has to slow down with it or the baud rate would silently double.
+void Cpu8080Board::publishPolicy() {
+    if (!clock_) return;
+    clock_->setHz(clockHz_);
+    clock_->setIdle(idle_);
 }
 
 std::vector<UnitDef> Cpu8080Board::units() const {

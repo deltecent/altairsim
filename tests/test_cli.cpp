@@ -720,4 +720,39 @@ void test_cli() {
                   "no 88-VI: an acknowledged interrupt would float FF = RST 7");
         }
     }
+
+    // -----------------------------------------------------------------------
+    // THE CPU CARD CARRIES BOTH SLEEPING POLICIES (Patrick, 2026-07-13)
+    // -----------------------------------------------------------------------
+    // `clock_hz` is the crystal: does the run loop keep time? `idle` is the nap: does
+    // it stand down when the guest has nothing to do but poll an empty keyboard? Two
+    // questions, two properties, one card -- and the card publishes BOTH to the Clock,
+    // on power and on every SET, which is what makes `SET cpu0 idle=off` bite mid-run.
+    SECTION("cli: the CPU card publishes the crystal AND the idle nap, and they are separate");
+    {
+        Machine            m6;
+        Monitor            mon6(m6);
+        std::ostringstream o;
+        std::string        err;
+        m6.add("8080", "cpu0", err);
+        m6.power();
+
+        CHECK(m6.clock.free(), "flat out is the default (clock_hz = 0)");
+        CHECK(m6.clock.idle(), "...and a machine at a prompt STANDS DOWN by default");
+
+        // The knob. Before this, CP/M at `A0>` spun a host core at 100% for ever, and
+        // there was no way to say otherwise -- because there was nothing to say it to.
+        mon6.exec("SET cpu0 idle=off", o);
+        CHECK(!m6.clock.idle(), "SET cpu0 idle=off reaches the run loop's policy");
+
+        // AND THE CRYSTAL MUST NOT PUT IT BACK. Same card, same publish, two policies:
+        // an operator who asked for the spin has to keep it when they ask for 2 MHz.
+        mon6.exec("SET cpu0 clock_hz=2000000", o);
+        CHECK(!m6.clock.free(), "the crystal is real now");
+        CHECK(!m6.clock.idle(), "and it did not quietly turn the nap back on");
+
+        mon6.exec("SET cpu0 idle=on", o);
+        CHECK(m6.clock.idle() && !m6.clock.free(),
+              "a 2 MHz machine idles too -- the two are orthogonal");
+    }
 }

@@ -45,7 +45,7 @@ public:
 
     void reset(Reset r) override { core_->reset(r); }
     void power() override {
-        publishClock();  // the crystal, announced to the machine's Clock
+        publishPolicy();  // the crystal and the idle policy, announced to the Clock
         core_->reset(Reset::PowerOn);
     }
 
@@ -63,7 +63,7 @@ public:
     std::vector<UnitDef> units() const override;
 
 private:
-    void publishClock();
+    void publishPolicy();
 
     std::unique_ptr<Cpu8080> core_;
 
@@ -78,6 +78,24 @@ private:
     // still divides by the same crystal, and the guest cannot tell (core/clock.h).
     // The only thing 2 MHz adds is the sleep, and the sleep is for period feel.
     long long clockHz_ = 0;
+
+    // FLAT OUT STILL STANDS DOWN AT A PROMPT, AND THAT IS THE DEFAULT (Patrick,
+    // 2026-07-13).
+    //
+    // `clock_hz = 0` says "go as fast as the host can". It never said "burn a core on an
+    // empty poll loop", but that is what it did: CP/M at `A0>` sits in a three-instruction
+    // CONIN spin, and the run loop ran it forty million times a second to no purpose at
+    // all. So when the guest's ONLY activity in a slice is asking an empty keyboard for a
+    // byte, the loop naps -- and the moment a key arrives, or the guest does anything
+    // else, it is flat out again inside one slice.
+    //
+    // It is ORTHOGONAL to clock_hz: a 2 MHz machine idles too, and either can be turned
+    // off without the other. `SET cpu0 idle=off` gets the spin back, which is what you
+    // want if you are measuring the host, and nothing else.
+    //
+    // No hardware behaves differently -- this is the HOST sleeping, exactly as the
+    // throttle is (core/clock.h). The guest cannot tell.
+    bool idle_ = true;
 };
 
 } // namespace altair

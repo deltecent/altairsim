@@ -97,6 +97,7 @@
 #include "host/filter.h"
 #include "host/stream.h"
 
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <string>
@@ -185,6 +186,33 @@ public:
     // the KEYBOARD, so a busy machine can be as quiet as it likes.
     uint64_t starved() const { return starved_; }
 
+    // How many times the guest has come to the keyboard and FOUND IT EMPTY -- whether or
+    // not the input has ended, so unlike starved() this one MOVES ON A TERMINAL. It is
+    // the live idle signal, and it is what lets the run loop tell a machine that is
+    // WORKING from one that is merely WAITING FOR YOU (DESIGN.md 8, `idle`).
+    //
+    // Every guest status-register read reaches it: readStatus() -> poll() ->
+    // stream_->readable() (chips/mc6850.cpp), and readable() is right below. A CP/M
+    // prompt polls once every three instructions; a program that checks for an abort key
+    // once a thousand does not, and that gap is the whole discrimination.
+    //
+    // IT IS NOT starved(), AND THEY MUST NOT BE MERGED. starved() means empty AND ENDED
+    // -- a guest BEGGING at a pipe that is never going to answer -- and a scripted run
+    // uses it to know it may leave. Widen it to mean this and a cassette load dies three
+    // slices in, which is exactly the bug that put that comment above there.
+    uint64_t hungry() const { return hungry_; }
+
+    // How many bytes the guest has actually TAKEN off the keyboard. hungry() says the
+    // guest asked and got nothing; this says it asked and GOT SOMETHING -- and that is
+    // the one thing an idle machine never does.
+    //
+    // It is what keeps a TRANSFER out of the nap. A guest receiving XMODEM down the
+    // console line is hungry hundreds of times a slice and silent for the whole block:
+    // by hungry() and written() alone it is indistinguishable from a prompt, and an
+    // early draft of the run loop napped straight through one. Bytes arriving is the
+    // difference, so bytes arriving is what the run loop counts.
+    uint64_t consumed() const { return consumed_; }
+
     std::vector<Property> properties();
 
 private:
@@ -231,8 +259,16 @@ private:
     bool     taken_    = false;
     int      rawDepth_ = 0;
     uint64_t written_  = 0;
+    uint64_t consumed_ = 0;
     uint64_t dropped_  = 0;
     mutable uint64_t starved_ = 0;  // counted in readable(), which is const -- see below
+    mutable uint64_t hungry_  = 0;  // ...and so is this one, for the same reason
+
+    // WHEN WE LAST ASKED THE OS. poll() will not ask again for 500 us -- see the note
+    // there. `polled_` is what makes the FIRST poll always real, whatever the host
+    // clock happened to say at construction.
+    mutable bool                                  polled_ = false;
+    mutable std::chrono::steady_clock::time_point lastPoll_{};
 
     // MUTABLE, and they earn it. `readable()` is const because "is a character
     // ready?" is a question, not a mutation -- but ANSWERING it means going to the

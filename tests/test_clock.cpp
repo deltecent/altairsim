@@ -215,4 +215,27 @@ void test_clock() {
         Clock fresh;
         CHECK(fresh.free(), "FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13)");
     }
+
+    // ---- ...and the idle nap is the OTHER policy, and it is orthogonal ----
+    //
+    // free() is "do we keep time?". idle() is "do we stand down when the guest has
+    // nothing to do?". They are set by two different properties on the CPU card, and
+    // setHz() must never touch idle_ -- fuse them and `SET cpu0 clock_hz=2000000`
+    // would silently turn the nap off, which is exactly the class of bug that made
+    // hz() and free() one number in the first place.
+    {
+        Clock c;
+        CHECK(c.idle(), "a machine STANDS DOWN at a prompt by default (Patrick, 2026-07-13)");
+
+        c.setHz(2000000);
+        CHECK(c.idle(), "a 2 MHz machine idles too -- the crystal did not decide this");
+        c.setHz(0);
+        CHECK(c.idle(), "...and flat out idles as well. THAT IS THE WHOLE POINT of it");
+
+        c.setIdle(false);
+        CHECK(!c.idle(), "`SET cpu0 idle=off` gets the spin back");
+        c.setHz(4000000);
+        CHECK(!c.idle(), "and a crystal cannot turn it back on behind the operator's back");
+        CHECK(c.free() == false && c.hz() == 4000000, "the crystal still works, untouched");
+    }
 }

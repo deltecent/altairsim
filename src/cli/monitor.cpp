@@ -676,8 +676,8 @@ void Monitor::runMachine(std::ostream& out) {
 
     using clk = std::chrono::steady_clock;
     const long long hz     = m_.clock.hz();
-    const uint64_t  startT = m_.clock.now();
-    const auto      start  = clk::now();
+    uint64_t        startT = m_.clock.now();  // the throttle's baseline -- and an idle
+    auto            start  = clk::now();      // nap RE-BASES it. See the nap, below.
     const bool      tty    = con.isTty();
     const char      attn   = (char)('A' + con.attn() - 1);
 
@@ -721,7 +721,19 @@ void Monitor::runMachine(std::ostream& out) {
     uint64_t lastStarved = con.starved();
     int      quiet       = 0;
 
+    // WHEN THE GUEST LAST DID ANYTHING BUT WAIT. Default-constructed means "it is doing
+    // something" -- and it has to persist in doing nothing before we believe it (see the
+    // nap, at the bottom of the loop).
+    clk::time_point idleSince{};
+
     for (;;) {
+        // What the guest did with its slice: did it SAY anything, did it RECEIVE
+        // anything, and how often did it come to the keyboard and find nothing there.
+        // Those three are the whole of the idle judgement at the bottom of the loop.
+        const uint64_t wasWritten  = con.written();
+        const uint64_t wasConsumed = con.consumed();
+        const uint64_t wasHungry   = con.hungry();
+
         // A slice, then a look around. Short enough that ATTN feels instant and a
         // keystroke is picked up promptly; long enough that the per-slice overhead
         // is noise.
@@ -775,6 +787,77 @@ void Monitor::runMachine(std::ostream& out) {
                 r.why = StopReason::Interrupted;
                 break;
             }
+        }
+
+        // ---- IS THE GUEST WORKING, OR IS IT WAITING FOR YOU? ----
+        //
+        // Every prompt ever written -- CP/M's `A0>`, BASIC's `OK`, a monitor's `.` --
+        // spends its life in a two-instruction spin on a UART status bit. There is
+        // nothing to compute and nothing to print; the machine is waiting for a human,
+        // and a human takes a hundred million T-states to find the H key. Running that
+        // spin flat out pinned a host core at 100% for no work at all.
+        //
+        // So: if the guest SAID NOTHING this slice, and came to the keyboard and found
+        // it empty at least once every kIdleRatio instructions, it is doing nothing but
+        // waiting -- stand down for a moment. It is the same sleep the throttle does and
+        // for the same reason: THE HOST is idle, not the machine. Emulated time is
+        // untouched, no board behaves differently, and the guest cannot tell (clock.h).
+        //
+        // THE RATIO IS THE DISCRIMINATION, and it is not close. A CP/M CONIN loop is
+        // three instructions -- it polls ~600 times in a 2,000-instruction slice, twenty
+        // times over the bar. A program that computes and checks for an abort key every
+        // few hundred instructions polls a handful of times and is never taken for idle,
+        // and one that has anything to SAY is excluded before we even count. If something
+        // does trip it falsely it still turns 2,000 instructions every nap -- around
+        // 500 kHz, a quarter of a real Altair -- and `SET cpu0 idle=off` ends the
+        // argument.
+        //
+        // A TRANSFER LOOKS EXACTLY LIKE A PROMPT, AND THAT IS THE TRAP (Patrick,
+        // 2026-07-13). A guest receiving XMODEM down the console line at 76,800 bps is
+        // waiting for a byte every 130 us; in the gap it polls an empty keyboard exactly
+        // as CONIN does, and it prints nothing for the whole 128-byte block. By the two
+        // signals above it IS a prompt -- and an early draft of this loop napped straight
+        // through a transfer, 4 ms at a time, which would have dragged 7.7 kB/s down to
+        // 250 B/s. It was not a theory; it was measured, at 4.3% of a core where flat out
+        // should have been.
+        //
+        // The difference between the two machines is not how they poll. It is that ONE OF
+        // THEM IS RECEIVING BYTES. So a byte crossing into the guest is what resets the
+        // clock -- consumed(), host/console.h -- and no transfer can nap, however quiet
+        // and however hungry it looks, because bytes keep arriving.
+        //
+        // AND THE NAP IS STILL EARNED ON TOP OF THAT. Idleness must PERSIST for the
+        // warmup before it is believed: the gap between two bytes of a transfer is
+        // sub-millisecond, the gap before a human finds a key is for ever, and 20 ms
+        // tells them apart with orders of magnitude to spare. It costs a prompt nothing
+        // anyone can perceive and a transfer nothing at all. Any byte, any output, any
+        // real work resets it.
+        //
+        // Measured on 8 MB CP/M at `A0>`: 100% of a core before this, ~3.5% after.
+        static constexpr uint64_t kIdleRatio  = 32;  // an empty poll every 32 instructions
+        static constexpr auto     kIdleWarmup = std::chrono::milliseconds(20);
+        static constexpr auto     kIdleNap    = std::chrono::milliseconds(4);
+
+        const bool idling = m_.clock.idle() && anyConsole && tty && r.steps > 0 &&
+                            con.written() == wasWritten &&
+                            con.consumed() == wasConsumed &&
+                            (con.hungry() - wasHungry) * kIdleRatio >= r.steps;
+
+        if (!idling) {
+            idleSince = clk::time_point{};  // it did something. The clock starts over.
+        } else if (idleSince == clk::time_point{}) {
+            idleSince = clk::now();         // the first quiet slice. Now we watch.
+        } else if (clk::now() - idleSince >= kIdleWarmup) {
+            std::this_thread::sleep_for(kIdleNap);
+
+            // AND THE THROTTLE MUST NOT TRY TO WIN THAT TIME BACK. It paces emulated
+            // time against a baseline taken at RUN, so a nap leaves emulated time
+            // behind -- and a 2 MHz machine would then sprint flat out the instant you
+            // typed a key, for as long as you had been sitting at the prompt. Re-basing
+            // says what is true: the idle time never happened.
+            startT = m_.clock.now();
+            start  = clk::now();
+            continue;
         }
 
         // Throttle to the crystal on the CPU card -- but ONLY if the card HAS one.

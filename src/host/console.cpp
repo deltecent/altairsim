@@ -49,6 +49,30 @@ void Console::leaveRaw() {
 // out. So the check happens before the character is even put in the buffer.
 // ---------------------------------------------------------------------------
 void Console::poll() const {
+    // A KEYBOARD IS NOT WORTH A SYSCALL PER GUEST INSTRUCTION (Patrick, 2026-07-13).
+    //
+    // readable() polls, and readable() is reached from EVERY status-register read the
+    // guest makes (chips/mc6850.cpp): a CP/M prompt spins on it once every three
+    // instructions, so a 2,000-instruction slice was doing ~600 read(2) calls on stdin.
+    // That cost MORE THAN THE EMULATION -- with the idle nap in, the syscalls alone
+    // still held a quarter of a core, and they are all asking the same question of the
+    // same empty keyboard.
+    //
+    // So we ask the OS at most every 500 microseconds. No human types faster than
+    // that, no board can tell (a byte is simply seen on the next poll instead of this
+    // one, half a millisecond of HOST time later), and ATTN is still watched every
+    // slice, which is the only latency anybody can feel.
+    //
+    // This is a CACHE ON THE OS, not on the buffer: bytes already in `in_` are always
+    // visible, and inject() bypasses this entirely -- an injected byte is readable the
+    // instant it is injected.
+    using hostClock = std::chrono::steady_clock;
+    static constexpr auto kPollEvery = std::chrono::microseconds(500);
+    const auto now = hostClock::now();
+    if (polled_ && now - lastPoll_ < kPollEvery) return;
+    polled_   = true;
+    lastPoll_ = now;
+
     // WE READ THE KEYBOARD ONLY WHEN WE HAVE TAKEN IT. Outside a RUN, stdin belongs
     // to the monitor -- it is the operator's command line, or a script being piped
     // in. A board that peeked at it there would either steal the next command or
@@ -95,10 +119,17 @@ void Console::poll() const {
 bool Console::readable() const {
     poll();
 
-    // The guest came to the keyboard and the keyboard is empty AND ENDED. That is a
-    // guest waiting for a byte that cannot arrive -- count it. Nothing else counts:
-    // a guest busy reading a cassette never gets here, however long it takes and
-    // however little it says. See Console::starved().
+    // TWO COUNTERS, AND THE DIFFERENCE BETWEEN THEM IS THE WHOLE POINT.
+    //
+    // The guest came to the keyboard and found it EMPTY. That is all `hungry` means, and
+    // it is true on a terminal -- which is what makes it the live idle signal the run
+    // loop paces against (console.h, DESIGN.md 8).
+    //
+    // `starved` is empty AND ENDED: a guest asking a pipe that has hung up. That is a
+    // guest which will wait for ever, and a scripted run uses it to know it may leave.
+    // A terminal NEVER ends, so it never starves -- and a machine at a prompt with a
+    // human in front of it is not begging, it is waiting. Keep them apart.
+    if (in_.empty()) ++hungry_;
     if (in_.empty() && eof_) ++starved_;
 
     return !in_.empty();
@@ -110,7 +141,20 @@ bool Console::readable() const {
 size_t Console::read(uint8_t* buf, size_t n) {
     if (!n) return 0;
     poll();
-    return filter_.read(buf, n);
+
+    // A BYTE CROSSING INTO THE GUEST IS THE PROOF THAT IT IS NOT IDLE, and it is the
+    // only proof that holds. The run loop's other signals do not: a guest receiving
+    // XMODEM polls an empty keyboard hundreds of times per slice (it is waiting for the
+    // next byte at 76,800 bps) and prints nothing at all, so by every other measure it
+    // looks exactly like a machine sitting at a prompt. The difference -- the whole
+    // difference -- is that bytes are ARRIVING. Count them, and the run loop can tell.
+    //
+    // This was not hypothetical. With only the poll ratio and the warmup, a console fed
+    // a byte every 5 ms still napped: the slice that swallowed the byte polled 600 times
+    // either side of it and was judged idle anyway. See monitor.cpp.
+    size_t got = filter_.read(buf, n);
+    consumed_ += got;
+    return got;
 }
 
 size_t Console::readRaw(uint8_t* buf, size_t n) {
