@@ -1,12 +1,14 @@
 # Altair track-buffered CP/M 2.2b v2.3, on an 8" floppy.
 #
-#     altairsim disks/mits-88dcdd/cpm22/buffered/cpm22-buffered.toml
+#     cd disks/mits-88dcdd/cpm22/buffered && altairsim cpm22-buffered.toml
 #     -> 56K CP/M 2.2b v2.3
 #        For Altair 8" Floppy
 #        A>
 #
-# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
-# not against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot. You get the binary and this tree;
+# you do not get the repository. Pointing at it from elsewhere gets the same machine.
 #
 # THIS FILE IS A DELTA. `base = "default"` brings the machine -- front panel, 8080,
 # 88-2SIO console at 0x10, 88-DCDD at 0x08 with four empty drives, 56K of RAM, DBL boot
@@ -55,7 +57,7 @@ id = "dsk0"
 
   [[board.drive]]
   unit  = 0
-  mount = "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+  mount = "cpm22b23-56k.dsk"
 
   # B: is left empty. There is no blank 8" image in the tree to put in it -- FORMAT one
   # from inside CP/M, or drop your own in:

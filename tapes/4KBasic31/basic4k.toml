@@ -1,11 +1,16 @@
 # Altair 4K BASIC 3.1, with the tape in the recorder and the bootstrap toggled in.
 #
-#     altairsim tapes/4KBasic31/basic4k.toml
+#     cd tapes/4KBasic31 && altairsim basic4k.toml
 #     -> MEMORY SIZE?
 #
-# RUN IT FROM THE REPO ROOT. The paths below are the ones you would have typed at the
-# monitor, and the monitor resolves them against the PROCESS's working directory -- not
-# against this file. `cd` somewhere else and the MOUNT will not find the tape.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE, not to wherever you happen to be standing
+# (core/paths.h, docs/config.md). The tape and the bootstrap are lying in this directory,
+# so this file names them and nothing else -- which is what lets the directory be COPIED
+# somewhere and still boot. You get the binary and this folder; you do not get the repo.
+#
+# `altairsim tapes/4KBasic31/basic4k.toml` from the repo root works too, and means the
+# same machine. It has to: a file that changed meaning depending on where you launched it
+# from would be exactly the trap the rest of the CLI is arranged to refuse.
 #
 # THIS FILE IS THE OPERATOR, AND `base` IS THE MACHINE.
 #
@@ -36,7 +41,7 @@ base = "basic4k"
 # REWIND acr0:tape puts the cassette back at the start; the card has no motor control, so
 # that verb is your finger on the recorder.
 startup = [
-  "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
-  "LOAD \"tapes/4KBasic31/LDR4K31.HEX\"",
+  "MOUNT acr0:tape \"4K BASIC Ver 3-1.tap\"",
+  "LOAD \"LDR4K31.HEX\"",
   "RUN 0",
 ]

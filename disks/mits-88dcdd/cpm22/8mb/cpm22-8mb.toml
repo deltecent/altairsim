@@ -11,13 +11,15 @@
 # table beside `8in` and `minidisk` (src/boards/mits-88dcdd.cpp) and not a mode, a quirk,
 # or a fork of the driver.
 #
-#     altairsim disks/mits-88dcdd/cpm22/8mb/cpm22-8mb.toml
+#     cd disks/mits-88dcdd/cpm22/8mb && altairsim cpm22-8mb.toml
 #     -> 56K CP/M 2.2b v1.0
 #        For Altair 8Mb Virtual Drive
 #        A0>
 #
-# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
-# not against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot. You get the binary and this tree;
+# you do not get the repository. Pointing at it from elsewhere gets the same machine.
 #
 # THIS FILE IS A DELTA, AND THAT IS THE WHOLE POINT OF IT.
 #
@@ -68,7 +70,7 @@ id = "dsk0"
 
   [[board.drive]]
   unit  = 0
-  mount = "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
+  mount = "CPM22-8MB-56K.DSK"
 
   # THE OTHER THREE DRIVES, AND THE ARRANGEMENT THIS CP/M ACTUALLY EXPECTS. The FDC+
   # manual is explicit about it (reference/FDC+ Manual.pdf, 3.7.4):
@@ -85,7 +87,7 @@ id = "dsk0"
   # It is also the practical way to get files in and out of an 8 MB system: put an ordinary
   # CP/M floppy in C: and PIP between them.
   #
-  #     MOUNT dsk0:drive2 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+  #     MOUNT dsk0:drive2 "../buffered/cpm22b23-56k.dsk"
   #     A0> DIR C:
   #
   # B: is left empty. The BLANK image beside this file is the pristine master for making

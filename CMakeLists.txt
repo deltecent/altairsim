@@ -130,6 +130,7 @@ add_library(altair_core STATIC
   ${PLATFORM_SOURCES}
   src/core/crc32.cpp
   src/core/hex.cpp
+  src/core/paths.cpp
   src/core/bus.cpp
   src/core/clock.cpp
   src/core/board.cpp
@@ -339,6 +340,23 @@ add_test(NAME acceptance-cwdconfig
                  -DBIN=${CMAKE_CURRENT_BINARY_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
 set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
+# THE EXAMPLES, IN THE LAYOUT WE ACTUALLY SHIP THEM IN.
+#
+# tapes/ and disks/ are not fixtures -- they are the product. A user gets the binary and
+# those two trees, and NOT this repository. Every other test in this file runs from the
+# repo root, which is the one arrangement in which a repo-root-relative path in an example
+# looks like it works. So this test copies an example OUT of the tree and boots it from
+# there, which is the only place the truth shows up.
+# ---------------------------------------------------------------------------
+add_test(NAME acceptance-examples
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/examples.cmake)
+set_tests_properties(acceptance-examples PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # ---------------------------------------------------------------------------
 # THE INTERACTIVE ONE. Everything above drives the CLI through a PIPE, and a pipe is not

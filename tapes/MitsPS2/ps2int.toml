@@ -1,10 +1,12 @@
 # MITS Programming System II, WITH INTERRUPTS -- tape in, loader in, running.
 #
-#     altairsim tapes/MitsPS2/ps2int.toml
+#     cd tapes/MitsPS2 && altairsim ps2int.toml
 #     ->   ?
 #
-# RUN IT FROM THE REPO ROOT. The paths below are resolved against the PROCESS's working
-# directory, not against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md) -- the tape and
+# the loader are lying beside it, so it names them and no directory at all. Copy this
+# folder anywhere and it still boots. `altairsim tapes/MitsPS2/ps2int.toml` from the repo
+# root is the same machine.
 #
 # WHAT THE INTERRUPTS BUY YOU is exactly one thing, and it is the ReadMe's own promise:
 #
@@ -31,7 +33,7 @@ base = "ps2int"
 # NOT LDR8K32.HEX. The 0xAE leader byte both tapes share is the LOW half of the load
 # address and settles nothing; PS2-MON.TAP's second stage is assembled for page 0F.
 startup = [
-  "MOUNT acr0:tape \"tapes/MitsPS2/PS2-MON.TAP\"",
-  "LOAD \"tapes/MitsPS2/LDRPS2.HEX\"",
+  "MOUNT acr0:tape \"PS2-MON.TAP\"",
+  "LOAD \"LDRPS2.HEX\"",
   "RUN 0",
 ]

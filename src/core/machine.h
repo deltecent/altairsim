@@ -41,6 +41,18 @@ public:
     // startup = ["GO FF00"], which is the operator's keystroke, written down.
     std::vector<std::string> startup;
 
+    // THE DIRECTORY THIS MACHINE CAME OUT OF -- and "" if it came out of the binary.
+    //
+    // A machine file's relative paths are relative to THAT FILE (core/paths.h), and
+    // `startup` is a list of commands that came out of that file, so the monitor has
+    // to know where it was in order to run them. This is the only thing that carries
+    // the answer from the loader to Monitor::runStartup().
+    //
+    // Empty for a built-in, which is right and not a special case: a built-in machine
+    // lives in .rodata and is in no directory at all, so every path it names can only
+    // be relative to the shell -- which is exactly what "" means everywhere else.
+    std::string dir;
+
     Bus bus;
 
     // Emulated time (DESIGN.md 7.5). Advanced ONLY by the run loop, by exactly
