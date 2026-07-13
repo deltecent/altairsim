@@ -67,8 +67,34 @@
 // So: nothing outside this file may look for ATTN. Not FilterStream, not the
 // 2SIO, not the endpoint layer. If you find yourself adding it there, the answer
 // is no.
+//
+// ---------------------------------------------------------------------------
+// THE TRANSFORM CHAIN IS THE CONSOLE'S, AND ONLY THE CONSOLE'S (Patrick,
+// 2026-07-13). DESIGN.md 7.2 always said so; a previous version of this code
+// moved the chain onto the LINE -- a FilterStream inside each UART, wrapping
+// whatever the unit was connected to -- so that `SET sio0 UPPER=ON` would work
+// on a socket too. THAT WAS WRONG, and it was wrong in a way that corrupts data.
+//
+// A line is not a terminal. The 88-SIO's line goes to a modem, a socket, a
+// paper-tape reader or /dev/tty.usbserial, and the next thing down it is XMODEM,
+// which is 8-BIT BINARY. A transform on the line masks bit 7 of every block of
+// that transfer and does it SILENTLY. The 88-ACR already knew this and refused
+// the chain outright ("a tape is binary, not text", tests/test_88acr.cpp) -- the
+// same argument holds for every endpoint that is not a human.
+//
+// So the ONLY place a byte may be altered is here, where there is a human and a
+// screen, and the alteration is a fact about the TERMINAL. Everything else --
+// socket, serial port, tape, file, loopback -- is 8-BIT CLEAN, ALWAYS.
+//
+// What a line DOES have is LINE CODING -- baud, data bits, parity, stop bits.
+// That is real, it is hardware (the 88-SIO's jumpers, the 6850's control
+// register), and it belongs to the card. It sets how long a character occupies
+// the wire, and on a REAL serial port it is programmed into the real port
+// (ByteStream::setParams). It is a FRAME, and it is never a filter: a card
+// strapped for 7 data bits sends seven, because that is what the hardware does.
 
 #include "core/value.h"
+#include "host/filter.h"
 #include "host/stream.h"
 
 #include <deque>
@@ -163,6 +189,34 @@ public:
 
 private:
     Console() = default;
+
+    // THE SCREEN AND THE KEYBOARD, UNFILTERED -- what the transform chain wraps.
+    //
+    // The chain has to live BELOW the thing every board reaches (Console::read and
+    // Console::write, via ConsoleRef), or a board could reach around it. So the
+    // filter cannot wrap the Console; it wraps this, and the Console goes through
+    // the filter. `echo` then lands on the screen by the same path as everything
+    // else, because inner_->write() IS the screen.
+    class Raw : public ByteStream {
+    public:
+        explicit Raw(Console* c) : c_(c) {}
+        std::string describe() const override { return "console"; }
+        size_t      read(uint8_t* b, size_t n) override { return c_->readRaw(b, n); }
+        size_t      write(const uint8_t* b, size_t n) override { return c_->writeRaw(b, n); }
+        bool        readable() const override { return !c_->in_.empty(); }
+        bool        writable() const override { return true; }
+        void        flush() override { c_->flushRaw(); }
+
+    private:
+        Console* c_;
+    };
+
+    size_t readRaw(uint8_t* buf, size_t n);
+    size_t writeRaw(const uint8_t* buf, size_t n);
+    void   flushRaw();
+
+    // The ONE transform chain in the simulator. Nothing else owns one.
+    FilterStream filter_{std::make_unique<Raw>(this)};
 
     // A real keyboard buffer, and real ones are finite. 256 is a teletype's worth:
     // far more than a human can get ahead of a 2 MHz machine, and enough that an

@@ -128,7 +128,6 @@ public:
     void connect(std::unique_ptr<ByteStream> s);
     void disconnect();
     ByteStream&  stream()  { return *stream_; }
-    FilterStream* filter() { return filter_; }
     std::string  endpoint() const { return stream_->describe(); }
 
     // `resolve` is how the `connect` property turns an endpoint string into a
@@ -233,8 +232,12 @@ private:
 
     std::string name_;
 
+    // THE LINE, RAW. No transform chain: the chip puts the guest's byte on the wire
+    // and takes the wire's byte to the guest, unaltered. The only thing that may
+    // mangle a byte is the CONSOLE (host/console.h), because the only thing that has
+    // any business mangling one is a terminal. What this chip DOES impose on the wire
+    // is the FRAME the guest programmed -- see programLine().
     std::unique_ptr<ByteStream> stream_;
-    FilterStream*               filter_ = nullptr;  // borrowed; owned by stream_
 
     long long baud_ = 9600;  // a JUMPER on the real card. Software cannot change it.
 

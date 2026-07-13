@@ -64,6 +64,11 @@ public:
     void pump() override;
     void configChanged() override;
 
+    // What the real serial port said when the card tried to program its straps into
+    // it. A cable that cannot do 7E2 is a fact about the world, and it is said out
+    // loud rather than swallowed.
+    std::vector<std::string> drainLog() override { return u_.drainLog(); }
+
     std::vector<Property> properties() override;
     std::vector<UnitDef>  units() const override;
     std::vector<MapEntry> ioMap() const override;

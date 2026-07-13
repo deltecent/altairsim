@@ -1,0 +1,112 @@
+# The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal
+# on the 88-2SIO -- which is the difference between this file and `basic4k`.
+#
+#   altairsim basic8k
+#   MOUNT acr0:tape "tapes/8KBasic32/8K BASIC Ver 3-2.tap"
+#   LOAD  "tapes/8KBasic32/LDR8K32.HEX"
+#   RUN 0
+#   -> MEMORY SIZE?
+#
+# EVERY NUMBER IN THIS FILE COMES OUT OF THE BOOTSTRAP'S OWN HEADER. It is not guesswork
+# and it is not copied from basic4k -- `tapes/8KBasic32/LDR8K32.ASM` says, in this order:
+#
+#     ** Set A15 on (cassette load) **
+#     ** Set A11, A10 on (2SIO terminal) **
+#
+#     lxi  h,1FAEh      ;8K BASIC V3.2
+#     in   06h          ;get sio status
+#     in   07h          ;get the byte
+#
+# which is the sense switches, the console card, the load address and the ACR's port --
+# the whole machine, written down by the people who sold it.
+#
+# The tape is NOT in this file, deliberately. A machine file describes the HARDWARE;
+# which cassette is in the recorder is not hardware, and there is no motor control on
+# the card to make it one. You put the tape in and you press PLAY -- which is MOUNT.
+
+[machine]
+name = "basic8k"
+
+# SENSE = 0x8C, and it is A15 + A11 + A10, straight off the header above.
+#
+# The sense switches are SA8..SA15, read at port FF (docs/boards/mits-frontpanel.md), so
+# the bit is the address line minus 8:
+#
+#     A15 -> bit 7 = 0x80    "cassette load"     (as in basic4k)
+#     A11 -> bit 3 = 0x08  \ "2SIO terminal"     (NOT in basic4k: that machine's
+#     A10 -> bit 2 = 0x04  /                      console is an 88-SIO, and its
+#                                                 header says "all other switches off")
+#     0x80 | 0x08 | 0x04   = 0x8C
+#
+# The two extra switches are the whole reason this file exists. 8K BASIC 3.2 asks the
+# front panel WHICH CARD the terminal is on; get them wrong and it loads perfectly well
+# and then talks to a card that is not there.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x8C
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
+
+# THE CONSOLE -- an 88-2SIO at 0x10, because the bootstrap says "2SIO terminal" and 0x10
+# is where that card lives (docs/boards/mits-2sio.md). This is the newer card: 4K BASIC
+# 3.1 predates it and wants an 88-SIO at 0, which is what `basic4k` gives it.
+#
+# NOTHING HERE REWRITES A BYTE. The line is 8-bit clean, and BASIC's high bit is dealt
+# with at the [console] below, where the Teletype is. Note also what is NOT here: no
+# data_bits/parity/stop_bits, because on a 6850 the word format is not a jumper -- it is
+# a register, and BASIC writes it itself (0x11 = 8N2, eight data bits).
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE CASSETTE -- an 88-ACR at 006. Not a choice: the manual says "wire address select
+# for 006" and the bootstrap agrees (IN 06 / IN 07). Unchanged from basic4k, and it does
+# not collide with the 2SIO at 0x10 any more than it did with the SIO at 0.
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+# 16K, AND THE 8K IN THE NAME IS THE INTERPRETER, NOT THE MACHINE.
+#
+# The image loads DOWNWARD from 0x1FAE (the `lxi h,1FAEh` above), so it fills 0000-1FAD
+# and needs 8K just to hold itself -- which would leave a 8K machine with essentially no
+# room to type a program into. That is not how anyone ran it. 16K gives BASIC its ~8K of
+# workspace above the interpreter, and MEMORY SIZE? finds it by scanning.
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "16K"
+
+# THE TERMINAL. Same story as basic4k, and for the same reason -- 8K BASIC is the same
+# interpreter with more of it: it ends a message by setting bit 7 of the LAST character,
+# so "MEMORY SIZE?" leaves BASIC as ...'S','I','Z','E'|0x80 and an unfiltered terminal
+# prints "MEMORY SIZ?".
+#
+# On THIS card the argument is even harder to dodge than on the 88-SIO. There is no 7-bit
+# strap to be tempted by: BASIC programs the 6850 for 8N2 itself, so the chip is doing
+# exactly what the guest told it to and putting all eight bits on the wire. The card is
+# not lying and there is nothing in it to fix.
+#
+# The Teletype ignored the eighth bit -- on a Model 33 that is the parity position, and
+# the printer never decodes it. The ignoring belongs to the TERMINAL. The line stays
+# 8-bit clean for everything that is not one (DESIGN.md 7.2).
+[console]
+strip7out = true

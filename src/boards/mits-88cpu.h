@@ -66,7 +66,18 @@ private:
     void publishClock();
 
     std::unique_ptr<Cpu8080> core_;
-    long long clockHz_ = 2000000;  // 2 MHz: the Altair's 88-CPU, as shipped
+
+    // 0 = FLAT OUT, AND IT IS THE DEFAULT (Patrick, 2026-07-13).
+    //
+    // The real card ran at 2 MHz and you can have that back with one word --
+    // `SET cpu0 clock_hz=2000000`, or the same key in the machine file -- but it is
+    // not what you get for free, because almost nobody wants it. What a 2 MHz
+    // default buys you is a 110-second wait for a cassette and a simulator that
+    // feels broken. What it costs is nothing, because the EMULATED time is unchanged
+    // either way: the ACR still spends 66,666 T-states on a 300-baud byte, the 6850
+    // still divides by the same crystal, and the guest cannot tell (core/clock.h).
+    // The only thing 2 MHz adds is the sleep, and the sleep is for period feel.
+    long long clockHz_ = 0;
 };
 
 } // namespace altair

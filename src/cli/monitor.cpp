@@ -687,12 +687,22 @@ void Monitor::runMachine(std::ostream& out) {
             }
         }
 
-        // Throttle to the crystal on the CPU card -- but only when a HUMAN is at a
-        // terminal. A script has nobody to keep in step with, and making the test
-        // suite wait in real time for a 2 MHz machine would be absurd. With no
-        // console at all there is nothing to pace against either: it runs flat out,
-        // which is what GO always did and what a CPU test wants.
-        if (anyConsole && tty && hz > 0) {
+        // Throttle to the crystal on the CPU card -- but ONLY if the card HAS one.
+        //
+        // FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13). `clock_hz = 0` -- which is
+        // what a machine gets unless it asks otherwise -- means the run loop never
+        // sleeps, and a 3,200-byte cassette that a real Altair took 110 seconds to
+        // read comes off the tape in about a second. Ask for `clock_hz = 2000000`
+        // and you get the 110 seconds back, exactly, because you asked.
+        //
+        // The tape is still period-correct either way: the ACR still spends 66,666
+        // T-states on every 300-baud byte (clock.h). We are not speeding up the
+        // TAPE, we are declining to sit and wait for it.
+        //
+        // The other two conditions stand. A script has nobody to keep in step with,
+        // and with no console connected there is nothing to pace against at all --
+        // which is what a CPU test wants.
+        if (anyConsole && tty && !m_.clock.free()) {
             double want = (double)(m_.clock.now() - startT) / (double)hz;
             double got  = std::chrono::duration<double>(clk::now() - start).count();
             if (want > got) {
@@ -737,9 +747,10 @@ void Monitor::showConsole(std::ostream& out) {
             }
     out << "\n  held by  " << (holder.empty() ? "(nobody -- CONNECT <id>:<unit> console)" : holder)
         << "\n";
-    out << "\n  The transforms (UPPER, CRLF, BSDEL, ECHO...) are properties of the\n"
-           "  LINE, not of the console -- so they work on a socket too. They live on\n"
-           "  the unit: SHOW sio0, then SET sio0:a UPPER=ON.\n";
+    out << "\n  The transforms (UPPER, STRIP7OUT, CRLF, BSDEL...) are the CONSOLE's, and\n"
+           "  nothing else's: SET CONSOLE UPPER=ON. A card's line is 8-bit clean whatever\n"
+           "  is plugged into it -- a filter there would corrupt XMODEM, silently.\n"
+           "  What a card has instead is line coding: SHOW sio0 (baud, data_bits...).\n";
 }
 
 void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {

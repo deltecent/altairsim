@@ -104,10 +104,17 @@ bool Console::readable() const {
     return !in_.empty();
 }
 
+// THE GUEST'S DOOR, and everything that comes through it is filtered. The chain
+// is the console's alone (see console.h) -- a socket, a serial port and a tape
+// never see one.
 size_t Console::read(uint8_t* buf, size_t n) {
     if (!n) return 0;
     poll();
-    if (in_.empty()) return 0;
+    return filter_.read(buf, n);
+}
+
+size_t Console::readRaw(uint8_t* buf, size_t n) {
+    if (!n || in_.empty()) return 0;
 
     // ONE BYTE. The card asking is a UART with a single receive register, and
     // handing it a block would be handing it something no 6850 ever had.
@@ -130,13 +137,16 @@ void Console::inject(const std::string& s) {
     inject(reinterpret_cast<const uint8_t*>(s.data()), s.size());
 }
 
-size_t Console::write(const uint8_t* buf, size_t n) {
+size_t Console::write(const uint8_t* buf, size_t n) { return filter_.write(buf, n); }
+
+size_t Console::writeRaw(const uint8_t* buf, size_t n) {
     size_t w = platform::writeOutput(buf, n);
     written_ += (uint64_t)w;
     return w;
 }
 
-void Console::flush() { platform::flushOutput(); }
+void Console::flush() { flushRaw(); }
+void Console::flushRaw() { platform::flushOutput(); }
 
 bool Console::takeAttn() {
     // It does NOT poll. The run loop does that every slice -- which is the whole
@@ -164,6 +174,22 @@ std::vector<Property> Console::properties() {
         };
         p.push_back(std::move(x));
     }
+
+    // THE TRANSFORM CHAIN -- upper, strip7in, strip7out, crlf, echo, bell, bsdel.
+    //
+    // They are properties of the TERMINAL, which is what this class is, and they are
+    // declared through the same Property layer as a board's -- so `SET CONSOLE
+    // UPPER=ON`, `SHOW CONSOLE`, `[console]` in a machine file, CONFIG SAVE, MCP and
+    // tab completion all pick them up with no code anywhere else.
+    //
+    // MITS BASIC is why `strip7out` exists: BASIC ends a message by setting bit 7 of
+    // its LAST character, so `MEMORY SIZE?` leaves the interpreter as
+    // ...'S','I','Z','E'|0x80 and a modern terminal prints `MEMORY SIZ?`. The card
+    // sent all eight bits and the Teletype IGNORED the eighth -- on a Model 33 that is
+    // the parity position and the printer never decodes it. The ignoring belongs to
+    // the terminal. It is not a strap, and it is CERTAINLY not a mask in the UART.
+    for (Property& f : filter_.properties()) p.push_back(std::move(f));
+
     return p;
 }
 

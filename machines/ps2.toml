@@ -1,0 +1,127 @@
+# The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same
+# ACR, same sense switches plus one -- but NOT basic8k's bootstrap.
+#
+#   altairsim ps2
+#   MOUNT acr0:tape "tapes/MitsPS2/PS2-MON.TAP"
+#   LOAD  "tapes/MitsPS2/LDRPS2.HEX"
+#   RUN 0
+#   ->   ?
+#
+# THE LOADER IS THE 4K BASIC 3.2 ONE (lxi h,0FAEh), NOT THE 8K ONE. The ReadMe says both
+# things -- page 1 "the same bootstrap loader as would be used for BASIC version 3.2", page
+# 2 "the same loader used to load 4K BASIC version 3.2" -- and page 2 is the true one. The
+# tape settles it: PS2-MON.TAP's second stage is assembled for page 0F (LXI SP,0FB2, JC
+# 0F28). Both tapes lead with 0xAE, which proves nothing, because the leader byte is just
+# the LOW byte of the load address and 0FAE and 1FAE share it. Boot this with LDR8K32.HEX
+# and the second stage runs 4K above where it was linked: nothing prints, and the machine
+# spins forever. See tapes/MitsPS2/LDRPS2.ASM.
+#
+# THE MONITOR PROMPT IS TWO SPACES AND A '?'. That is the whole banner; do not expect one.
+#
+# DO NOT TYPE ANYTHING AT IT THAT IS NOT A COMMAND. If the monitor does not recognise the
+# word, it assumes it is the NAME OF A PROGRAM and starts reading the cassette looking for
+# it -- and hangs there forever waiting for a tape nobody is going to play. A typo does not
+# get you an error message, it gets you a dead machine.
+
+[machine]
+name = "ps2"
+
+# SENSE = 0x8E, which is 8K BASIC's 0x8C plus ONE MORE SWITCH.
+#
+#     A15 -> bit 7 = 0x80    cassette load          \  identical to basic8k, and for
+#     A11 -> bit 3 = 0x08  \ 2SIO terminal          /  identical reasons
+#     A10 -> bit 2 = 0x04  /
+#     A9  -> bit 1 = 0x02    NO serial interrupts   <- the only difference in this file
+#
+# A9 is the interrupt switch, and it is inverted from what you would guess:
+#
+#     A9 UP   = the monitor does NOT use serial input interrupts   (this machine)
+#     A9 DOWN = the monitor DOES                                   (not yet buildable)
+#
+# The interrupt-driven mode is deliberately NOT what this file selects. It requires an
+# 88-VI/RTC vectored-interrupt board -- the package assumes one is present and enables the
+# real-time-clock interrupt without providing a handler for it, so the RTC interrupt has to
+# be disabled and the console serial port assigned to vector 7. There is no 88-VI card in
+# this simulator yet. Until there is, A9 stays UP, and polling is the honest configuration.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x8E
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
+
+# The console: an 88-2SIO at 0x10, because A11+A10 above told the bootstrap to look there.
+# 8-bit clean, as every line in this simulator is (DESIGN.md 7.2).
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# The cassette: an 88-ACR at 006, the card's stock straps, same as every other tape machine
+# here. It is both the boot device AND the load device -- the monitor reads the editor, the
+# assembler and the debugger off this same recorder ("OPN ABS,AC").
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+# 16K, and unlike basic8k the ReadMe gives us the map to check it against:
+#
+#     monitor        0000 - 0A3F   (~2.5K)
+#     editor         0A40 - 11B1   editor buffer 11B2 - 19B1
+#     AM2 assembler  1350 - 1D78   symbol table grows up from 1E06
+#
+# Everything the package ships fits under 0x2000, and a user program is meant to sit at
+# 0x2000 and up -- so 8K would leave nowhere to put one. 16K gives the target program 8K,
+# which is what the ReadMe's own worked example assumes.
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "16K"
+
+# THE TERMINAL, and here the ReadMe is unusually explicit about it: "If using Tera-Term for
+# the console, set Serial Port to 7 bits plus space parity... Turn on caps lock."
+#
+# Both of those are settings ON THE TERMINAL, and that is exactly where they live here --
+# not on the 2SIO, whose word format is a register the guest writes, and not on the line,
+# which carries binaries (the monitor loads .BIN files through this very machine).
+#
+#   strip7out  THE MONITOR TRANSMITS EVEN PARITY IN BIT 7, and it computes it in software.
+#              This is NOT MITS BASIC's high-bit-on-the-last-character-of-a-message; it is
+#              a real parity bit on EVERY character, and turning this off does not cost you
+#              one glyph, it costs you half of them:
+#
+#                    ?OPN ABS,AC     becomes     ??PN?ABS?A?
+#
+#              Check it by hand: 'O' = 0x4F has five bits set (odd), so bit 7 goes up and
+#              it arrives as 0xCF. 'P' = 0x50 has two (even), so it arrives clean. CR =
+#              0x0D has three, and arrives as 0x8D. That is even parity, exactly.
+#
+#              A period terminal was strapped for 7 data bits and never decoded the eighth
+#              -- which is all "7 bits plus space parity" means, said in the language of an
+#              emulator that has to be told to throw the bit away. So the terminal throws
+#              it away, HERE. The 2SIO still puts all eight bits on the wire, because the
+#              guest asked it to (8N2), and the line stays 8-bit clean for the .BIN files
+#              the monitor loads through it (DESIGN.md 7.2).
+#
+#   upper      "Turn on caps lock." The monitor's commands are uppercase and it will not
+#              fold them for you -- and an unrecognised word is not an error here, it is a
+#              program name it will go looking for on the cassette, forever.
+[console]
+strip7out = true
+upper     = true

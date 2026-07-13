@@ -127,10 +127,21 @@ not BASIC's. And it isn't what the hardware did anyway: the card sent all eight 
 **Teletype ignored the eighth** — on a Model 33 that is the parity position and the printing
 mechanism never decodes it. Nothing was stripped; something on the far end simply didn't look.
 
-So the ignoring belongs to the **terminal**, and it is spelled `strip7out` — a `FilterStream`
-transform, a property of the endpoint on the line (DESIGN.md §7.2), not a strap on the chip.
-`machines/basic4k.toml` sets it; `tests/acceptance/basic4k.cmake` fails if the high bit ever
-reaches the terminal again. `data_bits` stays what it always was: **a duration, not a width.**
+So the ignoring belongs to the **terminal**, and it is spelled `strip7out` — **a property of the
+CONSOLE** (`SET CONSOLE STRIP7OUT=ON`, `[console]` in `machines/basic4k.toml`, DESIGN.md §7.2).
+Not a strap on the chip, and **not a transform on the line either**: this card's connector is a
+general-purpose serial port, the next thing through it is XMODEM, and a mask anywhere on that
+path corrupts the transfer silently. The only thing in the simulator permitted to alter a byte is
+the console, because the only thing with a human on the end of it is the console.
+`tests/acceptance/basic4k.cmake` fails if the high bit ever reaches the terminal again.
+
+**What `data_bits` IS, since it is not a mask.** It is **line coding** — the NDB1/NDB2 pads, real
+hardware, a jumper somebody soldered. It sets how long a character occupies the wire (and so every
+deadline this card sets), and on a **real serial port it is programmed into the real port**
+(`Uart1602::programLine()`): strap the card 7E2 and the cable opens at 7E2, because that is what a
+COM2502 jumpered that way actually does. What it never does is AND the guest's data with the word
+length. A frame is not a filter — if the card is strapped for 7 bits the eighth does not *travel*;
+if it is strapped for 8, all eight arrive, BASIC's terminator included, and the Teletype ignores it.
 
 - **Decodes** `IoRead`/`IoWrite` at `BASE` and `BASE+1`. No memory. `port` **must be even** —
   the decode ignores A0 and uses it to select the channel, so an odd base is not a card you

@@ -98,8 +98,27 @@ public:
     // The crystal on the CPU card. Defaults to the 88-CPU's 2 MHz so that a
     // machine with no processor in it still gives a board a sane number to divide
     // by instead of a zero to divide by.
+    //
+    // hz() IS A DIVISOR. free() IS A POLICY. They are not the same question, and
+    // fusing them into one number is how `clock_hz = 0` came to be documented as
+    // "runs flat out" while quietly doing nothing at all: setHz(0) coerced hz_ back
+    // to 2 MHz, the run loop paced against hz_, and the machine crawled.
+    //
+    //   hz()    what a board divides by to turn 9600 baud into T-states. NEVER 0 --
+    //           a zero here is a division by zero in every UART in the backplane.
+    //   free()  whether the run loop sleeps to keep emulated time in step with real
+    //           time. THIS is what `clock_hz = 0` means, and the default (§10).
+    //
+    // So a free-running machine still counts a 300-baud cassette byte as 66,666
+    // T-states -- the tape's TIMING is intact and the ACR is none the wiser. Those
+    // T-states simply elapse as fast as the host can retire them, which is the whole
+    // point: the tape is period-correct, the WAIT is not.
     long long hz() const { return hz_; }
-    void setHz(long long hz) { hz_ = hz > 0 ? hz : 2000000; }
+    bool      free() const { return free_; }
+    void      setHz(long long hz) {
+        free_ = (hz <= 0);
+        hz_   = hz > 0 ? hz : 2000000;
+    }
 
     // Convert a rate in things-per-second into T-states-per-thing. THE ONE PLACE
     // that division is written: a baud rate, a disk RPM, and a UART's character
@@ -146,7 +165,8 @@ private:
 
     Handle   next_ = 0;  // ++next_, so kNone (0) is never issued
     uint64_t t_    = 0;
-    long long hz_  = 2000000;
+    long long hz_  = 2000000;   // the DIVISOR. Never 0. See setHz().
+    bool     free_ = true;      // ...and by default we do not pace against it.
 };
 
 } // namespace altair

@@ -701,7 +701,13 @@ Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, o
 
 A `ByteStream` like any other, so a board connecting to it needs no special code. But it is the only stream with a human on the far end, so it owns a configurable **transform chain**, applied inbound from the keyboard and outbound to the screen. Properties are declared through the same `Property` layer as boards, so `SET`/`SHOW`/MCP/completion work on it for free.
 
-> **The transforms went on the LINE, not on the console** — a `FilterStream` wrapping whatever the unit is connected to. That is what the design asked for ("`SET sio2b UPPER=ON` on a socket-connected line works for free") and it is why they are **unit** properties: `SET sio0:a UPPER=ON`, `[board.unit.a]` in a config file. The console owns only what is genuinely about a *terminal*: raw mode and `attn`.
+> **The transforms are the CONSOLE's, and the console's alone** (Patrick, 2026-07-13) — `SET CONSOLE UPPER=ON`, `[console]` in a config file. Every other endpoint — socket, serial port, tape, file, loopback — is **8-bit clean, always**.
+>
+> They were briefly moved onto the **line** instead, as a `FilterStream` inside each UART, on the strength of the paragraph below ("a real terminal on a real host serial port wants the same uppercase folding"). **That was wrong, and it was wrong in a way that corrupts data.** A card's connector goes to a modem, a socket or a real `/dev/tty.usbserial`, and the next thing down it is **XMODEM — 8-bit binary**. A `strip7out` on that line masks bit 7 of every byte of the transfer and does it *silently*. Set it once for MITS BASIC, forget, and every binary file that ever leaves the machine is quietly corrupt. The 88-ACR reached this conclusion first and refused the chain outright ("a tape is binary, not text"); every other line deserves the same protection.
+>
+> **A LINE HAS LINE CODING, NOT FILTERS.** `baud`, `data_bits`, `stop_bits`, `parity` are real, they are **hardware** — the 88-SIO's NDB/NSB/NPB/POE jumpers, the 6850's control register — and they belong to the card. They set how long a character occupies the wire, and on a **real serial port they are programmed into the real port** (`ByteStream::setParams`). A frame is not a filter: a card strapped for 7 data bits sends seven because that is what the hardware does, and it does not mask the guest's byte to do it.
+>
+> **The rule, in one sentence: the only thing that may alter a byte is the console, because the only thing with a human on the end of it is the console.**
 
 | Property | Meaning |
 |---|---|
@@ -720,7 +726,9 @@ A `ByteStream` like any other, so a board connecting to it needs no special code
 
 **This list will grow.** That is precisely why it is a property table rather than hardcoded flags: adding one means adding a row, and the CLI, TOML, MCP, and completion pick it up automatically.
 
-**Implement the transforms as a reusable filter chain on `ByteStream`, not as console-specific code** — a real terminal on a real host serial port wants the same uppercase folding, so `SET sio2b UPPER=ON` on a socket-connected line works for free.
+~~**Implement the transforms as a reusable filter chain on `ByteStream`, not as console-specific code** — a real terminal on a real host serial port wants the same uppercase folding, so `SET sio2b UPPER=ON` on a socket-connected line works for free.~~
+
+**Struck, 2026-07-13, and left here as the record of a mistake worth not repeating.** It reads well and it is wrong: it optimises for the VT100 you *might* hang off a serial port and forgets the XMODEM you *will* run through it. The chain is still a reusable `FilterStream` (`host/filter.h`) — the console just owns the only one.
 
 **Arbitration:** exactly one unit may hold the console at a time. `CONNECT sio2a:a console` steals it, warning who had it.
 
@@ -955,7 +963,7 @@ A chip knows nothing about S-100. It has a clock, some pins, and (if it moves by
 
 ## 8. Timing and host idling
 
-- Clock is the **CPU board's** `clock_hz` (default 2,000,000) or `0` for free-running — not the machine's (§3). The crystal is on the card, and a backplane with no CPU card has no clock rate at all.
+- Clock is the **CPU board's** `clock_hz` — not the machine's (§3). The crystal is on the card, and a backplane with no CPU card has no clock rate at all. **`0` = free-running, and it is the DEFAULT** (Patrick, 2026-07-13). The run loop simply does not sleep, so a cassette that took a real Altair 110 seconds comes off in about one. Emulated time is unchanged: `Clock::hz()` remains a 2 MHz **divisor** so no UART ever divides by zero, and a separate `Clock::free()` decides whether we wait. `clock_hz = 2000000` gives back the period machine *and* the period waiting. (Before this, `0` was documented as "runs flat out" and silently did nothing — `setHz(0)` coerced the rate back to 2 MHz and the run loop paced against it.)
 - Throttle by comparing accumulated T-states against a monotonic host clock in ~1 ms slices and **sleeping** the remainder — never spin.
 - **Idle detection** — steal this from the Python prototype; it is what makes automation work. Count consecutive console-status reads that return RDRF=0 **with no intervening I/O of any kind**. Any data read, char write, or disk port access resets the counter. Past a threshold, the machine is *provably parked at a prompt*: the run loop reports `idle`, and **the host process sleeps instead of emulating a spin loop.** This is what stops a CP/M prompt from pinning a core, and what lets automated builds terminate promptly instead of burning 20M steps.
 

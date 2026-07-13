@@ -2,14 +2,14 @@
 # on the SIO.
 #
 # This is `4k` -- the bare 1975 machine -- with the two I/O cards that made it useful,
-# and it exists to run ONE artifact end to end: `tapes/4K BASIC Ver 3-1.tap`, loaded by
-# the period bootstrap in `tapes/LDR4K31.ASM`, unmodified, off a real cassette image.
+# and it exists to run ONE artifact end to end: `tapes/4KBasic31/4K BASIC Ver 3-1.tap`, loaded by
+# the period bootstrap in `tapes/4KBasic31/LDR4K31.ASM`, unmodified, off a real cassette image.
 # That is the 88-ACR's acceptance test, and it is the reason this file is here rather
 # than a paragraph of MOUNT commands in a doc nobody runs.
 #
 #   altairsim basic4k
-#   MOUNT acr0:tape "tapes/4K BASIC Ver 3-1.tap"
-#   LOAD  "tapes/LDR4K31.HEX"
+#   MOUNT acr0:tape "tapes/4KBasic31/4K BASIC Ver 3-1.tap"
+#   LOAD  "tapes/4KBasic31/LDR4K31.HEX"
 #   RUN 0
 #   -> MEMORY SIZE?
 #
@@ -39,41 +39,23 @@ sense = 0x80
 [[board]]
 type     = "8080"
 id       = "cpu0"
-clock_hz = 2000000
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
 
 # THE CONSOLE -- an 88-SIO at port 0, because that is where 4K BASIC 3.1 looks for it.
 # Not the 2SIO at 0x10 that `default` has: this BASIC predates that card.
 #
-# strip7out, AND NOT data_bits = 7. This is the one setting here that is a JUDGEMENT, so
-# here is the whole of it.
+# stop_bits = 2 is the card as a previous owner actually built it: the ticked boxes on
+# the scan in the 88-SIO manual are 7 data bits and 2 stop bits (docs/boards/mits-88sio.md).
+# We keep his stop bits. We DECLINE his word length, and the reason is below.
 #
-# MITS BASIC ends a message by setting bit 7 of its LAST character: "MEMORY SIZE?" leaves
-# the interpreter as ...'S','I','Z','E'|0x80. It is a string TERMINATOR, not data. Send
-# all eight bits to a modern terminal and every prompt in the machine ends in a garbage
-# character -- `MEMORY SIZ?`.
-#
-# The tempting fix is to strap the card for 7 data bits, and `Basic Versions.pdf` even
-# says "7 bit serial comm" against these builds. It is the wrong fix, because a 7-bit
-# strap would mask the data in the UART itself -- and THE PORT IS NOT BASIC'S. It is a
-# general-purpose serial port, and the next thing through it is XMODEM, which is 8-bit
-# binary. A card that quietly drops bit 7 of every byte corrupts that transfer, and it
-# corrupts it silently.
-#
-# The real machine did not strip anything. The card sent all eight bits and the TELETYPE
-# ignored the eighth -- on a Model 33 that is the parity position, and the printer never
-# decodes it. So the ignoring belongs to the TERMINAL, which is what `strip7out` is: a
-# property of the line's endpoint (DESIGN.md 7.2), not of the chip. The port stays
-# 8-bit-clean for everything that is not a Teletype.
-#
-# stop_bits = 2 is the card as a previous owner actually built it: the ticked boxes on the
-# scan in the 88-SIO manual are 7 data bits and 2 stop bits (docs/boards/mits-88sio.md).
-# We keep his stop bits -- they only time the character -- and decline his word length.
+# NOTE WHAT IS NOT HERE: nothing on this card rewrites a byte. The line is 8-bit clean.
+# See [console] at the bottom of the file -- that is where BASIC's high bit is dealt
+# with, because that is where the Teletype is.
 [[board]]
 type      = "sio"
 id        = "sio0"
 port      = 00
 stop_bits = 2
-strip7out = true
 connect   = "console"
 
 # THE CASSETTE -- an 88-ACR at 006, which is not a choice: the manual says "wire address
@@ -92,3 +74,34 @@ id   = "mem0"
   type = "ram"
   at   = 0000
   size = "4K"
+
+# THE TERMINAL -- and this is the one setting in the file that is a JUDGEMENT, so here
+# is the whole of it.
+#
+# MITS BASIC ends a message by setting bit 7 of its LAST character: "MEMORY SIZE?" leaves
+# the interpreter as ...'S','I','Z','E'|0x80. It is a string TERMINATOR, not data. Send
+# all eight bits to a modern terminal and every prompt in the machine ends in a garbage
+# character -- `MEMORY SIZ?`.
+#
+# There are two wrong places to fix that and one right one.
+#
+#   NOT `data_bits = 7` on the card. `Basic Versions.pdf` says "7 bit serial comm"
+#   against these builds and the scanned card has the 7-bit boxes ticked, so it is very
+#   tempting. But a 7-bit strap is a FRAME: it means the eighth bit does not travel at
+#   all, for anybody. The port is not BASIC's -- it is a general-purpose serial port, and
+#   the next thing through it may be XMODEM, which is 8-bit binary.
+#
+#   NOT a transform on the LINE. Same objection, arrived at from the other side: a knob
+#   on sio0 that masks bit 7 corrupts that XMODEM transfer just as thoroughly, and it
+#   does it silently. There is no such knob any more, on this card or any other.
+#
+#   The TERMINAL. The real machine stripped nothing: the card sent all eight bits and the
+#   TELETYPE ignored the eighth -- on a Model 33 that is the parity position, and the
+#   printing mechanism never decodes it. Nothing was masked; something on the far end
+#   simply did not look. That is what `strip7out` on the console is, and it is the only
+#   thing in the simulator allowed to alter a byte (DESIGN.md 7.2).
+#
+# The line stays 8-bit clean. The Teletype ignores the eighth bit. Both true, as they
+# were in 1975.
+[console]
+strip7out = true

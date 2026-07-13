@@ -33,20 +33,49 @@ bool Uart1602::txBufferEmpty(const Clock& clk) const { return clk.now() >= txFre
 // The line
 // ---------------------------------------------------------------------------
 
+// THE STRAPS, AS A FRAME ON THE WIRE.
+//
+// The format pins are not decoration and they are not only a duration. On a REAL
+// serial port they are the frame: a card jumpered for 7 data bits, even parity, 2
+// stop bits opens the host port at 7E2, because that is what a COM2502 strapped
+// that way actually puts on the line. Every other endpoint ignores this -- a
+// socket has no baud rate and a tape has no parity -- which is exactly why it is
+// pushed at the stream and not implemented in the chip.
+//
+// NOTE WHAT THIS IS NOT: it is not a mask. The chip never ANDs the guest's data
+// with the word length. If a card is strapped for 7 bits then the eighth bit does
+// not travel, because the frame does not carry it -- and if it is strapped for 8,
+// all eight arrive, MITS BASIC's terminator included. That is the hardware, and
+// the terminal is what decides to ignore it (host/console.h).
+LineParams Uart1602::params() const {
+    LineParams p;
+    p.baud     = baud;
+    p.dataBits = dataBits;
+    p.parity   = parity;
+    p.stopBits = stopBits;
+    return p;
+}
+
+void Uart1602::programLine() {
+    std::string err;
+    if (stream_->setParams(params(), err)) return;
+
+    // The host refused. Say it once, in a sentence, and go on running at the strap --
+    // the strap is what the guest can measure, and it is still what the card is
+    // jumpered to. Silence here would be a wire running at a frame nobody chose.
+    log_.push_back(name_ + ": " + err);
+}
+
 void Uart1602::connect(std::unique_ptr<ByteStream> s) {
-    // EVERY endpoint gets the transform chain, whatever it is (DESIGN.md 7.2) --
-    // including the null one, so `filter_` is never dangling and the filter properties
-    // never vanish from SHOW just because nothing is plugged in.
-    //
-    // KEEP the chain across a reconnect -- see FilterStream::reconnect(). Building a
-    // new one here silently reset every transform on the line.
-    if (filter_) {
-        filter_->reconnect(std::move(s));
-        return;
-    }
-    auto f  = std::make_unique<FilterStream>(std::move(s));
-    filter_ = f.get();
-    stream_ = std::move(f);
+    // THE LINE IS TAKEN AS IT IS -- no transform chain. The chain is the console's
+    // and only the console's (host/console.h): this card's connector goes to a modem,
+    // a socket or a paper-tape reader, and a filter on it would silently corrupt the
+    // first 8-bit binary transfer through the port.
+    stream_ = std::move(s);
+
+    // A NEW LINE STARTS WHERE THE CARD ALREADY IS: the straps are soldered, so the
+    // wire is brought up to them rather than the other way round.
+    programLine();
 }
 
 void Uart1602::disconnect() { connect(std::make_unique<NullStream>()); }

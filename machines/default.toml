@@ -91,8 +91,12 @@ sense = 0x00
 [[board]]
 type     = "8080"
 id       = "cpu0"
-clock_hz = 2000000            # 2 MHz. The crystal is ON THIS CARD, which is why the
-                              # clock is the board's property and not the machine's.
+clock_hz = 0                  # FLAT OUT, and that is the default. The crystal is ON
+                              # THIS CARD, which is why the clock is the board's
+                              # property and not the machine's -- and `clock_hz =
+                              # 2000000` gives you the real 88-CPU's 2 MHz back, with
+                              # the real waiting that goes with it. Emulated time is
+                              # identical either way; only the sleeping differs.
 
 # The console. CP/M's BIOS talks to a 2SIO at port 10, and so does DBL: it reads
 # the sense switches at FF22 to decide the 2SIO's stop bits, which is why `sense`

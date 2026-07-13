@@ -319,6 +319,15 @@ void SioBoard::pump() {
 // on it).
 void SioBoard::configChanged() {
     decodeChanged();
+
+    // A STRAP THAT MOVED MAY HAVE MOVED THE FRAME. `baud`, `data_bits`, `stop_bits`
+    // and `parity` are the wire's format, so a real serial port on the far end has to
+    // be reopened at the new one -- resoldering NDB1 and leaving the cable at 8N1
+    // would be a card whose jumpers mean nothing outside the simulator. Every other
+    // endpoint ignores it. We do not try to work out WHICH property moved, for the
+    // same reason configChanged() itself does not (core/board.cpp).
+    u_.programLine();
+
     refresh();
 }
 
@@ -468,12 +477,15 @@ std::vector<Property> SioBoard::properties() {
         p.push_back(std::move(x));
     }
 
-    // The transform chain, verbatim -- upper, strip7in, crlf, bsdel and the rest
-    // (DESIGN.md 7.2). They are the FILTER's properties, and the board passes them
-    // through, which is why `SET sio0 UPPER=ON` works on a socket exactly as it does
-    // on the console, with no code here.
-    for (Property& f : u_.filter()->properties()) p.push_back(std::move(f));
-
+    // NO TRANSFORM CHAIN. `upper`, `strip7out` and the rest are the CONSOLE's
+    // (DESIGN.md 7.2, host/console.h) -- `SET CONSOLE STRIP7OUT=ON`. This card's
+    // connector goes to a Teletype, a modem or a socket, and the ONLY one of those
+    // that has any business rewriting a byte is the one with a human behind it.
+    //
+    // What the card publishes about the line instead is real: `baud`, `data_bits`,
+    // `stop_bits`, `parity` -- the NDB/NSB/NPB/POE pads. Those are the FRAME, they
+    // time every deadline the card sets, and on a real serial port they are programmed
+    // into the real port. They are not a mask (Uart1602::programLine()).
     return p;
 }
 

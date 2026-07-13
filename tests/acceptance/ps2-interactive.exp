@@ -1,0 +1,95 @@
+#!/usr/bin/expect -f
+#
+# THE FULL MITS PROGRAMMING SYSTEM II PROCEDURE, TYPED AT A REAL TERMINAL.
+#
+# `acceptance-ps2` proves the monitor BOOTS. This proves you can USE it: it runs the
+# ReadMe's own steps 5-8, including the one thing no piped test can do -- CHANGING THE
+# CASSETTE while the machine is running.
+#
+#   boot the monitor -> OPN ABS,AC -> ^E -> put the editor tape in -> RUN -> EDT
+#   -> the editor loads off the second tape and prints its '*' -> E -> back to the monitor
+#
+# That covers the ACR being re-MOUNTed mid-session, the monitor's own tape loader (which is
+# not the bootstrap -- it is 2.5K of monitor reading a .BIN through the same card), and the
+# console surviving a trip out to the simulator's monitor and back.
+#
+# WHY IT CANNOT BE A PIPED TEST: `^E` is acted on when the CONSOLE READS STDIN, not when the
+# guest reads the byte. A buffered keystroke file therefore fires it at PC=0003, before the
+# monitor has even loaded. On a terminal it arrives when a human presses it.
+#
+# TWO TRAPS, BOTH OF WHICH ALREADY BIT ME (usage: expect -f ps2-interactive.exp <altairsim>)
+#
+#   1. `expect` PATTERNS ARE GLOBS. `expect "*"` matches ANY output -- so the check for the
+#      editor's `*` prompt passed against a machine doing nothing at all. Every literal here
+#      is `-ex`. Do not "simplify" one back.
+#   2. WAIT FOR THE CONSOLE BANNER AFTER `RUN` before typing at the guest. Typing while the
+#      CLI is still reading the RUN line races its line reader, the keystrokes go to the
+#      wrong reader, and this script will tell you the editor never loads. It loads.
+#
+set timeout 45
+log_user 0
+
+spawn [lindex $argv 0] ps2
+
+expect -ex "altairsim> "
+send "MOUNT acr0:tape \"tapes/MitsPS2/PS2-MON.TAP\"\r"
+expect -ex "altairsim> "
+send "LOAD \"tapes/MitsPS2/LDRPS2.HEX\"\r"
+expect -ex "altairsim> "
+send "RUN 0\r"
+
+# --- the monitor boots off the cassette. Its whole banner is two spaces and a '?'.
+expect {
+    -ex "  ?" { puts "\n### GOT THE MONITOR PROMPT" }
+    timeout  { puts "\n### FAIL: no monitor prompt"; exit 1 }
+}
+
+# ReadMe step 7: assign the program-load device to the audio cassette.
+send "OPN ABS,AC\r"
+expect {
+    -re "OPN ABS,AC\[\r\n\]+  \\?" { puts "\n### COMMAND PARSED, PROMPT IS BACK" }
+    timeout                        { puts "\n### FAIL: OPN not parsed"; exit 1 }
+}
+
+# --- NOW THE CASSETTE SWAP, which is the whole reason this test exists.
+# ^E drops out of the guest's console and back into the simulator's monitor -- the
+# operator taking his hands off the terminal and reaching for the tape recorder. The
+# machine is NOT stopped; it is still sitting in its console poll, waiting.
+send "\005"
+expect {
+    -ex "altairsim> " { puts "\n### DROPPED TO THE SIMULATOR MONITOR" }
+    timeout       { puts "\n### FAIL: ^E did not return to the monitor"; exit 1 }
+}
+
+# Eject the monitor tape, put in the editor tape, press PLAY. Then back to the machine,
+# which is still sitting in its console poll exactly where we left it.
+send "MOUNT acr0:tape \"tapes/MitsPS2/PS2-EDT.BIN\"\r"
+expect -ex "altairsim> "
+send "RUN\r"
+
+# WAIT FOR THE MACHINE TO ACTUALLY RESUME before typing at it. Typing into the CLI's line
+# reader while it is still processing RUN races it, and the keystrokes go to the wrong
+# reader -- which is exactly how this script "proved" the editor never loads when in fact
+# it loads perfectly well. A human waits to see the console come back; so does this.
+expect -ex "console"
+
+# ReadMe step 8: "Load the editor, type: EDT<cr> ... When loaded, the editor's prompt '*'
+# is displayed." The monitor now reads 1,920 bytes off the ACR.
+send "EDT\r"
+expect {
+    -ex "*" { puts "\n### THE EDITOR LOADED FROM THE SECOND TAPE. Prompt: *" }
+    timeout { puts "\n### FAIL: editor never loaded"; exit 1 }
+}
+
+# "Type E<cr> to return to the monitor."
+send "E\r"
+expect {
+    -ex "  ?" { puts "\n### BACK AT THE MONITOR PROMPT" }
+    timeout { puts "\n### FAIL: editor did not exit to the monitor"; exit 1 }
+}
+
+send "\005"
+expect -ex "altairsim> "
+send "QUIT\r"
+expect eof
+puts "\n### ALL STEPS PASSED"

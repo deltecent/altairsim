@@ -56,7 +56,7 @@ sense = 0x00
 [[board]]
 type     = "8080"
 id       = "cpu0"
-clock_hz = 2000000
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
 
 # The terminal. Channel A is the console; channel B is a second line ALTMON will
 # also happily take an Intel HEX file on, and it is left unconnected here -- which

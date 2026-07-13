@@ -35,7 +35,9 @@
 // ---------------------------------------------------------------------------
 
 #include "core/board.h"   // Clock
-#include "host/filter.h"  // ByteStream, FilterStream, LineParity
+#include "host/stream.h"  // ByteStream, LineParams, LineParity
+
+#include <vector>
 
 #include <cstdint>
 #include <memory>
@@ -94,12 +96,25 @@ public:
     void masterReset(const Clock& clk);
 
     // ---- THE LINE ----
-    void          connect(std::unique_ptr<ByteStream> s);
-    void          disconnect();
-    ByteStream&   stream() { return *stream_; }
-    FilterStream* filter() { return filter_; }
-    std::string   endpoint() const { return stream_->describe(); }
-    void          pump() { stream_->pump(); }
+    void        connect(std::unique_ptr<ByteStream> s);
+    void        disconnect();
+    ByteStream& stream() { return *stream_; }
+    std::string endpoint() const { return stream_->describe(); }
+    void        pump() { stream_->pump(); }
+
+    // The frame the straps describe, and the act of pushing it at the wire. The CARD
+    // calls programLine() when a strap moves -- a jumper you resolder is a jumper the
+    // real port should be reopened for.
+    LineParams params() const;
+    void       programLine();
+
+    // What the wire said back, for the card to say out loud (Board::drainLog()). A
+    // cable that cannot do 7 data bits is a fact about the world, not a bug.
+    std::vector<std::string> drainLog() {
+        auto out = std::move(log_);
+        log_.clear();
+        return out;
+    }
 
     // ADVANCE THE RECEIVER. Take a character off the line if one has finished
     // arriving and the holding register is free to take it.
@@ -135,8 +150,9 @@ private:
 
     std::string name_;
 
+    // THE LINE, RAW -- no filter. See connect().
     std::unique_ptr<ByteStream> stream_;
-    FilterStream*               filter_ = nullptr;  // borrowed; owned by stream_
+    std::vector<std::string>    log_;
 
     uint8_t rxData_ = 0;
     bool    rda_    = false;  // Data Available -- the RDAV flip-flop

@@ -283,3 +283,68 @@ add_test(NAME acceptance-basic4k
                  -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/basic4k.cmake)
 set_tests_properties(acceptance-basic4k PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ...and the same tape drive against the OTHER console card. 8K BASIC 3.2 wants an
+# 88-2SIO (a 6850, at 0x10) where 4K BASIC 3.1 wanted an 88-SIO (a COM2502, at 0), and
+# it reads the sense switches to find out which -- so this is a genuinely different
+# machine, not a bigger tape. Neither test can fail for the other's reason.
+add_test(NAME acceptance-basic8k
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/basic8k.cmake)
+set_tests_properties(acceptance-basic8k PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ...and the same two cards again, booting something that is NOT BASIC: the MITS
+# Programming System II monitor, with serial interrupts off (sense A9 up). Same ACR, same
+# 2SIO, same 0xAE leader -- and a DIFFERENT bootstrap, which is the whole point of it.
+# PS2's second stage is linked for page 0F, so it needs the 4K-BASIC-3.2 loader; boot it
+# with 8K BASIC's and it lands 4K too high and dies in silence. Only an acceptance test
+# catches that, because every card in the machine is behaving perfectly while it happens.
+#
+# The interrupt-driven half of PS2 (A9 down) is NOT here: it needs an 88-VI/RTC vectored
+# interrupt board, which this simulator does not have yet.
+add_test(NAME acceptance-ps2
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ps2.cmake)
+set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ---------------------------------------------------------------------------
+# THE INTERACTIVE ONE. Everything above drives the CLI through a PIPE, and a pipe is not
+# a terminal -- so three things that only exist on a tty go untested by all of them: the
+# echoed prompt and line editing, ATTN (^E) taking the console back from a running guest,
+# and the run loop's decision to pace against a wall clock. This test types.
+#
+# It needs `expect`, which ships with macOS and is a package everywhere else. If it is not
+# there we do not register the test rather than fail the suite over a missing tool -- and
+# we SAY SO at configure time, because a test that silently is not there is worse than one
+# that fails.
+# ---------------------------------------------------------------------------
+find_program(EXPECT_EXECUTABLE expect)
+if(EXPECT_EXECUTABLE)
+  add_test(NAME acceptance-cli
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cli.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-cli PROPERTIES LABELS acceptance TIMEOUT 60)
+
+  # ...and the PS2 package USED, not merely booted: the ReadMe's steps 5-8, including a
+  # CASSETTE CHANGE while the machine is running (^E, MOUNT the editor tape, RUN, EDT).
+  # That exercises the monitor's own tape loader -- which is not the bootstrap, it is 2.5K
+  # of monitor reading a .BIN through the ACR -- and the ACR being re-mounted mid-session.
+  # A piped test cannot do it: ^E is acted on when the console READS STDIN, so a keystroke
+  # file fires it at PC=0003, before the monitor has even loaded.
+  add_test(NAME acceptance-ps2-interactive
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ps2-interactive.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-ps2-interactive PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+else()
+  message(STATUS "expect not found -- SKIPPING the interactive CLI test (acceptance-cli). "
+                 "The tty paths (prompt echo, ATTN, clock pacing) will not be covered.")
+endif()

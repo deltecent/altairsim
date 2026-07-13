@@ -221,7 +221,7 @@ the verb with it.
 
 **Altair 4K BASIC v3.1 boots off a period cassette through this card, and runs a program.**
 `ctest -R acceptance` — `tests/acceptance/basic4k.cmake`, the machine `basic4k`, the tape
-`tapes/4K BASIC Ver 3-1.tap`, and the bootstrap `tapes/LDR4K31.ASM`. **Nothing was modified.**
+`tapes/4KBasic31/4K BASIC Ver 3-1.tap`, and the bootstrap `tapes/4KBasic31/LDR4K31.ASM`. **Nothing was modified.**
 
 ```
 MEMORY SIZE?
@@ -253,22 +253,26 @@ session.
 card, not in the card, which is the entire reason an acceptance test exists:
 
 - **`CONNECT` silently reset the transform chain.** Both chips built a *fresh* `FilterStream` for
-  every endpoint, so `upper`, `strip7*`, `crlf`, `echo`, `bell` and `bsdel` all snapped back to
-  their defaults the moment anything was plugged in — and a machine file that set a transform
-  before `connect` (the loader applies keys in file order) had it thrown away before the machine
-  ever started. `FilterStream::reconnect()` now swaps the endpoint and keeps the chain, which is
-  what DESIGN.md §7.2 claimed all along. **This is the one that mattered**: the transforms belong
-  to the line, not to what is on the far end of it.
+  every endpoint, so `upper`, `strip7*`, `crlf` and the rest snapped back to their defaults the
+  moment anything was plugged in. The fix at the time was `FilterStream::reconnect()` — keep the
+  chain across a connect, because "the transforms belong to the line".
+
+  **That fix is gone, because the premise was wrong** (2026-07-13). The transforms do not belong
+  to the line: a line carries XMODEM, and a filter on it corrupts binary silently — the very
+  argument *this card* had already made about a cassette. The chain moved to the **console**
+  (DESIGN.md §7.2), which is not plugged in and cannot be unplugged, so there is nothing left for
+  a `CONNECT` to reset and no `reconnect()` to need. **This card was right first**, and the rest of
+  the machine has now caught up with it.
 - **A scripted run killed the machine three slices into the load.** The monitor took "the guest
   has stopped printing" for "the guest has finished" — and a cassette bootstrap prints *nothing*
   for the length of a tape.
 - **A quoted path could not be opened.** `MOUNT`/`LOAD`/`SAVE` never stripped the quote, so no
   file with a space in its name would open — which is every artifact in `tapes/`.
 
-It also surfaced MITS BASIC's **bit-7 string terminator**, and the *wrong* fix for it is so
-tempting that it has its own section in `docs/boards/mits-88sio.md`. Short version: the terminal
-ignores the high bit (`strip7out`); the card does not strip it (`data_bits = 7` would corrupt
-XMODEM).
+It also surfaced MITS BASIC's **bit-7 string terminator**, and the *wrong* fixes for it are so
+tempting that they have their own section in `docs/boards/mits-88sio.md`. Short version: the
+**terminal** ignores the high bit (`SET CONSOLE STRIP7OUT=ON`). The card does not strip it, and
+neither does the line — both would corrupt XMODEM, one loudly enough to notice and one not.
 
 ## References
 

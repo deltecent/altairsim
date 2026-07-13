@@ -47,7 +47,8 @@ sense = 0x00
 [[board]]
 type     = "8080"
 id       = "cpu0"
-clock_hz = 2000000         # 0 = run flat out
+clock_hz = 0               # 0 = run flat out, AND IT IS THE DEFAULT.
+                           # 2000000 = the real 88-CPU, real time, real waiting.
 
 # Two 6850 ACIAs on one card. They share NOTHING -- separate baud jumpers,
 # separate endpoints, separate interrupt straps -- so almost everything here is a
@@ -110,20 +111,33 @@ fill = "random"            # real static RAM does not come up zeroed
   mount = "builtin:altmon" # compiled in: nothing to download, same on every OS
 ```
 
-### The transform chain is on the LINE, not on the console
+### The transform chain is the CONSOLE's, and only the console's
 
-`UPPER`, `CRLF`, `BSDEL` and the rest are **unit** properties, so they work identically on a socket or a real serial port — that is the whole point (DESIGN.md §7.2).
+`UPPER`, `STRIP7OUT`, `CRLF`, `BSDEL` and the rest belong to `[console]` — **not** to a board and **not** to a unit. Every other endpoint (socket, serial port, tape, file) is **8-bit clean, always**, because the next thing down that line may be XMODEM and a filter would corrupt it silently (DESIGN.md §7.2).
 
 ```toml
-  [board.unit.a]
-  connect   = "console"
-  upper     = true         # fold keyboard input to uppercase -- MITS BASIC wants caps
-  strip7in  = true
-  bsdel     = "bs"         # off | bs (fold DEL->BS) | del. A perennial CP/M annoyance.
-  crlf      = false        # usually WRONG to turn on: period software sends its own LF
-  echo      = false        # local echo, for half-duplex hardware
-  bell      = true
+[console]
+upper     = true         # fold keyboard input to uppercase -- MITS BASIC wants caps
+strip7in  = true
+strip7out = true         # the Teletype ignores bit 8; MITS BASIC sets it as a terminator
+bsdel     = "bs"         # off | bs (fold DEL->BS) | del. A perennial CP/M annoyance.
+crlf      = false        # usually WRONG to turn on: period software sends its own LF
+echo      = false        # local echo, for half-duplex hardware
+bell      = true
 ```
+
+What a **board** gets instead is **line coding** — and only where it is really a jumper:
+
+```toml
+[[board]]
+type      = "sio"        # the 88-SIO's word format IS a set of solder pads
+id        = "sio0"
+data_bits = 8            # NDB1/NDB2. A FRAME, not a mask -- see docs/boards/mits-88sio.md
+stop_bits = 2            # NSB
+parity    = "none"       # NPB/POE
+```
+
+On a real serial port those are programmed into the real port. On the **88-2SIO** there is no such property at all: the 6850's word format is a register the *guest* writes.
 
 At the monitor that is `SET sio0:a UPPER=ON`, and `SHOW sio0` prints it.
 

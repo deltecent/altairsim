@@ -58,21 +58,23 @@ AcrBoard::AcrBoard() {
 // Modem to "SRSI" -- and the modem's audio goes to the recorder. The line on this card
 // has exactly one thing on the end of it, and you MOUNT it.
 //
-// The TRANSFORM CHAIN goes with it, and that is not tidiness -- it is a loaded gun.
-// `upper`, `crlf`, `bsdel` and the rest rewrite CHARACTERS on a terminal line
-// (DESIGN.md 7.2). A cassette carries BINARY: a checksummed absolute image of 4K
-// BASIC. A CRLF transform on that line does not annoy you, it silently corrupts the
-// program, and it corrupts it on the way onto the tape as well as off. The modem
-// passes BITS; it has no idea what a newline is. So the card does not offer the knob.
+// THE TRANSFORM CHAIN IS NO LONGER SOMETHING THIS CARD HAS TO DEFEND AGAINST.
 //
-// Read the filter's OWN property names to decide what to drop, rather than listing
-// them here: a transform added to the chain tomorrow is dropped from this card
-// automatically, and cannot arrive on a cassette because somebody forgot this file.
+// It used to be. `upper`, `crlf`, `bsdel` and the rest rewrite CHARACTERS on a
+// terminal line, and a cassette carries BINARY -- a checksummed absolute image of 4K
+// BASIC. A CRLF transform on that line does not annoy you, it silently corrupts the
+// program, and it corrupts it on the way onto the tape as well as off. So this card
+// used to reach into its own base class and subtract every filter property by name.
+//
+// That argument was right, and it turned out to be right about EVERY line, not just
+// this one -- a socket carrying XMODEM is no more a terminal than a cassette is. So
+// the chain moved to the console, where the human is (host/console.h), and the 88-SIO
+// does not offer it any more either. There is nothing left here to take away but the
+// endpoint itself: the recorder is soldered to the card, so there is no `connect`.
 std::vector<Property> AcrBoard::properties() {
     std::vector<Property> all = SioBoard::properties();
 
     std::vector<std::string> drop{"connect"};
-    for (Property& f : u_.filter()->properties()) drop.push_back(f.name);
 
     std::vector<Property> p;
     for (Property& x : all) {

@@ -390,18 +390,30 @@ void test_sio2() {
         CHECK((g.m.bus.ioRead(0x12) & 0x01) == 0, "and never has anything to say");
     }
 
-    SECTION("88-2SIO -- the transform chain is the LINE's, not the console's");
+    SECTION("88-2SIO -- the LINE IS 8-BIT CLEAN. The transforms are the console's");
     {
+        // THE INVERSE OF WHAT THIS TEST USED TO ASSERT, deliberately. It used to set
+        // `upper` on the LINE and check the guest saw a fold on a non-console stream --
+        // "the fold lives on the line, so it works on a socket too". That is exactly
+        // the bug: the same line carries XMODEM, and a transform on it corrupts every
+        // 8-bit transfer through the card, silently.
+        //
+        // A 6850's line now carries what was put on it. Nothing else.
         Rig g;
         std::string err;
-        CHECK(setUnitProperty(*g.sio, "a", "upper", "true", err), "SET sio0:a UPPER=ON");
 
-        g.tty->feed("abc");
+        CHECK(!setUnitProperty(*g.sio, "a", "upper", "true", err),
+              "there is no UPPER on the line -- SET sio0:a UPPER=ON is refused");
+        CHECK(!setUnitProperty(*g.sio, "a", "strip7out", "true", err),
+              "and no STRIP7OUT either -- it would corrupt XMODEM through this port");
+
+        // THE HIGH BIT SURVIVES THE LINE. 0xC5 is 'E'|0x80 -- the last character of
+        // MITS BASIC's "MEMORY SIZE?", and the exact byte that started all of this.
+        // Inbound it is just as important: it is the first byte of an XMODEM block's
+        // payload as often as any other value.
+        g.tty->feed(std::string(1, (char)0xC5));
         (void)g.m.bus.ioRead(0x10);
-        CHECK(g.m.bus.ioRead(0x11) == 'A', "the guest sees uppercase");
-
-        // ...and this is a ScriptedStream, not a console. That is the whole point:
-        // the fold lives on the line, so it works on a socket too (DESIGN.md 7.2).
+        CHECK(g.m.bus.ioRead(0x11) == 0xC5, "0xC5 reaches the guest with bit 7 intact");
     }
 
     // -----------------------------------------------------------------------

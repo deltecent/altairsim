@@ -202,5 +202,17 @@ void test_clock() {
         CHECK(c.tStatesPer(9600) == 416, "a 4 MHz card doubles it");
         c.setHz(0);
         CHECK(c.hz() == 2000000, "a machine with no crystal still gives a board a sane divisor");
+
+        // THE DIVISOR AND THE PACING ARE TWO QUESTIONS. Fusing them is what made
+        // `clock_hz = 0` a documented lie: setHz(0) coerced hz_ back to 2 MHz (it has
+        // to -- a UART cannot divide by zero), the run loop paced against hz_, and so
+        // "runs flat out" ran at 2 MHz like everything else.
+        CHECK(c.free(), "clock_hz = 0 is FREE-RUNNING -- the run loop must not sleep");
+        CHECK(c.tStatesPer(300) == 6666, "...and a 300-baud byte still costs what it costs");
+        c.setHz(2000000);
+        CHECK(!c.free(), "a real crystal is paced against real time");
+
+        Clock fresh;
+        CHECK(fresh.free(), "FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13)");
     }
 }

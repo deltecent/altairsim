@@ -127,19 +127,11 @@ void Mc6850::programLine() {
 }
 
 void Mc6850::connect(std::unique_ptr<ByteStream> s) {
-    // EVERY endpoint gets the transform chain, whatever it is (DESIGN.md 7.2).
-    // The filter is not a console feature that a socket has to do without.
-    //
-    // KEEP the chain across a reconnect -- see FilterStream::reconnect(). Building a
-    // new one here silently reset every transform on the line, which is the same bug
-    // the comment below is at pains to avoid for the pins.
-    if (filter_) {
-        filter_->reconnect(std::move(s));
-    } else {
-        auto f  = std::make_unique<FilterStream>(std::move(s));
-        filter_ = f.get();
-        stream_ = std::move(f);
-    }
+    // THE LINE IS TAKEN AS IT IS. No filter is wrapped around it: the chain belongs
+    // to the console and to nothing else (host/console.h). A socket, a modem and a
+    // serial port carry the guest's bytes unaltered, which is the only way XMODEM
+    // through this card can ever work.
+    stream_ = std::move(s);
 
     // A NEW LINE STARTS WHERE THE CARD ALREADY IS. The 6850 does not reset because
     // you plugged something into it: RTS is still whatever bits 5-6 say, the baud is
@@ -643,12 +635,11 @@ std::vector<Property> Mc6850::properties(const EndpointResolver& resolve) {
         p.push_back(std::move(x));
     }
 
-    // The transform chain, verbatim -- upper, strip7in, crlf, bsdel and the rest
-    // (DESIGN.md 7.2). They are the FILTER's properties, not the board's, and the
-    // board simply passes them through. Which is why `SET sio2a:b UPPER=ON` works
-    // on a socket exactly as it does on the console, with no code here.
-    for (Property& f : filter_->properties()) p.push_back(std::move(f));
-
+    // NO TRANSFORM CHAIN. `upper`, `strip7out` and the rest are the CONSOLE's
+    // (DESIGN.md 7.2, host/console.h) -- `SET CONSOLE UPPER=ON`. A 6850's line is
+    // 8-bit clean whatever is plugged into it, because a socket is not a terminal.
+    // What the card DOES publish about the line is its FRAME: baud, and the word
+    // format the guest wrote into the control register.
     return p;
 }
 

@@ -32,7 +32,7 @@ The chip, the instruction set, and the card are three separate things: DESIGN.md
 
 | Property | Default | Runtime? | What it is |
 |---|---|---|---|
-| `clock_hz` | `2000000` | yes | The crystal, **which is on this card** — that is why the clock is the board's property and not the machine's. `0` runs flat out. A backplane with no CPU in it has no clock rate to speak of. |
+| `clock_hz` | `0` | yes | The crystal, **which is on this card** — that is why the clock is the board's property and not the machine's. **`0` runs flat out, and that is the default.** `SET cpu0 clock_hz=2000000` buys back the real 88-CPU's 2 MHz *and the real waiting that goes with it* — a 3,200-byte cassette then takes its full 110 seconds, because that is how long it took. Emulated time is identical either way (the ACR still spends 66,666 T-states on a 300-baud byte), so only the **sleeping** differs and the guest cannot tell. A backplane with no CPU in it has no clock rate to speak of. |
 
 ## Units
 

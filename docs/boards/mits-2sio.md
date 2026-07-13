@@ -103,7 +103,13 @@ The board has one. **Everything else belongs to a unit**, because everything els
 | `cts` | unit | **`ground` (default) \| `wired`** — likewise `/CTS`. Wired, it **gates the transmitter**. |
 | `connect` | unit | Endpoint. `CONNECT` sets it. |
 | `lines` | unit | **Read-only.** The live pin state: `DCD CTS RTS brk` (capitals = asserted). A pin is not a jumper, so it has no setter, and `SET` says so. |
-| `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell`, `bsdel` | unit | The transform chain (DESIGN.md §7.2) — **the LINE's, not the console's**, so they work identically on a socket. |
+**There is no `data_bits`, `parity` or `stop_bits` property on this card, and there must not be.** Unlike the 88-SIO, the word format here is **not a jumper** — it is the 6850's control register, and the **guest** writes it (`0x11` = ÷16, 8N2). A property would be a second place to set it, and the two would disagree the moment software touched the chip. It is still *line coding* and it still reaches the wire: on a real serial port the card programs the host port from the bits the guest wrote (`ByteStream::setParams`), so a guest that selects 7E1 reconfigures the cable to 7E1.
+
+**There is no transform chain on this card either, and that is deliberate.** `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel` are the **console's** (`SET CONSOLE UPPER=ON`, DESIGN.md §7.2). A 6850's line is **8-bit clean, whatever is plugged into it** — because the thing plugged into it may be a socket carrying XMODEM, and a filter there corrupts the transfer silently. Only a terminal may rewrite a byte, and this card is not a terminal; it is a hole in the back of the machine.
+
+### MITS BASIC's high bit, on this card
+
+The 88-SIO's story (`docs/boards/mits-88sio.md`) applies here **unchanged, and the control register proves it**: BASIC programs the ACIA for **8N2** — *eight* data bits — so the chip legitimately puts bit 7 of `...'E'|0x80` on the wire. The card is not lying and there is nothing to fix in it. `SET CONSOLE STRIP7OUT=ON` is the Teletype that ignores the eighth bit; the line stays 8-bit clean for everything that is not one.
 
 In a config file that is `[board.unit.a]`, and `CONFIG SAVE` round-trips all of it (`lines` excepted — you cannot save a pin).
 

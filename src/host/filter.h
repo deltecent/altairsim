@@ -1,25 +1,42 @@
 #pragma once
 //
-// FilterStream -- the serial transform chain (DESIGN.md 7.2).
+// FilterStream -- the CONSOLE's transform chain (DESIGN.md 7.2).
 //
 // A ByteStream that wraps another ByteStream and mangles the bytes on the way
-// through. Every serial unit gets one, whatever it is connected to.
+// through. THERE IS EXACTLY ONE OF THESE IN THE SIMULATOR, and the Console owns
+// it (host/console.h). Nothing else may have one.
 //
-// THIS IS NOT CONSOLE CODE, and that is the entire point. The design says it
-// plainly: "a real terminal on a real host serial port wants the same uppercase
-// folding, so `SET sio2b UPPER=ON` on a socket-connected line works for free."
-// Put the uppercase fold in the console and it works for the console; put it
-// here and it works for the console, the socket, the modem and the VT100 on
-// /dev/tty.usbserial that Patrick actually owns.
+// AN EARLIER VERSION OF THIS FILE ARGUED THE OPPOSITE, at some length: that the
+// chain belonged on the LINE, inside every UART, so that `SET sio0 UPPER=ON`
+// would work on a socket as well as on the console. It is a seductive argument
+// and it is WRONG, because a line is not a terminal:
 //
-// It also means these settings are PROPERTIES, declared through the same
-// Property layer as a board's -- so SET, SHOW, TOML, CONFIG SAVE, MCP and tab
-// completion all pick them up with no code anywhere. There is one schema.
+//   A card's connector goes to a modem, a socket, a paper-tape reader or a real
+//   /dev/tty.usbserial, and the next thing down it is XMODEM -- 8-BIT BINARY. A
+//   `strip7out` on that line masks bit 7 of every byte of the transfer and does
+//   it SILENTLY. Set it once for MITS BASIC, forget, and every binary file that
+//   ever leaves the machine is quietly corrupt.
+//
+// The 88-ACR reached this conclusion first and refused the chain outright -- "a
+// tape is binary, not text" (tests/test_88acr.cpp) -- and every other endpoint
+// deserves the same protection. So: socket, serial port, tape, file and loopback
+// are 8-BIT CLEAN, ALWAYS. Only the console transforms, because only the console
+// has a human on the end of it, and every one of these transforms is a fact about
+// a TERMINAL.
+//
+// What a LINE has instead is LINE CODING -- baud, data bits, parity, stop bits.
+// That is hardware (the 88-SIO's jumpers, the 6850's control register), it lives
+// on the card, and on a real serial port it is programmed into the real port.
+// A frame is not a filter.
+//
+// These settings are PROPERTIES, declared through the same Property layer as a
+// board's -- so SET, SHOW, TOML, CONFIG SAVE, MCP and tab completion all pick them
+// up with no code anywhere. There is one schema.
 //
 // DIRECTIONS, named from the GUEST's point of view, because the guest is who we
 // are lying to:
-//   inbound  = endpoint -> guest   (what the human typed)
-//   outbound = guest -> endpoint   (what the program printed)
+//   inbound  = keyboard -> guest   (what the human typed)
+//   outbound = guest -> screen     (what the program printed)
 
 #include "core/value.h"
 #include "host/stream.h"
@@ -46,20 +63,11 @@ public:
 
     ByteStream* inner() { return inner_.get(); }
 
-    // SWAP THE ENDPOINT AND KEEP THE TRANSFORMS. This is the whole claim in the
-    // header comment above, and it is only true if the chain SURVIVES a CONNECT.
-    //
-    // Both chips used to build a fresh FilterStream every time something was plugged
-    // in, which quietly reset upper/strip7*/crlf/echo/bell/bsdel to their defaults --
-    // so `SET sio0 UPPER=ON` followed by `CONNECT sio0:tty socket` lost the fold, with
-    // no message, and a machine file that set a transform BEFORE `connect` (the loader
-    // applies keys in file order) had it thrown away before the machine ever started.
-    //
-    // The transforms belong to the LINE, not to what is on the far end of it. The
-    // 6850's own connect() already says so about its pins -- "a new line starts where
-    // the card already is" -- and the chain is no different: unplugging a Teletype and
-    // plugging in a VT100 does not unsolder anything.
-    void reconnect(std::unique_ptr<ByteStream> inner) { inner_ = std::move(inner); }
+    // THERE IS NO reconnect(). There used to be, because the chips each built a
+    // FilterStream around whatever was plugged into them and a fresh CONNECT threw
+    // the transforms away. The console's keyboard and screen are not plugged in and
+    // cannot be unplugged, so the chain it owns is built once and outlives every
+    // CONNECT in the machine -- including a board taking the console from another.
 
     // The chain is transparent about what it wraps: SHOW says `console`, not
     // `filter(console)`. The filter is not a thing the operator plugged in.

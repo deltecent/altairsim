@@ -77,26 +77,27 @@ endforeach()
 # BASIC as ...'S','I','Z','E'|0x80 = 0xC5. It is a string TERMINATOR, not data. The real
 # card sent all eight bits and the TELETYPE ignored the eighth -- on a Model 33 that is
 # the parity position and the printer never decodes it -- so the operator read a clean
-# "MEMORY SIZE?". `strip7out = true` on sio0 (machines/basic4k.toml) is that Teletype.
+# "MEMORY SIZE?". `[console] strip7out = true` (machines/basic4k.toml) is that Teletype.
 #
-# It is NOT `data_bits = 7`, and the difference is the whole reason this check is here.
-# Strapping the UART for 7 bits would mask the data inside the chip, which would fix the
-# prompt and silently corrupt every 8-bit binary transfer the port ever carries -- XMODEM
-# above all. The port is not BASIC's. The ignoring belongs to the terminal.
+# THE TWO WRONG PLACES TO FIX IT, and the whole reason this check is here:
+#
+#   `data_bits = 7` on the card. A 7-bit strap is a FRAME -- the eighth bit does not
+#   travel at all, for anybody -- and the port is not BASIC's. It is a general-purpose
+#   serial port and the next thing through it is XMODEM, which is 8-bit binary.
+#
+#   A transform on the LINE. Same corruption, reached from the other side: a mask on
+#   sio0 mangles that XMODEM transfer just as thoroughly, and silently. There is no such
+#   knob any more on any card -- tests/test_sio2.cpp pins that the line is 8-bit clean.
 #
 # Turn strip7out off and the byte reaches the screen as 0xC5: the prompt reads
 # "MEMORY SIZ?" with a garbage character and EVERY prompt in the machine is corrupt. The
 # check above would still pass, because it stops at "MEMORY SIZE". This one does not.
-#
-# It also guards FilterStream::reconnect(): the transforms have to survive `connect`,
-# which is applied AFTER them (the loader walks the file in order). When connect rebuilt
-# the filter, strip7out was thrown away before the machine ever started.
 string(FIND "${out}" "MEMORY SIZE?" pos)
 if(pos EQUAL -1)
   message(FATAL_ERROR
     "88-ACR acceptance: BASIC booted, but the prompt is CORRUPT -- the high bit of the "
-    "last character reached the terminal. Either strip7out is off on sio0, or connect "
-    "reset the filter chain (FilterStream::reconnect).\n--- terminal ---\n${out}")
+    "last character reached the terminal. `[console] strip7out` is off, or the console "
+    "lost its transform chain (host/console.h).\n--- terminal ---\n${out}")
 endif()
 
 message(STATUS "88-ACR acceptance: 4K BASIC v3.1 booted from tape and ran a program.")

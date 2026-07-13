@@ -1,0 +1,109 @@
+#!/usr/bin/expect -f
+#
+# THE INTERACTIVE CLI SMOKE TEST -- the simulator driven through a REAL TERMINAL.
+#
+# Every other test in this suite drives the CLI through a pipe (`-s script`), and a pipe is
+# not a terminal. Three things only exist on a tty and are therefore untested by all of
+# them: line editing and the echoed prompt, ATTN (^E) handing the console back from the
+# guest, and the run loop's decision to pace -- or not to pace -- against a wall clock.
+# This test is the one that types.
+#
+# EXACT MATCHING, ALWAYS. `expect` patterns are GLOBS by default, so `expect "*"` matches
+# ANY output and `expect "  ?"` matches two spaces and ANY character. A test written that
+# way passes on a machine that is doing nothing at all -- ask me how I know. Every literal
+# below is `-ex`, and the one pattern that needs structure is `-re` and is anchored.
+#
+# Usage: expect -f tests/acceptance/cli.exp <path-to-altairsim>
+
+set timeout 30
+log_user 0
+
+set sim [lindex $argv 0]
+if {$sim eq ""} { puts "usage: cli.exp <altairsim>"; exit 2 }
+
+proc ok   {msg} { puts "ok    -- $msg" }
+proc fail {msg} { puts "FAIL  -- $msg"; puts "--- last seen ---"; puts $::expect_out(buffer); exit 1 }
+
+spawn $sim
+
+# ---- 1. It comes up, on a terminal, with a prompt. ----
+expect {
+    -ex "altairsim> " { ok "the monitor prompts on a tty" }
+    timeout           { fail "no prompt" }
+}
+
+# ---- 2. A command runs, and the machine describes itself. ----
+send "BOARDS\r"
+expect {
+    -ex "cpu0"  { ok "BOARDS lists the CPU card" }
+    timeout     { fail "BOARDS printed no cpu0" }
+}
+expect -ex "altairsim> "
+
+# ---- 3. FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13). ----
+# The crystal is a property of the CPU card, and with no crystal the run loop does not
+# sleep. This is the line that used to be a lie: `clock_hz = 0` was documented as "runs
+# flat out" while Clock::setHz coerced it back to 2 MHz and the loop paced anyway.
+send "SHOW cpu0\r"
+expect {
+    -re {clock_hz\s+0\y}  { ok "clock_hz defaults to 0 -- flat out" }
+    timeout               { fail "cpu0's clock is not 0 by default" }
+}
+expect -ex "altairsim> "
+
+# ---- 4. A guest that TALKS. ----
+# Toggled in at the front panel, exactly as a human would: initialise the 2SIO (master
+# reset, then 8N2 / divide-by-16), wait for the transmit register to empty, send 'H', halt.
+#
+#   0000  3E 03     MVI A,03      ; master reset the 6850
+#   0002  D3 10     OUT 10
+#   0004  3E 11     MVI A,11      ; /16, 8 data bits, 2 stop -- what period software writes
+#   0006  D3 10     OUT 10
+#   0008  DB 10     IN  10        ; poll status
+#   000A  E6 02     ANI 02        ; TDRE -- transmit data register empty?
+#   000C  CA 08 00  JZ  0008      ; no: keep polling
+#   000F  3E 48     MVI A,48      ; 'H'
+#   0011  D3 11     OUT 11        ; ...out the data port
+#   0013  76        HLT
+send "DEPOSIT 0 3E 03 D3 10 3E 11 D3 10 DB 10 E6 02 CA 08 00 3E 48 D3 11 76\r"
+expect -ex "altairsim> "
+send "RUN 0\r"
+expect {
+    -ex "H"  { ok "the guest wrote a character to the console through the 2SIO" }
+    timeout  { fail "nothing came out of the console" }
+}
+
+# It halts, and the monitor SAYS it halted rather than sitting there looking busy.
+expect {
+    -ex "altairsim> " { ok "HLT stopped the machine and gave the monitor back" }
+    timeout           { fail "the machine never came back from a HLT" }
+}
+
+# ---- 5. ATTN (^E) -- the guest has the keyboard, and the host takes it anyway. ----
+# This is the one the scripted harness CANNOT test: under a pipe, the console reads stdin
+# eagerly and acts on ^E the instant it appears in the buffer -- so a keystroke FILE fires
+# it before the guest has even booted. On a tty it arrives when a human presses it.
+send "DEPOSIT 20 C3 20 00\r"
+expect -ex "altairsim> "
+send "RUN 20\r"
+expect {
+    -ex "console" { ok "the guest is spinning with the console" }
+    timeout       { fail "RUN 20 never started" }
+}
+send "\005"
+expect {
+    -ex "altairsim> " { ok "ATTN (^E) took the console back from a running guest" }
+    timeout           { fail "^E did not return to the monitor" }
+}
+
+# ATTN IS NOT A STOP. The machine is exactly where we left it -- still looping at 0020.
+send "REGS\r"
+expect {
+    -re {PC=002[0-2]} { ok "ATTN did not stop the machine -- it is still in its loop" }
+    timeout           { fail "the machine was stopped by ^E, or the PC moved somewhere odd" }
+}
+expect -ex "altairsim> "
+
+send "QUIT\r"
+expect eof
+puts "\nALL INTERACTIVE CLI CHECKS PASSED"
