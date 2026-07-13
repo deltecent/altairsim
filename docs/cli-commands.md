@@ -14,21 +14,22 @@ This is why **UNMOUNT is not called DISMOUNT**: it's the plainer word, it takes 
 
 ## The ranking
 
-The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY, MOUNT, BREAK, EDIT, CONFIG, GO.**
+The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY, MOUNT, BREAK, EDIT, CONFIG.**
 
-> **GO is gone (Patrick, 2026-07-12).** `RUN` is the switch on the front panel, and there was never a second thing for GO to be — see [RUN](#run-is-the-switch-on-the-panel) below. RESET keeps `R`, so RUN costs `RU`.
+> **GO is gone (Patrick, 2026-07-12).** `RUN` is the switch on the front panel, and there was never a second thing for GO to be — see [RUN](#run-is-the-switch-on-the-panel) below.
+>
+> **`R` RUNS (Patrick, 2026-07-13).** It used to reset. That is the same call as `D` dumping: the shortest key on the keyboard goes to the command that cannot destroy anything, and the one that throws the machine's state away costs you letters. RUN is what you type every session, and a `RUN` you did not mean costs nothing — a bare `R` that reset the machine is a machine you have to set up again. RESET pays `RES`, and the rest of the cluster falls out of the table order below with nobody deciding it: `RE` REGS, `REC` RECORD, `REP` REPLAY, `RES` RESET, `REST` RESTORE, `REGI` REGION.
 
 | Type | Command | Notes |
 |---|---|---|
 | `D` | DUMP | |
 | `S` | STEP | |
-| `R` | RESET | |
+| `R` | RUN | the panel's switch. `G` names nothing at all now |
 | `H` | HISTORY | *waiting on the debugger* |
 | `M` | MOUNT | |
 | `B` | BREAK | |
 | `E` | EDIT | *waiting on the line editor* |
 | `C` | CONFIG | |
-| `RU` | RUN | RESET owns `R`; `G` now names nothing at all |
 | `SE` | SET | beats SEARCH — you type it far more often |
 | `SH` | SHOW | |
 | `DE` | DEPOSIT | the front panel keeps its word; it costs one letter |
@@ -43,13 +44,14 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 | `MOV` | MOVE | |
 | `W` | WHO | |
 | `BO` | BOARDS | `BOARD` works too — it is a prefix, not an alias |
-| `REG` | REGS | beats REGION |
-| `REGI` | REGION | |
+| `RE` | REGS | the first RE- word in the table, so it takes `RE` outright |
+| `REGI` | REGION | `REG` is REGS |
 | `DI` | DISASM | |
 | `U` | UNMOUNT | not DISMOUNT — see above |
 | `DISC` | DISCONNECT | |
 | `CONS` | CONSOLE | **configures** the console. It does not start the machine — RUN does |
 | `CONN` | CONNECT | `console | null | loopback | socket:PORT | socket:HOST:PORT | serial:DEVICE` |
+| `RES` | RESET | it sits with POWER, and it pays three letters — see above |
 | `P` | POWER | |
 | `T` | TRACE | *waiting on the debugger* |
 | `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves a RUN today* |
@@ -74,12 +76,18 @@ The nine that own their prefix, in Patrick's words: **DUMP, STEP, RESET, HISTORY
 ```
 altairsim> HELP
 
-  D[UMP]            S[TEP]            R[ESET]           H[ISTORY]*
-  M[OUNT]           B[REAK]           E[DIT]*           C[ONFIG]
-  RU[N]             SE[T]             SH[OW]            DE[POSIT]
-  EX[AMINE]         I[N]              O[UT]             L[OAD]
+  BO[ARDS]          B[REAK]           COM[PARE]         C[ONFIG]
+  CONN[ECT]         CONS[OLE]         DE[POSIT]         DI[SASM]
+  DISC[ONNECT]      D[UMP]            E[DIT]*           EX[AMINE]
+  F[ILL]            HE[LP]            H[ISTORY]*        I[N]
+  L[OAD]            M[OUNT]           MOV[E]            N[OBREAK]
+  O[UT]             P[OWER]           Q[UIT]            REC[ORD]*
+  REGI[ON]          RE[GS]            REP[LAY]*         RES[ET]
+  REST[ORE]*        R[UN]             SA[VE]            SEA[RCH]
   ...
 ```
+
+The list is **alphabetical**, not ranked — you are hunting for a name, and the ranking is not something you can look a name up by. The brackets are where the ranking shows through: `R[UN]` and `RES[ET]` sit two rows apart and tell you the whole story without a word of explanation.
 
 When you type HELP you are almost always hunting for a name you half-remember, and a wall of usage lines is the worst possible shape for that: it doesn't fit on a screen, so the thing you were looking for scrolls off the top. `*` marks a command that resolves but isn't built yet.
 

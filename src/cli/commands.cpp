@@ -7,14 +7,21 @@ namespace altair {
 // ---------------------------------------------------------------------------
 // THE RANKING. Read it top to bottom: that IS the priority.
 //
-// The nine that own their prefix are Patrick's, 2026-07-11:
-//   DUMP, STEP, RESET, HISTORY, MOUNT, BREAK, EDIT, CONFIG, GO
+// The eight that own their prefix are Patrick's, 2026-07-11 (RUN took the slot GO
+// held, and then RESET's -- 2026-07-13):
+//   DUMP, STEP, RUN, HISTORY, MOUNT, BREAK, EDIT, CONFIG
 //
 // `D` is DUMP, which is what a ROM monitor's `D` has always been. SIMH made `D`
 // DEPOSIT and `E` EXAMINE; this breaks with it deliberately. It also puts the
 // shortest key on the keyboard on the command that cannot destroy anything, and
 // makes you type two letters to change memory. DEPOSIT keeps the front panel's
 // word -- it just costs `DE`.
+//
+// THE R-CLUSTER, and it is the same principle as `D` (Patrick, 2026-07-13): the
+// shortest key goes to the command that cannot destroy anything, and the one that
+// throws away the machine's state costs letters. A bare `R` must not reset. So RUN
+// takes `R`, and the rest fall out of the order below with nobody deciding them:
+//   R[UN]  RE[GS]  REC[ORD]  REP[LAY]  RES[ET]  REST[ORE]  REGI[ON]
 //
 // `built = false` means the command RESOLVES but does not run yet, and says so.
 // That is on purpose: `S` must mean STEP from the first day, so that it does not
@@ -38,10 +45,36 @@ static const std::vector<CommandDef> kCommands = {
      "so it is decimal.\n"
      "  S            one instruction\n"
      "  S 10         ten of them"},
-    {"RESET", true, nullptr, "RESET [CPU]",
-     "A reset does NOT clear memory. Only removing power does that -- see POWER.\n"
-     "RESET CPU is a debugging convenience, NOT a real signal: no wire on the\n"
-     "backplane resets the processor and nothing else."},
+    // RUN is the front panel's switch. It REPLACED GO (Patrick, 2026-07-12) -- there
+    // was never a second thing for GO to be: a headless run is not a mode the operator
+    // chooses, it is what happens when no unit holds the console, and the machine
+    // already knows that. Whether your keys reach the guest is a fact about the
+    // backplane, not a question for you.
+    //
+    // And it then took `R` from RESET (Patrick, 2026-07-13). It is the one you type
+    // every session, and it is the one that costs nothing if you did not mean it --
+    // whereas a bare `R` that resets is a machine you have to set up again. RESET
+    // pays the letters: `RES`.
+    {"RUN", true, nullptr, "RUN [addr]",  // R
+     "Start the machine. `RUN <addr>` is EXAMINE + RUN -- it loads the PC first,\n"
+     "exactly as you would on the panel.\n"
+     "\n"
+     "If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,\n"
+     "including ^C, which a CP/M program is entitled to read. The way back is ATTN\n"
+     "(^E), which the host takes before the guest is ever offered the byte, so the\n"
+     "guest cannot disable it. ATTN does NOT stop the machine: a bare RUN resumes it.\n"
+     "\n"
+     "IT RUNS FLAT OUT unless the CPU card has a crystal. `clock_hz` defaults to 0,\n"
+     "so a cassette that took a real Altair 110 seconds comes off in about one. `SET\n"
+     "cpu0 clock_hz=2000000` buys back the 2 MHz machine AND its 110 seconds. What\n"
+     "the guest sees is identical either way -- the tape still costs the same\n"
+     "T-states -- so the crystal buys period FEEL, not period behaviour.\n"
+     "\n"
+     "With no console connected there is no keyboard to hand over, and nothing to\n"
+     "pace against: it simply runs, ^C stops it. Either way it stops on a breakpoint\n"
+     "or on a HLT nothing can wake, and it ALWAYS says which.\n"
+     "  RUN F800     boot the monitor PROM\n"
+     "  RUN          carry on from wherever the PC is"},
     {"HISTORY", false, "the debugger", "HISTORY [n]", nullptr},
     {"MOUNT", true, nullptr, "MOUNT <id>:<u> <file> [RO]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
@@ -63,31 +96,6 @@ static const std::vector<CommandDef> kCommands = {
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "SAVE writes the machine you are actually running, so it round-trips.\n"
      "  CONFIG SAVE machines/mine.toml"},
-    // RUN is the front panel's switch, and it REPLACED GO (Patrick, 2026-07-12).
-    // There was never a second thing for GO to be: a headless run is not a mode the
-    // operator chooses, it is what happens when no unit holds the console -- and the
-    // machine already knows that. Whether your keys reach the guest is a fact about
-    // the backplane, not a question for you. RESET owns R, so RUN costs RU.
-    {"RUN", true, nullptr, "RUN [addr]",  // RU
-     "Start the machine. `RUN <addr>` is EXAMINE + RUN -- it loads the PC first,\n"
-     "exactly as you would on the panel.\n"
-     "\n"
-     "If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,\n"
-     "including ^C, which a CP/M program is entitled to read. The way back is ATTN\n"
-     "(^E), which the host takes before the guest is ever offered the byte, so the\n"
-     "guest cannot disable it. ATTN does NOT stop the machine: a bare RUN resumes it.\n"
-     "\n"
-     "IT RUNS FLAT OUT unless the CPU card has a crystal. `clock_hz` defaults to 0,\n"
-     "so a cassette that took a real Altair 110 seconds comes off in about one. `SET\n"
-     "cpu0 clock_hz=2000000` buys back the 2 MHz machine AND its 110 seconds. What\n"
-     "the guest sees is identical either way -- the tape still costs the same\n"
-     "T-states -- so the crystal buys period FEEL, not period behaviour.\n"
-     "\n"
-     "With no console connected there is no keyboard to hand over, and nothing to\n"
-     "pace against: it simply runs, ^C stops it. Either way it stops on a breakpoint\n"
-     "or on a HLT nothing can wake, and it ALWAYS says which.\n"
-     "  RUN F800     boot the monitor PROM\n"
-     "  RUN          carry on from wherever the PC is"},
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id> <k>=<v>",  // SE (beats SEARCH)
@@ -154,7 +162,9 @@ static const std::vector<CommandDef> kCommands = {
      "  BOARD                    the same thing: a prefix of BOARDS\n"
      "  BOARDS TYPES             every card, and its properties\n"
      "  BOARDS ADD memory mem0"},
-    {"REGS", true, nullptr, "REGS | SET REG <r>=<v>",  // REG (beats REGION)
+    // REGS is the first RE- word in the table, so it takes RE outright -- and it is
+    // the one you type between two STEPs, which is as often as anything here.
+    {"REGS", true, nullptr, "REGS | SET REG <r>=<v>",  // RE (beats RECORD, REPLAY, RESET, REGION)
      "The flags are registers too, so SET REG CY=1 works. A register value is on\n"
      "the wire, so it is HEX.\n"
      "  REGS\n"
@@ -207,6 +217,14 @@ static const std::vector<CommandDef> kCommands = {
      "who from. Two boards reading one keyboard would each get half the characters.\n"
      "  CONN sio0:a console\n"
      "  CONN sio0:b null"},
+    // RESET sits with POWER, which is the other command that throws state away, and
+    // BELOW REGS -- which is what costs it `R` and `RE` and leaves it `RES`. It has to
+    // stay ABOVE RESTORE, or RESET's own name would resolve to RESTORE and there would
+    // be no way left to type it: that is the one invariant, and test_cli.cpp guards it.
+    {"RESET", true, nullptr, "RESET [CPU]",  // RES
+     "A reset does NOT clear memory. Only removing power does that -- see POWER.\n"
+     "RESET CPU is a debugging convenience, NOT a real signal: no wire on the\n"
+     "backplane resets the processor and nothing else."},
     {"POWER", true, nullptr, "POWER",
      "Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on\n"
      "real hardware it does not."},

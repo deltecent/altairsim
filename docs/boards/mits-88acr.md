@@ -131,8 +131,11 @@ while an 88-ACR is in a slot**, which is the entire reason `Board::commands()` e
 (DESIGN.md §5.4). Pull the card and it is an unknown command — correctly, because nothing in the
 machine can then rewind anything.
 
-It spells as **`REW`**: `RESET` already owns `R`, `RE` and `RES`, and **the static menu always
-wins**. No card can shorten or shadow a built-in abbreviation by being plugged in.
+It spells as **`REW`**: the built-ins already own `R` (RUN), `RE` (REGS) and `RES` (RESET), and
+**the static menu always wins**. `REW` is simply the first prefix of REWIND that no built-in
+claims. No card can shorten or shadow a built-in abbreviation by being plugged in — and by the
+same rule, re-ranking the built-ins cannot silently move a card's verb either: REWIND still
+spells `REW` after RUN took `R` from RESET, because the letters it needed were never in play.
 
 Rewinding also **discards the byte the UART is still holding** — see *Limitations*.
 

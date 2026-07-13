@@ -34,10 +34,10 @@ std::string R(const char* word) {
 void test_cli() {
     SECTION("command abbreviation -- table order IS the ranking; first match wins");
 
-    // ---- Patrick's ranking, 2026-07-11. These nine are listed first. ----
+    // ---- Patrick's ranking, 2026-07-11. These eight are listed first. ----
     CHECK(R("D") == "DUMP", "D dumps. A ROM monitor's D has always dumped.");
     CHECK(R("S") == "STEP", "S steps");
-    CHECK(R("R") == "RESET", "R resets");
+    CHECK(R("R") == "RUN", "R RUNS -- a bare R must never reset the machine");
     CHECK(R("H") == "HISTORY", "H is history");
     CHECK(R("M") == "MOUNT", "M mounts");
     CHECK(R("B") == "BREAK", "B breaks");
@@ -47,14 +47,28 @@ void test_cli() {
     // ---- RUN REPLACED GO (Patrick, 2026-07-12) ----
     // There was never a second thing for GO to be. A headless run is not a mode the
     // operator picks -- it is what happens when nothing holds the console, and the
-    // machine already knows that. RESET owns R (it is in the nine), so RUN costs RU.
+    // machine already knows that.
     CHECK(R("G") == "", "G is nothing now: GO is gone, and the panel's switch says RUN");
     bool hasGo = false;
     for (const CommandDef& c : commands())
         if (std::string(c.name) == "GO") hasGo = true;
     CHECK(!hasGo, "there is exactly ONE way to start the machine, and it is RUN");
-    CHECK(R("RU") == "RUN", "RU runs (RESET keeps R)");
+    CHECK(R("RU") == "RUN", "RU runs");
     CHECK(R("RUN") == "RUN", "and RUN");
+
+    // ---- THE R-CLUSTER (Patrick, 2026-07-13) ----
+    // The same rule as D: the shortest key goes to the command that cannot destroy
+    // anything, and the one that throws the machine away pays letters for it. RUN is
+    // typed every session and costs nothing if you did not mean it; a bare R that
+    // RESET the machine would be a machine you have to set up again. So RUN takes R,
+    // REGS takes RE, and RESET pays RES. Nobody assigned these -- the order did.
+    CHECK(R("RE") == "REGS", "RE is the registers -- REGS is the first RE- word in the table");
+    CHECK(R("REC") == "RECORD", "REC records");
+    CHECK(R("REP") == "REPLAY", "REP replays");
+    CHECK(R("RES") == "RESET", "RES resets -- and a reset costs you three letters, on purpose");
+    CHECK(R("REST") == "RESTORE", "REST restores -- REST is not a prefix of RESET");
+    CHECK(R("REGI") == "REGION", "REGI is a memory region");
+    CHECK(R("RESET") == "RESET", "the invariant: RESET's own name still reaches RESET");
 
     // ---- and the losers, at the cost of exactly one more letter ----
     CHECK(R("DE") == "DEPOSIT", "DE deposits -- the front panel keeps its word");
@@ -93,9 +107,6 @@ void test_cli() {
     CHECK(R("MO") == "MOUNT", "MO mounts");
     CHECK(R("MOV") == "MOVE", "MOV moves");
     CHECK(R("REG") == "REGS", "REG is registers (REGS outranks REGION)");
-    CHECK(R("REGI") == "REGION", "REGI is a memory region");
-    CHECK(R("RES") == "RESET", "RES resets");
-    CHECK(R("REST") == "RESTORE", "REST restores -- REST is not a prefix of RESET");
     CHECK(R("CON") == "CONFIG", "CON configures");
     CHECK(R("CONS") == "CONSOLE", "CONS is the console");
     CHECK(R("CONN") == "CONNECT", "CONN connects");
@@ -445,12 +456,13 @@ void test_cli() {
               "...and it runs, and complains about the TAPE -- not about the word");
 
         // THE STATIC MENU STILL WINS, and this is the guarantee that lets a card be
-        // plugged in safely at all. RESET owns R, RE and RES. The cassette gets REW,
-        // and only because nothing built-in claims those three letters.
+        // plugged in safely at all. The built-ins own R (RUN), RE (REGS) and RES
+        // (RESET). The cassette gets REW, and only because nothing built-in claims
+        // those three letters.
         std::ostringstream re;
         mon4.exec("RE", re);
         CHECK(re.str().find("unknown") == std::string::npos && no.str() != re.str(),
-              "RE is still RESET -- a card cannot move a built-in abbreviation");
+              "RE is still REGS -- a card cannot move a built-in abbreviation");
 
         // HELP finds it, or a verb you can type is a verb you cannot look up.
         std::ostringstream h;
