@@ -23,6 +23,16 @@ namespace altair {
 // The key/value pairs of one TOML sub-unit table, in file order.
 using KeyValues = std::vector<std::pair<std::string, std::string>>;
 
+// A NAME THE OPERATOR TYPED, FOLDED FOR COMPARISON. Board ids, unit names,
+// property names, ROM names: every name in this simulator is case-insensitive,
+// because every other word the operator types already is. There were six private
+// copies of this function before it had a home.
+//
+// ASCII, deliberately. A locale-aware tolower() would make `MOUNT ACR0:TAPE` mean
+// different things in different terminals, and none of these names are text -- they
+// are identifiers out of a machine file.
+std::string lowerAscii(std::string s);
+
 // ---------------------------------------------------------------------------
 // UNITS ARE NAMED AND TYPED (Patrick, 2026-07-11).
 //

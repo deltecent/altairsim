@@ -7,9 +7,24 @@
 
 namespace altair {
 
+// A BOARD ID IS CASE-INSENSITIVE, AND THAT IS AN IDENTITY, NOT A CONVENIENCE.
+//
+// `ACR0` and `acr0` are ONE CARD. Not "one card and a kindness to whoever typed it
+// wrong" -- one card, on every road that reaches a board: the prompt, a machine
+// file, the MCP tools. All of them come through here, which is why this is the only
+// place it has to be said.
+//
+// It follows that Machine::add()'s duplicate check refuses `ACR0` when `acr0` is
+// already in the backplane. That is the point. Two cards you cannot tell apart at
+// the prompt are not two cards; they are a machine file with a bug in it.
+//
+// The SHORTHANDS -- dropping the trailing index, dropping a lone unit's name -- are
+// a different thing entirely, and they live in the monitor. A machine file must say
+// what it means (cli/monitor.cpp, Monitor::board()).
 Board* Machine::find(const std::string& id) {
+    std::string want = lowerAscii(id);
     for (auto& b : boards_)
-        if (b->id == id) return b.get();
+        if (lowerAscii(b->id) == want) return b.get();
     return nullptr;
 }
 

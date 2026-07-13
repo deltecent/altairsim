@@ -488,8 +488,15 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                 // The ONE property path -- same parser, same radix rule, same
                 // validation as `SET acr0:tape MODE=play` types at the monitor. A
                 // config file cannot set something the monitor would refuse.
+                //
+                // ud.name, NOT `unit`: the name the BOARD has, not the case the file
+                // happened to write it in. findUnit() is case-blind and had already
+                // said yes to `[board.unit.A]` -- and then the raw "A" went down to
+                // Sio2Board::channel(), which is not, and the file was refused with
+                // "has no property 'baud'". The board's own name is the canonical one;
+                // this is the same thing the monitor does with u.name.
                 for (const auto& [k, v] : t.kv)
-                    if (!setUnitProperty(*current, unit, k, v, err)) {
+                    if (!setUnitProperty(*current, ud.name, k, v, err)) {
                         err = path + ": [board.unit." + unit + "] on " + current->id + ": " + err;
                         return false;
                     }

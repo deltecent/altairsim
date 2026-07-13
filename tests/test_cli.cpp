@@ -479,6 +479,103 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
+    // NAMING A CARD: CASE-BLIND, AND THE INDEX IS OPTIONAL (cli/monitor.cpp).
+    //
+    // Three claims, and the third is the one with teeth:
+    //
+    //   - `ACR0` and `acr0` are ONE BOARD. That is an identity (core/machine.cpp),
+    //     not a kindness, which is why adding both is refused.
+    //   - `acr` finds acr0, because the `0` was only ever there to tell two cassettes
+    //     apart, and there are not two. It is NOT prefix matching: `ac` finds nothing.
+    //   - and the moment there ARE two, the short name STOPS WORKING and says why.
+    //     A shorthand that silently picked one would be worse than no shorthand.
+    // -----------------------------------------------------------------------
+    SECTION("cli: a board is named case-blind, and its index is optional");
+    {
+        Machine m5;
+        Monitor mon5(m5);
+        std::string err;
+        m5.add("acr", "acr0", err);
+        m5.add("dcdd", "dsk0", err);
+        m5.add("2sio", "sio0", err);
+
+        // The bug this all started from: MOUNT in the case the user actually typed.
+        // The tape file does not exist, and that is fine -- the ERROR IS ABOUT THE
+        // FILE, which is proof the name resolved all the way to the card.
+        for (const char* spec : {"ACR0:TAPE", "acr0:TAPE", "ACR:tape", "ACR"}) {
+            std::ostringstream o;
+            mon5.exec(std::string("MOUNT ") + spec + " nosuch.tap", o);
+            CHECK(o.str().find("no board") == std::string::npos &&
+                      o.str().find("has no unit") == std::string::npos &&
+                      o.str().find("expected") == std::string::npos,
+                  "every spelling of the card and its tape reaches acr0:tape");
+            CHECK(o.str().find("acr0") == 0, "...and the card answers under its own name");
+        }
+
+        // A LONE UNIT NEEDS NO NAMING -- but four drives do, and two serial ports do.
+        std::ostringstream d;
+        mon5.exec("MOUNT DSK0 cpm.dsk", d);
+        CHECK(d.str().find("drive0 drive1 drive2 drive3") != std::string::npos,
+              "a card with four drives will not guess -- and it names all four");
+
+        std::ostringstream c;
+        mon5.exec("CONNECT SIO console", c);
+        CHECK(c.str().find("a b") != std::string::npos,
+              "...nor will a 2SIO, whose two ports are both serial");
+
+        // The kind filter is what makes the inference safe: a 2SIO has units, and
+        // NONE of them is something you could put a tape in.
+        std::ostringstream ms;
+        mon5.exec("MOUNT SIO x.dsk", ms);
+        CHECK(ms.str().find("nothing you can mount into") != std::string::npos,
+              "a card with no mountable unit says so, rather than picking a serial port");
+
+        // THIS IS NOT PREFIX MATCHING. Only the trailing INDEX may be dropped.
+        std::ostringstream ac;
+        mon5.exec("MOUNT AC:TAPE x.tap", ac);
+        CHECK(ac.str().find("no board 'AC'") != std::string::npos,
+              "`ac` is not `acr` -- an index may be dropped, letters may not");
+
+        // Every command that names a card goes through the one resolver.
+        std::ostringstream sh;
+        mon5.exec("SHOW ACR", sh);
+        CHECK(sh.str().find("acr0") != std::string::npos, "SHOW resolves it");
+        std::ostringstream rw;
+        mon5.exec("REW ACR", rw);
+        CHECK(rw.str().find("no cassette") != std::string::npos,
+              "a board's own verb resolves it, and complains about the TAPE");
+
+        // ONE BOARD. Adding acr0 twice under two spellings is not two cards.
+        std::string dup;
+        CHECK(m5.add("acr", "ACR0", dup) == nullptr,
+              "ACR0 and acr0 are the same board, so the second one is refused");
+
+        // ...and now a SECOND cassette, which is what the index was for all along.
+        m5.add("acr", "acr1", err);
+        std::ostringstream amb;
+        mon5.exec("MOUNT ACR:TAPE x.tap", amb);
+        CHECK(amb.str().find("ambiguous") != std::string::npos &&
+                  amb.str().find("acr0") != std::string::npos &&
+                  amb.str().find("acr1") != std::string::npos,
+              "with two cassettes the short name stops working, and names both");
+
+        std::ostringstream ok;
+        mon5.exec("MOUNT ACR1:TAPE nosuch.tap", ok);
+        CHECK(ok.str().find("acr1") == 0, "the long name still says exactly which");
+
+        // BOARDS REMOVE resolves like everything else, and removes the CARD it found
+        // -- not the string that was typed.
+        std::ostringstream rm5;
+        mon5.exec("BOARDS REMOVE ACR1", rm5);
+        CHECK(rm5.str().find("acr1: removed") != std::string::npos,
+              "BOARDS REMOVE resolves the name, and reports the card's own");
+        std::ostringstream back;
+        mon5.exec("REW ACR", back);
+        CHECK(back.str().find("no cassette") != std::string::npos,
+              "...and with the second card gone, the short name works again");
+    }
+
+    // -----------------------------------------------------------------------
     // SHOW BUS IRQ (DESIGN.md 10, cli/monitor.cpp).
     //
     // The interrupt wiring is the one part of the backplane with no other window

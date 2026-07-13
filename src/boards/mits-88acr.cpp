@@ -8,6 +8,11 @@
 
 namespace altair {
 
+// The one unit this card has. Case-blind, like every other name the operator types
+// -- and the CLI is not the only road here: TOML's `[board.unit.TAPE]` and the tests
+// call mount()/unmount() directly, with whatever case they were written in.
+static bool isTape(const std::string& unit) { return lowerAscii(unit) == "tape"; }
+
 // ---------------------------------------------------------------------------
 // THE STRAPS THE KIT TELLS YOU TO SOLDER.
 //
@@ -96,7 +101,7 @@ std::vector<Property> AcrBoard::properties() {
 // ever ran. PLAY and RECORD are exclusive here because they are exclusive on a
 // recorder.
 std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
-    if (unit != "tape") return {};
+    if (!isTape(unit)) return {};
 
     std::vector<Property> p;
     Property x;
@@ -178,7 +183,7 @@ void AcrBoard::reline() {
 }
 
 bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, std::string& err) {
-    if (unit != "tape") {
+    if (!isTape(unit)) {
         err = "acr has no unit '" + unit + "' -- it has one, and it is called 'tape'";
         return false;
     }
@@ -198,7 +203,7 @@ bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, 
 }
 
 bool AcrBoard::unmount(const std::string& unit, std::string& err) {
-    if (unit != "tape") {
+    if (!isTape(unit)) {
         err = "acr has no unit '" + unit + "' -- it has one, and it is called 'tape'";
         return false;
     }
@@ -280,7 +285,7 @@ bool AcrBoard::runCommand(const std::string& name, const std::vector<std::string
         size_t c = args[1].find(':');
         if (c != std::string::npos) {
             std::string u = args[1].substr(c + 1);
-            if (u != "tape") {
+            if (!isTape(u)) {
                 err = "the 88-ACR has no unit '" + u + "' -- it has one, and it is 'tape'";
                 return false;
             }

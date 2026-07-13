@@ -180,6 +180,28 @@ altairsim> BOARDS
 
 **UNITS is what you type at `MOUNT` and `CONNECT`**, which is why the designations are there and not merely the count. `*` marks the unit holding the console.
 
+## Naming a card: `<id>[:<unit>]`
+
+**A name is case-blind.** `MOUNT ACR0:TAPE tape.bin` and `mount acr0:tape tape.bin` are the same command. `ACR0` and `acr0` are not two boards that happen to match — they are *one board*, which is why `BOARDS ADD acr ACR0` is refused when `acr0` is already in a slot.
+
+**The trailing index is optional when it distinguishes nothing.** The `0` in `acr0` is not an index the simulator parses; it is a character in a string the machine file chose (`id = "acr0"`). It is there to tell two cassettes apart — and when there is only one cassette in the machine, it tells nothing apart. So `ACR` finds `acr0`, and `DSK` finds `dsk0`.
+
+This is **not** prefix matching, and deliberately so: only a run of trailing digits may be dropped. `AC` finds nothing. (Verbs *are* prefix-matched — that is the table at the top of this page — but a verb list is fixed and reviewed, and a backplane is whatever you plugged into it.)
+
+**A lone unit needs no naming.** The 88-ACR has exactly one thing you can put a tape in, and it is called `tape`; naming it adds no information. So `MOUNT ACR tape.bin` is `MOUNT acr0:tape tape.bin`. The candidates are filtered by the kind the verb can act on, so `MOUNT` looks only at media units and `CONNECT` only at serial ones — which is why an 88-SIO (one `tty`) is unambiguous to `CONNECT` and a 2SIO (`a` and `b`) is not.
+
+**Anything genuinely plural you must still say, and it tells you so.** A shorthand that quietly picked one of four drives would be worse than no shorthand:
+
+```
+altairsim> MOUNT DSK0 cpm.dsk
+dsk0 has 4 units you could mount into: drive0 drive1 drive2 drive3. Name one -- dsk0:drive0
+
+altairsim> MOUNT ACR:TAPE tape.bin          (with two cassettes in the machine)
+ACR: ambiguous -- acr0 acr1. Name the one you mean.
+```
+
+**All of this is the *prompt's* grammar, and it stops at the prompt.** A machine file is matched exactly: an `[[board]] id = "acr"` that silently reached into the base and modified `acr0` would be a config that does something other than what it says. Same line this project already draws for relative paths (`docs/config.md`) — what you *type* and what a *file* says are resolved by different rules, on purpose. The machine files shipped in `machines/` all spell their units out in full.
+
 ## SHOW BUS IRQ is the only window onto the interrupt wiring
 
 `SHOW BUS` has four views: `MAP` (memory), `IO` (ports), `CONTENTION` (who collides), and `IRQ`. The first three describe things you could find out another way — a wrong decode collides, or reads `FF`, and either way *something happens*. **The interrupt wiring is different: it is eight wires and a pin, none of them addressable, and getting it wrong fails in total silence.**

@@ -76,12 +76,18 @@ static const std::vector<CommandDef> kCommands = {
      "  RUN F800     boot the monitor PROM\n"
      "  RUN          carry on from wherever the PC is"},
     {"HISTORY", false, "the debugger", "HISTORY [n]", nullptr},
-    {"MOUNT", true, nullptr, "MOUNT <id>:<u> <file> [RO]",
+    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [RO]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
      "RO is the write-protect tab: the guest may read it and may not write it.\n"
-     "  MOUNT dcdd0:drive0 disks/cpm.dsk\n"
-     "  MOUNT dcdd0:drive1 disks/master.dsk RO\n"
-     "  MOUNT mem0:rom0 roms/monitor.bin"},
+     "\n"
+     "A NAME IS CASE-BLIND, and you may leave off what carries no information: the\n"
+     "trailing index when only one such card is in the machine, and the unit when the\n"
+     "card has only one you could mount into. Anything genuinely plural you must say,\n"
+     "and it will tell you so.\n"
+     "  MOUNT dsk0:drive0 disks/cpm.dsk\n"
+     "  MOUNT dsk0:drive1 disks/master.dsk RO\n"
+     "  MOUNT mem0:rom0 roms/monitor.bin\n"
+     "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape"},
     {"BREAK", true, nullptr, "BREAK [<addr> | MEM R|W <addr> | IO R|W <port>]",
      "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
      "other two watch BUS CYCLES, so they catch a DMA transfer too, and they work\n"

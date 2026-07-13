@@ -4,10 +4,13 @@
 
 namespace altair {
 
-static std::string lower(std::string s) {
+std::string lowerAscii(std::string s) {
     for (auto& c : s) c = (char)std::tolower((unsigned char)c);
     return s;
 }
+
+// Local spelling, so the twenty call sites below read the way they always did.
+static std::string lower(std::string s) { return lowerAscii(std::move(s)); }
 
 const char* unitKindName(UnitKind k) {
     switch (k) {

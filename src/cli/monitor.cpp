@@ -150,13 +150,56 @@ bool Monitor::range(const std::string& t, uint32_t& lo, uint32_t& hi, std::ostre
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// THE TRAILING INDEX IS OPTIONAL: `ACR` IS acr0.
+//
+// The `0` in `acr0` is not an index. Nothing parses it; it is a character in a
+// string the machine file happened to choose (`id = "acr0"`). It is there to tell
+// two cassettes apart -- and when there is only ONE cassette in the machine, it
+// tells nothing apart, and typing it is a tax the operator pays for a distinction
+// that does not exist.
+//
+// So: exact match first (case-insensitively -- that is Machine::find()'s job, and
+// it is an identity, not a guess). Failing that, a board is a candidate when its id
+// is what you typed plus a run of DIGITS. `acr` -> acr0. `dsk` -> dsk0. `ac` -> no
+// one, because this is not prefix matching: only the index may be dropped.
+//
+// AND IT LIVES HERE, IN THE MONITOR, NOT IN Machine::find(). This is a convenience
+// for a human standing at the prompt. A machine file must say what it means -- an
+// `[[board]] id = "acr"` that silently reached into the base and modified acr0
+// would be a config that does something other than what it says -- and neither may
+// MCP guess. Same line the project already draws for relative paths: what you TYPE
+// and what a FILE says are resolved by different rules, on purpose.
+// ---------------------------------------------------------------------------
 Board* Monitor::board(const std::string& id, std::ostream& err) {
-    Board* b = m_.find(id);
-    if (!b) {
-        err << "no board '" << id << "'. BOARDS shows what is in the machine.\n";
-        failed_ = true;
+    if (Board* b = m_.find(id)) return b;
+
+    std::string want = lowerAscii(id);
+    std::vector<Board*> hits;
+    for (const auto& b : m_.boards()) {
+        std::string have = lowerAscii(b->id);
+        if (have.size() <= want.size() || have.compare(0, want.size(), want) != 0) continue;
+        bool allDigits = true;
+        for (size_t i = want.size(); i < have.size(); i++)
+            allDigits = allDigits && have[i] >= '0' && have[i] <= '9';
+        if (allDigits) hits.push_back(b.get());
     }
-    return b;
+
+    if (hits.size() == 1) return hits[0];
+
+    // TWO CASSETTES IS NOT AN ERROR IN THE MACHINE -- it is an error in the
+    // sentence. Say which ones, because the operator's next keystroke is one of them.
+    if (hits.size() > 1) {
+        err << id << ": ambiguous --";
+        for (Board* b : hits) err << " " << b->id;
+        err << ". Name the one you mean.\n";
+        failed_ = true;
+        return nullptr;
+    }
+
+    err << "no board '" << id << "'. BOARDS shows what is in the machine.\n";
+    failed_ = true;
+    return nullptr;
 }
 
 // Resolve `id:unit` to a board and a NAMED unit, and check the unit is the kind
@@ -169,11 +212,57 @@ Board* Monitor::board(const std::string& id, std::ostream& err) {
 bool Monitor::subunit(const std::string& spec, Board*& b, UnitDef& u, UnitUse use,
                       std::ostream& err) {
     size_t c = spec.find(':');
+
+    // ---- A LONE UNIT NEEDS NO NAMING: `MOUNT acr x.tap` is acr0:tape. ----
+    //
+    // The 88-ACR has exactly one thing you can put a tape in, and it is called
+    // `tape`. Naming it adds no information -- and the ONLY reason units are named
+    // is to carry information (core/board.h: "a unit is a NAME, not an index").
+    //
+    // Filtered BY THE KIND THE VERB CAN ACT ON, which is what `use` already is. So a
+    // 2SIO is unambiguous to nobody (`a` and `b` are both serial) but an 88-SIO is
+    // (one `tty`), and a memory card with one ROM socket is unambiguous to MOUNT
+    // even though it is a card with a lot else going on.
+    //
+    // SET IS NOT AFFECTED, and that is deliberate: it decides board-property vs
+    // unit-property by the colon BEFORE it gets here (`SET acr0 x=y` is the board's
+    // property and must never quietly become the tape's), so it only ever reaches
+    // this function with a colon already in hand.
     if (c == std::string::npos) {
-        err << "expected <id>:<unit>, got '" << spec << "'. SHOW <id> lists the units.\n";
+        b = board(spec, err);
+        if (!b) return false;
+
+        std::vector<UnitDef> fit;
+        for (const auto& x : b->units()) {
+            bool ok = use == UnitUse::Any ||
+                      (use == UnitUse::Mount && isMountable(x.kind)) ||
+                      (use == UnitUse::Connect && x.kind == UnitKind::Serial);
+            if (ok) fit.push_back(x);
+        }
+
+        if (fit.size() == 1) {
+            u = fit[0];
+            return true;
+        }
+
+        const char* verb = use == UnitUse::Connect ? "connect to" : "mount into";
+        if (fit.empty()) {
+            err << b->id << " (" << b->type() << ") has nothing you can " << verb << ".";
+            auto all = b->units();
+            if (!all.empty()) {
+                err << " Its units are:";
+                for (const auto& x : all) err << " " << x.name << " (" << unitKindName(x.kind) << ")";
+            }
+            err << "\n";
+        } else {
+            err << b->id << " has " << fit.size() << " units you could " << verb << ":";
+            for (const auto& x : fit) err << " " << x.name;
+            err << ". Name one -- " << b->id << ":" << fit[0].name << "\n";
+        }
         failed_ = true;
         return false;
     }
+
     b = board(spec.substr(0, c), err);
     if (!b) return false;
 
@@ -1413,12 +1502,20 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "REMOVE") {
             if (!need(3, "BOARDS REMOVE <id>")) return true;
+            // Through board(), like every other command that names a card -- so
+            // `BOARDS REMOVE ACR` reaches the same acr0 that `SHOW ACR` does, and an
+            // ambiguous name is refused BEFORE anything is pulled out of the
+            // backplane. Then remove by the id the CARD has, not the one that was
+            // typed: it is the card we found, not the string.
+            Board* b = board(a[2], out);
+            if (!b) return true;
+            std::string id = b->id;
             std::string err;
-            if (!m_.remove(a[2], err)) {
+            if (!m_.remove(id, err)) {
                 out << err << "\n";
                 failed_ = true;
             } else {
-                out << a[2] << ": removed\n";
+                out << id << ": removed\n";
             }
             return true;
         }
