@@ -64,12 +64,11 @@ public:
     std::vector<UnitDef> units() const override;
     std::vector<MapEntry> ioMap() const override;
 
-    // `[board.unit.a]` in the config -- baud, interrupt, connect, and every
-    // transform, per channel. The TOML loader already splits the dotted name and
-    // hands us `unit = "a"`; it does not know what a channel is, and does not
-    // need to.
-    std::vector<std::string> subUnitTables() const override { return {"unit"}; }
-    bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
+    // `[board.unit.a]` in the config -- baud, interrupt, connect, per channel --
+    // needs NOTHING here. Unit properties are generic in the config layer now, over
+    // units()/unitProperties(), which is the same pair CONFIG SAVE writes them from.
+    // This card used to opt in with subUnitTables()/addSubUnit() and it was the only
+    // one that did, so every OTHER board's units saved to a file that would not load.
 
     bool connect(const std::string& unit, const std::string& endpoint,
                  std::string& err) override;

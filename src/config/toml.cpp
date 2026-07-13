@@ -229,6 +229,45 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
             size_t dot = sub.find('.');
             std::string table = dot == std::string::npos ? sub : sub.substr(0, dot);
 
+            // ---- `[board.unit.a]` IS UNIT PROPERTIES, AND IT IS GENERIC. ----
+            //
+            // It is NOT a sub-unit table, and treating it as one is what broke CONFIG
+            // SAVE. The WRITER emits [board.unit.<name>] for every board that has a
+            // unit with settings -- generically, over units()/unitProperties(). The
+            // READER used to demand the board opt in via subUnitTables(), and exactly
+            // one board (the 2SIO) ever did. So the writer would faithfully save an
+            // 88-ACR's `mode = "play"` and the reader would then refuse the file it
+            // had just written: "board 'acr0' (acr) has no [[board.unit]] table". Every
+            // machine with a cassette or a disk in it saved to something unloadable.
+            //
+            // A round trip is only a round trip if BOTH halves are generic. The 2SIO's
+            // addSubUnit() was never board-specific anyway -- it looked the unit up by
+            // name and called setUnitProperty() for each key, which is precisely this,
+            // written once. (`region` and `drive` are different animals: those are
+            // LISTS of things the board owns, and they keep addSubUnit().)
+            if (table == "unit") {
+                if (dot == std::string::npos) {
+                    err = path + ": [board.unit] needs a unit name -- [board.unit.a]";
+                    return false;
+                }
+                std::string unit = sub.substr(dot + 1);
+                UnitDef     ud;
+                if (!current->findUnit(unit, ud)) {
+                    err = path + ": board '" + current->id + "' (" + current->type() +
+                          ") has no unit '" + unit + "'";
+                    return false;
+                }
+                // The ONE property path -- same parser, same radix rule, same
+                // validation as `SET acr0:tape MODE=play` types at the monitor. A
+                // config file cannot set something the monitor would refuse.
+                for (const auto& [k, v] : t.kv)
+                    if (!setUnitProperty(*current, unit, k, v, err)) {
+                        err = path + ": [board.unit." + unit + "] on " + current->id + ": " + err;
+                        return false;
+                    }
+                continue;
+            }
+
             auto accepted = current->subUnitTables();
             bool ok = false;
             for (const auto& x : accepted)
@@ -317,6 +356,20 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
         err = "cannot write '" + path + "'";
         return false;
     }
+    f << saveTomlText(m);
+    return true;
+}
+
+// The text CONFIG SAVE writes, without a file in the way.
+//
+// Split out from saveToml() so that the ROUND TRIP is testable in memory: feed this
+// straight into loadTomlText() and the machine that comes back must be the machine that
+// went in. That test is not decoration -- CONFIG SAVE spent this whole milestone writing
+// [board.unit.<name>] tables that the loader then REFUSED, so every machine with a
+// cassette or a disk in it saved to a file that would not load. The two halves are both
+// generic now, and this is what keeps them that way.
+std::string saveTomlText(Machine& m) {
+    std::ostringstream f;
     f << "[machine]\n";
     f << "name     = \"" << m.name << "\"\n";
     // No clock_hz here, and no sense either. Both are BOARD properties -- the crystal
@@ -389,7 +442,7 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
                   << (fl.quoted ? "\"" + fl.text + "\"" : fl.text) << "\n";
         }
     }
-    return true;
+    return f.str();
 }
 
 } // namespace altair

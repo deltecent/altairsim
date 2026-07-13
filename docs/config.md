@@ -290,6 +290,21 @@ A `memory` card carries a list of **regions** — the areas that are actually po
 
 **Regions are sub-units**, so the existing `id:unit` addressing reloads one: `MOUNT mem0:rom0 newdbl.hex`.
 
+## `[board.unit.x]` and `[[board.thing]]` are not the same thing
+
+They look alike and they are opposites, so it is worth being blunt about which is which:
+
+- **`[board.unit.a]`** — *settings on a unit the board already has.* Every key in it goes through the same property path as `SET sio0:a BAUD=9600` at the monitor, so a config file can never set something the monitor would refuse. It is **generic**: any board with a unit that has settings gets this for free, from `units()` and `unitProperties()`, and `CONFIG SAVE` writes it back from that same pair.
+- **`[[board.region]]`, `[[board.drive]]`** — *a **list** of things the board owns.* The board builds these itself (`addSubUnit()`), because only it knows what a region or a drive is.
+
+**This distinction was a real bug, not bookkeeping.** `CONFIG SAVE` wrote `[board.unit.<name>]` for *every* board with unit settings, but the loader treated it as a board-declared table and only the 2SIO had declared it. So saving any machine with a cassette or a disk in it produced a file that would not load:
+
+```
+ps2int.toml: board 'acr0' (acr) has no [[board.unit]] table
+```
+
+A save you cannot load is not a save. Both halves are generic now, and `tests/test_machines.cpp` round-trips **every** built-in machine through `CONFIG SAVE` and back, checking that saving the reloaded machine is byte-identical — a fixed point, so nothing can be silently dropped on the way through.
+
 See `docs/boards/s100-memory.md` for banking (five real cards, no two alike), `fill`, and the three PHANTOM\* straps.
 
 ## Notes

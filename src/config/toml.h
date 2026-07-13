@@ -31,4 +31,10 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
 
 bool saveToml(const std::string& path, Machine& m, std::string& err);
 
+// ...and the same text, without a file in the way. The round trip is then something a
+// test can just DO -- saveTomlText() into loadTomlText() and compare -- which is how
+// this stays honest: the writer is generic over properties()/unitProperties(), and the
+// reader has to be generic over exactly the same pair or a saved machine will not load.
+std::string saveTomlText(Machine& m);
+
 } // namespace altair

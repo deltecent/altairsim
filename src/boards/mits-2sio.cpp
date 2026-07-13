@@ -273,33 +273,15 @@ bool Sio2Board::connect(const std::string& unit, const std::string& endpoint, st
     return true;
 }
 
-bool Sio2Board::addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
-    if (table != "unit") {
-        err = "2sio has no [[board." + table + "]] table";
-        return false;
-    }
-
-    // Which channel? The loader put it here from the table's dotted name.
-    std::string which;
-    for (const auto& [k, v] : kv)
-        if (k == "unit") which = v;
-
-    Mc6850* ch = channel(which);
-    if (!ch) {
-        err = which.empty() ? "which channel? use [board.unit.a] or [board.unit.b]"
-                            : "2sio has no channel '" + which + "' -- it has 'a' and 'b'";
-        return false;
-    }
-
-    // Everything else is a property, set through the ONE property path -- same
-    // parser, same radix rule, same validation as `SET sio0:a BAUD=9600` types at
-    // the monitor. A config file cannot set something the monitor would refuse.
-    for (const auto& [k, v] : kv) {
-        if (k == "unit") continue;
-        if (!setUnitProperty(*this, which, k, v, err)) return false;
-    }
-    return true;
-}
+// addSubUnit() used to live here, handling `[board.unit.a]`. It is GONE, and nothing
+// replaced it on this card: it looked the channel up by name and called
+// setUnitProperty() for each key, which is what the config layer now does for EVERY
+// board's units, once (config/toml.cpp). This card was the only one that had opted in,
+// which is exactly why CONFIG SAVE could write an 88-ACR's unit settings and then
+// refuse to read them back.
+//
+// `region` and `drive` still use addSubUnit(), and should: those are LISTS a board
+// owns, not settings on a unit that already exists.
 
 bool Sio2Board::disconnect(const std::string& unit, std::string& err) {
     Mc6850* ch = channel(unit);

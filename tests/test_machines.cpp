@@ -1,6 +1,9 @@
 #include "test.h"
 
+#include "config/toml.h"
 #include "core/machines.h"
+
+#include <string>
 
 using namespace altair;
 
@@ -45,6 +48,35 @@ void test_machines() {
         bool ok = loadMachine(b, mm, e);
         if (!ok) std::printf("        %s: %s\n", b.name, e.c_str());
         CHECK(ok, "...and it LOADS -- every built-in, not just the default");
+        if (!ok) continue;
+
+        // ---- AND IT SURVIVES CONFIG SAVE. ----
+        //
+        // The writer is generic over properties() and unitProperties(); the reader has
+        // to be generic over exactly the same pair, or CONFIG SAVE writes a file that
+        // CONFIG LOAD refuses. IT DID. `[board.unit.<name>]` was written for every
+        // board that had a unit with settings, and read back only for boards that had
+        // opted in via subUnitTables() -- which was the 2SIO, and nothing else. So
+        // saving ANY machine with a cassette or a disk in it produced this:
+        //
+        //     ps2int.toml: board 'acr0' (acr) has no [[board.unit]] table
+        //
+        // A save you cannot load is not a save. Every built-in now round-trips, and the
+        // reload is compared to the original rather than merely required not to error --
+        // a loader that silently dropped the units would pass the weaker test.
+        std::string text = saveTomlText(mm);
+        Machine     back;
+        std::string e2;
+        bool        reloaded = loadTomlText(text, std::string(b.name) + " (saved)", back, e2);
+        if (!reloaded) std::printf("        %s: %s\n", b.name, e2.c_str());
+        CHECK(reloaded, "...and CONFIG SAVE's own output loads straight back in");
+        if (!reloaded) continue;
+
+        CHECK(back.boards().size() == mm.boards().size(),
+              "...with every board still in the backplane");
+        CHECK(saveTomlText(back) == text,
+              "...and saving it again is byte-identical: the round trip is a FIXED POINT, "
+              "so nothing was silently dropped on the way through");
     }
 
     // ---- default: 56K, which is what CP/M means when it says 56K ----
