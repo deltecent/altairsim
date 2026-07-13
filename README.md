@@ -4,7 +4,9 @@ A C++ simulator of the **MITS Altair 8800** and the **S-100 bus**.
 
 `altairsim` is a **hardware development bench** that happens to run period software. The S-100 bus is a first-class modeled object rather than an implementation detail, because the point is to develop **new hardware** as well as to run old software.
 
-It boots Altair 4K and 8K BASIC off a cassette, MITS Programming System II (polled *and* interrupt-driven), and CP/M 2.2 off both an 8″ floppy and a 5¼″ minidisk — every one of them a real period artifact, unmodified, and every one of them a test that runs on every commit.
+It boots Altair 4K and 8K BASIC off a cassette, MITS Programming System II (polled *and* interrupt-driven), and CP/M 2.2 off both an 8″ floppy and a 5¼″ minidisk — every one of them a real period artifact, running unmodified.
+
+The BASIC, PS2 and minidisk boots are **acceptance tests**: they run the period software on the whole machine through the real CLI and check what lands on the terminal. CP/M on the 8″ 88-DCDD boots and writes, but is not yet automated — the disk images are not ours to redistribute, so they are not in this repository.
 
 ```
 $ altairsim basic4k
@@ -33,14 +35,16 @@ That is the whole of it: put the tape in, toggle in the bootstrap MITS printed i
 **There are no dependencies.** A C++20 compiler and CMake ≥ 3.20 is the entire list. The TOML parser, the JSON encoder and the line editor are all in-tree, so a fresh clone builds with nothing to download.
 
 ```sh
-git clone git@github.com:deltecent/altairsim.git
+git clone https://github.com/deltecent/altairsim.git
 cd altairsim
 cmake -S . -B build && cmake --build build -j
 ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 ./build/altairsim                    # the default machine
 ```
 
-macOS (Intel and Apple Silicon) and Linux are built and tested. The Windows platform layer is **written but not yet built or run** — see [`docs/porting-notes.md`](docs/porting-notes.md).
+**Built and tested on exactly one platform: macOS on Intel (`x86_64`).** That is not a claim about portability, it is the honest extent of it. The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and Linux and Apple Silicon are *expected* to build. Neither has been tried. The Windows platform layer is written but has **never been compiled or run**; see [`docs/porting-notes.md`](docs/porting-notes.md).
+
+**There is no CI.** The tests below are real and they pass, but nothing runs them automatically — they run when someone types `ctest`.
 
 ## What is in the box
 
@@ -60,7 +64,7 @@ Nine board types, each modeled from its own manual, and eight machines built out
 
 `altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`.
 
-**The 8080 is validated, and it is a CI gate.** TST8080, 8080PRE, CPUTEST and 8080EXM all pass — all 25 CRC groups of the exerciser — and they ran *before* a single board was built on top of the core.
+**The 8080 is validated.** TST8080, 8080PRE, CPUTEST and 8080EXM all pass — all 25 CRC groups of the exerciser — and they passed *before* a single board was built on top of the core. They are `ctest` targets, not a CI gate; there is no CI yet.
 
 ## The interface
 
@@ -82,7 +86,7 @@ altairsim> BOARDS
 
 **An MCP server is built in** (`altairsim --mcp`), so Claude can drive the machine through typed, structured tools instead of screen-scraping a text CLI. It runs on the *same* `Machine` object as the monitor — not a wrapper, not a second model of the world.
 
-**Any board that moves characters** can be connected to the console, a TCP socket, or a real host serial port, interchangeably. The modem-control tests run against a **real null-modem cable** between two USB serial ports, because a claim about a cable deserves a cable.
+**Any board that moves characters** can be connected to the console, a TCP socket, or a real host serial port, interchangeably. The modem-control tests are run against a **real null-modem cable** between two USB serial ports, because a claim about a cable deserves a cable. They are opt-in (`ctest -L hw`, pointed at your ports with `ALTAIR_SERIAL_A`/`_B`) and they **skip loudly** when the hardware is absent — a hardware test that quietly passes with no hardware is a green tick that means nothing.
 
 ## Configuring a machine
 
@@ -113,7 +117,7 @@ mount = "disks/cpm.dsk"   # ...with this project's disk in it
 
 **The bus carries signals; it does not invent behavior.** The bus does not arbitrate vectored interrupts and hand the CPU a vector — that is what an 88-VI board does. Model it honestly and the un-vectored case falls out for free: a board pulls `pINT`, nobody drives the data bus during `IntAck`, the bus floats high, the CPU reads `0xFF` and executes `RST 7`. Which is exactly what a real Altair does, and exactly why the PMMI's factory jumper straight to pin 73 gives you `RST 7` with no vector logic anywhere. The payoff: the 88-VI has no special privileges, and neither does any *new* interrupt controller you invent.
 
-**No `#ifdef`s for operating-system differences.** SIMH is riddled with them and is unreadable as a result. OS differences live in an interface header with *zero* conditionals plus one implementation file per OS, selected by CMake — no OS type ever appears in a signature.
+**No `#ifdef`s for operating-system differences.** SIMH is riddled with them and is unreadable as a result. OS differences live in an interface header with *zero* conditionals plus one implementation file per OS, selected by CMake — no OS type ever appears in a signature, so no caller ever needs a conditional to name one. A lint greps for `_WIN32`, `__APPLE__`, `__linux__` and the OS headers anywhere outside `src/platform/`, and it is a **build dependency of the library, not a test** — a rule you can merge and fix later is a rule you have already lost.
 
 **A validation harness may not emulate the thing it is validating.** The CP/M CPU suites run with no CP/M and no console card, through a BDOS stub written in *real 8080 machine code*, reached through the real `JMP` at `0005`, writing to a real port on a real board. Trapping `PC == 0005` in C++ would have been less code and was rejected: it would fake the `CALL`, the `RET`, the stack and the `OUT` inside the one program whose whole job is to decide whether we implement them correctly.
 
