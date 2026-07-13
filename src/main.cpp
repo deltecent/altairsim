@@ -43,9 +43,7 @@ static void usage(std::ostream& o) {
          "  -i, --interactive  after --script/--exec, stay in the monitor.\n"
          "\n"
          "      --mcp          MCP server on stdio (for Claude).\n"
-         "  -v, --version      -h, --help\n"
-         "\n"
-         "Milestone 1a: there is no CPU. The monitor is the bus master.\n";
+         "  -v, --version      -h, --help\n";
 }
 
 static void list(std::ostream& o) {
