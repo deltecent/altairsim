@@ -128,6 +128,16 @@ private:
     bool failed_ = false;
     bool quit_ = false;
 
+    // WHOSE DIRECTORY THE COMMAND CURRENTLY RUNNING CAME OUT OF -- and "" whenever a
+    // human is at the keyboard, which is nearly always (core/paths.h).
+    //
+    // Set only for the duration of runStartup(), because a `startup` entry is a command
+    // WRITTEN IN a machine file and a path written in a machine file is relative to that
+    // file. The instant the list is done this goes back to "", and `MOUNT dsk0:drive1
+    // "scratch.dsk"` at the prompt means the scratch.dsk in the shell you are standing
+    // in -- never the one beside somebody's example config.
+    std::string startupDir_;
+
     // Where a bare DUMP resumes. A range moves it; nothing else does.
     uint32_t dumpNext_ = 0;
 

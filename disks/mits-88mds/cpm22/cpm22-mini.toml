@@ -1,12 +1,14 @@
 # CP/M 2.2b on a 5.25" Altair Minidisk, in an 88-MDS.
 #
-#     altairsim disks/mits-88mds/cpm22/cpm22-mini.toml
+#     cd disks/mits-88mds/cpm22 && altairsim cpm22-mini.toml
 #     -> 56K CP/M 2.2b v2.3
 #        For Altair Mini Disk
 #        A>DIR
 #
-# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory, not
-# against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot. You get the binary and this tree;
+# you do not get the repository. Pointing at it from elsewhere gets the same machine.
 #
 # THE DISK IMAGES ARE NOT IN GIT -- download them first. See README.md, beside this file.
 #
@@ -45,14 +47,14 @@ id = "mds0"
   # image is padded. There was simply no minidisk image in the tree to disprove it with.
   [[board.drive]]
   unit  = 0
-  mount = "disks/mits-88mds/cpm22/CPM56K-1.DSK"
+  mount = "CPM56K-1.DSK"
 
   # B: the second disk of the set. A minidisk holds 71,680 bytes -- a fourteenth of an 8"
   # floppy -- so CP/M for it SHIPS AS TWO DISKS. MBASIC, the word processor and the sweep
   # utility are over here.
   [[board.drive]]
   unit  = 1
-  mount = "disks/mits-88mds/cpm22/CPM56K-2.DSK"
+  mount = "CPM56K-2.DSK"
 
   # WANT THE REAL MOTOR? Uncomment. The card takes a second to spin a stopped drive up and
   # stops it after 6.4 seconds of neglect -- which is why the period BIOS pokes TIMER RESET

@@ -67,6 +67,17 @@ struct Region {
     uint16_t at = 0;
     uint32_t size = 0;      // bytes, rounded up to a 0x100 page
     std::string mount;      // rom only: a host path, or "builtin:<name>"
+
+    // ...AND WHERE THAT PATH ACTUALLY LEADS. The two differ only when the ROM was
+    // named by a machine file in another directory (core/paths.h): `mount` is what
+    // the file said, `mountFile` is where we found it.
+    //
+    // THIS CARD IS THE ONLY ONE THAT HAS TO KEEP BOTH, and the reason is power():
+    // a ROM region is re-read from the host on EVERY power cycle, long after the
+    // loader has packed up and gone home. A disk or a tape is opened once and the
+    // handle survives, so those cards resolve and forget. This one cannot.
+    std::string mountFile;
+
     std::string describe() const;
 };
 

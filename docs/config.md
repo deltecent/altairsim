@@ -31,6 +31,48 @@ id    = "dsk0"          # the default's floppy controller...
 mount = "disks/cpm.dsk" # ...with this project's disk in it
 ```
 
+## Where a relative path is relative to
+
+There are two answers, and keeping them apart is the whole of the rule.
+
+> **A path written *inside* a machine file is relative to THAT FILE.**
+> **A path *typed* at the prompt is relative to THE SHELL.**
+
+That covers `mount`, `base`, and the `MOUNT`/`LOAD` commands inside a `startup` list. It does **not** cover a `-s` script, whose commands are resolved against the working directory like anything else you could have typed.
+
+The first half is what makes a machine file portable. `tapes/MitsPS2/ps2int.toml` says:
+
+```toml
+startup = [
+  "MOUNT acr0:tape \"PS2-MON.TAP\"",   # the tape lying beside this file
+  "LOAD \"LDRPS2.HEX\"",               # ...and the bootstrap beside it
+  "RUN 0",
+]
+```
+
+…and means the two files in its own directory. So both of these work, and mean the same machine:
+
+```sh
+cd tapes/MitsPS2 && altairsim ps2int.toml     # the way you will actually run it
+altairsim tapes/MitsPS2/ps2int.toml           # ...and from anywhere else
+```
+
+That matters because **`tapes/` and `disks/` are what we ship.** A user gets the binary and those trees — not this repository. A machine file that only resolved from the repository root would be a machine file that only worked for us, and every example in this tree used to be exactly that.
+
+The second half is not a compromise, it is the other half of the same rule. When you type
+
+```
+altairsim> MOUNT dsk0:drive1 "scratch.dsk"
+```
+
+you mean the `scratch.dsk` you can see in the shell you are standing in — never one sitting next to somebody's example config. A command whose meaning depended on which machine happened to be loaded would be the same trap as a command line that changes meaning with its surroundings, and `acceptance-examples` has a negative control that fails the build if the config's directory ever leaks out of its `startup` list and starts colouring what a human types.
+
+**There is no search path.** A file is looked for in exactly one place. If it is not there, the error names the place it looked — not the name you wrote — because the whole point of a resolved path is to be able to see where it went.
+
+**What is stored is what you wrote.** `SHOW` prints, and `CONFIG SAVE` writes back, the path *as it appears in the file* — so a machine saved out of `disks/mits-88mds/cpm22/` still says `mount = "CPM56K-1.DSK"` and still loads from its own directory. Only the *narration* ("`mounted …`", "`loaded …`") names where the file actually was, because that is a report of what happened rather than a record of what was asked for.
+
+Absolute paths and the `builtin:` scheme are never re-based: `mount = "builtin:dbl"` is a ROM in the binary, not a file, and must never become one.
+
 ## Verbs
 
 - **`MOUNT`** refers to **host files** (disk and tape images).

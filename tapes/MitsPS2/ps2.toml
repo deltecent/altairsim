@@ -1,10 +1,12 @@
 # MITS Programming System II, POLLED (no interrupts) -- tape in, loader in, running.
 #
-#     altairsim tapes/MitsPS2/ps2.toml
+#     cd tapes/MitsPS2 && altairsim ps2.toml
 #     ->   ?
 #
-# RUN IT FROM THE REPO ROOT. The paths below are resolved against the PROCESS's working
-# directory, not against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md) -- the tape and
+# the loader are lying beside it, so it names them and no directory at all. Copy this
+# folder anywhere and it still boots. `altairsim tapes/MitsPS2/ps2.toml` from the repo
+# root is the same machine.
 #
 # The interrupt-driven version of this same machine is ps2int.toml, beside this file. The
 # only difference is sense switch A9 and an 88-VI/RTC card -- and it is the difference
@@ -35,7 +37,7 @@ base = "ps2"
 # debugger off this same cassette ("OPN ABS,AC"). REWIND acr0:tape when you need the start
 # of it again.
 startup = [
-  "MOUNT acr0:tape \"tapes/MitsPS2/PS2-MON.TAP\"",
-  "LOAD \"tapes/MitsPS2/LDRPS2.HEX\"",
+  "MOUNT acr0:tape \"PS2-MON.TAP\"",
+  "LOAD \"LDRPS2.HEX\"",
   "RUN 0",
 ]

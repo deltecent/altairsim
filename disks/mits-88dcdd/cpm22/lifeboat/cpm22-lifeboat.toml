@@ -1,9 +1,11 @@
 # Lifeboat CP/M 2.2 for the Altair 8800, 48K.
 #
-#     altairsim disks/mits-88dcdd/cpm22/lifeboat/cpm22-lifeboat.toml
+#     cd disks/mits-88dcdd/cpm22/lifeboat && altairsim cpm22-lifeboat.toml
 #
-# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
-# not against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot. You get the binary and this tree;
+# you do not get the repository. Pointing at it from elsewhere gets the same machine.
 #
 # A DELTA, AND THE ONE THAT SHOWS BOTH HALVES OF THE GRAMMAR: it MODIFIES the base's disk
 # controller (to put a floppy in it) and REPLACES the base's memory card (because this CP/M
@@ -30,7 +32,7 @@ id = "dsk0"
 
   [[board.drive]]
   unit  = 0
-  mount = "disks/mits-88dcdd/cpm22/lifeboat/LIFEBOAT-CPM22-48K.DSK"
+  mount = "LIFEBOAT-CPM22-48K.DSK"
 
 # 48K, AND IT IS NOT A PREFERENCE -- the image is a 48K build and will not boot in the
 # base's 56K. BOOT.ASM, beside this file, puts the BIOS at `MSIZE*1024 - BIOSLEN`, so the

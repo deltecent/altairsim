@@ -37,7 +37,13 @@
 
 [machine]
 name = "minidisk-dcdd-control"
-base = "disks/mits-88mds/cpm22/cpm22-mini.toml"
+
+# RELATIVE TO THIS FILE, not to wherever ctest launched us from (core/paths.h). This
+# control lives in tests/acceptance/ and the machine it is a delta of lives two trees
+# away, so it has to walk there -- and the disk that machine mounts is then resolved
+# against ITS directory, not against this one. That is the point of doing it per file:
+# a base in another directory brings its own furniture with it.
+base = "../../disks/mits-88mds/cpm22/cpm22-mini.toml"
 
 [[board]]
 id     = "mds0"
@@ -51,4 +57,9 @@ drives = 4
 
   [[board.drive]]
   unit  = 0
-  mount = "disks/mits-88mds/cpm22/CPM56K-1.DSK"
+  # Relative to THIS file, like the `base` above -- this control lives in tests/acceptance/
+  # and the disk does not. Getting this wrong is not a small thing: a control that fails
+  # because the disk is MISSING is a control that has stopped testing what it claims to,
+  # and WILL_FAIL would go on reporting it green forever. It must fail because an 8"
+  # controller will not have a minidisk, and for no other reason.
+  mount = "../../disks/mits-88mds/cpm22/CPM56K-1.DSK"

@@ -9,6 +9,7 @@
 #include "core/crc32.h"
 #include "core/debug.h"
 #include "core/hex.h"
+#include "core/paths.h"
 #include "core/roms.h"
 #include "host/console.h"
 #include "host/endpoint.h"
@@ -1823,7 +1824,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
-            out << b->id << ":" << u.name << ": mounted " << unquote(a[2])
+            // SAY WHERE THE DISK ACTUALLY IS, not what the file called it. The board
+            // stores the name as written -- SHOW and CONFIG SAVE need that -- but the
+            // narration is a report of what just HAPPENED, and what happened is that we
+            // opened a particular file. A `startup` line that says PS2-MON.TAP printing
+            // `mounted PS2-MON.TAP` beside a LOAD printing the full path would have the
+            // reader wondering which of the two directories they were actually in.
+            //
+            // The rule, everywhere: NARRATION SAYS WHERE. CONFIGURATION SAYS WHAT YOU WROTE.
+            out << b->id << ":" << u.name << ": mounted "
+                << resolveFrom(startupDir_, unquote(a[2]))
                 << (readOnly ? " (read-only)" : "") << "\n";
         }
         return true;
@@ -2163,6 +2173,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "LOAD") {
         if (!need(2, "LOAD <file> [AT <addr>] [RAW <id>]")) return true;
         a[1] = unquote(a[1]);  // and every message below now names the file, not the quote
+
+        // LOAD is MOUNT's other half, and it keeps MOUNT's bargain: a `startup` line in
+        // a machine file that says LOAD "LDRPS2.HEX" means the bootstrap lying beside
+        // that file (core/paths.h). At the prompt startupDir_ is "" and this is the
+        // identity function, so what you type is what the shell would have opened.
+        a[1] = resolveFrom(startupDir_, a[1]);
         uint32_t at = 0;
         bool haveAt = false;
         for (size_t i = 2; i + 1 < a.size(); ++i)
@@ -2249,6 +2265,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "SAVE") {
         if (!need(3, "SAVE <file> <range> [RAW <id>]")) return true;
         a[1] = unquote(a[1]);
+        a[1] = resolveFrom(startupDir_, a[1]);  // ...the same rule as LOAD, in reverse
         uint32_t lo, hi;
         if (!range(a[2], lo, hi, out)) return true;
         Image img;
@@ -2542,10 +2559,30 @@ void Monitor::runStartup(std::ostream& out) {
     // A startup entry is an ORDINARY MONITOR COMMAND. That is the whole idea:
     // the config language and the script language are one language, so anything
     // you can type, a config can do -- and no BOOT verb has to exist.
+    //
+    // ...WHICH IS EXACTLY WHY THE PATHS IN ONE NEED SAYING SOMETHING ABOUT. These
+    // commands look like the ones a human types because they ARE the ones a human
+    // types -- but they were WRITTEN IN A FILE, and a path written in a machine file
+    // is relative to that file (core/paths.h). So for the length of this list, and
+    // not one command longer, the machine's directory is where relative paths start.
+    //
+    // That is what makes `tapes/MitsPS2/ps2int.toml` a thing a user can be handed:
+    //
+    //     startup = ["MOUNT acr0:tape \"PS2-MON.TAP\"", "LOAD \"LDRPS2.HEX\"", "RUN 0"]
+    //
+    // names the two files lying beside it, and goes on naming them whether you `cd`
+    // into that directory or point at it from somewhere else.
+    startupDir_ = m_.dir;
+    for (const auto& b : m_.boards()) b->setConfigDir(m_.dir);
+
     for (const auto& s : m_.startup) {
         out << "startup> " << s << "\n";
         if (!exec(s, out)) break;
     }
+
+    // ...and the file stops talking. Whatever the operator types next is theirs.
+    startupDir_.clear();
+    for (const auto& b : m_.boards()) b->setConfigDir("");
 }
 
 int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {

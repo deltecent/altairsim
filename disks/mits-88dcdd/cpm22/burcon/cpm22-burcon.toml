@@ -1,9 +1,11 @@
 # Burcon CP/M 2.2 for the Altair 8800, 56K.
 #
-#     altairsim disks/mits-88dcdd/cpm22/burcon/cpm22-burcon.toml
+#     cd disks/mits-88dcdd/cpm22/burcon && altairsim cpm22-burcon.toml
 #
-# RUN IT FROM THE REPO ROOT. `mount` is resolved against the PROCESS's working directory,
-# not against this file.
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot. You get the binary and this tree;
+# you do not get the repository. Pointing at it from elsewhere gets the same machine.
 #
 # A DELTA. `base = "default"` brings the whole machine -- front panel, 8080, 88-2SIO
 # console at 0x10, 88-DCDD at 0x08 with four empty drives, 56K of RAM, DBL boot PROM at
@@ -32,7 +34,7 @@ id = "dsk0"
 
   [[board.drive]]
   unit  = 0
-  mount = "disks/mits-88dcdd/cpm22/burcon/cpm56k.dsk"
+  mount = "cpm56k.dsk"
 
 # THE 48K IMAGE is the other disk in this directory, and it is the one place this file
 # would need to say something about memory. cpm48k.dsk is the same CP/M sized for a 48K

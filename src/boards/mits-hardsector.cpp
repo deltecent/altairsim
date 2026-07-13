@@ -424,7 +424,15 @@ bool HardSectorFdc::mount(const std::string& unit, const std::string& path, bool
         return false;
     }
 
-    auto media = openMedia(path, ro, err);
+    // WHERE WE LOOK is resolvePath(); WHAT WE REMEMBER is `path`, as it was written
+    // (core/board.h). A disk mounted by a machine file sitting in disks/mits-88mds/
+    // says `mount = "CPM56K-1.DSK"` and means the disk beside it -- but SHOW and
+    // CONFIG SAVE must still say `CPM56K-1.DSK`, or the file would not load from its
+    // own directory the next time.
+    //
+    // Nothing re-opens the medium afterwards: HostFile holds the handle it was given
+    // and syncs back through it, so resolving once, here, is resolving for good.
+    auto media = openMedia(resolvePath(path), ro, err);
     if (!media) return false;
 
     Drive& d = drive_[(size_t)i];

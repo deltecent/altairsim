@@ -4,6 +4,7 @@
 // layer knows Board, and nothing about what any particular one of them is.
 #include "boards/registry.h"
 #include "core/machines.h"  // `base = "default"` -- a built-in is a config file too
+#include "core/paths.h"     // ...and a file's relative paths are relative to IT
 #include "host/console.h"
 
 #include <cctype>
@@ -187,7 +188,12 @@ constexpr int kMaxBaseDepth = 8;
 bool loadInto(const std::string& text, const std::string& source, Machine& m,
               std::string& err, int depth);
 
-bool loadBase(const std::string& name, Machine& m, std::string& err, int depth) {
+// `dir` is the directory of the file that WROTE this `base` line -- because a base
+// named as a file is a path like any other, and a path in a machine file is relative
+// to that machine file (core/paths.h). `base = "../mini/cpm22-mini.toml"` means the
+// one next door, from wherever the pair of them are copied to.
+bool loadBase(const std::string& name, const std::string& dir, Machine& m, std::string& err,
+              int depth) {
     if (depth >= kMaxBaseDepth) {
         err = "base = \"" + name + "\": more than " + std::to_string(kMaxBaseDepth) +
               " levels deep -- do two files name each other?";
@@ -199,14 +205,19 @@ bool loadBase(const std::string& name, Machine& m, std::string& err, int depth) 
     // same reason: `base = "default"` must not change meaning the day somebody saves a
     // file called `default` in the working directory.
     if (looksLikeFile(name)) {
-        std::ifstream f(name);
+        // The base is opened at the RESOLVED path, but it is loaded under its resolved
+        // name too -- so that IT, in turn, computes its own directory from where it
+        // really is, and ITS relative paths come out right. A chain of bases each
+        // sitting in a different directory works, and each link speaks for itself.
+        const std::string file = resolveFrom(dir, name);
+        std::ifstream     f(file);
         if (!f) {
-            err = "base: cannot open '" + name + "'";
+            err = "base: cannot open '" + file + "'";
             return false;
         }
         std::stringstream ss;
         ss << f.rdbuf();
-        return loadInto(ss.str(), name, m, err, depth + 1);
+        return loadInto(ss.str(), file, m, err, depth + 1);
     }
 
     const BuiltinMachine* b = findMachine(name);
@@ -222,11 +233,41 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
               std::string& err, int depth) {
     const std::string& path = source;
 
+    // THE DIRECTORY THIS FILE IS SPEAKING FROM (core/paths.h).
+    //
+    // Decided by SPELLING, like everything else here: a built-in arrives as
+    // "builtin:default", which names no directory, so its dir is "" -- and "" means
+    // the shell's working directory, which is the only thing a machine living in
+    // .rodata could possibly mean. `altairsim ps2int.toml`, run in the directory the
+    // file is in, also gives "" -- the file names no directory either. The common
+    // case costs nothing and changes nothing; only a file named through a directory
+    // has anything to resolve.
+    //
+    // It is computed PER FRAME, not per machine. A `base` in another directory gets
+    // its own, so its mounts are relative to IT and not to whoever named it.
+    const std::string dir = looksLikeFile(source) ? dirOf(source) : std::string();
+
+    // ...and the OUTERMOST file's directory is the machine's, because `startup` is a
+    // list of commands that came out of that file and Monitor::runStartup has to know
+    // where they were written to make sense of the paths in them.
+    if (depth == 0) m.dir = dir;
+
     std::vector<Table> tabs;
     if (!parse(text, tabs, err)) {
         err = path + ": " + err;
         return false;
     }
+
+    // Every card this frame configures is told where this frame is speaking from, and
+    // told again -- with "" -- when the frame is done. A board resolves a path only
+    // while a file is talking to it; the moment the operator takes over, "" is back
+    // and MOUNT means what the shell says it means.
+    struct ClearConfigDir {
+        Machine& m;
+        ~ClearConfigDir() {
+            for (const auto& b : m.boards()) b->setConfigDir("");
+        }
+    } clearOnExit{m};
 
     Board* current = nullptr;
 
@@ -246,7 +287,7 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                                  "what the boards are a change TO";
                     return false;
                 }
-                if (!loadBase(v, m, err, depth)) {
+                if (!loadBase(v, dir, m, err, depth)) {
                     err = path + ": " + err;
                     return false;
                 }
@@ -384,6 +425,14 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                 }
                 declared.insert(id);
             }
+
+            // THIS FILE IS NOW THE ONE TALKING TO THIS CARD, so any path it hands over
+            // is relative to this file (core/board.h, core/paths.h). The loader still
+            // does not know WHICH of the card's keys are paths, and must not -- that is
+            // the board's business, and the whole point of properties() is that this
+            // layer never learns what a `mount` is. It says where it is standing; the
+            // card decides what to do about it.
+            current->setConfigDir(dir);
 
             // Everything else is a PROPERTY, resolved against the board's own
             // properties(). The loader knows nothing about phantom straps or

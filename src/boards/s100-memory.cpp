@@ -130,6 +130,13 @@ bool MemoryBoard::loadRomRegion(size_t idx, std::string& err) {
     Region& r = regions_[idx];
     Image img;
 
+    // Where we look, as opposed to what was written. They are the same string unless
+    // a machine file in another directory named this ROM -- see Region::mountFile.
+    // The fallback is not decoration: a region whose `mount` was set by some path
+    // that never went through resolvePath() still has to open SOMETHING, and the
+    // unresolved name is exactly what it used to open.
+    const std::string& file = r.mountFile.empty() ? r.mount : r.mountFile;
+
     if (r.mount.rfind("builtin:", 0) == 0) {
         std::string name = r.mount.substr(8);
         const BuiltinRom* rom = findRom(name);
@@ -139,9 +146,12 @@ bool MemoryBoard::loadRomRegion(size_t idx, std::string& err) {
         }
         if (!decodeRom(*rom, r.at, img, err)) return false;
     } else {
-        std::ifstream f(r.mount, std::ios::binary);
+        std::ifstream f(file, std::ios::binary);
         if (!f) {
-            err = "cannot open '" + r.mount + "'";
+            // Name where we LOOKED, not what was typed. When a machine file two
+            // directories away named this ROM, "cannot open 'dbl.bin'" sends you
+            // hunting in the wrong place; the resolved path tells you the truth.
+            err = "cannot open '" + file + "'";
             return false;
         }
         std::vector<uint8_t> raw((std::istreambuf_iterator<char>(f)),
@@ -620,7 +630,8 @@ bool MemoryBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
             if (!parseNumber(v, n, err, 10)) return false;
             r.size = (uint32_t)n;
         } else if (k == "mount") {
-            r.mount = v;
+            r.mount     = v;                 // what the file said...
+            r.mountFile = resolvePath(v);    // ...and where that leads from where it lives
         } else {
             err = "unknown region key '" + k + "'";
             return false;
@@ -707,10 +718,13 @@ bool MemoryBoard::mount(const std::string& unit, const std::string& path, bool r
         err = "no unit '" + unit + "' on " + id + ". SHOW " + id + " lists them.";
         return false;
     }
-    std::string saved = regions_[i].mount;
-    regions_[i].mount = path;
+    std::string saved     = regions_[i].mount;
+    std::string savedFile = regions_[i].mountFile;
+    regions_[i].mount     = path;
+    regions_[i].mountFile = resolvePath(path);
     if (!loadRomRegion(i, err)) {
-        regions_[i].mount = saved;
+        regions_[i].mount     = saved;      // a failed MOUNT leaves the old ROM in the socket
+        regions_[i].mountFile = savedFile;
         return false;
     }
     rebuildPageMap();
@@ -732,6 +746,7 @@ bool MemoryBoard::unmount(const std::string& unit, std::string& err) {
     // rom1 would silently become rom0, so MOUNTing rom0 back would put it in the
     // wrong socket. You cannot unsolder a socket by pulling its chip.
     regions_[i].mount.clear();
+    regions_[i].mountFile.clear();
     regions_[i].size = 0;
     rebuildPageMap();
     return true;
