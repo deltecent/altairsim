@@ -26,9 +26,15 @@ public:
     // A machine-level copy would be a second place to say one thing, and the day
     // the two disagreed the machine would run at whichever was written last.
 
-    // Port 0xFF, the front-panel sense switches. NOT decorative: the DBL boot
-    // PROM does `IN 0FFH` at FF22 and uses bit 4 to pick the 2SIO's stop bits.
-    uint8_t sense = 0;
+    // AND THERE IS NO MACHINE-LEVEL `sense` EITHER, for exactly the reason above.
+    // It was here once: a byte, parsed from `[machine] sense`, printed by SHOW
+    // MACHINE -- and connected to nothing, because no board decoded port 0xFF. The
+    // guest's `IN 0FFH` read the floating bus and got 0xFF whatever the operator
+    // configured, which meant the DBL boot PROM (it tests bit 4 to pick the 2SIO's
+    // stop bits) was reading a wire, not a switch.
+    //
+    // The switches are on the front panel, the front panel is a card, and the card
+    // is `fp` (boards/mits-frontpanel.h). That is where the byte lives now.
 
     // Monitor commands run once the backplane exists. This is why there is no
     // BOOT command (DESIGN.md 10.0): a config that should boot says

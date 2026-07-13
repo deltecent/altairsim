@@ -98,6 +98,19 @@ void Bus::reportContention(const BusCycle& c, const std::vector<Board*>& who) {
     log_.push_back(m);
 }
 
+// THE CYCLE HANDED TO settle() IS THE FINISHED ONE, AND `data` IS ALWAYS VALID HERE.
+//
+// BusCycle::data is documented as "valid on writes", and during the cycle that is
+// true -- on a READ nobody has driven the bus yet when decodes() and read() are
+// asked. But settle() runs AFTER the cycle completes (board.h, snoop()), and by then
+// a byte HAS been driven: by the board that answered, or by the floating bus, which
+// drives 0xFF just as surely. So every read path back-fills `data` with what came
+// back before calling this.
+//
+// That is not a convenience for the snoopers. It is what the wire is doing. The
+// front panel's DATA lamps are eight LEDs soldered to D0..D7 and they do not care
+// which direction the byte was going -- and neither does a TRACE, which is why the
+// observers get the same corrected cycle.
 void Bus::settle(const BusCycle& c) {
     // ONLY the cards that actually watch. Every board still SEES every cycle --
     // that is what a backplane is -- but a card with nothing wired to the address
@@ -214,6 +227,7 @@ uint8_t Bus::memReadExact(uint16_t addr) {
     unclaimed_ = (d.n == 0);
     uint8_t v = d.first ? d.first->read(c)
                         : 0xFF;  // floating bus (DESIGN.md 4.6.1)
+    c.data = v;                  // what got driven -- see settle()
     settle(c);
     return v;
 }
@@ -240,6 +254,7 @@ uint8_t Bus::ioReadExact(uint8_t port) {
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
     uint8_t v = d.first ? d.first->read(c) : 0xFF;
+    c.data = v;  // what got driven -- see settle()
     settle(c);
     return v;
 }
@@ -360,6 +375,7 @@ uint8_t Bus::memRead(uint16_t addr) {
     BusCycle c{Cycle::MemRead, addr, 0, s.phantom};
     unclaimed_ = (s.who == nullptr);
     uint8_t v = s.who ? s.who->read(c) : 0xFF;  // floating bus (DESIGN.md 4.6.1)
+    c.data = v;                                 // what got driven -- see settle()
     settle(c);
     return v;
 }
@@ -389,6 +405,7 @@ uint8_t Bus::ioRead(uint8_t port) {
     BusCycle c{Cycle::IoRead, port, 0, false};
     unclaimed_ = (s.who == nullptr);
     uint8_t v = s.who ? s.who->read(c) : 0xFF;
+    c.data = v;  // what got driven -- see settle()
     settle(c);
     return v;
 }
@@ -415,6 +432,7 @@ uint8_t Bus::intAck() {
     // Altair's behavior, and we get it for free from the same rule that makes
     // unmapped memory read 0xFF. The bus does not know what a vector IS.
     uint8_t v = who.empty() ? 0xFF : who.front()->read(c);
+    c.data = v;  // what got driven -- see settle()
     settle(c);
     return v;
 }

@@ -38,3 +38,4 @@ void test_wd17xx();
 void test_spindle();
 void test_dcdd();
 void test_88acr();
+void test_frontpanel();

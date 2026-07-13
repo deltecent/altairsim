@@ -54,7 +54,32 @@
 
 [machine]
 name     = "default"
-sense    = 00                 # port FF. DBL reads bit 4 to pick the 2SIO's stop bits.
+
+# THE FRONT PANEL IS A CARD, and the SENSE switches are on it -- SA8..SA15, the top
+# eight of the sixteen address switches, strobed onto D0..D7 when the guest does an
+# IN from port FF (schematic 880-106; Theory of Operation, "the sense switches
+# (device address 377o)"). They used to be a `[machine] sense` byte that nothing put
+# on the bus at all, so `IN 0FFH` read the floating bus -- 0xFF -- and DBL's bit-4
+# test was reading a wire instead of a switch.
+#
+# ALL EIGHT DOWN, and that is a REAL SETTING with a real consequence -- not a
+# placeholder. DBL tests bit 4, which is switch SA12, and its own source says what
+# that means (roms/DBL/DBL.ASM:166):
+#
+#     ;IF SWITCH A12 IS UP, IT'S ONE STOP BIT. OTHERWISE. IT'S 2 STOP BITS.
+#
+# So with SA12 down, DBL writes 0x10 to the 2SIO's control register: 8 data bits, no
+# parity, TWO stop bits. With it up it writes 0x14 -- 8N1. Both boot. The difference
+# is the length of a character on the wire (11 bit-times vs 10), which the 6850 model
+# uses to pace the line.
+#
+# Worth knowing: until the panel existed, `IN 0FFH` read the FLOATING BUS and got
+# 0xFF -- every switch "up" -- so this machine has been quietly running 8N1 all
+# along, and it was luck. If you want that back, set sense = 0x10 and mean it.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
 
 # THE CPU IS A CARD, because in a real Altair it was one -- the MITS 88-CPU -- and
 # people pulled it out and put a Z80 in its place. So it has properties, both

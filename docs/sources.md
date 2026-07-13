@@ -33,8 +33,11 @@ period artifacts and test programs written for real silicon — not somebody's e
 | `Altair 2SIO User's Manual.pdf` | MITS 88-2SIO manual | `docs/boards/mits-2sio.md`. |
 | `6850.pdf` | Motorola MC6850 ACIA data sheet, pp. 4-527…4-535. **No text layer** — read as page images. | `src/chips/mc6850.{h,cpp}`. |
 | `Western Digital WD177X-00 - Datasheet.pdf` | WD1770/72/73 data sheet | **Nothing yet.** See the trap below. Kept for a future double-density controller. |
+| `Altair 8800 Theory of Operation.pdf` | MITS Altair 8800 Theory of Operation, **searchable — real text layer** | `docs/boards/mits-frontpanel.md`. The CPU board's gating logic (`SSW DSB`, and the sense switches at "device address 377o"), the D/C board's EXAMINE/DEPOSIT/SINGLE-STEP sequences, and the bus pin definitions. |
+| `Altair 8800 front panel schematic.pdf` | Schematic **880-106**, "Computer Front Panel Control" | `docs/boards/mits-frontpanel.md`, and **authoritative for the port FF decode**: the `sINP` + A8–A15 8-input NAND, and the three banks of 7405 buffers. **No text layer** — read it as a page image. |
+| `Altair 8800 Operators Manual.pdf` | MITS Altair 8800 Operator's Manual, **searchable** | The switch and LED inventory. Note it never uses the phrase "sense switch" — the Theory of Operation and the schematic are where that lives. |
 | `88-HDSK.pdf` | MITS 88-HDSK hard disk manual | Nothing yet — the board is M7. |
-| `TurnKey Board.pdf` | MITS Turnkey Module manual | Nothing yet. |
+| `TurnKey Board.pdf` | MITS Turnkey Module manual | Nothing yet. But see `docs/boards/mits-frontpanel.md`: the Turnkey board switches its PROM out on an `IN` from port `0xFF`, which it **snoops** rather than answers — so it will not contend with the panel for the port. |
 
 ## Traps, paid for once
 
@@ -46,6 +49,15 @@ differs (the BIOS's `STPRATE equ 2` is 10 ms on a 1771 *only*; the 177x reads th
 something plausible, clean, and **wrong** — a controller that seeks at the wrong speed and
 mis-reports deleted records, while looking entirely finished. `tests/test_wd17xx.cpp` keeps
 a tripwire on the step-rate table so nobody "fixes" it back. See `src/chips/wd17xx.h`.
+
+**The Operator's Manual never says "sense switch".** Not once — grep it. It documents the DATA
+switches (7–0) and the ADDRESS switches (15–0) and stops there, because to an *operator* there is
+no such thing as a sense switch: it is the same row of toggles, and what it means depends on what
+the program does with it. The fact that `IN 0FFH` returns `SA8`–`SA15` is in the **Theory of
+Operation** and in **schematic 880-106**, and nowhere else. A plausible story about which eight
+switches feed the port would have been very easy to write and would have had a 50% chance of being
+backwards. See `docs/boards/mits-frontpanel.md`, which shows *why* it is the top eight (that buffer
+bank already existed, to serve EXAMINE).
 
 **Check for a text layer before spending an hour on a scan:** `pdftotext file.pdf - | wc -c`.
 Several of these are pure page images and yield nothing. When that happens, the Read tool

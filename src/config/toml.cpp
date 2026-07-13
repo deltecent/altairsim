@@ -166,11 +166,21 @@ bool loadTomlText(const std::string& text, const std::string& source, Machine& m
                           "      clock_hz = " + v;
                     return false;
                 } else if (k == "sense") {
-                    // The front-panel sense switches, which the guest reads through
-                    // port FF. It is a byte on the wire, so it is hex.
-                    long long n;
-                    if (!parseNumber(v, n, err, 16)) return false;
-                    m.sense = (uint8_t)n;
+                    // THE SWITCHES ARE ON THE PANEL, and the panel is a CARD -- exactly
+                    // the same argument as clock_hz above, and it cost exactly as much
+                    // to get wrong. This key USED to parse into a Machine::sense byte
+                    // that nothing put on the bus: no board decoded port FF, so the
+                    // guest's IN 0FFH read the floating bus (0xFF) no matter what was
+                    // written here. A config that LOOKED like it set the switches and
+                    // did not is precisely the failure the clock_hz error exists to
+                    // prevent, so this key gets the same refusal and the same sentence.
+                    err = path + ": sense belongs to the FRONT PANEL, not to [machine] --\n"
+                          "  the switches are on the Display/Control board. Add the card:\n"
+                          "      [[board]]\n"
+                          "      type  = \"fp\"\n"
+                          "      id    = \"fp0\"\n"
+                          "      sense = " + v;
+                    return false;
                 } else if (k == "startup") {
                     m.startup = t.list;
                 } else if (!t.name.empty()) {
@@ -307,15 +317,13 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
         err = "cannot write '" + path + "'";
         return false;
     }
-    char buf[256];
-
     f << "[machine]\n";
     f << "name     = \"" << m.name << "\"\n";
-    // No clock_hz here. It is written out as the CPU board's property, by the same
-    // generic properties() walk that writes every other board's -- which is why
-    // CONFIG SAVE round-trips and cannot drift from what SET accepts.
-    std::snprintf(buf, sizeof buf, "sense    = 0x%02X\n", m.sense);
-    f << buf;
+    // No clock_hz here, and no sense either. Both are BOARD properties -- the crystal
+    // is on the CPU card and the switches are on the front panel -- so both are
+    // written out by the same generic properties() walk that writes every other
+    // board's, which is why CONFIG SAVE round-trips and cannot drift from what SET
+    // accepts.
     if (!m.startup.empty()) {
         f << "startup  = [\n";
         for (const auto& s : m.startup) f << "  \"" << s << "\",\n";

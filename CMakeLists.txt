@@ -164,6 +164,7 @@ add_library(altair_core STATIC
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
   # this list is not ordered. It is listed after it so the reader sees the pair.
   src/boards/mits-88acr.cpp
+  src/boards/mits-frontpanel.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp
@@ -209,7 +210,8 @@ add_executable(altair_tests
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp
-  tests/test_dcdd.cpp)
+  tests/test_dcdd.cpp
+  tests/test_frontpanel.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 

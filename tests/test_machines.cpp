@@ -24,9 +24,27 @@ void test_machines() {
     auto all = builtinMachines();
     CHECK(all.size() >= 2, "at least the two machines are compiled in");
 
+    // EVERY BUILT-IN MUST ACTUALLY LOAD, and this loop is not ceremony -- it is here
+    // because it WASN'T, and altmon.toml shipped broken for exactly as long as it
+    // took someone to run `altairsim -m altmon` by hand.
+    //
+    // The bug was TOML, not hardware: a [[board]] was inserted ABOVE the `startup`
+    // key, so `startup` landed inside the board's table and the loader rejected it as
+    // an unknown board property. The file was well-formed, the board was right, and
+    // the machine was dead. This file checked `size > 0` and a blurb -- neither of
+    // which can tell you a machine does not boot.
+    //
+    // A built-in that does not load is not a config bug. It is a BROKEN BINARY: these
+    // are compiled in, so there is no file to fix.
     for (const auto& b : all) {
         CHECK(b.size > 0, "a built-in has bytes");
         CHECK(std::string(b.blurb).size() > 0, "and a blurb for --list");
+
+        Machine mm;
+        std::string e;
+        bool ok = loadMachine(b, mm, e);
+        if (!ok) std::printf("        %s: %s\n", b.name, e.c_str());
+        CHECK(ok, "...and it LOADS -- every built-in, not just the default");
     }
 
     // ---- default: 56K, which is what CP/M means when it says 56K ----
@@ -39,11 +57,17 @@ void test_machines() {
     CHECK(loadMachine(*d, m, err), "and it loads through the ordinary TOML parser");
     CHECK(m.name == "default", "it knows its name");
 
-    // A CPU, a serial card and a memory card. BOTH the 8080 and the 2SIO arrived
-    // as ONE MORE [[board]] each, with nothing else about the machine moving --
-    // which is the prediction this file made back when it had neither, and it has
-    // now held twice. The 88-DCDD is the third and last test of it.
-    CHECK(m.boards().size() == 3, "a CPU, a 2SIO and a memory card");
+    // A front panel, a CPU, a serial card and a memory card. The 8080, the 2SIO and
+    // now the PANEL each arrived as ONE MORE [[board]], with nothing else about the
+    // machine moving -- which is the prediction this file made back when it had none
+    // of them, and it has now held three times.
+    //
+    // The panel is the sharpest of the three, because it is the one that took
+    // something AWAY: `[machine] sense` was a byte on the Machine, and it went out
+    // with the card that replaced it. The count went 3 -> 4 and the struct got
+    // SMALLER.
+    CHECK(m.boards().size() == 4, "a panel, a CPU, a 2SIO and a memory card");
+    CHECK(m.find("fp0") != nullptr, "the front panel is a card in the backplane");
     CHECK(m.cpu() != nullptr, "there is a processor in the default machine now");
     CHECK(m.isa() == "8080", "and it speaks 8080, so DISASM never has to be told");
     CHECK(m.master() != nullptr, "and it can drive the bus");

@@ -33,8 +33,14 @@ This is `machines/altmon.toml`, and it runs: `altairsim altmon`.
 ```toml
 [machine]
 name    = "altmon"
-sense   = 00               # port FF, the front-panel switches
 startup = ["RUN F800"]     # anything you can type, a config can do
+
+# The front panel is a board too, and the SENSE switches are on it -- SA8..SA15,
+# which the guest reads at port FF. They are NOT a [machine] key; see below.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
 
 # The CPU is a board like any other (DESIGN.md §3) -- and THE CRYSTAL IS ON IT,
 # which is why clock_hz is this board's property and NOT the machine's.
@@ -145,20 +151,26 @@ port = 14
 ```toml
 [machine]
 name     = "cpm-dev"
-clock_hz = 2_000_000
-sense    = 0x00            # port 0xFF — front-panel sense switches.
-                           #   NOT decorative: the DBL PROM does `IN 0FFH` at FF22
-                           #   and uses bit 4 to pick the 2SIO's stop-bit setting.
 
 startup = [                # monitor commands, run in order once the boards exist.
   "RUN FF00",              #   start the DBL boot PROM. There is no BOOT command
 ]                          #   (DESIGN.md §10.0) — this is the operator's keystroke,
                            #   written down. Anything you can type, a config can do.
 
+# The CPU is a card, and THE CRYSTAL IS ON IT -- which is why clock_hz is this
+# board's property and not the machine's.
 [[board]]
-type = "88-cpu"
-id   = "cpu0"
-cpu  = "8080"
+type     = "8080"
+id       = "cpu0"
+clock_hz = 2_000_000
+
+# ...and so is the front panel, which is where the SENSE switches live. DBL reads
+# them at FF22 (`IN 0FFH`, bit 4) to pick the 2SIO's stop bits, so this is not
+# decoration -- see docs/boards/mits-frontpanel.md.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00               # SA8..SA15. Bit 4 is switch A12: up = 1 stop bit.
 
 # One card, two regions: 64K of RAM, and the DBL boot PROM sitting on top of it.
 # This is ONE physical card, so it is ONE board — DESIGN.md §4.2.1.
@@ -226,9 +238,22 @@ hostdir = "./hostfiles"    # SANDBOX. Required. Guest filenames cannot escape th
 | Key | Meaning |
 |---|---|
 | `name` | Machine name, shown by `SHOW MACHINE`. |
-| `clock_hz` | CPU clock. `0` = run flat out (host-idle aware). |
-| `sense` | **Port 0xFF front-panel sense switches.** Read by real period software — the DBL boot PROM reads it to configure the 2SIO. Defaults to `0x00`. |
 | `startup` | **A list of monitor commands, executed in order once the backplane is built.** This is how a machine starts itself: there is no `BOOT` command (`DESIGN.md` §10.0), so a config that should boot says `startup = ["RUN FF00"]`. |
+
+**That is the whole table, and it is short on purpose.** A `[machine]` key is a thing that is true
+of the *backplane*, and almost nothing is. Two keys used to be here and both were **moved onto the
+card that physically carries them**:
+
+| Was | Is | Why |
+|---|---|---|
+| `[machine] clock_hz` | `[[board]] type = "8080"`, `clock_hz` | The crystal is on the CPU card. A machine with no CPU in it has no clock rate — which is not a missing value, it is the truth about the machine. |
+| `[machine] sense` | `[[board]] type = "fp"`, `sense` | The switches are on the front panel, and the front panel is a card. |
+
+**Both are hard errors, not silent migrations.** Loading a file with either key fails, and the
+error hands you the `[[board]]` block that replaces it. That is deliberate: `sense` in particular
+spent months parsing into a byte that *nothing put on the bus* — no board decoded port `0xFF`, so
+`IN 0FFH` read the floating bus and returned `0xFF` whatever you wrote here. A config that looks
+like it set the switches and did not is worse than one that will not load.
 
 **`startup` makes the config language and the script language the same language.** Anything you can type at the monitor, a config file can do — and `CONFIG SAVE` round-trips the list verbatim.
 

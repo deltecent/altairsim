@@ -19,7 +19,19 @@
 
 [machine]
 name  = "4k"
-sense = 00
+
+# THE FRONT PANEL, and on this machine of all machines it is not decoration. This is
+# the Altair with no ROM in it -- the one whose header, six lines up, says you
+# entered the bootstrap with your fingers. The panel is the only input device it has.
+#
+# (The switches the monitor's DEPOSIT and EXAMINE stand in for are SA0..SA15 on this
+# very card. It is the SENSE half, SA8..SA15, that the guest can read, at port FF --
+# and Altair 4K BASIC is the software that reads them: its loader asks the switches
+# what terminal it is talking to. See docs/boards/mits-frontpanel.md.)
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
 
 # An 88-CPU, because of course there was one: a 4K Altair was a complete computer,
 # not a memory bench. (The bench with no processor in it is `altairsim -n`, and it

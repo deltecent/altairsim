@@ -41,7 +41,8 @@ It is a **hardware development bench** that happens to run period software. The 
 - An efficient, structured interface for Claude (MCP), not screen-scraping of a text CLI.
 
 **Non-goals (v1)**
-- Front panel GUI (no LEDs, no toggle switches). Sense switches at port 0xFF are a config value.
+- Front panel **GUI**. No window, no LEDs you can look at, no switches you can click. **But the panel itself is a CARD** (`fp`, `docs/boards/mits-frontpanel.md`) — it decodes the sense switches at port `0xFF`, and it latches the address/data/status lines it sees go by, because that is what LEDs soldered to a bus *are*. A GUI is a view onto that card, and it needs no new bus concept to be written.
+  > This line used to read *"Front panel GUI (no LEDs, no toggle switches). Sense switches at port 0xFF are a **config value**."* It was wrong in a way worth keeping the scar tissue for. `sense` really was a config value — a byte on the `Machine` that **nothing put on the bus** — so the guest's `IN 0FFH` read the floating bus and got `0xFF` no matter what the operator configured, and DBL's stop-bit test was reading a wire, not a switch. Declaring the panel a non-goal is what made it plausible to fake the one part of it that software actually touches. The switches are on a card now, which is where §3 says they always were. (Patrick, 2026-07-12.)
 - Plugin ABI / dynamically loaded boards. All boards are compiled in and self-register.
 - Cycle-exact modeling *within* a bus cycle (T1…T5 signal states).
 
@@ -1163,13 +1164,26 @@ So the monitor keeps only the honest verb, `GO <addr>` — and to spare you typi
 
 ```toml
 [machine]
-name     = "cpm-dev"
-clock_hz = 2_000_000
-sense    = 0x00                 # port 0xFF front-panel sense switches
+name = "cpm-dev"
 
 startup = [                     # monitor commands, run in order after boards are created
-  "GO FF00",                    # the DBL PROM. This is the operator's keystroke, not fake hardware.
+  "RUN FF00",                   # the DBL PROM. This is the operator's keystroke, not fake hardware.
 ]
+
+# NOTHING ELSE IS A [machine] KEY, and the two that used to be are the argument for
+# why. `clock_hz` was here (the crystal is on the CPU CARD) and so was `sense` (the
+# switches are on the FRONT PANEL, which is also a card). Both are board properties
+# now, and both were REFUSALS, not silent migrations -- a config that looks like it
+# set something and did not is worse than one that will not load.
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 2_000_000
+
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00                    # SA8..SA15, read at port 0xFF
 ```
 
 Three things fall out of this, and they are the reason it is the right shape:

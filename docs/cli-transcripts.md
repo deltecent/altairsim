@@ -90,6 +90,32 @@ A0>
 >   startup   GO FF00
 > ```
 
+> ### ⚠️ F6 WAS NOT FIXED, AND IT SAID IT WAS FOR MONTHS. (Patrick, 2026-07-12)
+>
+> Read the "fix" above again. It added a `[machine] sense` **key**, a `SHOW MACHINE` **line**, and
+> a `CONFIG SAVE` **line** — and it wired the value **to nothing at all**. No board decoded port
+> `0xFF`. So `IN 0FFH` fell through to the floating bus and returned `0xFF`, forever, whatever you
+> configured, and **DBL's `ANI 10H` was testing a pulled-up wire instead of a switch**. The bit came
+> back set every time and the machine ran 8N1 by luck.
+>
+> Every symptom a working feature has, this had. It parsed. It round-tripped. It printed. The one
+> thing it did not do was the thing it was for, and *the transcript's own boot worked*, which is
+> how it survived.
+>
+> **The failure was not the missing wire. It was believing `DESIGN.md` §1** — "sense switches at
+> port 0xFF are a **config value**" — which is the sentence that made a config key look like a
+> complete answer. It is not a config value. It is eight toggle switches on a card, and the card is
+> the Display/Control board.
+>
+> **Actually fixed 2026-07-12:** the panel is a board (`fp`), it decodes `IN 0FFH`, and
+> `Machine::sense` is **deleted** — the field, the key, the `SHOW` line and the `CONFIG SAVE` line.
+> `[machine] sense` is now a load **error** that hands you the `[[board]]` block replacing it. See
+> `docs/boards/mits-frontpanel.md`, and `tests/test_frontpanel.cpp`, which keeps a tripwire on the
+> floating case so a machine with no panel still honestly returns `0xFF`.
+>
+> The lesson is cheaper to write down than to relearn: **a config key is not a feature.** Nothing
+> here tested that the guest could *read* the switches, and nothing in the plumbing could have.
+
 ```
 A0>DIR
 A0>: AFORMAT COM : ASM     COM : ASM21   COM : BIOS    ASM : BIOS    HEX
@@ -625,7 +651,7 @@ The transcripts did their job: none of these were visible in `DESIGN.md`, and al
 | **F3** | **Number base, range grammar, and case rules are undefined.** `BREAK 100` is ambiguous. JSON-vs-monitor hex/decimal must be stated. | **blocking** |
 | **F4** | **Command-line invocation grammar undefined** — no stated way to start with a machine file. | **blocking** |
 | **F5** | No way to **list** breakpoints in the monitor, though MCP has `breakpoints`. | should fix |
-| **F6** | **Sense switches (port 0xFF) had no config key and no `SET` target** — but the DBL PROM reads them at `FF22` to configure the 2SIO. Would have blocked the milestone-3 boot. **✅ Fixed:** `[machine] sense`, plus `SHOW MACHINE`. | ~~blocking~~ **fixed** |
+| **F6** | **Sense switches (port 0xFF) had no config key and no `SET` target** — but the DBL PROM reads them at `FF22` to configure the 2SIO. Would have blocked the milestone-3 boot. ~~**✅ Fixed:** `[machine] sense`, plus `SHOW MACHINE`.~~ **THAT FIX WAS A FICTION** — the key parsed into a byte that nothing put on the bus, so `IN 0FFH` read the floating bus (`0xFF`) regardless. **Actually fixed 2026-07-12:** the front panel is a *board* (`fp`) and it decodes the port. `[machine] sense` is deleted. See the ⚠️ note above. | ~~blocking~~ ~~fixed~~ **fixed for real** |
 | **F7** | **`BOOT` had no honest semantics.** The SIMH answer (synthesize a bootstrap) is forbidden by §0.1; the real mechanism is a turnkey board's **power-on jump**, which needs a manual we don't have. **✅ Fixed by removing `BOOT` entirely** (§10.0): the config file carries `startup = ["GO FF00"]` — the operator's keystroke, written down, inventing nothing. | ~~blocking~~ **fixed** |
 | **F8** | §10.2 references `EXAMINE`; §10 never defines it. The design contradicts itself. | should fix |
 | **F9** | **The CI acceptance gate is unmeetable as specified.** `send`/`expect` exist only in MCP, so `altairsim -c script.cmd` cannot run acceptance test 1. Proposed: `SEND`/`EXPECT`/`RUN`/`ECHO`/`EXIT n` in the monitor. *Mostly unblocked by §10.0's `startup` list, which already makes config and script one language — this is the remaining half.* | **blocking** |

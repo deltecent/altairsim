@@ -22,13 +22,36 @@
 
 [machine]
 name    = "altmon"
-sense   = 00
 
 # It runs on its own the moment the machine is switched on -- because that is
 # what a monitor PROM in a turnkey machine DID. There is no BOOT command
 # (DESIGN.md 10.0): a config that should start says so with the operator's own
 # keystroke, written down.
 startup = ["RUN F800"]
+
+# EVERY [machine] KEY MUST COME BEFORE THE FIRST [[board]]. That is TOML, not a rule
+# of ours: once a table header opens, the keys under it belong to THAT table. Put the
+# panel above `startup` and `startup` becomes a property of the panel -- which is
+# exactly what happened here first, and the loader said so:
+#
+#     [[board]] fp0: fp0 has no property 'startup'. Known: sense data
+#
+# The board's own reflection caught it (DESIGN.md 5). It could not have been a silent
+# misconfiguration, because there is no place for an unknown key to go.
+
+# The front panel. ALTMON never reads it -- it is built with TKYDSBL = 0, so its
+# `in SENSESW` is not even assembled, and it hard-codes the 2SIO to 8N2 (ALTMON.ASM:
+# `mvi a,11h ;8N2`). The card is here because a real Altair HAS a front panel, not
+# because this ROM needs one.
+#
+# (If TKYDSBL were ever set to 1, that `IN 0FFH` would be read for its SIDE EFFECT
+# and not its value: it is how you tell an 88-TURNKEY board to switch its PROM out.
+# That board would SNOOP the read, not answer it -- see boards/mits-frontpanel.h --
+# so it would not contend with this card for the port.)
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
 
 [[board]]
 type     = "8080"

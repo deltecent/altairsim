@@ -24,7 +24,11 @@ enum class Cycle { MemRead, MemWrite, IoRead, IoWrite, IntAck };
 struct BusCycle {
     Cycle type = Cycle::MemRead;
     uint16_t addr = 0;  // memory address; for I/O the port is addr & 0xFF
-    uint8_t data = 0;   // valid on writes
+    // Valid on writes. On a READ it is zero while the cycle is in flight -- nobody
+    // has driven the bus yet when decodes() and read() are asked -- but it is
+    // BACK-FILLED with the byte that came back (a board's, or the floating bus's
+    // 0xFF) before snoop() and the observers see it. See Bus::settle().
+    uint8_t data = 0;
 
     // Set by the bus's first pass, from whatever board pulled PHANTOM* (pin 67).
     // A board strapped to honor it takes ITSELF off the bus for this cycle --

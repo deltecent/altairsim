@@ -1247,17 +1247,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "MACHINE") {
             out << "name      " << m_.name << "\n";
-            std::snprintf(buf, sizeof buf, "sense     0x%02X  (port FF, front-panel switches)",
-                          m_.sense);
-            out << buf << "\n";
             out << "startup   " << (m_.startup.empty() ? "(none)" : "") << "\n";
             for (const auto& s : m_.startup) out << "            " << s << "\n";
 
-            // THE CLOCK IS NOT PRINTED HERE, and there is no machine-level clock to
-            // print. The crystal is on the CPU card (DESIGN.md 3, 8), so the rate is
-            // that card's property and `SHOW cpu0` is where it lives. A backplane
-            // with no CPU in it has no clock rate at all -- which is not a missing
-            // value, it is the truth about the machine.
+            // NEITHER THE CLOCK NOR THE SENSE SWITCHES ARE PRINTED HERE, and there is
+            // no machine-level copy of either to print. The crystal is on the CPU card
+            // and the switches are on the front panel (DESIGN.md 3, 8), so both are
+            // those cards' properties: `SHOW cpu0` and `SHOW fp0` are where they live.
+            // A backplane with no CPU in it has no clock rate at all, and one with no
+            // panel in it has no switches -- which are not missing values. They are the
+            // truth about the machine.
             std::vector<Board*> cpus = m_.masters();
             if (cpus.empty()) {
                 out << "cpu       (none -- the monitor is the bus master, and that is a\n"
