@@ -47,10 +47,16 @@ struct Breakpoint {
     std::string describe() const;
 };
 
+// WHY IT CAME BACK. A run that just... returns, with no reason given, is a debugger
+// you cannot trust -- so every one of these has words, and the monitor says them.
 enum class StopReason {
     Steps,        // ran the count it was asked for
     Breakpoint,
     Halted,       // HLT, and nothing is going to interrupt it
+    Attn,         // the operator took the keyboard back (^E). NOT a fault, and not
+                  // a stop the guest can tell happened -- a bare RUN resumes it.
+    InputEnded,   // a SCRIPT's input ran out and the guest went quiet asking for
+                  // more. Nobody stopped it; there is just nobody left to type.
     Interrupted,  // the operator pressed ^C
     NoCpu,        // there is no processor in this machine, which is a real machine
 };

@@ -355,7 +355,13 @@ void test_cli() {
 
     std::ostringstream st;
     mon2.exec("STEP", st);
-    CHECK(st.str().compare(0, 4, "FF00") == 0, "so STEP executes AT FF00, not wherever it was");
+    // STEP traces DDT-style: the machine as it stands, WITH the instruction it is
+    // about to run. So the first line carries P=FF00 and the INR A that lives there.
+    CHECK(st.str().find("P=FF00") != std::string::npos,
+          "so STEP executes AT FF00, not wherever it was");
+    CHECK(st.str().find("INR A") != std::string::npos,
+          "and the trace names the instruction it is about to run");
+    CHECK(c->pc() == 0xFF01, "and one instruction later the PC has moved");
 
     // EXAMINE NEXT drags the PC with it. The panel's counter IS the cursor -- it
     // has no other, which is why the switch is wired to it in the first place.

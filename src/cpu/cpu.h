@@ -32,12 +32,36 @@ namespace altair {
 // This is the same bet that already paid for SET/SHOW/TOML/MCP. There is one
 // schema and no second copy to drift.
 // ---------------------------------------------------------------------------
+// HOW a register wants to APPEAR. The monitor prints a one-line, DDT/SID-style
+// status at every stop:
+//
+//     C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+//
+// The LAYOUT of that line -- which registers pair up, which ones are lamps, what
+// each is called, and in what order -- is the CORE's to describe, because it is
+// genuinely different for a Z80 or a 6502. But it is the MONITOR's to render, and
+// the monitor still knows nothing: it reads `show`, `label` and `bits`, and that
+// is all. Reflection holds (3.0.3); we did not hand the core a printf.
+enum class RegShow {
+    Flag,   // a lamp: LABEL then one digit, no spaces, clustered at the FRONT
+    Field,  // LABEL=hex, printed in the order the core listed it
+    Off,    // reachable BY NAME (SET REG, breakpoints, MCP) but not on the line
+};
+
 struct RegDef {
-    std::string name;   // "A", "PC", "SP", "F"
-    int bits = 8;       // 8 or 16 -- decides the width SHOW prints and what fits
+    // NAME is identity -- what you TYPE, and what SET REG and a breakpoint
+    // condition look up. LABEL is presentation -- what the status line CALLS it.
+    // Keeping them apart is what lets the 8080 print DDT's `M` for the sign flag
+    // without `SET REG M=1` quietly becoming a thing.
+    std::string name;   // "A", "PC", "SP", "F", "HL", "CY"
+    int bits = 8;       // 1, 8 or 16 -- decides the width SHOW prints and what fits
+    std::string label;  // what the status line calls it; empty -> name
+    RegShow show = RegShow::Field;
     std::string help;   // "accumulator", "program counter"
     std::function<uint32_t()> get;
     std::function<void(uint32_t)> set;
+
+    const std::string& shown() const { return label.empty() ? name : label; }
 };
 
 class CpuCore {

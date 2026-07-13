@@ -100,6 +100,10 @@ private:
     // the console's input, and only when the memory map happened to be unlucky.
     uint8_t disasmLine(uint32_t addr, const class Disassembler& d, std::ostream& out);
 
+    // Decode ONE instruction, no printing -- the status line wants the mnemonic
+    // and nothing else. Peeks, for the same reason.
+    struct Insn insnAt(uint32_t addr, const class Disassembler& d);
+
     // The active core, or null with a message already printed. Every CPU command
     // starts here, and none of them assume the machine has a processor -- because
     // a backplane without one is a machine you can build and the one 1a ran.

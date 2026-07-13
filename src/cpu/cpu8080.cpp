@@ -242,35 +242,70 @@ void Cpu8080::daa() {
 // The flags are here as 1-bit registers, which is not a cute trick: it is what
 // makes `SET REG CY=1` work, and what will make `BREAK 100 IF Z==1` work, without
 // the monitor ever learning what a flag is.
+//
+// THE ORDER AND THE LABELS ARE THE DDT/SID STATUS LINE (RegShow, cpu.h):
+//
+//     C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+//
+// which is why the flags come first and PC comes last -- P= and the instruction
+// are the pair your eye actually reads together, so nothing is allowed between
+// them. IE is one bit but it is a FIELD, not a lamp: DDT had no letter for it
+// (its `I` is the INTERDIGIT carry, our AC), and interrupt state is too load-bearing
+// to leave off a machine with a VI/RTC in it.
+//
+// TWO LABEL COLLISIONS, AND BOTH ARE DDT'S OWN:
+//   - `S=` on the line is the STACK POINTER, while the SIGN flag prints as `M`
+//     (minus). `SET REG S=1` is still the sign flag -- name is identity, label is
+//     only paint.
+//   - `B=` on the line is the BC PAIR, while `SET REG B=3F` is still the 8-bit half.
+//
+// The pairs are not decoration for the display: they mean `SET REG HL=1234` works,
+// and so will `BREAK 100 IF HL==8000`.
 // ---------------------------------------------------------------------------
 std::vector<RegDef> Cpu8080::registers() {
-    auto r8 = [](const char* n, const char* help, uint8_t* p) {
-        return RegDef{n, 8, help, [p] { return (uint32_t)*p; },
+    auto flag = [](const char* n, const char* lbl, const char* help, bool* p) {
+        return RegDef{n, 1, lbl, RegShow::Flag, help, [p] { return (uint32_t)(*p ? 1 : 0); },
+                      [p](uint32_t v) { *p = v != 0; }};
+    };
+    // The halves stay real registers -- you can still read and set every one of
+    // them -- they just do not appear on a line that has the pair.
+    auto half = [](const char* n, uint8_t* p) {
+        return RegDef{n, 8, "", RegShow::Off, "", [p] { return (uint32_t)*p; },
                       [p](uint32_t v) { *p = (uint8_t)v; }};
     };
-    auto flag = [](const char* n, const char* help, bool* p) {
-        return RegDef{n, 1, help, [p] { return (uint32_t)(*p ? 1 : 0); },
-                      [p](uint32_t v) { *p = v != 0; }};
+    auto pair = [](const char* n, const char* lbl, const char* help, uint8_t* hi, uint8_t* lo) {
+        return RegDef{n, 16, lbl, RegShow::Field, help,
+                      [hi, lo] { return (uint32_t)((*hi << 8) | *lo); },
+                      [hi, lo](uint32_t v) {
+                          *hi = (uint8_t)(v >> 8);
+                          *lo = (uint8_t)v;
+                      }};
     };
 
     return {
-        r8("A", "accumulator", &a_),
-        r8("B", "", &b_), r8("C", "", &c_),
-        r8("D", "", &d_), r8("E", "", &e_),
-        r8("H", "", &h_), r8("L", "", &l_),
-        {"SP", 16, "stack pointer", [this] { return (uint32_t)sp_; },
+        flag("CY", "C", "carry", &cy_),
+        flag("Z", "Z", "zero", &z_),
+        flag("S", "M", "sign -- minus", &s_),
+        flag("P", "E", "parity -- EVEN parity", &p_),
+        flag("AC", "I", "auxiliary (half) carry -- interdigit", &ac_),
+
+        {"A", 8, "", RegShow::Field, "accumulator", [this] { return (uint32_t)a_; },
+         [this](uint32_t v) { a_ = (uint8_t)v; }},
+        pair("BC", "B", "the B,C pair", &b_, &c_),
+        pair("DE", "D", "the D,E pair", &d_, &e_),
+        pair("HL", "H", "the H,L pair", &h_, &l_),
+        {"SP", 16, "S", RegShow::Field, "stack pointer", [this] { return (uint32_t)sp_; },
          [this](uint32_t v) { sp_ = (uint16_t)v; }},
-        {"PC", 16, "program counter", [this] { return (uint32_t)pc_; },
+        {"IE", 1, "IE", RegShow::Field, "interrupts enabled (INTE)",
+         [this] { return (uint32_t)(ie_ ? 1 : 0); }, [this](uint32_t v) { ie_ = v != 0; }},
+        {"PC", 16, "P", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
          [this](uint32_t v) { pc_ = (uint16_t)v; }},
-        {"F", 8, "flags: S Z 0 AC 0 P 1 CY", [this] { return (uint32_t)psw(); },
+
+        half("B", &b_), half("C", &c_),
+        half("D", &d_), half("E", &e_),
+        half("H", &h_), half("L", &l_),
+        {"F", 8, "", RegShow::Off, "flags: S Z 0 AC 0 P 1 CY", [this] { return (uint32_t)psw(); },
          [this](uint32_t v) { setPsw((uint8_t)v); }},
-        flag("S", "sign", &s_),
-        flag("Z", "zero", &z_),
-        flag("AC", "auxiliary (half) carry", &ac_),
-        flag("P", "parity -- EVEN parity", &p_),
-        flag("CY", "carry", &cy_),
-        {"IE", 1, "interrupts enabled (INTE)", [this] { return (uint32_t)(ie_ ? 1 : 0); },
-         [this](uint32_t v) { ie_ = v != 0; }},
     };
 }
 

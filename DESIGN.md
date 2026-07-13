@@ -193,6 +193,30 @@ struct RegDef { const char* name; int bits; /* get, set */ };
 
 Then `REGS`, `SET REG A=3F`, breakpoint conditions (`BREAK 100 IF A==0`), `SNAPSHOT`, and the MCP schema **all work for a Z80 or a 6502 the day it lands, with no monitor change.** It is the same bet that already paid for `SET`/`SHOW`/TOML/MCP: one schema, no second copy to drift.
 
+#### 3.0.3.1 The status line: the core describes it, the monitor renders it
+
+**Every stop prints one line, and it is DDT's** (Patrick, 2026-07-13) — because three lines is what you read when what you wanted was to *glance*:
+
+```
+C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+```
+
+That layout is **not** generic — which registers pair up, which are lamps, what each is *called*, and in what order are all real differences between an 8080 and a 6502. But it is also **not** a formatter handed to the core: that would have put a `printf` where the reflection layer is, and every new ISA would owe the monitor a second copy of its register file. So `RegDef` grew a display contract instead, and the split is:
+
+| | |
+|---|---|
+| **`name`** | **identity.** What you TYPE — `SET REG`, `BREAK … IF`, MCP. |
+| **`label`** | **presentation.** What the status line CALLS it. |
+| **`show`** | `Flag` (a lamp: label + one digit, no spaces, clustered at the front), `Field` (`LABEL=hex`, in the order the core listed it), or `Off` (reachable by name, but not on the line). |
+
+The 8080 uses that to speak DDT exactly: the sign flag is *named* `S` and *labelled* `M` (minus); parity is `P` and prints as `E` (even); the aux carry is `AC` and prints as `I` (interdigit). `IE` is one bit but it is a **`Field`**, not a lamp — DDT had no letter for it, and interrupt state is too load-bearing to omit on a machine with a VI/RTC in it. **PC is last, and nothing may come between `P=` and the instruction**: they are the pair your eye reads together.
+
+Two label collisions are real, and both are DDT's own: `S=` on the line is the *stack pointer* while the sign flag prints as `M`; `B=` on the line is the *BC pair* while `SET REG B=3F` is still the 8-bit half. Name is identity, label is only paint — so neither is ambiguous to the machine, only to a reader, and DDT taught that reader forty years ago.
+
+**The pairs are not decoration.** `BC`/`DE`/`HL` are `RegDef`s in their own right, over the same bytes as the halves — so `SET REG HL=BEEF` followed by `SET REG L=01` gives `H=BE01`, and `BREAK 100 IF HL==8000` will work with no new machinery.
+
+`bits` no longer means "flag": the renderer keys on `show`, never on width. A register narrower than a nibble prints as a number, which is what makes `IE=1` a field rather than a hex digit.
+
 **Breakpoints and tracing are NOT CPU features.** If a core owned them, every core would reimplement them and they would differ in subtle ways. They don't belong there:
 
 - **`BREAK IO`, `BREAK MEM R|W`, `TRACE`, `HISTORY`** are questions about **bus cycles**, and the bus already broadcasts every cycle to every board (`snoop()`, §4.2.2). The debugger watches that same stream. **CPU-agnostic, and the machinery already exists.**
@@ -1112,6 +1136,25 @@ DEBUG
   BREAK <addr> [IF <expr>] | BREAK IO <port> | BREAK MEM R|W <range> | NOBREAK
   REGS | SET REG <r>=<v>            Generic: registers are reflection (§3.0.3), so a
                                     Z80 works the day it lands with no monitor change.
+
+  EVERY STOP PRINTS WHY, AND THEN ONE LINE (§3.0.3.1). STEP traces in the same line,
+  DDT-style: the machine as it stands, WITH the instruction it is about to run.
+
+    ATTN -- the machine is still at 0020. RUN resumes.
+    C0Z0M0E0I0 A=00 B=0000 D=0000 H=0000 S=0000 IE=0 P=0020  JMP 0020
+
+  The reasons are ATTN (you took the keyboard back), a breakpoint (which one, and of
+  what kind), HLT that nothing can interrupt, ^C, a SCRIPT'S INPUT ENDING, and no CPU
+  in the machine. Six different things, and they get six different words -- the monitor
+  used to GUESS at two of them from whether a console happened to be attached, and a
+  guess is what you write when the reason was never carried in the first place.
+
+  A HALTED 8080 DOES NOT RUN. It leaves HALT for an interrupt or a RESET, and loading
+  the PC is neither -- so `RUN <addr>` on a halted machine says HLT again, correctly,
+  and the fix is the RESET a human would throw. (This is what the honest stop reason
+  caught first, in our OWN test: tests/acceptance/cli.exp had been "testing" ATTN
+  against a machine that was halted the whole time, and matching the prompt that came
+  back with the HLT.)
   TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]   HISTORY [n]
   SNAPSHOT <file> | RESTORE <file> | RECORD <file> | REPLAY <file>
   SET BUS CONTENTION=WARN|ERROR|SILENT

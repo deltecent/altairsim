@@ -98,6 +98,16 @@ expect {
 # This is the one the scripted harness CANNOT test: under a pipe, the console reads stdin
 # eagerly and acts on ^E the instant it appears in the buffer -- so a keystroke FILE fires
 # it before the guest has even booted. On a tty it arrives when a human presses it.
+#
+# RESET FIRST, AND IT IS NOT A RITUAL. Section 5 ended on a HLT, and a halted 8080 leaves
+# HALT for exactly two things: an interrupt, and RESET. Loading the PC is not one of them.
+# So `RUN 20` on the halted machine came straight back with "HLT at 0020" WITHOUT RUNNING,
+# and this section used to match the prompt that came back with it and declare ATTN tested.
+# It was a false pass of the exact kind this file warns about at the top: the guest was
+# never running, so ^E was never actually taken from anybody. (Found 2026-07-13, by making
+# the machine say WHY it stopped -- "HLT" where the test assumed "ATTN".)
+send "RESET\r"
+expect -ex "altairsim> "
 send "DEPOSIT 20 C3 20 00\r"
 expect -ex "altairsim> "
 send "RUN 20\r"
@@ -106,15 +116,25 @@ expect {
     timeout       { fail "RUN 20 never started" }
 }
 send "\005"
+# EVERY STOP SAYS WHY, and this one's reason is ATTN. Match the WORD before the
+# prompt, not the prompt alone -- a prompt would come back whatever the machine
+# claimed had happened, which is exactly the false pass this file warns about.
 expect {
-    -ex "altairsim> " { ok "ATTN (^E) took the console back from a running guest" }
+    -re {ATTN -- the machine is still at 002[0-2]\.} {
+        ok "ATTN (^E) took the console back, and the machine SAID so"
+    }
+    timeout { fail "^E did not return to the monitor, or it did not say why it stopped" }
+}
+expect {
+    -ex "altairsim> " { ok "and the monitor is taking commands again" }
     timeout           { fail "^E did not return to the monitor" }
 }
 
 # ATTN IS NOT A STOP. The machine is exactly where we left it -- still looping at 0020.
+# The status line is DDT's, so the program counter is P=, not PC=.
 send "REGS\r"
 expect {
-    -re {PC=002[0-2]} { ok "ATTN did not stop the machine -- it is still in its loop" }
+    -re {P=002[0-2] } { ok "ATTN did not stop the machine -- it is still in its loop" }
     timeout           { fail "the machine was stopped by ^E, or the PC moved somewhere odd" }
 }
 expect -ex "altairsim> "

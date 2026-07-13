@@ -749,7 +749,7 @@ void Monitor::runMachine(std::ostream& out) {
         // and it is the same line whether a 2SIO is reading or the backplane is empty.
         if (watchKeys) con.poll();
         if (con.takeAttn()) {
-            r.why = StopReason::Interrupted;
+            r.why = StopReason::Attn;
             break;
         }
         if (r.why != StopReason::Steps) break;  // breakpoint, HLT, ^C
@@ -784,7 +784,7 @@ void Monitor::runMachine(std::ostream& out) {
             lastWritten = w;
             lastStarved = s;
             if (quiet >= 3) {
-                r.why = StopReason::Interrupted;
+                r.why = StopReason::InputEnded;
                 break;
             }
         }
@@ -887,15 +887,15 @@ void Monitor::runMachine(std::ostream& out) {
     if (takeTty) con.leaveRaw();
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
-    // ATTN IS NOT A STOP. The machine is exactly where you left it and a bare RUN
-    // resumes it. Say so, because "Interrupted" on its own reads like something
-    // went wrong -- and here nothing did; you asked for the keyboard back.
-    if (r.why == StopReason::Interrupted && anyConsole) {
-        std::snprintf(buf, sizeof buf, "[monitor -- the machine is still at %04X. RUN resumes]",
-                      r.pc);
-        out << buf << "\n";
-    } else {
-        reportStop(r, m_.debug, out);
+    // EVERY STOP SAYS WHY, and there is now exactly one path that says it. This
+    // used to guess -- `Interrupted && anyConsole` meant "probably ATTN" -- and a
+    // guess is what you write when the reason was never carried. Now it is: ATTN,
+    // a script's input running out, and a real ^C are three different words.
+    reportStop(r, m_.debug, out);
+
+    // The tally is about WORK DONE, and neither taking the keyboard back nor
+    // running out of script is a fault worth counting instructions over.
+    if (r.why != StopReason::Attn && r.why != StopReason::InputEnded) {
         std::snprintf(buf, sizeof buf, "%llu instructions, %llu T-states.",
                       (unsigned long long)r.steps, (unsigned long long)r.tStates);
         out << buf << "\n";
@@ -1280,11 +1280,17 @@ CpuCore* Monitor::needCpu(std::ostream& err) {
     return c;
 }
 
-uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& out) {
-    // PEEK, never read: DISASM must not consume a byte from a UART that happens to
-    // live in the range you asked about.
+// PEEK, never read: a disassembly must not consume a byte from a UART that happens
+// to live in the range you asked about (DESIGN.md 10.2). The status line goes
+// through here too -- and IT would be the one to eat the console's own input.
+Insn Monitor::insnAt(uint32_t at, const Disassembler& d) {
     auto peek = [this](uint16_t a) { return m_.bus.peek(a); };
-    Insn in = d.at((uint16_t)at, peek);
+    return d.at((uint16_t)at, peek);
+}
+
+uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& out) {
+    auto peek = [this](uint16_t a) { return m_.bus.peek(a); };
+    Insn in = insnAt(at, d);
 
     std::string bytes;
     char b[8];
@@ -1300,27 +1306,50 @@ uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& ou
     return in.len;
 }
 
+// ONE LINE, DDT/SID style -- because three lines is what you read when you wanted
+// to glance:
+//
+//     C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+//
+// Still generic over registers(). The core said which registers are lamps, what to
+// call them, and in what order (RegShow, cpu.h); this code has never heard of an
+// accumulator, and a Z80 or a 6502 gets its own line here on the day it lands.
+//
+// No address and no hex bytes on the instruction -- P= just told you the address,
+// and the bytes are what DISASM is for.
 void Monitor::showRegs(std::ostream& out) {
     CpuCore* c = m_.cpu();
     if (!c) return;
 
-    // Generic over registers(). The wide registers on one line, the 1-bit flags on
-    // the next -- and the ONLY thing this code knows is the width, which the core
-    // told it. It has never heard of an accumulator.
-    std::string wide, flags;
+    std::string flags, fields;
     char buf[32];
     for (const RegDef& r : c->registers()) {
-        if (r.bits > 1) {
-            std::snprintf(buf, sizeof buf, "%s=%0*X ", r.name.c_str(), r.bits / 4, r.get());
-            wide += buf;
-        } else {
-            std::snprintf(buf, sizeof buf, "%s=%u ", r.name.c_str(), r.get());
+        switch (r.show) {
+        case RegShow::Off:
+            break;
+        case RegShow::Flag:
+            std::snprintf(buf, sizeof buf, "%s%u", r.shown().c_str(), r.get() ? 1u : 0u);
             flags += buf;
+            break;
+        case RegShow::Field:
+            // A register narrower than a nibble has no hex digit to print; say the
+            // number. That is IE, and anything like it a later core brings.
+            if (r.bits < 4)
+                std::snprintf(buf, sizeof buf, "%s=%u ", r.shown().c_str(), r.get());
+            else
+                std::snprintf(buf, sizeof buf, "%s=%0*X ", r.shown().c_str(), r.bits / 4,
+                              r.get());
+            fields += buf;
+            break;
         }
     }
-    out << wide << "\n" << flags << "\n";
 
-    if (const Disassembler* d = disassemblerFor(c->isa())) disasmLine(c->pc(), *d, out);
+    out << flags;
+    if (!flags.empty() && !fields.empty()) out << " ";
+    out << fields;
+
+    if (const Disassembler* d = disassemblerFor(c->isa())) out << " " << insnAt(c->pc(), *d).text;
+    out << "\n";
 }
 
 // What stopped it, said out loud. A run that just... comes back, with no reason
@@ -1341,6 +1370,18 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         std::snprintf(buf, sizeof buf,
                       "HLT at %04X, and nothing can interrupt it -- no board is pulling pINT.",
                       r.pc);
+        out << buf << "\n";
+        break;
+    case StopReason::Attn:
+        // ATTN IS NOT A FAULT. You asked for the keyboard back, and the machine is
+        // exactly where you left it -- so say that, and say how to go on.
+        std::snprintf(buf, sizeof buf, "ATTN -- the machine is still at %04X. RUN resumes.",
+                      r.pc);
+        out << buf << "\n";
+        break;
+    case StopReason::InputEnded:
+        std::snprintf(buf, sizeof buf,
+                      "input ended -- the machine is still at %04X. RUN resumes.", r.pc);
         out << buf << "\n";
         break;
     case StopReason::Interrupted:
@@ -1755,7 +1796,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 showRegs(out);
                 return true;
             }
-            out << upper(k) << ": no such register. REGS lists them.\n";
+            // Name them HERE. The status line shows a DDT layout, not a catalogue --
+            // the halves and the packed flag byte are settable but not on it, so
+            // "REGS lists them" would have been a lie the moment we compacted it.
+            std::string names;
+            for (const RegDef& r : c->registers()) {
+                if (!names.empty()) names += " ";
+                names += r.name;
+            }
+            out << upper(k) << ": no such register. This CPU has: " << names << "\n";
             failed_ = true;
             return true;
         }
@@ -2538,7 +2587,6 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         uint32_t n = 1;
         if (a.size() >= 2 && !count(a[1], n, out)) return true;  // a count: DECIMAL
 
-        const Disassembler* d = disassemblerFor(c->isa());
         SigintGuard guard;
 
         // Printing every instruction is what STEP is FOR -- watching them go by is
@@ -2550,7 +2598,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         RunResult total;
         for (uint32_t i = 0; i < n; ++i) {
-            if (echo && d) disasmLine(c->pc(), *d, out);  // what it is ABOUT to do
+            // The trace is DDT's: one line per instruction, the machine as it stands
+            // WITH the instruction it is about to run. The final line after the loop
+            // is what that last instruction did.
+            if (echo) showRegs(out);
             RunResult r = m_.debug.run(1);
             total.steps += r.steps;
             total.tStates += r.tStates;
