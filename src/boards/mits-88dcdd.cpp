@@ -154,6 +154,41 @@ DcddBoard::Position DcddBoard::where() const {
 // ---------------------------------------------------------------------------
 // Read.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// THE READ HEAD DOES NOT WAIT TO BE ASKED.
+//
+// The card's shift register clocks bytes off the medium continuously, whether or not
+// the guest is looking -- the same fact as rotation, one level down. So the slot under
+// the head is loaded HERE, from every access, and not as a side effect of reading the
+// sector port.
+//
+// It used to be exactly that side effect, and CP/M booted anyway, because its BIOS
+// always polls the sector port before it touches the data port. The bug was hiding
+// behind a habit of the software: a guest that read the data port across a sector
+// boundary without polling first got STALE BYTES FROM THE PREVIOUS SECTOR, and one
+// that never polled at all got an empty buffer. tests/test_dcdd.cpp caught it; the
+// boot could not, and never would have.
+// ---------------------------------------------------------------------------
+void DcddBoard::syncSector(const Position& pos) {
+    Drive* d = selected();
+    if (!d || !d->img || !d->loaded || !pos.spinning) return;
+    if (pos.sector == bufSector_) return;
+
+    flushWrite();  // the position we are leaving is the one the pending write needs
+
+    bufSector_ = pos.sector;
+    readPos_   = 0;
+    std::memset(buf_, 0, sizeof buf_);
+
+    size_t n = sizeof buf_;
+    if (!d->img->readSector(d->track, 0, pos.sector, buf_, &n)) {
+        char m[128];
+        std::snprintf(m, sizeof m, "%s: read failed at track %d sector %d", id.c_str(), d->track,
+                      pos.sector);
+        say(m);
+    }
+}
+
 uint8_t DcddBoard::read(const BusCycle& c) {
     uint8_t p = (uint8_t)(c.port() - port_);
     Drive*  d = selected();
@@ -163,6 +198,7 @@ uint8_t DcddBoard::read(const BusCycle& c) {
         if (!d) return 0xFF;  // ~0x00: every flag false. Which is the truth.
 
         Position pos = where();
+        syncSector(pos);
 
         st_.dsken  = true;
         st_.track0 = (d->track == 0);
@@ -207,24 +243,7 @@ uint8_t DcddBoard::read(const BusCycle& c) {
         if (!d || !d->loaded) return 0xFF;  // "head not loaded" -- nothing is true
         Position pos = where();
         if (!pos.spinning) return 0xFF;
-
-        // A new sector under the head means a new slot to serve. Load it once, here,
-        // and reset how much of it the guest has taken.
-        if (pos.sector != bufSector_) {
-            flushWrite();  // the position we are about to leave is the one it needs
-            bufSector_ = pos.sector;
-            readPos_   = 0;
-            std::memset(buf_, 0, sizeof buf_);
-            if (d->img) {
-                size_t n = sizeof buf_;
-                if (!d->img->readSector(d->track, 0, pos.sector, buf_, &n)) {
-                    char m[128];
-                    std::snprintf(m, sizeof m, "%s: read failed at track %d sector %d",
-                                  id.c_str(), d->track, pos.sector);
-                    say(m);
-                }
-            }
-        }
+        syncSector(pos);
 
         uint8_t v = 0xC0;                                   // bits 7,6 read as 1
         v |= (uint8_t)((pos.sector << 1) & 0x3E);           // sector in bits 5..1
@@ -233,7 +252,9 @@ uint8_t DcddBoard::read(const BusCycle& c) {
     }
 
     // ---- base+2: DATA. ----
-    if (!d || !d->loaded || readPos_ >= kDcddSectorBytes) return 0xFF;
+    if (!d || !d->loaded) return 0xFF;
+    syncSector(where());  // the head has kept turning since you last looked
+    if (readPos_ >= kDcddSectorBytes) return 0xFF;
     return buf_[readPos_++];
 }
 

@@ -136,6 +136,12 @@ private:
     };
     Position where() const;
 
+    // Load the slot now under the head, if it is not the one we are holding. Called
+    // from EVERY port read: the read head clocks off the medium continuously and does
+    // not wait to be asked. (It used to hang off the sector port alone, which worked
+    // only because the CP/M BIOS happens to poll that port first.)
+    void syncSector(const Position&);
+
     // The card's one-shots are RC networks, so they are measured in MICROSECONDS and
     // know nothing about the CPU. A 4 MHz machine gets twice as many instructions
     // inside the same 30 us sector-true window; the window does not grow.

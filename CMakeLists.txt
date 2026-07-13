@@ -203,7 +203,8 @@ add_executable(altair_tests
   tests/test_88sio.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
-  tests/test_spindle.cpp)
+  tests/test_spindle.cpp
+  tests/test_dcdd.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 

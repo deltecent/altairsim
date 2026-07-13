@@ -36,3 +36,4 @@ void test_88sio();
 void test_lines();
 void test_wd17xx();
 void test_spindle();
+void test_dcdd();

@@ -44,6 +44,7 @@ int main() {
     test_lines();
     test_wd17xx();
     test_spindle();
+    test_dcdd();
 
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;
