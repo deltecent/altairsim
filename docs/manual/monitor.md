@@ -1,9 +1,19 @@
 # The monitor
 
-The `altairsim>` prompt is **the monitor**. It is not a shell and it is not a debugger menu —
-it is you, standing in front of the machine with your hands on the switches. Everything the
-front panel of a real Altair could do, the monitor can do, and it can do a good deal the
-front panel could not.
+The `altairsim>` prompt is **the monitor**: the front panel of the machine, and its debugger,
+which here are the same thing. Everything the front panel of a real Altair could do, the
+monitor can do — and a great deal it could not. It breakpoints, it single-steps, it
+disassembles, and it will show you the bus itself: who decodes what, who is pulling which
+interrupt line, and where two cards are fighting over an address. That is the **debugging**
+chapter, and it is most of why this program exists.
+
+What it is not is a *menu* — a layer sitting between you and the machine, offering a fixed set
+of things it is prepared to let you inspect. There is no debug mode to enter and nothing is
+watching from the outside. A breakpoint is **the machine stopping**, not a script noticing that
+it should have. `IN` and `OUT` run **real bus cycles**, with every side effect a real one has —
+read a UART's data port at this prompt and you have taken the byte, exactly as the guest would
+have. The panel and the debugger are one object because on an Altair they were one object: a
+man at the switches, reading lamps.
 
 The machine does not have to be running for the monitor to work. Most of what follows —
 examining memory, running a bus cycle, fitting a card — works on a machine with the power on
