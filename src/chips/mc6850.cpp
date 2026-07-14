@@ -568,7 +568,11 @@ std::vector<Property> Mc6850::properties(const EndpointResolver& resolve) {
     {
         Property x;
         x.name    = "baud";
-        x.help    = "Line rate. A JUMPER on the real card -- software cannot change it";
+        // NO ZERO, AND NO FREE-RUNNING SETTING. The rate is the card's only flow control,
+        // and the guest can time it -- see baud_ in the header for what a 0 does to MITS
+        // PS2. `min = 50` is the whole of the enforcement.
+        x.help    = "Line rate. A JUMPER on the real card -- software cannot change it, "
+                    "and there is no free-running setting: the rate paces the line";
         x.kind    = Kind::Int;
         x.radix   = 10;  // never on the wire: decimal (DESIGN.md 10.0.1)
         x.min     = 50;

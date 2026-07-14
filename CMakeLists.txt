@@ -483,6 +483,28 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # THE 88-2SIO, DRIVEN BY REAL PERIOD SOFTWARE -- polled AND interrupt-driven.
+  #
+  # Two of Mike Douglas's 2SIO test programs (tests/programs/2sio, see PROVENANCE.md), a
+  # dozen bytes each. ECHO polls; ECHOINT enables receive interrupts and then does nothing
+  # but NOP -- so every character it echoes has to travel the whole chain, with the guest
+  # never touching a register. If the receiver only advanced when a register was read,
+  # ECHOINT would echo nothing for ever.
+  #
+  # The script carries its OWN negative control (ECHOINT with the jumper out must go deaf),
+  # so this one test cannot pass for the wrong reason and needs no WILL_FAIL twin.
+  #
+  # It is FAST -- no tape, no disk, no monitor -- which is the point: `ps2int` covers the
+  # same wire, but it takes a cassette boot and 2.5K of MITS monitor to say so.
+  add_test(NAME acceptance-2sio-echo
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/2sio-echo.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-2sio-echo PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # THE 88-MDS: CP/M 2.2b off a 5.25" Altair minidisk.
   #
   # IT HAS TO BE AN EXPECT TEST. CP/M's DIR polls the console between directory entries and

@@ -1,0 +1,37 @@
+
+
+                ; 2SIO echo test using receive interrupts
+                
+ 0000           	org	0
+ 0000 310001    	lxi	sp,0100h	;init stack pointer
+ 0003 3E03      	mvi	a,03h		;reset the ACIA
+ 0005 D310      	out	010h
+ 0007 3E95      	mvi	a,095h		;8n1 rcv ints on
+ 0009 D310      	out	010h
+ 000B FB        	ei			;enable 8080 interrupts
+                
+                ; The loop below represents "normal" processing a program may
+                ;    be doing.
+                
+ 000C 00        loop	nop
+ 000D 00        	nop
+ 000E 00        	nop
+ 000F C30C00    	jmp	loop
+                
+                ; Interrupt service routine for RST7 is at 038h. This routine
+                ;    saves the accumulator and PSW, then echoes the character received.
+                ;    If this interrupt is shared, then the commented statements to
+                ;    check for a character would be included and used to branch to
+                ;    a 2nd device to check. 
+                
+ 0038           	org	038h		;RST7 entry address
+ 0038 F5        	push	a		;save A and status flags
+                ;	in	010h		;verify a new character is present
+                ;	rrc			;lsb has RDRF flag
+                ;	jnc	nextDev		;no character, try next device
+ 0039 DB11      	in	011h		;read the character
+ 003B D311      	out	011h		;echo it
+ 003D F1        	pop	a		;restore A and status flags
+ 003E FB        	ei			;re-enable 8080 interrupts
+ 003F C9        	ret
+                

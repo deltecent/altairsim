@@ -239,7 +239,35 @@ private:
     // is the FRAME the guest programmed -- see programLine().
     std::unique_ptr<ByteStream> stream_;
 
-    long long baud_ = 9600;  // a JUMPER on the real card. Software cannot change it.
+    // A JUMPER on the real card. Software cannot change it.
+    //
+    // AND IT IS NOT THE ANALOGUE OF clock_hz. THERE IS NO baud = 0. (Patrick asked for one
+    // on 2026-07-14 -- "the default should be full speed" -- and the request is DECLINED on
+    // evidence, which is worth more than this paragraph is worth reading.)
+    //
+    //   - `clock_hz = 0` is INVISIBLE TO THE GUEST. It changes only the mapping from
+    //     emulated T-states to wall-clock seconds; nothing inside the machine can observe
+    //     it. That is exactly why flat out is a safe default (clock.h).
+    //
+    //   - `baud` is a DURATION IN T-STATES -- INSIDE emulated time -- so the guest can and
+    //     does observe it. TDRE timing is one way (the Mike Douglas CP/M BIOS MEASURES it to
+    //     infer the line speed; see txFreeAt_). The INTER-CHARACTER GAP ON RECEIVE is the
+    //     other, and it is the one that bites: the 6850 has no handshaking, so THE BAUD RATE
+    //     IS THE ONLY FLOW CONTROL THIS CARD HAS. In this simulator it is specifically what
+    //     turns a host PASTE -- ten bytes appearing in the pty at once -- into a paced serial
+    //     stream. At baud = 0 a character occupies the line for ZERO T-states, so the next
+    //     byte is already in RDRF at the same T-state the guest read the last one, and the
+    //     guest's FOREGROUND NEVER RUNS AT ALL.
+    //
+    // MITS PS2 is the proof, and it is not a theory: its ISR (08DB) hands characters to its
+    // foreground (090C) through a ONE-BYTE mailbox at 0966 and a semaphore at 0967, and that
+    // handoff requires the foreground to run BETWEEN characters. At baud = 0 it gets zero
+    // instructions, nine of the ten characters of a typed line are overwritten in the mailbox,
+    // and the monitor spins on the semaphore for ever. `baud = 0` is not a 2SIO running flat
+    // out; it is an INFINITELY FAST SERIAL LINE, which never existed. DESIGN.md 0.1.
+    //
+    // The property refuses it (min = 50). Do not "relax" that to make a default look tidy.
+    long long baud_ = 9600;
 
     uint8_t control_ = 0;
     uint8_t rxData_  = 0;

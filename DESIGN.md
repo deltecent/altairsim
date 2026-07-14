@@ -709,6 +709,19 @@ The plan called for two — a card baud and an independent endpoint baud. **That
 
 The emulated character timing **stays**: it is the *same* duration the real port takes, not an extra one, and it must stay because the guest can **measure** it (the Mike Douglas BIOS times TDRE to infer the line speed).
 
+#### …and there is NO `baud = 0`. It is not the analogue of `clock_hz = 0` (2026-07-14)
+
+`clock_hz = 0` is free-running and is the default (§8), so `baud = 0` looks like the obvious next tidy-up. **It is not the same kind of number, and the request was declined on evidence.**
+
+- **`clock_hz` is invisible to the guest.** It changes only the mapping from emulated T-states onto wall-clock seconds. Nothing inside the machine can observe it — which is exactly what makes flat out a safe default.
+- **`baud` is a duration in T-states** — *inside* emulated time — so the guest **can and does** observe it. TDRE timing is one way (above). The **inter-character gap on receive** is the other, and it is the one that bites: the 6850 has **no handshaking**, so **the baud rate is the only flow control the card has**. In this simulator it is precisely what turns a host *paste* — ten bytes appearing in the pty at once — into a **paced serial stream**.
+
+At `baud = 0` a character occupies the line for **zero T-states**, so the next byte is already in RDRF at the same T-state the guest read the last one, and **the guest's foreground never runs at all**. MITS PS2 is the proof: its ISR hands characters to its foreground through a **one-byte mailbox** and a semaphore, and that handoff requires the foreground to run *between* characters. Give it a zero character time and nine of the ten characters of a typed line are overwritten in the mailbox, and the monitor spins on the semaphore for ever. `baud = 0` is not a 2SIO running flat out; it is an **infinitely fast serial line**, which never existed (§0.1).
+
+And the speed it was supposed to buy is mostly already there: **the baud rate never makes the run loop *sleep***. The throttle is `!clock.free()` (§8), so on a `clock_hz = 0` machine the TDRE wait is not a wall-clock delay at all — it is emulated T-states, executed at host speed. It is not free (a *very* low baud means proportionally more spin instructions for the host to grind through), but it is not the throttle it looks like, and it is not what a free-running default would have removed.
+
+The property refuses `0` (`min = 50`), `tests/test_sio2.cpp` locks it in, and this is why.
+
 And there is **no `flow = rtscts` endpoint setting**, for the same reason: hardware flow control in `termios` hands RTS/CTS to the *OS driver*, and the 6850 owns those pins. Two owners for one pin is a bug that shows up under load. **XON/XOFF was never a board option at all** (Patrick: *"that is always a function of software"*) — it is bytes in the data stream, which makes it the guest's business, and a card that filtered them would be eating the guest's data.
 
 > **An unconnected line is not an error, and there is no null pointer in the stream path.** A disconnected unit is bound to a `NullStream`, because that is what an unconnected 6850 on a real card *is*: it sits there with TDRE set forever, and software that writes to it works fine and talks to nobody. So no board contains a branch for "what if nothing is plugged in" — there was never a case to handle.

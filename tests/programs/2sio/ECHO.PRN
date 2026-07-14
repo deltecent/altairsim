@@ -1,0 +1,17 @@
+
+
+                ;  2SIO echo routine
+                
+ 0000           	org	0
+ 0000 3E03      	mvi	a,03h	;reset UART
+ 0002 D310      	out	10h
+ 0004 3E15      	mvi	a,15h	;no RI, no XI, RTS Low, 8n1, /16
+ 0006 D310      	out	10h
+                
+ 0008 DB10      wtRcv	in	10h	;character received?
+ 000A 0F        	rrc		;receive flag in lsb
+ 000B D20800    	jnc	wtRcv
+ 000E DB11      	in	11h	;read the character
+ 0010 D311      	out	11h	;echo it back out
+ 0012 C30800    	jmp	wtRcv
+ 0015           	end

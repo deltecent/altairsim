@@ -1,0 +1,193 @@
+#!/usr/bin/expect -f
+#
+# THE 88-2SIO, DRIVEN BY REAL PERIOD SOFTWARE -- BOTH WAYS.
+#
+# Two of Mike Douglas's 2SIO test programs (tests/programs/2sio, see PROVENANCE.md),
+# each about a dozen bytes, each echoing what you type. They are the two halves of the
+# card and they fail differently, which is why both are here:
+#
+#   ECHO     -- POLLED. Programs the 6850 with 15h (no interrupts) and spins on RDRF.
+#               A polled guest SELF-PACES: it reads each character in its own foreground
+#               loop, so it can never be handed one it was not ready for.
+#
+#   ECHOINT  -- RECEIVE INTERRUPTS. Programs it with 95h -- the SAME control byte MITS
+#               PS2 writes -- enables 8080 interrupts, and then does nothing but NOP in
+#               a loop. Every character it echoes travels the whole chain: the 6850
+#               raises IRQ with NOBODY TOUCHING A REGISTER, the card drives pin 73, the
+#               8080 acknowledges, and the ISR at 0038h reads and echoes.
+#
+#               IF THE RECEIVER ONLY ADVANCED WHEN THE GUEST READ A REGISTER, THIS
+#               PROGRAM WOULD ECHO NOTHING, FOR EVER. That is the assertion.
+#
+#               It needs no 88-VI/RTC: with no vector board in the machine nothing drives
+#               the bus during the interrupt acknowledge, so it floats to FFh, which the
+#               8080 executes as RST 7 -> 0038h. Real Altair behavior, and Bus::intAck()
+#               reproduces it -- so this also stands guard over the floating-bus path.
+#
+# WHAT MAKES THE ECHO MEANINGFUL: `SHOW CONSOLE` has echo=false. The host does not put
+# your keystrokes on the screen. So a character that comes back CAME BACK FROM THE GUEST,
+# out through the 6850's transmitter. There is nothing else it could be.
+#
+# ---------------------------------------------------------------------------
+# TRAPS (all of them have bitten this suite before -- see tests/acceptance/ps2-int.exp):
+#
+#   1. `expect` PATTERNS ARE GLOBS. Every literal below is `-ex`. Do not "simplify" one.
+#   2. EVERY `expect` HAS A TIMEOUT ARM. A test with no timeout does not fail, it HANGS,
+#      and a suite that can hang is a suite nobody runs.
+#   3. ATTN IS ^E, and it is what gets you back to the monitor. ^C belongs to the guest.
+#
+# usage: expect -f 2sio-echo.exp <altairsim>
+
+set timeout 30
+log_user 0
+
+set sim [lindex $argv 0]
+
+# ---------------------------------------------------------------------------
+# Run one echo program and prove it echoes. `jumper` is the 6850's interrupt strap:
+# "none" for the polled program, "int" (pin 73) for the interrupt-driven one.
+# ---------------------------------------------------------------------------
+proc echoes {sim what hex jumper} {
+    spawn $sim default
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): no monitor prompt"; exit 1 }
+    }
+
+    send "SET sio0:a interrupt=$jumper\r"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): the interrupt jumper would not move"; exit 1 }
+    }
+
+    send "LOAD \"$hex\"\r"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): $hex did not load"; exit 1 }
+    }
+
+    send "RUN 0\r"
+    expect {
+        -ex "\[console" {}
+        timeout { puts "### FAIL ($what): the machine did not start"; exit 1 }
+    }
+
+    # THE WHOLE TEST. Type; the guest must give it back. The host is not echoing.
+    send "HELLO 2SIO"
+    expect {
+        -ex "HELLO 2SIO" { puts "### $what: echoed" }
+        timeout {
+            puts "### FAIL ($what): typed 10 characters and the guest echoed NONE of them."
+            exit 1
+        }
+    }
+
+    # ...and it is still running afterwards, not wedged on the tenth character: type more.
+    send "AGAIN"
+    expect {
+        -ex "AGAIN" { puts "### $what: still echoing -- it did not wedge" }
+        timeout { puts "### FAIL ($what): it echoed once and then died"; exit 1 }
+    }
+
+    send "\005"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): ATTN did not return to the monitor"; exit 1 }
+    }
+    send "QUIT\r"
+    expect {
+        eof {}
+        timeout { puts "### FAIL ($what): would not quit"; exit 1 }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# THE NEGATIVE CONTROL, AND IT IS A REAL ONE.
+#
+# Run ECHOINT with the interrupt jumper OUT. The 6850 still receives the character and
+# still raises its own IRQ pin -- but that pin now goes NOWHERE, so pin 73 never moves,
+# the 8080 is never interrupted, the ISR never runs, and NOTHING COMES BACK. The guest
+# NOPs on, deaf.
+#
+# Without this, `echoes ... "int"` passing would prove nothing: a card that echoed by
+# some other route -- a stray poll, a register read, an echo we accidentally did in the
+# host -- would sail through it. This is what makes the interrupt assertion mean what it
+# says. If this ever starts echoing, the interrupt test is a lie and BOTH must be looked at.
+# ---------------------------------------------------------------------------
+proc silent {sim what hex jumper} {
+    spawn $sim default
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): no monitor prompt"; exit 1 }
+    }
+    send "SET sio0:a interrupt=$jumper\r"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): the interrupt jumper would not move"; exit 1 }
+    }
+    send "LOAD \"$hex\"\r"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): $hex did not load"; exit 1 }
+    }
+    send "RUN 0\r"
+    expect {
+        -ex "\[console" {}
+        timeout { puts "### FAIL ($what): the machine did not start"; exit 1 }
+    }
+
+    # A SHORT WAIT IS THE ASSERTION HERE -- this arm is the PASS, so it is the one thing in
+    # the suite allowed to cost real seconds. Keep it short: the echo, if it came at all,
+    # would come in milliseconds.
+    set timeout 5
+    send "HELLO 2SIO"
+    set bad 0
+    expect {
+        -ex "HELLO 2SIO" {
+            puts "### FAIL ($what): it ECHOED with the interrupt jumper OUT."
+            puts "###   The interrupt test above is passing for some other reason. Both are suspect."
+            set bad 1
+        }
+        timeout { puts "### $what: silent, as it must be -- no jumper, no interrupt, no echo" }
+    }
+    set timeout 30
+
+    # ---- SHUT IT DOWN, AND MIND THE TEN CHARACTERS NOBODY READ ----
+    #
+    # The guest never consumed "HELLO 2SIO" -- that is the entire point of this phase -- so
+    # those keystrokes are STILL IN THE CONSOLE BUFFER when ATTN hands the terminal back.
+    # They land on the monitor's command line, and `QUIT` typed after them is not QUIT, it
+    # is `HELLO 2SIOQUIT`. Send a bare RETURN first to flush that junk line (the monitor
+    # answers "unknown command" and re-prompts, which is fine and is what we wait for).
+    #
+    # This cost 30 seconds and hid inside an empty `timeout {}` arm. Hence: NO EMPTY TIMEOUT
+    # ARMS ANYWHERE. A timeout that says nothing is not a test, it is a nap.
+    send "\005"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): ATTN did not return to the monitor"; exit 1 }
+    }
+    send "\r"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($what): the monitor did not re-prompt"; exit 1 }
+    }
+    send "QUIT\r"
+    expect {
+        eof {}
+        timeout { puts "### FAIL ($what): would not quit"; exit 1 }
+    }
+    if {$bad} { exit 1 }
+}
+
+# POLLED. The card works when the guest is looking at it.
+echoes $sim "ECHO (polled)" "tests/programs/2sio/ECHO.HEX" "none"
+
+# INTERRUPTS. The card works when the guest is NOT looking at it -- which is the one
+# that cannot be faked, and the one the receiver's own clock exists for.
+echoes $sim "ECHOINT (receive interrupts)" "tests/programs/2sio/ECHOINT.HEX" "int"
+
+# ...and the same program, with the wire cut, must go DEAF. That is what proves the above.
+silent $sim "ECHOINT, jumper OUT" "tests/programs/2sio/ECHOINT.HEX" "none"
+
+puts "### ALL STEPS PASSED"

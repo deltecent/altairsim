@@ -160,6 +160,54 @@ void test_sio2() {
         CHECK(g.tty->out() == "X", "and the byte really went out the line");
     }
 
+    SECTION("88-2SIO -- THERE IS NO baud = 0, and the receiver's gap is why");
+    {
+        // TWO ASSERTIONS, AND THE SECOND ONE IS THE REASON FOR THE FIRST.
+        //
+        // `clock_hz = 0` is free-running and is the default, so `baud = 0` looks like the
+        // obvious next tidy-up. IT IS NOT THE SAME KIND OF NUMBER. clock_hz only maps
+        // emulated time onto wall-clock time and NO GUEST CAN OBSERVE IT. baud is a
+        // duration in T-STATES -- inside emulated time -- and the guest can time it, which
+        // is the entire basis of TDRE (above) and of the receiver's inter-character gap
+        // (below). The 6850 has no handshaking: THE RATE IS THE ONLY FLOW CONTROL IT HAS.
+        //
+        // What a 0 actually buys you is an INFINITELY FAST SERIAL LINE. MITS PS2 hands
+        // characters from its ISR to its foreground through a ONE-BYTE mailbox and a
+        // semaphore, and that handoff needs the foreground to RUN between characters. Give
+        // it a zero character time and it gets zero instructions: nine of the ten characters
+        // of a typed line are overwritten in the mailbox and the monitor spins for ever.
+        // That is not a bug in the card, it is what an infinitely fast line does -- so the
+        // card refuses to be one.
+        Rig g;
+        std::string err;
+        CHECK(!setPropertyIn(g.sio->unitProperties("a"), "sio0:a", "baud", "0", err),
+              "baud = 0 is REFUSED: there is no free-running serial line");
+        CHECK(g.sio->channel("a")->baud() == 9600, "and the strap is untouched by the refusal");
+        CHECK(setPropertyIn(g.sio->unitProperties("a"), "sio0:a", "baud", "1200", err),
+              "a real rate is taken -- it is the ZERO that is refused, not the property");
+        CHECK(setPropertyIn(g.sio->unitProperties("a"), "sio0:a", "baud", "9600", err),
+              "...and back to 9600 for the gap assertions below");
+
+        // THE GAP IS THE POINT. A second character cannot land until the first one's
+        // character time has passed -- and those T-states are the guest's, to run its
+        // interrupt handler and whatever the handler hands off to. This is the property a
+        // zero baud destroys, so it is asserted on the clock and not on a vague "eventually".
+        g.m.bus.ioWrite(0x10, 0x11);  // 8N2 -- 11 bits on the wire
+        g.tty->feed("HI");
+
+        (void)g.m.bus.ioRead(0x10);
+        CHECK(g.m.bus.ioRead(0x11) == 'H', "the first character arrives");
+
+        const uint64_t charT = (uint64_t)(2000000 * 11 / 9600);  // 2,291 T-states
+        g.m.clock.advance(charT - 2);
+        CHECK((g.m.bus.ioRead(0x10) & 0x01) == 0,
+              "the SECOND is still on the wire one T-state early -- the guest owns this gap");
+
+        g.m.clock.advance(2);
+        CHECK((g.m.bus.ioRead(0x10) & 0x01) != 0, "and lands when its character time is up");
+        CHECK(g.m.bus.ioRead(0x11) == 'I', "...and it is the byte that was sent");
+    }
+
     SECTION("88-2SIO -- the character time follows the WORD FORMAT");
     {
         // 7 bits + parity + 1 stop = 10 on the wire; 8 bits + 2 stop = 11. A guest
