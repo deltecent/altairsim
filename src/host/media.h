@@ -25,6 +25,7 @@
 // alternative is a seek per sector.
 
 #include <cstdint>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
@@ -116,7 +117,7 @@ public:
     void     sync() override;
     const std::string& describe() const override { return path_; }
 
-    bool dirty() const { return dirty_; }
+    bool dirty() const { return dirtyLo_ < dirtyHi_; }
 
 private:
     friend std::unique_ptr<MediaFile> openHostFile(const std::string&, bool, std::string&);
@@ -126,7 +127,33 @@ private:
     std::vector<uint8_t> bytes_;
     bool                 readOnly_ = false;
     bool                 forced_   = false;  // the host would not let us write it
-    bool                 dirty_    = false;
+
+    // WHAT CHANGED, NOT WHETHER ANYTHING DID -- and the difference was 100 MB of host
+    // writes to save 1.8 KB of guest file.
+    //
+    // This used to be a `bool dirty_`, and sync() rewrote the WHOLE IMAGE from byte zero
+    // with an ofstream(trunc). The floppy controller syncs after EVERY SECTOR (it has to:
+    // a disk you pulled out mid-write must not lose what was already committed), so one
+    // 128-byte CP/M record cost an 8,978,432-byte file rewrite. `LOAD R` -- fourteen
+    // records -- moved well over a hundred megabytes. CP/M spent seventeen seconds doing
+    // a second of work, and none of it was emulation: it was `write(2)`.
+    //
+    // A half-open byte range [lo, hi) instead. A sector write dirties 137 bytes and syncs
+    // 137 bytes, in place, with the file opened once and kept open. The durability
+    // guarantee is exactly what it was -- what has been written is on the host disk when
+    // sync() returns -- and it now costs what it should.
+    uint64_t dirtyLo_ = 0;
+    uint64_t dirtyHi_ = 0;
+
+    // The size the file has ON THE HOST. It only ever differs from bytes_.size() for a
+    // TAPE, which grows as it records -- and a file that grew cannot be patched in place,
+    // so that case (and only that case) still rewrites.
+    uint64_t onDisk_ = 0;
+
+    // Opened lazily on the first sync and HELD. Reopening per sync was 821 of 4,000
+    // profile samples sitting in open(2), which is a lot of work to do for a file whose
+    // name has not changed.
+    std::fstream out_;
 };
 
 // ---------------------------------------------------------------------------
