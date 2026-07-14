@@ -195,6 +195,11 @@ SET cpu0 clock_hz=2000000
 either way** — the tape still costs the same number of T-states, the timing loops still count
 the same. The crystal buys period *feel*, not period *behaviour*.
 
+**Until the guest talks to something outside the machine.** A program measures time by counting
+instructions, so at `clock_hz = 0` a timeout it believes is three seconds can expire in thirty
+milliseconds of yours — which is why an XMODEM transfer to your host wants the real crystal, and
+a cassette does not. See the troubleshooting chapter.
+
 ## RESET is not POWER
 
 | | |

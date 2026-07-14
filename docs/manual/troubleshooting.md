@@ -135,6 +135,41 @@ altairsim> SET cpu0 clock_hz=2000000
 That is the real 2 MHz Altair, and it will give you the real 110-second cassette load. Both
 behaviours are correct; one of them is just a much longer lunch.
 
+## A file transfer keeps timing out — `PCGET`, `PCPUT`, XMODEM
+
+**Slow the machine down. Transfers with the outside world want the real crystal.**
+
+```
+altairsim> SET cpu0 clock_hz=2000000
+```
+
+Here is why, because it is worth understanding once and it explains a whole class of symptom.
+
+**A guest program has no clock. It counts instructions.** `PCGET` times a second the way every
+program of the period timed a second — by spinning in a loop and counting the trips. Its own
+source says so:
+
+```
+MSEC    lxi  d,(159 shl 8)   ;49 cycle loop, 6.272ms/wrap * 159 = 1 second
+```
+
+That arithmetic is *only* a second if the crystal is 2 MHz. `PCGET` waits three of them for a
+block header. Run the machine flat out and those three seconds — three seconds of **T-states** —
+are retired by your host in a few tens of **milliseconds**, while the sending program on the
+other end of the wire is still living in seconds of the ordinary kind. `PCGET` concludes the
+sender is dead, NAKs, purges the line, and gives up. Nothing is broken. The two ends are simply
+no longer using the same clock.
+
+**And that is the boundary, exactly:** timing inside the machine is consistent at any speed,
+because everything in there counts the same T-states — which is why a cassette loads correctly
+flat out, the ACR and the tape agreeing with each other at whatever speed the pair of them run.
+A transfer to your host has **one end inside the machine and one end outside it**, and only the
+crystal makes those two agree.
+
+So: flat out for everything the machine does to itself. The real 2 MHz for anything it does with
+you. Set it back afterwards if you like the speed — and note the built-in file-transfer card is
+not affected by any of this, having no timeouts to expire.
+
 ## Two cards are fighting over a port
 
 ```

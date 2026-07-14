@@ -95,6 +95,14 @@ number of them to load, and the disk turns at the right speed regardless. The cr
 ***feel***, not period ***behaviour***. Watch BASIC print its banner at 2 MHz and you learn
 something about 1976 that no amount of reading will teach you. Then set it back.
 
+**With one boundary, and it is a real one: that guarantee ends at the edge of the machine.**
+Everything *inside* keeps time by the same T-states, so it all agrees with itself at any speed.
+But a guest program counts instructions to measure a second — `PCGET`'s timeout is a 49-T-state
+loop spun 159 × 256 times — and flat out, your host retires its "three seconds" in a few tens of
+milliseconds while the program at the other end of the wire is still using real ones. **Anything
+the guest times against the outside world wants the real crystal**: XMODEM through a serial port
+is the case you will meet. See the troubleshooting chapter.
+
 ### `idle` — the CPU stands down at a prompt
 
 A guest sitting at a prompt is not doing anything. It is spinning on the serial card's status

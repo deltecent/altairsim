@@ -102,6 +102,20 @@ So if you want 300 baud, 7 bits, even parity going out of that connector, you do
 configure it on the connector. You configure it on the **card**, where a 1975 operator would
 have set it, with a jumper. Modem control lines — DCD, CTS, RTS — are wired through.
 
+### And give the machine its real crystal before you transfer a file
+
+```
+altairsim> SET cpu0 clock_hz=2000000
+```
+
+The moment the wire leaves the machine, the guest is talking to something that keeps time the
+way *you* do — and the guest does not. It counts instructions. `PCGET` spins a 49-T-state loop
+to time a second, which is a second at 2 MHz and thirty milliseconds when the machine is running
+flat out, so it will decide your sender is dead and give up before your sender has drawn breath.
+
+Flat out is the right default for a machine talking to itself. **A machine talking to you wants
+the crystal.** The troubleshooting chapter has the full story.
+
 ## A `CONNECT` it does not understand is an error
 
 If `altairsim` cannot make sense of your endpoint, it **refuses, and tells you what it could
