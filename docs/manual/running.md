@@ -19,15 +19,21 @@ You are not obliged to keep it in the current directory. Put it on your `PATH` a
 
 ## macOS: the first run
 
-macOS will refuse to run a program it did not download itself. If you see *"cannot be
-opened because the developer cannot be verified"*, clear the quarantine flag:
+macOS marks anything that arrives from the internet and refuses to run it until you say
+otherwise. If you see *"cannot be opened because the developer cannot be verified"*, clear
+the mark:
 
 ```
-$ xattr -d com.apple.quarantine ./altairsim
+$ xattr -dr com.apple.quarantine ./altairsim
 ```
 
-Do that once. It is not a comment on the program; it is what macOS does to every binary
-that arrives in a zip.
+Do that once. It is not a comment on the program; it is what macOS does to every unsigned
+binary that arrives in a zip, whoever wrote it.
+
+The mark is put there by whatever *fetched* the file — a browser, a mail client — so if you
+pulled the zip down with `curl` or `scp` there may be nothing to clear. The command says
+nothing and succeeds either way, which is why it is `-dr` and not `-d`: plain `-d` reports an
+error when the flag is already absent, and that error is not a problem.
 
 ## Getting help, and getting out
 

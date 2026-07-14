@@ -167,8 +167,13 @@ button and pulling a plug, and the manual keeps it.
 *"cannot be opened because the developer cannot be verified"*.
 
 ```
-$ xattr -d com.apple.quarantine ./altairsim
+$ xattr -dr com.apple.quarantine ./altairsim
 ```
 
-Once. It is not a comment on the program; it is what macOS does to every binary that arrives
-in a zip.
+Once. It is not a comment on the program; it is what macOS does to every unsigned binary that
+arrives in a zip.
+
+If that prints nothing, it worked — and if the flag was never there (a zip fetched with `curl`
+or `scp` is not marked; only one a browser or a mail client downloaded is), it also prints
+nothing and succeeds. That is the whole reason for `-dr` over a plain `-d`, which announces an
+error when there is nothing to remove.
