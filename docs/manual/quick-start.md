@@ -121,13 +121,31 @@ The disk image is mounted **read/write**, because that is what a real machine is
 whose `A:` is read-only fails on its first `PIP`. So anything you do in there *happens to the
 file on your host*, and nothing is keeping a copy.
 
-**Before you experiment, copy the folder.** It is a directory with a machine file and a disk
-image in it, and it boots from anywhere:
+You have two ways to be safe, and they answer different questions.
+
+**Write-protect the disk.** `RO` is the write-protect tab, exactly as it was on the real
+thing — the guest may read the disk and may not write it, and a write comes back as
+`Bdos Err On A: R/O`:
+
+```
+altairsim> MOUNT dsk0:drive0 cpm22-buffered.dsk RO
+```
+
+In a machine file it is `readonly = true` in the drive's table. Use this when you want to
+*look around* — boot it, `DIR`, `TYPE`, run `STARTRK` — with the image on your host
+guaranteed untouched. It is the stronger promise, because it does not depend on you
+remembering anything.
+
+**Or copy the folder,** which is what you want the moment you intend to actually *write* —
+save a BASIC program, assemble something, use `PIP`. It is a directory with a machine file
+and a disk image in it, and it boots from anywhere:
 
 ```
 $ cp -R disks/cpm22 my-cpm
 $ altairsim my-cpm/cpm22-buffered.toml
 ```
+
+The disks chapter has both in full.
 
 There is one more trap, and it is not obvious: **this BIOS does not write to the disk when
 CP/M closes a file.** It writes into a track buffer in memory and flushes it the next time it
