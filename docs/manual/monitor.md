@@ -194,3 +194,52 @@ the same. The crystal buys period *feel*, not period *behaviour*.
 
 `RESET` does not clear memory because pressing RESET on a real Altair did not clear memory.
 That is not a simplification; it is the behaviour a lot of period software depends on.
+
+### RESET* is a wire, and every card is listening
+
+The processor is not the only thing that hears it. `RESET*` is a **line on the backplane**, and
+it runs past every card in the machine — so `RESET` is not an instruction the simulator carries
+out on your behalf. It is a signal put on the bus, and each board answers it the way its own
+silicon answered it, which is not the same answer twice:
+
+- The **memory card** clears its bank latch — and does not touch one byte of RAM. A RAM chip has
+  no reset pin to touch it with.
+- The **floppy controller** flushes the sector it was in the middle of writing, deselects the
+  drive, and lets the head unload. On the 5¼″ minidisk the motor spins down; on the 8″ drive
+  nothing spins down, because that card has no motor control to spin down *with*.
+- The **2SIO does nothing at all**, and that is the most instructive answer of the three. The
+  MC6850 has **no reset pin** — Vss, RxD, RxCLK, TxCLK, RTS, TxD, IRQ, CS0–CS2, RS, Vcc, R/W, E,
+  D0–D7, /DCD, /CTS, and that is the entire package. `RESET*` reaches the card and has **nowhere
+  to land**, so the baud rate, the word format, RTS and the interrupt enables all survive a
+  reset, exactly as they do on the bench. (The 6850's *master reset* is a real thing, but it
+  belongs to the **guest**: a program performs it by writing to the control register. The front
+  panel cannot do it for you.)
+
+Which is why a reset here behaves like a reset there. Hit `RESET` in the middle of a disk write
+and you get what the hardware gave you: a half-written sector on the disk, a serial port still
+configured exactly as the dead program left it, and every byte of your RAM intact and waiting
+to be looked at. Nothing is tidied up on the way out, because on a real machine nobody was there
+to tidy it.
+
+### And `POWER` is a *different wire*
+
+This is the part that makes `POWER` a different event rather than a bigger one. Switching the
+machine on drives **`POC*`** — Power-On Clear, its own line on the backplane — and a card is
+free to treat the two lines differently, because the real cards did.
+
+The **88-VI/RTC** is the case that proves it. Its manual is explicit that POC disables every
+function on the board, and the schematic runs POC — and *only* POC — to that logic. `RESET*` is
+not wired to it at all. So an interrupt controller that a crashed program left armed and
+enabled **stays armed through a `RESET`**, and comes back only when you `POWER` the machine.
+That is not our shortcut; it is the card, and it is why a program that resets its way out of
+trouble can still be taking interrupts it forgot it asked for.
+
+`POC*` is also the only moment RAM is allowed to forget. On `POWER` the memory card refills
+itself — with **random bytes by default**, because static RAM does not come up zeroed, and a
+simulator that quietly zeroes it will never once catch the program that assumed otherwise — and
+re-reads every ROM image from disk.
+
+| | The processor | The boards | RAM |
+|---|---|---|---|
+| `RESET` | restarts at `0000` | `RESET*` on the bus; each card answers as its silicon did — some do nothing | **survives** |
+| `POWER` | restarts at `0000` | `POC*` on the bus; the cards come up as they do from cold | **refilled**, ROMs re-read |
