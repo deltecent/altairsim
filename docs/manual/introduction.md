@@ -8,12 +8,27 @@ Programming System II off paper tape's successor. None of it has been patched, a
 it knows it is not running on a real machine.
 
 The point of a simulator is usually to run the old software. This one is built the other way
-round: it is a **bench for developing hardware** that happens to be very good at running the
-old software. The S-100 bus is a real object in the program, not a wiring diagram implied by
-the code. Boards plug into it. Boards contend for addresses, pull the interrupt line, float
-the data bus when nobody is driving it, and get the answer wrong in exactly the ways real
-boards did. If you want to design a card that never existed and find out whether CP/M would
-have liked it, that is what this is for.
+round. It is a **bench for new hardware, and for the software that has to drive it** — which
+are not two jobs, they are one job, and it is very good at running the old software besides.
+
+The S-100 bus is a real object in the program, not a wiring diagram implied by the code.
+Boards plug into it. They contend for addresses, pull the interrupt line, float the data bus
+when nobody is driving it, and get the answer wrong in exactly the ways real boards did. So a
+card you have not built yet can be *fitted* here, and the driver you have not finished can be
+*run* against it, months before either exists in copper.
+
+That is the whole of the argument, and it is an argument about **where you find your bugs.**
+On real hardware a bug is a scope probe, a stubborn intermittent, and a machine that will not
+tell you what it just did. Here it is a breakpoint on a bus cycle. You can stop the machine
+mid-instruction, ask which card answered and which stayed silent, watch a driver poll a status
+bit that will never come true, and run the same thing again and get the same answer — because
+nothing here is intermittent, and nothing is hidden.
+
+Every bug you kill on the bench is a bug you are not chasing at 2 MHz with a logic analyser.
+And when you do finally power up the real board, the software has already run — so the faults
+you are left with are the ones that are genuinely the *hardware's*: a timing margin, a noisy
+line, a pin on the wrong side of a buffer. That is a bring-up you can finish. The one where
+you cannot tell whether the board is wrong or the driver is wrong is the one that eats a month.
 
 ## What it does
 
