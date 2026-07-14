@@ -196,7 +196,7 @@ static const std::vector<CommandDef> kCommands = {
     {"UNMOUNT", true, nullptr, "UNMOUNT <id>:<u>",  // U
      "The socket is then EMPTY -- those pages float to FF, exactly as a card with\n"
      "no chip in it does.\n"
-     "  U dsk:0"},
+     "  U dsk0:drive0"},
     {"DISCONNECT", true, nullptr, "DISCONNECT <id>:<u>",  // DISC
      "The line then goes nowhere. NOT an error: an unconnected 6850 sits there with\n"
      "TDRE set forever, and a program that writes to it works fine and talks to\n"
@@ -216,8 +216,18 @@ static const std::vector<CommandDef> kCommands = {
      "  CONSOLE            what it is set to, and which unit holds it\n"
      "  CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)\n"
      "To choose WHICH unit the console is wired to, that is CONNECT."},
+    // `{endpoints}` is expanded by the HELP printer from endpointHelp(), which is the
+    // one place the grammar lives (host/endpoint.cpp). It is a token and not a list
+    // because the list WAS spelled out here, and it rotted: it went on saying "socket:
+    // and serial: are coming" for as long as resolveEndpoint() had been implementing
+    // both. A help string that copies somebody else's vocabulary is a second schema.
     {"CONNECT", true, nullptr, "CONNECT <id>:<u> <endpoint>",  // CONN
-     "Endpoints: console | null | loopback. (socket: and serial: are coming.)\n"
+     "Endpoints: {endpoints}\n"
+     "\n"
+     "socket:PORT LISTENS -- that is the telnet-in case. socket:HOST:PORT CALLS OUT.\n"
+     "serial:DEVICE is a real port on this host; it is opened at 9600 8N1 and then\n"
+     "immediately re-programmed by the card, which is the only thing that knows what\n"
+     "it is strapped to.\n"
      "\n"
      "Exactly ONE unit may hold the console; connecting a second STEALS it and says\n"
      "who from. Two boards reading one keyboard would each get half the characters.\n"

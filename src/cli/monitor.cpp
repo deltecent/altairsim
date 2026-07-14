@@ -1511,6 +1511,18 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 out << "\n";
                 // Indent every line of the detail block by two, including the examples.
                 std::string d = h->detail;
+
+                // `{endpoints}` is the ONE thing a help string may not spell out for
+                // itself. CommandDef::detail is a `const char*` literal -- it cannot
+                // call endpointHelp() -- so CONNECT's help used to carry a hand-copied
+                // list, and it rotted: it still said "socket: and serial: are coming"
+                // long after resolveEndpoint() implemented both. A literal that
+                // DUPLICATES a list someone else owns is a second schema, and it drifts.
+                // So the literal names the token and the printer asks the owner.
+                for (size_t at = d.find("{endpoints}"); at != std::string::npos;
+                     at        = d.find("{endpoints}", at))
+                    d.replace(at, 11, endpointHelp());
+
                 out << "  ";
                 for (char ch : d) {
                     out << ch;
