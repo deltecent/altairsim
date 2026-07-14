@@ -180,7 +180,7 @@ public:
     // AND IF YOUR DECODE CHANGES, SAY SO -- call decodeChanged(). A bank strap, a
     // PHANTOM* jumper, a chip pulled from a socket, going enabled/disabled. Forget
     // it and the bus's cached tables go stale, which is a lie told quietly. Run
-    // with Bus::setVerifyDecode(true) and it stops being quiet.
+    // with Bus::setVerify(true) and it stops being quiet.
     virtual bool decodes(const BusCycle&) const { return false; }
 
     // IS MY MEMORY DECODE THE SAME FOR EVERY ADDRESS IN A 256-BYTE PAGE?
@@ -209,15 +209,21 @@ public:
     // cycle, exactly as before. The Tarbell says true: it releases PHANTOM* the
     // first time it sees a memory read with A5 high.
     //
+    // THE FRONT PANEL SAYS TRUE TOO, AND IT SHIPS (src/boards/mits-frontpanel.h). Its
+    // lamps show whatever went by on the last cycle -- including the cycles it does not
+    // answer, which is most of them, because that is what the lamps ARE. This paragraph
+    // used to say that no shipping board overrode this, and the front panel had been
+    // overriding it since the day it was written. Corrected 2026-07-14.
+    //
     // ---------------------------------------------------------------------------
-    // NO SHIPPING BOARD OVERRIDES wantsSnoop() OR decodeIsPageUniform(), AND THAT IS
-    // SAID OUT LOUD ON PURPOSE.
+    // NO SHIPPING BOARD OVERRIDES decodeIsPageUniform(), AND THAT IS SAID OUT LOUD ON
+    // PURPOSE.
     //
-    // The only card that needs either is the TARBELL, and the Tarbell is DEFERRED
+    // The only card that needs it is the TARBELL, and the Tarbell is DEFERRED
     // (Patrick, 2026-07-12 -- see docs/boards/tarbell-sd.md, which says why). The only
-    // thing overriding them today is `TarbellBoot`, a fixture in tests/test_phantom.cpp.
+    // thing overriding it today is `TarbellBoot`, a fixture in tests/test_phantom.cpp.
     //
-    // So: is this dead machinery? DiskImage's own header lays down the rule --
+    // So: is that dead machinery? DiskImage's own header lays down the rule --
     // "a virtual left in place for a possibility the owner has RULED OUT is not
     // extensibility; it is a hook that will never be pulled" -- and that is why
     // readSector() is not virtual. The test here is RULED OUT, not merely absent:

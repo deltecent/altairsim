@@ -97,10 +97,14 @@ public:
     // rather than picking one. Same rule as two boards decoding one address.
     std::vector<Board*> masters();
 
-    // True only while the debugger's run loop is turning. Config-time properties
-    // are rejected while it is (DESIGN.md 10.1) -- which is why they were all
-    // settable in milestone 1a and start being refused the moment a CPU runs,
-    // without one line here changing.
+    // True only while the debugger's run loop is turning.
+    //
+    // IT DOES NOT GATE PROPERTIES, and this comment used to say it did. There is no
+    // "config-time only" property and there is no `runtime` flag -- every property can be
+    // set, always (board.h, above setProperty(); Patrick, 2026-07-12). The rule was deleted
+    // and this comment was left behind describing it, which is the most expensive kind of
+    // stale comment: it documents a safety check that a reader will then go looking for,
+    // fail to find, and "restore". Corrected 2026-07-14.
     bool running = false;
 
     Debugger debug{*this};

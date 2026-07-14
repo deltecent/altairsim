@@ -118,7 +118,7 @@ public:
     //
     // A board whose decode changes MUST say so (Board::decodeChanged()). If one
     // forgets, the tables go stale and the machine lies quietly -- so that is not
-    // left to trust: setVerifyDecode(true) re-derives the decode the slow way on
+    // left to trust: setVerify(true) re-derives the decode the slow way on
     // every single cycle and screams if it disagrees with the table. The test
     // suite and the CPU validation gate both run with it on.
     void invalidateDecode() { dirty_ = true; }
