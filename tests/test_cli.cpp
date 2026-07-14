@@ -844,3 +844,48 @@ void test_should_pace() {
     CHECK(!shouldPace(false, true, false, /*free=*/false),
           "a tty but no line at all -- nothing real-time to keep step with");
 }
+
+// The achieved crystal, as the reflection layer sees it: read-only, and the run loop's
+// measurement reaches it through the CpuCard seam -- not the wall-clock timing itself
+// (that needs a run loop and a real clock), but the plumbing SHOW depends on.
+static std::string cliProp(Board& b, const std::string& name) {
+    for (Property& p : b.properties())
+        if (p.name == name) return p.get().text(p.radix);
+    return "(no such property)";
+}
+
+void test_achieved_hz() {
+    SECTION("achieved_hz: the crystal you got, read-only, reached through CpuCard");
+
+    std::string err;
+    Machine     m;
+    Board*      cpu = m.add("8080", "cpu0", err);
+    CHECK(cpu != nullptr, "a CPU card goes in");
+
+    // The run loop finds the CARD, not just the running core, to hand back what it
+    // measured. cpuCard() must be that same board.
+    CpuCard* card = m.cpuCard();
+    CHECK(card != nullptr, "cpuCard() finds the CPU card");
+    CHECK(dynamic_cast<Board*>(card) == cpu, "...and it is the very board we added");
+
+    // Before it has run, the honest answer is 0 -- "not measured", not a missing value.
+    CHECK(cliProp(*cpu, "achieved_hz") == "0", "achieved_hz reads 0 until the machine runs");
+    CHECK(card->achievedHz() == 0, "...and the card agrees");
+
+    // The run loop's report is what SHOW then reads back -- the same number, through the
+    // reflection layer that SHOW and the MCP server use, so the test cannot see a value
+    // the operator cannot.
+    card->reportAchievedHz(1500000);
+    CHECK(cliProp(*cpu, "achieved_hz") == "1500000", "a reported rate shows through the property");
+    CHECK(card->achievedHz() == 1500000, "...and reportAchievedHz round-trips");
+
+    // READ-ONLY IS THE ABSENCE OF A SETTER, and the ONE property path enforces it: you
+    // cannot SET a measurement, and CONFIG SAVE will not write one back (config/toml.cpp).
+    CHECK(!setProperty(*cpu, "achieved_hz", "42", err),
+          "achieved_hz is read-only -- SET is refused");
+    CHECK(card->achievedHz() == 1500000, "...and the refused SET did not perturb it");
+
+    // A backplane with no processor has no crystal to have achieved anything.
+    Machine bare;
+    CHECK(bare.cpuCard() == nullptr, "no CPU card -> cpuCard() is null, like cpu()");
+}

@@ -768,6 +768,21 @@ void Monitor::runMachine(std::ostream& out) {
     const bool      tty    = con.isTty();
     const char      attn   = (char)('A' + con.attn() - 1);
 
+    // THE ACHIEVED CRYSTAL, measured here and published to the CPU card for SHOW.
+    //
+    // Its own baseline, SEPARATE from the throttle's, and deliberately NOT re-based by
+    // the idle nap: the throttle wants to forget the idle time ("it never happened"),
+    // but the achieved rate wants to REMEMBER it -- a machine that naps through a prompt
+    // really is retiring few T-states a second, and that is the honest reading. So this
+    // window counts all real time, nap and throttle-sleep alike, and is sampled long
+    // enough (kMeasWindow) that the divide is not noise, short enough that SHOW reflects
+    // what the machine is doing now rather than an average over the whole run.
+    CpuCard* const card = m_.cpuCard();  // never null: needCpu() passed above
+    uint64_t       measT = m_.clock.now();
+    auto           measW = clk::now();
+    static constexpr double kMeasWindow = 0.25;   // seconds; ~4 updates/sec while running
+    static constexpr double kMeasFloor  = 0.02;   // shortest run worth a reading at all
+
     // ATTN IS THE STOP KEY, CONSOLE OR NO CONSOLE -- ^C IS NOT (Patrick,
     // 2026-07-12). Ctrl-C belongs to the guest: CP/M reads it, and a stop key the
     // guest also wants is a stop key that either breaks the guest or gets eaten by
@@ -976,6 +991,27 @@ void Monitor::runMachine(std::ostream& out) {
                 std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
             }
         }
+
+        // Sample the achieved crystal once the window has enough real time behind it
+        // for the divide to mean something, then start the next window. Unconditional
+        // -- paced or flat out, idle or busy, this is just "how many T-states per real
+        // second is this machine turning right now."
+        double measReal = std::chrono::duration<double>(clk::now() - measW).count();
+        if (measReal >= kMeasWindow) {
+            card->reportAchievedHz((long long)((double)(m_.clock.now() - measT) / measReal));
+            measT = m_.clock.now();
+            measW = clk::now();
+        }
+    }
+
+    // The tail: capture the final partial window so SHOW reflects what the machine was
+    // doing when you stopped it -- and so a run shorter than one window (a CPU test, a
+    // GO to a HLT) still leaves a reading instead of a stale zero. Below the floor the
+    // divide is noise, so leave the last good sample standing.
+    {
+        double measReal = std::chrono::duration<double>(clk::now() - measW).count();
+        if (measReal >= kMeasFloor)
+            card->reportAchievedHz((long long)((double)(m_.clock.now() - measT) / measReal));
     }
 
     if (takeTty) con.leaveRaw();

@@ -94,6 +94,11 @@ public:
     BusMaster* master();
     CpuCore* cpu();
 
+    // The CPU CARD, not just its running core -- where the crystal is, and where the
+    // run loop reports back the crystal it actually achieved (CpuCard::achievedHz).
+    // Null on a backplane with no processor, exactly like cpu().
+    CpuCard* cpuCard();
+
     // The instruction set the machine currently speaks -- the active core's own
     // answer. Empty when there is no CPU, which is why DISASM in a CPU-less
     // machine asks you to say CPU=8080 rather than guessing (DESIGN.md 3.0.2).

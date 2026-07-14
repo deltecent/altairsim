@@ -36,6 +36,7 @@ int main() {
     test_cli();
     test_idle_judgement();
     test_should_pace();
+    test_achieved_hz();
     test_boundary();
     test_numbers();
     test_units();
