@@ -158,8 +158,11 @@ ATTN -- the machine is still at CA9C. RUN resumes.
 altairsim>
 ```
 
-**ATTN does not stop the machine.** It takes the keyboard back and shows you where the
-processor is. A bare `RUN` hands it back.
+**ATTN stops the machine and gives you the monitor.** Nothing executes while this prompt is up.
+But it stops the machine without *disturbing* it — ATTN is not RESET and not POWER, so the
+registers, the memory and the disk are exactly as the guest left them, and a bare `RUN` (no
+address) picks up at the very instruction it was about to execute. That is what *"still at
+CA9C"* is telling you.
 
 `CONSOLE attn=1D` moves ATTN to `^]` if `^E` collides with something the guest wants.
 

@@ -9,9 +9,11 @@ one of those.
 ordinary audio cassette and read them back. It is how you loaded BASIC if you could not
 afford a floppy, which in 1976 was most people.
 
-**ATTN** — Attention. The key that takes the keyboard back from a running guest and returns
-you to the monitor. It is `^E` by default, the host intercepts it before the guest sees the
-byte, and no guest program can take it from you. Move it with `CONSOLE attn=`.
+**ATTN** — Attention. The key that stops a running guest and returns you to the monitor. It
+stops the machine but does not disturb it — not RESET, not POWER — so a bare `RUN` resumes at
+the instruction it was about to execute. It is `^E` by default, the host intercepts it before
+the guest sees the byte, and no guest program can take it from you. Move it with
+`CONSOLE attn=`.
 
 **backplane** — The board with the connectors on it that every card plugs into. On an Altair
 it is the S-100 bus itself: eighteen slots, one hundred pins each, all wired in parallel.

@@ -25,19 +25,23 @@ That makes it `^]`. It must be a control character.
 
 ## I pressed ATTN and now the machine seems stuck
 
-It is not stuck. It is running.
+It is not stuck. It is **stopped**, which is what ATTN is for, and nothing has been lost.
 
-**ATTN does not stop the machine — it takes the keyboard back.** The processor is still
-executing, exactly where it was, and the monitor told you where when it printed the prompt.
+ATTN halts the processor and hands you the monitor. It is not RESET and not POWER: the
+registers, the memory and the disk are precisely as the guest left them, and the monitor told
+you where to pick it up when it printed *"still at ...".*
 
 ```
 altairsim> RUN
 ```
 
-resumes, and your `A>` is where you left it.
+A bare `RUN` — no address — resumes at that exact instruction, and your `A>` is where you left
+it. (`RUN <addr>` is a different thing: it loads the PC first, so it *restarts* rather than
+resumes.)
 
-If you want to actually *stop* it and look at it — halt the processor, examine registers,
-single-step — that is `BREAK` and `STEP`, and that is the debugging chapter.
+And while you are stopped, you can look: `REGS`, `EXAMINE`, `DUMP`, `DISASM` and `STEP` all
+work at this prompt, on a machine that is not moving under you. See the debugging chapter.
+`BREAK` is for stopping at a place you cannot reach by hand.
 
 ## My file was not written / the disk lost my changes
 

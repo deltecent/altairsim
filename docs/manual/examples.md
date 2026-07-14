@@ -42,7 +42,8 @@ is a working 1977 development system.
 
 ### Out, and back in
 
-`^E` takes the keyboard back. The machine keeps running.
+`^E` stops the machine and gives you the monitor. Nothing is lost — a bare `RUN` resumes at the
+instruction it was about to execute.
 
 ```
 A>

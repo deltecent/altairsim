@@ -68,8 +68,15 @@ C0Z1M0E1I0 A=00 B=007F D=CA01 H=BC0E S=BC37 IE=1 P=CA9C  CALL CA78
 altairsim>
 ```
 
-You are back at the monitor. **The machine is still running** — ATTN did not stop it, it
-just took the keyboard away. It tells you where the processor is and what the registers hold.
+You are back at the monitor, and **the machine is stopped exactly where it stood**. The
+processor executes nothing while this prompt is up: the `P=CA9C` above is where it will still
+be in an hour. That is what makes the prompt useful — you can read memory, single-step, and set
+a breakpoint, and none of it is a moving target.
+
+Stopped is not **lost**. ATTN is not RESET and it is not POWER: every register, every byte of
+memory, the disk in the drive and the guest's place in its own program are all exactly as they
+were. That is the whole content of *"the machine is still at CA9C"* — it is telling you the
+machine is intact and says where to pick it up.
 
 ### Why it is not `^C`
 
@@ -104,7 +111,7 @@ There is no `EXIT`. `Q` will do.
 
 | | |
 |---|---|
-| **`^E`** | out of the guest, back to the monitor. The machine keeps running. |
+| **`^E`** | out of the guest, back to the monitor. The machine stops where it stands, and loses nothing. |
 | **`RUN`** | back into the guest. |
 | **`QUIT`** | done. |
 
