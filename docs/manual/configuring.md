@@ -299,7 +299,7 @@ id = "dsk0"
 |---|---|
 | `unit` | the drive number. **Decimal** |
 | `mount` | the image file |
-| `readonly` | the write-protect tab |
+| `readonly` | refuse every write at the controller, so the host file cannot change. For a disk you mean to read — see the disks chapter |
 | `media` | force a format instead of probing the image |
 
 `media` is the escape hatch. The controller normally works out the format from the image, and

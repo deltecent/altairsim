@@ -59,14 +59,19 @@ to have finished and the last track never reached the disk. The disks chapter ha
 
 ## The disk image changed and I wanted it not to
 
-There is no undo. **The image is mounted read/write, like a real machine** — a CP/M whose
-`A:` is read-only fails on its first `PIP`.
+There is no undo. **The image is mounted read/write, like a real machine** — a CP/M that cannot
+write its disk cannot save your work.
 
 Two answers, and take one *before* you experiment:
 
 ```
 altairsim> MOUNT dsk0:drive0 file.dsk RO
 ```
+
+`RO` refuses every write at the controller, so your file is safe whatever the guest does. It is
+for a disk you mean to **read**: the guest is never told the disk is protected — the controller
+has no bit that says so and CP/M has no error that means it — so a program that sets out to write
+to an `RO` disk will not fail gracefully. The disks chapter explains why.
 
 or copy the folder. It is a directory with a machine file and an image in it, and it boots
 from anywhere:

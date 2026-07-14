@@ -117,24 +117,26 @@ There is no `EXIT`. `Q` will do.
 
 ## Careful: the disk is real, and there is no undo
 
-The disk image is mounted **read/write**, because that is what a real machine is — a CP/M
-whose `A:` is read-only fails on its first `PIP`. So anything you do in there *happens to the
-file on your host*, and nothing is keeping a copy.
+The disk image is mounted **read/write**, because that is what a machine with a disk in it is.
+So anything you do in there *happens to the file on your host*, and nothing is keeping a copy.
 
 You have two ways to be safe, and they answer different questions.
 
-**Write-protect the disk.** `RO` is the write-protect tab, exactly as it was on the real
-thing — the guest may read the disk and may not write it, and a write comes back as
-`Bdos Err On A: R/O`:
+**Write-protect the disk.** `RO` refuses every write at the controller, so the file on your
+host cannot change no matter what the guest does:
 
 ```
 altairsim> MOUNT dsk0:drive0 cpm22-buffered.dsk RO
 ```
 
-In a machine file it is `readonly = true` in the drive's table. Use this when you want to
-*look around* — boot it, `DIR`, `TYPE`, run `STARTRK` — with the image on your host
-guaranteed untouched. It is the stronger promise, because it does not depend on you
-remembering anything.
+In a machine file it is `readonly = true` in the drive's table. Use it when you want to *look
+around* — boot it, `DIR`, `TYPE`, run `STARTRK` — with the image guaranteed untouched. It is
+the stronger promise about your file, because it does not depend on you remembering anything.
+
+But it is **read-only, and it means it**: the guest is not *told* the disk is protected, it is
+simply not allowed to write, and a program that sets out to write may not survive being refused.
+Mount `RO` to read a disk, not to run a CP/M that expects to save your work. The disks chapter
+says why the guest cannot be told.
 
 **Or copy the folder,** which is what you want the moment you intend to actually *write* —
 save a BASIC program, assemble something, use `PIP`. It is a directory with a machine file

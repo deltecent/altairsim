@@ -43,13 +43,15 @@ altairsim> MOUNT dsk0:drive1 my-scratch.dsk
 That is a floppy going into drive 1 of the controller called `dsk0`. The socket was empty
 before; it isn't now.
 
-`RO` is the **write-protect tab**. The guest may read the disk and may not write it; a write
-fails at the controller exactly as it did when the notch was covered, and CP/M will tell you
-so in its own words. Nothing else changes.
+`RO` protects **the file on your host**. The guest may read the disk; a write is refused at the
+controller and never reaches your file.
 
 ```
 altairsim> MOUNT dsk0:drive2 golden-master.dsk RO
 ```
+
+**The guest is not told, and cannot be** — see "Read-only is not an error message" below. Mount
+`RO` for a disk you intend to read.
 
 And taking it out:
 
@@ -87,7 +89,7 @@ id = "dsk0"                    # no `type`: the controller is already there
   [[board.drive]]
   unit  = 0
   mount = "cpm22b23-56k.dsk"   # relative to THIS FILE
-  # readonly = true            # the write-protect tab, in TOML
+  # readonly = true            # refuse every write; your file cannot change
 ```
 
 The two forms do the same thing. The difference is only *when*: one is the drive as the
@@ -189,14 +191,39 @@ the file will not be there.
 ## The disk is real, and there is no undo
 
 A mounted disk is mounted **read/write**, and every write goes through to the file on your
-host as it happens. There is no journal, no snapshot, and no way back. A CP/M whose `A:` is
-read-only is a CP/M that dies on its first `PIP`, so read/write is the only honest default —
-and the price of the honest default is that you can destroy the example disk with one
+host as it happens. There is no journal, no snapshot, and no way back. A CP/M cannot save your
+work onto a disk it is not allowed to write, so read/write is the only default that lets the
+machine be a machine — and the price of it is that you can destroy the example disk with one
 mistyped `ERA`.
 
 **Copy the directory before you experiment.** It is self-contained and boots from anywhere.
 
 Use `RO` when you want the guest to look and not touch.
+
+## Read-only is not an error message
+
+`RO` is a promise to **you**, about your file. It is not a message to the guest, and this is
+worth being exact about, because it is easy to assume otherwise.
+
+**The controller has no way to say "write protected."** The 88-DCDD's status byte is seven
+bits — write-circuit-wants-a-byte, head-movement-OK, head-loaded, drive-enabled,
+interrupts-enabled, on-track-0, new-read-data — and none of them means *the notch is covered*.
+A program reading that byte cannot distinguish a protected disk from an ordinary one.
+
+**And CP/M has nowhere to put the answer even if it had it.** A CP/M 2.2 BIOS write returns
+`0` for success and `1` for a non-recoverable error. That is the entire vocabulary. There is no
+"protected" code, which is why a genuine hardware write failure surfaces as the blunt
+`Bdos Err On A: Bad Sector` — CP/M is telling you the only thing the interface let it hear.
+
+The message people remember — `Bdos Err On A: R/O` — is a **different mechanism entirely**. That
+is CP/M's own software read-only flag, the one `STAT A:=R/O` sets and a warm boot clears. It
+lives in CP/M's head, not on the disk and not in the controller, and a write-protected image will
+never produce it.
+
+So: a guest that tries to write to an `RO` disk is asking for something it cannot be refused
+politely. **Do not mount `RO` and then expect CP/M to cope gracefully** — mount `RO` for a disk
+you are going to read. If you want a disk the guest can write and you can throw away, copy the
+directory; that is what the copy is for.
 
 ## Making a scratch disk
 
