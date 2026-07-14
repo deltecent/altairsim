@@ -106,10 +106,23 @@ build() {  # build <docdir> <output-name> <title>
   stamp="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo '?')"
   date="$(date -u '+%Y-%m-%d')"
 
+  # CHAPTERS ONLY -- --toc-depth=1. At depth 2 the contents listed all 146 subsection
+  # headings as well as the 21 chapters and ran to five pages: 109pp -> 105pp when it went.
+  # A contents page you have to page THROUGH is not a contents page. The reader opens it to
+  # learn the SHAPE of the document, and an index of every `## Getting back out -- ^E` in it
+  # tells them the shape of a chapter they have not read yet.
+  #
+  # Know what this costs, because it is not nothing: --print-to-pdf emits no bookmark tree
+  # (verified -- zero /Outlines in the PDF, before and after), so the contents page is the
+  # ONLY navigation this document has. Cutting it to depth 1 means a subsection is reached by
+  # its chapter, or by the reader's own text search. That is the right trade for a manual whose
+  # chapters are short and whose reference lives at the back -- but if a chapter ever grows big
+  # enough to need finding-by-subsection, the answer is to SPLIT IT, not to reopen this.
+  #
   # shellcheck disable=SC2086
   pandoc $chapters \
     --standalone --embed-resources \
-    --toc --toc-depth=2 \
+    --toc --toc-depth=1 \
     --from=gfm --to=html5 \
     --metadata title="$title" \
     --css "$root/docs/print.css" \
