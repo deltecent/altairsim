@@ -1,0 +1,61 @@
+# THE PACKAGE -- what we hand people, and the ONLY thing the User Manual may name.
+#
+# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, and some disks and
+# tapes. They do NOT get this repository -- no src/, no CMakeLists, no tests, no
+# DESIGN.md, no docs/boards/. So the manual may not reference any of it, and every path
+# it prints must be a path that exists INSIDE THE ZIP.
+#
+# This file is how that is enforced rather than merely intended. It is the single source
+# of truth for three things that would otherwise drift apart:
+#
+#   1. TOKENS. The manual's Markdown writes {{MACHINE_CPM}}, never a literal path. The doc
+#      build substitutes from here and FAILS on any token it cannot resolve, so a path
+#      cannot reach the PDF unexpanded and a path cannot be invented in prose.
+#   2. CONTENTS. tools/build-package.sh assembles the zip from the DIRS below.
+#   3. THE TEST. tests/acceptance/manual.cmake builds that same package, in a directory
+#      with no repository in sight, and runs the manual's own commands against it. If a
+#      chapter tells you to type something that does not work in the package, it fails.
+#
+# THE LAYOUT BELOW IS PROVISIONAL (Patrick has not settled it). That is exactly why the
+# prose does not contain it: settling it is editing this file, not sweeping the chapters.
+#
+# ---------------------------------------------------------------------------
+# DIRS -- <package path>  <=  <path in this repo>
+#
+# Each example ships as a DIRECTORY, because a machine file names the disk lying beside
+# it ("cpm22b23-56k.dsk", no directory at all) and paths inside a machine file resolve
+# against THAT FILE. Keep the .toml and its image together and the folder boots wherever
+# it is copied to -- which is the whole point of the rule.
+# ---------------------------------------------------------------------------
+
+DIR  disks/cpm22        <=  disks/mits-88dcdd/cpm22/buffered
+DIR  tapes/basic        <=  tapes/4KBasic31
+
+# TBD, and deliberately not faked:
+#
+#   Altair DISK BASIC exists NOWHERE in this tree today. There is no image and no machine
+#   file for it. The manual has a section for it, written against the tokens below and
+#   marked TBD, so that wiring it up is adding two lines here rather than writing a
+#   chapter under time pressure.
+#
+# DIR  disks/diskbasic  <=  disks/mits-88dcdd/diskbasic          # TBD -- does not exist yet
+
+# ---------------------------------------------------------------------------
+# TOKENS -- what the manual writes, and what it means.
+# ---------------------------------------------------------------------------
+
+# The CP/M machine. Buffered CP/M 2.2 on an 8" floppy: it carries `startup = ["RUN FF00"]`,
+# so naming it IS booting it, and it is the quick start.
+MACHINE_CPM   = disks/cpm22/cpm22-buffered.toml
+DISK_CPM      = disks/cpm22/cpm22b23-56k.dsk
+
+# Cassette BASIC. WHICH ONE SHIPS IS TBD (4K or 8K); this points at 4K today because it is
+# the one with an acceptance test behind it.
+MACHINE_BASIC = tapes/basic/basic4k.toml
+TAPE_BASIC    = tapes/basic/4K BASIC Ver 3-1.tap
+LOADER_BASIC  = tapes/basic/LDR4K31.HEX
+NAME_BASIC    = Altair 4K BASIC 3.1
+
+# Disk BASIC -- TBD. The chapter that uses these is marked as such.
+MACHINE_DISKBASIC = disks/diskbasic/diskbasic.toml
+NAME_DISKBASIC    = Altair Disk BASIC

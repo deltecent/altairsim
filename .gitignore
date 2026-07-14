@@ -27,6 +27,18 @@ Thumbs.db
 *.snap
 *.replay
 altairsim.log
+
+# The built documents. THE MARKDOWN IS THE SOURCE; the PDF is an artifact of it, of the
+# binary (the reference chapters are printed from the program) and of a browser.
+#
+# It is not committed, and the reason is this repository's own history: twice, large binaries
+# went into it and had to be rewritten out. The manual weighs ~2 MB and would be rebuilt on
+# every typo -- which is exactly the shape of the mistake, made slowly instead of all at once.
+#
+# It is still a DELIVERABLE. tools/build-docs.sh makes it, and it goes in the distribution
+# zip beside the binary. A user gets the PDF; git does not.
+docs/*.pdf
+docs/*.html
 .altairsim_history
 
 # Disk/tape images are large and usually not ours to redistribute.

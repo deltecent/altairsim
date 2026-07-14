@@ -202,6 +202,27 @@ add_executable(altairsim src/main.cpp)
 target_link_libraries(altairsim PRIVATE altair_core)
 
 # ---------------------------------------------------------------------------
+# The manual's reference chapters, printed from the binary's own reflection layer.
+#
+# It links altair_core rather than shelling out to `altairsim` because no monitor command
+# emits what a parameter table needs -- BOARDS TYPES has the help and not the defaults,
+# SHOW has the defaults and not the help. See tools/gen-reference.cpp for the whole
+# argument. It is a TOOL, not a feature: the shipping command surface is a contract, and
+# a doc generator has no business in it.
+#
+# `docs-reference` rewrites docs/manual/ref/*.md in the source tree, on purpose -- those
+# files are committed, so that a reader of the repo (and the PDF build) needs no toolchain
+# to see them. `docs-reference-check` below is what stops them going stale.
+# ---------------------------------------------------------------------------
+add_executable(altair_genref tools/gen-reference.cpp)
+target_link_libraries(altair_genref PRIVATE altair_core)
+
+add_custom_target(docs-reference
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/docs/manual/ref"
+  COMMAND altair_genref "${CMAKE_SOURCE_DIR}/docs/manual/ref"
+  COMMENT "Generating docs/manual/ref/ from the binary")
+
+# ---------------------------------------------------------------------------
 # Tests -- no framework; a test is an executable that returns non-zero.
 # ---------------------------------------------------------------------------
 enable_testing()
@@ -231,6 +252,7 @@ add_executable(altair_tests
   tests/test_dcdd.cpp
   tests/test_mds.cpp
   tests/test_frontpanel.cpp
+  tests/test_lamp.cpp
   tests/test_virtc.cpp
   tests/test_hostdir.cpp
   tests/test_hostbridge.cpp)
@@ -421,6 +443,51 @@ add_test(NAME acceptance-examples
                  -DBIN=${CMAKE_CURRENT_BINARY_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/examples.cmake)
 set_tests_properties(acceptance-examples PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ---------------------------------------------------------------------------
+# THE MANUAL'S REFERENCE MAY NOT DRIFT FROM THE BINARY.
+#
+# docs/manual/ref/*.md is committed (a reader of the repo, and the PDF build, should need
+# no toolchain to see it) and generated (a hand-typed parameter table is a second schema,
+# and the first draft of one in this very project got three of the memory card's eight
+# defaults wrong). Committed + generated = it can rot, so it is tested.
+# ---------------------------------------------------------------------------
+add_test(NAME docs-reference
+         COMMAND ${CMAKE_COMMAND}
+                 -DGEN=$<TARGET_FILE:altair_genref>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/docs-reference.cmake)
+set_tests_properties(docs-reference PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
+# THE USER MANUAL MAY NOT NAME ANYTHING THE READER DOES NOT HAVE.
+#
+# It ships in the zip, next to the binary and the disks. There is no src/, no CMakeLists and
+# no DESIGN.md in there. "Self-contained" erodes one helpful cross-reference at a time, in
+# good faith, and nobody notices until a user follows one -- so it is a test, not a habit.
+# The Developer Guide is deliberately exempt: it is FOR the source.
+# ---------------------------------------------------------------------------
+add_test(NAME docs-manual
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/docs-manual.cmake)
+set_tests_properties(docs-manual PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
+# The PDFs. NOT part of the build, and it must never become part of it.
+#
+# altairsim's loudest claim is that it builds with a C++20 compiler and CMake and nothing
+# else. A PDF wants pandoc and a browser, and neither is allowed anywhere near the thing that
+# produces the simulator. So this is a target you ASK for, and its absence is not an error --
+# `cmake -S . -B build` on a machine with no pandoc must still configure and still build.
+# ---------------------------------------------------------------------------
+add_custom_target(docs
+  COMMAND "${CMAKE_SOURCE_DIR}/tools/build-docs.sh"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Building altairsim-manual.pdf and altairsim-devguide.pdf"
+  VERBATIM)
+add_dependencies(docs docs-reference)
 
 # ---------------------------------------------------------------------------
 # THE INTERACTIVE ONE. Everything above drives the CLI through a PIPE, and a pipe is not

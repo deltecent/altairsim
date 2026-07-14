@@ -1,0 +1,90 @@
+/* The manual, on paper.
+ *
+ * The browser is the PDF engine (tools/build-docs.sh), so this is a PRINT stylesheet and
+ * not a web one: what matters is that a table does not get sliced in half by a page break
+ * and that a 79-column code block fits the column it is printed into.
+ */
+
+@page {
+  size: letter;
+  margin: 22mm 18mm;
+}
+
+html { font-size: 11pt; }
+
+body {
+  font-family: "Charter", "Georgia", "Palatino", serif;
+  line-height: 1.45;
+  color: #111;
+  max-width: 42em;
+  margin: 0 auto;
+}
+
+/* Chapters start on a new page. Every chapter file begins with a single H1. */
+h1 {
+  font-size: 1.9em;
+  line-height: 1.2;
+  margin-top: 0;
+  padding-top: 0.2em;
+  border-bottom: 2px solid #111;
+  break-before: page;
+}
+h1:first-of-type { break-before: avoid; }
+
+h2 { font-size: 1.35em; margin-top: 1.8em; }
+h3 { font-size: 1.1em;  margin-top: 1.5em; }
+
+/* A heading stranded at the foot of a page is the classic print bug. */
+h1, h2, h3, h4 { break-after: avoid; }
+
+/* Code is where the reader's hands go, so it gets the room. Period listings and terminal
+ * transcripts are written to 79 columns; anything wider is a table pretending to be code. */
+code, pre {
+  font-family: "SF Mono", "Menlo", "Consolas", "DejaVu Sans Mono", monospace;
+  font-size: 0.82em;
+}
+
+pre {
+  background: #f6f6f4;
+  border-left: 3px solid #bbb;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;       /* on screen */
+  white-space: pre-wrap;  /* on paper: a transcript must never be silently cropped */
+  word-break: break-word;
+  break-inside: avoid;
+}
+
+code { background: #f0f0ee; padding: 0.1em 0.3em; border-radius: 2px; }
+pre code { background: none; padding: 0; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.86em;
+  break-inside: avoid;   /* a parameter table cut across a page is unreadable */
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 0.35em 0.55em;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #f0f0ee; }
+
+blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 3px solid #999;
+  background: #fafaf8;
+  break-inside: avoid;
+}
+
+#TOC { break-after: page; }
+#TOC ul { list-style: none; padding-left: 1em; }
+#TOC > ul { padding-left: 0; }
+
+header#title-block-header { text-align: center; margin-bottom: 3em; }
+.subtitle { color: #666; font-size: 0.9em; }
+
+a { color: #111; text-decoration: none; border-bottom: 1px solid #bbb; }
