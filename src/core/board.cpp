@@ -86,16 +86,24 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
         return false;
     }
 
-    // A PROPERTY WITH NO SETTER IS A PIN, NOT A JUMPER. The 6850's `lines` reports
-    // what /DCD and /CTS are doing right now -- and you cannot SET what the far end
-    // is doing, any more than you can set the temperature by moving the thermometer.
+    // A PROPERTY WITH NO SETTER IS SOMETHING THE CARD KNOWS, NOT SOMETHING YOU CHOSE.
+    // The 6850's `lines` reports what /DCD and /CTS are doing right now -- and you
+    // cannot SET what the far end is doing, any more than you can set the temperature
+    // by moving the thermometer. A memory card's `pages` is the same kind of fact,
+    // arrived at from the other direction: it is DERIVED from the regions you declared.
     //
-    // Refusing here, in the ONE property path, is what makes read-only work
-    // everywhere at once: SET says this sentence, CONFIG SAVE already skips them
-    // (config/toml.cpp), and MCP gets it for free. There is no second rule to keep in
-    // step.
+    // So the sentence is the PROPERTY'S OWN HELP, and not a fixed one. It used to read
+    // "it reports a pin, not a jumper", which is exactly right for `lines` and simply
+    // untrue of `pages` -- the hazard of writing a generic refusal while looking at one
+    // example of the thing it refuses.
+    //
+    // Refusing here, in the ONE property path, is what makes read-only work everywhere
+    // at once: SET says this, CONFIG SAVE already skips them (config/toml.cpp), MCP gets
+    // it free, and the manual's generated reference marks them read-only off the same
+    // signal. There is no second rule to keep in step -- which is why a card must say
+    // "no setter" and NOT install a setter that always fails.
     if (!p->set) {
-        err = who + ": '" + p->name + "' is read-only -- it reports a pin, not a jumper";
+        err = who + ": '" + p->name + "' is read-only -- " + p->help;
         return false;
     }
 

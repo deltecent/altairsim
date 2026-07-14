@@ -30,6 +30,7 @@ int main() {
     test_clock();
     test_bus();
     test_memory();
+    test_readonly_props();
     test_phantom();
     test_cli();
     test_boundary();

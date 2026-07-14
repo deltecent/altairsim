@@ -19,6 +19,7 @@ extern int g_run;
 void test_clock();
 void test_bus();
 void test_memory();
+void test_readonly_props();
 void test_hex();
 void test_media();
 void test_roms();

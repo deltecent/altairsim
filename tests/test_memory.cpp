@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "boards/s100-memory.h"
+#include "config/toml.h"
 #include "core/machine.h"
 
 using namespace altair;
@@ -346,4 +347,60 @@ void test_memory() {
               "a rom region on a banked card is REJECTED, not invented");
         CHECK(err.find("unsourced") != std::string::npos, "and the error says why");
     }
+}
+
+// ---------------------------------------------------------------------------
+// A DERIVED PROPERTY HAS NO SETTER. IT DOES NOT HAVE A SETTER THAT SAYS NO.
+//
+// `banks` and `pages` are things the card WORKS OUT -- banks follows bank_type, pages falls
+// out of the regions you declared. Neither is a jumper, and neither belongs in a TOML file.
+//
+// They used to refuse a SET from inside a setter, and that looked like it was enough. It was
+// not. Read-only is a FACT ABOUT THE PROPERTY, and the only way a consumer of the reflection
+// layer can see it is THE ABSENCE OF A SETTER (core/board.cpp). With a refusing setter
+// installed, SHOW printed them as settable, MCP offered them as writable, and anything
+// generated off properties() described them as TOML keys you could write -- while the SET
+// they were all advertising failed every time.
+//
+// CONFIG SAVE alone got it right, and HOW it got it right is the argument for this change:
+// it could not ask "is this settable?", so it grew a workaround (config/toml.cpp) that CALLS
+// each setter with the property's own current value and skips the ones that refuse. That is
+// precisely the "second rule to keep in step" this reflection layer exists to abolish -- and
+// it is not free, because probing a setter means CALLING it, on every property, on every save.
+//
+// One signal, honoured by everybody, or four subsystems each guessing. This test pins the
+// signal down, because the bug it guards is invisible: nothing crashes, and the damage lives
+// entirely in what other subsystems believe.
+void test_readonly_props() {
+    SECTION("derived properties: no setter, not a setter that refuses");
+
+    Machine m;
+    auto* b = addMem(m, "mem0");
+    std::string err;
+    CHECK(b->addRegion(ram(0x0000, 0xE000), err), "56K of RAM");
+
+    for (const char* name : {"banks", "pages"}) {
+        const Property* p = nullptr;
+        for (const auto& q : b->properties())
+            if (q.name == name) p = &q;
+        CHECK(p != nullptr, (std::string(name) + " exists").c_str());
+        if (!p) continue;
+
+        // THE WHOLE POINT. Not "setting it fails" -- there is nothing there to set.
+        CHECK(!p->set, (std::string(name) + " has NO SETTER (this is what read-only IS)").c_str());
+        CHECK(!!p->get, (std::string(name) + " still reads").c_str());
+    }
+
+    // And SET still refuses, in the property path, with the property's OWN words -- not with
+    // a sentence about UART pins, which is what the generic refusal used to say to everybody.
+    CHECK(!setProperty(*b, "banks", "4", err), "SET banks is refused");
+    CHECK(err.find("read-only") != std::string::npos, "...and says it is read-only");
+    CHECK(err.find("bank_type") != std::string::npos,
+          "...and says WHY, in the property's own help -- not 'it reports a pin, not a jumper'");
+
+    // CONFIG SAVE must not write a key that CONFIG LOAD would then refuse. A save you cannot
+    // load is not a save.
+    std::string toml = saveTomlText(m);
+    CHECK(toml.find("banks") == std::string::npos, "CONFIG SAVE does not write `banks`");
+    CHECK(toml.find("pages") == std::string::npos, "CONFIG SAVE does not write `pages`");
 }

@@ -480,13 +480,15 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "banks";
-        x.help = "How many banks this card has (set by bank_type)";
+        x.help = "how many banks this card has. The card decides: it follows bank_type";
         x.kind = Kind::Int;
         x.get = [this] { return Value::ofInt(banks_); };
-        x.set = [](const Value&, std::string& err) {
-            err = "banks is set by bank_type -- the card decides, not you";
-            return false;
-        };
+        // NO SETTER, rather than a setter that always refuses. Both stop a `SET banks=4`,
+        // but only one of them stops a doc: read-only is a FACT ABOUT THE PROPERTY, and
+        // the only way a consumer can see it is the absence of a setter. With a refusing
+        // setter here, SHOW, CONFIG SAVE, MCP and the manual's generated reference all
+        // believed `banks` was a key you could write in a TOML file -- and the manual
+        // said so, which is a lie a reader only discovers by being refused.
         p.push_back(std::move(x));
     }
     {
@@ -535,7 +537,8 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "pages";
-        x.help = "Composite page map -- which pages this card answers for (derived)";
+        x.help = "the composite page map -- which pages this card answers for. Derived "
+                 "from the regions you declared";
         x.kind = Kind::Str;
         x.get = [this] {
             std::string s;
@@ -553,10 +556,8 @@ std::vector<Property> MemoryBoard::properties() {
             }
             return Value::ofStr(s.empty() ? "(none)" : s);
         };
-        x.set = [](const Value&, std::string& err) {
-            err = "pages is derived from the regions";
-            return false;
-        };
+        // No setter -- see `banks` above. Read-only has to be visible to a consumer, and
+        // the absence of a setter is the only way it is.
         p.push_back(std::move(x));
     }
     return p;
