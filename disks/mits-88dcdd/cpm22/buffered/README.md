@@ -11,8 +11,10 @@ For Altair 8" Floppy
 A>DIR
 ```
 
-Run it **from the repository root** — the paths in the `.toml` are resolved against the process's
-working directory, not against the file.
+Run it **from anywhere** — the paths inside the `.toml` resolve against **that file**, not
+against the directory you launched from, so this folder boots wherever it is copied to. (A
+path you *type* at the prompt is still relative to your shell, which is the other half of
+the same rule.)
 
 ## The disk images are not in this repository
 

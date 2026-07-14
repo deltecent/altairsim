@@ -1,6 +1,7 @@
 # 88-DCDD — MITS Disk Controller (8" Pertec FD-400)
 
-**Status:** not implemented (milestone 3). Register map recovered and cross-checked.
+**Status:** done. Boots CP/M 2.2 and writes — on the 77-track 8″ medium and on the 2048-track
+8 MB one, through the stock card at 08/09/0A and the stock DBL PROM. Board type `dcdd`.
 
 ## The real hardware
 

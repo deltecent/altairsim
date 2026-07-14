@@ -11,9 +11,10 @@ For Altair 8Mb Virtual Drive
 A0>DIR
 ```
 
-Run it **from the repository root** — the paths in the `.toml` are resolved against the
-process's working directory, not against the file. `A0>` is not a typo: this BIOS prints the
-drive's unit number after the letter.
+Run it **from anywhere** — the paths inside the `.toml` resolve against **that file**, not
+against the directory you launched from, so this folder boots wherever it is copied to. (A
+path you *type* at the prompt is still relative to your shell, which is the other half of the
+same rule.) `A0>` is not a typo: this BIOS prints the drive's unit number after the letter.
 
 ## There is no second controller, and no special case
 

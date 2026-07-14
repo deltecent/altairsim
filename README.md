@@ -48,7 +48,8 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 
 ## What is in the box
 
-Nine board types, each modeled from its own manual, and eight machines built out of them:
+Ten board types — nine modeled from their own manuals, and one of ours — and eight machines
+built out of them:
 
 | Board | What it is |
 |---|---|
@@ -61,6 +62,7 @@ Nine board types, each modeled from its own manual, and eight machines built out
 | `mds` | MITS 88-MDS — 5¼″ minidisk. The same registers as the DCDD, different physics. |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts (VI0–VI7 → `RST n`) and a real-time clock. |
 | `fp` | The front panel — SENSE switches at port `FF`, and the lamps. |
+| `hostbridge` | Guest ↔ host file transfer, sandboxed. **Ours, not a period card** — `R`/`W`/`HDIR`. |
 
 `altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`.
 
@@ -139,7 +141,7 @@ The 88-MDS acceptance tests need a CP/M disk image that is not in this repositor
 |---|---|
 | [`DESIGN.md`](DESIGN.md) | The design, and the reasoning. Read this first. |
 | [`docs/config.md`](docs/config.md) | The TOML machine format, with worked examples. |
-| [`docs/cli-commands.md`](docs/cli-commands.md) | Every monitor command. |
+| [`docs/cli-commands.md`](docs/cli-commands.md) | Why the monitor's commands rank and abbreviate as they do. **Not a command reference** — `HELP` is, and it comes off the same table the monitor resolves against. |
 | [`docs/boards/`](docs/boards/) | One file per board: the real hardware, the register map, how it is simulated, and the quirks it reproduces. |
 | [`docs/sources.md`](docs/sources.md) | Where every hardware fact came from. |
 | [`docs/roadmap.md`](docs/roadmap.md) | Milestones and acceptance criteria. |

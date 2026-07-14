@@ -13,8 +13,8 @@ CP/M2 on Altair
 ```
 
 It comes up in Lifeboat's `CONFIG` program rather than straight at a prompt — that is the disk, not
-the simulator. Run it **from the repository root**; the paths in the `.toml` are resolved against the
-process's working directory, not against the file.
+the simulator. Run it **from anywhere** — the paths inside the `.toml` resolve against **that file**, so this
+folder boots wherever it is copied to.
 
 ## The disk image is not in this repository
 
