@@ -431,6 +431,57 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         out << "\n  " << b->id << ":" << u.name << "\n";
         showProps(up, out);
     }
+
+    // ...AND THE KEYS OF ITS SUB-UNIT TABLES, which is a question SHOW could not answer
+    // until the tables had a schema to answer it from. `readonly` was real, it worked, and
+    // the only way to find out it existed was to read the board's source -- which is how
+    // this bug was found (Patrick asked me to file it as a MISSING FEATURE).
+    //
+    // These have no value column and cannot have one: they describe a drive that does not
+    // exist yet. What is on the card ALREADY is above, in `units` -- this is what you may
+    // write in a machine file to put something there.
+    for (const auto& t : b->subUnitTables()) {
+        auto sp = b->subUnitProperties(t);
+        if (sp.empty()) continue;
+        out << "\n  [[board." << t << "]]  (in a machine file)\n";
+        showSchema(sp, out);
+    }
+}
+
+// The same six facts as showProps(), minus the value -- see above for why there isn't one.
+void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
+    char buf[256];
+    out << "\n  key              type             legal\n";
+    for (const auto& p : ps) {
+        const char* kind = "string";
+        std::string legal;
+        switch (p.kind) {
+        case Kind::Bool:
+            kind  = "bool";
+            legal = "true|false";
+            break;
+        case Kind::Enum:
+            kind = "enum";
+            for (const auto& c : p.choices) legal += (legal.empty() ? "" : "|") + c;
+            break;
+        case Kind::Int:
+            kind = "int";
+            // RADIX-AWARE, because `at` is an address: printing "0..65535" for a thing you
+            // write as F800 would be answering in a base the reader does not use here.
+            if (!(p.min == 0 && p.max == 0)) {
+                if (p.radix == 16)
+                    std::snprintf(buf, sizeof buf, "%04llX..%04llX", (unsigned long long)p.min,
+                                  (unsigned long long)p.max);
+                else
+                    std::snprintf(buf, sizeof buf, "%lld..%lld", p.min, p.max);
+                legal = buf;
+            }
+            break;
+        case Kind::Str: break;
+        }
+        std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(), kind, legal.c_str());
+        out << buf << "\n";
+    }
 }
 
 void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
@@ -1662,9 +1713,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- REGION ----------------
     // Populating a card interactively. Note this goes through the SAME generic
-    // addSubUnit() hook the TOML loader uses, so the monitor learns nothing
-    // about what a region is -- and a board that grows a different sub-unit
-    // table next year needs no change here.
+    // loadSubUnit() door the TOML loader uses -- so the monitor learns nothing about
+    // what a region is, and `REGION ADD mem0 typ=ram` is refused here in the same words,
+    // off the same declaration, as it would be in a machine file. A board that grows a
+    // different sub-unit table next year needs no change here.
     if (cmd == "REGION") {
         if (!need(3, "REGION ADD <id> type=ram|rom at=<addr> [size=<n>|mount=<file>]")) return true;
         if (!is(a[1], "ADD")) {
@@ -1689,7 +1741,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             kv.push_back({a[i].substr(0, eq), a[i].substr(eq + 1)});
         }
         std::string err;
-        if (!b->addSubUnit("region", kv, err)) {
+        if (!b->loadSubUnit("region", kv, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
             return true;

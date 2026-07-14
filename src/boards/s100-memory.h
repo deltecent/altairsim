@@ -135,8 +135,8 @@ public:
     std::vector<MapEntry> ioMap() const override;
 
     std::vector<std::string> subUnitTables() const override { return {"region"}; }
-    bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
-    std::vector<SubUnit> subUnits() const override;
+    std::vector<Property>    subUnitProperties(const std::string& table) const override;
+    std::vector<SubUnit>     subUnits() const override;
 
     // A ROM region is a SOCKET, and a socket is a unit: `MOUNT mem0:rom0 dbl.hex`.
     //
@@ -159,6 +159,10 @@ public:
     // Messages the board wants said out loud (a bank select it could not
     // decode, a ROM that failed to load). Drained by the monitor.
     std::vector<std::string> drainLog() override;
+
+protected:
+    // Reached only through Board::loadSubUnit(), which has already vetted the keys.
+    bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
 
 private:
     static constexpr uint32_t kPage = 0x100;

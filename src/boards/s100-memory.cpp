@@ -602,6 +602,51 @@ std::vector<MapEntry> MemoryBoard::ioMap() const {
     return {e};
 }
 
+// WHAT A [[board.region]] TAKES. Declared, not string-compared -- see Board::subUnitProperties.
+// The radix is the property's own and it is the whole of DESIGN.md 10.0.1 in four lines: `at`
+// is an address, the machine sees it, it is HEX; `size` is a count, the machine never sees it,
+// it is DECIMAL -- and takes a K or an M free, from the one number parser.
+std::vector<Property> MemoryBoard::subUnitProperties(const std::string& table) const {
+    if (table != "region") return {};
+    std::vector<Property> p;
+    {
+        Property x;
+        x.name    = "type";
+        x.help    = "RAM, or ROM (which needs a `mount`, unless you want an empty socket)";
+        x.kind    = Kind::Enum;
+        x.choices = {"ram", "rom"};
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name  = "at";
+        x.help  = "Where it starts. An address: 0000, F800";
+        x.kind  = Kind::Int;
+        x.radix = 16;  // ON THE WIRE -> HEX
+        x.min   = 0;
+        x.max   = 0xFFFF;
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name  = "size";
+        x.help  = "How much. Decimal, and it takes a suffix: 48K, 1024, 2M";
+        x.kind  = Kind::Int;
+        x.radix = 10;  // NEVER on the wire -> DECIMAL
+        x.min   = 1;
+        x.max   = 0x10000;
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "mount";
+        x.help = "The ROM image. A file (relative to THIS FILE), or builtin:<name>";
+        x.kind = Kind::Str;
+        p.push_back(std::move(x));
+    }
+    return p;
+}
+
 bool MemoryBoard::addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
     if (table != "region") {
         err = "memory has no [[board." + table + "]] table";
@@ -609,14 +654,12 @@ bool MemoryBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
     }
     Region r;
     bool haveType = false;
+    // loadSubUnit() has already refused an undeclared key, a `type` that is not ram/rom, and
+    // an `at` outside 64K. What is left is construction -- and the one thing a schema cannot
+    // say, which is that `type` is REQUIRED.
     for (const auto& [k, v] : kv) {
         if (k == "type") {
-            if (v == "ram") r.kind = RegionKind::Ram;
-            else if (v == "rom") r.kind = RegionKind::Rom;
-            else {
-                err = "region type must be ram or rom, got '" + v + "'";
-                return false;
-            }
+            r.kind   = (v == "rom") ? RegionKind::Rom : RegionKind::Ram;
             haveType = true;
         } else if (k == "at") {
             // An address. The machine sees it, so it is HEX: `at=F000` is F000h,
@@ -633,9 +676,6 @@ bool MemoryBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
         } else if (k == "mount") {
             r.mount     = v;                 // what the file said...
             r.mountFile = resolvePath(v);    // ...and where that leads from where it lives
-        } else {
-            err = "unknown region key '" + k + "'";
-            return false;
         }
     }
     if (!haveType) {

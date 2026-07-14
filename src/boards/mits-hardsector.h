@@ -121,12 +121,14 @@ public:
     bool unmount(const std::string& unit, std::string& err) override;
 
     std::vector<std::string> subUnitTables() const override { return {"drive"}; }
-    bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
-    std::vector<SubUnit> subUnits() const override;
+    std::vector<Property>    subUnitProperties(const std::string& table) const override;
+    std::vector<SubUnit>     subUnits() const override;
 
     std::vector<std::string> drainLog() override;
 
 protected:
+    bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
+
     // One drive and whatever is in it. The Spindle is PER DRIVE, and the reason is not the
     // one this comment used to give ("a minidisk turns 16 sectors past the head where an 8"
     // turns 32") -- that was never a reason, because a minidisk belongs in a different CARD.
@@ -141,6 +143,7 @@ protected:
         std::string forced;  // the `media` property: "" means "probe it"
         HsFormat    fmt{};
         bool        loaded = false;  // head loaded. The 88-MDS has no say in this; see headLoaded()
+        bool        roSaid = false;  // "write-protected, discarding" -- said once, not per sector
         int         track  = 0;
         Spindle     spindle;
     };

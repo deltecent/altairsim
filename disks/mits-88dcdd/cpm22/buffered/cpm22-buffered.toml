@@ -19,8 +19,16 @@
 # THE DISK IMAGE IS NOT IN GIT. `*.dsk` is in .gitignore -- deliberately, they are large
 # and not ours to redistribute -- so there is NO UNDO on this file. CP/M writes to A: for
 # anything you create, and drive 0 is mounted read/write because that is what a real
-# machine is; a read-only A: is a CP/M that fails on its first PIP. If you are about to
-# test writes in anger, copy the image first, or add `readonly = true` below.
+# machine is. If you are about to test writes in anger, copy the image first, or add
+# `readonly = true` below.
+#
+# WHAT `readonly = true` ACTUALLY DOES, because it is not what you would guess: it is the
+# write-protect tab, and the tab was sensed by the DRIVE, not the controller. The 88-DCDD
+# has no write-protect bit to report -- so the guest is never told. It writes; the head is
+# inhibited; the bytes go nowhere. Whether anyone NOTICES is up to the BIOS, and only
+# through write-verify: this one has it ON (`mode db 40h` in BIOS.ASM), so a protected disk
+# gives you a clean `Delayed Write Error` and CP/M carries on. The 8 MB BIOS has it OFF, and
+# there the write appears to SUCCEED and the data evaporates. Both are the real machine.
 #
 # THE SOURCES ARE SITTING BESIDE THIS FILE -- BOOT.ASM and BIOS.ASM, Mike Douglas's own,
 # and the very listings the 88-DCDD was built from (docs/boards/mits-dcdd.md cites them as
@@ -59,10 +67,29 @@ id = "dsk0"
   unit  = 0
   mount = "cpm22b23-56k.dsk"
 
-  # B: is left empty. There is no blank 8" image in the tree to put in it -- FORMAT one
-  # from inside CP/M, or drop your own in:
+  # B: IS THE OTHER IMAGE IN THIS DIRECTORY, AND IT IS NOT A SCRATCH DISK. cpm22b23-24k.dsk
+  # is a second CP/M system disk -- the same one, relocated for a 24K machine -- and it will
+  # not BOOT here (see the arithmetic below). But a data disk is a data disk: it is an
+  # ordinary 77-track 8" floppy, and this BIOS reads it happily. DIR B:, PIP from it, run a
+  # .COM off it.
   #
-  #     MOUNT dsk0:drive1 "my-scratch.dsk"
+  # READ-ONLY, ON PURPOSE, AND IT IS ALSO THE DEMONSTRATION. `readonly` is the WRITE-PROTECT
+  # TAB, and the tab was sensed by the DRIVE, not the controller -- the 88-DCDD has no
+  # write-protect bit and cannot tell the guest anything. It writes; the head is inhibited;
+  # the bytes go nowhere. What notices is the BIOS, and only through write-verify, which
+  # THIS one has on (`mode db 40h`): try it and you get a clean `Delayed Write Error` and a
+  # prompt back.
+  #
+  #     A>ERA B:*.*         -> Delayed Write Error, and B: is untouched
+  #
+  # If you want somewhere to WRITE, that is what an empty drive is for -- FORMAT one from
+  # inside CP/M, or drop your own image in:
+  #
+  #     MOUNT dsk0:drive2 "my-scratch.dsk"
+  [[board.drive]]
+  unit     = 1
+  mount    = "cpm22b23-24k.dsk"
+  readonly = true
 
 # THE 24K MACHINE, which is the other image in this directory and the one place this file
 # would need to say something about memory.
@@ -78,8 +105,9 @@ id = "dsk0"
 # agree, so this file says nothing about memory at all.
 #
 # cpm22b23-24k.dsk is the same CP/M relocated for a smaller machine: the same sum gives
-# BIOSBAS 4700 and an end of 6000, so it needs 24K and it will not boot in 56K. To run it,
-# mount it above INSTEAD of the 56K image, and re-fit the memory card:
+# BIOSBAS 4700 and an end of 6000, so it needs 24K and it will not boot in 56K. It is
+# sitting in B: above, where it is perfectly readable and completely unbootable. To BOOT it,
+# move it to drive 0 INSTEAD of the 56K image, and re-fit the memory card:
 #
 #     [[board]]
 #     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,

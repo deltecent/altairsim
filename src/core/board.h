@@ -480,11 +480,43 @@ public:
     // The board names the tables it accepts and builds the sub-unit itself, so
     // the TOML loader stays as ignorant of what a "region" is as the bus is.
     virtual std::vector<std::string> subUnitTables() const { return {}; }
-    virtual bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
-        (void)kv;
-        err = type() + " has no [[board." + table + "]] table";
-        return false;
+
+    // ...AND IT NAMES THE KEYS, IN THE SAME VOCABULARY AS EVERYTHING ELSE.
+    //
+    // This is the one that was missing, and its absence made a liar of the sentence
+    // at the top of this section. `readonly`, `mount`, `media`, `unit`, `type`, `at`,
+    // `size` -- the most user-facing TOML in the program, the keys that carry the disk
+    // and the ROM and the write-protect tab -- were known to nothing but a chain of
+    // string compares inside each board. They appeared in no generated reference, no
+    // MCP schema and no SHOW, because there was nothing to walk. THAT is a second
+    // schema, and this is the end of it.
+    //
+    // NO get, NO set, AND THAT IS NOT AN OVERSIGHT. Every other Property accesses a
+    // thing that exists. A sub-unit key describes a thing that DOES NOT EXIST YET --
+    // there is no drive to read `readonly` off until the table has been read and the
+    // drive built. So these carry the half of Property that is a DESCRIPTION (kind,
+    // choices, range, radix, help) and leave the half that is an ACCESSOR empty. That
+    // is also exactly the half a documentation generator, a schema and a validator
+    // need, which is why one type serves both and there is no `SubUnitKey` struct.
+    //
+    // Empty for a board with no sub-unit tables, which is most of them.
+    virtual std::vector<Property> subUnitProperties(const std::string& table) const {
+        (void)table;
+        return {};
     }
+
+    // THE DOOR. Validate a [[board.<table>]] entry against subUnitProperties() -- is
+    // the table ours, is every key one we declared, does every value fit the kind, the
+    // choices and the range -- and only then hand it to the board to build.
+    //
+    // It is NOT virtual, and addSubUnit() below is protected, so there is no way in
+    // that skips the check. That matters because there are three ways in (the TOML
+    // loader, `REGION ADD` at the monitor, and the tests) and they used to reach the
+    // board directly and get whatever policing that board happened to have written by
+    // hand. Now they cannot: the schema is declared once and enforced here, and a board
+    // that adds a key gets validation, documentation and an MCP schema for it without
+    // writing any of the three.
+    bool loadSubUnit(const std::string& table, const KeyValues& kv, std::string& err);
 
     // THE INVERSE OF addSubUnit(), and the last board-specific line in the config
     // layer went away when this arrived. CONFIG SAVE used to reach for a
@@ -646,6 +678,21 @@ public:
     }
 
 protected:
+    // BUILD the sub-unit. Reached only through loadSubUnit(), which has already
+    // rejected a table this card does not have, a key it did not declare, and a value
+    // that does not fit the kind, the choices or the range it declared it with.
+    //
+    // So what is left in here is CONSTRUCTION, and what a board still owns is what only
+    // it can know: that a region needs a `type`, that a drive needs a `unit`, that a
+    // 2048-track image will not fit a 77-track drive. What is gone is the chain of
+    // string compares ending in `else { err = "no such key"; }` -- that was the schema,
+    // written four times, agreeing with the documentation by luck.
+    virtual bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
+        (void)kv;
+        err = type() + " has no [[board." + table + "]] table";
+        return false;
+    }
+
     bool   enabled_ = true;
     Clock* clock_   = nullptr;
     Bus*   bus_     = nullptr;

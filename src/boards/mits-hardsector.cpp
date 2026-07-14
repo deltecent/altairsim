@@ -258,17 +258,28 @@ void HardSectorFdc::selectDrive(int n) {
 // ---------------------------------------------------------------------------
 // WRITE ENABLE -- arm the write. 137 bytes, starting now.
 // ---------------------------------------------------------------------------
+// A WRITE-PROTECTED DISK DOES NOT REFUSE THE WRITE. It cannot: the 88-DCDD status byte has
+// no write-protect bit -- ENWD, MOVEOK, HDSTAT, DSKEN, INTEN, TRACK0, NRDA is all seven of
+// them -- so the card has no way to say no and the guest has no way to hear it. The tab was
+// sensed by the DRIVE, which inhibited the write head; the controller clocked ENWD and took
+// all 137 bytes exactly as it always did, and they went nowhere.
+//
+// So we arm unconditionally. A card that checked readOnly() here and returned without setting
+// writing_ would leave ENWD forever false -- and every period BIOS polls ENWD in a loop with
+// no timeout (Burcon's is `wrSec: in drvStat / ana d / jnz wrSec`), so it would not fail the
+// guest, it would WEDGE it. That is exactly what this code used to do.
+//
+// The disk being protected is discovered by the BIOS, if at all, and only through VERIFY:
+// read the track back, compare, and after WRTRIES x VFTRIES come up short -- `Delayed Write
+// Error` (bios.asm:1092). Verify is OFF by default in both our BIOS (`mode db 00h`) and
+// Burcon's (`flags db 10h`), so the period-correct default outcome of writing to a protected
+// disk is that the write appears to succeed and the data evaporates. That is not our bug to
+// fix; it is the machine. See flushWrite(), which is where the bytes hit the floor.
 void HardSectorFdc::armWrite() {
     Drive* d = selected();
     if (!d) return;
 
     Position pos = where();
-    if (d->img && d->img->readOnly()) {
-        char m[128];
-        std::snprintf(m, sizeof m, "%s: drive%d is write-protected", id.c_str(), sel_);
-        say(m);
-        return;
-    }
     writing_  = true;
     writePos_ = 0;
     wTrack_   = d->track;
@@ -309,6 +320,26 @@ void HardSectorFdc::flushWrite() {
     // is true, and the next person to read this should not have to rediscover that the zeros
     // were a coincidence.
     for (int i = writePos_; i < kHsSectorBytes; ++i) wbuf_[i] = wbuf_[writePos_ - 1];
+
+    // THE HEAD IS INHIBITED. The drive took the bytes and wrote none of them -- see armWrite().
+    // Not an error: there is nobody to report it to, and writeSector() would only return false
+    // for us to mistranslate into "write failed", which is a different and untrue thing. Say it
+    // ONCE per drive, on the host, because a CP/M that is about to spend an afternoon writing to
+    // a disk that cannot take it deserves to have someone notice out loud.
+    if (d->img->readOnly()) {
+        if (!d->roSaid) {
+            d->roSaid = true;
+            char m[160];
+            std::snprintf(m, sizeof m,
+                          "%s: drive%d is write-protected -- the guest's writes are being "
+                          "discarded, and it has no way to be told",
+                          id.c_str(), sel_);
+            say(m);
+        }
+        writePos_ = 0;
+        if (bufSector_ == wSector_) bufSector_ = -1;
+        return;
+    }
 
     size_t n = kHsSectorBytes;
     if (!d->img->writeSector(wTrack_, 0, wSector_, wbuf_, &n)) {
@@ -457,6 +488,7 @@ bool HardSectorFdc::mount(const std::string& unit, const std::string& path, bool
     d.path    = std::move(fresh.path);
     d.fmt     = fresh.fmt;
     d.spindle = fresh.spindle;
+    d.roSaid  = false;  // a new disk gets a fresh warning; the fields are copied one by one
     return true;
 }
 
@@ -531,6 +563,53 @@ std::vector<Property> HardSectorFdc::properties() {
     return p;
 }
 
+// WHAT A [[board.drive]] TAKES -- and now it is a DECLARATION, not a chain of string
+// compares. The generated reference, the MCP schema, SHOW and the loader's validation all
+// read this and nothing else, so `readonly` cannot be real and undocumented ever again.
+//
+// `media` GETS ITS CHOICES FROM formats(), which is the card's own format table -- so an
+// 88-MDS offers `minidisk` and a DCDD offers `8in`/`fdc8mb`, off one line, because they are
+// the same class with different tables. A hand-written enum here would have had to be
+// per-card, and would have been wrong the first time a format was added.
+std::vector<Property> HardSectorFdc::subUnitProperties(const std::string& table) const {
+    if (table != "drive") return {};
+    std::vector<Property> p;
+    {
+        Property x;
+        x.name  = "unit";
+        x.help  = "Which drive on the daisy chain";
+        x.kind  = Kind::Int;
+        x.radix = 10;  // NEVER on the wire -> DECIMAL (DESIGN.md 10.0.1)
+        x.min   = 0;
+        x.max   = drives_ - 1;
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "mount";
+        x.help = "The disk image to put in it. Relative to THIS FILE (core/paths.h)";
+        x.kind = Kind::Str;
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "readonly";
+        x.help = "The write-protect tab. The DRIVE senses it, so the guest is never told: "
+                 "it writes, the head is inhibited, the bytes go nowhere";
+        x.kind = Kind::Bool;
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "media";
+        x.help = "Force the format instead of probing the image's size";
+        x.kind = Kind::Enum;
+        for (const auto& f : formats()) x.choices.push_back(f.name);
+        p.push_back(std::move(x));
+    }
+    return p;
+}
+
 bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
     if (table != "drive") {
         err = type() + " has no [[board." + table + "]] table";
@@ -541,34 +620,19 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
     std::string path, media;
     bool        ro = false;
 
+    // loadSubUnit() has already refused a key we did not declare, a `media` that is not in
+    // formats() and a `unit` outside 0..drives-1. What is left is construction.
     for (const auto& [k, v] : kv) {
-        if (k == "unit") {
-            unit = std::stoi(v);
-        } else if (k == "mount") {
-            path = v;
-        } else if (k == "readonly") {
-            ro = (v == "true" || v == "1" || v == "yes");
-        } else if (k == "media") {
-            bool        ok = false;
-            std::string choices;
-            for (const auto& f : formats()) {
-                if (v == f.name) ok = true;
-                if (!choices.empty()) choices += ", ";
-                choices += f.name;
-            }
-            if (!ok) {
-                err = "unknown media `" + v + "` on a " + type() + " (" + choices + ")";
-                return false;
-            }
-            media = v;
-        } else {
-            err = "[[board.drive]] has no `" + k + "`";
-            return false;
-        }
+        if (k == "unit") unit = std::stoi(v);
+        else if (k == "mount") path = v;
+        else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
+        else if (k == "media") media = v;
     }
 
-    if (unit < 0 || unit >= drives_) {
-        err = "[[board.drive]] needs unit = 0.." + std::to_string(drives_ - 1);
+    // ...but WHETHER A KEY IS REQUIRED is the board's, and stays here: a drive table with no
+    // `unit` names no drive, and no schema can express that for us.
+    if (unit < 0) {
+        err = "[[board.drive]] needs a `unit`";
         return false;
     }
 

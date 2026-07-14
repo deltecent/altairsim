@@ -499,7 +499,7 @@ void test_mds() {
         withDisk(76720);
 
         std::string err;
-        CHECK(b.addSubUnit("drive", {{"unit", "0"}, {"mount", "m.dsk"}, {"media", "minidisk"}}, err),
+        CHECK(b.loadSubUnit("drive", {{"unit", "0"}, {"mount", "m.dsk"}, {"media", "minidisk"}}, err),
               "a [[board.drive]] with media = \"minidisk\" loads -- on THIS card");
 
         auto su = b.subUnits();
@@ -510,12 +510,12 @@ void test_mds() {
         b2.attachClock(&c);
         KeyValues kv;
         for (const auto& f : su[0].fields) kv.push_back({f.key, f.text});
-        CHECK(b2.addSubUnit("drive", kv, err), "and it loads straight back into a fresh board");
+        CHECK(b2.loadSubUnit("drive", kv, err), "and it loads straight back into a fresh board");
         CHECK(b2.units()[0].state == "m.dsk", "with the same disk in the same drive");
 
         // And the media names do not cross the card boundary in EITHER direction.
         std::string e2;
-        CHECK(!b2.addSubUnit("drive", {{"unit", "1"}, {"media", "8in"}}, e2),
+        CHECK(!b2.loadSubUnit("drive", {{"unit", "1"}, {"media", "8in"}}, e2),
               "`media = \"8in\"` on an mds is an error -- an 8-inch floppy is a dcdd's disk");
 
         setMediaResolver(openHostFile);  // put the real filesystem back
