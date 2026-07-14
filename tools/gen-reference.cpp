@@ -276,12 +276,9 @@ void cheatsheet(const std::string& dir) {
 
     o << "## Getting out, and back in\n\n"
          "| Key | Does |\n|---|---|\n"
-         "| `^E` | **ATTN** — take the keyboard back from the guest. The machine keeps running. |\n"
-         "| `RUN` | Resume — hand the keyboard back. |\n"
-         "| `QUIT` | Leave. (There is no `EXIT`.) |\n\n"
-         "`^C` belongs to the **guest** — CP/M reads it — which is exactly why it is not the\n"
-         "stop key. The host takes `^E` before the guest is ever offered the byte, so no\n"
-         "program can disable it.\n\n";
+         "| `^E` | **ATTN** — stop the machine and take the keyboard back. Nothing is lost. |\n"
+         "| `RUN` | Resume, at the exact instruction it stopped on. |\n"
+         "| `QUIT` | Leave. (There is no `EXIT`.) |\n\n";
 
     o << "## Command line\n\n"
          "```\n"

@@ -8,13 +8,9 @@
 
 | Key | Does |
 |---|---|
-| `^E` | **ATTN** — take the keyboard back from the guest. The machine keeps running. |
-| `RUN` | Resume — hand the keyboard back. |
+| `^E` | **ATTN** — stop the machine and take the keyboard back. Nothing is lost. |
+| `RUN` | Resume, at the exact instruction it stopped on. |
 | `QUIT` | Leave. (There is no `EXIT`.) |
-
-`^C` belongs to the **guest** — CP/M reads it — which is exactly why it is not the
-stop key. The host takes `^E` before the guest is ever offered the byte, so no
-program can disable it.
 
 ## Command line
 
