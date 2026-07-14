@@ -124,7 +124,7 @@ the three things an operator did in 1975, written down:
 |---|---|
 | `MOUNT acr0:tape "…"` | **Put the cassette in the recorder and press PLAY.** |
 | `LOAD "LDR4K31.HEX"` | **Toggle in the bootstrap.** Twenty bytes, entered by hand on the front-panel switches. MITS printed them in the manual. |
-| `RUN 0` | **Set the switches to zero and press RUN.** |
+| `RUN 0` | **Set the switches to zero, press EXAMINE, then press RUN.** EXAMINE is what puts the switches into the program counter; without it RUN carries on from wherever the machine already was. |
 
 Anything you can type at the prompt, a machine file can do. It gets no special powers, and
 that is why you can do this yourself:

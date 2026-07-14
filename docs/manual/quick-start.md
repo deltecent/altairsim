@@ -46,9 +46,12 @@ manual is built on it.
 The machine file named a **56K Altair with an 8″ floppy controller and a boot PROM at
 `FF00`**, put the disk image in drive 0, and then did one more thing: it typed `RUN FF00` for
 you. That is what the `startup>` line is telling you. **There is no `BOOT` command in this
-program** — booting a disk Altair meant setting the address switches to `FF00` and pressing
-RUN, so that is what the machine file says, in the operator's own words. Anything you can
-type, a machine file can do; it gets no special powers.
+program** — booting a disk on an Altair meant setting the address switches to `FF00`, pressing
+EXAMINE, and then pressing RUN, so that is what the machine file says, in the operator's own
+words. (EXAMINE is the step that matters: the switches by themselves change nothing, and it is
+EXAMINE that loads them into the program counter. `RUN FF00` is precisely those two presses —
+see the monitor chapter.) Anything you can type, a machine file can do; it gets no special
+powers.
 
 From there it is all real: the PROM read sector 0 off track 0, that loader pulled CP/M into
 high memory and jumped into the BIOS, and the BIOS printed its banner.

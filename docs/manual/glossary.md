@@ -43,7 +43,8 @@ built, whoever built it — the first time that was true of anything.
 
 **DBL** — Disk Boot Loader. The boot PROM on the MITS floppy controller, at `FF00`. It reads
 one sector off track 0 and jumps into it. **There is no `BOOT` command on an Altair** — you set
-the address switches to `FF00` and press RUN, and this is the thing you are running.
+the address switches to `FF00`, press EXAMINE to load them into the program counter, then press
+RUN, and this is the thing you are running.
 
 **decode** — What a card does when it recognises an address as its own and answers. A card
 that does not decode an address stays silent and lets somebody else have it. Which card
