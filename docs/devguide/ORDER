@@ -1,0 +1,9 @@
+# The Developer Guide, in order. THIS IS THE ONLY PLACE THE ORDER IS DECLARED.
+#
+# This document is for someone WITH THE SOURCE. Unlike the User Manual -- which ships in the
+# package and may not name a single file the reader does not have -- this one is free to talk
+# about src/, the tests, and DESIGN.md, because you cannot write a board without them.
+
+building.md
+theory.md
+adding-a-board.md

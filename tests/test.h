@@ -44,3 +44,8 @@ void test_frontpanel();
 void test_virtc();
 void test_hostdir();
 void test_hostbridge();
+
+// The Developer Guide's worked example (examples/boards/lamp/). Not a shipping
+// board -- it is compiled into the test binary only, so the tutorial's code
+// cannot rot, and the reader still performs the registry step themselves.
+void test_lamp();
