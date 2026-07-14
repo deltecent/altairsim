@@ -57,3 +57,22 @@ stay in the tree even though nothing builds from them.
 
 `-ReadMe (1).pdf` is *not* tracked (vendor documentation, same rule as the images). It is at the URL
 above.
+
+## After you fetch the image: install the host-bridge utilities
+
+The image you download does **not** have `R.COM`, `W.COM` or `HDIR.COM` on it — they are ours,
+not part of the original disk, and the image is not in git for us to have put them there. The
+manual's file-transfer chapter needs them, so install them once:
+
+```sh
+tools/install-hostbridge-utils.sh <the .dsk beside this file>
+```
+
+It boots the disk, `PIP`s **only** `R.HEX` in through the console and `LOAD`s it — then deletes
+the hex and lets **`R.COM` fetch `W.COM` and `HDIR.COM` off the host itself**. That order is not
+decoration: the buffered floppy has 26K free and the three hex files are 12.5K, so PIPping all
+three does not fit. The card bootstraps its own utilities.
+
+It then re-boots the image and has `W` write each `.COM` back out, byte-comparing them against
+`cpm/hostbridge/` — so a pass means they are on the disk, they *run* off the disk, and they are
+the right bytes. It is idempotent; running it twice is running it once.

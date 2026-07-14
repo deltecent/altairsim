@@ -269,8 +269,12 @@ It moves **files between the guest and your host**, in both directions, and it i
 guest sees one directory you nominate and **cannot escape it**. Not by `..`, not by an absolute
 path, not at all. That is a hard requirement, not a setting with a default.
 
-Default port `B0`. The guest-side utilities — `R`, `W` and `HDIR` — are assembled *inside the
-machine*, which means they are 8080 code like everything else and you can read them.
+Default port `B0`. **Nothing of the utilities is in the card.** `R`, `W` and `HDIR` are
+ordinary CP/M `.COM` programs — they live on a disk, they run at the `A>` prompt, and they
+talk to the card through its two ports exactly as any other CP/M program would. What is
+unusual is only where they came from: they were assembled *inside the machine*, by the
+machine's own assembler, from 8080 source that ships with it. So they are readable code
+rather than a magic trick the simulator performs on your behalf.
 
 The file-transfer chapter is where this card is explained. It is the fastest way to get your own
 code into CP/M, and it beats XMODEM by a distance — but XMODEM works too, over an ordinary serial

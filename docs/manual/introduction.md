@@ -29,8 +29,9 @@ have liked it, that is what this is for.
 - **Real I/O.** A serial card can be wired to your terminal, to a TCP socket (so you can
   telnet into the guest), or to an actual serial port on your machine, with the modem
   control lines wired through.
-- **File transfer** between the host and CP/M, sandboxed, with the utilities assembled
-  inside the machine itself.
+- **File transfer** between the host and CP/M, sandboxed. A card in the machine does the
+  moving; the things you actually *type* — `HDIR`, `R` and `W` — are ordinary CP/M programs
+  that live on a disk and run at the `A>` prompt, like `PIP` or `STAT`.
 
 ## What it does not do
 
