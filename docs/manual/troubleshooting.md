@@ -47,9 +47,11 @@ work at this prompt, on a machine that is not moving under you. See the debuggin
 
 You quit too early.
 
-The CP/M BIOS keeps a **track buffer in memory** and only flushes it to the image when it
-next reads the console. This is not a shortcut in the simulator; it is what the BIOS does,
-and it is why the real machine was fast.
+The CP/M in this package has a **track-buffering BIOS**: it keeps a whole track in memory and
+only flushes it to the image when it next reads the console. This is not a shortcut in the
+simulator; it is what that BIOS does, and it is why the machine was fast. (Not every CP/M is
+built this way — some write each sector as it goes — but you cannot tell from the prompt which
+one you are sitting at, so assume you are on a buffered one.)
 
 **Get back to the `A>` prompt before you quit or copy the image.** The moment CP/M asks you
 for a keystroke, the buffer has landed. Kill the program the instant a file operation appears

@@ -28,8 +28,9 @@ console. A CP/M program asks the BDOS for things and does not know what hardware
 
 **BIOS** — Basic Input/Output System. The bottom layer of CP/M, and the only part that knows
 what machine it is on. Move CP/M to a new computer and the BIOS is what you rewrite; the BDOS
-and the CCP are untouched. The BIOS is where the track buffer lives, which is why a file can
-be "written" and not yet be on the disk.
+and the CCP are untouched. It is also where a track buffer lives *if the author put one there*
+— which is why, on some CP/Ms and not others, a file can be "written" and not yet be on the
+disk. See the disks chapter.
 
 **CCP** — Console Command Processor. The top layer of CP/M — the part that prints `A>` and
 runs what you type. It is deliberately expendable: a big program is allowed to overwrite it,
@@ -127,8 +128,8 @@ sets. A serial port connected to `null` sets it forever, which is why writing to
 fine.
 
 **track** — One concentric ring of sectors on a disk. The head steps in and out to reach a
-track and does not move again to reach the sectors on it, which is why the BIOS buffers a
-whole track at a time.
+track and does not move again to reach the sectors on it, which is why a BIOS that buffers
+buffers a whole track at a time: having paid for the seek, it may as well have the lot.
 
 **UART** — Universal Asynchronous Receiver/Transmitter. The chip that turns a byte into a
 sequence of bits on a wire and back again. The ACIA is one.

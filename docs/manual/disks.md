@@ -142,9 +142,10 @@ altairsim> SHOW dsk0
 ## THE TRACK BUFFER TRAP
 
 Read this section. It is the one thing about disks in this simulator that will cost you work
-if you do not know it, and it is not the simulator's doing — **it is what the BIOS does.**
+if you do not know it, and it is not the simulator's doing — **it is what a BIOS may do**, and
+the CP/M in this package is one that does.
 
-**The CP/M BIOS does not write to the controller when CP/M closes a file.**
+**A track-buffering BIOS does not write to the controller when CP/M closes a file.**
 
 `BIOS WRITE` copies your data into a **track buffer in memory** — 32 sectors of 137 bytes, one
 whole track — marks it dirty, and returns. Nothing has touched the disk. Nothing will touch
@@ -156,18 +157,34 @@ the moment the machine sits down to wait for a human to type something is precis
 it has spare time and nothing to lose. It is a very good piece of engineering. It is also a
 loaded gun.
 
-So:
+### Not every CP/M does this
+
+Buffering is not a property of CP/M, and it is not a property of the controller. It is a
+decision the author of a **BIOS** made, and the BIOS is precisely the part of CP/M that every
+machine's owner rewrote for himself. Period Altair BIOSes went both ways:
+
+- **Track-buffered.** Writes pile up in memory and reach the disk on a console read. The CP/M
+  that ships in this package is one of these.
+- **Write-through.** Every `BIOS WRITE` puts a sector on the disk before it returns, and when
+  you get your prompt back your file is already there. Some of these hook `CONIN` too — but
+  only to *unload the head*, which is a courtesy to the drive and touches no data.
+
+You cannot tell which one you have by looking at the `A>` prompt, and a disk image somebody
+handed you arrives with whatever BIOS its author wrote on it. So treat the rule below as the
+rule regardless: on a write-through BIOS it costs you nothing, and on a buffered one it is the
+difference between having your file and not.
 
 > **Never `UNMOUNT`, copy, or kill the program immediately after a file operation.**
 > **Get back to the `A>` prompt first.**
 
-The `A>` prompt is CP/M reading the console, the console read flushes the buffer, and the
-directory update lands on the disk. Once you are looking at `A>`, the disk on your host is
-what you think it is. Save the file, watch the prompt come back, *then* do whatever you were
-going to do.
+The `A>` prompt is CP/M reading the console; the console read flushes the buffer if there is
+one, and the directory update lands on the disk. Once you are looking at `A>`, the disk on
+your host is what you think it is — under either kind of BIOS. Save the file, watch the prompt
+come back, *then* do whatever you were going to do.
 
 `^E` back to the monitor from the `A>` prompt is safe. `^E` back to the monitor one instant
-after `ED` says it has written your source file is **not**, and the file will not be there.
+after `ED` says it has written your source file is **not**, and on the CP/M in this package
+the file will not be there.
 
 ## The disk is real, and there is no undo
 
