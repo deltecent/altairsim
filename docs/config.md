@@ -349,140 +349,33 @@ R  FOO.ASM        host -> CP/M          R *.ASM      R SRC/FOO.ASM
 W  FOO.ASM        CP/M -> host          W *.HEX      W FOO.TXT T   (T = trim ^Z)
 ```
 
-## `[machine]` keys
+## The reference moved — and this file did not
 
-| Key | Meaning |
-|---|---|
-| `name` | Machine name, shown by `SHOW MACHINE`. |
-| `base` | **Start from another machine, then say what is different.** A built-in name (`"default"`) or a path to a `.toml`. Must come before the first `[[board]]`. See below. |
-| `startup` | **A list of monitor commands, executed in order once the backplane is built.** This is how a machine starts itself: there is no `BOOT` command (`DESIGN.md` §10.0), so a config that should boot says `startup = ["RUN FF00"]`. |
+**The normative TOML reference now lives in the User Manual** (`docs/manual/configuring.md`),
+which is the document that ships to users and is therefore the document that has to be
+complete. Every `[machine]` key, all four `[[board]]` forms, the region and drive tables, the
+number rule, `[console]` — they are specified there, once.
 
-**That is the whole table, and it is short on purpose.** A `[machine]` key is a thing that is true
-of the *backplane*, and almost nothing is. Two keys used to be here and both were **moved onto the
-card that physically carries them**:
+They used to be specified *here as well*, and that was the bug. Two normative descriptions of
+one format is precisely the "second schema" this project refuses everywhere else in the code,
+committed in the docs instead — and the copy here had already drifted (it claimed a machine
+could have "config-time properties" that are "rejected on a running machine", a rule that was
+deleted in July 2026 and never existed in the code by the time anybody read the sentence).
 
-| Was | Is | Why |
-|---|---|---|
-| `[machine] clock_hz` | `[[board]] type = "8080"`, `clock_hz` | The crystal is on the CPU card. A machine with no CPU in it has no clock rate — which is not a missing value, it is the truth about the machine. |
-| `[machine] sense` | `[[board]] type = "fp"`, `sense` | The switches are on the front panel, and the front panel is a card. |
+**What stays here is the part that is not a specification: the arguments.** The worked examples
+above, and the reasoning in them — why `clock_hz` is the CPU card's property and not the
+machine's, why the SENSE switches are the front panel's, why the transform chain belongs to the
+console and to nothing else, why a second 2SIO needs nothing but a different base port. That is
+what a design document is for, and none of it belongs in a user manual.
 
-**Both are hard errors, not silent migrations.** Loading a file with either key fails, and the
-error hands you the `[[board]]` block that replaces it. That is deliberate: `sense` in particular
-spent months parsing into a byte that *nothing put on the bus* — no board decoded port `0xFF`, so
-`IN 0FFH` read the floating bus and returned `0xFF` whatever you wrote here. A config that looks
-like it set the switches and did not is worse than one that will not load.
+If you are looking for **what a key does**, read the manual. If you are looking for **why the
+format is shaped like this**, you are in the right place.
 
-**`startup` makes the config language and the script language the same language.** Anything you can type at the monitor, a config file can do — and `CONFIG SAVE` round-trips the list verbatim.
+## And the per-board keys are not written down anywhere by hand
 
-**A `startup` entry is a command line, so it can quote a filename** — `\"` and `\\` are the two escapes the parser knows, and it refuses any other rather than quietly eating the backslash:
+A board's `properties()` **are** its TOML keys. There is no separate schema, and there is no
+hand-maintained table of them — `docs/manual/ref/boards.md` is *printed from the binary* by
+`tools/gen-reference.cpp`, and a test fails if it is stale.
 
-```toml
-startup = [
-  "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
-  "LOAD \"tapes/4KBasic31/LDR4K31.HEX\"",
-  "RUN 0",
-]
-```
-
-The quotes are not decoration. The monitor's tokenizer needs them because **every period tape in the tree has a space in its name**, so until the escape existed this could not be written at all: each `"` toggled the string, the entry was cut at the backslash, and the machine came up with an empty recorder and no error. `CONFIG SAVE` escapes on the way out too, or it would write a file it could not read back.
-
-> **Caution:** because `startup` runs commands, `CONFIG LOAD` on a `.toml` from an untrusted source executes whatever is in it. Keep `startup` to monitor commands, and treat a machine file like a script, because it is one.
-
-## `base` — start from a machine, and say what is different
-
-A CP/M machine is *the default Altair with a floppy in drive 0*. That is the whole of it, and `base` lets the file say exactly that and nothing else:
-
-```toml
-[machine]
-name = "cpm22-8mb"
-base = "default"          # fp0, cpu0, sio0 (console), dsk0 (88-DCDD), mem0 (56K + DBL PROM)
-
-startup = ["RUN FF00"]
-
-[[board]]                 # no `type` -> the card ALREADY in the machine with this id
-id = "dsk0"
-
-  [[board.drive]]
-  unit  = 0
-  mount = "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
-```
-
-**This is not a convenience, it is a defect class.** Hand-copying a five-card backplane is how you end up with a machine that boots CP/M into a terminal that is not there — because the one card you forgot to copy was the 2SIO. That is not hypothetical; it is what happened to the two files this feature replaced, and both booted far enough to look fine.
-
-**A file with no `base` is a complete machine, exactly as before.** The key is explicit rather than assumed, and that is a deliberate call: if every file silently inherited the default, then `4k` — a machine *defined by what it does not have* — would have to **remove** a floppy controller, a 2SIO and 52K of RAM to describe a bare 1975 Altair, and silence would stop meaning "nothing". One line at the top tells you what the backplane starts as; without that line, the file **is** the backplane.
-
-A base may be a **built-in name** or a **path**, decided by spelling and never by probing the disk (`looksLikeFile()`) — the same rule the command line uses, so `base = "default"` cannot change meaning the day somebody saves a file called `default` in the working directory. Bases may nest, up to 8 deep; two files that name each other are an error, not a hang.
-
-### The four `[[board]]` forms
-
-| Form | Means |
-|---|---|
-| `type` + a **new** `id` | **Add** a card. The only form that exists in a file with no `base`, and the only one that existed at all before `base` did. |
-| `type` + an `id` **from the base** | **Replace** it outright. Naming a card's type means you are specifying the whole card, not amending it. |
-| **no `type`** + an `id` | **Modify in place** — properties, unit properties, and anything appended to its lists. This is the common one: *"the base's floppy controller, with a disk in it."* |
-| `remove = true` | **Pull the card out** of the slot. |
-
-**Replace exists because a list cannot be amended into a smaller one.** Regions are a list, so adding a 24K region to a base's 56K memory board would *overlap* it — two boards answering `0000–5FFF`, which is bus contention — rather than replace it. Re-declaring the card with its `type` says "this is the whole card now":
-
-```toml
-[[board]]
-type = "memory"      # `type` on an id the base brought -> a FRESH card
-id   = "mem0"
-fill = "random"
-
-  [[board.region]]
-  type = "ram"
-  at   = 0000
-  size = "24K"
-
-  [[board.region]]
-  type  = "rom"      # ...and you must re-state the PROM, because you replaced the whole
-  at    = FF00       # card. Leave it out and there is nothing at FF00 to RUN.
-  mount = "builtin:dbl"
-```
-
-**A duplicate `id` within one file is still an error**, and replace is deliberately scoped around that check: a second `[[board]]` with a copy-pasted id is a *typo*, while the same thing against a base is *intent*. Conflating them would have thrown away the one diagnostic that catches the commonest mistake in a hand-written machine file.
-
-**`CONFIG SAVE` never writes a `base`.** It writes the backplane it can see — every card, inherited or not — so a saved machine stands on its own. That is the only honest thing it can do, because a base may be a file, and a file can change under you.
-
-## Memory regions
-
-A `memory` card carries a list of **regions** — the areas that are actually populated. This is not a convenience: a real card may hold **several ROM areas and several RAM areas at once** (a PROM card is a row of sockets at F000/F400/F800/FC00, any of which may be empty), and one card must be one board or `BOARDS` stops describing the machine.
-
-| Region key | Meaning |
-|---|---|
-| `type` | `ram` — writes are stored. `rom` — **writes are not decoded at all.** |
-| `at` | Start address. Page-aligned (multiple of 100H). |
-| `size` | `ram` only. `1K`…`64K`, or a hex byte count. |
-| `mount` | `rom` only. **`builtin:<name>`** for a ROM compiled into the simulator, or a path to a `.hex`/`.bin` on the host. **The region's size comes from the image**, rounded up to a page. **Omit it and the region is an empty socket:** it decodes nothing, and you can `MOUNT` a chip into it later. |
-
-**`builtin:` ROMs are compiled in**, because there is no portable place to keep ROM images across macOS, Linux, and Windows. `SHOW ROMS` lists them; `docs/roms.md` records each one's source, size, and CRC32. A bare path always overrides — built-ins are a convenience, never a lock-in.
-
-**Addresses no region covers are unpopulated** — an empty socket, a missing chip — so the board does not decode them, nothing drives the bus, and they read `0xFF`. Unpopulated RAM and an empty ROM socket are the same case, handled the same way.
-
-**Regions are sub-units**, so the existing `id:unit` addressing reloads one: `MOUNT mem0:rom0 newdbl.hex`.
-
-## `[board.unit.x]` and `[[board.thing]]` are not the same thing
-
-They look alike and they are opposites, so it is worth being blunt about which is which:
-
-- **`[board.unit.a]`** — *settings on a unit the board already has.* Every key in it goes through the same property path as `SET sio0:a BAUD=9600` at the monitor, so a config file can never set something the monitor would refuse. It is **generic**: any board with a unit that has settings gets this for free, from `units()` and `unitProperties()`, and `CONFIG SAVE` writes it back from that same pair.
-- **`[[board.region]]`, `[[board.drive]]`** — *a **list** of things the board owns.* The board builds these itself (`addSubUnit()`), because only it knows what a region or a drive is.
-
-**This distinction was a real bug, not bookkeeping.** `CONFIG SAVE` wrote `[board.unit.<name>]` for *every* board with unit settings, but the loader treated it as a board-declared table and only the 2SIO had declared it. So saving any machine with a cassette or a disk in it produced a file that would not load:
-
-```
-ps2int.toml: board 'acr0' (acr) has no [[board.unit]] table
-```
-
-A save you cannot load is not a save. Both halves are generic now, and `tests/test_machines.cpp` round-trips **every** built-in machine through `CONFIG SAVE` and back, checking that saving the reloaded machine is byte-identical — a fixed point, so nothing can be silently dropped on the way through.
-
-See `docs/boards/s100-memory.md` for banking (five real cards, no two alike), `fill`, and the three PHANTOM\* straps.
-
-## Notes
-
-- **`id` is what monitor commands address.** Sub-units are `id:unit` — `MOUNT fdc:drive0 cpm.dsk`, `CONNECT sio2a:b socket:2323`, `SET sio2a:a BAUD=9600`, `MOUNT mem0:rom0 dbl.hex`.
-- **A reset never clears RAM. Only powering off does** (`DESIGN.md` §6). `RESET` is the front-panel button; `POWER` is a power cycle, and it is the only thing that loses memory (and the only thing that re-reads ROM images from disk).
-- **Port collisions are detected**, not silently resolved. The bus reports contention naming both boards and the address. `SHOW BUS IO` shows the full map; `WHO IO 0x10` is the reverse lookup.
-- **Config-time vs runtime properties:** `SHOW <id>` displays which is which. Setting a config-time property on a running machine is rejected with a clear message rather than half-applied.
-- **Disk geometry** is probed by the **board**, not by a host service — image size alone is meaningless without knowing which controller wrote it (`DESIGN.md` §7.3). `media` forces the choice when the size is ambiguous.
+That is not a convenience. The first table of the memory card's defaults that anybody typed out
+by hand, reading the source carefully, got three of eight rows wrong.

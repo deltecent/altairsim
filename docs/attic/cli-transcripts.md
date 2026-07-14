@@ -1,3 +1,18 @@
+> # ⚠ THIS IS A PAPER DESIGN FROM BEFORE THE CODE. IT IS NOT A RECORD OF ANYTHING.
+>
+> These transcripts were **written by hand in July 2026, before the CLI existed**, as the
+> "Step 0" review — the point was to argue about what the monitor should feel like while it
+> was still cheap to change. They were never captured from a running program, and several of
+> them describe behaviour that was subsequently argued out of existence (there is no `GO`;
+> `RUN` took its slot, and then took `R` from `RESET`).
+>
+> **Do not copy a command out of this file.** For sessions that actually happened, see the
+> User Manual's worked-examples chapter — those are captured from the binary, and a test
+> re-runs them.
+>
+> It is kept because the *arguments* in it are the reason the CLI is shaped the way it is, and
+> because the punch list at the bottom is the record of what that review found.
+
 # The paper CLI — annotated session transcripts
 
 **Status:** Step 0. **Reviewed and signed off before implementation starts.** These become the acceptance script.

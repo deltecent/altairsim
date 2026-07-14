@@ -2,7 +2,7 @@
 
 ## Step 0 — the paper CLI, reviewed before any code
 
-Before implementation, `docs/cli-transcripts.md` gets a set of **complete, annotated session transcripts**, written longhand as if the simulator already existed:
+Before implementation, `docs/attic/cli-transcripts.md` gets a set of **complete, annotated session transcripts**, written longhand as if the simulator already existed:
 
 - Cold-boot CP/M from a floppy image to `A0>`.
 - Build a machine from scratch interactively: add boards, hit a port collision, find it with `SHOW BUS IO`, fix it, `CONFIG SAVE`.
@@ -55,7 +55,7 @@ The board is `memory` (`docs/boards/s100-memory.md`): a card holding a list of *
 10. **Two banked cards both claiming port 0x40** (three of the five real cards do) → **I/O contention reported**, naming both.
 11. `fill=random` with a fixed `seed` is **byte-identical across runs**, and the seed survives `SNAPSHOT`/`RESTORE`.
 
-**Then use it.** The CLI findings in `docs/cli-transcripts.md` (F1–F12) get settled against something real before a CPU exists to distract from them.
+**Then use it.** The CLI findings in `docs/attic/cli-transcripts.md` (F1–F12) get settled against something real before a CPU exists to distract from them.
 
 ---
 
@@ -240,7 +240,7 @@ Each board lands with its `.md`, its properties, its reset behavior, its tests, 
 | 3 — disk | ~~88-DCDD~~ (**built** — `docs/boards/mits-dcdd.md`), ~~**88-MDS**~~ (**built 2026-07-13** — `docs/boards/mits-88mds.md`) | Cold-boot CP/M 2.2 from `CPM22-8MB-56K.DSK` to `A0>`; run `M80`/`L80`. **The 88-MDS was not on this roadmap** — it was a *bug*, in the same family as the front panel one below. The 5.25″ minidisk was a row in the 88-DCDD's format table plus `if (d->fmt.sectors != 16)`, i.e. an 8″ controller inferring which controller it was from the disk in the drive, and it turned the platter at 360 RPM instead of 300 and clocked bytes at twice the real rate. **It never failed, because no minidisk image was ever in the tree.** The two cards now share a register model (`HardSectorFdc`) because MITS built that compatibility on purpose, and nothing else. `acceptance-minidisk` boots CP/M 2.2b off a real 5.25″ disk. |
 | 4 — memory model | ROM board, PHANTOM, banking | DBL PROM at 0xFF00 overlays RAM; `SHOW BUS MAP` shows it; bank switching works |
 | 5 — rest of serial | ~~88-SIO~~ (**built 2026-07-12, in 1b**), ~~88-ACR~~ (**built 2026-07-12** — `docs/boards/mits-88acr.md`; it *is* an 88-SIO B, plus an FSK modem the guest cannot observe), 88-LPC | MITS BASIC from a cassette image; SIO's **inverted** status alongside 2SIO's true-sense |
-| 5½ — the front panel | **`fp`** (**built 2026-07-12** — `docs/boards/mits-frontpanel.md`) | `IN 0FFH` reads the SENSE switches, and **DBL reads a switch instead of a floating wire for the first time.** Not a planned milestone: it was a *bug*. `[machine] sense` parsed into a byte nothing put on the bus (see the F6 note in `docs/cli-transcripts.md`), and the fix was to put the switches on the card that carries them |
+| 5½ — the front panel | **`fp`** (**built 2026-07-12** — `docs/boards/mits-frontpanel.md`) | `IN 0FFH` reads the SENSE switches, and **DBL reads a switch instead of a floating wire for the first time.** Not a planned milestone: it was a *bug*. `[machine] sense` parsed into a byte nothing put on the bus (see the F6 note in `docs/attic/cli-transcripts.md`), and the fix was to put the switches on the card that carries them |
 | 6 — interrupt board & DMA | ~~88-VI, RTC~~ (**built 2026-07-13** — `docs/boards/mits-88virtc.md`; one card, `virtc`), DMA | VI priority across *several* boards; a DMA card steals cycles and the clock notices. **The VI half is done:** MITS Programming System II runs with interrupts enabled, its console vectored through VI7 → `RST 7`, and Ctrl-C breaks a runaway program back to the monitor (`acceptance-ps2-int`). DMA remains. |
 | 7 — parallel, host bridge | 88-PIO, 88-4PIO, ~~**Host Bridge**~~ (**built 2026-07-13** — `docs/boards/hostbridge.md`; our own card, `hostbridge`, at 0xB0) | `R`/`W`/`HDIR` move files to and from the host; sandbox escape attempts are refused. **The Host Bridge is done.** It is the project's first genuinely new piece of hardware, and the board API needed nothing to take it. Its guest utilities are 8080 assembly **assembled inside the machine** by `ASM.COM`/`LOAD.COM` — `acceptance-hostbridge` `PIP`s the sources in through the console and builds them on every run, so the `.ASM` and the card cannot drift. It then round-trips 256 bytes containing every value from `00` to `FF` and compares them **on the host's disk**, and does the whole thing again with the *same binary* on an 88-MDS minidisk behind a different controller — which is how the "every disk call is a BDOS call" claim gets proved instead of asserted. The 88-PIO and 88-4PIO remain, and are still blocked on documentation (§17). |
 | 8 — more cores | 8085, Z80 | ZEXALL / ZEXDOC; a Z80 CP/M binary runs |

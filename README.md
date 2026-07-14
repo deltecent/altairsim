@@ -137,10 +137,14 @@ The 88-MDS acceptance tests need a CP/M disk image that is not in this repositor
 
 ## Documentation
 
+**Start with the manual if you want to *run* it, and with `DESIGN.md` if you want to *change* it.**
+
 | Document | What it covers |
 |---|---|
+| [`docs/manual/`](docs/manual/) | **The User Manual** — boot CP/M, drive the monitor, mount disks and tapes, move files. Written for someone holding a release package and nothing else, so it cites no source file and no repository path. Builds to `altairsim-manual.pdf`, which is what ships. |
+| [`docs/devguide/`](docs/devguide/) | **The Developer Guide** — Theory of Operation, and a worked example that adds a new board at port `FFH`. Needs the source, so it does not ship. |
 | [`DESIGN.md`](DESIGN.md) | The design, and the reasoning. Read this first. |
-| [`docs/config.md`](docs/config.md) | The TOML machine format, with worked examples. |
+| [`docs/config.md`](docs/config.md) | *Why* the TOML format is shaped as it is, by annotated example. **Not the grammar** — that is the manual's, so there is one normative copy of it. |
 | [`docs/cli-commands.md`](docs/cli-commands.md) | Why the monitor's commands rank and abbreviate as they do. **Not a command reference** — `HELP` is, and it comes off the same table the monitor resolves against. |
 | [`docs/boards/`](docs/boards/) | One file per board: the real hardware, the register map, how it is simulated, and the quirks it reproduces. |
 | [`docs/sources.md`](docs/sources.md) | Where every hardware fact came from. |

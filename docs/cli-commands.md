@@ -2,6 +2,18 @@
 
 **Settled 2026-07-11 by Patrick.** The table in `src/cli/commands.cpp` is the only copy of this; HELP and everything below are generated from it.
 
+> **This is not the command reference, and it never was.** It is the argument for *why the
+> commands rank and abbreviate the way they do* — which is a design decision, and belongs in a
+> design document.
+>
+> **The reference is `docs/manual/ref/commands.md`**: every command, its usage, its help and its
+> examples, *printed from the same `CommandDef` table the monitor resolves against* by
+> `tools/gen-reference.cpp`, with a test that fails if it goes stale. It cannot disagree with the
+> program, because it is the program's own words.
+>
+> (The README used to advertise *this* file as "Every monitor command". It was not, and there was
+> no such document until the manual was written.)
+
 ## The rule
 
 **The table is in priority order, and the first command whose name starts with what you typed wins.** That is the whole algorithm — there is no minimum-abbreviation column, no priority number, and nothing that treats a one-letter word specially. One letter is just a short prefix.
