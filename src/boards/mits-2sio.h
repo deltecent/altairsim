@@ -54,6 +54,11 @@ public:
     void pump() override;
     void configChanged() override;
 
+    // Both ports, because either can carry the transfer. The console is usually 'a' and
+    // a file transfer usually 'b', but nothing here needs to know which -- a byte on any
+    // line is a byte arriving. (Board::rxBytes.)
+    uint64_t rxBytes() const override { return a_.rxBytes() + b_.rxBytes(); }
+
     // What the chips want said out loud -- today, only "the host cannot do that baud
     // rate". Virtual on Board since 59a175b, which is what makes this possible at all.
     std::vector<std::string> drainLog() override;

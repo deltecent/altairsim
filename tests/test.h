@@ -26,6 +26,8 @@ void test_media();
 void test_roms();
 void test_phantom();
 void test_cli();
+void test_idle_judgement();
+void test_should_pace();
 void test_boundary();
 void test_numbers();
 void test_units();

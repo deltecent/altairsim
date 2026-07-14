@@ -53,6 +53,12 @@ void Machine::pump() {
     for (auto& b : boards_) b->pump();
 }
 
+uint64_t Machine::rxBytes() const {
+    uint64_t n = 0;
+    for (const auto& b : boards_) n += b->rxBytes();
+    return n;
+}
+
 bool Machine::remove(const std::string& id, std::string& err) {
     Board* b = find(id);
     if (!b) {

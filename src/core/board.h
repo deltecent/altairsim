@@ -438,6 +438,18 @@ public:
     // scheduler happened to deliver a packet.
     virtual void pump() {}
 
+    // BYTES THIS CARD HAS DELIVERED TO THE GUEST since power-on, across every line it
+    // carries, monotonic. Zero for a card with no serial line, which is most of them.
+    //
+    // The run loop sums this over the backplane to answer one question: is a byte ARRIVING
+    // anywhere? That is the ONLY thing that tells a machine taking a transfer from a machine
+    // sitting at a prompt -- both poll a quiet line and print nothing (monitor.cpp). It was
+    // asked of the console alone (Console::consumed), so a transfer on any other line was
+    // napped straight through. It is a fact about the BACKPLANE, so the backplane answers it
+    // -- like assertsInt() and drainLog() before it, not a dynamic_cast for the one card that
+    // happens to have a UART.
+    virtual uint64_t rxBytes() const { return 0; }
+
     // The machine's clock, set when the card goes into the backplane (DESIGN.md
     // 7.5). A card with nothing time-dependent on it never looks at this, and
     // most don't. A UART absolutely does: TDRE is a deadline, not a flag.

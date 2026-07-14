@@ -762,3 +762,85 @@ void test_cli() {
               "a 2 MHz machine idles too -- the two are orthogonal");
     }
 }
+
+// ---------------------------------------------------------------------------
+// THE IDLE JUDGEMENT (cli/monitor.h, guestIsWaiting).
+//
+// This is the run loop's decision to stand down and stop pinning a host core while the
+// guest spins on a UART status bit waiting for a human. It used to be an inline expression
+// in runMachine() that nothing could reach, and it was WRONG in a way no test could have
+// been written to catch -- so the first move was to make it a pure function of one slice's
+// four deltas. It is a policy, so it gets pinned like one.
+//
+// THE ONE THAT MATTERS IS `received`. A guest taking XMODEM down a wire prints nothing for
+// a whole 128-byte block and polls its line exactly as a CP/M prompt polls the keyboard: by
+// every other signal here it IS a prompt. The only thing that tells them apart is that one
+// of them IS GETTING BYTES -- and if the run loop naps through a transfer it drags it to a
+// crawl (measured: 7.7 kB/s -> 250 B/s in an early draft).
+// ---------------------------------------------------------------------------
+void test_idle_judgement() {
+    SECTION("guestIsWaiting: a prompt naps, a transfer never does");
+
+    // A CP/M prompt: 2,000 instructions, said nothing, got nothing, and hit an empty line
+    // ~600 times (a CONIN spin is three instructions).
+    CHECK(guestIsWaiting({2000, 0, 0, 600}), "a CONIN spin IS waiting -- this is the nap's whole job");
+
+    // THE TRANSFER. Identical in every respect but one: bytes are arriving.
+    CHECK(!guestIsWaiting({2000, 0, 1, 600}),
+          "ONE byte arriving means it is NOT a prompt, however quiet and however hungry it looks");
+    CHECK(!guestIsWaiting({2000, 0, 128, 600}), "...and a whole XMODEM block certainly is not");
+
+    // A guest with something to say is working, not waiting -- excluded before we even count.
+    CHECK(!guestIsWaiting({2000, 1, 0, 600}), "a guest that PRINTED something is not waiting");
+
+    // A stopped machine is not an idle one. A slice that retired nothing hit a breakpoint or
+    // a HLT, and napping on it would be napping on a machine that is not running at all.
+    CHECK(!guestIsWaiting({0, 0, 0, 0}), "a slice that retired NO instructions is stopped, not waiting");
+
+    // THE RATIO IS THE DISCRIMINATION. A program that computes and checks for an abort key
+    // every few hundred instructions must never be taken for a prompt.
+    CHECK(!guestIsWaiting({2000, 0, 0, 4}),
+          "a program that computes and peeks at the keyboard now and then is WORKING");
+    // The bar is exactly `hungry * 32 >= steps` -- 2,000/32 = 62.5, so 62 is working and 63
+    // is a spin. Pinned on both sides, because an off-by-one here is a machine that either
+    // naps through real work or never naps at all.
+    CHECK(!guestIsWaiting({2000, 0, 0, 62}), "...62 empty polls in 2,000 instructions is still working");
+    CHECK(guestIsWaiting({2000, 0, 0, 63}),
+          "...but 63 is one poll every 32 instructions -- a spin, and that is the bar");
+}
+
+// ---------------------------------------------------------------------------
+// THE THROTTLE DECISION (cli/monitor.h, shouldPace).
+//
+// Whether the run loop sleeps to hold the machine to the CPU card's crystal. Extracted
+// pure for the same reason as guestIsWaiting: it was an inline `anyConsole && tty` that
+// nothing could test, and it was WRONG -- a machine whose only line was a socket or a real
+// serial port has no console by that test, so it paced against nothing and ran flat out no
+// matter what clock_hz you set (bug #6, the 13,086%-of-asked measurement).
+// ---------------------------------------------------------------------------
+void test_should_pace() {
+    SECTION("shouldPace: pace for anything real-time, but never for a script or a free crystal");
+
+    // free() wins over everything: flat out is the default and no line changes that.
+    CHECK(!shouldPace(true,  true,  true,  /*free=*/true), "free-running never throttles, console or not");
+    CHECK(!shouldPace(false, false, false, /*free=*/true), "...and a bare machine certainly does not");
+
+    // The interactive console: a human at the host keyboard. Needs BOTH the console line
+    // and a host tty.
+    CHECK(shouldPace(true, true, false, /*free=*/false), "interactive console + crystal -> pace");
+
+    // A PIPED console -- console line, no tty -- is a script. It has no wall clock to keep
+    // step with, and pacing it would only make `-c` runs and CPU tests slow.
+    CHECK(!shouldPace(true, false, false, /*free=*/false),
+          "a piped console is a script, not a clock to match -- stays flat out");
+
+    // THE BUG. A socket someone dialed into, or a real serial port: real-time, but NO
+    // console and NO host tty. This is the case that used to pace against nothing.
+    CHECK(shouldPace(false, false, true, /*free=*/false),
+          "a socket/serial line IS real-time -> pace, even with no console and no tty");
+    CHECK(shouldPace(false, true, true, /*free=*/false), "...tty or not, a remote line paces");
+
+    // No line of any kind, crystal asked for: a headless CPU-ish run. Nothing to pace for.
+    CHECK(!shouldPace(false, true, false, /*free=*/false),
+          "a tty but no line at all -- nothing real-time to keep step with");
+}

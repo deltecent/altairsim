@@ -68,6 +68,10 @@ public:
     void pump() override;
     void configChanged() override;
 
+    // One UART. The ACR inherits this board and this override with it -- a cassette
+    // arriving is traffic too. (Board::rxBytes.)
+    uint64_t rxBytes() const override { return u_.rxBytes(); }
+
     // What the real serial port said when the card tried to program its straps into
     // it. A cable that cannot do 7E2 is a fact about the world, and it is said out
     // loud rather than swallowed.

@@ -206,11 +206,13 @@ public:
     // guest asked and got nothing; this says it asked and GOT SOMETHING -- and that is
     // the one thing an idle machine never does.
     //
-    // It is what keeps a TRANSFER out of the nap. A guest receiving XMODEM down the
-    // console line is hungry hundreds of times a slice and silent for the whole block:
-    // by hungry() and written() alone it is indistinguishable from a prompt, and an
+    // It was the FIRST cut at keeping a TRANSFER out of the nap. A guest receiving XMODEM
+    // down the console line is hungry hundreds of times a slice and silent for the whole
+    // block: by hungry() and written() alone it is indistinguishable from a prompt, and an
     // early draft of the run loop napped straight through one. Bytes arriving is the
-    // difference, so bytes arriving is what the run loop counts.
+    // difference -- but this counter only ever saw the CONSOLE'S bytes, so a transfer on
+    // any other line still napped (bug #6). The nap now consults Machine::rxBytes(), the
+    // same signal summed over every UART. This remains the console's own tally.
     uint64_t consumed() const { return consumed_; }
 
     std::vector<Property> properties();

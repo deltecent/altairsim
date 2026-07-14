@@ -459,4 +459,22 @@ void test_88sio() {
         CHECK(!g.m.bus.intPending(),
               "the interrupt ENABLES were cleared, so nothing is pulling pin 73");
     }
+
+    SECTION("rxBytes climbs the whole chain: chip -> board -> Machine");
+    {
+        // THE WIRING THE RUN LOOP DEPENDS ON. It asks the MACHINE how many bytes have
+        // arrived anywhere; the machine sums the boards; a serial board sums its chips.
+        // Before bug #6 the run loop asked the CONSOLE instead, so a transfer on any board
+        // that was not the console was napped straight through. This proves the byte a
+        // board received is a byte the machine reports -- on a line that is NOT a console
+        // (this Rig has no console at all; its one line is a bare scripted terminal).
+        Rig g;
+        CHECK(g.m.rxBytes() == 0, "nothing received yet, anywhere in the backplane");
+
+        g.tty->feed("A");
+        g.sio->pump();
+        (void)g.data();  // the guest reads the byte -- this is where it crosses into the card
+        CHECK(g.sio->rxBytes() == 1, "the board saw one byte arrive");
+        CHECK(g.m.rxBytes() == 1, "and the MACHINE reports it -- the sum reaches the run loop");
+    }
 }

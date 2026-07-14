@@ -31,6 +31,26 @@ namespace altair {
 // Lexing
 // ---------------------------------------------------------------------------
 
+// THE IDLE JUDGEMENT (monitor.h). Pure, so it can be tested -- and it needed to be.
+//
+// It ran nothing (a slice that retired no instructions is a stopped machine, not an idle
+// one), it SAID nothing, it RECEIVED nothing, and it kept coming back to an empty line.
+//
+// `received` is the one that matters and the one that was wrong: a guest taking XMODEM down
+// a wire prints nothing for a whole 128-byte block and polls exactly as a prompt does, so
+// the ONLY thing that tells the two apart is that one of them IS GETTING BYTES.
+bool guestIsWaiting(const SliceWork& w, uint64_t ratio) {
+    if (w.steps == 0) return false;   // stopped, not waiting
+    if (w.wrote != 0) return false;   // it had something to say
+    if (w.received != 0) return false;  // IT IS RECEIVING. Whatever this is, it is not a prompt.
+    return w.hungry * ratio >= w.steps;
+}
+
+bool shouldPace(bool anyConsole, bool tty, bool anyRemoteLine, bool free) {
+    if (free) return false;  // no crystal asked for -> flat out, always
+    return (anyConsole && tty) || anyRemoteLine;
+}
+
 std::vector<std::string> tokenize(const std::string& line) {
     std::vector<std::string> t;
     size_t i = 0;
@@ -717,10 +737,26 @@ void Monitor::runMachine(std::ostream& out) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
 
-    bool anyConsole = false;
+    // TWO QUESTIONS THAT ARE NOT THE SAME ONE, and conflating them was a bug (#6).
+    //
+    // anyConsole: is a line wired to the INTERACTIVE console -- the host keyboard? That is
+    // what decides whether keystrokes reach the guest and whether ^E means anything.
+    //
+    // anyRemoteLine: is a line wired to something REAL-TIME that is not the host terminal --
+    // a socket a person has telnetted into, or a real serial port with hardware on it? Such
+    // a machine has NO console by the test above (its state is "socket:..."/"serial:..."),
+    // and the throttle used to gate on anyConsole alone -- so a machine whose only line was a
+    // real UART PACED AGAINST NOTHING: `clock_hz` was a divisor every board obeyed with no
+    // wall-clock behind it, and a 2 MHz machine ran at whatever the host could do. Same root
+    // cause as the nap: the run loop asked the CONSOLE a question that belongs to the LINE.
+    bool anyConsole   = false;
+    bool anyRemoteLine = false;
     for (const auto& b : m_.boards())
-        for (const auto& u : b->units())
-            if (u.kind == UnitKind::Serial && u.state == "console") anyConsole = true;
+        for (const auto& u : b->units()) {
+            if (u.kind != UnitKind::Serial) continue;
+            if (u.state == "console") anyConsole = true;
+            else if (u.state != "null") anyRemoteLine = true;  // socket:/serial:/etc -- a live wire
+        }
 
     Console& con = Console::instance();
     char     buf[96];
@@ -782,7 +818,7 @@ void Monitor::runMachine(std::ostream& out) {
         // anything, and how often did it come to the keyboard and find nothing there.
         // Those three are the whole of the idle judgement at the bottom of the loop.
         const uint64_t wasWritten  = con.written();
-        const uint64_t wasConsumed = con.consumed();
+        const uint64_t wasReceived = m_.rxBytes();  // the WHOLE backplane, not just the console
         const uint64_t wasHungry   = con.hungry();
 
         // A slice, then a look around. Short enough that ATTN feels instant and a
@@ -889,10 +925,11 @@ void Monitor::runMachine(std::ostream& out) {
         static constexpr auto     kIdleWarmup = std::chrono::milliseconds(20);
         static constexpr auto     kIdleNap    = std::chrono::milliseconds(4);
 
-        const bool idling = m_.clock.idle() && anyConsole && tty && r.steps > 0 &&
-                            con.written() == wasWritten &&
-                            con.consumed() == wasConsumed &&
-                            (con.hungry() - wasHungry) * kIdleRatio >= r.steps;
+        const SliceWork work{r.steps, con.written() - wasWritten, m_.rxBytes() - wasReceived,
+                             con.hungry() - wasHungry};
+
+        const bool idling =
+            m_.clock.idle() && anyConsole && tty && guestIsWaiting(work, kIdleRatio);
 
         if (!idling) {
             idleSince = clk::time_point{};  // it did something. The clock starts over.
@@ -923,10 +960,16 @@ void Monitor::runMachine(std::ostream& out) {
         // T-states on every 300-baud byte (clock.h). We are not speeding up the
         // TAPE, we are declining to sit and wait for it.
         //
-        // The other two conditions stand. A script has nobody to keep in step with,
-        // and with no console connected there is nothing to pace against at all --
-        // which is what a CPU test wants.
-        if (anyConsole && tty && !m_.clock.free()) {
+        // PACE IF THERE IS ANYTHING REAL-TIME TO PACE FOR. An interactive console (a human
+        // at the host keyboard) is one such thing -- but so is a socket someone dialed into
+        // and so is a real serial port, and those have no console and no host tty at all.
+        // Gating on `anyConsole && tty` alone meant a machine whose only line was a real UART
+        // ran flat out no matter what crystal you asked for (#6): its transfers then outran
+        // the wire, or (with a fixed-rate peer) simply lied about the speed. A PIPED console
+        // -- state "console" but no tty -- is deliberately still NOT paced: a script has no
+        // wall clock to keep in step with, which is what a `-c` run and a CPU test want.
+        const bool pace = shouldPace(anyConsole, tty, anyRemoteLine, m_.clock.free());
+        if (pace) {
             double want = (double)(m_.clock.now() - startT) / (double)hz;
             double got  = std::chrono::duration<double>(clk::now() - start).count();
             if (want > got) {

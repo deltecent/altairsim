@@ -64,6 +64,12 @@ public:
     // socket. Once per time slice, never inside a bus cycle (DESIGN.md 7.7).
     void pump();
 
+    // BYTES THE GUEST HAS RECEIVED ACROSS THE WHOLE BACKPLANE, monotonic. The run loop
+    // watches its delta to know whether a byte is arriving anywhere -- the one signal that
+    // tells a transfer from a prompt, on ANY line and not just the console (Board::rxBytes,
+    // monitor.cpp). Summed on demand: a handful of boards, once per slice, is noise.
+    uint64_t rxBytes() const;
+
     Board* find(const std::string& id);
     Board* add(const std::string& type, const std::string& id, std::string& err);
     bool remove(const std::string& id, std::string& err);

@@ -480,4 +480,38 @@ void test_lines() {
             CHECK(s->describe() == "socket:" + std::to_string(free),
                   "and describes itself as what was typed");
     }
+
+    SECTION("rxBytes -- the chip counts bytes it HANDS THE GUEST, and only those");
+    {
+        // The run loop's live-traffic signal (mc6850.h, monitor.cpp). It exists because a
+        // guest taking a transfer looks exactly like a guest at a prompt by every other
+        // measure -- the only tell is that bytes are ARRIVING. So the count must be of
+        // RECEIVED bytes, and it must not be fooled by anything else the chip does.
+        Chip g;
+        g.control(0x15);  // 8N1, polled
+        CHECK(g.u.rxBytes() == 0, "nothing received yet");
+
+        g.line->feed("Hi");
+        g.tick(5000);     // one character time passes
+        CHECK((g.status() & kRdrf) != 0, "a byte has arrived");
+        CHECK(g.data() == 'H', "and it is the first one");
+        CHECK(g.u.rxBytes() == 1, "ONE byte handed to the guest -- the count moved");
+
+        g.tick(5000);
+        CHECK(g.data() == 'i', "the second byte");
+        CHECK(g.u.rxBytes() == 2, "and the count is two");
+
+        // NOT fooled by transmit. A guest sending is not a guest receiving, and if a
+        // transfer's OUTBOUND traffic reset the idle clock the signal would be useless
+        // for PCPUT.
+        uint8_t before = g.u.rxBytes();
+        g.u.writeData('Z', g.clk);
+        g.tick(5000);
+        CHECK(g.u.rxBytes() == before, "transmitting a byte does NOT count as receiving one");
+
+        // NOT fooled by a bare status poll on a quiet line -- which is exactly what a
+        // prompt does, hundreds of times, and must never look like traffic.
+        for (int i = 0; i < 50; ++i) (void)g.status();
+        CHECK(g.u.rxBytes() == before, "polling an empty line is not receiving");
+    }
 }

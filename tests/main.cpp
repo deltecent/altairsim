@@ -34,6 +34,8 @@ int main() {
     test_save_is_a_read();
     test_phantom();
     test_cli();
+    test_idle_judgement();
+    test_should_pace();
     test_boundary();
     test_numbers();
     test_units();

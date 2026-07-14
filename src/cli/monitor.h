@@ -175,4 +175,41 @@ private:
 
 std::vector<std::string> tokenize(const std::string& line);
 
+// ---- WHAT THE GUEST DID WITH ONE SLICE, and nothing else ----
+//
+// Four deltas. The run loop's idle judgement -- the thing that decides whether to stand
+// down and stop pinning a host core at a prompt -- is a PURE FUNCTION of these, and it is
+// written that way for one reason: the inline expression it used to be could not be tested,
+// and it was WRONG in a way no test could have been written to catch. `received` counted
+// bytes on the CONSOLE line only, so a transfer running on any OTHER line looked exactly
+// like an idle prompt and got napped straight through (bug #6).
+//
+// A COUNTER IS THE WHOLE MACHINE'S OR IT IS A LIE. These deltas are the backplane's.
+struct SliceWork {
+    uint64_t steps    = 0;  // instructions retired
+    uint64_t wrote    = 0;  // bytes the guest SAID -- on any line
+    uint64_t received = 0;  // bytes that ARRIVED for it -- on any line
+    uint64_t hungry   = 0;  // times it went looking for a byte and found none
+};
+
+// IS THE GUEST WAITING FOR A HUMAN, or is it working?
+//
+// It said nothing, it received nothing, and it came to a line and found it empty at least
+// once every `ratio` instructions. A CP/M CONIN spin is three instructions and trips this
+// twenty times over; a program that computes and checks for an abort key every few hundred
+// never does. Receiving ANYTHING disqualifies it outright -- that is what tells a transfer
+// from a prompt, and it is the only thing that does.
+bool guestIsWaiting(const SliceWork& w, uint64_t ratio = 32);
+
+// SHOULD THE RUN LOOP THROTTLE to the CPU card's crystal this run?
+//
+// Only if one was asked for (`!free`) AND there is something real-time to keep in step with.
+// An INTERACTIVE console is one such thing -- a human at the host keyboard, which needs both
+// a console line and a host tty. So is a REMOTE line: a socket someone dialed into, or a real
+// serial port, neither of which is the host terminal (`anyRemoteLine`). A PIPED console --
+// a console line but no tty -- is NOT paced: a script has no wall clock to match, and pacing
+// it would only make a `-c` run and the CPU tests slow for nobody's benefit. Gating on the
+// console alone left a socket-or-serial-only machine pacing against nothing (#6).
+bool shouldPace(bool anyConsole, bool tty, bool anyRemoteLine, bool free);
+
 } // namespace altair

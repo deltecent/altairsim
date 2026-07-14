@@ -173,6 +173,13 @@ size_t Console::read(uint8_t* buf, size_t n) {
     // This was not hypothetical. With only the poll ratio and the warmup, a console fed
     // a byte every 5 ms still napped: the slice that swallowed the byte polled 600 times
     // either side of it and was judged idle anyway. See monitor.cpp.
+    //
+    // BUT THE CONSOLE IS NOT THE ONLY LINE, and this counter only ever saw this one.
+    // A transfer running on a 2SIO's OTHER port -- the usual arrangement, console on 'a'
+    // and the file on 'b' -- crossed no console byte, so it napped anyway (bug #6). The
+    // run loop's idle signal is now Machine::rxBytes(), which is THIS SAME IDEA counted at
+    // every UART in the backplane (Mc6850::rxBytes). This counter stays as the console's
+    // own honest tally of what it delivered; it is no longer what the nap consults.
     size_t got = filter_.read(buf, n);
     consumed_ += got;
     return got;
