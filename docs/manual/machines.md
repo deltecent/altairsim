@@ -1,0 +1,201 @@
+# Machines
+
+A **machine** is a backplane with cards in it. Which cards, with what settings, in what state —
+that is all a machine is, and it is the only thing `altairsim` needs to be told.
+
+You tell it in one of three ways: name a **built-in**, name a **file**, or say **nothing** and
+take the default. This chapter is about how that choice is made, and about the one rule that
+decides what a path means.
+
+## The command line
+
+```
+altairsim [options] [machine]
+```
+
+| Option | |
+|---|---|
+| `machine` | a built-in name, **or** a config file if it contains a `/` or ends in `.toml` |
+| `-m, --machine <name>` | **always** a built-in name — never a file |
+| `-f, --file <path>` | **always** a file — never a built-in name |
+| `-n, --none` | an empty backplane. No boards, no memory, nothing |
+| `-l, --list` | list the built-in machines and exit |
+| `-s, --script <file>` | run a command script, then exit with its status |
+| `-x, --exec <cmd>` | run one monitor command, then exit. Repeatable |
+| `-i, --interactive` | after `--script`/`--exec`, stay in the monitor |
+| `--mcp` | run as an MCP server on stdio |
+| `-v, --version` `-h, --help` | |
+
+**Give exactly one machine.** A positional name *and* a `-m`, or a `-f` *and* a `-n`, is an
+error — the program says *give ONE machine* and stops. It does not guess which one you meant.
+
+## How a bare word resolves — and why it never looks at your disk
+
+```
+$ altairsim basic4k                     a BUILT-IN, by name
+$ altairsim {{MACHINE_CPM}}             a FILE, by path
+```
+
+The rule is **purely syntactic**. The filesystem is **never probed**:
+
+| The word | What it is |
+|---|---|
+| contains `/` or `\` | a **file** |
+| ends in `.toml` | a **file** |
+| anything else | a **built-in name** |
+
+That is deliberate, and it is worth being clear about why, because a simulator that guessed
+would be more convenient exactly until the day it was not.
+
+**`altairsim basic4k` means `basic4k` in every directory on earth.** It means the same thing on
+your machine and on mine. It cannot be hijacked by a file called `basic4k` that happens to be
+lying next to you — because the program never asks whether such a file exists. A command in a
+script, a line in a README, a habit in your fingers: all of them keep meaning what they meant.
+
+The cost is that `altairsim mymachine.toml` needs the extension, and `altairsim ./mymachine`
+needs the `./`. That is a small price, and if you want the question settled explicitly, settle
+it:
+
+```
+$ altairsim -m basic4k                  a built-in. Stop looking for a file
+$ altairsim -f ./basic4k                a file called `basic4k`, no extension, right here
+```
+
+`-m` and `-f` are how you say what you mean when the syntax will not say it for you.
+
+## The one file the simulator *finds*
+
+If you name **nothing at all**, and the working directory contains a file called
+`altairsim.toml`, that machine is loaded — and it says so:
+
+```
+$ altairsim
+altairsim 0.1.0 -- 8080, full speed.
+machine: ./altairsim.toml
+altairsim>
+```
+
+This is the **only** file the simulator finds rather than is given, and it only happens when
+the command line names nothing whatsoever. Name a built-in, a file, or `-n`, and `./altairsim.toml`
+is ignored — you asked for something, so you get it.
+
+Put one in a project directory and `altairsim`, bare, is your machine. **It announces itself
+when it does**, so you are never running something you did not know about.
+
+With no `altairsim.toml` and no arguments, you get the built-in `default`.
+
+## The built-in machines
+
+A **built-in is a TOML machine file compiled into the binary.** There is nothing privileged
+about it: same format, same keys, same rules as one you write yourself. It is in the program
+only so that it is always there.
+
+```
+$ altairsim --list
+```
+
+names them. They are `default`, `4k`, `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int` and
+`minidisk`; the machine reference at the back of this manual says what each one is.
+
+To see what is in one:
+
+```
+$ altairsim -x 'SHOW MACHINE' basic4k
+```
+
+And to get it as **text you can edit** — the actual machine file, every board, every setting:
+
+```
+$ altairsim -x 'CONFIG SAVE mine.toml' basic4k
+$ altairsim mine.toml
+```
+
+`CONFIG SAVE` writes the machine you are actually running, and it round-trips. **Which makes
+every built-in a worked example.** Find the one closest to what you want, save it out, and edit
+it.
+
+Or better, do not copy it at all — start *from* it with `base`, and write down only what is
+different. The configuring chapter is about that.
+
+## The empty backplane — `-n`
+
+```
+$ altairsim -n
+```
+
+No boards. No memory. No processor. `-n` is a bare chassis, and every `BOARDS ADD` from there
+is yours. It is the honest starting point when you are building a machine up card by card, and
+it is the one way to be certain nothing is in there that you did not put there.
+
+## The path rule, and it has two halves
+
+This is the rule that lets an example directory be copied anywhere and still boot. It is one
+principle stated twice:
+
+> **A path written inside a machine file is relative to that file.**
+>
+> **A path you type at the prompt is relative to your shell.**
+
+Both are true at once, and they do not conflict, because they are the same idea: **a path means
+what its author could see.**
+
+The author of a machine file could see the directory the machine file is in. When
+`{{MACHINE_CPM}}` says `mount = "cpm22b23-56k.dsk"`, it means *the disk lying next to me* — and
+it goes on meaning that after you copy the folder to your desktop, rename it, or mail it to
+someone. That is why the examples are self-contained directories, and why the quick start's
+`cp -R` actually works.
+
+You, at the prompt, can see your own working directory. When you type
+
+```
+altairsim> MOUNT dsk0:drive1 scratch.dsk
+```
+
+you mean *the file next to me*, because that is the only thing `scratch.dsk` could sensibly
+mean when you are the one typing it. The simulator does not go rummaging in the machine file's
+directory for a file you named with your own hands.
+
+The corollary is worth stating, because it catches people: **a path in a `startup` command is
+inside the machine file, so it is relative to the machine file** — even though `startup`
+commands look exactly like things you type. They were written by the file's author, so they
+mean what the file's author could see.
+
+## Running a command and leaving — `-x` and `-s`
+
+`altairsim` does not have to be interactive.
+
+```
+$ altairsim -x 'SHOW MACHINE' default
+$ altairsim -x 'DUMP 0 F' {{MACHINE_CPM}}
+```
+
+`-x` runs one monitor command against the machine and exits. It is **repeatable**, and the
+commands run in the order you gave them:
+
+```
+$ altairsim -x 'MOUNT dsk0 mine.dsk' -x 'RUN FF00' -i {{MACHINE_CPM}}
+```
+
+`-i` is the difference between a query and a start-up: without it the program exits when the
+commands are done; with it you are dropped into the monitor with the machine exactly as your
+commands left it. `-i` alone, with no `-x` or `-s`, does nothing.
+
+`-s` runs a **script** — a file of monitor commands, one per line, the same ones you type:
+
+```
+$ altairsim -s boot.cmd {{MACHINE_CPM}}
+```
+
+**The exit status is non-zero if any command failed.** That is the whole point: `altairsim -s`
+is a program you can put in a shell script, a Makefile, or a build, and test the result of.
+
+```sh
+if altairsim -s check.cmd mine.toml; then
+    echo "machine is sane"
+fi
+```
+
+## Which chapter next
+
+The **configuring** chapter is the machine file itself: every table, every key, and the four
+things a `[[board]]` entry can mean. The **boards** chapter is what the ten cards *are*.

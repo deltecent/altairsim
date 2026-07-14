@@ -1,0 +1,154 @@
+<!-- GENERATED FROM THE PROGRAM ITSELF. Do not edit by hand.
+     Every default, range and description below is printed from the same tables the
+     monitor resolves against, so it cannot disagree with the program you are running. -->
+
+# Quick reference
+
+## Getting out, and back in
+
+| Key | Does |
+|---|---|
+| `^E` | **ATTN** — take the keyboard back from the guest. The machine keeps running. |
+| `RUN` | Resume — hand the keyboard back. |
+| `QUIT` | Leave. (There is no `EXIT`.) |
+
+`^C` belongs to the **guest** — CP/M reads it — which is exactly why it is not the
+stop key. The host takes `^E` before the guest is ever offered the byte, so no
+program can disable it.
+
+## Command line
+
+```
+altairsim [options] [machine]
+
+  machine            a built-in name, or a config file (has a '/' or ends .toml).
+                     Omitted: ./altairsim.toml if there is one, else `default`.
+  -m, --machine <n>  ALWAYS a built-in name -- never a file.
+  -f, --file <path>  ALWAYS a file -- never a built-in name.
+  -n, --none         empty backplane: no boards, no memory, nothing.
+  -l, --list         list the built-in machines and exit.
+  -s, --script <f>   run a command script, then exit with its status.
+  -x, --exec <cmd>   run one monitor command (repeatable), then exit.
+  -i, --interactive  after --script/--exec, stay in the monitor.
+      --mcp          MCP server on stdio.
+  -v, --version      -h, --help
+```
+
+## Monitor commands
+
+Type the part before the bracket. `*` = resolves, but not built yet.
+
+| Command | Usage |
+|---|---|
+| `D[UMP]` | `DUMP [<addr>\|<range>] [WIDTH=16]` |
+| `S[TEP]` | `STEP [n]` |
+| `R[UN]` | `RUN [addr]` |
+| `H[ISTORY]` \* | `HISTORY [n]` |
+| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [RO]` |
+| `B[REAK]` | `BREAK [<addr> \| MEM R\|W <addr> \| IO R\|W <port>]` |
+| `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
+| `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
+| `SE[T]` | `SET <id> <k>=<v>` |
+| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|CONSOLE\|MACHINE` |
+| `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
+| `EX[AMINE]` | `EXAMINE [<addr>]` |
+| `I[N]` | `IN <port>` |
+| `O[UT]` | `OUT <port> <byte>` |
+| `L[OAD]` | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX] [RAW <id>]` |
+| `SA[VE]` | `SAVE <file> <range> [FORMAT=BIN\|HEX] [RAW <id>]` |
+| `F[ILL]` | `FILL <range> <byte>` |
+| `SEA[RCH]` | `SEARCH <range> <bytes...>\|"str"` |
+| `COM[PARE]` | `COMPARE <range> <addr>\|<file>` |
+| `MOV[E]` | `MOVE <range> <dest>` |
+| `W[HO]` | `WHO <addr> \| WHO IO <port>` |
+| `BO[ARDS]` | `BOARDS [LIST]\|TYPES\|ADD <type> <id> [k=v...]\|REMOVE <id>` |
+| `RE[GS]` | `REGS \| SET REG <r>=<v>` |
+| `REGI[ON]` | `REGION ADD <id> type=ram\|rom at=<addr> [size=\|mount=]` |
+| `DI[SASM]` | `DISASM [<addr>\|<range>] [n] [CPU=8080]` |
+| `U[NMOUNT]` | `UNMOUNT <id>:<u>` |
+| `DISC[ONNECT]` | `DISCONNECT <id>:<u>` |
+| `CONS[OLE]` | `CONSOLE [<k>=<v>...]` |
+| `CONN[ECT]` | `CONNECT <id>:<u> <endpoint>` |
+| `RES[ET]` | `RESET [CPU]` |
+| `P[OWER]` | `POWER` |
+| `T[RACE]` \* | `TRACE ON\|OFF [file] [MASK=...]` |
+| `STO[P]` \* | `STOP` |
+| `SN[APSHOT]` \* | `SNAPSHOT <file>` |
+| `REST[ORE]` \* | `RESTORE <file>` |
+| `REC[ORD]` \* | `RECORD <file>` |
+| `REP[LAY]` \* | `REPLAY <file>` |
+| `N[OBREAK]` | `NOBREAK [id]` |
+| `HE[LP]` | `HELP [<command>]` |
+| `Q[UIT]` | `QUIT` |
+
+## Boards
+
+| Type | What it is |
+|---|---|
+| `memory` | RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes |
+| `8080` | MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus |
+| `2sio` | MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3 |
+| `sio` | MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits |
+| `dcdd` | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
+| `mds` | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
+| `acr` | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb |
+| `fp` | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
+| `virtc` | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
+| `hostbridge` | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
+
+## Machines
+
+| Machine | What it is |
+|---|---|
+| `4k` | The Altair as it actually left Albuquerque. |
+| `altmon` | An Altair with a monitor in ROM and a terminal on it. |
+| `basic4k` | The machine Altair 4K BASIC was sold to run on: a cassette in the ACR, a Teletype |
+| `basic8k` | The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal |
+| `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
+| `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |
+| `ps2` | The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same |
+| `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
+
+## A machine file, in one look
+
+```toml
+[machine]
+name    = "mine"
+base    = "default"        # start from a machine, and say what is DIFFERENT
+startup = ["RUN FF00"]     # the operator's own keystrokes. There is no BOOT verb.
+
+[[board]]                  # type + a NEW id      -> ADD the card
+type = "2sio"              # type + an id from the base -> REPLACE it outright
+id   = "sio0"              # NO type + an id      -> MODIFY the one already there
+port = 10                  # remove = true        -> PULL THE CARD OUT
+
+  [board.unit.a]           # a unit's own settings
+  connect = "console"
+
+  [[board.region]]         # a list the card owns (memory)
+  type = "ram"
+  at   = 0000              # hex: it is an address
+  size = "56K"             # decimal: it is a size
+
+  [[board.drive]]          # a list the card owns (disk controllers)
+  unit  = 0
+  mount = "cpm.dsk"        # relative to THIS FILE
+
+[console]                  # the HOST's terminal -- not a board
+strip7out = true
+```
+
+**Paths:** a path *inside* a machine file is relative to **that file**. A path you
+*type* is relative to **your shell**.
+
+## Endpoints — `CONNECT <id>:<unit> <endpoint>`
+
+| Endpoint | Is |
+|---|---|
+| `console` | the host terminal. Exactly one unit may hold it. |
+| `null` | nowhere. Writes vanish, reads never come. |
+| `loopback` | itself — what you write comes back. |
+| `socket:PORT` | **listens** — this is telnet-in. |
+| `socket:HOST:PORT` | **calls out**. |
+| `serial:DEVICE` | a real serial port on this host. |
+

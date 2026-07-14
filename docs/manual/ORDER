@@ -1,0 +1,38 @@
+# The User Manual, in order. THIS IS THE ONLY PLACE THE ORDER IS DECLARED.
+#
+# The chapter files are deliberately not numbered. `07-configuring.md` looks tidy right up
+# to the morning you insert a chapter at 04 and rename eleven files, breaking every
+# cross-link in the document and every link anyone ever made to it. The sequence is data,
+# so it lives in a file, and the build reads it.
+#
+# Anything under ref/ is GENERATED from the binary. Do not edit those by hand; run
+# `cmake --build build --target docs-reference`.
+
+introduction.md
+package.md
+running.md
+quick-start.md
+
+# The cheat sheet sits here on purpose -- BEFORE the detail. It is the page you keep open
+# on a second screen, and a reader who only ever reads to here can still drive the machine.
+ref/cheatsheet.md
+
+# The detail.
+monitor.md
+debugging.md
+machines.md
+configuring.md
+boards.md
+disks.md
+tapes.md
+serial.md
+file-transfer.md
+examples.md
+mcp.md
+troubleshooting.md
+glossary.md
+
+# The reference, at the back where a reference belongs.
+ref/commands.md
+ref/boards.md
+ref/machines.md
