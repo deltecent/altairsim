@@ -151,6 +151,11 @@ add_library(altair_core STATIC
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
+  # The sandboxed host directory the Host Bridge reaches through. It is here, and not
+  # on the board, because the board must never see a path, a symlink or a file handle
+  # -- and because the escape tests that matter are tests of THIS, with no card in
+  # sight (DESIGN.md 7, src/host/hostdir.h).
+  src/host/hostdir.cpp
   # The chips. A chip is not a card: it is modeled from its DATA SHEET, it knows
   # nothing about S-100, and it is shared by every card that has one soldered to it.
   src/chips/mc6850.cpp
@@ -175,6 +180,9 @@ add_library(altair_core STATIC
   src/boards/mits-88acr.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/mits-88virtc.cpp
+  # OUR OWN CARD -- the only one in this list that is not a period board, and the
+  # first genuinely new hardware built against the board API (DESIGN.md 12.1).
+  src/boards/hostbridge.cpp
   src/boards/registry.cpp
   src/config/toml.cpp
   src/cli/monitor.cpp
@@ -223,7 +231,9 @@ add_executable(altair_tests
   tests/test_dcdd.cpp
   tests/test_mds.cpp
   tests/test_frontpanel.cpp
-  tests/test_virtc.cpp)
+  tests/test_virtc.cpp
+  tests/test_hostdir.cpp
+  tests/test_hostbridge.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 
@@ -322,6 +332,60 @@ add_test(NAME acceptance-ps2
                  -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ps2.cmake)
 set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ---------------------------------------------------------------------------
+# THE HOST BRIDGE: a file crosses into CP/M and comes back byte for byte.
+#
+# TWO TESTS, ONE SCRIPT, AND THE SPLIT IS ABOUT WHAT EACH ONE IS ACTUALLY TESTING.
+#
+#   acceptance-hostbridge        THE CARD. Boots CP/M, LOADs the utilities from the .HEX
+#                                that is checked in, and moves files -- including 256 bytes
+#                                holding every value 00..FF, compared on the HOST's disk,
+#                                which is the only place the answer actually is. Seconds.
+#
+#   acceptance-hostbridge-build  THE SOURCES. Assembles R/W/HDIR.ASM from scratch inside the
+#                                machine (PIP through the console, ASM, LOAD) and proves the
+#                                result is bit-for-bit the .COM/.HEX/.PRN committed beside
+#                                them -- so a checked-in binary cannot rot. Then runs the
+#                                SAME binary on an 88-MDS minidisk, which is how "every disk
+#                                call is a BDOS call" gets proved rather than asserted.
+#                                `slow`, because it only has anything to say when a .ASM
+#                                changes.
+#
+# The reason the second one is slow is not the 8080 -- it is the WIRE. `PIP FOO.ASM=CON:` is
+# the only expensive thing in either test: 78 KB of source, echoed back byte for byte, down
+# a 2SIO that models a real serial line. R and W never touch the console at all.
+#
+# BOTH GATED ON THE 8 MB IMAGE, which is not in git (disks/ is an allowlist -- see
+# .gitignore). A test that quietly passes because its input is missing is worse than none.
+# ---------------------------------------------------------------------------
+set(HB_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK")
+if(EXISTS "${HB_DISK}")
+  add_test(NAME acceptance-hostbridge
+           COMMAND ${CMAKE_COMMAND}
+                   -DSIM=$<TARGET_FILE:altairsim>
+                   -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                   -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                   -DMODE=fast
+                   -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/hostbridge.cmake)
+  # ~1.5s. The 60 is a BACKSTOP, not a budget -- and the script has its own 30s leash
+  # inside it, which fails with "THE MACHINE HUNG" instead of a confusing missing-string
+  # error. A test with a generous timeout is a test that can waste an hour of your evening.
+  set_tests_properties(acceptance-hostbridge PROPERTIES LABELS acceptance TIMEOUT 60)
+
+  add_test(NAME acceptance-hostbridge-build
+           COMMAND ${CMAKE_COMMAND}
+                   -DSIM=$<TARGET_FILE:altairsim>
+                   -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                   -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                   -DMODE=build
+                   -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/hostbridge.cmake)
+  set_tests_properties(acceptance-hostbridge-build PROPERTIES
+                       LABELS "acceptance;slow" TIMEOUT 360)
+else()
+  message(STATUS "8 MB CP/M image not found -- SKIPPING the Host Bridge acceptance tests. "
+                 "See disks/mits-88dcdd/cpm22/8mb/README.md to download it.")
+endif()
 
 # ---------------------------------------------------------------------------
 # WHICH MACHINE DID I GET? ./altairsim.toml, found in the working directory.

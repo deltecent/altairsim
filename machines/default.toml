@@ -171,6 +171,52 @@ id     = "dsk0"
 port   = 08
 drives = 4
 
+# THE HOST BRIDGE -- and it is the one card in this machine that MITS never made.
+#
+# It exists because there is otherwise no way to get a file into or out of a running
+# CP/M guest. Host-side surgery on a mounted image is DEFERRED and will stay that way
+# for a while (DESIGN.md 12.2: reading a file out of an image needs the controller's
+# sector layout AND the image's own CP/M DPB and skew, and nothing can infer that
+# pair). So this is not a convenience card -- it is THE supported path, which is why
+# it is in the default machine rather than off in an example.
+#
+#     R  FOO.ASM        host -> CP/M
+#     W  FOO.ASM        CP/M -> host
+#     HDIR              what is on the host
+#
+# ...typed at the A> prompt, from cpm/hostbridge/*.ASM. They are ours, they are 8080,
+# and they do every file operation through BDOS -- so they work on this 8" controller,
+# on the minidisk, and on any BIOS anybody writes later.
+#
+# `hostdir` IS EMPTY, WHICH MEANS THE DIRECTORY YOU RAN altairsim FROM. That is the
+# same rule every typed path already follows (core/paths.h), and it is what makes
+# `R FOO.ASM` work on the file you are looking at without configuring anything.
+#
+# IT ALSO MEANS GUEST SOFTWARE CAN READ AND WRITE YOUR WORKING DIRECTORY, and that is
+# a deliberate trade, not an oversight. It CANNOT go anywhere else. A name may be a
+# relative path -- `R SRC/FOO.ASM` works, and both `/` and `\` are accepted on every
+# host, so one assembled R.COM runs against a Mac, a Linux box and a Windows box -- but
+# a `..` COMPONENT, an absolute path, a drive letter and a symlink that resolves out of
+# the root are all refused with error 0x03. The escape check is a component-wise compare
+# against the canonicalised root, not a string prefix, because a string prefix would
+# cheerfully decide that /tmp/sandbox-evil lives inside /tmp/sandbox. (src/host/hostdir.h;
+# tests/test_hostdir.cpp is where that claim is proved, against a REAL filesystem with
+# REAL symlinks -- an escape you cannot test against a fake one.) If you want it aimed
+# somewhere specific:
+#
+#     altairsim -x 'SET hb0 HOSTDIR=/tmp/xfer' -i
+#
+# ...and `SET hb0 READONLY=ON` makes it a one-way street, out of the host only.
+#
+# PORT B0, AND THAT NUMBER TOOK A CENSUS. 0x30 was the obvious pick and it is WRONG:
+# the WD179X floppy controller defaults there and the Cromemco 64FDC sits on top of it.
+# B0-BF and D0-DF are the only 16-port holes left in the S-100 catalog.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""                  # the shell's working directory
+
 [[board]]
 type = "memory"
 id   = "mem0"

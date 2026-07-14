@@ -18,7 +18,7 @@
 When two sources disagree, say so in the board's `.md` and say which one won and why.
 
 Consequences already baked into this design:
-- **AltairZ80's port-0xFE "SIMH pseudo device" is not implemented**, and `R.COM`/`W.COM` are not supported. See §12. *(This aged well: as of 2026-07-13 port 0xFE is the **88-VI/RTC's real control register** — 376 octal, straight out of the MITS manual. AltairZ80 put its pseudo-device on top of a port that belongs to an actual MITS card, and we would have had to evict it.)*
+- **AltairZ80's port-0xFE "SIMH pseudo device" is not implemented**, and *its* `R.COM`/`W.COM` will not run here. See §12. *(This aged well: as of 2026-07-13 port 0xFE is the **88-VI/RTC's real control register** — 376 octal, straight out of the MITS manual. AltairZ80 put its pseudo-device on top of a port that belongs to an actual MITS card, and we would have had to evict it.)* **We ship our own `R.COM` and `W.COM`** against our own Host Bridge card at 0xB0 (§12.1) — same names, because the muscle memory is worth keeping; different code, different card, different protocol, nothing derived.
 - Boards with no manual in the tree (88-HDSK, 88-PIO/4PIO) are **blocked on documentation**, not on code. See §17. None of them block milestone 1. (The **88-ACR** and the **88-VI/RTC** were on this list; both manuals are now in the tree and both cards are built.)
 
 ### 0.2 Doc discipline
@@ -1396,17 +1396,23 @@ The high-value tools are borrowed from the Python prototype's agent API, which i
 
 Two complementary mechanisms, serving different needs.
 
-> **We do not implement AltairZ80's port-0xFE "SIMH pseudo device", and `R.COM`/`W.COM` are not supported.** That device is not real Altair hardware — it is another simulator's invention, and its only purpose is compatibility with that simulator's own guest utilities. Reimplementing it would mean deriving from AltairZ80's source, which this project does not do (§0.1). Instead we design our own host bridge as if it were a real S-100 card — which is, after all, what this project is *for*.
+> **We do not implement AltairZ80's port-0xFE "SIMH pseudo device", and *AltairZ80's* `R.COM`/`W.COM` will not run here.** That device is not real Altair hardware — it is another simulator's invention, and its only purpose is compatibility with that simulator's own guest utilities. Reimplementing it would mean deriving from AltairZ80's source, which this project does not do (§0.1). Instead we design our own host bridge as if it were a real S-100 card — which is, after all, what this project is *for*.
+>
+> **Our own `R.COM` and `W.COM` do exist, and they are ours** (§12.1). We reuse the *names*, because the muscle memory is worth keeping and there is no reason to make people learn a second pair. Nothing else is shared: theirs talk to a pseudo-device at 0xFE and were written in SPL; ours talk to a card of our own at 0xB0 and are 8080 assembler. Neither will run in the other simulator, and that is the honest outcome — not an accident, and not a compatibility goal we quietly dropped.
 
-### 12.1 The Host Bridge board (guest-initiated)
+### 12.1 The Host Bridge board (guest-initiated) — **BUILT**
 
-A board of our own design (`docs/boards/hostbridge.md`), documented to the same standard as any period card. It is an ordinary `Board` — it claims two I/O ports, has `properties()`, honors both resets, and serializes. No bus special cases.
+A board of our own design (`docs/boards/hostbridge.md`), documented to the same standard as any period card. It is an ordinary `Board` — it decodes two I/O ports, has `properties()`, honors both resets, and serializes. No bus special cases.
 
-It is also **the project's first genuinely new piece of hardware**, which makes it a real test of the board API rather than a rehash of a known card.
+It is also **the project's first genuinely new piece of hardware**, which makes it a real test of the board API rather than a rehash of a known card. The API held: it needed nothing.
 
-**Sandboxing is a hard requirement**, not a nicety: guest-supplied filenames resolve against a configured `hostdir` root and **cannot escape it**. A guest program must never be able to write anywhere on the host disk.
+**Sandboxing is a hard requirement**, not a nicety: guest-supplied filenames resolve against a configured `hostdir` root and **cannot escape it** — no `..` component, no absolute path, no drive letter, and no symlink that resolves out. A guest program must never be able to write anywhere on the host disk. The card itself touches no file handle (§7): all of it lives in `src/host/hostdir.{h,cpp}`, where it is tested against a **real** filesystem with **real** symlinks, because a symlink escape cannot be tested against a fake one.
 
-Guest-side utilities (`HGET.COM`, `HPUT.COM`, `HDIR.COM`) are ours, written in 8080 assembly and assembled with the period toolchain.
+The card sits at **0xB0**, and that number took a census. `0x30` was the obvious pick and it is wrong — the WD179X floppy controller defaults there and the Cromemco 64FDC sits on top of it, which is exactly the mistake AltairZ80 made with 0xFE. `B0–BF` and `D0–DF` are the only empty 16-port holes left in either catalog.
+
+Guest-side utilities (`R.COM`, `W.COM`, `HDIR.COM`) are ours, written in 8080 assembly and assembled **inside the machine** with the period toolchain — `ASM.COM` and `LOAD.COM`, off the CP/M disk. No cross-assembler, no host tooling: `cpm/hostbridge/*.ASM` reaches the disk by `PIP R.ASM=CON:` and is built from there, which is what the acceptance test does on every run.
+
+**Every disk operation in them is a BDOS call** — no BIOS entries, no `IN`/`OUT` to a controller, no assumption about a DPB, a sector size or a skew table. That is what makes one `R.COM` work on an 8″ 88-DCDD, an 8 MB image, an 88-MDS minidisk, and any BIOS anybody writes later. It is proved, not asserted: the acceptance test builds the utilities on an 8 MB 88-DCDD image and then `LOAD`s the same hex on a minidisk behind a **different controller**, and round-trips the same 256 bytes.
 
 ### 12.2 Host-side filesystem access to an image — **deferred, and here is the hard part**
 

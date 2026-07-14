@@ -1,5 +1,6 @@
 #include "boards/registry.h"
 
+#include "boards/hostbridge.h"
 #include "boards/mits-88acr.h"
 #include "boards/mits-88cpu.h"
 #include "boards/mits-88dcdd.h"
@@ -35,6 +36,7 @@ std::vector<BoardType> boardTypes() {
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb"},
         {"fp", "Altair front panel: the SENSE switches at port FF (read-only), and the lamps"},
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
+        {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
     };
 }
 
@@ -48,6 +50,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "acr") return std::make_unique<AcrBoard>();
     if (type == "fp") return std::make_unique<FrontPanelBoard>();
     if (type == "virtc") return std::make_unique<VirtcBoard>();
+    if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
     return nullptr;
 }
 

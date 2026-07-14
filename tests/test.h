@@ -41,3 +41,5 @@ void test_mds();
 void test_88acr();
 void test_frontpanel();
 void test_virtc();
+void test_hostdir();
+void test_hostbridge();

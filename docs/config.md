@@ -318,11 +318,35 @@ drives = 4
   unit  = 1
   mount = "disks/scratch.dsk"
 
+# GUEST <-> HOST FILE TRANSFER, and it is OUR OWN CARD -- MITS never made it.
+# It is in the DEFAULT machine, so you usually inherit it rather than write this.
+#
+# NOT PORT 0xFE, which an earlier draft of this file said and which is wrong twice
+# over: 0xFE is the 88-VI/RTC's real control register, and it is where AltairZ80 put
+# its pseudo-device. 0x30 is wrong too -- that is the WD179X floppy controller. B0.
 [[board]]
-type    = "hostbridge"     # guest-initiated host file transfer (our own design)
-id      = "host"
-port    = 0xFE             # 2 ports
-hostdir = "./hostfiles"    # SANDBOX. Required. Guest filenames cannot escape this root.
+type    = "hostbridge"
+id      = "hb0"
+port    = B0               # 2 ports, B0-B1
+hostdir = "./hostfiles"    # THE SANDBOX ROOT. Guest names cannot escape it: no `..`
+                           # component, no absolute path, no drive letter, no symlink
+                           # that resolves out. Subdirectories inside it are fine, and
+                           # both `/` and `\` work on every host.
+                           #
+                           # EMPTY (the default) MEANS THE DIRECTORY YOU RAN altairsim
+                           # FROM -- which is the same rule every typed path follows,
+                           # and which is what makes `R FOO.ASM` work on the file you
+                           # are looking at with nothing configured.
+readonly = false           # ON makes it a one-way street: out of the host only.
+```
+
+Then, at the CP/M prompt (`cpm/hostbridge/*.ASM`, assembled in the machine with
+`ASM`/`LOAD`):
+
+```
+HDIR              what is on the host
+R  FOO.ASM        host -> CP/M          R *.ASM      R SRC/FOO.ASM
+W  FOO.ASM        CP/M -> host          W *.HEX      W FOO.TXT T   (T = trim ^Z)
 ```
 
 ## `[machine]` keys

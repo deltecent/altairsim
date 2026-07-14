@@ -101,7 +101,11 @@ void test_machines() {
     // The DCDD is the one with consequences beyond this line, though: the default machine
     // is what `base = "default"` STARTS FROM, so its card list is now a contract that
     // other config files depend on. Adding a card here is no longer free.
-    CHECK(m.boards().size() == 5, "a panel, a CPU, a 2SIO, an 88-DCDD and a memory card");
+    CHECK(m.boards().size() == 6,
+          "a panel, a CPU, a 2SIO, an 88-DCDD, a HOST BRIDGE and a memory card");
+    CHECK(m.find("hb0") != nullptr,
+          "the host bridge is in the default machine -- it is the ONLY way to move a file "
+          "in or out of a running guest (DESIGN.md 12.2 defers the alternative)");
     CHECK(m.find("dsk0") != nullptr, "the floppy controller DBL boots from is in the backplane");
     CHECK(m.find("fp0") != nullptr, "the front panel is a card in the backplane");
     CHECK(m.cpu() != nullptr, "there is a processor in the default machine now");
@@ -285,7 +289,7 @@ id = "dsk0"
     std::string ed;
     CHECK(loadTomlText(kDelta, "delta", md2, ed), "a delta on the default machine loads");
     CHECK(md2.name == "delta", "...and `name` beats the base's, whatever order the keys are in");
-    CHECK(md2.boards().size() == 5, "...with every card the base brought still in the backplane");
+    CHECK(md2.boards().size() == 6, "...with every card the base brought still in the backplane");
     CHECK(md2.find("sio0") != nullptr, "...including the console you did not have to remember");
 
     // `id` WITH NO `type` IS "THE ONE ALREADY IN THE MACHINE". It must not fit a second
@@ -323,7 +327,7 @@ id   = "mem0"
     Machine     ms;
     std::string es;
     CHECK(loadTomlText(kReplace, "small", ms, es), "re-fitting a card the base brought loads");
-    CHECK(ms.boards().size() == 5, "...and REPLACES it -- there is not a second memory board");
+    CHECK(ms.boards().size() == 6, "...and REPLACES it -- there is not a second memory board");
     ms.bus.memWrite(0x5FFF, 0x42);
     CHECK(ms.bus.memRead(0x5FFF) == 0x42, "5FFF is the top of the new 24K");
     (void)ms.bus.memRead(0x6000);
@@ -349,7 +353,7 @@ remove = true
     Machine     mr;
     std::string er;
     CHECK(loadTomlText(kRemove, "nodisk", mr, er), "a delta can pull a card out");
-    CHECK(mr.boards().size() == 4, "...and the backplane really is one card lighter");
+    CHECK(mr.boards().size() == 5, "...and the backplane really is one card lighter");
     CHECK(mr.find("dsk0") == nullptr, "...the floppy controller is gone");
     (void)mr.bus.ioRead(0x08);
     CHECK(mr.bus.lastUnclaimed(), "...and nobody answers port 08 any more -- it FLOATS, as an "

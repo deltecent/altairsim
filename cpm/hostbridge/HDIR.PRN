@@ -1,0 +1,451 @@
+
+
+                ;-----------------------------------------------------------------------
+                ; HDIR.COM -- list the HOST directory.
+                ;
+                ;       HDIR                    everything in hostdir
+                ;       HDIR *.ASM              only what matches
+                ;       HDIR SRC/               inside a subdirectory of hostdir
+                ;
+                ; Part of the altairsim Host Bridge (src/boards/hostbridge.h,
+                ; docs/boards/hostbridge.md). Assemble it INSIDE the machine:
+                ;
+                ;       ASM HDIR                -> HDIR.HEX
+                ;       LOAD HDIR               -> HDIR.COM
+                ;
+                ; THIS ONE HAS NO ANCESTOR. AltairZ80 ships an R and a W and nothing that
+                ; shows you what is there to read -- so you type a host name from memory,
+                ; get it wrong, and cannot tell whether the file is missing or your spelling
+                ; is. HDIR is the answer to "what can I say to R".
+                ;
+                ;-----------------------------------------------------------------------
+                ; IT PRINTS TRUE HOST NAMES, AND THAT IS THE POINT OF IT.
+                ;
+                ; R and W have to squeeze a host name into an 8.3 FCB -- `my-notes(2).txt`
+                ; comes across as `MYNOTES2.TXT`, and a name too long or too strange to map
+                ; is reported and skipped. HDIR does no such thing: it prints what is
+                ; actually on the host disk, in its real case, at its real length. So when
+                ; R says it cannot name something, you can still see what it was.
+                ;
+                ; This program touches NO disk at all -- no BDOS file calls, no FCB. It is
+                ; the console and the two bridge ports, and nothing else.
+                ;-----------------------------------------------------------------------
+                
+ 0100                   ORG     100H
+                
+                ;---- CP/M ------------------------------------------------------------
+ 0005 =         BDOS    EQU     0005H
+ 0080 =         TAIL    EQU     0080H           ; the command tail: length, then the text.
+                                                ; The CCP has already FOLDED IT TO UPPER
+                                                ; CASE. The card folds host names to match
+                                                ; when it looks for them -- but what it
+                                                ; PRINTS is always the true name.
+                
+ 0002 =         CONOUT  EQU     2               ; E = char
+ 0009 =         PRSTR   EQU     9               ; DE = string, '$'-terminated
+                
+ 0040 =         HNMAX   EQU     64              ; a host name may be a PATH, so it is not 8.3
+ 0020 =         IDMAX   EQU     32              ; room for the card's signature
+ 0004 =         COLS    EQU     4               ; names per line
+ 0012 =         COLW    EQU     18              ; and how wide a column is
+ 000D =         CR      EQU     0DH
+ 000A =         LF      EQU     0AH
+                
+                ;---- The Host Bridge (see HB.INC -- ASM.COM has no INCLUDE) -----------
+ 00B0 =         HBCMD   EQU     0B0H            ; OUT = command   IN = status
+ 00B1 =         HBDATA  EQU     0B1H            ; data, both ways
+                
+ 0008 =         HEOF    EQU     08H             ; the listing has run out
+ 0010 =         HERR    EQU     10H             ; the last operation failed
+                
+ 0000 =         CIDENT  EQU     0
+ 0004 =         CDIRF   EQU     4
+ 0005 =         CDIRN   EQU     5
+ 0007 =         CERROR  EQU     7
+ 0008 =         CRESET  EQU     8
+                
+                ;=======================================================================
+                ; MAIN
+                ;=======================================================================
+ 0100 316704    START:  LXI     SP,STACK
+                
+ 0103 3E08              MVI     A,CRESET        ; ONE byte, not the 128 AltairZ80's utilities
+ 0105 D3B0              OUT     HBCMD           ; send. This card has no undefined state.
+                
+ 0107 CDD801            CALL    IDENT           ; is there even a card there? (exits if not)
+ 010A CD4202            CALL    PARSE           ; the tail -> PAT (which may be empty, and an
+                                                ; EMPTY PATTERN MEANS EVERYTHING -- the card
+                                                ; reads it as `*`, so there is no special case
+                                                ; here for the bare `HDIR`)
+                
+ 010D 210000            LXI     H,0             ; a 16-bit tally: a host directory is not a
+ 0110 221D04            SHLD    COUNT           ; CP/M one and can easily hold 300 files
+ 0113 AF                XRA     A
+ 0114 321F04            STA     COL
+                
+ 0117 3E04              MVI     A,CDIRF
+ 0119 D3B0              OUT     HBCMD
+ 011B 217A03            LXI     H,PAT
+ 011E CD0C02            CALL    SENDZ           ; the NUL is what commits it
+                
+                ;---- the listing loop -------------------------------------------------
+ 0121 DBB0      DIR1:   IN      HBCMD
+ 0123 E610              ANI     HERR
+ 0125 C27601            JNZ     DIRBAD          ; a bad pattern, or a hostdir that is not there
+                
+ 0128 DBB0              IN      HBCMD
+ 012A E608              ANI     HEOF
+ 012C C24801            JNZ     DIRE            ; the list ran out -- and an EMPTY list lands
+                                                ; here on the FIRST pass, which is why "no
+                                                ; matches" needs no special case either
+                
+ 012F 21BB03            LXI     H,NAME
+ 0132 0640              MVI     B,HNMAX
+ 0134 CD1502            CALL    RECVZ
+                
+ 0137 CD7C01            CALL    SHOW            ; print it, in its column
+                
+ 013A 2A1D04            LHLD    COUNT
+ 013D 23                INX     H
+ 013E 221D04            SHLD    COUNT
+                
+ 0141 3E05              MVI     A,CDIRN
+ 0143 D3B0              OUT     HBCMD
+ 0145 C32101            JMP     DIR1
+                
+                ;---- and the tally ----------------------------------------------------
+ 0148 3A1F04    DIRE:   LDA     COL
+ 014B B7                ORA     A
+ 014C C49002            CNZ     CRLF            ; finish a part-used line before the summary
+                
+ 014F 2A1D04            LHLD    COUNT
+ 0152 7C                MOV     A,H
+ 0153 B5                ORA     L
+ 0154 CA6B01            JZ      DIRNON
+                
+ 0157 CD9002            CALL    CRLF
+ 015A 2A1D04            LHLD    COUNT
+ 015D CD9802            CALL    PRDEC
+ 0160 115703            LXI     D,MFILES
+ 0163 0E09              MVI     C,PRSTR
+ 0165 CD0500            CALL    BDOS
+ 0168 C30000            JMP     0               ; warm boot
+                
+ 016B 116103    DIRNON: LXI     D,MNONE
+ 016E 0E09              MVI     C,PRSTR
+ 0170 CD0500            CALL    BDOS
+ 0173 C30000            JMP     0
+                
+ 0176 CD2202    DIRBAD: CALL    REPERR
+ 0179 C30000            JMP     0
+                
+                ;-----------------------------------------------------------------------
+                ; SHOW -- print the name at NAME, in columns.
+                ;
+                ; A DIRECTORY COMES BACK WITH A TRAILING '/', and we leave it on: that one
+                ; character is the entire difference between "you can R this" and "you
+                ; cannot", and hiding it to make the listing tidy would be hiding the only
+                ; thing the user needs to know.
+                ;
+                ; A name too long for its column gets a line of its own rather than being
+                ; truncated -- for the same reason. A listing that lies about a name is
+                ; worse than a listing that is ragged.
+                ;-----------------------------------------------------------------------
+ 017C 21BB03    SHOW:   LXI     H,NAME
+ 017F CDCE01            CALL    STRLEN          ; B = how long it is
+ 0182 78                MOV     A,B
+ 0183 FE12              CPI     COLW
+ 0185 DA9D01            JC      SH1             ; it fits
+                
+                ; Too long for a column. Break the line we are on, give it one to itself,
+                ; and start the next name at column zero.
+ 0188 3A1F04            LDA     COL
+ 018B B7                ORA     A
+ 018C C49002            CNZ     CRLF
+ 018F 21BB03            LXI     H,NAME
+ 0192 CD7B02            CALL    PSTR
+ 0195 CD9002            CALL    CRLF
+ 0198 AF                XRA     A
+ 0199 321F04            STA     COL
+ 019C C9                RET
+                
+ 019D 21BB03    SH1:    LXI     H,NAME
+ 01A0 CD7B02            CALL    PSTR
+                
+                ; Pad out to the column width -- unless this is the last column on the
+                ; line, where trailing spaces would be nothing but trailing spaces.
+ 01A3 3A1F04            LDA     COL
+ 01A6 3C                INR     A
+ 01A7 321F04            STA     COL
+ 01AA FE04              CPI     COLS
+ 01AC CAC701            JZ      SH3             ; that filled the line
+                
+ 01AF 21BB03            LXI     H,NAME
+ 01B2 CDCE01            CALL    STRLEN          ; B = the length
+ 01B5 3E12              MVI     A,COLW
+ 01B7 90                SUB     B               ; A = how many spaces are owed
+ 01B8 47                MOV     B,A
+ 01B9 78        SH2:    MOV     A,B
+ 01BA B7                ORA     A
+ 01BB C8                RZ
+ 01BC 3E20              MVI     A,' '
+ 01BE C5                PUSH    B
+ 01BF CD8A02            CALL    PUTCH
+ 01C2 C1                POP     B
+ 01C3 05                DCR     B
+ 01C4 C3B901            JMP     SH2
+                
+ 01C7 AF        SH3:    XRA     A
+ 01C8 321F04            STA     COL
+ 01CB C39002            JMP     CRLF            ; tail call
+                
+                ;-----------------------------------------------------------------------
+                ; STRLEN -- B = the length of the NUL-terminated string at HL.
+                ;-----------------------------------------------------------------------
+ 01CE 0600      STRLEN: MVI     B,0
+ 01D0 7E        SL1:    MOV     A,M
+ 01D1 B7                ORA     A
+ 01D2 C8                RZ
+ 01D3 04                INR     B
+ 01D4 23                INX     H
+ 01D5 C3D001            JMP     SL1
+                
+                ;=======================================================================
+                ; THE HOST BRIDGE
+                ;=======================================================================
+                
+                ;-----------------------------------------------------------------------
+                ; IDENT -- prove there is a card there before we do anything else.
+                ;
+                ; THIS IS NOT CEREMONY. An IN from a port that no card decodes FLOATS THE
+                ; BUS and the 8080 reads 0FFH -- which has both HEOF and HERR set. Without
+                ; this check, HDIR on a machine with no bridge in it would print a host
+                ; error, or an empty listing, and either one is a lie about your disk.
+                ;-----------------------------------------------------------------------
+ 01D8 3E00      IDENT:  MVI     A,CIDENT
+ 01DA D3B0              OUT     HBCMD
+                
+ 01DC 21FC03            LXI     H,IDBUF
+ 01DF 0620              MVI     B,IDMAX
+ 01E1 DBB1      ID1:    IN      HBDATA
+ 01E3 77                MOV     M,A
+ 01E4 B7                ORA     A
+ 01E5 CAEF01            JZ      ID2             ; got the terminator
+ 01E8 23                INX     H
+ 01E9 05                DCR     B
+ 01EA C2E101            JNZ     ID1
+ 01ED 3600              MVI     M,0             ; never terminated -- 0FFH forever, i.e. no card
+                
+ 01EF 21FC03    ID2:    LXI     H,IDBUF
+ 01F2 11CF02            LXI     D,IDWANT
+ 01F5 1A        ID3:    LDAX    D
+ 01F6 B7                ORA     A
+ 01F7 C8                RZ                      ; matched to the end of what we wanted: ours.
+                                                ; A PREFIX compare, so a later card that says
+                                                ; "... 2" still works with this .COM
+ 01F8 BE                CMP     M
+ 01F9 C20102            JNZ     IDBAD
+ 01FC 23                INX     H
+ 01FD 13                INX     D
+ 01FE C3F501            JMP     ID3
+                
+ 0201 11E402    IDBAD:  LXI     D,MNOHB
+ 0204 0E09              MVI     C,PRSTR
+ 0206 CD0500            CALL    BDOS
+ 0209 C30000            JMP     0               ; nothing else in this program can work
+                
+                ;-----------------------------------------------------------------------
+                ; SENDZ -- send the NUL-terminated string at HL to the data port.
+                ; The NUL goes too, AND IT IS THE NUL THAT COMMITS THE COMMAND.
+                ;-----------------------------------------------------------------------
+ 020C 7E        SENDZ:  MOV     A,M
+ 020D D3B1              OUT     HBDATA
+ 020F B7                ORA     A
+ 0210 C8                RZ
+ 0211 23                INX     H
+ 0212 C30C02            JMP     SENDZ
+                
+                ;-----------------------------------------------------------------------
+                ; RECVZ -- read a NUL-terminated string from the data port into HL.
+                ;          B = the room available, including the terminator.
+                ;-----------------------------------------------------------------------
+ 0215 DBB1      RECVZ:  IN      HBDATA
+ 0217 77                MOV     M,A
+ 0218 B7                ORA     A
+ 0219 C8                RZ
+ 021A 23                INX     H
+ 021B 05                DCR     B
+ 021C C21502            JNZ     RECVZ
+ 021F 3600              MVI     M,0             ; out of room -- truncate rather than run on
+ 0221 C9                RET
+                
+                ;-----------------------------------------------------------------------
+                ; REPERR -- print what actually went wrong, in the host's own words.
+                ;-----------------------------------------------------------------------
+ 0222 3E07      REPERR: MVI     A,CERROR
+ 0224 D3B0              OUT     HBCMD
+ 0226 DBB1              IN      HBDATA          ; the code byte -- read it and discard it
+                
+ 0228 114D03            LXI     D,MERR
+ 022B 0E09              MVI     C,PRSTR
+ 022D CD0500            CALL    BDOS
+                
+ 0230 DBB1      RPE1:   IN      HBDATA          ; ...then the text, a character at a time
+ 0232 B7                ORA     A
+ 0233 CA3F02            JZ      RPE2
+ 0236 5F                MOV     E,A
+ 0237 0E02              MVI     C,CONOUT
+ 0239 CD0500            CALL    BDOS
+ 023C C33002            JMP     RPE1
+                
+ 023F C39002    RPE2:   JMP     CRLF            ; tail call
+                
+                ;=======================================================================
+                ; THE COMMAND TAIL
+                ;=======================================================================
+                
+                ;-----------------------------------------------------------------------
+                ; PARSE -- the first word of the tail at 0080H -> PAT.
+                ;
+                ; We parse it ourselves rather than use the FCB the CCP built at 005CH,
+                ; and we have to: that is an 8.3 FCB parse, and it would hand us `SRC/`
+                ; as `SRC     ` with the slash eaten and the pattern gone. A host pattern
+                ; is not an 8.3 name and must never be put through one.
+                ;-----------------------------------------------------------------------
+ 0242 218000    PARSE:  LXI     H,TAIL
+ 0245 46                MOV     B,M             ; the length of the tail
+ 0246 23                INX     H
+                
+ 0247 CD5302            CALL    SKIPSP
+ 024A 117A03            LXI     D,PAT
+ 024D 0E40              MVI     C,HNMAX
+ 024F CD5F02            CALL    TOKEN
+ 0252 C9                RET
+                
+ 0253 78        SKIPSP: MOV     A,B
+ 0254 B7                ORA     A
+ 0255 C8                RZ
+ 0256 7E                MOV     A,M
+ 0257 FE20              CPI     ' '
+ 0259 C0                RNZ
+ 025A 23                INX     H
+ 025B 05                DCR     B
+ 025C C35302            JMP     SKIPSP
+                
+                ; Copy one space-delimited word from (HL) to (DE), NUL-terminated.
+                ;   B = characters left in the tail   C = room at DE, including the NUL
+                ; Always writes the NUL, so "no word here" is an empty string -- which is
+                ; what the card wants anyway.
+ 025F 79        TOKEN:  MOV     A,C
+ 0260 FE01              CPI     1
+ 0262 CA7802            JZ      TOKEND
+ 0265 78                MOV     A,B
+ 0266 B7                ORA     A
+ 0267 CA7802            JZ      TOKEND
+ 026A 7E                MOV     A,M
+ 026B FE20              CPI     ' '
+ 026D CA7802            JZ      TOKEND
+ 0270 12                STAX    D
+ 0271 23                INX     H
+ 0272 13                INX     D
+ 0273 05                DCR     B
+ 0274 0D                DCR     C
+ 0275 C35F02            JMP     TOKEN
+ 0278 AF        TOKEND: XRA     A
+ 0279 12                STAX    D
+ 027A C9                RET
+                
+                ;=======================================================================
+                ; TALKING TO THE USER
+                ;=======================================================================
+                
+                ; PSTR -- print the NUL-terminated string at HL.
+                ; HL is pushed around the BDOS call because BDOS EATS EVERY REGISTER.
+ 027B 7E        PSTR:   MOV     A,M
+ 027C B7                ORA     A
+ 027D C8                RZ
+ 027E E5                PUSH    H
+ 027F 5F                MOV     E,A
+ 0280 0E02              MVI     C,CONOUT
+ 0282 CD0500            CALL    BDOS
+ 0285 E1                POP     H
+ 0286 23                INX     H
+ 0287 C37B02            JMP     PSTR
+                
+ 028A 5F        PUTCH:  MOV     E,A
+ 028B 0E02              MVI     C,CONOUT
+ 028D C30500            JMP     BDOS
+                
+ 0290 115403    CRLF:   LXI     D,MCRLF
+ 0293 0E09              MVI     C,PRSTR
+ 0295 C30500            JMP     BDOS
+                
+                ;-----------------------------------------------------------------------
+                ; PRDEC -- print HL in decimal. Built backwards from the end of a buffer,
+                ; so no digit reversal is needed.
+                ;-----------------------------------------------------------------------
+ 0298 112604    PRDEC:  LXI     D,NUMEND
+ 029B 3E24              MVI     A,'$'
+ 029D 12                STAX    D
+ 029E 1B        PD1:    DCX     D
+ 029F CDAF02            CALL    DIV10           ; HL = HL/10, A = the remainder
+ 02A2 C630              ADI     '0'
+ 02A4 12                STAX    D
+ 02A5 7C                MOV     A,H
+ 02A6 B5                ORA     L
+ 02A7 C29E02            JNZ     PD1
+ 02AA 0E09              MVI     C,PRSTR
+ 02AC C30500            JMP     BDOS            ; DE already points at the first digit
+                
+                ; DIV10 -- HL = HL/10, A = the remainder. The 8080 has no divide.
+ 02AF C5        DIV10:  PUSH    B
+ 02B0 010000            LXI     B,0
+ 02B3 7C        DV1:    MOV     A,H
+ 02B4 B7                ORA     A
+ 02B5 C2BE02            JNZ     DV2
+ 02B8 7D                MOV     A,L
+ 02B9 FE0A              CPI     10
+ 02BB DACA02            JC      DV3
+ 02BE 7D        DV2:    MOV     A,L
+ 02BF D60A              SUI     10
+ 02C1 6F                MOV     L,A
+ 02C2 7C                MOV     A,H
+ 02C3 DE00              SBI     0
+ 02C5 67                MOV     H,A
+ 02C6 03                INX     B
+ 02C7 C3B302            JMP     DV1
+ 02CA 7D        DV3:    MOV     A,L             ; the remainder -- grab it BEFORE clobbering L
+ 02CB 60                MOV     H,B
+ 02CC 69                MOV     L,C
+ 02CD C1                POP     B
+ 02CE C9                RET
+                
+                ;=======================================================================
+                ; DATA
+                ;=======================================================================
+ 02CF 414C544149IDWANT: DB      'ALTAIRSIM HOSTBRIDGE',0
+                
+ 02E4 0D0A484449MNOHB:  DB      CR,LF,'HDIR: no host bridge at B0H.',CR,LF
+ 0304 5468697320        DB      'This machine has no `hostbridge` card in it, or it is at'
+ 033C 20616E6F74        DB      ' another port.',CR,LF,'$'
+                
+ 034D 484449523AMERR:   DB      'HDIR: $'
+ 0354 0D0A24    MCRLF:  DB      CR,LF,'$'
+ 0357 2066696C65MFILES: DB      ' files.',CR,LF,'$'
+ 0361 484449523AMNONE:  DB      'HDIR: nothing matches.',CR,LF,'$'
+                
+                ;---- Variables -------------------------------------------------------
+ 037A           PAT:    DS      HNMAX+1         ; the pattern, as typed. Empty = everything.
+ 03BB           NAME:   DS      HNMAX+1         ; the name the card just handed us. +1: RECVZ's
+                                                ; truncate path writes its NUL one past the
+                                                ; count it was given.
+ 03FC           IDBUF:  DS      IDMAX+1
+ 041D           COUNT:  DS      2               ; how many names we have printed
+ 041F           COL:    DS      1               ; which column the next one goes in
+ 0420           NUMBUF: DS      6
+ 0426           NUMEND: DS      1               ; PRDEC builds backwards from here
+                
+ 0427                   DS      64              ; stack: BDOS is the deepest thing we call
+ 0467 =         STACK   EQU     $
+                
+ 0467                   END     START

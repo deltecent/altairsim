@@ -87,8 +87,29 @@ void Console::poll() const {
 
     uint8_t buf[64];
     for (;;) {
-        bool   ended = false;
-        size_t n     = platform::readInput(buf, sizeof buf, ended);
+        // TAKE FROM THE OS ONLY WHAT WE HAVE ROOM FOR, AND LEAVE THE REST WHERE IT IS.
+        //
+        // This loop used to read the OS dry into a 256-byte buffer and DROP the
+        // overflow, silently -- and that turned a perfectly reliable pipe into a lossy
+        // one. Feed a 28 KB assembler source into `PIP R.ASM=CON:` and 256 bytes of it
+        // arrived; the other 28,000 were counted in dropped_, which nothing prints, and
+        // the run then ended early looking for all the world like the guest had crashed.
+        //
+        // A PIPE HAS BACKPRESSURE AND A TERMINAL DOES NOT, and that is the whole
+        // asymmetry. Bytes we do not read stay in the OS's own buffer and wait for us,
+        // so there is no reason to take them before we can hold them -- the pipe IS the
+        // rest of the buffer, and it is a much bigger one. Leaving them there costs
+        // nothing and makes a scripted console feed of any size exact.
+        //
+        // The drop below is therefore now only reachable from a real keyboard, which is
+        // where it belonged all along: type-ahead into a guest that is not listening has
+        // genuinely nowhere to go, and a real terminal drops it too.
+        const size_t room = (in_.size() >= kMaxIn) ? 0 : kMaxIn - in_.size();
+        if (!room) return;  // full. Come back when the guest has eaten something.
+
+        const size_t want  = room < sizeof buf ? room : sizeof buf;
+        bool         ended = false;
+        size_t       n     = platform::readInput(buf, want, ended);
 
         // END OF INPUT is not the same as a quiet line, and terminal.h keeps them
         // apart so that this can act on the difference: a closed pipe is how a
@@ -112,7 +133,7 @@ void Console::poll() const {
             in_.push_back(b);
         }
 
-        if (n < sizeof buf) return;  // a short read means we drained it
+        if (n < want) return;  // a short read means we drained what the OS had
     }
 }
 
