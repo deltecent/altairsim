@@ -91,4 +91,10 @@ disks/**
 # This was decided once, and then a `git add -A` put 83 MB of them in history
 # anyway; that history has been rewritten out. If you find yourself typing
 # `git add -f reference/...`, you are about to do it a third time.
-reference/
+#
+# The ONE exception, allowlist-style like disks/ above: the *.md files here are
+# OURS -- distilled, text-only emulation references written FROM the scans, each
+# citing its source PDF by filename. "Our documentation is fine, their scans are
+# not." Those are tracked; the scans themselves stay ignored.
+reference/*
+!reference/*.md
