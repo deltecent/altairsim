@@ -61,6 +61,26 @@ foreach(f ${chapters})
   endforeach()
 endforeach()
 
+# ...AND NO BARE SOURCE-HEADER REFERENCE. The forbidden list above catches "src/", but the
+# leak it did NOT catch was a help string that shipped "(core/paths.h)" -- a header with no
+# src/ prefix -- straight into the generated reference. A C/C++ source or header name is a
+# file the reader does not have, whatever directory it claims (or none). So match name.h,
+# dir/name.h, and .hpp/.hh/.cpp/.cc/.cxx -- but the trailing guard requires the extension to
+# END there, which is what leaves the tape loaders (LDR4K31.HEX), a lowercase dbl.hex and an
+# .html alone: a letter after the ".h" means it is not a header.
+foreach(f ${chapters})
+  file(RELATIVE_PATH rel "${SRC}" "${f}")
+  file(READ "${f}" text)
+  string(REPLACE "\n" ";" lines "${text}")
+  set(n 0)
+  foreach(line ${lines})
+    math(EXPR n "${n} + 1")
+    if(line MATCHES "[A-Za-z0-9_/]+\\.(hpp|hh|cxx|cpp|cc|h)([^A-Za-z0-9]|$)")
+      set(bad "${bad}  ${rel}:${n}: source/header reference '${CMAKE_MATCH_0}'\n      ${line}\n")
+    endif()
+  endforeach()
+endforeach()
+
 if(NOT bad STREQUAL "")
   message(FATAL_ERROR
     "THE USER MANUAL HAS ESCAPED THE PACKAGE.\n"
