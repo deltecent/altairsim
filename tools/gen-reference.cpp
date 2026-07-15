@@ -123,6 +123,24 @@ void propTable(std::ostream& o, std::vector<Property>& props) {
     }
 }
 
+// The keys of a SUB-UNIT table -- [[board.drive]], [[board.region]]. These are the
+// DESCRIPTION half of a Property (kind, choices, range, radix, help) with no accessor at
+// all, because the drive or region they describe does not exist until the table is read
+// and it is built (Board::subUnitProperties). So there is no Default column: there is
+// nothing to read a default off. And crucially there is NO read-only mark -- propTable
+// stamps that on `!p.set`, and one of these has no setter EITHER, which would print every
+// one of them "(read-only -- not a key you may set)" when in a machine file they are
+// nothing BUT settable. The monitor drew exactly this line, showSchema() beside showProps()
+// (src/cli/monitor.cpp); this is the same split, one consumer over.
+void schemaTable(std::ostream& o, std::vector<Property>& props) {
+    o << "| Key | Kind | Legal | Meaning |\n";
+    o << "|---|---|---|---|\n";
+    for (auto& p : props)
+        o << "| `" << p.name << "` | " << kindName(p.kind) << " | " << legal(p) << " | "
+          << cell(p.help) << " |\n";
+    o << "\n";  // a heading may follow immediately, and pandoc wants the blank line
+}
+
 // ---------------------------------------------------------------------------
 // ref/boards.md
 // ---------------------------------------------------------------------------
@@ -158,9 +176,17 @@ void boards(const std::string& dir) {
             o << "\n\n";
         }
 
-        auto sub = b->subUnitTables();
-        for (const auto& s : sub)
-            o << "**Takes a `[[board." << s << "]]` list.**\n\n";
+        // A card that owns a LIST -- drives on a controller, regions on a memory card --
+        // documents that list's keys, not merely that it takes one. `readonly` on a drive
+        // was real and worked and appeared in NO reference; that was the whole of bug #9.
+        for (const auto& s : b->subUnitTables()) {
+            auto sp = b->subUnitProperties(s);
+            o << "### `[[board." << s << "]]` — a list you may add\n\n";
+            if (sp.empty())
+                o << "*This card takes a `[[board." << s << "]]` list.*\n\n";
+            else
+                schemaTable(o, sp);
+        }
 
         auto props = b->properties();
         o << "### Board properties\n\n";

@@ -31,7 +31,14 @@ printed in each property's own base.
 
 RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes
 
-**Takes a `[[board.region]]` list.**
+### `[[board.region]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `type` | enum | `ram` \| `rom` | RAM, or ROM (which needs a `mount`, unless you want an empty socket) |
+| `at` | int | `0x0` .. `0xFFFF` | Where it starts. An address: 0000, F800 |
+| `size` | int | `1` .. `65536` | How much. Decimal, and it takes a suffix: 48K, 1024, 2M |
+| `mount` | string | text | The ROM image. A file (relative to THIS FILE), or builtin:<name> |
 
 ### Board properties
 
@@ -59,6 +66,7 @@ MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the card. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `achieved_hz` | int | `0` | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
 
 ## `2sio`
@@ -123,7 +131,14 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 
 **Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
 
-**Takes a `[[board.drive]]` list.**
+### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive on the daisy chain |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE (core/paths.h) |
+| `readonly` | bool | `on` \| `off` | The write-protect tab. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere |
+| `media` | enum | `8in` \| `fdc8mb` | Force the format instead of probing the image's size |
 
 ### Board properties
 
@@ -140,7 +155,14 @@ MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 R
 
 **Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
 
-**Takes a `[[board.drive]]` list.**
+### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive on the daisy chain |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE (core/paths.h) |
+| `readonly` | bool | `on` \| `off` | The write-protect tab. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere |
+| `media` | enum | `minidisk` | Force the format instead of probing the image's size |
 
 ### Board properties
 

@@ -77,7 +77,11 @@ exactly as you would on the panel.
 If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,
 including ^C, which a CP/M program is entitled to read. The way back is ATTN
 (^E), which the host takes before the guest is ever offered the byte, so the
-guest cannot disable it. ATTN does NOT stop the machine: a bare RUN resumes it.
+guest cannot disable it. ATTN STOPS the machine -- nothing executes while this
+prompt is up -- but it does not DISTURB it: ATTN is not RESET and not POWER, so
+every register, every byte and every disk survives, and a bare RUN resumes at the
+exact instruction. Stopped is not lost, and the debugger is at its most useful
+here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.
 
 IT RUNS FLAT OUT unless the CPU card has a crystal. `clock_hz` defaults to 0,
 so a cassette that took a real Altair 110 seconds comes off in about one. `SET
