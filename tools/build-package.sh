@@ -42,6 +42,36 @@ cp "$root/docs/altairsim-manual.pdf" "$pkg/"
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.
 
 # ---------------------------------------------------------------------------
+# The loose FILES, from the FILE table -- TOKEN-EXPANDED on the way in, exactly like the
+# manual's chapters. USING-ALTAIRSIM.md writes {{MACHINE_CPM}} rather than a literal path, so
+# the path a user reads is the path that is actually in the zip, and it cannot drift from the
+# DIR table above. The substitution is the same sed loop as tools/build-docs.sh's expand().
+# ---------------------------------------------------------------------------
+expand() {  # expand <src> <dst> : copy, substituting {{TOKEN}} from package.map
+  cp "$1" "$2"
+  sed -n 's/^\([A-Z_][A-Z0-9_]*\)[[:blank:]]*=[[:blank:]]*\(.*\)$/\1	\2/p' "$map" |
+  while IFS="$(printf '\t')" read -r key val; do
+    sed "s|{{$key}}|$val|g" "$2" > "$2.tmp" && mv "$2.tmp" "$2"
+  done
+}
+
+sed -n 's/^FILE[[:blank:]]*\([^[:blank:]]*\)[[:blank:]]*<=[[:blank:]]*\(.*[^[:blank:]]\)[[:blank:]]*$/\1|\2/p' "$map" |
+while IFS='|' read -r dest src; do
+  if [ ! -f "$root/$src" ]; then
+    echo "build-package: package.map names $src, which does not exist" >&2
+    exit 1
+  fi
+  mkdir -p "$pkg/$(dirname "$dest")"
+  expand "$root/$src" "$pkg/$dest"
+  # An unexpanded token is a broken instruction shipped to a user -- refuse it, as the manual does.
+  if grep -q '{{[A-Z_]*}}' "$pkg/$dest"; then
+    echo "build-package: $dest has UNEXPANDED TOKENS -- add them to docs/package.map:" >&2
+    grep -n '{{[A-Z_]*}}' "$pkg/$dest" >&2
+    exit 1
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # The examples, from the DIR table.
 # ---------------------------------------------------------------------------
 missing=""
@@ -64,7 +94,8 @@ while IFS='|' read -r dest src; do
   # The README especially. It is written for someone standing in the source tree -- it talks
   # about .gitignore and about which files are "not in this repository", which are sentences
   # that mean nothing to a person holding a zip, and which quietly contradict the manual. The
-  # manual is the documentation. There is not a second one.
+  # ONLY docs in the zip are the ones the FILE table put there on purpose (the manual PDF and
+  # USING-ALTAIRSIM.md) -- a per-directory README is a repository artifact and is not one.
   rm -f "$pkg/$dest"/*.ASM "$pkg/$dest"/*.PRN "$pkg/$dest"/README.md "$pkg/$dest"/-ReadMe.pdf 2>/dev/null || true
 
   # Did any actual MEDIA come with it?

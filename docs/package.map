@@ -1,9 +1,14 @@
 # THE PACKAGE -- what we hand people, and the ONLY thing the User Manual may name.
 #
-# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, and some disks and
-# tapes. They do NOT get this repository -- no src/, no CMakeLists, no tests, no
-# DESIGN.md, no docs/boards/. So the manual may not reference any of it, and every path
-# it prints must be a path that exists INSIDE THE ZIP.
+# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`,
+# and some disks and tapes. They do NOT get this repository -- no src/, no CMakeLists, no
+# tests, no DESIGN.md, no docs/boards/. So the manual may not reference any of it, and every
+# path it prints must be a path that exists INSIDE THE ZIP.
+#
+# TWO documents ship, not one. The manual (a PDF) is for the human. USING-ALTAIRSIM.md is for
+# an AI assistant driving the machine over MCP -- it is dropped, verbatim, into a working
+# directory so a user can start Claude there and say "Using altairsim, do ...". It is a FILE
+# below (token-expanded on the way in, exactly like the manual), NOT a chapter of the manual.
 #
 # This file is how that is enforced rather than merely intended. It is the single source
 # of truth for three things that would otherwise drift apart:
@@ -11,7 +16,7 @@
 #   1. TOKENS. The manual's Markdown writes {{MACHINE_CPM}}, never a literal path. The doc
 #      build substitutes from here and FAILS on any token it cannot resolve, so a path
 #      cannot reach the PDF unexpanded and a path cannot be invented in prose.
-#   2. CONTENTS. tools/build-package.sh assembles the zip from the DIRS below.
+#   2. CONTENTS. tools/build-package.sh assembles the zip from the DIRS and FILES below.
 #   3. THE TEST. tests/acceptance/manual.cmake builds that same package, in a directory
 #      with no repository in sight, and runs the manual's own commands against it. If a
 #      chapter tells you to type something that does not work in the package, it fails.
@@ -30,6 +35,16 @@
 
 DIR  disks/cpm22        <=  disks/mits-88dcdd/cpm22/buffered
 DIR  tapes/basic        <=  tapes/4KBasic31
+
+# ---------------------------------------------------------------------------
+# FILES -- <package path>  <=  <path in this repo>
+#
+# A single file copied to the zip, TOKEN-EXPANDED on the way in (the {{MACHINE_CPM}} in
+# USING-ALTAIRSIM.md becomes the real package path, same as in the manual). Use this for a
+# loose top-level file; use DIR for a self-contained example folder.
+# ---------------------------------------------------------------------------
+
+FILE  USING-ALTAIRSIM.md   <=  docs/USING-ALTAIRSIM.md
 
 # TBD, and deliberately not faked:
 #
