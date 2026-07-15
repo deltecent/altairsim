@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+# SIM -> HOST. The simulator runs PCPUT; the host runs a real XMODEM receiver.
+#
+#   hostrecv.exp <timeout-seconds>     (env: BAUD)
+#
+# This isolates the simulator as SENDER. PCPUT waits 4 EMULATED seconds for each ACK -- about
+# 8e6 cycles, hand-calibrated to a 2 MHz 8080. Raising clock_hz shrinks that window in REAL
+# time (8e6/clock_hz seconds), while the wire stays stubbornly real. So this is the direction
+# that must eventually break, and the clock where it breaks is the answer.
+#
+# The sim is sys1 (cu.usbserial-AB0NW409); the host receiver takes the other port.
+
+set xtimeout [lindex $argv 0]
+set HOSTPORT "/dev/cu.usbserial-AL009KFH"
+set OUT      "recv-out.bin"
+
+log_user 0
+set timeout 60
+
+proc bail {msg} {
+    puts "RESULT: FAIL 0 - ($msg)"
+    exit 1
+}
+
+spawn -noecho /Users/patrick/src/altairsim/build/altairsim sys1.toml
+set sim $spawn_id
+expect -i $sim "A0>" { } timeout { bail "sim never booted" }
+
+# Receiver first: it NAKs until the sender answers, and PCPUT purges the line before it looks
+# for that NAK -- so arming the host first is what gets them into step.
+spawn -noecho python3 xmodem.py recv $HOSTPORT $env(BAUD) $OUT
+set rcv $spawn_id
+
+set t0 [clock milliseconds]
+send -i $sim "PCPUT BIOS.ASM B\r"
+expect -i $sim "Port B" { } timeout { bail "PCPUT did not start" }
+
+set timeout $xtimeout
+expect -i $sim "Transfer Complete" { } timeout { bail "PCPUT timed out (ACK window too short)" }
+set elapsed [expr {([clock milliseconds] - $t0) / 1000.0}]
+
+expect -i $rcv -re {wrote (\d+) bytes} { set got $expect_out(1,string) } timeout { bail "host receiver never finished" }
+
+set timeout 60
+send -i $sim "\005"
+expect -i $sim "altairsim>"
+send -i $sim "QUIT\r"
+expect -i $sim eof
+
+set bps [expr {int($got / $elapsed)}]
+puts [format "RESULT: PASS %.1f %s bytes=%s" $elapsed $bps $got]

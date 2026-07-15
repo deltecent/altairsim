@@ -98,3 +98,6 @@ disks/**
 # not." Those are tracked; the scans themselves stay ignored.
 reference/*
 !reference/*.md
+
+# CTest scratch output
+Testing/Temporary/

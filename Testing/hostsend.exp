@@ -1,0 +1,70 @@
+#!/usr/bin/expect -f
+# HOST -> SIM. The host runs a real XMODEM sender (lrzsz `sz -X`); the simulator runs PCGET.
+#
+#   hostsend.exp <timeout-seconds>
+#
+# The point: `sz` is not a simulator. It has no emulated timeouts and no emulated clock -- it
+# is real software on a real UART. So if this transfer fails, the simulator failed to keep up
+# with real data arriving off a real wire, and nothing can be blamed on the far end's 8080.
+#
+# The sim is sys2 (on cu.usbserial-AL009KFH). The host sender uses the OTHER port.
+
+set xtimeout [lindex $argv 0]
+set HOSTPORT "/dev/cu.usbserial-AB0NW409"
+set SRC      "/Users/patrick/src/altairsim/disks/mits-88dcdd/cpm22/8mb/BIOS.ASM"
+
+log_user 0
+set timeout 60
+
+proc bail {msg} {
+    puts "RESULT: FAIL 0 - ($msg)"
+    exit 1
+}
+
+spawn -noecho $env(SIM) sys2.toml
+set sim $spawn_id
+
+expect -i $sim "A0>" { } timeout { bail "sim never booted" }
+
+# PCGET purges the line, then NAKs. sz waits for that NAK, so the receiver must be armed first.
+send -i $sim "PCGET TEST.ASM B\r"
+expect -i $sim "Port B" { } timeout { bail "PCGET did not start" }
+
+# The real sender. xmodem.py opens the UART itself (raw termios), so there is no shell
+# redirection to get wrong -- and unlike lrzsz it reports every retry, which is the number
+# that actually tells us whether the simulator is keeping up.
+set t0 [clock milliseconds]
+spawn -noecho python3 xmodem.py send $HOSTPORT $env(BAUD) $SRC
+set snd $spawn_id
+
+set timeout $xtimeout
+expect -i $sim "Transfer Complete" { } timeout { bail "sim receiver timed out / stalled" }
+set elapsed [expr {([clock milliseconds] - $t0) / 1000.0}]
+
+# The host sender's own verdict. retries= is the honest measure of whether the simulator kept
+# up: a receiver that falls behind NAKs, and every NAK shows up here.
+set retries "?"
+expect -i $snd -re {retries=(\d+)} { set retries $expect_out(1,string) } timeout { }
+
+set timeout 60
+# CONIN is what flushes the 8 MB BIOS's track buffer to disk. Reaching A0> is load-bearing.
+expect -i $sim "A0>" { } timeout { bail "sim never returned to the prompt" }
+
+send -i $sim "STAT TEST.ASM\r"
+expect -i $sim -re {(\d+)\s+\d+k\s+\d+\s+R/W} { set recs $expect_out(1,string) } timeout { set recs "?" }
+expect -i $sim "A0>"
+
+send -i $sim "C:CRC TEST.ASM\r"
+expect -i $sim -re {CRC = ([0-9A-F]{4})} { set crc $expect_out(1,string) } timeout { set crc "?" }
+expect -i $sim "A0>"
+
+send -i $sim "\005"
+set tim "-"
+expect -i $sim -re {TIMING ([^\r\n]*)} { set tim $expect_out(1,string) } timeout { }
+expect -i $sim "altairsim>"
+send -i $sim "QUIT\r"
+expect -i $sim eof
+
+# 72,419 bytes -> 566 XMODEM blocks -> 72,448 bytes landed (last block padded).
+set bps [expr {int(72448 / $elapsed)}]
+puts [format "RESULT: PASS %.1f %s crc=%s recs=%s retries=%s | %s" $elapsed $bps $crc $recs $retries $tim]

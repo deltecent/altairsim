@@ -1,0 +1,39 @@
+# System TWO -- the RECEIVER. Runs `PCGET TEST.ASM B`.
+#
+# A: is a WRITABLE SCRATCH COPY of the same 8 MB image, so it already carries the original
+# BIOS.ASM beside the TEST.ASM it is about to receive -- which is what makes the comparison
+# a local one.
+#
+# C: is the 77-track buffered floppy, read-only, purely to borrow its CRC.COM (the 8 MB disk
+# has no compare tool). Mixed geometry on one controller is the arrangement the FDC+ manual
+# prescribes: 8 MB on A/B, ordinary 77-track Altair images on C/D.
+
+[machine]
+name = "xfer-sys2"
+base = "default"
+startup = ["RUN FF00"]
+
+[[board]]
+id = "cpu0"
+clock_hz = @CLOCK@
+idle     = @IDLE@
+
+[[board]]
+id = "sio0"
+
+  [board.unit.b]
+  connect = "serial:/dev/cu.usbserial-AL009KFH"
+  baud    = @BAUD@
+
+[[board]]
+id = "dsk0"
+
+  # Relative to THIS file -- the scratch copy is made beside it.
+  [[board.drive]]
+  unit  = 0
+  mount = "scratch-8mb.dsk"
+
+  [[board.drive]]
+  unit     = 2
+  mount    = "/Users/patrick/src/altairsim/disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+  readonly = true

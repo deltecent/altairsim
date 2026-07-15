@@ -1,0 +1,28 @@
+# System ONE -- the SENDER. Runs `PCPUT BIOS.ASM B`.
+#
+# A: is the PRISTINE image, mounted read-only. PCPUT only reads, and the test must not be
+# able to touch the master. Port B goes out the real cable.
+
+[machine]
+name = "xfer-sys1"
+base = "default"
+startup = ["RUN FF00"]
+
+[[board]]
+id = "cpu0"
+clock_hz = @CLOCK@
+
+[[board]]
+id = "sio0"
+
+  [board.unit.b]
+  connect = "serial:/dev/cu.usbserial-AB0NW409"
+  baud    = @BAUD@
+
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit     = 0
+  mount    = "/Users/patrick/src/altairsim/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
+  readonly = true
