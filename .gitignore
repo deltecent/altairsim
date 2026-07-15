@@ -31,13 +31,16 @@ altairsim.log
 # The built documents. THE MARKDOWN IS THE SOURCE; the PDF is an artifact of it, of the
 # binary (the reference chapters are printed from the program) and of a browser.
 #
-# It is not committed, and the reason is this repository's own history: twice, large binaries
-# went into it and had to be rewritten out. The manual weighs ~2 MB and would be rebuilt on
-# every typo -- which is exactly the shape of the mistake, made slowly instead of all at once.
+# The USER-FACING PDFs ARE TRACKED. tools/build-docs.sh makes docs/altairsim-manual.pdf and
+# docs/altairsim-devguide.pdf, and they are versioned deliverables: they ship in the
+# distribution zip beside the binary, and a fresh clone should carry the manual a reader can
+# open without a pandoc-and-a-browser toolchain to build it. So they are committed on purpose
+# (regenerate and re-commit them when the docs change), and NOT listed here.
 #
-# It is still a DELIVERABLE. tools/build-docs.sh makes it, and it goes in the distribution
-# zip beside the binary. A user gets the PDF; git does not.
-docs/*.pdf
+# The line that is NOT ours to track is the SCANNED REFERENCE MANUALS in reference/ (below):
+# vendor datasheets, tens of MB each, and burned into this repo's history twice already. That
+# is the "no PDFs in the reference directory" rule -- our documentation is fine, their scans
+# are not. The intermediate HTML the browser prints from stays an artifact too.
 docs/*.html
 .altairsim_history
 
