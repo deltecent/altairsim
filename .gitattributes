@@ -1,0 +1,21 @@
+# Keep line endings deterministic across checkouts.
+#
+# The machine .toml files are embedded byte-for-byte into the binary by
+# cmake/embed_machines.cmake (as a raw unsigned-char array, HEX-read). A Windows
+# checkout with core.autocrlf=true would rewrite them CRLF and change the embedded
+# bytes -- so pin all text to LF, and mark the binary media so git never touches it.
+* text=auto eol=lf
+
+*.toml text eol=lf
+*.exp  text eol=lf
+*.cmake text eol=lf
+*.md   text eol=lf
+
+# Period media and disk images are binary -- never munge.
+*.DSK binary
+*.dsk binary
+*.bin binary
+*.BIN binary
+*.hex binary
+*.HEX binary
+*.keys binary
