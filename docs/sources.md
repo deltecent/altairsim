@@ -1,13 +1,18 @@
 # Sources — the manuals and data sheets the hardware was built from
 
 `reference/` holds the period documentation this simulator's boards were modeled from.
-**It is deliberately not in git** (see `.gitignore`): 83 MB of scanned manuals, none of them
-ours to redistribute, and none of them needed to *build* — only to *understand*. The code
-cites them by filename; this file says what each one is, so a fresh checkout knows what it
-is missing and why.
+The **scanned manuals and data sheets themselves are deliberately not in git** (see
+`.gitignore`): 83 MB, none of them ours to redistribute, and none needed to *build* — only
+to *understand*. What **is** tracked is a **distilled, text-only `.md` for each one** — register
+maps, port addresses, bit tables, geometry and timing — written from the scan and citing it by
+filename. `reference/README.md` indexes them; this file is the manifest that says what each
+original source is and where it came from, so a fresh checkout knows what the `.md` was made
+from and what scan it is missing.
 
-Nothing here is a build dependency. If `reference/` is empty, everything still compiles and
-every test still passes.
+Nothing here is a build dependency. If `reference/` held only its `.md` files, everything still
+compiles and every test still passes. The manifest below names each source scan by its `.pdf`
+filename; the tracked distillation is the same name with a `.md` extension (indexed in
+`reference/README.md`).
 
 ## The rule
 
@@ -129,6 +134,8 @@ five pages. Check before trusting a gap.
 
 ## Related
 
+- `reference/README.md` — the index of the distilled, tracked `.md` references, one per
+  source in the manifest above.
 - `docs/roms.md` — provenance of the ROM images that *are* committed (they are small, and
   the build embeds them).
 - `docs/boards/*.md` — the transcribed spec for each board. These are the working documents;
