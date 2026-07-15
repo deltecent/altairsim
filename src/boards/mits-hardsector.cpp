@@ -587,7 +587,7 @@ std::vector<Property> HardSectorFdc::subUnitProperties(const std::string& table)
     {
         Property x;
         x.name = "mount";
-        x.help = "The disk image to put in it. Relative to THIS FILE (core/paths.h)";
+        x.help = "The disk image to put in it. Relative to THIS FILE.";
         x.kind = Kind::Str;
         p.push_back(std::move(x));
     }
