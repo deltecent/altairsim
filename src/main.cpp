@@ -216,6 +216,40 @@ int main(int argc, char** argv) {
     if (mcp) return runMcp(m, std::cin, std::cout);
 
     Monitor mon(m);
+
+    // The banner reports what is ACTUALLY in the backplane, because a machine with
+    // no CPU card in it is a real machine you can build -- it is the one milestone
+    // 1a ran, with the monitor as bus master -- and saying so is more useful than a
+    // fixed string that goes stale the moment a card lands.
+    auto banner = [&] {
+        std::cout << kVersion << " -- ";
+        if (CpuCore* c = m.cpu()) {
+            std::cout << c->isa() << ", ";
+            // hz() IS A DIVISOR AND IS NEVER 0 (core/clock.h), so it cannot answer this
+            // question -- it reads 2 MHz on a card with no crystal on it, which is how this
+            // line came to report a paced machine while the run loop was flat out. free() is
+            // the policy, and the policy is what an operator wants read back.
+            if (m.clock.free()) std::cout << "full speed.\n";
+            else                std::cout << m.clock.hz() / 1000000.0 << " MHz.\n";
+        }
+        else std::cout << "no CPU in the backplane; the monitor is the bus master.\n";
+        std::cout << "machine: " << m.name << ".  HELP for commands.\n";
+    };
+
+    // The banner goes to launches that reach the interactive repl -- exactly the
+    // negation of the `if (ran && !interactive) return rc;` guard below -- so -x/-s
+    // CI runs keep their silent stdout. WHERE it goes depends on the launch:
+    //
+    //   * A plain launch (nothing on the command line) greets NOW, before runStartup.
+    //     An auto-run machine (a `RUN` in `startup`) blocks in the run loop until ATTN,
+    //     and the operator deserves the banner before that, not after the first stop.
+    //   * A -x/-s launch defers the banner to AFTER its commands run, so it reports
+    //     what they left behind -- `SET cpu0 clock_hz=...` must be reflected, and that
+    //     is what proves the line reads live machine state rather than a fixed string.
+    const bool willRepl = interactive || (exec.empty() && script.empty());
+    const bool hasCliCmds = !exec.empty() || !script.empty();
+    if (willRepl && !hasCliCmds) banner();
+
     mon.runStartup(std::cout);
 
     // -x and -s are the same thing: commands, from somewhere. -x first, then the
@@ -242,22 +276,11 @@ int main(int argc, char** argv) {
 
     if (ran && !interactive) return rc;
 
-    // The banner reports what is ACTUALLY in the backplane, because a machine with
-    // no CPU card in it is a real machine you can build -- it is the one milestone
-    // 1a ran, with the monitor as bus master -- and saying so is more useful than a
-    // fixed string that goes stale the moment a card lands.
-    std::cout << kVersion << " -- ";
-    if (CpuCore* c = m.cpu()) {
-        std::cout << c->isa() << ", ";
-        // hz() IS A DIVISOR AND IS NEVER 0 (core/clock.h), so it cannot answer this
-        // question -- it reads 2 MHz on a card with no crystal on it, which is how this
-        // line came to report a paced machine while the run loop was flat out. free() is
-        // the policy, and the policy is what an operator wants read back.
-        if (m.clock.free()) std::cout << "full speed.\n";
-        else                std::cout << m.clock.hz() / 1000000.0 << " MHz.\n";
-    }
-    else std::cout << "no CPU in the backplane; the monitor is the bus master.\n";
-    std::cout << "machine: " << m.name << ".  HELP for commands.\n";
+    // The deferred banner: a -x/-s launch that stays interactive (-i) is greeted here,
+    // after its commands ran, so the line reflects them. The plain-launch banner was
+    // printed above, before runStartup.
+    if (willRepl && hasCliCmds) banner();
+
     // Line editing, history and BOTH backspace bytes live in cli/lineedit.cpp.
     // TODO: tab completion, driven by properties() (DESIGN.md 10.4).
     return mon.repl(std::cin, std::cout, true);
