@@ -68,8 +68,8 @@ its properties, as it must anyway to be configurable at all, and the tool schema
 declaration.
 
 So there is no tool reference in this manual. Start the server and ask it what it has —
-that is what `board_types` is for, and its answer is authoritative in a way a printed list
-could never be.
+`tools/list` returns every tool the server exposes, and `board_types` every board type;
+their answers are authoritative in a way a printed list could never be.
 
 ## Configuring an assistant to use it
 
