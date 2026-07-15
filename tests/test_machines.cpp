@@ -1,5 +1,6 @@
 #include "test.h"
 
+#include "boards/registry.h"
 #include "config/toml.h"
 #include "core/machines.h"
 
@@ -395,4 +396,96 @@ remove = true
     std::string ed2;
     CHECK(loadTomlText(dtext, "delta (saved)", dback, ed2), "...and it loads on its own");
     CHECK(dback.boards().size() == md2.boards().size(), "...with all five cards written out");
+}
+
+// ---------------------------------------------------------------------------
+// SUB-UNIT TABLES HAVE A SCHEMA, AND IT IS THE ONLY ONE.
+//
+// `readonly` was real, it worked, it was in no generated reference, no MCP schema and no
+// SHOW -- because the keys of [[board.drive]] and [[board.region]] were known to nothing
+// but a chain of string compares inside each board. That is a SECOND SCHEMA, and the
+// project's central claim ("a board's properties ARE its TOML keys; no second schema
+// anywhere") was false for the most user-facing TOML in the program: the keys that carry
+// the disk, the ROM and the write-protect tab.
+//
+// So: the keys are DECLARED (Board::subUnitProperties), the declaration is ENFORCED
+// (Board::loadSubUnit, the one door), and these are the tests that keep it that way.
+// ---------------------------------------------------------------------------
+void test_subunit_schema() {
+    SECTION("sub-unit tables: the keys are declared, and the declaration is the schema");
+
+    // THE GENERIC ONE, AND THE ONLY ONE THAT PROTECTS A BOARD THAT DOES NOT EXIST YET.
+    // A card that announces a table and declares no keys for it is the old bug, exactly:
+    // it will load a machine file, refuse nothing, and document nothing. There is no way
+    // to write that card and have this pass.
+    for (const auto& t : boardTypes()) {
+        auto b = makeBoard(t.name);
+        for (const auto& table : b->subUnitTables()) {
+            auto schema = b->subUnitProperties(table);
+            // The message names the card, because a failure here is about ONE card and
+            // the loop is over all of them.
+            std::string why = "every [[board." + table + "]] on a " + t.name +
+                              " declares its keys -- a table with no schema documents "
+                              "nothing and validates nothing";
+            CHECK(!schema.empty(), why.c_str());
+            for (const auto& p : schema)
+                CHECK(!p.name.empty() && !p.help.empty(),
+                      "...and every key has a name and a line of help, because a generated "
+                      "reference prints both");
+        }
+    }
+
+    auto        b = makeBoard("dcdd");
+    std::string err;
+
+    // THE KEYS ARE THE ONES THE MACHINE FILES ACTUALLY USE.
+    auto drive = b->subUnitProperties("drive");
+    bool haveRo = false, haveMedia = false;
+    for (const auto& p : drive) {
+        if (p.name == "readonly") {
+            haveRo = true;
+            CHECK(p.kind == Kind::Bool, "`readonly` is a bool, and now something knows it");
+        }
+        if (p.name == "media") {
+            haveMedia = true;
+            CHECK(p.kind == Kind::Enum && p.choices.size() == 2,
+                  "`media` is an enum, and its choices come from the CARD'S OWN format table");
+        }
+    }
+    CHECK(haveRo, "the write-protect tab is DECLARED -- this is the bug, in one check");
+    CHECK(haveMedia, "and so is `media`");
+
+    // ...AND THE MEDIA A DIFFERENT CARD OFFERS IS DIFFERENT, off one line of code. A
+    // hand-written enum would have had to be copied per card, and would have drifted.
+    auto mds = makeBoard("mds");
+    auto mp  = mds->subUnitProperties("drive");
+    for (const auto& p : mp)
+        if (p.name == "media")
+            CHECK(p.choices.size() == 1 && p.choices[0] == "minidisk",
+                  "an 88-MDS offers `minidisk` and nothing else -- same class, same line, "
+                  "different table");
+
+    // ENFORCED, AND AT THE ONE DOOR. Each of these used to be a hand-written check in a
+    // board (or, for two of them, no check at all).
+    CHECK(!b->loadSubUnit("drive", {{"unit", "0"}, {"readonly", "maybe"}}, err),
+          "`readonly = maybe` is refused -- the kind is declared, so the parser knows");
+    CHECK(!b->loadSubUnit("drive", {{"unit", "99"}, {"mount", "x.dsk"}}, err),
+          "a unit outside 0..drives-1 is refused -- the range is declared");
+    CHECK(!b->loadSubUnit("drive", {{"unit", "0"}, {"readnoly", "true"}}, err),
+          "a MISSPELLED key is refused rather than silently ignored");
+    CHECK(err.find("readonly") != std::string::npos,
+          "...and the refusal LISTS THE KEYS IT DOES TAKE, which is most of the cure: "
+          "`readonly` existed all along and could not be found");
+    CHECK(!b->loadSubUnit("region", {{"type", "ram"}}, err),
+          "a table this card does not have is refused by the same door");
+
+    // THE MEMORY CARD, THE OTHER HALF OF THE SECOND SCHEMA.
+    auto m = makeBoard("memory");
+    CHECK(!m->loadSubUnit("region", {{"type", "eprom"}, {"at", "0"}}, err),
+          "`type = eprom` is refused -- ram|rom is a declared enum now, not an if-chain");
+    CHECK(!m->loadSubUnit("region", {{"type", "ram"}, {"at", "0"}, {"sise", "48K"}}, err),
+          "and a misspelled `size` is refused, not ignored");
+    CHECK(m->loadSubUnit("region", {{"type", "ram"}, {"at", "0000"}, {"size", "48K"}}, err),
+          "...while the real thing still loads: `at` is hex and `size` takes a K, off the "
+          "property's own radix");
 }

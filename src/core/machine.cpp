@@ -53,6 +53,12 @@ void Machine::pump() {
     for (auto& b : boards_) b->pump();
 }
 
+uint64_t Machine::rxBytes() const {
+    uint64_t n = 0;
+    for (const auto& b : boards_) n += b->rxBytes();
+    return n;
+}
+
 bool Machine::remove(const std::string& id, std::string& err) {
     Board* b = find(id);
     if (!b) {
@@ -107,6 +113,15 @@ BusMaster* Machine::master() {
 CpuCore* Machine::cpu() {
     for (auto& b : boards_)
         if (auto* c = dynamic_cast<CpuCard*>(b.get())) return c->activeCore();
+    return nullptr;
+}
+
+// THE CARD, not the core -- so the run loop can hand back the achieved crystal
+// (CpuCard::reportAchievedHz) without knowing which board holds the processor or
+// what chip it is. Same walk as cpu(), same "nobody" answer on an empty backplane.
+CpuCard* Machine::cpuCard() {
+    for (auto& b : boards_)
+        if (auto* c = dynamic_cast<CpuCard*>(b.get())) return c;
     return nullptr;
 }
 

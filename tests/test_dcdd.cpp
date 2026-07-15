@@ -401,7 +401,7 @@ void test_dcdd() {
         withDisk(8978432);
 
         std::string err;
-        CHECK(b.addSubUnit("drive", {{"unit", "0"}, {"mount", "m.dsk"}, {"media", "fdc8mb"}}, err),
+        CHECK(b.loadSubUnit("drive", {{"unit", "0"}, {"mount", "m.dsk"}, {"media", "fdc8mb"}}, err),
               "a [[board.drive]] with a forced media loads");
 
         // ...and the media this card does NOT have is refused BY NAME, rather than quietly
@@ -409,7 +409,7 @@ void test_dcdd() {
         DcddBoard bad;
         bad.attachClock(&c);
         std::string e2;
-        CHECK(!bad.addSubUnit("drive", {{"unit", "0"}, {"media", "minidisk"}}, e2),
+        CHECK(!bad.loadSubUnit("drive", {{"unit", "0"}, {"media", "minidisk"}}, e2),
               "`media = \"minidisk\"` on a dcdd is an ERROR -- it is a different controller");
         CHECK(e2.find("minidisk") != std::string::npos && e2.find("dcdd") != std::string::npos,
               "and the error names both the media and the card that will not take it");
@@ -423,7 +423,7 @@ void test_dcdd() {
         b2.attachClock(&c);
         KeyValues kv;
         for (const auto& f : su[0].fields) kv.push_back({f.key, f.text});
-        CHECK(b2.addSubUnit("drive", kv, err), "and it loads straight back into a fresh board");
+        CHECK(b2.loadSubUnit("drive", kv, err), "and it loads straight back into a fresh board");
         CHECK(b2.units()[0].state == "m.dsk", "with the same disk in the same drive");
 
         setMediaResolver(openHostFile);  // put the real filesystem back

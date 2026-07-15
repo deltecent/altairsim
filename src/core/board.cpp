@@ -153,4 +153,63 @@ bool setProperty(Board& b, const std::string& key, const std::string& text, std:
     return ok;
 }
 
+// THE ONE DOOR INTO A SUB-UNIT TABLE (DESIGN.md 5). Same six checks as setOne() above,
+// against the same Property vocabulary, from the same declaration -- which is the whole
+// point: `readonly = maybe` in a machine file and `SET dsk0 ...` at the monitor now fail
+// for the same reason, in the same words, out of the same list.
+//
+// WHAT IT DOES NOT DO IS SET ANYTHING. There is nothing to set: the drive does not exist
+// yet. It validates, and hands the board the raw text to build from -- so the board still
+// parses its own values (`at` is hex, `size` takes a K, a path is a path), and the radix
+// rule lives where it always did, in the property's own declaration.
+bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
+    bool known = false;
+    for (const auto& t : subUnitTables())
+        if (t == table) known = true;
+    if (!known) {
+        err = type() + " has no [[board." + table + "]] table";
+        return false;
+    }
+
+    auto schema = subUnitProperties(table);
+
+    for (const auto& [k, text] : kv) {
+        const Property* p = nullptr;
+        for (const auto& x : schema)
+            if (lower(x.name) == lower(k)) p = &x;
+
+        // A KEY THE BOARD NEVER DECLARED. Say what it does take -- the reason this bug
+        // was worth fixing is that `readonly` existed and nobody could find it, so a
+        // refusal that lists the alternatives is most of the cure.
+        // ...and the message NAMES THE CARD, because the same table means different things
+        // on different cards: `media = "minidisk"` is right on an 88-MDS and wrong on a
+        // DCDD, and "must be one of: 8in fdc8mb" is only half an explanation without it.
+        std::string where = type() + ": [[board." + table + "]] ";
+
+        if (!p) {
+            std::string legal;
+            for (const auto& x : schema) {
+                if (!legal.empty()) legal += ", ";
+                legal += x.name;
+            }
+            err = where + "has no `" + k + "`";
+            if (!legal.empty()) err += " -- it takes " + legal;
+            return false;
+        }
+
+        Value v;
+        if (!parseValue(text, p->kind, v, err, p->radix)) {
+            err = where + p->name + ": " + err;
+            return false;
+        }
+        // validate()'s own message already names the key and quotes what it got.
+        if (!validate(*p, v, err)) {
+            err = where + err;
+            return false;
+        }
+    }
+
+    return addSubUnit(table, kv, err);
+}
+
 } // namespace altair

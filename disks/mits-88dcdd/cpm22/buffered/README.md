@@ -47,6 +47,42 @@ The BIOS ends at exactly `E000`, which is where the default machine's RAM stops 
 needs no memory delta at all. The 24K image works out to `BIOSBAS 4700`, ending at `6000`. Mount it
 instead, and re-fit the memory card; `cpm22-buffered.toml` has the block, commented, at the bottom.
 
+## Getting the host-bridge utilities onto a disk
+
+`R`, `W` and `HDIR` are ordinary CP/M programs (`cpm/hostbridge/`) and they have to be **on the
+disk** to run. The disks are not in git, so the one you download does not have them, and the
+machine has no other door: without them there is no way to move a file in or out of a running
+guest.
+
+The 56K image can install them for itself — boot it and paste `R.HEX` in through the console with
+`PIP R.HEX=CON:`, `LOAD R`, and then let `R` fetch its own siblings off the host. **The 24K image
+cannot**: installing means booting, and a 24K CP/M will not boot in the 56K machine that the
+console bootstrap assumes. It is a disk that cannot reach its own tools.
+
+So do not boot it — **mount it as `C:` under the 8 MB system and copy across**, which is the
+arrangement the FDC+ manual describes anyway (an 8 MB image on A/B, ordinary 77-track floppies on
+C/D — see `../8mb/README.md`). The two geometries share one controller because the format and the
+spindle are per *drive*:
+
+```
+altairsim -x 'MOUNT dsk0:drive0 "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"' \
+          -x 'MOUNT dsk0:drive2 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-24k.dsk"' \
+          -x 'RUN FF00'
+
+A0>PIP C:=R.COM
+A0>PIP C:=W.COM
+A0>PIP C:=HDIR.COM
+A0>                     <- and press RETURN a few times: this BIOS flushes its track
+                           buffer from CONIN, so nothing has landed on the image yet
+A0>^E                   <- back to the monitor, which exits (there is no -i)
+```
+
+That costs the floppy 8K (26K free → 18K), and it is what the image in this directory has already
+had done to it. `acceptance-dcdd-mixed` runs the same path on every test run — it reads `R.COM`
+back off the floppy and weighs it against `cpm/hostbridge/R.COM`, byte for byte — so if the tools
+ever fall off this image, or a file crossing between the two geometries is ever *corrupted* rather
+than lost, a test goes red rather than a user going quiet.
+
 ## The sources here are tracked, and they are why the board is right
 
 `BIOS.ASM` and `BOOT.ASM` are **in git** — unlike the images — because they are the **authoritative

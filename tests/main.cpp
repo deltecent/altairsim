@@ -31,12 +31,17 @@ int main() {
     test_bus();
     test_memory();
     test_readonly_props();
+    test_save_is_a_read();
     test_phantom();
     test_cli();
+    test_idle_judgement();
+    test_should_pace();
+    test_achieved_hz();
     test_boundary();
     test_numbers();
     test_units();
     test_machines();
+    test_subunit_schema();
     test_isa();
     test_cpu();
     test_debug();

@@ -368,6 +368,10 @@ void test_memory() {
 // precisely the "second rule to keep in step" this reflection layer exists to abolish -- and
 // it is not free, because probing a setter means CALLING it, on every property, on every save.
 //
+// That last sentence was written as a warning and it turned out to be a bug report: the probe
+// was calling `bank_type`'s setter, which zeroes the live bank. It is GONE now, and
+// test_save_is_a_read() below is what keeps it gone.
+//
 // One signal, honoured by everybody, or four subsystems each guessing. This test pins the
 // signal down, because the bug it guards is invisible: nothing crashes, and the damage lives
 // entirely in what other subsystems believe.
@@ -403,4 +407,50 @@ void test_readonly_props() {
     std::string toml = saveTomlText(m);
     CHECK(toml.find("banks") == std::string::npos, "CONFIG SAVE does not write `banks`");
     CHECK(toml.find("pages") == std::string::npos, "CONFIG SAVE does not write `pages`");
+}
+
+// A SAVE IS A READ.
+//
+// CONFIG SAVE used to probe: it called each board setter with the value it had just got, to
+// find out whether the property was writable (see the note above -- the reflection layer
+// answers that now, with `!p.set`). A setter is not a question, though. Some of them do work,
+// and `bank_type`'s ends:
+//
+//     bankType_ = t;  banks_ = ...;  bank_ = 0;  rebuildPageMap();
+//
+// So saving a banked card DESELECTED THE LIVE BANK and remapped the guest's address space --
+// a save that moved memory underneath a running program. And because `bank_type` is declared
+// BEFORE `bank`, the damage was done before `bank`'s getter ran: the file recorded `bank = 0`
+// as well, so the config did not even describe the machine it had just broken. Measured on the
+// old binary: bank 3 in, bank 0 out, `bank = 0` on disk.
+//
+// This is the whole contract in one test, and it is aimed at the MACHINE, not at the text --
+// a save that perturbs what it describes is broken however good the file looks.
+void test_save_is_a_read() {
+    SECTION("CONFIG SAVE does not write to the machine it is describing");
+
+    Machine m;
+    auto* b = addMem(m, "mem0");
+    std::string err;
+    CHECK(b->addRegion(ram(0x0000, 0xE000), err), "56K of RAM");
+
+    CHECK(setProperty(*b, "bank_type", "eram", err), "an Ithaca eRAM card: 8 banks");
+    CHECK(setProperty(*b, "bank", "3", err), "and bank 3 is the live one");
+
+    const Property* bank = nullptr;
+    for (const auto& p : b->properties())
+        if (p.name == "bank") bank = &p;
+    CHECK(bank != nullptr, "the card has a `bank`");
+    if (!bank) return;
+    CHECK(bank->get().i() == 3, "bank 3 is selected before the save");
+
+    std::string toml = saveTomlText(m);
+
+    // THE ASSERTION. Not "the file is right" -- "the machine is untouched".
+    CHECK(bank->get().i() == 3,
+          "and bank 3 is STILL selected after it: CONFIG SAVE did not touch the card");
+
+    // ...and, following from that, the file says what was true.
+    CHECK(toml.find("bank = 3") != std::string::npos,
+          "...so the saved config records bank 3 -- the machine that was actually saved");
 }

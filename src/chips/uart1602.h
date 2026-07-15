@@ -100,6 +100,11 @@ public:
     void        disconnect();
     ByteStream& stream() { return *stream_; }
     std::string endpoint() const { return stream_->describe(); }
+
+    // Bytes this chip has handed the guest, monotonic -- the run loop's live-traffic signal.
+    // See Mc6850::rxBytes for why it lives at the chip: a transfer runs on some line other
+    // than the console, and this is where every line's received bytes actually cross.
+    uint64_t rxBytes() const { return rxCount_; }
     void        pump() { stream_->pump(); }
 
     // The frame the straps describe, and the act of pushing it at the wire. The CARD
@@ -154,7 +159,8 @@ private:
     std::unique_ptr<ByteStream> stream_;
     std::vector<std::string>    log_;
 
-    uint8_t rxData_ = 0;
+    uint8_t  rxData_  = 0;
+    uint64_t rxCount_ = 0;  // rxBytes() -- the run loop's live-traffic signal
     bool    rda_    = false;  // Data Available -- the RDAV flip-flop
 
     uint64_t txFreeAt_ = 0;  // TBMT is a deadline, not a flag

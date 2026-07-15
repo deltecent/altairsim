@@ -330,6 +330,7 @@ void Mc6850::poll(const Clock& clk) {
 
     rxData_   = b;
     rdrf_     = true;
+    ++rxCount_;  // a byte crossed into the guest -- the run loop's proof this line is not idle
     rxNextAt_ = clk.now() + charTStates(clk);
 }
 

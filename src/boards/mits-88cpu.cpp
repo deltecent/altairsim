@@ -42,6 +42,33 @@ std::vector<Property> Cpu8080Board::properties() {
         p.push_back(std::move(x));
     }
 
+    {
+        // THE CRYSTAL YOU ASKED FOR HAS A COMPANION: THE ONE YOU GOT.
+        //
+        // clock_hz is what you set; this is what the run loop actually retired, in
+        // T-states per real second, the last time it ran. It is the number that turned
+        // bug #6 from a mystery into a sentence -- "asked 8 MHz, reached 3.9" -- and it
+        // is the first thing to look at when a machine feels slow: is it keeping up with
+        // its crystal, or is the host the limit?
+        //
+        // READ-ONLY, AND READ-ONLY IS THE ABSENCE OF A SETTER (core/value.h, 1419215).
+        // No `x.set`: SHOW prints "(read-only)" in the column that says what you may
+        // type, and CONFIG SAVE skips it (toml.cpp: `if (!p.set) continue`) -- a measured
+        // rate is not configuration and must never be written back into a machine file.
+        // It reads 0 before the machine has run, which is the truth and not a missing
+        // value. Any DISPLAY of speed asks the run loop's measurement, never hz() (which
+        // is never 0 and would lie about a flat-out machine -- core/clock.h).
+        Property x;
+        x.name  = "achieved_hz";
+        x.help  = "LIVE: T-states per real second the run loop last reached -- the crystal "
+                  "you got, beside the one you asked for. Read-only; 0 until it has run.";
+        x.kind  = Kind::Int;
+        x.radix = 10;
+        x.unit  = "Hz";
+        x.get   = [this] { return Value::ofInt(achievedHz_); };
+        p.push_back(std::move(x));
+    }
+
     return p;
 }
 

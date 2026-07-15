@@ -503,19 +503,19 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                 continue;
             }
 
-            auto accepted = current->subUnitTables();
-            bool ok = false;
-            for (const auto& x : accepted)
-                if (x == table) ok = true;
-            if (!ok) {
-                err = path + ": board '" + current->id + "' (" + current->type() +
-                      ") has no [[board." + table + "]] table";
-                return false;
-            }
+            // ONE DOOR (Board::loadSubUnit). It checks the table is this card's, checks
+            // every key against the keys the card DECLARES it takes, and validates every
+            // value against the kind, the choices and the range that declaration carries --
+            // before the card is asked to build anything. The loader learns nothing about
+            // what a region or a drive is, which is what it never knew and never should.
             KeyValues kv = t.kv;
             if (dot != std::string::npos) kv.push_back({"unit", sub.substr(dot + 1)});
-            if (!current->addSubUnit(table, kv, err)) {
-                err = path + ": [[" + t.name + "]] on " + current->id + ": " + err;
+            // The board's message already names the TABLE and the CARD TYPE ("dcdd:
+            // [[board.drive]] has no `readnoly` -- it takes unit, mount, readonly, media"),
+            // so all this needs to add is the file and the id. Prefixing the table again
+            // here read `[[board.drive]] on dsk0: dcdd: [[board.drive]] has no ...`.
+            if (!current->loadSubUnit(table, kv, err)) {
+                err = path + ": " + current->id + ": " + err;
                 return false;
             }
             continue;
@@ -656,17 +656,30 @@ std::string saveTomlText(Machine& m) {
         f << "id   = \"" << b->id << "\"\n";
         // Straight out of properties() -- the same list SHOW prints and SET
         // writes. Round-trip is therefore structural, not something we maintain.
+        //
+        // A SAVE IS A READ. It calls get(), and it does not call set() -- not once, not
+        // even to ask a question. This walk used to PROBE: it called each setter with the
+        // value it had just got, and skipped the properties that refused. Two things were
+        // wrong with that, and only the first was obvious.
+        //
+        // It was REDUNDANT: since 1419215 read-only IS `!p.set`, the one signal SET, SHOW,
+        // MCP and the generated reference all honour, and this was the last consumer
+        // deciding read-only-ness its own way.
+        //
+        // And IT WROTE TO THE MACHINE IT WAS DESCRIBING. A setter is not a question, and
+        // some of them do work: `bank_type` on the memory card ends `bank_ = 0;
+        // rebuildPageMap();`, so CONFIG SAVE on a banked card silently deselected the live
+        // bank and remapped the guest's address space -- a save that MOVED MEMORY. The
+        // note that used to sit below excused this walk on the grounds that a board
+        // property is "a port jumper". `bank_type` is not a port jumper, and the next
+        // board's property will not be one either.
         for (const auto& p : b->properties()) {
             if (!p.set) continue;
-            std::string e2;
-            Value probe = p.get();
-            // Derived / read-only properties reject their own value; those are
-            // not config and must not be written.
-            if (!p.set(probe, e2)) continue;
+            Value v = p.get();
             if (p.kind == Kind::Str || p.kind == Kind::Enum)
-                f << p.name << " = \"" << probe.text(p.radix) << "\"\n";
+                f << p.name << " = \"" << v.text(p.radix) << "\"\n";
             else
-                f << p.name << " = " << probe.text(p.radix) << "\n";
+                f << p.name << " = " << v.text(p.radix) << "\n";
         }
         // ---- Unit properties: `[board.unit.a]` ----
         //
@@ -674,13 +687,11 @@ std::string saveTomlText(Machine& m) {
         // declares units with settings round-trips through CONFIG SAVE with no
         // change here -- which is the whole bet the reflection layer is making.
         //
-        // NOTE WHAT THIS DELIBERATELY DOES NOT DO: it does not probe for
-        // read-only properties by calling set(get()), the way the board walk above
-        // does. That trick is safe for a port jumper and NOT safe here, because
-        // `connect` has a side effect -- setting it RE-RESOLVES THE ENDPOINT. On a
-        // console that means tearing the terminal down and rebuilding it; on a
-        // socket it would mean rebinding a live port. Saving a config file must not
-        // perturb the machine it is describing.
+        // The body is now IDENTICAL to the board walk above, which is the point: there
+        // was never a reason for the two to differ. (This one never probed -- `connect`
+        // has a setter and setting it RE-RESOLVES THE ENDPOINT, tearing a terminal down
+        // or rebinding a live socket. That was always the right instinct; it just was not
+        // applied one loop earlier.)
         for (const auto& u : b->units()) {
             auto up = b->unitProperties(u.name);
             if (up.empty()) continue;

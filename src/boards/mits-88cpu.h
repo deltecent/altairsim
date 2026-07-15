@@ -39,6 +39,12 @@ public:
     // ---- CpuCard ----
     CpuCore* activeCore() override { return core_.get(); }
 
+    // The achieved crystal (cpu/cpu.h). The run loop hands us what it really
+    // retired; we hold it for SHOW. Just a store and a load -- the measurement,
+    // and every call to the host clock it takes, belongs to the run loop.
+    void      reportAchievedHz(long long hz) override { achievedHz_ = hz; }
+    long long achievedHz() const override { return achievedHz_; }
+
     // ---- Board ----
     // decodes() is not overridden. THAT IS THE POINT: the default is false, and
     // false is the truth for this card.
@@ -96,6 +102,12 @@ private:
     // No hardware behaves differently -- this is the HOST sleeping, exactly as the
     // throttle is (core/clock.h). The guest cannot tell.
     bool idle_ = true;
+
+    // THE CRYSTAL WE ACTUALLY TURNED, T-states per real second, as last measured by
+    // the run loop (cpu/cpu.h, reportAchievedHz). Read-only out through `achieved_hz`;
+    // 0 until the machine has run. Host-measured and so NOT on the Clock -- the run
+    // loop times itself and tells us; we never ask the host the time ourselves.
+    long long achievedHz_ = 0;
 };
 
 } // namespace altair

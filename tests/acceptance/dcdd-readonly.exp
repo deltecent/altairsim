@@ -1,0 +1,102 @@
+#!/usr/bin/expect -f
+#
+# A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
+#
+# THE BUG THIS EXISTS TO CATCH (found 2026-07-14, fixed the same day). armWrite() used to see
+# readOnly(), log a line to the HOST, and return WITHOUT setting writing_ -- so ENWD, which is
+# gated on writing_, never asserted. ENWD is the bit the BIOS polls to be handed the next byte
+# of the sector, and EVERY period BIOS polls it in a loop with no timeout:
+#
+#     wrSec   in   drvStat      ; Burcon's, and ours is the same shape
+#             ana  d            ; ENWD asserted (zero)?
+#             jnz  wrSec        ; no, keep waiting          <-- forever
+#
+# So the card did not fail the write. It WEDGED THE MACHINE: no error, no prompt, never
+# returns. That is why this test's failure mode is a TIMEOUT and not a wrong string, and it is
+# why every expect below carries its own timeout message.
+#
+# WHY THE CARD CANNOT SIMPLY SAY NO. The 88-DCDD status byte has no write-protect bit -- ENWD,
+# MOVEOK, HDSTAT, DSKEN, INTEN, TRACK0, NRDA is all seven of them -- because the tab was sensed
+# by the DRIVE, not the controller. The drive inhibited the write head; the controller clocked
+# ENWD and took all 137 bytes exactly as it always did, and they went nowhere. A card that
+# refused the transaction is a machine that never existed.
+#
+# SO WHO NOTICES? The BIOS, and only if it VERIFIES: write the track, read it back, compare.
+# This BIOS does -- `mode db 40h`, write verify ON (BIOS.ASM:297) -- so it retries, comes up
+# short, and prints `Delayed Write Error`. The 8 MB BIOS has verify OFF (`mode db 00h`) and
+# there the write appears to SUCCEED and the data evaporates. Both are the real machine. The
+# error below is the BIOS's, not the card's, and that distinction is the whole fix.
+#
+# usage: expect -f dcdd-readonly.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+
+# THE DISK MUST NOT MOVE. Taken before, checked after -- because the quiet way for this test to
+# rot is for `readonly` to stop meaning anything and the writes to start landing, which every
+# assertion below would happily pass through.
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/dcdd-readonly.toml
+
+expect {
+    -ex "56K CP/M 2.2b" {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted off the write-protected disk (it must still READ)"; exit 1 }
+}
+
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: died before the prompt"; exit 1 }
+    timeout { puts "FAIL: no CP/M prompt"; exit 1 }
+}
+
+# THE WRITE. On the broken card this is where the machine stops forever.
+send "SAVE 1 ZZZ.COM\r"
+expect {
+    -ex "Delayed Write Error" {}
+    eof     { puts "FAIL: the machine died on a write to a protected disk"; exit 1 }
+    timeout { puts "FAIL: THE GUEST HUNG. ENWD never asserted -- the card refused the write\
+                     instead of accepting it and dropping the bytes. This is the bug."; exit 1 }
+}
+
+# ...AND IT CAME BACK. A BIOS that reports and returns is the entire difference between a
+# protected disk and a dead machine.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M reported the error and then died"; exit 1 }
+    timeout { puts "FAIL: CP/M printed the error but never returned to the prompt"; exit 1 }
+}
+
+# THE DATA REALLY DID NOT LAND. Without this the test would pass on a card that wrote the file
+# and lied about it.
+#
+# CONSUME THE ECHO FIRST, or this test fails on its own keystrokes. The guest echoes what we
+# type, so a bare `-ex "ZZZ"` looking for a directory entry matches "DIR ZZZ.COM" coming back
+# at us and reports the file was written -- which is what it did the first time I ran it. The
+# failure pattern below is CP/M's LISTING format, `A: ZZZ      COM`, and no echo can forge it.
+send "DIR ZZZ.COM\r"
+expect {
+    -ex "DIR ZZZ.COM" {}
+    timeout { puts "FAIL: the guest never echoed DIR -- the console is wedged"; exit 1 }
+}
+expect {
+    -ex "No file" {}
+    -ex "A: ZZZ" { puts "FAIL: the file was WRITTEN to a write-protected disk"; exit 1 }
+    timeout    { puts "FAIL: DIR did not answer"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `readonly` did not protect the disk:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the guest wrote to a protected disk, the BIOS said `Delayed Write Error`, CP/M\
+      carried on, and the image is byte-identical."
+exit 0

@@ -172,11 +172,11 @@ void test_spindle() {
         MemoryBoard a;
         std::string err;
 
-        CHECK(a.addSubUnit("region", {{"type", "ram"}, {"at", "0000"}, {"size", "48K"}}, err),
+        CHECK(a.loadSubUnit("region", {{"type", "ram"}, {"at", "0000"}, {"size", "48K"}}, err),
               "a 48K RAM region loads");
-        CHECK(a.addSubUnit("region", {{"type", "rom"}, {"at", "F800"}, {"mount", "builtin:altmon"}}, err),
+        CHECK(a.loadSubUnit("region", {{"type", "rom"}, {"at", "F800"}, {"mount", "builtin:altmon"}}, err),
               "and a ROM with something in it");
-        CHECK(a.addSubUnit("region", {{"type", "rom"}, {"at", "FD00"}}, err),
+        CHECK(a.loadSubUnit("region", {{"type", "rom"}, {"at", "FD00"}}, err),
               "and an EMPTY socket");
 
         auto su = a.subUnits();
@@ -188,7 +188,7 @@ void test_spindle() {
             CHECK(s.table == "region", "the table is named `region`");
             KeyValues kv;
             for (const auto& f : s.fields) kv.push_back({f.key, f.text});
-            CHECK(b.addSubUnit(s.table, kv, err), "and its own output loads straight back in");
+            CHECK(b.loadSubUnit(s.table, kv, err), "and its own output loads straight back in");
         }
 
         CHECK(b.regions().size() == a.regions().size(), "same number of regions after the round trip");
@@ -206,8 +206,8 @@ void test_spindle() {
     {
         MemoryBoard m;
         std::string err;
-        m.addSubUnit("region", {{"type", "ram"}, {"at", "0400"}, {"size", "48K"}}, err);
-        m.addSubUnit("region", {{"type", "rom"}, {"at", "FD00"}}, err);  // an empty socket
+        m.loadSubUnit("region", {{"type", "ram"}, {"at", "0400"}, {"size", "48K"}}, err);
+        m.loadSubUnit("region", {{"type", "rom"}, {"at", "FD00"}}, err);  // an empty socket
 
 
         auto su = m.subUnits();

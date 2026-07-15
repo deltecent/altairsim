@@ -31,6 +31,26 @@ namespace altair {
 // Lexing
 // ---------------------------------------------------------------------------
 
+// THE IDLE JUDGEMENT (monitor.h). Pure, so it can be tested -- and it needed to be.
+//
+// It ran nothing (a slice that retired no instructions is a stopped machine, not an idle
+// one), it SAID nothing, it RECEIVED nothing, and it kept coming back to an empty line.
+//
+// `received` is the one that matters and the one that was wrong: a guest taking XMODEM down
+// a wire prints nothing for a whole 128-byte block and polls exactly as a prompt does, so
+// the ONLY thing that tells the two apart is that one of them IS GETTING BYTES.
+bool guestIsWaiting(const SliceWork& w, uint64_t ratio) {
+    if (w.steps == 0) return false;   // stopped, not waiting
+    if (w.wrote != 0) return false;   // it had something to say
+    if (w.received != 0) return false;  // IT IS RECEIVING. Whatever this is, it is not a prompt.
+    return w.hungry * ratio >= w.steps;
+}
+
+bool shouldPace(bool anyConsole, bool tty, bool anyRemoteLine, bool free) {
+    if (free) return false;  // no crystal asked for -> flat out, always
+    return (anyConsole && tty) || anyRemoteLine;
+}
+
 std::vector<std::string> tokenize(const std::string& line) {
     std::vector<std::string> t;
     size_t i = 0;
@@ -431,6 +451,57 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         out << "\n  " << b->id << ":" << u.name << "\n";
         showProps(up, out);
     }
+
+    // ...AND THE KEYS OF ITS SUB-UNIT TABLES, which is a question SHOW could not answer
+    // until the tables had a schema to answer it from. `readonly` was real, it worked, and
+    // the only way to find out it existed was to read the board's source -- which is how
+    // this bug was found (Patrick asked me to file it as a MISSING FEATURE).
+    //
+    // These have no value column and cannot have one: they describe a drive that does not
+    // exist yet. What is on the card ALREADY is above, in `units` -- this is what you may
+    // write in a machine file to put something there.
+    for (const auto& t : b->subUnitTables()) {
+        auto sp = b->subUnitProperties(t);
+        if (sp.empty()) continue;
+        out << "\n  [[board." << t << "]]  (in a machine file)\n";
+        showSchema(sp, out);
+    }
+}
+
+// The same six facts as showProps(), minus the value -- see above for why there isn't one.
+void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
+    char buf[256];
+    out << "\n  key              type             legal\n";
+    for (const auto& p : ps) {
+        const char* kind = "string";
+        std::string legal;
+        switch (p.kind) {
+        case Kind::Bool:
+            kind  = "bool";
+            legal = "true|false";
+            break;
+        case Kind::Enum:
+            kind = "enum";
+            for (const auto& c : p.choices) legal += (legal.empty() ? "" : "|") + c;
+            break;
+        case Kind::Int:
+            kind = "int";
+            // RADIX-AWARE, because `at` is an address: printing "0..65535" for a thing you
+            // write as F800 would be answering in a base the reader does not use here.
+            if (!(p.min == 0 && p.max == 0)) {
+                if (p.radix == 16)
+                    std::snprintf(buf, sizeof buf, "%04llX..%04llX", (unsigned long long)p.min,
+                                  (unsigned long long)p.max);
+                else
+                    std::snprintf(buf, sizeof buf, "%lld..%lld", p.min, p.max);
+                legal = buf;
+            }
+            break;
+        case Kind::Str: break;
+        }
+        std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(), kind, legal.c_str());
+        out << buf << "\n";
+    }
 }
 
 void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
@@ -666,10 +737,26 @@ void Monitor::runMachine(std::ostream& out) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
 
-    bool anyConsole = false;
+    // TWO QUESTIONS THAT ARE NOT THE SAME ONE, and conflating them was a bug (#6).
+    //
+    // anyConsole: is a line wired to the INTERACTIVE console -- the host keyboard? That is
+    // what decides whether keystrokes reach the guest and whether ^E means anything.
+    //
+    // anyRemoteLine: is a line wired to something REAL-TIME that is not the host terminal --
+    // a socket a person has telnetted into, or a real serial port with hardware on it? Such
+    // a machine has NO console by the test above (its state is "socket:..."/"serial:..."),
+    // and the throttle used to gate on anyConsole alone -- so a machine whose only line was a
+    // real UART PACED AGAINST NOTHING: `clock_hz` was a divisor every board obeyed with no
+    // wall-clock behind it, and a 2 MHz machine ran at whatever the host could do. Same root
+    // cause as the nap: the run loop asked the CONSOLE a question that belongs to the LINE.
+    bool anyConsole   = false;
+    bool anyRemoteLine = false;
     for (const auto& b : m_.boards())
-        for (const auto& u : b->units())
-            if (u.kind == UnitKind::Serial && u.state == "console") anyConsole = true;
+        for (const auto& u : b->units()) {
+            if (u.kind != UnitKind::Serial) continue;
+            if (u.state == "console") anyConsole = true;
+            else if (u.state != "null") anyRemoteLine = true;  // socket:/serial:/etc -- a live wire
+        }
 
     Console& con = Console::instance();
     char     buf[96];
@@ -680,6 +767,21 @@ void Monitor::runMachine(std::ostream& out) {
     auto            start  = clk::now();      // nap RE-BASES it. See the nap, below.
     const bool      tty    = con.isTty();
     const char      attn   = (char)('A' + con.attn() - 1);
+
+    // THE ACHIEVED CRYSTAL, measured here and published to the CPU card for SHOW.
+    //
+    // Its own baseline, SEPARATE from the throttle's, and deliberately NOT re-based by
+    // the idle nap: the throttle wants to forget the idle time ("it never happened"),
+    // but the achieved rate wants to REMEMBER it -- a machine that naps through a prompt
+    // really is retiring few T-states a second, and that is the honest reading. So this
+    // window counts all real time, nap and throttle-sleep alike, and is sampled long
+    // enough (kMeasWindow) that the divide is not noise, short enough that SHOW reflects
+    // what the machine is doing now rather than an average over the whole run.
+    CpuCard* const card = m_.cpuCard();  // never null: needCpu() passed above
+    uint64_t       measT = m_.clock.now();
+    auto           measW = clk::now();
+    static constexpr double kMeasWindow = 0.25;   // seconds; ~4 updates/sec while running
+    static constexpr double kMeasFloor  = 0.02;   // shortest run worth a reading at all
 
     // ATTN IS THE STOP KEY, CONSOLE OR NO CONSOLE -- ^C IS NOT (Patrick,
     // 2026-07-12). Ctrl-C belongs to the guest: CP/M reads it, and a stop key the
@@ -731,7 +833,7 @@ void Monitor::runMachine(std::ostream& out) {
         // anything, and how often did it come to the keyboard and find nothing there.
         // Those three are the whole of the idle judgement at the bottom of the loop.
         const uint64_t wasWritten  = con.written();
-        const uint64_t wasConsumed = con.consumed();
+        const uint64_t wasReceived = m_.rxBytes();  // the WHOLE backplane, not just the console
         const uint64_t wasHungry   = con.hungry();
 
         // A slice, then a look around. Short enough that ATTN feels instant and a
@@ -838,10 +940,11 @@ void Monitor::runMachine(std::ostream& out) {
         static constexpr auto     kIdleWarmup = std::chrono::milliseconds(20);
         static constexpr auto     kIdleNap    = std::chrono::milliseconds(4);
 
-        const bool idling = m_.clock.idle() && anyConsole && tty && r.steps > 0 &&
-                            con.written() == wasWritten &&
-                            con.consumed() == wasConsumed &&
-                            (con.hungry() - wasHungry) * kIdleRatio >= r.steps;
+        const SliceWork work{r.steps, con.written() - wasWritten, m_.rxBytes() - wasReceived,
+                             con.hungry() - wasHungry};
+
+        const bool idling =
+            m_.clock.idle() && anyConsole && tty && guestIsWaiting(work, kIdleRatio);
 
         if (!idling) {
             idleSince = clk::time_point{};  // it did something. The clock starts over.
@@ -872,16 +975,43 @@ void Monitor::runMachine(std::ostream& out) {
         // T-states on every 300-baud byte (clock.h). We are not speeding up the
         // TAPE, we are declining to sit and wait for it.
         //
-        // The other two conditions stand. A script has nobody to keep in step with,
-        // and with no console connected there is nothing to pace against at all --
-        // which is what a CPU test wants.
-        if (anyConsole && tty && !m_.clock.free()) {
+        // PACE IF THERE IS ANYTHING REAL-TIME TO PACE FOR. An interactive console (a human
+        // at the host keyboard) is one such thing -- but so is a socket someone dialed into
+        // and so is a real serial port, and those have no console and no host tty at all.
+        // Gating on `anyConsole && tty` alone meant a machine whose only line was a real UART
+        // ran flat out no matter what crystal you asked for (#6): its transfers then outran
+        // the wire, or (with a fixed-rate peer) simply lied about the speed. A PIPED console
+        // -- state "console" but no tty -- is deliberately still NOT paced: a script has no
+        // wall clock to keep in step with, which is what a `-c` run and a CPU test want.
+        const bool pace = shouldPace(anyConsole, tty, anyRemoteLine, m_.clock.free());
+        if (pace) {
             double want = (double)(m_.clock.now() - startT) / (double)hz;
             double got  = std::chrono::duration<double>(clk::now() - start).count();
             if (want > got) {
                 std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
             }
         }
+
+        // Sample the achieved crystal once the window has enough real time behind it
+        // for the divide to mean something, then start the next window. Unconditional
+        // -- paced or flat out, idle or busy, this is just "how many T-states per real
+        // second is this machine turning right now."
+        double measReal = std::chrono::duration<double>(clk::now() - measW).count();
+        if (measReal >= kMeasWindow) {
+            card->reportAchievedHz((long long)((double)(m_.clock.now() - measT) / measReal));
+            measT = m_.clock.now();
+            measW = clk::now();
+        }
+    }
+
+    // The tail: capture the final partial window so SHOW reflects what the machine was
+    // doing when you stopped it -- and so a run shorter than one window (a CPU test, a
+    // GO to a HLT) still leaves a reading instead of a stale zero. Below the floor the
+    // divide is noise, so leave the last good sample standing.
+    {
+        double measReal = std::chrono::duration<double>(clk::now() - measW).count();
+        if (measReal >= kMeasFloor)
+            card->reportAchievedHz((long long)((double)(m_.clock.now() - measT) / measReal));
     }
 
     if (takeTty) con.leaveRaw();
@@ -1662,9 +1792,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- REGION ----------------
     // Populating a card interactively. Note this goes through the SAME generic
-    // addSubUnit() hook the TOML loader uses, so the monitor learns nothing
-    // about what a region is -- and a board that grows a different sub-unit
-    // table next year needs no change here.
+    // loadSubUnit() door the TOML loader uses -- so the monitor learns nothing about
+    // what a region is, and `REGION ADD mem0 typ=ram` is refused here in the same words,
+    // off the same declaration, as it would be in a machine file. A board that grows a
+    // different sub-unit table next year needs no change here.
     if (cmd == "REGION") {
         if (!need(3, "REGION ADD <id> type=ram|rom at=<addr> [size=<n>|mount=<file>]")) return true;
         if (!is(a[1], "ADD")) {
@@ -1689,7 +1820,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             kv.push_back({a[i].substr(0, eq), a[i].substr(eq + 1)});
         }
         std::string err;
-        if (!b->addSubUnit("region", kv, err)) {
+        if (!b->loadSubUnit("region", kv, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
             return true;

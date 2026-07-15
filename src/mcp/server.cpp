@@ -208,6 +208,51 @@ Json propsJson(Board* b) {
     return arr;
 }
 
+// ...and the same argument, one level down: an agent asks a board what may be written in
+// its [[board.drive]] / [[board.region]] tables, and gets an answer generated from the
+// board's own declaration. Until subUnitProperties() existed there was nothing to answer
+// from, so an agent writing a machine file could not discover `readonly`, `media` or `at`
+// -- the keys that carry the disk and the ROM -- from the schema at all.
+//
+// NO "value" HERE, and that is the difference: these describe a drive that does not exist
+// yet, so there is nothing to read. (Board::subUnitProperties.)
+Json subUnitsJson(Board* b) {
+    Json arr = Json::arr();
+    for (const auto& table : b->subUnitTables()) {
+        Json t = Json::obj();
+        t["table"] = Json("[[board." + table + "]]");
+        Json keys = Json::arr();
+        for (const auto& p : b->subUnitProperties(table)) {
+            Json j = Json::obj();
+            j["name"] = Json(p.name);
+            j["help"] = Json(p.help);
+            switch (p.kind) {
+            case Kind::Bool: j["kind"] = Json("bool"); break;
+            case Kind::Str:  j["kind"] = Json("string"); break;
+            case Kind::Int:
+                j["kind"] = Json("int");
+                if (!(p.min == 0 && p.max == 0)) {
+                    j["min"] = Json((long long)p.min);
+                    j["max"] = Json((long long)p.max);
+                }
+                if (p.radix == 16) j["radix"] = Json(16);
+                break;
+            case Kind::Enum: {
+                j["kind"] = Json("enum");
+                Json c = Json::arr();
+                for (const auto& x : p.choices) c.push(Json(x));
+                j["choices"] = c;
+                break;
+            }
+            }
+            keys.push(j);
+        }
+        t["keys"] = keys;
+        arr.push(t);
+    }
+    return arr;
+}
+
 Json textResult(const std::string& s, bool isError = false) {
     Json r = Json::obj();
     Json content = Json::arr();
@@ -251,6 +296,7 @@ Json callTool(Machine& m, const std::string& name, const Json& args) {
             j["description"] = Json(t.description);
             auto b = makeBoard(t.name);
             j["properties"] = propsJson(b.get());
+            j["sub_units"]  = subUnitsJson(b.get());   // what its [[board.x]] tables take
             a.push(j);
         }
         Json d = Json::obj();
@@ -271,6 +317,7 @@ Json callTool(Machine& m, const std::string& name, const Json& args) {
         if (!b) return textResult("no board '" + args.at("id").str() + "'", true);
         Json d = boardJson(b);
         d["properties"] = propsJson(b);
+        d["sub_units"]  = subUnitsJson(b);
         if (auto* mem = dynamic_cast<MemoryBoard*>(b)) {
             Json rs = Json::arr();
             int i = 0;

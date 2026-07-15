@@ -42,7 +42,7 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 ./build/altairsim                    # the default machine
 ```
 
-**Built and tested on exactly one platform: macOS on Intel (`x86_64`).** That is not a claim about portability, it is the honest extent of it. The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and Linux and Apple Silicon are *expected* to build. Neither has been tried. The Windows platform layer is written but has **never been compiled or run**; see [`docs/porting-notes.md`](docs/porting-notes.md).
+**Developed on macOS/Intel (`x86_64`); also verified to build and run on Linux.** The Linux check was Ubuntu 22.04 with GCC 11 — it builds clean and boots a machine; see [`docs/building-linux.md`](docs/building-linux.md). The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals. Apple Silicon is *expected* to build but has not been tried. The Windows platform layer is written but has **never been compiled or run**; see [`docs/porting-notes.md`](docs/porting-notes.md).
 
 **There is no CI.** The tests below are real and they pass, but nothing runs them automatically — they run when someone types `ctest`.
 
@@ -150,5 +150,6 @@ The 88-MDS acceptance tests need a CP/M disk image that is not in this repositor
 | [`docs/sources.md`](docs/sources.md) | Where every hardware fact came from. |
 | [`docs/roadmap.md`](docs/roadmap.md) | Milestones and acceptance criteria. |
 | [`docs/porting-notes.md`](docs/porting-notes.md) | Hard-won lessons from the prior Python prototype. |
+| [`docs/building-linux.md`](docs/building-linux.md) | Building and running on Linux — prerequisites, the serial-build memory trap, and what was verified. |
 
 **Sourcing rule: period manuals and datasheets, never another emulator's source.** Reading past a source to preserve an argument is the same failure as fabricating one.

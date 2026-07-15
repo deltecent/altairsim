@@ -130,6 +130,14 @@ public:
     ByteStream&  stream()  { return *stream_; }
     std::string  endpoint() const { return stream_->describe(); }
 
+    // BYTES THIS CHIP HAS HANDED THE GUEST, monotonic. The run loop's idle judgement
+    // needs one thing the poll ratio cannot give it: is a byte ARRIVING? A guest taking a
+    // transfer polls an empty keyboard exactly as a prompt does, and the only difference is
+    // that bytes are crossing the wire. That was counted for the CONSOLE alone (consumed(),
+    // host/console.h) and a transfer runs on some OTHER line -- so the count has to live
+    // where EVERY line's bytes pass, which is right here, at the one read from the stream.
+    uint64_t rxBytes() const { return rxCount_; }
+
     // `resolve` is how the `connect` property turns an endpoint string into a
     // stream. It comes in from the card because the chip is not allowed to know
     // the grammar -- see EndpointResolver, above.
@@ -271,6 +279,8 @@ private:
 
     uint8_t control_ = 0;
     uint8_t rxData_  = 0;
+
+    uint64_t rxCount_ = 0;  // rxBytes() -- see above. The run loop's live-traffic signal.
 
     bool rdrf_ = false;
     bool ovrn_ = false;

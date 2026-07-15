@@ -116,6 +116,25 @@ public:
     // follows automatically, because they all ask this same question every time
     // rather than caching what they found once.
     virtual CpuCore* activeCore() = 0;
+
+    // ---- THE ACHIEVED CRYSTAL. A DIAGNOSTIC, AND IT IS HOST-MEASURED. ----
+    //
+    // clock_hz is the crystal you ASKED for; this is the one the machine actually
+    // turned -- T-states retired per REAL second, last time the run loop ran. It is
+    // what made bug #6 legible in one line: "asked 8 MHz, reached 3.9". SHOW reads it
+    // back as a read-only companion to clock_hz on the same card.
+    //
+    // The run loop times ITSELF against the host wall clock and reports the number
+    // here; nothing in the simulator ever asks the host what time it is (core/clock.h),
+    // and the card only stores what it was handed. So this stays off the Clock, whose
+    // whole invariant is that emulated time is a pure function of the instruction
+    // stream -- a host-measured rate living there would be a determinism trap waiting
+    // for the first board that read it.
+    //
+    // Defaulted, not pure: a CpuCard that carries no crystal (or that nobody paces)
+    // simply never reports, and SHOW reads 0 -- "it has not run", which is the truth.
+    virtual void      reportAchievedHz(long long) {}
+    virtual long long achievedHz() const { return 0; }
 };
 
 } // namespace altair

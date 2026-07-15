@@ -64,6 +64,12 @@ public:
     // socket. Once per time slice, never inside a bus cycle (DESIGN.md 7.7).
     void pump();
 
+    // BYTES THE GUEST HAS RECEIVED ACROSS THE WHOLE BACKPLANE, monotonic. The run loop
+    // watches its delta to know whether a byte is arriving anywhere -- the one signal that
+    // tells a transfer from a prompt, on ANY line and not just the console (Board::rxBytes,
+    // monitor.cpp). Summed on demand: a handful of boards, once per slice, is noise.
+    uint64_t rxBytes() const;
+
     Board* find(const std::string& id);
     Board* add(const std::string& type, const std::string& id, std::string& err);
     bool remove(const std::string& id, std::string& err);
@@ -87,6 +93,11 @@ public:
     // debugger noticing anything unusual.
     BusMaster* master();
     CpuCore* cpu();
+
+    // The CPU CARD, not just its running core -- where the crystal is, and where the
+    // run loop reports back the crystal it actually achieved (CpuCard::achievedHz).
+    // Null on a backplane with no processor, exactly like cpu().
+    CpuCard* cpuCard();
 
     // The instruction set the machine currently speaks -- the active core's own
     // answer. Empty when there is no CPU, which is why DISASM in a CPU-less

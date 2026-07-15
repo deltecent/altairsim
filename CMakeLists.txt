@@ -614,6 +614,67 @@ if(EXPECT_EXECUTABLE)
     message(STATUS "disks/mits-88mds/cpm22/CPM56K-1.DSK not found -- SKIPPING the 88-MDS "
                    "acceptance test. See disks/mits-88mds/cpm22/README.md to download it.")
   endif()
+
+  # ---------------------------------------------------------------------------
+  # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
+  #
+  # It used to. armWrite() saw readOnly() and returned without setting writing_, so ENWD --
+  # the bit the BIOS polls to be handed the next byte -- never asserted, and every period BIOS
+  # polls it in a loop with no timeout. The card did not fail the write, it WEDGED THE MACHINE.
+  #
+  # WHICH IS WHY THE TIMEOUT IS THE ASSERTION. The old code does not print a wrong string here;
+  # it prints NOTHING, forever. 90s is generous on purpose: a timeout that fires under load
+  # would be indistinguishable from the bug, and this is the one test where that would be a
+  # false ALARM rather than a false pass.
+  #
+  # Gated on the same disk as the buffered CP/M, and it MOUNTS THAT DISK READ-ONLY -- the test
+  # cannot dirty it, and it shasums the image to prove it.
+  # ---------------------------------------------------------------------------
+  set(DCDD_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk")
+  if(EXISTS "${DCDD_DISK}")
+    add_test(NAME acceptance-dcdd-readonly
+             COMMAND ${EXPECT_EXECUTABLE}
+                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dcdd-readonly.exp
+                     $<TARGET_FILE:altairsim>)
+    set_tests_properties(acceptance-dcdd-readonly PROPERTIES
+                         LABELS acceptance TIMEOUT 90
+                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  else()
+    message(STATUS "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk not found -- SKIPPING "
+                   "acceptance-dcdd-readonly (the write-protected-disk hang).")
+  endif()
+
+  # ---------------------------------------------------------------------------
+  # TWO GEOMETRIES, ONE CONTROLLER: an 8 MB image in drive 0 and a 77-track floppy in drive
+  # 2, at the same time. The FDC+ manual says to do exactly this (3.7.4), and it is the only
+  # door in or out of an 8 MB system -- so it is the arrangement people will actually run.
+  #
+  # It works only because the format and the Spindle are PER DRIVE. The day either one gets
+  # promoted to the card, this test breaks -- and it breaks as CORRUPTION, not as an error,
+  # which is why it weighs the bytes instead of reading a directory listing.
+  #
+  # IT IS ALSO THE REGRESSION TEST FOR THE 24K IMAGE. It reads R.COM off the floppy, and
+  # R.COM is only there because the host-bridge utilities were installed through this very
+  # path -- a 24K CP/M cannot boot in a 56K machine, so it can install nothing for itself.
+  #
+  # Needs both images, and neither is in git. It copies both into the build tree first: the
+  # write half of it would otherwise land in the repository's own floppy.
+  # ---------------------------------------------------------------------------
+  set(MIX_8IN "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-24k.dsk")
+  if(EXISTS "${HB_DISK}" AND EXISTS "${MIX_8IN}")
+    add_test(NAME acceptance-dcdd-mixed
+             COMMAND ${EXPECT_EXECUTABLE}
+                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dcdd-mixed.exp
+                     $<TARGET_FILE:altairsim>
+                     ${CMAKE_CURRENT_SOURCE_DIR}
+                     ${CMAKE_CURRENT_BINARY_DIR}/dcdd-mixed)
+    set_tests_properties(acceptance-dcdd-mixed PROPERTIES
+                         LABELS acceptance TIMEOUT 120
+                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  else()
+    message(STATUS "no 8 MB and/or 24K image -- SKIPPING acceptance-dcdd-mixed (an 8 MB disk "
+                   "and a 77-track floppy in one 88-DCDD).")
+  endif()
 else()
   message(STATUS "expect not found -- SKIPPING the interactive CLI test (acceptance-cli). "
                  "The tty paths (prompt echo, ATTN, clock pacing) will not be covered.")
