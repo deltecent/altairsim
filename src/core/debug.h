@@ -59,6 +59,8 @@ enum class StopReason {
                   // more. Nobody stopped it; there is just nobody left to type.
     Interrupted,  // the operator pressed ^C
     NoCpu,        // there is no processor in this machine, which is a real machine
+    StepTarget,   // NEXT ran to the return address of a stepped-over CALL/RST. Not a
+                  // user breakpoint -- an internal one-shot the monitor set and cleared.
 };
 
 struct RunResult {
@@ -82,6 +84,13 @@ public:
     // or ^C. Returns WHY it stopped, always: there is no "it just came back".
     RunResult run(uint64_t maxSteps);
 
+    // STEP-OVER's temporary breakpoint (NEXT). A run-scoped, one-shot PC target
+    // the run loop stops at -- NOT a Breakpoint: no id, no hits, invisible to
+    // BREAK, and it cannot collide with a user breakpoint's id. `pc == -1` clears
+    // it. The monitor sets it before running the callee and clears it after, so it
+    // survives across the slices runMachine drives run() in.
+    void setStepTarget(int pc) { stepTarget_ = pc; }
+
     // ^C, from the signal handler. The ONLY thing the handler does is set this,
     // because that is the only thing it is safe to do.
     static void interrupt();
@@ -101,6 +110,9 @@ private:
     // instructions are how a debugger corrupts the state it exists to show you.
     int cycleHit_ = 0;
     int observer_ = 0;
+
+    // STEP-OVER's internal one-shot PC target, or -1 for none. See setStepTarget.
+    int stepTarget_ = -1;
 };
 
 } // namespace altair

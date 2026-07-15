@@ -45,6 +45,15 @@ static const std::vector<CommandDef> kCommands = {
      "so it is decimal.\n"
      "  S            one instruction\n"
      "  S 10         ten of them"},
+    // NEXT sits above NOBREAK so `N` -- the letter you reach for between two steps --
+    // is NEXT, not NOBREAK. STEP took `S` and RUN took `R` for the same reason: the
+    // command you type every few seconds wins the single letter. NOBREAK pays `NO`.
+    {"NEXT", true, nullptr, "NEXT",  // N
+     "STEP that does not descend. A CALL or RST runs to completion and stops at the\n"
+     "return address instead of stepping into it; anything else is a plain single\n"
+     "step. It is a temporary breakpoint at the return plus a RUN, so the callee is\n"
+     "LIVE -- it can use the console, and ^E (ATTN) or ^C stops it.\n"
+     "  N            over the CALL/RST at PC (else single-step)"},
     // RUN is the front panel's switch. It REPLACED GO (Patrick, 2026-07-12) -- there
     // was never a second thing for GO to be: a headless run is not a mode the operator
     // chooses, it is what happens when no unit holds the console, and the machine

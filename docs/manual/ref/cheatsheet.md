@@ -38,6 +38,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 |---|---|
 | `D[UMP]` | `DUMP [<addr>\|<range>] [WIDTH=16]` |
 | `S[TEP]` | `STEP [n]` |
+| `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` \* | `HISTORY [n]` |
 | `M[OUNT]` | `MOUNT <id>[:<u>] <file> [RO]` |
@@ -73,7 +74,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `REST[ORE]` \* | `RESTORE <file>` |
 | `REC[ORD]` \* | `RECORD <file>` |
 | `REP[LAY]` \* | `REPLAY <file>` |
-| `N[OBREAK]` | `NOBREAK [id]` |
+| `NO[BREAK]` | `NOBREAK [id]` |
 | `HE[LP]` | `HELP [<command>]` |
 | `Q[UIT]` | `QUIT` |
 

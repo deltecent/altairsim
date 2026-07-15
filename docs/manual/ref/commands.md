@@ -66,6 +66,21 @@ S 10         ten of them
 ```
 
 
+### NEXT — `N[EXT]`
+
+```
+NEXT
+```
+STEP that does not descend. A CALL or RST runs to completion and stops at the
+return address instead of stepping into it; anything else is a plain single
+step. It is a temporary breakpoint at the return plus a RUN, so the callee is
+LIVE -- it can use the console, and ^E (ATTN) or ^C stops it.
+
+```
+N            over the CALL/RST at PC (else single-step)
+```
+
+
 ### RUN — `R[UN]`
 
 ```
@@ -466,7 +481,7 @@ Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on
 real hardware it does not.
 
 
-### NOBREAK — `N[OBREAK]`
+### NOBREAK — `NO[BREAK]`
 
 ```
 NOBREAK [id]

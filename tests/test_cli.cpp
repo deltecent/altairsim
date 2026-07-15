@@ -81,6 +81,17 @@ void test_cli() {
     CHECK(R("ST") == "STEP", "ST steps");
     CHECK(R("STO") == "STOP", "STO stops");
     CHECK(R("SN") == "SNAPSHOT", "SN snapshots");
+    // ---- THE N-CLUSTER (Patrick, 2026-07-15) ----
+    // NEXT took `N` from NOBREAK, by the same rule that gave RUN `R` and STEP `S`: the
+    // command your fingers reach for between two steps wins the single letter, and the
+    // rare one pays. NEXT is a step-over you type constantly while walking code; NOBREAK
+    // clears a breakpoint now and then. So `N` is NEXT and NOBREAK pays `NO`. Neither is
+    // a strict prefix of the other, so both full names stay typeable.
+    CHECK(R("N") == "NEXT", "N is NEXT -- the step-over you type constantly");
+    CHECK(R("NE") == "NEXT", "NE is NEXT");
+    CHECK(R("NEXT") == "NEXT", "and NEXT");
+    CHECK(R("NO") == "NOBREAK", "NO is NOBREAK -- it pays one letter for NEXT taking N");
+    CHECK(R("NOBREAK") == "NOBREAK", "and NOBREAK's own name still reaches it");
     CHECK(R("HE") == "HELP", "HE helps");
     // The command is PLURAL, and that is what makes both spellings work: BOARD is a
     // prefix of BOARDS, and prefixes are the whole resolver. No alias, no second
@@ -374,6 +385,76 @@ void test_cli() {
     uint16_t before = c->pc();
     mon2.exec("EX 0400 RAW mem0", s2);
     CHECK(c->pc() == before, "EXAMINE RAW does not touch the PC -- it is not a bus cycle");
+
+    // -----------------------------------------------------------------------
+    // NEXT -- STEP that runs OVER a CALL/RST instead of into it. It is a temporary
+    // breakpoint at the return address plus a RUN, so a subroutine reads as one step.
+    // -----------------------------------------------------------------------
+    SECTION("NEXT -- a CALL/RST runs to its return; anything else is a single step");
+
+    Machine mn;
+    Monitor monN(mn);
+    std::ostringstream sn;
+    monN.exec("BOARDS ADD 8080 cpu0", sn);
+    monN.exec("BOARDS ADD memory mem0", sn);
+    monN.exec("SET mem0 fill=zero", sn);
+    monN.exec("REGION ADD mem0 type=ram at=0 size=64K", sn);
+    monN.exec("POWER ON", sn);
+    CpuCore* cn = mn.cpu();
+
+    // 0200: LXI SP,0400   give the CALL a real stack (top of RAM is not present)
+    // 0203: CALL 0209     the instruction under test
+    // 0206: HLT           where a completed step-over must land (the return address)
+    // 0209: INR A / RET   the callee: proves it ran AND returned
+    monN.exec("DEPOSIT 0200 31 00 04 CD 09 02 76 00 00 3C C9", sn);
+    monN.exec("EX 0200", sn);
+    monN.exec("STEP", sn);  // execute the LXI SP, leaving the PC on the CALL
+    CHECK(cn->pc() == 0x0203, "set up: the PC is sitting on the CALL");
+
+    {
+        std::ostringstream out;
+        monN.exec("NEXT", out);
+        CHECK(cn->pc() == 0x0206,
+              "NEXT over a CALL stops at the RETURN address -- the callee ran and came back");
+        // A completion is SILENT: no breakpoint line, no instruction tally. Just the
+        // register line NEXT prints itself, exactly as STEP would.
+        CHECK(out.str().find("breakpoint") == std::string::npos,
+              "a clean step-over says nothing about breakpoints");
+        CHECK(out.str().find("instructions,") == std::string::npos,
+              "and prints no run tally -- it is one logical step");
+    }
+
+    // RST is a one-byte call to a fixed vector -- step over it the same way. RST 1
+    // (CF) calls 0008; put a RET there, and NEXT must land on the byte after the RST.
+    monN.exec("DEPOSIT 0008 C9", sn);           // RET at the RST 1 vector
+    monN.exec("DEPOSIT 0300 31 00 04 CF 76", sn);  // LXI SP,0400 ; RST 1 ; HLT
+    monN.exec("EX 0300", sn);
+    monN.exec("STEP", sn);                      // execute the LXI SP
+    CHECK(cn->pc() == 0x0303, "set up: the PC is sitting on the RST");
+    monN.exec("NEXT", sn);
+    CHECK(cn->pc() == 0x0304, "NEXT over an RST stops one byte on -- RST is a 1-byte call");
+
+    // Not a call: NEXT is just a single step. 3C = INR A at 0500.
+    monN.exec("DEPOSIT 0500 3C 76", sn);
+    monN.exec("EX 0500", sn);
+    monN.exec("NEXT", sn);
+    CHECK(cn->pc() == 0x0501, "NEXT on a non-call advances exactly one instruction, like STEP");
+
+    // A REAL breakpoint inside the callee still wins -- NEXT's temp target does not
+    // hide it, and the stop is reported as the breakpoint it is.
+    monN.exec("EX 0200", sn);
+    monN.exec("STEP", sn);                      // back onto the CALL at 0203
+    CHECK(cn->pc() == 0x0203, "set up: on the CALL again");
+    monN.exec("BREAK 0209", sn);                // a breakpoint in the callee
+    {
+        std::ostringstream out;
+        monN.exec("NEXT", out);
+        CHECK(cn->pc() == 0x0209,
+              "a breakpoint inside the callee stops NEXT there, not at the return");
+        CHECK(out.str().find("breakpoint") != std::string::npos,
+              "and it is reported as the breakpoint it is, not swallowed");
+    }
+    monN.exec("NOBREAK", sn);
 
     // -----------------------------------------------------------------------
     // BOARDS names the RAM and the ROM apart, and says WHICH ROM.

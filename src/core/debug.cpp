@@ -164,6 +164,15 @@ RunResult Debugger::run(uint64_t maxSteps) {
         }
         if (hit) break;
 
+        // STEP-OVER's one-shot target: PC reached the return address of a CALL/RST
+        // the operator asked NEXT to run through. Same one comparison a PC
+        // breakpoint is, but off the books -- see setStepTarget. A real breakpoint
+        // above wins if the callee happens to hit one first, which is what you want.
+        if (stepTarget_ >= 0 && pc == (uint16_t)stepTarget_) {
+            r.why = StopReason::StepTarget;
+            break;
+        }
+
         // HLT with nobody to wake it is the end of the program. HLT with a live
         // interrupt source is NOT -- the CPU is parked, time still passes, and the
         // board that will interrupt it is clocked by the very T-states we are

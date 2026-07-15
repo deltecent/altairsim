@@ -41,6 +41,20 @@ STEP        one instruction
 STEP 20     twenty of them (a count, so it is decimal)
 ```
 
+**`NEXT` steps *over* a subroutine.** At a `CALL` or `RST`, `STEP` walks you down into the
+callee — every instruction it runs, and everything it in turn calls. Often you do not care: the
+routine works, and you want the *next* instruction in the code you are reading, not a tour of a
+print routine. `NEXT` gives you that. On a `CALL` or `RST` it runs the callee at full speed and
+stops the instant it returns; on anything else it is just a single step. It does exactly what
+you would do by hand — sets a breakpoint at the return address and runs to it — so the callee is
+live while it runs: it can read the console, and `^E` (ATTN) or `^C` stops it if it never comes
+back. A breakpoint that fires *inside* the callee stops you there, as it should.
+
+```
+NEXT        over the CALL/RST at PC, else one instruction
+N           the same -- it owns the letter, because you type it constantly
+```
+
 ## Breakpoints — `BREAK`, `NOBREAK`
 
 There are two kinds, and only the first is about the processor at all.

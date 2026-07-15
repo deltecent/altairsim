@@ -127,7 +127,10 @@ private:
     // If a unit holds the console the guest owns the keyboard while it does; if
     // none does, there is nothing to hand over and it simply runs. That is not a
     // mode -- it is a fact about the backplane, and the machine already knows it.
-    void runMachine(std::ostream& out);
+    // `stepOver` is NEXT's quiet mode: no preamble banner, no instruction tally,
+    // and a clean step-over completion (StopReason::StepTarget) is silent -- only a
+    // real stop (ATTN, ^C, HLT, a user breakpoint in the callee) is reported.
+    void runMachine(std::ostream& out, bool stepOver = false);
     void showConsole(std::ostream& out);
     void showRoms(std::ostream& out);
     void flush(std::ostream& out);  // print anything the bus or a board said

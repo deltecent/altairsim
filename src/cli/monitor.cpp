@@ -716,6 +716,27 @@ struct SigintGuard {
     SigintGuard() { prev = std::signal(SIGINT, onSigint); }
     ~SigintGuard() { std::signal(SIGINT, prev); }
 };
+
+// The two opcodes NEXT steps OVER instead of into: a subroutine call leaves a
+// return address to stop at, so NEXT runs to it. These are 8080 encodings and the
+// Z80 shares them, so the test holds for the core that is coming. Everything else
+// (a JMP, a PCHL, an ordinary instruction) has no return to wait for and is a plain
+// single step -- so it is NOT listed here. The return address is the instruction's
+// own length past PC, which the disassembler gives us; NEXT never hard-codes +3/+1.
+bool isCall(uint8_t op) {
+    switch (op) {
+    case 0xCD:                                  // CALL
+    case 0xDD: case 0xED: case 0xFD:            // undocumented CALL aliases
+    case 0xC4: case 0xCC:                        // CNZ, CZ
+    case 0xD4: case 0xDC:                        // CNC, CC
+    case 0xE4: case 0xEC:                        // CPO, CPE
+    case 0xF4: case 0xFC:                        // CP,  CM
+        return true;
+    default:
+        return false;
+    }
+}
+bool isRst(uint8_t op) { return (op & 0xC7) == 0xC7; }  // RST 0..7 (C7..FF), 1 byte
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -733,7 +754,7 @@ struct SigintGuard {
 // Both paths stop on a breakpoint, on a HLT nothing can wake, and on ^C, and
 // both report through the same reportStop. That is why GO had nothing left to be.
 // ---------------------------------------------------------------------------
-void Monitor::runMachine(std::ostream& out) {
+void Monitor::runMachine(std::ostream& out, bool stepOver) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
 
@@ -799,18 +820,24 @@ void Monitor::runMachine(std::ostream& out) {
     const bool watchKeys = anyConsole || tty;
     const bool takeTty   = watchKeys;
 
-    if (anyConsole) {
-        out << "[console -- ^" << attn << " returns to the monitor]\n";
-    } else {
-        // Not an error, and it must not read like one: a machine with nothing
-        // connected to a terminal is a machine that runs perfectly well. It is how
-        // you run a ROM that talks to a disk, or a CPU test that talks to nobody.
-        std::string stop = tty ? std::string("^") + attn + " stops it." : "^C stops it.";
-        std::snprintf(buf, sizeof buf, "running from %04X.  %s  (no console connected)", cpu->pc(),
-                      stop.c_str());
-        out << buf << "\n";
+    // NEXT (stepOver) runs the callee silently: the operator asked to step over one
+    // instruction, not to start the machine, so the "running from ..." banner would
+    // be noise on every step. The raw-mode/pump/pace paths below are unchanged, so
+    // the callee is still live and interruptible -- only the announcement is gone.
+    if (!stepOver) {
+        if (anyConsole) {
+            out << "[console -- ^" << attn << " returns to the monitor]\n";
+        } else {
+            // Not an error, and it must not read like one: a machine with nothing
+            // connected to a terminal is a machine that runs perfectly well. It is how
+            // you run a ROM that talks to a disk, or a CPU test that talks to nobody.
+            std::string stop = tty ? std::string("^") + attn + " stops it." : "^C stops it.";
+            std::snprintf(buf, sizeof buf, "running from %04X.  %s  (no console connected)",
+                          cpu->pc(), stop.c_str());
+            out << buf << "\n";
+        }
+        out.flush();
     }
-    out.flush();
     if (takeTty) con.enterRaw();
 
     // ^C still stops a PIPED run, because there raw mode never happened and the
@@ -1021,11 +1048,17 @@ void Monitor::runMachine(std::ostream& out) {
     // used to guess -- `Interrupted && anyConsole` meant "probably ATTN" -- and a
     // guess is what you write when the reason was never carried. Now it is: ATTN,
     // a script's input running out, and a real ^C are three different words.
-    reportStop(r, m_.debug, out);
+    //
+    // Under NEXT, a clean step-over completion (StepTarget) is the expected outcome
+    // and stays silent -- the NEXT handler shows the registers itself. But a REAL
+    // stop reached mid-callee is exactly the surprise the operator needs told: a
+    // user breakpoint fired, the callee halted, or ATTN/^C took it back. Say those.
+    if (!stepOver || r.why != StopReason::StepTarget) reportStop(r, m_.debug, out);
 
     // The tally is about WORK DONE, and neither taking the keyboard back nor
-    // running out of script is a fault worth counting instructions over.
-    if (r.why != StopReason::Attn && r.why != StopReason::InputEnded) {
+    // running out of script is a fault worth counting instructions over. NEXT is a
+    // single logical step, so it never prints a tally either.
+    if (!stepOver && r.why != StopReason::Attn && r.why != StopReason::InputEnded) {
         std::snprintf(buf, sizeof buf, "%llu instructions, %llu T-states.",
                       (unsigned long long)r.steps, (unsigned long long)r.tStates);
         out << buf << "\n";
@@ -1519,6 +1552,12 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         break;
     case StopReason::NoCpu:
         out << "no CPU in this machine.  BOARDS ADD 8080 cpu0\n";
+        break;
+    case StopReason::StepTarget:
+        // NEXT stepped over the CALL/RST and landed on the return address. There is
+        // nothing to announce -- the NEXT handler shows the registers, exactly as a
+        // single STEP would. runMachine also filters this out before calling here,
+        // so this case only ever fires if some other path reports a StepTarget stop.
         break;
     case StopReason::Steps:
         break;
@@ -2761,6 +2800,35 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                           (unsigned long long)total.steps, (unsigned long long)total.tStates);
             out << b << "\n";
         }
+        disasmNext_ = c->pc();
+        showRegs(out);
+        return true;
+    }
+
+    // NEXT -- STEP that does not descend. At a CALL or RST it runs the callee to
+    // completion and stops at the return address, so a subroutine reads as one step;
+    // anything else is a plain single STEP. The mechanism is exactly what the
+    // operator would do by hand: a temporary breakpoint at the return address and a
+    // RUN. So it goes through runMachine() -- the callee is LIVE (it can read the
+    // console) and interruptible (ATTN, ^C), and a real breakpoint inside it still
+    // stops there. The temp target lives in the Debugger, off the user's list.
+    if (cmd == "NEXT") {
+        CpuCore* c = needCpu(out);
+        if (!c) return true;
+
+        uint8_t op = m_.bus.peek(c->pc());
+        SigintGuard guard;
+        if (isCall(op) || isRst(op)) {
+            uint8_t len = 1;
+            if (const Disassembler* d = disassemblerFor(c->isa())) len = insnAt(c->pc(), *d).len;
+            m_.debug.setStepTarget((c->pc() + len) & 0xFFFF);
+            runMachine(out, /*stepOver=*/true);
+            m_.debug.setStepTarget(-1);  // ALWAYS clear -- a real bp/HLT/ATTN may have stopped us first
+        } else {
+            RunResult r = m_.debug.run(1);
+            if (r.why != StopReason::Steps) reportStop(r, m_.debug, out);
+        }
+        flush(out);
         disasmNext_ = c->pc();
         showRegs(out);
         return true;

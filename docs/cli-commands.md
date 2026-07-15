@@ -36,6 +36,7 @@ The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY,
 |---|---|---|
 | `D` | DUMP | |
 | `S` | STEP | |
+| `N` | NEXT | STEP that runs *over* a CALL/RST instead of into it |
 | `R` | RUN | the panel's switch. `G` names nothing at all now |
 | `H` | HISTORY | *waiting on the debugger* |
 | `M` | MOUNT | |
@@ -71,7 +72,7 @@ The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY,
 | `REST` | RESTORE | *waiting on the debugger* |
 | `REC` | RECORD | *waiting on the debugger* |
 | `REP` | REPLAY | *waiting on the debugger* |
-| `N` | NOBREAK | |
+| `NO` | NOBREAK | `N` is NEXT — the step you type mid-debug wins the letter |
 | `HE` | HELP | or `?` |
 | `Q` | QUIT | the only way out — there is no EXIT |
 
@@ -92,10 +93,10 @@ altairsim> HELP
   CONN[ECT]         CONS[OLE]         DE[POSIT]         DI[SASM]
   DISC[ONNECT]      D[UMP]            E[DIT]*           EX[AMINE]
   F[ILL]            HE[LP]            H[ISTORY]*        I[N]
-  L[OAD]            M[OUNT]           MOV[E]            N[OBREAK]
-  O[UT]             P[OWER]           Q[UIT]            REC[ORD]*
-  REGI[ON]          RE[GS]            REP[LAY]*         RES[ET]
-  REST[ORE]*        R[UN]             SA[VE]            SEA[RCH]
+  L[OAD]            M[OUNT]           MOV[E]            N[EXT]
+  NO[BREAK]         O[UT]             P[OWER]           Q[UIT]
+  REC[ORD]*         REGI[ON]          RE[GS]            REP[LAY]*
+  RES[ET]           REST[ORE]*        R[UN]             SA[VE]
   ...
 ```
 
