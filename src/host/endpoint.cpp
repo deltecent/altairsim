@@ -28,13 +28,20 @@ bool parsePort(const std::string& s, uint16_t& out) {
 } // namespace
 
 std::string endpointHelp() {
-    return "console | null | loopback | socket:PORT | socket:HOST:PORT | serial:DEVICE";
+    return "console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | "
+           "serial:DEVICE";
 }
 
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {
     if (spec == "console") return std::make_unique<ConsoleRef>();
     if (spec == "null") return std::make_unique<NullStream>();
     if (spec == "loopback") return std::make_unique<LoopbackStream>();
+
+    // A terminal with a caller instead of a human: the two directions are separate,
+    // so whoever holds the stream feed()s keystrokes and reads out() what the guest
+    // printed. It is what the MCP server binds the console to (the guest cannot tell
+    // it from a person), and what a test types into with no tty in the picture.
+    if (spec == "scripted") return std::make_unique<ScriptedStream>();
 
     // ---- socket: -- listen on a port, or call out to a host ----
     if (spec.rfind("socket:", 0) == 0) {

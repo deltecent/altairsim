@@ -20,6 +20,8 @@
 
 namespace altair {
 
+class ByteStream;  // host/stream.h -- a serial unit's connector, borrowed by unitStream()
+
 // The key/value pairs of one TOML sub-unit table, in file order.
 using KeyValues = std::vector<std::pair<std::string, std::string>>;
 
@@ -437,6 +439,18 @@ public:
     // recorded session replay identically instead of depending on when the host
     // scheduler happened to deliver a packet.
     virtual void pump() {}
+
+    // THE STREAM ON ONE OF THIS CARD'S SERIAL UNITS, or null for a card that has no
+    // such line (which is most of them). It is the connector on the back panel: the
+    // monitor CONNECTs an endpoint to it, and an operator that OWNS the endpoint -- the
+    // MCP server holding a `scripted` console it feed()s and reads -- reaches it here to
+    // move bytes, without knowing whether the chip behind it is a 6850 or a COM2502.
+    // NON-OWNING: the chip owns the stream (Mc6850::stream()); this is a borrowed view,
+    // like describe() is for SHOW, not a handle to keep past the next CONNECT.
+    virtual ByteStream* unitStream(const std::string& unit) {
+        (void)unit;
+        return nullptr;
+    }
 
     // BYTES THIS CARD HAS DELIVERED TO THE GUEST since power-on, across every line it
     // carries, monotonic. Zero for a card with no serial line, which is most of them.

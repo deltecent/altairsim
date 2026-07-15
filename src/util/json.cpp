@@ -8,24 +8,38 @@
 
 namespace altair {
 
+static void escapeByte(unsigned char c, std::string& o) {
+    char b[8];
+    std::snprintf(b, sizeof b, "\\u%04x", c);
+    o += b;
+}
+
 static void escape(const std::string& s, std::string& o) {
     o += '"';
-    for (char c : s) {
+    const size_t n = s.size();
+    for (size_t i = 0; i < n;) {
+        const unsigned char c = (unsigned char)s[i];
         switch (c) {
-        case '"': o += "\\\""; break;
-        case '\\': o += "\\\\"; break;
-        case '\n': o += "\\n"; break;
-        case '\r': o += "\\r"; break;
-        case '\t': o += "\\t"; break;
-        default:
-            if ((unsigned char)c < 0x20) {
-                char b[8];
-                std::snprintf(b, sizeof b, "\\u%04x", c);
-                o += b;
-            } else {
-                o += c;
-            }
+        case '"':  o += "\\\""; ++i; continue;
+        case '\\': o += "\\\\"; ++i; continue;
+        case '\n': o += "\\n"; ++i; continue;
+        case '\r': o += "\\r"; ++i; continue;
+        case '\t': o += "\\t"; ++i; continue;
         }
+        if (c < 0x20) { escapeByte(c, o); ++i; continue; }  // other control chars
+        if (c < 0x80) { o += (char)c; ++i; continue; }      // plain ASCII
+
+        // A high byte: JSON must be valid UTF-8, and the strings passing through here
+        // are two kinds at once -- a host path that really is UTF-8, and 8-bit-clean
+        // bytes off a serial line that are not text at all (a guest terminal can print
+        // any byte). So pass a VALID multibyte sequence through untouched, and escape a
+        // lone or malformed byte as \u00XX -- lossless per byte, and never invalid JSON.
+        const int len = (c >= 0xF0) ? 4 : (c >= 0xE0) ? 3 : (c >= 0xC0) ? 2 : 0;
+        bool ok = len > 0 && i + (size_t)len <= n;
+        for (int k = 1; ok && k < len; ++k)
+            if (((unsigned char)s[i + k] & 0xC0) != 0x80) ok = false;
+        if (ok) { o.append(s, i, (size_t)len); i += (size_t)len; }
+        else    { escapeByte(c, o); ++i; }
     }
     o += '"';
 }

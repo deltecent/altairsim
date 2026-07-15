@@ -255,7 +255,8 @@ add_executable(altair_tests
   tests/test_lamp.cpp
   tests/test_virtc.cpp
   tests/test_hostdir.cpp
-  tests/test_hostbridge.cpp)
+  tests/test_hostbridge.cpp
+  tests/test_mcp.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
 add_test(NAME unit COMMAND altair_tests)
 
