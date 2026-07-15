@@ -89,6 +89,13 @@ public:
 
     Mc6850* channel(const std::string& name);
 
+    // The connector behind a channel, for an operator that owns the endpoint (the MCP
+    // console). Non-owning: the chip still owns the stream. See Board::unitStream.
+    ByteStream* unitStream(const std::string& unit) override {
+        Mc6850* ch = channel(unit);
+        return ch ? &ch->stream() : nullptr;
+    }
+
 private:
     // EVERYTHING THAT COULD HAVE MOVED PIN 73 HAS JUST HAPPENED. Advance the
     // receivers, re-drive the pin, and set the alarm clock for the next moment

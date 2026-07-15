@@ -203,21 +203,35 @@ public:
     std::string describe() const override { return "scripted"; }
     size_t read(uint8_t* buf, size_t n) override;
     size_t write(const uint8_t* buf, size_t n) override;
-    bool readable() const override { return pos_ < in_.size(); }
+
+    // AND IT COUNTS THE EMPTY POLLS, exactly as the Console does (host/console.cpp).
+    // The guest came to the line and found nothing on it: that, and not silence, is
+    // what tells a prompt spinning on CONIN from a loader that is merely quiet while
+    // it works. The MCP `run` loop reads the delta to know when to hand control back.
+    bool readable() const override {
+        if (pos_ < in_.size()) return true;
+        ++hungry_;
+        return false;
+    }
     bool writable() const override { return true; }
 
     void feed(const std::string& s) { in_ += s; }  // as if typed
     const std::string& out() const { return out_; }
     void clearOut() { out_.clear(); }
 
-    // Has the guest consumed everything we typed? Lets a test wait for the guest
+    // Has the guest consumed everything we typed? Lets a caller wait for the guest
     // to catch up without inventing a timeout.
     bool drained() const { return pos_ >= in_.size(); }
 
+    // Empty polls since power-on -- see readable(). Monotonic; the run loop watches
+    // its delta, never its absolute value.
+    uint64_t hungry() const { return hungry_; }
+
 private:
-    std::string in_;
-    size_t      pos_ = 0;
-    std::string out_;
+    std::string      in_;
+    size_t           pos_ = 0;
+    std::string      out_;
+    mutable uint64_t hungry_ = 0;
 };
 
 } // namespace altair

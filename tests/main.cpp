@@ -57,6 +57,7 @@ int main() {
     test_virtc();
     test_hostdir();
     test_hostbridge();
+    test_mcp();
     test_lamp();
 
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);

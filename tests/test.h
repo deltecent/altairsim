@@ -49,6 +49,7 @@ void test_frontpanel();
 void test_virtc();
 void test_hostdir();
 void test_hostbridge();
+void test_mcp();
 
 // The Developer Guide's worked example (examples/boards/lamp/). Not a shipping
 // board -- it is compiled into the test binary only, so the tutorial's code

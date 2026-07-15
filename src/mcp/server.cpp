@@ -6,8 +6,11 @@
 #include "core/crc32.h"
 #include "core/hex.h"
 #include "core/roms.h"
+#include "cpu/cpu.h"
+#include "host/stream.h"
 #include "util/json.h"
 
+#include <chrono>
 #include <fstream>
 #include <istream>
 #include <ostream>
@@ -44,8 +47,10 @@ Json tool(const char* name, const char* desc, Json props, std::vector<std::strin
     return t;
 }
 
-// ---- The tool list. No CPU yet, so no run/step/regs -- and we say so rather
-// ---- than shipping a `run` that quietly does nothing.
+// ---- The tool list. The interactive four -- run/send/recv/regs -- drive a RUNNING
+// ---- guest: they type at its console, read what it prints, and advance it a bounded
+// ---- slice at a time so a `tools/call` never blocks (unlike a bare RUN, which under a
+// ---- pipe would wait for a stdin that is the JSON-RPC channel -- monitor.cpp:818).
 Json toolList() {
     Json list = Json::arr();
 
@@ -136,6 +141,39 @@ Json toolList() {
                        "RESET CLEARS RAM -- only power does. A RAM chip has no reset pin.",
                        p, {"kind"}));
     }
+    {
+        Json p = Json::obj();
+        p["from"]       = intSchema("Optional start address: set PC here first (like RUN <addr>). "
+                                    "Omit to resume from the current PC.");
+        p["input"]      = strSchema("Optional keystrokes to type at the console before running "
+                                    "(raw bytes; add a trailing \\r to submit a CP/M line).");
+        p["until"]      = strSchema("Optional: stop as soon as this substring appears in the "
+                                    "output (e.g. a prompt like \"A0>\").");
+        p["timeout_ms"] = intSchema("Wall-clock budget for this call in ms (default 2000). The "
+                                    "guest runs flat out; this only bounds how long we wait.");
+        p["max_steps"]  = intSchema("Optional instruction-count cap for this call.");
+        list.push(tool("run",
+                       "Advance the running guest a bounded slice and return what it printed to "
+                       "the console. STOPS on: `until` matched, a prompt reached (the guest is "
+                       "spinning on console input with nothing to say), timeout_ms, max_steps, a "
+                       "HLT, or a breakpoint -- reported in `stopped`. This is the expect loop: "
+                       "type a command with `input`, read the reply, call again. Never blocks.",
+                       p, {}));
+    }
+    {
+        Json p = Json::obj();
+        p["text"] = strSchema("Keystrokes to type at the console (raw bytes). Does NOT run the "
+                              "guest -- follow with `run` (or use run's own `input`).");
+        list.push(tool("send", "Type at the guest console without running it.", p, {"text"}));
+    }
+    list.push(tool("recv",
+                   "Drain and return everything the guest has printed to the console since the "
+                   "last read, without running it.",
+                   Json::obj(), {}));
+    list.push(tool("regs",
+                   "The CPU registers right now: every register the active core declares, plus "
+                   "pc, halted and interrupts. Does not run the guest.",
+                   Json::obj(), {}));
     {
         Json p = Json::obj();
         p["command"] = strSchema("A monitor command line");
@@ -285,7 +323,40 @@ bool parseBytes(const std::string& s, std::vector<uint8_t>& out) {
     return !out.empty();
 }
 
-Json callTool(Machine& m, const std::string& name, const Json& args) {
+// The interactive console the four live tools share. Non-owning: the chip owns the
+// ScriptedStream; we remember only WHICH channel it is, and re-fetch the live pointer
+// every call so a reconnect can never leave us holding a dangling one.
+struct McpSession {
+    std::string conBoard;
+    std::string conUnit;
+};
+
+// Find the serial unit wired to the host console and REBIND it to an in-memory
+// ScriptedStream. Under --mcp there is no terminal, so "console" would aim the guest's
+// keyboard at the JSON-RPC pipe and hang the first run forever (monitor.cpp:818); a
+// scripted line is one we can feed() and read out() instead. Idempotent: once a channel
+// is ours, later calls just re-fetch it. Null + err if the machine has no such line.
+ScriptedStream* console(Machine& m, McpSession& s, std::string& err) {
+    if (!s.conBoard.empty())
+        if (Board* b = m.find(s.conBoard))
+            if (auto* ss = dynamic_cast<ScriptedStream*>(b->unitStream(s.conUnit)))
+                return ss;
+
+    for (const auto& b : m.boards())
+        for (const auto& u : b->units()) {
+            if (u.kind != UnitKind::Serial) continue;
+            if (u.state != "console") continue;
+            if (!b->connect(u.name, "scripted", err)) return nullptr;
+            s.conBoard = b->id;
+            s.conUnit  = u.name;
+            if (auto* ss = dynamic_cast<ScriptedStream*>(b->unitStream(u.name))) return ss;
+        }
+    err = "no console line: CONNECT a serial unit to 'scripted' (one wired to 'console' "
+          "is adopted automatically).";
+    return nullptr;
+}
+
+Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json& args) {
     char buf[256];
 
     if (name == "board_types") {
@@ -564,6 +635,118 @@ Json callTool(Machine& m, const std::string& name, const Json& args) {
         return textResult("RESET* pulsed. Memory is UNTOUCHED -- only power loses RAM.");
     }
 
+    if (name == "send") {
+        std::string err;
+        ScriptedStream* con = console(m, sess, err);
+        if (!con) return textResult(err, true);
+        con->feed(args.at("text").str());
+        return textResult("(typed)");
+    }
+
+    if (name == "recv") {
+        std::string err;
+        ScriptedStream* con = console(m, sess, err);
+        if (!con) return textResult(err, true);
+        std::string out = con->out();
+        con->clearOut();
+        Json d = Json::obj();
+        d["output"] = Json(out);
+        return dataResult(d, out.empty() ? "(nothing)" : out);
+    }
+
+    if (name == "regs") {
+        CpuCore* c = m.cpu();
+        if (!c) return textResult("no CPU in this machine", true);
+        Json d = Json::obj();
+        Json regs = Json::obj();
+        std::string text;
+        for (const RegDef& r : c->registers()) {
+            uint32_t v = r.get();
+            regs[r.name] = Json((long long)v);
+            std::snprintf(buf, sizeof buf, "%s=%X ", r.shown().c_str(), v);
+            text += buf;
+        }
+        d["registers"] = regs;
+        d["pc"] = Json((long long)c->pc());
+        d["halted"] = Json(c->halted());
+        d["interrupts"] = Json(c->interruptsEnabled());
+        return dataResult(d, text);
+    }
+
+    if (name == "run") {
+        using clk = std::chrono::steady_clock;
+        std::string err;
+        ScriptedStream* con = console(m, sess, err);
+        if (!con) return textResult(err, true);
+        CpuCore* cpu = m.cpu();
+        if (!cpu) return textResult("no CPU in this machine", true);
+
+        if (args.has("from")) cpu->setPc((uint16_t)args.at("from").integer());
+        if (args.has("input")) con->feed(args.at("input").str());
+
+        const std::string until   = args.has("until") ? args.at("until").str() : std::string();
+        long long         timeout = args.has("timeout_ms") ? args.at("timeout_ms").integer() : 2000;
+        if (timeout < 0) timeout = 0;
+        if (timeout > 600000) timeout = 600000;  // ten minutes is already a runaway
+        const uint64_t maxSteps = args.has("max_steps") ? (uint64_t)args.at("max_steps").integer() : 0;
+
+        // A prompt is a guest that ran, said nothing, received nothing, and came to the
+        // console and found it empty at least once every 32 instructions -- the same
+        // discrimination runMachine draws (guestIsWaiting, monitor.cpp), so a loader that
+        // is merely quiet while it works is NOT mistaken for one. It must persist across a
+        // couple of slices to be believed.
+        static constexpr uint64_t kIdleRatio = 32;
+
+        const auto deadline = clk::now() + std::chrono::milliseconds(timeout);
+        std::string out;
+        uint64_t    steps = 0;
+        int         quiet = 0;
+        std::string stopped;
+
+        auto drain = [&] {
+            const std::string& o = con->out();
+            if (!o.empty()) { out += o; con->clearOut(); }
+        };
+
+        for (;;) {
+            drain();
+            if (!until.empty() && out.find(until) != std::string::npos) { stopped = "match"; break; }
+            if (clk::now() >= deadline) { stopped = "timeout"; break; }
+            if (maxSteps && steps >= maxSteps) { stopped = "steps"; break; }
+
+            const uint64_t rxBefore     = m.rxBytes();
+            const uint64_t hungryBefore = con->hungry();
+            RunResult r = m.debug.run(2000);
+            m.pump();
+            steps += r.steps;
+
+            const size_t wroteBefore = out.size();
+            drain();
+            const bool produced = out.size() != wroteBefore;
+            const bool received = m.rxBytes() != rxBefore;
+            const uint64_t hungry = con->hungry() - hungryBefore;
+
+            if (r.why == StopReason::Halted)     { stopped = "halt";       break; }
+            if (r.why == StopReason::Breakpoint) { stopped = "breakpoint"; break; }
+            if (r.why == StopReason::NoCpu)      { stopped = "no-cpu";      break; }
+
+            const bool waiting = con->drained() && !produced && !received &&
+                                 r.steps != 0 && hungry * kIdleRatio >= r.steps;
+            if (waiting) { if (++quiet >= 2) { stopped = "idle"; break; } }
+            else quiet = 0;
+        }
+
+        Json d = Json::obj();
+        d["output"]  = Json(out);
+        d["stopped"] = Json(stopped);
+        d["pc"]      = Json((long long)cpu->pc());
+        d["steps"]   = Json((long long)steps);
+        std::string text = out;
+        if (!text.empty() && text.back() != '\n') text += '\n';
+        text += "[stopped: " + stopped + "]";
+        return dataResult(d, text);
+    }
+
     if (name == "monitor") {
         std::ostringstream os;
         Monitor mon(m);
@@ -596,6 +779,14 @@ void replyError(std::ostream& out, const Json& id, int code, const std::string& 
 } // namespace
 
 int runMcp(Machine& m, std::istream& in, std::ostream& out) {
+    // Take the console off "console" NOW, before anything runs: under --mcp stdin is the
+    // JSON-RPC channel, not a keyboard, and a guest reading it would eat our next request.
+    // A scripted line is one the interactive tools own. Quietly does nothing if the
+    // machine has no console line (an empty backplane, a socket-only machine).
+    McpSession sess;
+    std::string bindErr;
+    console(m, sess, bindErr);
+
     std::string line;
     while (std::getline(in, line)) {
         if (line.empty()) continue;
@@ -632,7 +823,7 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out) {
         if (method == "tools/call") {
             const Json& params = req.at("params");
             std::string name = params.at("name").str();
-            reply(out, id, callTool(m, name, params.at("arguments")));
+            reply(out, id, callTool(m, sess, name, params.at("arguments")));
             continue;
         }
         if (method == "ping") {

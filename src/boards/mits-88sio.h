@@ -96,6 +96,12 @@ public:
     void attachStream(std::unique_ptr<ByteStream> s) { u_.connect(std::move(s)); }
     std::string endpoint() const { return u_.endpoint(); }
 
+    // The connector, for an operator that owns the endpoint (the MCP console).
+    // Non-owning; the UART owns the stream. See Board::unitStream.
+    ByteStream* unitStream(const std::string& unit) override {
+        return unit == "tty" ? &u_.stream() : nullptr;
+    }
+
     // ---- The pins, so a test can look at them without going through the bus. ----
     uint8_t statusByte() const;
     bool    dataAvailable() const { return u_.dataAvailable(); }
