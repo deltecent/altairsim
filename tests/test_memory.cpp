@@ -383,9 +383,14 @@ void test_readonly_props() {
     std::string err;
     CHECK(b->addRegion(ram(0x0000, 0xE000), err), "56K of RAM");
 
+    // properties() returns a fresh vector BY VALUE, so it must be held in a named
+    // variable: binding the temporary in the range-for frees it at the loop's end, and
+    // `p` (a pointer INTO it) would then dangle -- a use-after-free that reads clean on
+    // some allocators and corrupts on others (it aborted under ASan on an M4 Mac).
+    const auto props = b->properties();
     for (const char* name : {"banks", "pages"}) {
         const Property* p = nullptr;
-        for (const auto& q : b->properties())
+        for (const auto& q : props)
             if (q.name == name) p = &q;
         CHECK(p != nullptr, (std::string(name) + " exists").c_str());
         if (!p) continue;
@@ -437,8 +442,11 @@ void test_save_is_a_read() {
     CHECK(setProperty(*b, "bank_type", "eram", err), "an Ithaca eRAM card: 8 banks");
     CHECK(setProperty(*b, "bank", "3", err), "and bank 3 is the live one");
 
+    // Held by value -- see test_readonly_props: a pointer into the temporary from
+    // properties() dangles the moment the range-for that bound it ends.
+    const auto props = b->properties();
     const Property* bank = nullptr;
-    for (const auto& p : b->properties())
+    for (const auto& p : props)
         if (p.name == "bank") bank = &p;
     CHECK(bank != nullptr, "the card has a `bank`");
     if (!bank) return;
