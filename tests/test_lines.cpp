@@ -7,8 +7,10 @@
 #include "host/tcp.h"
 #include "platform/socket.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 
 using namespace altair;
 
@@ -103,6 +105,23 @@ constexpr uint8_t kBreak  = 0x60;  // transmit control 11: RTS low, transmit a B
 // without it failing on the one machine where something else already owns 34567.
 std::unique_ptr<platform::TcpListener> listenAnywhere(std::string& err) {
     return platform::listenTcp(0, err);
+}
+
+// Poll `done` for up to ~2 s of REAL time, running one `step` each pass with a
+// short sleep between. The loopback handshake, the byte delivery and the hangup
+// are all the KERNEL's to schedule, not ours -- a bare iteration-bounded spin
+// (`for i < 100`) can burn its whole budget in microseconds, before the OS has
+// so much as run the three-way handshake, and then CHECK a carrier that simply
+// hadn't been given time to rise. That is what made these socket sections flake
+// on a fast machine. Bounding by wall-clock, and returning the moment `done`
+// holds, is the honest wait. Returns the final state of `done`.
+template <class Step, class Pred>
+bool waitFor(Step step, Pred done) {
+    for (int i = 0; i < 200 && !done(); ++i) {
+        step();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return done();
 }
 
 } // namespace
@@ -385,10 +404,8 @@ void test_lines() {
             auto client = platform::connectTcp("127.0.0.1", port, err);
             CHECK(client != nullptr, ("the client connects: " + err).c_str());
 
-            for (int i = 0; i < 100 && !sock.status().carrier; ++i) {
-                client->poll();
-                sock.pump();
-            }
+            waitFor([&] { client->poll(); sock.pump(); },
+                    [&] { return sock.status().carrier; });
             CHECK(sock.status().carrier, "the client connected -> DCD ROSE");
             CHECK(sock.status().dsr, "...and DSR with it");
             CHECK(sock.status().cts, "...and CTS, because the send buffer is empty");
@@ -397,22 +414,21 @@ void test_lines() {
             const uint8_t hi[] = {'H', 'I'};
             sock.write(hi, 2);
             uint8_t got[8] = {0};
-            for (int i = 0; i < 100; ++i) {
-                client->poll();
-                if (client->read(got, 2) == 2) break;
-            }
+            size_t  rd     = 0;
+            waitFor([&] { client->poll(); if (rd < 2) rd += client->read(got + rd, 2 - rd); },
+                    [&] { return rd >= 2; });
             CHECK(got[0] == 'H' && got[1] == 'I', "the guest's bytes reach the client");
 
             const uint8_t yo[] = {'Y', 'O'};
             client->write(yo, 2);
-            for (int i = 0; i < 100 && !sock.readable(); ++i) sock.pump();
+            waitFor([&] { sock.pump(); }, [&] { return sock.readable(); });
             CHECK(sock.readable(), "the client's bytes reach the guest");
             CHECK(sock.readByte() == 'Y', "...in order");
 
             // THE CLIENT CLOSES ITS WINDOW. That is a carrier drop, and it is exactly
             // the event the 6850 above latches and interrupts on.
             client->close();
-            for (int i = 0; i < 100 && sock.status().carrier; ++i) sock.pump();
+            waitFor([&] { sock.pump(); }, [&] { return !sock.status().carrier; });
             CHECK(!sock.status().carrier, "the client hung up -> CARRIER DROPPED");
         }
     }
@@ -426,10 +442,8 @@ void test_lines() {
             TcpListenStream sock(std::move(listener), "socket:test");
 
             auto client = platform::connectTcp("127.0.0.1", port, err);
-            for (int i = 0; i < 100 && !sock.status().carrier; ++i) {
-                if (client) client->poll();
-                sock.pump();
-            }
+            waitFor([&] { if (client) client->poll(); sock.pump(); },
+                    [&] { return sock.status().carrier; });
             CHECK(sock.status().carrier, "connected");
 
             // A card that never raised DTR is not a card that hung up -- so a bare
