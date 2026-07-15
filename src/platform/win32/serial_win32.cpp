@@ -22,13 +22,13 @@
 namespace altair::platform {
 namespace {
 
-std::string lastError(const char* what) {
+std::string lastError(const std::string& what) {
     DWORD e = GetLastError();
     char* msg = nullptr;
     FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                        FORMAT_MESSAGE_IGNORE_INSERTS,
                    nullptr, e, 0, (LPSTR)&msg, 0, nullptr);
-    std::string s = std::string(what) + ": " + (msg ? msg : "unknown error");
+    std::string s = what + ": " + (msg ? msg : "unknown error");
     if (msg) LocalFree(msg);
     while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
     return s;
