@@ -253,6 +253,11 @@ public:
     // takes hours to find.
     bool lastUnclaimed() const { return unclaimed_; }
 
+    // More than one board answered the last cycle. Contention is a BUS fact (unlike
+    // origin, which is not -- see BusCycle) and already computed on every cycle; the
+    // observer reads it so TRACE's CONTENTION mask and HISTORY can flag the cycle.
+    bool lastContended() const { return contended_; }
+
 private:
     bool anyAssertsPhantom(const BusCycle& c) const;
 
@@ -360,6 +365,7 @@ private:
     std::vector<std::string> log_;
     Contention policy_ = Contention::Warn;
     bool unclaimed_ = false;
+    bool contended_ = false;
 
     std::vector<std::pair<int, Observer>> observers_;
     int nextObserver_ = 1;

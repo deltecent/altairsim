@@ -19,8 +19,11 @@
 // without a line being written here.
 
 #include "core/bus.h"
+#include "core/expr.h"
 
 #include <cstdint>
+#include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -44,6 +47,15 @@ struct Breakpoint {
     uint32_t lo = 0, hi = 0;  // inclusive. A single address has lo == hi.
     bool enabled = true;
     uint64_t hits = 0;
+
+    // BREAK <addr> IF <expr>. A PC breakpoint that only stops when the condition is
+    // true -- one comparison against reflected registers, so it is CPU-agnostic like
+    // everything else here (DESIGN.md 3.0.3). Null on an unconditional breakpoint;
+    // it applies to the PC kind only, since the cycle kinds fire mid-instruction
+    // where a register read is not a boundary-consistent question. The Expr carries
+    // its own source text, so describe() needs no second copy of it.
+    std::shared_ptr<const Expr> cond;
+
     std::string describe() const;
 };
 
@@ -75,10 +87,50 @@ class Debugger {
 public:
     explicit Debugger(Machine& m) : m_(m) {}
 
-    int add(BreakKind k, uint32_t lo, uint32_t hi);
+    int add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond = nullptr);
     bool remove(int id, std::string& err);
     void clear();
     const std::vector<Breakpoint>& breakpoints() const { return bps_; }
+
+    // ---- TRACE and HISTORY: bus-observer facilities (DESIGN.md 3.0.3) ----
+    //
+    // Both watch the SAME cycle stream every board already sees, from outside the
+    // backplane -- so they are NOT CPU features, they catch a DMA transfer as
+    // readily as the processor, and a Z80 inherits them the day it lands. They are
+    // fed by the run loop's observer, which is live only WHILE the machine runs.
+
+    // The mask on TRACE. A cycle is shown if ANY of its categories is selected; an
+    // empty mask (0) shows everything. IN/OUT/IRQ come straight off the cycle type;
+    // Dma is set while a granted bus master is driving; Contention is a bus fact.
+    enum TraceCat {
+        InCycle   = 1 << 0,  // an IN  (I/O read)
+        OutCycle  = 1 << 1,  // an OUT (I/O write)
+        Irq       = 1 << 2,  // an interrupt-acknowledge cycle
+        Dma       = 1 << 3,  // any cycle a granted bus master drove
+        Contended = 1 << 4,  // more than one board answered
+    };
+    void traceTo(std::ostream* sink, unsigned mask) { traceSink_ = sink; traceMask_ = mask; }
+    void traceOff() { traceSink_ = nullptr; traceMask_ = 0; }
+    bool tracing() const { return traceSink_ != nullptr; }
+
+    // A recorded cycle, for HISTORY and for formatting a trace line. Small by
+    // design -- a ring of these records is cheap enough to keep always, so the
+    // flight recorder has already caught what led up to a stop before you ask.
+    struct CycleRec {
+        Cycle type = Cycle::MemRead;
+        uint16_t addr = 0;
+        uint8_t data = 0;
+        bool dma = false;
+        bool contended = false;
+        uint64_t t = 0;   // clock T-state at the cycle
+    };
+
+    // The last `n` cycles, OLDEST FIRST. n past what is held returns all of it.
+    std::vector<CycleRec> history(size_t n) const;
+    void clearHistory();
+
+    // Render one recorded cycle the way TRACE and HISTORY both print it.
+    static std::string formatCycle(const CycleRec&);
 
     // Run. `maxSteps == 0` means until something stops us -- a breakpoint, a HLT,
     // or ^C. Returns WHY it stopped, always: there is no "it just came back".
@@ -117,6 +169,29 @@ private:
     // instructions are how a debugger corrupts the state it exists to show you.
     int cycleHit_ = 0;
     int observer_ = 0;
+
+    // One observer folds three jobs into a single call per cycle: record HISTORY,
+    // emit a TRACE line, and match cycle breakpoints. This decides whether a cycle
+    // passes the current TRACE mask (empty mask -> everything).
+    bool traceShows(const CycleRec&) const;
+
+    // TRACE's sink and mask. Null sink -> not tracing. The monitor owns the stream
+    // (a file, or the console); we only write to it.
+    std::ostream* traceSink_ = nullptr;
+    unsigned traceMask_ = 0;
+
+    // True while serviceDma() is driving a granted master, so the observer can tag a
+    // cycle as DMA -- the origin is deliberately NOT on the BusCycle (a real
+    // backplane carries no such tag, bus.h), but the loop that GRANTED the bus knows.
+    bool inDma_ = false;
+
+    // HISTORY's ring. Fixed capacity, overwrite-oldest -- a flight recorder, always
+    // running while the machine runs, so it has the run-up to a stop without anyone
+    // having had to ask in advance. Below capacity the records sit in order at the
+    // front; once full, ringHead_ is the oldest and the ring wraps.
+    static constexpr size_t kHistoryCap = 8192;
+    std::vector<CycleRec> ring_;
+    size_t ringHead_ = 0;
 
     // STEP-OVER's internal one-shot PC target, or -1 for none. See setStepTarget.
     int stepTarget_ = -1;

@@ -9,6 +9,7 @@
 
 #include "core/machine.h"
 
+#include <fstream>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -174,6 +175,11 @@ private:
     // walks a byte, and sharing one cursor would mean a DUMP silently threw your
     // EXAMINE position 256 bytes down the road.
     uint32_t examNext_ = 0;
+
+    // TRACE ON <file> writes here; the Debugger holds a bare ostream* into it, so the
+    // stream has to outlive the run. It is closed by TRACE OFF (and, being a member,
+    // when the monitor goes). TRACE ON with no file traces to the console instead.
+    std::ofstream traceFile_;
 };
 
 std::vector<std::string> tokenize(const std::string& line);

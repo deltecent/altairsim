@@ -2,7 +2,11 @@
 
 #include "boards/s100-memory.h"
 #include "core/debug.h"
+#include "core/expr.h"
 #include "core/machine.h"
+#include "cpu/cpu.h"
+
+#include <sstream>
 
 using namespace altair;
 
@@ -79,6 +83,20 @@ struct Rig {
         for (uint8_t byte : code) m.bus.memWrite(at++, byte);
     }
 };
+
+// Build a breakpoint condition against a machine's real reflected registers -- the
+// same path the monitor takes, so the test exercises the CPU-agnostic seam and not
+// a hand-rolled resolver.
+std::shared_ptr<const Expr> cond(CpuCore* cpu, const std::string& src) {
+    auto regs = cpu->registers();
+    auto known = [regs](const std::string& n) {
+        for (const RegDef& rd : regs)
+            if (rd.name == n) return true;
+        return false;
+    };
+    std::string err;
+    return Expr::parse(src, known, err);
+}
 
 } // namespace
 
@@ -240,4 +258,100 @@ void test_debug() {
     RunResult hr2 = h2.m.debug.run(20);
     CHECK(hr2.why == StopReason::Steps,
           "but a HLT with a live interrupt source is NOT the end -- it is a machine WAITING");
+
+    SECTION("BREAK <addr> IF <expr> -- a condition over the reflected registers");
+
+    // INR A ; JMP 0. At 0001 (after the INR) A has just been bumped, so a condition
+    // on A picks out one pass of the loop -- and the debugger never learns what an
+    // 8080 is: it reads A by NAME.
+    Rig c;
+    c.load({0x3C, 0xC3, 0x00, 0x00});
+    c.cpu->setPc(0);
+    int cb = c.m.debug.add(BreakKind::Pc, 0x0001, 0x0001, cond(c.cpu, "A==3"));
+    RunResult cr = c.m.debug.run(0);
+    CHECK(cr.why == StopReason::Breakpoint && cr.bp == cb, "it stops");
+    CHECK(cr.pc == 0x0001, "at the address");
+    for (const RegDef& rd : c.cpu->registers())
+        if (rd.name == "A") CHECK(rd.get() == 3, "with the condition actually holding: A==3");
+
+    // A CONDITION THAT NEVER HOLDS IS NOT A STOP -- and it does not count as a hit,
+    // because `hits` means "times it stopped you", not "times the PC passed by".
+    Rig c2;
+    c2.load({0x3C, 0xC3, 0x00, 0x00});
+    c2.cpu->setPc(0);
+    c2.m.debug.add(BreakKind::Pc, 0x0001, 0x0001, cond(c2.cpu, "A==0"));  // A is never 0 at 0001
+    RunResult cr2 = c2.m.debug.run(50);
+    CHECK(cr2.why == StopReason::Steps, "a never-true condition never stops the run");
+    CHECK(c2.m.debug.breakpoints()[0].hits == 0, "and never counts a hit");
+
+    // A COMPOUND CONDITION. INR A wraps FF->00 and sets no carry; the zero flag is
+    // what marks the wrap. Stop the first time A is zero AND Z is set.
+    Rig c3;
+    c3.load({0x3C, 0xC3, 0x00, 0x00});
+    c3.cpu->setPc(0);
+    for (const RegDef& rd : c3.cpu->registers())
+        if (rd.name == "A") rd.set(0xFE);   // so the next INR gives FF, then 00
+    int c3b = c3.m.debug.add(BreakKind::Pc, 0x0001, 0x0001, cond(c3.cpu, "A==0 && Z==1"));
+    RunResult cr3 = c3.m.debug.run(0);
+    CHECK(cr3.why == StopReason::Breakpoint && cr3.bp == c3b, "A==0 && Z==1 stops on the wrap");
+    for (const RegDef& rd : c3.cpu->registers())
+        if (rd.name == "A") CHECK(rd.get() == 0, "and A is indeed zero there");
+
+    // describe() carries the condition, which is what BREAK lists and every stop
+    // prints.
+    CHECK(c.m.debug.breakpoints()[0].describe().find("if A==3") != std::string::npos,
+          "the condition shows in describe()");
+
+    SECTION("HISTORY -- a flight recorder of bus cycles, fed by the same observer");
+
+    Rig hh;
+    hh.load({0x3E, 0x41,           // MVI A,41
+             0x32, 0x00, 0x20,     // STA 2000
+             0x76});               // HLT
+    hh.cpu->setPc(0);
+    hh.m.debug.run(0);
+
+    auto recent = hh.m.debug.history(4);
+    CHECK(!recent.empty(), "there is history after a run");
+    // The last data cycle of this program is the STA's write to 2000. It is in there,
+    // and it is a WRITE, and the byte is right -- the recorder saw the same cycle the
+    // breakpoint would.
+    bool sawWrite = false;
+    for (const auto& rec : recent)
+        if (rec.type == Cycle::MemWrite && rec.addr == 0x2000 && rec.data == 0x41) sawWrite = true;
+    CHECK(sawWrite, "the STA's write to 2000 is on the tape");
+
+    // Oldest-first, and bounded by what actually ran.
+    auto few = hh.m.debug.history(2);
+    CHECK(few.size() == 2, "history(n) returns n when it has them");
+    CHECK(hh.m.debug.history(100000).size() < 100000, "and never more than it holds");
+
+    SECTION("TRACE -- every cycle to a sink, filtered by a mask");
+
+    Rig tt;
+    tt.load({0xDB, 0x10,           // IN 10
+             0x32, 0x00, 0x20,     // STA 2000  (a memory write)
+             0x76});               // HLT
+    tt.cpu->setPc(0);
+
+    // No mask: everything shows, including the opcode fetches.
+    std::ostringstream all;
+    tt.m.debug.traceTo(&all, 0);
+    tt.m.debug.run(0);
+    tt.m.debug.traceOff();
+    CHECK(all.str().find("IN") != std::string::npos, "an IN cycle is traced");
+    CHECK(all.str().find("MW") != std::string::npos, "and the memory write");
+    CHECK(all.str().find("MR") != std::string::npos, "and the fetches");
+
+    // MASK=IN: only the I/O read survives -- not the fetches, not the store.
+    Rig tt2;
+    tt2.load({0xDB, 0x10, 0x32, 0x00, 0x20, 0x76});
+    tt2.cpu->setPc(0);
+    std::ostringstream masked;
+    tt2.m.debug.traceTo(&masked, Debugger::InCycle);
+    tt2.m.debug.run(0);
+    tt2.m.debug.traceOff();
+    CHECK(masked.str().find("IN") != std::string::npos, "MASK=IN keeps the IN");
+    CHECK(masked.str().find("MR") == std::string::npos, "and drops the fetches");
+    CHECK(masked.str().find("MW") == std::string::npos, "and drops the store");
 }
