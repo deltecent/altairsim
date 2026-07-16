@@ -294,6 +294,42 @@ add_test(NAME serial-hw COMMAND altair_serialtest)
 set_tests_properties(serial-hw PROPERTIES LABELS hw SKIP_RETURN_CODE 77)
 
 # ---------------------------------------------------------------------------
+# The SOCKET half of the same idea, against the real kernel TCP stack. The `unit`
+# aggregate's test_lines.cpp already proves the loopback happy path; this proves the
+# NON-BLOCKING CONNECT, and above all the REFUSED connect that surfaces in select()'s
+# except set -- the one Winsock behaviour docs/porting-notes.md flagged as most likely
+# wrong. It uses only platform/socket.h, so it needs no hardware and no opt-in: a free
+# loopback port is always there. Labelled `hw` because, like serialtest, it touches the
+# real world (the kernel) rather than a ScriptedStream -- so `ctest -L hw` runs the
+# whole real-world leg at once.
+# ---------------------------------------------------------------------------
+add_executable(altair_sockettest tests/sockettest.cpp)
+target_link_libraries(altair_sockettest PRIVATE altair_core)
+add_test(NAME socket-hw COMMAND altair_sockettest)
+set_tests_properties(socket-hw PROPERTIES LABELS hw)
+
+# ---------------------------------------------------------------------------
+# The TERMINAL half, on a real console. The pipe path is proven in CI already
+# (acceptance-basic4k/8k drive readInput's pipe branch and its broken-pipe EOF with a
+# live guest); this proves the CONSOLE path a piped test can never reach -- SetConsoleMode
+# raw mode, ENABLE_VIRTUAL_TERMINAL_INPUT, and the PeekConsoleInput peek-and-discard loop
+# that keeps readInput non-blocking (porting-notes' #1 most-likely-wrong item).
+#
+# It lives in src/platform/win32/ and NOT in tests/ on purpose: proving that loop with no
+# human means MANUFACTURING console input (WriteConsoleInput), which is a Win32 call, and
+# DESIGN.md 2.1 keeps OS calls in the platform layer. A test of OS-specific code is
+# OS-specific code -- so it sits beside the file it tests, is WIN32-only, and SKIPs (77)
+# where no console can be taken. The POSIX terminal is proven the mirror way, by hand
+# against a pty.
+# ---------------------------------------------------------------------------
+if(WIN32)
+  add_executable(altair_terminaltest src/platform/win32/terminaltest_win32.cpp)
+  target_link_libraries(altair_terminaltest PRIVATE altair_core)
+  add_test(NAME terminal-hw COMMAND altair_terminaltest)
+  set_tests_properties(terminal-hw PROPERTIES LABELS hw SKIP_RETURN_CODE 77)
+endif()
+
+# ---------------------------------------------------------------------------
 # The 8080 validation gate (DESIGN.md 3.2). Period CP/M test suites, run against
 # our core. Separate from the unit tests because these are the tests we did NOT
 # write, which is the entire reason they are worth anything.
