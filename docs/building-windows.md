@@ -115,6 +115,9 @@ ctest --test-dir build -C Release -LE slow --output-on-failure
   ones) do not register — they self-skip at configure time. That is expected and
   does not fail the build.
 - **`serial-hw`** self-skips (needs real serial ports via `ALTAIR_SERIAL_A/B`).
+  It has since been **run for real** on native Windows — two USB serial ports with
+  a null modem, `$env:ALTAIR_SERIAL_A="COM4"; $env:ALTAIR_SERIAL_B="COM10"; ctest
+  -C Release -L hw` — and passes (25 checks, 0 failed). See §5.
 
 Everything that registers passes. If a new win32 problem crashes the `unit`
 aggregate with `0xC0000409`, §6 shows how to isolate it.
@@ -127,9 +130,16 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
   and terminal implementations build; `CMakeLists.txt` links `ws2_32` for Winsock.
 - **All registered tests pass** (the ones that register without `expect`/disk
   images), including the `unit` aggregate now that its teardown bug is fixed.
-- **Not yet verified:** the serial/socket/terminal code actually *works* against
-  real ports, sockets, and a console. The win32 layer's most-likely-wrong spots are
-  enumerated in `docs/porting-notes.md`.
+- **Serial verified against real hardware (2026-07-15):** `serial_win32.cpp` passes
+  the full `ctest -L hw` suite on native Windows — two USB FTDI ports (`COM4 <->
+  COM10`) with a null modem, 25 checks, 0 failed, covering both the platform layer
+  and an in-machine 6850 doing real `/CTS` flow control and a latched `/DCD`
+  carrier-drop interrupt.
+- **Not yet verified:** the **socket** code against a real remote peer and the
+  **terminal** code against an interactive console. (The socket loopback path is
+  exercised by the suite, but no real peer; the terminal has had no interactive
+  run.) The win32 layer's remaining most-likely-wrong spots are enumerated in
+  `docs/porting-notes.md`.
 
 ---
 
