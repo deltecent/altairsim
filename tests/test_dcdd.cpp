@@ -68,6 +68,54 @@ constexpr uint64_t kReadStart = 280;    // 140 us -- the READ CLEAR one-shot
 } // namespace
 
 void test_dcdd() {
+    SECTION("88-DCDD -- a mount that fails from a machine file says WHICH RULE sent it there");
+    {
+        // THIS IS A REAL BUG REPORT, and the bug was in the message. A user put
+        // 8800c.toml in machines/ and wrote `mount = "disks/Kermit/TEST.DSK"`
+        // meaning the disks/ beside the binary. The card looked in
+        // machines/disks/Kermit/ -- correctly, per core/paths.h -- and said only
+        // "no such file", naming a path the user had never typed. That reads as a
+        // typo in a path that is not a typo, and it cost them a round trip to ask.
+        //
+        // Every path misses here: the medium is not what is under test, the
+        // sentence is.
+        setMediaResolver([](const std::string& p, bool, std::string& e)
+                             -> std::unique_ptr<MediaFile> {
+            e = "'" + p + "': no such file";
+            return nullptr;
+        });
+
+        DcddBoard   b;
+        std::string err;
+
+        b.setConfigDir("./machines");
+        CHECK(!b.mount("drive0", "disks/Kermit/TEST.DSK", false, err),
+              "the reported case still fails to mount -- the RULE is not the bug");
+        CHECK(err.find("machines/disks/Kermit/TEST.DSK") != std::string::npos,
+              "...and names where we LOOKED, which is the truth and always was");
+        CHECK(err.find("relative to the machine file") != std::string::npos,
+              "...and now says WHY we looked there. That sentence is the whole fix.");
+
+        // THE HALF THAT MATTERS MORE. A note that appears when nothing was re-based
+        // is worse than no note: it blames a rule that never ran, and sends the next
+        // person hunting for a config directory that is not involved.
+        b.setConfigDir("");
+        err.clear();
+        CHECK(!b.mount("drive0", "nope.dsk", false, err), "a TYPED mount still fails");
+        CHECK(err.find("relative to the machine file") == std::string::npos,
+              "...with NO note: the shell's cwd stood, so there is nothing to explain");
+
+        // Absolute, from a machine file: resolveFrom() hands it straight back, so
+        // the rule did not apply and must not be blamed for the miss.
+        b.setConfigDir("./machines");
+        err.clear();
+        CHECK(!b.mount("drive0", "/tmp/nope.dsk", false, err), "an ABSOLUTE mount still fails");
+        CHECK(err.find("relative to the machine file") == std::string::npos,
+              "...with NO note: an absolute path already said where it is");
+
+        setMediaResolver(openHostFile);  // ...and put the real one back
+    }
+
     SECTION("88-DCDD -- status is INVERTED, and that is the first thing to get right");
     {
         Clock      c;

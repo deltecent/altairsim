@@ -101,6 +101,12 @@ altairsim> SET hb0 hostdir=/tmp/xfer
 
 Empty — which is the default — means **the directory you ran `altairsim` from.**
 
+This is the *only* fence in the simulator, and it is worth not confusing with the path rule in
+*Machines*. That rule decides where a path written in a machine file points, and it confines
+nothing at all. This one decides how far the **guest** can reach, and confines everything. A
+machine file may mount a disk from anywhere on your system; the CP/M program running off that
+disk still sees only `hostdir`.
+
 **The guest cannot escape it.** All of the following are refused, at the card, before anything
 touches your filesystem:
 

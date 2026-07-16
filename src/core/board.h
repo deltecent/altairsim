@@ -719,6 +719,27 @@ public:
     const std::string& configDir() const { return configDir_; }
     std::string resolvePath(const std::string& p) const { return resolveFrom(configDir_, p); }
 
+    // WHY A PATH LANDED SOMEWHERE NOBODY TYPED -- or "" when there is nothing to say.
+    //
+    // THE RULE ABOVE IS INVISIBLE AT EXACTLY THE MOMENT IT BITES. A machine file in
+    // machines/ writes `disks/x.dsk`, the loader looks in `machines/disks/x.dsk`, and
+    // the error names a path its author never wrote -- which reads as a typo rather
+    // than as a rule, and sends them hunting for a missing file that is not missing.
+    // That cost a real user a round trip to ask what was wrong, so the answer belongs
+    // in the message they already have rather than in a document they have not read.
+    //
+    // This is the only place holding both halves -- what was written and what it was
+    // resolved against -- so it is the only place that can name the rule that applied.
+    // APPEND IT TO AN ERROR; never build a message out of it alone.
+    std::string pathNote(const std::string& p) const {
+        if (configDir_.empty()) return {};    // typed at the prompt, or a file naming no dir:
+                                              // the shell's cwd stood, and nothing was re-based.
+        if (resolvePath(p) == p) return {};   // absolute, or a `builtin:` scheme -- the rule
+                                              // never applied, so explaining it would mislead.
+        return "\n  ('" + p + "' is relative to the machine file that wrote it, in " +
+               configDir_ + "/)";
+    }
+
     // "MY DECODE JUST CHANGED." Tell the backplane so it can re-derive the wiring.
     // Cheap: it sets a flag, and the tables are rebuilt lazily on the next cycle.
     // Call it liberally -- a spurious rebuild costs microseconds, a missed one

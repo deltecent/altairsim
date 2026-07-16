@@ -193,7 +193,7 @@ bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, 
     // the disk, and for the same reason: `tapes/MitsPS2/ps2int.toml` names the tape
     // lying next to it, and must go on naming it that way when it is saved back.
     auto media = openMedia(resolvePath(path), ro, err);
-    if (!media) return false;
+    if (!media) { err += pathNote(path); return false; }
 
     attachStream(std::make_unique<NullStream>());  // ...before the old tape goes
     tape_ = std::make_unique<TapeImage>(std::move(media));
