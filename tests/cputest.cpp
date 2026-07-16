@@ -51,6 +51,7 @@
 #include "core/machine.h"
 
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
@@ -303,6 +304,20 @@ bool run(const Suite& s, const std::string& dir) {
     return ok;
 }
 
+// Case-insensitive prefix match: is `arg` a prefix of `file`, ignoring case?
+// This is what strncasecmp(arg, file, strlen(arg)) == 0 used to do -- but that
+// is POSIX and MSVC has no strncasecmp, and we cannot #ifdef _MSC_VER in here:
+// the platform lint (DESIGN.md 2.1) scans tests/ too and an OS macro fails the
+// build. So do it with standard <cctype> and no macro.
+static bool iprefix(const char* arg, const char* file) {
+    for (; *arg; ++arg, ++file) {
+        unsigned char a = static_cast<unsigned char>(*arg);
+        unsigned char b = static_cast<unsigned char>(*file);
+        if (std::tolower(a) != std::tolower(b)) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -317,7 +332,7 @@ int main(int argc, char** argv) {
         if (argc > 1) {
             bool wanted = false;
             for (int i = 1; i < argc; ++i)
-                if (strncasecmp(argv[i], s.file, strlen(argv[i])) == 0) wanted = true;
+                if (iprefix(argv[i], s.file)) wanted = true;
             if (!wanted) continue;
         }
         ++ran;

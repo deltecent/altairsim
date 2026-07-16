@@ -1,0 +1,43 @@
+name: CPU exerciser
+
+# The 8080 exerciser (cpu-8080exm, ~2.9B instructions, ~10 min, label "slow") only
+# matters when the CPU/decoder changes. So run it path-filtered -- only on commits
+# that touch CPU/ISA code -- and on demand via workflow_dispatch. It is NOT in the
+# per-push CI matrix. One Linux runner is enough: CPU correctness is architecture
+# -independent, and this keeps the 10 minutes from multiplying across platforms.
+on:
+  push:
+    paths:
+      - 'src/cpu/**'
+      - 'src/isa/**'
+      - 'tests/cpu/**'
+      - 'tests/cputest.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/cpu-exerciser.yml'
+  pull_request:
+    paths:
+      - 'src/cpu/**'
+      - 'src/isa/**'
+      - 'tests/cpu/**'
+      - 'tests/cputest.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/cpu-exerciser.yml'
+  workflow_dispatch:
+
+jobs:
+  exerciser:
+    name: 8080 exerciser (slow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The "slow" label. In CI the only slow test that registers is cpu-8080exm
+      # (acceptance-hostbridge-build is disk-gated and absent without the .DSK).
+      - name: Run slow CPU suite
+        run: ctest --test-dir build -L slow --output-on-failure

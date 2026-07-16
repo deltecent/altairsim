@@ -198,6 +198,14 @@ target_include_directories(altair_core PUBLIC src)
 # Nothing links until the OS is where it belongs.
 add_dependencies(altair_core platform_lint)
 
+# The win32 socket layer (src/platform/win32/socket_win32.cpp) pulls in Winsock;
+# link it. POSIX needs no equivalent -- sockets live in libc. This if(WIN32) is a
+# build-script OS conditional, which is fine: the 2.1 lint governs C++ source, not
+# CMake. PUBLIC so the test/tool executables that link altair_core inherit it.
+if(WIN32)
+  target_link_libraries(altair_core PUBLIC ws2_32)
+endif()
+
 add_executable(altairsim src/main.cpp)
 target_link_libraries(altairsim PRIVATE altair_core)
 
