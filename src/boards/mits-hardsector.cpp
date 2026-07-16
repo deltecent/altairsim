@@ -464,7 +464,7 @@ bool HardSectorFdc::mount(const std::string& unit, const std::string& path, bool
     // Nothing re-opens the medium afterwards: HostFile holds the handle it was given
     // and syncs back through it, so resolving once, here, is resolving for good.
     auto media = openMedia(resolvePath(path), ro, err);
-    if (!media) return false;
+    if (!media) { err += pathNote(path); return false; }
 
     Drive& d = drive_[(size_t)i];
     Drive  fresh;             // probe into a FRESH drive: a probe that fails must not leave

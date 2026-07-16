@@ -120,6 +120,10 @@ AltairZ80 solves this with an `L` switch on its utilities, which puts the burden
 altairsim -x 'SET hb0 HOSTDIR=/tmp/xfer' -i
 ```
 
+**This sandbox and the path rule in `docs/config.md` are different things, and only one of them is a fence.** `resolvePath()` appears in the line above, so the resemblance is easy to over-read: that call decides *what a relative `hostdir` points at*, exactly as it does for a `mount`, and then it is finished. The confinement is not its doing — it belongs entirely to `HostDir` (`src/host/hostdir.h`), which rejects `..`, absolute paths, drive letters and symlink escapes on every name the **guest** sends, and answers `Outside` when it says no.
+
+So the two answer different questions. `configDir_` answers *where does this path point*, and confines nothing: a machine file may name any file on the disk. `hostdir` answers *how far may a CP/M program reach*, and is the only boundary in the system. Changing where machine-file paths resolve would not move this sandbox by an inch.
+
 **There is no `interrupt` property.** Every operation completes inside the `OUT` that asked for it, so there is nothing to wait for and nothing to fire on. A jumper that could only ever mean "already done" would be a lie about the card.
 
 ## Reset

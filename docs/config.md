@@ -73,6 +73,14 @@ you mean the `scratch.dsk` you can see in the shell you are standing in — neve
 
 Absolute paths and the `builtin:` scheme are never re-based: `mount = "builtin:dbl"` is a ROM in the binary, not a file, and must never become one.
 
+### This is not a sandbox
+
+**Nothing on this page confines anything.** Both halves of the rule answer one question — *what is a relative path relative to* — and that is a lookup, not a fence. A machine file may write `../../../etc/passwd` and it will be opened. `MOUNT` has never been restricted to a directory tree, and none of this is a security boundary.
+
+**The Host Bridge's `hostdir` is the other thing, and it is a real fence.** That one is a sandbox: it is the directory a *guest* program (`R.COM`, `W.COM`) is confined to, and it refuses `..` components, absolute paths, drive letters, and symlink escapes. It defaults to the directory you launched `altairsim` from. See `docs/boards/hostbridge.md`.
+
+The two are independent and share no mechanism. They get confused because both end in the words "which directory?" — but one decides where a path **points**, and the other decides how far a guest may **reach**. Moving one would not move the other.
+
 ## Verbs
 
 - **`MOUNT`** refers to **host files** (disk and tape images).

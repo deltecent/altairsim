@@ -160,6 +160,48 @@ inside the machine file, so it is relative to the machine file** — even though
 commands look exactly like things you type. They were written by the file's author, so they
 mean what the file's author could see.
 
+### When it bites, and what it looks like
+
+The rule is invisible until a file is missing, and then it can look like a typo that is not one.
+Keep your machine files in a `machines/` folder, write a path meaning *the folder you launched
+from*, and you get the one confusing case:
+
+```toml
+[[board.drive]]
+unit  = 0
+mount = "disks/Kermit/cpm.dsk"      # meant: the disks/ I can see from my shell
+```
+
+`altairsim -f ./machines/8800c.toml` then says:
+
+```
+./machines/8800c.toml: dsk0: 'machines/disks/Kermit/cpm.dsk': no such file
+  ('disks/Kermit/cpm.dsk' is relative to the machine file that wrote it, in ./machines/)
+```
+
+**The disk is not missing.** It was looked for beside the machine file, because that is where the
+rule says a machine file's paths point. Write it the way the machine file sees it:
+
+```toml
+mount = "../disks/Kermit/cpm.dsk"   # up out of machines/, then down into disks/
+```
+
+…or keep the machine file next to what it mounts, which is what every shipped example does.
+
+Note what is *not* affected: once the machine is up, `MOUNT dsk0:drive1 disks/Kermit/cpm.dsk`
+typed at the prompt needs no `../`, because you are the one typing it. The `../` belongs to the
+file, not to you.
+
+### None of this is a sandbox
+
+The path rule decides **where a path points**, and confines nothing. A machine file may mount any
+file on your disk — with `..`, or with an absolute path — and it will be opened.
+
+The one real fence is the Host Bridge's **`hostdir`**, which limits how far a CP/M program running
+*inside* the machine can reach when it reads and writes host files. That is a different mechanism
+for a different purpose — see *Moving files in and out* — and nothing you write in a machine file
+moves it.
+
 ## Running a command and leaving — `-x` and `-s`
 
 `altairsim` does not have to be interactive.

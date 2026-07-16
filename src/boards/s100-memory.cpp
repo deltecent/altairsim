@@ -151,7 +151,9 @@ bool MemoryBoard::loadRomRegion(size_t idx, std::string& err) {
             // Name where we LOOKED, not what was typed. When a machine file two
             // directories away named this ROM, "cannot open 'dbl.bin'" sends you
             // hunting in the wrong place; the resolved path tells you the truth.
-            err = "cannot open '" + file + "'";
+            // ...and pathNote() then says WHY we looked there, which is the half
+            // the resolved path alone still leaves you to guess at.
+            err = "cannot open '" + file + "'" + pathNote(r.mount);
             return false;
         }
         std::vector<uint8_t> raw((std::istreambuf_iterator<char>(f)),
