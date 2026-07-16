@@ -1,15 +1,17 @@
 // Win32 serial port -- SetCommState / GetCommModemStatus. See src/platform/serial.h.
 //
 // ---------------------------------------------------------------------------
-// UNBUILT AND UNTESTED. Written 2026-07-12 on macOS, where no compiler has ever
-// looked at it and no cable has ever proved it. It is here so that a Windows build
-// LINKS and so that the porting work is a debugging job rather than a design job --
-// but do not mistake it for working code, and do not mistake its absence of #ifdefs
-// for evidence that it runs. The POSIX half was proved against two FTDI cables and
-// a null modem (tests/serialtest.cpp); this half has had none of that.
+// PROVED ON REAL HARDWARE, 2026-07-15. Written 2026-07-12 on macOS with no compiler
+// or cable near it, this file now passes the full hardware suite on native Windows:
+// two USB FTDI ports (COM4 <-> COM10) with a null modem between them, tests/
+// serialtest.cpp via `ctest -L hw` -- 25 checks, 0 failed, both the platform-layer
+// section and the in-machine 6850 section (real /CTS flow control and a latched
+// /DCD carrier-drop interrupt), stable across repeat runs.
 //
-// docs/porting-notes.md says the same thing, and the first person to build on
-// Windows should expect to spend an afternoon here.
+// The two things porting-notes.md flagged as most-likely-wrong turned out RIGHT:
+// the MAXDWORD/0/0 COMMTIMEOUTS idiom gives a genuinely non-blocking read, and
+// EscapeCommFunction(SETRTS/CLRRTS) does NOT fight RTS_CONTROL_ENABLE -- manual pin
+// control wins, which is what the 6850 needs. Left unchanged because it works.
 // ---------------------------------------------------------------------------
 
 #include "platform/serial.h"

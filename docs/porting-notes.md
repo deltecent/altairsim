@@ -1,12 +1,14 @@
 # Porting notes — what the prior work taught us
 
-> ## ⚠ `src/platform/win32/` IS WRITTEN, UNBUILT AND UNTESTED
+> ## ⚠ `src/platform/win32/`: SERIAL IS PROVED; SOCKET AND TERMINAL ARE NOT
 >
-> **Added 2026-07-12, on macOS, where no compiler has ever looked at it.** `serial_win32.cpp` (`SetCommState` / `GetCommModemStatus` / `EscapeCommFunction`), `socket_win32.cpp` (Winsock) and `terminal_win32.cpp` (`SetConsoleMode`) exist so that a Windows build **links** and so that the porting work is a debugging job rather than a design job.
+> **Written 2026-07-12 on macOS, where no compiler had looked at it.** `serial_win32.cpp` (`SetCommState` / `GetCommModemStatus` / `EscapeCommFunction`), `socket_win32.cpp` (Winsock) and `terminal_win32.cpp` (`SetConsoleMode`) exist so that a Windows build **links** and so that the porting work is a debugging job rather than a design job. All three now **build and link cleanly** on native Windows (MSVC) and the whole registered test suite passes.
 >
-> **Do not mistake it for working code.** Its absence of `#ifdef`s is not evidence that it runs. The POSIX half was proved against two FTDI cables and a null modem (`tests/serialtest.cpp`, `ctest -L hw`) and, for the terminal, against a pty; this half has had none of that, and the first person to build on Windows should expect to spend an afternoon in it.
+> **`serial_win32.cpp` is proved against real hardware (2026-07-15).** Two USB FTDI ports, `COM4 <-> COM10`, null modem between them: `tests/serialtest.cpp` via `ctest -L hw` — 25 checks, 0 failed, both the platform-layer section and the in-machine 6850 (real `/CTS` flow control and a latched `/DCD` carrier-drop interrupt), stable across repeat runs. The two spots called out below as most-likely-wrong (`MAXDWORD/0/0` and `EscapeCommFunction` vs `RTS_CONTROL_ENABLE`) both turned out **right** and are unchanged.
 >
-> Things most likely to be wrong, in order: the `COMMTIMEOUTS` idiom for a non-blocking read (`MAXDWORD/0/0`); whether `EscapeCommFunction` and `RTS_CONTROL_ENABLE` fight each other over RTS; `select()` on a connecting socket, where Winsock genuinely uses the *except* set that POSIX ignores; and, in the terminal, `readInput()`'s peek-and-discard loop over the console input queue (`ReadFile` on a console **blocks**, and that peek is the only thing preventing it — if keystrokes vanish or input hangs, start there) and `ENABLE_VIRTUAL_TERMINAL_INPUT`, which is what turns the arrow keys into the `ESC [ A` sequences `lineedit.cpp` already parses. A Windows too old for it fails `SetConsoleMode`, and the code falls back rather than growing a conditional.
+> **`socket_win32.cpp` and `terminal_win32.cpp` are NOT proved that way.** The socket loopback tests exercise the Winsock path in the suite, but nobody has driven it against a real remote peer; the terminal has had no interactive console confirmation at all. Its absence of `#ifdef`s is not evidence that either runs in the field.
+>
+> Things most likely still to be wrong, in order: `select()` on a connecting socket, where Winsock genuinely uses the *except* set that POSIX ignores; and, in the terminal, `readInput()`'s peek-and-discard loop over the console input queue (`ReadFile` on a console **blocks**, and that peek is the only thing preventing it — if keystrokes vanish or input hangs, start there) and `ENABLE_VIRTUAL_TERMINAL_INPUT`, which is what turns the arrow keys into the `ESC [ A` sequences `lineedit.cpp` already parses. A Windows too old for it fails `SetConsoleMode`, and the code falls back rather than growing a conditional.
 
 ### The §2.1 lint is ON (2026-07-12)
 
