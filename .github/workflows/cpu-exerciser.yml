@@ -1,10 +1,11 @@
 name: CPU exerciser
 
-# The 8080 exerciser (cpu-8080exm, ~2.9B instructions, ~10 min, label "slow") only
-# matters when the CPU/decoder changes. So run it path-filtered -- only on commits
-# that touch CPU/ISA code -- and on demand via workflow_dispatch. It is NOT in the
-# per-push CI matrix. One Linux runner is enough: CPU correctness is architecture
-# -independent, and this keeps the 10 minutes from multiplying across platforms.
+# The instruction exercisers (the "slow" label: cpu-8080exm ~2.9B instructions;
+# cpu-zexdoc and cpu-zexall ~5.8B each for the Z80) only matter when the CPU/decoder
+# changes. So run them path-filtered -- only on commits that touch CPU/ISA code --
+# and on demand via workflow_dispatch. They are NOT in the per-push CI matrix. One
+# Linux runner is enough: CPU correctness is architecture-independent, and this keeps
+# the minutes from multiplying across platforms.
 on:
   push:
     paths:
@@ -26,7 +27,7 @@ on:
 
 jobs:
   exerciser:
-    name: 8080 exerciser (slow)
+    name: CPU exercisers (slow)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +38,8 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      # The "slow" label. In CI the only slow test that registers is cpu-8080exm
-      # (acceptance-hostbridge-build is disk-gated and absent without the .DSK).
+      # The "slow" label: cpu-8080exm, cpu-zexdoc, cpu-zexall (each a few minutes).
+      # acceptance-hostbridge-build is also "slow" but disk-gated and absent without
+      # the .DSK, so it does not register here.
       - name: Run slow CPU suite
         run: ctest --test-dir build -L slow --output-on-failure

@@ -18,8 +18,10 @@ void test_isa() {
     if (!d) return;
     CHECK(std::string(d->name()) == "8080", "and it says so");
     CHECK(disassemblerFor("8080") == disassemblerFor("8080"), "the same one every time");
-    CHECK(disassemblerFor("Z80") == nullptr,
-          "and we do NOT speak Z80 -- decoding one as an 8080 gives plausible, wrong text");
+    CHECK(disassemblerFor("Z80") != nullptr,
+          "and we NOW speak Z80 -- a decoder of its own, not the 8080 with a costume on");
+    CHECK(disassemblerFor("Z80") != disassemblerFor("8080"),
+          "and it is a DIFFERENT decoder -- the same bytes read as CB-prefix or NOP, not both");
     CHECK(disassemblerFor("8080") == disassemblerFor("8080"), "case does not matter");
 
     // DBL's first three instructions, which are the reason the PROM needs no

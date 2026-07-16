@@ -18,6 +18,7 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | Reference | What it covers |
 |---|---|
 | [Altair 8800 Operators Manual](Altair%208800%20Operators%20Manual.md) | Front-panel switches and LEDs, the 8080 register/flag layout, the full 78-instruction set with binary+octal opcodes, deposit/examine/run/step procedures, toggle-in sample programs. |
+| [Zilog Z80 CPU](Zilog%20Z80.md) | Zilog Z80 CPU User Manual (UM0080): the full register/alternate/special-register set, the S Z F5 H F3 P/V N C flag layout, all instruction groups with hex opcodes/T-states/flags including the CB/ED/DD/FD/DDCB/FDCB prefix maps, interrupt modes 0/1/2 with NMI and IFF1/IFF2, and reset behavior. |
 | [Altair 8800 Theory of Operation](Altair%208800%20Theory%20of%20Operation.md) | CPU-board gating and 2 MHz clock phases, the 8080 status byte and its data-bus bits, machine-cycle/interrupt/hold/reset timing, and the complete 100-pin S-100 bus pinout. |
 | [Altair 8800 front panel schematic](Altair%208800%20front%20panel%20schematic.md) | Schematic 880-106: the `IN 0FFH` sense-switch decode (sINP + A8–A15 NAND), the A0–A15/D0–D7 LED buffers, and the RUN/STOP/STEP/EXAMINE/DEPOSIT one-shot sequencing. |
 | [TurnKey Board](TurnKey%20Board.md) | Turnkey Module: 1K boot PROM with the port-0xFF disable it snoops, the on-board 6850 SIO, the Auto-Start JMP synthesis (FF00 floppy / FD00 hard disk), and the Turnkey Monitor commands. |

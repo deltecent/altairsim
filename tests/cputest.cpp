@@ -128,20 +128,31 @@ const uint8_t kBdosStub[] = {
 
 struct Suite {
     const char* file;
+    const char* cpu;       // "8080" or "z80" -- the core this suite exercises
     const char* pass;      // must appear
     const char* fail;      // must NOT appear (empty: no failure banner exists)
     uint64_t    maxInsns;  // runaway guard
+    const char* subdir;    // relative to the cpu-test root ("" for the 8080 suites)
 };
 
 // The strings are the suites' OWN, read out of their own source and .COM images
 // -- not invented here. 8080PRE has no failure banner at all: it either prints
 // its one completion line or it does not, so for it "pass" is the only signal
 // and silence IS the failure.
+//
+// The Z80 exercisers (ZEXDOC/ZEXALL) share 8080EXM's convention exactly: each
+// subtest prints "<name>....OK" or "....ERROR **** crc expected: found:", and the
+// whole run ends "Tests complete". ZEXALL is the harder of the two -- it does NOT
+// mask the undocumented F5/F3 bits or the MEMPTR leaks, so it is the real gate.
+// Both run billions of instructions (the maxInsns cap is a runaway guard, sized
+// well above a real run, not a budget).
 const Suite kSuites[] = {
-    {"TST8080.COM", "CPU IS OPERATIONAL",              "CPU HAS FAILED",         50'000'000ull},
-    {"8080PRE.COM", "8080 Preliminary tests complete", "",                       50'000'000ull},
-    {"CPUTEST.COM", "CPU TESTS OK",                    "ERROR",           1'000'000'000ull},
-    {"8080EXM.COM", "Tests complete",                  "ERROR ****",     10'000'000'000ull},
+    {"TST8080.COM", "8080", "CPU IS OPERATIONAL",              "CPU HAS FAILED",         50'000'000ull,    ""},
+    {"8080PRE.COM", "8080", "8080 Preliminary tests complete", "",                       50'000'000ull,    ""},
+    {"CPUTEST.COM", "8080", "CPU TESTS OK",                    "ERROR",           1'000'000'000ull,        ""},
+    {"8080EXM.COM", "8080", "Tests complete",                  "ERROR ****",     10'000'000'000ull,        ""},
+    {"ZEXDOC.COM",  "z80",  "Tests complete",                  "ERROR ****",    200'000'000'000ull,   "z80"},
+    {"ZEXALL.COM",  "z80",  "Tests complete",                  "ERROR ****",    200'000'000'000ull,   "z80"},
 };
 
 struct Rig {
@@ -149,7 +160,7 @@ struct Rig {
     ConsoleBoard* con = nullptr;
     CpuCore*      cpu = nullptr;
 
-    Rig() {
+    explicit Rig(const char* cpuType) {
         std::string err;
 
         Board* b = m.add("memory", "mem0", err);
@@ -168,7 +179,7 @@ struct Rig {
         m.bus.attach(con);
         console_ = std::move(owned);
 
-        m.add("8080", "cpu0", err);
+        m.add(cpuType, "cpu0", err);
         cpu = m.cpu();
         cpu->reset(Reset::PowerOn);
 
@@ -211,9 +222,11 @@ bool loadFile(const std::string& path, std::vector<uint8_t>& out) {
 bool run(const Suite& s, const std::string& dir) {
     std::printf("\n---- %s ----------------------------------------------------\n", s.file);
 
+    std::string sdir = *s.subdir ? dir + "/" + s.subdir : dir;
+
     std::vector<uint8_t> image;
-    if (!loadFile(dir + "/" + s.file, image)) {
-        std::printf("  FAIL  cannot read %s/%s\n", dir.c_str(), s.file);
+    if (!loadFile(sdir + "/" + s.file, image)) {
+        std::printf("  FAIL  cannot read %s/%s\n", sdir.c_str(), s.file);
         return false;
     }
     if (kTpa + image.size() > kBdos) {
@@ -222,7 +235,7 @@ bool run(const Suite& s, const std::string& dir) {
         return false;
     }
 
-    Rig rig;
+    Rig rig(s.cpu);
 
     // Page zero is a minefield ON PURPOSE. See the header comment.
     for (uint16_t a = 0; a < 0x0100; ++a) rig.m.bus.memWrite(a, 0x76);  // HLT
@@ -323,7 +336,7 @@ static bool iprefix(const char* arg, const char* file) {
 int main(int argc, char** argv) {
     std::string dir = ALTAIR_CPU_TEST_DIR;
 
-    std::printf("8080 VALIDATION GATE (DESIGN.md 3.2) -- suites from %s\n", dir.c_str());
+    std::printf("CPU VALIDATION GATE (DESIGN.md 3.2) -- suites from %s\n", dir.c_str());
 
     int failed = 0, ran = 0;
     for (const Suite& s : kSuites) {
@@ -341,7 +354,7 @@ int main(int argc, char** argv) {
 
     std::printf("\n==========================================================\n");
     if (!ran) {
-        std::printf("no suite matched. known: TST8080 8080PRE CPUTEST 8080EXM\n");
+        std::printf("no suite matched. known: TST8080 8080PRE CPUTEST 8080EXM ZEXDOC ZEXALL\n");
         return 2;
     }
     std::printf("%d suite%s run, %d failed\n", ran, ran == 1 ? "" : "s", failed);

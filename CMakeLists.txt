@@ -141,7 +141,9 @@ add_library(altair_core STATIC
   src/core/debug.cpp
   src/core/spindle.cpp
   src/isa/isa8080.cpp
+  src/isa/isaZ80.cpp
   src/cpu/cpu8080.cpp
+  src/cpu/cpuZ80.cpp
   src/host/stream.cpp
   src/host/filter.cpp
   src/host/console.cpp
@@ -163,6 +165,9 @@ add_library(altair_core STATIC
   src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
+  # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
+  # CpuZ80 instead of a Cpu8080. Listed after it so the reader sees the pair.
+  src/boards/mits-z80cpu.cpp
   # The two MITS hard-sector floppy controllers, and the register model they share.
   # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
   # programming model, and the period BOOT.ASM declares the ports and every status/command
@@ -249,7 +254,9 @@ add_executable(altair_tests
   tests/test_units.cpp
   tests/test_machines.cpp
   tests/test_isa.cpp
+  tests/test_z80_isa.cpp
   tests/test_cpu.cpp
+  tests/test_z80_cpu.cpp
   tests/test_debug.cpp
   tests/test_sio2.cpp
   tests/test_88sio.cpp
@@ -353,6 +360,13 @@ add_test(NAME cpu-cputest COMMAND altair_cputest CPUTEST)
 add_test(NAME cpu-8080exm COMMAND altair_cputest 8080EXM)
 set_tests_properties(cpu-8080exm PROPERTIES LABELS slow TIMEOUT 1800)
 set_tests_properties(cpu-cputest PROPERTIES TIMEOUT 600)
+
+# The Z80 exercisers -- the same gate, one core down. ZEXDOC validates documented
+# behavior; ZEXALL additionally pins the undocumented F5/F3 bits. Each is ~46
+# billion instructions, so both are `slow` and skipped by `ctest -LE slow`.
+add_test(NAME cpu-zexdoc COMMAND altair_cputest ZEXDOC)
+add_test(NAME cpu-zexall COMMAND altair_cputest ZEXALL)
+set_tests_properties(cpu-zexdoc cpu-zexall PROPERTIES LABELS slow TIMEOUT 3600)
 
 # ---------------------------------------------------------------------------
 # THE ACCEPTANCE TESTS -- period software, on the whole machine, through the CLI.
