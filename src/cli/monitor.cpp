@@ -154,7 +154,9 @@ bool Monitor::range(const std::string& t, uint32_t& lo, uint32_t& hi, std::ostre
     if (d != std::string::npos && d > 0) {
         if (!addr(t.substr(0, d), lo, err) || !addr(t.substr(d + 1), hi, err)) return false;
     } else if (sl != std::string::npos) {
-        uint32_t len;
+        uint32_t len = 0;  // = 0: addr() writes it only on success, which MSVC's flow
+                           // analysis can't see (C4701). The path to line below is only
+                           // reached when both addr() calls succeeded, so it is always set.
         if (!addr(t.substr(0, sl), lo, err) || !addr(t.substr(sl + 1), len, err)) return false;
         if (len == 0) len = 1;
         hi = lo + len - 1;
