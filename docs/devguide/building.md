@@ -16,6 +16,16 @@ That is not a boast about minimalism for its own sake. It is a property worth de
 day this needs a package manager to build is the day it stops being something a person can
 pick up in ten years and compile.
 
+**After a `git pull`, the commands do not change.** `cmake -S . -B build && cmake --build build`
+again — there is no separate incremental procedure and no need to delete `build/`. New `.cpp`
+files can't be missed because sources are listed in `CMakeLists.txt` rather than globbed, so
+adding one edits `CMakeLists.txt` and forces a reconfigure; `roms/` and `machines/` *are*
+globbed but use `CONFIGURE_DEPENDS`, so they re-glob on every build. The build directory does
+cache absolute paths, though, so **rename the checkout or switch compilers and you must
+`rm -rf build`** — it fails with a loud `CMakeCache.txt directory is different` error, not a
+silent wrong answer. If a build breaks immediately after a pull, suspect a stale `build/`
+before suspecting the code. `docs/building-linux.md` §6 has the details.
+
 ## What actually got built
 
 **Built and tested on Linux, macOS, and Windows.** The code is written to be portable — C++20,
