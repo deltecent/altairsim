@@ -113,8 +113,15 @@ void propTable(std::ostream& o, std::vector<Property>& props) {
     o << "| Key | Kind | Default | Legal | Meaning |\n";
     o << "|---|---|---|---|---|\n";
     for (auto& p : props) {
-        std::string def = p.get ? p.get().text(p.radix) : "";
-        if (!def.empty()) def = "`" + def + "`";
+        // A READ-ONLY PROPERTY HAS NO DEFAULT, and printing one is not merely useless.
+        // Its value is whatever the running machine last made it, so what lands here is
+        // whatever the machine that BUILT THE MANUAL happened to hold -- `hostdir_root`
+        // would print the maintainer's build directory into every reader's copy. `—` for
+        // the same reason Legal is `—`: there is nothing here you may write.
+        // `—`, not a blank cell: `hostdir`'s default really IS the empty string, and the
+        // two must not look alike.
+        std::string def = readOnly(p) ? "—" : (p.get ? p.get().text(p.radix) : "");
+        if (!def.empty() && def != "—") def = "`" + def + "`";
         std::string meaning = cell(p.help);
         if (readOnly(p)) meaning += " **(read-only — not a key you may set)**";
         if (p.irqJumper) meaning += " *(interrupt strap)*";
