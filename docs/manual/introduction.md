@@ -32,15 +32,18 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 
 ## What it does
 
-- **An 8080 that is validated, not merely plausible.** TST8080, 8080PRE, CPUTEST and the
-  full 8080EXM exerciser all pass — every one of the exerciser's CRC groups. Flags, carries,
-  the undocumented behaviours, the lot.
-- **Ten board types**, each modelled from its own manual: the CPU card, RAM/ROM, two serial
-  cards, a cassette interface, two floppy controllers, a vectored-interrupt/real-time-clock
-  card, the front panel, and one card of our own for moving files in and out.
-- **A monitor** — the prompt you get when the machine is not running — with breakpoints,
-  single-stepping, disassembly, memory examine and deposit, and a view of the bus itself:
-  who decodes what, who is pulling which interrupt line, and where two cards are fighting.
+- **An 8080 that is validated, not merely plausible — and a Z80 alongside it.** TST8080,
+  8080PRE, CPUTEST and the full 8080EXM exerciser all pass — every one of the exerciser's CRC
+  groups. Flags, carries, the undocumented behaviours, the lot. The Z80 clears the same bar,
+  against ZEXDOC and ZEXALL.
+- **Eleven board types**, all but one modelled from its own manual: two CPU cards (an 8080 and
+  a Z80), RAM/ROM, two serial cards, a cassette interface, two floppy controllers, a
+  vectored-interrupt/real-time-clock card, the front panel, and one card of our own for moving
+  files in and out.
+- **A monitor** — the prompt you get when the machine is not running — with breakpoints (plain
+  or conditional), single-stepping, disassembly, memory examine and deposit, a bus-cycle trace
+  and a history ring, and a view of the bus itself: who decodes what, who is pulling which
+  interrupt line, and where two cards are fighting.
 - **Real I/O.** A serial card can be wired to your terminal, to a TCP socket (so you can
   telnet into the guest), or to an actual serial port on your machine, with the modem
   control lines wired through.
@@ -52,14 +55,15 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 
 This section is here because a manual that only lists strengths is an advertisement.
 
-- **It is an 8080.** No Z80, no 8085. Software that needs them will not run.
-- **Eight monitor commands are reserved but not built** — `TRACE`, `SNAPSHOT`, `RESTORE`,
-  `RECORD`, `REPLAY`, `HISTORY`, `EDIT` and `STOP`. They **resolve**: type `T` and you are
-  told that `TRACE` is waiting on the debugger, rather than being told nothing at all. That
-  is deliberate — their abbreviations are claimed *now*, so that the day they land, `T` does
-  not silently stop meaning what your fingers think it means.
-- **There is no snapshot, no replay, and no execution trace.** When you stop the machine,
-  you stop it; you cannot rewind it.
+- **It runs an 8080 or a Z80 — not an 8085.** Software that needs an 8085 will not run.
+- **Six monitor commands are reserved but not built** — `SNAPSHOT`, `RESTORE`, `RECORD`,
+  `REPLAY`, `EDIT` and `STOP`. They **resolve**: type `SN` and you are told that `SNAPSHOT`
+  is waiting on the debugger, rather than being told nothing at all. That is deliberate — their
+  abbreviations are claimed *now*, so that the day they land, `SN` does not silently stop
+  meaning what your fingers think it means.
+- **There is no snapshot and no replay.** You can trace the machine (`TRACE`) and read the
+  run-up to a stop from the `HISTORY` ring, but you cannot save the machine's state and step
+  backwards into it.
 - **There is no video and no audio.** The Altair had neither. A terminal on a serial port is
   the display, exactly as it was.
 - **Not every S-100 card is here.** The ones that are, are in the boards chapter. A Tarbell

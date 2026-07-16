@@ -38,7 +38,7 @@ The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY,
 | `S` | STEP | |
 | `N` | NEXT | STEP that runs *over* a CALL/RST instead of into it |
 | `R` | RUN | the panel's switch. `G` names nothing at all now |
-| `H` | HISTORY | *waiting on the debugger* |
+| `H` | HISTORY | the ring of recent bus cycles — always recording |
 | `M` | MOUNT | |
 | `B` | BREAK | |
 | `E` | EDIT | *waiting on the line editor* |
@@ -66,7 +66,7 @@ The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY,
 | `CONN` | CONNECT | `console | null | loopback | socket:PORT | socket:HOST:PORT | serial:DEVICE` |
 | `RES` | RESET | it sits with POWER, and it pays three letters — see above |
 | `P` | POWER | |
-| `T` | TRACE | *waiting on the debugger* |
+| `T` | TRACE | logs every bus cycle — to the console or a file |
 | `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves a RUN today* |
 | `SN` | SNAPSHOT | *waiting on the debugger* |
 | `REST` | RESTORE | *waiting on the debugger* |
@@ -344,11 +344,11 @@ altairsim> EX 8000
 
 ## Commands that do not exist yet still resolve
 
-TRACE, SNAPSHOT, RECORD, HISTORY and the rest are all in the table, and typing `T` today prints:
+SNAPSHOT, RESTORE, RECORD, REPLAY and the rest are all in the table, and typing `SN` today prints:
 
 ```
-altairsim> T
-TRACE: not implemented yet -- waiting on the debugger.
+altairsim> SN
+SNAPSHOT: not implemented yet -- waiting on the debugger.
 ```
 
 **This is the point, not an oversight.** If only the built commands were listed, `S` would mean SHOW today and silently start meaning STEP the day the CPU lands — and someone's fingers would keep typing `S` and get something else. Abbreviations are a contract with muscle memory, so the contract is fixed now, before anyone has any muscle memory to break.

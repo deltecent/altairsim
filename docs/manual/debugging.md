@@ -77,6 +77,22 @@ NOBREAK 2             clear one (the id is a count, so decimal)
 NOBREAK               clear them all
 ```
 
+**An address breakpoint can carry a condition.** `BREAK <addr> IF <expr>` stops only when the
+expression is true — the registers, tested the moment the PC reaches the address. It is what you
+reach for when a breakpoint fires ten thousand times before the once you care about: put the
+distinguishing state in the condition and let the machine run until it holds.
+
+A bare word that names a register *is* that register, so a literal needs a leading zero — `0A`
+is ten, `A` is the accumulator. `==` `!=` `<` `>` `<=` `>=` compare, `&&` `||` combine, `&` `|`
+mask, and parentheses group. Only a plain address breakpoint takes a condition: the `MEM`/`IO`
+watches fire in the middle of a cycle, where a register read has no boundary-consistent answer.
+
+```
+BREAK 100 IF A==0
+BREAK 100 IF HL==8000 && Z==1
+BREAK 100 IF (A&0F)==0        only when the low nibble is zero
+```
+
 ## Reading a block of memory — `DUMP`
 
 `DUMP` is how you read a lot of memory at once. A bare `DUMP <addr>` runs to the **end of its
@@ -201,6 +217,36 @@ SHOW BUS IRQ          the eight interrupt lines: who is strapped where, who is p
 SHOW BUS CONTENTION   where two cards answer the same thing
 ```
 
+## The bus over time — `TRACE`, `HISTORY`
+
+`WHO` and `SHOW BUS` are snapshots — the backplane as it is *now*. `TRACE` and `HISTORY` show
+you the same backplane over *time*, which is what you want when the bug is not where the machine
+stopped but somewhere in how it got there.
+
+**`HISTORY` is a flight recorder.** A fixed-size ring of the most recent bus cycles is always
+filling while the machine runs, so when a breakpoint fires — or the machine wanders off into the
+weeds — the run-up to it is *already* recorded. You do not arm it; it is on. A bare `HISTORY`
+shows the last sixteen cycles, oldest first; `HISTORY <n>` shows the last *n*. Each line is a
+cycle, not an instruction, so a DMA transfer's cycles are in there too.
+
+```
+HISTORY               the last 16 cycles
+HISTORY 100           the last hundred (a count, so decimal)
+```
+
+**`TRACE` logs every cycle as it happens** — to the console, or to a file. Like the breakpoints
+that watch the bus, it is not a CPU feature: it watches the same stream every card sees, so it
+works unchanged on any processor you put in the machine. A `MASK` keeps only the categories you
+name, and no mask keeps them all: `IN`, `OUT`, `IRQ`, `DMA`, `CONTENTION`. A cycle survives the
+mask if it matches any of them.
+
+```
+TRACE ON                     every cycle, to the console
+TRACE ON run.log             ...to a file instead
+TRACE ON MASK=IN,OUT         just the port traffic
+TRACE OFF                    stop tracing
+```
+
 ## A debugging session
 
 The machine is not booting. Where does it get to?
@@ -230,9 +276,12 @@ altairsim> RUN
 
 ## The tools that are not here yet
 
-`TRACE`, `SNAPSHOT`, `RESTORE`, `RECORD`, `REPLAY` and `HISTORY` all **resolve** and all tell
-you they are waiting on the debugger. There is no execution trace and no rewind. When you
-stop the machine, you stop it where it is.
+`SNAPSHOT`, `RESTORE`, `RECORD` and `REPLAY` all **resolve** and all tell you they are waiting
+on the debugger. There is no rewind: `TRACE` logs the machine as it runs and `HISTORY` shows you
+the run-up to a stop, but you cannot save the machine's state and step *backwards* into it, and
+there is no record-and-replay to reproduce a run from the start. When you stop the machine, you
+stop it where it is.
 
-Say so plainly rather than let you find out: if you need to catch a bug that happens once in
-ten million instructions and you cannot predict where, the tool for that is not built.
+Say so plainly rather than let you find out: if you need to catch a bug that happens once in ten
+million instructions and you cannot predict where, a conditional breakpoint (`BREAK <addr> IF
+…`) and the `HISTORY` ring are the tools you have — but nothing here will replay it for you.

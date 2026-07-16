@@ -87,10 +87,10 @@ In TOML these appear as the `mount` and `connect` keys; at the monitor they are 
 | `console` | The host keyboard and screen. Exactly one unit may hold it — connecting a second **steals** it, and says who from. | **built** |
 | `null` | Discard. What an unconnected unit is bound to, which is why an unconnected line is not an error. | **built** |
 | `loopback` | A jumper between TX and RX. The guest hears itself. | **built** |
-| `socket:2323` | Listening TCP socket — a terminal emulator connects *in*. | not yet |
-| `socket:host:port` | Outbound TCP connection. | not yet |
-| `serial:/dev/cu.usbserial-X` | Real host serial port (POSIX). | not yet |
-| `serial:COM3` | Real host serial port (Windows). | not yet |
+| `socket:2323` | Listening TCP socket — a terminal emulator connects *in*. | **built** |
+| `socket:host:port` | Outbound TCP connection. | **built** |
+| `serial:/dev/cu.usbserial-X` | Real host serial port (POSIX). | **built** |
+| `serial:COM3` | Real host serial port (Windows). | **built** |
 | `file:path` | A file, for paper tape. | not yet |
 
 Asking for one that is not built yet **says so by name**, rather than failing as though you had mistyped it.
@@ -294,14 +294,14 @@ enabled = true             # runtime. A boot ROM that switches itself out after 
                            #   The operator has a PROM burner; the guest does not.
 
 [[board]]
-type = "88-2sio"
+type = "2sio"
 id   = "sio2a"
 port = 0x10
   [board.unit.a]
   connect = "console"
 
 [[board]]
-type   = "88-dcdd"
+type   = "dcdd"
 id     = "fdc"
 port   = 0x08              # occupies 0x08-0x0A
 drives = 4

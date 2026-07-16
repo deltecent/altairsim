@@ -8,17 +8,18 @@ cards doing the real work; take the cards out and there is nothing left but a bu
 the CPU *card* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a card out, put a different one in, and find out what the software does about it.
 
-This chapter says what the ten cards **are** — what the real hardware was, what it is for, and
+This chapter says what the eleven cards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every card is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The ten cards
+## The eleven cards
 
 | Type | What it is |
 |---|---|
 | `memory` | RAM and ROM, as a list of regions |
 | `8080` | the MITS 88-CPU |
+| `z80` | a Z80 CPU card — the same bus, a different instruction set |
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
 | `acr` | MITS 88-ACR — the cassette interface |
@@ -115,6 +116,24 @@ keyboard.** A hundred percent of a core becomes about three and a half.
 **The guest cannot tell.** Not "the guest probably won't notice" — it *cannot tell*, because the
 moment a byte arrives the processor is back before the guest's next poll could have seen anything
 different. An XMODEM transfer through an idling machine is byte-exact.
+
+---
+
+## `z80` — a Z80 CPU
+
+**A second processor card.** It plugs into the same backplane as the 88-CPU, decodes nothing, and
+drives the bus the same way — the only difference is the instruction set behind it. Put a `z80`
+where an `8080` would go and the bus, the boards, and the debugger neither know nor care; that is
+the whole point of keeping the processor a card.
+
+It carries the same three properties as the 8080 — `clock_hz` (the crystal, flat out by default),
+`idle` (stands down at a prompt), and the read-only `achieved_hz` — and each means exactly what it
+means there.
+
+The core is validated the same way the 8080 was, against the same kind of gate: ZEXDOC and ZEXALL,
+the standard Z80 exercisers, both pass before a single board is built on top of it. The built-in
+`z80` machine is a minimal one — a `z80`, 64K of RAM, and a 2SIO console — for putting it through
+its paces.
 
 ---
 
