@@ -1,13 +1,20 @@
 # Building `altairsim` on Windows
 
-**Status (2026-07-15): compiles and links with MSVC; bring-up in progress.**
+**Status (2026-07-15): builds, links, and passes the full test suite with MSVC.**
 The `src/platform/win32/` layer was written on macOS and had never been through a
-compiler until GitHub Actions CI was added. As of the first CI rounds it now
-**builds and links cleanly** on `windows-latest` (MSVC, Winsock via `ws2_32`), and
-**11 of 12 CI tests pass**. One known failure remains: the aggregate `unit` test
-binary crashes with `0xC0000409` (a Windows fast-fail — an `abort()`, an uncaught
-exception, or a `/GS` stack-cookie trip). Chasing it wants a local debugger — see
-§6. Treat a Windows build as a debugging job, not finished work
+compiler until GitHub Actions CI was added. It now **builds and links cleanly** on
+`windows-latest` (MSVC, Winsock via `ws2_32`), and **all registered tests pass**
+locally on native Windows.
+
+The `0xC0000409` fast-fail that the `unit` aggregate used to hit was a **test**
+bug, not a win32-layer one: `test_media.cpp` deleted a temp file while a live
+`HostFile` still held it open (POSIX unlinks an open file; Windows refuses and
+`fs::remove` threw an uncaught `filesystem_error`), and it also stripped only
+`owner_write` to simulate a read-only file, which the C++ filesystem maps to the
+Windows read-only attribute *only when every write bit is clear*. Both were fixed
+in the test — no `#ifdef` — so the teardown unmounts before it deletes and clears
+all the write bits. §6 still describes the fast-loop for the next win32 issue.
+Treat a Windows build as a debugging job, not finished work
 (`docs/porting-notes.md`).
 
 There are **no third-party dependencies** — the binary links only against the
@@ -108,8 +115,9 @@ ctest --test-dir build -C Release -LE slow --output-on-failure
   ones) do not register — they self-skip at configure time. That is expected and
   does not fail the build.
 - **`serial-hw`** self-skips (needs real serial ports via `ALTAIR_SERIAL_A/B`).
-- **Known failure:** the `unit` aggregate currently crashes with `0xC0000409` — see
-  §6 for how to isolate it.
+
+Everything that registers passes. If a new win32 problem crashes the `unit`
+aggregate with `0xC0000409`, §6 shows how to isolate it.
 
 ---
 
@@ -117,10 +125,11 @@ ctest --test-dir build -C Release -LE slow --output-on-failure
 
 - **Compiles and links** on `windows-latest` (MSVC, CI). The win32 serial, socket,
   and terminal implementations build; `CMakeLists.txt` links `ws2_32` for Winsock.
-- **11 of 12 CI tests pass** (the ones that register without `expect`/disk images).
-- **Not yet verified:** the `unit` binary runs to completion; the serial/socket/
-  terminal code actually *works* against real ports, sockets, and a console. The
-  win32 layer's most-likely-wrong spots are enumerated in `docs/porting-notes.md`.
+- **All registered tests pass** (the ones that register without `expect`/disk
+  images), including the `unit` aggregate now that its teardown bug is fixed.
+- **Not yet verified:** the serial/socket/terminal code actually *works* against
+  real ports, sockets, and a console. The win32 layer's most-likely-wrong spots are
+  enumerated in `docs/porting-notes.md`.
 
 ---
 
@@ -135,8 +144,9 @@ lets you run the crashing binary under a debugger.
 installed, open this repo in Claude Code on the Windows machine and it can build and
 debug `src/platform/win32/` directly, instead of pushing to CI and waiting.
 
-To isolate the `unit` crash, run the test binary directly so you can see which
-sub-test prints last before it dies:
+To isolate a `unit` crash, run the test binary directly so you can see which
+sub-test prints last before it dies (unbuffering `stdout` first, so the last line
+survives the fast-fail, is what pinned down the `test_media` one):
 
 ```powershell
 cmake --build build --config Debug --target altair_tests   # Debug = better diagnostics

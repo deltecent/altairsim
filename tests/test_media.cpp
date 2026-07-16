@@ -96,7 +96,13 @@ void test_media() {
         CHECK(m2 && m2->size() == 256, "and the file did not change size");
 
         // The tab, put in FOR the operator (Patrick: auto-RO, and say so).
-        fs::permissions(p, fs::perms::owner_write, fs::perm_options::remove);
+        // Clear EVERY write bit, not just owner_write: a host reports one file as
+        // read-only or not (Windows has a single read-only attribute, which the
+        // C++ filesystem maps from *all* the write bits, not owner_write alone), so
+        // dropping just one leaves the file writable there and the tab never goes in.
+        constexpr auto all_write =
+            fs::perms::owner_write | fs::perms::group_write | fs::perms::others_write;
+        fs::permissions(p, all_write, fs::perm_options::remove);
         auto ro = openHostFile(p.string(), /*readOnly=*/false, err);
         CHECK(ro != nullptr, "an unwritable file still MOUNTS -- it is a disk with the tab out");
         CHECK(ro && ro->readOnly(), "read-only");
@@ -107,7 +113,17 @@ void test_media() {
         CHECK(asked && asked->readOnly(), "MOUNT ... RO is read-only");
         CHECK(asked && !asked->readOnlyForced(), "but that one was ASKED for -- nothing to report");
 
-        fs::permissions(p, fs::perms::owner_write, fs::perm_options::add);
+        // Unmount before we delete. A live HostFile keeps the image open (sync()
+        // holds the write handle so it can patch in place), and a host that will not
+        // delete an open file -- Windows is one -- makes fs::remove throw here; POSIX
+        // just unlinks it out from under the handle. Dropping the handles first is
+        // what a real UNMOUNT does anyway, so the teardown models the real thing.
+        m.reset();
+        m2.reset();
+        ro.reset();
+        asked.reset();
+
+        fs::permissions(p, all_write, fs::perm_options::add);
         fs::remove(p);
     }
 
