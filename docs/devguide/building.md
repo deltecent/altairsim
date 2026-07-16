@@ -18,14 +18,15 @@ pick up in ten years and compile.
 
 ## What actually got built
 
-**Built and tested on exactly one platform: macOS on Intel (`x86_64`).** That is not a claim
-about portability, it is the honest extent of it. The code is written to be portable — C++20,
+**Built and tested on Linux, macOS, and Windows.** The code is written to be portable — C++20,
 no dependencies, and every OS difference confined to `src/platform/` behind a header with zero
-conditionals — and Linux and Apple Silicon are *expected* to build. Neither has been tried.
-The Windows platform layer is written but has **never been compiled or run**.
+conditionals — and that portability is now proven, not asserted: Linux (Ubuntu/GCC), macOS as a
+universal `x86_64`+`arm64` binary (Intel and Apple Silicon both), and Windows on MSVC all build
+and pass the suite. The Windows platform layer, once merely written, is field-proven.
 
-**There is no CI.** The tests are real and they pass, but nothing runs them automatically.
-They run when someone types `ctest`.
+**CI runs the suite on every push.** GitHub Actions builds and tests on all three platforms —
+Linux, macOS, and Windows are each a required check — so a regression on any of them shows up
+before it merges. The tests still run locally the same way, when someone types `ctest`.
 
 ## The tests
 

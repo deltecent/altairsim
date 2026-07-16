@@ -140,7 +140,7 @@ bool MemoryBoard::decodes(const BusCycle& c) const {
     // off with a signal it is itself driving -- without `!assertsPhantom(c)` a
     // ROM card honors its own assertion, nobody drives the address, and the ROM
     // reads back FF. That was a real bug; the acceptance tests caught it.
-    if (c.phantom && honorsPhantom_ && !assertsPhantom(c)) return false;
+    if (c.phantom && honors(c) && !assertsPhantom(c)) return false;
     const Region* r = owner_[page(c.addr)];
     if (!r) return false;                            // empty socket / unpopulated page
     if (c.type == Cycle::MemWrite && r->kind == Rom) return false;   // <- ROM never answers a write
@@ -272,7 +272,7 @@ bank: invalid select 0x03 for vram at PC=0119 (mem0). bank unchanged (still 0).
 |---|---|---|---|
 | `region` | Region[] | config | The populated areas. Each is `type` (`ram`\|`rom`), `at` (page-aligned), and either `size` (ram) or `mount` (rom). |
 | `pages` | PageMap | **yes** | The composite page map, as a range list — which pages this board answers for. Derived from the regions; editable at runtime to punch holes in a partly-populated card. |
-| `honors_phantom` | Bool | config | A **jumper**. Another board pulls PHANTOM\* — do I switch off? Default `true`. |
+| `honors_phantom` | Enum | config | A **jumper**. Another board pulls PHANTOM\* — do I switch off? `none` (never), `read` (reads only), `all`. Default `all`. |
 | `phantom` | Enum | config | What **I** assert over my `rom` regions: `none \| read \| all`. Default `all`. |
 | `bank_type` | Enum | config | `none \| eram \| vram \| cram \| hram \| b810`. **Determines the select port, the bank count, and the data encoding** — see the table. |
 | `banks` | Int | config | Number of banks, 1–16. Constrained by `bank_type` (Cromemco caps at 7). |
@@ -295,7 +295,7 @@ altairsim> SHOW mem0
 
   property        value      runtime?  legal
   ------------------------------------------------------------------
-  honors_phantom  true       no        true | false
+  honors_phantom  all        no        none | read | all
   phantom         all        no        none | read | all
   bank_type       none       no        none | eram | vram | cram | hram | b810
   fill            random     no        random | zero

@@ -30,21 +30,22 @@ takes to be unambiguous, and the first command that matches wins.
   BO[ARDS]          B[REAK]           COM[PARE]         C[ONFIG]
   CONN[ECT]         CONS[OLE]         DE[POSIT]         DI[SASM]
   DISC[ONNECT]      D[UMP]            E[DIT]*           EX[AMINE]
-  F[ILL]            HE[LP]            H[ISTORY]*        I[N]
-  L[OAD]            M[OUNT]           MOV[E]            N[OBREAK]
-  O[UT]             P[OWER]           Q[UIT]            REC[ORD]*
-  REGI[ON]          RE[GS]            REP[LAY]*         RES[ET]
-  REST[ORE]*        R[UN]             SA[VE]            SEA[RCH]
-  SE[T]             SH[OW]            SN[APSHOT]*       S[TEP]
-  STO[P]*           T[RACE]*          U[NMOUNT]         W[HO]
+  F[ILL]            HE[LP]            H[ISTORY]         I[N]
+  L[OAD]            M[OUNT]           MOV[E]            N[EXT]
+  NO[BREAK]         O[UT]             P[OWER]           Q[UIT]
+  REC[ORD]*         REGI[ON]          RE[GS]            REP[LAY]*
+  RES[ET]           REST[ORE]*        R[UN]             SA[VE]
+  SEA[RCH]          SE[T]             SH[OW]            SN[APSHOT]*
+  S[TEP]            STO[P]*           T[RACE]           U[NMOUNT]
+  W[HO]
 ```
 
 Type the part before the bracket. `D` is `DUMP`; `DE` is `DEPOSIT`; `RES` is `RESET`. Case
 does not matter, here or in the name of any card.
 
-The `*` marks the eight commands that **resolve but are not built yet**. Type `T` and it will
-tell you that `TRACE` is waiting on the debugger. That is on purpose: their abbreviations are
-claimed *now*, so the day they land, `T` does not quietly stop meaning what your fingers have
+The `*` marks the six commands that **resolve but are not built yet**. Type `SN` and it will
+tell you that `SNAPSHOT` is waiting on the debugger. That is on purpose: their abbreviations are
+claimed *now*, so the day they land, `SN` does not quietly stop meaning what your fingers have
 learned it means. An abbreviation is a contract.
 
 `HELP <command>` gives you the usage and worked examples for one of them, and `?` is the same

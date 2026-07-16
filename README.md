@@ -42,18 +42,19 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 ./build/altairsim                    # the default machine
 ```
 
-**Developed on macOS/Intel (`x86_64`); also verified to build and run on Linux.** The Linux check was Ubuntu 22.04 with GCC 11 — it builds clean and boots a machine; see [`docs/building-linux.md`](docs/building-linux.md). The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals. Apple Silicon is *expected* to build but has not been tried. The Windows platform layer is written but has **never been compiled or run**; see [`docs/porting-notes.md`](docs/porting-notes.md).
+**Built and run on Linux, macOS, and Windows.** The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and all three platforms are now proven: Linux (Ubuntu/GCC), macOS (a universal `x86_64`+`arm64` binary, so Intel and Apple Silicon both), and Windows on MSVC. See [`docs/building-linux.md`](docs/building-linux.md), [`docs/building-windows.md`](docs/building-windows.md), and [`docs/porting-notes.md`](docs/porting-notes.md).
 
-**There is no CI.** The tests below are real and they pass, but nothing runs them automatically — they run when someone types `ctest`.
+**CI runs the suite on every push.** GitHub Actions builds `altairsim` and runs the tests on all three platforms — Linux, macOS, and Windows are each a required check. The tests below are the same ones; you can run them yourself with `ctest`.
 
 ## What is in the box
 
-Ten board types — nine modeled from their own manuals, and one of ours — and eight machines
+Eleven board types — ten modeled from their own manuals, and one of ours — and nine machines
 built out of them:
 
 | Board | What it is |
 |---|---|
 | `8080` | MITS 88-CPU — an 8080A. Decodes nothing; it *drives* the bus. |
+| `z80` | Zilog Z80 CPU card — the same bus as the 88-CPU, a different ISA. ZEXALL-validated. |
 | `memory` | RAM/ROM card — a list of regions, `PHANTOM*`, and five banking schemes. |
 | `2sio` | MITS 88-2SIO — two 6850 ACIAs. |
 | `sio` | MITS 88-SIO — one COM2502 UART. **Inverted** status bits. |
@@ -64,13 +65,13 @@ built out of them:
 | `fp` | The front panel — SENSE switches at port `FF`, and the lamps. |
 | `hostbridge` | Guest ↔ host file transfer, sandboxed. **Ours, not a period card** — `R`/`W`/`HDIR`. |
 
-`altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`.
+`altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`, `z80`.
 
-**The 8080 is validated.** TST8080, 8080PRE, CPUTEST and 8080EXM all pass — all 25 CRC groups of the exerciser — and they passed *before* a single board was built on top of the core. They are `ctest` targets, not a CI gate; there is no CI yet.
+**Both CPUs are validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 
 ## The interface
 
-A SIMH/AltairZ80-style command monitor with line editing and history: `SHOW`, `SET`, `BOARDS`, `MOUNT`, `CONNECT`, breakpoints, single-stepping, disassembly. **ATTN (`^E`) is the stop key** — never `^C`, because `^C` belongs to the guest (CP/M reads it), and a stop key the guest also wants is one the guest eats.
+A SIMH/AltairZ80-style command monitor with line editing and history: `SHOW`, `SET`, `BOARDS`, `MOUNT`, `CONNECT`, breakpoints (including conditional — `BREAK <addr> IF <expr>`), single-stepping, disassembly, a bus-cycle `TRACE`, and a `HISTORY` flight recorder. **ATTN (`^E`) is the stop key** — never `^C`, because `^C` belongs to the guest (CP/M reads it), and a stop key the guest also wants is one the guest eats.
 
 ```
 altairsim> BOARDS
