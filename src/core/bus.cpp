@@ -324,6 +324,7 @@ uint8_t Bus::memReadExact(uint16_t addr) {
     if (d.n > 1) reportContention(c, decoders(c));
 
     unclaimed_ = (d.n == 0);
+    contended_ = (d.n > 1);
     uint8_t v = d.first ? d.first->read(c)
                         : 0xFF;  // floating bus (DESIGN.md 4.6.1)
     c.data = v;                  // what got driven -- see settle()
@@ -339,6 +340,7 @@ void Bus::memWriteExact(uint16_t addr, uint8_t data) {
     if (d.n > 1) reportContention(c, decoders(c));
 
     unclaimed_ = (d.n == 0);
+    contended_ = (d.n > 1);
     // Nobody latched it. The byte is simply gone -- the write half of the
     // floating bus. This is what a guest write to ROM does, and the bus needed
     // no rule about ROM to make it happen.
@@ -352,6 +354,7 @@ uint8_t Bus::ioReadExact(uint8_t port) {
     Decode d = scan(c);
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
+    contended_ = (d.n > 1);
     uint8_t v = d.first ? d.first->read(c) : 0xFF;
     c.data = v;  // what got driven -- see settle()
     settle(c);
@@ -363,6 +366,7 @@ void Bus::ioWriteExact(uint8_t port, uint8_t data) {
     Decode d = scan(c);
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
+    contended_ = (d.n > 1);
     if (d.n == 1) d.first->write(c);
     else if (d.n > 1) for (Board* b : decoders(c)) b->write(c);
     settle(c);
@@ -526,6 +530,7 @@ uint8_t Bus::intAck() {
     BusCycle c{Cycle::IntAck, 0, 0, false};
     auto who = decoders(c);
     unclaimed_ = who.empty();
+    contended_ = who.size() > 1;
     // No vector-interrupt board answered, so nothing drives the bus and it
     // floats high: 0xFF, which the 8080 executes as RST 7. That is the real
     // Altair's behavior, and we get it for free from the same rule that makes

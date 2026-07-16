@@ -38,6 +38,7 @@ void test_isa();
 void test_z80_isa();
 void test_cpu();
 void test_z80_cpu();
+void test_expr();
 void test_debug();
 void test_dma();
 void test_sio2();

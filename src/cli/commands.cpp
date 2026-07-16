@@ -88,7 +88,14 @@ static const std::vector<CommandDef> kCommands = {
      "or on a HLT nothing can wake, and it ALWAYS says which.\n"
      "  RUN F800     boot the monitor PROM\n"
      "  RUN          carry on from wherever the PC is"},
-    {"HISTORY", false, "the debugger", "HISTORY [n]", nullptr},
+    {"HISTORY", true, nullptr, "HISTORY [n]",
+     "The last n BUS CYCLES the machine ran, oldest first -- a flight recorder that\n"
+     "is always running while the machine runs, so it already holds the run-up to a\n"
+     "breakpoint or a crash when you ask. n is a count, so it is decimal; bare\n"
+     "HISTORY shows the last 16. Each line is a cycle, not an instruction, and a DMA\n"
+     "transfer's cycles are in there too.\n"
+     "  HISTORY          the last 16 cycles\n"
+     "  HISTORY 100      the last hundred"},
     {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [RO]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
      "RO is the write-protect tab: the guest may read it and may not write it.\n"
@@ -101,7 +108,7 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT dsk0:drive1 disks/master.dsk RO\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
      "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape"},
-    {"BREAK", true, nullptr, "BREAK [<addr> | MEM R|W <addr> | IO R|W <port>]",
+    {"BREAK", true, nullptr, "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>]",
      "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
      "other two watch BUS CYCLES, so they catch a DMA transfer too, and they work\n"
      "unchanged on any processor.\n"
@@ -109,8 +116,14 @@ static const std::vector<CommandDef> kCommands = {
      "  BREAK 2C00-2CFF  ...anywhere in a range\n"
      "  BREAK MEM W 100  stop when anything WRITES 0100\n"
      "  BREAK IO R 10    stop on an IN from port 10\n"
-     "(BREAK ... IF <expr> is not built yet -- it is waiting on the expression\n"
-     "parser, and the registers it will read are already reflected.)"},
+     "\n"
+     "A plain address breakpoint may carry a CONDITION -- IF <expr> over the\n"
+     "registers -- and stops only when it holds. A bare word that names a register IS\n"
+     "that register, so a literal is written with a leading zero (0A is ten, A is the\n"
+     "accumulator). == != < > <= >= compare; && || combine; & | mask.\n"
+     "  BREAK 100 IF A==0\n"
+     "  BREAK 100 IF HL==8000 && Z==1\n"
+     "  BREAK 100 IF (A&0F)==0"},
     {"EDIT", false, "the line editor", "EDIT <addr>  -- interactive; Enter advances", nullptr},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "SAVE writes the machine you are actually running, so it round-trips.\n"
@@ -257,7 +270,20 @@ static const std::vector<CommandDef> kCommands = {
     {"POWER", true, nullptr, "POWER",
      "Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on\n"
      "real hardware it does not."},
-    {"TRACE", false, "the debugger", "TRACE ON|OFF [file] [MASK=...]", nullptr},
+    {"TRACE", true, nullptr, "TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]",
+     "Log every BUS CYCLE while the machine runs -- to the console, or to a file.\n"
+     "A cycle, not an instruction: MR/MW are memory, IN/OUT are I/O, INTA is an\n"
+     "interrupt acknowledge, and a granted DMA master's cycles are tagged [DMA].\n"
+     "This watches the same stream every board sees, so it is not a CPU feature and\n"
+     "works unchanged on any processor.\n"
+     "\n"
+     "MASK keeps only the cycles you name (no MASK keeps all): IN, OUT, IRQ, DMA,\n"
+     "CONTENTION. A cycle is kept if it is any of them -- MASK=DMA is every cycle a\n"
+     "master drove, whatever its type.\n"
+     "  TRACE ON                    every cycle, to the console\n"
+     "  TRACE ON run.log            ...to a file\n"
+     "  TRACE ON MASK=IN,OUT        just the port traffic\n"
+     "  TRACE OFF"},
     // STOP is still reserved, and CONSOLE mode has now made it MORE clearly a
     // separate thing rather than less. The machine runs while you are in CONSOLE,
     // but the monitor is not there -- the guest has the keyboard. STOP is for the

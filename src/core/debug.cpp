@@ -1,9 +1,12 @@
 #include "core/debug.h"
 
 #include "core/machine.h"
+#include "cpu/cpu.h"
 
 #include <atomic>
+#include <cctype>
 #include <cstdio>
+#include <vector>
 
 namespace altair {
 
@@ -34,15 +37,18 @@ std::string Breakpoint::describe() const {
     else
         std::snprintf(buf, sizeof buf, "%-6s %0*X-%0*X", breakKindName(kind), w, (unsigned)lo,
                       w, (unsigned)hi);
-    return buf;
+    std::string s = buf;
+    if (cond) s += " if " + cond->text();
+    return s;
 }
 
-int Debugger::add(BreakKind k, uint32_t lo, uint32_t hi) {
+int Debugger::add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond) {
     Breakpoint b;
     b.id = nextId_++;
     b.kind = k;
     b.lo = lo;
     b.hi = hi;
+    b.cond = std::move(cond);
     bps_.push_back(b);
     return b.id;
 }
@@ -70,13 +76,35 @@ void Debugger::clear() { bps_.clear(); }
 // observer exists only for as long as one is.
 // ---------------------------------------------------------------------------
 bool Debugger::armObserver() {
-    bool anyCycle = false;
-    for (const Breakpoint& b : bps_)
-        if (b.enabled && b.kind != BreakKind::Pc) anyCycle = true;
-    if (!anyCycle) return false;
-
+    // ALWAYS ARMED while running, now -- not only when a cycle breakpoint is set.
+    // HISTORY is a flight recorder that has to be running BEFORE the stop it explains,
+    // and TRACE can be turned on for a run that has no breakpoints at all. The three
+    // jobs share one observer so a cycle costs one std::function call, not three.
+    // (The monitor's own DUMP/DEPOSIT are still safe: the observer exists only for as
+    // long as a run does, so a front-panel poke while stopped records nothing.)
     cycleHit_ = 0;
     observer_ = m_.bus.observe([this](const BusCycle& c) {
+        CycleRec rec;
+        rec.type = c.type;
+        rec.addr = c.addr;
+        rec.data = c.data;
+        rec.dma = inDma_;
+        rec.contended = m_.bus.lastContended();
+        rec.t = m_.clock.now();
+
+        // HISTORY: overwrite-oldest ring.
+        if (ring_.size() < kHistoryCap) {
+            ring_.push_back(rec);
+        } else {
+            ring_[ringHead_] = rec;
+            ringHead_ = (ringHead_ + 1) % kHistoryCap;
+        }
+
+        // TRACE: one line per cycle the mask admits.
+        if (traceSink_ && traceShows(rec)) *traceSink_ << formatCycle(rec) << "\n";
+
+        // Cycle breakpoints: the CYCLE kinds only. BREAK <addr> is a PC comparison
+        // and lives in the run loop; these watch the stream itself.
         for (Breakpoint& b : bps_) {
             if (!b.enabled || b.kind == BreakKind::Pc) continue;
 
@@ -99,6 +127,67 @@ bool Debugger::armObserver() {
         }
     });
     return true;
+}
+
+// TRACE's filter. An empty mask shows everything; otherwise a cycle is shown if any
+// of its categories is selected. IN/OUT/IRQ come off the cycle type; DMA and
+// contention are carried on the record.
+bool Debugger::traceShows(const CycleRec& r) const {
+    if (traceMask_ == 0) return true;
+    unsigned cat = 0;
+    switch (r.type) {
+    case Cycle::IoRead:  cat |= InCycle;  break;
+    case Cycle::IoWrite: cat |= OutCycle; break;
+    case Cycle::IntAck:  cat |= Irq;      break;
+    default: break;
+    }
+    if (r.dma) cat |= Dma;
+    if (r.contended) cat |= Contended;
+    return (cat & traceMask_) != 0;
+}
+
+std::string Debugger::formatCycle(const CycleRec& r) {
+    const char* what = "?";
+    bool io = false, none = false;
+    switch (r.type) {
+    case Cycle::MemRead:  what = "MR";  break;
+    case Cycle::MemWrite: what = "MW";  break;
+    case Cycle::IoRead:   what = "IN";  io = true;   break;
+    case Cycle::IoWrite:  what = "OUT"; io = true;   break;
+    case Cycle::IntAck:   what = "INTA"; none = true; break;
+    }
+
+    char buf[80];
+    if (none)
+        std::snprintf(buf, sizeof buf, "%10llu  %-4s      = %02X", (unsigned long long)r.t, what,
+                      r.data);
+    else if (io)
+        std::snprintf(buf, sizeof buf, "%10llu  %-4s   %02X = %02X", (unsigned long long)r.t, what,
+                      (unsigned)(r.addr & 0xFF), r.data);
+    else
+        std::snprintf(buf, sizeof buf, "%10llu  %-4s %04X = %02X", (unsigned long long)r.t, what,
+                      (unsigned)r.addr, r.data);
+    std::string s = buf;
+    if (r.dma) s += "  [DMA]";
+    if (r.contended) s += "  [CONTENTION]";
+    return s;
+}
+
+std::vector<Debugger::CycleRec> Debugger::history(size_t n) const {
+    size_t have = ring_.size();
+    if (n > have) n = have;
+    bool full = (have == kHistoryCap);
+    size_t start = full ? ringHead_ : 0;   // oldest
+    size_t skip = have - n;                // keep the LAST n
+    std::vector<CycleRec> out;
+    out.reserve(n);
+    for (size_t i = skip; i < have; ++i) out.push_back(ring_[(start + i) % have]);
+    return out;
+}
+
+void Debugger::clearHistory() {
+    ring_.clear();
+    ringHead_ = 0;
 }
 
 void Debugger::disarmObserver() {
@@ -149,7 +238,12 @@ void Debugger::serviceDma() {
         // CPU runs an instruction before the next grant. The loop does not know or
         // care which -- the board's own requestsBus() decides the grain.
         while (b->requestsBus()) {
+            // Tag every cycle this grant drives as DMA for the observer -- the
+            // BusCycle itself carries no origin (bus.h), but the loop that handed out
+            // the bus knows exactly whose cycles these are.
+            inDma_ = true;
             StepResult ds = dm->step(m_.bus);
+            inDma_ = false;
             m_.clock.advance(ds.tStates);
 
             // A granted bus cycle costs time. A master that steals zero-time cycles
@@ -180,6 +274,29 @@ RunResult Debugger::run(uint64_t maxSteps) {
     clearInterrupt();
     bool armed = armObserver();
     m_.running = true;
+
+    // Reflected registers for BREAK <addr> IF <expr>. The RegDef list is snapshotted
+    // ONCE -- it is stable across a run (its get() closures read live state), so a
+    // conditional breakpoint costs no per-step allocation -- and looked up by name,
+    // so it never learns what an 8080 is and a Z80 inherits it (DESIGN.md 3.0.3).
+    std::vector<RegDef> regs = cpu->registers();
+    Expr::Resolver resolveReg = [&regs](const std::string& name, uint32_t& out) -> bool {
+        for (const RegDef& rd : regs) {
+            if (rd.name.size() != name.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < name.size(); ++i)
+                if (std::toupper((unsigned char)rd.name[i]) !=
+                    std::toupper((unsigned char)name[i])) {
+                    eq = false;
+                    break;
+                }
+            if (eq) {
+                out = rd.get();
+                return true;
+            }
+        }
+        return false;
+    };
 
     for (;;) {
         StepResult s = master->step(m_.bus);
@@ -216,6 +333,9 @@ RunResult Debugger::run(uint64_t maxSteps) {
         for (Breakpoint& b : bps_) {
             if (!b.enabled || b.kind != BreakKind::Pc) continue;
             if (pc < b.lo || pc > b.hi) continue;
+            // A conditional breakpoint that does not hold is not a stop -- and it does
+            // not count as a hit either. `hits` means "times it stopped you".
+            if (b.cond && !b.cond->eval(resolveReg)) continue;
             ++b.hits;
             r.why = StopReason::Breakpoint;
             r.bp = b.id;

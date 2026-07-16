@@ -138,6 +138,7 @@ add_library(altair_core STATIC
   src/core/roms.cpp
   src/core/machines.cpp
   src/core/value.cpp
+  src/core/expr.cpp
   src/core/debug.cpp
   src/core/spindle.cpp
   src/isa/isa8080.cpp
@@ -257,6 +258,7 @@ add_executable(altair_tests
   tests/test_z80_isa.cpp
   tests/test_cpu.cpp
   tests/test_z80_cpu.cpp
+  tests/test_expr.cpp
   tests/test_debug.cpp
   tests/test_dma.cpp
   tests/test_sio2.cpp

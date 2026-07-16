@@ -40,9 +40,9 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `S[TEP]` | `STEP [n]` |
 | `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
-| `H[ISTORY]` \* | `HISTORY [n]` |
+| `H[ISTORY]` | `HISTORY [n]` |
 | `M[OUNT]` | `MOUNT <id>[:<u>] <file> [RO]` |
-| `B[REAK]` | `BREAK [<addr> \| MEM R\|W <addr> \| IO R\|W <port>]` |
+| `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>]` |
 | `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id> <k>=<v>` |
@@ -68,7 +68,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `CONN[ECT]` | `CONNECT <id>:<u> <endpoint>` |
 | `RES[ET]` | `RESET [CPU]` |
 | `P[OWER]` | `POWER` |
-| `T[RACE]` \* | `TRACE ON\|OFF [file] [MASK=...]` |
+| `T[RACE]` | `TRACE ON\|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]` |
 | `STO[P]` \* | `STOP` |
 | `SN[APSHOT]` \* | `SNAPSHOT <file>` |
 | `REST[ORE]` \* | `RESTORE <file>` |

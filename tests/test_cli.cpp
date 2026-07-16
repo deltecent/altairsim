@@ -196,12 +196,20 @@ void test_cli() {
     CHECK(s && std::string(s->name) == "STEP", "S is STEP -- as it was before STEP existed");
     CHECK(s && s->built, "and now it is built");
 
-    // Reserved commands still RESOLVE and still say what they wait on. TRACE and
-    // HISTORY are genuinely not here yet, and they hold their prefixes so that the
-    // day they arrive they do not steal one from something else.
+    // TRACE and HISTORY have now landed, and they meant what they always meant: `TR`
+    // is TRACE, `H` is HISTORY, exactly as reserved.
     const CommandDef* tr = resolveCommand("TR");
-    CHECK(tr && !tr->built, "TRACE resolves but is not built yet");
-    CHECK(tr && tr->waiting && std::string(tr->waiting) == "the debugger",
+    CHECK(tr && std::string(tr->name) == "TRACE", "TR is TRACE -- as it was reserved");
+    CHECK(tr && tr->built, "and now it is built");
+    const CommandDef* h = resolveCommand("H");
+    CHECK(h && std::string(h->name) == "HISTORY" && h->built, "H is HISTORY, and built");
+
+    // Reserved commands still RESOLVE and still say what they wait on. SNAPSHOT and
+    // RECORD are genuinely not here yet, and they hold their prefixes so that the day
+    // they arrive they do not steal one from something else.
+    const CommandDef* snap = resolveCommand("SN");
+    CHECK(snap && !snap->built, "SNAPSHOT resolves but is not built yet");
+    CHECK(snap && snap->waiting && std::string(snap->waiting) == "the debugger",
           "and says what it is waiting on");
 
     // Every command in the table is either BUILT (and then it needs no excuse) or

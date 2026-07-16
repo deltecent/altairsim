@@ -2917,7 +2917,49 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             hi = lo;
         }
 
-        int id = m_.debug.add(kind, lo, hi);
+        // BREAK <addr> IF <expr>: a condition over the registers. PC breakpoints
+        // only -- a MEM/IO breakpoint fires INSIDE an instruction, where "what is A?"
+        // has no boundary-consistent answer. The rest of the line is the expression;
+        // it is re-tokenized by the parser, so spacing does not matter.
+        std::shared_ptr<const Expr> cond;
+        if (a.size() > argi + 1 && is(a[argi + 1], "IF")) {
+            if (kind != BreakKind::Pc) {
+                out << "IF applies to a plain BREAK <addr>, not to a MEM or IO breakpoint.\n";
+                failed_ = true;
+                return true;
+            }
+            CpuCore* c = needCpu(out);
+            if (!c) return true;
+
+            std::string src;
+            for (size_t i = argi + 2; i < a.size(); ++i) {
+                if (!src.empty()) src += " ";
+                src += a[i];
+            }
+            if (src.empty()) {
+                out << "usage: BREAK <addr> IF <expr>   e.g. BREAK 100 IF A==0\n";
+                failed_ = true;
+                return true;
+            }
+
+            // A bare word is a register if the CPU reflects one by that name -- that
+            // is what tells `A` the accumulator from `0A` the number.
+            std::vector<RegDef> regs = c->registers();
+            auto known = [&regs](const std::string& name) {
+                for (const RegDef& rd : regs)
+                    if (upper(rd.name) == upper(name)) return true;
+                return false;
+            };
+            std::string perr;
+            cond = Expr::parse(src, known, perr);
+            if (!cond) {
+                out << "bad condition: " << perr << "\n";
+                failed_ = true;
+                return true;
+            }
+        }
+
+        int id = m_.debug.add(kind, lo, hi, cond);
         for (const Breakpoint& b : m_.debug.breakpoints())
             if (b.id == id) out << "breakpoint " << id << ": " << b.describe() << "\n";
         return true;
@@ -2939,6 +2981,92 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         out << "breakpoint " << id << " cleared.\n";
+        return true;
+    }
+
+    // TRACE and HISTORY watch the SAME cycle stream every board sees, from outside
+    // the backplane (DESIGN.md 3.0.3). Not CPU features -- they catch a DMA transfer
+    // as readily as the processor and work unchanged on any core.
+    if (cmd == "TRACE") {
+        if (a.size() < 2 || (!is(a[1], "ON") && !is(a[1], "OFF"))) {
+            out << "usage: TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]\n";
+            failed_ = true;
+            return true;
+        }
+        if (is(a[1], "OFF")) {
+            m_.debug.traceOff();
+            if (traceFile_.is_open()) traceFile_.close();
+            out << "trace off.\n";
+            return true;
+        }
+
+        // TRACE ON [file] [MASK=...]. Order does not matter: a MASK= token is the
+        // mask, anything else is the file (at most one).
+        unsigned mask = 0;
+        std::string file;
+        for (size_t i = 2; i < a.size(); ++i) {
+            if (upper(a[i]).rfind("MASK=", 0) == 0) {
+                std::string list = a[i].substr(5);
+                size_t start = 0;
+                while (start <= list.size()) {
+                    size_t comma = list.find(',', start);
+                    std::string tok = list.substr(start, comma - start);
+                    if (!tok.empty()) {
+                        if (is(tok, "IN"))              mask |= Debugger::InCycle;
+                        else if (is(tok, "OUT"))        mask |= Debugger::OutCycle;
+                        else if (is(tok, "IRQ"))        mask |= Debugger::Irq;
+                        else if (is(tok, "DMA"))        mask |= Debugger::Dma;
+                        else if (is(tok, "CONTENTION")) mask |= Debugger::Contended;
+                        else {
+                            out << "TRACE: unknown mask '" << tok
+                                << "' -- pick from IN,OUT,IRQ,DMA,CONTENTION\n";
+                            failed_ = true;
+                            return true;
+                        }
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                }
+            } else if (file.empty()) {
+                file = a[i];
+            } else {
+                out << "TRACE: unexpected '" << a[i] << "'\n";
+                failed_ = true;
+                return true;
+            }
+        }
+
+        std::ostream* sink = &out;
+        if (!file.empty()) {
+            if (traceFile_.is_open()) traceFile_.close();
+            traceFile_.open(file, std::ios::out | std::ios::trunc);
+            if (!traceFile_) {
+                out << "TRACE: cannot open " << file << "\n";
+                failed_ = true;
+                return true;
+            }
+            sink = &traceFile_;
+        }
+        m_.debug.traceTo(sink, mask);
+        out << "trace on" << (file.empty() ? "" : (" -> " + file));
+        if (mask) out << "  (masked)";
+        out << ".\n";
+        return true;
+    }
+
+    if (cmd == "HISTORY") {
+        size_t n = 16;
+        if (a.size() >= 2) {
+            uint32_t cnt;
+            if (!count(a[1], cnt, out)) return true;  // a depth is not on the wire: DECIMAL
+            n = cnt;
+        }
+        auto recs = m_.debug.history(n);
+        if (recs.empty()) {
+            out << "no history yet -- it records while the machine RUNs.\n";
+            return true;
+        }
+        for (const auto& rec : recs) out << Debugger::formatCycle(rec) << "\n";
         return true;
     }
 

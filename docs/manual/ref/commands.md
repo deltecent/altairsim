@@ -20,9 +20,7 @@ under your fingers when they land — and they tell you what they are waiting on
 
 | Command | Waiting on |
 |---|---|
-| `H[ISTORY]` | the debugger |
 | `E[DIT]` | the line editor |
-| `T[RACE]` | the debugger |
 | `STO[P]` | a monitor that runs alongside the machine (ATTN leaves CONSOLE today) |
 | `SN[APSHOT]` | the debugger |
 | `REST[ORE]` | the debugger |
@@ -114,6 +112,23 @@ RUN          carry on from wherever the PC is
 ```
 
 
+### HISTORY — `H[ISTORY]`
+
+```
+HISTORY [n]
+```
+The last n BUS CYCLES the machine ran, oldest first -- a flight recorder that
+is always running while the machine runs, so it already holds the run-up to a
+breakpoint or a crash when you ask. n is a count, so it is decimal; bare
+HISTORY shows the last 16. Each line is a cycle, not an instruction, and a DMA
+transfer's cycles are in there too.
+
+```
+HISTORY          the last 16 cycles
+HISTORY 100      the last hundred
+```
+
+
 ### MOUNT — `M[OUNT]`
 
 ```
@@ -138,7 +153,7 @@ MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
 ### BREAK — `B[REAK]`
 
 ```
-BREAK [<addr> | MEM R|W <addr> | IO R|W <port>]
+BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>]
 ```
 Bare BREAK lists them. Only the first kind is about the CPU at all -- the
 other two watch BUS CYCLES, so they catch a DMA transfer too, and they work
@@ -151,8 +166,17 @@ BREAK MEM W 100  stop when anything WRITES 0100
 BREAK IO R 10    stop on an IN from port 10
 ```
 
-(BREAK ... IF <expr> is not built yet -- it is waiting on the expression
-parser, and the registers it will read are already reflected.)
+
+A plain address breakpoint may carry a CONDITION -- IF <expr> over the
+registers -- and stops only when it holds. A bare word that names a register IS
+that register, so a literal is written with a leading zero (0A is ten, A is the
+accumulator). == != < > <= >= compare; && || combine; & | mask.
+
+```
+BREAK 100 IF A==0
+BREAK 100 IF HL==8000 && Z==1
+BREAK 100 IF (A&0F)==0
+```
 
 
 ### CONFIG — `C[ONFIG]`
@@ -479,6 +503,29 @@ POWER
 ```
 Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on
 real hardware it does not.
+
+
+### TRACE — `T[RACE]`
+
+```
+TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]
+```
+Log every BUS CYCLE while the machine runs -- to the console, or to a file.
+A cycle, not an instruction: MR/MW are memory, IN/OUT are I/O, INTA is an
+interrupt acknowledge, and a granted DMA master's cycles are tagged [DMA].
+This watches the same stream every board sees, so it is not a CPU feature and
+works unchanged on any processor.
+
+MASK keeps only the cycles you name (no MASK keeps all): IN, OUT, IRQ, DMA,
+CONTENTION. A cycle is kept if it is any of them -- MASK=DMA is every cycle a
+master drove, whatever its type.
+
+```
+TRACE ON                    every cycle, to the console
+TRACE ON run.log            ...to a file
+TRACE ON MASK=IN,OUT        just the port traffic
+TRACE OFF
+```
 
 
 ### NOBREAK — `NO[BREAK]`
