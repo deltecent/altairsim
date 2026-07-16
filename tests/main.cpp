@@ -47,6 +47,7 @@ int main() {
     test_cpu();
     test_z80_cpu();
     test_debug();
+    test_dma();
     test_sio2();
     test_88sio();
     test_lines();

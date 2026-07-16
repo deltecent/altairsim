@@ -387,6 +387,51 @@ public:
     // ...and the same, for the eight VI lines.
     uint8_t viWire() const { return viWire_; }
 
+    // ---- pHOLD / pHLDA (S-100 pins 74/26). BUS MASTERING / DMA. (DESIGN.md 4.5) ----
+    //
+    // A board pulls pHOLD to ask for the bus; the run loop grants pHLDA at an
+    // instruction boundary (the CPU never stops mid-instruction, exactly as it does
+    // not for an interrupt) and then drives THIS board's BusMaster until it drops the
+    // request. The board becomes a bus master through the SAME BusMaster::step(Bus&)
+    // the CPU uses -- so a DMA transfer is just cycles on the backplane, snooped and
+    // observed like any other, and BREAK MEM / TRACE catch it as readily as a MOV.
+    //
+    // requestsBus() is a LEVEL, like assertsInt(): true = "I still want the bus." The
+    // board decides the grain, and that is the whole of the burst-vs-cycle-steal
+    // distinction, with no mode flag anywhere: hold it true for the whole block and
+    // you burst; drop it after one transfer and re-arm via a Clock deadline and you
+    // cycle-steal, letting the CPU run an instruction between each DMA cycle. Charging
+    // the stolen T-states to the clock is the run loop's job, not the board's.
+    //
+    // HAS-A, NOT IS-A. A DMA board CONTAINS a BusMaster and returns it here; it does
+    // NOT inherit BusMaster the way the CPU card does. The CPU card is the PERMANENT
+    // master and is found by Machine::master()/masters() (a dynamic_cast to BusMaster,
+    // also how the monitor lists the machine's CPUs); a card that inherited BusMaster
+    // would be mistaken for a processor. A DMA master is TRANSIENT and reached ONLY
+    // through here, under pHOLD.
+    virtual bool       requestsBus() const { return false; }   // pulling pHOLD?
+    virtual BusMaster* busMaster()         { return nullptr; }  // who drives once granted
+
+    // "MY pHOLD PIN MAY HAVE MOVED." The exact analogue of intChanged(), and for the
+    // same reason: the bus keeps a running wire-OR count so the run loop reads pHOLD
+    // as one integer test instead of surveying every card (Bus::holdPending()). A
+    // board that starts or stops wanting the bus MUST call this, or the fast wire goes
+    // stale -- and a stale pHOLD does not hang the guest, it does something quieter and
+    // worse: the transfer never runs, silently, because the run loop was told nobody
+    // asked. Call it after anything that changes requestsBus().
+    void holdChanged() {
+        bool now = enabled_ && requestsBus();
+        if (now != holdWire_) {
+            holdWire_ = now;
+            if (bus_) bus_->holdWireChanged(now);
+        }
+    }
+
+    // What this card is ACTUALLY driving onto pHOLD -- the latched wire, read by
+    // Bus::attach()/detach() to keep the count honest across a card entering or
+    // leaving the backplane, exactly as intWire() is.
+    bool holdWire() const { return holdWire_; }
+
     // ---- Lifecycle (DESIGN.md 6) ----
 
     // POC* or RESET*. Board-specific: each board decides what it means. Memory
@@ -407,7 +452,8 @@ public:
         if (enabled_ == e) return;
         enabled_ = e;
         decodeChanged();
-        intChanged();  // a card that is out of the machine is not pulling pin 73
+        intChanged();   // a card that is out of the machine is not pulling pin 73
+        holdChanged();  // ...and it is not asking for the bus either
     }
 
     // ---- Reflection (DESIGN.md 5) ----
@@ -734,6 +780,10 @@ private:
 
     // ...and onto VI0-VI7. Same reason, eight more wires.
     uint8_t viWire_ = 0;
+
+    // ...and onto pHOLD. Latched for the same reason: the run loop reads the wire, it
+    // does not poll us for it. Maintained by holdChanged().
+    bool holdWire_ = false;
 };
 
 // ---------------------------------------------------------------------------

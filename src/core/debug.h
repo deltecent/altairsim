@@ -100,6 +100,13 @@ private:
     bool armObserver();
     void disarmObserver();
 
+    // Grant pHLDA to any board pulling pHOLD (DESIGN.md 4.5), in slot order -- slot
+    // order IS the daisy-chain priority, no arbitration register. Drives each granted
+    // board's BusMaster while it keeps requesting, charging the stolen T-states to the
+    // clock. Called at every instruction boundary; inert (one boolean per board) when
+    // nobody wants the bus, which is every machine that has no DMA card in it.
+    void serviceDma();
+
     Machine& m_;
     std::vector<Breakpoint> bps_;
     int nextId_ = 1;

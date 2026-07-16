@@ -258,6 +258,7 @@ add_executable(altair_tests
   tests/test_cpu.cpp
   tests/test_z80_cpu.cpp
   tests/test_debug.cpp
+  tests/test_dma.cpp
   tests/test_sio2.cpp
   tests/test_88sio.cpp
   tests/test_88acr.cpp

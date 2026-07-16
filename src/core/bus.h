@@ -170,6 +170,25 @@ public:
     // A board's pin moved. Called by Board::intChanged(), and by nothing else.
     void intWireChanged(bool pulling) { intCount_ += pulling ? 1 : -1; }
 
+    // ---- pHOLD (pin 74) -- A WIRE, EXACTLY LIKE pin 73 ----
+    //
+    // A DMA card PULLS pHOLD and HOLDS it, and the run loop reads the wire at an
+    // instruction boundary -- it does NOT interrogate every card per instruction
+    // asking "do you want the bus?". That is the same poll §4.4.1 tore out for the
+    // interrupt line, and it would be the same mistake: a bus does not survey its
+    // cards, it reads what they have driven. So the bus keeps a running wire-OR count
+    // (holdWireChanged(), from Board::holdChanged()) and the answer is one integer
+    // test. Only when SOMEONE is pulling does the run loop walk the backplane to find
+    // who -- and grant them in slot order (DESIGN.md 4.5).
+    //
+    // Read every instruction by the run loop's serviceDma(), so -- exactly like
+    // intPending()/verifyInt() -- it is where setVerify(true) re-derives the wire the
+    // slow way and aborts if a board changed its pHOLD and forgot to say so.
+    bool holdPending() const;
+
+    // A board's pHOLD moved. Called by Board::holdChanged(), and by nothing else.
+    void holdWireChanged(bool pulling) { holdCount_ += pulling ? 1 : -1; }
+
     // ---- VI0-VI7 (pins 4-11) -- EIGHT MORE WIRES, CARRIED AND NOT ARBITRATED ----
     //
     // The bus does for these exactly what it does for pin 73 and NOT ONE THING MORE:
@@ -286,10 +305,16 @@ private:
     void rebuild();
     void verifySlot(const BusCycle& c, const Slot& s) const;
     void verifyInt() const;
+    void verifyHold() const;
 
     // pINT as a WIRE-OR: how many enabled boards are pulling it down right now.
     // Maintained by intWireChanged(); never recomputed on the hot path.
     int intCount_ = 0;
+
+    // pHOLD as a WIRE-OR: how many enabled boards want the bus right now. Maintained
+    // by holdWireChanged(); read once per instruction as holdPending(), so a machine
+    // with no DMA card in it pays a single integer test and never a per-board poll.
+    int holdCount_ = 0;
 
     // The same, eight times over, for VI0-VI7 -- plus the bitmask an 88-VI actually
     // reads, kept in step so that viLines() is a load and not a loop.

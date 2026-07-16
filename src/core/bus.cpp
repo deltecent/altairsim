@@ -17,6 +17,7 @@ void Bus::attach(Board* b) {
     // accounts for enabled: a disabled card drives nothing, and says so when it is
     // disabled, not when it is asked.)
     if (b->intWire()) ++intCount_;
+    if (b->holdWire()) ++holdCount_;  // ...and it may arrive already pulling pHOLD
     viWireChanged(0, b->viWire());  // ...and whatever VI lines it arrived pulling
     invalidateDecode();  // a card went into a slot: the wiring changed
 }
@@ -24,6 +25,7 @@ void Bus::attach(Board* b) {
 void Bus::detach(Board* b) {
     boards_.erase(std::remove(boards_.begin(), boards_.end(), b), boards_.end());
     if (b->intWire()) --intCount_;  // and it takes its interrupt out with it
+    if (b->holdWire()) --holdCount_;  // ...and its pHOLD request comes out too
     viWireChanged(b->viWire(), 0);  // ...and its VI lines go with it
     b->attachBus(nullptr);
     invalidateDecode();  // ...and the wiring changed again when it came out
@@ -149,6 +151,45 @@ void Bus::unobserve(int handle) {
 bool Bus::intPending() const {
     if (verify_) verifyInt();
     return intCount_ > 0;
+}
+
+bool Bus::holdPending() const {
+    if (verify_) verifyHold();
+    return holdCount_ > 0;
+}
+
+// The proof for pHOLD, the exact counterpart of verifyInt(): re-derive the wire from
+// every board's requestsBus() and abort on the first board -- or the count -- that
+// disagrees with what we cached. A board that starts or stops wanting the bus and
+// forgets to call holdChanged() would not hang the guest the way a stale pin 73 does;
+// it would do something quieter -- the transfer never runs, because the fast wire said
+// nobody asked -- and that is the kind of silence this mode exists to break.
+void Bus::verifyHold() const {
+    int live = 0;
+    for (Board* b : boards_) {
+        bool actual = b->enabled() && b->requestsBus();
+        if (b->holdWire()) ++live;
+        if (actual == b->holdWire()) continue;
+
+        std::fprintf(stderr,
+                     "\npHOLD WIRE IS STALE -- board '%s'\n"
+                     "  the wire says: %s\n"
+                     "  the board says: %s\n"
+                     "It changed its bus-request state and did not call holdChanged().\n",
+                     b->id.c_str(), b->holdWire() ? "pulling" : "not pulling",
+                     actual ? "pulling" : "not pulling");
+        std::abort();
+    }
+
+    if (live != holdCount_) {
+        std::fprintf(stderr,
+                     "\npHOLD WIRE-OR COUNT IS WRONG\n"
+                     "  the bus thinks %d board(s) are pulling pin 74\n"
+                     "  %d actually are\n"
+                     "A card went into or out of the backplane without the count following.\n",
+                     holdCount_, live);
+        std::abort();
+    }
 }
 
 // READ VI0-VI7. Which of the eight are being pulled down?
