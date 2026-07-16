@@ -1,8 +1,10 @@
 # Building `altairsim` on Linux
 
-**Status: verified building and running on Linux.** Compiled and smoke-tested on
-**Ubuntu 22.04.4 LTS (x86_64)** with **GCC 11.4.0** on 2026-07-14. The simulator
-starts, lists its built-in machines, and runs monitor commands.
+**Status: verified building, testing and running on Linux.** Compiled and
+smoke-tested on **Ubuntu 22.04.4 LTS (x86_64)** with **GCC 11.4.0** on
+2026-07-14, and the **test suite was run there on 2026-07-16** — `ctest -LE slow`
+passes 13/13. The simulator starts, lists its built-in machines, and runs monitor
+commands.
 
 There are **no third-party dependencies** — the produced binary links only
 against the system C/C++ runtime (`libstdc++`, `libgcc_s`, `libc`, `libm`).
@@ -129,8 +131,17 @@ libstdc++, and `-x "help" default` confirms a machine actually initializes.
   `src/platform/posix/*` — the same POSIX implementation already proven on macOS.
 - **Binary:** `build/altairsim`, a dynamically-linked ELF x86-64 executable
   depending only on `libstdc++`, `libgcc_s`, `libc`, `libm`.
-- **Scope:** this covers building and running the **`altairsim` binary**. The
-  ctest suite (`ctest --test-dir build`) was not run as part of this check.
+- **Tests (2026-07-16):** `ctest --test-dir build -LE slow` → **100% tests
+  passed, 0 failed out of 13**, in 29 s. That is the unit suite, three of the
+  four 8080 exercisers (TST8080, 8080PRE, CPUTEST) and the acceptance tests —
+  4K/8K BASIC off a cassette, MITS PS2 polled and interrupt-driven, the config
+  and docs checks. `serial-hw` skipped cleanly (no serial hardware, exit 77) and
+  `socket-hw` passed.
+- **Not covered on this host:** the `slow` label (`cpu-8080exm`, `cpu-zexdoc`,
+  `cpu-zexall`) was excluded by `-LE slow`; `acceptance-cli` was skipped because
+  `expect` was not installed; the Host Bridge acceptance tests were skipped
+  because the 8 MB CP/M image was absent. All three are gated by CI regardless —
+  see `.github/workflows/`.
 
 ---
 
@@ -143,17 +154,20 @@ The exact procedure, so it can be reproduced:
    machine with GCC 11.4.0, GNU Make, and git already installed. Nothing was
    built on the Mac; every compile ran on Linux.
 
-2. **CMake without root.** `bart` did not have CMake installed and the account
-   had no passwordless `sudo`, so instead of `apt` a prebuilt CMake was unpacked
-   into the home directory and put on `PATH` (the "No root?" box in section 1):
+2. **CMake without root.** At the time, `bart` had no CMake installed and the
+   account had no passwordless `sudo`, so instead of `apt` a prebuilt CMake was
+   unpacked into the home directory and put on `PATH` (the "No root?" box in
+   section 1):
    ```bash
    mkdir -p ~/altairsim-linux-build && cd ~/altairsim-linux-build
    curl -fsSL -O https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.tar.gz
    tar xzf cmake-3.28.3-linux-x86_64.tar.gz
    export PATH=$PWD/cmake-3.28.3-linux-x86_64/bin:$PATH
    ```
-   (On a normal machine with sudo, `sudo apt-get install -y cmake` is simpler and
-   gives 3.22, which is new enough.)
+   **This step is no longer needed on `bart`** — it now has a system CMake 3.22.1
+   at `/usr/bin/cmake`, which clears the `>= 3.20` floor. The box above is kept
+   because it is still the answer on *any* host without root. On a normal machine
+   with sudo, `sudo apt-get install -y cmake` is simpler.
 
 3. **Throwaway clone.** The repo was cloned fresh on `bart` into
    `~/altairsim-linux-build/altairsim` — a scratch copy, kept entirely separate
@@ -173,5 +187,74 @@ The exact procedure, so it can be reproduced:
    confirming the binary not only links but initializes a machine and loads its
    embedded ROMs on Linux.
 
+6. **Test suite (added 2026-07-16).** The whole procedure was repeated from a
+   fresh clone of `master`, this time building **all** targets rather than just
+   `--target altairsim` — ctest needs the test executables too. Serial build,
+   exit 0, no errors. Then `ctest --test-dir build -LE slow` →
+   **100% tests passed, 0 failed out of 13** (29 s). See section 4.
+
 To reproduce on any Linux host, do the same: get a C++20 toolchain + CMake ≥
 3.20, clone, and build serially (or with a bounded `-j`) per section 2.
+
+---
+
+## 6. Rebuilding after a `git pull`
+
+**The commands are the same as for a fresh clone.** There is no separate
+procedure, and no need to delete `build/`:
+
+```bash
+git pull
+cmake -S . -B build          # no-op if nothing about the configuration changed
+cmake --build build          # rebuilds only what the pull touched
+```
+
+You can even skip the `cmake -S . -B build` line: the generated Makefile re-runs
+CMake by itself when `CMakeLists.txt` changes. Running it costs a second and is
+the safer habit.
+
+This works because of two deliberate properties of the tree, and it is worth
+knowing *why* rather than cargo-culting a `rm -rf build`:
+
+- **The C++ sources are listed explicitly in `CMakeLists.txt`, not globbed.** So
+  a pull that adds a `.cpp` necessarily changes `CMakeLists.txt`, which triggers
+  the automatic reconfigure. A new source file cannot be silently missed.
+- **The things that *are* globbed — `roms/`, `machines/` — all use
+  `CONFIGURE_DEPENDS`** (`CMakeLists.txt` §"ROMs"/§"Built-in machines"), which
+  re-globs on every *build*, not just on configure. A pull that adds or deletes
+  a ROM or a machine `.toml` is picked up with no manual step.
+
+### When you *do* need to delete `build/`
+
+The build directory caches **absolute paths**, so it is not portable. Delete and
+re-create it if you:
+
+- **moved or renamed the source directory** (this project has been renamed once
+  already), or
+- **changed compilers** (e.g. switched GCC versions or to Clang).
+
+The rename case fails loudly rather than silently, which is the good outcome:
+
+```
+CMake Error: The current CMakeCache.txt directory .../build/CMakeCache.txt is
+different than the directory .../build where CMakeCache.txt was created.
+CMake Error: The source ".../CMakeLists.txt" does not match the source
+".../CMakeLists.txt" used to generate cache.  Re-run cmake with a different
+source directory.
+```
+
+The fix is `rm -rf build` and configure again. That error means the build
+directory is stale, **not** that the pull broke anything.
+
+> **A different CMake, same build directory.** Reconfiguring an existing
+> `build/` with a *different CMake version* than the one that generated it (say,
+> a `$HOME` 3.28 one time and `/usr/bin/cmake` 3.22 the next) is accepted without
+> an error — but it regenerates the build system and you get a **full rebuild**,
+> not an incremental one. Harmless, just slow, and confusing if you expected
+> "nothing changed" to be instant. Keep `PATH` consistent between invocations,
+> or `rm -rf build` and stop thinking about it.
+
+**If a build fails right after a pull, suspect the build directory before
+suspecting the code.** `rm -rf build && cmake -S . -B build && cmake --build
+build` is the one-line answer, and it distinguishes the two cases: if a clean
+build works, the tree was fine and the cache was stale.
