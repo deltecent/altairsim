@@ -34,11 +34,15 @@ bits with ZEXALL.
 
 ## Licensing
 
-**These are the first GPL-2.0 artifacts in this repository.** The ZEXALL
-sources in the upstream repo carry the GNU General Public License v2.0. The
-`.COM` images redistributed here are builds of that GPL-2.0 source.
+**These files are GPL-2.0, and are the only GPL-2.0 artifacts in the
+repository.** Frank Cringle's exerciser (extended by J.G. Harston and Patrik
+Rak) is licensed under the GNU General Public License v2.0; the `.COM` images
+here are builds of that source.
 
-This repository does **not** currently carry a top-level `LICENSE` file, and
-adding two GPL-2.0 test binaries is a licensing decision for Patrick to make
-deliberately — it is flagged here rather than assumed away, in the same spirit
-as the note at the bottom of the parent `PROVENANCE.md`.
+To satisfy GPL-2.0 §3, the **corresponding source travels with the binaries**:
+`zexdoc.z80` and `zexall.z80` are the exact upstream sources, and `LICENSE` in
+this directory is the GPL-2.0 text. They live here, walled off in
+`tests/cpu/z80/`, as **test fixtures the simulator runs as guest programs** —
+not linked into or derived from the simulator. Under the mere-aggregation
+principle, their GPL terms do not extend to the rest of the repository, which is
+MIT-licensed (see the top-level `LICENSE` and the README's License section).

@@ -153,3 +153,15 @@ The 88-MDS acceptance tests need a CP/M disk image that is not in this repositor
 | [`docs/building-linux.md`](docs/building-linux.md) | Building and running on Linux — prerequisites, the serial-build memory trap, and what was verified. |
 
 **Sourcing rule: period manuals and datasheets, never another emulator's source.** Reading past a source to preserve an argument is the same failure as fabricating one.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE) (© 2026 Patrick Linstruth),
+**except** for the third-party Z80 instruction exercisers in `tests/cpu/z80/`
+(`ZEXDOC.COM`, `ZEXALL.COM`, and their `zexdoc.z80` / `zexall.z80` sources), which
+are Frank Cringle's exerciser as extended by J.G. Harston and Patrik Rak and are
+distributed under the **GNU General Public License v2.0** — see
+[`tests/cpu/z80/LICENSE`](tests/cpu/z80/LICENSE) and
+[`tests/cpu/z80/PROVENANCE.md`](tests/cpu/z80/PROVENANCE.md). Those files are test
+fixtures the simulator *runs* as guest programs; they are not linked into or derived
+from the simulator, and their GPL terms do not extend to the rest of this repository.
