@@ -1,7 +1,12 @@
 // Win32 TCP -- Winsock. See src/platform/socket.h.
 //
-// UNBUILT AND UNTESTED, exactly as serial_win32.cpp is, and for the same reason:
-// written on macOS, where no compiler has seen it. See docs/porting-notes.md.
+// PROVED ON THE REAL STACK, 2026-07-15. Written on macOS with no compiler near it, now
+// exercised against the Windows kernel's TCP: tests/test_lines.cpp drives the loopback
+// happy path in the `unit` aggregate, and tests/sockettest.cpp (`ctest -L hw`, 11 checks)
+// drives the non-blocking connect -- success out of loopback, bytes both ways, hangup,
+// and the REFUSED connect that lands in select()'s except set. That except-set path
+// (poll(), below) was flagged as the most-likely-wrong Winsock behaviour; it is right,
+// and it is unchanged. See docs/porting-notes.md.
 
 #include "platform/socket.h"
 

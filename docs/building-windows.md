@@ -1,10 +1,11 @@
 # Building `altairsim` on Windows
 
-**Status (2026-07-15): builds, links, and passes the full test suite with MSVC.**
-The `src/platform/win32/` layer was written on macOS and had never been through a
-compiler until GitHub Actions CI was added. It now **builds and links cleanly** on
-`windows-latest` (MSVC, Winsock via `ws2_32`), and **all registered tests pass**
-locally on native Windows.
+**Status (2026-07-15): builds, passes the full test suite, and the win32 platform
+layer is field-proven with MSVC.** The `src/platform/win32/` layer was written on
+macOS and had never been through a compiler until GitHub Actions CI was added. It now
+**builds and links cleanly** on `windows-latest` (MSVC, Winsock via `ws2_32`), **all
+registered tests pass** on native Windows, and the serial, socket and terminal
+implementations are each proved against the real world by a `ctest -L hw` leg — see §5.
 
 The `0xC0000409` fast-fail that the `unit` aggregate used to hit was a **test**
 bug, not a win32-layer one: `test_media.cpp` deleted a temp file while a live
@@ -14,8 +15,6 @@ bug, not a win32-layer one: `test_media.cpp` deleted a temp file while a live
 Windows read-only attribute *only when every write bit is clear*. Both were fixed
 in the test — no `#ifdef` — so the teardown unmounts before it deletes and clears
 all the write bits. §6 still describes the fast-loop for the next win32 issue.
-Treat a Windows build as a debugging job, not finished work
-(`docs/porting-notes.md`).
 
 There are **no third-party dependencies** — the binary links only against the
 system C/C++ runtime and `ws2_32` (Winsock).
@@ -114,10 +113,14 @@ ctest --test-dir build -C Release -LE slow --output-on-failure
   (`acceptance-cli`, `acceptance-ps2-*`, `acceptance-2sio-echo`, the minidisk/DCDD
   ones) do not register — they self-skip at configure time. That is expected and
   does not fail the build.
-- **`serial-hw`** self-skips (needs real serial ports via `ALTAIR_SERIAL_A/B`).
-  It has since been **run for real** on native Windows — two USB serial ports with
-  a null modem, `$env:ALTAIR_SERIAL_A="COM4"; $env:ALTAIR_SERIAL_B="COM10"; ctest
-  -C Release -L hw` — and passes (25 checks, 0 failed). See §5.
+- **The `-L hw` leg** (`serial-hw`, `socket-hw`, `terminal-hw`) touches the real
+  world. `socket-hw` always runs; `serial-hw` self-skips without real ports
+  (`ALTAIR_SERIAL_A/B`) and `terminal-hw` self-skips without a console. Run it
+  explicitly — all three are described in §5:
+  ```powershell
+  $env:ALTAIR_SERIAL_A="COM4"; $env:ALTAIR_SERIAL_B="COM10"   # serial-hw only
+  ctest --test-dir build -C Release -L hw --output-on-failure
+  ```
 
 Everything that registers passes. If a new win32 problem crashes the `unit`
 aggregate with `0xC0000409`, §6 shows how to isolate it.
@@ -130,16 +133,27 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
   and terminal implementations build; `CMakeLists.txt` links `ws2_32` for Winsock.
 - **All registered tests pass** (the ones that register without `expect`/disk
   images), including the `unit` aggregate now that its teardown bug is fixed.
-- **Serial verified against real hardware (2026-07-15):** `serial_win32.cpp` passes
-  the full `ctest -L hw` suite on native Windows — two USB FTDI ports (`COM4 <->
-  COM10`) with a null modem, 25 checks, 0 failed, covering both the platform layer
-  and an in-machine 6850 doing real `/CTS` flow control and a latched `/DCD`
-  carrier-drop interrupt.
-- **Not yet verified:** the **socket** code against a real remote peer and the
-  **terminal** code against an interactive console. (The socket loopback path is
-  exercised by the suite, but no real peer; the terminal has had no interactive
-  run.) The win32 layer's remaining most-likely-wrong spots are enumerated in
-  `docs/porting-notes.md`.
+- **The whole win32 platform layer is field-proven (2026-07-15).** `ctest -L hw` is
+  the real-world leg, and all three pass on native Windows:
+  - **serial-hw** — two USB FTDI ports (`COM4 <-> COM10`) with a null modem, 25
+    checks: the platform layer plus an in-machine 6850 doing real `/CTS` flow
+    control and a latched `/DCD` carrier-drop interrupt.
+  - **socket-hw** — the real kernel TCP stack, 11 checks: non-blocking connect
+    (success, bytes both ways, hangup) and the **refused** connect that lands in
+    `select()`'s except set, the flagged Winsock case.
+  - **terminal-hw** — a real console, 15 checks: `enterTermMode` through both modes
+    (Guest clears line-input/echo/`PROCESSED_INPUT`; LineEdit leaves `PROCESSED_INPUT`
+    as found, so Ctrl-C still signals), `ENABLE_VIRTUAL_TERMINAL_INPUT` set, and an
+    exact, idempotent `restoreTerm`. Skips (77) where no console can be taken. (The
+    terminal *pipe* path — `readInput` + broken-pipe EOF — is covered separately by
+    `acceptance-basic4k/8k` in the default suite; the peek-and-discard loop is verified
+    by hand, being too racy against the shared console buffer to commit — see
+    `docs/porting-notes.md`.)
+
+  ```powershell
+  $env:ALTAIR_SERIAL_A="COM4"; $env:ALTAIR_SERIAL_B="COM10"   # serial-hw only
+  ctest --test-dir build -C Release -L hw --output-on-failure
+  ```
 
 ---
 

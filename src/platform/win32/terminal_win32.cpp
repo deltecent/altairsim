@@ -1,26 +1,39 @@
 // Win32 terminal -- SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_*. See platform/terminal.h.
 //
 // ---------------------------------------------------------------------------
-// UNBUILT AND UNTESTED, exactly like its two neighbours. Written on macOS, where no
-// compiler has ever looked at it and no keyboard has ever proved it. It is here so a
-// Windows build LINKS and so the porting job is debugging rather than design -- but do
-// not mistake it for working code, and do not mistake its absence of conditionals for
-// evidence that it runs.
+// PROVED ON A REAL CONSOLE, 2026-07-15. Written on macOS with no compiler or keyboard
+// near it, now exercised both ways on native Windows.
 //
-// TWO THINGS HERE ARE MORE LIKELY WRONG THAN THE REST, and are where to look first:
+// The PIPE path runs in CI every build: acceptance-basic4k/8k feed a live guest
+// keystrokes on a redirected stdin, so readInput()'s PeekNamedPipe branch, its
+// never-waiting contract and its broken-pipe EOF (which stops the run with InputEnded)
+// are all covered.
+//
+// The CONSOLE path -- which a piped test cannot reach -- is proved by
+// src/platform/win32/terminaltest_win32.cpp (`ctest -L hw`, 15 checks): it takes a real
+// console and drives enterTermMode() through BOTH modes, checking that Guest clears line
+// input, echo and PROCESSED_INPUT (so Ctrl-C is a byte, not a signal) while LineEdit
+// leaves PROCESSED_INPUT as it found it (so Ctrl-C still signals a way out of the
+// prompt), that ENABLE_VIRTUAL_TERMINAL_INPUT is set (the arrow-key path #2 below), and
+// that restoreTerm() gives the mode back exactly, idempotently.
 //
 //   1. readInput()'s console path peeks the input queue and discards the records that
 //      are not characters (key-UP events, window resizes, mouse), because ReadFile on a
 //      console BLOCKS until a character arrives and the peek is the only thing standing
-//      between us and that. If keystrokes go missing or the simulator hangs on input,
-//      this is the code.
+//      between us and that. This one is verified BY HAND, not in CI: proving it means
+//      manufacturing keystrokes with WriteConsoleInput and reading them back, and that
+//      round trip is racy against a console input buffer shared with the parent shell --
+//      a flaky hardware test is a lying one. In practice a broken peek loop hangs the
+//      monitor the first time you type, so it does not hide. If keystrokes go missing or
+//      input hangs, this is still the first code to read.
 //
 //   2. ENABLE_VIRTUAL_TERMINAL_INPUT is what turns the arrow keys into the ESC [ A
 //      sequences that cli/lineedit.cpp already knows how to read. On a Windows old
 //      enough not to have it, SetConsoleMode fails, and the right answer is to fall
-//      back rather than to grow a conditional -- see the retry below.
+//      back rather than to grow a conditional -- see the retry below. The test confirms
+//      the flag is set on a modern console.
 //
-// docs/porting-notes.md says all of this too, rather than letting someone find it out.
+// docs/porting-notes.md records the same. Everything here was right as written.
 // ---------------------------------------------------------------------------
 
 #include "platform/terminal.h"
