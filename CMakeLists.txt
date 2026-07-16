@@ -361,6 +361,13 @@ add_test(NAME cpu-8080exm COMMAND altair_cputest 8080EXM)
 set_tests_properties(cpu-8080exm PROPERTIES LABELS slow TIMEOUT 1800)
 set_tests_properties(cpu-cputest PROPERTIES TIMEOUT 600)
 
+# The Z80 exercisers -- the same gate, one core down. ZEXDOC validates documented
+# behavior; ZEXALL additionally pins the undocumented F5/F3 bits. Each is ~46
+# billion instructions, so both are `slow` and skipped by `ctest -LE slow`.
+add_test(NAME cpu-zexdoc COMMAND altair_cputest ZEXDOC)
+add_test(NAME cpu-zexall COMMAND altair_cputest ZEXALL)
+set_tests_properties(cpu-zexdoc cpu-zexall PROPERTIES LABELS slow TIMEOUT 3600)
+
 # ---------------------------------------------------------------------------
 # THE ACCEPTANCE TESTS -- period software, on the whole machine, through the CLI.
 #

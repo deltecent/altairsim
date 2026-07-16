@@ -99,5 +99,11 @@ and it is not modelled — an absent signal, not an invented one.
 
 Nothing here ships as "working" until **ZEXDOC and ZEXALL pass** — the same rule
 that kept the 8080 boards unbuilt until 8080EXM was green. The suites and the run
-results live in `tests/cpu/z80/` and the harness is `tests/cputest.cpp`; ZEXALL is
-labelled `slow` and runs with `ctest -L slow`.
+results live in `tests/cpu/z80/` and the harness is `tests/cputest.cpp`; both are
+labelled `slow` and run with `ctest -L slow` (as `cpu-zexdoc` and `cpu-zexall`).
+
+**Both pass.** Each runs all 67 subtests — 5.76 billion instructions, ~47 billion
+T-states — to `Tests complete` with zero `ERROR ****`. ZEXDOC validates the
+documented behavior; ZEXALL additionally pins the undocumented F5/F3 (YF/XF) flag
+bits, the MEMPTR/WZ leaks, and the SCF/CCF and block-instruction flag quirks. A
+run takes ~3 minutes on a modern desktop (~30M instructions/s at -O3).
