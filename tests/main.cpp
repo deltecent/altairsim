@@ -43,6 +43,7 @@ int main() {
     test_machines();
     test_subunit_schema();
     test_isa();
+    test_z80_isa();
     test_cpu();
     test_debug();
     test_sio2();
