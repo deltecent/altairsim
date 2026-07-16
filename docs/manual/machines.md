@@ -192,6 +192,52 @@ Note what is *not* affected: once the machine is up, `MOUNT dsk0:drive1 disks/Ke
 typed at the prompt needs no `../`, because you are the one typing it. The `../` belongs to the
 file, not to you.
 
+### Ask the machine, rather than working it out
+
+You do not have to hold this in your head. `SHOW PATHS` prints every base at once, for the
+machine you are actually running:
+
+```
+altairsim> SHOW PATHS
+  what you type      /home/you/altair
+                     MOUNT, LOAD, SAVE and -s scripts resolve against this.
+
+  machine file       /home/you/altair/disks/cpm22
+                     `mount`, `base` and the MOUNT/LOAD lines in `startup`
+                     resolve against THIS, not the cwd -- so a machine file
+                     names the disks lying beside it and goes on naming them
+                     from wherever you launch it.
+
+  hb0 sandbox        /home/you/altair/disks/cpm22/xfer
+                     THE GUEST'S SANDBOX, and the only real fence here:
+                     R.COM/W.COM cannot leave it. It is not a base for
+                     anything you type. Set with `hostdir`.
+```
+
+Three lines, three different directories, and they are allowed to differ — that is the rule
+working, not a fault.
+
+Boot a **built-in** machine and the middle line says so, because then there is no file and
+nothing was re-based:
+
+```
+  machine file       (none -- this machine is built in to the binary)
+```
+
+`SHOW MOUNTS` is the companion: every disk, tape and ROM in the machine and what is in each,
+across all the cards at once.
+
+```
+altairsim> SHOW MOUNTS
+  UNIT         KIND  HOLDS
+  dsk0:drive0  disk  cpm22b23-56k.dsk
+  dsk0:drive1  disk  (empty)
+  mem0:rom0    rom   builtin:dbl  (read-only)
+```
+
+Those paths are printed **as written**, which is why the two commands belong together: `SHOW
+MOUNTS` tells you what the machine was told, and `SHOW PATHS` tells you what that meant.
+
 ### None of this is a sandbox
 
 The path rule decides **where a path points**, and confines nothing. A machine file may mount any

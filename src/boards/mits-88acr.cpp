@@ -145,16 +145,20 @@ std::vector<MapEntry> AcrBoard::ioMap() const {
 // ONE TAPE, and it is a TAPE and not a serial port -- which is the entire difference
 // between this card and its own SIO B half, as far as the operator is concerned.
 std::vector<UnitDef> AcrBoard::units() const {
-    std::string state = "(empty)";
+    UnitDef u{"tape", UnitKind::Tape, "(empty)"};
     if (tape_) {
         char buf[192];
-        std::snprintf(buf, sizeof buf, "%s  at %llu of %llu bytes%s%s", path_.c_str(),
+        // The write-protect tab is NOT spelt into this string any more -- it is a field
+        // on UnitDef, so that SHOW and the mount table read the same answer from the same
+        // place and a disk controller cannot forget to mention it (board.h).
+        std::snprintf(buf, sizeof buf, "%s  at %llu of %llu bytes%s", path_.c_str(),
                       (unsigned long long)tape_->pos(), (unsigned long long)tape_->size(),
-                      tape_->readOnly() ? "  (write-protected)" : "",
                       tape_->atEnd() ? "  [END OF TAPE]" : "");
-        state = buf;
+        u.state          = buf;
+        u.readOnly       = tape_->readOnly();
+        u.readOnlyForced = tape_->readOnlyForced();
     }
-    return {{"tape", UnitKind::Tape, state}};
+    return {u};
 }
 
 // ---------------------------------------------------------------------------

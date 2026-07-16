@@ -134,6 +134,8 @@ private:
     void runMachine(std::ostream& out, bool stepOver = false);
     void showConsole(std::ostream& out);
     void showRoms(std::ostream& out);
+    void showMounts(std::ostream& out);  // every mountable unit, across every board
+    void showPaths(std::ostream& out);   // what a path resolves against -- 3 answers
     void flush(std::ostream& out);  // print anything the bus or a board said
 
     Machine& m_;

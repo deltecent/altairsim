@@ -45,6 +45,7 @@ public:
     uint64_t size() const { return media_->size(); }
     bool     atEnd() const { return pos_ >= media_->size(); }
     bool     readOnly() const { return media_->readOnly(); }
+    bool     readOnlyForced() const { return media_->readOnlyForced(); }
     void     sync() { media_->sync(); }
     const std::string& describe() const { return media_->describe(); }
 

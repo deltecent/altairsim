@@ -132,10 +132,12 @@ HISTORY 100      the last hundred
 ### MOUNT — `M[OUNT]`
 
 ```
-MOUNT <id>[:<u>] <file> [RO]
+MOUNT <id>[:<u>] <file> [WP]
 ```
 Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
-RO is the write-protect tab: the guest may read it and may not write it.
+WP is the write-protect tab: the guest may read it and may not write it.
+RO is accepted and means the same -- it is the word for a ROM, which has no
+tab to move.
 
 A NAME IS CASE-BLIND, and you may leave off what carries no information: the
 trailing index when only one such card is in the machine, and the unit when the
@@ -144,7 +146,7 @@ and it will tell you so.
 
 ```
 MOUNT dsk0:drive0 disks/cpm.dsk
-MOUNT dsk0:drive1 disks/master.dsk RO
+MOUNT dsk0:drive1 disks/master.dsk WP
 MOUNT mem0:rom0 roms/monitor.bin
 MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
 ```
@@ -209,13 +211,15 @@ SET mem0 phantom=read
 ### SHOW — `SH[OW]`
 
 ```
-SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|CONSOLE|MACHINE
+SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|MACHINE
 ```
 
 ```
 SHOW mem0        regions and properties
 SHOW BUS MAP     who decodes what, and what floats
 SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins
+SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
+SHOW PATHS       what a path resolves against -- and there is more than one answer
 SHOW CONSOLE     which unit holds the keyboard, and its transforms
 SHOW ROMS        the built-in images and their provenance
 ```

@@ -132,9 +132,31 @@ private:
 
     HostDir& dir();                   // build a RealHostDir on demand, or the injected one
 
+public:
+    // The resolved sandbox root, for SHOW. Does NOT build the sandbox.
+    std::string sandboxRoot() const;
+
+private:
+
     uint8_t base_ = 0xB0;             // two ports: BA+0 command/status, BA+1 data
 
     std::string hostdir_;             // "" = the shell's working directory
+
+    // WHAT `hostdir_` IS RELATIVE TO, PINNED WHEN IT WAS WRITTEN -- and it has to be
+    // pinned, because by the time we open it the answer is gone.
+    //
+    // The rule is "a path means what its author could see" (core/paths.h), and the
+    // author is known only at the moment the value arrives: the loader has configDir()
+    // standing at the machine file, the prompt has it empty. But dir() builds the
+    // sandbox LAZILY, on the guest's first R/W -- and runStartup() clears configDir()
+    // the instant the startup list ends. Reading it there gave a fence whose root
+    // depended on WHEN the guest first touched the card: `hostdir = "xfer"` resolved
+    // beside the machine file if the guest ran R before you hit ^E, and beside your
+    // SHELL if you hit ^E first. Same file, same session, two different sandboxes.
+    //
+    // We still STORE hostdir_ as written -- SHOW and CONFIG SAVE need that (board.h).
+    std::string hostdirBase_;
+
     bool        readOnly_ = false;
 
     std::unique_ptr<HostDir> dir_;

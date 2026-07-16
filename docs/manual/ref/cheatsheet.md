@@ -41,12 +41,12 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` | `HISTORY [n]` |
-| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [RO]` |
+| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP]` |
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>]` |
 | `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id> <k>=<v>` |
-| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|CONSOLE\|MACHINE` |
+| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|MACHINE` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |

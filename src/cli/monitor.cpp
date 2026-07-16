@@ -20,6 +20,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -412,6 +413,28 @@ void Monitor::flush(std::ostream& out) {
 // SHOW
 // ---------------------------------------------------------------------------
 
+// WHAT A PROTECTED MEDIUM IS CALLED. A floppy and a cassette have a WRITE-PROTECT TAB --
+// that is the physical thing, the operator can move it, and it is the word the 88-DCDD
+// manual uses. A ROM has no tab to move; it is read-only because of what it IS, and
+// calling it write-protected would promise a switch that does not exist.
+static const char* protectedWord(UnitKind k) {
+    return k == UnitKind::Rom ? "read-only" : "write-protected";
+}
+
+// The tab, in words, for a unit that has something in it.
+//
+// FORCED IS THE ONE WORTH THE INK. Write-protected when the operator asked for it is them
+// being told what they asked for; write-protected when they did NOT is the difference
+// between what was typed and what happened, and CP/M will spend an afternoon bouncing
+// every write off it. The board says so once at MOUNT via drainLog(); this is the same
+// fact, still here an hour later when that message has scrolled away.
+static std::string roNote(const UnitDef& u) {
+    if (!u.readOnly || u.state == "(empty)") return "";
+    std::string s = std::string("  (") + protectedWord(u.kind);
+    if (u.readOnlyForced) s += " -- THE HOST WON'T LET US WRITE IT; you did not ask for this";
+    return s + ")";
+}
+
 void Monitor::showBoard(Board* b, std::ostream& out) {
     char buf[256];
     out << b->id << "  (" << b->type() << ")" << (b->enabled() ? "" : "  [DISABLED]") << "\n";
@@ -435,8 +458,8 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
     if (!us.empty()) {
         out << "\n  unit     kind    holds\n";
         for (const auto& u : us) {
-            std::snprintf(buf, sizeof buf, "    %-7s %-7s %s", u.name.c_str(),
-                          unitKindName(u.kind), u.state.c_str());
+            std::snprintf(buf, sizeof buf, "    %-7s %-7s %s%s", u.name.c_str(),
+                          unitKindName(u.kind), u.state.c_str(), roNote(u).c_str());
             out << buf << "\n";
         }
     }
@@ -568,6 +591,125 @@ static std::string chipName(const std::string& note, std::string& extra) {
     size_t slash = s.find_last_of("/\\");
     if (slash != std::string::npos) s = s.substr(slash + 1);
     return s;
+}
+
+// ---------------------------------------------------------------------------
+// SHOW MOUNTS -- every mountable unit in the machine, on one screen.
+//
+// This is a question NO `SHOW <id>` can answer, because it spans boards: "what is in
+// this machine, and where did it come from." BOARDS gets close -- it marks a drive
+// `(empty)` -- but it will not tell you WHICH disk is in drive0, and that is the half
+// people actually want.
+//
+// EMPTY UNITS ARE LISTED. "Which drives are free?" is asked as often as "what is in
+// drive0", and a table that silently omitted three of four drives would be one you had
+// to learn not to trust.
+//
+// It reads Board::units() -- the same source showBoard() reads and the same source
+// MOUNT itself resolves names against, so this table cannot drift from either.
+// ---------------------------------------------------------------------------
+void Monitor::showMounts(std::ostream& out) {
+    struct Row { std::string unit, kind, holds; };
+    std::vector<Row> rows;
+    size_t wUnit = 4, wKind = 4;
+
+    for (const auto& b : m_.boards()) {
+        for (const auto& u : b->units()) {
+            if (!isMountable(u.kind)) continue;  // a serial port is CONNECTed, not mounted
+            Row r;
+            r.unit  = b->id + ":" + u.name;
+            r.kind  = unitKindName(u.kind);
+            r.holds = u.state + roNote(u);
+            wUnit   = std::max(wUnit, r.unit.size());
+            wKind   = std::max(wKind, r.kind.size());
+            rows.push_back(std::move(r));
+        }
+    }
+
+    // A machine with nothing to mount is a real machine -- machines/altmon.toml is one --
+    // so this is a fact about it, not a failure to find anything.
+    if (rows.empty()) {
+        out << "  (no mountable units -- this machine has no disk, tape or ROM sockets)\n";
+        return;
+    }
+
+    char buf[512];
+    std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %s", (int)wUnit, "UNIT", (int)wKind, "KIND",
+                  "HOLDS");
+    out << buf << "\n";
+    for (const auto& r : rows) {
+        std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %s", (int)wUnit, r.unit.c_str(),
+                      (int)wKind, r.kind.c_str(), r.holds.c_str());
+        out << buf << "\n";
+    }
+    out << "\n  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.\n";
+}
+
+// ---------------------------------------------------------------------------
+// SHOW PATHS -- what a path resolves against, and there is more than one answer.
+//
+// THIS COMMAND EXISTS BECAUSE "WHAT IS THE BASE DIRECTORY" HAS NO SINGLE ANSWER, and
+// the question gets asked (twice by Patrick, once as a bug report) because the rule is
+// invisible. A bare `pwd` would have had to pick one of these three and imply it was
+// the rule -- which is the misunderstanding, printed with authority.
+//
+// The three are genuinely different things and only the third is a fence:
+//   - the shell's cwd: what a path you TYPE resolves against (and a -s script's).
+//   - the machine file's dir: what a path WRITTEN IN IT resolves against, and nothing
+//     else. It governs `mount`, `base`, and the MOUNT/LOAD lines in `startup`.
+//   - hostdir: the guest's sandbox -- R.COM/W.COM cannot leave it. Not a base at all.
+// ---------------------------------------------------------------------------
+void Monitor::showPaths(std::ostream& out) {
+    char buf[512];
+    // One column for the label so the three answers line up and read as three answers to
+    // the same question -- which is the whole point of putting them on one screen.
+    auto row = [&](const std::string& label, const std::string& value) {
+        std::snprintf(buf, sizeof buf, "  %-17s  %s", label.c_str(), value.c_str());
+        out << buf << "\n";
+    };
+    const char* pad = "                     ";  // under the value column, for the prose
+
+    std::error_code ec;
+    auto cwd = std::filesystem::current_path(ec);
+
+    row("what you type", ec ? "(unknown)" : cwd.string());
+    out << pad << "MOUNT, LOAD, SAVE and -s scripts resolve against this.\n";
+
+    // ABSOLUTE, for the same reason the sandbox is: `cfg` is the question restated. The
+    // machine was named on the command line, so this is as relative as what you typed.
+    std::string mdir = m_.dir;
+    if (!mdir.empty()) {
+        std::error_code e2;
+        auto abs = std::filesystem::absolute(mdir, e2);
+        if (!e2) mdir = abs.lexically_normal().string();
+    }
+
+    out << "\n";
+    row("machine file", mdir.empty() ? "(none -- this machine is built in to the binary)"
+                                     : mdir);
+    if (!m_.dir.empty())
+        out << pad << "`mount`, `base` and the MOUNT/LOAD lines in `startup`\n"
+            << pad << "resolve against THIS, not the cwd -- so a machine file\n"
+            << pad << "names the disks lying beside it and goes on naming them\n"
+            << pad << "from wherever you launch it.\n";
+
+    // hostdir is the hostbridge's own property, so it is printed only if the card is in
+    // the backplane. A machine with no host bridge has no sandbox to describe -- which is
+    // not a missing value, it is the truth about that machine.
+    for (const auto& b : m_.boards()) {
+        for (const auto& p : b->properties()) {
+            // The RESOLVED root, not the written one. "Which directory is the guest
+            // actually fenced into" is the only version of this question worth asking,
+            // and `hostdir` reads back what someone typed -- which is `xfer` on both
+            // sides of the bug that made this column necessary.
+            if (p.name != "hostdir_root") continue;
+            out << "\n";
+            row(b->id + " sandbox", p.get().s());
+            out << pad << "THE GUEST'S SANDBOX, and the only real fence here:\n"
+                << pad << "R.COM/W.COM cannot leave it. It is not a base for\n"
+                << pad << "anything you type. Set with `hostdir`.\n";
+        }
+    }
 }
 
 void Monitor::showBoards(std::ostream& out) {
@@ -1875,7 +2017,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- SHOW / SET ----------------
     if (cmd == "SHOW") {
-        if (!need(2, "SHOW <id> | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS | SHOW MACHINE"))
+        if (!need(2, "SHOW <id> | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS | SHOW MOUNTS"
+                     " | SHOW PATHS | SHOW MACHINE"))
             return true;
         std::string sub = upper(a[1]);
         if (sub == "BUS") {
@@ -1884,6 +2027,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "ROMS") {
             showRoms(out);
+            return true;
+        }
+        // MOUNT and MOUNTS both, because the operator is coming here from the MOUNT verb
+        // and making them find the S is a toll booth (the same reason BOARDS needs no LIST).
+        if (sub == "MOUNTS" || sub == "MOUNT") {
+            showMounts(out);
+            return true;
+        }
+        if (sub == "PATHS" || sub == "PATH" || sub == "PWD") {
+            showPaths(out);
             return true;
         }
         if (sub == "CONSOLE") {
@@ -2208,24 +2361,29 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- MOUNT ----------------
     if (cmd == "MOUNT") {
-        if (!need(3, "MOUNT <id>:<unit> <file> [RO]")) return true;
+        if (!need(3, "MOUNT <id>:<unit> <file> [WP]")) return true;
         Board* b;
         UnitDef u;
         if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;
 
-        // RO IS THE WRITE-PROTECT TAB, and until now it was documented in HELP and
+        // WP IS THE WRITE-PROTECT TAB, and until now it was documented in HELP and
         // silently thrown away here (`readOnly = false`, hardcoded). That is fine
         // for a ROM, which cannot be written anyway -- and it is a disk you are
         // about to let CP/M loose on.
         //
-        // Anything else in the slot is a typo, and a typo that we accepted would
-        // mount the disk READ/WRITE while the operator believed they had protected
-        // it. Refuse it.
+        // BOTH SPELLINGS, and neither is a legacy alias to be regretted: WP is the tab
+        // on the medium, which is what this does to a floppy or a tape; RO is what the
+        // file becomes, which is what it does to a ROM socket. They are one flag because
+        // the card can only do one thing about them, and an operator who reaches for the
+        // other word is not making a mistake worth an error message.
+        //
+        // Anything else in the slot IS a typo, and a typo that we accepted would mount
+        // the disk READ/WRITE while the operator believed they had protected it. Refuse.
         bool readOnly = false;
         if (a.size() > 3) {
-            if (!is(a[3], "RO")) {
-                out << "MOUNT: '" << a[3] << "': the only option is RO. "
-                    << "usage: MOUNT <id>:<unit> <file> [RO]\n";
+            if (!is(a[3], "WP") && !is(a[3], "RO")) {
+                out << "MOUNT: '" << a[3] << "': the only option is WP (RO means the same). "
+                    << "usage: MOUNT <id>:<unit> <file> [WP]\n";
                 failed_ = true;
                 return true;
             }
@@ -2247,8 +2405,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // The rule, everywhere: NARRATION SAYS WHERE. CONFIGURATION SAYS WHAT YOU WROTE.
             out << b->id << ":" << u.name << ": mounted "
                 << resolveFrom(startupDir_, unquote(a[2]))
-                << (readOnly ? " (read-only)" : "") << "\n";
+                << (readOnly ? std::string(" (") + protectedWord(u.kind) + ")" : "") << "\n";
         }
+        // ...AND SAY WHAT THE BOARD SAID, HERE, WHERE IT HAPPENED.
+        //
+        // Without this the board's own warnings -- "mounted READ-ONLY, the host will not
+        // let us write it" (mits-hardsector.cpp), and pathNote()'s "this re-based against
+        // the machine file" -- sat in the log until some LATER command flushed, and then
+        // printed under that one. The forced-RO warning is the exact thing media.h swears
+        // is never silent, and it was arriving three commands late, attached to an EXAMINE.
+        flush(out);
         return true;
     }
     if (cmd == "UNMOUNT") {
@@ -2264,6 +2430,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ":" << u.name
                 << ": unmounted (the socket is now EMPTY -- those pages float to FF)\n";
         }
+        flush(out);  // ...and a sync-on-eject that complained must say so HERE. See MOUNT.
         return true;
     }
 
