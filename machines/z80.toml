@@ -1,0 +1,60 @@
+# A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console.
+#
+# This is the runnable target for the generic Z80 card (src/boards/mits-z80cpu.h)
+# -- the direct analog of `8080` in the default machine, with a Z80 core in the
+# slot instead of an 8080. It carries no boot PROM: there is no period Z80
+# bootstrap for this simulator to be faithful to, and the card claims no
+# specific-product features, so this is the honest minimum you can drop a Z80 into
+# and drive.
+#
+#     altairsim z80
+#     REGS                     the Z80 register set -- IX/IY, the alternate bank,
+#                              I/IM/IFF, and the S Z H P/V N C flags
+#     DISASM 0000              defaults to the z80 ISA, because the active core says so
+#     DEPOSIT 0100 3E 42 CB 30 47   ; LD A,42 / SLL B / LD B,A
+#     DISASM 0100 3
+#     RUN 0100
+#
+# To boot real Z80 CP/M, mount a disk and add the controller the image expects --
+# the same way the 8080 machines do (see machines/default.toml). That is beyond
+# this example, which exists to prove the CARD, not to ship an OS.
+
+[machine]
+name = "z80"
+
+# THE CPU IS A CARD, exactly as the 88-CPU is: it decodes nothing, it drives the
+# bus, and the crystal and idle policy are its properties. `clock_hz = 0` is flat
+# out (the default); `SET cpu0 clock_hz=2000000` gives a period 2 MHz, or 4000000
+# for the faster Z80s -- emulated time is identical either way, only the host sleep
+# differs (src/boards/mits-88cpu.h has the full argument).
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+# The console -- a 2SIO (a 6850 ACIA) at port 10, channel A wired to the terminal.
+# Channel B is left unconnected on purpose: an unconnected 6850 sits with TDRE set
+# forever, so software that writes to it works fine and talks to nobody.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# 64K of RAM, the whole address space -- there is no ROM up top to leave room for.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                # 0000-FFFF

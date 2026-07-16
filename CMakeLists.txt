@@ -165,6 +165,9 @@ add_library(altair_core STATIC
   src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
+  # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
+  # CpuZ80 instead of a Cpu8080. Listed after it so the reader sees the pair.
+  src/boards/mits-z80cpu.cpp
   # The two MITS hard-sector floppy controllers, and the register model they share.
   # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
   # programming model, and the period BOOT.ASM declares the ports and every status/command

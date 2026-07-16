@@ -84,6 +84,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 |---|---|
 | `memory` | RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes |
 | `8080` | MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus |
+| `z80` | Generic Z80 CPU card. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core |
 | `2sio` | MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3 |
 | `sio` | MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits |
 | `dcdd` | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
@@ -105,6 +106,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |
 | `ps2` | The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
+| `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |
 
 ## A machine file, in one look
 
