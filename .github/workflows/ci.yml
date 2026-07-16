@@ -13,10 +13,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # Windows is included but advisory: src/platform/win32/ has never been proven
-    # (docs/porting-notes.md). continue-on-error keeps a red Windows leg from
-    # blocking a PR while the win32 code is brought up. Linux + macOS are required.
-    continue-on-error: ${{ matrix.experimental || false }}
+    # All three legs are required. Windows was advisory (continue-on-error) while
+    # src/platform/win32/ was being brought up; it now compiles, links, and passes
+    # the full suite on MSVC, so a Windows regression blocks a PR like any other.
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +38,6 @@ jobs:
             os: windows-latest
             artifact: altairsim-windows-x86_64
             binary: build/Release/altairsim.exe
-            experimental: true
 
     steps:
       - uses: actions/checkout@v4
