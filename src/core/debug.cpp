@@ -109,6 +109,59 @@ void Debugger::disarmObserver() {
 }
 
 // ---------------------------------------------------------------------------
+// pHOLD / pHLDA -- bus mastering (DESIGN.md 4.5).
+//
+// At an instruction boundary the run loop offers the bus to any board pulling
+// pHOLD. It is the exact analogue of interrupt sampling: the CPU never stops
+// mid-instruction, so a grant happens between instructions and not inside one.
+//
+// The board that is granted becomes a bus master through the SAME
+// BusMaster::step(Bus&) the CPU uses, and its stolen T-states are charged to the
+// clock right here -- which is the whole of "the CPU genuinely loses time". A
+// deadline that comes due mid-transfer (a UART draining, a cycle-steal re-arm)
+// fires from clock.advance() exactly as it does on the CPU's own path.
+//
+// Slot order is the priority: bus_.boards() is backplane order, and the first
+// board still pulling pHOLD wins. That IS the S-100 daisy chain -- there is no
+// arbitration register, and inventing one would be the mistake DESIGN.md 4.4
+// warns about with PHANTOM* and the VI lines.
+//
+// There is no separate "keep the machine alive for DMA" signal: a periodic master
+// (a Dazzler refreshing a frame) re-asks for the bus by arming a Clock deadline,
+// and the run loop's halt test already keeps a halted machine alive while anything
+// is queued (clock.queued() != 0). So a DMA transfer runs through a HLT for free,
+// through the deadline queue that was already there.
+// ---------------------------------------------------------------------------
+void Debugger::serviceDma() {
+    // The fast path, and the common one: nobody is pulling pHOLD, so this is a single
+    // integer test and we are gone. The backplane walk below happens ONLY when a wire
+    // says someone wants the bus (Bus::holdPending()) -- we do not survey the cards.
+    if (!m_.bus.holdPending()) return;
+
+    for (Board* b : m_.bus.boards()) {
+        if (!b->requestsBus()) continue;
+        BusMaster* dm = b->busMaster();
+        if (!dm) continue;  // pulled pHOLD but has nothing to drive: ignore, not a grant
+
+        // Drive it while it keeps the bus. A burst controller holds pHOLD for the
+        // whole block and drains here in one grant; a cycle-stealing one drops the
+        // request after a single transfer and re-arms via a Clock deadline, so the
+        // CPU runs an instruction before the next grant. The loop does not know or
+        // care which -- the board's own requestsBus() decides the grain.
+        while (b->requestsBus()) {
+            StepResult ds = dm->step(m_.bus);
+            m_.clock.advance(ds.tStates);
+
+            // A granted bus cycle costs time. A master that steals zero-time cycles
+            // and never releases would wedge this loop -- the same failure the
+            // StepResult sentinel ban guards against (DESIGN.md 3.1, 16). Stop
+            // draining it; a real transfer always advances the clock.
+            if (ds.tStates == 0) break;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The run loop. This is the debugger, and it asks only generic questions.
 // ---------------------------------------------------------------------------
 RunResult Debugger::run(uint64_t maxSteps) {
@@ -138,6 +191,13 @@ RunResult Debugger::run(uint64_t maxSteps) {
         // character has finished going out is derived from the same instruction
         // stream the guest is timing it with, and the two cannot drift.
         m_.clock.advance(s.tStates);
+
+        // pHLDA: hand the bus to any board pulling pHOLD, now that we are at an
+        // instruction boundary. Its stolen T-states are charged to the clock inside,
+        // so the CPU genuinely loses time (DESIGN.md 4.5). Inert with no DMA card in
+        // the machine. Ordered AFTER clock.advance so a cycle-steal re-arm deadline
+        // that came due during this instruction is already live before we offer.
+        serviceDma();
 
         // A CYCLE breakpoint fired somewhere inside that instruction. We finish the
         // instruction and stop at the boundary -- never mid-instruction, because
