@@ -25,14 +25,16 @@ jobs:
             os: ubuntu-latest
             artifact: altairsim-linux-x86_64
             binary: build/altairsim
-          - name: macos-x86_64
-            os: macos-13
-            artifact: altairsim-macos-x86_64
-            binary: build/altairsim
-          - name: macos-arm64
+          # One universal (x86_64 + arm64) binary, built on the Apple Silicon runner.
+          # macos-14 is plentiful; the Intel macos-13 image is scarce and being
+          # deprecated, so we cross-build both slices here instead of running a separate
+          # Intel leg. ctest runs the binary natively as arm64; the x86_64 slice is
+          # compiled but not exercised on CI (same source, validated on Linux + arm64).
+          - name: macos-universal
             os: macos-14
-            artifact: altairsim-macos-arm64
+            artifact: altairsim-macos-universal
             binary: build/altairsim
+            cmake_args: '-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"'
           - name: windows-x86_64
             os: windows-latest
             artifact: altairsim-windows-x86_64
@@ -49,8 +51,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y expect
 
+      # matrix.cmake_args is empty for every leg except macOS (universal-binary flag).
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
