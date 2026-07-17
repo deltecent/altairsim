@@ -236,8 +236,8 @@ THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually
 running -- which cards, in what order, every property SET can write, what each
 unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It
 is the same format you would write by hand, and the same one a built-in is
-written in, so a saved machine is a first-class machine: name it on the command
-line and you get back exactly what you saved.
+written in, so a saved machine is a first-class machine: LOAD it back, or name
+it on the command line, and you get exactly what you saved.
 
 IT DOES NOT SAVE STATE, and that is not a gap to be filled: a machine file
 describes hardware, and none of this is hardware. NOT saved --
@@ -253,16 +253,19 @@ CONSOLE         attn and the transforms are the HOST's terminal, not a card
 
 A SAVE IS A READ: it asks every property for its value and writes to nothing.
 
-LOAD ADDS the file's cards to the machine you already have, and then runs its
-startup list -- so a file whose startup says RUN comes up running. It does NOT
-replace: a board id that is already in the backplane is refused. To load a
-saved machine as itself, NAME IT ON THE COMMAND LINE -- `altairsim -f mine.toml`
--- which starts from an empty backplane, and is the road every built-in and
-every `base =` takes.
+LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the cards you had
+are out of the backplane, the new ones are in, and it is powered up and running
+its startup list -- a file whose startup says RUN comes up running. Naming that
+same file on the command line does the identical thing; there is one road.
+
+AND IT IS ALL OR NOTHING. The machine is built off to one side first, so a file
+that will not load -- a key that does not parse, a disk image that is not there
+-- leaves you exactly where you were. What you do not get back is the machine
+you REPLACED: there is no undo but the file you saved it to.
 
 ```
 CONFIG SAVE machines/mine.toml
-altairsim -f machines/mine.toml     ...and this is how you get it back
+CONFIG LOAD machines/mine.toml      ...and this is how you get it back
 ```
 
 

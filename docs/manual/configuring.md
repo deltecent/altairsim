@@ -493,6 +493,11 @@ altairsim> CONFIG LOAD mine.toml
 it stands right now, including everything you changed with `SET` since you started. It
 **round-trips**: load what it wrote and you get the machine back.
 
+**`CONFIG LOAD` is the whole machine, so it replaces the one you have** — the same thing that
+naming the file on the command line does, and there is no undo but the file you saved it to.
+It is also **all or nothing**: the machine is built off to one side first, so a file that will
+not load leaves you exactly where you were rather than halfway between two machines.
+
 Which makes it the fastest way to write a machine file. Build the machine at the prompt with
 `BOARDS ADD` and `SET` until it is what you want, then save it, then edit the file down to the
 parts you care about — or give it a `base` and delete the rest.

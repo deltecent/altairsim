@@ -168,8 +168,8 @@ static const std::vector<CommandDef> kCommands = {
      "running -- which cards, in what order, every property SET can write, what each\n"
      "unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It\n"
      "is the same format you would write by hand, and the same one a built-in is\n"
-     "written in, so a saved machine is a first-class machine: name it on the command\n"
-     "line and you get back exactly what you saved.\n"
+     "written in, so a saved machine is a first-class machine: LOAD it back, or name\n"
+     "it on the command line, and you get exactly what you saved.\n"
      "\n"
      "IT DOES NOT SAVE STATE, and that is not a gap to be filled: a machine file\n"
      "describes hardware, and none of this is hardware. NOT saved --\n"
@@ -181,14 +181,17 @@ static const std::vector<CommandDef> kCommands = {
      "                  in the backplane. They survive CONFIG LOAD untouched.\n"
      "A SAVE IS A READ: it asks every property for its value and writes to nothing.\n"
      "\n"
-     "LOAD ADDS the file's cards to the machine you already have, and then runs its\n"
-     "startup list -- so a file whose startup says RUN comes up running. It does NOT\n"
-     "replace: a board id that is already in the backplane is refused. To load a\n"
-     "saved machine as itself, NAME IT ON THE COMMAND LINE -- `altairsim -f mine.toml`\n"
-     "-- which starts from an empty backplane, and is the road every built-in and\n"
-     "every `base =` takes.\n"
+     "LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the cards you had\n"
+     "are out of the backplane, the new ones are in, and it is powered up and running\n"
+     "its startup list -- a file whose startup says RUN comes up running. Naming that\n"
+     "same file on the command line does the identical thing; there is one road.\n"
+     "\n"
+     "AND IT IS ALL OR NOTHING. The machine is built off to one side first, so a file\n"
+     "that will not load -- a key that does not parse, a disk image that is not there\n"
+     "-- leaves you exactly where you were. What you do not get back is the machine\n"
+     "you REPLACED: there is no undo but the file you saved it to.\n"
      "  CONFIG SAVE machines/mine.toml\n"
-     "  altairsim -f machines/mine.toml     ...and this is how you get it back"},
+     "  CONFIG LOAD machines/mine.toml      ...and this is how you get it back"},
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id> <k>=<v>",  // SE (beats SEARCH)

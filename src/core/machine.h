@@ -75,6 +75,29 @@ public:
     bool remove(const std::string& id, std::string& err);
     const std::vector<std::unique_ptr<Board>>& boards() const { return boards_; }
 
+    // FIT THE CARDS FROM `built` INTO THIS BACKPLANE, and throw away whatever was in
+    // it. `built` is left empty. This is how a machine FILE is loaded (config/toml.h),
+    // and the indirection is the entire point:
+    //
+    // A LOAD EITHER HAPPENS OR IT DOES NOT. The file is built into a SCRATCH machine
+    // first, so a file that dies halfway -- a key that does not parse, a disk image
+    // that is not there, an id it uses twice -- takes the scratch machine down with it
+    // and never touches this one. It used to be neither: CONFIG LOAD merged straight
+    // into the live backplane, so a failure left behind whichever cards it had already
+    // fitted and the error handed you a machine that was neither the one you had nor
+    // the one you asked for.
+    //
+    // A CARD IS MOVED, NOT REBUILT. It keeps the disk you mounted in it and the socket
+    // it opened -- the load did that work once and it is not done twice. What it does
+    // NOT keep is the backplane it was built in: it is re-attached to THIS bus and THIS
+    // clock, because the ones it was fitted to belong to a scratch Machine that is
+    // about to cease to exist. A board holds a bare `Clock*` (board.h) and would be
+    // reading freed memory the moment the run loop turned.
+    //
+    // It does not POWER the machine. That is the caller's, and both roads take it: the
+    // command line powers after loading (main.cpp) and so does CONFIG LOAD.
+    void replaceWith(Machine& built);
+
     // THE PROM BURNER (DESIGN.md 10.2). Put a byte where a bus cycle cannot: into a
     // ROM. A ROM region does not decode a write (§4.2) because on real hardware a bus
     // write cannot program a PROM either -- you pull the chip and put it in a

@@ -41,6 +41,7 @@ int main() {
     test_numbers();
     test_units();
     test_machines();
+    test_load_is_atomic();
     test_subunit_schema();
     test_isa();
     test_z80_isa();
