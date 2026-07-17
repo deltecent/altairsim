@@ -427,9 +427,14 @@ std::vector<UnitDef> HardSectorFdc::units() const {
     std::vector<UnitDef> u;
     for (int i = 0; i < drives_; ++i) {
         UnitDef x;
+        const auto& d = drive_[(size_t)i];
         x.name  = "drive" + std::to_string(i);
         x.kind  = UnitKind::Disk;
-        x.state = drive_[(size_t)i].img ? drive_[(size_t)i].path : "(empty)";
+        x.state = d.img ? d.path : "(empty)";
+        if (d.img) {
+            x.readOnly       = d.img->readOnly();
+            x.readOnlyForced = d.img->readOnlyForced();
+        }
         u.push_back(std::move(x));
     }
     return u;
@@ -478,7 +483,7 @@ bool HardSectorFdc::mount(const std::string& unit, const std::string& path, bool
     if (fresh.img->readOnlyForced()) {
         char m[192];
         std::snprintf(m, sizeof m,
-                      "%s: drive%d mounted READ-ONLY -- the host will not let us write %s",
+                      "%s: drive%d mounted WRITE-PROTECTED -- the host will not let us write %s",
                       id.c_str(), i, path.c_str());
         say(m);
     }

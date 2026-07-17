@@ -96,16 +96,18 @@ static const std::vector<CommandDef> kCommands = {
      "transfer's cycles are in there too.\n"
      "  HISTORY          the last 16 cycles\n"
      "  HISTORY 100      the last hundred"},
-    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [RO]",
+    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
-     "RO is the write-protect tab: the guest may read it and may not write it.\n"
+     "WP is the write-protect tab: the guest may read it and may not write it.\n"
+     "RO is accepted and means the same -- it is the word for a ROM, which has no\n"
+     "tab to move.\n"
      "\n"
      "A NAME IS CASE-BLIND, and you may leave off what carries no information: the\n"
      "trailing index when only one such card is in the machine, and the unit when the\n"
      "card has only one you could mount into. Anything genuinely plural you must say,\n"
      "and it will tell you so.\n"
      "  MOUNT dsk0:drive0 disks/cpm.dsk\n"
-     "  MOUNT dsk0:drive1 disks/master.dsk RO\n"
+     "  MOUNT dsk0:drive1 disks/master.dsk WP\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
      "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape"},
     {"BREAK", true, nullptr, "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>]",
@@ -136,10 +138,12 @@ static const std::vector<CommandDef> kCommands = {
      "is decimal.\n"
      "  SET mem0 fill=zero\n"
      "  SET mem0 phantom=read"},
-    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|CONSOLE|MACHINE",
+    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|MACHINE",
      "  SHOW mem0        regions and properties\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
      "  SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins\n"
+     "  SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it\n"
+     "  SHOW PATHS       what a path resolves against -- and there is more than one answer\n"
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
      "  SHOW ROMS        the built-in images and their provenance"},
     {"DEPOSIT", true, nullptr, "DEPOSIT <addr> <bytes...>",  // DE

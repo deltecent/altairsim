@@ -101,6 +101,71 @@ altairsim> SET hb0 hostdir=/tmp/xfer
 
 Empty — which is the default — means **the directory you ran `altairsim` from.**
 
+### Where a relative `hostdir` points
+
+`hostdir` is a path, so it obeys the path rule from *Machines* — **both halves of it**, and this
+is the one place the difference has teeth, because this path is a fence and the other end of it
+is a CP/M program.
+
+```
+altairsim> SET hb0 hostdir=xfer          # you typed it -> ./xfer, from YOUR shell
+```
+
+```toml
+[[board]]
+id      = "hb0"
+hostdir = "xfer"                          # the file wrote it -> the xfer beside THIS FILE
+```
+
+Both say `xfer`. They are **different directories**, and each is the one its author could see —
+which is the same rule that decides where `mount = "cpm.dsk"` looks. The machine file's `xfer`
+travels with the machine file, so an example directory you copy to your desktop still has its
+own transfer folder.
+
+**You never have to work it out.** The written value and the resolved one are both printed, and
+the resolved one is the fence:
+
+```
+altairsim> SHOW hb0
+  property         value            legal
+  port             0xB0             0..254
+  hostdir          xfer
+  hostdir_root     /home/you/altair/disks/cpm22/xfer (read-only)
+  readonly         false            true|false
+```
+
+`hostdir` is what was **written**. `hostdir_root` is where the fence **actually is** — read-only,
+because it is a fact about this run rather than a setting, and it is never written back into a
+machine file.
+
+`SHOW PATHS` prints the same root beside the other two bases. If `R` cannot find a file you are
+certain you put in `xfer`, that is the line to read: there is very likely a second `xfer`, and
+the guest is standing in the other one.
+
+### …and what that means for `R` and `W`
+
+The path rule stops at the card. **It does not reach the guest, and `R` and `W` never see it.**
+
+At the `A>` prompt you are not typing a host path at all — you are typing a **name**, and the
+card resolves it inside `hostdir_root` and nowhere else:
+
+```
+A>R FOO.ASM          <- hostdir_root/FOO.ASM. Never your cwd, never the machine file's
+A>W RESULT.TXT       <- hostdir_root/RESULT.TXT
+```
+
+So the path rule reaches `R` and `W` **exactly once**: it decides which directory `hostdir`
+named, back when someone wrote it. After that the guest has one directory and no way to say
+anything about any other — `..`, an absolute path and a drive letter are all refused at the
+card, as below.
+
+This is worth stating plainly because the two mechanisms look alike and are not:
+
+| | decides | confines |
+|---|---|---|
+| **the path rule** | where a path *written by a human* points | nothing at all |
+| **`hostdir`** | nothing you type | **everything the guest can reach** |
+
 This is the *only* fence in the simulator, and it is worth not confusing with the path rule in
 *Machines*. That rule decides where a path written in a machine file points, and it confines
 nothing at all. This one decides how far the **guest** can reach, and confines everything. A

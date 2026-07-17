@@ -48,11 +48,11 @@ RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes
 | `honors_phantom` | enum | `all` | `none` \| `read` \| `all` | A JUMPER. Another board pulls PHANTOM* -- do I switch off? none \| read \| all |
 | `phantom` | enum | `all` | `none` \| `read` \| `all` | What I ASSERT over my rom regions: none \| read \| all |
 | `bank_type` | enum | `none` | `none` \| `eram` \| `vram` \| `cram` \| `hram` \| `b810` | none\|eram\|vram\|cram\|hram\|b810 -- five real cards, no two alike |
-| `banks` | int | `1` | — | how many banks this card has. The card decides: it follows bank_type **(read-only — not a key you may set)** |
+| `banks` | int | — | — | how many banks this card has. The card decides: it follows bank_type **(read-only — not a key you may set)** |
 | `bank` | int | `0` | `0` .. `15` | The live bank |
 | `fill` | enum | `random` | `zero` \| `random` | RAM contents at power-on: zero \| random (real RAM is not zeroed) |
 | `seed` | int | `1` | any | Seed for fill=random. Goes in the snapshot, or replay is dead. |
-| `pages` | string | `(none)` | — | the composite page map -- which pages this card answers for. Derived from the regions you declared **(read-only — not a key you may set)** |
+| `pages` | string | — | — | the composite page map -- which pages this card answers for. Derived from the regions you declared **(read-only — not a key you may set)** |
 
 
 ## `8080`
@@ -67,7 +67,7 @@ MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the card. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | `0` | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
 
 ## `z80`
@@ -82,7 +82,7 @@ Generic Z80 CPU card. Decodes nothing -- it drives the bus. The 88-CPU's twin, w
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the card. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | `0` | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
 
 ## `2sio`
@@ -105,7 +105,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | `DCD CTS RTS brk` | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 ### Unit `b` — `[board.unit.b]`
@@ -116,7 +116,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | `DCD CTS RTS brk` | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
@@ -240,10 +240,10 @@ MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. On
 | `rtc_source` | enum | `line` | `line` \| `clock` | RTC clock source jumper: the 60 Hz line, or 10 kHz off the 2 MHz clock |
 | `rtc_divide` | enum | `1` | `1` \| `10` \| `100` \| `1000` | RTC divider jumper: source frequency / 1, 10, 100 or 1000 |
 | `rtc_interrupt` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the RTC's interrupt ("RI") is jumpered: none \| vi0..vi7. Leave it `none` to run the PS2 package *(interrupt strap)* |
-| `vi_enabled` | bool | `false` | — | LIVE: is the 88-VI structure enabled? (control bit 7; POC clears it) **(read-only — not a key you may set)** |
-| `level_live` | bool | `false` | — | LIVE: is the current-level comparison in circuit? (control bit 3) **(read-only — not a key you may set)** |
-| `rtc_pending` | bool | `false` | — | LIVE: has the RTC's interrupt flip-flop set? (cleared by control bit 4) **(read-only — not a key you may set)** |
-| `current_level` | int | `0` | — | LIVE: the current interrupt level (control bits 0-2, ones-complement on the wire). Nothing at this level or below may interrupt while level_live **(read-only — not a key you may set)** |
+| `vi_enabled` | bool | — | — | LIVE: is the 88-VI structure enabled? (control bit 7; POC clears it) **(read-only — not a key you may set)** |
+| `level_live` | bool | — | — | LIVE: is the current-level comparison in circuit? (control bit 3) **(read-only — not a key you may set)** |
+| `rtc_pending` | bool | — | — | LIVE: has the RTC's interrupt flip-flop set? (cleared by control bit 4) **(read-only — not a key you may set)** |
+| `current_level` | int | — | — | LIVE: the current interrupt level (control bits 0-2, ones-complement on the wire). Nothing at this level or below may interrupt while level_live **(read-only — not a key you may set)** |
 
 
 ## `hostbridge`
@@ -256,5 +256,6 @@ Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period
 |---|---|---|---|---|
 | `port` | int | `0xB0` | `0x0` .. `0xFE` | Base port. Two ports: BASE+0 command/status, BASE+1 data |
 | `hostdir` | string |  | text | The sandbox root. Guest names resolve here and CANNOT escape it. Empty = the shell's working directory |
+| `hostdir_root` | string | — | — | LIVE: the sandbox root as RESOLVED -- the actual directory the guest is fenced into. Read-only; `hostdir` is what was written. **(read-only — not a key you may set)** |
 | `readonly` | bool | `false` | `on` \| `off` | Refuse OPEN_WRITE and DELETE -- the guest may read the host, not change it |
 

@@ -21,6 +21,7 @@
 #include "core/machine.h"
 #include "host/hostdir.h"
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -301,6 +302,110 @@ void test_hostbridge() {
         for (Property& p : r.hb->properties())
             if (p.name == "hostdir")
                 CHECK(p.get().s() == "/tmp/somewhere", "hostdir survives a power-on reset");
+    }
+
+    // ---- WHERE THE FENCE ACTUALLY LANDS ------------------------------------------
+    //
+    // These two are the same rule from both ends, and the bug they pin was found by
+    // trying to DOCUMENT it: `hostdir = "xfer"` in a machine file resolved beside that
+    // file if the guest ran R before you hit ^E, and beside your SHELL if you hit ^E
+    // first. Same file, same session, two different sandboxes -- because dir() is built
+    // lazily and it read configDir(), which runStartup() had already cleared.
+    //
+    // A Rig is no good here: it injects a MemHostDir, and an injected sandbox outranks
+    // the property by design. The bare card is the thing under test.
+
+    SECTION("hostbridge: the sandbox is pinned to the file that WROTE hostdir, not to when it is asked");
+    {
+        namespace fs = std::filesystem;
+        HostBridgeBoard hb;
+        std::string     err;
+
+        const fs::path cfg = fs::temp_directory_path() / "altairsim-cfgdir";
+
+        // The loader stands at the machine file while it applies the key (toml.cpp)...
+        hb.setConfigDir(cfg.generic_string());
+        CHECK(setProperty(hb, "hostdir", "xfer", err), "a machine file sets hostdir");
+
+        // ...and then the file stops talking. This is the exact teardown runStartup()
+        // does, and every guest R/W in the session happens AFTER it.
+        hb.setConfigDir("");
+
+        const std::string got  = fs::path(hb.sandboxRoot()).lexically_normal().generic_string();
+        const std::string want = (cfg / "xfer").lexically_normal().generic_string();
+        CHECK(got == want, "the fence is the machine file's xfer, whenever it is asked");
+
+        // ...and the written value is untouched: SHOW prints it and CONFIG SAVE writes
+        // it back, so a machine file that saved out a resolved path would not reload.
+        for (Property& p : hb.properties())
+            if (p.name == "hostdir")
+                CHECK(p.get().s() == "xfer", "...and hostdir still reads back AS WRITTEN");
+    }
+
+    SECTION("hostbridge: a TYPED hostdir is the SHELL's -- the pin must not outlive the file");
+    {
+        namespace fs = std::filesystem;
+        HostBridgeBoard hb;
+        std::string     err;
+
+        hb.setConfigDir((fs::temp_directory_path() / "altairsim-cfgdir").generic_string());
+        CHECK(setProperty(hb, "hostdir", "xfer", err), "the machine file sets one...");
+        hb.setConfigDir("");
+
+        // ...and now the operator types their own. configDir() is empty, which IS the
+        // rule: what a human types is relative to the shell they typed it in.
+        CHECK(setProperty(hb, "hostdir", "typed-xfer", err), "...the operator replaces it");
+
+        const std::string got = fs::path(hb.sandboxRoot()).lexically_normal().generic_string();
+        CHECK(got == fs::absolute("typed-xfer").lexically_normal().generic_string(),
+              "a typed hostdir is the shell's cwd, as a typed path always is");
+
+        // THE HALF THAT WOULD ROT SILENTLY. Pinning is only correct if the pin is
+        // REPLACED with the value; a stale base kept from the old file would re-base
+        // something a human typed, which is the original bug wearing the other hat.
+        CHECK(got.find("altairsim-cfgdir") == std::string::npos,
+              "...and the machine file's base did not follow it");
+    }
+
+    // THE FENCE ITSELF, NOT THE SIGN ON IT.
+    //
+    // The two guards above ask sandboxRoot(), which is what SHOW PATHS prints. That is
+    // the DISPLAY. The thing that confines the guest is the RealHostDir that dir()
+    // builds, and a Windows review found that nothing asserted on where THAT rooted:
+    // mutating dir() back to the original bug left the entire suite green while the
+    // guest was handed the decoy directory. A test that only watches the sign is not
+    // watching the fence.
+    //
+    // So: drive the BUS, exactly as a guest does, until the card builds its sandbox for
+    // real -- no injection, no MemHostDir -- and then ask where it went. The OPEN_READ
+    // fails (there is no such file, and there is no such directory), and that is fine:
+    // dir() is called before the miss, and being built is the whole event under test.
+    SECTION("hostbridge: the sandbox the GUEST gets is rooted where SHOW says it is");
+    {
+        namespace fs = std::filesystem;
+        HostBridgeBoard hb;
+        std::string     err;
+
+        const fs::path cfg = fs::temp_directory_path() / "altairsim-fencedir";
+        hb.setConfigDir(cfg.generic_string());
+        CHECK(setProperty(hb, "hostdir", "xfer", err), "a machine file sets hostdir");
+        hb.setConfigDir("");  // runStartup() ends; every guest R/W is after this
+
+        // The guest's first touch. This is what used to decide where the fence landed.
+        auto out = [&](uint8_t port, uint8_t v) {
+            BusCycle c;
+            c.type = Cycle::IoWrite;
+            c.addr = port;
+            c.data = v;
+            hb.write(c);
+        };
+        out(0xB0, (uint8_t)Cmd::OpenRead);
+        for (char ch : std::string("NOSUCH.TXT")) out(0xB1, (uint8_t)ch);
+        out(0xB1, 0);  // the NUL commits, and dir() is built to service it
+
+        const std::string got  = fs::path(hb.sandboxRoot()).lexically_normal().generic_string();
+        const std::string want = fs::absolute(cfg / "xfer").lexically_normal().generic_string();
+        CHECK(got == want, "the sandbox the guest was handed is the machine file's xfer");
     }
 
     SECTION("hostbridge: DELETE");

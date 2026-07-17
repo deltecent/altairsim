@@ -1,5 +1,7 @@
 #include "boards/hostbridge.h"
 
+#include <filesystem>
+#include <system_error>
 #include <utility>
 
 namespace altair {
@@ -351,15 +353,48 @@ void HostBridgeBoard::fail(const HbFail& f) {
 // symlink; that is all behind HostDir (host/hostdir.h), which is where the escape
 // tests live too.
 // ---------------------------------------------------------------------------
+// A path written INSIDE a machine file is relative to that file; one TYPED at the
+// prompt is relative to the shell (core/paths.h). An EMPTY hostdir is the shell's
+// working directory, and that is the same rule, not a special case -- RealHostDir
+// reads an empty root as the cwd.
+//
+// Against hostdirBase_, NOT configDir() -- the base is the one that was standing when
+// the value was written, and dir() runs long after. See hostbridge.h.
+std::string HostBridgeBoard::configuredRoot() const {
+    return hostdir_.empty() ? std::string() : resolveFrom(hostdirBase_, hostdir_);
+}
+
 HostDir& HostBridgeBoard::dir() {
-    if (!dir_) {
-        // A path written INSIDE a machine file is relative to that file; one TYPED at
-        // the prompt is relative to the shell (core/paths.h). An EMPTY hostdir is the
-        // shell's working directory, and that is the same rule, not a special case.
-        dir_ = std::make_unique<RealHostDir>(hostdir_.empty() ? std::string()
-                                                              : resolvePath(hostdir_));
-    }
+    if (!dir_) dir_ = std::make_unique<RealHostDir>(configuredRoot());
     return *dir_;
+}
+
+// The resolved sandbox root, WITHOUT building the sandbox -- SHOW must be able to ask
+// this of a card the guest has never touched, and asking must not be what decides where
+// the fence lands. That is the bug this pair of members exists to prevent (hostbridge.h).
+std::string HostBridgeBoard::sandboxRoot() const {
+    if (injected_ && dir_) return dir_->root();  // a test's MemHostDir outranks the property
+
+    // ONCE THE FENCE EXISTS, THE FENCE IS THE ANSWER. Re-deriving the root here while a
+    // RealHostDir stands on a different one is precisely how a display comes to disagree
+    // with the thing it claims to describe -- and of the two, the operator needs the one
+    // the guest is actually inside. Asking it also means SHOW PATHS reports a wrong
+    // dir(), which is what makes the guard below able to see one.
+    std::error_code ec;
+    std::string p = dir_ ? dir_->root() : configuredRoot();
+
+    // An empty root is the cwd, and it asks for it BY NAME. `absolute("")` is not
+    // spelled "the cwd" in the standard -- it is unspecified enough to hand back a
+    // trailing-slash oddity or nothing at all, and this string is the fence.
+    if (p.empty()) {
+        auto cwd = std::filesystem::current_path(ec);
+        return ec ? std::string("(unknown -- the host will not say what directory we are in)")
+                  : cwd.lexically_normal().string();
+    }
+
+    auto abs = std::filesystem::absolute(p, ec);
+    if (ec) return p;  // no cwd to resolve against: say what we have rather than nothing
+    return abs.lexically_normal().string();
 }
 
 // ---------------------------------------------------------------------------
@@ -412,12 +447,32 @@ std::vector<Property> HostBridgeBoard::properties() {
         x.get  = [this] { return Value::ofStr(hostdir_); };
         x.set  = [this](const Value& v, std::string&) {
             hostdir_ = v.s();
+            // PIN WHAT IT IS RELATIVE TO, HERE, WHILE WE STILL KNOW. See hostbridge.h --
+            // dir() is built lazily and configDir() is empty by then.
+            hostdirBase_ = configDir();
             // Drop the cached sandbox so the next command builds one at the new root.
             // An INJECTED directory (a test's MemHostDir) is not dropped -- see
             // setDir().
             if (!injected_) dir_.reset();
             return true;
         };
+        p.push_back(std::move(x));
+    }
+    {
+        // WHERE THE FENCE ACTUALLY IS -- which `hostdir` alone cannot tell you.
+        //
+        // `hostdir` reads back what was WRITTEN, because that is what SHOW and CONFIG
+        // SAVE need (board.h). But a bare `xfer` is two different directories depending
+        // on who wrote it, and the one question worth asking about a sandbox is which
+        // directory it is actually fencing. That is this. Read-only, so CONFIG SAVE
+        // skips it (toml.cpp) -- a resolved path is a FACT, not configuration, and
+        // writing it back into a machine file would nail that file to this host.
+        Property x;
+        x.name = "hostdir_root";
+        x.help = "LIVE: the sandbox root as RESOLVED -- the actual directory the guest is "
+                 "fenced into. Read-only; `hostdir` is what was written.";
+        x.kind = Kind::Str;
+        x.get  = [this] { return Value::ofStr(sandboxRoot()); };
         p.push_back(std::move(x));
     }
     {

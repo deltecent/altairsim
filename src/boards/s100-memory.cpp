@@ -736,6 +736,10 @@ std::vector<UnitDef> MemoryBoard::units() const {
         d.name = "rom" + std::to_string(n++);
         d.kind = UnitKind::Rom;
         d.state = r.mount.empty() ? "(empty)" : r.mount;
+        // Not news -- it is what the R in ROM is -- but the field means "the guest cannot
+        // write this", and a rom region ignores writes. Saying false here to keep the
+        // column tidy would be putting tidiness ahead of the truth.
+        d.readOnly = true;
         u.push_back(d);
     }
     return u;

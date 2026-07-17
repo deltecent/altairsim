@@ -43,15 +43,37 @@ altairsim> MOUNT dsk0:drive1 my-scratch.dsk
 That is a floppy going into drive 1 of the controller called `dsk0`. The socket was empty
 before; it isn't now.
 
-`RO` protects **the file on your host**. The guest may read the disk; a write is refused at the
-controller and never reaches your file.
+`WP` is **the write-protect tab**, and it does what the tab on a real diskette did: the guest may
+read the disk, and a write is refused at the controller and never reaches the file on your host.
 
 ```
-altairsim> MOUNT dsk0:drive2 golden-master.dsk RO
+altairsim> MOUNT dsk0:drive2 golden-master.dsk WP
 ```
+
+`RO` is accepted and means exactly the same thing. It is the right word for a ROM socket, which
+has no tab to move — for a floppy, `WP` is the thing you are actually doing.
 
 **The guest is not told, and cannot be** — see "Read-only is not an error message" below. Mount
-`RO` for a disk you intend to read.
+`WP` for a disk you intend to read.
+
+A protected disk says so wherever it is listed, so you never have to remember which one you did
+it to:
+
+```
+altairsim> SHOW MOUNTS
+  UNIT         KIND  HOLDS
+  dsk0:drive2  disk  golden-master.dsk  (write-protected)
+```
+
+And if the **host** would not let us write the file — the permissions say no — the disk still
+mounts, protected, and says that it was not your idea:
+
+```
+  dsk0:drive2  disk  master.dsk  (write-protected -- THE HOST WON'T LET US WRITE IT; you did not ask for this)
+```
+
+That one is worth reading closely. You did not ask for the tab, so CP/M is about to bounce every
+write off a disk you believe is writable.
 
 And taking it out:
 

@@ -73,6 +73,17 @@ struct UnitDef {
     std::string name;  // "drive0", "rom0", "tty" -- the board's own word
     UnitKind kind = UnitKind::Disk;
     std::string state; // what is in it now: a path, or "(empty)"
+
+    // WRITE-PROTECT IS A FIELD, NOT A PHRASE IN `state`. The 88-ACR used to spell it
+    // into its state string and the hard-sector controllers did not mention it at all,
+    // so SHOW dsk0 could not tell you a disk was mounted RO -- and nothing that wanted
+    // the answer could get it without sniffing prose for a substring.
+    //
+    // forced = WE put the tab in. The operator did not type RO; the host would not let
+    // us write the file (media.h). That difference must not be silent, and the mount
+    // that announced it via drainLog() has long since scrolled off the screen.
+    bool readOnly       = false;
+    bool readOnlyForced = false;
 };
 
 // Can this kind of unit be MOUNTed (as opposed to CONNECTed)?
