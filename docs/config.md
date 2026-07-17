@@ -298,7 +298,7 @@ enabled = true             # runtime. A boot ROM that switches itself out after 
                            #   same on every OS. `SHOW ROMS` lists the built-ins and
                            #   docs/roms.md records their provenance. A bare path
                            #   ("roms/mine.bin") overrides it.
-                           #   To change contents at runtime: LOAD x.hex RAW mem0 (§10.2).
+                           #   To change contents at runtime: LOAD x.hex ROM (§10.2).
                            #   The operator has a PROM burner; the guest does not.
 
 [[board]]

@@ -75,6 +75,27 @@ public:
     bool remove(const std::string& id, std::string& err);
     const std::vector<std::unique_ptr<Board>>& boards() const { return boards_; }
 
+    // THE PROM BURNER (DESIGN.md 10.2). Put a byte where a bus cycle cannot: into a
+    // ROM. A ROM region does not decode a write (§4.2) because on real hardware a bus
+    // write cannot program a PROM either -- you pull the chip and put it in a
+    // programmer, and that is not a bus operation. This is the programmer.
+    //
+    // It lives HERE, not in the monitor, for the reason hex.h gives: one implementation,
+    // more than one front end. The monitor's `LOAD ... ROM` and MCP's `mem_load {rom:
+    // true}` are the same operation, and two copies of it would be two copies that
+    // drift.
+    //
+    // The address is a BUS address, 0000-FFFF -- the same address everything else in
+    // this program means (Patrick, 2026-07-17: "All addresses should just reference the
+    // 64K address space"). Which chip it belongs to is a question the address already
+    // answers, so nobody names a board. To reach a bank that is not selected, select it
+    // (SET mem0 bank=3); the guest has to, and so do you.
+    //
+    // False means the byte did NOT land, and `why` says which of the two reasons it was
+    // -- nobody home, or more than one board answering. They are different bugs, and a
+    // burner that silently drops a byte is the bug this monitor exists not to have.
+    bool burn(uint16_t addr, uint8_t v, std::string& why);
+
     void reset(Reset r);
 
     // Power applied. THE ONLY THING THAT LOSES RAM (DESIGN.md 6).

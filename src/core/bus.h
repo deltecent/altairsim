@@ -42,7 +42,7 @@ struct BusCycle {
 // NOTE there is deliberately NO `origin` field (Cpu/Monitor/Dma). A real
 // backplane cycle carries no such tag -- which is exactly WHY a front-panel
 // DEPOSIT is indistinguishable from a CPU write, and why a real ROM ignores
-// both. See DESIGN.md 10.2: the operator writes ROM through Board::rawWrite(),
+// both. See DESIGN.md 10.2: the operator writes ROM through Machine::burn(),
 // which is a PROM burner and not a bus operation at all.
 
 enum class Reset {

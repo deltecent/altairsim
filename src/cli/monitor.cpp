@@ -1756,19 +1756,40 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         return true;
     };
 
-    // --- RAW <id>: pull the qualifier out of anywhere in the line (DESIGN.md 10.2)
-    // "Behind the bus, straight into one board's store." This is the PROM burner.
-    Board* raw = nullptr;
-    for (size_t i = 1; i + 1 < a.size(); ++i) {
-        if (is(a[i], "RAW")) {
-            raw = board(a[i + 1], out);
-            if (!raw) return true;
-            a.erase(a.begin() + i, a.begin() + i + 2);
+    // --- ROM: pull the qualifier out of anywhere in the line (DESIGN.md 10.2)
+    //
+    // "This write may program a ROM." It is the PROM burner, and it is a WRITE-side
+    // qualifier only -- LOAD, DEPOSIT, FILL, MOVE. Nothing on the read side takes it,
+    // because a ROM decodes reads perfectly well and always did: EXAMINE, DUMP, SAVE,
+    // SEARCH and COMPARE see a ROM through the bus without being asked twice.
+    //
+    // THIS USED TO BE `RAW <id>`, and it used to name a board and address that board's
+    // store by a LOCAL OFFSET (Patrick, 2026-07-17: "Don't want board local offsets.
+    // Too confusing. All addresses should just reference the 64K address space."). Two
+    // things fell out of that. The board id went, because through the bus you never
+    // name a board -- the address picks it -- so naming one carried no information the
+    // address did not already carry. And the read side went, because it existed only to
+    // reach a store the bus could not see: a bank that is not selected, or a phantomed
+    // board. Both of those are PROPERTIES (SET mem0 bank=3, SET mem0 phantom=...), and
+    // selecting the thing you want to look at is what the guest has to do too.
+    //
+    // What is left is the one thing a bus cycle genuinely cannot do (§4.2): put a byte
+    // into a ROM. You pull the chip and put it in a programmer; that is not a bus
+    // operation, and this word is that programmer.
+    bool romOverride = false;
+    for (size_t i = 1; i < a.size(); ++i) {
+        if (is(a[i], "ROM")) {
+            romOverride = true;
+            a.erase(a.begin() + i);
             break;
         }
     }
-    auto rd = [&](uint32_t x) -> uint8_t {
-        return raw ? raw->rawRead(x) : m_.bus.memRead((uint16_t)x);
+    auto rd = [&](uint32_t x) -> uint8_t { return m_.bus.memRead((uint16_t)x); };
+
+    // The burner itself is Machine::burn -- MCP programs ROM through the same call, and
+    // two copies of "which chip is this?" would be two copies that drift.
+    auto burn = [&](uint32_t A, uint8_t v, std::string& why) -> bool {
+        return m_.burn((uint16_t)A, v, why);
     };
 
     if (cmd == "QUIT") {
@@ -2534,34 +2555,30 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // is how you start a ROM, and it is why CONSOLE <addr> above is EXAMINE + RUN.
     // So `EX FF00` then STEP executes at FF00, and EXAMINE NEXT drags the PC along
     // with it -- the panel's counter is the only cursor it has.
-    //
-    // RAW does NOT touch the PC. That is the PROM burner reaching behind the bus
-    // (10.2); no bus cycle happens, so the CPU never sees an address at all.
     if (cmd == "EXAMINE") {
         // EXAMINE *IS* THE CPU (Patrick, 2026-07-12). The panel has no address
         // latch of its own: it stops the processor, jams the switches into the
         // PROGRAM COUNTER, and the CPU drives the address lines and MEMR. So
         //
         //   - EXAMINE with no CPU card is not a thing that can happen. Nothing is
-        //     driving the bus. It is an error, not a degraded mode.
+        //     driving the bus. It is an error, not a degraded mode. (Look at a
+        //     CPU-less machine's memory with DUMP, which runs no cycle and needs
+        //     no processor to drive one.)
         //   - THE PC IS THE CURSOR. Not a copy of it -- the thing itself. Two
         //     counters, one writing to the other, is a split brain: EXAMINE NEXT
         //     would step a private latch while the PC sat somewhere else, and then
         //     quietly drag the PC BACKWARDS to it.
         //
-        // RAW is the one exception, and only because it is not a bus cycle at all
-        // (10.2): the PROM burner reaches behind the bus into a board's store, so
-        // it needs no CPU, touches no PC, and carries its own offset cursor.
-        CpuCore* pcOwner = nullptr;
-        if (!raw) {
-            pcOwner = needCpu(out);
-            if (!pcOwner) return true;
-        }
+        // There is no longer an exception. `EXAMINE RAW <id>` used to reach behind the
+        // bus with no CPU and its own cursor; reading behind the bus is gone (a ROM
+        // answers reads like anything else -- §10.2), and with it the second cursor.
+        CpuCore* pcOwner = needCpu(out);
+        if (!pcOwner) return true;
 
         uint32_t A;
         if (a.size() < 2) {
             // EXAMINE NEXT: the panel steps the counter and shows what is there.
-            A = pcOwner ? (uint32_t)((pcOwner->pc() + 1) & 0xFFFF) : examNext_;
+            A = (uint32_t)((pcOwner->pc() + 1) & 0xFFFF);
         } else if (!addr(a[1], A, out)) {
             return true;
         }
@@ -2570,8 +2587,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             failed_ = true;
             return true;
         }
-        examNext_ = (A + 1) & 0xFFFF;  // the burner's cursor; the PC is the panel's
-        if (pcOwner) pcOwner->setPc((uint16_t)A);
+        pcOwner->setPc((uint16_t)A);
 
         uint8_t v = rd(A);
         std::snprintf(buf, sizeof buf, "%04X  %02X  %c  %c%c%c%c%c%c%c%c", A, v,
@@ -2582,7 +2598,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         out << buf;
         // Looking at ONE byte is exactly when you need to know whether it is a byte
         // at all. FF from a chip and FF from an empty slot read the same.
-        if (!raw && m_.bus.lastUnclaimed()) out << "   (nobody drives this -- the bus floated it)";
+        if (m_.bus.lastUnclaimed()) out << "   (nobody drives this -- the bus floated it)";
         out << "\n";
         flush(out);
         return true;
@@ -2595,9 +2611,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         for (size_t i = 2; i < a.size(); ++i) {
             uint32_t v;
             if (!addr(a[i], v, out)) return true;
-            if (raw) {
-                if (!raw->rawWrite(A, (uint8_t)v)) {
-                    out << raw->id << ": offset past this board's store\n";
+            if (romOverride) {
+                std::string why;
+                if (!burn(A, (uint8_t)v, why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    out << buf << "\n";
                     failed_ = true;
                     return true;
                 }
@@ -2674,8 +2692,17 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         uint32_t lo, hi, v;
         if (!range(a[1], lo, hi, out) || !addr(a[2], v, out)) return true;
         for (uint32_t A = lo; A <= hi; ++A) {
-            if (raw) raw->rawWrite(A, (uint8_t)v);
-            else m_.bus.memWrite((uint16_t)A, (uint8_t)v);
+            if (romOverride) {
+                std::string why;
+                if (!burn(A, (uint8_t)v, why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    out << buf << "\n";
+                    failed_ = true;
+                    return true;
+                }
+            } else {
+                m_.bus.memWrite((uint16_t)A, (uint8_t)v);
+            }
         }
         std::snprintf(buf, sizeof buf, "filled %04X-%04X with %02X", lo, hi, v);
         out << buf << "\n";
@@ -2742,8 +2769,17 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         std::vector<uint8_t> tmp;
         for (uint32_t A = lo; A <= hi; ++A) tmp.push_back(rd(A));
         for (size_t k = 0; k < tmp.size(); ++k) {
-            if (raw) raw->rawWrite(dst + (uint32_t)k, tmp[k]);
-            else m_.bus.memWrite((uint16_t)(dst + k), tmp[k]);
+            if (romOverride) {
+                std::string why;
+                if (!burn(dst + (uint32_t)k, tmp[k], why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: %s", (unsigned)(dst + k), why.c_str());
+                    out << buf << "\n";
+                    failed_ = true;
+                    return true;
+                }
+            } else {
+                m_.bus.memWrite((uint16_t)(dst + k), tmp[k]);
+            }
         }
         out << tmp.size() << " bytes moved\n";
         flush(out);
@@ -2751,7 +2787,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "LOAD") {
-        if (!need(2, "LOAD <file> [AT <addr>] [RAW <id>]")) return true;
+        if (!need(2, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]")) return true;
         a[1] = unquote(a[1]);  // and every message below now names the file, not the quote
 
         // LOAD is MOUNT's other half, and it keeps MOUNT's bargain: a `startup` line in
@@ -2767,6 +2803,28 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 haveAt = true;
             }
 
+        // FORMAT=BIN|HEX. The file's CONTENTS decide by default and that is nearly
+        // always right -- Intel HEX announces itself with a colon and hex digits, which
+        // is a thing a flat binary essentially never opens with. FORMAT= is the override
+        // for when it IS wrong, and it always wins.
+        //
+        // This was advertised in the help for a long time and parsed NOWHERE: you could
+        // type FORMAT=HEX and it was dropped on the floor without a word. The command
+        // reference promised it, so the reference was a lie -- fixed by making the code
+        // tell the truth rather than by quietly deleting the promise.
+        int forced = -1;  // -1 autodetect, 0 BIN, 1 HEX
+        for (size_t i = 2; i < a.size(); ++i) {
+            if (upper(a[i]).rfind("FORMAT=", 0) != 0) continue;
+            std::string want = upper(a[i]).substr(7);
+            if (want == "HEX") forced = 1;
+            else if (want == "BIN") forced = 0;
+            else {
+                out << "FORMAT=" << want << "? It is BIN or HEX.\n";
+                failed_ = true;
+                return true;
+            }
+        }
+
         std::ifstream f(a[1], std::ios::binary);
         if (!f) {
             out << "cannot open '" << a[1] << "'\n";
@@ -2777,17 +2835,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                                   std::istreambuf_iterator<char>());
         Image img;
         std::string err;
-        if (looksLikeHex(data)) {
+        if (forced == 1 || (forced < 0 && looksLikeHex(data))) {
             if (!loadHex(data, img, err)) {
                 out << a[1] << ": " << err << "\n";  // names the record. loudly.
                 failed_ = true;
                 return true;
             }
-            if (haveAt) {
-                Image b;
-                for (const auto& [A, v] : img.bytes) b.bytes[A + at] = v;
-                img = b;
-            }
+            // AT on a file that carries its own addresses moves the image so its FIRST
+            // DATA RECORD lands there -- so AT means what it means for a flat binary
+            // too: PUT IT HERE (Patrick, 2026-07-17). It used to ADD `at` to every
+            // embedded address, which made one word mean "shift by" for HEX and "put at"
+            // for BIN, and the difference only showed on a file that did not start at
+            // zero. The arithmetic (anchor, and the modulo-64K wrap) is hex.h's.
+            if (haveAt) relocateTo(img, at);
         } else {
             if (!haveAt) {
                 out << a[1] << " is a flat binary and carries no addresses -- it needs AT <addr>\n";
@@ -2797,53 +2857,44 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             loadBin(data, at, img);
         }
 
-        if (raw) {
-            // THE PROM BURNER. Straight into the board's store, behind the bus.
-            // This is why the operator can write ROM and the guest cannot.
-            auto* mem = dynamic_cast<MemoryBoard*>(raw);
-            if (!mem) {
-                out << raw->id << ": no store to burn\n";
-                failed_ = true;
-                return true;
-            }
-            if (!mem->blit(img, err)) {
-                out << raw->id << ": " << err << "\n";
-                failed_ = true;
-                return true;
-            }
-            std::snprintf(buf, sizeof buf, "%s: loaded %zu bytes from %s (%04X-%04X)",
-                          raw->id.c_str(), img.size(), a[1].c_str(), img.lo(), img.hi());
-            out << buf << "\n";
-        } else {
-            size_t gone = 0;
-            for (const auto& [A, v] : img.bytes) {
+        size_t gone = 0;
+        std::string why;
+        for (const auto& [A, v] : img.bytes) {
+            if (romOverride) {
+                // THE PROM BURNER. Behind the bus, into whichever chip answers here.
+                if (!burn(A, v, why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    out << buf << "\n";
+                    failed_ = true;
+                    return true;
+                }
+            } else {
                 m_.bus.memWrite((uint16_t)A, v);
                 if (m_.bus.lastUnclaimed()) ++gone;
             }
-            std::snprintf(buf, sizeof buf, "loaded %zu bytes from %s (%04X-%04X)", img.size(),
-                          a[1].c_str(), img.lo(), img.hi());
+        }
+        std::snprintf(buf, sizeof buf, "loaded %zu bytes from %s (%04X-%04X)%s", img.size(),
+                      a[1].c_str(), img.lo(), img.hi(), romOverride ? " (ROM override)" : "");
+        out << buf << "\n";
+        if (gone) {
+            // Loading through the bus is a bus write, so ROM does not take it -- exactly
+            // as a real machine would not. Say so; do not quietly half-load.
+            std::snprintf(buf, sizeof buf,
+                          "  WARNING: %zu byte(s) landed nowhere (ROM, or unmapped). "
+                          "To program a ROM: LOAD %s ROM",
+                          gone, a[1].c_str());
             out << buf << "\n";
-            if (gone) {
-                // Loading through the bus is a bus write, so ROM does not take it
-                // -- exactly as a real machine would not. Say so; do not quietly
-                // half-load.
-                std::snprintf(buf, sizeof buf,
-                              "  WARNING: %zu byte(s) landed nowhere (ROM, or unmapped). "
-                              "To burn a ROM use: LOAD %s RAW <id>",
-                              gone, a[1].c_str());
-                out << buf << "\n";
-            }
-            if (img.hasStart) {
-                std::snprintf(buf, sizeof buf, "  start address %04X (no CPU yet)", img.start);
-                out << buf << "\n";
-            }
+        }
+        if (img.hasStart) {
+            std::snprintf(buf, sizeof buf, "  start address %04X (no CPU yet)", img.start);
+            out << buf << "\n";
         }
         flush(out);
         return true;
     }
 
     if (cmd == "SAVE") {
-        if (!need(3, "SAVE <file> <range> [RAW <id>]")) return true;
+        if (!need(3, "SAVE <file> <range> [FORMAT=BIN|HEX]")) return true;
         a[1] = unquote(a[1]);
         a[1] = resolveFrom(startupDir_, a[1]);  // ...the same rule as LOAD, in reverse
         uint32_t lo, hi;
@@ -2851,7 +2902,26 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         Image img;
         for (uint32_t A = lo; A <= hi; ++A) img.bytes[A] = rd(A);
 
+        // THE NAME DECIDES, AND FORMAT= OVERRIDES IT (Patrick, 2026-07-17: "SAVE should
+        // be determined by filename, unless there is an override").
+        //
+        // Which is the other half of LOAD's rule, and deliberately not the same
+        // mechanism: LOAD can read the file and see what it IS, and SAVE cannot -- the
+        // file does not exist yet. So SAVE has only the name to go on, and a name is a
+        // guess. FORMAT= is how you say it outright when the guess would be wrong.
         bool asHex = a[1].size() > 4 && upper(a[1]).rfind(".HEX") == a[1].size() - 4;
+        for (size_t i = 3; i < a.size(); ++i) {
+            if (upper(a[i]).rfind("FORMAT=", 0) != 0) continue;
+            std::string want = upper(a[i]).substr(7);
+            if (want == "HEX") asHex = true;
+            else if (want == "BIN") asHex = false;
+            else {
+                out << "FORMAT=" << want << "? It is BIN or HEX.\n";
+                failed_ = true;
+                return true;
+            }
+        }
+
         std::ofstream f(a[1], std::ios::binary);
         if (!f) {
             out << "cannot write '" << a[1] << "'\n";
@@ -3019,7 +3089,6 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 return true;
             }
             c->setPc((uint16_t)at);
-            examNext_ = (at + 1) & 0xFFFF;
         }
 
         runMachine(out);

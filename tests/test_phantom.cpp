@@ -153,8 +153,8 @@ void test_phantom() {
     CHECK(bus.memRead(0x0000) == 0xC0, "reads still come back from the PROM");
     CHECK(bus.memRead(0x001F) == 0xDF, "reads still come back from the PROM");
     CHECK(tar->armed(), "no A5 read yet, so nothing has released PHANTOM*");
-    CHECK(mem->rawRead(0x0000) == 0x76, "...but the byte DID land in the RAM underneath");
-    CHECK(mem->rawRead(0x001F) == 0x77, "...but the byte DID land in the RAM underneath");
+    CHECK(mem->storeAt(0x0000) == 0x76, "...but the byte DID land in the RAM underneath");
+    CHECK(mem->storeAt(0x001F) == 0x77, "...but the byte DID land in the RAM underneath");
 
     // 2b. A WRITE WITH A5 SET DOES NOT RELEASE ANYTHING, AND THE REAL PROM PROVES IT.
     //

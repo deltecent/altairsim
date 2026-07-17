@@ -163,20 +163,15 @@ private:
     // you want to look at is what it is about to do next, every time.
     uint32_t disasmNext_ = 0;
 
-    // EXAMINE's cursor for `EXAMINE RAW <id>` ONLY -- the PROM burner's offset,
-    // which is not a bus cycle and has no CPU in the loop.
+    // EXAMINE HAS NO CURSOR HERE, AND MUST NOT GROW ONE. The panel has no address
+    // latch of its own: it jams the switches into the PROGRAM COUNTER and lets the CPU
+    // drive the address lines. The PC therefore IS the examine cursor, and EXAMINE NEXT
+    // steps it (Patrick, 2026-07-12). A private copy would be a second counter
+    // shadowing the real one, and the two would diverge the moment you STEP.
     //
-    // A BUS EXAMINE DOES NOT USE THIS. The panel has no address latch of its own:
-    // it jams the switches into the PROGRAM COUNTER and lets the CPU drive the
-    // address lines. The PC therefore IS the examine cursor, and EXAMINE NEXT steps
-    // it (Patrick, 2026-07-12). Keeping a private copy here would be a second
-    // counter shadowing the real one, and the two would diverge the moment you
-    // STEP -- see monitor.cpp.
-    //
-    // It stays separate from dumpNext_ either way: DUMP walks a page and EXAMINE
-    // walks a byte, and sharing one cursor would mean a DUMP silently threw your
-    // EXAMINE position 256 bytes down the road.
-    uint32_t examNext_ = 0;
+    // There was one, for `EXAMINE RAW <id>` -- the burner's own offset, which needed no
+    // CPU because it ran no cycle. Reading behind the bus is gone (§10.2: a ROM answers
+    // reads like anything else), and the second cursor went with it.
 
     // TRACE ON <file> writes here; the Debugger holds a bare ostream* into it, so the
     // stream has to outlive the run. It is closed by TRACE OFF (and, being a member,

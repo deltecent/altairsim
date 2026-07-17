@@ -58,7 +58,7 @@ void test_memory() {
         CHECK(m.bus.memRead(0xFF00) == 0x21, "and the ROM is unchanged. The byte is GONE.");
 
         // ...but the operator has a PROM burner, and that is not a bus operation.
-        CHECK(b->rawWrite(0xFF00, 0x42), "RAW reaches behind the bus, into the store");
+        CHECK(b->poke(0xFF00, 0x42), "the burner reaches behind the bus, into the store");
         CHECK(m.bus.memRead(0xFF00) == 0x42, "the operator CAN write ROM; the guest cannot");
     }
 
@@ -143,7 +143,7 @@ void test_memory() {
 
         m.bus.memWrite(0xFF00, 0x42);
         CHECK(m.bus.memRead(0xFF00) == 0x21, "phantom=all: reads come from ROM");
-        CHECK(r->rawRead(0xFF00) != 0x42,
+        CHECK(r->storeAt(0xFF00) != 0x42,
               "phantom=all: the write VANISHED -- the RAM honored PHANTOM* and switched off for "
               "writes too");
     }
@@ -161,7 +161,7 @@ void test_memory() {
 
         m.bus.memWrite(0xFF00, 0x42);
         CHECK(m.bus.memRead(0xFF00) == 0x21, "phantom=read: read it back and you get the ROM byte");
-        CHECK(r->rawRead(0xFF00) == 0x42,
+        CHECK(r->storeAt(0xFF00) == 0x42,
               "phantom=read: but the write LANDED in the RAM beneath. Shadow RAM.");
     }
     {
@@ -284,8 +284,8 @@ void test_memory() {
         m.bus.ioWrite(0xFF, 3);
         CHECK(m.bus.memRead(0x1000) == 0xB3, "bank 3 holds B3 -- the plane really swapped");
         // "Bank 3 simply IS offset 0x30000" -- no new syntax, no new concept.
-        CHECK(b->rawRead(0x31000) == 0xB3, "and RAW sees bank 3 at offset 0x30000");
-        CHECK(b->rawRead(0x01000) == 0xA0, "with bank 0 still at 0x01000");
+        CHECK(b->storeAt(0x31000) == 0xB3, "and the store really is planed: bank 3 IS offset 0x30000");
+        CHECK(b->storeAt(0x01000) == 0xA0, "with bank 0 still at 0x01000");
     }
 
     {

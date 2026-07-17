@@ -302,26 +302,78 @@ O 10 41
 ### LOAD — `L[OAD]`
 
 ```
-LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [RAW <id>]
+LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]
 ```
-Format is autodetected. RAW <id> reaches BEHIND the bus into one board's
-store -- that is the PROM burner, and it is why the operator can write a ROM
-region while the guest cannot.
+Put a file into memory. There are two kinds of file and they differ in ONE
+way -- whether the file knows where it goes.
+
 
 ```
-LOAD dbl.hex
-LOAD monitor.bin AT F000 RAW mem0
+HEX  Intel HEX. ASCII text, and it CARRIES ITS OWN ADDRESSES, so it needs
+     no AT. Each line is one record: a ':', a length, the address, a type
+     (00 data, 01 end-of-file), the bytes, and a checksum. Every checksum
+     is verified and a bad one FAILS the load and names the record -- a
+     half-loaded program is a miserable thing to debug.
+       :10010000C300F8AF32004D3E0132014D76C9AA5509
+       :00000001FF
+        ^^^^^^^^^^                              ^^ checksum: the record
+        |  |    |                                  sums to zero, byte-wise
+        |  |    type 00 = data (01 = end of file)
+        |  load address: these bytes go at 0100
+        10 = sixteen data bytes follow
+```
+
+
+
+```
+BIN  A flat binary: bytes, and nothing else. It carries NO addresses, so
+     it cannot say where it goes and AT is REQUIRED. Without one, LOAD
+     refuses rather than guess.
+```
+
+
+WHICH ONE IS DECIDED BY THE FILE'S CONTENTS, not its name -- Intel HEX
+announces itself, and a .bin full of HEX text is still HEX. FORMAT= overrides
+that when the sniff is wrong; it always wins.
+
+AT MEANS 'PUT IT HERE', for both kinds. On a HEX file it relocates: the
+file's FIRST data record lands at AT and everything else moves by the same
+amount, wrapping at FFFF (a file whose first record is F000, loaded AT 0,
+puts its F800 record at 0800). Without AT, a HEX file loads where it says.
+
+ROM is the PROM burner. LOAD writes through the bus, so a ROM never takes it
+-- a bus write cannot program a PROM on real hardware either, and LOAD says
+how many bytes landed nowhere rather than half-loading in silence. ROM goes
+behind the bus, straight into whichever chip answers reads at that address:
+the operator pulling the chip and putting it in a programmer. It is why the
+operator can write a ROM and the guest cannot.
+
+```
+LOAD dbl.hex                      where the file says, through the bus
+LOAD monitor.bin AT F000 ROM      a flat binary, burned into the ROM there
+LOAD prog.hex AT 100              relocate: first record goes to 0100
+LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called
 ```
 
 
 ### SAVE — `SA[VE]`
 
 ```
-SAVE <file> <range> [FORMAT=BIN|HEX] [RAW <id>]
+SAVE <file> <range> [FORMAT=BIN|HEX]
 ```
+Memory to a file, through the bus -- so what you get is what the CPU would
+read, ROM included. The range is what to save; a byte nobody drives reads FF.
+
+THE NAME DECIDES THE FORMAT, and this is the other half of LOAD's rule rather
+than the same one: LOAD can open the file and see what it IS, and SAVE cannot
+-- the file does not exist yet. So a name ending .HEX writes Intel HEX and
+anything else writes a flat binary. FORMAT= says it outright when the name
+would guess wrong, and always wins.
 
 ```
-SAVE out.hex 0-FFF
+SAVE out.hex 0-FFF                Intel HEX, by its name
+SAVE out.bin F800-FFFF            a flat binary, by its name
+SAVE out.dat 0-FFF FORMAT=HEX     hex, though it is not called .hex
 ```
 
 

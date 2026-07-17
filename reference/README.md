@@ -46,3 +46,9 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | [Tarbell Floppy Disk Interface Manual](Tarbell_Floppy_Disk_Interface_Manual.md) | Tarbell SD interface (FD1771): the F8–FC port map with DRQ/INTRQ polarity, the DIP config, the FD1771 command/status layouts, the 32-byte bootstrap, and IBM 3740 geometry. |
 | [Western Digital FD1771 - Datasheet](Western%20Digital%20FD1771%20-%20Datasheet.md) | WD FD1771 FDC: the five-register model, all 11 commands (Types I–IV) with opcode/flag bits, per-command-type status bits, and the Write-Track control bytes. |
 | [Western Digital WD177X-00 - Datasheet](Western%20Digital%20WD177X-00%20-%20Datasheet.md) | WD1770/72/73 FDC: register set, Type I–IV commands with hex opcodes, per-type status bits, FM/MFM track formats. **Not the Tarbell's chip** — see the trap in `docs/sources.md`. |
+
+## File formats
+
+| Reference | What it covers |
+|---|---|
+| [Intel Hexadecimal Object File Format](hexfrmt.md) | The Intel HEX specification (Rev A, 1988): the general record layout, all six record types, and the checksum rule (a record sums to zero). Plus what an 8-bit machine actually needs — types 00 and 01 — the modulo-64K address wrap that `LOAD ... AT` relies on, and the traps: RECLEN counts data bytes not characters, a file is sparse and its gaps must not be filled, and its records need not ascend. |

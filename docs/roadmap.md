@@ -47,7 +47,7 @@ The board is `memory` (`docs/boards/s100-memory.md`): a card holding a list of *
 2. `LOAD`/`DUMP`/`SAVE` round-trips a file byte-for-byte (binary and Intel HEX).
 3. `RESET` preserves memory and clears `bank` to 0; **only `POWER` loses it** — and `POWER` re-reads ROM images from their files.
 4. `CONFIG SAVE` → `CONFIG LOAD` reproduces the regions, page map, and bank config exactly.
-5. **A `rom` region at FF00 from a 256-byte file decodes FF00–FFFF and nothing else.** `DEPOSIT FF00 41` (a bus write) does not change it, and the monitor **says so** instead of silently succeeding. `LOAD other.hex RAW mem0` **does** change it — the operator has a PROM burner; the guest does not.
+5. **A `rom` region at FF00 from a 256-byte file decodes FF00–FFFF and nothing else.** `DEPOSIT FF00 41` (a bus write) does not change it, and the monitor **says so** instead of silently succeeding. `LOAD other.hex ROM` **does** change it — the operator has a PROM burner; the guest does not.
 6. **An empty socket between two ROM regions reads `FF`**, exactly like unpopulated RAM. One mechanism, not two.
 7. **All three PHANTOM\* straps, because the difference is silent.** `phantom=all`: a write over the shadowed RAM **vanishes**. `phantom=read`: the same write **lands in the RAM beneath** while reads still come from ROM (shadow-RAM — read it back through the bus and you get the ROM byte; read it `RAW` and you get `41`). `honors_phantom=none` on the card beneath: **both drive → contention reported.** And a phantom shadow is **not** reported as contention — only the real collision is.
 8. Two `memory` cards at overlapping bases → **contention reported**, naming both.

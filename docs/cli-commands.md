@@ -167,7 +167,7 @@ altairsim> EX 0
 no CPU in this machine.  BOARDS ADD 8080 cpu0
 ```
 
-**`RAW <id>` is the exception, and only because it is not a bus cycle at all.** That is the PROM burner reaching behind the bus into a board's store (§10.2) — it needs no CPU, touches no PC, and carries its own cursor. Which is precisely why it can write a ROM when a bus write cannot.
+There is no exception any more. `EX 0 RAW mem0` was one — the PROM burner reaching behind the bus, needing no CPU because it ran no cycle — and it went when `RAW` did (§10.2). Reading behind the bus bought nothing: a ROM answers reads like any other chip, and a bank or a board the CPU cannot see is one you *select* (`SET mem0 bank=3`). Writing behind it is real and survives, as `LOAD … ROM`.
 
 **EXAMINE is the only memory command that needs a CPU.** DUMP, DEPOSIT, FILL, SEARCH, COMPARE and MOVE all work on an empty backplane, because you have to be able to debug the simulator without a processor in it. Patrick: *"All commands that manipulate memory other than EX are fine without a CPU because we need to be able to debug the simulator without a CPU."*
 
