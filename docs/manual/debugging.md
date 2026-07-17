@@ -197,6 +197,17 @@ already works everywhere an address is typed. The reverse has not landed — the
 read `CALL FBA5`, not `CALL DSPMSG`. Annotating the disassembly itself is the piece still to
 come (see *The tools that are not here yet*, below).
 
+Look at `F80C  31 00 C0  LXI SP,C000`. `ALTMON.ASM` defines `SPTR equ 0C000h`, the symbol is
+loaded (`SHOW SYMBOLS SPTR` proves it), and yet the operand stays `C000` — for **two** reasons,
+and the second outlasts the first. One: back-annotation is deferred, as just noted, so *no*
+operand is named yet. Two: even once it lands, `C000` still will not print as `SPTR`, because
+`SPTR` is an **`EQU`**, not a program label. The listing marks it with an `=`, and only real
+labels feed the address→name direction — the same rule that keeps `0005` from printing as
+`BDOS`. The loader cannot tell a constant that happens to equal a stack address from one that
+happens to equal a string length, so it keeps every `EQU` out of the reverse map. `SPTR`
+resolves the *other* way perfectly — `DISASM SPTR` disassembles from `C000` — but it is
+reference, not annotation.
+
 **Two kinds of file, and the toolchains that write them.** A **`.SYM`** is a flat list of
 name = value. Two toolchains write one: Digital Research's `MAC`/`RMAC` assemblers (every
 symbol, read by `SID`), and — with the right switches — Microsoft's **L80** linker. `L80`'s

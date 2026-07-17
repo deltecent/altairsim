@@ -15,10 +15,11 @@
 //   .PRN  an assembler LISTING (CP/M ASM, Microsoft M80, DR MAC -- one geometry).
 //         It marks an EQU with '=' in column 7, so it can tell a program LABEL from a
 //         constant, and only labels feed the reverse (address->name) map.
-//   .SYM  the classic CP/M symbol file (DR MAC/RMAC write it; SID reads it). A flat,
-//         alphabetical list of `HHHH NAME` pairs with NO label/EQU distinction, so it
-//         feeds name->value only. (Microsoft L80 does NOT write one -- it prints its
-//         map to the console. Verified in-machine 2026-07-17.)
+//   .SYM  the classic CP/M symbol file. A flat, alphabetical list of `HHHH NAME` pairs
+//         with NO label/EQU distinction, so it feeds name->value only. DR MAC/RMAC write
+//         it (every symbol); Microsoft L80 also writes one, but only with `/N/Y` and only
+//         the GLOBALS -- `FOO/N/Y/E` -> FOO.COM + FOO.SYM. (L80's `/M` prints a map to the
+//         console instead; that is not a file. Verified against the L80 manual 2026-07-17.)
 //
 // ABSOLUTE ADDRESSES ONLY. A relocatable M80 listing marks its addresses with a
 // trailing apostrophe; loadPrn REFUSES such a file and names the line, because a
