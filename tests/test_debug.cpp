@@ -354,4 +354,76 @@ void test_debug() {
     CHECK(masked.str().find("IN") != std::string::npos, "MASK=IN keeps the IN");
     CHECK(masked.str().find("MR") == std::string::npos, "and drops the fetches");
     CHECK(masked.str().find("MW") == std::string::npos, "and drops the store");
+
+    SECTION("TRACEPOINTS -- a breakpoint whose ACTION is TRACE, and does not stop");
+
+    // The headline: trace a REGION of a program instead of all of it.
+    //
+    //   0000  MVI A,0        before  -- not traced
+    //   0002  INR A          before  -- not traced
+    //   0003  INR A          TRACE ON lands here
+    //   0004  STA 2000       traced
+    //   0007  HLT            TRACE OFF lands here -- not traced
+    Rig tp;
+    tp.load({0x3E, 0x00, 0x3C, 0x3C, 0x32, 0x00, 0x20, 0x76});
+    tp.cpu->setPc(0);
+
+    std::ostringstream region;
+    tp.m.debug.traceTo(&region, 0);
+    tp.m.debug.traceOff();  // CONFIGURED but not running -- what a tracepoint needs
+    CHECK(tp.m.debug.traceConfigured(), "TRACE OFF keeps the sink");
+    CHECK(!tp.m.debug.tracing(), "but is not tracing");
+
+    tp.m.debug.add(BreakKind::Pc, 3, 3, nullptr, BreakAction::TraceOn);
+    tp.m.debug.add(BreakKind::Pc, 7, 7, nullptr, BreakAction::TraceOff);
+    RunResult tr = tp.m.debug.run(0);
+
+    // It ran to the HLT: a tracepoint acts and the machine carries on. If this
+    // reports Breakpoint, a tracepoint stopped the machine and the feature is a
+    // breakpoint wearing a costume.
+    CHECK(tr.why == StopReason::Halted, "a tracepoint does NOT stop the machine");
+    CHECK(region.str().find("0003 = 3C") != std::string::npos, "the region's first fetch traced");
+    CHECK(region.str().find("2000 = 02") != std::string::npos, "and the store inside it");
+    CHECK(region.str().find("0000 = 3E") == std::string::npos, "nothing from before TRACE ON");
+    CHECK(region.str().find("0007 = 76") == std::string::npos, "nor the HLT that turned it off");
+    CHECK(!tp.m.debug.tracing(), "and it left the trace off, where the region ended");
+    CHECK(tp.m.debug.breakpoints()[0].hits == 1, "hits counts a tracepoint firing");
+    CHECK(tp.m.debug.breakpoints()[1].hits == 1, "both of them");
+
+    // A CYCLE tracepoint -- safe where IF is not, because it reads no registers. And
+    // the cycle that TRIGGERED it is traced: the observer matches before it emits, so
+    // BREAK MEM W 2000 TRACE ON puts the write to 2000 at the TOP of the trace rather
+    // than one cycle above it, which would be a trace that omits its own reason.
+    Rig tc;
+    tc.load({0x3E, 0x41, 0x32, 0x00, 0x20, 0x3C, 0x76});
+    tc.cpu->setPc(0);
+    std::ostringstream fromWrite;
+    tc.m.debug.traceTo(&fromWrite, 0);
+    tc.m.debug.traceOff();
+    tc.m.debug.add(BreakKind::MemWrite, 0x2000, 0x2000, nullptr, BreakAction::TraceOn);
+    CHECK(tc.m.debug.run(0).why == StopReason::Halted, "a cycle tracepoint does not stop either");
+    std::string firstLine = fromWrite.str().substr(0, fromWrite.str().find('\n'));
+    CHECK(firstLine.find("MW") != std::string::npos && firstLine.find("2000 = 41") != std::string::npos,
+          "the write that turned tracing on is the FIRST line of the trace");
+
+    // A tracepoint must not SHADOW an ordinary breakpoint at the same place. If the
+    // match loop broke out on the tracepoint, this run would sail past bp 2.
+    Rig tb;
+    tb.load({0x3E, 0x41, 0x3C, 0x3C, 0x76});
+    tb.cpu->setPc(0);
+    std::ostringstream both;
+    tb.m.debug.traceTo(&both, 0);
+    tb.m.debug.traceOff();
+    tb.m.debug.add(BreakKind::Pc, 3, 3, nullptr, BreakAction::TraceOn);
+    int stopper = tb.m.debug.add(BreakKind::Pc, 3, 3);
+    RunResult tbr = tb.m.debug.run(0);
+    CHECK(tbr.why == StopReason::Breakpoint, "an ordinary breakpoint at a tracepoint's PC stops");
+    CHECK(tbr.bp == stopper, "and it is the STOP one that is reported");
+    CHECK(tb.m.debug.tracing(), "while the tracepoint still did its job");
+
+    // describe() carries the action -- that is what BREAK's listing shows.
+    CHECK(tb.m.debug.breakpoints()[0].describe().find("trace on") != std::string::npos,
+          "describe() says trace on");
+    CHECK(tb.m.debug.breakpoints()[1].describe().find("trace") == std::string::npos,
+          "and an ordinary breakpoint does not mention tracing at all");
 }

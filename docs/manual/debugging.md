@@ -247,6 +247,56 @@ TRACE ON MASK=IN,OUT         just the port traffic
 TRACE OFF                    stop tracing
 ```
 
+### Tracepoints — tracing one part of a program
+
+A whole-program trace is a firehose. A mask narrows it by *category*, but often you do not want
+a category — you want a *place*: this subroutine, and nothing else.
+
+That is a tracepoint. Add `TRACE ON` or `TRACE OFF` to a `BREAK` and it stops being a
+breakpoint: instead of stopping the machine it flips the trace, and the machine runs on. Two of
+them bracket a region.
+
+```
+altairsim> BREAK 2C00 TRACE ON     start tracing when PC reaches 2C00
+altairsim> BREAK 2C40 TRACE OFF    ...and stop again at 2C40
+altairsim> RUN FF00
+```
+
+`TRACE ON` traces the instruction *at* its address; `TRACE OFF` does not. The region is
+`[on, off)` — exactly the half-open range you would write down if someone asked you which
+instructions were in the subroutine.
+
+Because a trace toggle reads no registers, it works on the bus kinds too — where `IF` cannot go.
+And the cycle that triggered it is the *first line* of the trace, not the line above it: a trace
+should show its own reason.
+
+```
+altairsim> BREAK MEM W 2000 TRACE ON    trace onward from whatever writes 2000
+```
+
+They compose with `IF`, and they still do not stop:
+
+```
+altairsim> BREAK 200 IF HL==8000 TRACE ON
+```
+
+**Where the trace goes is `TRACE`'s business, not the tracepoint's.** A tracepoint that has never
+been told anything traces to the console. To send it to a file, configure it first — and this is
+what `TRACE OFF` is for: it stops the tracing but *remembers where it was going*, so a tracepoint
+can pick it up again.
+
+```
+altairsim> TRACE ON run.log MASK=DMA    configure it: file, mask — and it starts
+altairsim> TRACE OFF                    stop, but the file and mask are remembered
+altairsim> BREAK 2C00 TRACE ON          arm the region
+altairsim> BREAK 2C40 TRACE OFF
+altairsim> RUN FF00                     run.log gets the DMA cycles, from 2C00 to 2C40, and nothing else
+```
+
+Tracepoints appear in `BREAK`'s listing with the rest, and their `hits` count the times they
+fired. A tracepoint never hides an ordinary breakpoint at the same address: if both are set, the
+trace flips *and* the machine stops.
+
 ## A debugging session
 
 The machine is not booting. Where does it get to?

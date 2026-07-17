@@ -3054,6 +3054,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
 
+        // A trailing TRACE ON|OFF makes this a TRACEPOINT: it acts and the machine
+        // keeps running. Stripped FIRST, because IF takes the whole rest of the line
+        // as its expression and would otherwise eat it -- and `BREAK 200 IF HL==8000
+        // TRACE ON` is exactly the combination worth having. `end` is the end of the
+        // breakpoint proper from here on; nothing below may look at a.size() again.
+        BreakAction action = BreakAction::Stop;
+        size_t end = a.size();
+        if (end >= 2 && is(a[end - 2], "TRACE") &&
+            (is(a[end - 1], "ON") || is(a[end - 1], "OFF"))) {
+            action = is(a[end - 1], "ON") ? BreakAction::TraceOn : BreakAction::TraceOff;
+            end -= 2;
+        }
+
         BreakKind kind = BreakKind::Pc;
         size_t argi = 1;
         bool io = is(a[1], "IO"), mem = is(a[1], "MEM");
@@ -3070,7 +3083,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                       : (w ? BreakKind::MemWrite : BreakKind::MemRead);
             argi = 3;
         }
-        if (a.size() <= argi) {
+        if (end <= argi) {
             out << "usage: BREAK <addr> | BREAK MEM R|W <addr> | BREAK IO R|W <port>\n";
             failed_ = true;
             return true;
@@ -3089,7 +3102,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // has no boundary-consistent answer. The rest of the line is the expression;
         // it is re-tokenized by the parser, so spacing does not matter.
         std::shared_ptr<const Expr> cond;
-        if (a.size() > argi + 1 && is(a[argi + 1], "IF")) {
+        if (end > argi + 1 && is(a[argi + 1], "IF")) {
             if (kind != BreakKind::Pc) {
                 out << "IF applies to a plain BREAK <addr>, not to a MEM or IO breakpoint.\n";
                 failed_ = true;
@@ -3099,7 +3112,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (!c) return true;
 
             std::string src;
-            for (size_t i = argi + 2; i < a.size(); ++i) {
+            for (size_t i = argi + 2; i < end; ++i) {
                 if (!src.empty()) src += " ";
                 src += a[i];
             }
@@ -3126,7 +3139,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
         }
 
-        int id = m_.debug.add(kind, lo, hi, cond);
+        // A tracepoint may be the FIRST mention of tracing in a session, and the
+        // debugger cannot default a sink for itself -- it is core, and the console is
+        // the monitor's. So point it here, but leave it OFF: the tracepoint turns it
+        // on when it fires, which is the whole point of arming one.
+        if (action == BreakAction::TraceOn && !m_.debug.traceConfigured()) {
+            m_.debug.traceTo(&out, 0);
+            m_.debug.traceOff();
+        }
+
+        int id = m_.debug.add(kind, lo, hi, cond, action);
         for (const Breakpoint& b : m_.debug.breakpoints())
             if (b.id == id) out << "breakpoint " << id << ": " << b.describe() << "\n";
         return true;
@@ -3162,8 +3184,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (is(a[1], "OFF")) {
             m_.debug.traceOff();
-            if (traceFile_.is_open()) traceFile_.close();
-            out << "trace off.\n";
+            // The sink STAYS -- TRACE OFF stops the tracing, it does not forget where
+            // it was going, so `TRACE ON <file> MASK=...` then `TRACE OFF` is how you
+            // aim a tracepoint at a file. But FLUSH it: the file has to be complete on
+            // disk for someone reading it now, even though we will write to it again.
+            if (traceFile_.is_open()) traceFile_.flush();
+            out << "trace off.";
+            if (m_.debug.traceConfigured())
+                out << "  (where it goes is remembered: TRACE ON, or a tracepoint, resumes it.)";
+            out << "\n";
             return true;
         }
 
@@ -3213,6 +3242,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 return true;
             }
             sink = &traceFile_;
+        } else if (traceFile_.is_open()) {
+            // Back to the console: the old file is no longer the sink, so close it
+            // rather than leave a half-written trace open on a stream nobody writes.
+            traceFile_.close();
         }
         m_.debug.traceTo(sink, mask);
         out << "trace on" << (file.empty() ? "" : (" -> " + file));

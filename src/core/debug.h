@@ -41,11 +41,31 @@ enum class BreakKind {
 
 const char* breakKindName(BreakKind k);
 
+// What a match DOES. Stopping is only the default, not the definition: a breakpoint
+// is a place the debugger recognises, and stopping is one thing it can do there.
+//
+// The trace actions do NOT stop -- they flip TRACE's active flag and the machine
+// runs on -- which is how you trace a REGION of a program instead of all of it.
+// And unlike IF, a trace toggle is safe on the CYCLE kinds too, because it reads no
+// registers: there is nothing to be boundary-inconsistent about.
+enum class BreakAction {
+    Stop,      // the breakpoint everyone knows
+    TraceOn,   // start tracing here, keep running
+    TraceOff,  // stop tracing here, keep running
+};
+
+const char* breakActionName(BreakAction a);
+
 struct Breakpoint {
     int id = 0;
     BreakKind kind = BreakKind::Pc;
     uint32_t lo = 0, hi = 0;  // inclusive. A single address has lo == hi.
     bool enabled = true;
+    BreakAction action = BreakAction::Stop;
+
+    // Times it ACTED -- stopped you, or flipped the trace. Not times it matched: a
+    // conditional breakpoint whose condition does not hold did nothing, and saying
+    // it "hit" would be a lie the hits column tells every time you look at it.
     uint64_t hits = 0;
 
     // BREAK <addr> IF <expr>. A PC breakpoint that only stops when the condition is
@@ -87,7 +107,8 @@ class Debugger {
 public:
     explicit Debugger(Machine& m) : m_(m) {}
 
-    int add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond = nullptr);
+    int add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond = nullptr,
+            BreakAction action = BreakAction::Stop);
     bool remove(int id, std::string& err);
     void clear();
     const std::vector<Breakpoint>& breakpoints() const { return bps_; }
@@ -109,9 +130,22 @@ public:
         Dma       = 1 << 3,  // any cycle a granted bus master drove
         Contended = 1 << 4,  // more than one board answered
     };
-    void traceTo(std::ostream* sink, unsigned mask) { traceSink_ = sink; traceMask_ = mask; }
-    void traceOff() { traceSink_ = nullptr; traceMask_ = 0; }
-    bool tracing() const { return traceSink_ != nullptr; }
+    // WHERE trace goes is one question; WHETHER it is running is another. They used
+    // to be one boolean, and a tracepoint is exactly the thing that pulls them apart:
+    // BREAK 100 TRACE ON has to turn tracing on WITHOUT being told a sink, which
+    // means the sink outlives the off state. So TRACE OFF keeps the file open and
+    // the mask set, ready to be turned back on -- by TRACE ON, or by a tracepoint.
+    //
+    // The monitor owns the stream (a file, or the console); we only write to it.
+    void traceTo(std::ostream* sink, unsigned mask) {   // configure AND start: TRACE ON
+        traceSink_ = sink;
+        traceMask_ = mask;
+        traceActive_ = true;
+    }
+    void traceOn() { traceActive_ = true; }    // start with whatever is configured
+    void traceOff() { traceActive_ = false; }  // stop, but KEEP the sink and the mask
+    bool tracing() const { return traceActive_ && traceSink_; }
+    bool traceConfigured() const { return traceSink_ != nullptr; }
 
     // A recorded cycle, for HISTORY and for formatting a trace line. Small by
     // design -- a ring of these records is cheap enough to keep always, so the
@@ -175,10 +209,11 @@ private:
     // passes the current TRACE mask (empty mask -> everything).
     bool traceShows(const CycleRec&) const;
 
-    // TRACE's sink and mask. Null sink -> not tracing. The monitor owns the stream
-    // (a file, or the console); we only write to it.
+    // TRACE's configuration (where, and what it keeps) and, separately, whether it is
+    // currently emitting -- see traceTo/traceOn/traceOff.
     std::ostream* traceSink_ = nullptr;
     unsigned traceMask_ = 0;
+    bool traceActive_ = false;
 
     // True while serviceDma() is driving a granted master, so the observer can tag a
     // cycle as DMA -- the origin is deliberately NOT on the BusCycle (a real

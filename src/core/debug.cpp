@@ -28,6 +28,15 @@ const char* breakKindName(BreakKind k) {
     return "?";
 }
 
+const char* breakActionName(BreakAction a) {
+    switch (a) {
+    case BreakAction::Stop:     return "stop";
+    case BreakAction::TraceOn:  return "trace on";
+    case BreakAction::TraceOff: return "trace off";
+    }
+    return "?";
+}
+
 std::string Breakpoint::describe() const {
     char buf[80];
     bool io = (kind == BreakKind::IoRead || kind == BreakKind::IoWrite);
@@ -39,16 +48,22 @@ std::string Breakpoint::describe() const {
                       w, (unsigned)hi);
     std::string s = buf;
     if (cond) s += " if " + cond->text();
+    // Mirrors the order it was typed in: BREAK 100 IF A==3 TRACE ON. Stop is the
+    // default and saying so on every ordinary breakpoint would be noise on every
+    // line of the listing.
+    if (action != BreakAction::Stop) s += std::string(" ") + breakActionName(action);
     return s;
 }
 
-int Debugger::add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond) {
+int Debugger::add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond,
+                  BreakAction action) {
     Breakpoint b;
     b.id = nextId_++;
     b.kind = k;
     b.lo = lo;
     b.hi = hi;
     b.cond = std::move(cond);
+    b.action = action;
     bps_.push_back(b);
     return b.id;
 }
@@ -100,11 +115,13 @@ bool Debugger::armObserver() {
             ringHead_ = (ringHead_ + 1) % kHistoryCap;
         }
 
-        // TRACE: one line per cycle the mask admits.
-        if (traceSink_ && traceShows(rec)) *traceSink_ << formatCycle(rec) << "\n";
-
         // Cycle breakpoints: the CYCLE kinds only. BREAK <addr> is a PC comparison
         // and lives in the run loop; these watch the stream itself.
+        //
+        // MATCHED BEFORE THE TRACE LINE IS EMITTED, and the order is the feature: a
+        // tracepoint can turn tracing on RIGHT HERE, and the cycle that turned it on
+        // is the one you wanted to see. BREAK MEM W 2000 TRACE ON puts the write to
+        // 2000 at the top of the trace instead of one cycle above it.
         for (Breakpoint& b : bps_) {
             if (!b.enabled || b.kind == BreakKind::Pc) continue;
 
@@ -123,8 +140,18 @@ bool Debugger::armObserver() {
             if (a < b.lo || a > b.hi) continue;
 
             ++b.hits;
+
+            // A tracepoint acts and the machine runs on -- so it does NOT set
+            // cycleHit_, and a Stop breakpoint on the same cycle still stops.
+            if (b.action != BreakAction::Stop) {
+                traceActive_ = (b.action == BreakAction::TraceOn);
+                continue;
+            }
             if (!cycleHit_) cycleHit_ = b.id;   // the FIRST one to fire wins the report
         }
+
+        // TRACE: one line per cycle the mask admits.
+        if (tracing() && traceShows(rec)) *traceSink_ << formatCycle(rec) << "\n";
     });
     return true;
 }
@@ -334,9 +361,21 @@ RunResult Debugger::run(uint64_t maxSteps) {
             if (!b.enabled || b.kind != BreakKind::Pc) continue;
             if (pc < b.lo || pc > b.hi) continue;
             // A conditional breakpoint that does not hold is not a stop -- and it does
-            // not count as a hit either. `hits` means "times it stopped you".
+            // not count as a hit either. `hits` means "times it ACTED".
             if (b.cond && !b.cond->eval(resolveReg)) continue;
             ++b.hits;
+
+            // A tracepoint flips TRACE and we keep going. It must NOT break out of
+            // this loop: an ordinary breakpoint at the same PC still has to stop, and
+            // a tracepoint that swallowed it would be a debugger hiding a breakpoint
+            // from you. PC lands here BEFORE the instruction at this address runs, so
+            // BREAK 100 TRACE ON traces the instruction at 100, and BREAK 200 TRACE
+            // OFF does not trace the one at 200 -- the region is [100,200).
+            if (b.action != BreakAction::Stop) {
+                traceActive_ = (b.action == BreakAction::TraceOn);
+                continue;
+            }
+
             r.why = StopReason::Breakpoint;
             r.bp = b.id;
             hit = true;

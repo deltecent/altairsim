@@ -42,7 +42,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` | `HISTORY [n]` |
 | `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP]` |
-| `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>]` |
+| `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
 | `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id> <k>=<v>` |

@@ -465,6 +465,57 @@ void test_cli() {
     monN.exec("NOBREAK", sn);
 
     // -----------------------------------------------------------------------
+    // TRACEPOINTS -- BREAK <addr> [IF <expr>] TRACE ON|OFF.
+    //
+    // THE PARSE IS THE RISK. IF takes the WHOLE REST OF THE LINE as its
+    // expression, so a trailing TRACE ON must be stripped before the expression
+    // parser ever sees it -- otherwise it is handed `HL==8000 TRACE ON` and the
+    // combination the feature was asked for is the one that cannot be typed.
+    // -----------------------------------------------------------------------
+    SECTION("BREAK ... TRACE ON|OFF -- a tracepoint, and IF still composes");
+
+    monN.exec("NOBREAK", sn);
+    {
+        std::ostringstream out;
+        monN.exec("BREAK 0400 TRACE ON", out);
+        CHECK(out.str().find("trace on") != std::string::npos, "a plain tracepoint sets");
+        CHECK(mn.debug.breakpoints().back().action == BreakAction::TraceOn, "with the action on it");
+    }
+    {
+        std::ostringstream out;
+        monN.exec("BREAK MEM W 2000 TRACE OFF", out);
+        CHECK(mn.debug.breakpoints().back().action == BreakAction::TraceOff,
+              "TRACE OFF on a CYCLE breakpoint is allowed -- it reads no registers, unlike IF");
+        CHECK(mn.debug.breakpoints().back().kind == BreakKind::MemWrite, "and the kind survives it");
+    }
+    {
+        // The one that would break if TRACE were stripped after IF instead of before.
+        std::ostringstream out;
+        monN.exec("BREAK 0500 IF HL==8000 TRACE ON", out);
+        const Breakpoint& b = mn.debug.breakpoints().back();
+        CHECK(b.action == BreakAction::TraceOn, "IF and TRACE compose: the action is read");
+        CHECK(b.cond != nullptr, "and the condition parsed");
+        CHECK(b.cond->text().find("TRACE") == std::string::npos,
+              "the expression does NOT swallow the TRACE ON tokens");
+        CHECK(out.str().find("bad condition") == std::string::npos, "so it is not a parse error");
+    }
+    {
+        // A bare BREAK is still a stop, and says nothing about tracing.
+        std::ostringstream out;
+        monN.exec("BREAK 0600", out);
+        CHECK(mn.debug.breakpoints().back().action == BreakAction::Stop, "the default is still Stop");
+        CHECK(out.str().find("trace") == std::string::npos, "and it does not mention tracing");
+    }
+    {
+        // TRACE ON without an address is not a tracepoint on nothing -- it is a usage
+        // error. `end` collapsing onto argi is what catches it.
+        std::ostringstream out;
+        monN.exec("BREAK TRACE ON", out);
+        CHECK(out.str().find("usage") != std::string::npos, "BREAK TRACE ON alone is a usage error");
+    }
+    monN.exec("NOBREAK", sn);
+
+    // -----------------------------------------------------------------------
     // BOARDS names the RAM and the ROM apart, and says WHICH ROM.
     //
     // The old listing printed `mem:0000-DFFF,FF00-FFFF` -- two ranges squashed
