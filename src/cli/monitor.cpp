@@ -1563,7 +1563,7 @@ void Monitor::showRoms(std::ostream& out) {
         out << buf << "\n";
     }
     if (builtinRoms().empty()) out << "(none compiled in)\n";
-    out << "\nUse as: mount = \"builtin:<name>\".  Provenance: docs/roms.md\n";
+    out << "\nUse as: mount = \"builtin:<name>\".  Where each came from: docs/roms.md\n";
 }
 
 // ---------------------------------------------------------------------------
