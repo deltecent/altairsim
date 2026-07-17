@@ -138,6 +138,25 @@ DISASM            carry on
 DISASM 0-2F       exactly that range
 ```
 
+A worked example — ALTMON's reset entry at `F800`, the first thing the ROM runs:
+
+```
+altairsim> DISASM F800-F811
+F800  3E 03     MVI A,03
+F802  D3 10     OUT 10
+F804  D3 12     OUT 12
+F806  3E 11     MVI A,11
+F808  D3 10     OUT 10
+F80A  D3 12     OUT 12
+F80C  31 00 C0  LXI SP,C000
+F80F  CD A5 FB  CALL FBA5
+```
+
+It resets both 2SIO channels' 6850s (`OUT 10`/`OUT 12`), selects 8N2 (`MVI A,11`), points the
+stack at `C000`, and calls the sign-on routine at `FBA5`. Stopping at `F811` is deliberate: the
+bytes that follow are the sign-on text, and `DISASM` would decode that ASCII as instructions —
+nothing in memory says which bytes are code.
+
 ## Symbols — `SYMBOLS`, `SHOW SYMBOLS`
 
 Everything so far has spoken in hex. Load an assembler's symbols and you can name things
@@ -154,6 +173,29 @@ SHOW SYMBOLS                       all of them
 SHOW SYMBOLS SIO*                  filtered by a glob
 SYMBOLS CLEAR                      forget them
 ```
+
+The same disassembly, with `ALTMON.PRN` loaded, can be asked for by name — a symbol is
+accepted exactly where a hex address was:
+
+```
+altairsim> SYMBOLS LOAD roms/ALTMON/ALTMON.PRN
+96 symbol(s) from roms/ALTMON/ALTMON.PRN
+altairsim> DISASM MONIT-F811
+F800  3E 03     MVI A,03
+F802  D3 10     OUT 10
+F804  D3 12     OUT 12
+F806  3E 11     MVI A,11
+F808  D3 10     OUT 10
+F80A  D3 12     OUT 12
+F80C  31 00 C0  LXI SP,C000
+F80F  CD A5 FB  CALL FBA5
+```
+
+`MONIT` resolves to `F800`, so the range starts where you named it. The rows are otherwise
+byte-for-byte identical to the hex form above: naming an address is *reference*, and that
+already works everywhere an address is typed. The reverse has not landed — the operands still
+read `CALL FBA5`, not `CALL DSPMSG`. Annotating the disassembly itself is the piece still to
+come (see *The tools that are not here yet*, below).
 
 **Two kinds of file, and the toolchains that write them.** A **`.SYM`** is a flat list of
 name = value. Two toolchains write one: Digital Research's `MAC`/`RMAC` assemblers (every
