@@ -3,6 +3,17 @@ name: CI
 # Build a native altairsim binary on each platform and run the fast test suite.
 # The ~10-min 8080 exerciser (label "slow") is NOT run here -- see cpu-exerciser.yml,
 # which runs it only when CPU/ISA code changes.
+#
+# DOCUMENTATION-ONLY CHANGES RUN ONE LEG, NOT THREE.
+#
+# The fast suite VALIDATES the documentation -- docs-manual (the User Manual names nothing
+# outside the shipped package) and docs-reference (the committed docs/manual/ref/*.md matches
+# what the binary emits) both run here, and both need the binary. So a docs change is not a
+# no-op for CI and must not skip it. What a docs change does NOT need is the same binary built
+# on three operating systems: those two tests are platform-independent. So the `scope` job
+# classifies the diff and hands `build` a matrix of three legs for a code change or one (Linux)
+# for a docs-only change. There is no branch protection requiring the legs by name, so a
+# reduced matrix cannot deadlock a PR the way a trigger-level `paths:` filter would.
 on:
   push:
     branches: [ master ]
@@ -10,34 +21,86 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Look at what actually changed and choose the build matrix. Default is CODE (the full
+  # three-platform matrix): an unrecognized path runs everything, so a new directory is never
+  # silently skipped. Only a change that is ENTIRELY documentation drops to the single Linux leg.
+  scope:
+    name: Classify the change
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      code: ${{ steps.pick.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # need the base commit present to diff against it
+
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The legs. cmake_args is intentionally NOT here -- the macOS universal flag is
+          # applied in the Configure step so this JSON stays simple strings.
+          #   macos-14 is the Apple-Silicon runner and is plentiful; the Intel macos-13 image
+          #   is scarce and deprecating, so the mac leg cross-builds BOTH slices (x86_64+arm64)
+          #   into one universal binary and ctest exercises the arm64 slice natively.
+          linux='{"name":"linux-x86_64","os":"ubuntu-latest","artifact":"altairsim-linux-x86_64","binary":"build/altairsim"}'
+          macos='{"name":"macos-universal","os":"macos-14","artifact":"altairsim-macos-universal","binary":"build/altairsim"}'
+          windows='{"name":"windows-x86_64","os":"windows-latest","artifact":"altairsim-windows-x86_64","binary":"build/Release/altairsim.exe"}'
+          full="{\"include\":[$linux,$macos,$windows]}"
+          docsonly="{\"include\":[$linux]}"
+
+          # HEAD is the merge commit (PR) or the pushed tip; diff it against the base.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base='${{ github.event.pull_request.base.sha }}'
+          else
+            base='${{ github.event.before }}'
+          fi
+
+          # First push of a branch has no usable base -- take no chances, build everything.
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base to diff against -- full matrix"
+            echo "code=true"       >> "$GITHUB_OUTPUT"
+            echo "matrix=$full"    >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Documentation = anything under docs/ or reference/, a top-level *.md, or LICENSE.
+          # Everything else is code -- src, tests, cmake, the data dirs the tests read
+          # (roms, tapes, machines, disks, cpm, examples), tools, and this workflow itself.
+          code=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              docs/*|reference/*|LICENSE) ;;   # documentation
+              */*.md) code=true ;;             # a .md deeper in the tree (e.g. tests/) is code
+              *.md) ;;                          # a top-level .md (README, DESIGN) is documentation
+              *) code=true ;;                   # anything else
+            esac
+          done < <(git diff --name-only "$base" HEAD)
+
+          if [ "$code" = "true" ]; then
+            echo "code changed -- full matrix"
+            echo "code=true"    >> "$GITHUB_OUTPUT"
+            echo "matrix=$full" >> "$GITHUB_OUTPUT"
+          else
+            echo "documentation only -- Linux leg only (still runs docs-manual + docs-reference)"
+            echo "code=false"       >> "$GITHUB_OUTPUT"
+            echo "matrix=$docsonly" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: scope
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # All three legs are required. Windows was advisory (continue-on-error) while
-    # src/platform/win32/ was being brought up; it now compiles, links, and passes
-    # the full suite on MSVC, so a Windows regression blocks a PR like any other.
+    # All legs that run are required to pass. Windows was advisory (continue-on-error) while
+    # src/platform/win32/ was being brought up; it now compiles, links, and passes the full
+    # suite on MSVC, so a Windows regression blocks a PR like any other. fail-fast is off so
+    # one platform's failure does not cancel the others.
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: linux-x86_64
-            os: ubuntu-latest
-            artifact: altairsim-linux-x86_64
-            binary: build/altairsim
-          # One universal (x86_64 + arm64) binary, built on the Apple Silicon runner.
-          # macos-14 is plentiful; the Intel macos-13 image is scarce and being
-          # deprecated, so we cross-build both slices here instead of running a separate
-          # Intel leg. ctest runs the binary natively as arm64; the x86_64 slice is
-          # compiled but not exercised on CI (same source, validated on Linux + arm64).
-          - name: macos-universal
-            os: macos-14
-            artifact: altairsim-macos-universal
-            binary: build/altairsim
-            cmake_args: '-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"'
-          - name: windows-x86_64
-            os: windows-latest
-            artifact: altairsim-windows-x86_64
-            binary: build/Release/altairsim.exe
+      matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,9 +112,17 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y expect
 
-      # matrix.cmake_args is empty for every leg except macOS (universal-binary flag).
+      # The macOS leg builds a universal (x86_64 + arm64) binary; every other leg builds
+      # native. An array keeps the "x86_64;arm64" value intact past the shell.
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(-B build -DCMAKE_BUILD_TYPE=Release)
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            args+=(-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64")
+          fi
+          cmake "${args[@]}"
 
       - name: Build
         run: cmake --build build --config Release --parallel
