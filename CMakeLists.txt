@@ -543,6 +543,17 @@ set_tests_properties(docs-manual PROPERTIES LABELS acceptance TIMEOUT 60)
 # else. A PDF wants pandoc and a browser, and neither is allowed anywhere near the thing that
 # produces the simulator. So this is a target you ASK for, and its absence is not an error --
 # `cmake -S . -B build` on a machine with no pandoc must still configure and still build.
+#
+# YOU DO NOT HAVE TO RUN THIS ANY MORE, and you do not have to remember to commit what it
+# makes: .github/workflows/docs.yml rebuilds both PDFs on every push to master that touches
+# docs/, and commits them if their text actually moved. Nobody remembering was exactly the
+# problem -- the shipped developer guide spent two days insisting the project had no CI.
+#
+# This target is still worth having: it is how you SEE a change before you push it, and the
+# output is the same as CI's, because the fonts travel inside the document (docs/fonts/) and
+# CI pins the same pandoc. Committing its output is fine and so is not committing it -- if
+# your PDF matches, CI keeps it; if it does not, CI replaces it. What you must not do is
+# hand-edit a PDF, or expect the committed one to stay as you built it.
 # ---------------------------------------------------------------------------
 add_custom_target(docs
   COMMAND "${CMAKE_SOURCE_DIR}/tools/build-docs.sh"

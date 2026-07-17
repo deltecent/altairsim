@@ -5,6 +5,61 @@
  * and that a 79-column code block fits the column it is printed into.
  */
 
+/* THE FONTS ARE EMBEDDED, AND THAT IS WHAT MAKES THE PDF REPRODUCIBLE.
+ *
+ * These used to be a wish list -- "Charter", "Georgia", "Palatino", serif -- and a wish
+ * list resolves to whatever the machine happens to own. That was survivable while one Mac
+ * built the PDFs. It stopped being survivable the moment CI started building them: none of
+ * Charter, Georgia or Palatino exists on ubuntu-latest, so CI would have re-typeset the
+ * whole manual in fallback DejaVu Serif -- different face, different pagination, different
+ * page count from every copy shipped so far -- and said nothing about it.
+ *
+ * So the document carries its own faces and the renderer stops mattering. pandoc's
+ * --embed-resources inlines these as data: URIs (it resolves the url() relative to THIS
+ * file, not the caller's cwd), and build-docs.sh then checks the FINISHED PDF and fails if
+ * any face in it is one we did not ship -- which is how a character that neither font has
+ * gets caught, instead of being quietly fetched from the build machine.
+ *
+ * The mono matters more than the serif here, not less: the listings are written to a hard
+ * 79 columns, and mono is what a code block's width is measured in. DejaVu Sans Mono was
+ * already the Linux end of the old wish list, and its advance width (0.602em) is Menlo's,
+ * so pinning it moves almost nothing and guarantees all of it.
+ *
+ * Provenance -- both are UNMODIFIED upstream release files, so their hashes can be checked
+ * against the source and both licenses ("leave this notice intact") are satisfied by
+ * carrying the text next to them. See docs/fonts/README.md.
+ */
+@font-face {
+  font-family: "XCharter";
+  font-weight: 400; font-style: normal;
+  src: url("fonts/XCharter-Roman.otf") format("opentype");
+}
+@font-face {
+  font-family: "XCharter";
+  font-weight: 700; font-style: normal;
+  src: url("fonts/XCharter-Bold.otf") format("opentype");
+}
+@font-face {
+  font-family: "XCharter";
+  font-weight: 400; font-style: italic;
+  src: url("fonts/XCharter-Italic.otf") format("opentype");
+}
+@font-face {
+  font-family: "XCharter";
+  font-weight: 700; font-style: italic;
+  src: url("fonts/XCharter-BoldItalic.otf") format("opentype");
+}
+@font-face {
+  font-family: "DejaVu Sans Mono";
+  font-weight: 400; font-style: normal;
+  src: url("fonts/DejaVuSansMono.ttf") format("truetype");
+}
+@font-face {
+  font-family: "DejaVu Sans Mono";
+  font-weight: 700; font-style: normal;
+  src: url("fonts/DejaVuSansMono-Bold.ttf") format("truetype");
+}
+
 @page {
   size: letter;
   margin: 22mm 18mm;
@@ -13,7 +68,17 @@
 html { font-size: 11pt; }
 
 body {
-  font-family: "Charter", "Georgia", "Palatino", serif;
+  /* DejaVu Sans Mono is here as the GLYPH fallback, not as a typeface choice -- it is
+   * already embedded for the code blocks, so it costs nothing, and it covers what a text
+   * face does not. XCharter-Bold and XCharter-Italic have no arrow (U+2192), and the
+   * manual writes `> **On the wire -> HEX**` in bold; without this the arrow alone was
+   * fetched from macOS's Lucida Grande, which is both unshippable and absent on the CI
+   * runner. An arrow set in mono next to Charter is indistinguishable; an arrow set in
+   * whatever the build machine had lying around is the bug this file exists to prevent.
+   *
+   * The trailing serif must never fire. build-docs.sh fails the build if any face outside
+   * this list reaches the PDF, and pandoc hard-errors if XCharter itself cannot be read. */
+  font-family: "XCharter", "DejaVu Sans Mono", serif;
   line-height: 1.45;
   color: #111;
   max-width: 42em;
@@ -40,7 +105,7 @@ h1, h2, h3, h4 { break-after: avoid; }
 /* Code is where the reader's hands go, so it gets the room. Period listings and terminal
  * transcripts are written to 79 columns; anything wider is a table pretending to be code. */
 code, pre {
-  font-family: "SF Mono", "Menlo", "Consolas", "DejaVu Sans Mono", monospace;
+  font-family: "DejaVu Sans Mono", monospace;
   font-size: 0.82em;
 }
 
