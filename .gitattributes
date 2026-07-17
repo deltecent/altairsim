@@ -11,6 +11,14 @@
 *.cmake text eol=lf
 *.md   text eol=lf
 
+# CP/M symbol-file fixtures are real toolchain output (tests/programs/symbols/README.md):
+# their CRLF line endings and trailing ^Z padding are part of the format under test, so
+# git must never normalise them. The README stays ordinary text.
+tests/programs/symbols/*.SYM binary
+tests/programs/symbols/*.PRN binary
+tests/programs/symbols/*.MAC binary
+tests/programs/symbols/*.ASM binary
+
 # Period media and disk images are binary -- never munge.
 *.DSK binary
 *.dsk binary

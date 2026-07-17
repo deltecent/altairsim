@@ -4,6 +4,12 @@
 
 namespace altair {
 
+// A word character: alphanumeric plus the punctuation an M80 symbol may carry. Kept in
+// one place because the tokenizer and any future caller must agree on it.
+static bool isWordChar(unsigned char c) {
+    return std::isalnum(c) || c == '$' || c == '?' || c == '@' || c == '.' || c == '_';
+}
+
 // ---------------------------------------------------------------------------
 // The AST. Every node is one of: a literal, a register reference (resolved at
 // eval time, so its VALUE is always live), or a binary operator over two nodes.
@@ -48,11 +54,13 @@ NodeP mkBin(Op op, NodeP l, NodeP r) {
 struct Parser {
     const std::string& s;
     const std::function<bool(const std::string&)>& known;
+    const Expr::Symbols& symbols;
     size_t i = 0;
     std::string err;
 
-    Parser(const std::string& src, const std::function<bool(const std::string&)>& k)
-        : s(src), known(k) {}
+    Parser(const std::string& src, const std::function<bool(const std::string&)>& k,
+           const Expr::Symbols& sym)
+        : s(src), known(k), symbols(sym) {}
 
     void skip() {
         while (i < s.size() && std::isspace((unsigned char)s[i])) ++i;
@@ -150,25 +158,33 @@ struct Parser {
             if (!eat(")")) return fail("missing )");
             return e;
         }
-        // A word: [A-Za-z0-9]+. If it names a register it IS one; otherwise it must
-        // be a hex number, and if it is neither it is a typo we name.
+        // A word: an assembler-symbol charset, not just [A-Za-z0-9]. M80 names routinely
+        // carry $ ? @ . _ (MSG$1, FOO.BAR), and none of those collide with the operator
+        // set, so widening here lets a symbol be typed whole.
         skip();
         size_t start = i;
-        while (i < s.size() && std::isalnum((unsigned char)s[i])) ++i;
+        while (i < s.size() && isWordChar((unsigned char)s[i])) ++i;
         if (i == start) return fail(std::string("unexpected '") + s[i] + "'");
         std::string word = s.substr(start, i - start);
         std::string up;
         for (char c : word) up += (char)std::toupper((unsigned char)c);
 
+        // A register wins over everything (it is what tells `A` from `0A`). Then a loaded
+        // symbol, folded to its VALUE as a constant -- so it needs no eval-time wiring and
+        // works the day it is typed. Then a bare hex literal.
         if (known(up)) return mkReg(up);
+        if (symbols) {
+            uint32_t sv = 0;
+            if (symbols(up, sv)) return mkNum(sv);
+        }
 
-        // Not a register -- it must be hex, whole.
+        // Not a register or a symbol -- it must be hex, whole.
         uint32_t v = 0;
         for (char c : up) {
             int d;
             if (c >= '0' && c <= '9')      d = c - '0';
             else if (c >= 'A' && c <= 'F') d = 10 + (c - 'A');
-            else return fail("unknown register '" + word + "'");
+            else return fail("not a register, symbol, or hex number: '" + word + "'");
             v = v * 16 + (uint32_t)d;
         }
         return mkNum(v);
@@ -201,8 +217,8 @@ uint32_t evalNode(const Node& n, const Expr::Resolver& r) {
 
 std::shared_ptr<const Expr> Expr::parse(const std::string& src,
                                         const std::function<bool(const std::string&)>& known,
-                                        std::string& err) {
-    Parser p(src, known);
+                                        std::string& err, const Symbols& symbols) {
+    Parser p(src, known, symbols);
     NodeP root = p.parseOr();
     if (!root) {
         err = p.err.empty() ? "could not parse the condition" : p.err;

@@ -22,6 +22,7 @@ void test_memory();
 void test_readonly_props();
 void test_save_is_a_read();
 void test_hex();
+void test_symbols();
 void test_media();
 void test_roms();
 void test_phantom();

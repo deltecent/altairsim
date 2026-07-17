@@ -1196,6 +1196,10 @@ DEBUG
   against a machine that was halted the whole time, and matching the prompt that came
   back with the HLT.)
   TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]   HISTORY [n]
+  SYMBOLS LOAD <file> [REPLACE] | SYMBOLS CLEAR          SHOW SYMBOLS [<name>|<glob>]
+                                    A .PRN/.LST listing or a CP/M .SYM, so a name works
+                                    wherever an address is typed (§10.3.2). HOST-SIDE like a
+                                    breakpoint: survives RESET/POWER/CONFIG LOAD.
   SNAPSHOT <file> | RESTORE <file> | RECORD <file> | REPLAY <file>
   SET BUS CONTENTION=WARN|ERROR|SILENT
 ```
@@ -1401,6 +1405,45 @@ Source images live in **`roms/`** in the repo. At build time CMake turns each in
 - **Built-ins are a convenience, never a lock-in** — a path overrides, so anyone with a different dump of the same part uses it without patching the simulator.
 
 **Every built-in ROM has a provenance row in `docs/roms.md`** — source, exact size, CRC32 — and a unit test verifies the CRC at build time. This is §0.1 applied to binaries: **a ROM image is a hardware fact**, and an embedded blob of unknown lineage is the worst kind of second-hand fact, because every piece of software above it would then be debugged against the wrong ground truth and it would look like a software bug for a very long time. Nothing is embedded without a source.
+
+### 10.3.2 Symbol files — `.PRN` and `.SYM`
+
+**A symbol table is NOT `LOAD`, and the wrong answer is silent.** `LOAD` is memory all the
+way down: every format it accepts becomes bytes in the 64K address space, and its sniffer is
+a two-way branch — a leading `:` is Intel HEX, everything else is a flat binary. So
+`LOAD prog.SYM AT 100` does not error; it deposits the symbol file's ASCII into RAM. A symbol
+table has no address space to land in — it is the debugger's *names* for one — so it is its
+own top-level verb, `SYMBOLS`, the way `CONFIG` is a separate verb precisely because what it
+loads is not memory. `core/symbols.h` mirrors `core/hex.h`: one implementation, and the
+`SYMBOLS` command, the `startup` re-load, and the MCP tool are its front ends.
+
+**Host-side, like a breakpoint.** The table belongs to no card — it is a view *of* the address
+space, not a property *in* it — so it lives on `Machine`, not a board, and the "no
+machine-level board state" rule (`machine.h`) does not reach it. It survives `RESET`, `POWER`
+and `CONFIG LOAD` exactly as breakpoints do, and `SYMBOLS CLEAR` is its `NOBREAK`. A machine
+file may name a symbol file in `startup`; `CONFIG SAVE` round-trips the **filename, not the
+parsed table**, the same bargain `builtin:` makes for a ROM (§10.3.1).
+
+**Reference first, display later.** A loaded symbol resolves anywhere a *true address* is
+typed (`BREAK`, `DUMP`, `EXAMINE`, a `BREAK … IF` operand) — not where a port or a byte is,
+which is why the resolution is gated per call-site and not folded into the one overloaded
+address parser. A symbol wins over a bare hex literal, with the same leading-zero escape that
+tells the register `A` from the number `0A`. Annotating disassembly (`JMP 0100` → `JMP START`)
+is deferred: an `Insn` melts its operand into text before anyone sees it, and `%W` is not
+always an address (`LXI B,%W` is a constant, `JMP %W` is not), so correct annotation needs an
+operand-kind split across both opcode tables. The reverse (address→name) map is built now so
+that work is display-only when it comes.
+
+**Two formats, and absolute addresses only.** A **`.PRN`/`.LST`** is an assembler listing (CP/M
+`ASM`, Microsoft `M80`, DR `MAC` — one column geometry: address in columns 2–5, `=` in column
+7 marks an `EQU`, source at column 17). Because it marks an `EQU`, it tells a constant from a
+program label, and **only labels feed the reverse map** — otherwise a `BDOS EQU 5` makes
+address `0005` render as `BDOS`. A **`.SYM`** is the flat `HHHH NAME` symbol file DR `MAC`/`RMAC`
+write and `SID` reads; it has no label/constant distinction, so it feeds name→value only.
+(Microsoft **`L80` writes no `.SYM`** — it prints its map to the console. The `.SYM` is an
+assembler product, not the linker's.) A relocatable `M80` listing marks its addresses with a
+trailing apostrophe and is **refused, by the line** — a module-relative address referenced as
+if absolute is a silent wrong answer. A `.SYM` is post-link and absolute already.
 
 ### 10.4 Line editing and history
 

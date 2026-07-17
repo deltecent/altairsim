@@ -25,6 +25,7 @@ int main() {
     altair::setMediaResolver(altair::openHostFile);
 
     test_hex();
+    test_symbols();
     test_media();
     test_roms();
     test_clock();

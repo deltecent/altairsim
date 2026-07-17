@@ -1,0 +1,22 @@
+ 0100           	ORG	0100H
+ 0005 =         BDOS	EQU	5
+ 0002 =         CONOUT	EQU	2
+ 000D =         CR	EQU	13
+ 000A =         LF	EQU	10
+ 0100 314201    START:	LXI	SP,STACK
+ 0103 211A01    	LXI	H,MSG
+ 0106 7E        LOOP:	MOV	A,M
+ 0107 B7        	ORA	A
+ 0108 CA1701    	JZ	DONE
+ 010B 23        	INX	H
+ 010C 5F        	MOV	E,A
+ 010D 0E02      	MVI	C,CONOUT
+ 010F E5        	PUSH	H
+ 0110 CD0500    	CALL	BDOS
+ 0113 E1        	POP	H
+ 0114 C30601    	JMP	LOOP
+ 0117 C30000    DONE:	JMP	0
+ 011A 48454C4C4FMSG:	DB	'HELLO',CR,LF,0
+ 0122           	DS	32
+ 0142           STACK:	END	START
+

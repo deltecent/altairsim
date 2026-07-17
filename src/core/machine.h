@@ -9,6 +9,7 @@
 #include "core/board.h"
 #include "core/bus.h"
 #include "core/debug.h"
+#include "core/symbols.h"
 #include "cpu/cpu.h"
 
 #include <memory>
@@ -163,6 +164,17 @@ public:
     bool running = false;
 
     Debugger debug{*this};
+
+    // Operator-loaded symbols (.PRN / .SYM). HOST-SIDE STATE, exactly like the debugger's
+    // breakpoints, and it behaves like them at every seam: it survives RESET and POWER, and
+    // replaceWith() leaves it alone -- so a CONFIG LOAD keeps it, the same way a breakpoint
+    // survives one (both are the operator's view, not the machine's). SYMBOLS CLEAR is its
+    // NOBREAK. A machine's own `startup` may SYMBOLS LOAD more, which merge in.
+    //
+    // It lives at machine level, not on a board, because it belongs to no card -- it is a
+    // view OF the 64K address space, not a property IN it, so the "no machine-level board
+    // state" rule above does not reach it (DESIGN.md 10.3.2). See core/symbols.h.
+    SymbolTable syms;
 
     // Collected board chatter (bad bank selects, ROM load failures), drained by
     // whichever front end is listening.
