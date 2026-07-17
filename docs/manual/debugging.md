@@ -155,10 +155,13 @@ SHOW SYMBOLS SIO*                  filtered by a glob
 SYMBOLS CLEAR                      forget them
 ```
 
-**Two kinds of file, and the toolchains that write them.** A **`.SYM`** is the symbol file
-Digital Research's `MAC`/`RMAC` assemblers write and `SID` reads — a flat list of name =
-value. (Microsoft's **L80** linker writes no `.SYM`; it prints its map to the console. To get
-a `.SYM` you assemble with `MAC`, not link with `L80`.) A **`.PRN`** or **`.LST`** is the
+**Two kinds of file, and the toolchains that write them.** A **`.SYM`** is a flat list of
+name = value. Two toolchains write one: Digital Research's `MAC`/`RMAC` assemblers (every
+symbol, read by `SID`), and — with the right switches — Microsoft's **L80** linker. `L80`'s
+`/M` prints a *map* to the console, but `filename/N/Y/E` writes a real **`filename.SYM`**; the
+catch is that an `L80` `.SYM` holds **globals only** (the `PUBLIC` names), so a module's local
+labels and `EQU`s are not in it. For those, use the assembler's listing. A **`.PRN`** or
+**`.LST`** is the
 assembler's own listing — from CP/M `ASM`, Microsoft `M80`, or `MAC` — and it is the richer
 source, because it marks an `EQU` and so can tell a constant apart from a program label: only
 real labels are offered back as addresses, so `0005` never starts printing as `BDOS`.

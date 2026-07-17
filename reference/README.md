@@ -52,3 +52,15 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | Reference | What it covers |
 |---|---|
 | [Intel Hexadecimal Object File Format](hexfrmt.md) | The Intel HEX specification (Rev A, 1988): the general record layout, all six record types, and the checksum rule (a record sums to zero). Plus what an 8-bit machine actually needs — types 00 and 01 — the modulo-64K address wrap that `LOAD ... AT` relies on, and the traps: RECLEN counts data bytes not characters, a file is sparse and its gaps must not be filled, and its records need not ascend. |
+
+## Software toolchain
+
+Not hardware — Microsoft's CP/M assembler and linker, kept for the **symbol files the
+debugger loads**. The toolchain is `M80 → .REL → L80 → .COM/.HEX (+ optional .SYM)`; see the
+Symbols section of `docs/manual/debugging.md` and `src/core/symbols.{h,cpp}`.
+
+| Reference | What it covers |
+|---|---|
+| [Microsoft M80 Assembler](Microsoft%20M80%20Assembler.md) | MACRO-80: command string and default extensions (`.MAC`/`.REL`/`.PRN`/`.CRF`), the `.PRN` listing format the symbol loader reads — the per-line relocation markers (`'`/`"`/`!`) and the symbol-table section that flags every symbol's type (`U`/`C`/`*`/`'`/`"`/`!` and Public `I`) — plus the symbol rules (6 significant chars, `##`/`::`), the **decimal** default radix, and the switch/pseudo-op set. **M80 emits `.PRN`, not `.SYM`.** |
+| [Microsoft L80 Linker](Microsoft%20L80%20Linker.md) | LINK-80: the command string and `.REL` default, the switches that decide the output — `/N` (name, `.COM`), `/E`/`/G` (exit/go), `/X` (`.HEX`), and **`/Y` (write `filename.SYM`)** — the 100H startup-`JMP` trap, and the key fact that a Microsoft `.SYM` holds **globals only**, which is why it is a flat name=value list with no EQU/label split. |
+| [CP/M 2.2 Manual](CPM%202.2%20Manual.md) | The DRI compilation altairsim runs — distilled to the parts we touch: the **page-zero contract** (0000 warm-boot, 0005 BDOS, 005C FCB, 0080 DMA, 0100 TPA), the **CCP** built-ins + line-editing control chars, **`ASM`** (directives, the **decimal** default radix, 16-significant-char identifiers, and the 16-column `.PRN` geometry with its `=` EQU marker that the symbol loader reads), **`DDT`** (the period debugger our own mirrors — `X`/`T`/`G`/`L`/`D`/`A`/`S`, the `CfZfMfEfIf A=…` register line, and RST-7 breakpoints), and the **BDOS** call convention + function numbers. |
