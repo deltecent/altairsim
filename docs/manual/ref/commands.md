@@ -155,7 +155,7 @@ MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
 ### BREAK — `B[REAK]`
 
 ```
-BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>]
+BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]
 ```
 Bare BREAK lists them. Only the first kind is about the CPU at all -- the
 other two watch BUS CYCLES, so they catch a DMA transfer too, and they work
@@ -179,6 +179,26 @@ BREAK 100 IF A==0
 BREAK 100 IF HL==8000 && Z==1
 BREAK 100 IF (A&0F)==0
 ```
+
+
+TRACE ON|OFF makes it a TRACEPOINT: instead of stopping, it turns TRACE on or
+off and the machine RUNS ON. Two of them trace a REGION and nothing else --
+which is how you trace one subroutine out of a program that would otherwise
+bury you. Unlike IF, this works on the MEM and IO kinds too, because it reads
+no registers. TRACE ON at an address traces the instruction AT it; TRACE OFF
+does not -- the region is [on, off).
+
+```
+BREAK 2C00 TRACE ON        start tracing when PC gets to 2C00
+BREAK 2C40 TRACE OFF       ...and stop again at 2C40
+BREAK MEM W 2000 TRACE ON  start when anything writes 2000 (that write is
+                           the first line -- a trace shows its own reason)
+BREAK 200 IF HL==8000 TRACE ON    conditional, and still does not stop
+```
+
+Where the trace GOES is TRACE's business, not the tracepoint's: set it up with
+TRACE ON <file> MASK=..., then TRACE OFF to arm it without emitting. An
+unconfigured tracepoint traces to the console.
 
 
 ### CONFIG — `C[ONFIG]`
@@ -530,6 +550,12 @@ TRACE ON run.log            ...to a file
 TRACE ON MASK=IN,OUT        just the port traffic
 TRACE OFF
 ```
+
+
+TRACE OFF stops the tracing but REMEMBERS where it was going -- a later TRACE
+ON, or a tracepoint, resumes to the same file and mask. That is what lets you
+aim a tracepoint at a file: TRACE ON run.log MASK=DMA, then TRACE OFF to arm
+it without emitting, then BREAK <addr> TRACE ON. See BREAK.
 
 
 ### NOBREAK — `NO[BREAK]`

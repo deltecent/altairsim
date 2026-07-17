@@ -110,7 +110,8 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT dsk0:drive1 disks/master.dsk WP\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
      "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape"},
-    {"BREAK", true, nullptr, "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>]",
+    {"BREAK", true, nullptr,
+     "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]",
      "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
      "other two watch BUS CYCLES, so they catch a DMA transfer too, and they work\n"
      "unchanged on any processor.\n"
@@ -125,7 +126,22 @@ static const std::vector<CommandDef> kCommands = {
      "accumulator). == != < > <= >= compare; && || combine; & | mask.\n"
      "  BREAK 100 IF A==0\n"
      "  BREAK 100 IF HL==8000 && Z==1\n"
-     "  BREAK 100 IF (A&0F)==0"},
+     "  BREAK 100 IF (A&0F)==0\n"
+     "\n"
+     "TRACE ON|OFF makes it a TRACEPOINT: instead of stopping, it turns TRACE on or\n"
+     "off and the machine RUNS ON. Two of them trace a REGION and nothing else --\n"
+     "which is how you trace one subroutine out of a program that would otherwise\n"
+     "bury you. Unlike IF, this works on the MEM and IO kinds too, because it reads\n"
+     "no registers. TRACE ON at an address traces the instruction AT it; TRACE OFF\n"
+     "does not -- the region is [on, off).\n"
+     "  BREAK 2C00 TRACE ON        start tracing when PC gets to 2C00\n"
+     "  BREAK 2C40 TRACE OFF       ...and stop again at 2C40\n"
+     "  BREAK MEM W 2000 TRACE ON  start when anything writes 2000 (that write is\n"
+     "                             the first line -- a trace shows its own reason)\n"
+     "  BREAK 200 IF HL==8000 TRACE ON    conditional, and still does not stop\n"
+     "Where the trace GOES is TRACE's business, not the tracepoint's: set it up with\n"
+     "TRACE ON <file> MASK=..., then TRACE OFF to arm it without emitting. An\n"
+     "unconfigured tracepoint traces to the console."},
     {"EDIT", false, "the line editor", "EDIT <addr>  -- interactive; Enter advances", nullptr},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "SAVE writes the machine you are actually running, so it round-trips.\n"
@@ -287,7 +303,12 @@ static const std::vector<CommandDef> kCommands = {
      "  TRACE ON                    every cycle, to the console\n"
      "  TRACE ON run.log            ...to a file\n"
      "  TRACE ON MASK=IN,OUT        just the port traffic\n"
-     "  TRACE OFF"},
+     "  TRACE OFF\n"
+     "\n"
+     "TRACE OFF stops the tracing but REMEMBERS where it was going -- a later TRACE\n"
+     "ON, or a tracepoint, resumes to the same file and mask. That is what lets you\n"
+     "aim a tracepoint at a file: TRACE ON run.log MASK=DMA, then TRACE OFF to arm\n"
+     "it without emitting, then BREAK <addr> TRACE ON. See BREAK."},
     // STOP is still reserved, and CONSOLE mode has now made it MORE clearly a
     // separate thing rather than less. The machine runs while you are in CONSOLE,
     // but the monitor is not there -- the guest has the keyboard. STOP is for the
