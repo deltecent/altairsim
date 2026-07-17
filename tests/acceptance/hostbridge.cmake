@@ -31,7 +31,26 @@ endif()
 
 string(ASCII 13 CR)                     # a CCP command line ends in CR AND NOTHING ELSE
 string(ASCII 26 SUB)                    # ^Z -- what ends a PIP from the console
-set(CRLF "${CR}\n")                     # ...but a CP/M TEXT FILE is CRLF
+
+# A CP/M TEXT FILE IS CRLF -- BUT WE DO NOT GET TO WRITE THE CR OURSELVES ON WINDOWS.
+#
+# `file(WRITE)` opens in TEXT MODE, so on Windows every LF it writes becomes CRLF. Asking
+# for "${CR}\n" there therefore lands on disk as CR CR LF, and every line of every file we
+# PIP into the guest is doubled. The commands still ran -- a bare CCP line has no LF after
+# its CR, so nothing translated it -- and only the PIP'd SOURCE rotted, which is why this
+# surfaced as ASM cheerfully printing END OF ASSEMBLY over a HEX that LOAD then rejected.
+#
+# So: ask for the bytes we want to END UP WITH, and let each platform's file(WRITE) get
+# there its own way. There is no portable escape in script mode -- string(ASCII 10) is
+# translated identically, and file(GENERATE) needs project context, which -P does not have.
+#
+# Found on Windows by the PR #12 review; the line dates to db35fa7 and had never run there,
+# because the 8 MB image it needs is gitignored.
+if(WIN32)
+  set(CRLF "\n")                        # file(WRITE) supplies the CR for us
+else()
+  set(CRLF "${CR}\n")
+endif()
 
 set(work "${BIN}/hostbridge-${MODE}")   # per-mode: the two must never share a scratch dir
 file(REMOVE_RECURSE "${work}")
@@ -224,6 +243,22 @@ endif()
 # So the runtime checks look only at what came after the last LOAD, which is the part where
 # our programs were actually running.
 string(FIND "${out}" "RECORDS WRITTEN" loaded REVERSE)
+
+# SAY WHAT HAPPENED, RATHER THAN INDEXING WITH -1.
+#
+# If LOAD never got that far there is no marker, `loaded` is -1, and the SUBSTRING below
+# used to throw `string begin index: -1 is out of range` -- a CMake error, naming this
+# harness, about a failure that happened inside CP/M. That is what the Windows CRLF bug
+# looked like for an hour, and it pointed at everything except the cause.
+if(loaded LESS 0)
+  message(FATAL_ERROR
+          "hostbridge(${MODE}): LOAD never printed RECORDS WRITTEN -- the .HEX it was given "
+          "was not loadable, so nothing we built ever ran. The assembler's own output is "
+          "above; look for INVERTED LOAD ADDRESS or a NO SOURCE FILE from ASM, and suspect "
+          "the bytes we PIP'd in rather than the card.\n"
+          "----- transcript -----\n${out}")
+endif()
+
 string(SUBSTRING "${out}" ${loaded} -1 ran)
 
 function(want_ran text why)
