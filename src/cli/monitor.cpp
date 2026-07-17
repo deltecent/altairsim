@@ -1764,8 +1764,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // SEARCH and COMPARE see a ROM through the bus without being asked twice.
     //
     // THIS USED TO BE `RAW <id>`, and it used to name a board and address that board's
-    // store by a LOCAL OFFSET (Patrick, 2026-07-17: "Don't want board local offsets.
-    // Too confusing. All addresses should just reference the 64K address space."). Two
+    // store by a LOCAL OFFSET (Patrick, 2026-07-17: board-local offsets are out as too
+    // confusing -- every address refers to the one 64K address space). Two
     // things fell out of that. The board id went, because through the bus you never
     // name a board -- the address picks it -- so naming one carried no information the
     // address did not already carry. And the read side went, because it existed only to
@@ -2902,8 +2902,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         Image img;
         for (uint32_t A = lo; A <= hi; ++A) img.bytes[A] = rd(A);
 
-        // THE NAME DECIDES, AND FORMAT= OVERRIDES IT (Patrick, 2026-07-17: "SAVE should
-        // be determined by filename, unless there is an override").
+        // THE NAME DECIDES, AND FORMAT= OVERRIDES IT -- SAVE goes by the filename unless
+        // told otherwise (Patrick, 2026-07-17).
         //
         // Which is the other half of LOAD's rule, and deliberately not the same
         // mechanism: LOAD can read the file and see what it IS, and SAVE cannot -- the

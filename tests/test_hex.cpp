@@ -92,8 +92,8 @@ void test_hex() {
     {
         // THE DELTA WRAPS, MODULO 64K -- the format's own arithmetic ("[DRLO + DRI] MOD
         // 64K"), and the address bus's: an 8080 has no seventeenth address line to carry
-        // into. Patrick, 2026-07-17: "this has to do the math to wrap from 0000 back to
-        // FFFF by AND 0xFFFF."
+        // into. Patrick, 2026-07-17: the arithmetic wraps from 0000 back round to FFFF,
+        // masked with 0xFFFF.
         Image img;
         std::string err;
         CHECK(loadHex(sv(":01F00000AA65\n:01E00000BB64\n:00000001FF\n"), img, err),

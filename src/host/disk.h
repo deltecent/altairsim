@@ -77,9 +77,9 @@ inline bool sizeMatches(uint64_t got, uint64_t exact) {
 //
 //   - read-only was never a different IMAGE. It is a medium that says no.
 //   - an in-memory disk was never a different image either. It is a MemoryMedia.
-//   - and IMD/TD0 ARE NEVER COMING (Patrick, 2026-07-12): "I will never support IMD
-//     files, only raw disk images. The only way I would support an IMD file is if it
-//     was converted to a raw file before using."
+//   - and IMD/TD0 ARE NEVER COMING (Patrick, 2026-07-12): raw disk images are the only
+//     kind this program will ever read, and an IMD file that has to be used here is one
+//     that gets converted to raw BEFOREHAND, outside it.
 //
 // That last one is what removes the last reason for readSector()/writeSector() to be
 // virtual -- they were virtual FOR a container format that carries its own per-track

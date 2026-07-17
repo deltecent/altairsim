@@ -307,11 +307,10 @@ public:
     // which happens on the chip's own clock, with no help from the CPU -- and the
     // only thing that ever woke the card up was being asked this question, so the
     // card advanced its receiver here. It worked. It was the wrong shape, and
-    // Patrick named it (2026-07-12):
-    //
-    //     "In a real system, the bus doesn't poll a board for interrupt status.
-    //      The board sets high/low signals on the bus that the CPU reads from
-    //      the bus. The board then clears the int signal based on its design."
+    // Patrick named it (2026-07-12): a real bus does not poll a board for interrupt
+    // status. The board sets a signal on the bus, the CPU reads it off the bus, and
+    // the board clears it when its own design says to. Polling is not how any of
+    // that works, so it is not how any of this should work.
     //
     // So the card does its free-running work on its OWN schedule now -- a Clock
     // deadline it sets itself, and pump(), which is where the host's keystrokes get

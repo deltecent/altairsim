@@ -153,7 +153,7 @@ It also dissolves the "what if there is no real serial port" question. There is 
 
 `CONNECT sio0:b serial:/dev/tty.usbserial-XXXX` opens the port and then **the card immediately programs it**: `baud` from the strap, and the frame (8N1, 7E2, …) from the **word-select bits the guest wrote into the control register** — because those bits *are* what goes on the wire. A guest that reconfigures the chip for 7E1 reconfigures the cable for 7E1, exactly as it would on the bench.
 
-> **There is no second, independent baud rate on the endpoint, and the plan's "two baud rates" section is struck** (Patrick, 2026-07-12: *"do we need emulated character timing with a real serial port attached? The real serial port is the limiting factor."*). A card strapped for 300 driving a terminal set to 9600 does not give you a fast link on real hardware — it gives you garbage. A second baud rate could only ever configure the garbage.
+> **There is no second, independent baud rate on the endpoint, and the plan's "two baud rates" section is struck** (Patrick, 2026-07-12, asking whether emulated character timing earns its keep with a real serial port attached, given that the real port is the limiting factor). A card strapped for 300 driving a terminal set to 9600 does not give you a fast link on real hardware — it gives you garbage. A second baud rate could only ever configure the garbage.
 >
 > The emulated character timing **stays**, and it is not double-counting: it is the *same* duration the real port takes, not an extra one. It has to stay because **the guest can measure it** — see the Mike Douglas BIOS, below.
 

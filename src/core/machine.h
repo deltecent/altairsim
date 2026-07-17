@@ -109,8 +109,8 @@ public:
     // drift.
     //
     // The address is a BUS address, 0000-FFFF -- the same address everything else in
-    // this program means (Patrick, 2026-07-17: "All addresses should just reference the
-    // 64K address space"). Which chip it belongs to is a question the address already
+    // this program means (Patrick, 2026-07-17: every address refers to the one 64K
+    // address space). Which chip it belongs to is a question the address already
     // answers, so nobody names a board. To reach a bank that is not selected, select it
     // (SET mem0 bank=3); the guest has to, and so do you.
     //
