@@ -589,9 +589,33 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
 //
 // ...which is also what makes `base = "default"` cost nothing: a built-in and a file are
 // the same text through the same parser, so a base can be either one.
+// LOADING A MACHINE FILE IS ALL OR NOTHING, and that is what the scratch machine below
+// is for. `built` is where the file is assembled; `m` does not change until it has been
+// assembled successfully, and if the file is bad `m` never changes at all.
+//
+// This is also what makes a machine file mean the SAME THING wherever it is read. It is
+// a MACHINE -- the whole backplane, the thing CONFIG SAVE wrote down -- and not a list
+// of amendments to whatever you happen to have running. `altairsim -f mine.toml` and
+// `CONFIG LOAD mine.toml` are now one road with one meaning, and the round trip the
+// manual promises (configuring.md) actually holds: save what you have, load it back,
+// get it back.
+//
+// It cost two bugs to learn. Loading straight into `m` MERGED, so CONFIG LOAD of a file
+// CONFIG SAVE had just written died on `a board with id 'fp0' already exists` -- the
+// documented worked example, refused by the program. And because the merge ran until it
+// hit that, a file whose new cards came first left them behind: the load FAILED and
+// changed your machine anyway.
+//
+// `base` still merges, and must -- it is the one case where a file IS an amendment to
+// another, and it recurses through loadInto() below, not through here. Note that it can
+// only work at all now: `base` refuses to run once a machine has boards in it, so in the
+// old world CONFIG LOAD of any file with a `base` was dead on arrival.
 bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
                   std::string& err) {
-    return loadInto(text, source, m, err, /*depth=*/0);
+    Machine built;
+    if (!loadInto(text, source, built, err, /*depth=*/0)) return false;
+    m.replaceWith(built);
+    return true;
 }
 
 bool loadToml(const std::string& path, Machine& m, std::string& err) {

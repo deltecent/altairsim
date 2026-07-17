@@ -13,6 +13,7 @@
 #include "cli/monitor.h"
 #include "core/machine.h"
 #include "cpu/cpu.h"
+#include "host/endpoint.h"
 #include "host/stream.h"
 #include "test.h"
 
@@ -224,6 +225,44 @@ void test_cli() {
 
     CHECK(resolveCommand("ZORK") == nullptr, "an unknown word is unknown");
     CHECK(resolveCommand("") == nullptr, "and so is nothing at all");
+
+    // ---- CONNECT's gloss may not fall behind endpointHelp() ----
+    //
+    // CONNECT's help GLOSSES each endpoint -- `null` and `scripted` tell you nothing
+    // by themselves -- and a gloss is a hand-copy of somebody else's vocabulary, which
+    // is the exact thing that rotted here once before: the list sat there promising
+    // that socket: and serial: "are coming" long after resolveEndpoint() had shipped
+    // both. The enumeration is {endpoints}'s job and cannot rot. THIS is what keeps the
+    // prose beside it honest: every name endpointHelp() offers must be a word CONNECT
+    // says. Add an endpoint and stay silent about it, and this fails.
+    const CommandDef* conn = resolveCommand("CONNECT");
+    CHECK(conn && conn->detail, "CONNECT has a detail to check");
+    if (conn && conn->detail) {
+        const std::string help = conn->detail;
+        const std::string grammar = endpointHelp();
+
+        // Split "a | b | socket:PORT" into names. A prefixed endpoint is glossed by its
+        // PREFIX (`socket:`), because the help explains one scheme, not each of its two
+        // spellings -- so cut at the colon and keep it.
+        size_t at = 0;
+        while (at < grammar.size()) {
+            size_t bar = grammar.find('|', at);
+            std::string tok = grammar.substr(at, bar == std::string::npos ? bar : bar - at);
+            at = (bar == std::string::npos) ? grammar.size() : bar + 1;
+
+            size_t b = tok.find_first_not_of(" \t\n");
+            if (b == std::string::npos) continue;
+            tok = tok.substr(b, tok.find_last_not_of(" \t\n") - b + 1);
+
+            size_t colon = tok.find(':');
+            if (colon != std::string::npos) tok = tok.substr(0, colon + 1);
+
+            CHECK(help.find(tok) != std::string::npos,
+                  (std::string("CONNECT's help says what '") + tok +
+                   "' is -- endpointHelp() offers it, so the prose must gloss it")
+                      .c_str());
+        }
+    }
 
     // ---- IN and OUT (Patrick, 2026-07-11) ----
     // The two commands every ROM monitor has had since there were ROM monitors.

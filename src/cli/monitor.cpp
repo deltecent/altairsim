@@ -1563,7 +1563,7 @@ void Monitor::showRoms(std::ostream& out) {
         out << buf << "\n";
     }
     if (builtinRoms().empty()) out << "(none compiled in)\n";
-    out << "\nUse as: mount = \"builtin:<name>\".  Provenance: docs/roms.md\n";
+    out << "\nUse as: mount = \"builtin:<name>\".  Where each came from: docs/roms.md\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -3367,11 +3367,22 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!need(3, "CONFIG LOAD|SAVE <file.toml>")) return true;
         std::string err;
         if (is(a[1], "LOAD")) {
+            // THE MACHINE YOU HAD IS GONE, and only if the file was good. loadToml()
+            // builds the new machine in a scratch backplane and swaps it in whole
+            // (machine.h, replaceWith), so a file that does not parse leaves you
+            // exactly where you were and this branch is never reached.
             if (!loadToml(a[2], m_, err)) {
                 out << err << "\n";
                 failed_ = true;
                 return true;
             }
+            // ...AND THEN POWER IT, because a backplane full of cards that have never
+            // seen POC* is not a machine: its RAM was never filled, its ROM images were
+            // never read, and no card has been told to reset. This is the same line
+            // main.cpp runs after loading a machine named on the command line, and it
+            // is here so that the two roads arrive at the same place -- which is the
+            // whole claim `CONFIG LOAD mine.toml` makes.
+            m_.power();
             out << "loaded " << a[2] << ": " << m_.boards().size() << " board(s)\n";
             flush(out);
             runStartup(out);

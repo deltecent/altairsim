@@ -95,6 +95,35 @@ bool Machine::burn(uint16_t addr, uint8_t v, std::string& why) {
     return true;
 }
 
+void Machine::replaceWith(Machine& built) {
+    // OUT WITH THE OLD, through the same door they came in by. bus.detach() is what
+    // takes a card's pins off the backplane -- its interrupt, its pHOLD, its VI lines,
+    // and the decode it was answering (bus.cpp) -- and none of that is in the
+    // destructor, so dropping the unique_ptr without detaching first would leave the
+    // bus counting an interrupt from a card that no longer exists.
+    while (!boards_.empty()) {
+        bus.detach(boards_.back().get());
+        boards_.pop_back();
+    }
+
+    for (auto& held : built.boards_) {
+        Board* b = held.get();
+        built.bus.detach(b);  // off the scratch backplane...
+        b->attachClock(&clock);
+        boards_.push_back(std::move(held));
+        bus.attach(b);  // ...and onto this one, pins and all
+    }
+    built.boards_.clear();  // the unique_ptrs are empty now; do not leave them lying about
+
+    // The machine is the cards AND what the file said about them. `dir` especially:
+    // it is the only thing carrying "where this file was" to runStartup(), and a
+    // startup list from the new file with the old file's directory would resolve its
+    // paths against the wrong place (paths.h).
+    name    = built.name;
+    dir     = built.dir;
+    startup = built.startup;
+}
+
 bool Machine::remove(const std::string& id, std::string& err) {
     Board* b = find(id);
     if (!b) {

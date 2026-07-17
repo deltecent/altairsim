@@ -43,8 +43,24 @@ static const std::vector<CommandDef> kCommands = {
      "One instruction, with REAL bus cycles through the real decode. Prints each\n"
      "instruction as it goes; past 32 it runs quietly and reports. `n` is a count,\n"
      "so it is decimal.\n"
+     "\n"
+     "A LINE IS THE STATE BEFORE THE INSTRUCTION ON IT RUNS -- the registers as they\n"
+     "stand, and then what is about to happen to them. So a value you just loaded\n"
+     "appears on the NEXT line, and the line the monitor leaves you on is where you\n"
+     "have stopped: that instruction has not run.\n"
      "  S            one instruction\n"
-     "  S 10         ten of them"},
+     "  S 10         ten of them\n"
+     "\n"
+     "  altairsim> DEPOSIT 0 3E 05 06 0A 80 76        MVI A,5 / MVI B,0A / ADD B / HLT\n"
+     "  altairsim> S 3\n"
+     "  C0Z0M0E0I0 A=00 B=0000 D=0000 H=0000 S=0000 IE=0 P=0000  MVI A,05\n"
+     "  C0Z0M0E0I0 A=05 B=0000 D=0000 H=0000 S=0000 IE=0 P=0002  MVI B,0A\n"
+     "  C0Z0M0E0I0 A=05 B=0A00 D=0000 H=0000 S=0000 IE=0 P=0004  ADD B\n"
+     "  C0Z0M0E1I0 A=0F B=0A00 D=0000 H=0000 S=0000 IE=0 P=0005  HLT\n"
+     "Three instructions ran; the fourth line is the HLT waiting. A=05 shows up one\n"
+     "line below the MVI that loaded it. The flags are the 8080's own five, in the\n"
+     "Altair's lettering -- Carry, Zero, Minus, Even parity, Interdigit carry -- and\n"
+     "E goes to 1 on the ADD because 0F has an even number of bits set."},
     // NEXT sits above NOBREAK so `N` -- the letter you reach for between two steps --
     // is NEXT, not NOBREAK. STEP took `S` and RUN took `R` for the same reason: the
     // command you type every few seconds wins the single letter. NOBREAK pays `NO`.
@@ -109,7 +125,11 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT dsk0:drive0 disks/cpm.dsk\n"
      "  MOUNT dsk0:drive1 disks/master.dsk WP\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
-     "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape"},
+     "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape\n"
+     "\n"
+     "SHOW MOUNTS is the other half of this command: every socket in the machine,\n"
+     "what is in it, and which are still empty. UNMOUNT takes it back out. A path is\n"
+     "resolved as SHOW PATHS describes -- what you TYPE is relative to your shell."},
     {"BREAK", true, nullptr,
      "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]",
      "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
@@ -144,8 +164,34 @@ static const std::vector<CommandDef> kCommands = {
      "unconfigured tracepoint traces to the console."},
     {"EDIT", false, "the line editor", "EDIT <addr>  -- interactive; Enter advances", nullptr},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
-     "SAVE writes the machine you are actually running, so it round-trips.\n"
-     "  CONFIG SAVE machines/mine.toml"},
+     "THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually\n"
+     "running -- which cards, in what order, every property SET can write, what each\n"
+     "unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It\n"
+     "is the same format you would write by hand, and the same one a built-in is\n"
+     "written in, so a saved machine is a first-class machine: LOAD it back, or name\n"
+     "it on the command line, and you get exactly what you saved.\n"
+     "\n"
+     "IT DOES NOT SAVE STATE, and that is not a gap to be filled: a machine file\n"
+     "describes hardware, and none of this is hardware. NOT saved --\n"
+     "  RAM             what you DEPOSITed is gone. LOAD/SAVE <file> <range> is for\n"
+     "                  memory, and it is a separate file for a reason.\n"
+     "  the registers   PC included, so a LOADed machine has not started.\n"
+     "  breakpoints     nor tracepoints, nor where TRACE was pointed.\n"
+     "  CONSOLE         attn and the transforms are the HOST's terminal, not a card\n"
+     "                  in the backplane. They survive CONFIG LOAD untouched.\n"
+     "A SAVE IS A READ: it asks every property for its value and writes to nothing.\n"
+     "\n"
+     "LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the cards you had\n"
+     "are out of the backplane, the new ones are in, and it is powered up and running\n"
+     "its startup list -- a file whose startup says RUN comes up running. Naming that\n"
+     "same file on the command line does the identical thing; there is one road.\n"
+     "\n"
+     "AND IT IS ALL OR NOTHING. The machine is built off to one side first, so a file\n"
+     "that will not load -- a key that does not parse, a disk image that is not there\n"
+     "-- leaves you exactly where you were. What you do not get back is the machine\n"
+     "you REPLACED: there is no undo but the file you saved it to.\n"
+     "  CONFIG SAVE machines/mine.toml\n"
+     "  CONFIG LOAD machines/mine.toml      ...and this is how you get it back"},
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id> <k>=<v>",  // SE (beats SEARCH)
@@ -161,7 +207,7 @@ static const std::vector<CommandDef> kCommands = {
      "  SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it\n"
      "  SHOW PATHS       what a path resolves against -- and there is more than one answer\n"
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
-     "  SHOW ROMS        the built-in images and their provenance"},
+     "  SHOW ROMS        the ROM images built into this binary, and where each came from"},
     {"DEPOSIT", true, nullptr, "DEPOSIT <addr> <bytes...>",  // DE
      "The front-panel switch. Runs a REAL bus write, so if no board decodes the\n"
      "address the byte is simply gone -- and DEPOSIT says so rather than lying.\n"
@@ -311,18 +357,43 @@ static const std::vector<CommandDef> kCommands = {
     // because the list WAS spelled out here, and it rotted: it went on saying "socket:
     // and serial: are coming" for as long as resolveEndpoint() had been implementing
     // both. A help string that copies somebody else's vocabulary is a second schema.
+    //
+    // The GLOSS below -- a line saying what each of those names means -- is that same
+    // knife, and it is here on purpose: `null` and `scripted` are not self-describing,
+    // and the authoritative list cannot say so in one line it also has to fit into an
+    // error message. So the enumeration stays {endpoints}'s job and the gloss stays
+    // prose, and test_cli.cpp asserts that EVERY name endpointHelp() offers is glossed
+    // here. Add an endpoint without a word about it and that test fails, which is the
+    // only reason this is allowed to be a copy at all.
     {"CONNECT", true, nullptr, "CONNECT <id>:<u> <endpoint>",  // CONN
-     "Endpoints: {endpoints}\n"
+     "PLUG IN THE OTHER END OF THE CABLE. A unit is a socket on the back of a card --\n"
+     "one of the 2SIO's two ports, say; an ENDPOINT is the thing at the far end of the\n"
+     "cable, on the HOST side of the machine. It is not a card, it has no address, and\n"
+     "the guest cannot see it: the 6850 clocks bytes the same way whether the wire ends\n"
+     "at your terminal, a telnet session, a real RS-232 port, or nothing at all. No card\n"
+     "in the machine knows what any of these words mean.\n"
      "\n"
-     "socket:PORT LISTENS -- that is the telnet-in case. socket:HOST:PORT CALLS OUT.\n"
-     "serial:DEVICE is a real port on this host; it is opened at 9600 8N1 and then\n"
-     "immediately re-programmed by the card, which is the only thing that knows what\n"
-     "it is strapped to.\n"
+     "Endpoints: {endpoints}\n"
+     "  console     the host's terminal -- the keyboard and screen you are typing at\n"
+     "  null        a cable to nowhere: writes vanish, reads never yield a byte\n"
+     "  loopback    the unit's own transmit wired back to its receive, for testing\n"
+     "  scripted    a terminal with a caller in place of a human -- what the MCP tools\n"
+     "              and the test suite type into. No tty need exist.\n"
+     "  socket:     PORT alone LISTENS: that is the telnet-in case. HOST:PORT CALLS OUT.\n"
+     "  serial:     a real port on this host. It is opened at 9600 8N1 and then\n"
+     "              immediately re-programmed by the card, which is the only thing that\n"
+     "              knows what it is strapped to.\n"
      "\n"
      "Exactly ONE unit may hold the console; connecting a second STEALS it and says\n"
      "who from. Two boards reading one keyboard would each get half the characters.\n"
      "  CONN sio0:a console\n"
-     "  CONN sio0:b null"},
+     "  CONN sio0:b null\n"
+     "  CONN sio0:b loopback\n"
+     "  CONN sio0:b socket:2323            `telnet localhost 2323` now reaches the guest\n"
+     "  CONN sio0:b socket:bbs.example:23  the guest dials OUT, to somebody else's port\n"
+     "  CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware\n"
+     "  CONN sio0:b serial:COM3                           ...the same, on Windows\n"
+     "DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it."},
     // RESET sits with POWER, which is the other command that throws state away, and
     // BELOW REGS -- which is what costs it `R` and `RE` and leaves it `RES`. It has to
     // stay ABOVE RESTORE, or RESET's own name would resolve to RESTORE and there would

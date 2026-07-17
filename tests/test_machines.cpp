@@ -405,6 +405,96 @@ remove = true
 // SHOW -- because the keys of [[board.drive]] and [[board.region]] were known to nothing
 // but a chain of string compares inside each board. That is a SECOND SCHEMA, and the
 // project's central claim ("a board's properties ARE its TOML keys; no second schema
+// ---------------------------------------------------------------------------
+// A LOAD EITHER HAPPENS OR IT DOES NOT (config/toml.cpp, machine.h replaceWith).
+//
+// A machine file is a MACHINE -- the whole backplane, the thing CONFIG SAVE wrote down
+// -- and not a list of amendments to whatever happens to be running. It used to be the
+// second thing, and it cost two bugs that nothing here could see, because every test in
+// this file loads into a fresh `Machine` and a fresh Machine cannot tell the two apart.
+// These load into a machine that ALREADY HAS CARDS IN IT, which is the case the monitor
+// has and the tests did not.
+// ---------------------------------------------------------------------------
+void test_load_is_atomic() {
+    SECTION("a machine file is a MACHINE: it replaces, and it is all or nothing");
+
+    // A machine with something in it, and something to lose.
+    Machine     live;
+    std::string e;
+    CHECK(loadMachine(*findMachine("default"), live, e), "the default machine loads");
+    CHECK(live.boards().size() == 6, "...and has six cards to lose");
+    const Board* wasMem = live.find("mem0");
+    CHECK(wasMem != nullptr, "...one of which is the memory card");
+
+    // ---- THE FAILED LOAD CHANGES NOTHING ----
+    //
+    // THIS is the bug, and it was the nasty one: the load ran until it hit the bad
+    // card, and everything it had already fitted stayed. The command REPORTED AN ERROR
+    // AND CHANGED YOUR MACHINE ANYWAY -- leaving a backplane that was neither the one
+    // you had nor the one you asked for, which is the worst of the three outcomes.
+    // `sioGOOD` comes FIRST on purpose: a file that fails on its first line proves
+    // nothing, because there was never anything to leave behind.
+    const char* kHalfBad = R"(
+[machine]
+name = "halfbad"
+
+[[board]]
+type = "2sio"
+id   = "sioGOOD"
+port = 0x20
+
+[[board]]
+type = "nosuchcard"
+id   = "bad"
+)";
+    std::string why;
+    CHECK(!loadTomlText(kHalfBad, "halfbad", live, why), "a file naming a card that does "
+                                                         "not exist is refused");
+    CHECK(live.boards().size() == 6, "...and the machine still has its six cards");
+    CHECK(live.find("sioGOOD") == nullptr, "...WITHOUT the card the bad file had already "
+                                           "fitted before it died -- the load left nothing "
+                                           "behind");
+    CHECK(live.name == "default", "...and it is still the machine it was, by name");
+    CHECK(live.find("mem0") == wasMem, "...and the cards are the SAME cards, not rebuilt "
+                                       "ones: nothing was torn down and put back");
+
+    // ---- THE ROUND TRIP THE MANUAL PROMISES (docs/manual/configuring.md) ----
+    //
+    // `CONFIG SAVE mine.toml` then `CONFIG LOAD mine.toml` is a worked example we ship,
+    // under the words "it round-trips: load what it wrote and you get the machine back".
+    // It did not. Loading MERGED into the live backplane, so the file CONFIG SAVE had
+    // just written died on the first card it named: `a board with id 'fp0' already
+    // exists`. The round-trip test above this one passed throughout, because it loads
+    // into a fresh Machine -- so the promise was tested on the one road nobody takes.
+    std::string saved = saveTomlText(live);
+    CHECK(loadTomlText(saved, "mine.toml", live, why),
+          "the machine's own CONFIG SAVE output loads back into the RUNNING machine -- "
+          "the round trip the manual sells");
+    CHECK(live.boards().size() == 6, "...and it is still six cards, not twelve");
+    CHECK(saveTomlText(live) == saved, "...and it is the same machine: save it again and "
+                                       "the text is identical");
+
+    // ---- `base` NOW WORKS HERE AT ALL ----
+    //
+    // Not a bonus -- a thing that was DEAD. `base` refuses to run once the machine has
+    // boards in it (it is what the boards are a change TO), so under the old merge every
+    // file with a `base` was unloadable at the prompt, and said so with an error about
+    // key order that had nothing to do with what was wrong.
+    const char* kDerived = R"(
+[machine]
+name = "derived"
+base = "default"
+
+[[board]]
+id   = "mem0"
+fill = "zero"
+)";
+    CHECK(loadTomlText(kDerived, "derived", live, why),
+          "a file with a `base` loads into a machine that already has cards");
+    CHECK(live.name == "derived", "...and it is the derived machine now");
+    CHECK(live.boards().size() == 6, "...with the base's cards, once each");
+}
+
 // anywhere") was false for the most user-facing TOML in the program: the keys that carry
 // the disk, the ROM and the write-protect tab.
 //
