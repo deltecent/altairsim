@@ -144,11 +144,12 @@ public:
 
     // ---- pINT (pin 73) -- A WIRE, NOT A POLL ----
     //
-    // "In a real system, the bus doesn't poll a board for interrupt status. The
-    //  board sets high/low signals on the bus that the CPU reads from the bus. The
-    //  board then clears the int signal based on its design." (Patrick, 2026-07-12)
+    // A real bus does not poll a board for interrupt status. The board sets a signal
+    // high or low on the bus, the CPU reads that signal off the bus, and the board
+    // clears it again when its own design says to (Patrick, 2026-07-12).
     //
-    // He was describing the hardware; he was also describing a bug. This used to
+    // That was a description of the hardware. It was also a description of a bug, and
+    // it was not written as one. This used to
     // walk the backplane and ask every card `assertsInt()` -- ONCE PER INSTRUCTION,
     // sixty million times a second, to compute a boolean that changes about a
     // thousand times a second on a busy machine. It cost more per instruction than

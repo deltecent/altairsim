@@ -26,7 +26,7 @@ This is why **UNMOUNT is not called DISMOUNT**: it's the plainer word, it takes 
 
 ## The ranking
 
-The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY, MOUNT, BREAK, EDIT, CONFIG.**
+The eight that own their prefix, in Patrick's ranking (2026-07-11): **DUMP, STEP, RUN, HISTORY, MOUNT, BREAK, EDIT, CONFIG.**
 
 > **GO is gone (Patrick, 2026-07-12).** `RUN` is the switch on the front panel, and there was never a second thing for GO to be — see [RUN](#run-is-the-switch-on-the-panel) below.
 >
@@ -78,7 +78,7 @@ The eight that own their prefix, in Patrick's words: **DUMP, STEP, RUN, HISTORY,
 
 ## Two deliberate breaks with SIMH
 
-**`D` dumps.** SIMH's `D` is DEPOSIT and its `E` is EXAMINE; on the Altair itself, DEPOSIT and EXAMINE are the two front-panel switches. Patrick: *"Most ROM monitors use D for dump. It has always annoyed me that SIMH's D was Deposit."* It also puts the shortest key on the keyboard on the command that cannot destroy anything, and makes you type two letters to change memory. That is the better default regardless of heritage.
+**`D` dumps.** SIMH's `D` is DEPOSIT and its `E` is EXAMINE; on the Altair itself, DEPOSIT and EXAMINE are the two front-panel switches. But `D` is dump in most ROM monitors, and SIMH's choice to make it deposit has long been a sore point for Patrick. It also puts the shortest key on the keyboard on the command that cannot destroy anything, and makes you type two letters to change memory. That is the better default regardless of heritage.
 
 **`E` edits and `EX` examines.** There is no EXIT — `QUIT` is the one word for leaving, so `E` and `EX` go to the two commands you actually type.
 
@@ -160,7 +160,7 @@ F800  3E 03   MVI A,03
 
 **The PC is the cursor** — not a copy of it. Bare `EX` (EXAMINE NEXT) steps the program counter, because that is the only counter the panel has. Keeping a private latch beside it would mean a bare `EX` after a STEP quietly dragged the PC *backwards* to wherever the latch had been left.
 
-**With no CPU card, EXAMINE is an error, not a degraded mode.** Nothing is driving the address lines. Patrick: *"it is the CPU that drives the address lines and memory read bus signals. No CPU, none of that works."*
+**With no CPU card, EXAMINE is an error, not a degraded mode.** Nothing is driving the address lines. It is the CPU that drives them and the memory-read bus signals, so with no CPU none of that works (Patrick, 2026-07-11).
 
 ```
 altairsim> EX 0
@@ -169,7 +169,7 @@ no CPU in this machine.  BOARDS ADD 8080 cpu0
 
 There is no exception any more. `EX 0 RAW mem0` was one — the PROM burner reaching behind the bus, needing no CPU because it ran no cycle — and it went when `RAW` did (§10.2). Reading behind the bus bought nothing: a ROM answers reads like any other chip, and a bank or a board the CPU cannot see is one you *select* (`SET mem0 bank=3`). Writing behind it is real and survives, as `LOAD … ROM`.
 
-**EXAMINE is the only memory command that needs a CPU.** DUMP, DEPOSIT, FILL, SEARCH, COMPARE and MOVE all work on an empty backplane, because you have to be able to debug the simulator without a processor in it. Patrick: *"All commands that manipulate memory other than EX are fine without a CPU because we need to be able to debug the simulator without a CPU."*
+**EXAMINE is the only memory command that needs a CPU.** DUMP, DEPOSIT, FILL, SEARCH, COMPARE and MOVE all work on an empty backplane, because you have to be able to debug the simulator without a processor in it (Patrick, 2026-07-11).
 
 ## BOARDS is the backplane
 
@@ -296,7 +296,7 @@ altairsim> CONSOLE attn=1D          ← make it ^]
 
 ### Every property is settable
 
-There is no "runtime vs config-time" column, and no property that `SET` will refuse. **You can only type at the prompt when the machine is stopped** — by ATTN, by a breakpoint, by a HLT, which is the panel's STOP switch — so there is no moment at which a `SET` could race a running CPU. And on real hardware the rule would be a fiction anyway: Patrick — *"when working on boards, they are often accessed on an extender card and changed while the power is on."*
+There is no "runtime vs config-time" column, and no property that `SET` will refuse. **You can only type at the prompt when the machine is stopped** — by ATTN, by a breakpoint, by a HLT, which is the panel's STOP switch — so there is no moment at which a `SET` could race a running CPU. And on real hardware the rule would be a fiction anyway: a board being worked on is often sitting on an extender card, getting changed with the power on (Patrick, 2026-07-12).
 
 There *was* such a gate. It never once fired, because nothing in the simulator ever set the flag it was conditioned on. A rule the code only pretends to enforce is worse than no rule at all.
 

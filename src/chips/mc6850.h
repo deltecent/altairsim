@@ -250,8 +250,9 @@ private:
     // A JUMPER on the real card. Software cannot change it.
     //
     // AND IT IS NOT THE ANALOGUE OF clock_hz. THERE IS NO baud = 0. (Patrick asked for one
-    // on 2026-07-14 -- "the default should be full speed" -- and the request is DECLINED on
-    // evidence, which is worth more than this paragraph is worth reading.)
+    // on 2026-07-14, on the reasoning that full speed should be the default -- and the
+    // request is DECLINED on evidence, which is worth more than this paragraph is worth
+    // reading.)
     //
     //   - `clock_hz = 0` is INVISIBLE TO THE GUEST. It changes only the mapping from
     //     emulated T-states to wall-clock seconds; nothing inside the machine can observe

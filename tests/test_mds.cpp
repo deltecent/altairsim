@@ -246,10 +246,10 @@ void test_mds() {
 
     SECTION("88-MDS -- FLAT OUT IS THE DEFAULT. The motor does not stop unless you ask it to");
     {
-        // Patrick, 2026-07-13: "The 6.4s timer and 1 s spin-up should only be enabled as an
-        // option, should not be the default. The machine needs to run at full speed unless
-        // told otherwise." Same call the Clock already made -- clock_hz = 0 free-runs, and
-        // 2 MHz is what you ASK for.
+        // Patrick, 2026-07-13: the 6.4s timer and the 1s spin-up are an OPTION and not the
+        // default, because the machine runs at full speed unless it is told otherwise. Same
+        // call the Clock already made -- clock_hz = 0 free-runs, and 2 MHz is what you ASK
+        // for.
         //
         // The card can still model both timers exactly, and does (every SECTION below this
         // one). It just does not make you live through them by default.

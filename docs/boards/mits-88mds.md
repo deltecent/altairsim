@@ -196,7 +196,7 @@ motor = "real"     # 1 s to spin up, and it stops after 6.4 s.  Default: "free"
 **`motor = "free"` is the default: the motor is always at speed and never stops.** That is the same call
 the Clock already made — `clock_hz = 0` free-runs and 2 MHz is what you *ask* for — and for the same
 reason. The card models both timers exactly; it just does not make you live through them unless you say
-so. (Patrick, 2026-07-13: *"The machine needs to run at full speed unless told otherwise."*)
+so. (Patrick, 2026-07-13: the machine runs at full speed unless it is told otherwise.)
 
 Under `motor = "real"`, three timers, all from the manual, all modelled on the `Clock` as *readings
 taken off time* rather than counters something advances (the `Spindle` discipline, DESIGN.md §7.5.1):

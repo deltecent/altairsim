@@ -539,8 +539,8 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
     }
 
     // ---- EXACTLY ONE UNIT MAY HOLD THE CONSOLE, AND A CONFIG FILE IS NOT EXEMPT
-    // (Patrick, 2026-07-12: "assuming several serial boards with multiple ports
-    // each, how is the console determined?")
+    // (Patrick, 2026-07-12, asking how the console is determined when a machine has
+    // several serial boards with multiple ports each.)
     //
     // The monitor's CONNECT has arbitrated this from the start -- connecting a
     // second unit STEALS the console and says who from. This path did not, and a

@@ -22,8 +22,8 @@ struct Image {
     uint32_t start = 0;
 
     // WHERE THE FILE STARTED TALKING -- the load address of its FIRST data record,
-    // which is what `LOAD <file> AT <addr>` anchors to (Patrick, 2026-07-17: "not the
-    // lowest byte, the FIRST address record").
+    // which is what `LOAD <file> AT <addr>` anchors to: the FIRST address record, and
+    // not the lowest byte (Patrick, 2026-07-17).
     //
     // It has to be captured while PARSING, because `bytes` is a map and a map is
     // sorted: by the time anyone reads this image the file's ORDER is gone, and
