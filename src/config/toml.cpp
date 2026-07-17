@@ -661,9 +661,25 @@ std::string saveTomlText(Machine& m) {
     // out raw and the quotes around the path close the TOML string early -- CONFIG SAVE
     // produces a file CONFIG LOAD cannot read, which is the same asymmetry the unit
     // tables had. The reader knows exactly these two escapes and no others.
-    if (!m.startup.empty()) {
+    // The startup list, plus any symbol files loaded interactively. A symbol table has no
+    // board and no property, so CONFIG SAVE cannot round-trip it through the properties()
+    // walk the way it does a ROM mount -- instead it re-emits the FILENAME as a SYMBOLS LOAD
+    // startup command (DESIGN.md 10.3.2: round-trip the name, not the parsed table). A file
+    // already named by a SYMBOLS line in `startup` is left to that line, so it is not doubled.
+    std::vector<std::string> lines = m.startup;
+    for (const std::string& file : m.syms.loadOrder) {
+        bool already = false;
+        for (const std::string& s : m.startup) {
+            bool isSym = s.size() >= 7 &&
+                         (s[0] == 'S' || s[0] == 's') && (s[1] == 'Y' || s[1] == 'y') &&
+                         (s[2] == 'M' || s[2] == 'm');
+            if (isSym && s.find(file) != std::string::npos) { already = true; break; }
+        }
+        if (!already) lines.push_back("SYMBOLS LOAD \"" + file + "\"");
+    }
+    if (!lines.empty()) {
         f << "startup  = [\n";
-        for (const auto& s : m.startup) {
+        for (const auto& s : lines) {
             f << "  \"";
             for (char c : s) {
                 if (c == '"' || c == '\\') f << '\\';

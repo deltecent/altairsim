@@ -130,6 +130,7 @@ add_library(altair_core STATIC
   ${PLATFORM_SOURCES}
   src/core/crc32.cpp
   src/core/hex.cpp
+  src/core/symbols.cpp
   src/core/paths.cpp
   src/core/bus.cpp
   src/core/clock.cpp
@@ -246,6 +247,7 @@ add_executable(altair_tests
   tests/test_clock.cpp
   tests/test_memory.cpp
   tests/test_hex.cpp
+  tests/test_symbols.cpp
   tests/test_media.cpp
   tests/test_roms.cpp
   tests/test_phantom.cpp

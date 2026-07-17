@@ -11,6 +11,7 @@
 #include "core/hex.h"
 #include "core/paths.h"
 #include "core/roms.h"
+#include "core/symbols.h"
 #include "host/console.h"
 #include "host/endpoint.h"
 #include "isa/isa.h"
@@ -137,6 +138,16 @@ bool Monitor::addr(const std::string& t, uint32_t& out, std::ostream& err) {
     return true;
 }
 
+// An address, OR a loaded symbol. The symbol table is consulted FIRST, so a name that
+// also spells a hex number (BEEF, FACE) resolves to the symbol -- and the same escapes
+// that force a hex literal past a register name force it past a symbol (0BEEF is the
+// number, $FACE is the number). Only TRUE-ADDRESS sites call this; a port and a byte
+// value stay on addr(), where a symbol has no business (core/symbols.h).
+bool Monitor::addrSym(const std::string& t, uint32_t& out, std::ostream& err) {
+    if (m_.syms.lookup(t, out)) return true;
+    return addr(t, out, err);
+}
+
 // Something only the operator sees: a count, a width, a depth. DECIMAL.
 bool Monitor::count(const std::string& t, uint32_t& out, std::ostream& err) {
     std::string e;
@@ -153,16 +164,19 @@ bool Monitor::range(const std::string& t, uint32_t& lo, uint32_t& hi, std::ostre
     size_t d = t.find('-');
     size_t sl = t.find('/');
     if (d != std::string::npos && d > 0) {
-        if (!addr(t.substr(0, d), lo, err) || !addr(t.substr(d + 1), hi, err)) return false;
+        // LO and HI are addresses, so a symbol names either end (DUMP START-END). A symbol
+        // never contains '-' (not in the M80 charset), so this split cannot cut one in half.
+        if (!addrSym(t.substr(0, d), lo, err) || !addrSym(t.substr(d + 1), hi, err)) return false;
     } else if (sl != std::string::npos) {
         uint32_t len = 0;  // = 0: addr() writes it only on success, which MSVC's flow
                            // analysis can't see (C4701). The path to line below is only
-                           // reached when both addr() calls succeeded, so it is always set.
-        if (!addr(t.substr(0, sl), lo, err) || !addr(t.substr(sl + 1), len, err)) return false;
+                           // reached when both calls succeeded, so it is always set.
+        // LO is an address (a symbol resolves it); LEN is a length and stays on addr().
+        if (!addrSym(t.substr(0, sl), lo, err) || !addr(t.substr(sl + 1), len, err)) return false;
         if (len == 0) len = 1;
         hi = lo + len - 1;
     } else {
-        if (!addr(t, lo, err)) return false;
+        if (!addrSym(t, lo, err)) return false;
         hi = lo;
     }
     if (hi < lo) {
@@ -710,6 +724,48 @@ void Monitor::showPaths(std::ostream& out) {
                 << pad << "anything you type. Set with `hostdir`.\n";
         }
     }
+}
+
+// A tiny glob: '*' matches any run, '?' any one character. Both operands are already
+// uppercased by the caller, so the match is case-insensitive like every name lookup.
+static bool globMatch(const std::string& pat, const std::string& s) {
+    size_t p = 0, t = 0, star = std::string::npos, mark = 0;
+    while (t < s.size()) {
+        if (p < pat.size() && (pat[p] == '?' || pat[p] == s[t])) { ++p; ++t; }
+        else if (p < pat.size() && pat[p] == '*') { star = p++; mark = t; }
+        else if (star != std::string::npos) { p = star + 1; t = ++mark; }
+        else return false;
+    }
+    while (p < pat.size() && pat[p] == '*') ++p;
+    return p == pat.size();
+}
+
+void Monitor::showSymbols(const std::vector<std::string>& a, std::ostream& out) {
+    const SymbolTable& t = m_.syms;
+    if (t.empty()) {
+        out << "no symbols loaded -- SYMBOLS LOAD <file.PRN|file.SYM>\n";
+        return;
+    }
+
+    // An optional filter: a bare name, or a glob (`SIO*`). A name with no wildcard is just
+    // a one-symbol glob, so the two paths are one.
+    std::string pat = a.size() > 2 ? upper(a[2]) : "";
+
+    char buf[128];
+    int shown = 0;
+    for (const auto& [name, s] : t.byName) {
+        if (!pat.empty() && !globMatch(pat, name)) continue;
+        // An EQU is flagged so a constant is not mistaken for a program address -- it is the
+        // one thing SHOW cannot recover from the value alone (core/symbols.h, the EQU rule).
+        std::snprintf(buf, sizeof buf, "%-14s %04X  %-14s %s", name.c_str(),
+                      s.value & 0xFFFF, s.source.c_str(), s.isAddr ? "" : "=");
+        out << buf << "\n";
+        ++shown;
+    }
+    if (pat.empty())
+        out << shown << " symbol(s), across " << t.loadOrder.size() << " file(s)\n";
+    else if (shown == 0)
+        out << "no symbol matches '" << a[2] << "'\n";
 }
 
 void Monitor::showBoards(std::ostream& out) {
@@ -2064,6 +2120,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             showConsole(out);
             return true;
         }
+        if (sub == "SYMBOLS" || sub == "SYMBOL" || sub == "SYM") {
+            showSymbols(a, out);
+            return true;
+        }
         if (sub == "MACHINE") {
             out << "name      " << m_.name << "\n";
             out << "startup   " << (m_.startup.empty() ? "(none)" : "") << "\n";
@@ -2354,7 +2414,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         uint32_t A;
-        if (!addr(a[1], A, out)) return true;
+        if (!addrSym(a[1], A, out)) return true;
 
         for (Cycle t : {Cycle::MemRead, Cycle::MemWrite}) {
             c = BusCycle{};
@@ -2478,7 +2538,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             lo = dumpNext_;  // already on a page boundary, so this is a full page
             hi = lo | 0xFF;
         } else if (a[1].find('-') == std::string::npos && a[1].find('/') == std::string::npos) {
-            if (!addr(a[1], lo, out)) return true;
+            if (!addrSym(a[1], lo, out)) return true;
             if (lo > 0xFFFF) {
                 out << "address is 16 bits: 0000-FFFF\n";
                 failed_ = true;
@@ -2579,7 +2639,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (a.size() < 2) {
             // EXAMINE NEXT: the panel steps the counter and shows what is there.
             A = (uint32_t)((pcOwner->pc() + 1) & 0xFFFF);
-        } else if (!addr(a[1], A, out)) {
+        } else if (!addrSym(a[1], A, out)) {
             return true;
         }
         if (A > 0xFFFF) {
@@ -2607,7 +2667,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "DEPOSIT") {
         if (!need(3, "DEPOSIT <addr> <byte...>")) return true;
         uint32_t A;
-        if (!addr(a[1], A, out)) return true;
+        if (!addrSym(a[1], A, out)) return true;
         for (size_t i = 2; i < a.size(); ++i) {
             uint32_t v;
             if (!addr(a[i], v, out)) return true;
@@ -2745,7 +2805,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "COMPARE") {
         if (!need(3, "COMPARE <range> <addr>")) return true;
         uint32_t lo, hi, dst;
-        if (!range(a[1], lo, hi, out) || !addr(a[2], dst, out)) return true;
+        if (!range(a[1], lo, hi, out) || !addrSym(a[2], dst, out)) return true;
         int diff = 0;
         for (uint32_t A = lo; A <= hi; ++A) {
             uint8_t x = rd(A), y = rd(dst + (A - lo));
@@ -2765,7 +2825,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "MOVE") {
         if (!need(3, "MOVE <range> <dest>")) return true;
         uint32_t lo, hi, dst;
-        if (!range(a[1], lo, hi, out) || !addr(a[2], dst, out)) return true;
+        if (!range(a[1], lo, hi, out) || !addrSym(a[2], dst, out)) return true;
         std::vector<uint8_t> tmp;
         for (uint32_t A = lo; A <= hi; ++A) tmp.push_back(rd(A));
         for (size_t k = 0; k < tmp.size(); ++k) {
@@ -2799,7 +2859,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         bool haveAt = false;
         for (size_t i = 2; i + 1 < a.size(); ++i)
             if (is(a[i], "AT")) {
-                if (!addr(a[i + 1], at, out)) return true;
+                if (!addrSym(a[i + 1], at, out)) return true;
                 haveAt = true;
             }
 
@@ -2985,7 +3045,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (a[1].find('-') != std::string::npos || a[1].find('/') != std::string::npos) {
                 if (!range(a[1], lo, hi, out)) return true;
                 haveRange = true;
-            } else if (!addr(a[1], lo, out)) {
+            } else if (!addrSym(a[1], lo, out)) {
                 return true;
             }
         }
@@ -3082,7 +3142,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         if (a.size() >= 2) {
             uint32_t at;
-            if (!addr(a[1], at, out)) return true;
+            if (!addrSym(a[1], at, out)) return true;
             if (at > 0xFFFF) {
                 out << "address is 16 bits: 0000-FFFF\n";
                 failed_ = true;
@@ -3162,7 +3222,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (a[argi].find('-') != std::string::npos || a[argi].find('/') != std::string::npos) {
             if (!range(a[argi], lo, hi, out)) return true;
         } else {
-            if (!addr(a[argi], lo, out)) return true;
+            // A symbol names a memory or PC break target; an I/O break wants a PORT, where a
+            // symbol (a memory address) has no meaning -- so that one stays on addr().
+            if (!(io ? addr(a[argi], lo, out) : addrSym(a[argi], lo, out))) return true;
             hi = lo;
         }
 
@@ -3199,8 +3261,13 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     if (upper(rd.name) == upper(name)) return true;
                 return false;
             };
+            // ...and a bare word that is NOT a register may be a loaded symbol, folded to
+            // its value so `BREAK 200 IF HL==STACK` reads the label. Registers win.
+            auto symbol = [this](const std::string& name, uint32_t& v) {
+                return m_.syms.lookup(name, v);
+            };
             std::string perr;
-            cond = Expr::parse(src, known, perr);
+            cond = Expr::parse(src, known, perr, symbol);
             if (!cond) {
                 out << "bad condition: " << perr << "\n";
                 failed_ = true;
@@ -3363,6 +3430,75 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     // ---------------- CONFIG ----------------
+    if (cmd == "SYMBOLS") {
+        if (!need(2, "SYMBOLS LOAD <file> [REPLACE] | SYMBOLS CLEAR")) return true;
+
+        if (is(a[1], "CLEAR")) {
+            m_.syms.clear();
+            out << "symbols cleared\n";
+            return true;
+        }
+
+        if (is(a[1], "LOAD")) {
+            if (a.size() < 3) {
+                out << "SYMBOLS LOAD <file> [REPLACE]\n";
+                failed_ = true;
+                return true;
+            }
+            std::string shown = unquote(a[2]);                    // the name SHOW SYMBOLS prints
+            std::string file  = resolveFrom(startupDir_, shown);  // ...and where it actually is
+            bool replace = a.size() > 3 && is(a[3], "REPLACE");
+
+            std::ifstream f(file, std::ios::binary);
+            if (!f) {
+                out << "cannot open '" << file << "'\n";
+                failed_ = true;
+                return true;
+            }
+            std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),
+                                      std::istreambuf_iterator<char>());
+
+            // .SYM vs .PRN: the extension decides, and content settles a tie -- a symbol
+            // table (HHHH NAME) is not an assembler listing (core/symbols.h).
+            std::string ext;
+            if (size_t dot = shown.rfind('.'); dot != std::string::npos) ext = upper(shown.substr(dot + 1));
+            bool asSym = ext == "SYM" ? true
+                       : (ext == "PRN" || ext == "LST") ? false
+                       : looksLikeSym(data);
+
+            SymbolTable::LoadStats st;
+            std::string err;
+            bool ok = asSym ? loadSym(data, shown, m_.syms, replace, st, err)
+                            : loadPrn(data, shown, m_.syms, replace, st, err);
+            if (!ok) {  // the only hard error is a relocatable .PRN, and it names the line
+                out << err << "\n";
+                failed_ = true;
+                return true;
+            }
+
+            out << st.added << " symbol(s) from " << shown;
+            if (st.redefined) {
+                out << ", " << st.redefined << " redefined (";
+                for (size_t i = 0; i < st.redefinedNames.size(); ++i)
+                    out << (i ? " " : "") << st.redefinedNames[i];
+                if ((int)st.redefinedNames.size() < st.redefined) out << " ...";
+                out << ")";
+            }
+            out << "\n";
+            // A load that parsed NOTHING is CALLED OUT: an unrecognised listing format
+            // loads nothing, and a silent success there is the exact trap SHOW SYMBOLS
+            // would then hide. A re-load where every name already existed (redefined > 0)
+            // did parse -- it is not that case.
+            if (st.added == 0 && st.redefined == 0)
+                out << "  (found no symbols -- expected a CP/M .SYM or an ASM/M80/MAC .PRN)\n";
+            return true;
+        }
+
+        out << "SYMBOLS LOAD <file> [REPLACE] | SYMBOLS CLEAR\n";
+        failed_ = true;
+        return true;
+    }
+
     if (cmd == "CONFIG") {
         if (!need(3, "CONFIG LOAD|SAVE <file.toml>")) return true;
         std::string err;

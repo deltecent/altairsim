@@ -200,13 +200,14 @@ static const std::vector<CommandDef> kCommands = {
      "is decimal.\n"
      "  SET mem0 fill=zero\n"
      "  SET mem0 phantom=read"},
-    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|MACHINE",
+    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|SYMBOLS|MACHINE",
      "  SHOW mem0        regions and properties\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
      "  SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins\n"
      "  SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it\n"
      "  SHOW PATHS       what a path resolves against -- and there is more than one answer\n"
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
+     "  SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS\n"
      "  SHOW ROMS        the ROM images built into this binary, and where each came from"},
     {"DEPOSIT", true, nullptr, "DEPOSIT <addr> <bytes...>",  // DE
      "The front-panel switch. Runs a REAL bus write, so if no board decodes the\n"
@@ -326,6 +327,29 @@ static const std::vector<CommandDef> kCommands = {
      "  DI           carry on from there\n"
      "  DI 0-2F      exactly that range\n"
      "  DI FF00 CPU=8080   when there is no CPU in the machine to ask"},
+    // SYMBOLS is not LOAD. LOAD is memory all the way down (every format it takes
+    // becomes bytes in the address space); a symbol table has no address space to land
+    // in -- it is the debugger's NAMES for one, host-side like a breakpoint, surviving
+    // RESET and POWER. So it is its own verb, the way CONFIG is (DESIGN.md 10.3.2). SY
+    // is free.
+    {"SYMBOLS", true, nullptr, "SYMBOLS LOAD <file> [REPLACE] | SYMBOLS CLEAR",  // SY
+     "Load an assembler's symbols so you can BREAK, DUMP and EXAMINE by NAME instead of\n"
+     "by hex, and SHOW SYMBOLS to read the table. Two file kinds, and one absolute rule:\n"
+     "\n"
+     "  .PRN / .LST   an assembler LISTING -- CP/M ASM, Microsoft M80, DR MAC. It marks\n"
+     "                an EQU, so a constant is told apart from a program label.\n"
+     "  .SYM          the CP/M symbol file DR MAC/RMAC write and SID reads. A flat list\n"
+     "                of name=value, no label/constant distinction. (L80 writes no .SYM.)\n"
+     "\n"
+     "ADDRESSES MUST BE ABSOLUTE. A relocatable M80 listing is refused, by the line --\n"
+     "link it and load the .SYM, or assemble to an absolute origin.\n"
+     "\n"
+     "LOAD merges (the newest of a clashing name wins, and it says how many); REPLACE\n"
+     "clears first; CLEAR empties the table. A file named in a machine's startup is\n"
+     "reloaded on CONFIG LOAD and round-trips through CONFIG SAVE.\n"
+     "  SYMBOLS LOAD prog.SYM\n"
+     "  SYMBOLS LOAD roms/ALTMON/ALTMON.PRN\n"
+     "  SYMBOLS CLEAR"},
     // UNMOUNT, not DISMOUNT (Patrick, 2026-07-11). It is the plain word, it takes U
     // -- which nothing else wanted -- and it gets out of DISASM's way, which drops
     // to DI now that the D-cluster is one shorter.

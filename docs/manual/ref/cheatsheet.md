@@ -46,7 +46,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id> <k>=<v>` |
-| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|MACHINE` |
+| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|SYMBOLS\|MACHINE` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |
@@ -62,6 +62,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `RE[GS]` | `REGS \| SET REG <r>=<v>` |
 | `REGI[ON]` | `REGION ADD <id> type=ram\|rom at=<addr> [size=\|mount=]` |
 | `DI[SASM]` | `DISASM [<addr>\|<range>] [n] [CPU=8080]` |
+| `SY[MBOLS]` | `SYMBOLS LOAD <file> [REPLACE] \| SYMBOLS CLEAR` |
 | `U[NMOUNT]` | `UNMOUNT <id>:<u>` |
 | `DISC[ONNECT]` | `DISCONNECT <id>:<u>` |
 | `CONS[OLE]` | `CONSOLE [<k>=<v>...]` |

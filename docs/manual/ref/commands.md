@@ -287,7 +287,7 @@ SET mem0 phantom=read
 ### SHOW — `SH[OW]`
 
 ```
-SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|MACHINE
+SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|SYMBOLS|MACHINE
 ```
 
 ```
@@ -297,6 +297,7 @@ SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins
 SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
 SHOW PATHS       what a path resolves against -- and there is more than one answer
 SHOW CONSOLE     which unit holds the keyboard, and its transforms
+SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS
 SHOW ROMS        the ROM images built into this binary, and where each came from
 ```
 
@@ -546,6 +547,37 @@ DI FF00      sixteen instructions of the boot PROM
 DI           carry on from there
 DI 0-2F      exactly that range
 DI FF00 CPU=8080   when there is no CPU in the machine to ask
+```
+
+
+### SYMBOLS — `SY[MBOLS]`
+
+```
+SYMBOLS LOAD <file> [REPLACE] | SYMBOLS CLEAR
+```
+Load an assembler's symbols so you can BREAK, DUMP and EXAMINE by NAME instead of
+by hex, and SHOW SYMBOLS to read the table. Two file kinds, and one absolute rule:
+
+
+```
+.PRN / .LST   an assembler LISTING -- CP/M ASM, Microsoft M80, DR MAC. It marks
+              an EQU, so a constant is told apart from a program label.
+.SYM          the CP/M symbol file DR MAC/RMAC write and SID reads. A flat list
+              of name=value, no label/constant distinction. (L80 writes no .SYM.)
+```
+
+
+ADDRESSES MUST BE ABSOLUTE. A relocatable M80 listing is refused, by the line --
+link it and load the .SYM, or assemble to an absolute origin.
+
+LOAD merges (the newest of a clashing name wins, and it says how many); REPLACE
+clears first; CLEAR empties the table. A file named in a machine's startup is
+reloaded on CONFIG LOAD and round-trips through CONFIG SAVE.
+
+```
+SYMBOLS LOAD prog.SYM
+SYMBOLS LOAD roms/ALTMON/ALTMON.PRN
+SYMBOLS CLEAR
 ```
 
 

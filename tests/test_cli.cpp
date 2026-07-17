@@ -1169,4 +1169,100 @@ void test_achieved_hz() {
 
         fs::remove_all(dir, ec);
     }
+
+    SECTION("SYMBOLS -- load, merge, REPLACE, reference by name, and refuse a relocatable");
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "altairsim-symtest";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const std::string prn   = (dir / "prog.PRN").generic_string();
+        const std::string sym   = (dir / "prog.SYM").generic_string();
+        const std::string reloc = (dir / "reloc.PRN").generic_string();
+
+        // A .PRN with the real column geometry: an EQU (BDOS, '=' in column 7) and two
+        // labels (START, LOOP). CRLF, because these are CP/M files.
+        {
+            std::ofstream f(prn, std::ios::binary);
+            f << " 0005 =         BDOS\tEQU\t5\r\n"
+                 " 0100 314201    START:\tLXI\tSP,STACK\r\n"
+                 " 0106 7E        LOOP:\tMOV\tA,M\r\n";
+        }
+        // The exact bytes DR MAC writes: HHHH NAME, tab-separated, ^Z-padded.
+        {
+            std::ofstream f(sym, std::ios::binary);
+            f << "0005 BDOS\t0200 OTHER\t0100 START\r\n\x1a\x1a";
+        }
+        // A relocatable value carries a trailing apostrophe in the object field.
+        {
+            std::ofstream f(reloc, std::ios::binary);
+            f << " 0100'314201   START:\tLXI\tSP,STACK\r\n";
+        }
+
+        Machine mm;
+        Monitor mon(mm);
+        std::ostringstream o;
+        mon.exec("BOARDS ADD 8080 cpu0", o);
+        mon.exec("BOARDS ADD memory mem0", o);
+        mon.exec("REGION ADD mem0 type=ram at=0 size=32K", o);
+
+        std::ostringstream s1;
+        mon.exec("SYMBOLS LOAD " + prn, s1);
+        CHECK(s1.str().find("3 symbol") != std::string::npos, "the .PRN loads its three symbols");
+
+        // A symbol resolves anywhere a true address is typed. BREAK names the address it set.
+        std::ostringstream b1;
+        mon.exec("BREAK START", b1);
+        CHECK(b1.str().find("0100") != std::string::npos, "BREAK START breaks at 0100");
+
+        // And an EQU resolves too -- EXAMINE reads the byte at the EQU's value.
+        std::ostringstream e1;
+        mon.exec("EXAMINE BDOS", e1);
+        CHECK(e1.str().find("0005") != std::string::npos, "EXAMINE BDOS looks at 0005");
+
+        // SHOW SYMBOLS lists them; the EQU is flagged, the label is not.
+        std::ostringstream sh;
+        mon.exec("SHOW SYMBOLS", sh);
+        CHECK(sh.str().find("START") != std::string::npos && sh.str().find("0100") != std::string::npos,
+              "SHOW SYMBOLS lists the label");
+        std::ostringstream shp;
+        mon.exec("SHOW SYMBOLS LO*", shp);
+        CHECK(shp.str().find("LOOP") != std::string::npos && shp.str().find("START") == std::string::npos,
+              "SHOW SYMBOLS <glob> filters");
+
+        // Merge: the .SYM shares BDOS and START (redefined) and adds OTHER.
+        std::ostringstream s2;
+        mon.exec("SYMBOLS LOAD " + sym, s2);
+        CHECK(s2.str().find("redefined") != std::string::npos, "a merge reports the redefinitions");
+        std::ostringstream e2;
+        mon.exec("EXAMINE OTHER", e2);
+        CHECK(e2.str().find("0200") != std::string::npos, "the merged-in OTHER resolves to 0200");
+
+        // REPLACE clears first: after it, LOOP (from the .PRN) is gone.
+        std::ostringstream s3;
+        mon.exec("SYMBOLS LOAD " + sym + " REPLACE", s3);
+        std::ostringstream sh2;
+        mon.exec("SHOW SYMBOLS LOOP", sh2);
+        CHECK(sh2.str().find("no symbol matches") != std::string::npos,
+              "REPLACE cleared the .PRN symbols");
+
+        // A relocatable listing is REFUSED, by the line, and nothing is loaded from it.
+        std::ostringstream s4;
+        mon.exec("SYMBOLS LOAD " + reloc, s4);
+        CHECK(s4.str().find("relocatable") != std::string::npos, "a relocatable .PRN is refused");
+        CHECK(s4.str().find("line 1") != std::string::npos, "and the line is named");
+
+        // CLEAR empties it.
+        mon.exec("SYMBOLS CLEAR", o);
+        std::ostringstream sh3;
+        mon.exec("SHOW SYMBOLS", sh3);
+        CHECK(sh3.str().find("no symbols loaded") != std::string::npos, "SYMBOLS CLEAR empties the table");
+
+        // A symbol no longer defined is not silently zero -- the reference fails to parse.
+        std::ostringstream b2;
+        mon.exec("BREAK START", b2);
+        CHECK(b2.str().find("0100") == std::string::npos, "and a cleared name no longer resolves");
+
+        fs::remove_all(dir, ec);
+    }
 }

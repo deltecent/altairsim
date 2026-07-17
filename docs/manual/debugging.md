@@ -138,6 +138,47 @@ DISASM            carry on
 DISASM 0-2F       exactly that range
 ```
 
+## Symbols — `SYMBOLS`, `SHOW SYMBOLS`
+
+Everything so far has spoken in hex. Load an assembler's symbols and you can name things
+instead: `BREAK START` rather than `BREAK 0100`, `DUMP MSG/20`, `EXAMINE BDOS`. A symbol is
+accepted anywhere an address is typed, and in a `BREAK … IF` condition.
+
+```
+SYMBOLS LOAD prog.SYM              a symbol table
+SYMBOLS LOAD roms/ALTMON/ALTMON.PRN   ...or an assembler listing
+BREAK START
+DUMP MSG/20
+BREAK 200 IF HL==STACK
+SHOW SYMBOLS                       all of them
+SHOW SYMBOLS SIO*                  filtered by a glob
+SYMBOLS CLEAR                      forget them
+```
+
+**Two kinds of file, and the toolchains that write them.** A **`.SYM`** is the symbol file
+Digital Research's `MAC`/`RMAC` assemblers write and `SID` reads — a flat list of name =
+value. (Microsoft's **L80** linker writes no `.SYM`; it prints its map to the console. To get
+a `.SYM` you assemble with `MAC`, not link with `L80`.) A **`.PRN`** or **`.LST`** is the
+assembler's own listing — from CP/M `ASM`, Microsoft `M80`, or `MAC` — and it is the richer
+source, because it marks an `EQU` and so can tell a constant apart from a program label: only
+real labels are offered back as addresses, so `0005` never starts printing as `BDOS`.
+
+**Addresses must be absolute.** A relocatable `M80` listing marks its addresses, and loading
+one is refused by the offending line — link it and load the `.SYM`, or assemble to an absolute
+origin. A `.SYM` is written after linking and is absolute already, so it never has this
+problem.
+
+**Symbols are yours, not the machine's.** Like a breakpoint, the table is the debugger's view,
+not part of any card — it survives `RESET`, `POWER`, and `CONFIG LOAD`, and `SYMBOLS CLEAR` is
+its `NOBREAK`. Loading two files **merges** them (the newest of a clashing name wins, and the
+command says how many were redefined); `SYMBOLS LOAD <file> REPLACE` starts fresh. A machine
+file can name a symbol file in its `startup`, and `CONFIG SAVE` writes the filename back out —
+the file, not the parsed table, exactly as it does for a built-in ROM.
+
+**A name beats a hex literal.** If a symbol is spelled like a number — `FACE`, `BEEF` — the
+symbol wins; write `0FACE` (or `$FACE`) to force the number, the same escape that tells the
+register `A` from the number `0A`.
+
 ## Searching, filling, moving
 
 The block operations. `COMPARE` will take a file as its second operand, which is how you check
@@ -335,3 +376,7 @@ stop it where it is.
 Say so plainly rather than let you find out: if you need to catch a bug that happens once in ten
 million instructions and you cannot predict where, a conditional breakpoint (`BREAK <addr> IF
 …`) and the `HISTORY` ring are the tools you have — but nothing here will replay it for you.
+
+Symbols go one way for now: you can name an address (`BREAK START`), but `DISASM` and `DUMP`
+still print the machine in hex — they do not yet annotate a `JMP 0100` as `JMP START`. Loading
+the symbols is what that display will read when it lands.

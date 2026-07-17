@@ -52,6 +52,9 @@ private:
     // `0x`/`$`/trailing-`h` force hex and `#` forces decimal, everywhere, in both
     // directions. A `K`/`M` suffix is always decimal and always wins.
     bool addr(const std::string& t, uint32_t& out, std::ostream& err);
+    // addr(), but a loaded symbol's name resolves to its value first. ONLY for a
+    // true address -- never a port or a byte, which addr() also parses (core/symbols.h).
+    bool addrSym(const std::string& t, uint32_t& out, std::ostream& err);
     bool count(const std::string& t, uint32_t& out, std::ostream& err);
     bool range(const std::string& t, uint32_t& lo, uint32_t& hi, std::ostream& err);
 
@@ -136,6 +139,7 @@ private:
     void showRoms(std::ostream& out);
     void showMounts(std::ostream& out);  // every mountable unit, across every board
     void showPaths(std::ostream& out);   // what a path resolves against -- 3 answers
+    void showSymbols(const std::vector<std::string>& args, std::ostream& out);
     void flush(std::ostream& out);  // print anything the bus or a board said
 
     Machine& m_;

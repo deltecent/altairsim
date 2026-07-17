@@ -33,12 +33,20 @@ public:
     // Read a register's current value by name. false if there is no such register.
     using Resolver = std::function<bool(const std::string& name, uint32_t& out)>;
 
+    // Read a loaded symbol's value by name. Optional -- when set, a bare word that is not
+    // a register but IS a symbol becomes that CONSTANT at parse time (folded to a number,
+    // never a live read), so a `.PRN`/`.SYM` name works in `BREAK 200 IF HL==STACK`. A
+    // register still wins over a symbol, and a symbol still wins over a bare hex literal
+    // (the leading-zero escape forces the number either way).
+    using Symbols = std::function<bool(const std::string& name, uint32_t& out)>;
+
     // Parse `src`. `known(name)` decides whether a bare word is a register -- so a
     // typo is caught HERE, at entry, and so `A` the register is told apart from
-    // `0A` the number. Returns null and fills `err` on any failure.
+    // `0A` the number. Returns null and fills `err` on any failure. `symbols` is
+    // optional (see above).
     static std::shared_ptr<const Expr> parse(
         const std::string& src, const std::function<bool(const std::string&)>& known,
-        std::string& err);
+        std::string& err, const Symbols& symbols = {});
 
     // A comparison yields 1 or 0; && and || are logical over nonzero; & and | are
     // bitwise. A name that no longer resolves reads as 0 (it was checked at parse
