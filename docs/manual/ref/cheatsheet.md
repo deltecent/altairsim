@@ -51,8 +51,8 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |
 | `O[UT]` | `OUT <port> <byte>` |
-| `L[OAD]` | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX] [RAW <id>]` |
-| `SA[VE]` | `SAVE <file> <range> [FORMAT=BIN\|HEX] [RAW <id>]` |
+| `L[OAD]` | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX] [ROM]` |
+| `SA[VE]` | `SAVE <file> <range> [FORMAT=BIN\|HEX]` |
 | `F[ILL]` | `FILL <range> <byte>` |
 | `SEA[RCH]` | `SEARCH <range> <bytes...>\|"str"` |
 | `COM[PARE]` | `COMPARE <range> <addr>\|<file>` |

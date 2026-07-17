@@ -59,6 +59,42 @@ uint64_t Machine::rxBytes() const {
     return n;
 }
 
+bool Machine::burn(uint16_t addr, uint8_t v, std::string& why) {
+    // ASK WHO ANSWERS A READ, NOT A WRITE, and that is the whole trick. A ROM region
+    // does not decode a write -- that is what makes it a ROM -- so asking the bus who
+    // would take a write here gets the answer "nobody", on precisely the chip we are
+    // trying to program. But respondersTo() runs the REAL decode, PHANTOM* and all
+    // (bus.h), so whoever would hand the CPU a byte at this address is exactly whose
+    // chip this is. A shadowed board does not answer, which is right: you cannot burn
+    // a chip the machine currently cannot see, any more than the CPU could read it.
+    BusCycle probe;
+    probe.type = Cycle::MemRead;
+    probe.addr = addr;
+
+    std::vector<MemoryBoard*> mem;
+    for (Board* b : bus.respondersTo(probe))
+        if (auto* mb = dynamic_cast<MemoryBoard*>(b)) mem.push_back(mb);
+
+    if (mem.empty()) {
+        why = "no board answers here -- there is no chip to program";
+        return false;
+    }
+    if (mem.size() > 1) {
+        // Contention is a bus fact and not ours to resolve (§4.6). Through the bus both
+        // boards would take the write; behind it we would have to pick one, and picking
+        // silently is how you spend an afternoon wondering which chip you burned.
+        why = "more than one board answers here (";
+        for (size_t i = 0; i < mem.size(); ++i) why += (i ? ", " : "") + mem[i]->id;
+        why += ") -- fix the contention, or phantom one of them out";
+        return false;
+    }
+    if (!mem[0]->poke(addr, v)) {
+        why = mem[0]->id + " answers here but has no store at that address";
+        return false;
+    }
+    return true;
+}
+
 bool Machine::remove(const std::string& id, std::string& err) {
     Board* b = find(id);
     if (!b) {

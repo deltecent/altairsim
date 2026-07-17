@@ -117,19 +117,46 @@ public:
     // ---- reflection ----
     std::vector<Property> properties() override;
 
-    // ---- RAW: the PROM burner (DESIGN.md 10.2) ----
-    size_t rawSize() const override { return store_.size(); }
-    // Callers bounds-check with rawSize(); reading past the store is their bug.
-    // It does NOT return 0xFF -- 0xFF is the BUS's floating value and has no
-    // business in a board (DESIGN.md 4.6.1).
-    uint8_t rawRead(size_t off) const override {
-        return off < store_.size() ? store_[off] : 0x00;
-    }
-    bool rawWrite(size_t off, uint8_t v) override {
-        if (off >= store_.size()) return false;
-        store_[off] = v;
+    // ---- The PROM burner (DESIGN.md 10.2) ----
+    //
+    // peek()'s mirror, and deliberately its exact shape: a BUS address in, the live
+    // bank applied, and the board's own owner() deciding whether it is ours to answer
+    // for. The ONLY difference is that this one writes, and that a ROM region does not
+    // stop it -- which is the entire point. A bus write cannot program a PROM (§4.2),
+    // because on real hardware it cannot; you pull the chip and put it in a programmer,
+    // and that is not a bus operation. This is that programmer.
+    //
+    // It takes a bus address and not a store offset ON PURPOSE. Every address the
+    // operator types means the same thing everywhere in this monitor -- 0000-FFFF, what
+    // the CPU would see. The store offset (bank * 64K + addr) is this board's private
+    // business and stays that way; to reach another bank, SELECT it (SET mem0 bank=3)
+    // and use ordinary addresses, exactly as the guest must.
+    //
+    // False means "not mine" -- this board does not decode that address. The caller
+    // says so; this does not guess and does not silently drop the byte.
+    bool poke(uint16_t addr, uint8_t v) {
+        if (!owner(addr)) return false;
+        store_[plane(addr)] = v;
         return true;
     }
+
+    // ---- The store, flat, by offset. NOT AN ADDRESS SPACE ANYONE TYPES. ----
+    //
+    // This is the card's own view of its own silicon: `banks_ * 64K` of it, with bank 3
+    // simply BEING offset 0x30000. It exists so that this board's invariants can be
+    // asserted from outside -- that a bank really is a plane, that random fill really is
+    // random -- and for nothing else. Nothing the operator or an agent can reach comes
+    // through here.
+    //
+    // It is deliberately NOT on Board. It was, once, as rawRead/rawWrite, and the price
+    // was a whole second address space bolted to every card in the machine to serve one.
+    // If you are reaching for this from anything but a test, you want peek() or poke(),
+    // which speak bus addresses like the rest of the program.
+    size_t storeSize() const { return store_.size(); }
+    // Past the end is a CALLER bug -- bounds-check with storeSize(). It does NOT answer
+    // 0xFF: that is the BUS's floating value, and a board has no business forging it
+    // (DESIGN.md 4.6.1), least of all where the bus cannot see.
+    uint8_t storeAt(size_t off) const { return off < store_.size() ? store_[off] : 0x00; }
 
     std::vector<MapEntry> memMap() const override;
     std::vector<MapEntry> ioMap() const override;

@@ -362,7 +362,7 @@ The bus's whole job is a **three-pass cycle**: ask every board whether it pulls 
 Payoffs, which is how you know it is right:
 - **"Writes fall through" is no longer a special rule.** It is what happens when a ROM asserts PHANTOM\* on reads and not on writes. Shadowing *both* is equally expressible, and neither is a case in the bus.
 - **`honors_phantom` is a board strap, because on real hardware it is a jumper.** A memory board that ignores PHANTOM\* keeps driving, you get contention (§4.6), and the simulator reports the same bug the real backplane would have handed you.
-- **The operator can still write ROM, and the guest still cannot** — because `RAW <id>` (§10.2) reaches behind the bus into the board's store. Burning a PROM is not a bus operation on real hardware either; you pull the chip. Model it as a bus write and the bus would have to know *who originated a cycle*, which a real backplane cannot know and no board should ever have to ask.
+- **The operator can still write ROM, and the guest still cannot** — because `LOAD … ROM` (§10.2) reaches behind the bus into the board's store. Burning a PROM is not a bus operation on real hardware either; you pull the chip. Model it as a bus write and the bus would have to know *who originated a cycle*, which a real backplane cannot know and no board should ever have to ask.
 - **Any new board can shadow memory** without the bus learning about it.
 
 ### 4.2.1 Boards enable and disable — including ROMs that vanish after boot
@@ -1109,8 +1109,18 @@ CONSOLE  -- it CONFIGURES the console; it does not start the machine (RUN does).
   MCP inject input that no board can tell from a human's.
 
 MEMORY
-  LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [RAW <id>]    format autodetected
-  SAVE <file> <range> [FORMAT=BIN|HEX] [RAW <id>]
+  LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]
+                                    HEX carries its own addresses; a flat binary does
+                                    not, so it REQUIRES AT. The file's CONTENTS decide
+                                    which it is; FORMAT= overrides and always wins. AT
+                                    means PUT IT HERE for both: on a HEX file it moves
+                                    the image so its FIRST DATA RECORD lands there,
+                                    wrapping modulo 64K. ROM is the burner (10.2).
+  SAVE <file> <range> [FORMAT=BIN|HEX]
+                                    The NAME decides -- .HEX writes Intel HEX, anything
+                                    else writes a flat binary -- because SAVE cannot
+                                    sniff a file that does not exist yet. FORMAT=
+                                    overrides.
   DUMP [<addr>|<range>] [WIDTH=16]  hex + ASCII. A bare <addr> runs to the END OF ITS
                                     PAGE (D 0001 -> 0001-00FF); bare DUMP continues
                                     from there. Page-aligned in and out, so the rows
@@ -1127,14 +1137,16 @@ MEMORY
                                     F800` + RUN starts a ROM, and CONSOLE <addr> is
                                     exactly EXAMINE + RUN), the PC *is* the cursor, and
                                     with NO CPU CARD IT IS AN ERROR -- nothing is driving
-                                    the bus. RAW is the exception: not a bus cycle at
-                                    all (10.2), so no CPU, no PC, its own cursor.
+                                    the bus. (Look at a CPU-less machine with DUMP: it
+                                    runs no cycle, so it needs nobody to drive one.)
   DEPOSIT <addr> <bytes...>
   FILL <range> <byte>
   SEARCH <range> <bytes...>|"str"
   COMPARE <range> <addr> | COMPARE <range> <file>
   MOVE <range> <dest>
-  All of the above take an optional RAW <id> to address one board's store directly (§10.2).
+  LOAD, DEPOSIT, FILL and MOVE take an optional ROM: program a ROM, by going behind the
+  bus into whichever chip answers reads there (§10.2). The read side needs no such word
+  -- a ROM answers reads like anything else. EVERY ADDRESS HERE IS A BUS ADDRESS.
 
 I/O
   IN <port>                         run a real IN cycle -- with real side effects
@@ -1337,18 +1349,23 @@ Implemented once against `Board::properties()`; they know nothing about baud rat
 
 - **Default: through the bus.** `DUMP`, `DEPOSIT`, `IN`, `OUT` see exactly what the CPU sees — live bank, PHANTOM overlays applied, ROM not decoding writes, contention reported. Addresses are **bus addresses**, 0x0000–0xFFFF. This is the only view that tells the truth about a misbehaving decode, and it is why `IN 10` really does consume a UART's character: that is what an `IN` *is*.
 - **`peek`: through the decode, but *without a cycle*.** Same PHANTOM\* resolution, same bank, same board — but no strobe, no side effect, no `snoop()`. **`DISASM`, `WHO` and the debugger's display use this, and they must.** *(Corrected 2026-07-11: §10.2 originally put `DISASM` in the first group. That was wrong, and quietly so — a disassembler built on real reads works perfectly against RAM and then, the first time someone disassembles a page with a UART mapped into it, **eats the console's input**. The bug would only appear when the memory map was unlucky.)* A board that cannot answer without side effects returns false, and the byte reads `FF` — which is honest, because on real hardware the data bus is only defined *during* a cycle.
-- **`RAW <id>`: behind the bus**, straight into one board's backing store. Addresses are **board-local offsets** into that board's store, which may be far larger than 64K. This is how you inspect a phantomed-out board the CPU cannot see — and how you get bytes *into* a ROM.
+- **`ROM`: behind the bus**, into whichever chip answers reads at that address. A **write-side** qualifier on `LOAD`, `DEPOSIT`, `FILL` and `MOVE`, and nothing else. Addresses are bus addresses like everywhere else.
 
-**`RAW` is the PROM burner, and that is not a metaphor.** A ROM region does not decode a write cycle (§4.2), so `DEPOSIT FF00 41` cannot possibly reach it — nor should it, because on real hardware a bus write can't program a PROM either. You pull the chip and put it in a programmer, which is *not a bus operation*. `LOAD dbl.hex RAW mem0` is exactly that, and it is why **the operator can write ROM while the guest cannot**, with no `writable` flag to leak and no originator tag on the bus.
+**EVERY ADDRESS IN THIS MONITOR IS A BUS ADDRESS, 0x0000–0xFFFF.** There is exactly one address space the operator can type, and it is the one the CPU sees. *(Patrick, 2026-07-17: "Don't want board local offsets. Too confusing. All addresses should just reference the 64K address space.")*
+
+**`ROM` is the PROM burner, and that is not a metaphor.** A ROM region does not decode a write cycle (§4.2), so `DEPOSIT FF00 41` cannot possibly reach it — nor should it, because on real hardware a bus write can't program a PROM either. You pull the chip and put it in a programmer, which is *not a bus operation*. `LOAD dbl.hex ROM` is exactly that, and it is why **the operator can write ROM while the guest cannot**, with no `writable` flag to leak and no originator tag on the bus.
+
+It finds the chip by asking who answers a **read** there, which is the whole trick: a ROM does not decode a write, so asking who would take a write is asking the wrong question on precisely the chip you are trying to program. `Bus::respondersTo()` runs the real decode, PHANTOM\* and all — so a shadowed board does not answer, and you cannot burn a chip the machine cannot currently see, any more than the CPU could read it. Nobody home and contention are reported, never guessed at: `Machine::burn()` is the one implementation, and the monitor and MCP are two front ends onto it.
+
+*(Superseded 2026-07-17. This was **`RAW <id>`**: it named a board, addressed that board's store by a **board-local offset**, and worked for reads as well as writes. All three are gone. **The board id** carried no information — through the bus you never name a board, the address picks it, so naming one was a second way to say a thing the address already said. **The offsets** were a second address space, and the same digits meaning two things depending on a qualifier is a trap laid for the operator. **The read side** existed only to reach a store the bus could not see — a bank that is not selected, or a phantomed-out board — and both of those are `properties()`: `SET mem0 bank=3`, `SET mem0 phantom=…`. Select the thing you want to look at, exactly as the guest has to. What was left was the one thing a bus cycle genuinely cannot do, and that is this.)*
 
 The alternative — giving `BusCycle` an `origin = Cpu | Monitor | Dma` field so ROM could accept "monitor" writes — was rejected. A real backplane cycle carries no such tag; that is *why* a front-panel DEPOSIT is indistinguishable from a CPU write, and why a real ROM ignores both. Add the tag and every board built hereafter has to reason about it.
 
 **There is no `BANK=` qualifier, and there must not be one.** Bank *count*, bank *size*, and the bank-select *port* are all board-specific: Cromemco, CompuPro, and Alpha Micro memory boards bank in incompatible ways. A `BANK=<n>` argument in the monitor would hardcode one banking model into a CLI that is supposed to know nothing board-specific — the same error as a bus that invents interrupt vectors (§4.4).
 
-Instead, **banking is reached through the board, two ways, both of which already exist**:
+Instead, **banking is reached through the board**: **the live bank is a `properties()` value like any other.** `SHOW mem0` reports `banks` and `bank`; a board whose banking is software-selectable exposes `bank` as a runtime property. The generic `SET`/`SHOW` layer (§5) carries it, so the monitor, the TOML loader, MCP, and tab completion all get it for free — and a memory board with a scheme nobody has thought of yet still works. `SET mem0 bank=3`, then read ordinary addresses — which is what the guest does, because it is all the guest can do.
 
-1. **`RAW <id>` addresses the board's store linearly.** On a 4 × 64K banked memory board, bank 3 simply *is* offset `0x30000`. `DUMP 30000-300FF RAW mem0` needs no new syntax and no new concept.
-2. **The live bank is a `properties()` value like any other.** `SHOW mem0` reports `banks` and `bank`; a board whose banking is software-selectable exposes `bank` as a runtime property. The generic `SET`/`SHOW` layer (§5) carries it, so the monitor, the TOML loader, MCP, and tab completion all get it for free — and a memory board with a scheme nobody has thought of yet still works.
+*(This used to have a second answer: `RAW <id>` addressed the store linearly, so bank 3 simply **was** offset `0x30000` and `DUMP 30000-300FF RAW mem0` needed no new syntax. That answer went with `RAW`, above, and the argument does not miss it — the objection to `BANK=` was never that a workaround existed, it was that the monitor must not learn one card's banking model. Selecting a bank and reading normal addresses concedes nothing to that. The store **is** still planed that way internally — `MemoryBoard::plane()`, and `storeSize()`/`storeAt()` let a test say so — but that is the card's business now, not a thing anybody types.)*
 
 `DUMP`/`DISASM` annotate output when bytes came from a phantom overlay or from a bank that is not currently live, so a confusing read explains itself.
 

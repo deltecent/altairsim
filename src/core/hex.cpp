@@ -78,6 +78,12 @@ bool loadHex(std::span<const uint8_t> text, Image& out, std::string& err) {
 
         switch (type) {
         case 0x00:  // data
+            // The FIRST data record's address, in file order -- LOAD's AT anchors to
+            // it. Grab it here because `bytes` is sorted and cannot answer this later.
+            if (!out.hasFirst) {
+                out.hasFirst = true;
+                out.first = base + addr;
+            }
             for (uint8_t k = 0; k < len; ++k) out.bytes[base + addr + k] = rec[4 + k];
             break;
         case 0x01:  // EOF
@@ -117,6 +123,24 @@ bool loadHex(std::span<const uint8_t> text, Image& out, std::string& err) {
 
 void loadBin(std::span<const uint8_t> data, uint32_t at, Image& out) {
     for (size_t k = 0; k < data.size(); ++k) out.bytes[at + (uint32_t)k] = data[k];
+    out.hasFirst = true;  // a flat binary's first byte is where you put it
+    out.first = at;
+}
+
+void relocateTo(Image& img, uint32_t at) {
+    if (!img.hasFirst) return;  // nothing to anchor to
+
+    // uint16_t so the subtraction wraps by construction rather than by an `if`.
+    uint16_t delta = (uint16_t)(at - img.first);
+    if (delta == 0) return;
+
+    Image b;
+    b.hasStart = img.hasStart;
+    b.start = img.hasStart ? (uint32_t)((img.start + delta) & 0xFFFF) : 0;
+    b.hasFirst = true;
+    b.first = at & 0xFFFF;
+    for (const auto& [A, v] : img.bytes) b.bytes[(A + delta) & 0xFFFF] = v;
+    img = b;
 }
 
 std::string saveHex(const Image& img, int recLen) {

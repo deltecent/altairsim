@@ -183,14 +183,58 @@ static const std::vector<CommandDef> kCommands = {
     {"OUT", true, nullptr, "OUT <port> <byte>",  // O
      "Runs a REAL OUT cycle. Says so if no board decodes the port.\n"
      "  O 10 41"},
-    {"LOAD", true, nullptr, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [RAW <id>]",
-     "Format is autodetected. RAW <id> reaches BEHIND the bus into one board's\n"
-     "store -- that is the PROM burner, and it is why the operator can write a ROM\n"
-     "region while the guest cannot.\n"
-     "  LOAD dbl.hex\n"
-     "  LOAD monitor.bin AT F000 RAW mem0"},
-    {"SAVE", true, nullptr, "SAVE <file> <range> [FORMAT=BIN|HEX] [RAW <id>]",
-     "  SAVE out.hex 0-FFF"},
+    {"LOAD", true, nullptr, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]",
+     "Put a file into memory. There are two kinds of file and they differ in ONE\n"
+     "way -- whether the file knows where it goes.\n"
+     "\n"
+     "  HEX  Intel HEX. ASCII text, and it CARRIES ITS OWN ADDRESSES, so it needs\n"
+     "       no AT. Each line is one record: a ':', a length, the address, a type\n"
+     "       (00 data, 01 end-of-file), the bytes, and a checksum. Every checksum\n"
+     "       is verified and a bad one FAILS the load and names the record -- a\n"
+     "       half-loaded program is a miserable thing to debug.\n"
+     "         :10010000C300F8AF32004D3E0132014D76C9AA5509\n"
+     "         :00000001FF\n"
+     "          ^^^^^^^^^^                              ^^ checksum: the record\n"
+     "          |  |    |                                  sums to zero, byte-wise\n"
+     "          |  |    type 00 = data (01 = end of file)\n"
+     "          |  load address: these bytes go at 0100\n"
+     "          10 = sixteen data bytes follow\n"
+     "\n"
+     "  BIN  A flat binary: bytes, and nothing else. It carries NO addresses, so\n"
+     "       it cannot say where it goes and AT is REQUIRED. Without one, LOAD\n"
+     "       refuses rather than guess.\n"
+     "\n"
+     "WHICH ONE IS DECIDED BY THE FILE'S CONTENTS, not its name -- Intel HEX\n"
+     "announces itself, and a .bin full of HEX text is still HEX. FORMAT= overrides\n"
+     "that when the sniff is wrong; it always wins.\n"
+     "\n"
+     "AT MEANS 'PUT IT HERE', for both kinds. On a HEX file it relocates: the\n"
+     "file's FIRST data record lands at AT and everything else moves by the same\n"
+     "amount, wrapping at FFFF (a file whose first record is F000, loaded AT 0,\n"
+     "puts its F800 record at 0800). Without AT, a HEX file loads where it says.\n"
+     "\n"
+     "ROM is the PROM burner. LOAD writes through the bus, so a ROM never takes it\n"
+     "-- a bus write cannot program a PROM on real hardware either, and LOAD says\n"
+     "how many bytes landed nowhere rather than half-loading in silence. ROM goes\n"
+     "behind the bus, straight into whichever chip answers reads at that address:\n"
+     "the operator pulling the chip and putting it in a programmer. It is why the\n"
+     "operator can write a ROM and the guest cannot.\n"
+     "  LOAD dbl.hex                      where the file says, through the bus\n"
+     "  LOAD monitor.bin AT F000 ROM      a flat binary, burned into the ROM there\n"
+     "  LOAD prog.hex AT 100              relocate: first record goes to 0100\n"
+     "  LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called"},
+    {"SAVE", true, nullptr, "SAVE <file> <range> [FORMAT=BIN|HEX]",
+     "Memory to a file, through the bus -- so what you get is what the CPU would\n"
+     "read, ROM included. The range is what to save; a byte nobody drives reads FF.\n"
+     "\n"
+     "THE NAME DECIDES THE FORMAT, and this is the other half of LOAD's rule rather\n"
+     "than the same one: LOAD can open the file and see what it IS, and SAVE cannot\n"
+     "-- the file does not exist yet. So a name ending .HEX writes Intel HEX and\n"
+     "anything else writes a flat binary. FORMAT= says it outright when the name\n"
+     "would guess wrong, and always wins.\n"
+     "  SAVE out.hex 0-FFF                Intel HEX, by its name\n"
+     "  SAVE out.bin F800-FFFF            a flat binary, by its name\n"
+     "  SAVE out.dat 0-FFF FORMAT=HEX     hex, though it is not called .hex"},
     {"FILL", true, nullptr, "FILL <range> <byte>",
      "  FILL 0-3FF 00"},
     {"SEARCH", true, nullptr, "SEARCH <range> <bytes...>|\"str\"",  // SEA

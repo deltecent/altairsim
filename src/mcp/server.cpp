@@ -32,6 +32,12 @@ Json intSchema(const char* desc) {
     p["description"] = Json(desc);
     return p;
 }
+Json boolSchema(const char* desc) {
+    Json p = Json::obj();
+    p["type"] = Json("boolean");
+    p["description"] = Json(desc);
+    return p;
+}
 
 Json tool(const char* name, const char* desc, Json props, std::vector<std::string> required) {
     Json t = Json::obj();
@@ -104,30 +110,37 @@ Json toolList() {
         Json p = Json::obj();
         p["lo"] = intSchema("First address");
         p["hi"] = intSchema("Last address (inclusive)");
-        p["raw"] = strSchema("Optional board id: read BEHIND the bus, from that board's store");
         list.push(tool("mem_dump",
                        "Read memory through the bus -- exactly what a CPU would see: live bank, "
-                       "PHANTOM* overlays applied, unmapped addresses reading 0xFF. Pass `raw` "
-                       "to bypass the bus and read one board's store directly.",
+                       "PHANTOM* overlays applied, unmapped addresses reading 0xFF. A ROM reads "
+                       "back like anything else. To see a bank that is not selected, or a board "
+                       "that is phantomed out, SELECT it (board_set bank=/phantom=) and read "
+                       "ordinary addresses -- the same thing the guest would have to do.",
                        p, {"lo", "hi"}));
     }
     {
         Json p = Json::obj();
         p["addr"] = intSchema("Address");
         p["bytes"] = strSchema("Hex bytes, e.g. \"C3 00 2C\"");
-        p["raw"] = strSchema("Optional board id: write BEHIND the bus (the PROM burner)");
+        p["rom"] = boolSchema("Program a ROM: write behind the bus, into whichever chip answers "
+                              "reads at this address");
         list.push(tool("mem_deposit",
                        "Write memory. Through the bus by default, which means a write to ROM "
                        "goes NOWHERE (the board never answers the cycle) and the result says so. "
-                       "Pass `raw` to reach behind the bus into a board's store -- that is how "
-                       "you write a ROM, and it is why the operator can and the guest cannot.",
+                       "Pass `rom` to program it anyway -- that is the operator pulling the chip "
+                       "and putting it in a programmer, which is why the operator can and the "
+                       "guest cannot. Addresses are always bus addresses, 0000-FFFF.",
                        p, {"addr", "bytes"}));
     }
     {
         Json p = Json::obj();
         p["path"] = strSchema("Path to an Intel HEX or flat binary file");
-        p["at"] = intSchema("Load address (required for a flat binary; HEX places itself)");
-        p["raw"] = strSchema("Optional board id: burn into that board's store");
+        p["at"] = intSchema("Load address. Required for a flat binary; a HEX file places itself, "
+                            "and giving `at` anyway relocates it so its FIRST data record lands "
+                            "here (wrapping modulo 64K)");
+        p["format"] = strSchema("BIN or HEX. Overrides the sniffed content, which is otherwise "
+                                "what decides");
+        p["rom"] = boolSchema("Program a ROM: write behind the bus rather than through it");
         list.push(tool("mem_load", "Load a HEX or binary file. Every HEX checksum is verified.",
                        p, {"path"}));
     }
@@ -499,13 +512,11 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
     if (name == "mem_dump") {
         uint32_t lo = (uint32_t)args.at("lo").integer();
         uint32_t hi = (uint32_t)args.at("hi").integer();
-        Board* raw = args.has("raw") ? m.find(args.at("raw").str()) : nullptr;
-        if (args.has("raw") && !raw) return textResult("no board '" + args.at("raw").str() + "'", true);
 
         Json bytes = Json::arr();
         std::string text;
-        for (uint32_t A = lo; A <= hi && A <= 0xFFFFF; ++A) {
-            uint8_t v = raw ? raw->rawRead(A) : m.bus.memRead((uint16_t)A);
+        for (uint32_t A = lo; A <= hi && A <= 0xFFFF; ++A) {
+            uint8_t v = m.bus.memRead((uint16_t)A);
             bytes.push(Json((long long)v));
             std::snprintf(buf, sizeof buf, "%02X ", v);
             text += buf;
@@ -513,7 +524,6 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         Json d = Json::obj();
         d["lo"] = Json((long long)lo);
         d["hi"] = Json((long long)hi);
-        d["raw"] = Json(raw != nullptr);
         d["bytes"] = bytes;
         return dataResult(d, text);
     }
@@ -523,14 +533,13 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         std::vector<uint8_t> bytes;
         if (!parseBytes(args.at("bytes").str(), bytes))
             return textResult("bytes must be hex, e.g. \"C3 00 2C\"", true);
-        Board* raw = args.has("raw") ? m.find(args.at("raw").str()) : nullptr;
-        if (args.has("raw") && !raw) return textResult("no board '" + args.at("raw").str() + "'", true);
+        bool rom = args.has("rom") && args.at("rom").boolean();
 
         int discarded = 0;
         for (size_t k = 0; k < bytes.size(); ++k) {
-            if (raw) {
-                if (!raw->rawWrite(A + k, bytes[k]))
-                    return textResult("offset past that board's store", true);
+            if (rom) {
+                std::string why;
+                if (!m.burn((uint16_t)(A + k), bytes[k], why)) return textResult(why, true);
             } else {
                 m.bus.memWrite((uint16_t)(A + k), bytes[k]);
                 if (m.bus.lastUnclaimed()) ++discarded;
@@ -540,7 +549,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         d["addr"] = Json((long long)A);
         d["written"] = Json((long long)bytes.size());
         d["discarded"] = Json((long long)discarded);
-        d["raw"] = Json(raw != nullptr);
+        d["rom"] = Json(rom);
 
         std::string text = std::to_string(bytes.size()) + " byte(s) written";
         if (discarded) {
@@ -549,7 +558,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             text += "; " + std::to_string(discarded) +
                     " landed NOWHERE -- no board decodes a write there. That address is ROM "
                     "or unmapped. A ROM does not reject the write; it never answers the cycle. "
-                    "To write it anyway, use raw=<board id> (the PROM burner).";
+                    "To program it anyway, pass rom=true (the PROM burner).";
         }
         return dataResult(d, text);
     }
@@ -560,10 +569,24 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         if (!f) return textResult("cannot open '" + path + "'", true);
         std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),
                                   std::istreambuf_iterator<char>());
+        // Same rule as the prompt's LOAD, because it is the same operation: the file's
+        // contents decide, and `format` overrides them.
+        int forced = -1;  // -1 autodetect, 0 BIN, 1 HEX
+        if (args.has("format")) {
+            std::string want = args.at("format").str();
+            for (char& c : want) c = (char)std::toupper((unsigned char)c);
+            if (want == "HEX") forced = 1;
+            else if (want == "BIN") forced = 0;
+            else return textResult("format must be BIN or HEX", true);
+        }
+
         Image img;
         std::string err;
-        if (looksLikeHex(data)) {
+        if (forced == 1 || (forced < 0 && looksLikeHex(data))) {
             if (!loadHex(data, img, err)) return textResult(path + ": " + err, true);
+            // `at` was accepted and then IGNORED here for a HEX file, silently. It
+            // relocates, exactly as it does at the prompt (hex.h).
+            if (args.has("at")) relocateTo(img, (uint32_t)args.at("at").integer());
         } else {
             if (!args.has("at"))
                 return textResult(path + " is a flat binary and carries no addresses -- pass `at`",
@@ -571,16 +594,17 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             loadBin(data, (uint32_t)args.at("at").integer(), img);
         }
 
-        Board* raw = args.has("raw") ? m.find(args.at("raw").str()) : nullptr;
-        if (args.has("raw") && !raw) return textResult("no board '" + args.at("raw").str() + "'", true);
+        bool rom = args.has("rom") && args.at("rom").boolean();
 
         int discarded = 0;
-        if (raw) {
-            auto* mem = dynamic_cast<MemoryBoard*>(raw);
-            if (!mem) return textResult(raw->id + ": no store to burn", true);
-            if (!mem->blit(img, err)) return textResult(err, true);
-        } else {
-            for (const auto& [A, v] : img.bytes) {
+        for (const auto& [A, v] : img.bytes) {
+            if (rom) {
+                std::string why;
+                if (!m.burn((uint16_t)A, v, why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: ", A);
+                    return textResult(buf + why, true);
+                }
+            } else {
                 m.bus.memWrite((uint16_t)A, v);
                 if (m.bus.lastUnclaimed()) ++discarded;
             }
@@ -590,6 +614,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         d["lo"] = Json((long long)img.lo());
         d["hi"] = Json((long long)img.hi());
         d["discarded"] = Json((long long)discarded);
+        d["rom"] = Json(rom);
         std::snprintf(buf, sizeof buf, "loaded %zu bytes (%04X-%04X)", img.size(), img.lo(),
                       img.hi());
         std::string text = buf;

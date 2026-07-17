@@ -21,6 +21,21 @@ struct Image {
     bool hasStart = false;
     uint32_t start = 0;
 
+    // WHERE THE FILE STARTED TALKING -- the load address of its FIRST data record,
+    // which is what `LOAD <file> AT <addr>` anchors to (Patrick, 2026-07-17: "not the
+    // lowest byte, the FIRST address record").
+    //
+    // It has to be captured while PARSING, because `bytes` is a map and a map is
+    // sorted: by the time anyone reads this image the file's ORDER is gone, and
+    // lo() answers a different question. The two agree on every hex file whose
+    // records ascend -- which is nearly all of them, and is exactly why getting
+    // this wrong would be invisible until the day it was not.
+    //
+    // Not `start`: that is the EXECUTION address from a type 03/05 record, which is a
+    // fact about the program. This is a fact about the file.
+    bool hasFirst = false;
+    uint32_t first = 0;
+
     bool empty() const { return bytes.empty(); }
     uint32_t lo() const { return bytes.empty() ? 0 : bytes.begin()->first; }
     uint32_t hi() const { return bytes.empty() ? 0 : bytes.rbegin()->first; }
@@ -42,6 +57,24 @@ bool loadHex(std::span<const uint8_t> text, Image& out, std::string& err);
 
 // A flat binary has no addresses of its own, so it needs one.
 void loadBin(std::span<const uint8_t> data, uint32_t at, Image& out);
+
+// `LOAD <file> AT <addr>` for a file that already carries addresses: move the whole
+// image so its FIRST DATA RECORD lands at `at`, and shift everything else by the same
+// delta. So AT means one thing whatever the format -- PUT IT HERE.
+//
+// Anchored to `first` (file order), NOT to lo() (lowest address). On the ordinary
+// ascending hex file those are the same byte, which is exactly why anchoring to the
+// wrong one would be invisible until the file that descends.
+//
+// THE DELTA WRAPS, MODULO 64K, and that is the format's own arithmetic rather than a
+// convenience: hexfrmt defines the address as "[DRLO + DRI] MOD 64K" and says wraparound
+// "from 0FFFFH to 00000H results in wrapping around from the end to the beginning". It is
+// also what the hardware does -- an 8080 has sixteen address lines and no seventeenth to
+// carry into. A file whose first record is F000, loaded AT 0, puts its F800 record at
+// 0800 and an E000 record back up at F000.
+//
+// A no-op on an image with no data records (nothing to anchor to).
+void relocateTo(Image& img, uint32_t at);
 
 // Round-trip is a test case: saveHex then loadHex must reproduce byte-for-byte.
 std::string saveHex(const Image& img, int recLen = 16);

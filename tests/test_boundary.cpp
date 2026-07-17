@@ -72,12 +72,12 @@ void test_boundary() {
 
     int ff = 0;
     for (size_t i = 0x8000; i < 0x8100; ++i)
-        if (bad.rawRead(i) == 0xFF) ++ff;
+        if (bad.storeAt(i) == 0xFF) ++ff;
     // ~1 byte in 256 is legitimately 0xFF. A store seeded with 0xFF gives 256.
     CHECK(ff < 16, "random RAM is random -- a store full of FF means it was never filled");
 
-    // An offset with no chip behind it is a CALLER bug (bounds-check with rawSize),
+    // An offset with no chip behind it is a CALLER bug (bounds-check with storeSize),
     // and it must not answer 0xFF either -- that would be the board impersonating
     // the bus in the one place the bus cannot see.
-    CHECK(bad.rawRead(bad.rawSize() + 1) != 0xFF, "rawRead past the store does not fake a float");
+    CHECK(bad.storeAt(bad.storeSize() + 1) != 0xFF, "storeAt past the store does not fake a float");
 }

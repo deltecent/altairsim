@@ -18,6 +18,8 @@
 
 #include <memory>
 #include <sstream>
+#include <filesystem>
+#include <fstream>
 
 using namespace altair;
 
@@ -337,15 +339,14 @@ void test_cli() {
         mb.exec("EX 0", e);
         CHECK(e.str().find("no CPU") != std::string::npos,
               "EXAMINE with no CPU is an error: nothing drives the address lines");
-        // But the PROM burner still works, because it never touches the bus at all.
-        std::ostringstream r;
-        mb.exec("EX 0 RAW mem0", r);
-        CHECK(r.str().compare(0, 4, "0000") == 0,
-              "EXAMINE RAW needs no CPU -- it reaches behind the bus into the store");
 
         // AND EVERY OTHER MEMORY COMMAND STILL WORKS WITHOUT ONE (Patrick,
         // 2026-07-12): "we need to be able to debug the simulator without a CPU."
-        // EXAMINE is the sole exception, and only because it IS the CPU.
+        // EXAMINE is the sole exception, and only because it IS the CPU. DUMP is how
+        // you look at a machine with no processor in it -- it runs no cycle, so it
+        // needs nobody to drive one. (`EX 0 RAW mem0` was the old way round this, and
+        // it went with RAW: reading behind the bus bought nothing a ROM does not
+        // already give you through it.)
         std::ostringstream w;
         mb.exec("DEPOSIT 0 41 42", w);
         mb.exec("FILL 2-3 5A", w);
@@ -388,11 +389,10 @@ void test_cli() {
     mon2.exec("EX", s2);
     CHECK(c->pc() == 0x0201, "EXAMINE NEXT steps the PC too -- it is the same counter");
 
-    // RAW is the PROM burner reaching behind the bus (DESIGN.md 10.2). No bus
-    // cycle happens, so the CPU never sees an address and the PC does not move.
-    uint16_t before = c->pc();
-    mon2.exec("EX 0400 RAW mem0", s2);
-    CHECK(c->pc() == before, "EXAMINE RAW does not touch the PC -- it is not a bus cycle");
+    // There is no longer an EXAMINE that leaves the PC alone. `EX <addr> RAW mem0` was
+    // one -- it ran no bus cycle, so the CPU never saw an address -- and it went with
+    // RAW (DESIGN.md 10.2). Every EXAMINE is the panel switch now, and the panel has
+    // exactly one counter.
 
     // -----------------------------------------------------------------------
     // NEXT -- STEP that runs OVER a CALL/RST instead of into it. It is a temporary
@@ -1028,4 +1028,106 @@ void test_achieved_hz() {
     // A backplane with no processor has no crystal to have achieved anything.
     Machine bare;
     CHECK(bare.cpuCard() == nullptr, "no CPU card -> cpuCard() is null, like cpu()");
+
+    // -----------------------------------------------------------------------
+    // LOAD and SAVE: FORMAT=, and ROM (DESIGN.md 10.2)
+    //
+    // FORMAT= was ADVERTISED IN THE HELP AND PARSED NOWHERE -- you could type
+    // FORMAT=HEX and it was dropped on the floor without a word. ROM replaced
+    // `RAW <id>`: same burner, no board id, no board-local offsets.
+    // -----------------------------------------------------------------------
+    SECTION("LOAD/SAVE -- FORMAT= overrides, and ROM programs a ROM");
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "altairsim-loadtest";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const std::string hex = (dir / "img.hex").generic_string();
+        const std::string dat = (dir / "out.dat").generic_string();
+
+        {
+            std::ofstream f(hex);
+            f << ":02010000AABB98\n:00000001FF\n";  // AA BB at 0100
+        }
+
+        Machine mm;
+        Monitor mon(mm);
+        std::ostringstream o;
+        mon.exec("BOARDS ADD 8080 cpu0", o);
+        mon.exec("BOARDS ADD memory mem0", o);
+        mon.exec("REGION ADD mem0 type=ram at=0 size=32K", o);
+        // dbl is a HEX file and places ITSELF at FF00, so the region must say FF00 --
+        // ask for anywhere else and REGION ADD refuses. Check the socket really exists:
+        // every ROM assertion below would pass just as happily against an unmapped hole,
+        // which is exactly the false pass this test shipped with for ten minutes.
+        std::ostringstream rr;
+        mon.exec("REGION ADD mem0 type=rom at=FF00 mount=builtin:dbl", rr);
+        CHECK(rr.str().find("rom") != std::string::npos && rr.str().find("FF00") != std::string::npos,
+              "the ROM socket is real and populated -- not an unmapped hole");
+
+        // AT relocates a HEX file to where you said, through the monitor.
+        std::ostringstream a1;
+        mon.exec("LOAD " + hex + " AT 200", a1);
+        CHECK(mm.bus.memRead(0x0200) == 0xAA && mm.bus.memRead(0x0201) == 0xBB,
+              "LOAD ... AT relocates a HEX file to the address you asked for");
+
+        // FORMAT=BIN forces the same file to load as the literal text it is.
+        std::ostringstream a2;
+        mon.exec("LOAD " + hex + " AT 300 FORMAT=BIN", a2);
+        CHECK(mm.bus.memRead(0x0300) == ':',
+              "FORMAT=BIN overrides the sniff -- the file loads as the ASCII it literally is");
+
+        std::ostringstream a3;
+        mon.exec("LOAD " + hex + " FORMAT=SREC", a3);
+        CHECK(a3.str().find("BIN or HEX") != std::string::npos,
+              "and a format that is not BIN or HEX is refused, not ignored");
+
+        // THROUGH THE BUS, A ROM DOES NOT TAKE THE WRITE. It never answers the cycle.
+        uint8_t romWas = mm.bus.memRead(0xFF00);
+        std::ostringstream b1;
+        mon.exec("LOAD " + hex + " AT FF00", b1);
+        CHECK(mm.bus.memRead(0xFF00) == romWas, "a plain LOAD does not reach a ROM...");
+        CHECK(b1.str().find("landed nowhere") != std::string::npos,
+              "...and it SAYS SO rather than half-loading in silence");
+        CHECK(b1.str().find("LOAD") != std::string::npos && b1.str().find("ROM") != std::string::npos,
+              "...and it names the thing that would have worked");
+
+        // ...and the burner does.
+        std::ostringstream b2;
+        mon.exec("LOAD " + hex + " AT FF00 ROM", b2);
+        CHECK(mm.bus.memRead(0xFF00) == 0xAA && mm.bus.memRead(0xFF01) == 0xBB,
+              "LOAD ... ROM programs it: the operator can write ROM, the guest cannot");
+
+        // Nobody home is a different bug from a ROM, and it says which.
+        std::ostringstream b3;
+        mon.exec("LOAD " + hex + " AT 9000 ROM", b3);
+        CHECK(b3.str().find("no board answers here") != std::string::npos,
+              "burning where no chip exists says so, and does not invent one");
+
+        // DEPOSIT is the panel switch and keeps its own honesty; ROM is the override.
+        std::ostringstream c1;
+        mon.exec("DEPOSIT FF10 42", c1);
+        CHECK(mm.bus.memRead(0xFF10) != 0x42, "DEPOSIT is a bus write, so a ROM ignores it");
+        std::ostringstream c2;
+        mon.exec("DEPOSIT FF10 42 ROM", c2);
+        CHECK(mm.bus.memRead(0xFF10) == 0x42, "DEPOSIT ... ROM programs it");
+
+        // SAVE: the NAME decides, FORMAT= overrides. It cannot sniff -- there is no
+        // file yet -- so this is the other half of LOAD's rule, not the same half.
+        std::ostringstream d1;
+        mon.exec("SAVE " + dat + " 200-201", d1);
+        CHECK(d1.str().find("(bin)") != std::string::npos, "a name that is not .hex saves binary");
+        std::ostringstream d2;
+        mon.exec("SAVE " + dat + " 200-201 FORMAT=HEX", d2);
+        CHECK(d2.str().find("(hex)") != std::string::npos, "...and FORMAT=HEX overrides the name");
+        {
+            std::ifstream f(dat);
+            std::string first;
+            std::getline(f, first);
+            CHECK(!first.empty() && first[0] == ':',
+                  "...and what landed on disk really is Intel HEX, not just a label");
+        }
+
+        fs::remove_all(dir, ec);
+    }
 }

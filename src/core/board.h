@@ -537,18 +537,20 @@ public:
     // a general facility with one card's name compiled into it.
     virtual std::vector<std::string> drainLog() { return {}; }
 
-    // ---- RAW: behind the bus (DESIGN.md 10.2) ----
+    // THERE IS NO "BEHIND THE BUS" ON A BOARD, and there was: rawSize/rawRead/rawWrite
+    // used to live here, so that `RAW <id>` could address ANY card's backing store by a
+    // board-local offset. Every one of them is gone, and deliberately (Patrick,
+    // 2026-07-17: "Don't want board local offsets. Too confusing. All addresses should
+    // just reference the 64K address space").
     //
-    // Straight into the card's backing store, bypassing decode entirely.
-    // Offsets are BOARD-LOCAL and the store may be far larger than 64K (a banked
-    // card's bank 3 simply IS offset 0x30000).
-    //
-    // THIS IS THE PROM BURNER, AND THAT IS NOT A METAPHOR. It is how the
-    // operator writes a ROM the guest cannot -- because burning a PROM is not a
-    // bus operation on real hardware either. You pull the chip.
-    virtual size_t rawSize() const { return 0; }
-    virtual uint8_t rawRead(size_t) const { return 0xFF; }
-    virtual bool rawWrite(size_t, uint8_t) { return false; }
+    // What they cost: a second address space, on every board, that only ONE board ever
+    // implemented -- the other twenty inherited a default that answered 0xFF to
+    // everything and told nobody it had not looked. What they bought was two things,
+    // and neither needed to be here. Reading behind the bus was never necessary: a ROM
+    // answers reads like any other chip, and a bank or a board you cannot see is one you
+    // SELECT (SET mem0 bank=3), exactly as the guest must. Writing behind the bus is
+    // real, and it is one card's business rather than the backplane's -- it is
+    // MemoryBoard::poke, reached through Machine::burn, addressed like everything else.
 
     // ---- Introspection ----
     virtual std::vector<MapEntry> memMap() const { return {}; }
