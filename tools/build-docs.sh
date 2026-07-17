@@ -129,10 +129,56 @@ build() {  # build <docdir> <output-name> <title>
     --metadata subtitle="$date · $stamp" \
     -o "$work/$name.html"
 
+  # A missing or unreadable font needs no check of ours: because --css is an absolute path,
+  # pandoc resolves the url()s in it to absolute paths too and HARD-ERRORS on one it cannot
+  # read ("withBinaryFile: does not exist"), which set -e turns into a failed build. Both
+  # cases verified. Do not add a grep for un-inlined url("fonts/...") here -- one was
+  # written, and it could not be made to fire under any input. (Pandoc does have a
+  # warn-and-continue path for unfetchable resources, but only for a RELATIVE --css, which
+  # this script never passes. If that ever changes, the font check after the PDF is built
+  # catches it anyway, on any machine that does not have XCharter installed -- which
+  # includes the CI runner that owns these files.)
+  # PRINT INTO THE TEMP DIRECTORY, NOT OVER THE SHIPPED FILE. The checks below can reject
+  # this PDF, and a rejected PDF must not be left lying in docs/ where the next person --
+  # or CI, which commits what it finds there -- picks it up as the real one. It only lands
+  # once it has passed. (This is not hypothetical: the font check first fired on a build
+  # that had already overwritten docs/altairsim-manual.pdf with the bad copy.)
   "$chrome" --headless --disable-gpu --no-pdf-header-footer \
-            --print-to-pdf="$out/$name.pdf" "$work/$name.html" 2>/dev/null
+            --print-to-pdf="$work/$name.pdf" "$work/$name.html" 2>/dev/null
 
-  [ -s "$out/$name.pdf" ] || { echo "build-docs: $name.pdf came out empty." >&2; exit 1; }
+  [ -s "$work/$name.pdf" ] || { echo "build-docs: $name.pdf came out empty." >&2; exit 1; }
+
+  # NOW CHECK WHAT ACTUALLY CAME OUT. Embedding the fonts (above) only guarantees they were
+  # OFFERED to the browser; it says nothing about a character neither of them has. Chrome
+  # answers that silently, by going shopping on the local machine -- and the very first
+  # build with embedded fonts did exactly that, pulling one arrow out of macOS's Lucida
+  # Grande because XCharter-Bold has no U+2192. One glyph, no warning, unshippable font,
+  # and a different result on a machine without it.
+  #
+  # So: every face in the finished PDF must be one we shipped. This is the check that
+  # catches the NEXT character somebody types that our fonts do not have.
+  if have pdffonts; then
+    faces=$(pdffonts "$work/$name.pdf" | awk 'NR > 2 { print $1 }' | sed 's/^[A-Z]*+//' |
+            sort -u | grep -v '^$' || true)
+    strangers=$(echo "$faces" | grep -vxE 'XCharter-(Roman|Bold|Italic|BoldItalic)|DejaVuSansMono(-Bold)?' || true)
+    if [ -n "$strangers" ]; then
+      echo "build-docs: $name.pdf is set in fonts WE DID NOT SHIP:" >&2
+      echo "$strangers" | sed 's/^/              /' >&2
+      echo "            That means some character is not in XCharter or DejaVu Sans Mono, so the" >&2
+      echo "            browser quietly borrowed a face from THIS machine -- which another machine" >&2
+      echo "            will not have. Find the character (the usual suspect is a symbol or arrow" >&2
+      echo "            in bold or italic) and either write it differently or extend the fallback" >&2
+      echo "            chain in docs/print.css. Do not ignore this: it renders differently in CI." >&2
+      exit 1
+    fi
+  else
+    # Not fatal locally -- but CI installs poppler-utils precisely so this always runs
+    # somewhere. See .github/workflows/docs.yml.
+    echo "build-docs: (no pdffonts -- skipping the font check; CI runs it)" >&2
+  fi
+
+  # It passed. NOW it is the document.
+  mv "$work/$name.pdf" "$out/$name.pdf"
   echo "build-docs: $out/$name.pdf"
 }
 
