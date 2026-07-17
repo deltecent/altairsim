@@ -132,6 +132,14 @@ private:
 
     HostDir& dir();                   // build a RealHostDir on demand, or the injected one
 
+    // WHERE THE FENCE GOES. The ONE expression that answers it -- dir() builds the
+    // sandbox here and sandboxRoot() prints here, and they must never be able to
+    // disagree. They used to say it separately, and a Windows review proved what that
+    // cost: mutating dir()'s copy back to the old bug left the whole suite green,
+    // because the only guard asserted on sandboxRoot()'s copy. The DISPLAY was tested
+    // and the FENCE was not. One function, so one mutation breaks both.
+    std::string configuredRoot() const;
+
 public:
     // The resolved sandbox root, for SHOW. Does NOT build the sandbox.
     std::string sandboxRoot() const;

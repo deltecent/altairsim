@@ -367,6 +367,47 @@ void test_hostbridge() {
               "...and the machine file's base did not follow it");
     }
 
+    // THE FENCE ITSELF, NOT THE SIGN ON IT.
+    //
+    // The two guards above ask sandboxRoot(), which is what SHOW PATHS prints. That is
+    // the DISPLAY. The thing that confines the guest is the RealHostDir that dir()
+    // builds, and a Windows review found that nothing asserted on where THAT rooted:
+    // mutating dir() back to the original bug left the entire suite green while the
+    // guest was handed the decoy directory. A test that only watches the sign is not
+    // watching the fence.
+    //
+    // So: drive the BUS, exactly as a guest does, until the card builds its sandbox for
+    // real -- no injection, no MemHostDir -- and then ask where it went. The OPEN_READ
+    // fails (there is no such file, and there is no such directory), and that is fine:
+    // dir() is called before the miss, and being built is the whole event under test.
+    SECTION("hostbridge: the sandbox the GUEST gets is rooted where SHOW says it is");
+    {
+        namespace fs = std::filesystem;
+        HostBridgeBoard hb;
+        std::string     err;
+
+        const fs::path cfg = fs::temp_directory_path() / "altairsim-fencedir";
+        hb.setConfigDir(cfg.generic_string());
+        CHECK(setProperty(hb, "hostdir", "xfer", err), "a machine file sets hostdir");
+        hb.setConfigDir("");  // runStartup() ends; every guest R/W is after this
+
+        // The guest's first touch. This is what used to decide where the fence landed.
+        auto out = [&](uint8_t port, uint8_t v) {
+            BusCycle c;
+            c.type = Cycle::IoWrite;
+            c.addr = port;
+            c.data = v;
+            hb.write(c);
+        };
+        out(0xB0, (uint8_t)Cmd::OpenRead);
+        for (char ch : std::string("NOSUCH.TXT")) out(0xB1, (uint8_t)ch);
+        out(0xB1, 0);  // the NUL commits, and dir() is built to service it
+
+        const std::string got  = fs::path(hb.sandboxRoot()).lexically_normal().generic_string();
+        const std::string want = fs::absolute(cfg / "xfer").lexically_normal().generic_string();
+        CHECK(got == want, "the sandbox the guest was handed is the machine file's xfer");
+    }
+
     SECTION("hostbridge: DELETE");
     {
         Rig r;

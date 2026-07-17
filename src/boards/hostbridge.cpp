@@ -353,18 +353,19 @@ void HostBridgeBoard::fail(const HbFail& f) {
 // symlink; that is all behind HostDir (host/hostdir.h), which is where the escape
 // tests live too.
 // ---------------------------------------------------------------------------
+// A path written INSIDE a machine file is relative to that file; one TYPED at the
+// prompt is relative to the shell (core/paths.h). An EMPTY hostdir is the shell's
+// working directory, and that is the same rule, not a special case -- RealHostDir
+// reads an empty root as the cwd.
+//
+// Against hostdirBase_, NOT configDir() -- the base is the one that was standing when
+// the value was written, and dir() runs long after. See hostbridge.h.
+std::string HostBridgeBoard::configuredRoot() const {
+    return hostdir_.empty() ? std::string() : resolveFrom(hostdirBase_, hostdir_);
+}
+
 HostDir& HostBridgeBoard::dir() {
-    if (!dir_) {
-        // A path written INSIDE a machine file is relative to that file; one TYPED at
-        // the prompt is relative to the shell (core/paths.h). An EMPTY hostdir is the
-        // shell's working directory, and that is the same rule, not a special case.
-        //
-        // Against hostdirBase_, NOT configDir() -- the base is the one that was standing
-        // when the value was written, and this runs long after. See hostbridge.h.
-        dir_ = std::make_unique<RealHostDir>(hostdir_.empty()
-                                                 ? std::string()
-                                                 : resolveFrom(hostdirBase_, hostdir_));
-    }
+    if (!dir_) dir_ = std::make_unique<RealHostDir>(configuredRoot());
     return *dir_;
 }
 
@@ -374,25 +375,23 @@ HostDir& HostBridgeBoard::dir() {
 std::string HostBridgeBoard::sandboxRoot() const {
     if (injected_ && dir_) return dir_->root();  // a test's MemHostDir outranks the property
 
-    // ABSOLUTE, ALWAYS, AND NAMED. This is the fence the guest cannot leave, so the one
-    // thing it must never do is describe itself -- "the directory you launched from" is
-    // the question again, and a person checking which of two `xfer` directories they are
-    // about to hand to CP/M cannot check it against a phrase. An empty `hostdir` is not a
-    // special case here: it means the cwd, and the cwd has a name.
-    //
-    // gen-reference prints no value for a read-only property, which is why this may.
+    // ONCE THE FENCE EXISTS, THE FENCE IS THE ANSWER. Re-deriving the root here while a
+    // RealHostDir stands on a different one is precisely how a display comes to disagree
+    // with the thing it claims to describe -- and of the two, the operator needs the one
+    // the guest is actually inside. Asking it also means SHOW PATHS reports a wrong
+    // dir(), which is what makes the guard below able to see one.
     std::error_code ec;
+    std::string p = dir_ ? dir_->root() : configuredRoot();
 
-    // An empty hostdir is the cwd, and it asks for it BY NAME. `absolute("")` is not
+    // An empty root is the cwd, and it asks for it BY NAME. `absolute("")` is not
     // spelled "the cwd" in the standard -- it is unspecified enough to hand back a
     // trailing-slash oddity or nothing at all, and this string is the fence.
-    if (hostdir_.empty()) {
+    if (p.empty()) {
         auto cwd = std::filesystem::current_path(ec);
         return ec ? std::string("(unknown -- the host will not say what directory we are in)")
                   : cwd.lexically_normal().string();
     }
 
-    std::string p = resolveFrom(hostdirBase_, hostdir_);
     auto abs = std::filesystem::absolute(p, ec);
     if (ec) return p;  // no cwd to resolve against: say what we have rather than nothing
     return abs.lexically_normal().string();
