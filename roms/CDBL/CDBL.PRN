@@ -1,0 +1,634 @@
+
+
+                ;==============================================================
+                ;=            CDBL - Combo Disk Boot Loader ROM               =
+                ;=        For the Altair 88-DCDD 8" disk system and           =
+                ;=            the Altair 88-MDS Minidisk system               =
+                ;=                  By Martin Eberhard                        =
+                ;=                                                            =
+                ;= CDBL loads software (e.g. Altair Disk BASIC) from an       =
+                ;= Altair 88-DCDD 8" disk or an 88-MDS 5-1/4" minidisk,       =
+                ;= automatically detecting which kind of drive is attached.   =
+                ;==============================================================
+                ;=                         NOTES                              =
+                ;=                                                            =
+                ;= Like DBL and MDBL, CDBL fits in one (256-byte) 1702A       =
+                ;= EPROM and execution begins at address FF00h (ROMADR).      =
+                ;=                                                            =
+                ;= Because of the slow 1702A EPROM access time, and because   =
+                ;= some versions of MITS's 8800b Turnkey Module disable PROM  =
+                ;= when any IN instruction is executed, CDBL copies itself    =
+                ;= into RAM at 4C00h (RAMADR), and executes there. CDBL       =
+                ;= therefore requres 512 bytes of 0-wait state RAM, starting  =
+                ;= at RAMADR.                                                 =
+                ;=                                                            =
+                ;= Minidisks have 16 sectors/track, numbered 0 through 15.    =
+                ;= 8" disks have 32 sectors/track, numbered 0 through 31.     =
+                ;= CDBL figures out which kind of disk drive is attached,     =
+                ;= based on the existance of sector number 16.                =
+                ;=                                                            =
+                ;=       ALTAIR DISK SECTOR FORMAT (FOR BOOT SECTORS)         =
+                ;=                                                            =
+                ;=   BYTE(s)     FUNCTION                BUFFER ADDRESS       =
+                ;=     0       Track number+80h (sync)     RAMADR+7Bh         =
+                ;=     1       File size low byte          RAMADR+7Ch         =
+                ;=     2       File size High Byte         RAMADR+7Dh         =
+                ;=   3-130     Sector data          RAMADR+7Eh to RAMADR+FDh  =
+                ;=    131      Marker Byte (0FFh)          RAMADR+FEh         =
+                ;=    132      Checksum                    RAMADR+FFh         =
+                ;=    133-136  Spare                        not read          =
+                ;=                                                            =
+                ;= Each sector header contains a 16-bit file-size value:      =
+                ;= this many bytes (rounded up to an exact sector) are read   =
+                ;= from the disk and written to RAM, starting at address 0.   =
+                ;= When done (assuming no errors), CDBL then jumps to         =
+                ;= address 0 (DMAADR) to execute the loaded code.             =
+                ;=                                                            =
+                ;= Sectors are interleaved 2:1. CDBL reads the even sectors   =
+                ;= on each track first (starting with track 0, sector 0)      =
+                ;= followed by the odd sectors (starting with sector 1),      =
+                ;= continuing through the interleaved sectors of each track   =
+                ;= until the specified number of bytes have been read.        =
+                ;=                                                            =
+                ;= CDBL first reads each sector (including the actual data    =
+                ;= payload, as well as the 3 header and the first 2 trailer   =
+                ;= bytes) from disk into the RAM buffer (SECBUF). Next, CDBL  =
+                ;= checks to see if this sector would overwrite the RAM       =
+                ;= portion of CDBL, and aborts with an 'O' error if so. It    =
+                ;= then copies the data payload portion from the buffer to    =
+                ;= its final RAM location, calculating the checksum along the =
+                ;= way. During the copy, each byte is read back, to verify    =
+                ;= correct writes. Any write-verify failure will immediately  =
+                ;= abort the load with an 'M' error.                          =
+                ;=                                                            =
+                ;= Any disk read error (a checksum error or an incorrect      =
+                ;= marker byte) will cause a retry of that sector read. After =
+                ;= 16 retries on the same sector, CDBL will abort the load    =
+                ;= with a 'C' error.                                          =
+                ;=                                                            =
+                ;= If the load aborts with any error, then CDBL will turn on  =
+                ;= the INTE LED on the front panel (as an indicator), write   =
+                ;= the error code ('C', 'M', or 'O') to RAM address 0, write  = 
+                ;= the offending memory address to RAM addresses 1 and 2, and = 
+                ;= then hang forever in a loop, printing the error code to    =
+                ;= all known Altair Terminal output ports.                    =
+                ;==============================================================
+                ;=                      REVISION HISTORY                      =
+                ;=                                                            =
+                ;=  1.00  05May2014  M.Eberhard                               =
+                ;=    Combined MDBL and DBLme code, with assembly options to  =
+                ;=    create exactly both of these boot loaders               =
+                ;=  2.00  08May2014  M.Eberhard                               =
+                ;=    Restructure and squeeze the code. Automatic 8"/Minidisk =
+                ;=    detection. Select boot disk from the sense switches.    =
+                ;=    Improve track 0 seek by waiting for -MVHEAD before      =
+                ;=    testing TRACK0. Detect memory overrun errors. Verify    =
+                ;=    copy of CDBL code into RAM.                             =
+                ;=  2.01  15May2014  M.Eberhard                               =
+                ;=    Step in once before seeking track 0. Restart 6.4 Sec    =
+                ;=    motor shutoff timer on retries.                         =
+                ;=  2.02  04JUN2014  M. Eberhard                              =
+                ;=    Eliminate booting from other than drive 0 because Basic =
+                ;=    and Burcon CP/M just load a 2-sector boot loader, and   =
+                ;=    that boot loader loads the rest, always from drive 0.   =
+                ;=  2.03  17JAN2015  M. Douglas                               =
+                ;=    Force 43ms minimum delay when changing seek direction   =
+                ;=    to meet/exceed 8" drive requirements.                   =
+                ;=  2.04  12MAR2015  M. Douglas                               =
+                ;=    Change 2SIO init constant (ACINIT) from 21h (7E2, xmit  =
+                ;=    interrupts on) to 11h (8N2)			      =
+                ;=  2.05  11Jan2016  M. Eberhard                              =
+                ;=    No IN or OUT instructions until codes is moved to RAM   =
+                ;=    (for compatibility with some Turnkey Modules). This     =
+                ;=    increased the RAM footprint from 256 to 512 bytes. Also =
+                ;=    fixed a bug when reporting overlay errors.              =
+                ;==============================================================
+                
+                ;-----------------
+                ; Disk Parameters
+                ;-----------------
+ 0080 =         BPS	equ	128		;data bytes/sector
+ 0010 =         MDSPT	equ	16		;Minidisk sectors/track
+                				;this code assumes SPT for 8"
+                				;disks = MDSPT * 2.
+                
+ 0003 =         HDRSIZ	equ	3		;header bytes before data
+ 0002 =         TLRSIZ	equ	2		;trailer bytes read after data
+                
+ 0085 =         SECSIZ	equ	BPS+HDRSIZ+TLRSIZ ;total bytes/sector
+                
+ 0010 =         RETRYS	equ	16		;max retries per sector
+                
+                ;--------------------------------------------------------------
+                ; Memory Parameters. To keep code short, several assumptions
+                ; about these values are embedded in the code:
+                ;  1) DMAADR = 0000
+                ;  2) RAMADR's low address byte = 00
+                ;  3) The address of the last byte of SECBUF (the SECSIZ-sized
+                ;     sector buffer) must be XXFF.
+                ;  4) The lsb of the high byte of RAMADR is 0
+                ;--------------------------------------------------------------
+ FF00 =         ROMADR	equ	0FF00H		;Address of CDBL EPROM
+ 4C00 =         RAMADR	equ	4C00H		;Address for code copied to RAM
+ 4D7B =         SECBUF	equ	RAMADR+512-SECSIZ
+ 4D7B =         STACK	equ	SECBUF		;grows down from here	
+ 0000 =         DMAADR	equ	0		;Disk load/execution address
+                
+                ;----------------------------------------------
+                ; Addresses of sector components within SECBUF
+                ;----------------------------------------------
+ 4D7C =         SFSIZE	equ	SECBUF+1	;address of file size
+ 4D7E =         SDATA	equ	SECBUF+HDRSIZ	;address of sector data
+ 4DFE =         SMARKR	equ	SDATA+BPS	;address of marker byte
+ 4DFF =         SCKSUM	equ	SMARKR+1	;address of checksum byte
+                
+                ;----------------
+                ; 88-SIO Equates	
+                ;----------------
+ 0000 =         SIOCTL	EQU	00		;Control
+ 0000 =         SIOSTA	EQU	00		;Status
+ 0001 =         SIODAT	EQU	01		;Rx/Tx Data
+                
+                ;-----------------------------------------------
+                ; 88-2SIO's port 0, Turnkey Module, and 88-UIO
+                ; Equates (all based on the Motorola 6850 ACIA)
+                ;-----------------------------------------------
+ 0010 =         ACCTRL	equ	10h		;ACIA Control output port
+ 0010 =         ACSTAT	equ	10h		;ACIA Status input port
+ 0011 =         ACDATA	equ	11h		;ACIA Tx/Rx Data register
+                
+ 0003 =         ACRST	equ	03h		;Master reset
+ 0011 =         ACINIT	equ	11h		;/16, 8bit, No Parity, 2Stops
+                
+                ;----------------
+                ; 88-PIO Equates
+                ;----------------	
+ 0004 =         PIOCTL	EQU	04		;Control
+ 0004 =         PIOSTA	EQU	04		;Status
+ 0005 =         PIODAT	EQU	05		;Tx/Rx Data
+                
+                ;-----------------
+                ; 88-4PIO equates	
+                ;-----------------
+ 0020 =         P4CA0	equ	20h		;Port 0 Section A Ctrl/Status
+ 0021 =         P4DA0	equ	21h		;Port 0 Section A Data
+ 0022 =         P4CB0	equ	22h		;Port 0 Section B Ctrl/Status
+ 0023 =         P4DB0	equ	23h		;Port 0 Section B Data
+                
+ 002C =         P4CINI	equ	2Ch		;Control/status initialization
+                
+                ;----------------------------------------------------------
+                ; Altair 8800 Disk Controller Equates (These are the same
+                ; for the 88-DCDD controller and the 88-MDS controller.)
+                ;----------------------------------------------------------
+ 0008 =         DENABL	equ	08H		;Drive Enable output
+ 0080 =         DDISBL	  equ	  80h		  ;disable disk controller
+                
+ 0008 =         DSTAT	equ	08H		;Status input (active low)
+ 0001 =         ENWDAT	  equ	  01h		  ;-Enter Write Data
+ 0002 =         MVHEAD	  equ	  02h		  ;-Move Head OK
+ 0004 =         HDSTAT	  equ	  04h		  ;-Head Status
+ 0008 =         DRVRDY	  equ	  08h		  ;-Drive Ready
+ 0020 =         INTSTA	  equ	  20h		  ;-Interrupts Enabled
+ 0040 =         TRACK0	  equ	  40h		  ;-Track 0 detected
+ 0080 =         NRDA	  equ	  80h		  ;-New Read Data Available
+                
+ 0009 =         DCTRL	equ	09h		  ;Drive Control output
+ 0001 =         STEPIN	  equ	  01H		  ;Step-In
+ 0002 =         STPOUT	  equ	  02H		  ;Step-Out
+ 0004 =         HDLOAD	  equ	  04H		  ;8" disk: load head
+                				  ;Minidisk: restart 6.4 S timer
+ 0008 =         HDUNLD	  equ	  08h		  ;unload head (8" only)
+ 0010 =         IENABL	  equ	  10h		  ;Enable sector interrupt
+ 0020 =         IDSABL	  equ	  20h		  ;Disable interrupts
+ 0080 =         WENABL	  equ	  80h		  ;Enable drive write circuits
+                
+ 0009 =         DSECTR	equ	09h		;Sector Position input
+ 0001 =         SVALID	  equ	  01h		  ;Sector Valid (1st 30 uS
+                				  ;..of sector pulse)
+ 003E =         SECMSK	  equ	  3Eh		  ;Sector mask for MDSEC
+                
+ 000A =         DDATA	equ	0Ah		;Disk Data (input/output)
+                
+                ;----------------------------
+                ; Single-byte error messages
+                ;----------------------------
+ 0043 =         CERMSG	equ	'C'		;checksum/marker byte error
+ 004D =         MERMSG	equ	'M'		;memory write verify error
+ 004F =         OERMSG	equ	'O'		;Memory overlay error message
+                
+                ;==============================================================
+ FF00           	ORG	ROMADR
+                ;==============================================================
+ FF00 F3        	di			;Turn off INTE LED
+                				;(i.e. no errors yet)
+                
+                ;--------------------------------------------------------------
+                ; Copy code image from ROM into RAM. Load backwards, so that
+                ; hl equals RAMADR at the end. This assumes RAMADR low byte=0.
+                ;--------------------------------------------------------------
+ FF01 11F5FF    	lxi	d,RAMIMG+IMGSIZ	;HL= ROM address of MDBL image
+ FF04 21E14C    	lxi	h,RAMADR+IMGSIZ	;DE= RAM execution address
+                
+ FF07 1B        MLOOP:	dcx	d		;next byte
+ FF08 2B        	dcx	h		;done when l=0
+                
+ FF09 1A        	ldax	d		;Get next EPROM byte
+ FF0A 77        	mov	m,a		;Store it in RAM
+                
+ FF0B 7D        	mov	a,l
+ FF0C B7        	ora	a		;done?
+ FF0D C207FF    	jnz	MLOOP		;no: loop
+                
+ FF10 018206    	lxi	b,20000/12	;20 mS delay value, for after pchl
+                
+                ; hl=RAMADR, a=l=0
+                
+                ;------------------------------------------------
+                ; Jump to portion of code that we moved into RAM
+                ; bc = 20 mS delay value
+                ; hl = RAMADR
+                ;  a = 0
+                ;  l = 0
+                ;------------------------------------------------
+ FF13 E9        	pchl			;go run the moved code
+                
+                ;==============================================================
+                ; RAM Code Image
+                ; All of the following code gets copied into RAM at RAMADR,
+                ; and run there, since 1702A EPROMs are too slow.
+                ; On Entry:
+                ;   a = 0
+                ;   l = 0
+                ;   c = Sectors/track
+                ;   disk is n track 0 and ready to go
+                ;
+                ; Load disk data into memory, starting at address DMAADR. Each
+                ; sector has the file size in its header. The load is done
+                ; when the next DMA address is higher than this file size.
+                ;==============================================================
+                RAMIMG:
+ B314 =         OFFSET	equ	$-RAMADR	;address offset for moved code
+                
+                ;---------------------
+                ; Initialize the 4PIO
+                ; a = 0 here
+                ;---------------------
+ FF14 D322      	out	P4CB0		;Port 0 section B is output
+ FF16 2F        	cma			;All output bits high
+ FF17 D323      	out	P4DB0 
+ FF19 3E2C      	mvi	a,P4CINI	;set up handshake bits
+ FF1B D322      	out	P4CB0
+                
+                ;-------------------------------------------------------------
+                ; Wait for user to insert a diskette into the drive 0, and
+                ; then load that drive's head. Do this first so that the disk
+                ; has plenty of time to settle. Note that a minidisk will
+                ; always report that it is ready. Minidisks will hang (later
+                ; on) waiting for sector 0F, until a few seconds after the
+                ; user inserts a disk.
+                ;-------------------------------------------------------------
+ FF1D AF        WAITEN:	xra	a		;boot from disk 0
+ FF1E D308      	out	DENABL		;enable disk 0
+ FF20 DB08      	in	DSTAT		;Read drive status
+ FF22 E608      	ani	DRVRDY		;Diskette in drive?
+ FF24 C2094C    	jnz	WAITEN-OFFSET	;no: wait for drive ready
+                
+ FF27 3E04      	mvi	a,HDLOAD	;Load 8" disk head, or enable
+ FF29 D309      	out	DCTRL		;..minidisk for 6.4 Sec
+                
+                ;-------------------------------------------------------
+                ; Step in once, then step out until track 0 is detected
+                ; On Entry: bc = 20 mS delay value
+                ; On Exit: a=b=c=0
+                ;-------------------------------------------------------
+ FF2B 3E01      	mvi	a,STEPIN	;step in once first
+                
+ FF2D D309      SKTRK0:	out	DCTRL		;step out
+                
+                ; The first time through, delay at least 20ms to force a
+                ; minimum 43 ms step wait instead of 10ms. This meets
+                ; the 8" spec for changing seek direction. The minidisk
+                ; step time is always 50ms.
+                
+ FF2F 0B        DELAY:	dcx	b		;(5)
+ FF30 78        	mov	a,b		;(5)
+ FF31 B1        	ora	c		;(4)
+ FF32 C21B4C    	jnz	DELAY-OFFSET	;(10)12 uS/pass
+                
+ FF35 0C        	inr	c		;from now on, the above loop
+                				;goes 1 time.
+                
+ FF36 DB08      WSTEP:	in	DSTAT		;wait for step to complete
+ FF38 0F        	rrc			;put MVHEAD bit in carry
+ FF39 0F        	rrc			;is the servo stable?
+ FF3A DA224C    	jc	WSTEP-OFFSET	;no: wait for servo to settle
+                
+ FF3D E610      	ani	TRACK0/4	;Are we at track 00?
+ FF3F 3E02      	mvi	a,STPOUT	;STEP-OUT command
+ FF41 C2194C    	jnz	SKTRK0-OFFSET	;no: step out another track
+                
+                ;Exit with b=0
+                
+                ;--------------------------------------------------------
+                ; Determine if this is an 8" disk or a minidisk, and set
+                ; c to the correct sectors/track for the detected disk.
+                ; An 8" disk has 20h sectors, numbered 0-1Fh. A minidisk
+                ; has 10h sectors, numbered 0-0Fh.
+                ;--------------------------------------------------------
+                
+                ; wait for the highest minidisk sector, sector number 0Fh
+                
+ FF44 DB09      CKDSK1:	in	DSECTR		;Read the sector position
+                
+ FF46 E63F      	ani	SECMSK+SVALID	;Mask sector bits, and hunt
+ FF48 FE1E      	cpi	(MDSPT-1)*2	;..for minidisk last sector
+ FF4A C2304C    	jnz	CKDSK1-OFFSET	;..only while SVALID is 0
+                
+                ; wait for this sector to pass
+                
+ FF4D DB09      CKDSK2:	in	DSECTR		;Read the sector position
+ FF4F 0F        	rrc			;wait for invalid sector
+ FF50 D2394C    	jnc	CKDSK2-OFFSET
+                
+                ; wait for and get the next sector number
+                
+ FF53 DB09      CKDSK3:	in	DSECTR		;Read the sector position
+ FF55 0F        	rrc			;put SVALID in carry
+ FF56 DA3F4C    	jc	CKDSK3-OFFSET	;wait for sector to be valid
+                
+                ; The next sector after sector 0Fh will be 0 for a minidisk,
+                ; and 10h for an 8" disk. Adding MDSPT (10h) to that value
+                ; will compute c=10h (for minidisks) or c=20h (for 8" disks).
+                
+ FF59 E61F      	ani	SECMSK/2	;Mask sector bits
+ FF5B C610      	adi	MDSPT		;compute SPT
+ FF5D 4F        	mov	c,a		;..and save SPT in c
+                
+                ;--------------------------------------------
+                ; Set up to load
+                ; On Entry:
+                ;   b = 0 (initial sector number)
+                ;   c = SPT (for either minidisk or 8" disk)
+                ;   l = 0 (part of DMA address)
+                ;--------------------------------------------
+ FF5E 65        	mov	h,l		;initial DMA address=0000
+                
+                ;------------------------------------------------------------
+                ; Initialize the ACIA (2SIO port 0/Turnkey/UIO). Do this
+                ; late in the initialization, so that e.g. the 'B' character
+                ; from UBMON won't get eaten by resetting the ACIA.
+                ;------------------------------------------------------------
+ FF5F 3E03      	mvi	a,ACRST		;reset first
+ FF61 D310      	out	ACCTRL
+                
+ FF63 3E11      	mvi	a,ACINIT	;then initialize
+ FF65 D310      	out	ACCTRL
+                
+                ;--------------------------------------------------------
+                ; Read current sector over and over, until either the
+                ; checksum is right, or there have been too many retries
+                ;   b = current sector number
+                ;   c = sectors/track for this kind of disk
+                ;  hl = current DMA address
+                ;--------------------------------------------------------
+ FF67 3E10      NXTSEC:	mvi	a,RETRYS	;(7)Initialize sector retries
+                
+                ;------------------------------------------------------
+                ; Begin Sector Read
+                ;   a = Remaining retries for this sector
+                ;   b = Current sector number
+                ;   c = Sectors/track for this kind of disk
+                ;  hl = current DMA address
+                ;------------------------------------------------------
+ FF69 317B4D    RDSECT:	lxi	sp,STACK	;(10)(re)initialize the stack
+ FF6C F5        	push	psw		;(11)Remaining retry count
+                
+                ;-----------------------------------------------------------
+                ; Sector Read: Step 1. Hunt for sector specified in b. Data
+                ;              will become avaiable 250 uS after -SVALID
+                ;              goes low. -SVALID is low for 30 uS.
+                ;-----------------------------------------------------------
+ FF6D DB09      FNDSEC:	in	DSECTR		;(10)Read the sector position
+                
+ FF6F E63F      	ani	SECMSK+SVALID	;(7)yes: Mask sector bits
+                				;..along with -SVALID bit
+ FF71 0F        	rrc			;(4)sector bits to bits <4:0>
+ FF72 B8        	cmp	b		;(4)Found the desired sector
+                				;..with -SVALID low?
+ FF73 C2594C    	jnz	FNDSEC-OFFSET	;(10)no: wait for it
+                
+                ;------------------------------------------------------------
+                ; Test for DMA address that would overwrite this RAM code
+                ; or the next page (which contains the sector buffer  stack)
+                ; Do this here, while we have some time.
+                ;------------------------------------------------------------
+ FF76 117B4D    	lxi	d,SECBUF	;(10)Sector buffer address
+                
+ FF79 7C        	mov	a,h		;(5)high byte of DMA address
+ FF7A AA        	xra	d		;(4)high byte of RAM code addr
+ FF7B E6FE      	ani	0FEh		;(7)ignore lsb
+ FF7D 3E4F      	mvi	a,OERMSG	;(7)overlay error message
+ FF7F CAC54C    	jz	RPTERR-OFFSET	;(10)report overlay error
+                
+                ;----------------------------------------
+                ; Set up for the upcoming data move
+                ; Do this here, while we have some time.
+                ;----------------------------------------
+ FF82 E5        	push	h		;(11)Current DMA address
+ FF83 C5        	push	b		;(11)Current sector & SPT
+ FF84 018000    	lxi	b,BPS		;(10)b= init checksum,
+                				;c= byte count for MOVLUP
+                
+                ;-------------------------------------------------------------
+                ; Sector Read: Step 2. Read sector data into SECBUF at de.
+                ;              SECBUF is positioned in memory such that e
+                ;              overflows at the end of the buffer. Read data
+                ;              becomes available 250 uS after -SVALID becomes
+                ;              true (0).This loop must be << 32 uS per pass. 
+                ;-------------------------------------------------------------
+ FF87 DB08      DATLUP:	in	DSTAT		;(10)Read the drive status
+ FF89 07        	rlc			;(4)New Read Data Available?
+ FF8A DA734C    	jc	DATLUP-OFFSET	;(10)no: wait for data
+                
+ FF8D DB0A      	in	DDATA		;(10)Read data byte
+ FF8F 12        	stax	d		;(7)Store it in sector buffer
+ FF90 1C        	inr	e		;(5)Move to next buffer address
+                				;..and test for end
+ FF91 C2734C    	jnz	DATLUP-OFFSET	;(10)Loop if more data
+                
+                ;--------------------------------------------------------
+                ; Sector Read: Step 3. Move sector data from SECBUF into
+                ;              memory at hl. Compute checksum as we go.
+                ;
+                ; 8327 cycles for this section
+                ;--------------------------------------------------------
+ FF94 1E7E      	mvi	e,SDATA and 0FFh ;(7)de= address of sector data
+                				 ;..within the sector buffer
+                
+ FF96 1A        MOVLUP:	ldax	d		;(7)Get sector buffer byte
+ FF97 77        	mov	m,a		;(7)Store it at the destination
+ FF98 BE                cmp	m		;(7)Did it store correctly?
+ FF99 C2C34C    	jnz	MEMERR-OFFSET	;(10)no: abort w/ memory error
+                
+ FF9C 80        	add	b		;(4)update checksum
+ FF9D 47        	mov	b,a		;(5)Save the updated checksum
+                
+ FF9E 13        	inx	d		;(5)Bump sector buffer pointer
+ FF9F 23        	inx	h		;(5)Bump DMA pointer
+ FFA0 0D        	dcr	c		;(5)More data bytes to copy?
+ FFA1 C2824C    	jnz	MOVLUP-OFFSET	;(10)yes: loop
+                
+                ;--------------------------------------------------------------
+                ; Sector Read: Step 4. Check Marker byte and compare computed
+                ;              checksum against sector's checksum. Retry/abort
+                ;              if wrong Marker byte or checksum mismatch.
+                ;
+                ; a=computed checksum
+                ; 98 cycles for for this section
+                ;--------------------------------------------------------------
+ FFA4 EB        	xchg			;(4)hl=1st trailer byte address
+                				;de=DMA address
+ FFA5 4E        	mov	c,m		;(7)get marker, should be FFh
+ FFA6 0C        	inr	c		;(5)c should be 0 now
+                
+ FFA7 23        	inx	h		;(5)(hl)=checksum byte
+ FFA8 AE        	xra	m		;(7)compare to computed cksum
+ FFA9 B1        	ora	c		;(4)..and test marker=ff
+                
+ FFAA C1        	pop	b		;(10)Current sector & SPT
+ FFAB C2B64C    	jnz	BADSEC-OFFSET	;(10)NZ: checksum error
+                
+                ; Compare next DMA address to the file byte count that came
+                ; from the sector header. Done of DMA address is greater.
+                
+ FFAE 2A7C4D    	lhld	SFSIZE		;(16)hl gets file size
+ FFB1 EB        	xchg			;(4)put DMA address back in hl
+                				;..and file size into de
+                
+ FFB2 7D        	mov	a,l		;(4)16-bit subtraction
+ FFB3 93        	sub	e		;(4)
+ FFB4 7C        	mov	a,h		;(4)..throw away the result
+ FFB5 9A        	sbb	d		;(4)..but keep carry (borrow)
+                
+ FFB6 D2C74C    	jnc	LDDONE-OFFSET	;(10)done loading if hl >= de
+                				;carry will be clear at LDDONE
+                
+                ;------------------------------------------------------------
+                ; Next Sector: The sectors are interleaved by two. Read all
+                ;              the even sectors first, then the odd sectors.
+                ;              Note that NXTSEC will repair the stack.
+                ;
+                ; 44 cycles for the next even or next odd sector
+                ;------------------------------------------------------------
+ FFB9 11534C    	lxi	d,NXTSEC-OFFSET	;(10)for compact jumps
+ FFBC D5        	push	d		;(10)
+                
+ FFBD 04        	inr	b		;(5)sector = sector + 2
+ FFBE 04        	inr	b		;(5)
+                
+ FFBF 78        	mov	a,b		;(5)even or odd sectors done?
+ FFC0 B9        	cmp	c		;(4)c=SPT
+ FFC1 D8        	rc			;(5/11)no: go read next sector
+                				;..at NXTSEC
+                
+                ; Total sector-to-sector = 28+8327+98+44=8497 cycles=4248.5 uS
+                ; one 8" sector time = 5208 uS, so with 2:1 interleave, we will
+                ; make the next sector, no problem.
+                
+ FFC2 0601      	mvi	b,01H		;1st odd sector number
+ FFC4 C8        	rz			;Z: must read odd sectors now
+                				;..at NXTSEC
+                
+                ;--------------------------------------------------------------
+                ; Next Track: Step in, and read again.
+                ;             Don't wait for the head to be ready (-MVHEAD),
+                ;             since we just read the entire previous track.
+                ;             Don't need to wait for this step-in to complete
+                ;             either, because we will definitely blow a
+                ;             revolution going from the track's last sector to
+                ;             sector 0. (One revolution takes 167 mS, and one
+                ;             step takes a a maximum of 40 uS.)
+                ;             Note that NXTRAC will repair the stack.
+                ;--------------------------------------------------------------
+ FFC5 78        	mov	a,b		;STEPIN happens to be 01h
+ FFC6 D309      	out	DCTRL
+                
+ FFC8 05        	dcr	b		;start with b=0 for sector 0
+ FFC9 C9        	ret			;go to NXTSEC
+                
+                ;***Error Routine**********************************************
+                ; Checksum error: attempt retry if not too many retries
+                ; already. Otherwise, abort, reporting the error 
+                ; On Entry:
+                ;   Top of stack = adress for first byte of the failing sector
+                ;   Next on stack = retry count
+                ;**************************************************************
+ FFCA 3E04      BADSEC:	mvi	a,HDLOAD	;Restart Minidisk 6.4 uS timer
+ FFCC D309      	out	DCTRL
+                
+ FFCE E1        	pop	h		;Restore DMA address
+ FFCF F1        	pop	psw		;Get retry count
+ FFD0 3D        	dcr	a		;Any more retries left?
+ FFD1 C2554C    	jnz	RDSECT-OFFSET	;yes: try reading it again
+                
+                ;------------------------------------------------------
+                ; Irrecoverable error in one sector: too many retries.
+                ; These errors may be either incorrect marker bytes,
+                ; wrong checksums, or a combination of both.
+                ; On Entry:
+                ;   hl=RAM adress for first byte of the failing sector
+                ;------------------------------------------------------
+ FFD4 3E43      	mvi	a,CERMSG	;Checksum error message
+ FFD6 11        	db	11H		;'lxi d' opcode to skip
+                				;..MEMERR and go to RPTERR
+                
+                ;***Error Routine**********************
+                ; Memory error: memory readback failed
+                ; On Entry:
+                ;   hl = offending RAM address
+                ;**************************************
+ FFD7 3E4D      MEMERR:	mvi	a,MERMSG	;Memory Error message
+                
+                ; Fall into RPTERR
+                
+                ;***CDBL Termination*******************************************
+                ; Entry at RPTERR:
+                ;   Report an error: turn the disk controller off, turn the
+                ;   INTE light on, record the error in RAM at 0000h-0002h, and
+                ;   then loop forever writing the error code (in register a)
+                ;   to all known Terminal ports.
+                ;   On Entry:
+                ;      a = error code
+                ;     hl = offending RAM address
+                ;
+                ; Entry at LDDONE:
+                ;   Normal exit: Disable the disk controller and go execute
+                ;   the loaded code at DMAADR.
+                ;   On Entry:
+                ;     Carry bit is cleared
+                ;**************************************************************
+ FFD9 47        RPTERR:	mov	b,a		;error code
+ FFDA 37        	stc			;remember we had an error
+                
+ FFDB 3E80      LDDONE:	mvi	a,DDISBL	;Disable the disk controller
+ FFDD D308      	out	DENABL
+                
+ FFDF D20000    	jnc	DMAADR		;normal exit: go execute the
+                				;..loaded program
+                
+ FFE2 FB        	ei			;Signal error on the INTE LED
+                
+ FFE3 220100    	shld	1		;Store the bad address
+ FFE6 78        	mov	a,b		;recover the error code
+ FFE7 320000    	sta	0		;Store the error code
+                
+ FFEA D301      ERHANG:	out	SIODAT		;SIO
+ FFEC D311      	out	ACDATA		;2SIO port 0/Turnkey/UIO
+ FFEE D305      	out	PIODAT		;PIO
+ FFF0 D323      	out	P4DB0		;4PIO
+ FFF2 C3D64C    	jmp	ERHANG-OFFSET	;Keep printing error code
+                
+ 00E1 =         IMGSIZ	equ	$-RAMIMG	;# of bytes to move into RAM
+                
+ FFF5                       END
