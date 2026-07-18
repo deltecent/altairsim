@@ -68,6 +68,7 @@ constexpr uint8_t STBE = 0x80;  // serial transmitter empty -- active high
 struct BootRig {
     Machine     m;
     NullDisplay disp;
+    SolBoard*   sol = nullptr;
 
     BootRig() {
         std::string err;
@@ -82,7 +83,7 @@ struct BootRig {
 
         m.add("vdm1", "vdm0", err);
         VdmBoard::setDisplay(&disp);
-        m.add("sol", "sol0", err);
+        sol = dynamic_cast<SolBoard*>(m.add("sol", "sol0", err));
         auto* fp = dynamic_cast<FrontPanelBoard*>(m.add("fp", "fp0", err));
         setProperty(*fp, "sense", "0", err);
         m.add("8080", "cpu0", err);
@@ -113,6 +114,23 @@ struct BootRig {
             if ((i & 0x3FFF) == 0 && screenHas('>')) return true;
         }
         return screenHas('>');
+    }
+
+    // Bind the keyboard to a scripted stream = "typing" at SOLOS with no terminal.
+    ScriptedStream* connectKeyboard() {
+        std::string err;
+        sol->connect("keyboard", "scripted", err);
+        return dynamic_cast<ScriptedStream*>(sol->unitStream("keyboard"));
+    }
+
+    // Run the CPU, pumping the host side (so keystrokes cross into the guest) the way
+    // the real run loop does -- once per slice, never inside a bus cycle.
+    void steps(uint64_t n) {
+        for (uint64_t i = 0; i < n; ++i) {
+            StepResult s = m.master()->step(m.bus);
+            m.clock.advance(s.tStates);
+            if ((i & 0x1F) == 0) m.pump();
+        }
     }
 };
 
@@ -241,5 +259,38 @@ void test_sol() {
             b.m.clock.advance(s.tStates);
         }
         CHECK(b.screenHas('>'), "the prompt is still there -- SOLOS is resting, not looping");
+    }
+
+    SECTION("Sol-20 -- an .ENT program loads through SOLOS's EN command, then EX runs it");
+    {
+        // This is the deramp `.ENT` load path (as used for e.g. trk80.ent) proven with
+        // OUR OWN six-byte program instead of copyrighted game data: a `.ENT` file is a
+        // script of SOLOS console input -- `ENTER addr` selects the load address, each
+        // `AAAA:` line seats the address and lays hex bytes, and `/` ends the entry.
+        // There is no tape involved. When EX'd, the program writes a sentinel glyph into
+        // the VDM and RETs to SOLOS (whose stack is primed for exactly that return).
+        //
+        //   0100: MVI A,'Z'  ;  STA 0CE00H (VDM screen RAM)  ;  RET
+        const uint8_t prog[] = {0x3E, 0x5A, 0x32, 0x00, 0xCE, 0xC9};
+
+        BootRig b;
+        CHECK(b.runToPrompt(4'000'000), "SOLOS is at its prompt, ready for a command");
+        CHECK(!b.screenHas('Z'), "the sentinel glyph is not on the screen yet");
+
+        ScriptedStream* kbd = b.connectKeyboard();
+
+        // Type the .ENT text exactly as the file's bytes would arrive (CR line ends).
+        kbd->feed("ENTER 0100\r0100: 3E 5A 32 00 CE C9/\r");
+        b.steps(2'000'000);  // let SOLOS's EN parse the line and poke memory
+
+        bool loaded = true;
+        for (size_t i = 0; i < sizeof(prog); ++i)
+            loaded &= (b.m.bus.memRead((uint16_t)(0x0100 + i)) == prog[i]);
+        CHECK(loaded, "SOLOS EN laid the .ENT bytes down at 0100 (console load, not tape)");
+
+        // Now run it -- EX begins execution at the address the .ENT loaded to.
+        kbd->feed("EX 0100\r");
+        b.steps(2'000'000);
+        CHECK(b.screenHas('Z'), "EX 0100 executed the loaded program (it painted the VDM)");
     }
 }
