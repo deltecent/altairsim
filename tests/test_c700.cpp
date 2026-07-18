@@ -72,7 +72,12 @@ void test_c700() {
         c.addr = 0x02;
         CHECK(g.lpt->decodes(c), "decodes the control/status channel (even)");
         c.addr = 0x03;
-        CHECK(g.lpt->decodes(c), "decodes the data channel (odd)");
+        CHECK(!g.lpt->decodes(c),
+              "does NOT decode an IN at the data channel -- a printer sends nothing back, "
+              "so nothing drives the bus and it floats (issue #26)");
+        c.type = Cycle::IoWrite;
+        CHECK(g.lpt->decodes(c), "but it certainly decodes the OUT -- that is the whole card");
+        c.type = Cycle::IoRead;
         c.addr = 0x04;
         CHECK(!g.lpt->decodes(c), "does NOT decode the port after them");
         c.type = Cycle::MemRead;
@@ -100,7 +105,15 @@ void test_c700() {
         CHECK((s & kBusy) == 0, "and bit 1 CLEAR means not busy");
 
         // The DATA channel is write-only: reading it drives nothing, so the bus floats.
+        // The VALUE was always FF; what issue #26 changed is WHO SAYS SO. The card used
+        // to claim the cycle and return an FF of its own, which is the one thing a board
+        // may not do (test_boundary.cpp) -- so check the provenance, not just the byte.
         CHECK(g.readData() == 0xFF, "reading the write-only data channel yields FF");
+        BusCycle rd;
+        rd.type = Cycle::IoRead;
+        rd.addr = 0x03;
+        CHECK(!g.lpt->decodes(rd),
+              "...and that FF is the BUS's: the card does not claim the read at all");
     }
 
     SECTION("88-C700 -- a character written to the data port lands on the line");

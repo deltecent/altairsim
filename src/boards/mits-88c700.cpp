@@ -61,17 +61,40 @@ uint8_t C700Board::statusByte() const {
 // ---------------------------------------------------------------------------
 // The bus interface. Two ports: Control/Status at BASE (even), Data at BASE+1 (odd).
 // ---------------------------------------------------------------------------
+// A0 PICKS THE CHANNEL, AND THE TWO CHANNELS FACE DIFFERENT WAYS. The reference is
+// exact about it (§2): Control/Status is the even port and takes BOTH an IN (status)
+// and an OUT (control); Data Transfer is the odd port and takes an OUT ONLY. There is
+// no `IN` at the odd address anywhere in the manual, because there is nothing on this
+// card to read there -- a printer sends nothing back up the ribbon cable.
+//
+// So the DIRECTION is part of the decode, not an afterthought inside read(). A real
+// card's status buffer is enabled by the port compare AND sINP AND A0=0; on `IN <odd>`
+// nothing turns on and the card leaves the data bus alone. Saying that here -- rather
+// than claiming the cycle and returning 0xFF -- is what makes us do the same.
+//
+// AND THAT IS THE BUG THIS FIXES (issue #26). We used to decode the read and hand back
+// an 0xFF of our own making, which is the one thing a board may never do (DESIGN.md
+// 4.6.1): 0xFF is the BUS's word and it means NOBODY DROVE THIS CYCLE. The value an
+// operator saw was right and its provenance was a lie, and the lie had a cost exactly
+// where it hurt -- the monitor annotates an unclaimed IN, so `IN 04` explained itself
+// ("nobody answered -- the bus floated it") and `IN 03`, the port actually under
+// investigation, printed a bare FF. A board impersonating the bus silences the bus.
+//
+// Found via CP/M SURVEY, which probes every port and reads FF as "nothing there", so it
+// does not list 03. That is CORRECT, and it is what real hardware does -- the point of
+// this change is that it is now correct for the real reason.
 bool C700Board::decodes(const BusCycle& c) const {
     if (!enabled_) return false;
-    if (c.type != Cycle::IoRead && c.type != Cycle::IoWrite) return false;
     uint8_t p = c.port();
-    return p == base_ || p == (uint8_t)(base_ + 1);
+    if (c.type == Cycle::IoWrite) return p == base_ || p == (uint8_t)(base_ + 1);
+    if (c.type == Cycle::IoRead) return p == base_;  // status only -- see above
+    return false;
 }
 
 uint8_t C700Board::read(const BusCycle& c) {
-    // The DATA channel is write-only on this card; reading it yields nothing (an
-    // undriven bus floats high). The even channel is the status word.
-    if ((c.port() - base_) & 1) return 0xFF;
+    // Only the even channel is ever read: decodes() does not claim the other one, so
+    // the bus floats it and we are never asked. No 0xFF is manufactured here.
+    (void)c;
     return statusByte();
 }
 
