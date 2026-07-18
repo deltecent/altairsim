@@ -95,6 +95,10 @@ does nothing; the window stays open and responsive for the life of the process.
   (`src/cli/commands.cpp:458`). It waits on a monitor that runs *alongside* the
   machine, which needs a second thread or a multiplexed input loop. ATTN is
   today's escape.
+- **`EDIT <addr>`** — reserved, answers "not implemented yet"
+  (`src/cli/commands.cpp:165`). Interactive deposit where Enter advances;
+  waiting on the line editor. It resolves today so its abbreviation cannot
+  change under your fingers once it lands.
 - **`SNAPSHOT` / `RESTORE` / `RECORD` / `REPLAY`** — all four resolve at the
   prompt and answer "not implemented yet" (`docs/cli-commands.md:358`). They
   need `Board::serialize()`/`deserialize()`, which are **designed and unbuilt**:
