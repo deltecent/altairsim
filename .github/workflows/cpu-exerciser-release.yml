@@ -1,0 +1,66 @@
+name: CPU exercisers (release)
+
+# Drive the instruction exercisers through the binary EACH PLATFORM ACTUALLY SHIPS, once per
+# release. cpu-exerciser.yml runs them on Linux whenever CPU/ISA code changes, and that is the
+# right day-to-day gate: an opcode bug is a logic bug and shows up on any host. This one exists
+# for the failure mode that is NOT architecture-independent.
+#
+# THE GAP THIS CLOSES IS MSVC. The 8080 and Z80 cores are shifts, masks, signed/unsigned
+# conversions and half-carry arithmetic -- the exact places where implementation-defined
+# behavior lives. ci.yml compiles that code with MSVC and unit-tests it, but nothing has ever
+# driven billions of instructions through an MSVC build: cpu-8080exm is ~2.9B instructions and
+# cpu-zexdoc/cpu-zexall ~5.8B each, and their whole value is covering flag combinations no
+# hand-written test enumerates. Shipping a Windows binary whose CPU has only ever been
+# exercised as compiled by GCC is a bet, and a release is the wrong place to still be betting.
+#
+# WHAT THIS STILL DOES NOT COVER, stated plainly rather than implied by a green tick: the macOS
+# leg builds the universal binary that ships but runs on an arm64 runner, so only the arm64
+# slice is exercised. The x86_64 slice ships exercised by nobody. Closing that needs an Intel
+# Mac runner, which is scarce and deprecating (see ci.yml) -- the alternative would be to stop
+# shipping a universal binary, which is worse. It is a known hole, not an oversight.
+#
+# No tags exist yet; v* is the convention this expects. workflow_dispatch makes it runnable on
+# demand today, which is also how you use it before cutting the first one.
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  exerciser:
+    name: CPU exercisers -- ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # fail-fast off: if one platform's CPU is wrong, the others' answers are exactly what you
+    # need to tell a portability bug from a logic bug, so do not cancel them.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,    os: ubuntu-latest }
+          - { name: macos-universal, os: macos-14 }
+          - { name: windows-x86_64,  os: windows-latest }
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Match ci.yml's configuration exactly -- the point is to exercise the binary that
+      # ships, so the mac leg builds the same universal (x86_64 + arm64) artifact. An array
+      # keeps the "x86_64;arm64" value intact past the shell.
+      - name: Configure
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(-B build -DCMAKE_BUILD_TYPE=Release)
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            args+=(-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64")
+          fi
+          cmake "${args[@]}"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # -C Release is required by the Windows multi-config generator and harmless elsewhere.
+      # The "slow" label is cpu-8080exm, cpu-zexdoc, cpu-zexall. acceptance-hostbridge-build
+      # is also "slow" but disk-gated, so it does not register without the .DSK.
+      - name: Run the exercisers
+        run: ctest --test-dir build -C Release -L slow --output-on-failure
