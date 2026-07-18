@@ -99,6 +99,21 @@ and pass the suite. The Windows platform layer, once merely written, is field-pr
 Linux, macOS, and Windows are each a required check — so a regression on any of them shows up
 before it merges. The tests still run locally the same way, when someone types `ctest`.
 
+Each of those jobs uploads the binary it built, so a green run leaves three executables on
+GitHub — including the two you cannot produce on your own machine. To fetch them:
+
+```sh
+tools/fetch-ci-binaries.sh          # newest CI run on the current branch
+tools/fetch-ci-binaries.sh 42       # ...on PR 42
+```
+
+It **waits** for the run if it is still going and refuses to download from a red one, which
+makes it a reasonable last step before merging: three files means three platforms passed. They
+land in `./artifacts` (git-ignored, replaced on every fetch) with the executable bit restored,
+since the artifact zip does not carry POSIX modes. Nothing in the build or the tests reads from
+there — these are CI's binaries, kept for running or handing to someone, not a build output of
+this tree.
+
 ## The tests
 
 ```sh
