@@ -366,6 +366,26 @@ manually). AC-motor recorders can't use it.
   demodulated serial bytes.
 - Leader byte before the checksum loader: **256 octal** (v3.2) or **175 octal**
   (v3.1/4K), after ~15 s of steady tone.
+
+## The surviving cassettes are NOT all 2400/1850 (MEASURED)
+
+**Provenance: measured, not from a manual** — from deramp.com's published Altair cassette audio.
+The obvious inference from this document, that an Altair cassette means the modem board's
+2400/1850 FSK, is **false for much of the surviving software**, and a loader that assumes it will
+refuse perfectly good tapes while insisting they are corrupt.
+
+| Published tape | Measured tones | Scheme |
+|---|---|---|
+| `8K BASIC v4 2SIO Cassette`, `PS2 v3 2SIO Cassette` | **2397 / 1852 Hz** | this card's FSK |
+| `4K BASIC 3.2 (mem dump, KCS)`, `4K BASIC 4.0 KCACR Standard` | **2377 / 1201 Hz** | Kansas City |
+
+All four are **300 baud**. The 2400/1852 measurement is a direct confirmation of §7's arithmetic
+(2 MHz ÷ 104 ÷ 8 = 2404 Hz, ÷ 135 ÷ 8 = 1852 Hz) off real media. The Kansas City tapes reflect the
+later industry standard — hence the "KCACR" naming — which the ACR was modified to meet.
+
+Consequence for the simulator: the card offers a **list** of candidate formats and the mount
+trial-decodes to choose (`src/host/tapecodec.h`). Hard-wiring one modulation per card would lock
+out half the corpus. See `src/host/tapemodem.h`.
 - Successful-load address-light signatures: 007647 (4K), 017647 (8K), 037647
   (Extended 3.2).
 - Optional motor control on **control-channel bit D0** (`OUT 6,1` on / `OUT 6,0`

@@ -87,7 +87,37 @@ JZ WRWAT`.
 ## `FBh` — tape data · `FCh` — keyboard data · `FDh` — parallel data
 
 - **Tape** (`TDATA`, `FBh`): the CUTS cassette UART's data register. Kansas-City-standard FSK
-  audio at 300 or 1200 baud; `IN TDATA` also clears the UART's error flags.
+  audio at 300 or 1200 baud; `IN TDATA` also clears the UART's error flags. For the audio
+  itself, see "CUTS audio format" below.
+
+## CUTS audio format (MEASURED, not from a manual)
+
+**Provenance: this section is not sourced from a Processor Technology document.** None of the
+manuals we hold state the CUTS cycle counts — this page previously said only "Kansas-City-standard
+FSK audio at 300 or 1200 baud". The numbers below were **measured** from a genuine Sol-20 cassette
+recording, deramp.com's `TRK80.WAV`, and are recorded here because the repo's rule is that a
+hardware number has a source. Treat a period manual as authoritative over this table if one turns
+up.
+
+| | 300 baud (`SE TA 1`) | 1200 baud (`SE TA 0`, the default) |
+|---|---|---|
+| Logic 1 (mark) | 8 cycles of 2400 Hz | **2 cycles of 2400 Hz** |
+| Logic 0 (space) | 4 cycles of 1200 Hz | **1 cycle of 1200 Hz** |
+| Bit cell | 3.33 ms | **833 µs** |
+
+Both symbols occupy the same time, which is the whole point of the 2:1 tone choice — a receiver
+counts cycles instead of trusting a clock. The idle line is mark, so an unrecorded stretch is a
+steady 2400 Hz tone.
+
+**Framing is 8N2** — one start bit, eight data bits LSB first, **two** stop bits. Measured as 11.0
+bit times between consecutive start bits over 7,325 of ~7,900 frames.
+
+**How the measurement was checked.** `TRK80.WAV` (44.1 kHz mono) demodulates under the above
+parameters to 7,932 bytes with 27 framing errors, and the result carries a well-formed SOLOS file
+header at offset 52: name `TRK80`, then a `SIZE` field of `0x1EA0` (7,840) that matches the
+decoded payload. A wrong tone pair or a wrong bit rate does not produce a valid header and a
+self-consistent length — that agreement is what makes this a measurement rather than a guess.
+`altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
 - **Keyboard** (`KDATA`, `FCh`): read-only parallel ASCII from the keyboard. Ready is `FAh`
   bit 0 (`KDR`, active low); reading `KDATA` clears the strobe.
 - **Parallel** (`PDATA`, `FDh`): the general parallel port, used for a printer. Input ready
