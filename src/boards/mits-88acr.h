@@ -44,6 +44,7 @@
 
 #include "boards/mits-88sio.h"
 #include "host/tape.h"
+#include "host/tapecodec.h"
 
 #include <memory>
 #include <string>
@@ -87,6 +88,11 @@ public:
     // For the tests, so they can watch the head move without a filesystem.
     const TapeImage* tape() const { return tape_.get(); }
 
+    // What a mount had to say for itself. Merged with the UART's, because the SIO's
+    // drainLog() is the UART's alone and a mount that demodulated a WAV has its own
+    // news (host/tapecodec.h -- report, do not hide).
+    std::vector<std::string> drainLog() override;
+
 private:
     // Hand the UART a fresh line onto the tape in whatever mode the recorder is in
     // now. Called on MOUNT and whenever a button is pressed.
@@ -97,6 +103,18 @@ private:
     // rewind its own line is not a UART.
     std::unique_ptr<TapeImage> tape_;
     std::string                path_;
+
+    // WHAT THIS CARD'S MODEM CAN PHYSICALLY HEAR -- one modulation, because the card
+    // has one modem: continuous FSK at 2400/1850, 300 baud. A Kansas City tape is
+    // REFUSED rather than decoded, because the real PLL sits at 2125 Hz and takes
+    // about +/-100 Hz, and a 1200 Hz space tone is some 925 Hz outside it. See
+    // host/tapecodec.h for why decoding it anyway would be inventing hardware.
+    static const std::vector<TapeFormat>& modem();
+
+    std::string format_ = "auto";  // the `format` unit property
+    std::string detected_;         // ...and what the mounted tape turned out to be
+
+    std::vector<std::string> log_;
 
     // PLAY, until somebody says otherwise. It is what you do with a cassette 99 times
     // out of 100, and it is the safe default in the one way that matters: a tape that

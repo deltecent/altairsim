@@ -203,7 +203,9 @@ VdmBoard* SolBoard::vdm() const {
 }
 
 std::vector<std::string> SolBoard::drainLog() {
-    std::vector<std::string> v = serial_.drainLog();
+    std::vector<std::string> v = std::move(log_);
+    log_.clear();
+    for (std::string& s : serial_.drainLog()) v.push_back(std::move(s));
     for (std::string& s : tapeUart_.drainLog()) v.push_back(std::move(s));
     return v;
 }
@@ -268,15 +270,35 @@ bool SolBoard::mount(const std::string& unit, const std::string& path, bool ro,
 
     // Look where the machine file is; remember what the machine file said -- the same
     // bargain the disks and the 88-ACR's tape make (core/board.h).
-    auto media = openMedia(resolvePath(path), ro, err);
+    Deck* d = deck(n);
+
+    // openTapeMedia() and NOT openMedia(): a WAV is demodulated here, once, before the
+    // guest runs. A byte tape comes back unwrapped, so .CUTS files are untouched.
+    std::string detected;
+    std::vector<std::string> said;
+    auto media =
+        openTapeMedia(resolvePath(path), ro, modem(), d->format, detected, said, err);
     if (!media) { err += pathNote(path); return false; }
 
-    Deck* d = deck(n);
+    if (!ro && media->readOnlyForced())
+        said.push_back("sol: " + path + " is audio -- mounted read-only, since recording "
+                                        "back out to a WAV is not implemented yet");
+    for (std::string& s : said) log_.push_back(std::move(s));
+
     tapeUart_.disconnect();  // ...before the old tape goes out from under the stream
     d->tape = std::make_unique<TapeImage>(std::move(media));
     d->path = path;
+    d->detected = detected;
     retape();
     return true;
+}
+
+// The two speeds the CUTS UART really runs at. The guest picks between them at
+// OUT 0FAh D5 -- so both are this card's hardware, and choosing by confidence at MOUNT
+// is reading a switch's position, not guessing at a standard.
+const std::vector<TapeFormat>& SolBoard::modem() {
+    static const std::vector<TapeFormat> v = {tapeformats::cuts1200(), tapeformats::kcs300()};
+    return v;
 }
 
 bool SolBoard::unmount(const std::string& unit, std::string& err) {
@@ -295,6 +317,7 @@ bool SolBoard::unmount(const std::string& unit, std::string& err) {
     tapeUart_.disconnect();  // the line dies BEFORE the tape does
     d->tape.reset();
     d->path.clear();
+    d->detected.clear();  // nothing in the deck, so it is not in any format
     retape();
     return true;
 }
@@ -355,6 +378,29 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
             return true;
         };
         p.push_back(std::move(x));
+
+        // How to READ the file in THIS deck. See the 88-ACR's identical property: the
+        // choice selects a reading, and never widens what the modem can hear.
+        Property f;
+        f.name    = "format";
+        f.help    = "How to read the mounted file: auto | raw | cuts1200 | kcs300";
+        f.kind    = Kind::Enum;
+        f.choices = tapeFormatChoices(modem());
+        f.get     = [d] { return Value::ofStr(d->format); };
+        f.set     = [d](const Value& v, std::string&) {
+            d->format = v.s();
+            return true;  // takes effect at the NEXT mount -- a tape decodes once
+        };
+        p.push_back(std::move(f));
+
+        // READ-ONLY, so there is no setter at all: it is a measurement, not a switch.
+        Property det;
+        det.name = "detected";
+        det.help = "What the cassette in this deck turned out to be (empty if none)";
+        det.kind = Kind::Str;
+        det.get  = [d] { return Value::ofStr(d->detected); };
+        p.push_back(std::move(det));
+
         return p;
     }
 

@@ -109,10 +109,16 @@ deck with its motor off is not a slow line, it is *no* line: nothing comes off i
 
 ## Limitations and deliberate departures
 
-- **A mounted tape holds the bytes the CUTS UART sent or received, not audio.** That is
-  the same bargain the 88-ACR's `.TAP` makes. Kansas City *audio* — a real `.WAV` off a
-  cassette — is a separate seam that decodes to exactly these bytes before the card sees
-  them; this board does not know a tone exists.
+- **A `.WAV` mounts, and this board still does not know a tone exists.** Cassette audio is
+  demodulated once, at MOUNT, by a seam *below* the card (`src/host/tapecodec.h`), so what
+  reaches the CUTS UART is bytes either way. A byte tape is read as bytes; the magic —
+  never the extension — decides which is which. Recording back out to audio is not
+  implemented yet, so a `.WAV` mounts **read-only** whatever you typed, and says so.
+- **Two speeds, honestly, and nothing else.** `auto` picks between `cuts1200` and `kcs300`
+  by which one the tape actually carries, because both really are this hardware — the
+  guest chooses between them at `OUT 0FAh` D5. An 88-ACR tape (2400/1850 Hz FSK) is
+  *refused*, with its measured tones named: this demodulator is built around a 1200 Hz
+  space tone, and a real Sol fed one of those tapes would read nothing at all.
 - **Both motors on is not modeled; deck 1 wins.** On the real machine both transports
   move and both preamps drive one audio bus, which the manual does not describe and no
   program does on purpose. Picking one beats inventing what a shorted line sounds like.

@@ -75,6 +75,7 @@ int main() {
     test_c700();
     test_vdm1();
     test_sol();
+    test_tapemount();
     test_frontpanel();
     test_virtc();
     test_hostdir();

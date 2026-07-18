@@ -130,6 +130,33 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
         return true;
     };
     p.push_back(std::move(x));
+
+    // WHAT TO MAKE OF THE FILE, not what the card can do. `auto` sniffs RIFF magic and
+    // demodulates a WAV; `raw` reads the file's own bytes even if it IS a WAV, which is
+    // how you look at a tape that decodes badly. Naming the modulation forces it -- but
+    // only among the ones this card's modem can hear, because the property selects a
+    // READING and never widens the hardware.
+    Property f;
+    f.name    = "format";
+    f.help    = "How to read the mounted file: auto | raw | fsk300";
+    f.kind    = Kind::Enum;
+    f.choices = tapeFormatChoices(modem());
+    f.get     = [this] { return Value::ofStr(format_); };
+    f.set     = [this](const Value& v, std::string&) {
+        format_ = v.s();
+        return true;  // takes effect at the NEXT mount -- a tape is decoded once, at MOUNT
+    };
+    p.push_back(std::move(f));
+
+    // ...and what the tape in the recorder actually turned out to be. READ-ONLY, which
+    // means no setter at all (adding-a-board.md): it is a measurement, not a switch.
+    Property d;
+    d.name = "detected";
+    d.help = "What the mounted tape turned out to be (empty if nothing is mounted)";
+    d.kind = Kind::Str;
+    d.get  = [this] { return Value::ofStr(detected_); };
+    p.push_back(std::move(d));
+
     return p;
 }
 
@@ -196,14 +223,40 @@ bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, 
     // HardSectorFdc::mount() and core/board.h -- the tape is the same bargain as
     // the disk, and for the same reason: `tapes/MitsPS2/ps2int.toml` names the tape
     // lying next to it, and must go on naming it that way when it is saved back.
-    auto media = openMedia(resolvePath(path), ro, err);
+    // openTapeMedia() and NOT openMedia(): a WAV is demodulated here, once, on the
+    // operator's thread, and everything above this sees the bytes a .TAP would have
+    // given it. A byte tape comes back unwrapped, so nothing about .TAP changes.
+    std::string detected;
+    std::vector<std::string> said;
+    auto media = openTapeMedia(resolvePath(path), ro, modem(), format_, detected, said, err);
     if (!media) { err += pathNote(path); return false; }
+
+    // A WAV mounts read-only whatever the operator typed (Phase 4 lifts that), and a
+    // difference between what was asked for and what happened is never silent.
+    if (!ro && media->readOnlyForced())
+        said.push_back("acr: " + path + " is audio -- mounted read-only, since recording "
+                                        "back out to a WAV is not implemented yet");
+    for (std::string& s : said) log_.push_back(std::move(s));
 
     attachStream(std::make_unique<NullStream>());  // ...before the old tape goes
     tape_ = std::make_unique<TapeImage>(std::move(media));
     path_ = path;
+    detected_ = detected;
     reline();
     return true;
+}
+
+// One modem, one modulation. This is the list a tape is judged against.
+const std::vector<TapeFormat>& AcrBoard::modem() {
+    static const std::vector<TapeFormat> v = {tapeformats::fsk300_1850()};
+    return v;
+}
+
+std::vector<std::string> AcrBoard::drainLog() {
+    std::vector<std::string> out = std::move(log_);
+    log_.clear();
+    for (std::string& s : SioBoard::drainLog()) out.push_back(std::move(s));
+    return out;
 }
 
 bool AcrBoard::unmount(const std::string& unit, std::string& err) {
@@ -220,6 +273,7 @@ bool AcrBoard::unmount(const std::string& unit, std::string& err) {
     attachStream(std::make_unique<NullStream>());  // the line dies BEFORE the tape does
     tape_.reset();
     path_.clear();
+    detected_.clear();  // nothing is in the recorder, so it is not in any format
 
     refresh();
     return true;

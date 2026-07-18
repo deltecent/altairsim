@@ -87,6 +87,73 @@ once.
 altairsim> REW acr0:tape
 ```
 
+## Mounting a real recording — `.WAV`
+
+Most surviving Altair and Sol cassettes are not files of bytes. They are **audio**: somebody
+put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one.
+
+```
+altairsim> MOUNT acr0:tape TRK80.WAV
+TRK80.WAV: fsk300, 4439 bytes, 0 framing errors (100.0% clean)
+```
+
+Nothing else changes. The recording is demodulated **once, when you mount it** — never while
+the machine is running — and from that moment everything above it, including `SHOW`'s *"at N
+of M bytes"* and `REWIND`, means exactly what it meant for a `.TAP`. The guest cannot tell.
+
+**Read that first line.** A mount always says what it found, and the framing-error count is
+the number that matters: a tape that decoded at 60% is noise, not a program, and you want to
+know that now rather than after the loader has crashed. A decode below 90% is refused outright.
+
+**What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
+still read as bytes, and a recording renamed `.TAP` is still demodulated.
+
+**Recording back out to audio is not implemented yet**, so a `.WAV` mounts read-only whatever
+you typed. It tells you when it does that. Recording to a `.TAP` works as it always has.
+
+### A card will refuse audio it could not really have heard
+
+```
+altairsim> MOUNT acr0:tape KANSAS.WAV
+KANSAS.WAV: this card's modem cannot hear that tape -- it carries 2398 Hz / 1206 Hz,
+and this card reads fsk300
+```
+
+This is deliberate, and it is not the simulator being fussy.
+
+Not all published Altair cassette audio is in the 88-ACR's modulation. The ACR uses
+**2400/1850 Hz FSK**; plenty of archive tapes are **Kansas City**, at 2400/1200. The
+demodulator here measures the tones actually on the tape, so it *could* read the Kansas City
+ones perfectly well — but a real 88-ACR could not. Its demodulator is a PLL centred at
+2125 Hz with about ±100 Hz of range, and a 1200 Hz tone is nowhere near that. A real card fed
+that tape does not read it badly; it reads **nothing**.
+
+Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
+produced. So the card says what the tape is instead, and you go find a machine that reads it —
+which, for a Kansas City tape, is the Sol-20 below.
+
+### `format`, when you need to overrule the sniff
+
+Each tape unit has a `format` property. `auto` is the default and is almost always right.
+
+```
+altairsim> SET acr0:tape format=raw
+altairsim> SHOW acr0:tape
+```
+
+| Value | What it does |
+|---|---|
+| `auto` | Sniff for RIFF magic; demodulate a recording, read anything else as bytes |
+| `raw` | Read the file's own bytes **even if it is a WAV** — how you inspect a tape that decodes badly |
+| a modulation | Force one, e.g. `fsk300` on the ACR, `cuts1200` or `kcs300` on the Sol |
+
+It selects a *reading*; it never widens the hardware. Telling an 88-ACR to demodulate
+`cuts1200` is refused just as firmly as letting it sniff one — the card has the modem it has.
+A companion read-only `detected` property reports what the mounted tape turned out to be.
+
+`format` takes effect at the **next** `MOUNT`, because a tape is decoded once, when you put
+it in.
+
 ## The other machine with cassettes: the Sol-20
 
 The 88-ACR is not the only card here that turns bytes into noise. The **Sol-20** has a CUTS

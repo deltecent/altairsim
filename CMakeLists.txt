@@ -164,6 +164,10 @@ add_library(altair_core STATIC
   # container, an FSK signal is a modulation, a program image is neither.
   src/host/wav.cpp
   src/host/tapemodem.cpp
+  # ...and the seam that joins them to a mount. A decorator over MediaFile, so a WAV
+  # decodes ONCE at MOUNT and everything above it -- TapeImage, TapeStream, the UART --
+  # sees the bytes a .TAP would have given it (host/tapecodec.h).
+  src/host/tapecodec.cpp
   # The sandboxed host directory the Host Bridge reaches through. It is here, and not
   # on the board, because the board must never see a path, a symlink or a file handle
   # -- and because the escape tests that matter are tests of THIS, with no card in
@@ -331,6 +335,7 @@ add_executable(altair_tests
   tests/test_c700.cpp
   tests/test_vdm1.cpp
   tests/test_sol.cpp
+  tests/test_tapemount.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp
@@ -456,6 +461,19 @@ add_test(NAME acceptance-basic4k
                  -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/basic4k.cmake)
 set_tests_properties(acceptance-basic4k PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ...and THE SAME BASIC off cassette AUDIO. Same artifact, same bootstrap, same banner --
+# with the modulator, the RIFF container and the demodulator spliced into the middle. The
+# WAV is generated here at test time rather than committed: 6.4 MB of binary in git would
+# have proved LESS, because generating it puts the modulator under test too.
+add_test(NAME acceptance-basic4k-wav
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DTAPETOOL=$<TARGET_FILE:altair_tapetool>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/tape-acceptance
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/basic4k-wav.cmake)
+set_tests_properties(acceptance-basic4k-wav PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # ...and the same tape drive against the OTHER console card. 8K BASIC 3.2 wants an
 # 88-2SIO (a 6850, at 0x10) where 4K BASIC 3.1 wanted an 88-SIO (a COM2502, at 0), and

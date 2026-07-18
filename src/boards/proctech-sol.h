@@ -56,6 +56,7 @@
 #include "core/board.h"
 #include "host/stream.h"
 #include "host/tape.h"
+#include "host/tapecodec.h"
 
 #include <functional>
 #include <memory>
@@ -144,7 +145,19 @@ private:
         // written over. Same reasoning as the 88-ACR's, in host/tape.h.
         TapeStream::Mode mode = TapeStream::Mode::Play;
         bool             motor = false;  // OUT 0FAh D7 (deck 1) / D6 (deck 2)
+
+        // How to READ the file, and what it turned out to be. Per deck, because the two
+        // transports hold two different cassettes (host/tapecodec.h).
+        std::string format = "auto";
+        std::string detected;
     };
+
+    // WHAT THIS CARD'S CUTS MODEM CAN HEAR -- two formats, HONESTLY: the UART really
+    // does run at 300 or 1200 baud and the GUEST picks which at OUT 0FAh D5. That is a
+    // switch on the hardware, not the host guessing at a standard. An 88-ACR tape
+    // (2400/1850 FSK) is refused: 1850 Hz is nowhere near the 1200 Hz space this
+    // demodulator is built around, and a real Sol fed one would read nothing.
+    static const std::vector<TapeFormat>& modem();
 
     // Which deck, for a unit name. 1, 2, or 0 for "that is not a deck". Case-blind,
     // and `tape` means `tape1`.
@@ -196,6 +209,9 @@ private:
     uint64_t kbRx_   = 0;  // keystrokes handed to the guest -- the idle-traffic signal
 
     uint8_t  tapeCtl_ = 0;  // last OUT 0xFA -- motors (D7/D6) + baud select (D5)
+
+    // What a mount had to say for itself, until drainLog() carries it off.
+    std::vector<std::string> log_;
 };
 
 } // namespace altair
