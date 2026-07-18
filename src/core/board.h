@@ -523,7 +523,29 @@ public:
     // The machine's clock, set when the card goes into the backplane (DESIGN.md
     // 7.5). A card with nothing time-dependent on it never looks at this, and
     // most don't. A UART absolutely does: TDRE is a deadline, not a flag.
-    void attachClock(Clock* c) { clock_ = c; }
+    void attachClock(Clock* c) {
+        clock_ = c;
+        clockAttached();
+    }
+
+    // MOST CARDS READ THE CLOCK. THE CPU CARD WRITES TO IT -- the crystal is on that
+    // card, and `clock_hz`/`idle` are pushed INTO the Clock by the card that owns them
+    // (mits-88cpu.cpp). Which makes the direction of that one arrow load-bearing here:
+    // a card that only reads is happy to be handed a different Clock, and a card that
+    // WRITES has just been handed a clock that has never heard of it.
+    //
+    // That is not hypothetical -- it is issue #34. A machine file is assembled into a
+    // scratch Machine so a bad file cannot damage a running one (config/toml.cpp), the
+    // CPU card announced 2 MHz to the SCRATCH machine's Clock, and Machine::replaceWith
+    // then moved the card onto the real backplane and re-attached it to the real Clock,
+    // which was still free-running. `SHOW cpu0` read 2000000 off the card and the run
+    // loop went flat out, and both were telling the truth about different objects.
+    //
+    // So re-attaching REPUBLISHES, and it does it here rather than in replaceWith:
+    // the invariant is "this card's clock knows what this card told it", and the place
+    // to keep an invariant is the moment it could be broken. Default is empty, which is
+    // right for every card that only ever reads.
+    virtual void clockAttached() {}
 
     // WHAT THE CARD WANTS SAID OUT LOUD. A bank select it could not decode, a ROM
     // that failed to load, a sector whose checksum did not match. Drained by the

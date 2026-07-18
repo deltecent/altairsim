@@ -43,6 +43,9 @@ public:
         core_->reset(Reset::PowerOn);
     }
 
+    // A NEW CLOCK HAS NEVER HEARD OF THIS CARD'S CRYSTAL, so tell it (board.h, #34).
+    void clockAttached() override { publishPolicy(); }
+
     std::vector<Property> properties() override;
 
     long long clockHz() const { return clockHz_; }

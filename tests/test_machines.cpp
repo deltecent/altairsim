@@ -496,6 +496,58 @@ fill = "zero"
     CHECK(live.boards().size() == 6, "...with the base's cards, once each");
 }
 
+// ---------------------------------------------------------------------------
+// A MOVED CARD BRINGS ITS CRYSTAL WITH IT (issue #34).
+// ---------------------------------------------------------------------------
+// The scratch machine above is what makes a load all-or-nothing, and it cost this:
+// `clock_hz = 2000000` in a machine file set the property on the CPU card, the card
+// announced it to the SCRATCH machine's Clock, and replaceWith then moved the card onto
+// the real backplane -- whose Clock had never heard of it. `SHOW cpu0` read 2000000 off
+// the card, the run loop free-ran, and every word of both was true.
+//
+// IT SURVIVED BECAUSE EVERY TEST SET THE CRYSTAL AT THE MONITOR. `SET cpu0 clock_hz=...`
+// runs on a card that is already on the real backplane, so it was never the broken path
+// -- and neither was `CONFIG LOAD`, which powers the machine again afterwards and
+// republished by luck. The one road nothing drove was the one every operator takes:
+// put it in the file, start the simulator. So this test loads it FROM A FILE and asks
+// the CLOCK, not the card.
+void test_clock_survives_load() {
+    SECTION("clock_hz in a machine file reaches the CLOCK, not just the card (#34)");
+
+    const char* kPaced = R"(
+[machine]
+name = "paced"
+base = "default"
+
+[[board]]
+id       = "cpu0"
+clock_hz = 2000000
+idle     = false
+)";
+    Machine     m;
+    std::string err;
+    CHECK(loadTomlText(kPaced, "paced", m, err), "a machine file with a crystal loads");
+
+    // THE CARD. This half was never broken, and on its own it is exactly the reassuring
+    // half-truth that hid the bug for a day.
+    Board* cpu = m.find("cpu0");
+    CHECK(cpu != nullptr, "the CPU card is in the backplane");
+
+    // THE CLOCK. This is the half the run loop actually reads.
+    CHECK(!m.clock.free(), "the run loop PACES: a crystal in the file is a crystal in the clock");
+    CHECK(m.clock.hz() == 2000000, "...at the rate the file asked for");
+    CHECK(!m.clock.idle(), "and `idle` rides the same wire -- it was lost the same way");
+
+    // AND THE DEFAULT IS STILL FLAT OUT. The fix republishes on every attach, so the
+    // card that says nothing must go on saying nothing (clock.h: 0 is free-running, and
+    // it is the default).
+    Machine     f;
+    std::string e2;
+    CHECK(loadTomlText("[machine]\nname = \"flat\"\nbase = \"default\"\n", "flat", f, e2),
+          "a machine file with no crystal loads");
+    CHECK(f.clock.free(), "...and runs flat out, which is the default and stays the default");
+}
+
 // anywhere") was false for the most user-facing TOML in the program: the keys that carry
 // the disk, the ROM and the write-protect tab.
 //

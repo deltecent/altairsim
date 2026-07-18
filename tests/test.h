@@ -37,6 +37,7 @@ void test_numbers();
 void test_units();
 void test_machines();
 void test_load_is_atomic();
+void test_clock_survives_load();
 void test_subunit_schema();
 void test_isa();
 void test_z80_isa();
