@@ -31,7 +31,7 @@ jobs:
       matrix: ${{ steps.pick.outputs.matrix }}
       code: ${{ steps.pick.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0            # need the base commit present to diff against it
 
@@ -103,7 +103,7 @@ jobs:
       matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # expect drives the interactive acceptance tests. Ubuntu needs it installed;
       # macOS ships it; Windows gets none -- those tests self-skip at configure time

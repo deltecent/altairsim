@@ -59,7 +59,7 @@ jobs:
     name: Rebuild the PDFs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # PINNED, and pinned to what the humans have. pandoc's HTML is the paginator's input,
       # so a different pandoc is a different document. Ubuntu's apt pandoc is older than the
