@@ -89,6 +89,11 @@ void restoreTerm();
 // Conflating the last two is the classic bug, and it breaks in both directions: read
 // EOF as "quiet" and a scripted run never finishes, read "quiet" as EOF and it stops
 // the instant the writer pauses to think.
+//
+// AND THE OS DOES NOT HAND YOU THE DIFFERENCE. An implementation must not take a
+// zero-length read for the third answer on its own: a tty in Guest mode is VMIN=0, and
+// on macOS/BSD an empty read of one returns 0 -- the same number a hung-up pipe returns.
+// Issue #25 is what believing it costs. Which answer a 0 is depends on what stdin IS.
 size_t readInput(uint8_t* buf, size_t n, bool& eof);
 
 // Read ONE byte, WAITING for it. -1 at end of input. This is the line editor's read,

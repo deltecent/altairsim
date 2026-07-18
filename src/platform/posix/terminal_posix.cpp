@@ -146,8 +146,21 @@ size_t readInput(uint8_t* buf, size_t n, bool& eof) {
     eof = false;
     ssize_t r = ::read(STDIN_FILENO, buf, n);
     if (r > 0) return (size_t)r;
-    if (r == 0) {  // a CLOSED PIPE. A terminal never says this.
-        eof = true;
+    if (r == 0) {
+        // A CLOSED PIPE -- AND, ON A TTY, NOTHING AT ALL. r == 0 is two different
+        // answers depending on what stdin is, and reading it as one was a bug
+        // (issue #25).
+        //
+        // Guest mode sets the terminal to VMIN=0/VTIME=0, which is what makes a poll
+        // of the keyboard return at once instead of waiting for a key. On macOS/BSD
+        // an empty read on THAT tty returns 0 -- not EAGAIN, which is what the pipe
+        // path returns and what the code below assumes. So the first console poll of
+        // any RUN on a terminal looked exactly like a pipe that had hung up, and
+        // Console latched eof_ on a keyboard that had not ended and never will.
+        //
+        // A TERMINAL NEVER ENDS. That is the rule Console::starved() is built on
+        // (host/console.h), so it has to be true here, at the seam that decides it.
+        eof = !isatty(STDIN_FILENO);
         return 0;
     }
     return 0;  // EAGAIN: a quiet line, not an error, and certainly not an ending

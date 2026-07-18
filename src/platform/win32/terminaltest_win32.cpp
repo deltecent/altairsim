@@ -11,8 +11,8 @@
 // WHY IT LIVES IN src/platform/win32/ AND NOT tests/. It reads and asserts on
 // SetConsoleMode / GetConsoleMode, which are Win32 calls, and DESIGN.md 2.1 keeps OS
 // calls in the platform layer. A test of OS-specific code is OS-specific code, so it
-// sits beside the file it tests. The POSIX terminal is proven the mirror way, by hand
-// against a pty.
+// sits beside the file it tests. The POSIX terminal has its own mirror of this file,
+// src/platform/posix/terminaltest_posix.cpp, for the same reason.
 //
 // WHAT IT DELIBERATELY LEAVES TO A HUMAN. terminal_win32.cpp's #1 flagged risk is
 // readInput()'s peek-and-discard loop over the console INPUT queue. Proving that with no
