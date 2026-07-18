@@ -28,6 +28,7 @@ This table is exhaustive. There are no others.
 | `socket:PORT` | **LISTENS** on that TCP port. This is the telnet-in case. |
 | `socket:HOST:PORT` | **CALLS OUT** to that host and that port. |
 | `serial:DEVICE` | a real serial port on this host. |
+| `file:PATH` | a host file, write-only. Captures whatever the card sends. |
 
 ### `null` is not an error
 
@@ -115,6 +116,22 @@ flat out, so it will decide your sender is dead and give up before your sender h
 
 Flat out is the right default for a machine talking to itself. **A machine talking to you wants
 the crystal.** The troubleshooting chapter has the full story.
+
+## Capturing to a file
+
+```
+altairsim> CONNECT lpt0:prn file:printout.txt
+```
+
+A `file:` endpoint is a **write-only** sink: whatever the card sends is written to the host file,
+byte for byte. It is what the [88-C700 printer](boards.md) captures its output to — but it is not
+printer-specific, so any line can go to one, which is a simple way to record what a program sends.
+
+The file is opened fresh each time you connect (it truncates), and the capture is **8-bit clean**:
+the bytes on the wire are the bytes in the file, control codes and all. Nothing reformats them — if
+you want a printout as tidy host text, that is an editor's job, not the card's. A relative path
+follows the usual rule: relative to the file when it is written in a machine configuration,
+relative to your shell when you type it.
 
 ## A `CONNECT` it does not understand is an error
 

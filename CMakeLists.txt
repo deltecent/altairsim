@@ -152,6 +152,9 @@ add_library(altair_core STATIC
   src/host/endpoint.cpp
   src/host/hostserial.cpp
   src/host/tcp.cpp
+  # `file:PATH` -- a host file as a write-only sink: a printout, or a capture of a
+  # line. A SINK, so it is trivial next to hostserial/tcp (no pump, no read path).
+  src/host/file.cpp
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
@@ -185,6 +188,10 @@ add_library(altair_core STATIC
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
   # this list is not ordered. It is listed after it so the reader sees the pair.
   src/boards/mits-88acr.cpp
+  # The 88-C700 line-printer controller -- an output-only card that sinks its data
+  # port to a ByteStream (a file, the console, a socket). No chip: a printer sends
+  # nothing back, so there is no receiver to model. See mits-88c700.h.
+  src/boards/mits-88c700.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/mits-88virtc.cpp
   # OUR OWN CARD -- the only one in this list that is not a period board, and the
@@ -266,6 +273,7 @@ add_executable(altair_tests
   tests/test_sio2.cpp
   tests/test_88sio.cpp
   tests/test_88acr.cpp
+  tests/test_c700.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp

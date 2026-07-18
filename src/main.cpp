@@ -1,4 +1,5 @@
 #include "boards/mits-2sio.h"
+#include "boards/mits-88c700.h"
 #include "boards/mits-88sio.h"
 #include "cli/monitor.h"
 #include "config/toml.h"
@@ -166,6 +167,7 @@ int main(int argc, char** argv) {
     // one `#include` away from knowing what a socket is.
     Sio2Board::setResolver(resolveEndpoint);
     SioBoard::setResolver(resolveEndpoint);
+    C700Board::setResolver(resolveEndpoint);
 
     // The same seam for the other kind of endpoint: a disk board asks openMedia()
     // for a path and gets a medium back, and this is the one line that decides the

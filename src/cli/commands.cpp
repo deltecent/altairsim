@@ -407,6 +407,8 @@ static const std::vector<CommandDef> kCommands = {
      "  serial:     a real port on this host. It is opened at 9600 8N1 and then\n"
      "              immediately re-programmed by the card, which is the only thing that\n"
      "              knows what it is strapped to.\n"
+     "  file:       PATH -- a host file, write-only: a printout, or a capture of the\n"
+     "              line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.\n"
      "\n"
      "Exactly ONE unit may hold the console; connecting a second STEALS it and says\n"
      "who from. Two boards reading one keyboard would each get half the characters.\n"
@@ -417,6 +419,7 @@ static const std::vector<CommandDef> kCommands = {
      "  CONN sio0:b socket:bbs.example:23  the guest dials OUT, to somebody else's port\n"
      "  CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware\n"
      "  CONN sio0:b serial:COM3                           ...the same, on Windows\n"
+     "  CONN lpt0:prn file:printout.txt                   capture a printer to a file\n"
      "DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it."},
     // RESET sits with POWER, which is the other command that throws state away, and
     // BELOW REGS -- which is what costs it `R` and `RE` and leaves it `RES`. It has to

@@ -8,12 +8,12 @@ cards doing the real work; take the cards out and there is nothing left but a bu
 the CPU *card* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a card out, put a different one in, and find out what the software does about it.
 
-This chapter says what the eleven cards **are** — what the real hardware was, what it is for, and
+This chapter says what the twelve cards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every card is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The eleven cards
+## The twelve cards
 
 | Type | What it is |
 |---|---|
@@ -23,6 +23,7 @@ be wrong.
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
 | `acr` | MITS 88-ACR — the cassette interface |
+| `c700` | MITS 88-C700 — the line-printer controller. Capture to a file |
 | `dcdd` | MITS 88-DCDD — the 8″ floppy controller |
 | `mds` | MITS 88-MDS — the 5¼″ minidisk controller |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
@@ -190,6 +191,24 @@ pretending otherwise would help nobody.
 This is the card that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
 toggle in by hand, and eight minutes of listening to a cassette. **The tapes chapter is the one to
 read**, and {{NAME_BASIC}} is the machine to run.
+
+---
+
+## `c700` — MITS 88-C700
+
+The **line-printer controller**: an output-only card that sends characters to an Altair C700
+printer. Unit `prn`, default port `02` — the MITS default, with Control/Status at `02` and Data
+at `03`.
+
+There is no printer in the box, so **`CONNECT` its `prn` line wherever you want the output**: a
+file (`CONNECT lpt0:prn file:printout.txt`), the `console` to watch it print live, a `socket:`, or
+a real `serial:` printer. The capture is byte-for-byte — the bytes the program sent, control codes
+and all, not a reformatted page.
+
+It is **polled**: write a character to the data port (`03`), then poll the status port (`02`, bit 0
+ACKNOWLEDGE, set = ready) before the next. The real card's single-level interrupt is not modeled.
+
+The **`lineprinter`** machine is `default` with one of these already fitted and capturing to a file.
 
 ---
 

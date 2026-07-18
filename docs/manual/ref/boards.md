@@ -23,6 +23,7 @@ printed in each property's own base.
 | [`dcdd`](#dcdd) | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb |
+| [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
 | [`fp`](#fp) | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
@@ -214,6 +215,20 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIN
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
+
+
+## `c700`
+
+MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file
+
+**Units:** `prn` (serial)
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x2` | `0x0` .. `0xFE` | Base address -- MUST BE EVEN. Control/status at BASE, data at BASE+1 |
+| `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
 ## `fp`
