@@ -17,6 +17,7 @@
 #include "host/tapemodem.h"
 #include "host/wav.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fstream>

@@ -23,6 +23,7 @@
 #include "host/wav.h"
 #include "test.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
