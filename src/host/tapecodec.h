@@ -69,25 +69,65 @@ namespace altair {
 // count, so everything above this -- TapeImage, TapeStream, the UART -- sees exactly
 // what a .TAP would have given it.
 //
-// READ-ONLY FOR NOW. Recording back out to audio is Phase 4 (it needs
-// MediaFile::resize(), because re-encoding a shorter recording over a longer WAV would
-// otherwise leave stale audio past the end that the next mount decodes as trailing
-// garbage). Until then a WAV mounts read-only REGARDLESS of what the operator typed --
-// and says so via readOnlyForced(), which is the existing machinery for exactly this:
-// a difference between what was asked for and what happened must never be silent.
+// ---- AND IT RECORDS, WHICH IS WHY sync() DOES NOTHING ------------------------------
+//
+// A guest recording writes DECODED bytes here, and the file bytes are a function of the
+// whole decoded stream -- so writing back means re-modulating the tape end to end and
+// rewriting the WAV. That is far too expensive to do per byte, and per byte is exactly
+// how often sync() is called: Uart1602::writeData flushes after every character, and
+// for a tape that flush is a sync. Re-encoding there would be quadratic in both CPU and
+// host I/O.
+//
+// So sync() is a dirty MARK and commit() is the work, at the points where the operator
+// stopped the transport -- UNMOUNT, REWIND, releasing RECORD. See MediaFile::commit().
+//
+// THE RECORDING IS RE-ENCODED IN THE TAPE'S OWN FORMAT, at its own sample rate: what
+// was mounted as CUTS at 22050 Hz is written back as CUTS at 22050 Hz. Recording over
+// a cassette does not change what kind of cassette it is.
+//
+// WHAT CANNOT BE PRESERVED, and must be synthesized instead, is TIME. The decoded byte
+// stream holds no durations -- no leader, no trailer, and no inter-file gaps -- because
+// a byte image cannot hold any (verified on the corpus: nothing on those tapes encodes
+// data as duration). setEncoding() supplies the two the transport needs, from the
+// board's properties. There is no third: this layer sees one byte stream and cannot
+// know where one SOLOS file ends and the next begins, so a multi-file tape re-recorded
+// here comes back as one continuous run. Documented under Limitations on both boards.
 // ---------------------------------------------------------------------------
 class AudioTapeMedia : public MediaFile {
 public:
     AudioTapeMedia(std::unique_ptr<MediaFile> under, std::vector<uint8_t> decoded,
                    TapeFormat fmt, uint32_t rate);
 
+    // THE LAST LINE OF DEFENCE, NOT THE PLAN -- the same bargain ~HostFile() makes, and
+    // for the same reason. The plan is that a board commits when the transport stops.
+    // The case this catches is the operator who records and then QUITs without ever
+    // pressing stop: QUIT tears the machine down, and without this the whole recording
+    // would go with it. A byte tape never had this problem, because its sync() is real.
+    //
+    // It cannot report a failure, which is exactly why it is not the plan.
+    ~AudioTapeMedia() override;
+
     uint64_t size() const override { return bytes_.size(); }
-    bool     readOnly() const override { return true; }        // Phase 4 relaxes this
-    bool     readOnlyForced() const override { return true; }  // ...and so this
-    bool     readAt(uint64_t off, uint8_t* buf, size_t n) override;
-    bool     writeAt(uint64_t off, const uint8_t* buf, size_t n) override;
-    void     sync() override {}
+
+    // WHAT THE FILE UNDERNEATH SAYS, and nothing of our own. A WAV is as recordable as
+    // any other tape now, so the only reasons to refuse are the ordinary ones -- the
+    // operator typed RO, or the host will not let us write the file -- and those are
+    // the medium's answer to give, not ours.
+    bool readOnly() const override { return under_->readOnly(); }
+    bool readOnlyForced() const override { return under_->readOnlyForced(); }
+
+    bool readAt(uint64_t off, uint8_t* buf, size_t n) override;
+    bool writeAt(uint64_t off, const uint8_t* buf, size_t n) override;
+    bool resize(uint64_t n) override;
+    void sync() override {}  // deliberately nothing -- see above, and commit()
+    bool commit(std::string& err) override;
     const std::string& describe() const override { return under_->describe(); }
+
+    // How much idle tone to lay down either side of the data when this is written
+    // back, in seconds. Pushed down by the board from its `leader`/`trailer`
+    // properties -- at MOUNT and again whenever one is SET, so that setting it and
+    // then recording does what it plainly says.
+    void setEncoding(double leaderSeconds, double trailerSeconds);
 
     // What this tape turned out to be. Reported by the read-only `detected` property.
     const TapeFormat& format() const { return fmt_; }
@@ -98,6 +138,10 @@ private:
     std::vector<uint8_t>       bytes_;
     TapeFormat                 fmt_;
     uint32_t                   rate_ = 0;
+
+    bool   dirty_   = false;
+    double leader_  = 5.0;
+    double trailer_ = 0.0;
 };
 
 // ---------------------------------------------------------------------------

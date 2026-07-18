@@ -200,9 +200,39 @@ refused, with a message naming the tones it carries. Not all published Altair ca
 in this card's format, and decoding the rest anyway would hand the guest data no 88-ACR could
 ever have produced.
 
-**Recording back out to audio is not implemented yet.** A `.WAV` therefore mounts **read-only**
-whatever you typed — and says so, rather than letting you discover it a hundred writes later.
-Recording to a `.TAP` is unaffected.
+**Recording back out to audio works, and rewrites the whole tape.** Put the card in
+`mode = record`, and when the transport stops — `UNMOUNT`, `REWIND`, or `mode` going back to
+`play` — the recording is re-modulated in the tape's own format, at its own sample rate, and
+written back over the file. What was mounted as `fsk300` at 22050 Hz is written back as
+`fsk300` at 22050 Hz: recording over a cassette does not change what kind of cassette it is.
+
+It is **not a punch-in**. The audio for byte *N* starts at an offset that depends on every byte
+before it, so there is no splice cheaper than re-encoding, and a splice would leave a phase
+discontinuity the receiver could read as a spurious cycle. The whole file is rewritten each
+time — which is also why it happens when the transport stops rather than on every byte.
+
+**The one thing that cannot survive a round trip is time.** A byte image holds no durations, so
+the leader a real transport needs does not come back with the bytes and has to be put there by
+whoever writes the audio. That is what `leader` and `trailer` are, in seconds:
+
+| | Default | Why |
+|---|---|---|
+| `leader` | `15` | The manual's §8: *at least ~15 seconds of steady tone* before data, to clear the plastic leader and let the transport settle |
+| `trailer` | `5` | §8 again: *at least 5 seconds of tone between batches* — so two of our recordings laid end to end carry a gap a real machine would accept |
+
+Both accept `0`, meaning *trim the file to its data* — which is what the published archive
+`.wav` files are, and why they will not load on real hardware. A floor of sixteen bit times
+still goes on either end even at `0`: a start bit is found by its mark-to-space **edge**, so a
+tape that opened on the start bit itself would lose its first byte.
+
+**Idle is a tone, not silence** — the UART's output pin idles high, high is mark, and the modem
+board has no squelch, so a card recording nothing lays down continuous 2400 Hz. Leader and
+trailer are that tone.
+
+**A multi-file tape comes back as one continuous run.** The decoded byte stream has no file
+boundaries in it, so nothing at this layer can know where one program ends and the next begins,
+and the inter-file gaps a real operator left are not reproduced. Recording to a `.TAP` is
+unaffected by any of this.
 
 **The `P/R` pad is not Play/Record — it is a trap.** It is the **audio input**: the manual's
 own cabling step says *"Label the other cable (`P/R`) with the words **Play In**."* It goes to a

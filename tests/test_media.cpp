@@ -95,6 +95,28 @@ void test_media() {
               "the byte is ON THE HOST, not just in our buffer");
         CHECK(m2 && m2->size() == 256, "and the file did not change size");
 
+        // SHRINKING IT, AND PROVING THE HOST FILE ACTUALLY SHRANK. This is what an
+        // audio tape needs to re-encode itself over a longer recording, and the whole
+        // failure it prevents is invisible from inside our own buffer: without the
+        // truncate the old tail is still on disk, and only a fresh open can see it.
+        CHECK(m->resize(64), "shrink the medium");
+        CHECK(m->size() == 64, "the buffer is shorter at once");
+        m->sync();
+        auto m3 = openHostFile(p.string(), false, err);
+        CHECK(m3 && m3->size() == 64, "and the FILE is 64 bytes, not 256 with a short write in it");
+        uint8_t tail = 0;
+        CHECK(m3 && !m3->readAt(63, &tail, 2), "there is nothing past the new end to read");
+        CHECK(m3 && m3->readAt(63, &tail, 1) && tail == 63, "and what is left is what was there");
+
+        CHECK(m->resize(96), "grow it again");
+        m->sync();
+        auto m4 = openHostFile(p.string(), false, err);
+        CHECK(m4 && m4->size() == 96, "the file grew too");
+        uint8_t z = 0xAA;
+        CHECK(m4 && m4->readAt(95, &z, 1) && z == 0, "and a grown medium is zero-filled");
+        m3.reset();
+        m4.reset();
+
         // The tab, put in FOR the operator (Patrick: auto-RO, and say so).
         // Clear EVERY write bit, not just owner_write: a host reports one file as
         // read-only or not (Windows has a single read-only attribute, which the

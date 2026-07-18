@@ -14,14 +14,79 @@ AudioTapeMedia::AudioTapeMedia(std::unique_ptr<MediaFile> under, std::vector<uin
                                TapeFormat fmt, uint32_t rate)
     : under_(std::move(under)), bytes_(std::move(decoded)), fmt_(fmt), rate_(rate) {}
 
+// See the header: the backstop for a recording nobody stopped. `under_` is declared
+// first and so destroyed last, which is what makes it still valid in here.
+AudioTapeMedia::~AudioTapeMedia() {
+    if (!dirty_ || readOnly()) return;
+    std::string ignored;
+    commit(ignored);
+}
+
 bool AudioTapeMedia::readAt(uint64_t off, uint8_t* buf, size_t n) {
     if (off > bytes_.size() || bytes_.size() - off < n) return false;
     for (size_t i = 0; i < n; ++i) buf[i] = bytes_[size_t(off) + i];
     return true;
 }
 
-bool AudioTapeMedia::writeAt(uint64_t, const uint8_t*, size_t) {
-    return false;  // read-only until Phase 4 -- see the header
+// INTO THE DECODED BYTES, which are the medium as far as everything above here is
+// concerned. Growing them is a tape recording past where the old recording ended, which
+// is what a cassette does; the audio does not exist again until commit().
+bool AudioTapeMedia::writeAt(uint64_t off, const uint8_t* buf, size_t n) {
+    if (readOnly()) return false;
+    if (!n) return true;
+    if (off + n > bytes_.size()) bytes_.resize(size_t(off + n), 0);
+    for (size_t i = 0; i < n; ++i) bytes_[size_t(off) + i] = buf[i];
+    dirty_ = true;
+    return true;
+}
+
+bool AudioTapeMedia::resize(uint64_t n) {
+    if (readOnly()) return false;
+    bytes_.resize(size_t(n), 0);
+    dirty_ = true;
+    return true;
+}
+
+void AudioTapeMedia::setEncoding(double leaderSeconds, double trailerSeconds) {
+    leader_  = leaderSeconds;
+    trailer_ = trailerSeconds;
+}
+
+// RE-MODULATE THE WHOLE TAPE AND REWRITE THE FILE. Not a punch-in: the audio for byte N
+// begins at a fractional sample offset that depends on every byte before it, so there
+// is no splice that is cheaper than doing it properly, and a splice would leave a phase
+// discontinuity the receiver could read as a spurious cycle.
+//
+// THE TRUNCATE IS NOT OPTIONAL. Recording 400 bytes over a tape that held 4000 produces
+// a shorter WAV, and without resize() the tail of the old recording survives past the
+// end of the new one -- where the next mount demodulates it back as trailing garbage
+// that no guest ever wrote. That is the whole reason MediaFile::resize() exists.
+bool AudioTapeMedia::commit(std::string& err) {
+    if (!dirty_) {
+        under_->sync();
+        return true;
+    }
+    if (readOnly()) {
+        err = describe() + " is write-protected";
+        return false;
+    }
+
+    const AudioBuffer          a   = modulate(bytes_, fmt_, rate_, leader_, trailer_);
+    const std::vector<uint8_t> wav = buildWav(a);
+
+    if (!under_->resize(wav.size())) {
+        err = describe() + ": this medium cannot be resized, so the re-encoded tape "
+                           "cannot be written back";
+        return false;
+    }
+    if (!wav.empty() && !under_->writeAt(0, wav.data(), wav.size())) {
+        err = describe() + ": could not write the re-encoded tape";
+        return false;
+    }
+    under_->sync();
+
+    dirty_ = false;
+    return true;
 }
 
 // ---------------------------------------------------------------------------

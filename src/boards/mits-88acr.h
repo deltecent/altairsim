@@ -98,6 +98,14 @@ private:
     // now. Called on MOUNT and whenever a button is pressed.
     void reline();
 
+    // Push `leader`/`trailer` down onto an audio tape. A no-op on a byte tape.
+    void applyEncoding();
+
+    // The transport stopped: an audio tape re-encodes itself and goes to the host.
+    // Called wherever an OPERATOR action ends a recording -- UNMOUNT, REWIND, releasing
+    // RECORD. See MediaFile::commit() for why this is not sync().
+    void commitTape();
+
     // THE BOARD OWNS THE TAPE; THE UART OWNS ONLY A STREAM ONTO IT (host/tape.h).
     // That split is what keeps REWIND out of the chip's reach: a UART that could
     // rewind its own line is not a UART.
@@ -113,6 +121,19 @@ private:
 
     std::string format_ = "auto";  // the `format` unit property
     std::string detected_;         // ...and what the mounted tape turned out to be
+
+    // THE TAPE, IF IT IS AUDIO -- non-owning, and null when it is a byte tape or when
+    // nothing is mounted. tape_ owns the medium; this is how the board reaches the one
+    // thing only an audio tape has, which is an encoding to write back with.
+    AudioTapeMedia* audio_ = nullptr;
+
+    // Seconds of idle tone either side of a recording. The manual's numbers: at least
+    // ~15 s of steady tone before data, and at least 5 s between batches -- so a
+    // trailer of 5 makes two recordings laid end to end into a tape a real machine
+    // would accept. See reference/Altair 88-ACR Cassette Interface.md section 8, and
+    // the `leader` property for why they are integers and why they exist at all.
+    long long leader_  = 15;
+    long long trailer_ = 5;
 
     std::vector<std::string> log_;
 

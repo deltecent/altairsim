@@ -119,7 +119,7 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
 
         // Pressing STOP before you press the other button: whatever the guest has
         // recorded goes to the host file NOW, while we still know it was a recording.
-        if (tape_ && mode_ == TapeStream::Mode::Record) tape_->sync();
+        if (mode_ == TapeStream::Mode::Record) commitTape();
 
         // ...and the byte still in flight from the old mode is gone, for the same
         // reason it is gone on REWIND: it came off a tape that is no longer playing.
@@ -147,6 +147,54 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
         return true;  // takes effect at the NEXT mount -- a tape is decoded once, at MOUNT
     };
     p.push_back(std::move(f));
+
+    // HOW MUCH IDLE TONE GOES EITHER SIDE OF A RECORDING, and only a recording -- these
+    // do nothing when the tape is playing, and nothing at all on a byte tape, which has
+    // no audio to put them in.
+    //
+    // THEY EXIST BECAUSE TIME CANNOT BE RECOVERED. A byte image holds no durations, so
+    // the leader a real transport needs does not survive a round trip and has to be put
+    // back by whoever writes the audio. The numbers are the manual's: at least ~15
+    // seconds of steady tone before data, to clear the plastic leader and let the
+    // transport settle, and at least 5 seconds between batches -- which is why the
+    // trailer default is 5 rather than 0, so that two of our recordings laid end to end
+    // carry a gap a real machine would accept. (reference/Altair 88-ACR Cassette
+    // Interface.md section 8.)
+    //
+    // SECONDS, AS AN INTEGER, because Kind has no floating-point member and this does
+    // not want one: the quantity is "how long does the operator wait", and nobody has
+    // ever needed a leader to a tenth of a second. Zero is legal and means trim it to
+    // the data -- which is what the published archive files are, and why they will not
+    // load on real hardware.
+    Property lead;
+    lead.name  = "leader";
+    lead.help  = "Seconds of idle tone before recorded data, when writing audio";
+    lead.kind  = Kind::Int;
+    lead.min   = 0;
+    lead.max   = 120;
+    lead.unit  = "s";
+    lead.get   = [this] { return Value::ofInt(leader_); };
+    lead.set   = [this](const Value& v, std::string&) {
+        leader_ = v.i();
+        applyEncoding();  // NOW, not at the next mount: SET then record must mean it
+        return true;
+    };
+    p.push_back(std::move(lead));
+
+    Property trail;
+    trail.name = "trailer";
+    trail.help = "Seconds of idle tone after recorded data, when writing audio";
+    trail.kind = Kind::Int;
+    trail.min  = 0;
+    trail.max  = 120;
+    trail.unit = "s";
+    trail.get  = [this] { return Value::ofInt(trailer_); };
+    trail.set  = [this](const Value& v, std::string&) {
+        trailer_ = v.i();
+        applyEncoding();
+        return true;
+    };
+    p.push_back(std::move(trail));
 
     // ...and what the tape in the recorder actually turned out to be. READ-ONLY, which
     // means no setter at all (adding-a-board.md): it is a measurement, not a switch.
@@ -231,19 +279,43 @@ bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, 
     auto media = openTapeMedia(resolvePath(path), ro, modem(), format_, detected, said, err);
     if (!media) { err += pathNote(path); return false; }
 
-    // A WAV mounts read-only whatever the operator typed (Phase 4 lifts that), and a
-    // difference between what was asked for and what happened is never silent.
+    // The host would not let us write it, and the operator did not ask for that. Never
+    // silent -- see MediaFile::readOnlyForced().
     if (!ro && media->readOnlyForced())
-        said.push_back("acr: " + path + " is audio -- mounted read-only, since recording "
-                                        "back out to a WAV is not implemented yet");
+        said.push_back("acr: " + path + " is write-protected on the host -- mounted read-only");
     for (std::string& s : said) log_.push_back(std::move(s));
+
+    // AN OBSERVING POINTER, TAKEN BEFORE THE MEDIUM IS HANDED OVER. An audio tape has
+    // to be told how much leader to lay down, and it has to be told again whenever the
+    // property changes -- so the board keeps a way to reach it. Non-owning: the
+    // TapeImage below owns the medium, the medium is on the heap, and moving this board
+    // (CONFIG LOAD) moves the unique_ptr and not the object, so the pointer stays good.
+    // Null for a byte tape, which is exactly the question "is this audio?".
+    audio_ = dynamic_cast<AudioTapeMedia*>(media.get());
 
     attachStream(std::make_unique<NullStream>());  // ...before the old tape goes
     tape_ = std::make_unique<TapeImage>(std::move(media));
     path_ = path;
     detected_ = detected;
+    applyEncoding();
     reline();
     return true;
+}
+
+// What to lay down either side of the data when this tape is written back. A no-op on a
+// byte tape, which has no audio to put it in.
+void AcrBoard::applyEncoding() {
+    if (audio_) audio_->setEncoding(double(leader_), double(trailer_));
+}
+
+// THE TRANSPORT STOPPED -- so an audio tape re-encodes itself and goes to the host now.
+// Every caller is an operator action (UNMOUNT, REWIND, letting go of RECORD), which is
+// precisely the contract MediaFile::commit() describes. A failure is REPORTED rather
+// than swallowed: losing a recording quietly is the worst thing this path could do.
+void AcrBoard::commitTape() {
+    if (!tape_) return;
+    std::string err;
+    if (!tape_->commit(err)) log_.push_back("acr: " + err);
 }
 
 // One modem, one modulation. This is the list a tape is judged against.
@@ -269,9 +341,10 @@ bool AcrBoard::unmount(const std::string& unit, std::string& err) {
         return false;
     }
 
-    tape_->sync();
+    commitTape();
     attachStream(std::make_unique<NullStream>());  // the line dies BEFORE the tape does
     tape_.reset();
+    audio_ = nullptr;  // it died with the tape -- never leave this dangling
     path_.clear();
     detected_.clear();  // nothing is in the recorder, so it is not in any format
 
@@ -358,7 +431,7 @@ bool AcrBoard::runCommand(const std::string& name, const std::vector<std::string
     // Everything the guest has recorded is on its way to the host file, and the head
     // is about to go somewhere else. Flush BEFORE moving it, for the same reason the
     // DCDD flushes a partial sector before it invalidates its buffer.
-    tape_->sync();
+    commitTape();
     tape_->rewind();
 
     // AND THROW AWAY THE BYTE THE CARD IS STILL HOLDING.

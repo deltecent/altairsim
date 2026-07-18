@@ -218,6 +218,8 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIN
 |---|---|---|---|---|
 | `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
 | `format` | enum | `auto` | `auto` \| `raw` \| `fsk300` | How to read the mounted file: auto \| raw \| fsk300 |
+| `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
+| `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 
 
@@ -287,6 +289,8 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one ca
 |---|---|---|---|---|
 | `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
 | `format` | enum | `auto` | `auto` \| `raw` \| `cuts1200` \| `kcs300` | How to read the mounted file: auto \| raw \| cuts1200 \| kcs300 |
+| `leader` | int | `3` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
+| `trailer` | int | `2` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
 
 ### Unit `tape2` — `[board.unit.tape2]`
@@ -295,6 +299,8 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one ca
 |---|---|---|---|---|
 | `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
 | `format` | enum | `auto` | `auto` \| `raw` \| `cuts1200` \| `kcs300` | How to read the mounted file: auto \| raw \| cuts1200 \| kcs300 |
+| `leader` | int | `3` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
+| `trailer` | int | `2` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
 
 

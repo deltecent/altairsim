@@ -150,6 +150,20 @@ private:
         // transports hold two different cassettes (host/tapecodec.h).
         std::string format = "auto";
         std::string detected;
+
+        // THE TAPE, IF IT IS AUDIO -- non-owning, null for a byte tape or an empty
+        // deck. `tape` owns the medium; this reaches the one thing only an audio tape
+        // has, which is an encoding to write itself back with.
+        AudioTapeMedia* audio = nullptr;
+
+        // Seconds of idle tone either side of a recording, when writing audio. MEASURED
+        // off the one genuine cassette dub we hold -- TRK80.WAV carries 3.05 s of
+        // leading mark and 1.93 s of trailing, and you can see the operator's finger in
+        // it. NOT the 88-ACR's 15 s: that is what the MITS manual asks an operator to
+        // do, and this is what a Sol tape actually turned out to be. Per deck, because
+        // the two transports hold two different cassettes.
+        long long leader  = 3;
+        long long trailer = 2;
     };
 
     // WHAT THIS CARD'S CUTS MODEM CAN HEAR -- two formats, HONESTLY: the UART really
@@ -175,6 +189,15 @@ private:
     // describe and no program does on purpose. Picking one beats inventing what a
     // shorted line sounds like.
     void retape();
+
+    // Push a deck's `leader`/`trailer` onto its tape. A no-op unless that tape is audio.
+    static void applyEncoding(Deck* d);
+
+    // THE TRANSPORT STOPPED -- an audio tape re-encodes itself and goes to the host.
+    // Called wherever something ENDS a recording: UNMOUNT, REWIND, releasing RECORD,
+    // and -- uniquely to this card -- the guest dropping the motor line, which the
+    // 88-ACR has no way to do. See MediaFile::commit() for why this is not sync().
+    void commitTape(Deck* d);
 
     // The baud strap that is not a strap: OUT 0FAh D5 picks 300 or 1200, at run time,
     // from the guest. See the .cpp -- it is the one place the Sol's cassette differs
@@ -209,6 +232,12 @@ private:
     uint64_t kbRx_   = 0;  // keystrokes handed to the guest -- the idle-traffic signal
 
     uint8_t  tapeCtl_ = 0;  // last OUT 0xFA -- motors (D7/D6) + baud select (D5)
+
+    // A motor fell since the last pump(), so that deck's recording wants writing back.
+    // Set in the bus cycle, acted on in pump() -- the codec must not run inside a bus
+    // cycle, and OUT 0FAh is one.
+    bool stop1_ = false;
+    bool stop2_ = false;
 
     // What a mount had to say for itself, until drainLog() carries it off.
     std::vector<std::string> log_;
