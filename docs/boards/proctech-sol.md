@@ -1,8 +1,8 @@
 # Processor Technology Sol-PC I/O — the Sol-20's integrated I/O
 
-**Status:** implemented, `type = "sol"` — serial and keyboard fully modeled; the
-parallel/printer port works when connected; the CUTS cassette is deferred (see
-*Limitations*). Reuses the `vdm1` card for video and the `fp` card for the sense
+**Status:** implemented, `type = "sol"` — serial, keyboard and both CUTS cassette decks
+are modeled; the parallel/printer port works when connected. Reuses the `vdm1` card for
+video and the `fp` card for the sense
 switches, so the three together make a Sol-20 (`machines/sol20.toml`).
 
 ## The real hardware
@@ -48,13 +48,30 @@ is the **`vdm1`** board.
 | `serial` | F8/F9 | serial line (a UART) | `null` |
 | `keyboard` | FC data, FA D0 | input line | `console` (in `sol20.toml`) |
 | `printer` | FD data, FA D1/D2 | output line | `null` |
-| `tape` | FB data, FA D3/4/6/7 | cassette (deferred) | `null` |
+| `tape1` | FB data, FA D3/4/6/7 · motor FA D7 | cassette (MOUNT) | *(empty)* |
+| `tape2` | FB data, FA D3/4/6/7 · motor FA D6 | cassette (MOUNT) | *(empty)* |
 
 ```
 CONNECT sol0:serial   socket:2323
 CONNECT sol0:printer  file:out.txt
 CONNECT sol0:keyboard console
+MOUNT   sol0:tape1    "tapes/trk80.tap"
+REW     sol0:tape1
 ```
+
+**The decks are MOUNTed, not CONNECTed.** A cassette has a *position* — the head is
+where it is, and the only way back to the start of the program is `REWIND` — which a
+byte stream has nowhere to keep. `tape` is accepted as a name for `tape1`, so a machine
+file written against the older single line still resolves.
+
+`SET sol0:tape1 mode=record` is the button on the front of the recorder, exactly as on
+the [88-ACR](mits-88acr.md): a tape that is playing cannot be written over, and a deck
+that is recording does not hand back what used to be on it.
+
+**One UART, two transports.** The Sol-PC has a single CUTS modem and a single data
+register at `FBh`; `OUT 0FAh` D7/D6 decide which deck is turning in front of it. So a
+deck with its motor off is not a slow line, it is *no* line: nothing comes off it, and
+`TDR` never rises. If both motors are on, deck 1 wins — see *Limitations*.
 
 ## How it is simulated
 
@@ -92,10 +109,22 @@ CONNECT sol0:keyboard console
 
 ## Limitations and deliberate departures
 
-- **The CUTS cassette is deferred.** Its ports decode and read idle (tape TX empty, no
-  tape data), so SOLOS `SAVE` writes to a sink and `GET` simply finds nothing rather than
-  hanging. Kansas-City audio framing and the motor timing are a later phase; the `tape`
-  unit is present so it can be filled in without a config change.
+- **A mounted tape holds the bytes the CUTS UART sent or received, not audio.** That is
+  the same bargain the 88-ACR's `.TAP` makes. Kansas City *audio* — a real `.WAV` off a
+  cassette — is a separate seam that decodes to exactly these bytes before the card sees
+  them; this board does not know a tone exists.
+- **Both motors on is not modeled; deck 1 wins.** On the real machine both transports
+  move and both preamps drive one audio bus, which the manual does not describe and no
+  program does on purpose. Picking one beats inventing what a shorted line sounds like.
+- **No dropouts, and no runaway.** The transport advances at the speed the guest reads
+  it — the UART pulls a byte only when it has room — where a real deck keeps rolling and
+  puts data on the floor. The tape framing (`FA` D3) and overrun (`FA` D4) error bits
+  therefore exist and always read 0: there is no line to have noise on.
+- **`RESET` stops both motors** (the latch behind `FAh` clears) but does not eject a
+  cassette or move a head. Pressing RESET is not the same as opening the deck.
+- **There is no rewind bit, and there was none.** The guest can start and stop a motor;
+  it cannot wind one back. `REWIND sol0:tape1` is the operator's finger, and it names its
+  deck because with two of them there is no safe default.
 - **The parallel/printer port is minimal.** `OUT 0FDH` goes to the `printer` line and
   `PXDR` (`FA` D2) reflects it; there is no strobe/ack handshake modeled.
 - **The Helios disk ports `F0h`–`F7h`** (the `HELIOS`-conditional SOLOS build) are not
@@ -106,9 +135,19 @@ CONNECT sol0:keyboard console
 - `tests/test_sol.cpp` (headless, `NullDisplay`): the seven-port decode; the keyboard
   (KDR active-low, `FC` consuming the strobe, one char per host turn); the serial
   round-trip with active-high status; the idle `FA` bits; `OUT 0FEH` forwarding scroll to
-  the VDM; the four named units and their `connect` properties; and **SOLOS itself
+  the VDM; the five named units and their `connect` properties; and **SOLOS itself
   cold-starting**, painting its `>` prompt into the VDM screen RAM, and *resting* on the
   keyboard poll (not looping).
+- The cassette, in the same file: a tape plays only while its motor turns; the motor bits
+  pick which of the two decks is on the line; `RECORD` writes through to the host file;
+  a deck refuses `CONNECT` and says to `MOUNT` instead; and `OUT 0FAh` D5 really is four
+  times slower rather than a bit that is merely remembered.
+- **And the round trip, which is the acceptance test for the whole cassette path:** SOLOS
+  `SA`ves sixteen bytes to a mounted tape, the operator rewinds, and SOLOS `GE`ts them
+  back *to a different address*. SOLOS's own driver writes the leader and header and
+  SOLOS's own reader finds them again — nothing in the test knows the file layout, so a
+  wrong motor bit, status flag, head position or `REWIND` shows up as bytes that do not
+  come home.
 - End-to-end: `altairsim sol20` cold-starts SOLOS; it clears the VDM and prints `>`
   (`DUMP CC40` shows `3E` at the prompt, and with SDL3 it appears in a window). Typing in
   the window or the terminal echoes to the screen.

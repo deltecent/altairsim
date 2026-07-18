@@ -9,8 +9,13 @@
 # You can TYPE at it. The keyboard comes in on the `sol` board's `keyboard` unit,
 # wired to the console below -- so keystrokes from the VDM-1 window OR the terminal
 # both reach SOLOS (they merge in the one host Console). The serial port, the parallel
-# printer port and the CUTS cassette are the sol board's other three units; the tape
-# is deferred (its ports read idle, so SAVE/GET do not hang).
+# printer port are the sol board's other connectable units, and the two CUTS cassette
+# decks are units you MOUNT a tape into:
+#
+#     MOUNT sol0:tape1 "mytape.tap"      (then SOLOS `SA`ve and `GE`t work)
+#     REW   sol0:tape1                   (nothing in the guest can wind a tape back)
+#
+# A deck plays only while the guest turns its motor (OUT 0FAH D7/D6), which SOLOS does.
 #
 # THREE CARDS MAKE THE SOL-PC. The Sol-20 was one integrated board, but its functions
 # map cleanly onto three of ours: the `fp` sense switches at 0FFH, the `vdm1` video at

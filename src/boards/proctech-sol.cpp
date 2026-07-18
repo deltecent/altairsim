@@ -2,6 +2,9 @@
 
 #include "boards/proctech-vdm1.h"  // VdmBoard::setScroll -- the OUT 0xFE target
 #include "core/bus.h"              // bus_->boards(), to find the VDM
+#include "host/media.h"
+
+#include <cstdio>
 
 namespace altair {
 namespace {
@@ -23,12 +26,21 @@ Clock& SolBoard::deadCard() {
 }
 
 SolBoard::SolBoard()
-    : kb_(std::make_unique<NullStream>()),
-      printer_(std::make_unique<NullStream>()),
-      tape_(std::make_unique<NullStream>()) {
+    : kb_(std::make_unique<NullStream>()), printer_(std::make_unique<NullStream>()) {
     // -> NullStream. There is no null pointer in the stream path: a UART with nothing
     // plugged in has a DEAD line, not a dangling one (as SioBoard does for its own).
     serial_.disconnect();
+    tapeUart_.disconnect();
+
+    // THE CUTS FRAME, AND IT IS 8N2 -- which no manual we hold states. It was measured
+    // off a genuine Sol cassette (deramp.com's TRK80.WAV: eleven bit times between
+    // consecutive start bits, not ten), and the tape decodes to a well-formed SOLOS
+    // header whose length matches its payload, which is what makes it a fact rather
+    // than a guess. See reference/Sol-20.md, "CUTS audio format (MEASURED)".
+    tapeUart_.dataBits = 8;
+    tapeUart_.stopBits = 2;
+    tapeUart_.parity   = LineParity::None;
+    programTapeBaud();  // ...and the SPEED is the guest's, at 0FAh D5. See below.
 }
 
 // ---------------------------------------------------------------------------
@@ -52,8 +64,9 @@ uint8_t SolBoard::read(const BusCycle& c) {
             return serial_.readData();
         case 2:  // FA -- general/tape status
             return generalStatus();
-        case 3:  // FB -- tape (CUTS) data. Deferred: no tape, nothing arrives.
-            return 0x00;
+        case 3:  // FB -- tape (CUTS) data. The read strobe clears Tape Data Ready.
+            if (clock_) tapeUart_.poll(*clock_);
+            return tapeUart_.readData();
         case 4: {  // FC -- keyboard data. Return the latched char and clear the strobe.
             uint8_t v = kbData_;
             kbHave_ = false;
@@ -72,15 +85,16 @@ void SolBoard::write(const BusCycle& c) {
         case 1:  // F9 -- serial data out
             serial_.writeData(c.data, clock_ ? *clock_ : deadCard());
             break;
-        case 2:  // FA (OUT) -- tape motors (D7/D6) + 300-baud select (D5). Held; the
-                 // tape is deferred, so nothing spins yet.
-            tapeCtl_ = c.data;
+        case 2:  // FA (OUT) -- tape motors (D7/D6) + 300-baud select (D5)
+            tapeCtl_      = c.data;
+            deck1_.motor  = (c.data & 0x80) != 0;
+            deck2_.motor  = (c.data & 0x40) != 0;
+            programTapeBaud();
+            retape();  // a transport just started or stopped: the line moved with it
             break;
-        case 3: {  // FB -- tape data out. Deferred: sink it so SAVE does not hang.
-            uint8_t b = c.data;
-            tape_->write(&b, 1);
+        case 3:  // FB -- tape data out
+            tapeUart_.writeData(c.data, clock_ ? *clock_ : deadCard());
             break;
-        }
         case 5: {  // FD -- parallel data out -> the printer line
             uint8_t b = c.data;
             printer_->write(&b, 1);
@@ -103,6 +117,10 @@ bool SolBoard::serialTxEmpty() const {
     return serial_.txBufferEmpty(clock_ ? *clock_ : deadCard());
 }
 
+bool SolBoard::tapeTxEmpty() const {
+    return tapeUart_.txBufferEmpty(clock_ ? *clock_ : deadCard());
+}
+
 // IN 0xF8 -- serial status, ACTIVE HIGH (ready = 1). SOLOS's drivers test only D6
 // (data ready) and D7 (transmitter empty); the modem-handshake and error bits are
 // present in the manual but unused, so they read 0 (there is no line to have noise on).
@@ -120,8 +138,14 @@ uint8_t SolBoard::generalStatus() const {
     if (!kbHave_)           s |= 0x01;  // D0 KDR  active low: 0 = a key is waiting
     s |= 0x02;                          // D1 PDR  active low: no parallel input source
     if (!printerWritable()) s |= 0x04;  // D2 PXDR active low: 0 = printer can take a byte
-    // D3 TFE / D4 TOE -- tape errors, none. D6 TDR active high: 0 = no tape byte ready.
-    s |= 0x80;                          // D7 TTBE active high: 1 = tape TX empty (idle)
+
+    // D3 TFE / D4 TOE -- tape framing and overrun errors, and they stay 0. A
+    // ByteStream delivers the byte that was recorded or it delivers nothing; there is
+    // no line to have noise on, and synthesizing one would mean inventing a
+    // probability (chips/uart1602.h says the same about its own three).
+    if (tapeUart_.dataAvailable()) s |= 0x40;  // D6 TDR  active high: a byte is waiting
+    if (tapeTxEmpty())             s |= 0x80;  // D7 TTBE active high: OK to record
+
     return s;
 }
 
@@ -135,7 +159,12 @@ void SolBoard::pump() {
     kb_->pump();
     latchKeyboard();
     printer_->pump();
-    tape_->pump();
+
+    // The cassette runs on its own clock too -- and it must be polled even when the
+    // guest is not reading 0FBh, or an interrupt-free loader that waits on TDR would
+    // wait forever for a byte nothing had asked the receiver to fetch.
+    tapeUart_.pump();
+    if (clock_) tapeUart_.poll(*clock_);
 }
 
 void SolBoard::latchKeyboard() {
@@ -150,8 +179,18 @@ void SolBoard::latchKeyboard() {
 
 void SolBoard::reset(Reset) {
     if (clock_) serial_.masterReset(*clock_);
+    if (clock_) tapeUart_.masterReset(*clock_);
     kbHave_ = false;
-    tapeCtl_ = 0;
+
+    // RESET drops both motor lines, so both transports stop -- which is the machine:
+    // the latch behind 0FAh clears, and a Sol that has just been reset is not one with
+    // a tape still running. The cassette does NOT come out, and the head does not move:
+    // pressing RESET is not the same as ejecting.
+    tapeCtl_     = 0;
+    deck1_.motor = false;
+    deck2_.motor = false;
+    programTapeBaud();
+    retape();
 }
 
 void SolBoard::power() { reset(Reset::PowerOn); }
@@ -161,6 +200,103 @@ VdmBoard* SolBoard::vdm() const {
     for (Board* b : bus_->boards())
         if (b->type() == "vdm1") return static_cast<VdmBoard*>(b);
     return nullptr;
+}
+
+std::vector<std::string> SolBoard::drainLog() {
+    std::vector<std::string> v = serial_.drainLog();
+    for (std::string& s : tapeUart_.drainLog()) v.push_back(std::move(s));
+    return v;
+}
+
+// ---------------------------------------------------------------------------
+// The cassette decks
+// ---------------------------------------------------------------------------
+
+// `tape` is `tape1`. A machine file written before this card had two transports names
+// the line it knew about, and it still means the deck it always meant.
+int SolBoard::deckOf(const std::string& unit) {
+    const std::string u = lowerAscii(unit);
+    if (u == "tape" || u == "tape1") return 1;
+    if (u == "tape2") return 2;
+    return 0;
+}
+
+SolBoard::Deck*       SolBoard::deck(int n) { return n == 1 ? &deck1_ : n == 2 ? &deck2_ : nullptr; }
+const SolBoard::Deck* SolBoard::deck(int n) const {
+    return n == 1 ? &deck1_ : n == 2 ? &deck2_ : nullptr;
+}
+
+const TapeImage* SolBoard::tape(int n) const {
+    const Deck* d = deck(n);
+    return d ? d->tape.get() : nullptr;
+}
+
+// THE BAUD STRAP THAT IS NOT A STRAP. On the 88-ACR the cassette speed is soldered --
+// the kit says wire it for 300 and there it stays. On the Sol the GUEST picks, with
+// one bit, while the machine runs: `SE TA 1` in SOLOS writes 0FAh with D5 set and the
+// deck records at 300 instead of 1200. So this is called on every OUT 0FAh, and the
+// value it lands on is state the guest can observe by timing its own loader.
+void SolBoard::programTapeBaud() {
+    tapeUart_.baud = (tapeCtl_ & 0x20) ? 300 : 1200;  // D5 set = slow
+    tapeUart_.programLine();
+}
+
+// Put the UART's line on the deck that is turning. See the header: one modem, two
+// transports, and a stopped transport is NO LINE -- not a quiet one.
+//
+// ORDER MATTERS, AND IT IS A LIFETIME, NOT A STYLE. TapeStream holds a REFERENCE to
+// the TapeImage (host/tape.h), so the old stream must die before the tape it points
+// at is replaced or destroyed.
+void SolBoard::retape() {
+    tapeUart_.disconnect();
+
+    Deck* d = nullptr;
+    if (deck1_.motor && deck1_.tape)      d = &deck1_;
+    else if (deck2_.motor && deck2_.tape) d = &deck2_;
+    if (!d) return;  // both stopped, or the running deck is empty: dead line
+
+    tapeUart_.connect(std::make_unique<TapeStream>(*d->tape, d->mode));
+}
+
+bool SolBoard::mount(const std::string& unit, const std::string& path, bool ro,
+                     std::string& err) {
+    int n = deckOf(unit);
+    if (!n) {
+        err = "sol has no cassette deck '" + unit + "' -- tape1 and tape2";
+        return false;
+    }
+
+    // Look where the machine file is; remember what the machine file said -- the same
+    // bargain the disks and the 88-ACR's tape make (core/board.h).
+    auto media = openMedia(resolvePath(path), ro, err);
+    if (!media) { err += pathNote(path); return false; }
+
+    Deck* d = deck(n);
+    tapeUart_.disconnect();  // ...before the old tape goes out from under the stream
+    d->tape = std::make_unique<TapeImage>(std::move(media));
+    d->path = path;
+    retape();
+    return true;
+}
+
+bool SolBoard::unmount(const std::string& unit, std::string& err) {
+    int n = deckOf(unit);
+    if (!n) {
+        err = "sol has no cassette deck '" + unit + "' -- tape1 and tape2";
+        return false;
+    }
+    Deck* d = deck(n);
+    if (!d->tape) {
+        err = "there is no cassette in deck " + std::to_string(n);
+        return false;
+    }
+
+    d->tape->sync();
+    tapeUart_.disconnect();  // the line dies BEFORE the tape does
+    d->tape.reset();
+    d->path.clear();
+    retape();
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,8 +324,41 @@ std::vector<Property> SolBoard::properties() {
 }
 
 std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
-    if (unit != "serial" && unit != "printer" && unit != "tape" && unit != "keyboard")
-        return {};
+    // A DECK GETS NO `connect`, AND THAT IS THE POINT OF THE UNIT KIND. What is on the
+    // end of a cassette line is a cassette; offering an endpoint would advertise a
+    // socket where the hardware has a transport.
+    if (int n = deckOf(unit)) {
+        Deck*                 d = deck(n);
+        std::vector<Property> p;
+        Property              x;
+        x.name    = "mode";
+        x.help    = "The button that is down on the recorder: play | record";
+        x.kind    = Kind::Enum;
+        x.choices = {"play", "record"};
+        x.get     = [d] {
+            return Value::ofStr(d->mode == TapeStream::Mode::Record ? "record" : "play");
+        };
+        x.set = [this, d](const Value& v, std::string&) {
+            TapeStream::Mode m =
+                (v.s() == "record") ? TapeStream::Mode::Record : TapeStream::Mode::Play;
+            if (m == d->mode) return true;
+
+            // Pressing STOP before you press the other button: whatever the guest has
+            // recorded goes to the host file NOW, while we still know it was a
+            // recording. And the byte still in flight came off a tape that is no
+            // longer playing, so it goes too (88-ACR's `mode` says the same).
+            if (d->tape && d->mode == TapeStream::Mode::Record) d->tape->sync();
+            (void)tapeUart_.readData();
+
+            d->mode = m;
+            retape();  // the line onto the tape now runs the other way
+            return true;
+        };
+        p.push_back(std::move(x));
+        return p;
+    }
+
+    if (unit != "serial" && unit != "printer" && unit != "keyboard") return {};
 
     std::vector<Property> p;
     {
@@ -242,17 +411,38 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
 std::string SolBoard::endpointOf(const std::string& unit) const {
     if (unit == "serial")   return serial_.endpoint();
     if (unit == "printer")  return printer_->describe();
-    if (unit == "tape")     return tape_->describe();
     if (unit == "keyboard") return kb_->describe();
     return "null";
+}
+
+// What SHOW says about one deck: the tape, where its head is, and whether the motor
+// is turning -- because "nothing is happening" has two quite different causes here,
+// and the operator who forgot to spin the transport deserves to be told which.
+UnitDef SolBoard::deckUnit(int n) const {
+    const Deck* d = deck(n);
+    UnitDef     u{"tape" + std::to_string(n), UnitKind::Tape, "(empty)"};
+    if (d->tape) {
+        char buf[224];
+        std::snprintf(buf, sizeof buf, "%s  at %llu of %llu bytes%s  [%s, motor %s]",
+                      d->path.c_str(), (unsigned long long)d->tape->pos(),
+                      (unsigned long long)d->tape->size(),
+                      d->tape->atEnd() ? "  [END OF TAPE]" : "",
+                      d->mode == TapeStream::Mode::Record ? "record" : "play",
+                      d->motor ? "on" : "off");
+        u.state          = buf;
+        u.readOnly       = d->tape->readOnly();
+        u.readOnlyForced = d->tape->readOnlyForced();
+    }
+    return u;
 }
 
 std::vector<UnitDef> SolBoard::units() const {
     return {
         {"serial",   UnitKind::Serial, serial_.endpoint()},
         {"printer",  UnitKind::Serial, printer_->describe()},
-        {"tape",     UnitKind::Serial, tape_->describe()},
         {"keyboard", UnitKind::Serial, kb_->describe()},
+        deckUnit(1),
+        deckUnit(2),
     };
 }
 
@@ -262,7 +452,7 @@ std::vector<MapEntry> SolBoard::ioMap() const {
         {b + 0, b + 0, "read",       "Sol serial status (D6 RX-rdy, D7 TX-empty)"},
         {b + 1, b + 1, "read/write", "Sol serial data"},
         {b + 2, b + 2, "read/write", "Sol status: kbd/parallel/tape (in) / tape motor+baud (out)"},
-        {b + 3, b + 3, "read/write", "Sol tape (CUTS) data -- deferred"},
+        {b + 3, b + 3, "read/write", "Sol tape (CUTS) data"},
         {b + 4, b + 4, "read",       "Sol keyboard data"},
         {b + 5, b + 5, "read/write", "Sol parallel (printer) data"},
         {b + 6, b + 6, "write",      "Sol VDM display parameter (scroll) -> vdm1"},
@@ -276,8 +466,18 @@ std::vector<MapEntry> SolBoard::ioMap() const {
 
 bool SolBoard::connect(const std::string& unit, const std::string& endpoint,
                        std::string& err) {
-    if (unit != "serial" && unit != "printer" && unit != "tape" && unit != "keyboard") {
-        err = "sol has no unit '" + unit + "' -- serial, printer, tape, keyboard";
+    // CONNECT IS NOT "UNIMPLEMENTED" ON A DECK, IT IS WRONG ON A DECK -- and it used
+    // to be worse than wrong. `CONNECT sol0:tape file:tape.cuts` opened the file
+    // write-only and TRUNCATING (host/endpoint.cpp), so the documented way to play a
+    // tape destroyed it on connect and could never read a byte back. A cassette has a
+    // position and a rewind; you put one IN.
+    if (deckOf(unit)) {
+        err = "a cassette goes IN the deck, it does not plug into it -- "
+              "MOUNT sol0:" + lowerAscii(unit) + " \"tape.cuts\"";
+        return false;
+    }
+    if (unit != "serial" && unit != "printer" && unit != "keyboard") {
+        err = "sol has no unit '" + unit + "' -- serial, printer, keyboard, tape1, tape2";
         return false;
     }
     if (!g_resolver) {
@@ -289,29 +489,112 @@ bool SolBoard::connect(const std::string& unit, const std::string& endpoint,
 
     if (unit == "serial")        serial_.connect(std::move(s));
     else if (unit == "printer")  printer_ = std::move(s);
-    else if (unit == "tape")     tape_ = std::move(s);
     else                         kb_ = std::move(s);  // keyboard
     return true;
 }
 
 bool SolBoard::disconnect(const std::string& unit, std::string& err) {
+    if (deckOf(unit)) {
+        err = "nothing is connected to a cassette deck -- UNMOUNT takes the tape out.";
+        return false;
+    }
     if (unit == "serial")        serial_.disconnect();
     else if (unit == "printer")  printer_ = std::make_unique<NullStream>();
-    else if (unit == "tape")     tape_ = std::make_unique<NullStream>();
     else if (unit == "keyboard") kb_ = std::make_unique<NullStream>();
     else {
-        err = "sol has no unit '" + unit + "' -- serial, printer, tape, keyboard";
+        err = "sol has no unit '" + unit + "' -- serial, printer, keyboard, tape1, tape2";
         return false;
     }
     return true;
 }
 
+// The DECKS ARE ABSENT HERE, and deliberately. unitStream hands an operator the
+// connector behind a line (the MCP console); a cassette has no connector, and the
+// stream onto one is the UART's, made and destroyed by retape() as motors turn.
 ByteStream* SolBoard::unitStream(const std::string& unit) {
     if (unit == "serial")   return &serial_.stream();
     if (unit == "printer")  return printer_.get();
-    if (unit == "tape")     return tape_.get();
     if (unit == "keyboard") return kb_.get();
     return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// REWIND -- your finger on the transport.
+//
+// The Sol can start and stop a motor, which the 88-ACR cannot, and it STILL cannot
+// rewind: 0FAh has a run bit and nothing else. There is no direction, no counter and
+// no way back. So this is the operator's verb here for the same reason it is there,
+// and it names its deck, because there are two and neither is a sensible default.
+// ---------------------------------------------------------------------------
+std::vector<CommandDef> SolBoard::commands() const {
+    return {{
+        "REWIND",
+        true,     // a card that is IN THE MACHINE has no unbuilt verbs
+        nullptr,  // ...so it is waiting on nothing
+        "REWIND <id>:tape1|tape2 -- wind a cassette back to the beginning",
+        "The Sol-PC reads and writes a tape from wherever the head is sitting, and\n"
+        "after a load the head is at the end of the program. The guest can start and\n"
+        "stop the motor (OUT 0FAh D7/D6) but it cannot wind one back -- there is no\n"
+        "rewind bit on the Sol-PC -- so this is your finger on the deck.\n"
+        "\n"
+        "Load the same tape twice:\n"
+        "  MOUNT sol0:tape1 \"tapes/trk80.tap\"\n"
+        "  GO 0                       (SOLOS GETs it, to the end of the tape)\n"
+        "  REW sol0:tape1             (...and now the tape is back at the start)\n"
+        "\n"
+        "REW is the shortest spelling: RESET already answers to R, RE and RES.",
+    }};
+}
+
+bool SolBoard::runCommand(const std::string& name, const std::vector<std::string>& args,
+                          std::ostream& out, std::string& err) {
+    if (name != "REWIND") {
+        err = "the Sol has one verb, and it is REWIND";
+        return false;
+    }
+
+    // args[1] is `<id>` or `<id>:<unit>` -- the monitor has already used it to find
+    // THIS board (core/board.h). NAMING THE DECK IS NOT OPTIONAL: with two of them, a
+    // bare `REW sol0` would have to guess, and guessing wrong rewinds the tape the
+    // operator was in the middle of writing.
+    std::string u;
+    if (args.size() > 1) {
+        size_t c = args[1].find(':');
+        if (c != std::string::npos) u = args[1].substr(c + 1);
+    }
+    if (u.empty()) {
+        err = "the Sol has two cassette decks -- say which: REW " +
+              (args.size() > 1 ? args[1] : id) + ":tape1";
+        return false;
+    }
+
+    int n = deckOf(u);
+    if (!n) {
+        err = "the Sol has no cassette deck '" + u + "' -- tape1 and tape2";
+        return false;
+    }
+    Deck* d = deck(n);
+    if (!d->tape) {
+        err = "there is no cassette in deck " + std::to_string(n) + ". MOUNT one first.";
+        return false;
+    }
+
+    // Everything the guest has recorded is on its way to the host file, and the head
+    // is about to go somewhere else. Flush BEFORE moving it.
+    d->tape->sync();
+    d->tape->rewind();
+
+    // AND THROW AWAY THE BYTE THE CARD IS STILL HOLDING -- it came off a part of the
+    // tape we have just wound past, and left in place the guest would read it once
+    // now and again when the tape replays it. See AcrBoard::runCommand, which has the
+    // long version of this argument.
+    (void)tapeUart_.readData();
+
+    retape();
+
+    out << id << ":tape" << n << ": rewound -- " << d->path << " is at the beginning ("
+        << d->tape->size() << " bytes)\n";
+    return true;
 }
 
 }  // namespace altair

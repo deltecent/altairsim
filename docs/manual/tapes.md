@@ -87,6 +87,40 @@ once.
 altairsim> REW acr0:tape
 ```
 
+## The other machine with cassettes: the Sol-20
+
+The 88-ACR is not the only card here that turns bytes into noise. The **Sol-20** has a CUTS
+cassette interface built into its motherboard, and it has **two decks**:
+
+```
+altairsim> MOUNT sol0:tape1 "mytape.tap"
+altairsim> SET sol0:tape1 mode=record
+altairsim> REW sol0:tape1
+```
+
+Two differences are worth knowing, and both are the hardware talking.
+
+**The Sol can work the motors, and the Altair cannot.** Everything above about the 88-ACR
+having no motor control is true of the 88-ACR. On a Sol, `OUT 0FAh` starts and stops each
+transport, and SOLOS does it for you — `SAVE` spins the deck up, writes, and spins it down.
+So a Sol tape plays only while the guest is running it, and a deck whose motor is off yields
+nothing at all rather than merely nothing yet.
+
+It still cannot **rewind**. There is no rewind bit on a Sol-PC — a motor line only says
+*turn*, not *which way* — so `REWIND` is your finger here too. Because there are two decks,
+you must name one: a bare `REW sol0` is refused rather than guessing which tape to wind back.
+
+**And the speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at
+300 or 1200 and `OUT 0FAh` D5 picks, at run time. SOLOS's `SE TA` command is that bit.
+
+Once a tape is in, SOLOS's own commands work:
+
+```
+>SA MYPROG 0100 01FF        (save memory to the tape)
+>GE MYPROG                  (find it again and load it)
+>CA                         (catalog what is on the tape)
+```
+
 ## Loading {{NAME_BASIC}} — the three-step ritual
 
 This is the whole point of the chapter. It is three commands, and it is what an Altair owner

@@ -7,14 +7,31 @@
 #include "core/machine.h"
 #include "core/roms.h"
 #include "host/display_null.h"
+#include "host/media.h"
 #include "host/stream.h"
 
 #include <memory>
+#include <sstream>
 #include <string>
+#include <vector>
 
 using namespace altair;
 
 namespace {
+
+// The bytes the guest's recording actually put on the host file -- which is the only
+// question that matters about a write, and the only one the guest cannot answer. No
+// filesystem is touched: MemoryMedia stands in for the file (host/media.h).
+MemoryMedia* g_media = nullptr;
+
+void withTape(const std::string& contents, bool ro = false) {
+    setMediaResolver([contents, ro](const std::string& path, bool wantRo, std::string&) {
+        auto m = std::make_unique<MemoryMedia>(
+            path, std::vector<uint8_t>(contents.begin(), contents.end()), ro || wantRo);
+        g_media = m.get();
+        return m;
+    });
+}
 
 // The Sol-PC I/O card on a bus, with a crystal (an 8080 supplies Machine::clock) and,
 // optionally, the VDM-1 it forwards its scroll writes to. Built by hand rather than
@@ -49,6 +66,14 @@ struct Rig {
     uint8_t in(uint8_t p) { return m.bus.ioRead(p); }
     void    out(uint8_t p, uint8_t v) { m.bus.ioWrite(p, v); }
     void    lineTime() { m.clock.advance(5000); }  // one 9600-baud char, comfortably
+
+    // ...and a CASSETTE character is a different order of magnitude: 11 bit times
+    // (8N2) at 1200 baud is 9.2 ms, or ~18,300 T-states at 2 MHz. A test that waited
+    // a serial character would be testing nothing but the receiver's cold start.
+    void tapeTime() {
+        m.clock.advance(20000);
+        sol->pump();
+    }
 };
 
 // The Sol-PC ports, by SOLOS's names (reference/Sol-20.md).
@@ -58,6 +83,10 @@ constexpr uint8_t KDATA = 0xFC, DSTAT = 0xFE;
 // FA (general status) bit masks.
 constexpr uint8_t KDR = 0x01;   // keyboard data ready -- ACTIVE LOW
 constexpr uint8_t TTBE = 0x80;  // tape transmitter empty -- active high
+constexpr uint8_t TDR = 0x40;   // tape data ready -- active high
+// FA (OUT) -- the transport controls.
+constexpr uint8_t MOTOR1 = 0x80, MOTOR2 = 0x40, SLOW = 0x20;
+constexpr uint8_t TDATA = 0xFB;  // the CUTS data register
 // F8 (serial status) bit masks.
 constexpr uint8_t SDR = 0x40;   // serial data ready -- active high
 constexpr uint8_t STBE = 0x80;  // serial transmitter empty -- active high
@@ -200,13 +229,13 @@ void test_sol() {
         CHECK(ser->out() == "Q", "the transmitted byte reached the endpoint");
     }
 
-    SECTION("Sol I/O -- FA idle bits: no parallel input, tape idle");
+    SECTION("Sol I/O -- FA idle bits: no parallel input, no tape running");
     {
         Rig g;
         uint8_t s = g.in(STAPT);
         CHECK((s & 0x02) != 0, "PDR=1: no parallel input source (active low)");
-        CHECK((s & TTBE) != 0, "TTBE=1: the (deferred) tape transmitter reads idle");
-        CHECK((s & 0x40) == 0, "TDR=0: no tape byte is ever ready");
+        CHECK((s & TTBE) != 0, "TTBE=1: the tape transmitter is empty");
+        CHECK((s & TDR) == 0, "TDR=0: no deck is turning, so no tape byte is waiting");
     }
 
     SECTION("Sol I/O -- OUT 0FEH forwards the display scroll to the VDM-1");
@@ -219,19 +248,21 @@ void test_sol() {
         CHECK(g.vdm->scroll() == 0x0A, "only the low four bits are the row");
     }
 
-    SECTION("Sol I/O -- four purpose-named units, each connectable");
+    SECTION("Sol I/O -- five purpose-named units: three you CONNECT, two you MOUNT");
     {
         Rig g;
         auto u = g.sol->units();
-        CHECK(u.size() == 4, "serial, printer, tape, keyboard");
-        bool haveKbd = false, haveSer = false, havePrn = false, haveTape = false;
+        CHECK(u.size() == 5, "serial, printer, keyboard, tape1, tape2");
+        bool haveKbd = false, haveSer = false, havePrn = false;
+        int  decks = 0;
         for (auto& d : u) {
             haveKbd |= d.name == "keyboard";
             haveSer |= d.name == "serial";
             havePrn |= d.name == "printer";
-            haveTape |= d.name == "tape";
+            if (d.kind == UnitKind::Tape) ++decks;
         }
-        CHECK(haveKbd && haveSer && havePrn && haveTape, "all four are present by name");
+        CHECK(haveKbd && haveSer && havePrn, "the three connectable lines are named");
+        CHECK(decks == 2, "...and the two cassette decks are TAPE units, so they MOUNT");
 
         std::string err;
         CHECK(g.sol->connect("printer", "null", err), "CONNECT printer null");
@@ -243,6 +274,151 @@ void test_sol() {
             if (p.name == "connect") sawConnect = true;
         CHECK(sawConnect, "keyboard exposes a `connect` property");
         CHECK(g.sol->unitProperties("serial").size() >= 2, "serial also exposes baud/data_bits");
+    }
+
+    // ---- The cassette decks -------------------------------------------------
+
+    SECTION("Sol cassette -- a mounted tape plays only while its motor is turning");
+    {
+        withTape("HI");
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "trk80.tap", false, err), "MOUNT sol0:tape1");
+
+        // THE MOTOR IS THE POINT. A cassette in a stopped transport is silent, so the
+        // card holds no line at all and TDR never rises -- however long you wait.
+        g.tapeTime();
+        CHECK((g.in(STAPT) & TDR) == 0, "motor off: nothing comes off the tape");
+
+        g.out(STAPT, MOTOR1);  // OUT 0FAh -- GET TAPE MOVING
+        g.tapeTime();
+        CHECK((g.in(STAPT) & TDR) != 0, "motor on: TDR rises, a byte is waiting");
+        CHECK(g.in(TDATA) == 'H', "IN 0FBH returns it");
+        CHECK((g.in(STAPT) & TDR) == 0, "...and the read strobe clears TDR");
+
+        g.tapeTime();
+        CHECK(g.in(TDATA) == 'I', "the next byte follows it off the tape");
+        CHECK(g.sol->tape(1)->pos() == 2, "the head has moved two bytes down the tape");
+    }
+
+    SECTION("Sol cassette -- two decks, and the motor bits pick which one is on the line");
+    {
+        withTape("21");  // both decks get the same media here; position tells them apart
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "one.tap", false, err), "MOUNT sol0:tape1");
+        CHECK(g.sol->mount("tape2", "two.tap", false, err), "MOUNT sol0:tape2");
+
+        g.out(STAPT, MOTOR2);  // deck 2 only
+        g.tapeTime();
+        (void)g.in(TDATA);
+        CHECK(g.sol->tape(2)->pos() == 1, "deck 2 turned: ITS head moved");
+        CHECK(g.sol->tape(1)->pos() == 0, "...and deck 1's did not");
+
+        g.out(STAPT, MOTOR1);  // ...and now the other one
+        g.tapeTime();
+        (void)g.in(TDATA);
+        CHECK(g.sol->tape(1)->pos() == 1, "deck 1 turned");
+        CHECK(g.sol->tape(2)->pos() == 1, "...and deck 2 stayed where it stopped");
+    }
+
+    SECTION("Sol cassette -- RECORD writes through to the host file");
+    {
+        withTape("");
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "out.tap", false, err), "MOUNT sol0:tape1");
+        CHECK(setUnitProperty(*g.sol, "tape1", "mode", "record", err), "press RECORD");
+
+        g.out(STAPT, MOTOR1);
+        g.out(TDATA, 'A');
+        g.tapeTime();
+        g.out(TDATA, 'B');
+        g.tapeTime();
+
+        // No UNMOUNT here, and that is not laziness: unmounting destroys the media
+        // and g_media would dangle. The recording is already on the host file --
+        // TapeStream::flush() syncs on every byte -- which is the thing being checked.
+        const std::vector<uint8_t> want{'A', 'B'};
+        CHECK(g_media && g_media->bytes() == want,
+              "the two bytes reached the host file, in order");
+    }
+
+    SECTION("Sol cassette -- a deck is MOUNTed, never CONNECTed, and it REWINDs");
+    {
+        withTape("XY");
+        Rig         g;
+        std::string err;
+
+        // `CONNECT sol0:tape file:...` used to open the file WRITE-ONLY AND TRUNCATING
+        // -- the documented way to play a tape destroyed it. It is refused now, and
+        // the refusal has to say what to type instead.
+        CHECK(!g.sol->connect("tape1", "null", err), "CONNECT is refused on a deck");
+        CHECK(err.find("MOUNT") != std::string::npos, "...and it points at MOUNT");
+
+        CHECK(g.sol->mount("tape", "trk80.tap", false, err),
+              "`tape` still names deck 1, so an old config still resolves");
+        g.out(STAPT, MOTOR1);
+        g.tapeTime();
+        (void)g.in(TDATA);
+        CHECK(g.sol->tape(1)->pos() == 1, "the head is one byte in");
+
+        std::ostringstream out;
+        CHECK(g.sol->runCommand("REWIND", {"REWIND", "sol0:tape1"}, out, err),
+              "REW sol0:tape1");
+        CHECK(g.sol->tape(1)->pos() == 0, "...and the head is back at the beginning");
+
+        // With two decks there is no sensible default, so a bare REW must ask rather
+        // than rewind the tape the operator was in the middle of writing.
+        std::ostringstream out2;
+        CHECK(!g.sol->runCommand("REWIND", {"REWIND", "sol0"}, out2, err),
+              "a bare REWIND is refused");
+        CHECK(err.find("tape1") != std::string::npos, "...naming a deck to type");
+    }
+
+    SECTION("Sol cassette -- OUT 0FAh D5 picks the speed, and the guest can feel it");
+    {
+        withTape("AB");
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "t.tap", false, err), "MOUNT sol0:tape1");
+
+        // 1200 baud (D5 clear) is the default. A character is 11 bit times -- 8N2 --
+        // so at 2 MHz it occupies ~18,300 T-states, and at 300 baud four times that.
+        //
+        // THE FIRST BYTE OFF A TAPE IS FREE, on this UART and on the 88-ACR's: the
+        // receiver has no character in flight when the transport starts, so it takes
+        // one at once and only then begins pacing. So the speed is measured on the
+        // SECOND byte, which is the first one the line actually clocked.
+        g.out(STAPT, MOTOR1);
+        g.sol->pump();
+        CHECK(g.in(TDATA) == 'A', "the first byte comes off as the motor starts");
+
+        g.m.clock.advance(12000);  // less than one character at 1200 baud
+        g.sol->pump();
+        CHECK((g.in(STAPT) & TDR) == 0, "1200 baud: too early for the second byte");
+        g.m.clock.advance(12000);
+        g.sol->pump();
+        CHECK((g.in(STAPT) & TDR) != 0, "...and by ~18,300 T-states it has arrived");
+    }
+
+    SECTION("Sol cassette -- ...and 0FAh D5 set is four times slower, not a no-op");
+    {
+        withTape("AB");
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "t.tap", false, err), "MOUNT sol0:tape1");
+
+        g.out(STAPT, MOTOR1 | SLOW);  // 300 baud from the start, so the pacing is 300's
+        g.sol->pump();
+        CHECK(g.in(TDATA) == 'A', "the first byte is still free");
+
+        g.m.clock.advance(24000);  // ample at 1200; a third of a character at 300
+        g.sol->pump();
+        CHECK((g.in(STAPT) & TDR) == 0, "300 baud: the wait that sufficed at 1200 does not");
+        g.m.clock.advance(60000);
+        g.sol->pump();
+        CHECK((g.in(STAPT) & TDR) != 0, "...and by ~73,300 T-states the byte is there");
     }
 
     SECTION("Sol-20 -- SOLOS cold-starts, paints its '>' prompt, and rests on the keyboard");
@@ -259,6 +435,47 @@ void test_sol() {
             b.m.clock.advance(s.tStates);
         }
         CHECK(b.screenHas('>'), "the prompt is still there -- SOLOS is resting, not looping");
+    }
+
+    SECTION("Sol-20 -- SOLOS SAVEs a file to the cassette and GETs it back");
+    {
+        // THE ACCEPTANCE TEST FOR THE WHOLE PHASE, and it is a round trip because that
+        // is the only check that cannot pass by accident: SOLOS's own tape driver
+        // writes the leader, the header and the data through 0FBh, and SOLOS's own
+        // reader has to find them again. Nothing here knows the file layout -- if the
+        // motor bits, TDR/TTBE, the head position or REWIND were wrong, the bytes
+        // would not come home.
+        withTape("");
+        BootRig     b;
+        std::string err;
+        CHECK(b.sol->mount("tape1", "round.tap", false, err), "MOUNT sol0:tape1");
+        CHECK(b.runToPrompt(4'000'000), "SOLOS is at its prompt");
+
+        // Something distinctive to save: sixteen bytes at 0100.
+        for (uint16_t i = 0; i < 16; ++i)
+            b.m.bus.memWrite((uint16_t)(0x0100 + i), (uint8_t)(0xA0 + i));
+
+        ScriptedStream* kbd = b.connectKeyboard();
+        CHECK(setUnitProperty(*b.sol, "tape1", "mode", "record", err), "press RECORD");
+        kbd->feed("SA FOO 0100 010F\r");
+        b.steps(20'000'000);  // the leader alone is a great many 1200-baud characters
+        CHECK(b.sol->tape(1)->size() > 16,
+              "SOLOS wrote a leader and a header, not just the sixteen data bytes");
+
+        // Now play it back into a DIFFERENT place, so a test that never read the tape
+        // cannot pass by finding the original still sitting where it was.
+        CHECK(setUnitProperty(*b.sol, "tape1", "mode", "play", err), "press STOP, then PLAY");
+        std::ostringstream out;
+        CHECK(b.sol->runCommand("REWIND", {"REWIND", "sol0:tape1"}, out, err),
+              "REW sol0:tape1 -- nothing in the guest can wind a Sol transport back");
+
+        kbd->feed("GE FOO 0200\r");
+        b.steps(20'000'000);
+
+        bool same = true;
+        for (uint16_t i = 0; i < 16; ++i)
+            same &= b.m.bus.memRead((uint16_t)(0x0200 + i)) == (uint8_t)(0xA0 + i);
+        CHECK(same, "GET found the file on the tape and loaded it back, byte for byte");
     }
 
     SECTION("Sol-20 -- an .ENT program loads through SOLOS's EN command, then EX runs it");
