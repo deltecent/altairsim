@@ -4,13 +4,16 @@
 #
 # WHY THIS SCRIPT EXISTS AT ALL. The manual's file-transfer chapter tells the reader to
 # type HDIR, R and W at the A> prompt. Those are ordinary CP/M programs and they have to
-# be ON THE DISK -- and the disk images are NOT in this repository (.gitignore: disks/**;
-# they are not ours to redistribute, and each README says where to fetch one). So the
-# images cannot carry the utilities pre-installed the way a tracked file could. The
-# reproducible artifact is this script: run it once against the image you downloaded.
+# be ON THE DISK -- and they are ours, so no disk fetched from deramp.com has them.
 #
 #     tools/install-hostbridge-utils.sh disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk
 #     tools/install-hostbridge-utils.sh "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
+#
+# THE TRACKED IMAGE ALREADY HAS THEM. cpm22b23-56k.dsk is in git WITH R/W/HDIR installed --
+# this script is how they got there, and it is the recipe that makes that blob auditable.
+# For the images that are NOT tracked, prefer running this against a SCRATCH COPY: a fetched
+# image that has been written to can never match its pinned checksum again, which is why
+# tests/acceptance/dcdd-mixed.exp copies first and installs into the copy.
 #
 # THE BOOTSTRAP, AND IT IS NOT THE OBVIOUS ONE (Patrick, 2026-07-14). The obvious way is
 # to PIP all three .HEX files in through the console and LOAD each. It does not fit: the
@@ -30,7 +33,7 @@
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-sim=$root/build/altairsim
+sim=${ALTAIRSIM:-$root/build/altairsim}   # a caller with its own binary says so; ctest does
 hb=$root/cpm/hostbridge
 
 [ -x "$sim" ] || { echo "install-hostbridge-utils: no $sim -- build first." >&2; exit 1; }

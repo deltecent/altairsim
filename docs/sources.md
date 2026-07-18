@@ -62,10 +62,9 @@ period artifacts and test programs written for real silicon — not somebody's e
 ## `disks/` — the CP/M images, and the listings that came with them
 
 `disks/` follows the same rule as `reference/`, and `.gitignore` enforces it as an **allowlist**:
-the disk images and the vendor ReadMes are **not in git** (20 MB, and not ours to redistribute),
-while the `.ASM` listings the boards were *built from* **are** — they are first-hand period
-artifacts, they are cited by path in `docs/boards/*.md`, and a citation to a file that is not in
-the tree is worthless.
+the disk images and the vendor ReadMes are **not in git** (20 MB), while the `.ASM` listings the
+boards were *built from* **are** — they are first-hand period artifacts, they are cited by path in
+`docs/boards/*.md`, and a citation to a file that is not in the tree is worthless.
 
 Every directory carries a `README.md` with the exact download URL and how to run it, so a fresh
 clone knows what it is missing and why. All of it is Mike Douglas's work, from **deramp.com**
@@ -80,6 +79,34 @@ clone knows what it is missing and why. All of it is Mike Douglas's work, from *
 | `mits-88dcdd/cpm22/pcgetput/` | `…/8_inch_floppy/CPM/CPM 2.2/PCGET and PCPUT/` | No machine file — CP/M-side XMODEM tools. Already on both `.dsk` images above. |
 | `mits-88mds/cpm22/` | `…/minidisk/CPM 2.2/` | `cpm22-mini.toml` → `56K CP/M 2.2b v2.3 / For Altair Mini Disk / A>`. **A DIFFERENT CONTROLLER** — the 88-MDS, not the 88-DCDD. **`BOOT.ASM` + `BIOS.ASM` here are authoritative** for the minidisk's geometry (`MINIDSK`: 35 tracks, 16 sectors, `DATATRK` 4) and for the card's own account of itself. Ships as **two disks** because a minidisk holds a fourteenth of an 8″ floppy. |
 | `tarbell-sd/cpm22/buffered/` | `…/tarbell_floppy_controllers/single_density_controller/CPM 2.2B (track buffered)/` | **Nothing.** The Tarbell is not built. `BIOS (1).ASM` is kept only because `docs/boards/tarbell-sd.md` cites it for the grounded-E30 finding. |
+
+### The three images that ARE in git
+
+An image that has to be downloaded before a test can run is an image that makes the test **skip** —
+and three acceptance tests were skipping on every fresh clone and in all of CI. 480 KB buys them
+back, so `.gitignore` names these three, one line each (2026-07-18):
+
+| Tracked file | Upstream SHA-256 | Why this one |
+|---|---|---|
+| `mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk` | `3147946a…57a2cc` | The bootable 8″ system disk, and the only CP/M a fresh clone gets. `acceptance-dcdd-readonly`. |
+| `mits-88mds/cpm22/CPM56K-1.DSK` | `41c87b01…32d3d` | The minidisk system disk (A:). `acceptance-minidisk`. |
+| `mits-88mds/cpm22/CPM56K-2.DSK` | `0f6480b1…586db` | Its tools disk (B:) — `cpm22-mini.toml` mounts both, so one without the other does not boot. |
+
+**`cpm22b23-56k.dsk` is not byte-identical to the download**, and that is deliberate: it ships with
+our `R.COM`, `W.COM` and `HDIR.COM` installed (26K free → 18K), so the host-bridge utilities exist
+somewhere other than as `.HEX` in `cpm/hostbridge/`. The SHA above is the **pristine upstream** file;
+the recipe that turns it into the tracked one is `tools/install-hostbridge-utils.sh`, which is what
+makes the blob auditable rather than mysterious. Everything else on the disk is untouched.
+
+Everything not tracked is one command away — `tools/fetch-disk-images.sh` downloads the 8.6 MB FDC+
+image and the 24K floppy and checks both against pinned SHA-256s. It **never writes to what it
+fetched**, so those hashes keep matching; anything needing a prepared disk copies to scratch first
+(`tests/acceptance/dcdd-mixed.exp`).
+
+CP/M 2.2 itself is redistributable: Bryan Sparks, president of DRDOS, Inc. and successor in interest
+to Digital Research, granted "a right to use, distribute, modify, enhance, and otherwise make
+available in a nonexclusive manner CP/M and its derivatives" (July 2022, superseding the 2001 Lineo
+grant that had been tied to one website) — <http://www.cpm.z80.de/license.html>.
 
 `tapes/` is **fully tracked** — a `.tap` is small, and the two BASIC tapes and `PS2-MON.TAP` are
 what the acceptance tests boot. The rule was never "media is untracked"; it is "*huge* media that

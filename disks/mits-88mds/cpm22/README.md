@@ -42,19 +42,21 @@ See `docs/boards/mits-88mds.md`.
 **A minidisk holds a fourteenth of an 8″ floppy, so CP/M for it ships as TWO disks** — the system on
 A:, the tools on B:. That is why `cpm22-mini.toml` mounts both.
 
-## The disk images are not in this repository
+## The images
 
-`*.DSK` is in `.gitignore` — they are not ours to redistribute. **Download them into this directory:**
+| File | Tracked? | What it is |
+|---|---|---|
+| `CPM56K-1.DSK` | **yes** | The bootable system disk, built for **56K**. **`cpm22-mini.toml` mounts this as A:.** |
+| `CPM56K-2.DSK` | **yes** | Its second disk — MBASIC, `WM`, `NSWP`. Mounted as B:. |
+| `CPM24K-1.DSK` / `CPM24K-2.DSK` | no | The same CP/M built for a **24K** machine. It boots in the stock 56K `minidisk` machine as-is — the constraint is one-way, and more RAM than the image needs is fine. Shrink the memory card only if you want the authentic small machine; `cpm22-mini.toml` shows how in a comment. |
+| `MOVCPM5.COM`, `SYSGEN.COM` | Relocate and write a new system. On the disks already. |
+| `ReadMe.pdf` | Mike Douglas's notes. Not tracked (vendor documentation). |
+
+The two 56K disks are **in git** — 75 KB each, and `.gitignore` names them one at a time. They are
+here so a fresh clone can boot the minidisk and so `acceptance-minidisk` runs without anyone
+downloading anything first. The 24K pair is not tracked; get it from
 
 > <https://deramp.com/downloads/altair/software/minidisk/CPM%202.2/>
-
-| File | What it is |
-|---|---|
-| `CPM56K-1.DSK` | The bootable system disk, built for **56K**. **`cpm22-mini.toml` mounts this as A:.** |
-| `CPM56K-2.DSK` | Its second disk — MBASIC, `WM`, `NSWP`. Mounted as B:. |
-| `CPM24K-1.DSK` / `CPM24K-2.DSK` | The same CP/M built for a **24K** machine. To boot these you must also shrink the memory card — the BIOS is linked to the top of RAM, so the disk and the machine have to agree. `cpm22-mini.toml` shows how in a comment. |
-| `MOVCPM5.COM`, `SYSGEN.COM` | Relocate and write a new system. On the disks already. |
-| `ReadMe.pdf` | Mike Douglas's notes. Not tracked (vendor documentation, same rule as the images). |
 
 They are **76,800 bytes**, not the 76,720 the geometry implies (35 × 16 × 137). XMODEM padded them up
 to a 128-byte boundary — and note 76,720 is *not* a multiple of 128 to begin with (it is 599.375

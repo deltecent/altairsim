@@ -1,0 +1,191 @@
+#!/usr/bin/expect -f
+#
+# DDT SETS A BREAKPOINT, AND THE MACHINE IS REAL ENOUGH TO TAKE IT.
+#
+# THE QUESTION THIS ANSWERS (Patrick, 2026-07-18): is DDT fully operational on CP/M here,
+# including breakpoints -- which he suspected needed interrupts. It does not need them, and
+# that is worth knowing precisely, because the assumption sends you looking for the bug in
+# the wrong layer. A DDT breakpoint is one byte of self-modifying code:
+#
+#     FF = RST 7, a one-byte CALL 0038h
+#
+# DDT saves the opcode at the breakpoint, writes FF over it, and plants a jump at 0038h. The
+# GUEST'S OWN PROGRAM does the calling, synchronously. No wire moves. A machine with no
+# interrupt source in it at all runs DDT breakpoints perfectly.
+#
+# So what this test actually exercises is not an interrupt path -- it is that the 8080 core
+# gets RST, the stack, and the resume after a self-modified byte exactly right, WHILE a real
+# 40-year-old debugger is watching. tests/test_ddt.cpp pins the same mechanic at unit level
+# (and on the Z80, for SID); this proves the whole stack holds up under the actual program.
+#
+# THE FIXTURE IS THE WRITE-PROTECTED ONE ON PURPOSE. dcdd-readonly.toml mounts the tracked
+# image `readonly = true`. DDT never needs to write, so nothing is lost -- and the repository's
+# own floppy cannot be dirtied by a debugger session that goes wrong. The shasum at the end
+# says so rather than assuming it.
+#
+# usage: expect -f ddt.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/dcdd-readonly.toml
+
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted"; exit 1 }
+}
+
+send "DDT\r"
+expect {
+    -ex "DDT VERS 2.2" {}
+    eof     { puts "FAIL: the machine died loading DDT.COM"; exit 1 }
+    timeout { puts "FAIL: DDT.COM did not run. It is on the tracked image -- see docs/sources.md"; exit 1 }
+}
+
+# ---------------------------------------------------------------------------
+# TYPE A PROGRAM IN, WITH DDT'S OWN ASSEMBLER.
+#
+#     0100  MVI A,11
+#     0102  MVI B,22      <- the breakpoint goes here
+#     0104  MVI C,33
+#     0106  MVI D,44
+#     0108  MVI E,55
+#     010A  JMP 100       <- and back round, which is what makes the resume testable
+#
+# THE LOOP IS THE POINT. A breakpoint that stops once proves only that FF trapped. Coming
+# BACK round to 0100 proves DDT put the original opcode back and that the instruction it had
+# covered then executed properly -- which is the half that actually breaks.
+#
+# Each line is paced against DDT's address prompt. Firing them all at once works until it
+# does not: CP/M console input is a one-byte mailbox and this test would fail as a mangled
+# opcode, which reads like a CPU bug rather than a test bug.
+# ---------------------------------------------------------------------------
+send "A100\r"
+expect {
+    -ex "0100" {}
+    timeout { puts "FAIL: DDT's assembler did not prompt at 0100"; exit 1 }
+}
+
+foreach {src next} {
+    "MVI A,11" 0102
+    "MVI B,22" 0104
+    "MVI C,33" 0106
+    "MVI D,44" 0108
+    "MVI E,55" 010A
+    "JMP 100"  010D
+} {
+    send "$src\r"
+    expect {
+        -ex $next {}
+        -ex "?"  { puts "FAIL: DDT rejected `$src` -- its assembler did not take the line"; exit 1 }
+        timeout  { puts "FAIL: DDT never prompted at $next after `$src`"; exit 1 }
+    }
+}
+send "\r"
+
+# WHAT THE PROGRAM LOOKS LIKE BEFORE ANYONE BREAKS ON IT. Taken so the dump AFTER the
+# breakpoint can be compared against it -- an unpatch is only provable against a baseline.
+send "D100,10C\r"
+expect {
+    -ex "3E 11 06 22 0E 33 16 44 1E 55 C3 00 01" {}
+    timeout { puts "FAIL: DDT's dump does not show the program we just assembled"; exit 1 }
+}
+
+# ---------------------------------------------------------------------------
+# THE BREAKPOINT. `G100,102` -- run from 0100, stop at 0102.
+# ---------------------------------------------------------------------------
+send "G100,102\r"
+expect {
+    -ex "*0102" {}
+    eof     { puts "FAIL: the machine died on the breakpoint"; exit 1 }
+    timeout { puts "FAIL: THE BREAKPOINT NEVER FIRED. Either RST 7 did not vector to 0038, or\
+                    the guest ran past its own patched byte."; exit 1 }
+}
+
+# AND IT STOPPED IN THE RIGHT PLACE, which `*0102` alone does not prove -- DDT prints the
+# address it INTENDED. The registers are the machine's answer: A must be loaded (0100 ran)
+# and B must NOT be (0102 is where we stopped, before it).
+send "X\r"
+expect {
+    -ex "A=11 B=0000" {}
+    -ex "A=00"   { puts "FAIL: stopped at 0102 without having executed 0100 -- the breakpoint\
+                        fired early, or the PC is not what DDT thinks"; exit 1 }
+    -ex "B=2200" { puts "FAIL: the patched instruction EXECUTED. The breakpoint trapped one\
+                        instruction too late."; exit 1 }
+    timeout      { puts "FAIL: X did not show A=11 B=0000 at the breakpoint. The two branches\
+                        above name the failures we predicted, so this is a surprise -- and\
+                        log_user is off, so here is what the machine actually said:\
+                        \n$expect_out(buffer)"; exit 1 }
+}
+
+# THE FF IS ALREADY GONE. DDT unpatches every breakpoint the moment it takes control, so by
+# the time this prompt appeared the guest's own opcode is back. Byte-identical to the dump
+# above, or the debugger has left a live RST 7 in a program it was asked to inspect.
+send "D100,10C\r"
+expect {
+    -ex "3E 11 06 22 0E 33 16 44 1E 55 C3 00 01" {}
+    -ex "3E 11 FF 22" { puts "FAIL: DDT's FF is STILL THERE at 0102 -- the breakpoint was\
+                             never unpatched, and the program is now corrupt"; exit 1 }
+    timeout { puts "FAIL: the program does not read back as assembled after the breakpoint"; exit 1 }
+}
+
+# ---------------------------------------------------------------------------
+# RESUME, AND GO ROUND AGAIN. `G,100` -- continue from where we are, break at 0100.
+#
+# THIS IS THE ASSERTION THE WHOLE TEST IS BUILT AROUND. To get here the machine had to
+# execute the very instruction the FF was sitting on, then four more, then the JMP. If DDT
+# had restored the byte at the wrong address -- and RST pushes bp+1, not bp, so there is a
+# real off-by-one to get wrong -- one of those registers is wrong or we never arrive at all.
+# ---------------------------------------------------------------------------
+send "G,100\r"
+expect {
+    -ex "*0100" {}
+    eof     { puts "FAIL: the machine died on the resume"; exit 1 }
+    timeout { puts "FAIL: THE RESUME FAILED. The program never came back round to 0100 --\
+                    DDT returned to the wrong address, or the restored byte is wrong."; exit 1 }
+}
+
+send "X\r"
+expect {
+    -ex "A=11 B=2233 D=4455" {}
+    -ex "B=0022" { puts "FAIL: B holds 00 and C holds 22 -- the resume re-entered the program\
+                        ONE BYTE LATE, executing the operand as an opcode. This is the RST\
+                        off-by-one (the stack holds bp+1)."; exit 1 }
+    -ex "B=0000" { puts "FAIL: the instruction under the breakpoint never ran. DDT resumed\
+                        PAST it instead of AT it."; exit 1 }
+    timeout      { puts "FAIL: no register line after the resume"; exit 1 }
+}
+
+# ---------------------------------------------------------------------------
+# ...AND THE OTHER MECHANISM, briefly. DDT's T does NOT use RST 7: it interprets the
+# instructions itself, in software, which is why it can single-step through code it could not
+# patch. Different path, same core underneath -- and if the two ever disagree about what an
+# instruction does, that is worth finding out here rather than in a user's disassembly.
+# ---------------------------------------------------------------------------
+send "T3\r"
+expect {
+    -ex "A=11 B=2233" {}
+    timeout { puts "FAIL: DDT's trace printed no state"; exit 1 }
+}
+expect {
+    -ex "P=0102" {}
+    timeout { puts "FAIL: T did not step to 0102 -- DDT's interpreter and the CPU disagree"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. A DDT session must not write to the disk:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: DDT set a breakpoint with RST 7 and no interrupt, trapped at 0102 with the right\
+      registers, unpatched itself, resumed AT the covered instruction, ran the loop back to\
+      0100, and single-stepped. The image is byte-identical."
+exit 0
