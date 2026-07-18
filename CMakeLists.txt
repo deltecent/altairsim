@@ -401,12 +401,25 @@ set_tests_properties(socket-hw PROPERTIES LABELS hw)
 # human means MANUFACTURING console input (WriteConsoleInput), which is a Win32 call, and
 # DESIGN.md 2.1 keeps OS calls in the platform layer. A test of OS-specific code is
 # OS-specific code -- so it sits beside the file it tests, is WIN32-only, and SKIPs (77)
-# where no console can be taken. The POSIX terminal is proven the mirror way, by hand
-# against a pty.
+# where no console can be taken. The POSIX terminal has its own mirror of it, below.
 # ---------------------------------------------------------------------------
 if(WIN32)
   add_executable(altair_terminaltest src/platform/win32/terminaltest_win32.cpp)
   target_link_libraries(altair_terminaltest PRIVATE altair_core)
+  add_test(NAME terminal-hw COMMAND altair_terminaltest)
+  set_tests_properties(terminal-hw PROPERTIES LABELS hw SKIP_RETURN_CODE 77)
+else()
+  # The POSIX mirror, and it is not optional any more. "Proven by hand against a pty"
+  # is what let issue #25 through: an empty read on a VMIN=0 tty returns 0, the same
+  # as a hung-up pipe, and reporting both as the end of input latched Console::eof_ on
+  # every interactive run. It failed for a user in a terminal and passed here and in
+  # CI, every time, because a piped stdin never takes that branch. This one opens a
+  # pty and takes it. It SKIPs (77) where no pty can be had.
+  add_executable(altair_terminaltest src/platform/posix/terminaltest_posix.cpp)
+  target_link_libraries(altair_terminaltest PRIVATE altair_core)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(altair_terminaltest PRIVATE util)  # openpty
+  endif()
   add_test(NAME terminal-hw COMMAND altair_terminaltest)
   set_tests_properties(terminal-hw PROPERTIES LABELS hw SKIP_RETURN_CODE 77)
 endif()
