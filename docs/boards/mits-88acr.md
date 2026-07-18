@@ -182,11 +182,27 @@ have — but no real 88-ACR could do it, and no period recorder could follow it.
 **Data Overflow, Framing Error and Parity Error are always zero.** Same reason as the 88-SIO's
 and the 2SIO's: they report line noise, and there is no line. See `docs/boards/mits-88sio.md`.
 
-**The audio is not modeled at all, and cannot be.** A `.TAP` file holds the **bytes** the UART
-sent or received, not the tones. There is no sample rate, no waveform and no volume control, and
-so none of the alignment procedure in the manual's checkout section (R29, the tone and volume
-pots) has any meaning here. A tape recorded by this simulator will not play into a real Altair
-through a speaker.
+**The audio is modeled, but the recorder is not.** A `.WAV` mounts: it is demodulated once, at
+MOUNT, and everything above that sees the bytes a `.TAP` would have given it. A `.TAP` still
+holds the **bytes** the UART sent or received and is read exactly as it always was — the magic,
+never the extension, decides which is which.
+
+What is still absent is the *analogue* half. There is no volume control, no azimuth and no
+dropout modeling, so none of the alignment procedure in the manual's checkout section (R29, the
+tone and volume pots) has any meaning here. Nothing degrades a tape, and no tape degrades.
+
+**And this card refuses audio its modem could not have heard.** The demodulator calibrates
+itself against the tones actually on the tape, so it *would* read a Kansas City recording
+perfectly well — and must not. The real 88-ACR's demodulator is a PLL centred at 2125 Hz with
+about ±100 Hz of capture range, and a 1200 Hz space tone is some 925 Hz outside it: a real card
+fed such a tape does not read it badly, it reads *nothing*. So a tape in another modulation is
+refused, with a message naming the tones it carries. Not all published Altair cassette audio is
+in this card's format, and decoding the rest anyway would hand the guest data no 88-ACR could
+ever have produced.
+
+**Recording back out to audio is not implemented yet.** A `.WAV` therefore mounts **read-only**
+whatever you typed — and says so, rather than letting you discover it a hundred writes later.
+Recording to a `.TAP` is unaffected.
 
 **The `P/R` pad is not Play/Record — it is a trap.** It is the **audio input**: the manual's
 own cabling step says *"Label the other cable (`P/R`) with the words **Play In**."* It goes to a

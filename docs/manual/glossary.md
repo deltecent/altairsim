@@ -44,6 +44,10 @@ in a way that would take you a week. `SHOW BUS CONTENTION` names them instead.
 the reason the 8080 mattered. Write a program for CP/M and it ran on every 8080 machine ever
 built, whoever built it — the first time that was true of anything.
 
+**CUTS** — Computer Users Tape Standard. The Sol-20's cassette scheme, and a faster cousin of
+Kansas City: the same 2400/1200 Hz tones, but four times fewer cycles per bit, giving 1200
+baud instead of 300. The Sol's UART does both, and the guest picks which at `OUT 0FAh` D5.
+
 **DBL** — Disk Boot Loader. The boot PROM on the MITS floppy controller, at `FF00`. It reads
 one sector off track 0 and jumps into it. **There is no `BOOT` command on an Altair** — you set
 the address switches to `FF00`, press EXAMINE to load them into the program counter, then press
@@ -74,6 +78,12 @@ program it is a card like any other.
 a one. It is how the ACR got data onto a cassette, and it is why a loading tape sounds the way
 it does.
 
+The tones were **not** standard across machines, which matters more than it sounds: the
+88-ACR uses 2400/1850 Hz and holds a tone for the whole bit, while Kansas City and CUTS use
+2400/1200 Hz and count *whole cycles* per bit. A card can only read the modulation its own
+modem was built for, so mounting a recording in the wrong one is refused rather than decoded.
+See the tapes chapter.
+
 **hard-sector** — A floppy where the sector boundaries are marked by physical holes punched in
 the disk, and the controller counts them going past. The MITS floppies are hard-sectored. A
 soft-sectored disk has one hole and finds its sectors by reading marks written in the data,
@@ -82,6 +92,12 @@ which is the arrangement that won.
 **IntAck** — Interrupt Acknowledge. The bus cycle the 8080 runs when it accepts an interrupt.
 The interrupting card puts one instruction on the data bus during that cycle, and the
 processor executes it. Almost always an `RST`.
+
+**Kansas City standard** — The 1975 agreement on how microcomputers should record data on
+ordinary audio cassettes, named for the meeting that settled it. A one is eight cycles of
+2400 Hz, a zero is four cycles of 1200 Hz, and both take the same time — which is the whole
+point: a receiver counts cycles instead of trusting a clock, so a tape that plays 5% slow
+still reads. 300 baud. See also **CUTS**, its faster variant, and **FSK**.
 
 **MCP** — Model Context Protocol. The protocol an AI assistant uses to call structured tools.
 `altairsim --mcp` speaks it, so an assistant can drive the machine directly. See the MCP

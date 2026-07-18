@@ -25,6 +25,7 @@ void test_hex();
 void test_symbols();
 void test_media();
 void test_tapecodec();
+void test_tapemount();
 void test_roms();
 void test_phantom();
 void test_cli();
