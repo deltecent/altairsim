@@ -59,17 +59,29 @@
 // oracle that makes the measurement a fact rather than a guess. See
 // docs/boards/proctech-sol.md.
 //
-// ---- AND A CARD DOES NOT IMPLY A MODULATION ----------------------------------------
+// ---- A CARD DECLARES WHAT ITS OWN MODEM CAN HEAR, AND REFUSES THE REST -------------
 //
-// The obvious mapping -- ACR means FSK -- is FALSE, and the archive says so. Of the
-// Altair cassettes published as audio, the "2SIO as Cassette" tapes measure 2397/1852
-// (the MITS modem, as documented) while the "KCACR Standard" and "KCS" tapes measure
-// 2377/1201 (Kansas City), all four at 300 baud. Both were sold for the same machine;
-// Kansas City was the later standard and the ACR was modified to meet it.
+// A board does NOT trial-decode its way through this list looking for something that
+// sticks. It names the format(s) the physical hardware demodulates, and a tape in any
+// other modulation is REFUSED -- with a message saying what the tape actually is.
 //
-// So a board offers a LIST of candidate formats and the mount trial-decodes to pick
-// one (host/tapecodec.h). Hard-wiring one modulation per card would refuse half of
-// the surviving software, and would do it while insisting the tape was corrupt.
+// Because the alternative is inventing hardware. Not all published Altair cassette
+// audio is in the 88-ACR's format: the "2SIO as Cassette" tapes measure 2397/1852 (the
+// MITS modem, confirming the manual's arithmetic off real media), but the "KCS" and
+// "KCACR" -- Kansas City ACR -- tapes measure 2377/1201, and those are a DIFFERENT
+// STANDARD, not ACR tapes recorded oddly. ("2SIO as cassette" names which serial card
+// the loader talks to; the modem, and so the audio, is unchanged.)
+//
+// The 88-ACR physically cannot read the Kansas City ones, and its manual says why: the
+// demodulator is a PLL centred at 2125 Hz that accommodates about +/-100 Hz of tape
+// drift. A 1200 Hz space tone is some 925 Hz outside that. A real card fed such a tape
+// does not read it badly -- it reads nothing. A simulator that decoded it anyway would
+// be handing the guest data no 88-ACR could ever have produced, which is the exact
+// failure DESIGN.md forbids.
+//
+// The Sol-20 is a genuinely different case and gets two formats HONESTLY: its CUTS
+// UART really does run at 300 or 1200 baud, and the GUEST picks which at OUT FAh D5.
+// That is a switch on the hardware, not a guess by the host.
 
 #include <cstddef>
 #include <cstdint>
@@ -91,6 +103,18 @@ struct TapeFormat {
     bool        cycleCounted = true;  // true = Kansas City, false = continuous FSK
     int         dataBits = 8;
     int         stopBits = 2;
+
+    // HOW FAR THE MEASURED TONES MAY SIT FROM THE ONES ABOVE before this format is
+    // ruled out. It is what stops a self-calibrating receiver from reading ANY tape:
+    // calibration measures the tones actually present, so without this check a Kansas
+    // City tape decodes cleanly under the 88-ACR's FSK parameters and the simulator
+    // recovers data the physical card never could (its PLL sits at 2125 Hz and takes
+    // about +/-100 Hz; a 1200 Hz space is 925 Hz outside it).
+    //
+    // 20% is deliberately looser than any real card's capture range -- we are ruling
+    // out a WRONG STANDARD, not modelling the PLL. It passes ordinary tape drift and
+    // still refuses 1200 against 1850 (35% away) and every 2:1 confusion.
+    double tonesTolerance = 0.20;
 };
 
 namespace tapeformats {
@@ -119,6 +143,16 @@ const TapeFormat* byName(const std::string& n);
 struct DemodResult {
     std::vector<uint8_t> bytes;
     uint32_t             framingErrors = 0;
+
+    // The tones the tape ACTUALLY carries, as measured. Zero if the audio held no
+    // two separable tones at all (a blank, or pure leader).
+    double measuredMarkHz = 0;
+    double measuredSpaceHz = 0;
+
+    // False when those tones are not the ones this card's modem demodulates -- see
+    // `tonesTolerance` below. The bytes are then EMPTY, deliberately: a card must not
+    // hand the guest data its hardware could never have recovered.
+    bool tonesMatched = false;
 
     // bytes / (bytes + framingErrors). The number the mount decides on, and the
     // number the operator is shown -- a tape that decoded at 0.4 is noise, and

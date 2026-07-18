@@ -161,6 +161,41 @@ void test_tapecodec() {
     }
 
     // -----------------------------------------------------------------------
+    SECTION("tape modem: a card refuses a modulation its modem cannot hear");
+    // THE RULE: never give the hardware a capability the real board did not have.
+    //
+    // The receiver calibrates itself, which is what lets it ride out tape drift -- and
+    // is exactly why this test has to exist. Calibration finds whatever tones are on
+    // the tape, so with no further check the 88-ACR's parameters would decode a Kansas
+    // City recording perfectly and hand the guest data no 88-ACR could ever recover:
+    // its PLL sits at 2125 Hz and takes about +/-100 Hz, and a 1200 Hz space is some
+    // 925 Hz outside that. A real card reads such a tape as nothing at all.
+    //
+    // Not hypothetical: published Altair cassette audio comes in BOTH modulations
+    // (reference/Altair 88-ACR Cassette Interface.md), so this is the difference
+    // between refusing a tape the card cannot read and silently inventing a card.
+    {
+        const std::vector<uint8_t> in = payload(256);
+
+        DemodResult kcsOnAcr = demodulate(modulate(in, kcs, 22050, 0.25), fsk);
+        CHECK(!kcsOnAcr.tonesMatched, "a Kansas City tape is not this card's modulation");
+        CHECK(kcsOnAcr.bytes.empty(), "...and yields NO bytes, not plausible ones");
+        CHECK(kcsOnAcr.measuredSpaceHz > 1000 && kcsOnAcr.measuredSpaceHz < 1400,
+              "...while still reporting the tone it found, so the refusal can say why");
+
+        DemodResult acrOnKcs = demodulate(modulate(in, fsk, 22050, 0.25), kcs);
+        CHECK(!acrOnKcs.tonesMatched, "and the refusal runs the other way too");
+        CHECK(acrOnKcs.bytes.empty(), "...also yielding no bytes");
+
+        // The card's OWN tapes must still read, drift and all -- a check that refused
+        // everything would pass the two above and be worthless.
+        DemodResult own = demodulate(modulate(in, fsk, 22050, 0.25), fsk);
+        CHECK(own.tonesMatched, "the card's own modulation is accepted");
+        CHECK(same(in, own.bytes), "...and decodes");
+        CHECK(std::fabs(own.measuredMarkHz - 2400) < 120, "...with the mark tone measured");
+    }
+
+    // -----------------------------------------------------------------------
     SECTION("tape modem: the format is carried, not guessed");
     // A tape demodulated with the WRONG format must not quietly return plausible
     // bytes -- that is what the mount's confidence floor is for, and it only works if

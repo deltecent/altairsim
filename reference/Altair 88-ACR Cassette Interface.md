@@ -367,25 +367,32 @@ manually). AC-motor recorders can't use it.
 - Leader byte before the checksum loader: **256 octal** (v3.2) or **175 octal**
   (v3.1/4K), after ~15 s of steady tone.
 
-## The surviving cassettes are NOT all 2400/1850 (MEASURED)
+## What published Altair cassette audio measures (MEASURED)
 
 **Provenance: measured, not from a manual** — from deramp.com's published Altair cassette audio.
-The obvious inference from this document, that an Altair cassette means the modem board's
-2400/1850 FSK, is **false for much of the surviving software**, and a loader that assumes it will
-refuse perfectly good tapes while insisting they are corrupt.
 
-| Published tape | Measured tones | Scheme |
+| Published tape | Measured tones | Reads on a real 88-ACR? |
 |---|---|---|
-| `8K BASIC v4 2SIO Cassette`, `PS2 v3 2SIO Cassette` | **2397 / 1852 Hz** | this card's FSK |
-| `4K BASIC 3.2 (mem dump, KCS)`, `4K BASIC 4.0 KCACR Standard` | **2377 / 1201 Hz** | Kansas City |
+| `8K BASIC v4 2SIO Cassette`, `PS2 v3 2SIO Cassette` | **2397 / 1852 Hz**, 300 baud | **yes** — this card's FSK |
+| `4K BASIC 3.2 (mem dump, KCS)`, `4K BASIC 4.0 KCACR Standard` | **2377 / 1201 Hz**, 300 baud | **no** — Kansas City |
 
-All four are **300 baud**. The 2400/1852 measurement is a direct confirmation of §7's arithmetic
-(2 MHz ÷ 104 ÷ 8 = 2404 Hz, ÷ 135 ÷ 8 = 1852 Hz) off real media. The Kansas City tapes reflect the
-later industry standard — hence the "KCACR" naming — which the ACR was modified to meet.
+The 2397/1852 measurement is a direct confirmation of §7's arithmetic (2 MHz ÷ 104 ÷ 8 = 2404 Hz,
+÷ 135 ÷ 8 = 1852 Hz) off real media. Note that "2SIO as cassette" names which **serial card the
+loader talks to**, not a different modulation: the modem board, and therefore the audio, is the
+same.
 
-Consequence for the simulator: the card offers a **list** of candidate formats and the mount
-trial-decodes to choose (`src/host/tapecodec.h`). Hard-wiring one modulation per card would lock
-out half the corpus. See `src/host/tapemodem.h`.
+**The Kansas City files are not 88-ACR tapes.** "KCS" and "KCACR" (Kansas City ACR) name a
+*different standard*, and §7 says why this card cannot read them: the demodulator is an XR-210 PLL
+sitting at **2125 Hz** and accommodating roughly **±100 Hz** of drift. A Kansas City space tone is
+**1200 Hz** — about 925 Hz outside the capture range. A real 88-ACR fed one of these tapes does not
+read it slowly or badly; it does not read it at all.
+
+Consequence for the simulator: a card declares the modulation **its own hardware demodulates**, and
+a tape in any other modulation is REFUSED with a message naming what it actually is. Accepting a
+Kansas City tape on this card would be giving the 88-ACR a capability the physical board never had
+— see `src/host/tapemodem.h` and the "never invent hardware" rule in `DESIGN.md`. (The Sol-20 is a
+genuinely different case: its CUTS UART really does do 300 **and** 1200 baud, selected by the guest
+at `OUT FAh` D5 — see `reference/Sol-20.md`.)
 - Successful-load address-light signatures: 007647 (4K), 017647 (8K), 037647
   (Extended 3.2).
 - Optional motor control on **control-channel bit D0** (`OUT 6,1` on / `OUT 6,0`

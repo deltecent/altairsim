@@ -116,10 +116,11 @@ std::vector<double> crossings(const AudioBuffer& a) {
 // quantity that is stable across speed, shape and sample rate is the RATIO of the two
 // intervals; an arithmetic split biases toward the longer cluster.
 //
-// Returns the dividing interval. Below it is the faster tone (mark).
+// Returns the two cluster centres as intervals: {mark, space}, mark the shorter.
+// {0,0} when the audio does not hold two separable tones.
 // ---------------------------------------------------------------------------
-double calibrate(std::vector<double> iv, double ratio) {
-    if (iv.empty()) return 0.0;
+std::pair<double, double> calibrate(std::vector<double> iv, double ratio) {
+    if (iv.empty()) return {0.0, 0.0};
 
     std::sort(iv.begin(), iv.end());
     const double med = iv[iv.size() / 2];
@@ -139,7 +140,7 @@ double calibrate(std::vector<double> iv, double ratio) {
         // dividing line straight through the middle of the only tone present and
         // classify half a silent tape as space, which manufactures start bits out of
         // an idle line. A carrier must decode to NOTHING.
-        if (!na || !nb) return 0.0;
+        if (!na || !nb) return {0.0, 0.0};
         double nlo = sa / na, nhi = sb / nb;
         if (std::fabs(nlo - lo) < 1e-9 && std::fabs(nhi - hi) < 1e-9) { lo = nlo; hi = nhi; break; }
         lo = nlo; hi = nhi;
@@ -149,9 +150,9 @@ double calibrate(std::vector<double> iv, double ratio) {
     // one tone that jitter has smeared in two, not two tones: the narrowest real pair
     // we carry is 2400/1850, a ratio of 1.30. Anything under 1.15 is noise being
     // asked to mean something.
-    if (lo <= 0.0 || hi / lo < 1.15) return 0.0;
+    if (lo <= 0.0 || hi / lo < 1.15) return {0.0, 0.0};
 
-    return std::sqrt(lo * hi);  // geometric mean: the ratio-fair midpoint
+    return {lo, hi};  // shorter interval first: that is the faster tone, the mark
 }
 
 } // namespace
@@ -166,8 +167,53 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     iv.reserve(cr.size());
     for (size_t i = 1; i < cr.size(); ++i) iv.push_back(cr[i] - cr[i - 1]);
 
-    const double split = calibrate(iv, f.markHz / f.spaceHz);
-    if (split <= 0.0) return r;
+    const auto [ivMark, ivSpace] = calibrate(iv, f.markHz / f.spaceHz);
+    if (ivMark <= 0.0) return r;  // no two tones here: a blank tape, or pure leader
+
+    // ---- HOW MANY CROSSINGS IS A CYCLE, AND ARE THESE EVEN THE RIGHT TONES? ------
+    //
+    // The comparator fires ONCE per cycle on a sawtooth and TWICE on a sine, and
+    // recovered cassette audio is either (the MITS modem shapes its output into a
+    // sawtooth on purpose). So a measured interval is a whole cycle or a half one,
+    // and nothing in the signal says which -- a factor of two, from waveform shape
+    // alone.
+    //
+    // The CARD settles it. Both readings are computed and compared against the tones
+    // this modem is built to hear; the one that fits wins. That is also, and more
+    // importantly, the check that stops a self-calibrating receiver from reading
+    // anything at all: calibration finds whatever tones are present, so without this
+    // an 88-ACR would cheerfully decode a Kansas City tape its PLL could never lock
+    // to. If NEITHER reading fits, the tape is in some other modulation and this card
+    // returns nothing -- see TapeFormat::tonesTolerance.
+    const double fit = f.tonesTolerance;
+    for (double perCycle : {1.0, 2.0}) {
+        const double m = double(a.rate) / (ivMark * perCycle);
+        const double s = double(a.rate) / (ivSpace * perCycle);
+        if (std::fabs(m / f.markHz - 1.0) <= fit && std::fabs(s / f.spaceHz - 1.0) <= fit) {
+            r.measuredMarkHz  = m;
+            r.measuredSpaceHz = s;
+            r.tonesMatched    = true;
+            break;
+        }
+    }
+    if (!r.tonesMatched) {
+        // Report what was actually there, so the refusal can name it -- "wrong format"
+        // without the tones is the least useful diagnostic there is. Neither reading
+        // fits, so quote the CLOSER of the two rather than picking one arbitrarily: a
+        // sawtooth tape reported at half its real frequency sends the reader hunting
+        // for a fault that is not there.
+        double best = 0;
+        for (double perCycle : {1.0, 2.0}) {
+            const double m = double(a.rate) / (ivMark * perCycle);
+            const double s = double(a.rate) / (ivSpace * perCycle);
+            const double d = std::fabs(std::log(m / f.markHz)) +
+                             std::fabs(std::log(s / f.spaceHz));
+            if (best == 0 || d < best) { best = d; r.measuredMarkHz = m; r.measuredSpaceHz = s; }
+        }
+        return r;
+    }
+
+    const double split = std::sqrt(ivMark * ivSpace);  // the ratio-fair midpoint
 
     // The level timeline: mark (1) or space (0) at every sample. Built once, so the
     // framer below can sample any instant in constant time. The idle line is MARK --

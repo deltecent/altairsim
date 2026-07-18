@@ -111,9 +111,21 @@ int main(int argc, char** argv) {
     if (cmd == "info") {
         std::printf("%s: %.1fs, %u Hz, %zu samples\n", argv[2], a.seconds(), a.rate,
                     a.s.size());
-        for (const auto& [f, r] : rank(a))
-            std::printf("  %-10s %7zu bytes  %5u framing errors  confidence %.3f\n",
-                        f.name, r.bytes.size(), r.framingErrors, r.confidence());
+        for (const auto& [f, r] : rank(a)) {
+            if (!r.tonesMatched) {
+                // Not this card's modulation. Say what the tape IS -- "wrong format"
+                // without the tones is the least useful diagnostic there is.
+                std::printf("  %-10s -- not this modulation (tape carries %.0f/%.0f Hz,"
+                            " this format is %.0f/%.0f)\n",
+                            f.name, r.measuredMarkHz, r.measuredSpaceHz, f.markHz,
+                            f.spaceHz);
+                continue;
+            }
+            std::printf("  %-10s %7zu bytes  %5u framing errors  confidence %.3f"
+                        "  tones %.0f/%.0f Hz\n",
+                        f.name, r.bytes.size(), r.framingErrors, r.confidence(),
+                        r.measuredMarkHz, r.measuredSpaceHz);
+        }
         return 0;
     }
 
