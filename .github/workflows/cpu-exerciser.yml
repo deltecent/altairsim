@@ -14,6 +14,16 @@ name: CPU exerciser
 # this file was missing it. Coverage is unchanged: a PR is still exercised, a merge to
 # master is still exercised, and workflow_dispatch still works. What goes away is only
 # the run on a branch push whose PR will test the identical SHA moments later.
+# CMakeLists.txt IS NOT A TRIGGER PATH, AND LEAVING IT IN DEFEATED THE FILTER. Sources are
+# listed there rather than globbed, so every feature that adds a .cpp edits it -- and the
+# exercisers then fired on work that never touched an opcode. Measured: 11 of 182 commits
+# have touched src/cpu, src/isa or tests/cpu, yet the WAV cassette and tty-EOF changes each
+# spent ~7.5 minutes twice (PR, then the merge to master) proving the 8080 still adds. A
+# filter that matches everything is not a filter.
+#
+# What it was guarding is real but rare: a CMake change that alters how the CPU is compiled
+# (an optimization flag, a standard level). That is a workflow_dispatch, not a standing trigger
+# -- and a release now exercises all three platforms anyway (cpu-exerciser-release.yml).
 on:
   push:
     branches: [ master ]
@@ -22,7 +32,6 @@ on:
       - 'src/isa/**'
       - 'tests/cpu/**'
       - 'tests/cputest.cpp'
-      - 'CMakeLists.txt'
       - '.github/workflows/cpu-exerciser.yml'
   pull_request:
     paths:
@@ -30,7 +39,6 @@ on:
       - 'src/isa/**'
       - 'tests/cpu/**'
       - 'tests/cputest.cpp'
-      - 'CMakeLists.txt'
       - '.github/workflows/cpu-exerciser.yml'
   workflow_dispatch:
 

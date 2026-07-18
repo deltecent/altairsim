@@ -129,6 +129,16 @@ a **negative control**: the same script against a machine that ought to *fail*, 
 `WILL_FAIL`. If a control ever passes, the test it guards was passing for the wrong reason and
 is worthless. That is the only reason to believe any of them.
 
+**The CPU exercisers are gated three ways, on purpose.** `cpu-8080exm` is ~2.9 billion
+instructions and `cpu-zexdoc`/`cpu-zexall` ~5.8 billion each, so they are labelled `slow` and
+excluded from the per-push matrix. `cpu-exerciser.yml` runs them on one Linux runner *only when
+CPU/ISA code changes* — an opcode bug is a logic bug and shows up on any host, so one
+architecture is enough to catch it, and paying for three would be paying three times for the
+same answer. `cpu-exerciser-release.yml` then runs them on **all three platforms** at a release
+tag (or on demand), because the one thing that is *not* architecture-independent is the
+compiler: the cores are full of shifts, masks and half-carry arithmetic, and until a release
+nothing has ever driven billions of instructions through the MSVC build.
+
 The hardware tests (`-L hw`) run against an actual null-modem cable between two USB serial
 ports, because a claim about a cable deserves a cable. They are opt-in, pointed at your ports
 with `ALTAIR_SERIAL_A` / `ALTAIR_SERIAL_B`, and they **skip loudly** when the hardware is
