@@ -12,6 +12,24 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 ./build/altairsim                    # the default machine
 ```
 
+If CMake is unfamiliar, the two `cmake` calls are two distinct steps — **configure**, then
+**build** — and you run both in that order:
+
+- **`cmake -S . -B build`** — *configure.* Reads `CMakeLists.txt` in the source tree (`-S .`,
+  the current directory) and writes the generated build files into a fresh `build/` directory
+  (`-B build`). It downloads nothing and compiles nothing; it just works out *how* to build.
+  You rerun it only when `CMakeLists.txt` itself changes — and even then the build step reruns
+  it for you.
+- **`cmake --build build -j`** — *build.* Compiles what the configure step laid out under
+  `build/`. `-j` runs the compiles in parallel across all CPU cores (drop it for a serial
+  build, or `-j4` to cap the jobs). This is the command you repeat after editing code.
+- **`ctest --test-dir build -LE slow`** — run the tests that the build produced. `--test-dir
+  build` points at the same directory; `-LE` is *label-exclude*, so `-LE slow` runs everything
+  **except** tests tagged `slow` (the ~10-minute 8080 exerciser). Drop it to run those too.
+
+Everything lands in `build/`, which is disposable: `rm -rf build` and rerun the configure step
+for a clean slate.
+
 That is not a boast about minimalism for its own sake. It is a property worth defending: the
 day this needs a package manager to build is the day it stops being something a person can
 pick up in ten years and compile.
@@ -23,8 +41,10 @@ adding one edits `CMakeLists.txt` and forces a reconfigure; `roms/` and `machine
 globbed but use `CONFIGURE_DEPENDS`, so they re-glob on every build. The build directory does
 cache absolute paths, though, so **rename the checkout or switch compilers and you must
 `rm -rf build`** — it fails with a loud `CMakeCache.txt directory is different` error, not a
-silent wrong answer. If a build breaks immediately after a pull, suspect a stale `build/`
-before suspecting the code. `docs/building-linux.md` §6 has the details.
+silent wrong answer. If a build breaks — or a test that used to pass fails — immediately after
+a pull, suspect a stale `build/` before suspecting the code: a `rm -rf build` and a clean
+reconfigure is the first thing to rule out, because a half-rebuilt object can walk an
+already-fixed bug back in. `docs/building-linux.md` §6 has the details.
 
 ## What actually got built
 
