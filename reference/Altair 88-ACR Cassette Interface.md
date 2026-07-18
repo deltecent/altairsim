@@ -366,6 +366,81 @@ manually). AC-motor recorders can't use it.
   demodulated serial bytes.
 - Leader byte before the checksum loader: **256 octal** (v3.2) or **175 octal**
   (v3.1/4K), after ~15 s of steady tone.
+
+## What published Altair cassette audio measures (MEASURED)
+
+**Provenance: measured, not from a manual** — from deramp.com's published Altair cassette audio.
+
+| Published tape | Measured tones | Reads on a real 88-ACR? |
+|---|---|---|
+| `8K BASIC v4 2SIO Cassette`, `PS2 v3 2SIO Cassette` | **2397 / 1852 Hz**, 300 baud | **yes** — this card's FSK |
+| `4K BASIC 3.2 (mem dump, KCS)`, `4K BASIC 4.0 KCACR Standard` | **2377 / 1201 Hz**, 300 baud | **no** — Kansas City |
+
+The 2397/1852 measurement is a direct confirmation of §7's arithmetic (2 MHz ÷ 104 ÷ 8 = 2404 Hz,
+÷ 135 ÷ 8 = 1852 Hz) off real media. Note that "2SIO as cassette" names which **serial card the
+loader talks to**, not a different modulation: the modem board, and therefore the audio, is the
+same.
+
+**The Kansas City files are not 88-ACR tapes.** "KCS" and "KCACR" (Kansas City ACR) name a
+*different standard*, and §7 says why this card cannot read them: the demodulator is an XR-210 PLL
+sitting at **2125 Hz** and accommodating roughly **±100 Hz** of drift. A Kansas City space tone is
+**1200 Hz** — about 925 Hz outside the capture range. A real 88-ACR fed one of these tapes does not
+read it slowly or badly; it does not read it at all.
+
+Consequence for the simulator: a card declares the modulation **its own hardware demodulates**, and
+a tape in any other modulation is REFUSED with a message naming what it actually is. Accepting a
+Kansas City tape on this card would be giving the 88-ACR a capability the physical board never had
+— see `src/host/tapemodem.h` and the "never invent hardware" rule in `DESIGN.md`. (The Sol-20 is a
+genuinely different case: its CUTS UART really does do 300 **and** 1200 baud, selected by the guest
+at `OUT FAh` D5 — see `reference/Sol-20.md`.)
+
+## What idle tape carries, and where the leader really lives (MEASURED)
+
+**Provenance: measured, not from a manual** — same corpus. This answers "what is on the tape when
+the guest is not sending anything?", and it matters for *writing* audio as much as reading it.
+
+**Idle is a tone, not silence.** The UART's serial output pin idles HIGH, high is mark, and the
+modem board has no squelch and no carrier-off — its oscillator runs whenever the card is powered
+(§7). So an 88-ACR recording nothing lays down **continuous 2400 Hz**. Blank tape and idle tape are
+acoustically different things, and a decoder must treat a steady single tone as *no data*, never as
+a run of one symbol.
+
+**The published files have essentially no audio leader**, which contradicts §8's "~15 seconds of
+steady tone" — because they are modulator reconstructions trimmed to the data, not dubs of a
+cassette:
+
+| Tape | Duration | Leading mark | Trailing mark |
+|---|---|---|---|
+| `8K BASIC v4 2SIO Cassette` | 282.6 s | 0.001 s | 0.001 s |
+| `Ext BASIC 4.1 2SIO Cassette` | 583.3 s | 0.001 s | 0.001 s |
+| `PS2 v3 2SIO Cassette` | 116.7 s | 0.001 s | 0.001 s |
+| `TRK80.WAV` (Sol CUTS, a real dub) | 77.7 s | **3.05 s** | **1.93 s** |
+
+TRK80 is the control: a genuine recording *does* carry seconds of leader, and you can see the
+operator's finger in it. **Do not use the published `.wav` files as masters for writing a physical
+cassette** — §8's 15 s exists to clear the plastic leader and let the transport settle, and these
+files have none of it.
+
+**The leader that the loader actually needs is BYTES, not audio**, and it survives in the decoded
+stream — which is why a byte-level tape image loses nothing:
+
+| Tape | Leader byte | Count | Trailer |
+|---|---|---|---|
+| `8K BASIC v4` | `0xC2` | 255 | 257 × `0x00` |
+| `PS2 v3` | `0xAE` (§8's 256 octal) | 127 | 30 × `0x00` |
+
+**Nothing on these tapes is encoded as duration.** Checked directly: the longest interior run of
+mark on TRK80 is exactly **10 bit times** — which is just one all-ones frame, since every frame
+begins with a start bit and mark can never run longer however many `0xFF`s follow. The 88-ACR tapes
+have no interior run over 4 bit times. So a `.TAP` byte image is a complete representation of these
+recordings.
+
+**The caveat is multi-file tapes**, which this corpus does not contain and which are therefore
+UNVERIFIED here. §8 is explicit that MITS software wants **at least 5 seconds of tone between
+batches**, and a Sol tape holding several SOLOS files needs the same for a human reason: the
+operator must be able to stop the transport before the next program runs past the head. That
+silence is *time*, and time is the one thing a byte image cannot hold — so when the simulator
+*writes* audio it must synthesize leader and inter-file gaps rather than recover them.
 - Successful-load address-light signatures: 007647 (4K), 017647 (8K), 037647
   (Extended 3.2).
 - Optional motor control on **control-channel bit D0** (`OUT 6,1` on / `OUT 6,0`

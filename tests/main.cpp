@@ -39,6 +39,7 @@ int main() {
     test_hex();
     test_symbols();
     test_media();
+    test_tapecodec();
     test_roms();
     test_clock();
     test_bus();

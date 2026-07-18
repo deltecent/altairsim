@@ -158,6 +158,12 @@ add_library(altair_core STATIC
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
+  # The cassette modem and the container it arrives in. Neither knows what a board is:
+  # a modulation is four numbers and a flag (host/tapemodem.h), so the 88-ACR and the
+  # Sol-20 differ here as VALUES and not as code. Listed by the layering -- a WAV is a
+  # container, an FSK signal is a modulation, a program image is neither.
+  src/host/wav.cpp
+  src/host/tapemodem.cpp
   # The sandboxed host directory the Host Bridge reaches through. It is here, and not
   # on the board, because the board must never see a path, a symlink or a file handle
   # -- and because the escape tests that matter are tests of THIS, with no card in
@@ -281,6 +287,12 @@ target_link_libraries(altairsim PRIVATE altair_core)
 add_executable(altair_genref tools/gen-reference.cpp)
 target_link_libraries(altair_genref PRIVATE altair_core)
 
+# tapetool -- cassette audio in and out, with no machine attached. Same justification
+# as altair_genref above: it is the tool you need BEFORE the simulator works, when the
+# question is "what is actually on this tape?". See tools/tapetool.cpp.
+add_executable(altair_tapetool tools/tapetool.cpp)
+target_link_libraries(altair_tapetool PRIVATE altair_core)
+
 add_custom_target(docs-reference
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/docs/manual/ref"
   COMMAND altair_genref "${CMAKE_SOURCE_DIR}/docs/manual/ref"
@@ -298,6 +310,7 @@ add_executable(altair_tests
   tests/test_hex.cpp
   tests/test_symbols.cpp
   tests/test_media.cpp
+  tests/test_tapecodec.cpp
   tests/test_roms.cpp
   tests/test_phantom.cpp
   tests/test_cli.cpp

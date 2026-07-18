@@ -87,7 +87,70 @@ JZ WRWAT`.
 ## `FBh` — tape data · `FCh` — keyboard data · `FDh` — parallel data
 
 - **Tape** (`TDATA`, `FBh`): the CUTS cassette UART's data register. Kansas-City-standard FSK
-  audio at 300 or 1200 baud; `IN TDATA` also clears the UART's error flags.
+  audio at 300 or 1200 baud; `IN TDATA` also clears the UART's error flags. For the audio
+  itself, see "CUTS audio format" below.
+
+## CUTS audio format (MEASURED, not from a manual)
+
+**Provenance: this section is not sourced from a Processor Technology document.** None of the
+manuals we hold state the CUTS cycle counts — this page previously said only "Kansas-City-standard
+FSK audio at 300 or 1200 baud". The numbers below were **measured** from a genuine Sol-20 cassette
+recording, deramp.com's `TRK80.WAV`, and are recorded here because the repo's rule is that a
+hardware number has a source. Treat a period manual as authoritative over this table if one turns
+up.
+
+| | 300 baud (`SE TA 1`) | 1200 baud (`SE TA 0`, the default) |
+|---|---|---|
+| Logic 1 (mark) | 8 cycles of 2400 Hz | **2 cycles of 2400 Hz** |
+| Logic 0 (space) | 4 cycles of 1200 Hz | **1 cycle of 1200 Hz** |
+| Bit cell | 3.33 ms | **833 µs** |
+
+Both symbols occupy the same time, which is the whole point of the 2:1 tone choice — a receiver
+counts cycles instead of trusting a clock. The idle line is mark, so an unrecorded stretch is a
+steady 2400 Hz tone.
+
+**Framing is 8N2** — one start bit, eight data bits LSB first, **two** stop bits. Measured as 11.0
+bit times between consecutive start bits over 7,325 of ~7,900 frames.
+
+**How the measurement was checked.** `TRK80.WAV` (44.1 kHz mono) demodulates under the above
+parameters to 7,932 bytes with 27 framing errors, and the result carries a well-formed SOLOS file
+header at offset 52: name `TRK80`, then a `SIZE` field of `0x1EA0` (7,840) that matches the
+decoded payload. A wrong tone pair or a wrong bit rate does not produce a valid header and a
+self-consistent length — that agreement is what makes this a measurement rather than a guess.
+`altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
+
+### Leader, trailer, and what a whole tape looks like (MEASURED)
+
+Five genuine Sol cassette dubs from the same archive, all 1200 baud. These are *recordings of
+tape*, not modulator reconstructions, so the leader and trailer are a real transport and a real
+operator's finger:
+
+| Tape | Audio leader | Audio trailer | Byte leader | SOLOS file |
+|---|---|---|---|---|
+| `TRK80` | 3.05 s | 1.93 s | 51 | `TRK80`, 7,840 B |
+| `ROBOT_INSTR` | 4.33 s | 1.47 s | 51 | `ROBOT`, 10,677 B |
+| `SKULL` | 4.22 s | 1.73 s | 52 | `SKULL`, 16,853 B |
+| `ALS8` | 3.83 s | 1.23 s | 50 | `ALS8`, 8,320 B |
+| `TINY_TREK` | 3.68 s | 2.30 s | 50 | `TTREK`, 8,194 B |
+
+So a CUTS tape is: **~4 s of idle 2400 Hz**, then **~51 bytes of `00`**, then a **`01` sync byte**,
+then the 16-byte SOLOS header (`FOPEN` layout, above), then the payload, then **~2 s of idle tone**.
+The byte-level leader and sync are written by SOLOS itself, so they survive in a byte tape image;
+only the audio seconds are lost, and only they must be synthesized when writing audio back out.
+
+**Every tape in this archive holds exactly ONE file**, checked by scanning the full decoded stream
+for a second leader+`01`+header signature — including `ROBOT_INSTR`, whose *filename* suggests a
+program plus its instructions but which decodes to a single file named `ROBOT`. Nor does any tape
+contain an interior run of idle tone longer than 10 bit times (one all-ones frame).
+
+**This is structural, not a sampling accident, and it is why no multi-file example will be found
+here.** These are commercial distribution masters, and Processor Technology sold one program per
+cassette. A multi-file tape is a *user* artifact — somebody saving several of their own programs
+onto one C-60 — and nobody archived their own scratch tapes. So the inter-file gap the SOLOS manual
+implies and that a human needs (to stop the transport before the next program runs past the head)
+is **real but unmeasurable from published media**, and the simulator must pick a number rather than
+recover one. Note that the gap and the leader are the same thing seen twice: a second file on a
+tape is just a file, and it wants the leader every file wants.
 - **Keyboard** (`KDATA`, `FCh`): read-only parallel ASCII from the keyboard. Ready is `FAh`
   bit 0 (`KDR`, active low); reading `KDATA` clears the strobe.
 - **Parallel** (`PDATA`, `FDh`): the general parallel port, used for a printer. Input ready
