@@ -63,7 +63,7 @@ The eight that own their prefix, in Patrick's ranking (2026-07-11): **DUMP, STEP
 | `U` | UNMOUNT | not DISMOUNT — see above |
 | `DISC` | DISCONNECT | |
 | `CONS` | CONSOLE | **configures** the console. It does not start the machine — RUN does |
-| `CONN` | CONNECT | `console | null | loopback | socket:PORT | socket:HOST:PORT | serial:DEVICE` |
+| `CONN` | CONNECT | `console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | file:PATH` |
 | `RES` | RESET | it sits with POWER, and it pays three letters — see above |
 | `P` | POWER | |
 | `T` | TRACE | logs every bus cycle — to the console or a file |
@@ -92,7 +92,7 @@ altairsim> HELP
   BO[ARDS]          B[REAK]           COM[PARE]         C[ONFIG]
   CONN[ECT]         CONS[OLE]         DE[POSIT]         DI[SASM]
   DISC[ONNECT]      D[UMP]            E[DIT]*           EX[AMINE]
-  F[ILL]            HE[LP]            H[ISTORY]*        I[N]
+  F[ILL]            HE[LP]            H[ISTORY]         I[N]
   L[OAD]            M[OUNT]           MOV[E]            N[EXT]
   NO[BREAK]         O[UT]             P[OWER]           Q[UIT]
   REC[ORD]*         REGI[ON]          RE[GS]            REP[LAY]*
@@ -264,7 +264,7 @@ Both stop on a breakpoint, on a HLT nothing can wake, and on ATTN, and both say 
 
 **Ctrl-C belongs to the guest** — CP/M reads it, and a stop key the guest also wants is one that either breaks the guest or gets eaten by it. So the way out is **ATTN (^E)**, and it is the same key whatever is in the backplane: with a console, with no console, on a terminal, always.
 
-The host intercepts it before the guest is ever offered the byte, so **the guest cannot disable it** — it is a key on the *front panel*, not on the terminal. And **ATTN does not stop the machine**: it takes the keyboard back, and a bare `RUN` resumes from exactly where you were.
+The host intercepts it before the guest is ever offered the byte, so **the guest cannot disable it** — it is a key on the *front panel*, not on the terminal. And **ATTN stops the machine without disturbing it**: nothing executes while this prompt is up, but nothing is lost either — the monitor tells you the address it is sitting at, and a bare `RUN` resumes from exactly where you were.
 
 ```
 altairsim> RUN F800
@@ -282,10 +282,17 @@ ALTMON 1.3
 
 ```
 altairsim> CONSOLE
-console  (the host keyboard and screen)
+console  (the host keyboard and screen -- not a tty)
 
   property         value            legal
   attn             0x5              1..31
+  upper            false            true|false
+  strip7in         false            true|false
+  strip7out        false            true|false
+  crlf             false            true|false
+  echo             false            true|false
+  bell             true             true|false
+  bsdel            off              off|bs|del
 
   held by  sio0:a
 
@@ -420,7 +427,7 @@ A single global base was never really available — `baud=9600` cannot mean 3840
 
 ```
 altairsim> REGION ADD mem0 type=ram at=8000 size=0x10K
-mem0: a K/M suffix is always decimal -- drop the hex marker: '0x10K'
+mem0: memory: [[board.region]] size: a K/M suffix is always decimal -- drop the hex marker: '0x10K'
 ```
 
 Note that `at=F000` needs no `0x` — it's an address, so it's already hex.

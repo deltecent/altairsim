@@ -115,7 +115,7 @@ written back over the file — in the format and at the sample rate it was mount
 
 ```
 altairsim> SET acr0:tape mode record
-altairsim> GO 0                         (the guest records)
+altairsim> RUN 0                        (the guest records)
 altairsim> SET acr0:tape mode play      (...and the WAV is written here)
 ```
 

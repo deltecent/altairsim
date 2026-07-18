@@ -36,10 +36,10 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
   8080PRE, CPUTEST and the full 8080EXM exerciser all pass — every one of the exerciser's CRC
   groups. Flags, carries, the undocumented behaviours, the lot. The Z80 clears the same bar,
   against ZEXDOC and ZEXALL.
-- **Eleven board types**, all but one modelled from its own manual: two CPU cards (an 8080 and
-  a Z80), RAM/ROM, two serial cards, a cassette interface, two floppy controllers, a
-  vectored-interrupt/real-time-clock card, the front panel, and one card of our own for moving
-  files in and out.
+- **Fourteen board types**, all but one modelled from its own manual: two CPU cards (an 8080 and
+  a Z80), RAM/ROM, two serial cards, a cassette interface, two floppy controllers, a line-printer
+  controller, a video display, the Sol-PC's integrated I/O, a vectored-interrupt/real-time-clock
+  card, the front panel, and one card of our own for moving files in and out.
 - **A monitor** — the prompt you get when the machine is not running — with breakpoints (plain
   or conditional), single-stepping, disassembly, memory examine and deposit, a bus-cycle trace
   and a history ring, and a view of the bus itself: who decodes what, who is pulling which
@@ -64,8 +64,13 @@ This section is here because a manual that only lists strengths is an advertisem
 - **There is no snapshot and no replay.** You can trace the machine (`TRACE`) and read the
   run-up to a stop from the `HISTORY` ring, but you cannot save the machine's state and step
   backwards into it.
-- **There is no video and no audio.** The Altair had neither. A terminal on a serial port is
-  the display, exactly as it was.
+- **The Altair itself had no video and no audio**, and a terminal on a serial port is its
+  display, exactly as it was. But **video cards existed for the S-100 bus, and two of them are
+  here**: the Processor Technology VDM-1, and the Sol-PC's integrated video. Both open a real
+  window when the program was built with SDL3, and fall back to a headless display when it was
+  not. **There is still no audio output** — nothing is ever sent to a speaker. Cassette `.WAV`
+  files are read and written as *files*, which is a different thing, and the tapes chapter
+  covers it.
 - **Not every S-100 card is here.** The ones that are, are in the boards chapter. A Tarbell
   disk controller and a PMMI modem are designed but not built.
 - **Timing is honest, but it is not a circuit simulation.** Instructions cost the right

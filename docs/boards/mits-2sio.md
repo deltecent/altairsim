@@ -102,7 +102,7 @@ The board has one. **Everything else belongs to a unit**, because everything els
 | `dcd` | unit | **`ground` (default) \| `wired`** — where the 6850's `/DCD` pin goes. |
 | `cts` | unit | **`ground` (default) \| `wired`** — likewise `/CTS`. Wired, it **gates the transmitter**. |
 | `connect` | unit | Endpoint. `CONNECT` sets it. |
-| `lines` | unit | **Read-only.** The live pin state: `DCD CTS RTS brk` (capitals = asserted). A pin is not a jumper, so it has no setter, and `SET` says so. |
+| `lines` | unit | **Read-only.** The live pin state, `in: DCD CTS, out: RTS BRK` (capitals = asserted). A pin is not a jumper, so it has no setter, and `SET` says so. |
 **There is no `data_bits`, `parity` or `stop_bits` property on this card, and there must not be.** Unlike the 88-SIO, the word format here is **not a jumper** — it is the 6850's control register, and the **guest** writes it (`0x11` = ÷16, 8N2). A property would be a second place to set it, and the two would disagree the moment software touched the chip. It is still *line coding* and it still reaches the wire: on a real serial port the card programs the host port from the bits the guest wrote (`ByteStream::setParams`), so a guest that selects 7E1 reconfigures the cable to 7E1.
 
 **There is no transform chain on this card either, and that is deliberate.** `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel` are the **console's** (`SET CONSOLE UPPER=ON`, DESIGN.md §7.2). A 6850's line is **8-bit clean, whatever is plugged into it** — because the thing plugged into it may be a socket carrying XMODEM, and a filter there corrupts the transfer silently. Only a terminal may rewrite a byte, and this card is not a terminal; it is a hole in the back of the machine.
@@ -227,13 +227,13 @@ The bug was not the pacing. **It was believing a `ByteStream` is a serial line.*
 
 So the receiver is still **paced at the baud rate** — that part is real, it is what stops a guest reading faster than the line allows, and it is the same clock TDRE is timed against — but it only ever takes a byte when the register is free. Status bit 5 is therefore always zero.
 
-If a **host serial port** endpoint ever lands, an overrun there is a genuine hardware event and the stream can report one — from the place that actually knows, which is not this board.
+The **host serial port** endpoint has since landed, and an overrun there is a genuine hardware event — so the stream can report one, from the place that actually knows, which is not this board.
 
 ## Verification (milestone 1 acceptance)
 
 | | | |
 |---|---|---|
-| 1 | 4K MITS BASIC answers `PRINT 2+2` on the console | **not yet** — ALTMON runs instead, which proves the same path |
+| 1 | 4K MITS BASIC answers `PRINT 2+2` on the console | **DONE** — `acceptance-basic4k` boots it off a cassette; `acceptance-basic8k` runs 8K BASIC on this card |
 | 2 | Same session over a **TCP socket** | **DONE** — `socket:` lands; `tests/test_lines.cpp` runs a real client over real TCP |
 | 3 | Same over a **host serial port** | **DONE, ON REAL HARDWARE** — `tests/serialtest.cpp`, below |
 | 4 | An **interrupt-driven** console echo, with **no VI board** | **DONE** — `tests/test_sio2.cpp` |

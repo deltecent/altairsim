@@ -36,8 +36,8 @@ takes to be unambiguous, and the first command that matches wins.
   REC[ORD]*         REGI[ON]          RE[GS]            REP[LAY]*
   RES[ET]           REST[ORE]*        R[UN]             SA[VE]
   SEA[RCH]          SE[T]             SH[OW]            SN[APSHOT]*
-  S[TEP]            STO[P]*           T[RACE]           U[NMOUNT]
-  W[HO]
+  S[TEP]            STO[P]*           SY[MBOLS]         T[RACE]
+  U[NMOUNT]         W[HO]
 ```
 
 Type the part before the bracket. `D` is `DUMP`; `DE` is `DEPOSIT`; `RES` is `RESET`. Case

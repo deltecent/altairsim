@@ -95,9 +95,17 @@ broken, and the fix is to print the answer instead of the complaint.
 ### What the card does to the wire
 
 The host port is opened at 9600 8N1, and then **immediately re-programmed by the card** —
-because the card is the only thing in the system that knows what it is strapped to. The
-card's `baud`, `data_bits`, `stop_bits` and `parity` become the actual frame on the actual
-wire.
+because the card is the only thing in the system that knows what frame it is carrying. What it
+re-programs the port *from* depends on the card, and the difference is real hardware, not a
+house style:
+
+- On an **88-SIO** or an **88-ACR** the word format is a set of **jumpers**, so it is the card's
+  `baud`, `data_bits`, `stop_bits` and `parity` properties that become the frame on the wire.
+- On an **88-2SIO** — the card in the example above — there are **no such properties, and there
+  must not be**: the 6850's word format is a *register the guest writes*. A property would be a
+  second place to say one thing, and the two would disagree the moment software touched the chip.
+  So the frame on the wire is whatever the **guest** last programmed, and a guest that selects
+  7E1 reconfigures the cable to 7E1.
 
 So if you want 300 baud, 7 bits, even parity going out of that connector, you do not
 configure it on the connector. You configure it on the **card**, where a 1975 operator would
@@ -181,7 +189,7 @@ serial LINE is 8-bit clean. There is no knob anywhere on any card that masks a b
 | `crlf` | translates line endings |
 | `echo` | echoes your keystrokes locally |
 | `bell` | rings the terminal bell on `^G` |
-| `bsdel` | swaps backspace and delete |
+| `bsdel` | folds backspace and delete together: `off` (default), `bs` (send BS for both), or `del` (send DEL for both) |
 | `attn` | which control character is ATTN (default `^E`) |
 
 Set them with `CONSOLE k=v`. (`SET CONSOLE k=v` is the same thing said longer.)
