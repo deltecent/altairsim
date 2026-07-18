@@ -197,6 +197,9 @@ add_library(altair_core STATIC
   # SdlDisplay in the shipping binary, a NullDisplay headless -- so the card itself
   # links with no graphics library and is tested with no window. See proctech-vdm1.h.
   src/boards/proctech-vdm1.cpp
+  # The Processor Technology Sol-PC's integrated I/O as one composite card (serial,
+  # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
+  src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/mits-88virtc.cpp
   # OUR OWN CARD -- the only one in this list that is not a period board, and the
@@ -314,6 +317,7 @@ add_executable(altair_tests
   tests/test_88acr.cpp
   tests/test_c700.cpp
   tests/test_vdm1.cpp
+  tests/test_sol.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp

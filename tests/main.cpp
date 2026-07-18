@@ -3,6 +3,7 @@
 #include "boards/mits-2sio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88sio.h"
+#include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
@@ -22,6 +23,7 @@ int main() {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
+    altair::SolBoard::setResolver(altair::resolveEndpoint);
 
     // A graphics board draws into an injected Display; headless tests give it a
     // NullDisplay, so a VDM-1 renders into memory and a test reads the pixels back
@@ -71,6 +73,7 @@ int main() {
     test_88acr();
     test_c700();
     test_vdm1();
+    test_sol();
     test_frontpanel();
     test_virtc();
     test_hostdir();

@@ -16,13 +16,19 @@
 // a bus cycle, and never by owning the host's frame rate (DESIGN.md 7.4 #1: the
 // SDL event loop does not own the main loop; the display is pumped once per slice).
 //
-// KEYSTROKES ARE NOT HERE. A display is output only. The VDM-1's keyboard is a
-// SEPARATE parallel board, and a Dazzler game's joystick is an input port -- both
-// return through a ByteStream/endpoint (host/endpoint.h) so they ride the recorded
-// event queue like every other input (DESIGN.md 7.4). A private path from the
-// window straight into a board would break RECORD/REPLAY the first time it mattered.
+// KEYSTROKES DO NOT GO INTO A BOARD FROM HERE. A display is output only. The
+// VDM-1's keyboard is a SEPARATE parallel board, and a Dazzler game's joystick is an
+// input port -- both take their bytes from a ByteStream/endpoint (host/endpoint.h),
+// never from the window directly. But a windowed host DOES capture keystrokes when
+// its window has focus, and those must reach the guest the same way the terminal's
+// do: through the one Console (host/console.h), which is the recorded input queue
+// (DESIGN.md 7.4). So a Display has an optional KEY SINK -- a callback the
+// composition root points at Console::inject -- and the SDL window drains its key
+// events into it. The board still reads only its ByteStream; window and terminal
+// keys merge in the Console before any board sees them, so RECORD/REPLAY is intact.
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -111,6 +117,23 @@ public:
     // board never sets stay black. Cheap enough to call every frame or only on a
     // change -- the host caches it.
     virtual void setPalette(std::span<const Color> colors) = 0;
+
+    // The keyboard sink (see the header note). A windowed host delivers focus
+    // keystrokes here as ASCII; the composition root wires it to Console::inject so
+    // they join the terminal's on the one recorded input queue. Left null on a
+    // headless host -- a NullDisplay never captures a key, so it never calls it.
+    using KeySink = std::function<void(const uint8_t*, size_t)>;
+    void setKeySink(KeySink s) { keySink_ = std::move(s); }
+
+protected:
+    // A subclass that captures keystrokes calls this to hand them off; a no-op when
+    // no sink is wired.
+    void emitKeys(const uint8_t* p, size_t n) {
+        if (keySink_ && n) keySink_(p, n);
+    }
+
+private:
+    KeySink keySink_;
 };
 
 } // namespace altair

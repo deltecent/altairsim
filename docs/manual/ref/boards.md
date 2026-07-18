@@ -25,6 +25,7 @@ printed in each property's own base.
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb |
 | [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
+| [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/tape/keyboard |
 | [`fp`](#fp) | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
@@ -244,6 +245,45 @@ Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (defau
 | `port` | int | `0xCC` | `0x0` .. `0xFC` | I/O port -- scroll (OUT) / status (IN). Low two bits are zero |
 | `video` | enum | `normal` | `normal` \| `reverse` | Video polarity (SW1/SW2): normal (light on dark) or reverse |
 | `cursor` | enum | `blink` | `off` \| `blink` \| `steady` | Cursor for a byte with bit 7 set (SW3/SW4): off, blink, or steady |
+
+
+## `sol`
+
+Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/tape/keyboard
+
+**Units:** `serial` (serial), `printer` (serial), `tape` (serial), `keyboard` (serial)
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0xF8` | `0x0` .. `0xF8` | Base I/O port (decodes BASE+0..6). Fixed at F8 on a real Sol-PC |
+
+### Unit `serial` — `[board.unit.serial]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+| `baud` | int | `9600` | `1` .. `1000000` | Serial line speed (the strap on the Sol-PC's serial UART) |
+| `data_bits` | int | `8` | `5` .. `8` | Serial word length: 8, 7, or 6 (the Sol-PC DIP) |
+
+### Unit `printer` — `[board.unit.printer]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+
+### Unit `tape` — `[board.unit.tape]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+
+### Unit `keyboard` — `[board.unit.keyboard]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
 
 
 ## `fp`

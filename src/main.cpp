@@ -1,6 +1,7 @@
 #include "boards/mits-2sio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88sio.h"
+#include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
 #include "host/display_sdl.h"
@@ -11,6 +12,7 @@
 #include "config/toml.h"
 #include "core/machine.h"
 #include "core/machines.h"
+#include "host/console.h"
 #include "host/endpoint.h"
 #include "host/media.h"
 #include "mcp/server.h"
@@ -183,6 +185,7 @@ int main(int argc, char** argv) {
     Sio2Board::setResolver(resolveEndpoint);
     SioBoard::setResolver(resolveEndpoint);
     C700Board::setResolver(resolveEndpoint);
+    SolBoard::setResolver(resolveEndpoint);
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board
     // draws into a Display and never learns it is SDL. The shipping binary hands it
@@ -190,6 +193,12 @@ int main(int argc, char** argv) {
     // the machine runs identically with nothing to draw on. Static so it outlives the
     // machine, and created once for the whole session.
     VdmBoard::setDisplay(&g_display);
+
+    // Window keystrokes join the terminal's on the ONE recorded input queue: the
+    // display's key sink (host/display.h) feeds the single Console, and a Sol-20's
+    // keyboard board reads that Console -- so you can type in the VDM window or the
+    // terminal and SOLOS sees one stream (DESIGN.md 7.4). A NullDisplay never fires it.
+    g_display.setKeySink([](const uint8_t* p, size_t n) { Console::instance().inject(p, n); });
 
     // The same seam for the other kind of endpoint: a disk board asks openMedia()
     // for a path and gets a medium back, and this is the one line that decides the

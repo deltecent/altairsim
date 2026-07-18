@@ -93,6 +93,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `acr` | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb |
 | `c700` | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
 | `vdm1` | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
+| `sol` | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/tape/keyboard |
 | `fp` | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
 | `virtc` | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | `hostbridge` | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
@@ -111,6 +112,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |
 | `ps2` | The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
+| `sol20` | The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS. |
 | `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |
 | `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |
 

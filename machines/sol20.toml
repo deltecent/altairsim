@@ -1,0 +1,79 @@
+# The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS.
+#
+# `altairsim sol20` cold-starts SOLOS 1.3 (roms/SOLOS, (c) 1977 Processor Technology
+# Corp.) from ROM at 0C000H. SOLOS clears the VDM-1 and prints its sign-on and `>`
+# prompt straight into the memory-mapped screen at 0CC00H -- as it would on a real
+# Sol-20. With SDL3 the screen is a window in the VDM's own character font; headless
+# it runs the same and the screen is inspectable with `DUMP CC00`.
+#
+# You can TYPE at it. The keyboard comes in on the `sol` board's `keyboard` unit,
+# wired to the console below -- so keystrokes from the VDM-1 window OR the terminal
+# both reach SOLOS (they merge in the one host Console). The serial port, the parallel
+# printer port and the CUTS cassette are the sol board's other three units; the tape
+# is deferred (its ports read idle, so SAVE/GET do not hang).
+#
+# THREE CARDS MAKE THE SOL-PC. The Sol-20 was one integrated board, but its functions
+# map cleanly onto three of ours: the `fp` sense switches at 0FFH, the `vdm1` video at
+# 0CC00H, and the composite `sol` I/O card at 0F8H-0FEH (serial, keyboard, parallel,
+# tape -- the last three share one status register at 0FAH, which is why they are one
+# card and not three). See docs/boards/proctech-sol.md and reference/Sol-20.md.
+
+[machine]
+name    = "sol20"
+startup = ["RUN C000"]          # cold-start SOLOS; it draws its prompt on the VDM
+
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00                    # the sense switches at 0FFH (SOLOS does not read them)
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0                    # flat out (the default)
+
+# THE VDM-1 video. Screen RAM at 0CC00H (SOLOS's VDMEM). Its own I/O port is left at
+# the card default 0CCH and goes UNUSED -- on the Sol-20 the display scroll register is
+# a SEPARATE port (0FEH, DSTAT), which the `sol` board below owns and forwards here.
+[[board]]
+type   = "vdm1"
+id     = "vdm0"
+base   = 0xCC00
+video  = "normal"
+cursor = "blink"
+
+# THE SOL-PC I/O. Seven ports 0F8H-0FEH: serial (F8/F9), the shared status register and
+# tape motor/baud (FA), tape data (FB), keyboard data (FC), parallel/printer data (FD),
+# and the VDM display parameter port (FE, forwarded to the vdm1 above).
+[[board]]
+type = "sol"
+id   = "sol0"
+
+  [board.unit.keyboard]
+  connect = "console"           # VDM window + terminal keys both arrive here
+
+  [board.unit.serial]
+  connect = "null"              # CONNECT sol0:serial socket:2323 to use the RS-232 port
+
+# Memory: 48K of RAM below the ROM, the 2 KB SOLOS ROM at 0C000H, and 1 KB of scratch
+# RAM at 0C800H (SOLOS's variables and its stack, SYSTP = 0CBFFH). The VDM-1 owns
+# 0CC00H-0CFFFH; nothing else may claim that page.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"                  # 0000-BFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = C000
+  mount = "builtin:solos"       # roms/SOLOS -- SOLOS 1.3, the Sol-20 OS
+
+  [[board.region]]
+  type = "ram"
+  at   = C800
+  size = "1K"                   # 0C800-0CBFF -- SOLOS scratch + stack

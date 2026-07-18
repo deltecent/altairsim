@@ -151,7 +151,8 @@ void test_machines() {
 
     // Case, and the absence of a machine, both answer honestly.
     CHECK(findMachine("DEFAULT") != nullptr, "a machine name is not case-sensitive");
-    CHECK(findMachine("sol20") == nullptr, "and one we have no manuals for is simply not there");
+    CHECK(findMachine("sol20") != nullptr, "the Sol-20 is a built-in machine");
+    CHECK(findMachine("imsai") == nullptr, "and one we have not built is simply not there");
 
     SECTION("the default machine's boot PROM -- the real DBL, on the real bus");
 
@@ -383,7 +384,7 @@ remove = true
     // A BASE THAT DOES NOT EXIST IS AN ERROR, not an empty machine.
     Machine     mb;
     std::string eb;
-    CHECK(!loadTomlText("[machine]\nname = \"x\"\nbase = \"sol20\"\n", "x", mb, eb),
+    CHECK(!loadTomlText("[machine]\nname = \"x\"\nbase = \"imsai\"\n", "x", mb, eb),
           "a base we have no machine for is refused");
 
     // AND A SAVED DELTA IS A MACHINE, NOT A DELTA. CONFIG SAVE writes the backplane it can

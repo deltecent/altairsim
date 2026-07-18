@@ -38,6 +38,11 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     }
     SDL_SetRenderLogicalPresentation(renderer_, w, h,
                                      SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+
+    // Ask SDL for layout- and shift-resolved characters (SDL_EVENT_TEXT_INPUT), so a
+    // '$' or a capital letter arrives correct without us reimplementing a keymap. The
+    // control keys and Ctrl-combinations still come through SDL_EVENT_KEY_DOWN.
+    SDL_StartTextInput(window_);
     return true;
 }
 
@@ -68,13 +73,53 @@ void SdlDisplay::setPalette(std::span<const Color> colors) {
 void SdlDisplay::present(Surface* s) {
     if (!renderer_ || !texture_ || !s) return;
 
-    // Pump SDL's event queue on the main thread (DESIGN.md 7.4 #2). We do not act on
-    // input yet -- keystrokes will route through a ByteStream when the keyboard board
-    // lands -- but draining the queue is what keeps the window from beach-balling, and
-    // a close request is remembered for a future run loop to honor.
+    // Pump SDL's event queue on the main thread (DESIGN.md 7.4 #2). Keystrokes go to
+    // the injected key sink (host/display.h), which the composition root wires to the
+    // Console -- so a key typed in this window joins the terminal's on the one
+    // recorded input queue, and no board is touched from here. Draining the queue is
+    // also what keeps the window from beach-balling, and a close request is remembered.
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_EVENT_QUIT) quit_ = true;
+        switch (e.type) {
+        case SDL_EVENT_QUIT:
+            quit_ = true;
+            break;
+        case SDL_EVENT_TEXT_INPUT:
+            // Printable characters, already shift/layout-resolved. The guest is a
+            // 7-bit machine, so pass ASCII only; Ctrl-combos come via KEY_DOWN.
+            for (const char* p = e.text.text; p && *p; ++p) {
+                uint8_t c = (uint8_t)*p;
+                if (c < 0x80) emitKeys(&c, 1);
+            }
+            break;
+        case SDL_EVENT_KEY_DOWN: {
+            const SDL_Keycode k = e.key.key;
+            uint8_t c = 0;
+            if (e.key.mod & SDL_KMOD_CTRL) {
+                // Ctrl-A..Ctrl-Z -> C0 control codes (SOLOS reads Ctrl-C and kin this
+                // way; SDL does not deliver these as TEXT_INPUT). The keycode carries
+                // the unshifted ASCII letter, so map off its value, not a SDLK_ name.
+                if (k >= 'a' && k <= 'z') c = (uint8_t)(k - 'a' + 1);
+                else if (k == '[') c = 0x1B;   // Ctrl-[  = ESC
+                else if (k == '\\') c = 0x1C;
+                else if (k == ']') c = 0x1D;
+            } else {
+                switch (k) {
+                case SDLK_RETURN:
+                case SDLK_KP_ENTER:  c = 0x0D; break;  // CR -- SOLOS's line terminator
+                case SDLK_BACKSPACE: c = 0x08; break;
+                case SDLK_TAB:       c = 0x09; break;
+                case SDLK_ESCAPE:    c = 0x1B; break;
+                case SDLK_DELETE:    c = 0x7F; break;
+                default:             break;
+                }
+            }
+            if (c) emitKeys(&c, 1);
+            break;
+        }
+        default:
+            break;
+        }
     }
 
     // Resolve the indexed frame against the palette into RGBA32 (bytes R,G,B,A).
