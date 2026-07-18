@@ -6,8 +6,17 @@ name: CPU exerciser
 # and on demand via workflow_dispatch. They are NOT in the per-push CI matrix. One
 # Linux runner is enough: CPU correctness is architecture-independent, and this keeps
 # the minutes from multiplying across platforms.
+#
+# THE PUSH TRIGGER IS RESTRICTED TO master, AND THAT IS NOT COSMETIC. Without the branch
+# filter, work on a feature branch fires this TWICE for the same commit -- once for the
+# push, once for the pull_request -- and each run is about seven minutes of runner time
+# for an answer we already have. ci.yml has carried the same guard since it was written;
+# this file was missing it. Coverage is unchanged: a PR is still exercised, a merge to
+# master is still exercised, and workflow_dispatch still works. What goes away is only
+# the run on a branch push whose PR will test the identical SHA moments later.
 on:
   push:
+    branches: [ master ]
     paths:
       - 'src/cpu/**'
       - 'src/isa/**'
