@@ -25,7 +25,7 @@ printed in each property's own base.
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb |
 | [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
-| [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/tape/keyboard |
+| [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT) |
 | [`fp`](#fp) | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
@@ -249,9 +249,9 @@ Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (defau
 
 ## `sol`
 
-Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/tape/keyboard
+Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT)
 
-**Units:** `serial` (serial), `printer` (serial), `tape` (serial), `keyboard` (serial)
+**Units:** `serial` (serial), `printer` (serial), `keyboard` (serial), `tape1` (tape), `tape2` (tape)
 
 ### Board properties
 
@@ -273,17 +273,23 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one ca
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
 
-### Unit `tape` — `[board.unit.tape]`
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
-
 ### Unit `keyboard` — `[board.unit.keyboard]`
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+
+### Unit `tape1` — `[board.unit.tape1]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
+
+### Unit `tape2` — `[board.unit.tape2]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
 
 
 ## `fp`
