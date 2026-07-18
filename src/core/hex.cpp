@@ -47,6 +47,12 @@ bool loadHex(std::span<const uint8_t> text, Image& out, std::string& err) {
                                    text[i] == '\t'))
             ++i;
         if (i >= text.size()) break;
+
+        // Ctrl-Z (0x1A) is the CP/M / DOS soft end-of-file, and period HEX files
+        // are routinely padded with a run of it (AMON.HEX, for one, ends in 118
+        // of them). It is not part of Intel HEX, so treat it as the end of the
+        // stream rather than choking on a "missing ':'" a byte later.
+        if (text[i] == 0x1A) break;
         ++recNo;
 
         if (text[i] != ':') return fail("expected ':' to start a record");

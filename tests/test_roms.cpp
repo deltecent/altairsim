@@ -68,4 +68,44 @@ void test_roms() {
     CHECK(mf[3] == 0x11 && mf[4] == 0x00 && mf[5] == 0x4C, "FF03: LXI D,4C00  -- and DBL says 2C00");
     CHECK(mf[6] == 0x0E && mf[7] == 0xE3, "FF06: MVI C,E3  (227 bytes -- DBL copies 235)");
     CHECK(mf != flat, "so they are DIFFERENT PROMS, and the CRCs above are what keep them apart");
+
+    // ---- Martin Eberhard's improved boot loaders and monitors -----------------------
+    //
+    // Same rule as DBL/MDBL: a ROM image is a hardware fact, so every built-in gets its
+    // CRC32 checked against the value recorded in docs/roms.md. A corrupted embed then
+    // fails the BUILD, not a user chasing a phantom software bug. Provenance and the
+    // per-ROM listing each was verified against are in docs/roms.md and roms/<NAME>/.
+    struct Case {
+        const char* name;
+        uint16_t lo, hi;
+        size_t size;
+        uint32_t crc;
+        bool contiguous;
+    };
+    // CDBL 3.00, HDBL 2.00, ACUTER 1.0 place themselves contiguously; AMON 3.0 is a 4K
+    // monitor image with gaps (a vector at F000, the bulk from F800), so flat() spans
+    // F000-FFFE (4095 bytes) with the 288 unprogrammed bytes read back as FF -- the CRC
+    // below is over that FF-filled span, exactly what SHOW ROMS and a mounted region see.
+    const Case cases[] = {
+        {"cdbl",   0xFF00, 0xFFF4,  245, 0x0558293Eu, true},
+        {"hdbl",   0xFC00, 0xFCFE,  255, 0x796FCA9Bu, true},
+        {"amon",   0xF000, 0xFFFE, 4095, 0xC00DC413u, false},
+        {"acuter", 0xF000, 0xF7FF, 2048, 0x4A4E608Du, true},
+    };
+    for (const auto& c : cases) {
+        std::string tag = std::string("builtin:") + c.name;
+        const BuiltinRom* r = findRom(c.name);
+        CHECK(r != nullptr, (tag + " exists").c_str());
+        if (!r) continue;
+
+        Image ri;
+        std::string rerr;
+        CHECK(decodeRom(*r, 0, ri, rerr), (tag + " decodes (every record checksums)").c_str());
+        CHECK(ri.lo() == c.lo && ri.hi() == c.hi,
+              (tag + " occupies the range docs/roms.md records").c_str());
+        CHECK(ri.flat().size() == c.size, (tag + " decodes to its recorded size").c_str());
+        CHECK(ri.contiguous() == c.contiguous,
+              (tag + " gap structure matches docs/roms.md").c_str());
+        CHECK(crc32(ri.flat()) == c.crc, (tag + " CRC32 matches docs/roms.md").c_str());
+    }
 }
