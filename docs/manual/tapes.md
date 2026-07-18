@@ -108,8 +108,41 @@ know that now rather than after the loader has crashed. A decode below 90% is re
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
 
-**Recording back out to audio is not implemented yet**, so a `.WAV` mounts read-only whatever
-you typed. It tells you when it does that. Recording to a `.TAP` works as it always has.
+### Recording back out to a `.WAV`
+
+Put the recorder in `record`, and when the transport stops the tape is re-modulated and
+written back over the file — in the format and at the sample rate it was mounted with:
+
+```
+altairsim> SET acr0:tape mode record
+altairsim> GO 0                         (the guest records)
+altairsim> SET acr0:tape mode play      (...and the WAV is written here)
+```
+
+The stop is what writes it. `UNMOUNT` and `REWIND` are stops too, and on the Sol so is the
+guest dropping the motor line — that card can see a deck stop, which the 88-ACR cannot.
+
+The whole file is rewritten each time, not patched: the audio for a byte starts at an offset
+that depends on every byte before it, so there is no cheaper splice.
+
+**Time is the one thing that does not survive the round trip.** A byte image holds no
+durations, so the leader a real transport needs has to be put back by whoever writes the audio.
+Two properties do that, in seconds:
+
+| Property | 88-ACR | Sol | Where the number comes from |
+|---|---|---|---|
+| `leader` | `15` | `3` | ACR: the MITS manual's *at least ~15 s of steady tone*. Sol: measured off TRK80.WAV, a real dub, which carries 3.05 s |
+| `trailer` | `5` | `2` | ACR: §8's *at least 5 s between batches*. Sol: TRK80's measured 1.93 s |
+
+Set either to `0` to trim the file to its data — which is what the published archive `.wav`
+files are, and why they will not load on real hardware. Even then a floor of sixteen bit times
+goes on each end, because a start bit is found by its **edge**: a tape that opened on the start
+bit itself would lose its first byte.
+
+**A multi-file tape comes back as one continuous run.** The decoded bytes carry no file
+boundaries, so the gaps a real operator left between programs are not reproduced.
+
+Recording to a `.TAP` works as it always has, and is unaffected by any of this.
 
 ### A card will refuse audio it could not really have heard
 

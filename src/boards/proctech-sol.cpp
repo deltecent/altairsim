@@ -85,13 +85,29 @@ void SolBoard::write(const BusCycle& c) {
         case 1:  // F9 -- serial data out
             serial_.writeData(c.data, clock_ ? *clock_ : deadCard());
             break;
-        case 2:  // FA (OUT) -- tape motors (D7/D6) + 300-baud select (D5)
+        case 2: {  // FA (OUT) -- tape motors (D7/D6) + 300-baud select (D5)
+            // A MOTOR FALLING IS A TRANSPORT STOPPING, and this card is the only one
+            // that can see it happen -- the 88-ACR has no motor line at all, so there
+            // the operator's finger is the only stop there is. A guest that SAVEs and
+            // then drops the motor has finished a recording, and the file should exist
+            // without anyone having to UNMOUNT first.
+            //
+            // NOTED HERE, DONE IN pump(). Committing an audio tape re-modulates the
+            // whole recording, and this is a BUS CYCLE -- the one place the codec seam
+            // promises no DSP will ever run (host/tapecodec.h). The guest could not
+            // observe the stall (its clock does not advance while we are in here), but
+            // the rule is worth more than the shortcut, and pump() is a few
+            // instructions away.
+            const bool was1 = deck1_.motor, was2 = deck2_.motor;
             tapeCtl_      = c.data;
             deck1_.motor  = (c.data & 0x80) != 0;
             deck2_.motor  = (c.data & 0x40) != 0;
+            if (was1 && !deck1_.motor) stop1_ = true;
+            if (was2 && !deck2_.motor) stop2_ = true;
             programTapeBaud();
             retape();  // a transport just started or stopped: the line moved with it
             break;
+        }
         case 3:  // FB -- tape data out
             tapeUart_.writeData(c.data, clock_ ? *clock_ : deadCard());
             break;
@@ -165,6 +181,13 @@ void SolBoard::pump() {
     // wait forever for a byte nothing had asked the receiver to fetch.
     tapeUart_.pump();
     if (clock_) tapeUart_.poll(*clock_);
+
+    // A transport that stopped since the last pump, finished off here rather than in
+    // the bus cycle that stopped it -- see the OUT 0FAh case. Only a deck that was
+    // RECORDING has anything to write back; one that was playing is already identical
+    // to its file.
+    if (stop1_) { stop1_ = false; if (deck1_.mode == TapeStream::Mode::Record) commitTape(&deck1_); }
+    if (stop2_) { stop2_ = false; if (deck2_.mode == TapeStream::Mode::Record) commitTape(&deck2_); }
 }
 
 void SolBoard::latchKeyboard() {
@@ -281,16 +304,30 @@ bool SolBoard::mount(const std::string& unit, const std::string& path, bool ro,
     if (!media) { err += pathNote(path); return false; }
 
     if (!ro && media->readOnlyForced())
-        said.push_back("sol: " + path + " is audio -- mounted read-only, since recording "
-                                        "back out to a WAV is not implemented yet");
+        said.push_back("sol: " + path + " is write-protected on the host -- mounted read-only");
     for (std::string& s : said) log_.push_back(std::move(s));
+
+    // An observing pointer, taken before the medium is handed over -- see the 88-ACR's
+    // mount(), which has the long version of why this is safe across a board move.
+    d->audio = dynamic_cast<AudioTapeMedia*>(media.get());
 
     tapeUart_.disconnect();  // ...before the old tape goes out from under the stream
     d->tape = std::make_unique<TapeImage>(std::move(media));
     d->path = path;
     d->detected = detected;
+    applyEncoding(d);
     retape();
     return true;
+}
+
+void SolBoard::applyEncoding(Deck* d) {
+    if (d->audio) d->audio->setEncoding(double(d->leader), double(d->trailer));
+}
+
+void SolBoard::commitTape(Deck* d) {
+    if (!d || !d->tape) return;
+    std::string err;
+    if (!d->tape->commit(err)) log_.push_back("sol: " + err);
 }
 
 // The two speeds the CUTS UART really runs at. The guest picks between them at
@@ -313,9 +350,10 @@ bool SolBoard::unmount(const std::string& unit, std::string& err) {
         return false;
     }
 
-    d->tape->sync();
+    commitTape(d);
     tapeUart_.disconnect();  // the line dies BEFORE the tape does
     d->tape.reset();
+    d->audio = nullptr;  // it died with the tape -- never leave this dangling
     d->path.clear();
     d->detected.clear();  // nothing in the deck, so it is not in any format
     retape();
@@ -370,7 +408,7 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
             // recorded goes to the host file NOW, while we still know it was a
             // recording. And the byte still in flight came off a tape that is no
             // longer playing, so it goes too (88-ACR's `mode` says the same).
-            if (d->tape && d->mode == TapeStream::Mode::Record) d->tape->sync();
+            if (d->mode == TapeStream::Mode::Record) commitTape(d);
             (void)tapeUart_.readData();
 
             d->mode = m;
@@ -392,6 +430,42 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
             return true;  // takes effect at the NEXT mount -- a tape decodes once
         };
         p.push_back(std::move(f));
+
+        // Seconds of idle tone either side of a recording, when this deck writes audio.
+        // The 88-ACR's `leader` carries the argument for why these exist at all (time
+        // cannot survive a byte image, so a writer synthesizes it) and why they are
+        // integers. What differs here is the NUMBERS: 3 and 2, measured off TRK80.WAV,
+        // the one real cassette dub we hold -- not the 88-ACR's 15, which is what a
+        // manual asks an operator to do rather than what a Sol tape turned out to be.
+        Property lead;
+        lead.name = "leader";
+        lead.help = "Seconds of idle tone before recorded data, when writing audio";
+        lead.kind = Kind::Int;
+        lead.min  = 0;
+        lead.max  = 120;
+        lead.unit = "s";
+        lead.get  = [d] { return Value::ofInt(d->leader); };
+        lead.set  = [d](const Value& v, std::string&) {
+            d->leader = v.i();
+            applyEncoding(d);  // NOW, not at the next mount: SET then record must mean it
+            return true;
+        };
+        p.push_back(std::move(lead));
+
+        Property trail;
+        trail.name = "trailer";
+        trail.help = "Seconds of idle tone after recorded data, when writing audio";
+        trail.kind = Kind::Int;
+        trail.min  = 0;
+        trail.max  = 120;
+        trail.unit = "s";
+        trail.get  = [d] { return Value::ofInt(d->trailer); };
+        trail.set  = [d](const Value& v, std::string&) {
+            d->trailer = v.i();
+            applyEncoding(d);
+            return true;
+        };
+        p.push_back(std::move(trail));
 
         // READ-ONLY, so there is no setter at all: it is a measurement, not a switch.
         Property det;
@@ -627,7 +701,7 @@ bool SolBoard::runCommand(const std::string& name, const std::vector<std::string
 
     // Everything the guest has recorded is on its way to the host file, and the head
     // is about to go somewhere else. Flush BEFORE moving it.
-    d->tape->sync();
+    commitTape(d);
     d->tape->rewind();
 
     // AND THROW AWAY THE BYTE THE CARD IS STILL HOLDING -- it came off a part of the

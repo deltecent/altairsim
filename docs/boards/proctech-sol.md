@@ -112,8 +112,20 @@ deck with its motor off is not a slow line, it is *no* line: nothing comes off i
 - **A `.WAV` mounts, and this board still does not know a tone exists.** Cassette audio is
   demodulated once, at MOUNT, by a seam *below* the card (`src/host/tapecodec.h`), so what
   reaches the CUTS UART is bytes either way. A byte tape is read as bytes; the magic —
-  never the extension — decides which is which. Recording back out to audio is not
-  implemented yet, so a `.WAV` mounts **read-only** whatever you typed, and says so.
+  never the extension — decides which is which.
+- **Recording back to audio works, and this card knows when a deck stopped.** When the
+  transport stops the recording is re-modulated in the tape's own format and rate and
+  written back over the whole file. Uniquely among our cassette cards, the Sol can *see*
+  that happen: the guest drops the motor line at `OUT 0FAh`, and the 88-ACR has no motor
+  line at all, so there the operator's finger is the only stop there is. `UNMOUNT`,
+  `REWIND` and `mode` leaving `record` are stops here too.
+- **Leader and trailer are synthesized, because time cannot survive a byte image.** Per
+  deck, in seconds, defaulting to **3 and 2** — *measured off TRK80.WAV*, the one genuine
+  cassette dub we hold, which carries 3.05 s of leading mark and 1.93 s of trailing. Not
+  the 88-ACR's 15, which is what a manual asks an operator to do rather than what a Sol
+  tape turned out to be. A multi-file tape re-recorded here comes back as one continuous
+  run: the decoded byte stream holds no file boundaries, so the gaps between SOLOS files
+  cannot be recovered — only put back deliberately.
 - **Two speeds, honestly, and nothing else.** `auto` picks between `cuts1200` and `kcs300`
   by which one the tape actually carries, because both really are this hardware — the
   guest chooses between them at `OUT 0FAh` D5. An 88-ACR tape (2400/1850 Hz FSK) is

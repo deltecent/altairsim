@@ -312,7 +312,7 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
 
 // ---------------------------------------------------------------------------
 AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
-                     uint32_t rate, double leaderSeconds) {
+                     uint32_t rate, double leaderSeconds, double trailerSeconds) {
     AudioBuffer a;
     a.rate = rate ? rate : 44100;
 
@@ -364,15 +364,29 @@ AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
         }
     };
 
-    // THE LEADER. Idle is mark, and a loader needs carrier before the first start bit
-    // -- both to find the tone and, on a real machine, to let the recorder's AGC
-    // settle. A tape that begins at the first start bit loads nothing.
-    if (leaderSeconds > 0) {
-        const double cell = f.cycleCounted
+    // A stretch of idle line, measured in seconds rather than bits. Emitted as whole
+    // mark cells so that a cycle-counted format's tail is still a whole number of
+    // cycles -- silence is never written, because idle tape is a TONE (see the header).
+    const double markCell = f.cycleCounted
                                 ? std::max(1.0, std::floor(f.markHz / f.baud + 0.5)) / f.markHz
                                 : 1.0 / f.baud;
-        for (double t = 0; t < leaderSeconds; t += cell) bit(true);
-    }
+    auto idle = [&](double seconds) {
+        for (double t = 0; t < seconds; t += markCell) bit(true);
+    };
+
+    // THE LEADER. A loader needs carrier before the first start bit -- both to find
+    // the tone and, on a real machine, to let the recorder's AGC settle and the
+    // plastic leader clear the head. A tape that begins at the first start bit loads
+    // nothing.
+    //
+    // WITH A FLOOR OF SIXTEEN BIT TIMES, for the same reason the trailer has one, and
+    // it is not a nicety: a start bit is found by a MARK-TO-SPACE TRANSITION, so a tape
+    // that opens on the start bit itself has no edge there and the first frame cannot
+    // be found at all. Measured: at 300 baud into this file's own demodulator, a zero
+    // leader costs exactly one byte and two framing errors, and 50 ms of mark is enough
+    // to fix it. `leader = 0` is a legitimate thing to ask for -- it means trim the
+    // file to its data -- and it must not quietly mean "and lose the first byte".
+    idle(std::max(leaderSeconds, 16.0 * markCell));
 
     for (uint8_t b : bytes) {
         bit(false);                                        // start
@@ -380,8 +394,11 @@ AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
         for (int i = 0; i < f.stopBits; ++i) bit(true);     // stop
     }
 
-    // A short tail of mark, so the last stop bit is not the last sample on the tape.
-    for (int i = 0; i < 16; ++i) bit(true);
+    // THE TRAILER, with a floor of sixteen bit times whatever was asked for. The floor
+    // is not the same thing as the trailer: it exists so the last stop bit is never
+    // the last sample on the tape (a receiver needs to see the cell END), and zero is
+    // a legitimate thing to ask for when you want a file trimmed to its data.
+    idle(std::max(trailerSeconds, 16.0 * markCell));
     return a;
 }
 

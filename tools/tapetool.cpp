@@ -46,7 +46,8 @@ int usage() {
     std::fprintf(stderr,
                  "usage: tapetool info   TAPE.WAV\n"
                  "       tapetool decode TAPE.WAV OUT.BIN [FORMAT]\n"
-                 "       tapetool encode IN.BIN TAPE.WAV [FORMAT] [RATE]\n"
+                 "       tapetool encode IN.BIN TAPE.WAV [FORMAT] [RATE] [LEADER] [TRAILER]\n"
+                 "\nLEADER and TRAILER are seconds of idle tone, default 5 and 0.\n"
                  "\nFORMAT is one of:");
     for (const TapeFormat& f : tapeformats::all())
         std::fprintf(stderr, " %s", f.name);
@@ -86,13 +87,22 @@ int main(int argc, char** argv) {
             f = *p;
         }
         const uint32_t rate = (argc >= 6) ? uint32_t(std::stoul(argv[5])) : 44100u;
-        AudioBuffer    a    = modulate(in, f, rate);
+
+        // Seconds of idle tone either side of the data. The same two numbers the cards
+        // carry as properties, and for the same reason: a byte image holds no
+        // durations, so a writer has to synthesize what the transport needs. Both are
+        // floored at sixteen bit times inside modulate(), so asking for 0 trims the
+        // file to its data without costing the first byte.
+        const double lead  = (argc >= 7) ? std::stod(argv[6]) : 5.0;
+        const double trail = (argc >= 8) ? std::stod(argv[7]) : 0.0;
+
+        AudioBuffer a = modulate(in, f, rate, lead, trail);
         if (!spit(argv[3], buildWav(a))) {
             std::fprintf(stderr, "tapetool: cannot write %s\n", argv[3]);
             return 1;
         }
-        std::printf("%s: %zu bytes -> %s, %.1fs at %u Hz\n", f.name, in.size(), argv[3],
-                    a.seconds(), a.rate);
+        std::printf("%s: %zu bytes -> %s, %.1fs at %u Hz (leader %.1fs, trailer %.1fs)\n",
+                    f.name, in.size(), argv[3], a.seconds(), a.rate, lead, trail);
         return 0;
     }
 

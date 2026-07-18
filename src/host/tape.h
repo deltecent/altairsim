@@ -49,6 +49,14 @@ public:
     void     sync() { media_->sync(); }
     const std::string& describe() const { return media_->describe(); }
 
+    // THE TRANSPORT STOPPED. What sync() is to a byte tape, this is to one that has to
+    // re-encode itself before it can be written back -- see MediaFile::commit(), which
+    // is where the reasoning lives. A board calls it wherever it used to call sync()
+    // for a reason the OPERATOR caused: UNMOUNT, REWIND, releasing RECORD. It is
+    // strictly stronger than sync(), so calling it is never wrong, only sometimes
+    // more than was needed.
+    bool commit(std::string& err) { return media_->commit(err); }
+
 private:
     std::unique_ptr<MediaFile> media_;
     uint64_t                   pos_ = 0;

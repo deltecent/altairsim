@@ -167,10 +167,30 @@ struct DemodResult {
 // tape and not an error. Judge the result by confidence(), not by a bool.
 DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f);
 
-// Bytes -> tones. `leaderSeconds` of idle mark goes on the front, as every recorder
-// and every loader expects: the guest's loader needs carrier before the first start
-// bit, and a tape that begins mid-byte loads nothing.
+// Bytes -> tones. `leaderSeconds` of idle mark goes on the front and
+// `trailerSeconds` on the back, each with a floor of sixteen bit times: a receiver
+// finds a start bit by its mark-to-space EDGE and needs to see the cell end, so a tape
+// that opened on the start bit itself would lose its first byte and one that ended on
+// the last stop bit would lose its last. Zero is a legitimate request -- it means trim
+// the file to its data -- and it must not quietly mean "and lose a byte".
+//
+// BOTH ARE TONE, NOT SILENCE, and that is measured rather than assumed: the UART's
+// output pin idles high, high is mark, and the modem board has no squelch and no
+// carrier-off -- its oscillator runs whenever the card is powered. So a card
+// recording nothing lays down continuous mark. Blank tape and idle tape are
+// acoustically different things. (reference/Altair 88-ACR Cassette Interface.md,
+// "What idle tape carries, and where the leader really lives".)
+//
+// THE DURATIONS MUST BE SYNTHESIZED, because they cannot be recovered. A byte image
+// holds no time -- verified on the corpus: nothing on those tapes is encoded as
+// duration, the longest interior run of mark being one all-ones frame. So the leader
+// a loader needs in BYTES survives a round trip through .TAP, and the leader the
+// TRANSPORT needs in SECONDS does not exist until something puts it back. That is
+// this argument's job, and it is why the callers make it a property rather than a
+// constant: 15 s is what the MITS manual asks for and 3 s is what a real Sol dub
+// carries, and neither is a fact about the modulation.
 AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
-                     uint32_t rate = 44100, double leaderSeconds = 5.0);
+                     uint32_t rate = 44100, double leaderSeconds = 5.0,
+                     double trailerSeconds = 0.0);
 
 } // namespace altair

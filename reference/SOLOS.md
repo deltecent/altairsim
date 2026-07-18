@@ -51,7 +51,9 @@ run it. There is no tape involved — `.ENT` is console text, not a CUTS cassett
 ### Tape commands (4)
 
 Unit is optional (`/1` default, or `/2`), separated from the name by a slash with no spaces
-(`TARGT/2`). CUTS cassette at 300/1200 baud; deferred in altairsim (ports read idle).
+(`TARGT/2`). CUTS cassette at 300/1200 baud. Both decks are modeled in altairsim: `MOUNT
+sol0:tape1` (or `tape2`) puts a cassette in, as a byte image or as `.WAV` audio, and `SAVE`
+records back to either.
 
 | Command | Syntax | Function |
 |---|---|---|

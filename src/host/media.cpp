@@ -112,6 +112,19 @@ bool HostFile::writeAt(uint64_t off, const uint8_t* buf, size_t n) {
     return true;
 }
 
+// THE WHOLE FILE IS DIRTY AFTERWARDS, and deliberately so. A resize is only ever the
+// prelude to rewriting the medium end to end (an audio tape re-encoding itself), and a
+// size change already forces sync() down its truncate-and-rewrite path -- so tracking a
+// narrower range here would buy nothing and could only be wrong.
+bool HostFile::resize(uint64_t n) {
+    if (readOnly_) return false;
+    if (n == bytes_.size() && dirtyLo_ >= dirtyHi_) return true;  // nothing to do
+    bytes_.resize(size_t(n), 0);
+    dirtyLo_ = 0;
+    dirtyHi_ = bytes_.size();
+    return true;
+}
+
 // WRITE BACK ONLY WHAT CHANGED. See the comment on dirtyLo_ in media.h -- this used to
 // rewrite the entire image on every call, and the floppy controller calls it once per
 // sector.
@@ -164,6 +177,15 @@ bool MemoryMedia::writeAt(uint64_t off, const uint8_t* buf, size_t n) {
     if (readOnly_) return false;
     if (off + n > bytes_.size()) bytes_.resize(off + n, 0);
     std::copy(buf, buf + n, bytes_.begin() + (ptrdiff_t)off);
+    return true;
+}
+
+// The same medium the real one is, in every respect a test can observe -- which is the
+// whole point of it. A MemoryMedia that could not shrink would make an audio tape's
+// write-back untestable without a filesystem.
+bool MemoryMedia::resize(uint64_t n) {
+    if (readOnly_) return false;
+    bytes_.resize(size_t(n), 0);
     return true;
 }
 

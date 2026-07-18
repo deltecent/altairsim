@@ -162,6 +162,26 @@ void test_tapecodec() {
     }
 
     // -----------------------------------------------------------------------
+    SECTION("tape modem: asking for no leader must not cost a byte");
+    // A START BIT IS AN EDGE, so a tape that opens on the start bit itself has no
+    // mark-to-space transition there and its first frame cannot be found at all --
+    // and the same argument at the other end costs the last one. `leader = 0` is a
+    // legitimate request (trim the file to its data, which is what the published
+    // archive WAVs are) and it must not quietly mean "and lose a byte", so modulate()
+    // floors both at sixteen bit times.
+    //
+    // MEASURED BEFORE IT WAS FIXED: with no floor, 300-baud FSK lost exactly one byte
+    // and gained two framing errors. This is that bug, held down.
+    for (const TapeFormat& f : {kcs, cuts, fsk}) {
+        const std::vector<uint8_t> in = payload(64);
+        DemodResult r = demodulate(modulate(in, f, 22050, 0.0, 0.0), f);
+        CHECK(same(in, r.bytes),
+              (std::string("no leader, nothing lost: ") + f.name).c_str());
+        CHECK(r.framingErrors == 0,
+              (std::string("and no framing errors: ") + f.name).c_str());
+    }
+
+    // -----------------------------------------------------------------------
     SECTION("tape modem: a card refuses a modulation its modem cannot hear");
     // THE RULE: never give the hardware a capability the real board did not have.
     //

@@ -66,6 +66,46 @@ public:
     // may call it whenever it likes.
     virtual void sync() = 0;
 
+    // SHRINK (or grow) THE MEDIUM. False if this medium cannot -- which is the
+    // default, and the honest answer for anything fixed.
+    //
+    // Only a TAPE needs it, and only one that re-encodes itself: recording four
+    // hundred bytes over a tape that held four thousand rewrites the file SHORTER,
+    // and without a truncate the tail of the old recording survives past the end and
+    // the next mount decodes it back as trailing garbage. writeAt() may extend a
+    // medium but has no way to end one.
+    //
+    // A DISK NEVER CALLS THIS, and could not use it if it did: a platter is a fixed
+    // geometry, and DiskImage bounds every access against it before the medium is
+    // ever reached (disk.h).
+    virtual bool resize(uint64_t) { return false; }
+
+    // THE TRANSPORT STOPPED -- finish the medium, and say whether it worked.
+    //
+    // sync() is called on EVERY BYTE the guest records: Uart1602::writeData flushes
+    // its stream after each one, and for a tape that flush is a sync. That is right
+    // and cheap for a byte image -- it is a memcpy and a patched write of a few
+    // bytes, and it means a crash mid-recording costs you nothing.
+    //
+    // It is not cheap for a medium that must RE-ENCODE ITSELF. An audio tape's file
+    // bytes are a function of the whole byte stream, so a per-byte sync would
+    // re-modulate the entire recording per byte and rewrite a multi-megabyte WAV
+    // each time -- quadratic in both CPU and host I/O, on a path that today costs
+    // nothing. So such a medium makes sync() a dirty mark and does the real work
+    // here, at the points where the operator actually stopped the transport:
+    // UNMOUNT, REWIND, and letting go of the RECORD button.
+    //
+    // It returns a bool and takes an `err` BECAUSE THE WORK CAN FAIL and a
+    // destructor cannot report that -- the same reasoning that puts an explicit
+    // sync() on the UNMOUNT path instead of leaving it to ~HostFile().
+    //
+    // The default is the whole of the contract for anything that does not re-encode:
+    // committing IS syncing, and it always succeeds as far as this layer can tell.
+    virtual bool commit(std::string&) {
+        sync();
+        return true;
+    }
+
     // What the operator typed: the path. Reported by SHOW.
     virtual const std::string& describe() const = 0;
 };
@@ -114,6 +154,7 @@ public:
     bool     readOnlyForced() const override { return forced_; }
     bool     readAt(uint64_t off, uint8_t* buf, size_t n) override;
     bool     writeAt(uint64_t off, const uint8_t* buf, size_t n) override;
+    bool     resize(uint64_t n) override;
     void     sync() override;
     const std::string& describe() const override { return path_; }
 
@@ -166,13 +207,20 @@ private:
 // ---------------------------------------------------------------------------
 class MemoryMedia : public MediaFile {
 public:
-    MemoryMedia(std::string name, std::vector<uint8_t> bytes, bool readOnly = false)
-        : name_(std::move(name)), bytes_(std::move(bytes)), readOnly_(readOnly) {}
+    // `forced` is "the HOST would not let us write this", as distinct from "the
+    // operator asked for read-only" -- the one distinction readOnlyForced() exists to
+    // draw, and one a test medium could not express until it had this.
+    MemoryMedia(std::string name, std::vector<uint8_t> bytes, bool readOnly = false,
+                bool forced = false)
+        : name_(std::move(name)), bytes_(std::move(bytes)), readOnly_(readOnly),
+          forced_(forced) {}
 
     uint64_t size() const override { return bytes_.size(); }
     bool     readOnly() const override { return readOnly_; }
+    bool     readOnlyForced() const override { return forced_; }
     bool     readAt(uint64_t off, uint8_t* buf, size_t n) override;
     bool     writeAt(uint64_t off, const uint8_t* buf, size_t n) override;
+    bool     resize(uint64_t n) override;
     void     sync() override { ++syncs_; }
     const std::string& describe() const override { return name_; }
 
@@ -184,6 +232,7 @@ private:
     std::string          name_;
     std::vector<uint8_t> bytes_;
     bool                 readOnly_ = false;
+    bool                 forced_   = false;
     int                  syncs_    = 0;
 };
 
