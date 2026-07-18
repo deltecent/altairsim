@@ -11,10 +11,13 @@
 # ({{MACHINE_CPM}} and friends), the directories this script copies, and what the docs tests
 # check. Add an example by adding a DIR line there -- not by editing this script.
 #
-# THE DISK IMAGES ARE NOT IN GIT (*.dsk / *.DSK are gitignored: they are large and they are not
-# ours to redistribute). So this script copies whatever is actually on disk in the source tree
-# and TELLS YOU what was missing, rather than quietly shipping a folder with a machine file and
-# no machine in it -- which would boot to a dead prompt and look like our bug.
+# MOST DISK IMAGES ARE NOT IN GIT (*.dsk / *.DSK are gitignored: they are large and they are
+# not ours to redistribute). Three are -- .gitignore names them one at a time, and the
+# buffered CP/M floppy this package ships is one of them, so a fresh clone builds a zip that
+# actually boots. The rest are fetched. Either way this script copies whatever is actually on
+# disk in the source tree and TELLS YOU what was missing, rather than quietly shipping a
+# folder with a machine file and no machine in it -- which would boot to a dead prompt and
+# look like our bug.
 #
 #   usage: tools/build-package.sh [outdir]
 

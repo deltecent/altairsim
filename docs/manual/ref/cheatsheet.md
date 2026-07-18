@@ -55,7 +55,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `SA[VE]` | `SAVE <file> <range> [FORMAT=BIN\|HEX]` |
 | `F[ILL]` | `FILL <range> <byte>` |
 | `SEA[RCH]` | `SEARCH <range> <bytes...>\|"str"` |
-| `COM[PARE]` | `COMPARE <range> <addr>\|<file>` |
+| `COM[PARE]` | `COMPARE <range> <addr>` |
 | `MOV[E]` | `MOVE <range> <dest>` |
 | `W[HO]` | `WHO <addr> \| WHO IO <port>` |
 | `BO[ARDS]` | `BOARDS [LIST]\|TYPES\|ADD <type> <id> [k=v...]\|REMOVE <id>` |

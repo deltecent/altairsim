@@ -460,7 +460,7 @@ SEA 0-FFFF "CP/M"
 ### COMPARE — `COM[PARE]`
 
 ```
-COMPARE <range> <addr>|<file>
+COMPARE <range> <addr>
 ```
 
 

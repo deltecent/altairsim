@@ -165,7 +165,7 @@ accepted anywhere an address is typed, and in a `BREAK … IF` condition.
 
 ```
 SYMBOLS LOAD prog.SYM              a symbol table
-SYMBOLS LOAD roms/ALTMON/ALTMON.PRN   ...or an assembler listing
+SYMBOLS LOAD ALTMON.PRN            ...or an assembler listing
 BREAK START
 DUMP MSG/20
 BREAK 200 IF HL==STACK
@@ -178,8 +178,8 @@ The same disassembly, with `ALTMON.PRN` loaded, can be asked for by name — a s
 accepted exactly where a hex address was:
 
 ```
-altairsim> SYMBOLS LOAD roms/ALTMON/ALTMON.PRN
-96 symbol(s) from roms/ALTMON/ALTMON.PRN
+altairsim> SYMBOLS LOAD ALTMON.PRN
+96 symbol(s) from ALTMON.PRN
 altairsim> DISASM MONIT-F811
 F800  3E 03     MVI A,03
 F802  D3 10     OUT 10

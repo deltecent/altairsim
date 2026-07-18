@@ -95,7 +95,8 @@ $ altairsim --list
 ```
 
 names them. They are `default`, `4k`, `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`,
-`minidisk` and `z80`; the machine reference at the back of this manual says what each one is.
+`minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20` and `z80`; the machine reference at the back
+of this manual says what each one is.
 
 To see what is in one:
 
@@ -286,4 +287,4 @@ fi
 ## Which chapter next
 
 The **configuring** chapter is the machine file itself: every table, every key, and the four
-things a `[[board]]` entry can mean. The **boards** chapter is what the twelve cards *are*.
+things a `[[board]]` entry can mean. The **boards** chapter is what the fourteen cards *are*.

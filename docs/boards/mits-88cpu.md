@@ -34,6 +34,7 @@ The chip, the instruction set, and the card are three separate things: DESIGN.md
 |---|---|---|---|
 | `clock_hz` | `0` | yes | The crystal, **which is on this card** — that is why the clock is the board's property and not the machine's. **`0` runs flat out, and that is the default.** `SET cpu0 clock_hz=2000000` buys back the real 88-CPU's 2 MHz *and the real waiting that goes with it* — a 3,200-byte cassette then takes its full 110 seconds, because that is how long it took. Emulated time is identical either way (the ACR still spends 66,666 T-states on a 300-baud byte), so only the **sleeping** differs and the guest cannot tell. A backplane with no CPU in it has no clock rate to speak of. |
 | `idle` | `on` | yes | **Stand down when the guest has nothing to do but wait for a key.** Every prompt ever written — `A0>`, `OK`, `.` — is a two-instruction spin on a UART status bit, and running it flat out pinned a host core at 100% to no purpose: 8 MB CP/M sitting at `A0>` cost a whole CPU. With `idle` on it costs about 3%. It is a **host** policy, exactly like the sleeping `clock_hz` decides — emulated time, the 6850's registers and every board's behaviour are untouched, and **the guest cannot tell**. It is also **orthogonal to `clock_hz`**: a 2 MHz machine idles too. `SET cpu0 idle=off` gets the spin back, which is what you want if you are measuring the host and nothing else. |
+| `achieved_hz` | — | **read-only** | What the machine **actually** ran at, measured in the run loop over the last stretch of execution. It is a *report*, not a setting, and it is the honest answer to "how fast is this going" — `clock_hz` tells you the policy you asked for, which on the default free-running machine is `0` and tells you nothing about the speed. |
 
 ### What `idle` will *not* do
 
@@ -100,7 +101,7 @@ the 88-VI's entire mechanism proved before the 88-VI exists.
 grace is why `EI / RET` at the end of a handler is safe.
 
 `HLT` parks the processor but **time keeps passing**, because the board that will
-wake it is clocked by those very T-states. `GO` stops on a `HLT` only when nothing
+wake it is clocked by those very T-states. `RUN` stops on a `HLT` only when nothing
 is pulling `pINT` — a halted machine with a live interrupt source is *waiting*,
 not finished, and it says so.
 

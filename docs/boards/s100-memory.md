@@ -271,57 +271,47 @@ bank: invalid select 0x03 for vram at PC=0119 (mem0). bank unchanged (still 0).
 | Property | Type | Runtime? | Meaning |
 |---|---|---|---|
 | `region` | Region[] | config | The populated areas. Each is `type` (`ram`\|`rom`), `at` (page-aligned), and either `size` (ram) or `mount` (rom). |
-| `pages` | PageMap | **yes** | The composite page map, as a range list — which pages this board answers for. Derived from the regions; editable at runtime to punch holes in a partly-populated card. |
+| `pages` | PageMap | **read-only** | The composite page map, as a range list — which pages this board answers for. **Derived from the regions**, and not a key you may set: the regions are the truth, and a page map you could edit behind them would be a second, disagreeing one. |
 | `honors_phantom` | Enum | config | A **jumper**. Another board pulls PHANTOM\* — do I switch off? `none` (never), `read` (reads only), `all`. Default `all`. |
 | `phantom` | Enum | config | What **I** assert over my `rom` regions: `none \| read \| all`. Default `all`. |
 | `bank_type` | Enum | config | `none \| eram \| vram \| cram \| hram \| b810`. **Determines the select port, the bank count, and the data encoding** — see the table. |
-| `banks` | Int | config | Number of banks, 1–16. Constrained by `bank_type` (Cromemco caps at 7). |
+| `banks` | Int | **read-only** | Number of banks. **The card decides it from `bank_type`** — a Cromemco card has 7, the others 8 — so it is reported, not set. Documenting it as writable would be a lie a reader only discovers by being refused. |
 | `bank` | Int | **yes** | The live bank. The *guest* sets this by writing the select port; you can also set it from the monitor to inspect a plane the guest isn't looking at. |
 | `fill` | Enum | config | `random` (default) or `zero`. Applies to `ram` regions. |
 | `seed` | Int | config | RNG seed for `fill=random`. **Snapshotted**, so replay stays deterministic. |
 
-There are **no board-specific commands.** `ENABLE` and `DISABLE` are range edits to `pages`, expressed through the generic `SET` (§5), and the monitor learns nothing about memory:
+There are **no board-specific commands**, and the monitor learns nothing about memory. What a
+card decodes is decided by the regions you declare, in the machine file — there is no runtime
+verb that punches a hole in a populated card.
 
-```
-altairsim> SET mem0 DISABLE=C000-CFFF
-mem0: pages C0-CF unpopulated (4K). reads return FF.
-```
-
-`SHOW mem0` renders the map as a page grid, because a 256-bit bitmap printed as a range list is unreadable the moment it has holes in it:
+`SHOW mem0` prints the regions, the sockets, and the properties:
 
 ```
 altairsim> SHOW mem0
-  mem0 — memory (static memory card)
+mem0  (memory)
+  regions:
+    0  ram  0000-DFFF  56K
+    1  rom  FF00-FFFF  builtin:dbl
 
-  property        value      runtime?  legal
-  ------------------------------------------------------------------
-  honors_phantom  all        no        none | read | all
-  phantom         all        no        none | read | all
-  bank_type       none       no        none | eram | vram | cram | hram | b810
-  fill            random     no        random | zero
-  seed            12345      no        0..2^32-1
+  unit     kind    holds
+    rom0    rom     builtin:dbl  (read-only)
 
-  region  type  range        source
-  ------------------------------------------------------
-  0       ram   0000-BFFF    48K
-  1       rom   F000-F7FF    roms/monitor.bin  (2048 bytes)
-  2       rom   FF00-FFFF    roms/dbl.hex      (256 bytes)
-
-  page map (each cell = 100H):     . ram    R rom    - unpopulated
-        x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 xA xB xC xD xE xF
-   0x    .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-   ...
-   Bx    .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-   Cx    -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -
-   Dx    -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -
-   Ex    -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -
-   Fx    R  R  R  R  R  R  R  R  -  -  -  -  -  -  -  R
-
-  48K ram, 2.25K rom, 13.75K unpopulated (reads return FF).
-  rom regions do not decode writes; this board asserts PHANTOM* on all cycles over them.
+  property         value            legal
+  honors_phantom   all              none|read|all
+  phantom          all              none|read|all
+  bank_type        none             none|eram|vram|cram|hram|b810
+  banks            1                (read-only)
+  bank             0                0..15
+  fill             random           zero|random
+  seed             1                
+  pages            0000-DFFF,FF00-FFFF (read-only)
 ```
 
-> **Note the last two lines.** "13.75K unpopulated (reads return FF)" is the difference between a user understanding their machine and filing a bug — a hole in memory is invisible otherwise. And the PHANTOM\* line is there because a write silently vanishing is the single most confusing thing this board can do to you.
+**`pages` is the hole, stated as a range list.** This card answers for `0000-DFFF` and
+`FF00-FFFF` and nothing else, so `E000-FEFF` is unpopulated and reads there float to `FF`. That
+is the difference between a user understanding their machine and filing a bug — a hole in memory
+is invisible otherwise. And a `rom` region does not decode writes at all, which is the single
+most confusing thing this board can do to you: the write does not fail, it simply never happened.
 
 ## Multiple cards
 

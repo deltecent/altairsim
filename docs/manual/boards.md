@@ -8,12 +8,12 @@ cards doing the real work; take the cards out and there is nothing left but a bu
 the CPU *card* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a card out, put a different one in, and find out what the software does about it.
 
-This chapter says what the twelve cards **are** — what the real hardware was, what it is for, and
+This chapter says what the fourteen cards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every card is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The twelve cards
+## The fourteen cards
 
 | Type | What it is |
 |---|---|
@@ -26,6 +26,8 @@ be wrong.
 | `c700` | MITS 88-C700 — the line-printer controller. Capture to a file |
 | `dcdd` | MITS 88-DCDD — the 8″ floppy controller |
 | `mds` | MITS 88-MDS — the 5¼″ minidisk controller |
+| `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
+| `sol` | Processor Technology Sol-PC — the Sol-20's onboard I/O, on one card |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
 | `fp` | the front panel |
 | `hostbridge` | file transfer to your host. **Ours, not a period card** |
@@ -251,6 +253,51 @@ bus. Fit both here and the bus view will name the contention rather than leave y
 the guest has gone strange.
 
 Pick one.
+
+---
+
+## `vdm1` — Processor Technology VDM-1
+
+**Memory-mapped video**, and the first card here that is not a MITS one. A 1K screen of **16 rows
+by 64 columns** lives in the machine's own address space — by default at `CC00` — so a program
+puts a character on the screen by *storing a byte*, with no port and no driver. That is why it is
+fast enough to be worth having, and why it needs no `CONNECT`: the screen is memory.
+
+One port (default `CC`) does the rest: writing it sets which row is at the top, which is how the
+VDM-1 scrolls — the text does not move, the *window* does. Reading it gives back two timing bits
+the software uses to avoid writing while the beam is in the way.
+
+**It needs a display.** Built with SDL3, it opens a real window; built without, it runs headless
+and everything else still works — a program writing to the screen simply has nowhere to show it.
+
+Bit 7 of each byte is the **cursor/blink** flag rather than part of the character, so the card
+draws 128 glyphs from a real character ROM, not 256.
+
+Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo that draws on it, and
+**`cuter`**, which runs the period CUTER monitor with its own built-in VDM-1 driver.
+
+---
+
+## `sol` — Processor Technology Sol-PC
+
+The **Sol-20's onboard I/O, as one card** — because on a real Sol-20 that is what it was. The
+Sol was not an Altair with cards in it; it was an integrated machine whose serial port, keyboard,
+parallel port and cassette interface were all on the one processor board, at `F8`–`FE`. On the
+real hardware those addresses were wired, not jumpered; here the card still carries a `base` so
+you can move it, which is the one liberty taken and the reference chapter records it.
+
+So this card carries four things at once, and you reach them as units: `serial`, `printer` and
+`keyboard` are lines you `CONNECT`, and `tape1`/`tape2` are cassette transports you `MOUNT`. The
+keyboard is connected to the console by default, so it simply takes what you type — from the
+display window when there is one, and from your terminal when there is not.
+
+One register (`FA`) reports the state of *all* of them at once — and it does so with **mixed
+polarity**, the keyboard and parallel bits reading active-low while the tape bits read
+active-high. That is not a bug in the card or in this simulator; it is what the hardware did, and
+the period software inverts what it needs.
+
+Fit it with a `vdm1` and you have the **`sol20`** machine, which cold-starts the real SOLOS
+operating system.
 
 ---
 

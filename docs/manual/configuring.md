@@ -234,7 +234,7 @@ port = 0x10                    # the CARD's property -- both chips live at this 
 
   [board.unit.b]
   baud    = 1200               # channel B is a different chip. It does not care.
-  connect = "tcp:2323"
+  connect = "socket:2323"
 ```
 
 A key in `[board.unit.a]` is exactly the key `SET sio0:a baud=9600` takes at the prompt. It is

@@ -6,7 +6,7 @@ A C++ simulator of the **MITS Altair 8800** and the **S-100 bus**.
 
 It boots Altair 4K and 8K BASIC off a cassette, MITS Programming System II (polled *and* interrupt-driven), and CP/M 2.2 off both an 8″ floppy and a 5¼″ minidisk — every one of them a real period artifact, running unmodified.
 
-The BASIC, PS2 and minidisk boots are **acceptance tests**: they run the period software on the whole machine through the real CLI and check what lands on the terminal. CP/M on the 8″ 88-DCDD boots and writes, but is not yet automated — the disk images are not ours to redistribute, so they are not in this repository.
+Every one of those boots is an **acceptance test**: it runs the period software on the whole machine through the real CLI and checks what lands on the terminal. Three CP/M images are tracked in git — one 8″ floppy and the minidisk's two — so a fresh clone boots CP/M and runs those tests without downloading anything first. The larger images that are not ours to redistribute (the 8 MB FDC+ disk, and the 24K builds) are fetched by `tools/fetch-disk-images.sh`, and the one test that needs them skips until they are there.
 
 ```
 $ altairsim basic4k
@@ -34,6 +34,8 @@ That is the whole of it: put the tape in, toggle in the bootstrap MITS printed i
 
 **There are no dependencies.** A C++20 compiler and CMake ≥ 3.20 is the entire list. The TOML parser, the JSON encoder and the line editor are all in-tree, so a fresh clone builds with nothing to download.
 
+**SDL3 is the one exception, and it is detected rather than required.** Install it and the video boards (`vdm1`, `sol`) open a real window; leave it out and they build headless against a null display, every test still passes, and the build never asks you for anything. `-DALTAIRSIM_ENABLE_SDL=OFF` forces headless even where SDL3 is present.
+
 ```sh
 git clone https://github.com/deltecent/altairsim.git
 cd altairsim
@@ -48,8 +50,8 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 
 ## What is in the box
 
-Eleven board types — ten modeled from their own manuals, and one of ours — and nine machines
-built out of them:
+Fourteen board types — thirteen modeled from their own manuals, and one of ours — and thirteen
+machines built out of them:
 
 | Board | What it is |
 |---|---|
@@ -61,11 +63,14 @@ built out of them:
 | `acr` | MITS 88-ACR — cassette. An 88-SIO B plus an FSK modem. |
 | `dcdd` | MITS 88-DCDD — 8″ hard-sector floppy, up to 16 drives. |
 | `mds` | MITS 88-MDS — 5¼″ minidisk. The same registers as the DCDD, different physics. |
+| `c700` | MITS 88-C700 — Centronics line-printer controller. Output-only; `CONNECT` it to a file. |
+| `vdm1` | Processor Technology VDM-1 — memory-mapped 16×64 video. Needs a `Display`. |
+| `sol` | Processor Technology Sol-PC — serial, keyboard, parallel and CUTS tape as one card. |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts (VI0–VI7 → `RST n`) and a real-time clock. |
 | `fp` | The front panel — SENSE switches at port `FF`, and the lamps. |
 | `hostbridge` | Guest ↔ host file transfer, sandboxed. **Ours, not a period card** — `R`/`W`/`HDIR`. |
 
-`altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`, `z80`.
+`altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20`, and `z80`.
 
 **Both CPUs are validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 
@@ -134,7 +139,7 @@ ctest --test-dir build -L hw        # modem control, against a real null-modem c
 
 The acceptance tests are not unit tests: they boot period software on the whole machine through the real CLI, and several ship with a **negative control** — the same script against a machine that should *fail*, marked `WILL_FAIL`. If a control ever passes, the test it guards was passing for the wrong reason and is worthless. That is the only reason to believe any of them.
 
-The 88-MDS acceptance tests need a CP/M disk image that is not in this repository; CMake says so at configure time and skips them. See `disks/mits-88mds/cpm22/README.md`.
+The disk-image tests are gated on their images. The 88-MDS and 8″ 88-DCDD images are **tracked**, so those tests run on a fresh clone; `acceptance-dcdd-mixed` needs the two fetched images and is skipped — with a reason — at configure time until `tools/fetch-disk-images.sh` has run. See `disks/mits-88dcdd/cpm22/buffered/README.md` and `disks/mits-88mds/cpm22/README.md`.
 
 ## Documentation
 

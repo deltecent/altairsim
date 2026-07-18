@@ -287,7 +287,11 @@ static const std::vector<CommandDef> kCommands = {
     {"SEARCH", true, nullptr, "SEARCH <range> <bytes...>|\"str\"",  // SEA
      "  SEA 0-FFFF C3\n"
      "  SEA 0-FFFF \"CP/M\""},
-    {"COMPARE", true, nullptr, "COMPARE <range> <addr>|<file>", nullptr},  // COM
+    // Memory-to-memory only. A `COMPARE <range> <file>` form was advertised here for a
+    // while and never existed -- the handler parses the third argument as an address and
+    // says "not a number" on a path. Help that names a form the program refuses is worse
+    // than no help: it sends you looking for the typo in your own command.
+    {"COMPARE", true, nullptr, "COMPARE <range> <addr>", nullptr},  // COM
     {"MOVE", true, nullptr, "MOVE <range> <dest>", nullptr},               // MOV
     {"WHO", true, nullptr, "WHO <addr> | WHO IO <port>",
      "Who WOULD answer -- it looks without running a cycle, so nothing is consumed\n"

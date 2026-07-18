@@ -324,7 +324,7 @@ They are **separate and both apply.** Document this loudly.
 ## How it is simulated
 
 - Decodes `IoIn`/`IoOut` on 0x08–0x0A.
-- Media via **`DiskImage`** (`MOUNT fdc:0 cpm.dsk`), one per drive unit, up to `drives` (property, 1–16). The board declares the format; see Geometry above.
+- Media via **`DiskImage`** (`MOUNT dsk0:drive0 cpm.dsk`), one per drive unit, up to `drives` (property, 1–16). The board declares the format; see Geometry above.
 - Rotation via **`EventQueue`**, not a per-instruction poll.
 - `interrupt` property exists but the real controller's interrupt bits were ignored by period software and by `mits_dsk.c`; model the bits, don't wire them by default.
 

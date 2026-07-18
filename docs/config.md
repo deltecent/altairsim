@@ -99,7 +99,7 @@ In TOML these appear as the `mount` and `connect` keys; at the monitor they are 
 | `socket:host:port` | Outbound TCP connection. | **built** |
 | `serial:/dev/cu.usbserial-X` | Real host serial port (POSIX). | **built** |
 | `serial:COM3` | Real host serial port (Windows). | **built** |
-| `file:path` | A file, for paper tape. | not yet |
+| `file:path` | A file, for paper tape. | **built** |
 
 Asking for one that is not built yet **says so by name**, rather than failing as though you had mistyped it.
 
@@ -216,7 +216,7 @@ parity    = "none"       # NPB/POE
 
 On a real serial port those are programmed into the real port. On the **88-2SIO** there is no such property at all: the 6850's word format is a register the *guest* writes.
 
-At the monitor that is `SET sio0:a UPPER=ON`, and `SHOW sio0` prints it.
+At the monitor that is `SET CONSOLE UPPER=ON`, and `SHOW CONSOLE` prints it. **It is not `SET sio0:a UPPER=ON`** — a transform is the console's and nothing else's, because a card's line has to stay 8-bit clean or a filter on it corrupts XMODEM, silently.
 
 `[console]` holds only what is genuinely about a *terminal*:
 
@@ -282,8 +282,6 @@ phantom = "all"            # What I ASSERT over my rom regions: none | read | al
                            #   copies itself to RAM at 2C00 and runs there, and never
                            #   writes to FFxx at all. ("read" is an UNSOURCED strap; see
                            #   docs/boards/s100-memory.md.) The bus picks no winner — §4.2.
-enabled = true             # runtime. A boot ROM that switches itself out after boot
-                           #   (an OUT to its own port) sets this false; POWER restores it.
 
   [[board.region]]
   type = "ram"

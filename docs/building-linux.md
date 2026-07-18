@@ -3,11 +3,18 @@
 **Status: verified building, testing and running on Linux.** Compiled and
 smoke-tested on **Ubuntu 22.04.4 LTS (x86_64)** with **GCC 11.4.0** on
 2026-07-14, and the **test suite was run there on 2026-07-16** — `ctest -LE slow`
-passes 13/13. The simulator starts, lists its built-in machines, and runs monitor
+passed 13/13. The simulator starts, lists its built-in machines, and runs monitor
 commands.
+
+> **The counts below are a dated record, not a running total.** The suite has grown
+> since — `ctest -LE slow` registers 26 tests today — and CI now builds and tests
+> Linux on every push, which is the live answer. What this document is for is the
+> from-scratch procedure and the platform notes, and those have not changed.
 
 There are **no third-party dependencies** — the produced binary links only
 against the system C/C++ runtime (`libstdc++`, `libgcc_s`, `libc`, `libm`).
+SDL3 is optional and detected: install it and the video boards get a window;
+leave it out and they build headless, which is what the runs below did.
 
 ---
 
