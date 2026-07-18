@@ -39,6 +39,13 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 |---|---|
 | [88-C700 Centronics Printer Controller](88-C700%20Centronics%20Printer%20Controller.md) | MITS 88-C700 S-100 interface for the Altair C700 line printer: the two consecutive ports (even Control/Status, odd Data) with the A0 split and the MITS default base 002, the status byte (ACKNOWLEDGE/BUSY/PAPER EMPTY/SELECT/FAULT/INTERRUPT ENABLE/REQUEST), the control byte (D0 PRIME, D1 INTERRUPT CONTROL), the data-write strobe that clears the ACK latch and interrupt, the single-level interrupt switched per-character or per-CR/LF (SW2 #4), and the C700's own ASCII control codes (LF/CR/DC1/DC3/DEL/SO). |
 
+## Video / display
+
+| Reference | What it covers |
+|---|---|
+| [Processor Technology VDM-1](Processor%20Technology%20VDM-1.md) | VDM-1 Video Display Module: the 1 KB memory-mapped screen RAM (16×64, default `0xCC00`), the single I/O port (default `0xCC`) with `OUT` scroll-latch + 0.25–0.5 s one-shot and `IN` status (D0 timer, D1 SCAN ADVANCE), the character/cursor byte split (D0–D6 → MCM6574 glyph, D7 → cursor), the CR→EOL / VT→EOScreen control blanking, and the SW1–SW6 video/cursor/blanking options. |
+| [Cromemco Dazzler](Cromemco%20Dazzler.md) | Dazzler color graphics: the DMA bus-master framebuffer scan, `OUT 0x0E` (D7 on/off, D6–D0 = 512-byte-aligned base), `OUT 0x0F` (resolution X4/size/color bits), `IN 0x0E` (odd-even line, end-of-frame), the 512-byte/2 KB quadrant memory map, and the byte→pixel/color encoding for all four modes (normal 4-bit RGBI two-per-byte; X4 eight on/off bits). |
+
 ## Floppy and disk
 
 | Reference | What it covers |

@@ -1,6 +1,12 @@
 #include "boards/mits-2sio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88sio.h"
+#include "boards/proctech-vdm1.h"
+#ifdef ALTAIRSIM_ENABLE_SDL
+#include "host/display_sdl.h"
+#else
+#include "host/display_null.h"
+#endif
 #include "cli/monitor.h"
 #include "config/toml.h"
 #include "core/machine.h"
@@ -17,6 +23,15 @@
 #include <vector>
 
 using namespace altair;
+
+// The host video service for any graphics board in the machine (DESIGN.md 7.4).
+// A real window where SDL3 was found; a no-op headless otherwise -- the boards run
+// the same against either. Session-lifetime, so it outlives every Machine.
+#ifdef ALTAIRSIM_ENABLE_SDL
+static SdlDisplay g_display;
+#else
+static NullDisplay g_display;
+#endif
 
 static const char* kVersion = "altairsim 0.1.0";
 
@@ -168,6 +183,13 @@ int main(int argc, char** argv) {
     Sio2Board::setResolver(resolveEndpoint);
     SioBoard::setResolver(resolveEndpoint);
     C700Board::setResolver(resolveEndpoint);
+
+    // The video service, injected the same way (DESIGN.md 7.4): a graphics board
+    // draws into a Display and never learns it is SDL. The shipping binary hands it
+    // an SdlDisplay (a window); a headless build (no SDL3) hands it a NullDisplay, so
+    // the machine runs identically with nothing to draw on. Static so it outlives the
+    // machine, and created once for the whole session.
+    VdmBoard::setDisplay(&g_display);
 
     // The same seam for the other kind of endpoint: a disk board asks openMedia()
     // for a path and gets a medium back, and this is the one line that decides the

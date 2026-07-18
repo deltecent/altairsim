@@ -1,0 +1,74 @@
+# A Processor Technology VDM-1 in an Altair, and a demo that draws on it.
+#
+# `altairsim vdm1` opens a window and, at startup, runs a 52-byte program
+# (roms/VDM1DEMO) that writes a banner into the VDM-1's memory-mapped screen RAM at
+# 0CC00H. That is the whole idea of the card: text appears because the CPU WRITES
+# MEMORY, with no console and no monitor in the loop (reference/Processor
+# Technology VDM-1.md, docs/boards/proctech-vdm1.md).
+#
+# The VDM-1 needs a host Display. With SDL3 present the banner shows in a window
+# scaled nearest-neighbor; in a headless build (no SDL3) the machine runs exactly
+# the same and draws nothing -- so this file is also a normal, testable machine.
+#
+# The window is live while a program RUNs. The demo HLTs after drawing, which
+# returns you to the monitor prompt with the banner on screen; type `RUN F800`
+# again, or your own program that writes 0CC00H, to redraw.
+
+[machine]
+name    = "vdm1"
+startup = ["RUN F800"]          # draw the banner at boot
+
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0                    # flat out (the default); SET cpu0 clock_hz=2000000 for 2 MHz
+
+# A console, so the machine is one you can also talk to -- the VDM-1 is a DISPLAY,
+# not a keyboard (its keyboard was a separate parallel board), so a terminal here
+# is how you type at the monitor.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE VDM-1 itself. Screen RAM at 0CC00H (16x64 = 1 KB), scroll/status port at 0CCH
+# -- the defaults, and the same 6-bit jumper sets both on a real card. It needs a
+# Display, injected at the composition root (src/main.cpp).
+[[board]]
+type   = "vdm1"
+id     = "vdm0"
+base   = 0xCC00
+port   = 0xCC
+video  = "normal"
+cursor = "blink"
+
+# 51K of RAM below the screen (0000-CBFF), and the demo ROM up at F800. RAM stops at
+# 0CC00H so it does not fight the VDM-1's screen RAM for that page -- the VDM lived
+# in a 1 KB hole in the memory map, and this is that hole.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "51K"                  # 0000-CBFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = F800
+  mount = "builtin:vdm1demo"    # roms/VDM1DEMO -- writes the banner

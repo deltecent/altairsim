@@ -1,0 +1,116 @@
+#pragma once
+//
+// Display -- the host video service a graphics board draws into (DESIGN.md 7.4).
+//
+// THE BOARD NEVER CALLS SDL. A VDM-1 or a Dazzler renders its picture into a
+// Surface (an indexed-color pixel buffer) and hands it to present(); what turns
+// that into a window, and how it scales, is the host's business and lives behind
+// this interface. So the board compiles and RUNS with no graphics library at all
+// -- against a NullDisplay (display_null.h) it renders into memory and a test
+// reads the pixels back, which is exactly how a headless CI build proves the card.
+//
+// This is the display analogue of host/stream.h's ByteStream: the seam that keeps
+// a board pure. A board's read()/write() are pure computation over state; anything
+// that has to reach the outside world happens through an injected service, at a
+// known point in emulated time (Board::pump(), DESIGN.md 7.1) -- never from inside
+// a bus cycle, and never by owning the host's frame rate (DESIGN.md 7.4 #1: the
+// SDL event loop does not own the main loop; the display is pumped once per slice).
+//
+// KEYSTROKES ARE NOT HERE. A display is output only. The VDM-1's keyboard is a
+// SEPARATE parallel board, and a Dazzler game's joystick is an input port -- both
+// return through a ByteStream/endpoint (host/endpoint.h) so they ride the recorded
+// event queue like every other input (DESIGN.md 7.4). A private path from the
+// window straight into a board would break RECORD/REPLAY the first time it mattered.
+
+#include <cstdint>
+#include <span>
+#include <vector>
+
+namespace altair {
+
+// One palette entry. Alpha is carried for the host's benefit (a real color TV has
+// none); a board leaves it 255. The Dazzler builds 16 of these from its RGBI
+// nibble; the VDM-1 uses two (background, foreground).
+struct Color {
+    uint8_t r = 0, g = 0, b = 0, a = 255;
+};
+
+// How a Surface stores its pixels.
+//
+//   Indexed8   -- one byte per pixel, an index into the palette set with
+//                 setPalette(). This is what BOTH period boards want: the Dazzler
+//                 is natively a palette machine (a 4-bit nibble per element) and
+//                 the VDM-1 is two colors. The host resolves index->Color when it
+//                 uploads the frame, so normal/reverse video and a Dazzler color
+//                 change are a setPalette() away, with no re-render.
+enum class PixelFormat {
+    Indexed8,
+};
+
+// A drawable buffer the board fills and present()s. Concrete and owns its pixels --
+// a board does not allocate host memory, it asks the Display to acquire() one and
+// then writes into pixels(). The Display may hand back the SAME Surface every
+// frame (it does: acquire() is idempotent for a given w,h,format), so a board must
+// treat the contents as undefined and paint the whole frame each pump().
+class Surface {
+public:
+    Surface(int w, int h, PixelFormat fmt)
+        : w_(w), h_(h), fmt_(fmt), pixels_((size_t)w * (size_t)h, 0) {}
+
+    int width() const { return w_; }
+    int height() const { return h_; }
+    PixelFormat format() const { return fmt_; }
+
+    // Bytes per row. Indexed8 is tightly packed, so pitch == width; kept explicit
+    // so a future format (or a host that wants row alignment) does not force every
+    // board's inner loop to change.
+    int pitch() const { return w_; }
+
+    // The pixel bytes, row-major, top-left origin. Mutable for the board to paint;
+    // const for the host to upload.
+    std::span<uint8_t> pixels() { return pixels_; }
+    std::span<const uint8_t> pixels() const { return pixels_; }
+
+    // One pixel, bounds-checked to a no-op off the edge -- a glyph or a sprite that
+    // runs past the margin clips instead of corrupting the next row.
+    void put(int x, int y, uint8_t index) {
+        if (x < 0 || y < 0 || x >= w_ || y >= h_) return;
+        pixels_[(size_t)y * (size_t)w_ + (size_t)x] = index;
+    }
+
+    void clear(uint8_t index = 0) {
+        for (auto& p : pixels_) p = index;
+    }
+
+private:
+    int w_, h_;
+    PixelFormat fmt_;
+    std::vector<uint8_t> pixels_;
+};
+
+class Display {
+public:
+    virtual ~Display() = default;
+
+    // Get the buffer to draw this frame's picture into, at the board's logical
+    // resolution. The Display owns it; the board must not delete it and must not
+    // keep the pointer past the next acquire() (the host may resize or reuse it).
+    // Called once per pump() by the board -- cheap on the steady state, since the
+    // dimensions do not change frame to frame.
+    virtual Surface* acquire(int w, int h, PixelFormat fmt) = 0;
+
+    // Show the frame. On a windowed host this uploads the Surface to a texture and
+    // scales it (nearest-neighbor, integer where it fits) so low-res pixels stay
+    // crisp; on a NullDisplay it does nothing. present() is also where the host
+    // pumps its own event queue on the main thread (DESIGN.md 7.4 #2) -- but it
+    // never blocks on vsync, because emulated time, not the monitor, owns the clock.
+    virtual void present(Surface* s) = 0;
+
+    // The palette an Indexed8 Surface resolves against. Up to 256 entries; a board
+    // sets only as many as it uses (2 for the VDM-1, 16 for the Dazzler). Entries a
+    // board never sets stay black. Cheap enough to call every frame or only on a
+    // change -- the host caches it.
+    virtual void setPalette(std::span<const Color> colors) = 0;
+};
+
+} // namespace altair

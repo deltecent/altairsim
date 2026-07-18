@@ -1,0 +1,68 @@
+# CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor.
+#
+# `altairsim cuter` opens the VDM-1 window, runs CUTER (roms/CUTER, © 1977 Software
+# Technology Corp.) from ROM at 0C000H, and CUTER paints its `>` prompt straight into
+# the VDM's memory-mapped screen at 0CC00H -- exactly as it would on a Sol-20. With
+# SDL3 the prompt appears in a window, in the VDM-1's own character-generator font; in
+# a headless build it runs the same and the screen is inspectable with `DUMP CC00`.
+#
+# HOW CUTER FINDS THE VDM. On cold start CUTER reads the sense switches (port 0FFH):
+# bits 0-1 pick the default OUTPUT pseudo-port, bits 2-3 the INPUT one. Sense = 0 =>
+# output pseudo-port 0 (the built-in VDM driver: screen at 0CC00H, control port 0C8H)
+# and input pseudo-port 0 (the keyboard, actual port 3). So the fp's sense MUST be 0
+# for CUTER to talk to the VDM (CUTER13.ASM, "AUTO-STARTUP CODE").
+#
+# THE KEYBOARD IS NOT WIRED YET. CUTER prints the prompt, then waits on the keyboard
+# (port 0 status, active-low ready). No keyboard board exists yet -- port 0 floats to
+# 0FFH, "not ready", so CUTER spins cleanly with the prompt on screen and takes no
+# input. Typing at it awaits the Sol-style keyboard board (a step toward a full Sol-20
+# machine); Ctrl-C returns you to the monitor. The VDM-1's keyboard was always a
+# SEPARATE board, so this is the hardware's own division, not a shortcut.
+
+[machine]
+name    = "cuter"
+startup = ["RUN C000"]          # cold-start CUTER; it draws its prompt on the VDM
+
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00                    # bits 0-3 = 0 => CUTER console = VDM out / keyboard in
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0                    # flat out (the default)
+
+# THE VDM-1. Screen RAM at 0CC00H, control/status port at 0C8H -- the port CUTER's
+# built-in VDM driver drives (DSTAT EQU 0C8H). Not the card's own default of 0CCH:
+# CUTER expects 0C8H, and on a real VDM-1 the port is jumpered independently.
+[[board]]
+type   = "vdm1"
+id     = "vdm0"
+base   = 0xCC00
+port   = 0xC8
+video  = "normal"
+cursor = "blink"
+
+# Memory: 48K of RAM below the ROM, the 2 KB CUTER ROM at 0C000H, and 1 KB of scratch
+# RAM at 0C800H (CUTER's variables and its stack top, SYSTP = 0CBFFH, live here). The
+# VDM-1 owns 0CC00H-0CFFFH; nothing else may claim that page.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"                  # 0000-BFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = C000
+  mount = "builtin:cuter"       # roms/CUTER -- CUTER 1.3, VDM console
+
+  [[board.region]]
+  type = "ram"
+  at   = C800
+  size = "1K"                   # 0C800-0CBFF -- CUTER scratch + stack
