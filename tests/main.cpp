@@ -56,6 +56,7 @@ int main() {
     test_units();
     test_machines();
     test_load_is_atomic();
+    test_clock_survives_load();
     test_subunit_schema();
     test_isa();
     test_z80_isa();
