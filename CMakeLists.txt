@@ -824,12 +824,10 @@ if(EXPECT_EXECUTABLE)
   # promoted to the card, this test breaks -- and it breaks as CORRUPTION, not as an error,
   # which is why it weighs the bytes instead of reading a directory listing.
   #
-  # IT IS ALSO THE REGRESSION TEST FOR THE 24K IMAGE. It reads R.COM off the floppy, and
-  # R.COM is only there because the host-bridge utilities were installed through this very
-  # path -- a 24K CP/M cannot boot in a 56K machine, so it can install nothing for itself.
-  #
-  # Needs both images, and neither is in git. It copies both into the build tree first: the
-  # write half of it would otherwise land in the repository's own floppy.
+  # Needs both images, and neither is in git -- tools/fetch-disk-images.sh pulls them. It
+  # copies both into the build tree AND installs the host-bridge utilities into the COPIES:
+  # the write half of it would otherwise land in the repository's own floppy, and a fetched
+  # image that gets written to can never match its pinned checksum again.
   # ---------------------------------------------------------------------------
   set(MIX_8IN "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-24k.dsk")
   if(EXISTS "${HB_DISK}" AND EXISTS "${MIX_8IN}")

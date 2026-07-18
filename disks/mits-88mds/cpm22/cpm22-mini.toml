@@ -64,9 +64,10 @@ id = "mds0"
   # motor = "real"
 
 # NOTHING ABOUT THE MEMORY IS SAID HERE, and it is worth saying why not. The base is 56K, and
-# 56K is what CPM56K-1.DSK was built for -- the BIOS is linked to the top of RAM, so the disk
-# and the machine have to agree or CP/M loads into nothing. To boot the 24K images beside it
-# (CPM24K-1.DSK), replace the memory card with a 24K one and keep the ROM:
+# 56K is what CPM56K-1.DSK was built for -- the BIOS is linked to the top of the memory the
+# image was built for, so the machine must be AT LEAST as big. It may be bigger: CPM24K-1.DSK
+# boots in this same 56K machine and says `24K CP/M 2.2b v2.3`, with the RAM above it unused.
+# Only the other direction fails. Replace the card to get the authentic 24K machine:
 #
 #     [[board]]
 #     type = "memory"

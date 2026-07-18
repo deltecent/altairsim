@@ -105,9 +105,12 @@ id = "dsk0"
 # agree, so this file says nothing about memory at all.
 #
 # cpm22b23-24k.dsk is the same CP/M relocated for a smaller machine: the same sum gives
-# BIOSBAS 4700 and an end of 6000, so it needs 24K and it will not boot in 56K. It is
-# sitting in B: above, where it is perfectly readable and completely unbootable. To BOOT it,
-# move it to drive 0 INSTEAD of the 56K image, and re-fit the memory card:
+# BIOSBAS 4700 and an end of 6000. THAT BOOTS HERE PERFECTLY WELL -- the constraint is
+# one-way. A machine may have MORE RAM than the image was built for (4700-6000 is good RAM
+# in a 56K machine; the 32K above it just goes unused), and only the other direction fails.
+# Move it to drive 0 INSTEAD of the 56K image and it comes up saying `24K CP/M 2.2b v2.3`.
+#
+# To have the AUTHENTIC 24K machine as well, re-fit the memory card:
 #
 #     [[board]]
 #     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,

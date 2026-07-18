@@ -26,9 +26,8 @@
 #     write  A: -> C:      PIP, then W it back out  = cpm/hostbridge/HDIR.COM
 #
 # AND IT DOUBLES AS THE REGRESSION TEST FOR THE 24K IMAGE (bug #7). Reading R.COM off C:
-# only works because R/W/HDIR are ON that image -- put there through this very path, since
-# a 24K CP/M cannot boot in a 56K machine and so cannot install anything for itself. See
-# disks/mits-88dcdd/cpm22/buffered/README.md.
+# only works because R/W/HDIR are on that image -- which this test puts there itself, on a
+# scratch copy, below. See disks/mits-88dcdd/cpm22/buffered/README.md.
 #
 # THE REPOSITORY'S IMAGES ARE NEVER TOUCHED. Both are copied into the build tree first, and
 # the write half of this test would otherwise land in one of them.
@@ -47,6 +46,18 @@ file mkdir $work/host
 
 file copy "$src/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"          "$work/8mb.dsk"
 file copy "$src/disks/mits-88dcdd/cpm22/buffered/cpm22b23-24k.dsk"      "$work/8in.dsk"
+
+# R/W/HDIR GO ONTO THE COPIES, HERE, AND NOT INTO THE IMAGES ON DISK. They are ours, so a
+# disk fetched from deramp.com does not have them and this test cannot run without them --
+# but installing them where the images LIVE would mean tools/fetch-disk-images.sh had to
+# write to what it just downloaded, and then the pinned checksum could never match again.
+# Fetch keeps the original pristine and verifiable; the test prepares its own scratch copy.
+# It is two boots per image and it is what makes the fetch a pure download.
+set env(ALTAIRSIM) $sim
+if {[catch {exec sh "$src/tools/install-hostbridge-utils.sh" "$work/8mb.dsk" "$work/8in.dsk"} why]} {
+    puts "FAIL: could not install the host-bridge utilities onto the scratch images:\n$why"
+    exit 1
+}
 
 set cmd [open "$work/boot.cmd" w]
 puts $cmd "SET CONSOLE UPPER=OFF"
