@@ -328,6 +328,7 @@ add_executable(altair_tests
   tests/test_z80_cpu.cpp
   tests/test_expr.cpp
   tests/test_debug.cpp
+  tests/test_ddt.cpp
   tests/test_dma.cpp
   tests/test_sio2.cpp
   tests/test_88sio.cpp
@@ -810,9 +811,26 @@ if(EXPECT_EXECUTABLE)
     set_tests_properties(acceptance-dcdd-readonly PROPERTIES
                          LABELS acceptance TIMEOUT 90
                          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    # ---------------------------------------------------------------------------
+    # DDT SETS A BREAKPOINT -- and it needs no interrupt to do it (RST 7 is a one-byte
+    # CALL 0038h, written over the guest's own opcode). Same fixture, same protected
+    # disk: DDT never writes, and the .exp shasums the image to keep it that way.
+    #
+    # tests/test_ddt.cpp pins the same mechanic at unit level, on both cores, and runs
+    # where expect does not (Windows). This one proves the real DDT.COM off the tracked
+    # image drives our 8080 correctly -- which no unit test can claim.
+    # ---------------------------------------------------------------------------
+    add_test(NAME acceptance-ddt
+             COMMAND ${EXPECT_EXECUTABLE}
+                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ddt.exp
+                     $<TARGET_FILE:altairsim>)
+    set_tests_properties(acceptance-ddt PROPERTIES
+                         LABELS acceptance TIMEOUT 120
+                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   else()
     message(STATUS "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk not found -- SKIPPING "
-                   "acceptance-dcdd-readonly (the write-protected-disk hang).")
+                   "acceptance-dcdd-readonly (the write-protected-disk hang) and "
+                   "acceptance-ddt (DDT's RST 7 breakpoints).")
   endif()
 
   # ---------------------------------------------------------------------------

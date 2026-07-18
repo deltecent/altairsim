@@ -73,11 +73,13 @@ docs/*.html
 #     under DESIGN.md 0.1 and are cited by path in docs/boards/*.md. Losing them would
 #     mean the 88-DCDD's register map, its timing, and the Tarbell's grounded-E30
 #     finding all cite a file that is not there.
-#   - TWO BOOTABLE CP/M IMAGES, named one at a time below. They are the exception to the
-#     paragraph above and they are here on purpose (2026-07-18): a test whose input has
-#     to be downloaded first is a test that skips, and three acceptance tests had been
-#     skipping on every fresh clone and in all of CI. 405 KB buys them back. See
-#     docs/sources.md for provenance and tools/fetch-disk-images.sh for the rest.
+#   - THREE BOOTABLE CP/M IMAGES, named one at a time below (an 8" floppy, and the two
+#     minidisks that only boot as a pair). They are the exception to the paragraph above
+#     and they are here on purpose (2026-07-18): a test whose input has to be downloaded
+#     first is a test that skips, and four acceptance tests had been skipping on every
+#     fresh clone and in all of CI. 480 KB buys them back, and the 8" one carries DDT.COM
+#     and our own R/W/HDIR.COM. See docs/sources.md for provenance, and
+#     tools/fetch-disk-images.sh for the images that are still fetched.
 disks/**
 !disks/**/
 !disks/**/*.toml
