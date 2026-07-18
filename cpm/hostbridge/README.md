@@ -50,15 +50,27 @@ A> W R.PRN  R.PRN  T
 ...with `hostdir` pointed at this directory. After the first one is built, `R.COM` itself is
 how the other two sources get in, so nothing needs pasting twice.
 
-**If you change a `.ASM`, rebuild and commit all three of its artifacts.** The acceptance
-test enforces this: it assembles the sources from scratch on every run and compares the
-result against the committed `.COM`, byte for byte. A checked-in binary that nobody checks
-is a binary that rots — edit `R.ASM`, forget to rebuild, and `R.COM` quietly goes on being
-the old program while every test still passes.
+**If you change a `.ASM`, rebuild and commit all three of its artifacts.** A checked-in
+binary that nobody checks is a binary that rots — edit `R.ASM`, forget to rebuild, and
+`R.COM` quietly goes on being the old program while every test still passes.
 
-`tests/acceptance/hostbridge.cmake` does the whole bootstrap from these files on every run
-and then *uses* what it built. So if a `.ASM` and the card ever disagree about the protocol,
-the assembler still succeeds and the *transfer* fails — in the test, not in your hands.
+`tests/acceptance/hostbridge.cmake` enforces this, in two tests that check different halves
+of the chain — and **only one of them runs by default**:
+
+| test | proves | needs |
+|------|--------|-------|
+| `acceptance-hostbridge` | the committed `.HEX` still `LOAD`s to the committed `.COM`, and that `.COM` works | nothing — the disk is tracked |
+| `acceptance-hostbridge-build` | the committed `.ASM` still *assembles* to the committed `.HEX`, `.PRN` and `.COM` | the 8 MB image, which is **not** in git |
+
+**So the `.ASM` → `.HEX` half is not checked on a fresh clone.** `PIP`ping 78 KB of source
+into the guest needs 78 KB of free disk, and the tracked floppy has 18K; no choice of
+fixture fixes that. If you edit a `.ASM`, fetch the 8 MB image
+(`disks/mits-88dcdd/cpm22/8mb/README.md`) and run `ctest -R hostbridge-build` before you
+commit — otherwise nothing will tell you the `.HEX` beside it went stale.
+
+Both modes then *use* what they built. So if a `.ASM` and the card ever disagree about the
+protocol, the assembler still succeeds and the *transfer* fails — in the test, not in your
+hands.
 
 ## HB.INC is the master, and nothing includes it
 
