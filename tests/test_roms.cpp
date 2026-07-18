@@ -82,15 +82,18 @@ void test_roms() {
         uint32_t crc;
         bool contiguous;
     };
-    // CDBL 3.00, HDBL 2.00, ACUTER 1.0 place themselves contiguously; AMON 3.0 is a 4K
-    // monitor image with gaps (a vector at F000, the bulk from F800), so flat() spans
-    // F000-FFFE (4095 bytes) with the 288 unprogrammed bytes read back as FF -- the CRC
-    // below is over that FF-filled span, exactly what SHOW ROMS and a mounted region see.
+    // CDBL 3.00, HDBL 2.00, ACUTER 1.0 and CUTER 1.3 place themselves contiguously; AMON
+    // 3.0 is a 4K monitor image with gaps (a vector at F000, the bulk from F800), so flat()
+    // spans F000-FFFE (4095 bytes) with the 288 unprogrammed bytes read back as FF -- the
+    // CRC below is over that FF-filled span, exactly what SHOW ROMS and a mounted region see.
+    // CUTER 1.3 is the original Processor Technology part (VDM console at CC00, port C8),
+    // distinct from ACUTER, which is Douglas's serial-console Altair port of the same source.
     const Case cases[] = {
         {"cdbl",   0xFF00, 0xFFF4,  245, 0x0558293Eu, true},
         {"hdbl",   0xFC00, 0xFCFE,  255, 0x796FCA9Bu, true},
         {"amon",   0xF000, 0xFFFE, 4095, 0xC00DC413u, false},
         {"acuter", 0xF000, 0xF7FF, 2048, 0x4A4E608Du, true},
+        {"cuter",  0xC000, 0xC7FA, 2043, 0xB0106ED2u, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

@@ -3,6 +3,8 @@
 #include "boards/mits-2sio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88sio.h"
+#include "boards/proctech-vdm1.h"
+#include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/media.h"
 
@@ -20,6 +22,12 @@ int main() {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
+
+    // A graphics board draws into an injected Display; headless tests give it a
+    // NullDisplay, so a VDM-1 renders into memory and a test reads the pixels back
+    // with no window. The SAME injection main() does, one backend down.
+    static altair::NullDisplay g_display;
+    altair::VdmBoard::setDisplay(&g_display);
 
     // The REAL media resolver, for the same reason. A test that wants a disk
     // without a filesystem installs a MemoryMedia resolver for the length of the
@@ -62,6 +70,7 @@ int main() {
     test_mds();
     test_88acr();
     test_c700();
+    test_vdm1();
     test_frontpanel();
     test_virtc();
     test_hostdir();

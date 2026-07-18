@@ -192,6 +192,11 @@ add_library(altair_core STATIC
   # port to a ByteStream (a file, the console, a socket). No chip: a printer sends
   # nothing back, so there is no receiver to model. See mits-88c700.h.
   src/boards/mits-88c700.cpp
+  # The Processor Technology VDM-1: memory-mapped 16x64 video. It renders into a
+  # host Display (src/host/display.h) injected at the composition root -- an
+  # SdlDisplay in the shipping binary, a NullDisplay headless -- so the card itself
+  # links with no graphics library and is tested with no window. See proctech-vdm1.h.
+  src/boards/proctech-vdm1.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/mits-88virtc.cpp
   # OUR OWN CARD -- the only one in this list that is not a period board, and the
@@ -208,6 +213,40 @@ add_library(altair_core STATIC
   "${MACHINES_GENERATED}")
 
 target_include_directories(altair_core PUBLIC src)
+
+# ---------------------------------------------------------------------------
+# The optional video backend: SDL3 (DESIGN.md 7.4). THE FIRST OPTIONAL LINK-TIME
+# DEPENDENCY, and it is DETECTED, not required.
+#
+# altairsim's loudest claim is that it builds with a C++20 compiler and CMake and
+# nothing else -- so a graphics library cannot be a hard dependency. This block
+# auto-detects an installed SDL3: found, and the video boards get a real window;
+# absent, and they build headless against a NullDisplay (src/host/display_null.h)
+# and every test still passes. Either way the build configures and succeeds. See
+# docs/devguide/ for how to install SDL3.
+#
+# ALTAIRSIM_ENABLE_SDL is ON by default (= "use SDL3 if it is here"); set it OFF to
+# force a headless build even where SDL3 is installed (the CI macOS-universal leg
+# does this -- a Homebrew SDL3 is single-arch and will not link into a fat binary).
+#
+# ONLY src/host/display_sdl.cpp includes SDL. The boards see host/display.h and
+# never learn a window exists, so they compile in every configuration; only this
+# one translation unit and the composition root (src/main.cpp) are macro-gated.
+# SDL is cross-platform, not an OS header, so it does not trip the 2.1 platform_lint.
+# ---------------------------------------------------------------------------
+option(ALTAIRSIM_ENABLE_SDL "Build the SDL3-backed video boards if SDL3 is found" ON)
+if(ALTAIRSIM_ENABLE_SDL)
+  find_package(SDL3 CONFIG QUIET)
+  if(SDL3_FOUND)
+    target_sources(altair_core PRIVATE src/host/display_sdl.cpp)
+    target_link_libraries(altair_core PUBLIC SDL3::SDL3)
+    target_compile_definitions(altair_core PUBLIC ALTAIRSIM_ENABLE_SDL)
+    message(STATUS "SDL3 found -- video boards enabled (windowed)")
+  else()
+    message(STATUS "SDL3 not found -- video boards build headless (null display). "
+                   "Install SDL3 (see docs/devguide) for a window.")
+  endif()
+endif()
 
 # Nothing links until the OS is where it belongs.
 add_dependencies(altair_core platform_lint)
@@ -274,6 +313,7 @@ add_executable(altair_tests
   tests/test_88sio.cpp
   tests/test_88acr.cpp
   tests/test_c700.cpp
+  tests/test_vdm1.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_spindle.cpp

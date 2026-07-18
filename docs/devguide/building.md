@@ -46,6 +46,47 @@ a pull, suspect a stale `build/` before suspecting the code: a `rm -rf build` an
 reconfigure is the first thing to rule out, because a half-rebuilt object can walk an
 already-fixed bug back in. `docs/building-linux.md` §6 has the details.
 
+## The optional video backend (SDL3)
+
+**Still no *required* dependency.** The graphics boards — the [VDM-1](../boards/proctech-vdm1.md),
+and the Dazzler to follow — draw into a host `Display` (`src/host/display.h`). That interface has
+two backends: a headless `NullDisplay` (draws into memory, shows nothing) that is always
+available, and an `SdlDisplay` (a real window) compiled **only when SDL3 is found**. So a plain
+`cmake -S . -B build` on a machine with no SDL3 still configures, builds, and passes every test —
+the video boards are simply headless, which is exactly what CI and a scripted run want.
+
+To get a window, install SDL3 and reconfigure:
+
+```sh
+# macOS
+brew install sdl3
+# Debian/Ubuntu (needs a recent SDL3 package)
+sudo apt install libsdl3-dev
+# vcpkg (any OS)
+vcpkg install sdl3
+
+cmake -S . -B build          # reconfigure -- watch the status line
+```
+
+The configure step reports which backend it chose:
+
+```
+-- SDL3 found -- video boards enabled (windowed)
+        …or…
+-- SDL3 not found -- video boards build headless (null display). Install SDL3 (see docs/devguide) for a window.
+```
+
+CMake auto-detects with `find_package(SDL3 CONFIG)`; found → it compiles `src/host/display_sdl.cpp`,
+links `SDL3::SDL3`, and defines `ALTAIRSIM_ENABLE_SDL`. Force a headless build even where SDL3 is
+installed with **`-DALTAIRSIM_ENABLE_SDL=OFF`** — the CI macOS-universal leg does this, because a
+Homebrew SDL3 is single-arch and cannot link into the `x86_64;arm64` fat binary. Only
+`display_sdl.cpp` and the composition root (`src/main.cpp`) are macro-gated; the boards themselves
+`#include` no SDL and compile in every configuration. Then:
+
+```sh
+altairsim vdm1               # a VDM-1 with a banner-drawing demo (roms/VDM1DEMO)
+```
+
 ## What actually got built
 
 **Built and tested on Linux, macOS, and Windows.** The code is written to be portable — C++20,
