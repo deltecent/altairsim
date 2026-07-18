@@ -2,6 +2,7 @@
 
 #include "boards/hostbridge.h"
 #include "boards/mits-88acr.h"
+#include "boards/mits-88c700.h"
 #include "boards/mits-88cpu.h"
 #include "boards/mits-88dcdd.h"
 #include "boards/mits-88mds.h"
@@ -36,6 +37,7 @@ std::vector<BoardType> boardTypes() {
         {"dcdd", "MITS 88-DCDD: 8\" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits"},
         {"mds", "MITS 88-MDS: 5.25\" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s"},
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb"},
+        {"c700", "MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file"},
         {"fp", "Altair front panel: the SENSE switches at port FF (read-only), and the lamps"},
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
@@ -51,6 +53,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "dcdd") return std::make_unique<DcddBoard>();
     if (type == "mds") return std::make_unique<MdsBoard>();
     if (type == "acr") return std::make_unique<AcrBoard>();
+    if (type == "c700") return std::make_unique<C700Board>();
     if (type == "fp") return std::make_unique<FrontPanelBoard>();
     if (type == "virtc") return std::make_unique<VirtcBoard>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();

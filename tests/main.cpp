@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "boards/mits-2sio.h"
+#include "boards/mits-88c700.h"
 #include "boards/mits-88sio.h"
 #include "host/endpoint.h"
 #include "host/media.h"
@@ -18,6 +19,7 @@ int main() {
     // user will ever run, and the first thing to break would be the real one.
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
+    altair::C700Board::setResolver(altair::resolveEndpoint);
 
     // The REAL media resolver, for the same reason. A test that wants a disk
     // without a filesystem installs a MemoryMedia resolver for the length of the
@@ -59,6 +61,7 @@ int main() {
     test_dcdd();
     test_mds();
     test_88acr();
+    test_c700();
     test_frontpanel();
     test_virtc();
     test_hostdir();

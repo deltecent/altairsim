@@ -1,0 +1,29 @@
+# The `default` machine with an 88-C700 line printer at port 02, captured to a file.
+#
+# It exists to show the printer card end to end: the guest OUTs a byte to the data
+# port (03), it lands on the line, and the line goes to a host file. Nothing about
+# the capture is printer-specific -- CONNECT the `prn` unit anywhere a serial line
+# can go:
+#
+#   altairsim lineprinter
+#   OUT 03 48            'H' -> the printer -> printout.txt
+#   OUT 02 01           IN  02 reads the status (bit 0 = will accept a byte)
+#   CONNECT lpt0:prn console      ...or watch it print live on the console instead
+#
+# The file lands in the directory you ran altairsim from (a path TYPED, or one in a
+# machine loaded from a directory, follows the usual rule -- see
+# docs/manual/config.md). It is a byte-for-byte capture: the bytes the guest sends
+# are the bytes in the file, control codes and all. It is not reformatted into a
+# printed page.
+
+[machine]
+name = "lineprinter"
+base = "default"
+
+# THE PRINTER -- an 88-C700 at 02, the MITS default (Control/Status at 02, Data at
+# 03). Output-only: the guest writes characters to 03 and polls status at 02.
+[[board]]
+type    = "c700"
+id      = "lpt0"
+port    = 02
+connect = "file:printout.txt"

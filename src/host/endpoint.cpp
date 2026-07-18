@@ -1,12 +1,14 @@
 #include "host/endpoint.h"
 
 #include "host/console.h"
+#include "host/file.h"
 #include "host/hostserial.h"
 #include "host/tcp.h"
 #include "platform/serial.h"
 #include "platform/socket.h"
 
 #include <cstdlib>
+#include <fstream>
 #include <string>
 
 namespace altair {
@@ -29,7 +31,7 @@ bool parsePort(const std::string& s, uint16_t& out) {
 
 std::string endpointHelp() {
     return "console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | "
-           "serial:DEVICE";
+           "serial:DEVICE | file:PATH";
 }
 
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {
@@ -107,9 +109,28 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
         return std::make_unique<HostSerialStream>(std::move(port), spec);
     }
 
+    // ---- file: -- a host file, write-only. A printout, or a capture of a line ----
+    //
+    // The path is opened exactly as handed to us. A RELATIVE path written in a
+    // machine file is config-relative, but THAT rebasing is the board's job (it is
+    // the only thing that knows its config dir; see Board::resolvePath and the mount
+    // path in mits-hardsector.cpp) -- and the board keeps the ORIGINAL spec for
+    // round-trip, which is why `spec` below, not the resolved path, is what the
+    // stream describes. Typed at the prompt, the path is the shell's, which is just
+    // the path as-is.
     if (spec.rfind("file:", 0) == 0) {
-        err = "file: endpoints are not implemented yet. " + endpointHelp();
-        return nullptr;
+        std::string path = spec.substr(5);
+        if (path.empty()) {
+            err = "file: needs a path (file:printout.txt)";
+            return nullptr;
+        }
+        // BINARY + trunc: 8-bit clean (a CR stays a CR on every host), opened fresh.
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            err = "cannot open '" + path + "' for writing";
+            return nullptr;
+        }
+        return std::make_unique<FileStream>(std::move(out), spec);
     }
 
     err = "no endpoint '" + spec + "'. Try: " + endpointHelp();

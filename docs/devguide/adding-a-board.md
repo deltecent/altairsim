@@ -312,7 +312,11 @@ Our card answers a cycle. A more interesting one **asks for something**:
   one: transmit-buffer-empty is a deadline, not a flag.
 - **The outside world.** Anything that talks to a socket, a file or a keyboard does it in
   `pump()` — **never inside a bus cycle**. That seam is what keeps `read()` and `write()` pure
-  computation over state, and it is what a deterministic replay would be built on.
+  computation over state, and it is what a deterministic replay would be built on. The
+  **88-C700 printer** (`src/boards/mits-88c700.{h,cpp}`, `docs/boards/mits-88c700.md`) is the
+  smallest shipped card that does this for real: a bare latch that sinks its data port to a
+  `ByteStream`, so `CONNECT lpt0:prn file:printout.txt` captures the printout and the card never
+  learns what a file is. It is a good next read after this lamp.
 - **Sub-units.** A card with a *list* of things — regions on a memory card, drives on a
   controller — declares `subUnitTables()` and gets `[[board.region]]` / `[[board.drive]]` in
   TOML for free.

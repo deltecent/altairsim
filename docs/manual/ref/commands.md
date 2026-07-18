@@ -653,6 +653,8 @@ socket:     PORT alone LISTENS: that is the telnet-in case. HOST:PORT CALLS OUT.
 serial:     a real port on this host. It is opened at 9600 8N1 and then
             immediately re-programmed by the card, which is the only thing that
             knows what it is strapped to.
+file:       PATH -- a host file, write-only: a printout, or a capture of the
+            line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.
 ```
 
 
@@ -667,6 +669,7 @@ CONN sio0:b socket:2323            `telnet localhost 2323` now reaches the guest
 CONN sio0:b socket:bbs.example:23  the guest dials OUT, to somebody else's port
 CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware
 CONN sio0:b serial:COM3                           ...the same, on Windows
+CONN lpt0:prn file:printout.txt                   capture a printer to a file
 ```
 
 DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it.

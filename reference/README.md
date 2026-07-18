@@ -33,6 +33,12 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | [6850](6850.md) | Motorola MC6850 ACIA: register map, control/status bit layouts, divide/word-select/transmitter-control tables, master reset, and chip-select logic. |
 | [com2502](com2502.md) | SMC COM2502/COM2017 UART (the 88-SIO's UART): the control-word framing fields, the SWE#-gated status flags, and double-buffered TX/RX holding-register behavior. |
 
+## Printer
+
+| Reference | What it covers |
+|---|---|
+| [88-C700 Centronics Printer Controller](88-C700%20Centronics%20Printer%20Controller.md) | MITS 88-C700 S-100 interface for the Altair C700 line printer: the two consecutive ports (even Control/Status, odd Data) with the A0 split and the MITS default base 002, the status byte (ACKNOWLEDGE/BUSY/PAPER EMPTY/SELECT/FAULT/INTERRUPT ENABLE/REQUEST), the control byte (D0 PRIME, D1 INTERRUPT CONTROL), the data-write strobe that clears the ACK latch and interrupt, the single-level interrupt switched per-character or per-CR/LF (SW2 #4), and the C700's own ASCII control codes (LF/CR/DC1/DC3/DEL/SO). |
+
 ## Floppy and disk
 
 | Reference | What it covers |
