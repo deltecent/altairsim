@@ -28,6 +28,10 @@ Thumbs.db
 *.replay
 altairsim.log
 
+# Binaries CI built, pulled down by tools/fetch-ci-binaries.sh. Scratch: overwritten on
+# every fetch, read by nothing in the build or the tests.
+/artifacts/
+
 # The built documents. THE MARKDOWN IS THE SOURCE; the PDF is an artifact of it, of the
 # binary (the reference chapters are printed from the program) and of a browser.
 #
