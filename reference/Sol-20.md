@@ -118,6 +118,39 @@ header at offset 52: name `TRK80`, then a `SIZE` field of `0x1EA0` (7,840) that 
 decoded payload. A wrong tone pair or a wrong bit rate does not produce a valid header and a
 self-consistent length — that agreement is what makes this a measurement rather than a guess.
 `altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
+
+### Leader, trailer, and what a whole tape looks like (MEASURED)
+
+Five genuine Sol cassette dubs from the same archive, all 1200 baud. These are *recordings of
+tape*, not modulator reconstructions, so the leader and trailer are a real transport and a real
+operator's finger:
+
+| Tape | Audio leader | Audio trailer | Byte leader | SOLOS file |
+|---|---|---|---|---|
+| `TRK80` | 3.05 s | 1.93 s | 51 | `TRK80`, 7,840 B |
+| `ROBOT_INSTR` | 4.33 s | 1.47 s | 51 | `ROBOT`, 10,677 B |
+| `SKULL` | 4.22 s | 1.73 s | 52 | `SKULL`, 16,853 B |
+| `ALS8` | 3.83 s | 1.23 s | 50 | `ALS8`, 8,320 B |
+| `TINY_TREK` | 3.68 s | 2.30 s | 50 | `TTREK`, 8,194 B |
+
+So a CUTS tape is: **~4 s of idle 2400 Hz**, then **~51 bytes of `00`**, then a **`01` sync byte**,
+then the 16-byte SOLOS header (`FOPEN` layout, above), then the payload, then **~2 s of idle tone**.
+The byte-level leader and sync are written by SOLOS itself, so they survive in a byte tape image;
+only the audio seconds are lost, and only they must be synthesized when writing audio back out.
+
+**Every tape in this archive holds exactly ONE file**, checked by scanning the full decoded stream
+for a second leader+`01`+header signature — including `ROBOT_INSTR`, whose *filename* suggests a
+program plus its instructions but which decodes to a single file named `ROBOT`. Nor does any tape
+contain an interior run of idle tone longer than 10 bit times (one all-ones frame).
+
+**This is structural, not a sampling accident, and it is why no multi-file example will be found
+here.** These are commercial distribution masters, and Processor Technology sold one program per
+cassette. A multi-file tape is a *user* artifact — somebody saving several of their own programs
+onto one C-60 — and nobody archived their own scratch tapes. So the inter-file gap the SOLOS manual
+implies and that a human needs (to stop the transport before the next program runs past the head)
+is **real but unmeasurable from published media**, and the simulator must pick a number rather than
+recover one. Note that the gap and the leader are the same thing seen twice: a second file on a
+tape is just a file, and it wants the leader every file wants.
 - **Keyboard** (`KDATA`, `FCh`): read-only parallel ASCII from the keyboard. Ready is `FAh`
   bit 0 (`KDR`, active low); reading `KDATA` clears the strobe.
 - **Parallel** (`PDATA`, `FDh`): the general parallel port, used for a printer. Input ready
