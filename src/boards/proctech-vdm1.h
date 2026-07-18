@@ -56,6 +56,13 @@ public:
     // borrowed pointer; the composition root owns it (like C700Board::setResolver).
     static void setDisplay(Display* d);
 
+    // Load the display scroll (the top character row shown; low 4 bits, wraps mod 16)
+    // from OUTSIDE a bus cycle. On the Sol-20 the VDM scroll register is a SEPARATE
+    // I/O port (0xFE, DSTAT) owned by the composite `sol` board, not this card's own
+    // jumpered port -- so the sol board forwards its OUT 0xFE here. On a stand-alone
+    // VDM-1 the identical latch happens in write() (IoWrite) instead.
+    void setScroll(uint8_t row) { scroll_ = row & 0x0F; }
+
     // ---- For tests, without a window: what the card would show. ----
     uint8_t vram(uint16_t off) const { return off < kBytes ? screen_[off] : 0xFF; }
     uint8_t statusByte() const;

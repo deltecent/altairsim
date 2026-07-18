@@ -53,6 +53,7 @@ void test_mds();
 void test_88acr();
 void test_c700();
 void test_vdm1();
+void test_sol();
 void test_frontpanel();
 void test_virtc();
 void test_hostdir();

@@ -9,6 +9,7 @@
 #include "boards/mits-88virtc.h"
 #include "boards/mits-frontpanel.h"
 #include "boards/mits-z80cpu.h"
+#include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/s100-memory.h"
 #include "boards/mits-2sio.h"
@@ -40,6 +41,7 @@ std::vector<BoardType> boardTypes() {
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb"},
         {"c700", "MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file"},
         {"vdm1", "Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display"},
+        {"sol", "Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/tape/keyboard"},
         {"fp", "Altair front panel: the SENSE switches at port FF (read-only), and the lamps"},
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
@@ -57,6 +59,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "acr") return std::make_unique<AcrBoard>();
     if (type == "c700") return std::make_unique<C700Board>();
     if (type == "vdm1") return std::make_unique<VdmBoard>();
+    if (type == "sol") return std::make_unique<SolBoard>();
     if (type == "fp") return std::make_unique<FrontPanelBoard>();
     if (type == "virtc") return std::make_unique<VirtcBoard>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
