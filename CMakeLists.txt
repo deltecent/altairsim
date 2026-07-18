@@ -539,23 +539,35 @@ set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
 # the only expensive thing in either test: 78 KB of source, echoed back byte for byte, down
 # a 2SIO that models a real serial line. R and W never touch the console at all.
 #
-# BOTH GATED ON THE 8 MB IMAGE, which is not in git (disks/ is an allowlist -- see
-# .gitignore). A test that quietly passes because its input is missing is worse than none.
+# THEY RUN ON DIFFERENT DISKS, AND THE REASON IS 78 KB OF ASSEMBLER.
+#
+#   fast   the TRACKED image (disks/.../cpm22b23-56k.dsk, 480 KB of it in git). So the test
+#          of the card runs on a FRESH CLONE and in CI, with nothing to download. It arrives
+#          with 18K free, which is room enough for 12.5 KB of .HEX and the files we move.
+#
+#   build  the 8 MB image, which is NOT in git, so this one still skips without it. It
+#          cannot move: PIPing three .ASM into the guest needs 78 KB of free disk, and 18K
+#          is 18K. Nothing about that is fixable by choosing a different fixture.
+#
+# The gap that leaves is real and worth naming: on a fresh clone the committed .HEX is
+# checked against the committed .COM, but the .ASM behind them is not checked at all. That
+# is the right way round -- a stale .HEX breaks the utilities a user is handed, a stale
+# .ASM breaks the next person to edit them -- but it is a gap, not a coincidence.
 # ---------------------------------------------------------------------------
+add_test(NAME acceptance-hostbridge
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -DMODE=fast
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/hostbridge.cmake)
+# ~2s. The 60 is a BACKSTOP, not a budget -- and the script has its own 30s leash
+# inside it, which fails with "THE MACHINE HUNG" instead of a confusing missing-string
+# error. A test with a generous timeout is a test that can waste an hour of your evening.
+set_tests_properties(acceptance-hostbridge PROPERTIES LABELS acceptance TIMEOUT 60)
+
 set(HB_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK")
 if(EXISTS "${HB_DISK}")
-  add_test(NAME acceptance-hostbridge
-           COMMAND ${CMAKE_COMMAND}
-                   -DSIM=$<TARGET_FILE:altairsim>
-                   -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
-                   -DBIN=${CMAKE_CURRENT_BINARY_DIR}
-                   -DMODE=fast
-                   -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/hostbridge.cmake)
-  # ~1.5s. The 60 is a BACKSTOP, not a budget -- and the script has its own 30s leash
-  # inside it, which fails with "THE MACHINE HUNG" instead of a confusing missing-string
-  # error. A test with a generous timeout is a test that can waste an hour of your evening.
-  set_tests_properties(acceptance-hostbridge PROPERTIES LABELS acceptance TIMEOUT 60)
-
   add_test(NAME acceptance-hostbridge-build
            COMMAND ${CMAKE_COMMAND}
                    -DSIM=$<TARGET_FILE:altairsim>
@@ -566,8 +578,10 @@ if(EXISTS "${HB_DISK}")
   set_tests_properties(acceptance-hostbridge-build PROPERTIES
                        LABELS "acceptance;slow" TIMEOUT 360)
 else()
-  message(STATUS "8 MB CP/M image not found -- SKIPPING the Host Bridge acceptance tests. "
-                 "See disks/mits-88dcdd/cpm22/8mb/README.md to download it.")
+  message(STATUS "8 MB CP/M image not found -- SKIPPING acceptance-hostbridge-build (the "
+                 "assembly-from-source test; 78 KB of .ASM does not fit on the tracked "
+                 "floppy). See disks/mits-88dcdd/cpm22/8mb/README.md to download it. "
+                 "acceptance-hostbridge itself runs regardless.")
 endif()
 
 # ---------------------------------------------------------------------------

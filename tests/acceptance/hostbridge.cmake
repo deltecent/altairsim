@@ -116,11 +116,32 @@ if(MODE STREQUAL build)
     cmd("LOAD ${u}")                    # -> .COM
   endforeach()
 else()
+  # ERASE THE UTILITIES THE DISK ARRIVES WITH, BEFORE BUILDING THEM AGAIN.
+  #
+  # The tracked image ships R/W/HDIR.COM already installed -- that is what makes it not
+  # byte-identical to upstream (tools/install-hostbridge-utils.sh). Leaving them there
+  # would MASK THE FAILURE THIS MODE EXISTS TO CATCH: if LOAD stopped producing a working
+  # .COM, the pre-installed one would run instead and every check below would pass while
+  # testing the wrong binary. Erasing first means the program that runs can only be the
+  # one we just built out of the committed .HEX.
+  #
+  # It also buys back the ~5K they occupy, and on an 18K disk that is not spare change.
+  foreach(u R W HDIR)
+    cmd("ERA ${u}.COM")
+  endforeach()
+
   # FROM THE COMMITTED HEX. Six times less wire, no assembler -- and LOADing the hex that
   # is checked in is what makes the .COM beside it provable rather than merely present.
+  #
+  # EACH .HEX IS ERASED THE MOMENT LOAD HAS EATEN IT, and on this disk that is not
+  # housekeeping. 12.5 KB of .HEX against 18K free left the disk with EXACTLY 0K remaining
+  # at the end of the run -- passing, but one file away from failing, and failing as a
+  # silently truncated PIP that LOADs into a subtly wrong .COM. Freeing each .HEX as we
+  # finish with it holds the peak down and leaves ~12K spare instead of nothing.
   foreach(u R W HDIR)
     pip("${SRC}/cpm/hostbridge/${u}.HEX" "${u}.HEX")
     cmd("LOAD ${u}")
+    cmd("ERA ${u}.HEX")
   endforeach()
 endif()
 
@@ -163,10 +184,26 @@ endforeach()
 file(WRITE "${work}/dcdd.keys" "${keys}")
 
 # ---------------------------------------------------------------------------
-# THE MACHINE -- the 88-DCDD, an 8 MB image, 56K CP/M 2.2.
+# THE MACHINE -- an 88-DCDD running 56K CP/M 2.2, on a DIFFERENT DISK PER MODE.
+#
+#   fast   the TRACKED 8" floppy, which is in git. This test therefore runs on a fresh
+#          clone and in CI instead of skipping silently, which is the entire point of
+#          tracking the image. It arrives with 18K free and this mode needs about 14 of
+#          them: 12.5 KB of .HEX, plus the three small files we move in. Tight, and
+#          deliberately so -- see the ERA below.
+#
+#   build  the 8 MB image, because PIPing R/W/HDIR.ASM in needs 78 KB of free disk. It is
+#          not in git, so CMakeLists.txt gates this mode on finding it.
+#
+# NEVER MUTATE A REPO IMAGE: both are copied to scratch first. For the tracked one that is
+# not merely tidy -- dcdd-readonly.exp and ddt.exp shasum that file and fail if it moves.
 # ---------------------------------------------------------------------------
-configure_file("${SRC}/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
-               "${work}/work.dsk" COPYONLY)     # NEVER mutate a repo image
+if(MODE STREQUAL build)
+  set(image "${SRC}/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK")
+else()
+  set(image "${SRC}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk")
+endif()
+configure_file("${image}" "${work}/work.dsk" COPYONLY)
 
 # NO `SET ... BAUD` HERE, AND RESIST THE URGE.
 #
