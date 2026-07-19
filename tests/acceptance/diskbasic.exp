@@ -1,0 +1,114 @@
+#!/usr/bin/expect -f
+#
+# THE SHIPPED DISK BASIC EXAMPLE MUST REACH ITS PROMPT.
+#
+# examples/diskbasic is product: a machine file, an 8" floppy, and a README that tells the
+# reader which five answers to type. This types them. It proves the whole path -- DBL in the
+# PROM at FF00, the 88-DCDD reading track 0, the loader pulling Altair Disk Extended BASIC
+# into a 56K machine -- against a 1977 artifact.
+#
+# WHY THIS TEST IS `expect` AND NOT A PIPE, which is not a style preference. This guest
+# re-initialises the 6850 during startup, and a master reset clears the receive register: the
+# byte sitting in it is LOST. Feed the dialogue in on stdin and the first character after a
+# prompt vanishes -- and how many vanish varies between runs, so no amount of padding fixes
+# it. Piping produced a machine that sat re-asking `LINEPRINTER?` forever while looking for
+# all the world like a hung simulator. expect waits for each prompt before sending its
+# answer, so the answer reaches the question that asked for it. (Same trap, same fix, as
+# tools/install-hostbridge-utils.sh:53-58.)
+#
+# THE DIALOGUE, and `LINEPRINTER?` is the one nobody guesses: it takes C, O or Q and NOTHING
+# ELSE, and it re-asks in silence on anything else -- no error, no hint. C is the 88-C700,
+# and it is a legal answer even here, where no printer board is fitted; it only tells BASIC
+# where LPRINT would go. (MITS, "Basic Versions", under disks/mits-88dcdd/diskbasic/.)
+#
+# usage: expect -f diskbasic.exp <altairsim> <example-dir>
+
+set timeout 120
+log_user 0
+
+set exe [lindex $argv 0]
+set dir [lindex $argv 1]
+
+cd $dir
+
+# FLAT OUT, ON PURPOSE. The example runs at the default free-running clock already; this is
+# stated so the test does not silently inherit a different answer if the example ever pins a
+# speed. Nothing here is guest-observable.
+spawn $exe diskbasic.toml -i -x "SET cpu0 clock_hz=0"
+
+expect {
+    -ex "console -- " {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: never reached the guest console"; exit 1 }
+}
+
+expect {
+    -ex "MEMORY SIZE?" {}
+    eof     { puts "FAIL: the machine died before BASIC signed on -- DBL did not load it"
+              exit 1 }
+    timeout { puts "FAIL: no MEMORY SIZE prompt. The boot PROM ran but BASIC never came up,\
+                    which is what an unreadable or wrong-format image looks like."; exit 1 }
+}
+send "\r"
+
+expect {
+    -ex "LINEPRINTER?" {}
+    eof     { puts "FAIL: died at MEMORY SIZE"; exit 1 }
+    timeout { puts "FAIL: MEMORY SIZE did not accept a bare CR"; exit 1 }
+}
+send "C\r"
+
+# ANSWER THE REST BY MATCHING IT, not by assuming how many questions are left. A prompt this
+# loop does not recognise fails loudly rather than spinning -- which is how the real wording
+# of `HOW MANY FILES?` was found, the guess having been `NUMBER OF FILES?`.
+set answered 0
+set done 0
+set banner 0
+while {!$done && $answered < 12} {
+    expect {
+        -ex "HIGHEST DISK NUMBER?"   { send "0\r"; incr answered }
+        -ex "HOW MANY FILES?"        { send "\r";  incr answered }
+        -ex "HOW MANY RANDOM FILES?" { send "\r";  incr answered }
+        -ex "ALTAIR BASIC REV. 4.1"  { set banner 1 }
+        -ex "OK"                     { set done 1 }
+        eof     { puts "FAIL: died partway through the startup dialogue"; exit 1 }
+        timeout { puts "FAIL: an unrecognised startup prompt is waiting, or LINEPRINTER=C\
+                        was refused."; exit 1 }
+    }
+}
+
+if {!$done} {
+    puts "FAIL: the startup dialogue did not end after $answered answers"
+    exit 1
+}
+
+# WHICH BASIC, not merely "a BASIC". Without this the test passes on any image that reaches an
+# OK prompt -- a different revision dropped in here would sail through, and the manual and the
+# README both name 4.1 specifically (the C/O/Q answer set above is 4.1's, and earlier revisions
+# do not ask this question at all).
+if {!$banner} {
+    puts "FAIL: reached an OK prompt but never saw `ALTAIR BASIC REV. 4.1` -- this is not the\
+          image this example is documented against."
+    exit 1
+}
+
+# THE BANNER IS NOT THE VERDICT -- it is printed before the OK prompt, and reaching it only
+# proves the image loaded. Evaluating an expression proves BASIC is RUNNING.
+send "PRINT 2+2\r"
+expect {
+    -ex " 4" {}
+    eof     { puts "FAIL: BASIC died at its own prompt"; exit 1 }
+    timeout { puts "FAIL: reached OK but PRINT 2+2 never answered -- BASIC is up but not\
+                    running"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: ATTN did not return to the monitor"; exit 1 }
+}
+send "QUIT\r"
+expect eof
+
+puts "OK: examples/diskbasic reaches Altair BASIC 4.1's prompt and evaluates PRINT 2+2."
+exit 0

@@ -956,6 +956,26 @@ if(EXPECT_EXECUTABLE)
                    wav)
   set_tests_properties(acceptance-trek80-wav PROPERTIES LABELS acceptance TIMEOUT 180)
 
+  # ---------------------------------------------------------------------------
+  # THE SHIPPED DISK BASIC EXAMPLE REACHES ITS PROMPT -- acceptance-diskbasic.
+  #
+  # examples/diskbasic is product: DBL in the PROM at FF00, the 88-DCDD reading track 0, and
+  # Altair Disk Extended BASIC 4.1 (MITS, 1977) coming up in a 56K machine.
+  #
+  # IT MUST BE `expect`, AND THAT IS NOT STYLE. This guest re-initialises the 6850 during
+  # startup; a master reset clears the receive register and the byte in it is LOST. Driven by
+  # a pipe, the first character after a prompt vanishes -- and how many vanish varies run to
+  # run, so padding the input cannot fix it. The visible symptom is a machine re-asking
+  # `LINEPRINTER?` forever, which reads as a hang and is not one. So this test cannot move to
+  # a plain script, and on Windows (no expect) it does not run at all.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-diskbasic
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/diskbasic.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/diskbasic)
+  set_tests_properties(acceptance-diskbasic PROPERTIES LABELS acceptance TIMEOUT 180)
+
 else()
   message(STATUS "expect not found -- SKIPPING the interactive CLI test (acceptance-cli). "
                  "The tty paths (prompt echo, ATTN, clock pacing) will not be covered.")
