@@ -108,14 +108,20 @@ void SdlDisplay::setPalette(std::span<const Color> colors) {
     palette_.assign(colors.begin(), colors.end());
 }
 
-void SdlDisplay::present(Surface* s) {
-    if (!renderer_ || !texture_ || !s) return;
+// Pump SDL's event queue on the main thread (DESIGN.md 7.4 #2). Keystrokes go to the
+// injected key sink (host/display.h), which the composition root wires to the Console --
+// so a key typed in this window joins the terminal's on the one recorded input queue,
+// and no board is touched from here. Draining the queue is also what keeps the window
+// from beach-balling, and a close request is remembered.
+//
+// Called once a slice by the run loop, NOT from present(): see host/display.h for why
+// reading the operator must not be gated on whether a frame was drawn.
+void SdlDisplay::pollEvents() {
+    // Nothing to drain before there is a window, and SDL_PollEvent must not be called
+    // before SDL_Init. The run loop asks every slice, including on machines that have
+    // no video board at all and will never open one.
+    if (!inited_) return;
 
-    // Pump SDL's event queue on the main thread (DESIGN.md 7.4 #2). Keystrokes go to
-    // the injected key sink (host/display.h), which the composition root wires to the
-    // Console -- so a key typed in this window joins the terminal's on the one
-    // recorded input queue, and no board is touched from here. Draining the queue is
-    // also what keeps the window from beach-balling, and a close request is remembered.
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
@@ -169,6 +175,10 @@ void SdlDisplay::present(Surface* s) {
             break;
         }
     }
+}
+
+void SdlDisplay::present(Surface* s) {
+    if (!renderer_ || !texture_ || !s) return;
 
     // Resolve the indexed frame against the palette into RGBA32 (bytes R,G,B,A).
     auto px = s->pixels();

@@ -52,66 +52,6 @@ so a reader stops being told to type a path that cannot work. The alternative �
 shipping the rest of the media — waits on the separate packages repository, which
 does not exist yet.
 
-### A key typed in a video window waits for the cursor to blink
-
-Found 2026-07-19 while testing the unfocused-window change on `sol20`: typing in
-the VDM-1 window echoes about 200 ms late. Typing at the terminal is unaffected.
-
-The cause is a coupling, not a slow path. **SDL's event queue is drained only
-inside `SdlDisplay::present()`** (`src/host/display_sdl.cpp`), and `present()` is
-reached only from `VdmBoard::render()`, which `pump()` gates behind two tests
-(`src/boards/proctech-vdm1.cpp:134`):
-
-```
-if (!frameChanged()) return;      // would this frame look different?
-if (!g_display->wantsFrame()) return;   // does the host want one now?
-```
-
-So **keystrokes are collected at the rate frames are produced.** Sitting at a
-SOLOS prompt nothing on screen is changing, and the only thing that returns true
-from `frameChanged()` is the cursor blink — `kBlinkHalfPeriod = 0.5` seconds
-(`proctech-vdm1.cpp:37`), i.e. ~2 Hz. That is the observed delay: a key waits for
-the next blink edge, up to 500 ms, ~250 ms on average.
-
-**The sharper form of it is a deadlock, and nothing in tree hits it today only by
-luck.** With a non-blinking cursor a fully static screen produces no frames at
-all: no frame → the queue is never drained → the key is never delivered → the
-guest never echoes it → nothing changes → still no frame. Every shipped machine
-(`sol20`, `cuter`, `vdm1`) sets `cursor = "blink"`, so the blink is the only
-thing keeping the input path alive. `cursor = "solid"` would make the window go
-deaf, and it reads as a display preference.
-
-**The close box has the same defect, and the run loop already claims otherwise.**
-`takeQuitRequest()` is answered from state that `present()` collects, so a click
-on the close box is noticed on the same blink-rate cadence. `monitor.cpp:1095`
-says in as many words that `m_.pump()` above it is what drained the window's
-event queue — which is true only when a board happened to render. It is a
-documented assumption that does not hold, and it is why this is worth fixing at
-the seam rather than by making the VDM-1 render more often.
-
-**The fix.** Draining input is not the same job as drawing a frame, and it should
-sit behind neither gate. Add a poll to the `Display` seam — `virtual void
-pollEvents()` in `src/host/display.h`, beside `wantsFrame()` and `hostSeconds()`,
-for the same reason those live there: the board stays pure and a headless host
-answers deterministically.
-
-- `SdlDisplay::pollEvents()` takes the `SDL_PollEvent` loop that is currently at
-  the top of `present()` (`src/host/display_sdl.cpp:111`) — keystrokes to the key
-  sink, close request remembered. `present()` keeps only the draw and the
-  `SDL_RenderPresent`.
-- `NullDisplay` (`src/host/display_null.h`) gets an empty one, so headless builds
-  and tests are unchanged.
-- The run loop calls it once a slice, next to the `m_.pump()` at
-  `src/cli/monitor.cpp:1082` and before `con.poll()` — the slice is already sized
-  so "a keystroke is picked up promptly", which is exactly this. Then the comment
-  at :1095 becomes true, and `takeQuitRequest()` answers from a queue that was
-  actually drained.
-
-Latency then falls to the slice, not the blink, and `cursor = "solid"` stops
-being able to deafen the window. Worth checking while doing it whether the window
-should also stay responsive at the `altairsim>` prompt, where no run loop is
-turning and so nothing pumps at all today.
-
 ### Wire `build-package.sh` into the release workflow
 
 **Nothing runs `tools/build-package.sh`.** It assembles the archive the manual

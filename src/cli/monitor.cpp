@@ -1081,6 +1081,13 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
         // sitting at the terminal.
         m_.pump();
 
+        // The video window's own keyboard and close box, once a slice, for the same
+        // reason the console is polled below -- and NOT from inside a board's pump(),
+        // where it used to be. Drained there it rode on frame production, so a key
+        // typed into the window waited for the cursor to blink (host/display.h). Null
+        // when there is no window at all: headless, a test, a piped script.
+        if (g_display) g_display->pollEvents();
+
         // The keyboard, once, for everybody: keys land in the host's buffer and ATTN
         // is taken out of the stream before the guest is ever offered it. One line,
         // and it is the same line whether a 2SIO is reading or the backplane is empty.
@@ -1092,9 +1099,8 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
 
         // The close box on the video window, asked once a slice for the same reason
         // ATTN is: it is the operator talking, and this is the only place that can
-        // act on it. m_.pump() above is what drained the window's event queue, so
-        // the click is already known by the time we ask. Null when there is no
-        // window at all -- headless, a test, a piped script.
+        // act on it. pollEvents() above is what drained the window's event queue, so
+        // the click is already known by the time we ask.
         if (g_display && g_display->takeQuitRequest()) {
             r.why = StopReason::WindowClosed;
             break;

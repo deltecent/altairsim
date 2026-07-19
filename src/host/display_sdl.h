@@ -11,10 +11,12 @@
 // stay crisp on a modern panel.
 //
 // SINGLE-THREADED, MAIN-THREAD (DESIGN.md 7.4 #2). The emulation runs on the main
-// thread; acquire()/present() are called from Board::pump() on that same thread, so
-// SDL's window and event pump live on the main thread as macOS requires -- with no
-// worker thread and no cross-thread queue. present() pumps SDL's event queue but
-// never blocks on vsync: emulated time, not the monitor's refresh, owns the clock.
+// thread; acquire()/present() are called from Board::pump() on that same thread, and
+// pollEvents() from the run loop on the same one again, so SDL's window and event pump
+// live on the main thread as macOS requires -- with no worker thread and no cross-thread
+// queue. present() never blocks on vsync: emulated time, not the monitor's refresh, owns
+// the clock. Input is drained by pollEvents(), not by present(), because a keystroke
+// must not wait for a frame (host/display.h).
 
 #include "host/display.h"
 
@@ -39,8 +41,9 @@ public:
     Surface* acquire(int w, int h, PixelFormat fmt) override;
     void     present(Surface* s) override;
     void     setPalette(std::span<const Color> colors) override;
+    void     pollEvents() override;
 
-    // The close box, remembered by present()'s event pump and handed to the run loop
+    // The close box, remembered by pollEvents() and handed to the run loop
     // (host/display.h). Consuming: the window itself stays open and responsive --
     // closing it stops the GUEST and hands you the monitor, and the machine is still
     // there, so RUN resumes into the same window.
