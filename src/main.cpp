@@ -194,6 +194,15 @@ int main(int argc, char** argv) {
     // machine, and created once for the whole session.
     VdmBoard::setDisplay(&g_display);
 
+    // 60 frames a second, and no more. A real VDM-1 scanned at the monitor's rate no
+    // matter what the 8080 was doing, and nothing on the S-100 side can read a pixel
+    // back -- so redrawing faster than a person can see is pure cost. It was a large
+    // one: the run loop pumps every 2000 instructions, and repainting all 106,496
+    // pixels that often made a machine with a video card run 94x slower than one
+    // without. Tests leave this unset (tests/main.cpp), because a wall clock is not
+    // deterministic and a test wants a frame every time it asks.
+    g_display.setFrameLimitHz(60.0);
+
     // Window keystrokes join the terminal's on the ONE recorded input queue: the
     // display's key sink (host/display.h) feeds the single Console, and a Sol-20's
     // keyboard board reads that Console -- so you can type in the VDM window or the

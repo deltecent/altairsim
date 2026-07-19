@@ -139,6 +139,113 @@ void test_vdm1() {
               "the background color changed with polarity");
     }
 
+    SECTION("VDM-1 -- an unchanged screen is not repainted");
+    {
+        // THE POINT IS SPEED, AND IT IS NOT A SMALL ONE. The run loop pumps every 2000
+        // instructions; painting all 106,496 pixels that often made any machine with a
+        // video card in it run 94x slower than one without. A guest waiting on a disk
+        // or reading a cassette leaves the screen alone for millions of instructions,
+        // and every one of those frames was identical to the last.
+        //
+        // This gate is the DETERMINISTIC half (the wall-clock frame limiter is the
+        // other, and is off here), so a headless build and CI skip exactly the frames
+        // the windowed build does.
+        Rig g;
+        g.vdm->pump();
+        const uint64_t first = g.disp.frames();
+        CHECK(first >= 1, "the first pump paints -- a fresh card owes one frame");
+
+        g.vdm->pump();
+        g.vdm->pump();
+        CHECK(g.disp.frames() == first, "nothing changed, so nothing was repainted");
+
+        g.poke(0, 'A');
+        g.vdm->pump();
+        CHECK(g.disp.frames() == first + 1, "a write to screen RAM earns exactly one frame");
+        CHECK(cellForeground(g.disp.surface(), 0, 0) > 0, "and the 'A' is actually on it");
+
+        // Re-writing the SAME byte is not a change. Guests do this constantly.
+        g.poke(0, 'A');
+        g.vdm->pump();
+        CHECK(g.disp.frames() == first + 1, "rewriting an identical byte paints nothing");
+
+        g.poke(0, 'B');
+        g.vdm->pump();
+        CHECK(g.disp.frames() == first + 2, "a different byte does");
+
+        // The scroll latch moves every row on screen without touching screen RAM.
+        g.outScroll(1);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == first + 3, "a scroll to a new row repaints");
+        g.outScroll(1);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == first + 3, "a scroll to the SAME row does not");
+    }
+
+    SECTION("VDM-1 -- a blinking cursor repaints itself, and only when there is one");
+    {
+        // A cursor changes the picture with no write behind it, so the blink phase is
+        // remembered and compared. The guard matters as much as the feature: a screen
+        // with NO cursor cell must not repaint on the blink, or a machine running flat
+        // out would repaint thousands of times a second for nothing -- the phase comes
+        // off emulated time, and emulated time races the wall.
+        Rig g;
+        g.vdm->pump();
+        const uint64_t base = g.disp.frames();
+
+        // No cursor byte anywhere: half a blink period must change nothing.
+        g.m.clock.advance(1000000);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == base, "no cursor on screen, so the blink paints nothing");
+
+        // Now put one there (D7 set) and let the phase flip.
+        g.poke(0, 'A' | 0x80);
+        g.vdm->pump();
+        const uint64_t withCursor = g.disp.frames();
+        CHECK(withCursor == base + 1, "the write itself painted once");
+
+        g.m.clock.advance(1000000);  // one blink half-period
+        g.vdm->pump();
+        CHECK(g.disp.frames() == withCursor + 1, "the blink phase flipped, so it repainted");
+
+        // cursor=off means the phase cannot matter, even with a D7 byte on screen.
+        std::string err;
+        CHECK(setProperty(*g.vdm, "cursor", "off", err), "cursor=off is accepted");
+        g.vdm->pump();  // the property change itself is one frame
+        const uint64_t off = g.disp.frames();
+        g.m.clock.advance(1000000);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == off, "with the cursor off, the blink is not a change");
+    }
+
+    SECTION("VDM-1 -- the host can cap the frame rate, and tests are opted out by default");
+    {
+        // Two questions, two answers: the board says whether the picture MOVED, the
+        // host says whether it wants a frame right NOW. Only the second is wall-clock,
+        // which is why it defaults to off -- a test wants a frame every time it asks.
+        Rig g;
+        g.vdm->pump();
+        const uint64_t unlimited = g.disp.frames();
+        g.poke(0, 'A');
+        g.vdm->pump();
+        CHECK(g.disp.frames() == unlimited + 1, "unlimited by default: the change paints");
+
+        // One frame a second: the change below is real, but it is not due yet.
+        g.disp.setFrameLimitHz(1.0);
+        g.poke(1, 'B');
+        g.vdm->pump();
+        const uint64_t limited = g.disp.frames();
+        g.poke(2, 'C');
+        g.vdm->pump();
+        CHECK(g.disp.frames() == limited, "a second frame inside the period is held back");
+
+        // ...and it is HELD, not lost: lifting the cap paints what was still owed.
+        g.disp.setFrameLimitHz(0.0);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == limited + 1, "the deferred change is still owed, and paints");
+        CHECK(cellForeground(g.disp.surface(), 2, 0) > 0, "'C' made it to the screen");
+    }
+
     SECTION("VDM-1 -- geometry properties are validated to buildable hardware");
     {
         Rig g;
