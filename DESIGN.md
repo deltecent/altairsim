@@ -939,6 +939,8 @@ Two constraints that are painful to retrofit:
 
 **Keystrokes from an SDL window are an *input*** — they go through the recorded event queue like everything else, or replay breaks the first time a Dazzler game is involved.
 
+**Closing the window stops the guest; it does not quit the process** (built 2026-07-18). The window is an operator's control like ATTN, and it lands you in the same place: the run loop asks the display once per slice (`Display::takeQuitRequest()`, consuming exactly like `Console::takeAttn()`), stamps `StopReason::WindowClosed`, and gives back the prompt with the machine untouched. The *display* is asked; the display does not stop the machine — a board's `pump()` must never be able to halt the backplane it sits in, so the only thing that acts on the answer is the run loop, which is the only thing that can stop a machine at all.
+
 ### 7.5 `Clock` — the single source of time
 
 Nothing in the simulator may call `std::chrono::now()` except this. Time is measured in **T-states**, never milliseconds, and it advances only when the CPU retires an instruction — by exactly the count the CPU reported. That is what makes replay deterministic, and it is why the UART's idea of when a character has finished going out is derived from the very instruction stream the guest is timing it against; the two cannot drift.

@@ -16,6 +16,8 @@
 
 namespace altair {
 
+class Display;   // host/display.h -- the run loop only asks it a question
+
 class Monitor {
 public:
     explicit Monitor(Machine& m) : m_(m) {}
@@ -32,6 +34,18 @@ public:
     // Run a machine's startup list (DESIGN.md 10.0). Anything you can type, a
     // config can do -- so `startup` is not a second language.
     void runStartup(std::ostream& out);
+
+    // THE WINDOW, so the run loop can be told it was closed (host/display.h).
+    //
+    // Injected by the composition root, like every other host service the boards get
+    // -- and deliberately NOT hung on Machine, which stays free of hosts. The run
+    // loop is the only thing that can stop a guest, so it is the only thing that can
+    // act on a close box; the video board that owns the drawing cannot and must not.
+    //
+    // Static because the display is: one window, one session, outliving every
+    // Machine (src/main.cpp). Null everywhere it is not set -- a headless build, a
+    // test, an -c script -- and the run loop then never asks.
+    static void setDisplay(Display* d);
 
 private:
     // ---- NUMBER BASE (Patrick, 2026-07-11; was open finding F3) ----
