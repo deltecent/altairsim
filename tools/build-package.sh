@@ -4,7 +4,10 @@
 #
 #   altairsim                the program
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
-#   disks/  tapes/           the examples, each a self-contained folder
+#   USING-ALTAIRSIM.md       the same machines, written for an AI assistant driving them over MCP
+#   examples/cpm/            \
+#   examples/basic/           > the examples, each a self-contained folder: a machine file and
+#   examples/sol/            /  the media it mounts, lying beside it
 #
 # THE CONTENTS COME FROM docs/package.map, and from nowhere else. That file is the single
 # source of truth for three things that would otherwise drift: the tokens the manual writes

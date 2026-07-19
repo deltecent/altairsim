@@ -25,8 +25,9 @@ The utilities are **on the disk**, not in the board. They are ordinary CP/M `.CO
 they were assembled inside the machine, by the machine's own assembler, from source that ships
 with it.
 
-Which means a disk can be missing them, and some are — the minidisk image in the package is
-one. *Getting the utilities onto a disk that hasn't got them*, below, is how you fix that.
+Which means a disk can be missing them, and some are — a minidisk image you supplied is one,
+and so is a disk you formatted yourself. *Getting the utilities onto a disk that hasn't got
+them*, below, is how you fix that.
 
 | | |
 |---|---|
@@ -254,7 +255,7 @@ tells you it succeeded is worse than one that fails.
 ## Getting the utilities onto a disk that hasn't got them
 
 There is an obvious hole in everything above: **`R` is how you get a file onto a disk, and `R`
-is a file on the disk.** Boot something that has not got it — the package's minidisk image, or
+is a file on the disk.** Boot something that has not got it — a minidisk image you supplied, or
 a fresh disk you made yourself — and you cannot use the board to fetch the program that drives
 the board.
 

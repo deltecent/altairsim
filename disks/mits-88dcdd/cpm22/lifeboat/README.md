@@ -19,7 +19,17 @@ folder boots wherever it is copied to.
 ## The disk image is not in this repository
 
 `*.DSK` is in `.gitignore` — large, and not ours to redistribute. **Download it into this
-directory:**
+directory** — this is a **manual download you have to supply yourself**: this image is *not* in
+`tools/fetch-disk-images.sh`, so a fresh clone does not have it.
+
+**Without `LIFEBOAT-CPM22-48K.DSK` sitting in this directory, `cpm22-lifeboat.toml` will not start
+at all.** The mount fails while the machine file is being read, so `altairsim` says so and stops
+rather than coming up to a dead prompt:
+
+```
+disks/mits-88dcdd/cpm22/lifeboat/cpm22-lifeboat.toml: dsk0: 'disks/mits-88dcdd/cpm22/lifeboat/LIFEBOAT-CPM22-48K.DSK': no such file
+  ('LIFEBOAT-CPM22-48K.DSK' is relative to the machine file that wrote it, in disks/mits-88dcdd/cpm22/lifeboat/)
+```
 
 > <https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/Lifeboat%20CPM/>
 
