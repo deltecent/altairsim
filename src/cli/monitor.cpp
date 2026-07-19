@@ -12,6 +12,7 @@
 #include "core/paths.h"
 #include "core/roms.h"
 #include "core/symbols.h"
+#include "core/version.h"
 #include "host/console.h"
 #include "host/display.h"
 #include "host/endpoint.h"
@@ -726,6 +727,46 @@ void Monitor::showPaths(std::ostream& out) {
                 << pad << "anything you type. Set with `hostdir`.\n";
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// SHOW VERSION -- which build this is, and which commit it came from.
+//
+// THE VERSION NUMBER ALONE IS NOT AN ANSWER. It changes at a release and stands still
+// between them, so every CI artifact, every local build and every binary handed to
+// somebody to try reads `0.1.0` -- and a report against one of those cannot be traced
+// to the source that produced it. The commit can be, and the build is the only thing
+// that knows it (core/version.h, and the version block in CMakeLists.txt).
+//
+// THE TREE STATE IS PART OF THE ANSWER, because a modified tree makes the commit a
+// half-truth: the sha is real and the binary is not what is at it. That is the normal
+// state of a hand-built binary, so it is worth a line rather than a footnote.
+//
+// This is a SHOW subcommand and not its own verb, because "tell me about X" already
+// has a verb and a second one would only be a second thing to remember.
+// ---------------------------------------------------------------------------
+void Monitor::showVersion(std::ostream& out) {
+    char buf[512];
+    auto row = [&](const char* label, const std::string& value) {
+        std::snprintf(buf, sizeof buf, "  %-9s  %s", label, value.c_str());
+        out << buf << "\n";
+    };
+
+    row("altairsim", versionNumber());
+
+    // "unknown" is a real answer here, not a failure to look. There is no .git in a
+    // release tarball, so there is nothing to describe -- and printing the version
+    // number again in this slot would be a guess wearing provenance's clothes.
+    if (std::string(versionCommit()) == "unknown") {
+        row("commit", "unknown -- built from a tree with no git in it");
+        return;
+    }
+
+    row("commit", versionCommit());
+    if (versionDirty())
+        row("tree", "MODIFIED when built -- this binary is not that commit");
+    else
+        row("tree", "clean");
 }
 
 // A tiny glob: '*' matches any run, '?' any one character. Both operands are already
@@ -2159,7 +2200,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // ---------------- SHOW / SET ----------------
     if (cmd == "SHOW") {
         if (!need(2, "SHOW <id> | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS | SHOW MOUNTS"
-                     " | SHOW PATHS | SHOW MACHINE"))
+                     " | SHOW PATHS | SHOW MACHINE | SHOW VERSION"))
             return true;
         std::string sub = upper(a[1]);
         if (sub == "BUS") {
@@ -2182,6 +2223,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "CONSOLE") {
             showConsole(out);
+            return true;
+        }
+        // BUILD as well as VERSION: half the time the question being asked is "which
+        // build is this", and the operator should not have to guess our noun.
+        if (sub == "VERSION" || sub == "BUILD") {
+            showVersion(out);
             return true;
         }
         if (sub == "DISPLAY" || sub == "VIDEO" || sub == "WINDOW") {

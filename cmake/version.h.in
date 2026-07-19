@@ -1,0 +1,15 @@
+// GENERATED AT CONFIGURE TIME from cmake/version.h.in. Do not edit, and do not
+// commit the generated copy -- it names the commit this binary was built from,
+// which is a fact about one build and not about the tree.
+//
+// ALTAIRSIM_COMMIT is `git describe --tags --always`, so it reads v0.1.0-37-gcc64cca
+// on a tagged history and a bare abbreviated sha on one with no tags. Where there was
+// no git at all -- a release tarball has no .git, and neither does an unpacked source
+// zip -- it is the literal string "unknown". THAT IS THE POINT: a version string that
+// guesses is worse than one that admits it does not know, because the guess is only
+// discovered to be wrong by someone chasing a bug in the wrong revision.
+#pragma once
+
+#define ALTAIRSIM_VERSION "@PROJECT_VERSION@"
+#define ALTAIRSIM_COMMIT  "@ALTAIRSIM_GIT_COMMIT@"
+#define ALTAIRSIM_DIRTY   @ALTAIRSIM_GIT_DIRTY@

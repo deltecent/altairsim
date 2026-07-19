@@ -205,7 +205,8 @@ static const std::vector<CommandDef> kCommands = {
      "  SET mem0 phantom=read\n"
      "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal"},
     {"SHOW", true, nullptr,
-     "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|MACHINE",
+     "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|"
+     "MACHINE|VERSION",
      "  SHOW mem0        regions and properties\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
      "  SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins\n"
@@ -214,7 +215,8 @@ static const std::vector<CommandDef> kCommands = {
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
      "  SHOW DISPLAY     the host video window, and whether it takes the keyboard\n"
      "  SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS\n"
-     "  SHOW ROMS        the ROM images built into this binary, and where each came from"},
+     "  SHOW ROMS        the ROM images built into this binary, and where each came from\n"
+     "  SHOW VERSION     which build this is, and the commit it was built from"},
     {"DEPOSIT", true, nullptr, "DEPOSIT <addr> <bytes...>",  // DE
      "The front-panel switch. Runs a REAL bus write, so if no board decodes the\n"
      "address the byte is simply gone -- and DEPOSIT says so rather than lying.\n"
