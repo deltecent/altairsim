@@ -465,10 +465,6 @@ each README that the image is a manual download.
   is opened at connect time) and it is the machine's whole purpose, but a
   read-only inspection command leaving a file behind is a surprise. Low
   priority; noted rather than filed.
-- **The roadmap's milestone 4 row is unmarked but the milestone is built.**
-  `docs/roadmap.md:243` still lists "ROM board, PHANTOM, banking" with no built
-  marker. `PhantomAssert`/`PhantomHonor` and `BankType`/`BankSpec` are all in
-  `src/boards/s100-memory.h`. Mark the row.
 - **The snoop hooks kept for the Tarbell stay.** `src/core/board.h:248-257`:
   `wantsSnoop()` and its partner exist for a consumer that is on the shelf, and
   they are the only executable description we have of how a card that shadows
