@@ -139,7 +139,7 @@ ctest --test-dir build -L hw        # modem control, against a real null-modem c
 
 The acceptance tests are not unit tests: they boot period software on the whole machine through the real CLI, and several ship with a **negative control** — the same script against a machine that should *fail*, marked `WILL_FAIL`. If a control ever passes, the test it guards was passing for the wrong reason and is worthless. That is the only reason to believe any of them.
 
-The disk-image tests are gated on their images. The 88-MDS and 8″ 88-DCDD images are **tracked**, so those tests run on a fresh clone; `acceptance-dcdd-mixed` needs the two fetched images and is skipped — with a reason — at configure time until `tools/fetch-disk-images.sh` has run. See `disks/mits-88dcdd/cpm22/buffered/README.md` and `disks/mits-88mds/cpm22/README.md`.
+The disk-image tests run on a fresh clone: the 88-MDS and 8″ 88-DCDD images they need are **tracked**. What is *not* tracked is the 8 MB image, which only `acceptance-hostbridge`'s by-hand `build` mode wants — see `CMakeLists.txt` and `tools/fetch-disk-images.sh`. Provenance for both tracked sets is in `disks/mits-88dcdd/cpm22/buffered/README.md` and `disks/mits-88mds/cpm22/README.md`.
 
 ## Documentation
 

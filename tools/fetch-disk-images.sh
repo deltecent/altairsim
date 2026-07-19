@@ -72,7 +72,7 @@ while IFS='|' read -r name dest want url; do
     #
     # This check works ONLY BECAUSE NOTHING EVER WRITES TO THESE FILES. Whatever needs a
     # prepared disk -- the host-bridge utilities on the 8 MB and the 24K images, say --
-    # copies to scratch and prepares the copy (tests/acceptance/dcdd-mixed.exp). Install
+    # copies to scratch and prepares the copy (tests/acceptance/hostbridge.cmake:198). Install
     # anything into the images here and the pinned hash stops matching the very next run,
     # and a checksum that always fails is a checksum nobody reads.
     if [ -f "$out" ]; then

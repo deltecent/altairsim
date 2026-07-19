@@ -157,8 +157,6 @@ One smaller thing to settle while doing it:
   first board that would actually exercise DMA — it is built and proved but has
   never carried a shipping card. Register map distilled in
   `reference/Cromemco Dazzler.md`; provenance in `docs/sources.md`.
-- **Sol-20 CUTS tape** — the Sol-PC composite board ships without its cassette
-  interface. Deferred when the board landed (PR #32).
 - **Sol-20 keyboard: `MODE SELECT` and `CLEAR` still have no host key** — [issue
   #59](https://github.com/deltecent/altairsim/issues/59). **Sourced 2026-07-19**
   from Sol Systems Manual Table 7-4, confirmed against the SOLOS 1.3 equates, and
@@ -177,7 +175,7 @@ One smaller thing to settle while doing it:
 ### Debugger and monitor
 
 - **`STOP`** — reserved and answers "not implemented yet"
-  (`src/cli/commands.cpp:458`). It waits on a monitor that runs *alongside* the
+  (`src/cli/commands.cpp:472`). It waits on a monitor that runs *alongside* the
   machine, which needs a second thread or a multiplexed input loop. ATTN is
   today's escape.
 - **`EDIT <addr>`** — reserved, answers "not implemented yet"
@@ -201,7 +199,10 @@ One smaller thing to settle while doing it:
 - **Phantom / bank annotation on `DUMP` and `DISASM`** — planned so a confusing
   read explains itself; neither handler does it. `SHOW BUS MAP` carries the only
   overlay annotation there is, which means the confusing read is still confusing
-  at the point you meet it (`DESIGN.md`:1415).
+  at the point you meet it (`DESIGN.md`:1415). **May belong in Declined rather
+  than here** — `src/cli/monitor.cpp:1933-1934` argues the other way, that
+  banking and phantoming are properties and selecting what you want to look at
+  is what the guest has to do too. Needs a call before anyone builds it.
 
 ### CLI and console
 
@@ -229,16 +230,6 @@ One smaller thing to settle while doing it:
   the board hands down, and the special-key table behind `Display::SpecialKey`
   that [#59] wants exposed. None is urgent; recorded so the one-knob table is a
   known shape rather than an oversight, and so the next one has somewhere to go.
-- **Show the commit the binary was built from** — `--version` and the banner say
-  `altairsim 0.1.0` and nothing more, so a binary in hand cannot be traced to a
-  commit. Between releases that is most of them: every CI artifact, every local
-  build, and anything a person was handed. `SHOW VERSION` should name the commit
-  (and whether the tree was dirty when it was built), and `--version` should
-  carry it too. Wanted for the ordinary case of someone reporting a bug against a
-  build nobody can identify. The value has to come from the build — a CMake
-  `git describe` at configure time, with an honest fallback when there is no git
-  (a release tarball has none), because a version string that guesses is worse
-  than one that says "unknown".
 
 ### Configuration
 
@@ -372,10 +363,10 @@ known, and guessing would be inventing hardware.
   the table; *card* only where the sentence is about the physical historical
   artifact), and the surfaces a user reads were brought in line with it — every
   user-visible string in `src/`, the whole of `docs/manual/`, and `ref/`
-  regenerated from the binary. What was **deliberately not swept**: roughly 790
-  occurrences in code comments, ~73 in the shipped machine-file comments, and
-  the developer docs (`docs/devguide/theory.md` at 66, `adding-a-board.md` at
-  32). Those are internal prose, the cost is churn against every line reference
+  regenerated from the binary. What was **deliberately not swept** (counts
+  re-measured 2026-07-19): roughly 730 occurrences in code comments, 58 in the
+  shipped machine-file comments, and the developer docs
+  (`docs/devguide/theory.md` at 66, `adding-a-board.md` at 32). Those are internal prose, the cost is churn against every line reference
   in this file and in `DESIGN.md`, and the gain is nil for anyone who is not
   reading the source. New code and new docs follow §0.3; the back catalogue is
   left alone on purpose. **`CpuCard`/`Machine::cpuCard()` also stay** — 13
@@ -448,6 +439,13 @@ without the download is the open task** — two different geometries in one
 controller does not inherently need a large image, only two images whose
 geometries differ.
 
+**Three files still describe it as live** (found 2026-07-19): `README.md:142`
+tells the reader it "is skipped — with a reason — at configure time", which no
+longer happens, and `tools/install-hostbridge-utils.sh:16` and
+`tools/fetch-disk-images.sh:75` both cite `tests/acceptance/dcdd-mixed.exp`,
+which does not exist. `CMakeLists.txt:915-921` carries the tombstone comment and
+is correct. Fix the three references whether or not the coverage is rebuilt.
+
 ### `acceptance-hostbridge-build` is no longer registered
 
 Same date, same reason. `tests/acceptance/hostbridge.cmake` keeps its
@@ -478,25 +476,33 @@ and checks the manual against it, which is exactly why the manual could promise
 is still missing is the manual-versus-package check.
 
 **And the manual's TRANSCRIPTS drift too, which is the half nobody is watching.**
-Found 2026-07-19 in `docs/manual/tapes.md`: the `MOUNT ... TRK80.WAV` example
-printed `7932 bytes, 27 framing errors (99.7% clean)` and the ACR refusal below
-it printed `2398 Hz / 1206 Hz`. Both were captured from deramp.com's *archived*
-recording, which has never been in the tree. The tape that actually ships is
-synthesized by `examples/sol/make-trek80-tape.sh` and mounts at `7939 bytes, 0
-framing errors`, carrying `2390 / 1205 Hz`. Every figure on both lines was
-wrong, and no test could tell — the repo's rule is that transcripts are captured
-rather than composed, but nothing re-captures them. A check that runs the
-manual's own fenced commands and diffs the output against the fence is the
-missing piece; it would have caught this and the "CP/M in one command" gap in
-the same pass.
+The demonstrated case, found and **fixed** 2026-07-19 in `docs/manual/tapes.md`:
+the `MOUNT ... TRK80.WAV` example printed `7932 bytes, 27 framing errors (99.7%
+clean)` and the ACR refusal below it printed `2398 Hz / 1206 Hz`. Both had been
+captured from deramp.com's *archived* recording, which has never been in the
+tree, while the tape that actually ships is synthesized by
+`examples/sol/make-trek80-tape.sh`. Every figure on both lines was wrong. They
+now read `7939 bytes, 0 framing errors (100.0% of frames intact)` and `2390 Hz /
+1205 Hz`; the surviving `99.7%` at `tapes.md:173` is deliberate, describing the
+archived rip as a cautionary example.
+
+**The gap that produced it is still open.** No test could tell — the repo's rule
+is that transcripts are captured rather than composed, but nothing re-captures
+them. A check that runs the manual's own fenced commands and diffs the output
+against the fence is the missing piece; it would have caught this and the "CP/M
+in one command" gap in the same pass.
 
 **Three more instances, found 2026-07-19**, which is the point: the first one was
 not a one-off.
 
 - `docs/manual/machines.md:229-234` — the `SHOW MOUNTS` transcript shows
-  `drive0` and `drive1` only, omitting `drive2` and `drive3`, and drops the
-  trailing `Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.`
-  footer the real output carries.
+  `drive0` and `drive1` only, omitting `drive2` and `drive3` (the CP/M machine
+  derives from `machines/default.toml`, `drives = 4`, and `monitor.cpp:633-644`
+  iterates every mountable unit), and drops the trailing `Paths are AS WRITTEN.
+  SHOW PATHS says what they are relative to.` footer, which `monitor.cpp:662`
+  emits unconditionally after every non-empty `SHOW MOUNTS`. The prose two lines
+  below at `:237` then refers to paths being printed *as written* — describing a
+  footer the transcript does not show.
 - `docs/manual/package.md:82-86` — the `basic4k` `SHOW MOUNTS` transcript is
   missing the same footer. Lower confidence than the one above (it could be
   deliberate trimming), but it is the same signature.
@@ -509,21 +515,46 @@ if it is, it needs a marker in the fence, because otherwise every legitimately
 abridged transcript is a permanent false positive and the check gets switched
 off.
 
-### Dead `if(EXISTS ...)` gates on files that are tracked
+### Eleven tests do not run on Windows
 
-`acceptance-minidisk`, `acceptance-dcdd-readonly`, `acceptance-ddt` and the MDS
-phase in `hostbridge.cmake` still guard on images that have been in git since
-2026-07-18, and `acceptance-hostbridge` opens the same image unguarded
-(`hostbridge.cmake:204`) while its siblings guard it. Dead code that reads as
-live protection; the inconsistency is the tell.
+`CMakeLists.txt:687-688` gates eleven tests on `find_program(EXPECT_EXECUTABLE
+expect)`, and the Windows runner has no `expect`. This is a **live** gate, not a
+dead one, and it is deliberate — but it means four acceptance tests
+(`acceptance-minidisk`, `acceptance-minidisk-control`,
+`acceptance-dcdd-readonly`, `acceptance-ddt`) have Linux and macOS coverage
+only. Surfaced 2026-07-19 when the dead `if(EXISTS ...)` gates came off (PR #73)
+and the tests began running in CI for the first time: Linux ran 27, Windows 16.
 
-### Two machine files mount images that exist nowhere
+Not a regression, and not urgent. Recorded because "runs in CI" now means two
+platforms out of three for this group, and the next person to read the test list
+should not have to rediscover why.
 
-`disks/mits-88dcdd/cpm22/burcon/cpm22-burcon.toml` mounts `cpm56k.dsk` and
-`.../lifeboat/cpm22-lifeboat.toml` mounts `LIFEBOAT-CPM22-48K.DSK`. Neither file
-is in the tree, and neither is in `tools/fetch-disk-images.sh` — so neither can
-ever have worked from a clone. Either add them to the fetch script or say in
-each README that the image is a manual download.
+### CI checks out at depth 1, so a CI binary cannot name its commit
+
+`--version` now reports `git describe` output (PR #73), but `.github/workflows/`
+checks out with `fetch-depth: 1`, so no tag is reachable and a CI-built binary
+reports a bare short sha rather than `v0.1.0-N-gsha`. Still traceable, just less
+legible. The fix is a full-history fetch in every job, which is why it was not
+taken automatically.
+
+### The 16-drive path is untested
+
+`dcdd` declares `maxDrives() = 16` and `selectMask() = 0x0F`
+(`src/boards/mits-88dcdd.h:39-40`), which is a real hardware fact — the
+88-DCDD's select register carries a 4-bit drive address, four jumper wires on
+the Disk Buffer card, four `DA-A..DA-D` lines on the daisy chain
+(`reference/Altair Floppy (88-DCDD) Manual.md:89`). But **no shipped machine
+file sets `drives` to anything but 4, and no test sets the property at all**, so
+nothing above drive 3 is ever selected and the top two address bits are never
+exercised. `test_machines.cpp:616` and `test_units.cpp:137` prove only that an
+out-of-range unit is *refused*, at the default of 4.
+
+Cheap to close: a `dcdd` with `drives = 16`, a mount into `drive15`, and a
+select of `0x0F`. Worth doing because the 88-MDS deliberately differs
+(`maxDrives() = 4`, `selectMask() = 0x03`) and the two share `HardSectorFdc` —
+the divergence is exactly the kind that a shared base quietly erases. Found
+2026-07-19 while checking whether "sixteen drives" in the manual was our
+invention; it is not.
 
 ---
 
@@ -536,8 +567,8 @@ each README that the image is a manual download.
   is opened at connect time) and it is the machine's whole purpose, but a
   read-only inspection command leaving a file behind is a surprise. Low
   priority; noted rather than filed.
-- **The snoop hooks kept for the Tarbell stay.** `src/core/board.h:248-257`:
-  `wantsSnoop()` and its partner exist for a consumer that is on the shelf, and
+- **The snoop hooks kept for the Tarbell stay.** `src/core/board.h:258` and
+  `:290`: `wantsSnoop()` and `snoop(const BusCycle&)` exist for a consumer that is on the shelf, and
   they are the only executable description we have of how a card that shadows
   low memory behaves — deleting them means rediscovering the
   combinational-release trap (`DESIGN.md` §4.2.1), which cost a day the first
@@ -551,8 +582,10 @@ each README that the image is a manual download.
   nowhere in `docs/roadmap.md`, though `src/boards/mits-88c700.cpp` and
   `docs/boards/mits-88c700.md` both exist. It is *not* the 88-LPC — that is a
   separate and genuinely unbuilt board, so milestone 5's unmarked row at line 244
-  is correct and this is a missing row rather than a mismarked one. Same shape of
-  gap the table already carries for the 88-MDS (242) and the front panel (245).
+  is correct and this is a missing row rather than a mismarked one. **It is now
+  the only such gap**: the 88-MDS (242) and the front panel (245) were once
+  named alongside it here, but both carry full rows marked built, so that clause
+  was wrong and has been removed (checked 2026-07-19).
 - **This file drifts against the tree, and nothing checks it.** Of five items
   picked off it on 2026-07-19, **two had already been done** — the
   `build-package.sh:7` header comment (fixed by `d20018e`, the very commit that
@@ -565,8 +598,27 @@ each README that the image is a manual download.
   indistinguishable from one nobody has started, so the file's authority decays
   from the bottom. No mechanism is proposed here; recorded so the next person to
   work from this list treats a line-referenced claim as **a claim to verify**,
-  not as a finding. Every entry above was re-checked against the tree the day it
-  was written; none of the older ones carry that guarantee.
+  not as a finding.
+
+  **A full sweep of the file against the tree followed, same day.** Four entries
+  were removed as done: the commit-in-`--version` feature and the dead
+  `if(EXISTS ...)` gates (both landed in PR #73); the Sol-20 CUTS tape, which the
+  WAV cassette work built without the entry being closed
+  (`src/boards/proctech-sol.cpp` — `tapeUart_`, ports FA/FB, two decks, record
+  and commit); and the burcon/lifeboat machine files, whose READMEs were given
+  the manual-download wording by `3706100`. Six more were corrected rather than
+  removed: half-stale claims, drifted line citations, and two counts.
+
+  **`3706100` had silently closed two entries, and PR #73 two more** — which is
+  the drift this note is about, now measured. The burcon/lifeboat entry also
+  offered a *wrong* remedy ("add them to the fetch script"): `disks/` is not a
+  deliverable, it is the provenance and optional-download tree that `examples/`
+  was carved out of (`d20018e`), so pulling non-shipping media into the fetch
+  path would have been a regression dressed as a fix. **A stale entry is not
+  merely noise — its proposed remedy rots too.**
+
+  **Every entry in this file has now been checked against the tree on
+  2026-07-19** — which resets the clock but does not change the rule above.
 
 [#26]: https://github.com/deltecent/altairsim/issues/26
 [#43]: https://github.com/deltecent/altairsim/issues/43
