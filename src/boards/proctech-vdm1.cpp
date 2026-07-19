@@ -20,9 +20,21 @@ constexpr int kCellH = vdm1font::kRows;   // 13
 // card's own dot clock is asynchronous to the CPU; these are the OBSERVABLE
 // durations a guest can time). Deterministic and replay-safe -- see the reference.
 constexpr uint64_t kTimerTStates = 750000;    // ~0.375 s status one-shot (D0)
-constexpr uint64_t kBlinkTStates = 1000000;   // ~0.5 s cursor blink half-period
 constexpr uint64_t kLineTStates  = 128;       // ~64 us per scan line
 constexpr uint64_t kMarginTStates = 16;       // width of the right-margin (D1) window
+
+// THE CURSOR BLINK IS NOT ON THE CPU'S CRYSTAL. It comes off the card's own blink
+// oscillator at about 1 Hz (reference/Processor Technology VDM-1.md 3.1.4), which is
+// asynchronous to the 8080 and unreadable from the S-100 side -- no port returns its
+// phase. So it is measured in SECONDS OF WALL TIME, taken from the host video service
+// (Display::hostSeconds), and it is the one duration on this card that is.
+//
+// It was a T-state count once, and that was the bug: emulated time races the wall at
+// `clock_hz = 0` (the default -- see the Clock), so the cursor strobed at whatever
+// rate the host happened to retire instructions at. The two guest-OBSERVABLE timings
+// above stay on the Clock, where they belong; a guest can poll D0 and D1, and neither
+// may drift because the host got faster.
+constexpr double kBlinkHalfPeriod = 0.5;      // seconds -- ~1 Hz blink
 
 // The two-color palette. Period VDM-1s were white or green phosphor; green reads as
 // "a terminal" and is easy on a modern panel. Index 0 = background, 1 = foreground.
@@ -130,11 +142,18 @@ bool VdmBoard::frameChanged() const {
     if (dirty_) return true;
 
     // Nothing was written -- but a blinking cursor repaints itself on its own clock.
-    if (cursorMode_ == 1 && hasCursorCell_ && clock_) {
-        bool blinkOn = ((clock_->now() / kBlinkTStates) & 1) == 0;
-        if (blinkOn != lastBlinkOn_) return true;
+    if (cursorMode_ == 1 && hasCursorCell_ && g_display) {
+        if (blinkOn() != lastBlinkOn_) return true;
     }
     return false;
+}
+
+// The blink oscillator's phase: true for the half-period the cursor is lit. Off the
+// HOST's seconds, not the Clock -- see kBlinkHalfPeriod. Only ever called with a
+// display attached (pump() returns first if there is none).
+bool VdmBoard::blinkOn() const {
+    if (!g_display) return true;
+    return ((uint64_t)(g_display->hostSeconds() / kBlinkHalfPeriod) & 1) == 0;
 }
 
 void VdmBoard::render() {
@@ -146,10 +165,9 @@ void VdmBoard::render() {
     g_display->setPalette(pal);
 
     // Cursor visibility this frame (D7 marks the cell; SW3/SW4 pick the behavior).
-    bool blinkOn = true;
-    if (clock_) blinkOn = ((clock_->now() / kBlinkTStates) & 1) == 0;
+    bool lit = blinkOn();
     bool cursorShown =
-        cursorMode_ == 2 /*steady*/ || (cursorMode_ == 1 /*blink*/ && blinkOn);
+        cursorMode_ == 2 /*steady*/ || (cursorMode_ == 1 /*blink*/ && lit);
 
     s->clear(0);  // background
 
@@ -184,7 +202,7 @@ void VdmBoard::render() {
     // The frame is on the host. Remember what it was painted FROM, so the next pump
     // can tell whether anything has moved since.
     dirty_         = false;
-    lastBlinkOn_   = blinkOn;
+    lastBlinkOn_   = lit;
     hasCursorCell_ = sawCursorCell;
 
     g_display->present(s);

@@ -186,15 +186,17 @@ void test_vdm1() {
     {
         // A cursor changes the picture with no write behind it, so the blink phase is
         // remembered and compared. The guard matters as much as the feature: a screen
-        // with NO cursor cell must not repaint on the blink, or a machine running flat
-        // out would repaint thousands of times a second for nothing -- the phase comes
-        // off emulated time, and emulated time races the wall.
+        // with NO cursor cell must not repaint on the blink, or the card would repaint
+        // twice a second for a change nobody could see.
+        //
+        // The phase is WALL time (the card's own blink oscillator), so this drives
+        // NullDisplay's clock, which moves only when a test moves it.
         Rig g;
         g.vdm->pump();
         const uint64_t base = g.disp.frames();
 
         // No cursor byte anywhere: half a blink period must change nothing.
-        g.m.clock.advance(1000000);
+        g.disp.advanceHostSeconds(0.5);
         g.vdm->pump();
         CHECK(g.disp.frames() == base, "no cursor on screen, so the blink paints nothing");
 
@@ -204,7 +206,7 @@ void test_vdm1() {
         const uint64_t withCursor = g.disp.frames();
         CHECK(withCursor == base + 1, "the write itself painted once");
 
-        g.m.clock.advance(1000000);  // one blink half-period
+        g.disp.advanceHostSeconds(0.5);  // one blink half-period
         g.vdm->pump();
         CHECK(g.disp.frames() == withCursor + 1, "the blink phase flipped, so it repainted");
 
@@ -213,9 +215,33 @@ void test_vdm1() {
         CHECK(setProperty(*g.vdm, "cursor", "off", err), "cursor=off is accepted");
         g.vdm->pump();  // the property change itself is one frame
         const uint64_t off = g.disp.frames();
-        g.m.clock.advance(1000000);
+        g.disp.advanceHostSeconds(0.5);
         g.vdm->pump();
         CHECK(g.disp.frames() == off, "with the cursor off, the blink is not a change");
+    }
+
+    SECTION("VDM-1 -- the blink is the card's oscillator, not the CPU's crystal");
+    {
+        // THE REGRESSION. The blink phase used to come off the Clock, so at the DEFAULT
+        // `clock_hz = 0` -- where emulated time runs as fast as the host can retire
+        // instructions -- the cursor strobed instead of blinking. Nothing on the S-100
+        // side can read the blink phase back, and a real VDM-1 blinks at ~1 Hz whatever
+        // the 8080 is doing, so emulated time must not be able to move it at all.
+        Rig g;
+        g.poke(0, 'A' | 0x80);  // a cursor cell, so the phase CAN matter
+        g.vdm->pump();
+        const uint64_t base = g.disp.frames();
+
+        // Ten emulated SECONDS at 2 MHz -- twenty blink half-periods, had it been
+        // T-states -- with the host's wall clock held still.
+        g.m.clock.advance(20000000);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == base, "emulated time alone does not move the blink");
+
+        // And the wall clock alone does.
+        g.disp.advanceHostSeconds(0.5);
+        g.vdm->pump();
+        CHECK(g.disp.frames() == base + 1, "wall time alone does");
     }
 
     SECTION("VDM-1 -- the host can cap the frame rate, and tests are opted out by default");
