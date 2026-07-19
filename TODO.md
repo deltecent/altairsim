@@ -72,14 +72,11 @@ CP/M from `examples/cpm/cpm22-buffered.toml` and mounts `examples/sol/TRK80.WAV`
 to the byte-identical line the tapes chapter quotes. What is missing is only that
 a release runs it.
 
-Two smaller things to settle while doing it:
+One smaller thing to settle while doing it:
 
 - **The built archive has no `LICENSE`.** `package.map`'s FILE table does not
   place one; the hand-built v0.1.0 archives did carry it. An MIT project's
   archive should — one `FILE` line.
-- **`tools/build-package.sh:7`** still summarises the contents as `disks/
-  tapes/`, which `examples/` replaced. The DIR loop below it is correct; only
-  the header comment lies, and it is the file that defines the package.
 
 ---
 
@@ -440,12 +437,6 @@ rather than composed, but nothing re-captures them. A check that runs the
 manual's own fenced commands and diffs the output against the fence is the
 missing piece; it would have caught this and the "CP/M in one command" gap in
 the same pass.
-
-**`tools/build-package.sh:7` still describes the contents as `disks/ tapes/`**
-in its header comment, which `examples/` replaced. One line, and the script's
-own DIR loop is correct — but it is the file that defines the package, so a
-stale summary at the top of it is the worst place for one. Not fixed here
-because it is a tool, not documentation.
 
 ### Dead `if(EXISTS ...)` gates on files that are tracked
 
