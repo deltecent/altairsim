@@ -35,5 +35,5 @@ id = "dsk0"
 
   [[board.drive]]
   unit     = 2
-  mount    = "/Users/patrick/src/altairsim/disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+  mount    = "/Users/patrick/src/altairsim/examples/cpm/cpm22b23-56k.dsk"
   readonly = true

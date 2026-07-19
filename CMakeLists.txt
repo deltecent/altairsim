@@ -519,40 +519,29 @@ set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
 # ---------------------------------------------------------------------------
 # THE HOST BRIDGE: a file crosses into CP/M and comes back byte for byte.
 #
-# TWO TESTS, ONE SCRIPT, AND THE SPLIT IS ABOUT WHAT EACH ONE IS ACTUALLY TESTING.
+# ONE TEST, AND A SECOND MODE OF THE SAME SCRIPT THAT IS RUN BY HAND.
 #
-#   acceptance-hostbridge        THE CARD. Boots CP/M, LOADs the utilities from the .HEX
-#                                that is checked in, and moves files -- including 256 bytes
-#                                holding every value 00..FF, compared on the HOST's disk,
-#                                which is the only place the answer actually is. Seconds.
+#   acceptance-hostbridge   THE CARD. Boots CP/M off the TRACKED floppy
+#                           (examples/cpm/cpm22b23-56k.dsk), LOADs the utilities from the
+#                           .HEX that is checked in, and moves files -- including 256 bytes
+#                           holding every value 00..FF, compared on the HOST's disk, which
+#                           is the only place the answer actually is. About 1.5 seconds, on
+#                           a fresh clone and in CI, with nothing to download.
 #
-#   acceptance-hostbridge-build  THE SOURCES. Assembles R/W/HDIR.ASM from scratch inside the
-#                                machine (PIP through the console, ASM, LOAD) and proves the
-#                                result is bit-for-bit the .COM/.HEX/.PRN committed beside
-#                                them -- so a checked-in binary cannot rot. Then runs the
-#                                SAME binary on an 88-MDS minidisk, which is how "every disk
-#                                call is a BDOS call" gets proved rather than asserted.
-#                                `slow`, because it only has anything to say when a .ASM
-#                                changes.
+#   MODE=build              THE SOURCES. Assembles R/W/HDIR.ASM from scratch inside the
+#                           machine (PIP through the console, ASM, LOAD) and proves the
+#                           result is bit-for-bit the .COM/.HEX/.PRN committed beside them.
+#                           NOT A REGISTERED TEST -- see below.
 #
-# The reason the second one is slow is not the 8080 -- it is the WIRE. `PIP FOO.ASM=CON:` is
-# the only expensive thing in either test: 78 KB of source, echoed back byte for byte, down
-# a 2SIO that models a real serial line. R and W never touch the console at all.
+# THE GAP THAT LEAVES IS REAL AND WORTH NAMING: the committed .HEX is checked against the
+# committed .COM, but the .ASM behind them is not checked at all unless somebody runs the
+# build mode. That is the right way round -- a stale .HEX breaks the utilities a user is
+# handed, a stale .ASM breaks the next person to edit them -- but it is a gap, not a
+# coincidence. Edit a .ASM and the check is YOURS to run.
 #
-# THEY RUN ON DIFFERENT DISKS, AND THE REASON IS 78 KB OF ASSEMBLER.
-#
-#   fast   the TRACKED image (disks/.../cpm22b23-56k.dsk, 480 KB of it in git). So the test
-#          of the card runs on a FRESH CLONE and in CI, with nothing to download. It arrives
-#          with 18K free, which is room enough for 12.5 KB of .HEX and the files we move.
-#
-#   build  the 8 MB image, which is NOT in git, so this one still skips without it. It
-#          cannot move: PIPing three .ASM into the guest needs 78 KB of free disk, and 18K
-#          is 18K. Nothing about that is fixable by choosing a different fixture.
-#
-# The gap that leaves is real and worth naming: on a fresh clone the committed .HEX is
-# checked against the committed .COM, but the .ASM behind them is not checked at all. That
-# is the right way round -- a stale .HEX breaks the utilities a user is handed, a stale
-# .ASM breaks the next person to edit them -- but it is a gap, not a coincidence.
+# WHY IT CANNOT SIMPLY MOVE TO THE TRACKED DISK: PIPing three .ASM into the guest needs
+# 78 KB of free disk and the floppy arrives with 18K. Nothing about that is fixable by
+# choosing a different fixture, which is why the mode still wants the 8 MB image.
 # ---------------------------------------------------------------------------
 add_test(NAME acceptance-hostbridge
          COMMAND ${CMAKE_COMMAND}
@@ -566,23 +555,16 @@ add_test(NAME acceptance-hostbridge
 # error. A test with a generous timeout is a test that can waste an hour of your evening.
 set_tests_properties(acceptance-hostbridge PROPERTIES LABELS acceptance TIMEOUT 60)
 
-set(HB_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK")
-if(EXISTS "${HB_DISK}")
-  add_test(NAME acceptance-hostbridge-build
-           COMMAND ${CMAKE_COMMAND}
-                   -DSIM=$<TARGET_FILE:altairsim>
-                   -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
-                   -DBIN=${CMAKE_CURRENT_BINARY_DIR}
-                   -DMODE=build
-                   -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/hostbridge.cmake)
-  set_tests_properties(acceptance-hostbridge-build PROPERTIES
-                       LABELS "acceptance;slow" TIMEOUT 360)
-else()
-  message(STATUS "8 MB CP/M image not found -- SKIPPING acceptance-hostbridge-build (the "
-                 "assembly-from-source test; 78 KB of .ASM does not fit on the tracked "
-                 "floppy). See disks/mits-88dcdd/cpm22/8mb/README.md to download it. "
-                 "acceptance-hostbridge itself runs regardless.")
-endif()
+# THE `build` MODE IS NOT REGISTERED, and that is deliberate (2026-07-19).
+#
+# It needs the 8 MB image, which is an 8.6 MB download and is not in git -- so as a test it
+# SKIPPED on every fresh clone and in all of CI, which is a test that reads as protection
+# and is not. The script keeps the mode; run it by hand when you edit one of the .ASM, which
+# is the only time it has anything to say:
+#
+#     tools/fetch-disk-images.sh
+#     cmake -DSIM=build/altairsim -DSRC=. -DBIN=build -DMODE=build \
+#           -P tests/acceptance/hostbridge.cmake
 
 # ---------------------------------------------------------------------------
 # WHICH MACHINE DID I GET? ./altairsim.toml, found in the working directory.
@@ -816,7 +798,7 @@ if(EXPECT_EXECUTABLE)
   # Gated on the same disk as the buffered CP/M, and it MOUNTS THAT DISK READ-ONLY -- the test
   # cannot dirty it, and it shasums the image to prove it.
   # ---------------------------------------------------------------------------
-  set(DCDD_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk")
+  set(DCDD_DISK "${CMAKE_CURRENT_SOURCE_DIR}/examples/cpm/cpm22b23-56k.dsk")
   if(EXISTS "${DCDD_DISK}")
     add_test(NAME acceptance-dcdd-readonly
              COMMAND ${EXPECT_EXECUTABLE}
@@ -842,40 +824,55 @@ if(EXPECT_EXECUTABLE)
                          LABELS acceptance TIMEOUT 120
                          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   else()
-    message(STATUS "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk not found -- SKIPPING "
+    message(STATUS "examples/cpm/cpm22b23-56k.dsk not found -- SKIPPING "
                    "acceptance-dcdd-readonly (the write-protected-disk hang) and "
                    "acceptance-ddt (DDT's RST 7 breakpoints).")
   endif()
 
+  # TWO GEOMETRIES, ONE CONTROLLER -- acceptance-dcdd-mixed -- WAS HERE, and was removed
+  # on 2026-07-19 with the 8 MB image it needed. An 8 MB disk in drive 0 and a 77-track
+  # floppy in drive 2 at once (FDC+ manual 3.7.4) was the only proof that the format and the
+  # Spindle are PER DRIVE rather than per card, and it broke as CORRUPTION rather than as an
+  # error, which is why it weighed the bytes. It required an 8.6 MB download, so it skipped
+  # on every fresh clone and in all of CI. See TODO.md -- rebuilding that coverage without
+  # the download is an open task, not a settled one.
+
   # ---------------------------------------------------------------------------
-  # TWO GEOMETRIES, ONE CONTROLLER: an 8 MB image in drive 0 and a 77-track floppy in drive
-  # 2, at the same time. The FDC+ manual says to do exactly this (3.7.4), and it is the only
-  # door in or out of an 8 MB system -- so it is the arrangement people will actually run.
+  # THE SOL-20 EXAMPLE LOADS ITS GAME OFF THE CASSETTE.
   #
-  # It works only because the format and the Spindle are PER DRIVE. The day either one gets
-  # promoted to the card, this test breaks -- and it breaks as CORRUPTION, not as an error,
-  # which is why it weighs the bytes instead of reading a directory listing.
+  # examples/sol is product: a machine file, a tape, and a README telling the reader to type
+  # `XE TRK80`. This types it. It is the acceptance test for the SOLOS tape path end to end
+  # -- and, just as importantly, for the TAPE ITSELF, which is DERIVED (make-trek80-tape.sh
+  # has SOLOS write it from the archived .ENT). A SOLOS tape carries a header checksum and
+  # one after every 256-byte block, and a tape with the wrong checksums is INVISIBLE: `CA`
+  # lists nothing, `GE` finds nothing, and no error is printed anywhere. Reading it back
+  # through SOLOS is the only honest check of the derivation.
   #
-  # Needs both images, and neither is in git -- tools/fetch-disk-images.sh pulls them. It
-  # copies both into the build tree AND installs the host-bridge utilities into the COPIES:
-  # the write half of it would otherwise land in the repository's own floppy, and a fetched
-  # image that gets written to can never match its pinned checksum again.
+  # IT NEEDS EXPECT because the verdict is a memory dump. TREK80 paints the VDM-1's screen
+  # RAM at 0CC00H and nothing it prints reaches stdout, so the machine has to be stopped
+  # with ATTN and the screen READ -- which is also what lets this run headless, with no
+  # window and no SDL.
+  #
+  # TWO MEDIA: the byte stream, and the same tape as CUTS audio at 1200 baud through the
+  # modem. Both are about 7 seconds -- the VDM-1 redraw fix is what made that affordable,
+  # and before it this same test took over two minutes and did not finish.
   # ---------------------------------------------------------------------------
-  set(MIX_8IN "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-24k.dsk")
-  if(EXISTS "${HB_DISK}" AND EXISTS "${MIX_8IN}")
-    add_test(NAME acceptance-dcdd-mixed
-             COMMAND ${EXPECT_EXECUTABLE}
-                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dcdd-mixed.exp
-                     $<TARGET_FILE:altairsim>
-                     ${CMAKE_CURRENT_SOURCE_DIR}
-                     ${CMAKE_CURRENT_BINARY_DIR}/dcdd-mixed)
-    set_tests_properties(acceptance-dcdd-mixed PROPERTIES
-                         LABELS acceptance TIMEOUT 120
-                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-  else()
-    message(STATUS "no 8 MB and/or 24K image -- SKIPPING acceptance-dcdd-mixed (an 8 MB disk "
-                   "and a 77-track floppy in one 88-DCDD).")
-  endif()
+  add_test(NAME acceptance-trek80
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol
+                   tap)
+  set_tests_properties(acceptance-trek80 PROPERTIES LABELS acceptance TIMEOUT 180)
+
+  add_test(NAME acceptance-trek80-wav
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol
+                   wav)
+  set_tests_properties(acceptance-trek80-wav PROPERTIES LABELS acceptance TIMEOUT 180)
+
 else()
   message(STATUS "expect not found -- SKIPPING the interactive CLI test (acceptance-cli). "
                  "The tty paths (prompt echo, ATTN, clock pacing) will not be covered.")

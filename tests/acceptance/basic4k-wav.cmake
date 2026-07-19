@@ -36,7 +36,7 @@ set(cmd "${WORK}/basic4k-wav.cmd")
 # 9.19 samples per cycle there. Deliberately not 44100: if this passes at the coarser
 # rate, the sub-sample edge interpolation is doing its job.
 execute_process(
-  COMMAND ${TAPETOOL} encode "${SRC}/tapes/4KBasic31/4K BASIC Ver 3-1.tap" "${wav}" fsk300 22050
+  COMMAND ${TAPETOOL} encode "${SRC}/examples/basic/4K BASIC Ver 3-1.tap" "${wav}" fsk300 22050
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE encout
   ERROR_VARIABLE  encout)
@@ -48,7 +48,7 @@ endif()
 # going into the recorder is audio. MOUNT is still "press PLAY".
 file(WRITE "${cmd}"
 "MOUNT acr0:tape \"${wav}\"\n"
-"LOAD \"tapes/4KBasic31/LDR4K31.HEX\"\n"
+"LOAD \"examples/basic/LDR4K31.HEX\"\n"
 "RUN 0\n")
 
 # The same off-switch and the same sacrificial NUL as basic4k.cmake -- see the long note

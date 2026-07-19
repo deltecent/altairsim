@@ -43,7 +43,7 @@ That works here because the format **and the `Spindle` are per drive** — a 204
 practical way to move files in and out of an 8 MB system:
 
 ```
-MOUNT dsk0:drive2 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+MOUNT dsk0:drive2 "examples/cpm/cpm22b23-56k.dsk"
 A0> DIR C:
 ```
 

@@ -19,5 +19,5 @@ id = "dsk0"
 
   [[board.drive]]
   unit     = 0
-  mount    = "../../disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+  mount    = "../../examples/cpm/cpm22b23-56k.dsk"
   readonly = true

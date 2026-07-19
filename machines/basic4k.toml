@@ -2,14 +2,15 @@
 # on the SIO.
 #
 # This is `4k` -- the bare 1975 machine -- with the two I/O cards that made it useful,
-# and it exists to run ONE artifact end to end: `tapes/4KBasic31/4K BASIC Ver 3-1.tap`, loaded by
-# the period bootstrap in `tapes/4KBasic31/LDR4K31.ASM`, unmodified, off a real cassette image.
+# and it exists to run ONE artifact end to end: `examples/basic/4K BASIC Ver 3-1.tap`, loaded
+# by the period bootstrap MITS shipped (assembled in `tapes/4KBasic31/LDR4K31.ASM`, and in
+# `examples/basic/LDR4K31.HEX` beside the tape), unmodified, off a real cassette image.
 # That is the 88-ACR's acceptance test, and it is the reason this file is here rather
 # than a paragraph of MOUNT commands in a doc nobody runs.
 #
 #   altairsim basic4k
-#   MOUNT acr0:tape "tapes/4KBasic31/4K BASIC Ver 3-1.tap"
-#   LOAD  "tapes/4KBasic31/LDR4K31.HEX"
+#   MOUNT acr0:tape "examples/basic/4K BASIC Ver 3-1.tap"
+#   LOAD  "examples/basic/LDR4K31.HEX"
 #   RUN 0
 #   -> MEMORY SIZE?
 #

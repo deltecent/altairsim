@@ -29,7 +29,7 @@ set timeout 60
 log_user 0
 
 set exe [lindex $argv 0]
-set dsk "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+set dsk "examples/cpm/cpm22b23-56k.dsk"
 set before [exec shasum $dsk]
 
 spawn $exe tests/acceptance/dcdd-readonly.toml

@@ -6,7 +6,7 @@
 # type HDIR, R and W at the A> prompt. Those are ordinary CP/M programs and they have to
 # be ON THE DISK -- and they are ours, so no disk fetched from deramp.com has them.
 #
-#     tools/install-hostbridge-utils.sh disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk
+#     tools/install-hostbridge-utils.sh examples/cpm/cpm22b23-56k.dsk
 #     tools/install-hostbridge-utils.sh "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
 #
 # THE TRACKED IMAGE ALREADY HAS THEM. cpm22b23-56k.dsk is in git WITH R/W/HDIR installed --

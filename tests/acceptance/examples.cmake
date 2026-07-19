@@ -1,7 +1,7 @@
 # THE EXAMPLES, IN THE LAYOUT A USER ACTUALLY GETS.
 #
-# tapes/ and disks/ are not test fixtures. They are what we SHIP: a user gets the
-# `altairsim` binary and those two trees, and nothing else -- no repository, no build
+# examples/ is not a test fixture. It is what we SHIP: a user gets the `altairsim`
+# binary and that tree, and nothing else -- no repository, no build
 # directory, no tests. So the question this file asks is not "do the boards work", which
 # every other test already answers. It is:
 #
@@ -25,9 +25,9 @@ file(REMOVE_RECURSE "${dist}")
 # The distribution: the binary (already built, wherever it is) plus this ONE example
 # directory. Note what is NOT here -- machines/, roms/, src/, the repo. If the example
 # needs any of it, this test fails, and it should.
-file(COPY "${SRC}/tapes/4KBasic31" DESTINATION "${dist}/tapes")
+file(COPY "${SRC}/examples/basic" DESTINATION "${dist}/examples")
 
-set(example "${dist}/tapes/4KBasic31")
+set(example "${dist}/examples/basic")
 
 # What 4K BASIC has to print for the machine to have actually booted off the cassette.
 # `TAPE OK` is the one that cannot be faked by a machine that merely started: it is the
@@ -57,7 +57,7 @@ execute_process(
   ERROR_VARIABLE    out
   TIMEOUT           60
 )
-expect_basic("${out}" "`cd tapes/4KBasic31 && altairsim basic4k.toml` did not boot BASIC")
+expect_basic("${out}" "`cd examples/basic && altairsim basic4k.toml` did not boot BASIC")
 
 # ---- 2. ...AND BY PATH, from the top of the distribution. ------------------------------
 #
@@ -67,14 +67,14 @@ expect_basic("${out}" "`cd tapes/4KBasic31 && altairsim basic4k.toml` did not bo
 # depending on where you launched it from, it would be the very trap looksLikeFile()
 # refuses to walk into (core/machines.h) -- so it must not.
 execute_process(
-  COMMAND           "${SIM}" tapes/4KBasic31/basic4k.toml
+  COMMAND           "${SIM}" examples/basic/basic4k.toml
   WORKING_DIRECTORY "${dist}"
   INPUT_FILE        "${SRC}/tests/acceptance/basic4k.keys"
   OUTPUT_VARIABLE   out
   ERROR_VARIABLE    out
   TIMEOUT           60
 )
-expect_basic("${out}" "`altairsim tapes/4KBasic31/basic4k.toml` from the dist root did not boot BASIC")
+expect_basic("${out}" "`altairsim examples/basic/basic4k.toml` from the dist root did not boot BASIC")
 
 # ---- 3. THE NEGATIVE CONTROL, and the only reason to believe either of the above. ------
 #
@@ -94,7 +94,7 @@ file(WRITE "${example}/probe.toml"
      "startup = [\"MOUNT acr0:tape \\\"4K BASIC Ver 3-1.tap\\\"\"]\n")
 
 execute_process(
-  COMMAND           "${SIM}" tapes/4KBasic31/probe.toml -x "MOUNT acr0:tape \"4K BASIC Ver 3-1.tap\""
+  COMMAND           "${SIM}" examples/basic/probe.toml -x "MOUNT acr0:tape \"4K BASIC Ver 3-1.tap\""
   WORKING_DIRECTORY "${dist}"
   OUTPUT_VARIABLE   out
   ERROR_VARIABLE    out
@@ -102,7 +102,7 @@ execute_process(
 )
 
 # The startup one found it -- resolved against the file, which lives beside the tape.
-string(FIND "${out}" "mounted tapes/4KBasic31/4K BASIC Ver 3-1.tap" hit)
+string(FIND "${out}" "mounted examples/basic/4K BASIC Ver 3-1.tap" hit)
 if(hit LESS 0)
   message(FATAL_ERROR
     "examples: the STARTUP mount did not resolve against the machine file's directory.\n"
@@ -119,6 +119,59 @@ if(hit LESS 0)
     "  directory has escaped its startup list and is now colouring what humans type.\n"
     "--- output ---\n${out}")
 endif()
+
+# ---- 4. THE QUICK START'S OWN COMMAND, which was never tested until now. ---------------
+#
+# `examples/cpm` is the flagship: it is what docs/manual/quick-start.md promises, and until
+# 2026-07-19 NO test booted it. `acceptance-dcdd-readonly` boots a test-owned machine file
+# that happens to mount the same image, which proves the CARD and proves nothing at all
+# about the example -- and that is much of how the manual drifted as far as it did.
+#
+# The keys are cpm-dir.keys, and its first byte is a NUL for the same reason basic4k.keys's
+# is: every keystroke is in the buffer before the machine is switched on, and CP/M's cold
+# start clears the SIO's receive register and eats exactly one byte.
+file(COPY "${SRC}/examples/cpm" DESTINATION "${dist}/examples")
+set(cpm "${dist}/examples/cpm")
+
+# WHY ONLY THE FIRST DIRECTORY LINE IS CLAIMED, and it is CP/M's behaviour, not a hedge:
+# DIR polls the console between lines so the operator can stop a long listing, and ANY key
+# already waiting aborts it. Our keys are all in the pipe before the machine starts, so the
+# CR behind `DIR` stops the listing after one line -- every time, and on purpose, since the
+# alternative is a test whose output depends on how fast the host is.
+#
+# One line is enough to be a real claim. `A: L80      COM` is a directory entry read off
+# the image through the 88-DCDD: a machine that merely started prints the banner and stops.
+function(expect_cpm out why)
+  foreach(want "56K CP/M 2.2b v2.3" "For Altair 8\" Floppy" "A>" "A: L80      COM")
+    string(FIND "${out}" "${want}" hit)
+    if(hit LESS 0)
+      message(FATAL_ERROR "examples: ${why}\n"
+                          "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+    endif()
+  endforeach()
+endfunction()
+
+execute_process(
+  COMMAND           "${SIM}" cpm22-buffered.toml
+  WORKING_DIRECTORY "${cpm}"
+  INPUT_FILE        "${SRC}/tests/acceptance/cpm-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_cpm("${out}" "`cd examples/cpm && altairsim cpm22-buffered.toml` did not boot CP/M")
+
+# ...and by path from the distribution root, where the disk is NOT. Same machine, and the
+# floppy has to be found beside the file that names it rather than beside the operator.
+execute_process(
+  COMMAND           "${SIM}" examples/cpm/cpm22-buffered.toml
+  WORKING_DIRECTORY "${dist}"
+  INPUT_FILE        "${SRC}/tests/acceptance/cpm-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_cpm("${out}" "`altairsim examples/cpm/cpm22-buffered.toml` from the dist root did not boot CP/M")
 
 file(REMOVE_RECURSE "${dist}")
 message(STATUS "examples: the shipped examples boot from their own directory, and a typed "

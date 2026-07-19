@@ -119,7 +119,7 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
             // FILENAMES. So `\"` has to survive to the monitor, and until it did, this
             // could not be written at all:
             //
-            //     startup = ["MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\""]
+            //     startup = ["MOUNT acr0:tape \"examples/basic/4K BASIC Ver 3-1.tap\""]
             //
             // Every `"` toggled, escape or not, so the entry was cut at the backslash and
             // the machine came up with an empty recorder. That is not an exotic case: the

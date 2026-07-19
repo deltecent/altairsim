@@ -72,7 +72,7 @@ clone knows what it is missing and why. All of it is Mike Douglas's work, from *
 
 | Directory | Source | Runs as |
 |---|---|---|
-| `mits-88dcdd/cpm22/buffered/` | `…/8_inch_floppy/CPM/CPM 2.2/CPM 2.2B/` | `cpm22-buffered.toml` → `56K CP/M 2.2b v2.3`. **`BOOT.ASM` + `BIOS.ASM` here are the 88-DCDD's authoritative source.** |
+| `mits-88dcdd/cpm22/buffered/` | `…/8_inch_floppy/CPM/CPM 2.2/CPM 2.2B/` | `examples/cpm/cpm22-buffered.toml` → `56K CP/M 2.2b v2.3`. **The machine file and the 56K image moved to `examples/cpm/` on 2026-07-19** — they ship; what stays here is source. **`BOOT.ASM` + `BIOS.ASM` here are the 88-DCDD's authoritative source.** |
 | `mits-88dcdd/cpm22/8mb/` | `…/8_inch_floppy/CPM/CPM 2.2/FDC+ 8Mb CPM 2.2/` | `cpm22-8mb.toml` → `A0>`. Authoritative for the **8 MB medium** — which is the *same* hard-sector format, just 2048 tracks (see `docs/boards/mits-dcdd.md`). |
 | `mits-88dcdd/cpm22/burcon/` | `…/8_inch_floppy/CPM/CPM 2.2/Burcon CPM/` | `cpm22-burcon.toml` → `56K CP/M Version 2.2mits`, © 1980 Burcon. |
 | `mits-88dcdd/cpm22/lifeboat/` | `…/8_inch_floppy/CPM/CPM 2.2/Lifeboat CPM/` | `cpm22-lifeboat.toml` → Lifeboat `CONFIG` v4.8. A **48K** build, so it re-fits the memory card. |
@@ -88,7 +88,7 @@ back, so `.gitignore` names these three, one line each (2026-07-18):
 
 | Tracked file | Upstream SHA-256 | Why this one |
 |---|---|---|
-| `mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk` | `3147946a…57a2cc` | The bootable 8″ system disk, and the only CP/M a fresh clone gets. `acceptance-dcdd-readonly`. |
+| `examples/cpm/cpm22b23-56k.dsk` | `3147946a…57a2cc` | The bootable 8″ system disk, and the only CP/M a fresh clone gets. `acceptance-examples`, `acceptance-dcdd-readonly`, `acceptance-ddt`, `acceptance-hostbridge`. |
 | `mits-88mds/cpm22/CPM56K-1.DSK` | `41c87b01…32d3d` | The minidisk system disk (A:). `acceptance-minidisk`. |
 | `mits-88mds/cpm22/CPM56K-2.DSK` | `0f6480b1…586db` | Its tools disk (B:) — `cpm22-mini.toml` mounts both, so one without the other does not boot. |
 
@@ -100,17 +100,56 @@ makes the blob auditable rather than mysterious. Everything else on the disk is 
 
 Everything not tracked is one command away — `tools/fetch-disk-images.sh` downloads the 8.6 MB FDC+
 image and the 24K floppy and checks both against pinned SHA-256s. It **never writes to what it
-fetched**, so those hashes keep matching; anything needing a prepared disk copies to scratch first
-(`tests/acceptance/dcdd-mixed.exp`).
+fetched**, so those hashes keep matching; anything needing a prepared disk copies to scratch first.
+Since 2026-07-19 **no test needs either**: the 8 MB image is wanted only by `hostbridge.cmake`'s
+`MODE=build`, which is run by hand when a `.ASM` changes.
 
 CP/M 2.2 itself is redistributable: Bryan Sparks, president of DRDOS, Inc. and successor in interest
 to Digital Research, granted "a right to use, distribute, modify, enhance, and otherwise make
 available in a nonexclusive manner CP/M and its derivatives" (July 2022, superseding the 2001 Lineo
 grant that had been tied to one website) — <http://www.cpm.z80.de/license.html>.
 
-`tapes/` is **fully tracked** — a `.tap` is small, and the two BASIC tapes and `PS2-MON.TAP` are
-what the acceptance tests boot. The rule was never "media is untracked"; it is "*huge* media that
-is not ours is untracked."
+`tapes/` is **fully tracked** — a `.tap` is small, and the BASIC and `PS2-MON.TAP` images are what
+the acceptance tests boot. The rule was never "media is untracked"; it is "*huge* media that is not
+ours is untracked."
+
+## `examples/` — TREK80, and a tape we made ourselves
+
+`examples/sol/` ships a Processor Technology **Sol-20** running **TREK80** (© 1977 Processor
+Technology Corp.). Everything there came from the deramp.com MFE archive, fetched 2026-07-19:
+
+<https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-Processor%20Technology/40-PTC%20Software/63-TREK80/>
+
+| File | Provenance |
+|---|---|
+| `TREK80.ENT` | `…/63-TREK80/Hex Dump/TREK80.ENT` — a SOLOS `ENTER` script: 7,840 bytes loading at `0000`, entry `AF C3 5C 1D`. **This is the authoritative image**, and it is the only tracked *source* in that directory. |
+| `Trek80 Manual.pdf` | `…/63-TREK80/` — Processor Technology's own manual for the game. |
+| `TRK80.TAP`, `TRK80.WAV` | **Derived**, by `examples/sol/make-trek80-tape.sh`. Not downloaded. |
+
+**Why the tape is derived rather than downloaded, which is the part worth recording.** The archived
+recording (`…/sol-20/software/tape_wav_files/TRK80.WAV` on deramp.com) decodes to 7,932 bytes with
+**27 framing errors**, and those errors desynchronize the byte stream: **6,778 of 7,840 payload
+bytes are wrong**, and the entry point reads `00 00 00 00` instead of `AF C3 5C 1D`. It cannot be
+loaded. (It is still historically important — it is byte-identical to the recording
+`reference/Sol-20.md` measured the CUTS parameters from.) The MFE archive's MP3 is a different dub
+of a different build (8,285 bytes, 31 errors) and is no better.
+
+A SOLOS cassette also cannot be hand-assembled: it carries a header checksum and one after every
+256-byte block, and a tape whose checksums are wrong is **invisible** — `CA` lists nothing, `GE`
+never finds the file, and nothing prints an error. So the tape is written **by SOLOS itself**:
+
+1. convert `TREK80.ENT` to Intel HEX;
+2. `LOAD` it into a running Sol-20, mount a blank `.TAP` in record mode;
+3. `SA TRK80 0000 1E9F 0000` — the fourth argument is the execute address, which is what makes
+   `XE TRK80` work rather than only `GE`;
+4. `UNMOUNT` to commit. Result: 7,939 bytes.
+5. `altair_tapetool encode TRK80.TAP TRK80.WAV cuts1200 22050 3 2` → a 3.4 MB WAV with **0** framing
+   errors that decodes back byte-identical.
+
+The cross-check that the result is the real artifact and not merely a plausible one: the header
+checksum SOLOS computes is `D9`, the same byte in the same position as on the genuine archived tape,
+whose `SIZE` field (`1EA0`) also agrees with the `.ENT`. `acceptance-trek80` reads the tape back
+through SOLOS, for both media, which is the only honest test of a derivation like this.
 
 ## Traps, paid for once
 

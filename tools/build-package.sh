@@ -99,10 +99,14 @@ while IFS='|' read -r dest src; do
   # that mean nothing to a person holding a zip, and which quietly contradict the manual. The
   # ONLY docs in the zip are the ones the FILE table put there on purpose (the manual PDF and
   # USING-ALTAIRSIM.md) -- a per-directory README is a repository artifact and is not one.
-  rm -f "$pkg/$dest"/*.ASM "$pkg/$dest"/*.PRN "$pkg/$dest"/README.md "$pkg/$dest"/-ReadMe.pdf 2>/dev/null || true
+  # ...and the same rule takes out SOURCE, which is the other thing that is not product:
+  # examples/sol ships a tape, not the ENTER script the tape was derived from nor the script
+  # that derives it. Both stay in the repository (docs/sources.md has the provenance).
+  rm -f "$pkg/$dest"/*.ASM "$pkg/$dest"/*.PRN "$pkg/$dest"/README.md "$pkg/$dest"/-ReadMe.pdf \
+        "$pkg/$dest"/*.ENT "$pkg/$dest"/make-*.sh 2>/dev/null || true
 
   # Did any actual MEDIA come with it?
-  if ! ls "$pkg/$dest"/*.dsk "$pkg/$dest"/*.DSK "$pkg/$dest"/*.tap 2>/dev/null | head -1 | grep -q .; then
+  if ! ls "$pkg/$dest"/*.dsk "$pkg/$dest"/*.DSK "$pkg/$dest"/*.tap "$pkg/$dest"/*.TAP 2>/dev/null | head -1 | grep -q .; then
     echo "  !! $dest has a machine file and NO MEDIA -- the image is gitignored and is not"
     echo "     in your tree. Download it (see the README in $src) before shipping this."
   fi
@@ -114,4 +118,4 @@ echo "build-package: $pkg"
 echo "build-package: $out/altairsim-$ver.zip"
 echo
 echo "Now check the one thing that matters, from OUTSIDE the repository:"
-echo "    cd $pkg && ./altairsim disks/cpm22/cpm22-buffered.toml"
+echo "    cd $pkg && ./altairsim examples/cpm/cpm22-buffered.toml"

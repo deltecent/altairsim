@@ -1,6 +1,6 @@
 # Altair track-buffered CP/M 2.2b v2.3, on an 8" floppy.
 #
-#     cd disks/mits-88dcdd/cpm22/buffered && altairsim cpm22-buffered.toml
+#     cd examples/cpm && altairsim cpm22-buffered.toml
 #     -> 56K CP/M 2.2b v2.3
 #        For Altair 8" Floppy
 #        A>
@@ -16,10 +16,10 @@
 # because that is the only thing that makes this machine different from the default one.
 # See machines/default.toml for what the base actually contains, or just run `BOARDS`.
 #
-# THE DISK IMAGE IS NOT IN GIT. `*.dsk` is in .gitignore -- deliberately, they are large
-# and not ours to redistribute -- so there is NO UNDO on this file. CP/M writes to A: for
-# anything you create, and drive 0 is mounted read/write because that is what a real
-# machine is. If you are about to test writes in anger, copy the image first, or add
+# THERE IS NO UNDO ON THIS DISK. It is tracked (2026-07-18), so in a clone `git checkout`
+# will put it back -- but in the package you were handed there is no such rope. CP/M writes
+# to A: for anything you create, and drive 0 is mounted read/write because that is what a
+# real machine is. If you are about to test writes in anger, copy the image first, or add
 # `readonly = true` below.
 #
 # WHAT `readonly = true` ACTUALLY DOES, because it is not what you would guess: it is the
@@ -30,9 +30,10 @@
 # gives you a clean `Delayed Write Error` and CP/M carries on. The 8 MB BIOS has it OFF, and
 # there the write appears to SUCCEED and the data evaporates. Both are the real machine.
 #
-# THE SOURCES ARE SITTING BESIDE THIS FILE -- BOOT.ASM and BIOS.ASM, Mike Douglas's own,
-# and the very listings the 88-DCDD was built from (docs/boards/mits-dcdd.md cites them as
-# authoritative). Nothing here is a guess.
+# NOTHING HERE IS A GUESS. This CP/M's own BOOT.ASM and BIOS.ASM -- Mike Douglas's, and the
+# very listings the 88-DCDD was built from -- are in the repository under
+# disks/mits-88dcdd/cpm22/buffered/, cited as authoritative by docs/boards/mits-dcdd.md.
+# They are sources rather than product, so they stay there and are not in the package.
 
 [machine]
 name = "cpm22-buffered"
@@ -67,32 +68,20 @@ id = "dsk0"
   unit  = 0
   mount = "cpm22b23-56k.dsk"
 
-  # B: IS THE OTHER IMAGE IN THIS DIRECTORY, AND IT IS NOT A SCRATCH DISK. cpm22b23-24k.dsk
-  # is a second CP/M system disk -- the same one, relocated for a 24K machine -- and it will
-  # not BOOT here (see the arithmetic below). But a data disk is a data disk: it is an
-  # ordinary 77-track 8" floppy, and this BIOS reads it happily. DIR B:, PIP from it, run a
-  # .COM off it.
-  #
-  # READ-ONLY, ON PURPOSE, AND IT IS ALSO THE DEMONSTRATION. `readonly` is the diskette's
-  # WRITE-PROTECT NOTCH, sensed by the DRIVE, not the controller -- the 88-DCDD has no
-  # write-protect bit and cannot tell the guest anything. It writes; the head is inhibited;
-  # the bytes go nowhere. What notices is the BIOS, and only through write-verify, which
-  # THIS one has on (`mode db 40h`): try it and you get a clean `Delayed Write Error` and a
-  # prompt back.
-  #
-  #     A>ERA B:*.*         -> Delayed Write Error, and B: is untouched
-  #
-  # If you want somewhere to WRITE, that is what an empty drive is for -- FORMAT one from
-  # inside CP/M, or drop your own image in:
-  #
-  #     MOUNT dsk0:drive2 "my-scratch.dsk"
-  [[board.drive]]
-  unit     = 1
-  mount    = "cpm22b23-24k.dsk"
-  readonly = true
+# B: AND THE OTHER THREE DRIVES ARE EMPTY, and that is the machine as shipped: one system
+# disk in drive 0, three doors open. The base fits four drives, so there is somewhere to
+# put a disk without editing anything --
+#
+#     MOUNT dsk0:drive1 "my-scratch.dsk"
+#
+# -- and FORMAT, from inside CP/M, will make you one.
+#
+# The 88-DCDD's `readonly` is worth knowing about before you mount anything you care about,
+# because it is not what you would guess: see the note above. It is the diskette's notch,
+# the guest is never told, and only a write-verifying BIOS (this one) will say a word.
 
-# THE 24K MACHINE, which is the other image in this directory and the one place this file
-# would need to say something about memory.
+# THE MEMORY IS THE BASE'S, and this is the one place this file might have needed to say
+# something about it.
 #
 # 56K is what the base already is, and it is exactly what cpm22b23-56k.dsk was built for
 # -- arithmetic straight out of BOOT.ASM:
@@ -104,13 +93,13 @@ id = "dsk0"
 # The BIOS ends at exactly E000, which is where the default machine's RAM stops. They
 # agree, so this file says nothing about memory at all.
 #
-# cpm22b23-24k.dsk is the same CP/M relocated for a smaller machine: the same sum gives
-# BIOSBAS 4700 and an end of 6000. THAT BOOTS HERE PERFECTLY WELL -- the constraint is
-# one-way. A machine may have MORE RAM than the image was built for (4700-6000 is good RAM
-# in a 56K machine; the 32K above it just goes unused), and only the other direction fails.
-# Move it to drive 0 INSTEAD of the 56K image and it comes up saying `24K CP/M 2.2b v2.3`.
+# THE CONSTRAINT IS ONE-WAY, which is worth knowing if you go looking for other images of
+# this CP/M -- they were built one per memory size. The same sum for a 24K build gives
+# BIOSBAS 4700 and an end of 6000, and THAT boots in a 56K machine perfectly well: a
+# machine may have MORE RAM than the image was built for (4700-6000 is good RAM here; the
+# 32K above it just goes unused). Only the other direction fails.
 #
-# To have the AUTHENTIC 24K machine as well, re-fit the memory card:
+# To have the AUTHENTIC smaller machine as well, re-fit the memory card -- 24K shown:
 #
 #     [[board]]
 #     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,

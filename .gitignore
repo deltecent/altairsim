@@ -28,6 +28,10 @@ Thumbs.db
 *.replay
 altairsim.log
 
+# The assembled distribution. tools/build-package.sh writes dist/altairsim-<ver>/ and the
+# zip beside it -- an OUTPUT of the tree, never an input to it.
+/dist/
+
 # Binaries CI built, pulled down by tools/fetch-ci-binaries.sh. Scratch: overwritten on
 # every fetch, read by nothing in the build or the tests.
 /artifacts/
@@ -84,7 +88,6 @@ disks/**
 !disks/**/
 !disks/**/*.toml
 !disks/**/README.md
-!disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk
 !disks/mits-88mds/cpm22/CPM56K-1.DSK
 !disks/mits-88mds/cpm22/CPM56K-2.DSK
 !disks/mits-88dcdd/cpm22/buffered/BIOS.ASM
@@ -95,6 +98,29 @@ disks/**
 !disks/mits-88mds/cpm22/BIOS.ASM
 !disks/mits-88mds/cpm22/BOOT.ASM
 !disks/tarbell-sd/cpm22/buffered/BIOS (1).ASM
+
+# examples/ IS THE SHIPPED SET, and it is an allowlist for the same reason disks/ is.
+#
+# These are the examples the manual's quick start names, and they are the ONLY media that
+# goes in the package -- one home each, with the tests pointed at them (2026-07-19). The
+# rules above would hide most of it: `*.dsk` swallows the CP/M image, and a derived .WAV
+# is a 3.4 MB file that must be tracked deliberately rather than swept up by `git add -A`
+# on whatever a rebuild left lying about.
+#
+# So each shipped file is named. If you add one and git does not see it, that is this
+# block doing its job -- add the line.
+examples/**
+!examples/**/
+!examples/**/*.toml
+!examples/**/README.md
+!examples/cpm/cpm22b23-56k.dsk
+!examples/basic/4K BASIC Ver 3-1.tap
+!examples/basic/LDR4K31.HEX
+!examples/sol/TREK80.ENT
+!examples/sol/TRK80.TAP
+!examples/sol/TRK80.WAV
+!examples/sol/Trek80 Manual.pdf
+!examples/sol/make-trek80-tape.sh
 
 # Scanned manuals and datasheets. Same reasoning as the disk images, and then
 # some: they are enormous (the 88-DCDD manual alone is 52 MB) and they are not

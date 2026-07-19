@@ -270,7 +270,7 @@ the verb with it.
 
 **Altair 4K BASIC v3.1 boots off a period cassette through this card, and runs a program.**
 `ctest -R acceptance` — `tests/acceptance/basic4k.cmake`, the machine `basic4k`, the tape
-`tapes/4KBasic31/4K BASIC Ver 3-1.tap`, and the bootstrap `tapes/4KBasic31/LDR4K31.ASM`. **Nothing was modified.**
+`examples/basic/4K BASIC Ver 3-1.tap`, and the bootstrap `tapes/4KBasic31/LDR4K31.ASM` (assembled to `examples/basic/LDR4K31.HEX`, beside the tape). **Nothing was modified.**
 
 ```
 MEMORY SIZE?

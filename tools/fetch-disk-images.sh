@@ -6,21 +6,23 @@
 #
 #          no argument -> everything missing
 #
-# WHY ONLY SOME IMAGES ARE HERE. Two bootable CP/M disks ARE tracked (the buffered 8"
-# floppy and the 5.25" minidisk -- see .gitignore, which names them one at a time), and
-# they are the ones the everyday acceptance tests boot. What is left is the awkward pair:
+# WHY ONLY SOME IMAGES ARE HERE. Three bootable CP/M disks ARE tracked (the buffered 8"
+# floppy, now examples/cpm/cpm22b23-56k.dsk, and the pair of 5.25" minidisks -- see
+# .gitignore, which names them one at a time), and they are the ones the acceptance tests
+# boot. What is left is the awkward pair, and NEITHER IS NEEDED BY ANY TEST (2026-07-19):
 #
-#   CPM22-8MB-56K.DSK   8.6 MB, which is 20x the two tracked disks put together and buys
-#                       one test that the buffered floppy cannot host (the 78 KB of .ASM
-#                       acceptance-hostbridge-build PIPs in does not fit in 18K free).
-#   cpm22b23-24k.dsk    the same CP/M relocated for a 24K machine -- which boots here
-#                       perfectly well, a 56K machine simply having more RAM than it uses.
-#                       It earns its keep as the SECOND GEOMETRY in acceptance-dcdd-mixed,
-#                       so it is only worth having alongside the 8 MB.
+#   CPM22-8MB-56K.DSK   8.6 MB, which is 20x the tracked disks put together. It is what
+#                       hostbridge.cmake's MODE=build wants -- the 78 KB of .ASM that mode
+#                       PIPs in does not fit in the tracked floppy's 18K free -- and that
+#                       mode is run BY HAND when a .ASM changes, not by ctest.
+#   cpm22b23-24k.dsk    the same CP/M relocated for a 24K machine -- which boots in a 56K
+#                       machine perfectly well, that machine simply having more RAM than
+#                       the image uses. Kept because it is the interesting half of the
+#                       "the machine must be at least as big as the image" demonstration
+#                       in disks/mits-88dcdd/cpm22/buffered/README.md.
 #
-# Both gate `if(EXISTS ...)` in CMakeLists.txt, so without them the affected tests SKIP
-# rather than fail. Nothing here is required to build or to run the suite; this script
-# turns a README treasure hunt into one command.
+# Nothing here is required to build or to run the suite; this script turns a README
+# treasure hunt into one command.
 #
 # THE CHECKSUMS ARE THE POINT. deramp.com is a live site, not an archive with a content
 # hash, and an image that changed under us would surface as a baffling acceptance
