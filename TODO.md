@@ -16,6 +16,13 @@ re-raised.
 An item with a `#nn` is a GitHub issue and that issue is the source of truth for
 detail; this file is the index.
 
+**Update this file before every commit.** If a commit closes an item, the same
+commit removes it; if it half-closes one, the same commit says which half. A
+commit that fixes the tree and leaves the entry standing is how this file rots —
+`9c9c06c` did exactly that to three entries while pruning three others, and they
+were re-picked as work two days later. The rule is cheap because the entry is
+already in front of you when you do the work; reconstructing it later is not.
+
 ---
 
 ## Bugs
@@ -36,29 +43,6 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
-
-### The manual prints a `MOUNT` command the binary refuses
-
-`docs/manual/machines.md:265` shows
-`altairsim -x 'MOUNT dsk0 mine.dsk' -x 'RUN FF00' -i {{MACHINE_CPM}}`. Type it
-and the mount is refused: *dsk0 has 4 units you could mount into: drive0 drive1
-drive2 drive3. Name one — dsk0:drive0*. Verified against the binary 2026-07-19.
-
-It contradicts the manual's own rule three files away — `disks.md:104-106` says
-anything genuinely plural must be named — so the chapter that teaches the rule
-is the one that breaks it. One edit: `dsk0:drive0`.
-
-Found while adding the you-supply-this-image notes. It is the first confirmed
-instance of the class `Test coverage lost or missing` predicts below: a fenced
-command nothing re-runs.
-
-### `docs/manual/disks.md:104-106` says a floppy controller has sixteen drives
-
-It has **up to** sixteen. The `dcdd` board's `drives` property defaults to `4`
-(legal `1..16`), which is why the refusal quoted above says "4 units". The
-accurate form is already used twice elsewhere — `disks.md:23` and
-`boards.md:217` both say *up to sixteen*. Only this one sentence states it as a
-fixed count, and it is the sentence a reader meets first.
 
 ### `docs/package.map` still describes the layout `examples/` replaced
 
@@ -415,12 +399,10 @@ without the download is the open task** — two different geometries in one
 controller does not inherently need a large image, only two images whose
 geometries differ.
 
-**Three files still describe it as live** (found 2026-07-19): `README.md:142`
-tells the reader it "is skipped — with a reason — at configure time", which no
-longer happens, and `tools/install-hostbridge-utils.sh:16` and
-`tools/fetch-disk-images.sh:75` both cite `tests/acceptance/dcdd-mixed.exp`,
-which does not exist. `CMakeLists.txt:915-921` carries the tombstone comment and
-is correct. Fix the three references whether or not the coverage is rebuilt.
+The three stale references this entry used to carry — `README.md`,
+`tools/install-hostbridge-utils.sh` and `tools/fetch-disk-images.sh`, all citing
+a test that no longer exists — were fixed by `9c9c06c`. `CMakeLists.txt:915`
+carries the tombstone comment and is correct.
 
 ### `acceptance-hostbridge-build` is no longer registered
 
@@ -468,8 +450,9 @@ them. A check that runs the manual's own fenced commands and diffs the output
 against the fence is the missing piece; it would have caught this and the "CP/M
 in one command" gap in the same pass.
 
-**Three more instances, found 2026-07-19**, which is the point: the first one was
-not a one-off.
+**Two more instances, found 2026-07-19**, which is the point: the first one was
+not a one-off. (A third, the refused `MOUNT` at `docs/manual/machines.md:265`,
+was fixed by `9c9c06c`.)
 
 - `docs/manual/machines.md:229-234` — the `SHOW MOUNTS` transcript shows
   `drive0` and `drive1` only, omitting `drive2` and `drive3` (the CP/M machine
@@ -480,11 +463,11 @@ not a one-off.
   below at `:237` then refers to paths being printed *as written* — describing a
   footer the transcript does not show.
 - `docs/manual/package.md:82-86` — the `basic4k` `SHOW MOUNTS` transcript is
-  missing the same footer. Lower confidence than the one above (it could be
-  deliberate trimming), but it is the same signature.
-- `docs/manual/machines.md:265` — the refused `MOUNT`, filed as a bug above.
+  missing the same footer. **Measured 2026-07-19**: `altairsim -x "SHOW MOUNTS"
+  basic4k` does print it, so this is drift, not the deliberate trimming this
+  entry first allowed for.
 
-The first two share a shape worth naming: a transcript that was **trimmed** when
+Both share a shape worth naming: a transcript that was **trimmed** when
 captured is indistinguishable, later, from one that **drifted**. Whatever
 re-capture check gets built has to decide whether trimming is allowed at all —
 if it is, it needs a marker in the fence, because otherwise every legitimately
@@ -587,6 +570,16 @@ invention; it is not.
 
   **Every entry in this file has now been checked against the tree on
   2026-07-19** — which resets the clock but does not change the rule above.
+
+  **That claim did not survive the day.** `9c9c06c`, the commit that performed
+  the sweep above, fixed three things in the tree — the refused `MOUNT` in
+  `machines.md`, the "sixteen drives" sentence in `disks.md`, and the three
+  dangling `dcdd-mixed` citations — and left all three entries standing. They
+  were read as open work on 2026-07-19 and only caught because someone asked
+  whether they had already been done. **The sweep and the rot came from the same
+  commit**, which is the strongest argument available that a periodic sweep is
+  not the mechanism: the fix and the bookkeeping have to travel together, which
+  is why *update this file before every commit* is now stated at the top.
 
   **And a fresh entry can be wrong in the other direction.** The
   `build-package.sh` subshell bug, written the same day, claimed all four of that
