@@ -476,4 +476,69 @@ void test_dcdd() {
 
         setMediaResolver(openHostFile);  // put the real filesystem back
     }
+
+    SECTION("88-DCDD -- sixteen drives on the daisy chain, and the top one really works");
+    {
+        // THE FOURTH BIT IS THE WHOLE DIFFERENCE between this card and the 88-MDS, and
+        // nothing exercised it: every test above, every shipped machine and the CP/M boot
+        // itself use drive0, whose select byte is 0x00 -- so all four address bits could
+        // have been dropped on the floor and the suite would have stayed green. Drive 15
+        // is the only drive that proves the mask is 0x0F and not 0x03.
+        // AND THE STATUS BYTE CANNOT TELL YOU WHICH DRIVE ANSWERED -- an empty drive is
+        // still online, so it reads back exactly like a loaded one. The only witness is
+        // the DATA port, so give each drive a disk that says its own name.
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        setMediaResolver([](const std::string& p, bool ro, std::string&) {
+            uint8_t fill = (p == "fifteen.dsk") ? 0xEF : 0x33;
+            return std::make_unique<MemoryMedia>(p, std::vector<uint8_t>(337568, fill), ro);
+        });
+        std::string err;
+
+        // Out of the box it is a four-drive card, and drive15 is not there to mount.
+        CHECK(!b.mount("drive15", "fifteen.dsk", false, err), "a default card has no drive15...");
+        CHECK(err.find("drive0..3") != std::string::npos, "...and says how far the chain goes");
+
+        CHECK(setProperty(b, "drives", "16", err), "`drives = 16` is accepted");
+        CHECK(b.units().size() == 16, "and the card now has sixteen units");
+        CHECK(b.units()[15].name == "drive15", "the last of which is drive15");
+
+        CHECK(b.mount("drive15", "fifteen.dsk", false, err), "which now takes a disk");
+        CHECK(b.mount("drive3", "three.dsk", false, err), "and drive3 takes a different one");
+
+        // Select 15: four address bits, 0x0F. Under the 88-MDS's two-bit mask the low
+        // two bits are the same and this selects drive 3 -- which is why drive3 has a
+        // disk in it, and why the check is on the byte and not on the status.
+        out(b, 0x08, 0x0F);
+        out(b, 0x09, 0x04);  // cHDLOAD
+        c.advance(kReadStart);
+        CHECK(in(b, 0x0A) == 0xEF, "the byte came off drive 15 -- all FOUR address bits decode");
+
+        // Bits 4..6 are not part of the address. Only bit 7 means anything up there, and
+        // it means "off"; a card that masked with 0xFF would have deselected here.
+        out(b, 0x08, 0x7F);
+        out(b, 0x09, 0x04);
+        c.advance(kReadStart);
+        CHECK(in(b, 0x0A) == 0xEF, "0x7F is drive 15 too -- only the low four bits address");
+
+        out(b, 0x08, 0x80);
+        CHECK(in(b, 0x08) == 0xFF, "and bit 7 turns the system off, whatever the low bits say");
+
+        // Shrinking back is refused while the disk is in, because it would make a mounted
+        // disk unreachable and unsaveable without ever saying so.
+        CHECK(!setProperty(b, "drives", "4", err), "shrinking past a loaded drive is refused");
+        CHECK(err.find("drive15") != std::string::npos, "...and names the drive still holding one");
+
+        CHECK(b.unmount("drive15", err), "empty it");
+        CHECK(setProperty(b, "drives", "4", err), "and now the card shrinks");
+        CHECK(b.units().size() == 4, "back to four");
+
+        // And with four drives, a guest asking for 15 is told so and left with nothing
+        // selected -- not silently given drive 3.
+        out(b, 0x08, 0x0F);
+        CHECK(in(b, 0x08) == 0xFF, "selecting a drive the card has not got selects NOTHING");
+
+        setMediaResolver(openHostFile);
+    }
 }
