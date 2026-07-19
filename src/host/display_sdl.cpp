@@ -64,7 +64,7 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // Open at an integer multiple so the pixels are visible; the user can resize and
     // the integer-scale logical presentation keeps the aspect and the crisp edges.
     const int scale = 3;
-    if (!SDL_CreateWindowAndRenderer("altairsim -- VDM-1", w * scale, h * scale,
+    if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale, h * scale,
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &window_,
                                      &renderer_)) {
         std::fprintf(stderr, "SDL: window/renderer failed: %s\n", SDL_GetError());
@@ -82,6 +82,18 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // the window was created.
     SDL_ShowWindow(window_);
     return true;
+}
+
+// Name the window after the machine, not after the board that draws into it
+// (host/display.h). Called before there is a window as often as after -- the run loop
+// says it every time it starts the guest, and a machine that has never painted a frame
+// has no window yet -- so it is recorded and ensureWindow() picks it up. Retitling a live
+// window matters too: CONFIG LOAD swaps the machine underneath an open one.
+void SdlDisplay::setTitle(const std::string& name) {
+    std::string t = name.empty() ? "altairsim" : "altairsim -- " + name;
+    if (t == title_) return;
+    title_ = std::move(t);
+    if (window_) SDL_SetWindowTitle(window_, title_.c_str());
 }
 
 Surface* SdlDisplay::acquire(int w, int h, PixelFormat fmt) {

@@ -1053,6 +1053,12 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // which is the point: the guest gets that byte.
     SigintGuard guard;
 
+    // Whose screen this is. Pushed at the start of every run rather than wired once,
+    // because CONFIG LOAD replaces the machine -- and it can do that with the window
+    // still open, showing the machine that has just been thrown away (host/display.h).
+    // Null headless, and a no-op on a machine that never opens a window.
+    if (g_display) g_display->setTitle(m_.name);
+
     RunResult r;
     uint64_t lastWritten = con.written();
     uint64_t lastStarved = con.starved();

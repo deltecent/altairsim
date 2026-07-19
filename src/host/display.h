@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace altair {
@@ -196,6 +197,26 @@ public:
         if (!epochSet_) { epoch_ = now; epochSet_ = true; }
         return std::chrono::duration<double>(now - epoch_).count();
     }
+
+    // WHAT MACHINE THIS WINDOW BELONGS TO. A windowed host puts it in the title bar; a
+    // headless one drops it on the floor.
+    //
+    // THE BOARD DOES NOT SAY THIS, AND THAT IS THE WHOLE POINT. The same VDM-1 is the
+    // screen of a bare `vdm1`, of `cuter`, and of a Sol-20 -- so a title the board chose
+    // could only ever say "VDM-1", which is what it used to say, and which is wrong on
+    // the machine most likely to have a window open. The machine's name is the machine's
+    // to publish.
+    //
+    // PUBLISHED, NOT WIRED. Nothing here holds a pointer to a Machine: CONFIG LOAD
+    // replaces the machine wholesale (machine.h, replaceWith), so a borrowed name would
+    // go stale exactly when the window is still open and still showing the old one. The
+    // run loop pushes the current name each time it starts the guest instead, which is
+    // the one moment the answer is both known and settled -- the same shape as a board
+    // republishing its clock rate on re-attach (core/board.h) rather than being fixed up.
+    //
+    // May be called before there is a window; a host that has not opened one yet is
+    // expected to remember it and use it when it does.
+    virtual void setTitle(const std::string&) {}
 
     // TAKE WHATEVER THE OPERATOR HAS DONE TO THE WINDOW SINCE LAST TIME: keys pressed,
     // the close box clicked. Keystrokes go to the key sink, a close request is

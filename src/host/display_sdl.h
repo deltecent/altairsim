@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 struct SDL_Window;
@@ -42,6 +43,7 @@ public:
     void     present(Surface* s) override;
     void     setPalette(std::span<const Color> colors) override;
     void     pollEvents() override;
+    void     setTitle(const std::string& name) override;
 
     // The close box, remembered by pollEvents() and handed to the run loop
     // (host/display.h). Consuming: the window itself stays open and responsive --
@@ -64,6 +66,11 @@ private:
     std::unique_ptr<Surface> surface_;   // the board draws here (indexed)
     std::vector<Color>       palette_;   // index -> Color, set by the board
     std::vector<uint8_t>     rgba_;      // scratch: indexed -> RGBA for upload
+
+    // The title bar. Held rather than pushed straight at SDL, because the run loop names
+    // the machine long before a board draws the first frame and opens the window.
+    std::string title_ = "altairsim";
+
     bool inited_ = false;
     bool quit_   = false;
 };
