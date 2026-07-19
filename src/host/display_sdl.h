@@ -44,6 +44,7 @@ public:
     void     setPalette(std::span<const Color> colors) override;
     void     pollEvents() override;
     void     setTitle(const std::string& name) override;
+    void     yieldFocus() override;
 
     // The close box, remembered by pollEvents() and handed to the run loop
     // (host/display.h). Consuming: the window itself stays open and responsive --

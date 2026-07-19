@@ -11,4 +11,9 @@ namespace altair::platform {
 
 void allowForegroundActivation() {}
 
+// And nothing to give back, for the same reason: there is no application-wide
+// foreground here to hold in the first place. Which window has focus when the guest
+// stops is the window manager's decision, and it is not ours to overrule.
+void yieldForeground() {}
+
 }  // namespace altair::platform

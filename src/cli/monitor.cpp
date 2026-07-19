@@ -1273,6 +1273,14 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     }
 
     if (takeTty) con.leaveRaw();
+
+    // The terminal is the operator's again, so make sure the operator can actually
+    // type into it. If a video window took the keyboard -- which it does the moment
+    // you click it, because it IS a keyboard -- the prompt below would otherwise be
+    // printed somewhere the next keystroke will not go (host/display.h). Costs nothing
+    // and does nothing on a machine with no window, and on every host but macOS.
+    if (g_display) g_display->yieldFocus();
+
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
     // EVERY STOP SAYS WHY, and there is now exactly one path that says it. This

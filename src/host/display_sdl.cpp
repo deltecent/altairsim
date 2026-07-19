@@ -96,6 +96,16 @@ void SdlDisplay::setTitle(const std::string& name) {
     if (window_) SDL_SetWindowTitle(window_, title_.c_str());
 }
 
+// Hand the keyboard back to the terminal when the guest stops (host/display.h). SDL
+// wraps no such call, so it goes through the platform seam, which knows that this is a
+// macOS question and answers it nowhere else.
+//
+// Guarded on there being a window at all: the run loop asks on every stop of every
+// machine, and most machines never open one.
+void SdlDisplay::yieldFocus() {
+    if (window_) platform::yieldForeground();
+}
+
 Surface* SdlDisplay::acquire(int w, int h, PixelFormat fmt) {
     if (!ensureWindow(w, h)) return nullptr;
 

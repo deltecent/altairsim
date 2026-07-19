@@ -251,6 +251,26 @@ public:
     // inherits that: a test and a no-SDL build see this as if it did not exist.
     virtual bool takeQuitRequest() { return false; }
 
+    // THE GUEST HAS STOPPED AND THE OPERATOR IS WANTED AT THE MONITOR PROMPT. A
+    // windowed host that currently holds the keyboard gives it back; everyone else
+    // does nothing.
+    //
+    // This is the counterpart to the window being an input device. Clicking it to type
+    // at a Sol-20 makes us the active application -- it has to, or the keyboard could
+    // not reach the guest at all -- and then the guest stops and the monitor writes its
+    // prompt to a terminal that cannot be typed into, behind a window that is still
+    // open because stopping the guest was never the same as closing the window
+    // (display_sdl.h, takeQuitRequest). Reported on macOS, 2026-07-19.
+    //
+    // FOCUS ONLY. The window is not closed, hidden or moved: the machine is still
+    // powered, the last frame is still worth looking at, and RUN resumes into it.
+    //
+    // The run loop calls it wherever it hands the terminal back, on every host. The
+    // base does nothing, so headless builds and tests never notice -- and on X11,
+    // Wayland and Windows the platform layer does nothing either, because there is no
+    // application-wide foreground to give up (platform/foreground.h).
+    virtual void yieldFocus() {}
+
 protected:
     // A subclass that captures keystrokes calls this to hand them off; a no-op when
     // no sink is wired.

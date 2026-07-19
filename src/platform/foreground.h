@@ -30,4 +30,23 @@ namespace altair::platform {
 // does nothing on hosts that have no such concept, which is every host but macOS.
 void allowForegroundActivation();
 
+// GIVE THE FOREGROUND BACK: stop being the active application, without closing,
+// hiding or moving any window we own.
+//
+// The way OUT, and it exists because the way in above is only half the story. The
+// video window is a real input device, so clicking it makes altairsim the active
+// application -- correctly. But the guest then stops (the close box, a breakpoint,
+// HLT) and the monitor prints its prompt into a terminal that no longer has the
+// keyboard, behind a window that is still open because closing the window was never
+// what stopping the guest meant (host/display.h). Typing at that prompt goes into the
+// video window instead. Reported on macOS, 2026-07-19.
+//
+// A no-op unless we are actually active: if the operator is already typing in the
+// terminal -- a scripted run, a machine with no window, a window nobody has clicked --
+// there is no foreground of ours to give up, and this must not disturb whoever holds it.
+//
+// Does nothing on hosts with no application-wide activation, which is every host but
+// macOS -- the same asymmetry, and for the same reason, as the call above.
+void yieldForeground();
+
 }  // namespace altair::platform
