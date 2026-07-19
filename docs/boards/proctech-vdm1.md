@@ -46,8 +46,18 @@ board**, not part of the VDM-1.
   side-effect-free (so `DUMP`/`DISASM`/`TRACE` see the screen). Page-uniform decode.
 - **`pump()`** renders the 16×64 screen into a `Surface` (512×208 logical pixels,
   8×13 per cell) through the character-generator ROM, applies scroll, per-cell
-  cursor inversion, and whole-screen polarity, then `present()`s it — once per time
-  slice, on the main thread, never inside a bus cycle (DESIGN.md §7.4).
+  cursor inversion, and whole-screen polarity, then `present()`s it — on the main
+  thread, never inside a bus cycle (DESIGN.md §7.4).
+- **Two gates decide whether that render happens at all**, and they answer different
+  questions. `frameChanged()` asks *would this frame look any different?* — a
+  deterministic dirty flag set by screen writes that change a byte, a scroll landing
+  on a new row, and the `video`/`cursor` properties, plus a blink-phase compare when
+  a cursor is actually on screen. `Display::wantsFrame()` then asks *do I want a
+  frame right now?* — wall-clock, capped at 60 Hz in `src/main.cpp`, unlimited in
+  `tests/main.cpp` so tests stay deterministic. Only the first gate exists headless.
+  Neither gate clears `dirty_`: a frame deferred by the limiter is still owed, and
+  `render()` is what discharges it. Without them the card repainted all 106,496
+  pixels every time slice and cost a machine **94×** its speed (#63).
 - **Display**: uses a `Display` injected at the composition root
   (`VdmBoard::setDisplay`) — an `SdlDisplay` in the shipping binary, a `NullDisplay`
   headless. The card never `#include`s SDL.
