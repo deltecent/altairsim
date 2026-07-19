@@ -37,14 +37,6 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### `kBlinkTStates` counts emulated time and calls it half a second
-
-`src/boards/proctech-vdm1.cpp:23` documents its blink period as "~0.5 s" against
-an assumed 2 MHz. The default clock is free-running, so emulated time races the
-wall clock and the cursor blinks at a rate that means nothing. This is the same
-confusion of emulated time for wall time that made the VDM-1 repaint 500 times
-per emulated millisecond (#63); the redraw half was fixed, the blink half was
-not.
 ### The manual still names media beyond the three shipped examples
 
 `examples/{cpm,basic,sol}` now ship and are booted by tests, so the quick start's
@@ -178,6 +170,40 @@ Two smaller things to settle while doing it:
   feature gap, not drift. The four transforms that did land (`upper`,
   `strip7in`/`strip7out`, `crlf`, `bsdel`) settled the question the list was
   really asking, which is *where* a transform belongs.
+- **Open the video window without stealing the terminal's focus** — today the
+  first frame from a video board opens an SDL window that becomes the active,
+  key window, so a person typing at the `altairsim>` prompt (or at a guest's
+  console) has their keystrokes go somewhere else mid-sentence. The window
+  should come up unfocused and leave the terminal active; clicking it should
+  still focus it, because for the Sol-20 that window *is* the keyboard.
+
+  SDL3 can do this. In `SdlDisplay::ensureWindow`
+  (`src/host/display_sdl.cpp:21`): set
+  `SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0")` before creating the
+  window, add `SDL_WINDOW_HIDDEN` to the `SDL_CreateWindowAndRenderer` flags,
+  and call `SDL_ShowWindow(window_)` at the end of the function once the
+  renderer, logical presentation and text input are set up. Creating hidden and
+  showing explicitly is what makes the hint bite: it is consulted on the show
+  path, and it also means the window never appears half-configured. Set
+  `SDL_HINT_WINDOW_ACTIVATE_WHEN_RAISED` to `"0"` alongside it if we ever start
+  calling `SDL_RaiseWindow`; nothing does today.
+
+  **Do not reach for `SDL_WINDOW_NOT_FOCUSABLE`.** It looks like the same
+  feature and is not: it makes the window permanently unable to take focus, and
+  the video window is a real input device — the key sink wired in `main.cpp`
+  feeds the Console, and the Sol-20's keyboard has no other home. A window you
+  can never click into cannot be typed into.
+
+  Two things to be honest about before building it. *Unfocused is not behind*:
+  the hint guarantees the terminal stays the active window, but the video window
+  may still be ordered visually in front of it, and SDL exposes no "order back"
+  — on macOS the non-activating show is `orderFront:`. If the requirement is
+  literally *behind*, that needs a platform call SDL does not wrap. And it is a
+  hint on every backend other than macOS: a window manager is free to ignore it,
+  so this is a best-effort behavior and cannot be asserted in a test. Whether it
+  is unconditional or a knob is an open design call — someone driving a Sol-20
+  wants the focus — but there is no `[display]` configuration section to hang a
+  property on yet, so unconditional-with-a-flag is the smaller change.
 - **Show the commit the binary was built from** — `--version` and the banner say
   `altairsim 0.1.0` and nothing more, so a binary in hand cannot be traced to a
   commit. Between releases that is most of them: every CI artifact, every local
@@ -197,6 +223,45 @@ Two smaller things to settle while doing it:
   PR #12 merged.
 
 ### Media
+
+- **Print to a real printer — a `printer:QUEUE` endpoint** — [#70]. Design note
+  in `docs/printing.md`; the open questions are on the issue, for comment.
+  Nothing built. Printed bytes can go to `file:PATH` or
+  `null` today, which is a capture, not a printout. The platform research is
+  settled: two implementations, not three — WinSpool with datatype `RAW` on
+  Windows, the CUPS C API with a raw queue on macOS *and* Linux — selected by
+  CMake so no call site carries an `#ifdef`.
+
+  **It is an endpoint, not a board feature**, and that is the load-bearing
+  call. The grammar lives only in `resolveEndpoint` (`src/host/endpoint.cpp`)
+  and no board may parse an endpoint string, so one `ByteStream` serves the
+  88-C700, the unbuilt 88-LPC, the Sol-20 printer unit, the 88-SIO and 88-2SIO
+  (a serial printer was as ordinary as a parallel one) and any card written
+  later — with not one line changed in any of them. Putting it on the C700
+  would mean writing it four times and watching the four drift.
+
+  **The open problem is the job boundary.** Centronics has no end-of-job signal
+  and neither does a serial line; a real line printer settled it with continuous
+  paper and an operator who tore it off. A host queue wants a finite job. The
+  proposal is an idle timer — every byte restarts it, expiry submits the buffer
+  — with `idle`, `onff` (form feed also ends a job) and a `max` byte ceiling as
+  parameters, plus an operator verb to force one out. **The parameters live in
+  the endpoint spec** (`printer:linewriter?idle=15`), settled 2026-07-19: the
+  resolver owns the grammar, and a spec round-trips through `describe()` into
+  `SHOW` and `CONFIG SAVE` without a board learning a printer-shaped property.
+  Three findings constrain
+  it: the timer is **wall** seconds, not the Clock, since the default clock is
+  free-running and nothing here is guest-readable (same rule as the VDM-1 blink,
+  PR #69); `pump()` only runs inside the run loop (`src/cli/monitor.cpp:1082`),
+  so a halt, a breakpoint or ATTN right after a report would strand the buffer
+  unless stop/reset/`DISCONNECT`/exit flush it too; and `flush()` cannot carry
+  the boundary, because the C700 already calls it every pump
+  (`src/boards/mits-88c700.cpp:132`) and every idle slice would submit an empty
+  job. The C700's PRIME line is a *start*-of-job signal, not an end.
+
+  Build it optional the way SDL3 is (`CMakeLists.txt:250`) — detect quietly,
+  and where CUPS is absent leave `printer:` out of `endpointHelp()` rather than
+  failing to configure a build that works today.
 
 - **A tape counter and a `WIND` verb** — [#48]. A mounted tape has a position
   (`TapeImage::pos()`, shown by `SHOW MOUNTS`) but the only control is `REWIND`,
@@ -438,3 +503,4 @@ each README that the image is a manual download.
 [#26]: https://github.com/deltecent/altairsim/issues/26
 [#43]: https://github.com/deltecent/altairsim/issues/43
 [#48]: https://github.com/deltecent/altairsim/issues/48
+[#70]: https://github.com/deltecent/altairsim/issues/70
