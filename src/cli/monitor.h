@@ -150,6 +150,7 @@ private:
     // real stop (ATTN, ^C, HLT, a user breakpoint in the callee) is reported.
     void runMachine(std::ostream& out, bool stepOver = false);
     void showConsole(std::ostream& out);
+    void showDisplay(std::ostream& out);
     void showRoms(std::ostream& out);
     void showMounts(std::ostream& out);  // every mountable unit, across every board
     void showPaths(std::ostream& out);   // what a path resolves against -- 3 answers

@@ -194,19 +194,25 @@ static const std::vector<CommandDef> kCommands = {
      "  CONFIG LOAD machines/mine.toml      ...and this is how you get it back"},
 
     // ---- everything else, ranked by how often you type it ----
-    {"SET", true, nullptr, "SET <id> <k>=<v>",  // SE (beats SEARCH)
+    {"SET", true, nullptr, "SET <id>|CONSOLE|DISPLAY <k>=<v>",  // SE (beats SEARCH)
      "SHOW <id> lists every property, its value, and whether it can be set while\n"
      "the machine runs. A property's base is its own: a port is hex, a baud rate\n"
      "is decimal.\n"
+     "\n"
+     "CONSOLE and DISPLAY are the HOST's terminal and video window rather than\n"
+     "boards, and they take settings the same way.\n"
      "  SET mem0 fill=zero\n"
-     "  SET mem0 phantom=read"},
-    {"SHOW", true, nullptr, "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|SYMBOLS|MACHINE",
+     "  SET mem0 phantom=read\n"
+     "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal"},
+    {"SHOW", true, nullptr,
+     "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|MACHINE",
      "  SHOW mem0        regions and properties\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
      "  SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins\n"
      "  SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it\n"
      "  SHOW PATHS       what a path resolves against -- and there is more than one answer\n"
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
+     "  SHOW DISPLAY     the host video window, and whether it takes the keyboard\n"
      "  SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS\n"
      "  SHOW ROMS        the ROM images built into this binary, and where each came from"},
     {"DEPOSIT", true, nullptr, "DEPOSIT <addr> <bytes...>",  // DE

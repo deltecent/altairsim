@@ -10,4 +10,10 @@ namespace altair::platform {
 
 void allowForegroundActivation() {}
 
+// Nor is there an application to deactivate: activation on Windows is per-window, and
+// a process cannot politely hand the foreground to "whoever had it before" -- the calls
+// that move it (SetForegroundWindow and kin) name a window and are deliberately
+// restricted. Leaving focus where the user put it is the right answer here.
+void yieldForeground() {}
+
 }  // namespace altair::platform

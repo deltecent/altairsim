@@ -6,6 +6,7 @@
 #include "core/machines.h"  // `base = "default"` -- a built-in is a config file too
 #include "core/paths.h"     // ...and a file's relative paths are relative to IT
 #include "host/console.h"
+#include "host/display.h"
 
 #include <cctype>
 #include <cstdio>
@@ -528,6 +529,25 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
             for (const auto& [k, v] : t.kv) {
                 if (!setPropertyIn(Console::instance().properties(), "console", k, v, err)) {
                     err = path + ": [console]: " + err;
+                    return false;
+                }
+            }
+            continue;
+        }
+
+        // [display] -- the HOST's video window, the same kind of thing as [console]
+        // and not a board either. A machine whose console IS its screen says so here,
+        // which is the whole point of the setting being answerable before any window
+        // exists (host/display.h).
+        //
+        // Accepted in a build with no video: the setting is about what this machine
+        // WANTS, and a headless host simply has nothing to apply it to. A machine file
+        // that failed to load on a no-SDL build would make the file unportable for a
+        // preference that changes no emulated behavior at all.
+        if (t.name == "display") {
+            for (const auto& [k, v] : t.kv) {
+                if (!setPropertyIn(Display::properties(), "display", k, v, err)) {
+                    err = path + ": [display]: " + err;
                     return false;
                 }
             }

@@ -1273,6 +1273,14 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     }
 
     if (takeTty) con.leaveRaw();
+
+    // The terminal is the operator's again, so make sure the operator can actually
+    // type into it. If a video window took the keyboard -- which it does the moment
+    // you click it, because it IS a keyboard -- the prompt below would otherwise be
+    // printed somewhere the next keystroke will not go (host/display.h). Costs nothing
+    // and does nothing on a machine with no window, and on every host but macOS.
+    if (g_display) g_display->yieldFocus();
+
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
     // EVERY STOP SAYS WHY, and there is now exactly one path that says it. This
@@ -1300,6 +1308,21 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
 // The console is the host's terminal, and this is everything about it: what it
 // is, what it is set to, and WHO HOLDS IT -- which is the question you actually
 // have, and which lives on the units, not on the console.
+// The host's video window, and what the operator has said about it. A settings object
+// like `console`, not a board: a board draws a picture, and everything here is about
+// the WINDOW that picture ends up in (host/display.h).
+//
+// Answers in a build with no video at all, and says so. The setting is still real
+// there -- a machine file that asks for it still loads, and still means it on a host
+// that can show it -- and reporting "no video service" beats reporting nothing and
+// leaving the reader to wonder whether the property took.
+void Monitor::showDisplay(std::ostream& out) {
+    out << "display  (the host video window";
+    if (!g_display) out << " -- no video service in this build";
+    out << ")\n";
+    showProps(Display::properties(), out);
+}
+
 void Monitor::showConsole(std::ostream& out) {
     Console& con = Console::instance();
     out << "console  (the host keyboard and screen" << (con.isTty() ? "" : " -- not a tty")
@@ -2161,6 +2184,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             showConsole(out);
             return true;
         }
+        if (sub == "DISPLAY" || sub == "VIDEO" || sub == "WINDOW") {
+            showDisplay(out);
+            return true;
+        }
         if (sub == "SYMBOLS" || sub == "SYMBOL" || sub == "SYM") {
             showSymbols(a, out);
             return true;
@@ -2281,7 +2308,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 k = a[2];
                 v = a[3];
             } else {
-                out << "usage: SET <id>[:<unit>] <key>=<value>  |  SET CONSOLE <key>=<value>\n";
+                out << "usage: SET <id>[:<unit>] <key>=<value>  |  SET CONSOLE <key>=<value>"
+                       "  |  SET DISPLAY <key>=<value>\n";
                 failed_ = true;
                 return true;
             }
@@ -2295,6 +2323,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
             } else {
                 out << "console: " << k << "=" << v << "\n";
+            }
+            return true;
+        }
+
+        // The window the picture lands in, settable the same way and for the same
+        // reason: it is the host's, not a board's (host/display.h).
+        if (is(a[1], "DISPLAY")) {
+            std::string err;
+            if (!setPropertyIn(Display::properties(), "display", k, v, err)) {
+                out << err << "\n";
+                failed_ = true;
+            } else {
+                out << "display: " << k << "=" << v << "\n";
             }
             return true;
         }
