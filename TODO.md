@@ -57,18 +57,16 @@ never been published:
 | | Contents |
 |---|---|
 | What v0.1.0 shipped | `altairsim`, `README.md`, `LICENSE` |
-| What `build-package.sh` builds, and the manual describes | `altairsim`, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, `examples/{cpm,basic,sol}` **with media** |
+| What `build-package.sh` builds, and the manual describes | `altairsim`, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, `LICENSE`, `examples/{cpm,basic,sol,diskbasic}` **with media** |
 
 The script works — run for real (it needs `pandoc`), the unpacked archive boots
-CP/M from `examples/cpm/cpm22-buffered.toml` and mounts `examples/sol/TRK80.WAV`
-to the byte-identical line the tapes chapter quotes. What is missing is only that
-a release runs it.
+CP/M from `examples/cpm/cpm22-buffered.toml`, reaches Altair BASIC 4.1's prompt
+from `examples/diskbasic/`, and mounts `examples/sol/TRK80.WAV` to the
+byte-identical line the tapes chapter quotes. What is missing is only that a
+release runs it.
 
-One smaller thing to settle while doing it:
-
-- **The built archive has no `LICENSE`.** `package.map`'s FILE table does not
-  place one; the hand-built v0.1.0 archives did carry it. An MIT project's
-  archive should — one `FILE` line.
+The archive's missing `LICENSE` was the sub-item here and is fixed (2026-07-19):
+one `FILE` line, verified byte-identical in a built zip.
 
 ---
 

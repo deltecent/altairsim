@@ -54,6 +54,7 @@ DIR  examples/diskbasic  <=  examples/diskbasic
 # ---------------------------------------------------------------------------
 
 FILE  USING-ALTAIRSIM.md   <=  docs/USING-ALTAIRSIM.md
+FILE  LICENSE              <=  LICENSE
 
 # Disk BASIC WAS the TBD here, and it is now real (2026-07-19): an image, a machine file
 # and an acceptance test that reaches its OK prompt. The DIR line above is the two lines
