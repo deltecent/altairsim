@@ -371,10 +371,53 @@ could.
 
 ## {{NAME_DISKBASIC}}
 
-> **Not yet in the package.** {{MACHINE_DISKBASIC}} — {{NAME_DISKBASIC}}, the version that
-> lives on a floppy and has files and `SAVE` — is **TBD**. It is not shipped with this
-> release. Where the rest of this manual mentions it, it is describing something that is
-> coming, not something you have.
+The other BASIC in the package does not use tape at all. {{NAME_DISKBASIC}} lives on an 8"
+floppy, and it has what a cassette cannot give you: files, a directory, and a `SAVE` that
+takes a name.
+
+```
+$ cd examples/diskbasic
+$ altairsim diskbasic.toml
+```
+
+It asks five questions before it will talk to you, and **the second one is the one that
+stops people**:
+
+```
+MEMORY SIZE? 
+LINEPRINTER? C
+HIGHEST DISK NUMBER? 0
+HOW MANY FILES? 
+HOW MANY RANDOM FILES? 
+
+37033 BYTES FREE
+ALTAIR BASIC REV. 4.1
+[DISK EXTENDED VERSION]
+COPYRIGHT 1977 BY MITS INC.
+OK
+```
+
+`MEMORY SIZE?` takes a bare Return and uses all of it. `HIGHEST DISK NUMBER?` is `0` — one
+drive, numbered from zero. The last two take Return.
+
+**`LINEPRINTER?` accepts `C`, `O` or `Q`, and nothing else.** Give it a blank line, or an
+`N`, and it asks again — no error, no complaint, no hint that it wants something particular.
+A machine sitting at a prompt that reappears every time you answer it looks exactly like a
+machine that has hung, and it is not one; it is a 1977 program that expects you to have the
+manual open. `C` is the 88-C700 line printer, and it is a legal answer here even though this
+machine has no printer board fitted — the answer only tells BASIC where `LPRINT` should go,
+and nothing is sent anywhere until you use it.
+
+Past that, it is BASIC:
+
+```
+OK
+PRINT 2+2
+ 4 
+```
+
+The disk is mounted read/write, because that is what a real machine was. `SAVE` will write
+to it.
 
 The cassette BASIC in the package is the real thing, and it is the one that shows you what an
 Altair actually was: a box with no operating system, no storage, and no software in it, which

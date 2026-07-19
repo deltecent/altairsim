@@ -80,17 +80,25 @@ clone knows what it is missing and why. All of it is Mike Douglas's work, from *
 | `mits-88mds/cpm22/` | `…/minidisk/CPM 2.2/` | `cpm22-mini.toml` → `56K CP/M 2.2b v2.3 / For Altair Mini Disk / A>`. **A DIFFERENT CONTROLLER** — the 88-MDS, not the 88-DCDD. **`BOOT.ASM` + `BIOS.ASM` here are authoritative** for the minidisk's geometry (`MINIDSK`: 35 tracks, 16 sectors, `DATATRK` 4) and for the card's own account of itself. Ships as **two disks** because a minidisk holds a fourteenth of an 8″ floppy. |
 | `tarbell-sd/cpm22/buffered/` | `…/tarbell_floppy_controllers/single_density_controller/CPM 2.2B (track buffered)/` | **Nothing.** The Tarbell is not built. `BIOS (1).ASM` is kept only because `docs/boards/tarbell-sd.md` cites it for the grounded-E30 finding. |
 
-### The three images that ARE in git
+### The four images that ARE in git
 
 An image that has to be downloaded before a test can run is an image that makes the test **skip** —
 and three acceptance tests were skipping on every fresh clone and in all of CI. 480 KB buys them
-back, so `.gitignore` names these three, one line each (2026-07-18):
+back, so `.gitignore` names these, one line each (2026-07-18):
 
 | Tracked file | Upstream SHA-256 | Why this one |
 |---|---|---|
 | `examples/cpm/cpm22b23-56k.dsk` | `3147946a…57a2cc` | The bootable 8″ system disk, and the only CP/M a fresh clone gets. `acceptance-examples`, `acceptance-dcdd-readonly`, `acceptance-ddt`, `acceptance-hostbridge`. |
 | `mits-88mds/cpm22/CPM56K-1.DSK` | `41c87b01…32d3d` | The minidisk system disk (A:). `acceptance-minidisk`. |
 | `mits-88mds/cpm22/CPM56K-2.DSK` | `0f6480b1…586db` | Its tools disk (B:) — `cpm22-mini.toml` mounts both, so one without the other does not boot. |
+| `examples/diskbasic/Disk BASIC 4.1.dsk` | `e1fb7255…36b69` | Altair BASIC Rev 4.1 [Disk Extended Version], MITS 1977. `acceptance-diskbasic`. Added 2026-07-19. |
+
+**The Disk BASIC image's upstream is NOT RECORDED**, and the hash above is of the file as it sits
+in the tree, not of a download anyone has re-fetched. It arrived by hand rather than through
+`fetch-disk-images.sh`, so unlike every other row here nobody can currently check it against the
+place it came from. `disks/mits-88dcdd/diskbasic/Basic Versions.pdf` — MITS's own table of what
+each BASIC release does — is kept beside the sources as the documentation for it, and is what the
+C/O/Q answer set comes from. Fill the origin in when it is known.
 
 **`cpm22b23-56k.dsk` is not byte-identical to the download**, and that is deliberate: it ships with
 our `R.COM`, `W.COM` and `HDIR.COM` installed (26K free → 18K), so the host-bridge utilities exist

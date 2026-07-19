@@ -252,11 +252,46 @@ demodulation happens once, at mount. The tapes chapter has the detail.
 
 ---
 
+## 4. {{NAME_DISKBASIC}} from a floppy
+
+```
+$ altairsim {{MACHINE_DISKBASIC}}
+```
+
+The BASIC in example 2 comes off a cassette and forgets everything when you turn it off. This
+one lives on an 8" floppy and has files, a directory, and a `SAVE` that takes a name. It boots
+from the same DBL PROM at `FF00` that CP/M does — `startup` runs it for you.
+
+**It interviews you first**, and this is the example where knowing the answers matters:
+
+```
+MEMORY SIZE? 
+LINEPRINTER? C
+HIGHEST DISK NUMBER? 0
+HOW MANY FILES? 
+HOW MANY RANDOM FILES? 
+
+37033 BYTES FREE
+ALTAIR BASIC REV. 4.1
+[DISK EXTENDED VERSION]
+COPYRIGHT 1977 BY MITS INC.
+OK
+```
+
+Three of the five take a bare Return. `HIGHEST DISK NUMBER?` is `0`, because there is one
+drive and it is numbered from zero.
+
+**`LINEPRINTER?` takes `C`, `O` or `Q` — and re-asks in silence on anything else.** No error,
+no hint. Answer it with Return or `N` and you get the prompt back, forever, which looks like a
+hang and is not one. `C` is the 88-C700 line printer; it is legal here even with no printer
+board fitted, since the answer only decides where `LPRINT` would go.
+
+That is the whole trick. Past it, it is BASIC, and the tapes chapter has the longer version.
+
+---
+
 ## Where to go next
 
 - **Move a file between CP/M and your own machine** — the file-transfer chapter (`R`, `W`, `HDIR`).
 - **Telnet into the guest, or wire it to a real serial port** — the serial chapter.
 - **Look at the bus while it runs** — the debugging chapter.
-
-> **{{NAME_DISKBASIC}}** is not in the package yet. When it is, it will boot the same way
-> everything else here does: name its machine file, and it runs.

@@ -44,26 +44,6 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### Two `docs/package.map` tokens point outside the package
-
-`MACHINE_DISKBASIC` and `NAME_DISKBASIC` (`docs/package.map:90-91`) resolve to
-`disks/diskbasic/diskbasic.toml`, which is not under `examples/` and which the
-`DIR` line that would place it — commented out at line 64, marked TBD — does not
-copy. They are harmless only because the manual's Disk BASIC chapter is itself
-marked TBD. Un-TBD that prose and the doc build resolves a token to a path that
-will not be in the zip, which is precisely the failure the `UNEXPANDED TOKENS`
-guard cannot catch: the token expands fine, to a path nobody will have.
-
-Needs a call before it can be fixed — either drop the two tokens until Disk
-BASIC exists, or ship `disks/diskbasic/` as a fourth example. Nothing forces the
-question until the chapter is written.
-
-The stale package-layout wording that used to head this entry (`package.map:3-4`
-still promising "some disks and tapes") is fixed. Note the shape of that one: a
-still earlier entry had blamed `tools/build-package.sh:7`, which `d20018e` had
-already fixed — so the bug was real but recorded against the wrong file for two
-rounds.
-
 ### Wire `build-package.sh` into the release workflow
 
 **Nothing runs `tools/build-package.sh`.** It assembles the archive the manual

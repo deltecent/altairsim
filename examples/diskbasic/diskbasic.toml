@@ -1,0 +1,70 @@
+# Altair Disk Extended BASIC, Rev 4.1 (MITS, 1977), on an 8" floppy.
+#
+#     cd examples/diskbasic && altairsim diskbasic.toml
+#     -> MEMORY SIZE? LINEPRINTER? ...
+#        ALTAIR BASIC REV. 4.1
+#        OK
+#
+# THE STARTUP DIALOGUE IS THE PART THAT STOPS PEOPLE, so it is written down here. BASIC
+# asks five questions before it will talk to you, and the second one has no obvious answer:
+#
+#     MEMORY SIZE?             <CR>    -- take all of it
+#     LINEPRINTER?             C       -- and ONLY C, O or Q are accepted
+#     HIGHEST DISK NUMBER?     0       -- one drive, numbered from zero
+#     HOW MANY FILES?          <CR>    -- the defaults are fine
+#     HOW MANY RANDOM FILES?   <CR>
+#
+# `LINEPRINTER?` re-asks silently on anything else -- no error, no hint -- so a blank line
+# or an `N` leaves you in what looks like a hung machine and is not. C/O/Q is Rev 4.1's
+# own answer set (MITS, "Basic Versions", kept with the sources under disks/mits-88dcdd/).
+# C is the 88-C700 line printer. You may answer C here whether or not this machine has one:
+# the answer only tells BASIC where LPRINT should go, and nothing is written until you use
+# it. This machine has no printer board, so if you want LPRINT to land somewhere, add an
+# 88-C700 -- `altairsim -x 'SHOW MACHINE' lineprinter` shows one already wired up.
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk lies
+# in this directory, so this file names it and no directory at all -- which is what lets
+# the folder be copied somewhere else and still boot.
+#
+# THIS FILE IS A DELTA. `base = "default"` brings the whole machine -- front panel, 8080,
+# 88-2SIO console at 0x10, 88-DCDD at 0x08 with four drives, 56K of RAM and the DBL boot
+# PROM at FF00. That IS the disk Altair; all this file adds is the floppy in drive 0.
+#
+# THERE IS NO UNDO ON THIS DISK. It is tracked, so a clone can `git checkout` it back --
+# the package you were handed has no such rope. BASIC's SAVE and the DSKINI command both
+# write. If you are about to experiment in anger, copy the image first or add
+# `readonly = true` to the drive below (which is the diskette's notch, and the guest is
+# never told -- see examples/cpm/cpm22-buffered.toml for what that really means).
+
+[machine]
+name = "diskbasic"
+base = "default"
+
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0) -- on a disk
+# Altair the operator's own keystroke was EXAMINE FF00 / RUN, and this is that keystroke.
+# DBL reads track 0 into RAM and that loader pulls BASIC in behind it.
+startup = ["RUN FF00"]
+
+# THE DISK. `id` with NO `type` means "the board already in this machine" -- the base's
+# 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a second
+# controller.
+#
+# NO `media` KEY. This image is 337,664 bytes and an 8" floppy is 77 x 32 x 137 = 337,568,
+# so it does NOT match: it is XMODEM-padded, and the 96 bytes on the end are the padding.
+# The board knows that (sizeMatches() in src/boards/mits-88dcdd.cpp) and probes it as `8in`
+# anyway. Same story as the CP/M image beside it.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "Disk BASIC 4.1.dsk"
+
+# THE OTHER THREE DRIVES ARE EMPTY, which is the machine as shipped: one system disk in
+# drive 0, three doors open. Answer `HIGHEST DISK NUMBER?` with 0 and BASIC uses drive 0
+# alone; mount another disk and raise the answer to reach it.
+#
+#     MOUNT dsk0:drive1 "my-data.dsk"
+#
+# The filename above has SPACES in it, which is authentic and occasionally inconvenient:
+# quote it anywhere you type it, or MOUNT will read `BASIC` as an option and refuse.

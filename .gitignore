@@ -114,6 +114,7 @@ examples/**
 !examples/**/*.toml
 !examples/**/README.md
 !examples/cpm/cpm22b23-56k.dsk
+!examples/diskbasic/Disk BASIC 4.1.dsk
 !examples/basic/4K BASIC Ver 3-1.tap
 !examples/basic/LDR4K31.HEX
 !examples/sol/TREK80.ENT

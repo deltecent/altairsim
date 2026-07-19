@@ -40,9 +40,10 @@
 # it is copied to -- which is the whole point of the rule.
 # ---------------------------------------------------------------------------
 
-DIR  examples/cpm       <=  examples/cpm
-DIR  examples/basic     <=  examples/basic
-DIR  examples/sol       <=  examples/sol
+DIR  examples/cpm        <=  examples/cpm
+DIR  examples/basic      <=  examples/basic
+DIR  examples/sol        <=  examples/sol
+DIR  examples/diskbasic  <=  examples/diskbasic
 
 # ---------------------------------------------------------------------------
 # FILES -- <package path>  <=  <path in this repo>
@@ -54,14 +55,9 @@ DIR  examples/sol       <=  examples/sol
 
 FILE  USING-ALTAIRSIM.md   <=  docs/USING-ALTAIRSIM.md
 
-# TBD, and deliberately not faked:
-#
-#   Altair DISK BASIC exists NOWHERE in this tree today. There is no image and no machine
-#   file for it. The manual has a section for it, written against the tokens below and
-#   marked TBD, so that wiring it up is adding two lines here rather than writing a
-#   chapter under time pressure.
-#
-# DIR  disks/diskbasic  <=  disks/mits-88dcdd/diskbasic          # TBD -- does not exist yet
+# Disk BASIC WAS the TBD here, and it is now real (2026-07-19): an image, a machine file
+# and an acceptance test that reaches its OK prompt. The DIR line above is the two lines
+# this note said it would take.
 
 # ---------------------------------------------------------------------------
 # TOKENS -- what the manual writes, and what it means.
@@ -86,6 +82,9 @@ TAPE_SOL      = examples/sol/TRK80.TAP
 WAV_SOL       = examples/sol/TRK80.WAV
 NAME_SOL      = TREK80 (Processor Technology, 1977)
 
-# Disk BASIC -- TBD. The chapter that uses these is marked as such.
-MACHINE_DISKBASIC = disks/diskbasic/diskbasic.toml
-NAME_DISKBASIC    = Altair Disk BASIC
+# Disk BASIC. Reaches its OK prompt after a five-question startup dialogue, and the second
+# question (LINEPRINTER?) takes C, O or Q and re-asks in silence on anything else -- so any
+# prose using these tokens has to say so, or it is describing a machine that looks hung.
+MACHINE_DISKBASIC = examples/diskbasic/diskbasic.toml
+DISK_DISKBASIC    = examples/diskbasic/Disk BASIC 4.1.dsk
+NAME_DISKBASIC    = Altair Disk Extended BASIC 4.1
