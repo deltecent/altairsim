@@ -23,7 +23,7 @@
 # `readonly = true` below.
 #
 # WHAT `readonly = true` ACTUALLY DOES, because it is not what you would guess: it is the
-# write-protect tab, and the tab was sensed by the DRIVE, not the controller. The 88-DCDD
+# diskette's write-protect notch, and the notch was sensed by the DRIVE, not the controller. The 88-DCDD
 # has no write-protect bit to report -- so the guest is never told. It writes; the head is
 # inhibited; the bytes go nowhere. Whether anyone NOTICES is up to the BIOS, and only
 # through write-verify: this one has it ON (`mode db 40h` in BIOS.ASM), so a protected disk
@@ -73,8 +73,8 @@ id = "dsk0"
   # ordinary 77-track 8" floppy, and this BIOS reads it happily. DIR B:, PIP from it, run a
   # .COM off it.
   #
-  # READ-ONLY, ON PURPOSE, AND IT IS ALSO THE DEMONSTRATION. `readonly` is the WRITE-PROTECT
-  # TAB, and the tab was sensed by the DRIVE, not the controller -- the 88-DCDD has no
+  # READ-ONLY, ON PURPOSE, AND IT IS ALSO THE DEMONSTRATION. `readonly` is the diskette's
+  # WRITE-PROTECT NOTCH, sensed by the DRIVE, not the controller -- the 88-DCDD has no
   # write-protect bit and cannot tell the guest anything. It writes; the head is inhibited;
   # the bytes go nowhere. What notices is the BIOS, and only through write-verify, which
   # THIS one has on (`mode db 40h`): try it and you get a clean `Delayed Write Error` and a

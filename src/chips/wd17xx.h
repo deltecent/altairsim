@@ -91,7 +91,7 @@ public:
     // DINT (pin 37): "sampled whenever a Write Track command is received. If DINT=0, the
     // operation is terminated and the Write Protect status bit is set." A second, separate
     // interlock on formatting -- the board could strap it to forbid a format outright,
-    // independently of the disk's own write-protect tab. Default: formatting is permitted.
+    // independently of the disk's own write-protect notch. Default: formatting is permitted.
     virtual bool diskInit() const { return true; }
 
     // ---- STEP (pin 15) and DIRC (pin 16), as one call, because they arrive together ----

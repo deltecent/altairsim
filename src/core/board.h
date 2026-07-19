@@ -79,7 +79,7 @@ struct UnitDef {
     // so SHOW dsk0 could not tell you a disk was mounted RO -- and nothing that wanted
     // the answer could get it without sniffing prose for a substring.
     //
-    // forced = WE put the tab in. The operator did not type RO; the host would not let
+    // forced = WE protected it. The operator did not type RO; the host would not let
     // us write the file (media.h). That difference must not be silent, and the mount
     // that announced it via drainLog() has long since scrolled off the screen.
     bool readOnly       = false;
@@ -592,7 +592,7 @@ public:
     // This is the one that was missing, and its absence made a liar of the sentence
     // at the top of this section. `readonly`, `mount`, `media`, `unit`, `type`, `at`,
     // `size` -- the most user-facing TOML in the program, the keys that carry the disk
-    // and the ROM and the write-protect tab -- were known to nothing but a chain of
+    // and the ROM and the write-protect flag -- were known to nothing but a chain of
     // string compares inside each board. They appeared in no generated reference, no
     // MCP schema and no SHOW, because there was nothing to walk. THAT is a second
     // schema, and this is the end of it.

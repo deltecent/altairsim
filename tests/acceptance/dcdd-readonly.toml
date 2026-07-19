@@ -4,7 +4,7 @@
 # by ../../.. rather than from wherever ctest happens to be standing.
 #
 # NOTHING WRITES TO THE IMAGE. That is not a convention this test observes politely -- it is
-# the property under test. `readonly = true` is the write-protect tab, and the guest's writes
+# the property under test. `readonly = true` write-protects the disk, and the guest's writes
 # must land nowhere. If this test ever dirties cpm22b23-56k.dsk, it has failed in the most
 # important way it can, and the shasum in the .exp is there to catch it.
 

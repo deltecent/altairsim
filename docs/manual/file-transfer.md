@@ -25,6 +25,9 @@ The utilities are **on the disk**, not in the card. They are ordinary CP/M `.COM
 they were assembled inside the machine, by the machine's own assembler, from source that ships
 with it.
 
+Which means a disk can be missing them, and some are — the minidisk image in the package is
+one. *Getting the utilities onto a disk that hasn't got them*, below, is how you fix that.
+
 | | |
 |---|---|
 | `HDIR [pattern]` | List what is on the host. |
@@ -247,6 +250,109 @@ Step 3 is the one that matters. If your directory holds `readme.txt` and `README
 `ReadMe.Txt`, the card does not pick one, does not pick the newest, and does not pick the
 first. **It tells you it cannot tell**, and stops. A file transfer that guesses wrong and
 tells you it succeeded is worse than one that fails.
+
+## Getting the utilities onto a disk that hasn't got them
+
+There is an obvious hole in everything above: **`R` is how you get a file onto a disk, and `R`
+is a file on the disk.** Boot something that has not got it — the package's minidisk image, or
+a fresh disk you made yourself — and you cannot use the card to fetch the program that drives
+the card.
+
+You break the loop through **the console**, which is the one channel that exists before any
+file-transfer utility does. You type the program in. Not literally: you paste it.
+
+**You cannot paste `R.COM`.** It is binary, and a console is a text device — the first `1Ah`
+in it would end the paste, and the bytes above `7Fh` would not survive the trip at all. So you
+paste the **`R.HEX`** that `LOAD` was going to turn into `R.COM` anyway. It is Intel HEX:
+colons, hex digits and line ends, about 4.8 KB of them, and every byte of it is printable.
+
+It ships in the package, beside the sources, in `cpm/hostbridge/`.
+
+**1. Tell PIP to write a file from the console.**
+
+```
+A>PIP R.HEX=CON:
+```
+
+PIP is now copying what you type into `R.HEX`, and it will keep doing so until you tell it to
+stop.
+
+**2. Paste the whole of `R.HEX` into the terminal.**
+
+Open `cpm/hostbridge/R.HEX` on your host, select all of it, and paste it into the window where
+`altairsim` is running. It echoes as it goes — 108 lines of it — because PIP echoes console
+input, and that echo is your confirmation the guest is really receiving it.
+
+**3. End it with `^Z`.**
+
+```
+^Z
+A>
+```
+
+Ctrl-Z is CP/M's end-of-file on a console, and it is what closes the file. You are back at the
+`A>` prompt and `R.HEX` is on the disk.
+
+**4. Turn the HEX into a program.**
+
+```
+A>LOAD R
+
+FIRST ADDRESS 0100
+LAST  ADDRESS 07A0
+BYTES READ    06A1
+RECORDS WRITTEN 0E
+```
+
+`LOAD` reads `R.HEX` and writes `R.COM`. It assumes the `.HEX`, so `LOAD R` is the whole
+command. `FIRST ADDRESS 0100` is the number to glance at: a CP/M program starts at `100h`, and
+if that line says anything else the paste lost something.
+
+**5. Use it, and never paste again.**
+
+```
+A>R W.COM
+A>R HDIR.COM
+```
+
+That is the payoff. `R.COM` exists now, so the other two utilities come across the card as
+ordinary binaries — no HEX, no `LOAD`, no pasting — provided `hostdir` points at the directory
+they are in:
+
+```
+altairsim> SET hb0 hostdir=cpm/hostbridge
+```
+
+### Two things that would bite you on real hardware and do not bite you here
+
+**Nothing is dropped, however fast you paste.** On a real Altair, shoving 4.8 KB at a 300-baud
+serial card with no flow control is exactly how you overrun the UART and lose characters in the
+middle of a HEX record. Here you cannot: the simulated 6850 and 1602 both pace arrivals at the
+line rate but **only take a byte when the receive register is free**, so the byte waits on the
+host side rather than being lost. A paste of any size arrives intact. (This is a deliberate
+departure from the hardware, and the serial chapter says so — an overrun is data loss the host
+transport genuinely does not have.)
+
+**And a bad paste tells you.** Every Intel HEX record carries a checksum, and `LOAD` checks it.
+A corrupted line is an error, not a program that runs almost correctly.
+
+### The same route builds them from source
+
+Pasting `R.HEX` gets you the program. Pasting `R.ASM` gets you the program *and* the ability to
+change it — the disk's own `ASM.COM` assembles it, and `LOAD` finishes the job exactly as
+above:
+
+```
+A>PIP R.ASM=CON:
+   ...paste R.ASM, ^Z...
+A>ASM R
+A>LOAD R
+```
+
+That is not a different technique, only a longer paste — about 28 KB instead of 4.8 — and it is
+how the committed `.COM` files in this repository were built in the first place. If you only
+want to *run* the utility, paste the HEX; it is six times shorter and needs no assembler on the
+disk.
 
 ## Why one `R.COM` works on every disk you will ever build
 

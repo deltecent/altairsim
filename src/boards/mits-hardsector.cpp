@@ -260,9 +260,9 @@ void HardSectorFdc::selectDrive(int n) {
 // ---------------------------------------------------------------------------
 // A WRITE-PROTECTED DISK DOES NOT REFUSE THE WRITE. It cannot: the 88-DCDD status byte has
 // no write-protect bit -- ENWD, MOVEOK, HDSTAT, DSKEN, INTEN, TRACK0, NRDA is all seven of
-// them -- so the card has no way to say no and the guest has no way to hear it. The tab was
-// sensed by the DRIVE, which inhibited the write head; the controller clocked ENWD and took
-// all 137 bytes exactly as it always did, and they went nowhere.
+// them -- so the card has no way to say no and the guest has no way to hear it. The diskette's
+// write-protect notch was read by the DRIVE, which inhibited the write head; the controller
+// clocked ENWD and took all 137 bytes exactly as it always did, and they went nowhere.
 //
 // So we arm unconditionally. A card that checked readOnly() here and returned without setting
 // writing_ would leave ENWD forever false -- and every period BIOS polls ENWD in a loop with
@@ -599,7 +599,7 @@ std::vector<Property> HardSectorFdc::subUnitProperties(const std::string& table)
     {
         Property x;
         x.name = "readonly";
-        x.help = "The write-protect tab. The DRIVE senses it, so the guest is never told: "
+        x.help = "Write-protect the disk. The DRIVE senses it, so the guest is never told: "
                  "it writes, the head is inhibited, the bytes go nowhere";
         x.kind = Kind::Bool;
         p.push_back(std::move(x));

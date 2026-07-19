@@ -43,15 +43,21 @@ altairsim> MOUNT dsk0:drive1 my-scratch.dsk
 That is a floppy going into drive 1 of the controller called `dsk0`. The socket was empty
 before; it isn't now.
 
-`WP` is **the write-protect tab**, and it does what the tab on a real diskette did: the guest may
-read the disk, and a write is refused at the controller and never reaches the file on your host.
+`WP` **write-protects the disk**, and it does what a real diskette's write-protect notch did: the
+guest may read the disk, and a write is refused at the controller and never reaches the file on
+your host.
+
+A real 8" or 5.25" diskette had no movable tab — a notch in the jacket was either covered or it
+was not, and the drive's photocell read it. (The two sizes read that notch in *opposite* senses,
+which is a fact about the drive, not about the disk, and nothing here depends on it: a disk is
+either protected or it is not.)
 
 ```
 altairsim> MOUNT dsk0:drive2 golden-master.dsk WP
 ```
 
-`RO` is accepted and means exactly the same thing. It is the right word for a ROM socket, which
-has no tab to move — for a floppy, `WP` is the thing you are actually doing.
+`RO` is accepted and means exactly the same thing. It is the right word for a ROM socket, which is
+read-only because of what it is — for a floppy, `WP` is the thing you are actually doing.
 
 **The guest is not told, and cannot be** — see "Read-only is not an error message" below. Mount
 `WP` for a disk you intend to read.
@@ -72,8 +78,8 @@ mounts, protected, and says that it was not your idea:
   dsk0:drive2  disk  master.dsk  (write-protected -- THE HOST WON'T LET US WRITE IT; you did not ask for this)
 ```
 
-That one is worth reading closely. You did not ask for the tab, so CP/M is about to bounce every
-write off a disk you believe is writable.
+That one is worth reading closely. You did not ask for the protection, so CP/M is about to bounce
+every write off a disk you believe is writable.
 
 And taking it out:
 

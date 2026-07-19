@@ -5,7 +5,7 @@
 // A disk and a tape have NOTHING in common as media: one is a geometry you can
 // address at random, the other is a position on a strip that only moves forward.
 // But as a HOST FILE they are the same thing, exactly: a byte range, a
-// write-protect tab, and a sync. That is what this is -- and it is the only place
+// write-protect flag, and a sync. That is what this is -- and it is the only place
 // in the program that opens one.
 //
 // So the layering is:
@@ -40,8 +40,8 @@ public:
     virtual uint64_t size() const = 0;
     virtual bool     readOnly() const = 0;
 
-    // DID WE PUT THE TAB IN FOR YOU? A file the host will not let us write is a disk
-    // with the write-protect tab out, and that is a perfectly ordinary disk -- so it
+    // DID WE PROTECT IT FOR YOU? A file the host will not let us write is a
+    // write-protected disk, and that is a perfectly ordinary disk -- so it
     // MOUNTS, read-only, rather than being refused. (Patrick, 2026-07-12.)
     //
     // But it mounts read-only when the operator did not ASK for read-only, and a

@@ -549,7 +549,7 @@ idle     = false
 }
 
 // anywhere") was false for the most user-facing TOML in the program: the keys that carry
-// the disk, the ROM and the write-protect tab.
+// the disk, the ROM and the write-protect flag.
 //
 // So: the keys are DECLARED (Board::subUnitProperties), the declaration is ENFORCED
 // (Board::loadSubUnit, the one door), and these are the tests that keep it that way.
@@ -595,7 +595,7 @@ void test_subunit_schema() {
                   "`media` is an enum, and its choices come from the CARD'S OWN format table");
         }
     }
-    CHECK(haveRo, "the write-protect tab is DECLARED -- this is the bug, in one check");
+    CHECK(haveRo, "the write-protect flag is DECLARED -- this is the bug, in one check");
     CHECK(haveMedia, "and so is `media`");
 
     // ...AND THE MEDIA A DIFFERENT CARD OFFERS IS DIFFERENT, off one line of code. A

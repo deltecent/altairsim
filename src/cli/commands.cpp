@@ -114,9 +114,9 @@ static const std::vector<CommandDef> kCommands = {
      "  HISTORY 100      the last hundred"},
     {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
-     "WP is the write-protect tab: the guest may read it and may not write it.\n"
-     "RO is accepted and means the same -- it is the word for a ROM, which has no\n"
-     "tab to move.\n"
+     "WP write-protects it: the guest may read it and may not write it.\n"
+     "RO is accepted and means the same -- it is the word for a ROM, which is\n"
+     "read-only because of what it is.\n"
      "\n"
      "A NAME IS CASE-BLIND, and you may leave off what carries no information: the\n"
      "trailing index when only one such card is in the machine, and the unit when the\n"
