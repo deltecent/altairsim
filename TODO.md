@@ -170,6 +170,16 @@ Two smaller things to settle while doing it:
   feature gap, not drift. The four transforms that did land (`upper`,
   `strip7in`/`strip7out`, `crlf`, `bsdel`) settled the question the list was
   really asking, which is *where* a transform belongs.
+- **Display properties** — `focus` is the only one. It landed with the video
+  window's focus fix (2026-07-19): a static `Property` on the `Display` seam
+  (`src/host/display.h`), reachable as `SET DISPLAY focus=on`, `SHOW DISPLAY`
+  and a `[display]` table, and static on purpose so it is answerable before any
+  window exists and in a build with no SDL at all. Everything else about the
+  window is still a compile-time constant — the scale ceiling and the title-bar
+  allowance (`kMaxScale`, `kChromeH`, `src/host/display_sdl.cpp`), the palette
+  the board hands down, and the special-key table behind `Display::SpecialKey`
+  that [#59] wants exposed. None is urgent; recorded so the one-knob table is a
+  known shape rather than an oversight, and so the next one has somewhere to go.
 - **Show the commit the binary was built from** — `--version` and the banner say
   `altairsim 0.1.0` and nothing more, so a binary in hand cannot be traced to a
   commit. Between releases that is most of them: every CI artifact, every local
