@@ -233,11 +233,19 @@ altairsim> SHOW MOUNTS
   UNIT         KIND  HOLDS
   dsk0:drive0  disk  cpm22b23-56k.dsk
   dsk0:drive1  disk  (empty)
+  dsk0:drive2  disk  (empty)
+  dsk0:drive3  disk  (empty)
   mem0:rom0    rom   builtin:dbl  (read-only)
+
+  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.
 ```
 
-Those paths are printed **as written**, which is why the two commands belong together: `SHOW
-MOUNTS` tells you what the machine was told, and `SHOW PATHS` tells you what that meant.
+**Empty drives are listed, not hidden.** The 88-DCDD has four, one disk is in it, and the other
+three doors are open — which is the machine, and worth seeing.
+
+That last line is the command telling you what the middle column is worth, and it is why the two
+belong together: `SHOW MOUNTS` tells you what the machine was told, and `SHOW PATHS` tells you
+what that meant.
 
 ### None of this is a sandbox
 

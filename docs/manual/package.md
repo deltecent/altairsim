@@ -4,7 +4,7 @@
 altairsim                the program. One file, no dependencies, nothing to install.
 altairsim-manual.pdf     this.
 USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
-examples/                three machines that boot, media included.
+examples/                four machines that boot, media included.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
@@ -22,7 +22,7 @@ interface. Ignore it if that is not how you work — nothing else depends on it.
 
 ## The machines are in the program
 
-You do not need any files to get a running machine. Twelve machine descriptions are
+You do not need any files to get a running machine. Thirteen machine descriptions are
 compiled into the binary, and naming one boots it:
 
 ```
@@ -44,15 +44,16 @@ disk, and waits. They want media, and the next section is about where that comes
 `CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
 edit — which is the usual way to start one of your own.
 
-## Three examples, media included
+## Four examples, media included
 
-`examples/` holds three complete machines. **Each is a folder with the media in it**, so every
+`examples/` holds four complete machines. **Each is a folder with the media in it**, so every
 one of them boots the moment you unzip the archive — nothing to fetch, nothing to mount:
 
 ```
-examples/cpm      CP/M 2.2 on an 8" floppy. This is the quick start.
-examples/basic    {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
-examples/sol      A Sol-20 with {{NAME_SOL}} in the cassette deck.
+examples/cpm        CP/M 2.2 on an 8" floppy. This is the quick start.
+examples/basic      {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
+examples/sol        A Sol-20 with {{NAME_SOL}} in the cassette deck.
+examples/diskbasic  {{NAME_DISKBASIC}} on an 8" floppy.
 ```
 
 ```
@@ -69,12 +70,12 @@ somebody.
 to **your shell**, because you are the one who can see your own directory. The machines chapter
 covers both halves.)
 
-The examples chapter walks through all three, and `examples/sol` ships Processor Technology's
+The examples chapter walks through all four, and `examples/sol` ships Processor Technology's
 own manual for the game alongside the tape.
 
 ## What is *not* in the package: everything else to run
 
-**Those three are the whole of the shipped media.** The other built-ins that want a disk or a
+**Those four are the whole of the shipped media.** The other built-ins that want a disk or a
 tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an empty
 drive:
 
@@ -83,10 +84,12 @@ $ altairsim -x "SHOW MOUNTS" basic4k
 altairsim> SHOW MOUNTS
   UNIT       KIND  HOLDS
   acr0:tape  tape  (empty)
+
+  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.
 ```
 
 You supply the media and `MOUNT` it. The disks and tapes chapters describe how — and where
-those chapters name an image that is not one of the three above, they are showing you the
+those chapters name an image that is not one of the four above, they are showing you the
 shape of the command, not a file you already have.
 
 > **Where the rest will come from.** A separate **`altairsim-packages`** repository is planned
@@ -96,7 +99,7 @@ shape of the command, not a file you already have.
 
 The bulk of the media is kept out of the program's own archive on purpose: an image is large,
 most of the good ones are not ours to redistribute, and the simulator's version and the
-software's have no reason to move together. The three that ship are the ones that make the
+software's have no reason to move together. The four that ship are the ones that make the
 manual's first chapters true.
 
 ## What is *not* in the package: the source

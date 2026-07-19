@@ -439,29 +439,61 @@ them. A check that runs the manual's own fenced commands and diffs the output
 against the fence is the missing piece; it would have caught this and the "CP/M
 in one command" gap in the same pass.
 
-**Two more instances, found 2026-07-19**, which is the point: the first one was
-not a one-off. (A third, the refused `MOUNT` at `docs/manual/machines.md:265`,
-was fixed by `9c9c06c`.)
+**Two more instances, found 2026-07-19 and re-captured the same day**, which is
+the point: the first one was not a one-off. (A third, the refused `MOUNT` at
+`docs/manual/machines.md:265`, was fixed by `9c9c06c`.)
 
-- `docs/manual/machines.md:229-234` — the `SHOW MOUNTS` transcript shows
-  `drive0` and `drive1` only, omitting `drive2` and `drive3` (the CP/M machine
-  derives from `machines/default.toml`, `drives = 4`, and `monitor.cpp:633-644`
-  iterates every mountable unit), and drops the trailing `Paths are AS WRITTEN.
-  SHOW PATHS says what they are relative to.` footer, which `monitor.cpp:662`
-  emits unconditionally after every non-empty `SHOW MOUNTS`. The prose two lines
-  below at `:237` then refers to paths being printed *as written* — describing a
-  footer the transcript does not show.
-- `docs/manual/package.md:82-86` — the `basic4k` `SHOW MOUNTS` transcript is
-  missing the same footer. **Measured 2026-07-19**: `altairsim -x "SHOW MOUNTS"
-  basic4k` does print it, so this is drift, not the deliberate trimming this
-  entry first allowed for.
+- `docs/manual/machines.md` — the `SHOW MOUNTS` transcript showed `drive0` and
+  `drive1` only, omitting `drive2` and `drive3` (the CP/M machine derives from
+  `machines/default.toml`, `drives = 4`, and `monitor.cpp:633-644` iterates
+  every mountable unit), and dropped the trailing `Paths are AS WRITTEN.  SHOW
+  PATHS says what they are relative to.` footer, which `monitor.cpp:662` emits
+  unconditionally after every non-empty `SHOW MOUNTS`. The prose below it then
+  referred to paths being printed *as written* — describing a footer the
+  transcript did not show. Both fixed; the prose now points at the footer
+  rather than paraphrasing it, and a line says why empty drives are listed.
+- `docs/manual/package.md` — the `basic4k` `SHOW MOUNTS` transcript was missing
+  the same footer. Fixed.
 
-Both share a shape worth naming: a transcript that was **trimmed** when
+Both shared a shape worth naming: a transcript that was **trimmed** when
 captured is indistinguishable, later, from one that **drifted**. Whatever
 re-capture check gets built has to decide whether trimming is allowed at all —
 if it is, it needs a marker in the fence, because otherwise every legitimately
 abridged transcript is a permanent false positive and the check gets switched
 off.
+
+**Counted prose drifts the same way, and nothing checks that either** (found
+while re-capturing the two transcripts above, 2026-07-19). Shipping
+`examples/diskbasic` made a fourth example, and the manual went on saying three
+in six places in `package.md` plus `introduction.md` and `README.md` — while
+`examples.md` had already grown a `## 4.` section, so the manual contradicted
+itself. `package.md` and `introduction.md` also both said **twelve** built-in
+machines against `--list`'s thirteen. All corrected. The board count
+(*fourteen*) was checked against `BOARDS TYPES` and is right. A count in prose
+is a captured transcript with the fence taken off: same failure, less visible,
+and the re-capture check above would not catch one.
+
+### `SHOW PATHS` calls a machine file built-in when it is in the cwd
+
+`monitor.cpp:697-706` prints `(none -- this machine is built in to the binary)`
+whenever `m_.dir` is empty — but `m_.dir` is the *dirname of the path as given*,
+so naming a machine file in the current directory makes it empty and the machine
+is reported as built in:
+
+```
+$ cd examples/cpm && altairsim cpm22-buffered.toml -x "SHOW PATHS"
+  machine file       (none -- this machine is built in to the binary)
+```
+
+Run the same machine as `examples/cpm/cpm22-buffered.toml` from the repo root
+and the line is correct. This is the one case the manual calls out by name
+(`machines.md`, "Boot a **built-in** machine and the middle line says so"), so
+the command lies precisely where the manual sends you to look — and `cd` into
+the example folder is how every example README tells you to start. Found
+2026-07-19 while measuring the transcripts above; **not fixed**, being a source
+change outside that task. Empty-means-absent is the bug: an empty dirname and no
+machine file are different answers — the same shape as the `read() == 0` bug in
+issue #25, where a quiet tty and an ended pipe shared one value.
 
 ### Eleven tests do not run on Windows
 
