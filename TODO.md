@@ -517,7 +517,15 @@ reports a bare short sha rather than `v0.1.0-N-gsha`. Still traceable, just less
 legible. The fix is a full-history fetch in every job, which is why it was not
 taken automatically.
 
-### The 16-drive path is untested
+### ~~The 16-drive path is untested~~ — FIXED 2026-07-19
+
+Closed by the `sixteen drives on the daisy chain` section in `tests/test_dcdd.cpp`:
+`drives = 16`, a disk in `drive15`, a select of `0x0F`, and the byte read back off
+the data port. **The status byte was the wrong witness** — an empty drive is still
+`online()`, so it reads back identically to a loaded one, and a first draft of this
+test passed with the mask mutated to the MDS's `0x03`. Drive 3 therefore holds a
+disk of its own, and the check is on which fill comes out. Mutation-verified: with
+`selectMask()` set to `0x03` three checks fail. The original entry follows.
 
 `dcdd` declares `maxDrives() = 16` and `selectMask() = 0x0F`
 (`src/boards/mits-88dcdd.h:39-40`), which is a real hardware fact — the
