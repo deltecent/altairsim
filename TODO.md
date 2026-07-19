@@ -37,24 +37,27 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### `DESIGN.md` calls the win32 platform layer unbuilt
+### `DESIGN.md` calls the win32 platform layer unbuilt — [#54]
 
-`DESIGN.md:66` says `src/platform/win32/` is "written but unbuilt", and
-`docs/porting-notes.md` says the same. CI now builds Windows as a **required**
-check and MSVC passes the full suite, including all three CPU exercisers. Both
-statements are stale.
+`DESIGN.md:66` says `src/platform/win32/` is "written but unbuilt" and cites
+`docs/porting-notes.md` as saying so plainly. Windows has been a **required** CI
+leg since #44, MSVC passes the full suite including all three exercisers, and
+v0.1.0 ships a Windows binary.
 
-### `docs/config.md` documents console properties that do not exist
+`porting-notes.md` is **not** stale — it opens with "`src/platform/win32/` IS
+FIELD-PROVEN" and documents all three legs against real hardware. `DESIGN.md`
+launders a stale claim through a citation to a file that says the opposite,
+which is why this is worth more than a word change: a reader who trusts the
+citation never opens the file that would have corrected them.
 
-`docs/config.md:229` lists `rows`, `cols`, `pace`, `ansi`, `tabs` and `log` as
-specified in `DESIGN.md` §7.2 — correctly flagged "not built yet", but they are
-in a properties table a reader will try to use. Either build them (see
-*Features*) or move them out of the table.
+### The SDL window cannot be closed — [#53]
 
-### The SDL window cannot be closed
-
-`src/host/display_sdl.h:44` — no window-close handling. Clicking the close box
-does nothing; the window stays open and responsive for the life of the process.
+`SdlDisplay` pumps the quit event and sets a flag (`src/host/display_sdl.cpp:81`,
+exposed as `quitRequested()`), and nothing ever reads it — `grep -rn
+"quitRequested" src/` finds the definition and no caller. Clicking the close box
+does nothing. The open question is what closing the window should *mean* (back
+to the monitor, quit the process, or detach the display); the issue lays out the
+three readings.
 
 ---
 
@@ -129,7 +132,21 @@ does nothing; the window stays open and responsive for the life of the process.
 - **Line editor gaps** — history persisted to `~/.altairsim_history`, Ctrl-R
   search, word motion, Ctrl-K, Home/End (`DESIGN.md`:1499).
 - **Console properties** — `rows`, `cols`, `pace`, `ansi`, `tabs`, `log`
-  (`DESIGN.md` §7.2). See the doc-drift bug above.
+  (`DESIGN.md` §7.2). `docs/config.md:229` already flags them "not built yet" and
+  `SHOW CONSOLE` does not offer them, so the documentation is honest — this is a
+  feature gap, not drift. The four transforms that did land (`upper`,
+  `strip7in`/`strip7out`, `crlf`, `bsdel`) settled the question the list was
+  really asking, which is *where* a transform belongs.
+- **Show the commit the binary was built from** — `--version` and the banner say
+  `altairsim 0.1.0` and nothing more, so a binary in hand cannot be traced to a
+  commit. Between releases that is most of them: every CI artifact, every local
+  build, and anything a person was handed. `SHOW VERSION` should name the commit
+  (and whether the tree was dirty when it was built), and `--version` should
+  carry it too. Wanted for the ordinary case of someone reporting a bug against a
+  build nobody can identify. The value has to come from the build — a CMake
+  `git describe` at configure time, with an honest fallback when there is no git
+  (a release tarball has none), because a version string that guesses is worse
+  than one that says "unknown".
 
 ### Configuration
 
@@ -234,10 +251,13 @@ Settled. Recorded here so they are not proposed again.
 
 ## Housekeeping
 
-- **[#26] needs re-titling, not closing.** The card shipped
-  (`src/boards/mits-88c700.{h,cpp}`) and the OUT-only data-port fix merged as
-  `3d93a16` (PR #42), so "Add 88-C700 card" is done. What is left is the
-  interrupt structure, above — the issue should say so.
+- **Inspecting the `lineprinter` machine creates a file.** `altairsim -x "SHOW
+  MACHINE" lineprinter` drops a `printout.txt` in the working directory without
+  a byte having been printed — the C700's `file:` sink is opened when the
+  machine loads, not when the card first writes. Defensible (a `CONNECT` target
+  is opened at connect time) and it is the machine's whole purpose, but a
+  read-only inspection command leaving a file behind is a surprise. Low
+  priority; noted rather than filed.
 - **The roadmap's milestone 4 row is unmarked but the milestone is built.**
   `docs/roadmap.md:243` still lists "ROM board, PHANTOM, banking" with no built
   marker. `PhantomAssert`/`PhantomHonor` and `BankType`/`BankSpec` are all in
@@ -257,3 +277,5 @@ Settled. Recorded here so they are not proposed again.
 [#26]: https://github.com/deltecent/altairsim/issues/26
 [#43]: https://github.com/deltecent/altairsim/issues/43
 [#48]: https://github.com/deltecent/altairsim/issues/48
+[#53]: https://github.com/deltecent/altairsim/issues/53
+[#54]: https://github.com/deltecent/altairsim/issues/54
