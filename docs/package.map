@@ -22,9 +22,19 @@
 #      build substitutes from here and FAILS on any token it cannot resolve, so a path
 #      cannot reach the PDF unexpanded and a path cannot be invented in prose.
 #   2. CONTENTS. tools/build-package.sh assembles the zip from the DIRS and FILES below.
-#   3. THE TEST. tests/acceptance/manual.cmake builds that same package, in a directory
-#      with no repository in sight, and runs the manual's own commands against it. If a
-#      chapter tells you to type something that does not work in the package, it fails.
+#   3. THE TESTS, and read what they actually do rather than what you would like them to.
+#      tests/acceptance/docs-manual.cmake greps the chapters for anything pointing outside
+#      the package (src/, ctest, a bare header) and checks every chapter is in ORDER.
+#      tests/acceptance/examples.cmake copies examples/basic and examples/cpm to a scratch
+#      directory with no repository in sight and boots them there.
+#
+#      WHAT NOTHING DOES is assemble this package and run the manual's own commands against
+#      it. tools/build-package.sh is run by no workflow and no test -- only by hand. So a
+#      chapter can tell you to type something that does not work in the zip and the suite
+#      stays green, which is not a hypothetical: the manual promised "CP/M in one command"
+#      while the published archive carried no media at all. This comment claimed a
+#      manual.cmake that has never existed, and a claimed test is worse than a missing one --
+#      it is the missing test plus the belief that you have it.
 #
 # THE PACKAGE LAYOUT MIRRORS THE REPOSITORY'S examples/ TREE, and that is the point of that
 # tree (2026-07-19): the shipped set has ONE home, the tests boot it there, and assembling
