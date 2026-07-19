@@ -262,7 +262,7 @@ $ altairsim -x 'DUMP 0 F' {{MACHINE_CPM}}
 commands run in the order you gave them:
 
 ```
-$ altairsim -x 'MOUNT dsk0 mine.dsk' -x 'RUN FF00' -i {{MACHINE_CPM}}
+$ altairsim -x 'MOUNT dsk0:drive0 mine.dsk' -x 'RUN FF00' -i {{MACHINE_CPM}}
 ```
 
 `-i` is the difference between a query and a start-up: without it the program exits when the

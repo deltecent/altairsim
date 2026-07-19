@@ -13,7 +13,7 @@
 # this script is how they got there, and it is the recipe that makes that blob auditable.
 # For the images that are NOT tracked, prefer running this against a SCRATCH COPY: a fetched
 # image that has been written to can never match its pinned checksum again, which is why
-# tests/acceptance/dcdd-mixed.exp copies first and installs into the copy.
+# tests/acceptance/hostbridge.cmake:198-206 copies first and installs into the copy.
 #
 # THE BOOTSTRAP, AND IT IS NOT THE OBVIOUS ONE (Patrick, 2026-07-14). The obvious way is
 # to PIP all three .HEX files in through the console and LOAD each. It does not fit: the

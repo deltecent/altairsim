@@ -101,9 +101,9 @@ Beyond that you may omit **what carries no information**:
 - the **unit**, when the board has only one thing you could possibly mount into. `MOUNT ACR
   tape.bin` needs no unit, because a cassette recorder has one slot.
 
-A floppy controller does not qualify for the second one. It has sixteen drives, and which
-drive you meant is real information, so you must say it. **Anything genuinely plural, you
-must name.**
+A floppy controller does not qualify for the second one. It has several drives — four by
+default, and up to sixteen on an 88-DCDD — and which drive you meant is real information,
+so you must say it. **Anything genuinely plural, you must name.**
 
 ## …or put it in the machine file
 
