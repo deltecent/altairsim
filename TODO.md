@@ -60,30 +60,6 @@ accurate form is already used twice elsewhere — `disks.md:23` and
 `boards.md:217` both say *up to sixteen*. Only this one sentence states it as a
 fixed count, and it is the sentence a reader meets first.
 
-### `build-package.sh` cannot fail, so a broken package reports success
-
-`tools/build-package.sh:64-78` and `:88-116`: both the FILE and the DIR loop are
-the right-hand side of a pipe, so each `while` body runs in a **subshell**. The
-`exit 1` on a missing source (lines 68 and 92) exits that subshell only, and
-`set -e` does not apply across a pipeline's non-final failure. A `package.map`
-naming a path that does not exist prints its error and the script goes on to zip
-and report success.
-
-**The `UNEXPANDED TOKENS` guard at lines 73-77 is defeated the same way**, and
-that is the one that matters most: it is the check standing between a reader and
-an archive whose manual tells them to type paths that were never substituted.
-
-Related, same root cause: **`tools/build-package.sh:83` sets `missing=""` and
-nothing ever reads it.** The "TELLS YOU what was missing" summary promised in the
-header at lines 20-23 was never wired up — the loop only prints per-directory
-warnings inline (lines 113-114), and those cannot escape the subshell to reach
-the exit status either. A package built with every disk image absent still exits
-0. One fix for both: feed the loops with a redirect or a here-doc rather than a
-pipe.
-
-Found 2026-07-19 while checking a stale header comment that turned out to have
-been fixed already.
-
 ### `docs/package.map` still describes the layout `examples/` replaced
 
 `docs/package.map:3-4` tells the reader a user gets "the `altairsim` binary,
@@ -578,14 +554,6 @@ invention; it is not.
   (`docs/roadmap.md:276-291`). Boards 1 and 2 (88-2SIO, 88-DCDD) are discharged;
   3 (PMMI) and 4 (a DMA/Dazzler-shaped card) are outstanding. The point is to
   find an API defect on paper before writing code.
-- **The 88-C700 is built but has no row in the roadmap table.** `grep` finds it
-  nowhere in `docs/roadmap.md`, though `src/boards/mits-88c700.cpp` and
-  `docs/boards/mits-88c700.md` both exist. It is *not* the 88-LPC — that is a
-  separate and genuinely unbuilt board, so milestone 5's unmarked row at line 244
-  is correct and this is a missing row rather than a mismarked one. **It is now
-  the only such gap**: the 88-MDS (242) and the front panel (245) were once
-  named alongside it here, but both carry full rows marked built, so that clause
-  was wrong and has been removed (checked 2026-07-19).
 - **This file drifts against the tree, and nothing checks it.** Of five items
   picked off it on 2026-07-19, **two had already been done** — the
   `build-package.sh:7` header comment (fixed by `d20018e`, the very commit that
@@ -619,6 +587,18 @@ invention; it is not.
 
   **Every entry in this file has now been checked against the tree on
   2026-07-19** — which resets the clock but does not change the rule above.
+
+  **And a fresh entry can be wrong in the other direction.** The
+  `build-package.sh` subshell bug, written the same day, claimed all four of that
+  script's guards were defeated. Three were not: a pipeline's status is its last
+  command's, the `while` *is* last, so `set -e` fired and the script did stop.
+  Only the `missing` variable was really lost, because a variable cannot escape a
+  subshell the way an exit status can. Running the pre-fix script against each
+  failure — rather than reasoning about it — is what separated them, and the
+  first attempt at that measured nothing, because the copy under test resolved
+  its own `$root` to the scratch directory and bailed before reaching any guard.
+  **An entry asserting a bug is as much a claim to verify as one asserting a
+  fix.**
 
 [#26]: https://github.com/deltecent/altairsim/issues/26
 [#43]: https://github.com/deltecent/altairsim/issues/43
