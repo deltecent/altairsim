@@ -2,20 +2,27 @@
 
 ```
 altairsim                the program. One file, no dependencies, nothing to install.
-README.md                what it is, in one page.
-LICENSE                  MIT.
+altairsim-manual.pdf     this.
+USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
+examples/                three machines that boot, media included.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
 file you must write before the program will start.
 
-**This manual is not inside it.** `altairsim-manual.pdf` — and the *Developer Guide*, if you
-want it — are downloaded separately from the same release page the archive came from. You are
-reading one of them, so you have already found them.
+The **Developer Guide** is not in here — it is a separate download from the same release page
+this came from, and you want it only if you intend to build a board of your own.
+
+### `USING-ALTAIRSIM.md`
+
+This one is not for you, exactly. It is a briefing document for an **AI assistant**: drop it in
+a working directory, start an assistant there, and say *"using altairsim, boot CP/M and show me
+what is on the disk."* It tells the assistant how to drive the machine over the program's MCP
+interface. Ignore it if that is not how you work — nothing else depends on it.
 
 ## The machines are in the program
 
-You do not need any files to get a running machine. Thirteen machine descriptions are
+You do not need any files to get a running machine. Twelve machine descriptions are
 compiled into the binary, and naming one boots it:
 
 ```
@@ -32,11 +39,39 @@ with nothing fetched and nothing mounted.
 `CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
 edit — which is the usual way to start one of your own.
 
-## What is *not* in the package: the disks and tapes
+## Three examples, media included
 
-**No disk images, cassettes or `.WAV` files ship with the binary.** The machines that need
-media — CP/M on a floppy, BASIC on a cassette, Programming System II — start up perfectly
-well, but with an empty drive:
+`examples/` holds three complete machines. **Each is a folder with the media in it**, so every
+one of them boots the moment you unzip the archive — nothing to fetch, nothing to mount:
+
+```
+examples/cpm      CP/M 2.2 on an 8" floppy. This is the quick start.
+examples/basic    {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
+examples/sol      A Sol-20 with {{NAME_SOL}} in the cassette deck.
+```
+
+```
+$ altairsim {{MACHINE_CPM}}
+```
+
+**The folder is the unit, and you may move it anywhere.** A path written *inside* a machine
+file resolves against **that file**, not against wherever you were standing when you ran the
+program — so `{{MACHINE_CPM}}` names its disk as plain `cpm22b23-56k.dsk`, the one lying next
+to it, and the folder still boots after you copy it to your desktop, rename it, or mail it to
+somebody.
+
+(The other half of that rule matters just as much: a path *you type* at the prompt is relative
+to **your shell**, because you are the one who can see your own directory. The machines chapter
+covers both halves.)
+
+The examples chapter walks through all three, and `examples/sol` ships Processor Technology's
+own manual for the game alongside the tape.
+
+## What is *not* in the package: everything else to run
+
+**Those three are the whole of the shipped media.** The other built-ins that want a disk or a
+tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an empty
+drive:
 
 ```
 $ altairsim -x "SHOW MOUNTS" basic4k
@@ -45,20 +80,19 @@ altairsim> SHOW MOUNTS
   acr0:tape  tape  (empty)
 ```
 
-You supply the media and `MOUNT` it. The disks and tapes chapters describe how, and every
-example in this manual that names an image is showing you the shape of the command, not a
-file you already have.
+You supply the media and `MOUNT` it. The disks and tapes chapters describe how — and where
+those chapters name an image that is not one of the three above, they are showing you the
+shape of the command, not a file you already have.
 
-> **Where the media will come from.** A separate **`altairsim-packages`** repository is
-> planned to hold the disks, tapes and machine files, packaged so that each example is a
-> self-contained folder you can drop anywhere. **It is not published yet**, and exactly which
-> images go in it has not been settled. Until it exists there is nothing to link to and no
-> download to point you at — so if you are reading this and want CP/M, you are bringing your
-> own image.
+> **Where the rest will come from.** A separate **`altairsim-packages`** repository is planned
+> to hold the wider collection of disks, tapes and machine files, packaged the same way — each
+> example a self-contained folder you can drop anywhere. **It is not published yet**, and
+> exactly which images go in it has not been settled, so there is nothing to link to here yet.
 
-Media is kept separate from the program on purpose: an image is large, most of the good ones
-are not ours to redistribute, and the simulator's version and the software's have no reason
-to move together.
+The bulk of the media is kept out of the program's own archive on purpose: an image is large,
+most of the good ones are not ours to redistribute, and the simulator's version and the
+software's have no reason to move together. The three that ship are the ones that make the
+manual's first chapters true.
 
 ## What is *not* in the package: the source
 

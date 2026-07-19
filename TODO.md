@@ -361,6 +361,12 @@ manual's own fenced commands and diffs the output against the fence is the
 missing piece; it would have caught this and the "CP/M in one command" gap in
 the same pass.
 
+**`tools/build-package.sh:7` still describes the contents as `disks/ tapes/`**
+in its header comment, which `examples/` replaced. One line, and the script's
+own DIR loop is correct — but it is the file that defines the package, so a
+stale summary at the top of it is the worst place for one. Not fixed here
+because it is a tool, not documentation.
+
 ### Dead `if(EXISTS ...)` gates on files that are tracked
 
 `acceptance-minidisk`, `acceptance-dcdd-readonly`, `acceptance-ddt` and the MDS

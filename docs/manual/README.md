@@ -2,16 +2,16 @@
 
 A simulator of the **MITS Altair 8800** and the **S-100 bus**.
 
-This is the manual for the program you have. It describes `altairsim` itself and the machines
-built into it; the disks and tapes are a separate thing, and the next chapter says where they
-will come from.
+This is the manual for the program you have. It describes `altairsim` itself, the machines
+built into it, and the three worked examples that ship beside it. Media beyond those three is
+a separate thing, and the next chapter says where it will come from.
 
 ## Getting started
 
 | | |
 |---|---|
 | [What altairsim is](introduction.md) | What it does, and what it does not do. |
-| [What is in the package](package.md) | The binary and the built-in machines — and where the disks, tapes and source are. |
+| [What is in the package](package.md) | The binary, the built-in machines, three examples that boot — and where the rest is. |
 | [Running it](running.md) | Unzip and go. |
 | [**Quick start**](quick-start.md) | **CP/M in one command.** Get out with `^E`, back in with `RUN`, out with `QUIT`. |
 
