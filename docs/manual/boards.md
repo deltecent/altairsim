@@ -296,6 +296,36 @@ So this card carries four things at once, and you reach them as units: `serial`,
 keyboard is connected to the console by default, so it simply takes what you type — from the
 display window when there is one, and from your terminal when there is not.
 
+### The keyboard's special keys
+
+The Sol's keyboard is not a subset of a modern one. Eight of its keys send codes with no ASCII
+equivalent at all, and they are how you drive SOLOS and the screen:
+
+| Key | Sends | What it does | Type this instead |
+|---|---|---|---|
+| `MODE SELECT` | `80` | Return to the command mode, restarting the command line | Ctrl-@ |
+| `CLEAR` | `8B` | Erase the screen, cursor home | Ctrl-K |
+| `HOME CURSOR` | `8E` | Cursor to the top left, screen untouched | Ctrl-N |
+| `←` | `81` | Cursor left one | Ctrl-A |
+| `→` | `93` | Cursor right one | Ctrl-S |
+| `↑` | `97` | Cursor up one | Ctrl-W |
+| `↓` | `9A` | Cursor down one | Ctrl-Z |
+| `LOAD` | `8C` | Nothing — neither SOLOS nor CONSOL ever claimed it | — |
+
+**No host key produces the codes in the second column.** A PC keyboard has no MODE SELECT, and
+the arrow keys it does have send escape sequences rather than a single byte, so at present they
+are dropped. That is a gap, and it is on the list.
+
+**The last column is the way round it, and it is not a hack** — it is how the hardware was built.
+Each special key's code is exactly `80` plus the control code for the same action, because SOLOS's
+display driver masks the top bit off everything it is handed before it looks the character up. So
+`CLEAR` and Ctrl-K arrive at one routine, `HOME CURSOR` and Ctrl-N at another. The command-mode
+reader does the same masking, which is why a NUL byte is `MODE SELECT`: type Ctrl-@ (Ctrl-Space on
+many keyboards) and SOLOS abandons the line you were typing and gives you a fresh prompt.
+
+The console is 8-bit clean, so if you have some way of sending the byte itself — a paste, a
+script, a terminal macro — the real code works too, and behaves identically.
+
 One register (`FA`) reports the state of *all* of them at once — and it does so with **mixed
 polarity**, the keyboard and parallel bits reading active-low while the tape bits read
 active-high. That is not a bug in the card or in this simulator; it is what the hardware did, and
