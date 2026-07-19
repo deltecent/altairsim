@@ -201,7 +201,7 @@ file(WRITE "${work}/dcdd.keys" "${keys}")
 if(MODE STREQUAL build)
   set(image "${SRC}/disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK")
 else()
-  set(image "${SRC}/disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk")
+  set(image "${SRC}/examples/cpm/cpm22b23-56k.dsk")
 endif()
 configure_file("${image}" "${work}/work.dsk" COPYONLY)
 

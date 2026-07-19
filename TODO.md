@@ -37,6 +37,15 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
+### `kBlinkTStates` counts emulated time and calls it half a second
+
+`src/boards/proctech-vdm1.cpp:23` documents its blink period as "~0.5 s" against
+an assumed 2 MHz. The default clock is free-running, so emulated time races the
+wall clock and the cursor blinks at a rate that means nothing. This is the same
+confusion of emulated time for wall time that made the VDM-1 repaint 500 times
+per emulated millisecond (#63); the redraw half was fixed, the blink half was
+not.
+
 ---
 
 ## Features
@@ -254,6 +263,70 @@ Settled. Recorded here so they are not proposed again.
 - **Making all paths cwd-relative** — proposed twice and declined 2026-07-16. A
   path *inside* a machine file is relative to that file; a path *typed* is
   relative to the shell. The pains it would fix are already fixed.
+
+---
+
+## Test coverage lost or missing
+
+### Per-drive geometry is no longer proved — `acceptance-dcdd-mixed` was removed
+
+Removed 2026-07-19 with the 8 MB image it needed. It put an 8 MB disk in drive 0
+and a 77-track floppy in drive 2 of one 88-DCDD (the FDC+ manual's own
+arrangement, 3.7.4), installed the host-bridge utilities into scratch copies of
+both, and weighed `R.COM` byte for byte coming back off the floppy — because the
+failure mode when the format or the Spindle stops being **per drive** is
+*corruption*, not an error.
+
+It needed an 8.6 MB download, so it skipped on every fresh clone and in all of
+CI: a test that reads as protection and is not. **Rebuilding that coverage
+without the download is the open task** — two different geometries in one
+controller does not inherently need a large image, only two images whose
+geometries differ.
+
+### `acceptance-hostbridge-build` is no longer registered
+
+Same date, same reason. `tests/acceptance/hostbridge.cmake` keeps its
+`MODE=build`, and it is now run **by hand** when one of `cpm/hostbridge/*.ASM`
+changes:
+
+```sh
+tools/fetch-disk-images.sh
+cmake -DSIM=build/altairsim -DSRC=. -DBIN=build -DMODE=build \
+      -P tests/acceptance/hostbridge.cmake
+```
+
+It cannot move to the tracked floppy: PIPing the three `.ASM` in needs 78 KB of
+free disk and that image arrives with 18K. So on a fresh clone the committed
+`.HEX` is checked against the committed `.COM`, and the `.ASM` behind them is
+checked by nobody unless you run the above.
+
+### `docs/package.map` claims a test that does not exist
+
+`docs/package.map:20` says `tests/acceptance/manual.cmake` builds the package in
+a directory with no repository in sight and runs the manual's own commands
+against it. **That file does not exist.** Nothing assembles the package layout
+and checks the manual against it, which is exactly why the manual could promise
+"CP/M in one command" while the published archive contained no media at all.
+
+`acceptance-examples` now covers the *examples* (it boots `examples/cpm` and
+`examples/basic` from a scratch directory), which is the load-bearing half. What
+is still missing is the manual-versus-package check.
+
+### Dead `if(EXISTS ...)` gates on files that are tracked
+
+`acceptance-minidisk`, `acceptance-dcdd-readonly`, `acceptance-ddt` and the MDS
+phase in `hostbridge.cmake` still guard on images that have been in git since
+2026-07-18, and `acceptance-hostbridge` opens the same image unguarded
+(`hostbridge.cmake:204`) while its siblings guard it. Dead code that reads as
+live protection; the inconsistency is the tell.
+
+### Two machine files mount images that exist nowhere
+
+`disks/mits-88dcdd/cpm22/burcon/cpm22-burcon.toml` mounts `cpm56k.dsk` and
+`.../lifeboat/cpm22-lifeboat.toml` mounts `LIFEBOAT-CPM22-48K.DSK`. Neither file
+is in the tree, and neither is in `tools/fetch-disk-images.sh` — so neither can
+ever have worked from a clone. Either add them to the fetch script or say in
+each README that the image is a manual download.
 
 ---
 

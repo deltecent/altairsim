@@ -1,0 +1,57 @@
+# TREK80 on a Processor Technology Sol-20, with the cassette in the deck.
+#
+#     cd examples/sol && altairsim trek80.toml
+#     -> SOLOS's `>` prompt, then TYPE:  XE TRK80
+#
+# AND YOU DO HAVE TO TYPE IT. `startup` runs MONITOR commands -- ours, before the guest
+# has the keyboard. `XE TRK80` is input to SOLOS, which is a program running inside the
+# machine, and no machine file can type at it any more than a TOML file could press keys
+# on a real Sol-20. So this file gets you to the prompt with the tape loaded and pressed
+# PLAY; the last keystroke is yours. See README.md.
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md), so this whole
+# directory can be copied anywhere and still run. `altairsim examples/sol/trek80.toml`
+# from the repo root means the same machine.
+#
+# `base = "sol20"` IS THE MACHINE -- the Sol-PC's three cards (front panel, VDM-1 video at
+# 0CC00H, the composite `sol` I/O card at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
+# machines/sol20.toml. This file adds a tape and a clock, and nothing else.
+
+[machine]
+name = "trek80"
+base = "sol20"
+
+# THE CASSETTE, in deck 1. A deck plays only while the GUEST turns its motor (OUT 0FAH),
+# which SOLOS does when you ask it to read -- so mounting is genuinely "put the tape in
+# and press PLAY", and nothing happens until the program asks.
+#
+# TRK80.TAP is the byte stream. TRK80.WAV is the SAME tape as CUTS audio at 1200 baud,
+# and either will load:
+#
+#     MOUNT sol0:tape1 "TRK80.WAV"
+#
+# The .WAV goes through the modem -- real tones, decoded the way the hardware did -- and
+# takes about a minute of emulated time at the clock below. The .TAP skips the audio and
+# is otherwise identical. Both are derived from TREK80.ENT by make-trek80-tape.sh.
+#
+# REW sol0:tape1 rewinds; nothing in the guest can wind a tape back, so that verb is your
+# finger on the recorder. You will want it if you `XE TRK80` twice.
+startup = ["MOUNT sol0:tape1 \"TRK80.TAP\""]
+
+# 2.045 MHz -- THE STOCK SOL-20, and one of the few places a real number belongs in an
+# example. It is the 14.31818 MHz dot clock divided by 7 (Sol Systems Manual, Theory of
+# Operation VIII, the phi-1/phi-2 pulse-width table: 2.045 MHz / 140 ns / 280 ns for the
+# 8080A; 2.386 and 2.863 MHz are the jumper options for the faster A-2 and A-1 parts).
+#
+# THE DEFAULT IS FLAT OUT, and that is the right default -- it stays where it is in the
+# built-in `sol20`. It is set HERE because this is a GAME: it was played at this speed,
+# the tape takes the time a tape took, and free-running would give you a Klingon attack
+# resolved before the screen finished drawing.
+#
+# It is not the only thing governing the pace, mind. TREK80 asks for a speed factor of its
+# own before it starts -- 9 slow, 0 fast -- and that is the knob the 1977 player had.
+#
+#     SET cpu0 clock_hz=0        # back to flat out, for a very short game
+[[board]]
+id       = "cpu0"
+clock_hz = 2045000

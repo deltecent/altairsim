@@ -6,7 +6,7 @@ Bridge utilities follow, so the format cannot drift from what a guest actually p
 
 ## Provenance
 
-Generated 2026-07-17 by booting `disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk`
+Generated 2026-07-17 by booting `examples/cpm/cpm22b23-56k.dsk`
 (which carries `M80.COM`, `L80.COM`, `MAC.COM`) in the `default` machine, assembling and
 linking the sources through the Host Bridge:
 

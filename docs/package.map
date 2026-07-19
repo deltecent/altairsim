@@ -21,8 +21,10 @@
 #      with no repository in sight, and runs the manual's own commands against it. If a
 #      chapter tells you to type something that does not work in the package, it fails.
 #
-# THE LAYOUT BELOW IS PROVISIONAL (Patrick has not settled it). That is exactly why the
-# prose does not contain it: settling it is editing this file, not sweeping the chapters.
+# THE PACKAGE LAYOUT MIRRORS THE REPOSITORY'S examples/ TREE, and that is the point of that
+# tree (2026-07-19): the shipped set has ONE home, the tests boot it there, and assembling
+# the package is a copy rather than a rearrangement. A path that works in a clone works in
+# the zip, which is the only way the manual can be true in both.
 #
 # ---------------------------------------------------------------------------
 # DIRS -- <package path>  <=  <path in this repo>
@@ -33,8 +35,9 @@
 # it is copied to -- which is the whole point of the rule.
 # ---------------------------------------------------------------------------
 
-DIR  disks/cpm22        <=  disks/mits-88dcdd/cpm22/buffered
-DIR  tapes/basic        <=  tapes/4KBasic31
+DIR  examples/cpm       <=  examples/cpm
+DIR  examples/basic     <=  examples/basic
+DIR  examples/sol       <=  examples/sol
 
 # ---------------------------------------------------------------------------
 # FILES -- <package path>  <=  <path in this repo>
@@ -61,15 +64,22 @@ FILE  USING-ALTAIRSIM.md   <=  docs/USING-ALTAIRSIM.md
 
 # The CP/M machine. Buffered CP/M 2.2 on an 8" floppy: it carries `startup = ["RUN FF00"]`,
 # so naming it IS booting it, and it is the quick start.
-MACHINE_CPM   = disks/cpm22/cpm22-buffered.toml
-DISK_CPM      = disks/cpm22/cpm22b23-56k.dsk
+MACHINE_CPM   = examples/cpm/cpm22-buffered.toml
+DISK_CPM      = examples/cpm/cpm22b23-56k.dsk
 
 # Cassette BASIC. WHICH ONE SHIPS IS TBD (4K or 8K); this points at 4K today because it is
 # the one with an acceptance test behind it.
-MACHINE_BASIC = tapes/basic/basic4k.toml
-TAPE_BASIC    = tapes/basic/4K BASIC Ver 3-1.tap
-LOADER_BASIC  = tapes/basic/LDR4K31.HEX
+MACHINE_BASIC = examples/basic/basic4k.toml
+TAPE_BASIC    = examples/basic/4K BASIC Ver 3-1.tap
+LOADER_BASIC  = examples/basic/LDR4K31.HEX
 NAME_BASIC    = Altair 4K BASIC 3.1
+
+# The Sol-20. Reaches SOLOS's prompt with TREK80 in the cassette deck; the operator types
+# `XE TRK80`, because that is input to SOLOS and no machine file can type at a guest.
+MACHINE_SOL   = examples/sol/trek80.toml
+TAPE_SOL      = examples/sol/TRK80.TAP
+WAV_SOL       = examples/sol/TRK80.WAV
+NAME_SOL      = TREK80 (Processor Technology, 1977)
 
 # Disk BASIC -- TBD. The chapter that uses these is marked as such.
 MACHINE_DISKBASIC = disks/diskbasic/diskbasic.toml

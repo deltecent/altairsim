@@ -50,7 +50,7 @@
 # in and it boots:
 #
 #     altairsim
-#     MOUNT dsk0:drive0 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+#     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
 #     RUN FF00
 #     -> 56K CP/M 2.2b v2.3
 #
@@ -152,7 +152,7 @@ port = 10
 # for the same reason `fill = "random"` is: an empty drive is a real state, and it is the
 # state this machine is in until you put something in it.
 #
-#     MOUNT dsk0:drive0 "disks/mits-88dcdd/cpm22/buffered/cpm22b23-56k.dsk"
+#     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
 #     RUN FF00
 #
 # The card PROBES what you mount -- 337,568 bytes (or the XMODEM-padded 337,664 that

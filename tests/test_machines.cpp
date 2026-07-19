@@ -223,7 +223,7 @@ void test_machines() {
     // Which meant that until the escape below existed, THE ONE THING `startup` IS FOR
     // could not be written. Every `"` toggled the string, escape or not, so
     //
-    //     startup = ["MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\""]
+    //     startup = ["MOUNT acr0:tape \"examples/basic/4K BASIC Ver 3-1.tap\""]
     //
     // parsed as `MOUNT acr0:tape \` and the machine booted with an empty recorder -- no
     // error, just a tape that was never in the drive. docs/config.md's promise ("anything
@@ -232,8 +232,8 @@ void test_machines() {
 [machine]
 name    = "quoted"
 startup = [
-  "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
-  "LOAD \"tapes/4KBasic31/LDR4K31.HEX\"",
+  "MOUNT acr0:tape \"examples/basic/4K BASIC Ver 3-1.tap\"",
+  "LOAD \"examples/basic/LDR4K31.HEX\"",
   "RUN 0",
 ]
 )";
@@ -243,7 +243,7 @@ startup = [
     CHECK(loadTomlText(kQuoted, "quoted", mq, eq), "a startup entry parses with escaped quotes");
     CHECK(mq.startup.size() == 3, "...all three of them, and the escape does not split one in two");
     if (mq.startup.size() == 3) {
-        CHECK(mq.startup[0] == "MOUNT acr0:tape \"tapes/4KBasic31/4K BASIC Ver 3-1.tap\"",
+        CHECK(mq.startup[0] == "MOUNT acr0:tape \"examples/basic/4K BASIC Ver 3-1.tap\"",
               "...and the QUOTES REACH THE MONITOR, which is the whole point: without them "
               "the tokenizer sees three arguments and the path dies at the first space");
         CHECK(mq.startup[2] == "RUN 0", "...and an entry with no escape in it is untouched");
