@@ -4,10 +4,15 @@
 
 ```
 $ ./altairsim
-altairsim 0.1.0 -- 8080, full speed.
+altairsim 0.1.0 (v0.1.0-37-gcc64cca) -- 8080, full speed.
 machine: default.  HELP for commands.
 altairsim>
 ```
+
+The parenthetical is **the commit this binary was built from**, and yours will differ. Between
+releases the version number alone names every build alike, so it is the commit that says which
+source produced the program in front of you — quote it in a bug report. `SHOW VERSION` prints it
+on its own, and says whether the tree had uncommitted edits in it at the time.
 
 That prompt is **the monitor**. The machine exists — it has memory, a processor, a console
 board and a floppy controller in it — but it is not running. Nothing has been started. This

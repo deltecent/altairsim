@@ -83,6 +83,83 @@ add_custom_command(
   VERBATIM)
 
 # ---------------------------------------------------------------------------
+# Which commit this binary is.
+#
+# Between releases, MOST binaries are untagged: every CI artifact, every local
+# build, anything handed to somebody to try. `altairsim 0.1.0` names all of them
+# identically, so a bug report against one cannot be traced to the source that
+# produced it. `git describe` can, and the build is the only place that knows.
+#
+# THE FALLBACK IS "unknown", AND THAT IS DELIBERATE. A release tarball has no .git
+# in it, and neither does a source zip; there is nothing to describe and nothing
+# to infer from. Writing PROJECT_VERSION there instead would produce a string that
+# looks like provenance and is not -- and the way you find out it lied is by
+# spending an afternoon on a bug in a revision the binary was never built from.
+#
+# CONFIGURE TIME, not build time: git runs once and the answer is baked into one
+# generated header, so every object file in the binary agrees about it and no
+# compile shells out. `git status` is consulted too, since
+# "which commit" is a half-answer for a tree with uncommitted edits in it -- which
+# is exactly the tree most hand-built binaries come from. Both are a snapshot; the
+# CONFIGURE_DEPENDS below re-runs this when HEAD moves, and a build that only
+# edited files still reports the dirty flag it was configured with. Re-run cmake if
+# you need it exact.
+# ---------------------------------------------------------------------------
+find_package(Git QUIET)
+set(ALTAIRSIM_GIT_COMMIT "unknown")
+set(ALTAIRSIM_GIT_DIRTY 0)
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" describe --tags --always
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE git_describe
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE git_rc)
+  # A non-zero status means git could not answer -- no commits yet, or this is not a
+  # work tree after all. Leave it "unknown"; a half-captured sha is worse than none.
+  if(git_rc EQUAL 0 AND git_describe)
+    set(ALTAIRSIM_GIT_COMMIT "${git_describe}")
+    execute_process(
+      COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=no
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      OUTPUT_VARIABLE git_status
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+      RESULT_VARIABLE status_rc)
+    # Untracked files are excluded on purpose: a build/ directory, an editor's swap
+    # file and a scratch disk image are not modifications to the source this binary
+    # was built from, and a dirty flag that is always set says nothing.
+    if(status_rc EQUAL 0 AND git_status)
+      set(ALTAIRSIM_GIT_DIRTY 1)
+    endif()
+  endif()
+  # So that a commit, a checkout or a rebase re-configures and the sha follows. HEAD
+  # is the file that moves in all three; the ref it names moves when a commit lands on
+  # the branch you are already on.
+  #
+  # ONLY FOR AN ORDINARY .git DIRECTORY. In a linked work tree `.git` is a FILE naming
+  # the real gitdir elsewhere, so there is no .git/HEAD here to watch -- the version is
+  # still captured correctly above (git itself follows the pointer), it just does not
+  # re-configure by itself. Chasing that indirection would buy one convenience and a
+  # second parser for git's on-disk layout.
+  if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git" AND EXISTS "${CMAKE_SOURCE_DIR}/.git/HEAD")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${CMAKE_SOURCE_DIR}/.git/HEAD")
+    file(READ "${CMAKE_SOURCE_DIR}/.git/HEAD" head_contents)
+    if(head_contents MATCHES "^ref: ([^\r\n]+)")
+      set(head_ref "${CMAKE_SOURCE_DIR}/.git/${CMAKE_MATCH_1}")
+      if(EXISTS "${head_ref}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${head_ref}")
+      endif()
+    endif()
+  endif()
+endif()
+
+configure_file("${CMAKE_SOURCE_DIR}/cmake/version.h.in"
+               "${CMAKE_BINARY_DIR}/generated/version_generated.h" @ONLY)
+
+# ---------------------------------------------------------------------------
 # The platform layer (DESIGN.md 2.1). NO #ifdefs -- ANYWHERE.
 #
 # OS differences are one interface header with zero conditionals in it, plus one
@@ -128,6 +205,7 @@ add_custom_target(platform_lint
 # ---------------------------------------------------------------------------
 add_library(altair_core STATIC
   ${PLATFORM_SOURCES}
+  src/core/version.cpp
   src/core/crc32.cpp
   src/core/hex.cpp
   src/core/symbols.cpp
@@ -225,7 +303,7 @@ add_library(altair_core STATIC
   "${ROMS_GENERATED}"
   "${MACHINES_GENERATED}")
 
-target_include_directories(altair_core PUBLIC src)
+target_include_directories(altair_core PUBLIC src "${CMAKE_BINARY_DIR}/generated")
 
 # ---------------------------------------------------------------------------
 # The optional video backend: SDL3 (DESIGN.md 7.4). THE FIRST OPTIONAL LINK-TIME

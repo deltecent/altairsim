@@ -123,7 +123,9 @@ account, and nothing else.
 **What makes a bug report useful** is enough for somebody else to see what you saw:
 
 - The **version** — the line `altairsim` prints at startup, or `altairsim --version` — and
-  which operating system.
+  which operating system. Paste it whole: the commit in the parentheses is what says which
+  source built your copy, and between releases the number alone names them all the same.
+  `SHOW VERSION` prints the same thing from inside the monitor.
 - The **machine**: the built-in's name, or the machine file itself, which is a small text
   file you can paste.
 - **What you typed and what happened.** Paste the terminal, prompt and all. The monitor

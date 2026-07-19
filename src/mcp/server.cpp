@@ -6,6 +6,7 @@
 #include "core/crc32.h"
 #include "core/hex.h"
 #include "core/roms.h"
+#include "core/version.h"
 #include "cpu/cpu.h"
 #include "host/stream.h"
 #include "util/json.h"
@@ -832,7 +833,10 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out) {
             r["capabilities"] = caps;
             Json info = Json::obj();
             info["name"] = Json("altairsim");
-            info["version"] = Json("0.1.0");
+            // The version number alone, not the commit: this field is a SemVer string
+            // by protocol, and a `git describe` is not one. SHOW VERSION is where the
+            // commit lives, and an MCP client can run it.
+            info["version"] = Json(versionNumber());
             r["serverInfo"] = info;
             reply(out, id, r);
             continue;
