@@ -79,8 +79,9 @@ This section is here because a manual that only lists strengths is an advertisem
 
 ## What is in the box
 
-You have the `altairsim` program, this manual, and three worked examples with their media —
-CP/M on a floppy, BASIC on a cassette, and a Sol-20 with a game on tape. Twelve more machines
+You have the `altairsim` program, this manual, and four worked examples with their media —
+CP/M on a floppy, BASIC on a cassette, a Sol-20 with a game on tape, and Disk BASIC on a
+floppy. Thirteen more machines
 are built into the program itself. It boots something the moment you unzip it; the next
 chapter says what, and where further disks and tapes will come from.
 
