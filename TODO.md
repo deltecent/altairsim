@@ -37,19 +37,6 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### `DESIGN.md` calls the win32 platform layer unbuilt — [#54]
-
-`DESIGN.md:66` says `src/platform/win32/` is "written but unbuilt" and cites
-`docs/porting-notes.md` as saying so plainly. Windows has been a **required** CI
-leg since #44, MSVC passes the full suite including all three exercisers, and
-v0.1.0 ships a Windows binary.
-
-`porting-notes.md` is **not** stale — it opens with "`src/platform/win32/` IS
-FIELD-PROVEN" and documents all three legs against real hardware. `DESIGN.md`
-launders a stale claim through a citation to a file that says the opposite,
-which is why this is worth more than a word change: a reader who trusts the
-citation never opens the file that would have corrected them.
-
 ### The SDL window cannot be closed — [#53]
 
 `SdlDisplay` pumps the quit event and sets a flag (`src/host/display_sdl.cpp:81`,
@@ -278,4 +265,3 @@ Settled. Recorded here so they are not proposed again.
 [#43]: https://github.com/deltecent/altairsim/issues/43
 [#48]: https://github.com/deltecent/altairsim/issues/48
 [#53]: https://github.com/deltecent/altairsim/issues/53
-[#54]: https://github.com/deltecent/altairsim/issues/54
