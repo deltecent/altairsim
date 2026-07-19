@@ -5,8 +5,25 @@
 #include "platform/foreground.h"
 
 #include <cstdio>
+#include <cstdlib>
+
+#include <algorithm>
 
 namespace altair {
+
+namespace {
+
+// How big the window may open, as a multiple of the board's frame. Big enough that a
+// 1975 screen is comfortable on a modern panel, small enough to leave the desktop
+// usable -- and a ceiling, not a promise: ensureWindow() comes down from here until it
+// fits the display it is actually on.
+constexpr int kMaxScale = 3;
+
+// A rough allowance for the title bar, in points, so a window sized against the
+// display's usable height does not open with its title bar off the top of the screen.
+constexpr int kChromeH = 40;
+
+}  // namespace
 
 SdlDisplay::~SdlDisplay() {
     if (texture_) SDL_DestroyTexture(texture_);
@@ -61,15 +78,50 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // so the whole arrangement is best-effort and cannot be asserted in a test.
     SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
 
-    // Open at an integer multiple so the pixels are visible; the user can resize and
-    // the integer-scale logical presentation keeps the aspect and the crisp edges.
-    const int scale = 3;
+    // OPEN AT AN EXACT INTEGER MULTIPLE OF THE FRAME -- and pick the multiple to FIT,
+    // rather than assuming one and hoping.
+    //
+    // 3x was assumed, and it does not fit a laptop. A 512-wide VDM-1 frame asks for a
+    // 1536-point window on a panel 1470 points wide, so macOS clamps it -- and a
+    // clamped window is no longer a multiple of anything. The integer-scale
+    // presentation then drops to the largest whole multiple that fits BOTH axes, which
+    // is 2x, and letterboxes everything left over. Measured on an M4 Air, 2026-07-19:
+    // 1024x416 of picture inside a 1470x624 window, a 223-pixel border down each side
+    // and 104 top and bottom. The WIDTH is what fails, but the border appears on all
+    // four sides, because one scale has to serve both axes.
+    //
+    // Ask the display how much room there is, and never ask for more than that.
+    int      scale = kMaxScale;
+    SDL_Rect usable{};
+    if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable)) {
+        // Usable bounds already exclude the menu bar and the Dock, but not this
+        // window's own title bar, and a window whose title bar is off-screen cannot be
+        // moved. kChromeH is a rough allowance for it -- rough is enough, because the
+        // answer is an integer and the next multiple down is a long way away.
+        while (scale > 1 && (w * scale > usable.w || h * scale + kChromeH > usable.h))
+            --scale;
+    }
+
     if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale, h * scale,
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &window_,
                                      &renderer_)) {
         std::fprintf(stderr, "SDL: window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
+
+    // AND TAKE THE WINDOW WE ACTUALLY GOT, not the one we asked for. Any window manager
+    // may clamp, tile or otherwise ignore a requested size, and a size that is not a
+    // multiple of the frame is precisely the letterbox described above. So re-derive the
+    // multiple from the real size and set it back.
+    //
+    // Self-correcting rather than macOS-specific: if nothing was clamped, this is
+    // already the size, and the call does nothing. It is also why the fix is not simply
+    // "ask for less" -- the display query above narrows the guess, this makes it true.
+    int gotW = 0, gotH = 0;
+    SDL_GetWindowSize(window_, &gotW, &gotH);
+    const int fit = std::max(1, std::min(gotW / w, gotH / h));
+    if (gotW != w * fit || gotH != h * fit) SDL_SetWindowSize(window_, w * fit, h * fit);
+
     SDL_SetRenderLogicalPresentation(renderer_, w, h,
                                      SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
 
@@ -81,6 +133,19 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // Everything above is configured, so show it -- unfocused, per the hint set before
     // the window was created.
     SDL_ShowWindow(window_);
+
+    if (std::getenv("ALTAIRSIM_VIDEO_DEBUG")) {
+        int ww = 0, wh = 0, pw = 0, ph = 0, ow = 0, oh = 0;
+        SDL_GetWindowSize(window_, &ww, &wh);
+        SDL_GetWindowSizeInPixels(window_, &pw, &ph);
+        SDL_GetCurrentRenderOutputSize(renderer_, &ow, &oh);
+        SDL_FRect r{};
+        SDL_GetRenderLogicalPresentationRect(renderer_, &r);
+        std::fprintf(stderr,
+                     "[video] logical %dx%d  window %dx%d  pixels %dx%d  output %dx%d\n"
+                     "[video] presentation rect x=%.1f y=%.1f w=%.1f h=%.1f\n",
+                     w, h, ww, wh, pw, ph, ow, oh, r.x, r.y, r.w, r.h);
+    }
     return true;
 }
 
