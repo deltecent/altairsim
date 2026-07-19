@@ -14,13 +14,13 @@ are not two jobs, they are one job, and it is very good at running the old softw
 The S-100 bus is a real object in the program, not a wiring diagram implied by the code.
 Boards plug into it. They contend for addresses, pull the interrupt line, float the data bus
 when nobody is driving it, and get the answer wrong in exactly the ways real boards did. So a
-card you have not built yet can be *fitted* here, and the driver you have not finished can be
+board you have not built yet can be *fitted* here, and the driver you have not finished can be
 *run* against it, months before either exists in copper.
 
 That is the whole of the argument, and it is an argument about **where you find your bugs.**
 On real hardware a bug is a scope probe, a stubborn intermittent, and a machine that will not
 tell you what it just did. Here it is a breakpoint on a bus cycle. You can stop the machine
-mid-instruction, ask which card answered and which stayed silent, watch a driver poll a status
+mid-instruction, ask which board answered and which stayed silent, watch a driver poll a status
 bit that will never come true, and run the same thing again and get the same answer — because
 nothing here is intermittent, and nothing is hidden.
 
@@ -36,18 +36,18 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
   8080PRE, CPUTEST and the full 8080EXM exerciser all pass — every one of the exerciser's CRC
   groups. Flags, carries, the undocumented behaviours, the lot. The Z80 clears the same bar,
   against ZEXDOC and ZEXALL.
-- **Fourteen board types**, all but one modelled from its own manual: two CPU cards (an 8080 and
-  a Z80), RAM/ROM, two serial cards, a cassette interface, two floppy controllers, a line-printer
+- **Fourteen board types**, all but one modelled from its own manual: two CPU boards (an 8080 and
+  a Z80), RAM/ROM, two serial boards, a cassette interface, two floppy controllers, a line-printer
   controller, a video display, the Sol-PC's integrated I/O, a vectored-interrupt/real-time-clock
-  card, the front panel, and one card of our own for moving files in and out.
+  board, the front panel, and one board of our own for moving files in and out.
 - **A monitor** — the prompt you get when the machine is not running — with breakpoints (plain
   or conditional), single-stepping, disassembly, memory examine and deposit, a bus-cycle trace
   and a history ring, and a view of the bus itself: who decodes what, who is pulling which
-  interrupt line, and where two cards are fighting.
-- **Real I/O.** A serial card can be wired to your terminal, to a TCP socket (so you can
+  interrupt line, and where two boards are fighting.
+- **Real I/O.** A serial board can be wired to your terminal, to a TCP socket (so you can
   telnet into the guest), or to an actual serial port on your machine, with the modem
   control lines wired through.
-- **File transfer** between the host and CP/M, sandboxed. A card in the machine does the
+- **File transfer** between the host and CP/M, sandboxed. A board in the machine does the
   moving; the things you actually *type* — `HDIR`, `R` and `W` — are ordinary CP/M programs
   that live on a disk and run at the `A>` prompt, like `PIP` or `STAT`.
 
@@ -71,7 +71,7 @@ This section is here because a manual that only lists strengths is an advertisem
   not. **There is still no audio output** — nothing is ever sent to a speaker. Cassette `.WAV`
   files are read and written as *files*, which is a different thing, and the tapes chapter
   covers it.
-- **Not every S-100 card is here.** The ones that are, are in the boards chapter. A Tarbell
+- **Not every S-100 board is here.** The ones that are, are in the boards chapter. A Tarbell
   disk controller and a PMMI modem are designed but not built.
 - **Timing is honest, but it is not a circuit simulation.** Instructions cost the right
   number of T-states and a cassette takes the right number of them to load. Propagation

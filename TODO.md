@@ -342,6 +342,20 @@ known, and guessing would be inventing hardware.
 
 ## Deferred
 
+- **"Card" still outnumbers "board" in comments and the developer docs.** The
+  rule is now stated (`DESIGN.md` §0.3: *board* for the object, the command and
+  the table; *card* only where the sentence is about the physical historical
+  artifact), and the surfaces a user reads were brought in line with it — every
+  user-visible string in `src/`, the whole of `docs/manual/`, and `ref/`
+  regenerated from the binary. What was **deliberately not swept**: roughly 790
+  occurrences in code comments, ~73 in the shipped machine-file comments, and
+  the developer docs (`docs/devguide/theory.md` at 66, `adding-a-board.md` at
+  32). Those are internal prose, the cost is churn against every line reference
+  in this file and in `DESIGN.md`, and the gain is nil for anyone who is not
+  reading the source. New code and new docs follow §0.3; the back catalogue is
+  left alone on purpose. **`CpuCard`/`Machine::cpuCard()` also stay** — 13
+  tokens, the only `Card`-suffixed class among sixteen `Board`-suffixed ones,
+  and renaming a class to settle a synonym is not worth a merge conflict.
 - **UART 1602 flow control** — pushed at the stream rather than modeled in the
   chip (`src/chips/uart1602.cpp:43`).
 - **Host-side CP/M filesystem access** — no `DISK` verbs in the monitor, no

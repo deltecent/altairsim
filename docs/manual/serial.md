@@ -6,7 +6,7 @@ care. It moved characters.
 
 `altairsim` keeps that arrangement exactly. **Any board that moves characters has one or
 more UNITS, and every unit can be CONNECTed to an ENDPOINT.** The unit is the socket on the
-back of the card. The endpoint is what you plugged into it.
+back of the board. The endpoint is what you plugged into it.
 
 ```
 altairsim> CONNECT sio0:b socket:2323
@@ -28,7 +28,7 @@ This table is exhaustive. There are no others.
 | `socket:PORT` | **LISTENS** on that TCP port. This is the telnet-in case. |
 | `socket:HOST:PORT` | **CALLS OUT** to that host and that port. |
 | `serial:DEVICE` | a real serial port on this host. |
-| `file:PATH` | a host file, write-only. Captures whatever the card sends. |
+| `file:PATH` | a host file, write-only. Captures whatever the board sends. |
 
 ### `null` is not an error
 
@@ -92,23 +92,24 @@ It does not merely say "cannot open". A cable that enumerated under a name one c
 from the one you expected is ten minutes of somebody quietly deciding the simulator is
 broken, and the fix is to print the answer instead of the complaint.
 
-### What the card does to the wire
+### What the board does to the wire
 
-The host port is opened at 9600 8N1, and then **immediately re-programmed by the card** —
-because the card is the only thing in the system that knows what frame it is carrying. What it
-re-programs the port *from* depends on the card, and the difference is real hardware, not a
+The host port is opened at 9600 8N1, and then **immediately re-programmed by the board** —
+because the board is the only thing in the system that knows what frame it is carrying. What it
+re-programs the port *from* depends on the board, and the difference is real hardware, not a
 house style:
 
-- On an **88-SIO** or an **88-ACR** the word format is a set of **jumpers**, so it is the card's
-  `baud`, `data_bits`, `stop_bits` and `parity` properties that become the frame on the wire.
-- On an **88-2SIO** — the card in the example above — there are **no such properties, and there
+- On an **88-SIO** or an **88-ACR** the word format is a set of **jumpers**, so it is the
+  board's `baud`, `data_bits`, `stop_bits` and `parity` properties that become the frame on the
+  wire.
+- On an **88-2SIO** — the board in the example above — there are **no such properties, and there
   must not be**: the 6850's word format is a *register the guest writes*. A property would be a
   second place to say one thing, and the two would disagree the moment software touched the chip.
   So the frame on the wire is whatever the **guest** last programmed, and a guest that selects
   7E1 reconfigures the cable to 7E1.
 
 So if you want 300 baud, 7 bits, even parity going out of that connector, you do not
-configure it on the connector. You configure it on the **card**, where a 1975 operator would
+configure it on the connector. You configure it on the **board**, where a 1975 operator would
 have set it, with a jumper. Modem control lines — DCD, CTS, RTS — are wired through.
 
 ### And give the machine its real crystal before you transfer a file
@@ -131,13 +132,14 @@ the crystal.** The troubleshooting chapter has the full story.
 altairsim> CONNECT lpt0:prn file:printout.txt
 ```
 
-A `file:` endpoint is a **write-only** sink: whatever the card sends is written to the host file,
-byte for byte. It is what the [88-C700 printer](boards.md) captures its output to — but it is not
-printer-specific, so any line can go to one, which is a simple way to record what a program sends.
+A `file:` endpoint is a **write-only** sink: whatever the board sends is written to the host
+file, byte for byte. It is what the [88-C700 printer](boards.md) captures its output to — but it
+is not printer-specific, so any line can go to one, which is a simple way to record what a
+program sends.
 
 The file is opened fresh each time you connect (it truncates), and the capture is **8-bit clean**:
 the bytes on the wire are the bytes in the file, control codes and all. Nothing reformats them — if
-you want a printout as tidy host text, that is an editor's job, not the card's. A relative path
+you want a printout as tidy host text, that is an editor's job, not the board's. A relative path
 follows the usual rule: relative to the file when it is written in a machine configuration,
 relative to your shell when you type it.
 
@@ -148,7 +150,7 @@ have meant.** It never quietly falls back to `null`.
 
 This matters more than it sounds like it does. A silent fallback gives you a machine that
 boots, runs, prints nothing, and hands you a dead terminal to debug — and you will debug the
-guest, and the card, and the disk, before you think to doubt the thing you typed. A refusal
+guest, and the board, and the disk, before you think to doubt the thing you typed. A refusal
 is a worse morning for exactly two seconds. A dead terminal is a worse afternoon.
 
 ## Exactly one unit may hold the console
@@ -179,7 +181,7 @@ This is the most important rule in the chapter, and it is worth stating twice be
 explaining it.
 
 **The `[console]` settings are the only thing in the simulator that alters a byte. Every
-serial LINE is 8-bit clean. There is no knob anywhere on any card that masks a bit.**
+serial LINE is 8-bit clean. There is no knob anywhere on any board that masks a bit.**
 
 | Setting | Does |
 |---|---|
@@ -229,11 +231,11 @@ Nothing was masked. Something on the far end did not look. **`strip7out` is the 
 looking.** It is a property of the thing you are sitting at, and it belongs on the thing you
 are sitting at.
 
-### Why not just strap the card to 7 bits
+### Why not just strap the board to 7 bits
 
 Because it would work, and then it would silently destroy your data.
 
-Set a 7-bit mask on the card — or a filter on the line — and BASIC's prompt comes out clean.
+Set a 7-bit mask on the board — or a filter on the line — and BASIC's prompt comes out clean.
 It also **silently corrupts every XMODEM transfer through that port**, because XMODEM sends
 binary, every byte of it matters, and bit 7 is a real bit in half of them. The file arrives.
 The checksums even pass on a bad packet often enough to be maddening. And the corruption is
@@ -244,7 +246,7 @@ because only the terminal knows it is displaying text.
 
 ### `data_bits` and `parity` are real hardware, and are not this
 
-A card genuinely does have `data_bits`, `stop_bits` and `parity`, and they are genuinely
+A board genuinely does have `data_bits`, `stop_bits` and `parity`, and they are genuinely
 configurable, because a 6850 genuinely has those straps. They are **a FRAME** — they describe
 what physically travels down the wire, bit by bit, and on a real serial port they are what
 the far end must agree to or it will read garbage.

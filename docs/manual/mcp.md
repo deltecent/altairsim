@@ -52,7 +52,7 @@ tool, which under a pipe waits on a stdin that is the JSON-RPC channel itself.
 
 Under `--mcp` the console line is quietly re-seated onto an in-memory terminal the server
 owns (there is no host keyboard behind a pipe), which is what `send`/`run`/`recv` read and
-write. Everything else on the machine — a second serial card wired to a real port, a
+write. Everything else on the machine — a second serial board wired to a real port, a
 socket — keeps running and is serviced on every `run` slice, so a program shuttling bytes
 between the console and a modem port works exactly as it would at a real terminal.
 
@@ -63,7 +63,7 @@ between the console and a modem port works exactly as it would at a real termina
 asked, and the machine file parser, the monitor, and the MCP server all read it.
 
 The consequence is the point: **a board added tomorrow is drivable by an assistant the day
-it lands, with no new code.** Nobody writes an MCP tool for the new card. The card declares
+it lands, with no new code.** Nobody writes an MCP tool for the new board. The board declares
 its properties, as it must anyway to be configurable at all, and the tool schema is that
 declaration.
 

@@ -137,6 +137,6 @@ too, and knowing the image is how that gets untangled.
 **A feature request is an issue as well**, and does not need an apology. Say what you are
 trying to do rather than only which knob you want, because the machine often has a way in
 already; and if it does not, the shape of the problem is what decides the shape of the
-answer. A missing S-100 card is a particularly good request when you can name the manual it
-was documented in — every board here was modelled from its own documentation, and a card
+answer. A missing S-100 board is a particularly good request when you can name the manual it
+was documented in — every board here was modelled from its own documentation, and a board
 with no surviving source is one nobody can build honestly.

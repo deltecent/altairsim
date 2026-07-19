@@ -15,9 +15,9 @@ printed in each property's own base.
 
 | Type | What it is |
 |---|---|
-| [`memory`](#memory) | RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes |
+| [`memory`](#memory) | RAM/ROM board: a list of regions, PHANTOM*, and five banking schemes |
 | [`8080`](#8080) | MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus |
-| [`z80`](#z80) | Generic Z80 CPU card. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core |
+| [`z80`](#z80) | Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core |
 | [`2sio`](#2sio) | MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3 |
 | [`sio`](#sio) | MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits |
 | [`dcdd`](#dcdd) | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
@@ -25,15 +25,15 @@ printed in each property's own base.
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb |
 | [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
-| [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT) |
+| [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT) |
 | [`fp`](#fp) | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
-| [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
+| [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
 
 
 ## `memory`
 
-RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes
+RAM/ROM board: a list of regions, PHANTOM*, and five banking schemes
 
 ### `[[board.region]]` — a list you may add
 
@@ -51,11 +51,11 @@ RAM/ROM card: a list of regions, PHANTOM*, and five banking schemes
 | `honors_phantom` | enum | `all` | `none` \| `read` \| `all` | A JUMPER. Another board pulls PHANTOM* -- do I switch off? none \| read \| all |
 | `phantom` | enum | `all` | `none` \| `read` \| `all` | What I ASSERT over my rom regions: none \| read \| all |
 | `bank_type` | enum | `none` | `none` \| `eram` \| `vram` \| `cram` \| `hram` \| `b810` | none\|eram\|vram\|cram\|hram\|b810 -- five real cards, no two alike |
-| `banks` | int | — | — | how many banks this card has. The card decides: it follows bank_type **(read-only — not a key you may set)** |
+| `banks` | int | — | — | how many banks this board has. The board decides: it follows bank_type **(read-only — not a key you may set)** |
 | `bank` | int | `0` | `0` .. `15` | The live bank |
 | `fill` | enum | `random` | `zero` \| `random` | RAM contents at power-on: zero \| random (real RAM is not zeroed) |
 | `seed` | int | `1` | any | Seed for fill=random. Goes in the snapshot, or replay is dead. |
-| `pages` | string | — | — | the composite page map -- which pages this card answers for. Derived from the regions you declared **(read-only — not a key you may set)** |
+| `pages` | string | — | — | the composite page map -- which pages this board answers for. Derived from the regions you declared **(read-only — not a key you may set)** |
 
 
 ## `8080`
@@ -68,14 +68,14 @@ MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the card. 0 runs flat out -- as fast as the host can. |
+| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
 
 ## `z80`
 
-Generic Z80 CPU card. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core
+Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core
 
 **Units:** `z80` (cpu)
 
@@ -83,7 +83,7 @@ Generic Z80 CPU card. Decodes nothing -- it drives the bus. The 88-CPU's twin, w
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the card. 0 runs flat out -- as fast as the host can. |
+| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
@@ -98,7 +98,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `port` | int | `0x10` | `0x0` .. `0xFC` | Base address. The card decodes four ports: BASE+0 .. BASE+3 |
+| `port` | int | `0x10` | `0x0` .. `0xFC` | Base address. The board decodes four ports: BASE+0 .. BASE+3 |
 
 ### Unit `a` — `[board.unit.a]`
 
@@ -163,7 +163,7 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `port` | int | `0x8` | `0x0` .. `0xFD` | Base address. The card decodes three ports: BASE+0 .. BASE+2 |
+| `port` | int | `0x8` | `0x0` .. `0xFD` | Base address. The board decodes three ports: BASE+0 .. BASE+2 |
 | `drives` | int | `4` | `1` .. `16` | Drives on the daisy chain |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
 
@@ -187,7 +187,7 @@ MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 R
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `port` | int | `0x8` | `0x0` .. `0xFD` | Base address. The card decodes three ports: BASE+0 .. BASE+2 |
+| `port` | int | `0x8` | `0x0` .. `0xFD` | Base address. The board decodes three ports: BASE+0 .. BASE+2 |
 | `drives` | int | `4` | `1` .. `4` | Drives on the daisy chain |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
 | `motor` | enum | `free` | `free` \| `real` | free: always at speed (default). real: 1 s spin-up, and it stops after 6.4 s |
@@ -253,7 +253,7 @@ Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (defau
 
 ## `sol`
 
-Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one card. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT)
+Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT)
 
 **Units:** `serial` (serial), `printer` (serial), `keyboard` (serial), `tape1` (tape), `tape2` (tape)
 
@@ -336,7 +336,7 @@ MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. On
 
 ## `hostbridge`
 
-Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN CARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM
+Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM
 
 ### Board properties
 

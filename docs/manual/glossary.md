@@ -1,7 +1,7 @@
 # Glossary
 
 **ACIA** — Asynchronous Communications Interface Adapter. The Motorola 6850 chip at the heart
-of the 88-2SIO serial card. It has two registers a program can see: a status register and a
+of the 88-2SIO serial board. It has two registers a program can see: a status register and a
 data register. Everything a program does with a serial port on this machine, it does through
 one of those.
 
@@ -15,9 +15,10 @@ the instruction it was about to execute. It is `^E` by default, the host interce
 the guest sees the byte, and no guest program can take it from you. Move it with
 `CONSOLE attn=`.
 
-**backplane** — The board with the connectors on it that every card plugs into. On an Altair
-it is the S-100 bus itself: eighteen slots, one hundred pins each, all wired in parallel.
-There is no chipset. The backplane *is* the machine.
+**backplane** — The PCB with the connectors on it that every board plugs into. It is not itself
+one of them: nothing in a machine file fits a backplane, because the backplane is what a machine
+file describes the contents of. On an Altair it is the S-100 bus itself: eighteen slots, one
+hundred pins each, all wired in parallel. There is no chipset. The backplane *is* the machine.
 
 **bank switching** — Making more memory than the processor can address by putting several
 banks at the same addresses and switching between them. An 8080 can address 64K and no more.
@@ -32,11 +33,20 @@ and the CCP are untouched. It is also where a track buffer lives *if the author 
 — which is why, on some CP/Ms and not others, a file can be "written" and not yet be on the
 disk. See the disks chapter.
 
+**board** — Anything that plugs into the backplane: memory, a serial port, a disk controller,
+the front panel, the processor itself. It is the word this program uses everywhere — `BOARDS`
+lists them, `[[board]]` fits them in a machine file — and a board is the thing you add, remove,
+`SHOW` and `SET`. See also **card**, which means the same thing.
+
+**card** — The same object as a **board**. The period hardware and its manuals said "card", and
+this manual keeps the word where the sentence is about the physical thing somebody bought,
+socketed chips into and set jumpers on. Everywhere else it says board.
+
 **CCP** — Console Command Processor. The top layer of CP/M — the part that prints `A>` and
 runs what you type. It is deliberately expendable: a big program is allowed to overwrite it,
 and CP/M reloads it from disk afterwards. That reload is the warm boot.
 
-**contention** — Two cards answering the same address. On a real S-100 machine both would
+**contention** — Two boards answering the same address. On a real S-100 machine both would
 drive the data bus at once and you would get a byte that is neither of theirs, intermittently,
 in a way that would take you a week. `SHOW BUS CONTENTION` names them instead.
 
@@ -53,11 +63,11 @@ one sector off track 0 and jumps into it. **There is no `BOOT` command on an Alt
 the address switches to `FF00`, press EXAMINE to load them into the program counter, then press
 RUN, and this is the thing you are running.
 
-**decode** — What a card does when it recognises an address as its own and answers. A card
-that does not decode an address stays silent and lets somebody else have it. Which card
+**decode** — What a board does when it recognises an address as its own and answers. A board
+that does not decode an address stays silent and lets somebody else have it. Which board
 decodes which address is the entire question of how an S-100 machine is put together.
 
-**DMA** — Direct Memory Access. A card taking the bus away from the processor and reading or
+**DMA** — Direct Memory Access. A board taking the bus away from the processor and reading or
 writing memory itself, without the processor's help. Faster, and the origin of some
 spectacular bugs.
 
@@ -66,13 +76,13 @@ spectacular bugs.
 list; there are no others.
 
 **floating bus** — What the data bus reads when nothing is driving it. On the S-100 it floats
-high, so an `IN` from a port no card decodes returns `FF`. That is not an error. That is the
-absence of a card, and it looks like `FF`.
+high, so an `IN` from a port no board decodes returns `FF`. That is not an error. That is the
+absence of a board, and it looks like `FF`.
 
 **front panel** — The switches and lamps on the front of the Altair. The address switches, the
 data lamps, DEPOSIT, EXAMINE, RUN, STOP, RESET. Before there was a terminal, this *was* the
 user interface, and you toggled your bootstrap in through it one byte at a time. In this
-program it is a card like any other.
+program it is a board like any other.
 
 **FSK** — Frequency Shift Keying. Encoding bits as two audible tones — one for a zero, one for
 a one. It is how the ACR got data onto a cassette, and it is why a loading tape sounds the way
@@ -80,7 +90,7 @@ it does.
 
 The tones were **not** standard across machines, which matters more than it sounds: the
 88-ACR uses 2400/1850 Hz and holds a tone for the whole bit, while Kansas City and CUTS use
-2400/1200 Hz and count *whole cycles* per bit. A card can only read the modulation its own
+2400/1200 Hz and count *whole cycles* per bit. A board can only read the modulation its own
 modem was built for, so mounting a recording in the wrong one is refused rather than decoded.
 See the tapes chapter.
 
@@ -90,7 +100,7 @@ soft-sectored disk has one hole and finds its sectors by reading marks written i
 which is the arrangement that won.
 
 **IntAck** — Interrupt Acknowledge. The bus cycle the 8080 runs when it accepts an interrupt.
-The interrupting card puts one instruction on the data bus during that cycle, and the
+The interrupting board puts one instruction on the data bus during that cycle, and the
 processor executes it. Almost always an `RST`.
 
 **Kansas City standard** — The 1975 agreement on how microcomputers should record data on
@@ -106,12 +116,12 @@ chapter.
 **monitor** — The `altairsim>` prompt. Not a program running inside the machine — it is you,
 standing in front of it, with a much better front panel than MITS shipped.
 
-**PHANTOM\*** — An S-100 line that tells memory cards to shut up. Pull it, and a ROM can
-answer at an address a RAM card also decodes, without contention. It is how a boot PROM can
+**PHANTOM\*** — An S-100 line that tells memory boards to shut up. Pull it, and a ROM can
+answer at an address a RAM board also decodes, without contention. It is how a boot PROM can
 sit on top of RAM and then get out of the way. The asterisk means the line is active low, and
 on this bus most of them are.
 
-**pINT** — The S-100 interrupt request line. Any card may pull it. The processor notices, if
+**pINT** — The S-100 interrupt request line. Any board may pull it. The processor notices, if
 interrupts are enabled, and runs an IntAck cycle to find out who and why.
 
 **PROM** — Programmable Read-Only Memory. A chip with a program burned into it that survives
@@ -139,7 +149,7 @@ is how this program knows what time it is. At 2 MHz a T-state is 500 nanoseconds
 cassette takes 110 seconds because it takes 220 million of them.
 
 **TDRE** — Transmit Data Register Empty. The bit in the 6850's status register that means
-"the card has room for another character". A program that wants to print polls it until it
+"the board has room for another character". A program that wants to print polls it until it
 sets. A serial port connected to `null` sets it forever, which is why writing to nothing works
 fine.
 
@@ -150,13 +160,13 @@ buffers a whole track at a time: having paid for the seek, it may as well have t
 **UART** — Universal Asynchronous Receiver/Transmitter. The chip that turns a byte into a
 sequence of bits on a wire and back again. The ACIA is one.
 
-**unit** — One channel on a card that moves characters — the socket on the back. A 2SIO has
+**unit** — One channel on a board that moves characters — the socket on the back. A 2SIO has
 two of them, `a` and `b`, and they are connected independently. `CONNECT sio0:b` names the
 board and then the unit.
 
 **VI0–VI7** — The eight vectored interrupt lines on the S-100 bus, served by the 88-VI/RTC
-card. **VI0 is the highest priority.** A card pulling VI*n* gets `RST` *n*, and the interrupt
-card sorts out who wins when two pull at once.
+board. **VI0 is the highest priority.** A board pulling VI*n* gets `RST` *n*, and the interrupt
+board sorts out who wins when two pull at once.
 
 **warm boot** — CP/M reloading its own top layer (the CCP) from the disk, because the program
 that just finished was allowed to overwrite it. `^C` at the `A>` prompt does one deliberately.

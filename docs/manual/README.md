@@ -25,11 +25,11 @@ a separate thing, and the next chapter says where it will come from.
 
 | | |
 |---|---|
-| [The monitor](monitor.md) | The `altairsim>` prompt: prefix commands, the number rule, naming a card, ATTN. |
+| [The monitor](monitor.md) | The `altairsim>` prompt: prefix commands, the number rule, naming a board, ATTN. |
 | [Debugging](debugging.md) | Breakpoints, stepping, disassembly, and looking at the bus itself. |
 | [Machines](machines.md) | The command line, the built-in machines, and where a path is relative to. |
 | [Machine files](configuring.md) | The TOML format, in full. |
-| [Boards](boards.md) | What each card is, and what it is for. |
+| [Boards](boards.md) | What each board is, and what it is for. |
 
 ## Using it
 
@@ -37,7 +37,7 @@ a separate thing, and the next chapter says where it will come from.
 |---|---|
 | [Disks](disks.md) | `MOUNT`, drive geometry, and the track-buffer trap. |
 | [Tapes](tapes.md) | The cassette interface, and loading BASIC the way MITS meant you to. |
-| [Serial, sockets and telnet](serial.md) | Wiring a card to your terminal, a TCP port, or a real UART. |
+| [Serial, sockets and telnet](serial.md) | Wiring a board to your terminal, a TCP port, or a real UART. |
 | [Moving files in and out](file-transfer.md) | `HDIR`, `R` and `W` at the CP/M prompt. |
 | [Worked examples](examples.md) | Two complete sessions, start to finish. |
 | [Driving it from an AI assistant](mcp.md) | The MCP server. |
@@ -57,7 +57,7 @@ from the same table the monitor resolves against, so it cannot disagree with wha
 | | |
 |---|---|
 | [Every monitor command](ref/commands.md) | All of them, with usage and examples. |
-| [Boards and their parameters](ref/boards.md) | Every card, every key, every default. |
+| [Boards and their parameters](ref/boards.md) | Every board, every key, every default. |
 | [The built-in machines](ref/machines.md) | |
 
 ---

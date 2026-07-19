@@ -12,7 +12,7 @@ std::vector<Property> CpuZ80Board::properties() {
     {
         Property x;
         x.name = "clock_hz";
-        x.help = "Crystal on the card. 0 runs flat out -- as fast as the host can.";
+        x.help = "Crystal on the board. 0 runs flat out -- as fast as the host can.";
         x.kind = Kind::Int;
         x.radix = 10;
         x.unit = "Hz";

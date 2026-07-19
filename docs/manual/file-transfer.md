@@ -1,11 +1,11 @@
 # Moving files in and out
 
-You will want to get a file into CP/M, and you will want to get one back out. There is a card
+You will want to get a file into CP/M, and you will want to get one back out. There is a board
 for it.
 
 ## The Host Bridge is ours, and it is not a period card
 
-Say it plainly: **MITS never made this.** No S-100 vendor made this. The `hostbridge` card is
+Say it plainly: **MITS never made this.** No S-100 vendor made this. The `hostbridge` board is
 **our own**, invented for this simulator, and it exists because the alternative — a modem
 protocol over a simulated serial port at 300 baud — is a slow, fiddly answer to a question
 that only exists because the machine is simulated in the first place.
@@ -21,7 +21,7 @@ Default port **B0**: `BASE+0` is command/status, `BASE+1` is data.
 
 ## The three utilities, and where they live
 
-The utilities are **on the disk**, not in the card. They are ordinary CP/M `.COM` files, and
+The utilities are **on the disk**, not in the board. They are ordinary CP/M `.COM` files, and
 they were assembled inside the machine, by the machine's own assembler, from source that ships
 with it.
 
@@ -95,7 +95,7 @@ you half a program and call it done.
 
 ## The sandbox
 
-The card has a **`hostdir`** property. It is the host directory the guest can see, and it is
+The board has a **`hostdir`** property. It is the host directory the guest can see, and it is
 the **only** host directory the guest can see.
 
 ```
@@ -147,10 +147,10 @@ the guest is standing in the other one.
 
 ### …and what that means for `R` and `W`
 
-The path rule stops at the card. **It does not reach the guest, and `R` and `W` never see it.**
+The path rule stops at the board. **It does not reach the guest, and `R` and `W` never see it.**
 
 At the `A>` prompt you are not typing a host path at all — you are typing a **name**, and the
-card resolves it inside `hostdir_root` and nowhere else:
+board resolves it inside `hostdir_root` and nowhere else:
 
 ```
 A>R FOO.ASM          <- hostdir_root/FOO.ASM. Never your cwd, never the machine file's
@@ -160,7 +160,7 @@ A>W RESULT.TXT       <- hostdir_root/RESULT.TXT
 So the path rule reaches `R` and `W` **exactly once**: it decides which directory `hostdir`
 named, back when someone wrote it. After that the guest has one directory and no way to say
 anything about any other — `..`, an absolute path and a drive letter are all refused at the
-card, as below.
+board, as below.
 
 This is worth stating plainly because the two mechanisms look alike and are not:
 
@@ -175,7 +175,7 @@ nothing at all. This one decides how far the **guest** can reach, and confines e
 machine file may mount a disk from anywhere on your system; the CP/M program running off that
 disk still sees only `hostdir`.
 
-**The guest cannot escape it.** All of the following are refused, at the card, before anything
+**The guest cannot escape it.** All of the following are refused, at the board, before anything
 touches your filesystem:
 
 - an absolute path
@@ -212,7 +212,7 @@ one line.
 
 ## Names: 8.3, and how a host name becomes one
 
-CP/M has eight characters and an extension of three, and your host does not. So the card maps:
+CP/M has eight characters and an extension of three, and your host does not. So the board maps:
 
 1. **uppercase** the host name,
 2. truncate the base to **8**,
@@ -233,13 +233,13 @@ A>R my-notes(2).txt NOTES.TXT
 And again: `HDIR` prints the **true** host names, so you can always find out what you are
 actually asking for.
 
-## Case, and why the card does not guess
+## Case, and why the board does not guess
 
 **The CP/M command line folds everything to upper case.** This is not something we do; it is
 what the CCP does, before your program ever sees the line. By the time `R` runs, `R
 readme.txt` and `R README.TXT` are **the same command**. The information is gone.
 
-So the card compensates, in this order:
+So the board compensates, in this order:
 
 1. **Exact match wins.** If there is a file called exactly what you asked for, that is the
    file.
@@ -247,7 +247,7 @@ So the card compensates, in this order:
 3. **If several files match, it REFUSES.**
 
 Step 3 is the one that matters. If your directory holds `readme.txt` and `README.TXT` and
-`ReadMe.Txt`, the card does not pick one, does not pick the newest, and does not pick the
+`ReadMe.Txt`, the board does not pick one, does not pick the newest, and does not pick the
 first. **It tells you it cannot tell**, and stops. A file transfer that guesses wrong and
 tells you it succeeded is worse than one that fails.
 
@@ -255,8 +255,8 @@ tells you it succeeded is worse than one that fails.
 
 There is an obvious hole in everything above: **`R` is how you get a file onto a disk, and `R`
 is a file on the disk.** Boot something that has not got it — the package's minidisk image, or
-a fresh disk you made yourself — and you cannot use the card to fetch the program that drives
-the card.
+a fresh disk you made yourself — and you cannot use the board to fetch the program that drives
+the board.
 
 You break the loop through **the console**, which is the one channel that exists before any
 file-transfer utility does. You type the program in. Not literally: you paste it.
@@ -315,7 +315,7 @@ A>R W.COM
 A>R HDIR.COM
 ```
 
-That is the payoff. `R.COM` exists now, so the other two utilities come across the card as
+That is the payoff. `R.COM` exists now, so the other two utilities come across the board as
 ordinary binaries — no HEX, no `LOAD`, no pasting — provided `hostdir` points at the directory
 they are in:
 
@@ -368,6 +368,6 @@ runs on:
 - the minidisk,
 - and **any BIOS anybody writes later**, for a controller that does not exist yet.
 
-That was the design goal. The card is not a period card, but the software that drives it is a
+That was the design goal. The board is not a period card, but the software that drives it is a
 perfectly well-behaved CP/M program, and it will still work on the machine you have not built
 yet.

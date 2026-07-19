@@ -3,7 +3,7 @@
 This is the chapter the simulator exists for.
 
 Running old software is the easy half. The hard half is being able to see what a machine is
-actually *doing* — which card answered, what went out on the bus, why the interrupt never
+actually *doing* — which board answered, what went out on the bus, why the interrupt never
 arrived — and that is what the commands in this chapter are for. Roughly fifteen of the
 monitor's forty commands are here.
 
@@ -115,7 +115,7 @@ These two are **the front panel's switches**, and they behave like them. `EXAMIN
 single byte — hex, ASCII, and its bits — and a bare `EXAMINE` steps to the next one, which is
 the panel's EXAMINE NEXT.
 
-`DEPOSIT` runs a **real bus write**. If no card decodes that address, it says so rather than
+`DEPOSIT` runs a **real bus write**. If no board decodes that address, it says so rather than
 pretending to have stored something — which is the difference between a debugger and a
 notepad.
 
@@ -128,7 +128,7 @@ DEPOSIT 100 C3 00 2C
 ## Disassembling — `DISASM`
 
 `DISASM` **peeks**: it reads memory without running a bus cycle. That matters, and it is not a
-detail. A `read()` on a serial card *consumes* a byte from its receiver, and a disassembler
+detail. A `read()` on a serial board *consumes* a byte from its receiver, and a disassembler
 that ate the guest's input while you were looking at it would be a debugger you could not
 trust. Nothing in this chapter that only *looks* at memory will disturb it.
 
@@ -225,7 +225,7 @@ origin. A `.SYM` is written after linking and is absolute already, so it never h
 problem.
 
 **Symbols are yours, not the machine's.** Like a breakpoint, the table is the debugger's view,
-not part of any card — it survives `RESET`, `POWER`, and `CONFIG LOAD`, and `SYMBOLS CLEAR` is
+not part of any board — it survives `RESET`, `POWER`, and `CONFIG LOAD`, and `SYMBOLS CLEAR` is
 its `NOBREAK`. Loading two files **merges** them (the newest of a clashing name wins, and the
 command says how many were redefined); `SYMBOLS LOAD <file> REPLACE` starts fresh. A machine
 file can name a symbol file in its `startup`, and `CONFIG SAVE` writes the filename back out —
@@ -252,7 +252,7 @@ COMPARE 100-1FF 2000        ...or against a file
 
 These are not simulated reads. **`IN` runs an input cycle on the bus, with every side effect a
 real one would have** — it will consume a character from a UART's receiver, it will advance a
-disk controller's sector counter. That is the point of them: it is how you poke a card the way
+disk controller's sector counter. That is the point of them: it is how you poke a board the way
 the guest's software would, without writing any guest software.
 
 ```
@@ -266,8 +266,8 @@ OUT FF 55         run a real OUT cycle
 you want when `IN 10` gives you `FF` and you cannot tell whether that is data or whether
 nothing is there at all.
 
-It reports contention, and it reports `PHANTOM*` — so if two cards are fighting, or if one
-card has switched another one off, `WHO` is where you find out.
+It reports contention, and it reports `PHANTOM*` — so if two boards are fighting, or if one
+board has switched another one off, `WHO` is where you find out.
 
 ```
 altairsim> WHO IO FF
@@ -279,7 +279,7 @@ WHO IO 08         who decodes this port?
 
 ## FF is not data
 
-**An `IN` from a port nothing decodes returns `FF`.** So does a read from an address no card
+**An `IN` from a port nothing decodes returns `FF`.** So does a read from an address no board
 answers for.
 
 That is not an error code and it is not a convention we invented — it is what a **floating
@@ -287,7 +287,7 @@ bus** reads. Nobody is driving the data lines, they idle high, and the processor
 reads eight ones. A real Altair does exactly this.
 
 It has a famous consequence, and it is worth knowing because you will meet it: on a machine
-with no interrupt-vector card, a board pulls the interrupt line, nobody drives the data bus
+with no interrupt-vector board, a board pulls the interrupt line, nobody drives the data bus
 during the acknowledge cycle, the processor reads `FF` — and `FF` is `RST 7`. That is not a
 fallback anybody coded. It is what the hardware does, and it is why the interrupt vector on a
 bare Altair is `RST 7`.
@@ -299,19 +299,19 @@ So when you see `FF`, ask `WHO`.
 Where `WHO` asks about one address, `SHOW BUS` shows you the whole backplane at once.
 
 `SHOW BUS IRQ` is the only window onto the interrupt wiring, and interrupt wiring is the part
-of a machine you cannot see. A card strapped to a line that nothing listens to fails in total
+of a machine you cannot see. A board strapped to a line that nothing listens to fails in total
 silence — the software just never gets its interrupt, and there is nothing to look at. This
 command is what makes that visible.
 
 `SHOW BUS CONTENTION` is the one to reach for when a machine you built yourself is misbehaving
-for no reason. Two cards decoding the same port is a real hardware fault, and the simulator
+for no reason. Two boards decoding the same port is a real hardware fault, and the simulator
 will not quietly pick a winner for you.
 
 ```
 SHOW BUS MAP          who decodes what in memory — and what floats
 SHOW BUS IO           who decodes which ports
 SHOW BUS IRQ          the eight interrupt lines: who is strapped where, who is pulling
-SHOW BUS CONTENTION   where two cards answer the same thing
+SHOW BUS CONTENTION   where two boards answer the same thing
 ```
 
 ## The bus over time — `TRACE`, `HISTORY`
@@ -332,7 +332,7 @@ HISTORY 100           the last hundred (a count, so decimal)
 ```
 
 **`TRACE` logs every cycle as it happens** — to the console, or to a file. Like the breakpoints
-that watch the bus, it is not a CPU feature: it watches the same stream every card sees, so it
+that watch the bus, it is not a CPU feature: it watches the same stream every board sees, so it
 works unchanged on any processor you put in the machine. A `MASK` keeps only the categories you
 name, and no mask keeps them all: `IN`, `OUT`, `IRQ`, `DMA`, `CONTENTION`. A cycle survives the
 mask if it matches any of them.
@@ -407,7 +407,7 @@ altairsim> DISASM               what is it about to do?
 altairsim> STEP 20              walk into it
 ```
 
-The disk is not being read. Is the card even being asked?
+The disk is not being read. Is the board even being asked?
 
 ```
 altairsim> BREAK IO R 08        stop on any read of the controller's status port

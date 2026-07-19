@@ -93,7 +93,7 @@ static const std::vector<CommandDef> kCommands = {
      "exact instruction. Stopped is not lost, and the debugger is at its most useful\n"
      "here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.\n"
      "\n"
-     "IT RUNS FLAT OUT unless the CPU card has a crystal. `clock_hz` defaults to 0,\n"
+     "IT RUNS FLAT OUT unless the CPU board has a crystal. `clock_hz` defaults to 0,\n"
      "so a cassette that took a real Altair 110 seconds comes off in about one. `SET\n"
      "cpu0 clock_hz=2000000` buys back the 2 MHz machine AND its 110 seconds. What\n"
      "the guest sees is identical either way -- the tape still costs the same\n"
@@ -119,8 +119,8 @@ static const std::vector<CommandDef> kCommands = {
      "read-only because of what it is.\n"
      "\n"
      "A NAME IS CASE-BLIND, and you may leave off what carries no information: the\n"
-     "trailing index when only one such card is in the machine, and the unit when the\n"
-     "card has only one you could mount into. Anything genuinely plural you must say,\n"
+     "trailing index when only one such board is in the machine, and the unit when the\n"
+     "board has only one you could mount into. Anything genuinely plural you must say,\n"
      "and it will tell you so.\n"
      "  MOUNT dsk0:drive0 disks/cpm.dsk\n"
      "  MOUNT dsk0:drive1 disks/master.dsk WP\n"
@@ -165,7 +165,7 @@ static const std::vector<CommandDef> kCommands = {
     {"EDIT", false, "the line editor", "EDIT <addr>  -- interactive; Enter advances", nullptr},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually\n"
-     "running -- which cards, in what order, every property SET can write, what each\n"
+     "running -- which boards, in what order, every property SET can write, what each\n"
      "unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It\n"
      "is the same format you would write by hand, and the same one a built-in is\n"
      "written in, so a saved machine is a first-class machine: LOAD it back, or name\n"
@@ -177,11 +177,11 @@ static const std::vector<CommandDef> kCommands = {
      "                  memory, and it is a separate file for a reason.\n"
      "  the registers   PC included, so a LOADed machine has not started.\n"
      "  breakpoints     nor tracepoints, nor where TRACE was pointed.\n"
-     "  CONSOLE         attn and the transforms are the HOST's terminal, not a card\n"
+     "  CONSOLE         attn and the transforms are the HOST's terminal, not a board\n"
      "                  in the backplane. They survive CONFIG LOAD untouched.\n"
      "A SAVE IS A READ: it asks every property for its value and writes to nothing.\n"
      "\n"
-     "LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the cards you had\n"
+     "LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the boards you had\n"
      "are out of the backplane, the new ones are in, and it is powered up and running\n"
      "its startup list -- a file whose startup says RUN comes up running. Naming that\n"
      "same file on the command line does the identical thing; there is one road.\n"
@@ -295,19 +295,19 @@ static const std::vector<CommandDef> kCommands = {
     {"MOVE", true, nullptr, "MOVE <range> <dest>", nullptr},               // MOV
     {"WHO", true, nullptr, "WHO <addr> | WHO IO <port>",
      "Who WOULD answer -- it looks without running a cycle, so nothing is consumed\n"
-     "and no card is poked. Reports contention, and reports PHANTOM*.\n"
+     "and no board is poked. Reports contention, and reports PHANTOM*.\n"
      "  WHO FF00\n"
      "  WHO IO 10"},
     // The name is PLURAL, so both spellings work and neither is an alias: BOARD is
     // a prefix of BOARDS, and a prefix is what this table resolves. `BO` too.
     {"BOARDS", true, nullptr, "BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>",  // BO
-     "The backplane: what is in it, what each card answers to, and what is in its\n"
+     "The backplane: what is in it, what each board answers to, and what is in its\n"
      "sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a\n"
      "ROM range says which image is in it -- an empty socket decodes nothing, so it\n"
      "is not in the memory column at all; it is in UNITS, marked (empty).\n"
      "  BOARDS                   the backplane\n"
      "  BOARD                    the same thing: a prefix of BOARDS\n"
-     "  BOARDS TYPES             every card, and its properties\n"
+     "  BOARDS TYPES             every board, and its properties\n"
      "  BOARDS ADD memory mem0"},
     // REGS is the first RE- word in the table, so it takes RE outright -- and it is
     // the one you type between two STEPs, which is as often as anything here.
@@ -318,7 +318,7 @@ static const std::vector<CommandDef> kCommands = {
      "  SET REG A=3F\n"
      "  SET REG PC=FF00"},
     {"REGION", true, nullptr, "REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]",  // REGI
-     "A region is a POPULATED part of a card. What is not covered by one is an\n"
+     "A region is a POPULATED part of a board. What is not covered by one is an\n"
      "empty socket: it decodes nothing and floats to FF. `at` is an address, so it\n"
      "is hex; `size` is a size, so it is decimal, and K/M work.\n"
      "  REGI ADD mem0 type=ram at=0 size=48K\n"
@@ -394,11 +394,11 @@ static const std::vector<CommandDef> kCommands = {
     // here. Add an endpoint without a word about it and that test fails, which is the
     // only reason this is allowed to be a copy at all.
     {"CONNECT", true, nullptr, "CONNECT <id>:<u> <endpoint>",  // CONN
-     "PLUG IN THE OTHER END OF THE CABLE. A unit is a socket on the back of a card --\n"
+     "PLUG IN THE OTHER END OF THE CABLE. A unit is a socket on the back of a board --\n"
      "one of the 2SIO's two ports, say; an ENDPOINT is the thing at the far end of the\n"
-     "cable, on the HOST side of the machine. It is not a card, it has no address, and\n"
+     "cable, on the HOST side of the machine. It is not a board, it has no address, and\n"
      "the guest cannot see it: the 6850 clocks bytes the same way whether the wire ends\n"
-     "at your terminal, a telnet session, a real RS-232 port, or nothing at all. No card\n"
+     "at your terminal, a telnet session, a real RS-232 port, or nothing at all. No board\n"
      "in the machine knows what any of these words mean.\n"
      "\n"
      "Endpoints: {endpoints}\n"
@@ -409,7 +409,7 @@ static const std::vector<CommandDef> kCommands = {
      "              and the test suite type into. No tty need exist.\n"
      "  socket:     PORT alone LISTENS: that is the telnet-in case. HOST:PORT CALLS OUT.\n"
      "  serial:     a real port on this host. It is opened at 9600 8N1 and then\n"
-     "              immediately re-programmed by the card, which is the only thing that\n"
+     "              immediately re-programmed by the board, which is the only thing that\n"
      "              knows what it is strapped to.\n"
      "  file:       PATH -- a host file, write-only: a printout, or a capture of the\n"
      "              line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.\n"

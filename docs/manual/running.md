@@ -10,7 +10,7 @@ altairsim>
 ```
 
 That prompt is **the monitor**. The machine exists — it has memory, a processor, a console
-card and a floppy controller in it — but it is not running. Nothing has been started. This
+board and a floppy controller in it — but it is not running. Nothing has been started. This
 is the equivalent of standing in front of the real Altair with the power on and your hands
 on the switches.
 
@@ -48,7 +48,7 @@ error when the flag is already absent, and that error is not a problem.
 Commands resolve by **prefix**, so you type as much as it takes to be unambiguous and no
 more — `HELP` shows each command with its shortest form in brackets: `D[UMP]`, `DE[POSIT]`,
 `RES[ET]`. Type the part before the bracket. And **commands are not case-sensitive**, nor
-are the names of the cards in the machine; this manual writes them in capitals only because
+are the names of the boards in the machine; this manual writes them in capitals only because
 it is easier to read.
 
 ## Which machine you get

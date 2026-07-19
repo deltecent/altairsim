@@ -309,7 +309,7 @@ bool Monitor::subunit(const std::string& spec, Board*& b, UnitDef& u, UnitUse us
         auto all = b->units();
         err << b->id << " has no unit '" << name << "'.";
         if (all.empty()) {
-            err << " This card has no units at all.\n";
+            err << " This board has no units at all.\n";
         } else {
             err << " It has:";
             for (const auto& x : all) err << " " << x.name;
@@ -405,7 +405,7 @@ bool Monitor::boardCommand(const std::vector<std::string>& a, std::ostream& out)
     for (const CommandDef& d : b->commands()) declared = declared || std::string(d.name) == def->name;
     if (!declared) {
         out << b->id << " (" << b->type() << ") has no " << def->name
-            << ". That verb is here because some OTHER card in the machine brought it.\n";
+            << ". That verb is here because some OTHER board in the machine brought it.\n";
         failed_ = true;
         return true;
     }
@@ -458,7 +458,7 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
     if (auto* mem = dynamic_cast<MemoryBoard*>(b)) {
         const auto& rs = mem->regions();
         if (rs.empty()) {
-            out << "  regions: (none -- this card is unpopulated and decodes nothing)\n";
+            out << "  regions: (none -- this board is unpopulated and decodes nothing)\n";
         } else {
             out << "  regions:\n";
             for (size_t i = 0; i < rs.size(); ++i) {
@@ -1304,9 +1304,9 @@ void Monitor::showConsole(std::ostream& out) {
     out << "\n  held by  " << (holder.empty() ? "(nobody -- CONNECT <id>:<unit> console)" : holder)
         << "\n";
     out << "\n  The transforms (UPPER, STRIP7OUT, CRLF, BSDEL...) are the CONSOLE's, and\n"
-           "  nothing else's: SET CONSOLE UPPER=ON. A card's line is 8-bit clean whatever\n"
+           "  nothing else's: SET CONSOLE UPPER=ON. A board's line is 8-bit clean whatever\n"
            "  is plugged into it -- a filter there would corrupt XMODEM, silently.\n"
-           "  What a card has instead is line coding: SHOW sio0 (baud, data_bits...).\n";
+           "  What a board has instead is line coding: SHOW sio0 (baud, data_bits...).\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -1994,7 +1994,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // there is then nothing in the machine that can rewind.
         auto verbs = boardVerbs();
         if (!verbs.empty()) {
-            out << "\n  From the cards in the machine right now:\n\n";
+            out << "\n  From the boards in the machine right now:\n\n";
             for (auto& v : verbs) {
                 std::snprintf(buf, sizeof buf, "  %-16s %s", boardAbbreviation(v.second).c_str(),
                               v.second.usage);

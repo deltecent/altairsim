@@ -18,17 +18,17 @@ The disk goes in a drive, and you may put it there either way: name it in the ma
 
 ## The two controllers
 
-| Card | What it is | Drives | Ports |
+| Board | What it is | Drives | Ports |
 |---|---|---|---|
 | `dcdd` | **MITS 88-DCDD** — the 8″ hard-sector floppy controller. The one CP/M booted from. | up to 16 | 08, 09, 0A |
 | `mds` | **88-MDS** — the 5¼″ minidisk. Smaller, slower, four drives. | 4 | 08, 09, 0A |
 
-Read the ports column again. **They are the same ports**, which means the two cards cannot
+Read the ports column again. **They are the same ports**, which means the two boards cannot
 coexist in one machine. That is not a limitation of the simulator; it is the MITS address map.
 A real Altair with both would have had two cards decoding 08 and fighting on the data bus,
 and the bus view in the monitor will tell you so if you try it. Pick one.
 
-Drives are units on the card: `drive0`, `drive1`, and so on up to the card's limit.
+Drives are units on the board: `drive0`, `drive1`, and so on up to the board's limit.
 
 ## Putting a disk in — `MOUNT`
 
@@ -92,13 +92,13 @@ drive could be.
 
 ### Names, and what you may leave out
 
-Board names are **case-blind everywhere** — `dsk0`, `DSK0` and `Dsk0` are the same card.
+Board names are **case-blind everywhere** — `dsk0`, `DSK0` and `Dsk0` are the same board.
 
 Beyond that you may omit **what carries no information**:
 
-- the **trailing index**, when only one card of that type is in the machine. One floppy
+- the **trailing index**, when only one board of that type is in the machine. One floppy
   controller means `dsk` finds `dsk0`.
-- the **unit**, when the card has only one thing you could possibly mount into. `MOUNT ACR
+- the **unit**, when the board has only one thing you could possibly mount into. `MOUNT ACR
   tape.bin` needs no unit, because a cassette recorder has one slot.
 
 A floppy controller does not qualify for the second one. It has sixteen drives, and which
@@ -158,7 +158,7 @@ want to. Step it 300 times and it steps 300 times. All the intelligence about *w
 1500 is* lives in the BIOS, which is software, and software can be rewritten.
 
 The corollary is the useful part: **format and spindle are per drive, not per controller.**
-Mixed geometry on one card is the intended arrangement, not an accident — period 8 MB CP/M
+Mixed geometry on one board is the intended arrangement, not an accident — period 8 MB CP/M
 BIOSes expect exactly that, an 8 MB disk on A: and B: and ordinary 77-track floppies on C:
 and D:, so that you can `PIP` between the big disk and something you can hand to somebody
 else.
@@ -279,7 +279,7 @@ file.
 altairsim> SHOW dsk0
 ```
 
-`BOARDS` shows the backplane — every card, where it decodes, and who is fighting whom:
+`BOARDS` shows the backplane — every board, where it decodes, and who is fighting whom:
 
 ```
 altairsim> BOARDS

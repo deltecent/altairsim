@@ -43,7 +43,7 @@ serial port, and the reason is the same one: **the line is soldered to the modem
 no connector on the back of an 88-ACR because there is nothing to connect — the signal goes
 to a cassette deck and nowhere else. **It is a cassette interface, not a serial port**, and
 the fact that it is built out of a serial port does not make it one. The serial chapter is
-about the cards that *do* take endpoints.
+about the boards that *do* take endpoints.
 
 ### It cannot work the motor
 
@@ -86,14 +86,14 @@ Once a tape is in, SOLOS's own commands work:
 
 ## Working a tape
 
-Everything in this section is the same on both cards. Only the unit name differs — `acr0:tape`
+Everything in this section is the same on both boards. Only the unit name differs — `acr0:tape`
 on the Altair, `sol0:tape1` or `sol0:tape2` on the Sol.
 
 ### The tape is not hardware
 
 **The tape is NOT in the machine file, deliberately.**
 
-A machine file describes the **hardware** — what cards are in the backplane, what they decode,
+A machine file describes the **hardware** — what boards are in the backplane, what they decode,
 how much memory is on the bus. Which cassette is sitting in the recorder is not hardware. It
 is a thing you did with your hands, this morning, and you can do a different thing with your
 hands this afternoon without unscrewing the lid.
@@ -148,7 +148,7 @@ altairsim> REW acr0:tape
 
 Most surviving Altair and Sol cassettes are not files of bytes. They are **audio**: somebody
 put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one,
-on either card.
+on either board.
 
 **There is one in the package.** `examples/sol/TRK80.WAV` is a CUTS cassette carrying *Star
 Trek*, and the machine beside it is set up to read it, so this is a line you can actually
@@ -178,14 +178,14 @@ tape mounts well and the program still will not run, a worn recording is the lik
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
 
-### A card will refuse audio it could not really have heard
+### A board will refuse audio it could not really have heard
 
-That example mounted a Sol tape on a Sol. Put it in an Altair and the card says no:
+That example mounted a Sol tape on a Sol. Put it in an Altair and the board says no:
 
 ```
 altairsim> MOUNT acr0:tape examples/sol/TRK80.WAV
-acr0: examples/sol/TRK80.WAV: this card's modem cannot hear that tape -- it carries
-2390 Hz / 1205 Hz, and this card reads fsk300
+acr0: examples/sol/TRK80.WAV: this board's modem cannot hear that tape -- it carries
+2390 Hz / 1205 Hz, and this board reads fsk300
 ```
 
 This is deliberate, and it is not the simulator being fussy.
@@ -198,7 +198,7 @@ centred at 2125 Hz with about ±100 Hz of range, and a 1200 Hz tone is nowhere n
 real card fed that tape does not read it badly; it reads **nothing**.
 
 Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
-produced. So the card says what the tape is instead, and you go find a machine that reads it.
+produced. So the board says what the tape is instead, and you go find a machine that reads it.
 
 ### Recording back out to a `.WAV`
 
@@ -224,7 +224,7 @@ recording then puts *bytes* in it, not audio. It will look like it worked. Nothi
 it. If you meant audio and you get `raw` on the mount line, that is what happened.
 
 The stop is what writes it. `UNMOUNT` and `REWIND` are stops too, and on the Sol so is the
-guest dropping the motor line — that card can see a deck stop, which the 88-ACR cannot.
+guest dropping the motor line — that board can see a deck stop, which the 88-ACR cannot.
 
 The whole file is rewritten each time, not patched: the audio for a byte starts at an offset
 that depends on every byte before it, so there is no cheaper splice.
@@ -264,7 +264,7 @@ altairsim> SHOW acr0:tape
 | a modulation | Force one: `fsk300` on the ACR, `cuts1200` or `kcs300` on the Sol |
 
 It selects a *reading*; it never widens the hardware. Telling an 88-ACR to demodulate
-`cuts1200` is refused just as firmly as letting it sniff one — the card has the modem it has.
+`cuts1200` is refused just as firmly as letting it sniff one — the board has the modem it has.
 A companion read-only `detected` property reports what the mounted tape turned out to be.
 
 `format` takes effect at the **next** `MOUNT`, because a tape is decoded once, when you put

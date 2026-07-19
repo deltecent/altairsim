@@ -1,25 +1,25 @@
 # Boards
 
-An Altair is a **backplane**. Everything else is a card in it — the memory, the serial ports, the
+An Altair is a **backplane**. Everything else is a board in it — the memory, the serial ports, the
 disk controller, the front panel, and the processor itself. There is no "machine" underneath the
-cards doing the real work; take the cards out and there is nothing left but a bus.
+boards doing the real work; take the boards out and there is nothing left but a bus.
 
 `altairsim` is built that way on purpose, and it is the reason the CPU's crystal is a property of
-the CPU *card* and the sense switches are a property of the *front panel*. Not pedantry: it is what
-lets you pull a card out, put a different one in, and find out what the software does about it.
+the CPU *board* and the sense switches are a property of the *front panel*. Not pedantry: it is what
+lets you pull a board out, put a different one in, and find out what the software does about it.
 
-This chapter says what the fourteen cards **are** — what the real hardware was, what it is for, and
-what will bite you. **It does not list their parameters.** Every key of every card is in the board
+This chapter says what the fourteen boards **are** — what the real hardware was, what it is for, and
+what will bite you. **It does not list their parameters.** Every key of every board is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The fourteen cards
+## The fourteen boards
 
 | Type | What it is |
 |---|---|
 | `memory` | RAM and ROM, as a list of regions |
 | `8080` | the MITS 88-CPU |
-| `z80` | a Z80 CPU card — the same bus, a different instruction set |
+| `z80` | a Z80 CPU board — the same bus, a different instruction set |
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
 | `acr` | MITS 88-ACR — the cassette interface |
@@ -36,7 +36,7 @@ be wrong.
 
 ## `memory` — RAM and ROM
 
-A memory card is **a list of regions**, and the regions are the card. That is not a modelling
+A memory board is **a list of regions**, and the regions are the board. That is not a modelling
 convenience; it is what an S-100 memory board was. One physical card carried banks of chips
 decoding whatever ranges its jumpers said, and a card with 56K of RAM low and a 256-byte boot PROM
 at `FF00` is a perfectly ordinary card.
@@ -47,16 +47,16 @@ So `default` has exactly one memory board in it, and that board is the 56K *and*
 
 The bus has a line called `PHANTOM*`. **A board pulls it to switch another board off.** When the
 PROM at `FF00` is being read, it asserts `PHANTOM*`, and the RAM card underneath — if it is
-jumpered to honour it — shuts up. Two cards decode `FF00`; only one answers.
+jumpered to honour it — shuts up. Two boards decode `FF00`; only one answers.
 
 This is how a disk Altair boots. The PROM overlays the RAM at the top of memory, the loader runs
 out of it, and then **the loader gets out of the way** and the RAM underneath is uncovered — which
 matters, because CP/M wants that memory back.
 
-Whether a card honours `PHANTOM*`, and whether it asserts it, are **jumpers**. They are on the card
-and they are yours to set. Getting them wrong produces a machine that does not boot and does not
-say why — which is precisely what it did in 1977, and the bus view in the monitor will show you
-both cards claiming the page.
+Whether a board honours `PHANTOM*`, and whether it asserts it, are **jumpers**. They are on the
+board and they are yours to set. Getting them wrong produces a machine that does not boot and does
+not say why — which is precisely what it did in 1977, and the bus view in the monitor will show you
+both boards claiming the page.
 
 ### Banking
 
@@ -75,15 +75,15 @@ If you are not running banked software, leave banking off. It is off by default.
 
 ## `8080` — the MITS 88-CPU
 
-**The processor is a card like any other.** It plugs into the backplane, it can be removed, and
+**The processor is a board like any other.** It plugs into the backplane, it can be removed, and
 with `-n` you can build a machine that does not have one.
 
 It decodes no ports and answers no addresses. What it does is **drive the bus** — which makes it
-unlike every other card in the box, and is exactly what the 88-CPU did.
+unlike every other board in the box, and is exactly what the 88-CPU did.
 
-### The crystal is on the card
+### The crystal is on the board
 
-Which is why **`clock_hz` is this card's property and not the machine's** — and why writing it in
+Which is why **`clock_hz` is this board's property and not the machine's** — and why writing it in
 `[machine]` is an error with an explanation rather than a setting that quietly does nothing.
 
 **`clock_hz = 0` is the default, and it means run flat out** — as fast as your host can go. On a
@@ -109,7 +109,7 @@ is the case you will meet. See the troubleshooting chapter.
 
 ### `idle` — the CPU stands down at a prompt
 
-A guest sitting at a prompt is not doing anything. It is spinning on the serial card's status
+A guest sitting at a prompt is not doing anything. It is spinning on the serial board's status
 register, waiting for a byte that has not arrived, and at `clock_hz = 0` it will spin as fast as
 your CPU can let it — one core, pinned, indefinitely, to accomplish nothing.
 
@@ -124,10 +124,10 @@ different. An XMODEM transfer through an idling machine is byte-exact.
 
 ## `z80` — a Z80 CPU
 
-**A second processor card.** It plugs into the same backplane as the 88-CPU, decodes nothing, and
+**A second processor board.** It plugs into the same backplane as the 88-CPU, decodes nothing, and
 drives the bus the same way — the only difference is the instruction set behind it. Put a `z80`
 where an `8080` would go and the bus, the boards, and the debugger neither know nor care; that is
-the whole point of keeping the processor a card.
+the whole point of keeping the processor a board.
 
 It carries the same three properties as the 8080 — `clock_hz` (the crystal, flat out by default),
 `idle` (stands down at a prompt), and the read-only `achieved_hz` — and each means exactly what it
@@ -145,8 +145,8 @@ its paces.
 Two **6850 ACIAs**, units `a` and `b`, four ports at BASE+0 through BASE+3. Base defaults to `10`
 hex, which is where every listing from the period expects it.
 
-This is **the usual console card**, and it is what `default` has. If you are running CP/M or
-Microsoft BASIC, this is the card the software is talking to.
+This is **the usual console board**, and it is what `default` has. If you are running CP/M or
+Microsoft BASIC, this is the board the software is talking to.
 
 ### The two halves share nothing
 
@@ -190,7 +190,7 @@ bus becomes an audible tone on a tape and back again. Unit `tape`, default port 
 It brings its own verb — **`REWIND`** — because a tape has a position and a disk does not, and
 pretending otherwise would help nobody.
 
-This is the card that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
+This is the board that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
 toggle in by hand, and eight minutes of listening to a cassette. **The tapes chapter is the one to
 read**, and {{NAME_BASIC}} is the machine to run.
 
@@ -198,7 +198,7 @@ read**, and {{NAME_BASIC}} is the machine to run.
 
 ## `c700` — MITS 88-C700
 
-The **line-printer controller**: an output-only card that sends characters to an Altair C700
+The **line-printer controller**: an output-only board that sends characters to an Altair C700
 printer. Unit `prn`, default port `02` — the MITS default, with Control/Status at `02` and Data
 at `03`.
 
@@ -217,15 +217,15 @@ The **`lineprinter`** machine is `default` with one of these already fitted and 
 ## `dcdd` — MITS 88-DCDD
 
 The **8″ hard-sector floppy controller**, up to sixteen drives, three ports at `08`, `09` and `0A`.
-**This is the card CP/M booted from**, and it is in `default`.
+**This is the board CP/M booted from**, and it is in `default`.
 
 It also carries the **8 MB medium** — a large-capacity format the same controller can address.
 
 Its status bits are **inverted**, for the same reason the 88-SIO's are and with the same
 consequence: a clear bit means ready.
 
-The disks chapter is where this card lives: formats, mounting, write protection, and the track-buffer
-trap that means you should get back to the `A>` prompt before you stop the machine.
+The disks chapter is where this board lives: formats, mounting, write protection, and the
+track-buffer trap that means you should get back to the `A>` prompt before you stop the machine.
 
 ---
 
@@ -258,7 +258,7 @@ Pick one.
 
 ## `vdm1` — Processor Technology VDM-1
 
-**Memory-mapped video**, and the first card here that is not a MITS one. A 1K screen of **16 rows
+**Memory-mapped video**, and the first board here that is not a MITS one. A 1K screen of **16 rows
 by 64 columns** lives in the machine's own address space — by default at `CC00` — so a program
 puts a character on the screen by *storing a byte*, with no port and no driver. That is why it is
 fast enough to be worth having, and why it needs no `CONNECT`: the screen is memory.
@@ -275,7 +275,7 @@ operator talking, so it does what `ATTN` does: the guest stops at an instruction
 get the monitor prompt back, with the machine exactly where it was. `RUN` resumes it into the same
 window; `QUIT` is still how you leave.
 
-Bit 7 of each byte is the **cursor/blink** flag rather than part of the character, so the card
+Bit 7 of each byte is the **cursor/blink** flag rather than part of the character, so the board
 draws 128 glyphs from a real character ROM, not 256.
 
 Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo that draws on it, and
@@ -288,10 +288,10 @@ Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo tha
 The **Sol-20's onboard I/O, as one card** — because on a real Sol-20 that is what it was. The
 Sol was not an Altair with cards in it; it was an integrated machine whose serial port, keyboard,
 parallel port and cassette interface were all on the one processor board, at `F8`–`FE`. On the
-real hardware those addresses were wired, not jumpered; here the card still carries a `base` so
+real hardware those addresses were wired, not jumpered; here the board still carries a `base` so
 you can move it, which is the one liberty taken and the reference chapter records it.
 
-So this card carries four things at once, and you reach them as units: `serial`, `printer` and
+So this board carries four things at once, and you reach them as units: `serial`, `printer` and
 `keyboard` are lines you `CONNECT`, and `tape1`/`tape2` are cassette transports you `MOUNT`. The
 keyboard is connected to the console by default, so it simply takes what you type — from the
 display window when there is one, and from your terminal when there is not.
@@ -332,7 +332,7 @@ script, a terminal macro — the real code works too, and behaves identically.
 
 One register (`FA`) reports the state of *all* of them at once — and it does so with **mixed
 polarity**, the keyboard and parallel bits reading active-low while the tape bits read
-active-high. That is not a bug in the card or in this simulator; it is what the hardware did, and
+active-high. That is not a bug in the board or in this simulator; it is what the hardware did, and
 the period software inverts what it needs.
 
 Fit it with a `vdm1` and you have the **`sol20`** machine, which cold-starts the real SOLOS
@@ -342,21 +342,21 @@ operating system.
 
 ## `virtc` — MITS 88-VI/RTC
 
-Two things on one card, which is why it has an awkward name.
+Two things on one board, which is why it has an awkward name.
 
 **Vectored interrupts.** Eight lines, **VI0 through VI7**. A device is strapped to a line; when it
 interrupts, **level *n* becomes `RST n`** — the processor jumps to `8×n` and the right handler runs
-without anybody having to poll anything. **VI0 is the highest priority**, and the card enforces
+without anybody having to poll anything. **VI0 is the highest priority**, and the board enforces
 that: a lower level cannot interrupt a higher one that is being serviced.
 
 This is what turns a machine that busy-waits into a machine that gets on with something else. Every
-card with an interrupt strap in its properties — the serial cards, the floppy controllers — is
+board with an interrupt strap in its properties — the serial boards, the floppy controllers — is
 strapped to one of these lines, or to `int`, or to nothing at all.
 
 **A real-time clock**, on the same board: a periodic interrupt off the 60 Hz line or off the system
 clock, divided down.
 
-One port at `FE`, and it is **write-only**. There is nothing to read back. Interrupt cards are the
+One port at `FE`, and it is **write-only**. There is nothing to read back. Interrupt boards are the
 easiest thing in a machine to get subtly wrong, and this one is worth reading the reference for
 before you strap anything to it.
 
@@ -366,14 +366,14 @@ before you strap anything to it.
 
 ## `fp` — the front panel
 
-The switches and the lamps. The panel is **a card**, because on a real Altair it was one — it
+The switches and the lamps. The panel is **a board**, because on a real Altair it was one — it
 plugged into the bus like everything else, and a machine without it is a machine you cannot toggle
 a bootstrap into.
 
 ### The SENSE switches, at port `FF`
 
 The eight switches on the left of the address bank, `SA8`–`SA15`. **`IN FFH` reads them.** They are
-**read-only**: an `OUT FF` is not this card's business and goes nowhere at all.
+**read-only**: an `OUT FF` is not this board's business and goes nowhere at all.
 
 **They are not decoration.** Period bootstraps read the sense switches to decide **what to boot
 from** — which device, at which port, at which speed. That is why every tape machine in this package
@@ -401,14 +401,14 @@ It moves **files between the guest and your host**, in both directions, and it i
 guest sees one directory you nominate and **cannot escape it**. Not by `..`, not by an absolute
 path, not at all. That is a hard requirement, not a setting with a default.
 
-Default port `B0`. **Nothing of the utilities is in the card.** `R`, `W` and `HDIR` are
+Default port `B0`. **Nothing of the utilities is in the board.** `R`, `W` and `HDIR` are
 ordinary CP/M `.COM` programs — they live on a disk, they run at the `A>` prompt, and they
-talk to the card through its two ports exactly as any other CP/M program would. What is
+talk to the board through its two ports exactly as any other CP/M program would. What is
 unusual is only where they came from: they were assembled *inside the machine*, by the
 machine's own assembler, from 8080 source that ships with it. So they are readable code
 rather than a magic trick the simulator performs on your behalf.
 
-The file-transfer chapter is where this card is explained. It is the fastest way to get your own
+The file-transfer chapter is where this board is explained. It is the fastest way to get your own
 code into CP/M, and it beats XMODEM by a distance — but XMODEM works too, over an ordinary serial
 line, exactly as it did.
 
@@ -416,15 +416,15 @@ line, exactly as it did.
 
 ## Working with the backplane at the prompt
 
-Everything a machine file can do to a card, you can do by hand.
+Everything a machine file can do to a board, you can do by hand.
 
 | Command | |
 |---|---|
 | `BOARDS` | what is in the backplane |
 | `BOARDS TYPES` | what you can add |
-| `BOARDS ADD <type> <id>` | fit a card |
+| `BOARDS ADD <type> <id>` | fit a board |
 | `BOARDS REMOVE <id>` | pull one out |
-| `SHOW <id>` | one card's settings, with the legal values |
+| `SHOW <id>` | one board's settings, with the legal values |
 | `SET <id> <key>=<value>` | change one |
 
 ```
@@ -447,8 +447,8 @@ writes it out, and it round-trips.
 
 ## Contention
 
-Two cards decoding the same port is **contention**, and it is a real thing that real backplanes did.
-Both cards answer, both drive the data bus, and what the processor reads is neither.
+Two boards decoding the same port is **contention**, and it is a real thing that real backplanes
+did. Both boards answer, both drive the data bus, and what the processor reads is neither.
 
 The simulator does not stop you. It does something more useful — **it tells you**:
 
@@ -456,7 +456,7 @@ The simulator does not stop you. It does something more useful — **it tells yo
 altairsim> SHOW BUS CONTENTION
 ```
 
-which names the port and names both cards. Fit an `mds` in a machine that already has a `dcdd` and
+which names the port and names both boards. Fit an `mds` in a machine that already has a `dcdd` and
 this is what you will see, and it is a great deal more helpful than a guest that has mysteriously
 gone mad.
 
