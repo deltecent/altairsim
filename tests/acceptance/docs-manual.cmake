@@ -1,8 +1,8 @@
 # THE USER MANUAL MAY NOT NAME ANYTHING THE READER DOES NOT HAVE.
 #
-# The manual ships inside the distribution: a zip with the `altairsim` binary, the manual PDF,
-# and disks/ and tapes/. That is all a reader gets. There is no src/, no CMakeLists, no
-# DESIGN.md, no docs/boards/, no repository.
+# The manual ships inside the distribution: the `altairsim` binary, the documentation, and the
+# examples/ tree. That is all a reader gets. There is no src/, no CMakeLists, no DESIGN.md, no
+# docs/boards/, no checkout.
 #
 # So "the manual is self-contained" is a rule, and a rule that is merely INTENDED is a rule
 # that is already lost -- somebody adds one helpful "see src/core/bus.h" and it is true of a
@@ -29,8 +29,14 @@ set(forbidden
     "CMakeLists"
     "cmake --build"
     "ctest"
-    "tests/"
-    "github.com")
+    "tests/")
+
+# A URL IS NOT ON THAT LIST, DELIBERATELY. `github.com` used to be, and that was a category
+# error: the rule is "nothing the reader cannot open", and a URL is the one reference that a
+# reader with only the zip CAN follow. Telling them where the source lives and where to report
+# a bug is what a distributed manual is FOR -- docs/manual/package.md exists to say exactly
+# that. What the ban was really protecting against is the manual sending a reader off to clone
+# and build, and that is already caught above by CMakeLists / cmake --build / ctest / src/.
 
 file(GLOB_RECURSE chapters "${manual}/*.md")
 if(chapters STREQUAL "")
@@ -86,7 +92,7 @@ if(NOT bad STREQUAL "")
     "THE USER MANUAL HAS ESCAPED THE PACKAGE.\n"
     "\n"
     "  It names things the reader does not have. A person with the zip gets the binary, the\n"
-    "  manual PDF, and disks/ and tapes/ -- and nothing else. Every reference below is an\n"
+    "  documentation, and examples/ -- and nothing else. Every reference below is an\n"
     "  instruction they cannot follow:\n"
     "\n${bad}"
     "\n"
