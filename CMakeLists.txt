@@ -763,41 +763,36 @@ if(EXPECT_EXECUTABLE)
   # command silently truncate its FIRST command's output. You get one filename, and it looks
   # exactly like a card that only read one sector. The input must be paced.
   #
-  # AND IT IS GATED ON THE DISK, which is not in git (disks/ is an allowlist -- see
-  # .gitignore). A test that quietly passes because its input is missing is worse than no
-  # test, so if the image is not there we say so and skip.
+  # THE DISK IS IN GIT (disks/ is an allowlist -- see .gitignore), so this is UNCONDITIONAL.
+  # It was gated on EXISTS until 2026-07-19, from the era when the image was a download; the
+  # gate outlived the download and read as protection while protecting nothing. If the image
+  # ever goes missing again, this must fail loudly rather than skip.
   # ---------------------------------------------------------------------------
-  set(MDS_DISK "${CMAKE_CURRENT_SOURCE_DIR}/disks/mits-88mds/cpm22/CPM56K-1.DSK")
-  if(EXISTS "${MDS_DISK}")
-    add_test(NAME acceptance-minidisk
-             COMMAND ${EXPECT_EXECUTABLE}
-                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
-                     $<TARGET_FILE:altairsim>)
-    set_tests_properties(acceptance-minidisk PROPERTIES
-                         LABELS acceptance TIMEOUT 120
-                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test(NAME acceptance-minidisk
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-minidisk PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-    # ...AND THE NEGATIVE CONTROL, which is the only reason to believe the test above.
-    #
-    # The SAME script against the SAME disk in an 88-DCDD -- which is what this tree actually
-    # did for months -- must FAIL. It now refuses at MOUNT: 76,800 bytes matches no format an
-    # 8" controller knows. If this ever starts booting, the minidisk has crept back into the
-    # wrong card and acceptance-minidisk has stopped testing the 88-MDS.
-    #
-    # (My FIRST control swapped the PROM instead -- DBL for MDBL -- and IT BOOTED, because the
-    # two controllers are register-compatible and Mike's own loader says DBL loads it. The
-    # control did its job: it disproved my claim, not the card. See minidisk-dcdd.toml.)
-    add_test(NAME acceptance-minidisk-control
-             COMMAND ${EXPECT_EXECUTABLE}
-                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
-                     $<TARGET_FILE:altairsim> tests/acceptance/minidisk-dcdd.toml)
-    set_tests_properties(acceptance-minidisk-control PROPERTIES
-                         LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
-                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-  else()
-    message(STATUS "disks/mits-88mds/cpm22/CPM56K-1.DSK not found -- SKIPPING the 88-MDS "
-                   "acceptance test. See disks/mits-88mds/cpm22/README.md to download it.")
-  endif()
+  # ...AND THE NEGATIVE CONTROL, which is the only reason to believe the test above.
+  #
+  # The SAME script against the SAME disk in an 88-DCDD -- which is what this tree actually
+  # did for months -- must FAIL. It now refuses at MOUNT: 76,800 bytes matches no format an
+  # 8" controller knows. If this ever starts booting, the minidisk has crept back into the
+  # wrong card and acceptance-minidisk has stopped testing the 88-MDS.
+  #
+  # (My FIRST control swapped the PROM instead -- DBL for MDBL -- and IT BOOTED, because the
+  # two controllers are register-compatible and Mike's own loader says DBL loads it. The
+  # control did its job: it disproved my claim, not the card. See minidisk-dcdd.toml.)
+  add_test(NAME acceptance-minidisk-control
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
+                   $<TARGET_FILE:altairsim> tests/acceptance/minidisk-dcdd.toml)
+  set_tests_properties(acceptance-minidisk-control PROPERTIES
+                       LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
   # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
@@ -811,39 +806,33 @@ if(EXPECT_EXECUTABLE)
   # would be indistinguishable from the bug, and this is the one test where that would be a
   # false ALARM rather than a false pass.
   #
-  # Gated on the same disk as the buffered CP/M, and it MOUNTS THAT DISK READ-ONLY -- the test
+  # It runs off the TRACKED floppy (examples/cpm/cpm22b23-56k.dsk -- the same one
+  # acceptance-hostbridge uses, unguarded), and it MOUNTS THAT DISK READ-ONLY -- the test
   # cannot dirty it, and it shasums the image to prove it.
   # ---------------------------------------------------------------------------
-  set(DCDD_DISK "${CMAKE_CURRENT_SOURCE_DIR}/examples/cpm/cpm22b23-56k.dsk")
-  if(EXISTS "${DCDD_DISK}")
-    add_test(NAME acceptance-dcdd-readonly
-             COMMAND ${EXPECT_EXECUTABLE}
-                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dcdd-readonly.exp
-                     $<TARGET_FILE:altairsim>)
-    set_tests_properties(acceptance-dcdd-readonly PROPERTIES
-                         LABELS acceptance TIMEOUT 90
-                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    # ---------------------------------------------------------------------------
-    # DDT SETS A BREAKPOINT -- and it needs no interrupt to do it (RST 7 is a one-byte
-    # CALL 0038h, written over the guest's own opcode). Same fixture, same protected
-    # disk: DDT never writes, and the .exp shasums the image to keep it that way.
-    #
-    # tests/test_ddt.cpp pins the same mechanic at unit level, on both cores, and runs
-    # where expect does not (Windows). This one proves the real DDT.COM off the tracked
-    # image drives our 8080 correctly -- which no unit test can claim.
-    # ---------------------------------------------------------------------------
-    add_test(NAME acceptance-ddt
-             COMMAND ${EXPECT_EXECUTABLE}
-                     -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ddt.exp
-                     $<TARGET_FILE:altairsim>)
-    set_tests_properties(acceptance-ddt PROPERTIES
-                         LABELS acceptance TIMEOUT 120
-                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-  else()
-    message(STATUS "examples/cpm/cpm22b23-56k.dsk not found -- SKIPPING "
-                   "acceptance-dcdd-readonly (the write-protected-disk hang) and "
-                   "acceptance-ddt (DDT's RST 7 breakpoints).")
-  endif()
+  add_test(NAME acceptance-dcdd-readonly
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dcdd-readonly.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dcdd-readonly PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  # ---------------------------------------------------------------------------
+  # DDT SETS A BREAKPOINT -- and it needs no interrupt to do it (RST 7 is a one-byte
+  # CALL 0038h, written over the guest's own opcode). Same fixture, same protected
+  # disk: DDT never writes, and the .exp shasums the image to keep it that way.
+  #
+  # tests/test_ddt.cpp pins the same mechanic at unit level, on both cores, and runs
+  # where expect does not (Windows). This one proves the real DDT.COM off the tracked
+  # image drives our 8080 correctly -- which no unit test can claim.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-ddt
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ddt.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-ddt PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # TWO GEOMETRIES, ONE CONTROLLER -- acceptance-dcdd-mixed -- WAS HERE, and was removed
   # on 2026-07-19 with the 8 MB image it needed. An 8 MB disk in drive 0 and a 77-track

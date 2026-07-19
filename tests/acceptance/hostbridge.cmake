@@ -412,14 +412,12 @@ message(STATUS "hostbridge(build): the sources still assemble to the committed .
 # (The .HEX is text and PIP can carry it, which is the only reason this is possible at all:
 # you cannot PIP a .COM through the console, because the first 1AH in it would end it.)
 #
-# Gated on the disk, which is not in git.
+# The minidisk image IS in git, so this phase is unconditional. It carried an EXISTS gate
+# until 2026-07-19, left over from when the image was a download; the gate could no longer
+# fire and only made this phase look optional. (What is still a download, and still gates
+# this whole mode from CMakeLists.txt, is the 8 MB 88-DCDD image above.)
 # ---------------------------------------------------------------------------
 set(mds1 "${SRC}/disks/mits-88mds/cpm22/CPM56K-1.DSK")
-if(NOT EXISTS "${mds1}")
-  message(STATUS "hostbridge(build): no minidisk image -- SKIPPING the BDOS portability "
-                 "phase. See disks/mits-88mds/cpm22/README.md.")
-  return()
-endif()
 
 configure_file("${mds1}" "${work}/mini1.dsk" COPYONLY)
 
