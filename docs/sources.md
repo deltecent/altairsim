@@ -93,12 +93,12 @@ back, so `.gitignore` names these, one line each (2026-07-18):
 | `mits-88mds/cpm22/CPM56K-2.DSK` | `0f6480b1…586db` | Its tools disk (B:) — `cpm22-mini.toml` mounts both, so one without the other does not boot. |
 | `examples/diskbasic/Disk BASIC 4.1.dsk` | `e1fb7255…36b69` | Altair BASIC Rev 4.1 [Disk Extended Version], MITS 1977. `acceptance-diskbasic`. Added 2026-07-19. |
 
-**The Disk BASIC image's upstream is NOT RECORDED**, and the hash above is of the file as it sits
-in the tree, not of a download anyone has re-fetched. It arrived by hand rather than through
-`fetch-disk-images.sh`, so unlike every other row here nobody can currently check it against the
-place it came from. `disks/mits-88dcdd/diskbasic/Basic Versions.pdf` — MITS's own table of what
-each BASIC release does — is kept beside the sources as the documentation for it, and is what the
-C/O/Q answer set comes from. Fill the origin in when it is known.
+**The Disk BASIC image came from deramp.com** (Patrick, 2026-07-19), like everything else above,
+but it arrived by hand rather than through `fetch-disk-images.sh` — so the SHA recorded for it is
+of the file as it sits in the tree, not of a download that has been re-fetched and compared. It is
+the one tracked image without that round trip. `disks/mits-88dcdd/diskbasic/Basic Versions.pdf` —
+MITS's own table of what each BASIC release does — is kept beside the sources as the documentation
+for it, and is where the C/O/Q answer set comes from.
 
 **`cpm22b23-56k.dsk` is not byte-identical to the download**, and that is deliberate: it ships with
 our `R.COM`, `W.COM` and `HDIR.COM` installed (26K free → 18K), so the host-bridge utilities exist
