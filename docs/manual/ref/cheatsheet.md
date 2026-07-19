@@ -46,7 +46,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id>\|CONSOLE\|DISPLAY <k>=<v>` |
-| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|MACHINE` |
+| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|MACHINE\|VERSION` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |

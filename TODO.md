@@ -37,20 +37,72 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### The manual still names media beyond the three shipped examples
+### The manual prints a `MOUNT` command the binary refuses
 
-`examples/{cpm,basic,sol}` now ship and are booted by tests, so the quick start's
-promise is finally true and `docs/package.map`'s tokens point at files a reader
-has. What is **not** fixed is everything past those three: `disks.md`,
-`file-transfer.md` and parts of `running.md` and `examples.md` still print paths
-like the 8 MB `cpm-8mb.dsk`, the Burcon and Lifeboat CP/M variants and the
-minidisk images as though you could type them. Those are correct in *form* and
-impossible to run from a clone or from the archive.
+`docs/manual/machines.md:265` shows
+`altairsim -x 'MOUNT dsk0 mine.dsk' -x 'RUN FF00' -i {{MACHINE_CPM}}`. Type it
+and the mount is refused: *dsk0 has 4 units you could mount into: drive0 drive1
+drive2 drive3. Name one — dsk0:drive0*. Verified against the binary 2026-07-19.
 
-Each such example wants a one-line statement that it needs an image you supply,
-so a reader stops being told to type a path that cannot work. The alternative —
-shipping the rest of the media — waits on the separate packages repository, which
-does not exist yet.
+It contradicts the manual's own rule three files away — `disks.md:104-106` says
+anything genuinely plural must be named — so the chapter that teaches the rule
+is the one that breaks it. One edit: `dsk0:drive0`.
+
+Found while adding the you-supply-this-image notes. It is the first confirmed
+instance of the class `Test coverage lost or missing` predicts below: a fenced
+command nothing re-runs.
+
+### `docs/manual/disks.md:104-106` says a floppy controller has sixteen drives
+
+It has **up to** sixteen. The `dcdd` board's `drives` property defaults to `4`
+(legal `1..16`), which is why the refusal quoted above says "4 units". The
+accurate form is already used twice elsewhere — `disks.md:23` and
+`boards.md:217` both say *up to sixteen*. Only this one sentence states it as a
+fixed count, and it is the sentence a reader meets first.
+
+### `build-package.sh` cannot fail, so a broken package reports success
+
+`tools/build-package.sh:64-78` and `:88-116`: both the FILE and the DIR loop are
+the right-hand side of a pipe, so each `while` body runs in a **subshell**. The
+`exit 1` on a missing source (lines 68 and 92) exits that subshell only, and
+`set -e` does not apply across a pipeline's non-final failure. A `package.map`
+naming a path that does not exist prints its error and the script goes on to zip
+and report success.
+
+**The `UNEXPANDED TOKENS` guard at lines 73-77 is defeated the same way**, and
+that is the one that matters most: it is the check standing between a reader and
+an archive whose manual tells them to type paths that were never substituted.
+
+Related, same root cause: **`tools/build-package.sh:83` sets `missing=""` and
+nothing ever reads it.** The "TELLS YOU what was missing" summary promised in the
+header at lines 20-23 was never wired up — the loop only prints per-directory
+warnings inline (lines 113-114), and those cannot escape the subshell to reach
+the exit status either. A package built with every disk image absent still exits
+0. One fix for both: feed the loops with a redirect or a here-doc rather than a
+pipe.
+
+Found 2026-07-19 while checking a stale header comment that turned out to have
+been fixed already.
+
+### `docs/package.map` still describes the layout `examples/` replaced
+
+`docs/package.map:3-4` tells the reader a user gets "the `altairsim` binary,
+`altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, and some disks and tapes." The
+`disks and tapes` layout is gone; line 24 of the same file goes on to state the
+`examples/` rule explicitly, so the file contradicts itself six lines in.
+
+This is where the stale wording actually lived. A prior TODO entry attributed it
+to `tools/build-package.sh:7`, which `d20018e` had already fixed — the entry was
+removed 2026-07-19 without a code change, and this is its real subject.
+
+**And two tokens point outside the package.** `MACHINE_DISKBASIC` and
+`NAME_DISKBASIC` (`docs/package.map:85-86`) resolve to
+`disks/diskbasic/diskbasic.toml`, which is not under `examples/` and which the
+`DIR` line that would place it — commented out at line 59, marked TBD — does not
+copy. They are harmless only because the manual's Disk BASIC chapter is itself
+marked TBD. Un-TBD that prose and the doc build resolves a token to a path that
+will not be in the zip, which is precisely the failure the `UNEXPANDED TOKENS`
+guard above cannot catch.
 
 ### Wire `build-package.sh` into the release workflow
 
@@ -72,14 +124,11 @@ CP/M from `examples/cpm/cpm22-buffered.toml` and mounts `examples/sol/TRK80.WAV`
 to the byte-identical line the tapes chapter quotes. What is missing is only that
 a release runs it.
 
-Two smaller things to settle while doing it:
+One smaller thing to settle while doing it:
 
 - **The built archive has no `LICENSE`.** `package.map`'s FILE table does not
   place one; the hand-built v0.1.0 archives did carry it. An MIT project's
   archive should — one `FILE` line.
-- **`tools/build-package.sh:7`** still summarises the contents as `disks/
-  tapes/`, which `examples/` replaced. The DIR loop below it is correct; only
-  the header comment lies, and it is the file that defines the package.
 
 ---
 
@@ -441,11 +490,24 @@ manual's own fenced commands and diffs the output against the fence is the
 missing piece; it would have caught this and the "CP/M in one command" gap in
 the same pass.
 
-**`tools/build-package.sh:7` still describes the contents as `disks/ tapes/`**
-in its header comment, which `examples/` replaced. One line, and the script's
-own DIR loop is correct — but it is the file that defines the package, so a
-stale summary at the top of it is the worst place for one. Not fixed here
-because it is a tool, not documentation.
+**Three more instances, found 2026-07-19**, which is the point: the first one was
+not a one-off.
+
+- `docs/manual/machines.md:229-234` — the `SHOW MOUNTS` transcript shows
+  `drive0` and `drive1` only, omitting `drive2` and `drive3`, and drops the
+  trailing `Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.`
+  footer the real output carries.
+- `docs/manual/package.md:82-86` — the `basic4k` `SHOW MOUNTS` transcript is
+  missing the same footer. Lower confidence than the one above (it could be
+  deliberate trimming), but it is the same signature.
+- `docs/manual/machines.md:265` — the refused `MOUNT`, filed as a bug above.
+
+The first two share a shape worth naming: a transcript that was **trimmed** when
+captured is indistinguishable, later, from one that **drifted**. Whatever
+re-capture check gets built has to decide whether trimming is allowed at all —
+if it is, it needs a marker in the fence, because otherwise every legitimately
+abridged transcript is a permanent false positive and the check gets switched
+off.
 
 ### Dead `if(EXISTS ...)` gates on files that are tracked
 
@@ -474,10 +536,6 @@ each README that the image is a manual download.
   is opened at connect time) and it is the machine's whole purpose, but a
   read-only inspection command leaving a file behind is a surprise. Low
   priority; noted rather than filed.
-- **The roadmap's milestone 4 row is unmarked but the milestone is built.**
-  `docs/roadmap.md:243` still lists "ROM board, PHANTOM, banking" with no built
-  marker. `PhantomAssert`/`PhantomHonor` and `BankType`/`BankSpec` are all in
-  `src/boards/s100-memory.h`. Mark the row.
 - **The snoop hooks kept for the Tarbell stay.** `src/core/board.h:248-257`:
   `wantsSnoop()` and its partner exist for a consumer that is on the shelf, and
   they are the only executable description we have of how a card that shadows
@@ -489,6 +547,26 @@ each README that the image is a manual download.
   (`docs/roadmap.md:276-291`). Boards 1 and 2 (88-2SIO, 88-DCDD) are discharged;
   3 (PMMI) and 4 (a DMA/Dazzler-shaped card) are outstanding. The point is to
   find an API defect on paper before writing code.
+- **The 88-C700 is built but has no row in the roadmap table.** `grep` finds it
+  nowhere in `docs/roadmap.md`, though `src/boards/mits-88c700.cpp` and
+  `docs/boards/mits-88c700.md` both exist. It is *not* the 88-LPC — that is a
+  separate and genuinely unbuilt board, so milestone 5's unmarked row at line 244
+  is correct and this is a missing row rather than a mismarked one. Same shape of
+  gap the table already carries for the 88-MDS (242) and the front panel (245).
+- **This file drifts against the tree, and nothing checks it.** Of five items
+  picked off it on 2026-07-19, **two had already been done** — the
+  `build-package.sh:7` header comment (fixed by `d20018e`, the very commit that
+  introduced `examples/`) and the roadmap's milestone 4 marker (present since
+  `3706100`). A third was half stale: `running.md` and `examples.md` were named
+  as needing media notes and needed none, because they use only the shipped
+  `{{MACHINE_*}}` tokens. Both dead entries were removed without a code change.
+
+  The cost is not the wasted pass — it is that an item resolved silently is
+  indistinguishable from one nobody has started, so the file's authority decays
+  from the bottom. No mechanism is proposed here; recorded so the next person to
+  work from this list treats a line-referenced claim as **a claim to verify**,
+  not as a finding. Every entry above was re-checked against the tree the day it
+  was written; none of the older ones carry that guarantee.
 
 [#26]: https://github.com/deltecent/altairsim/issues/26
 [#43]: https://github.com/deltecent/altairsim/issues/43

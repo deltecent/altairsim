@@ -219,7 +219,8 @@ The **`lineprinter`** machine is `default` with one of these already fitted and 
 The **8″ hard-sector floppy controller**, up to sixteen drives, three ports at `08`, `09` and `0A`.
 **This is the board CP/M booted from**, and it is in `default`.
 
-It also carries the **8 MB medium** — a large-capacity format the same controller can address.
+It also carries the **8 MB medium** — a large-capacity format the same controller can address,
+on an image **you supply**; no 8 MB disk is in the package.
 
 Its status bits are **inverted**, for the same reason the 88-SIO's are and with the same
 consequence: a clear bit means ready.
@@ -244,6 +245,9 @@ The minidisk's motor is not permanently on. It spins up, and if nobody touches t
 down again — which the software has to cope with, and which you can watch it cope with by setting
 the motor to `real`. By default the motor is `free`: always at speed, no waiting. The DCDD needs no
 such switch, because its spindle never stopped.
+
+**A minidisk image is one you supply.** The board is here and the `minidisk` machine boots its
+PROM, but no 5¼″ image is in the package, so the drives come up empty.
 
 ### It cannot share a machine with a `dcdd`
 
@@ -385,7 +389,8 @@ One port at `FE`, and it is **write-only**. There is nothing to read back. Inter
 easiest thing in a machine to get subtly wrong, and this one is worth reading the reference for
 before you strap anything to it.
 
-`ps2int` is the machine that shows it working.
+`ps2int` is the machine that shows it working — with a MITS Programming System II tape **you
+supply**, since none is in the package. Its cassette deck comes up empty.
 
 ---
 

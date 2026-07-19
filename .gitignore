@@ -146,3 +146,6 @@ Testing/Temporary/
 # 88-C700 to `file:printout.txt`, so merely running that machine from the repo root
 # drops one here -- and an empty one got committed once by a `git add -A` (37afae6).
 printout.txt
+
+# Agent scratch worktrees -- not repository content.
+.claude/worktrees/

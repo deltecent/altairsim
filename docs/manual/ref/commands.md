@@ -291,7 +291,7 @@ SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
 ### SHOW — `SH[OW]`
 
 ```
-SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|MACHINE
+SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|MACHINE|VERSION
 ```
 
 ```
@@ -304,6 +304,7 @@ SHOW CONSOLE     which unit holds the keyboard, and its transforms
 SHOW DISPLAY     the host video window, and whether it takes the keyboard
 SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS
 SHOW ROMS        the ROM images built into this binary, and where each came from
+SHOW VERSION     which build this is, and the commit it was built from
 ```
 
 

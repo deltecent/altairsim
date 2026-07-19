@@ -12,6 +12,7 @@
 #include "config/toml.h"
 #include "core/machine.h"
 #include "core/machines.h"
+#include "core/version.h"
 #include "host/console.h"
 #include "host/endpoint.h"
 #include "host/media.h"
@@ -35,7 +36,11 @@ static SdlDisplay g_display;
 static NullDisplay g_display;
 #endif
 
-static const char* kVersion = "altairsim 0.1.0";
+// Version AND the commit it was built from (core/version.h). Most binaries in
+// existence are between releases -- a CI artifact, a local build, one mailed to
+// somebody -- and a bare "0.1.0" names them all the same, so a report against one
+// cannot be traced back to the source that made it.
+static const char* kVersion = versionString();
 
 // The machine you get when you name none: the working directory's, if it has one.
 // See the comment on the fallback in main() for why this is the ONLY file the
