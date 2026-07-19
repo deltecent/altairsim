@@ -307,8 +307,8 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                     // So it is an ERROR, not an ignored key. A setting that is quietly
                     // dropped is worse than one that is refused: the config LOOKS like
                     // it slowed the machine down, and it did not.
-                    err = path + ": clock_hz belongs to the CPU CARD, not to [machine] --\n"
-                          "  the crystal is on the card. Put it in the CPU's [[board]]:\n"
+                    err = path + ": clock_hz belongs to the CPU BOARD, not to [machine] --\n"
+                          "  the crystal is on the board. Put it in the CPU's [[board]]:\n"
                           "      [[board]]\n"
                           "      type     = \"8080\"\n"
                           "      id       = \"cpu0\"\n"
@@ -324,7 +324,7 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                     // did not is precisely the failure the clock_hz error exists to
                     // prevent, so this key gets the same refusal and the same sentence.
                     err = path + ": sense belongs to the FRONT PANEL, not to [machine] --\n"
-                          "  the switches are on the Display/Control board. Add the card:\n"
+                          "  the switches are on the Display/Control board. Add the board:\n"
                           "      [[board]]\n"
                           "      type  = \"fp\"\n"
                           "      id    = \"fp0\"\n"
@@ -378,7 +378,7 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                 if (!type.empty()) {
                     err = path + ": [[board]] " + id +
                           ": `remove` and `type` contradict each other -- one takes the "
-                          "card out, the other fits a new one";
+                          "board out, the other fits a new one";
                     return false;
                 }
                 for (auto& [k, v] : t.kv) {
@@ -386,7 +386,7 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                     if (k != "id" && k != "remove") {
                         err = path + ": [[board]] " + id + ": `" + k +
                               "` on a board that is being removed -- it would set a "
-                              "property on a card that is about to leave the machine";
+                              "property on a board that is about to leave the machine";
                         return false;
                     }
                 }
@@ -405,8 +405,8 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                     err = path + ": [[board]] " + id + ": no board with that id" +
                           (fromBase.empty()
                                ? " -- this file has no `base`, so there is nothing to "
-                                 "modify. Give it a `type` to fit the card."
-                               : " in the base. Give it a `type` to fit a new card, or "
+                                 "modify. Give it a `type` to fit the board."
+                               : " in the base. Give it a `type` to fit a new board, or "
                                  "check the spelling.");
                     return false;
                 }

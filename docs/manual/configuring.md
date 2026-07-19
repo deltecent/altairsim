@@ -1,6 +1,6 @@
 # The machine file
 
-A machine file is **TOML**. It lists the cards in the backplane, what is set on each of them,
+A machine file is **TOML**. It lists the boards in the backplane, what is set on each of them,
 and what to do once the power is on. That is all it does, and there is nothing else it can do.
 
 This chapter is the normative description of the format.
@@ -36,9 +36,9 @@ instead of the typo. A misconfiguration in this program cannot be silent.
 | Table | What it is |
 |---|---|
 | `[machine]` | the machine's identity. Three keys, no more |
-| `[[board]]` | a card. One entry per card |
-| `[board.unit.<name>]` | one unit *on* the card above — a serial channel, a tape deck |
-| `[[board.region]]` | a memory region on a `memory` card |
+| `[[board]]` | a board. One entry per board |
+| `[board.unit.<name>]` | one unit *on* the board above — a serial channel, a tape deck |
+| `[[board.region]]` | a memory region on a `memory` board |
 | `[[board.drive]]` | a drive on a disk controller |
 | `[console]` | **your terminal.** Not a board — see below |
 
@@ -102,8 +102,8 @@ sense    = 0x80           # ERROR
 Both are **rejected, with an explanation**:
 
 ```
-mine.toml: clock_hz belongs to the CPU CARD, not to [machine] --
-  the crystal is on the card. Put it in the CPU's [[board]]:
+mine.toml: clock_hz belongs to the CPU BOARD, not to [machine] --
+  the crystal is on the board. Put it in the CPU's [[board]]:
       [[board]]
       type     = "8080"
       id       = "cpu0"
@@ -125,12 +125,12 @@ This is the heart of the format. **What a `[[board]]` entry means depends on whe
 
 | Write | And it means |
 |---|---|
-| `type` + a **new** `id` | **ADD** the card |
-| `type` + an id **from the base** | **REPLACE** the card outright |
+| `type` + a **new** `id` | **ADD** the board |
+| `type` + an id **from the base** | **REPLACE** the board outright |
 | **no** `type` + an id | **MODIFY IN PLACE** |
-| `remove = true` + an id | **PULL THE CARD OUT** |
+| `remove = true` + an id | **PULL THE BOARD OUT** |
 
-**`id` is always mandatory.** It is how you refer to the card at the prompt, and how a later
+**`id` is always mandatory.** It is how you refer to the board at the prompt, and how a later
 file refers to it here.
 
 ### ADD — `type` + a new id
@@ -141,7 +141,7 @@ type = "virtc"
 id   = "vi0"
 ```
 
-A card that was not there is now there. **In a file with no `base`, this is the only form** —
+A board that was not there is now there. **In a file with no `base`, this is the only form** —
 there is nothing to modify, replace or remove.
 
 ### REPLACE — `type` + an id the base already used
@@ -153,8 +153,8 @@ id   = "sio0"
 port = 0x20
 ```
 
-If the base had a card called `sio0`, it is **gone** — pulled out and thrown away — and a fresh
-`2sio` is fitted in its place. **Everything the base set on that card is lost**, including the
+If the base had a board called `sio0`, it is **gone** — pulled out and thrown away — and a fresh
+`2sio` is fitted in its place. **Everything the base set on that board is lost**, including the
 settings you did not mention. You get the type's defaults, plus whatever you write here.
 
 That is what "replace" means, and it is almost never what you want. You want:
@@ -167,11 +167,11 @@ id   = "cpu0"
 clock_hz = 2000000
 ```
 
-**Leave the `type` out and you are reaching into the card that is already there.** Everything
+**Leave the `type` out and you are reaching into the board that is already there.** Everything
 the base set on `cpu0` stays set; you change the crystal and nothing else.
 
 The absence of `type` is the whole signal. It reads oddly for about a day and then reads as
-exactly what it is: *I am not fitting a card, I am adjusting one.*
+exactly what it is: *I am not fitting a board, I am adjusting one.*
 
 ### REMOVE — `remove = true`
 
@@ -181,16 +181,16 @@ id     = "acr0"
 remove = true
 ```
 
-The card is pulled out of the backplane. Its ports stop being decoded. Nothing else in the file
+The board is pulled out of the backplane. Its ports stop being decoded. Nothing else in the file
 may mention it.
 
 ### The error that catches a copy-paste
 
 **`type` + an id that *this same file* has already declared is an error.** Not a replace — an
-error. Within one file, declaring the same card twice is never something you meant; it is a
+error. Within one file, declaring the same board twice is never something you meant; it is a
 block you copied and forgot to rename. The file will not load, and it will tell you which id.
 
-(Across files it is different: an id from your *base* is a card you inherited, and replacing it
+(Across files it is different: an id from your *base* is a board you inherited, and replacing it
 is a legitimate thing to want.)
 
 ## Everything else on a `[[board]]` is a property
@@ -206,19 +206,19 @@ port = 0x10          # the 2sio knows what a port is. The config layer does not.
 ```
 
 The config layer knows nothing about ports, baud rates, sense switches or drive counts. It
-cannot, and it does not try. It routes the key to the card and the card accepts it or rejects
-it by name:
+cannot, and it does not try. It routes the key to the board and the board accepts it or
+rejects it by name:
 
 ```
 mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle
 ```
 
-**The full key list for every card is the board reference at the back of this manual.** The
-boards chapter says what the cards *are*.
+**The full key list for every board is the board reference at the back of this manual.** The
+boards chapter says what the boards *are*.
 
 ## `[board.unit.<name>]` — settings that belong to one unit
 
-Some cards carry more than one independent thing. An 88-2SIO is **two 6850 ACIAs**, not one chip
+Some boards carry more than one independent thing. An 88-2SIO is **two 6850 ACIAs**, not one chip
 with two channels: unit `a` and unit `b` have their own baud rate, their own interrupt strap,
 their own endpoint, and they share nothing at all. So they get their own tables.
 
@@ -226,7 +226,7 @@ their own endpoint, and they share nothing at all. So they get their own tables.
 [[board]]
 type = "2sio"
 id   = "sio0"
-port = 0x10                    # the CARD's property -- both chips live at this base
+port = 0x10                    # the BOARD's property -- both chips live at this base
 
   [board.unit.a]
   baud    = 9600               # channel A's property
@@ -240,12 +240,12 @@ port = 0x10                    # the CARD's property -- both chips live at this 
 A key in `[board.unit.a]` is exactly the key `SET sio0:a baud=9600` takes at the prompt. It is
 the same property, reached two ways.
 
-The board reference lists which cards have units, and what each unit takes.
+The board reference lists which boards have units, and what each unit takes.
 
 ## `[[board.region]]` — memory
 
-A `memory` card is **a list of regions**, which is why one physical card can carry 56K of RAM and
-a boot PROM at the top of memory. The regions are the card.
+A `memory` board is **a list of regions**, which is why one physical card can carry 56K of RAM
+and a boot PROM at the top of memory. The regions are the board.
 
 ```toml
 [[board]]
@@ -428,12 +428,12 @@ id   = "fp0"
 sense = 0x00
 
 [[board]]
-type     = "8080"          # the CPU is a card. The crystal is on it.
+type     = "8080"          # the CPU is a board. The crystal is on it.
 id       = "cpu0"
 clock_hz = 0               # 0 = flat out. This is the default.
 
 [[board]]
-type = "2sio"              # the console card
+type = "2sio"              # the console board
 id   = "sio0"
 port = 10                  # HEX. Port SIXTEEN.
 
@@ -489,7 +489,7 @@ altairsim> CONFIG SAVE mine.toml
 altairsim> CONFIG LOAD mine.toml
 ```
 
-**`CONFIG SAVE` writes the machine you are actually running** — every card, every property, as
+**`CONFIG SAVE` writes the machine you are actually running** — every board, every property, as
 it stands right now, including everything you changed with `SET` since you started. It
 **round-trips**: load what it wrote and you get the machine back.
 

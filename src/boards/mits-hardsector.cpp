@@ -233,7 +233,7 @@ void HardSectorFdc::selectDrive(int n) {
 
     if (n >= drives_) {
         char m[96];
-        std::snprintf(m, sizeof m, "%s: no drive %d (this card has %d)", id.c_str(), n, drives_);
+        std::snprintf(m, sizeof m, "%s: no drive %d (this board has %d)", id.c_str(), n, drives_);
         say(m);
         n = -1;
     }
@@ -527,7 +527,7 @@ std::vector<Property> HardSectorFdc::properties() {
     {
         Property x;
         x.name  = "port";
-        x.help  = "Base address. The card decodes three ports: BASE+0 .. BASE+2";
+        x.help  = "Base address. The board decodes three ports: BASE+0 .. BASE+2";
         x.kind  = Kind::Int;
         x.radix = 16;  // ON THE WIRE -> HEX (DESIGN.md 10.0.1)
         x.min   = 0;

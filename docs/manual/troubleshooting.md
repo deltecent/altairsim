@@ -110,7 +110,7 @@ altairsim> CONSOLE strip7out=on
 
 The real Teletype ignored bit 7 and printed the `E`. `strip7out` is your terminal doing the
 same. The serial chapter explains why the fix belongs on the console and **never** on the
-card.
+board.
 
 ## Nothing appears when I type / the guest does not see my keys
 
@@ -121,7 +121,7 @@ altairsim> SHOW CONSOLE
 ```
 
 **Exactly one unit may hold the console.** If the console is on a unit the guest is not
-reading, you are typing into a card nobody is listening to. Connect the right one — and note
+reading, you are typing into a board nobody is listening to. Connect the right one — and note
 that connecting a second unit to `console` *steals* it from the first, and says so.
 
 ## The machine runs impossibly fast — a cassette loads in one second
@@ -167,10 +167,10 @@ A transfer to your host has **one end inside the machine and one end outside it*
 crystal makes those two agree.
 
 So: flat out for everything the machine does to itself. The real 2 MHz for anything it does with
-you. Set it back afterwards if you like the speed — and note the built-in file-transfer card is
+you. Set it back afterwards if you like the speed — and note the built-in file-transfer board is
 not affected by any of this, having no timeouts to expire.
 
-## Two cards are fighting over a port
+## Two boards are fighting over a port
 
 ```
 altairsim> SHOW BUS CONTENTION
@@ -187,7 +187,7 @@ not trust. Here it is a list.
 
 ## An `IN` from a port returns `FF` and I expected something
 
-**Nothing decodes that port.** The bus floats high when no card is driving it, and `FF` is
+**Nothing decodes that port.** The bus floats high when no board is driving it, and `FF` is
 what a floating bus reads. It is not an error, and the machine will not tell you — a real one
 did not either.
 
@@ -202,7 +202,7 @@ altairsim> WHO IO 10
 It is not supposed to.
 
 **`RESET` is the bus's RESET\* line.** It does what pulling that line did: the processor goes
-to zero, cards return to their power-on state. RAM is RAM; it was not cleared on the real
+to zero, boards return to their power-on state. RAM is RAM; it was not cleared on the real
 machine and it is not cleared here.
 
 **`POWER` is the only thing that loses memory.** That is the difference between pressing a

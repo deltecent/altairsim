@@ -135,17 +135,17 @@ altairsim> REWIND acr0:tape
 altairsim> RUN 0
 ```
 
-`REWIND` is a verb the **cassette card brings with it** — it exists only because there is an
+`REWIND` is a verb the **cassette board brings with it** — it exists only because there is an
 ACR in the machine. You need it to load the same tape twice, for exactly the reason you would
 have needed it in 1975.
 
 ### The tape is not in the machine file
 
-Look again at what the machine file declares: a front panel, a processor, a serial card, a
+Look again at what the machine file declares: a front panel, a processor, a serial board, a
 cassette interface, and some memory. **It does not declare the tape.**
 
 A machine file describes **hardware**. Which cassette is in the recorder is not hardware —
-and there is no motor control on the card to make it one. You put the tape in, and you press
+and there is no motor control on the board to make it one. You put the tape in, and you press
 PLAY. That is what `MOUNT` is.
 
 ### One number in that file you could not have guessed

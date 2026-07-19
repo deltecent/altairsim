@@ -175,7 +175,7 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
         for (const TapeFormat& f : candidates)
             if (want == f.name) tryThese.push_back(f);
         if (tryThese.empty()) {
-            err = "this card's modem does not demodulate '" + want + "' -- it reads " +
+            err = "this board's modem does not demodulate '" + want + "' -- it reads " +
                   nameList(candidates);
             return nullptr;
         }
@@ -208,10 +208,10 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
     }
 
     if (!any) {
-        err = path + ": this card's modem cannot hear that tape";
+        err = path + ": this board's modem cannot hear that tape";
         if (sawMark > 0) {
             err += " -- it carries " + hz(sawMark) + " / " + hz(sawSpace) +
-                   ", and this card reads " + nameList(candidates);
+                   ", and this board reads " + nameList(candidates);
         } else {
             err += " -- no two separable tones are on it (a blank tape, or pure leader)";
         }

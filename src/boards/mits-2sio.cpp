@@ -222,7 +222,7 @@ std::vector<Property> Sio2Board::properties() {
     {
         Property x;
         x.name    = "port";
-        x.help    = "Base address. The card decodes four ports: BASE+0 .. BASE+3";
+        x.help    = "Base address. The board decodes four ports: BASE+0 .. BASE+3";
         x.kind    = Kind::Int;
         x.radix   = 16;  // ON THE WIRE -> HEX (DESIGN.md 10.0.1)
         x.min     = 0;

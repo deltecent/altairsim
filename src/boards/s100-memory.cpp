@@ -467,7 +467,7 @@ std::vector<Property> MemoryBoard::properties() {
             }
             for (const auto& r : regions_)
                 if (r.kind == RegionKind::Rom && t != BankType::None) {
-                    err = "this card has a rom region; banking a card with ROM is unsourced "
+                    err = "this board has a rom region; banking a board with ROM is unsourced "
                           "and rejected (docs/boards/s100-memory.md)";
                     return false;
                 }
@@ -482,7 +482,7 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "banks";
-        x.help = "how many banks this card has. The card decides: it follows bank_type";
+        x.help = "how many banks this board has. The board decides: it follows bank_type";
         x.kind = Kind::Int;
         x.get = [this] { return Value::ofInt(banks_); };
         // NO SETTER, rather than a setter that always refuses. Both stop a `SET banks=4`,
@@ -503,7 +503,7 @@ std::vector<Property> MemoryBoard::properties() {
         x.get = [this] { return Value::ofInt(bank_); };
         x.set = [this](const Value& v, std::string& err) {
             if (v.i() >= banks_) {
-                err = "this card has " + std::to_string(banks_) + " bank(s)";
+                err = "this board has " + std::to_string(banks_) + " bank(s)";
                 return false;
             }
             bank_ = (int)v.i();
@@ -539,7 +539,7 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "pages";
-        x.help = "the composite page map -- which pages this card answers for. Derived "
+        x.help = "the composite page map -- which pages this board answers for. Derived "
                  "from the regions you declared";
         x.kind = Kind::Str;
         x.get = [this] {

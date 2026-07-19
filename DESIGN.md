@@ -28,6 +28,18 @@ Consequences already baked into this design:
 
 Every board ships with a `docs/boards/<board>.md` on the standard template (§14). No board is merged without one. The **Limitations** and **Quirks** sections are the load-bearing ones.
 
+### 0.3 "Board" is the word, except when the sentence is about the artifact
+
+A board and a card are **the same object** — `src/core/board.h` says so outright, and that identity is not up for revision. This rule is about which of the two synonyms we write down, and it exists because the reader has to type one of them.
+
+**Default to "board."** It is the base class, the `src/boards/` directory, the `[[board]]` table in every machine file, and the `BOARDS` command. A reader who types `BOARDS` and reads "card" in the reply has to carry two words for one thing, forever, for no gain.
+
+**Write "card" only when the sentence is about the physical historical artifact** — the thing with jumpers and edge fingers that somebody bought in 1975. *"A JUMPER on the real card"*, *"the real card has no motor control"*, *"two cards, one chip, and not one line of polarity shared between them"*: these are better with "card", because "card" is what the period manuals and the people who owned these machines said. Swapping those to "board" would cost precision to gain tidiness.
+
+The test is simple: **if the sentence would still be true of the C++ object, write "board"; if it is only true of the PCB, "card" is right.** The failure this rule was written against is using both for one object in one breath — a config error that named the CPU CARD in one line and the CPU's `[[board]]` in the next.
+
+**§7.8 keeps its name.** "A chip is not a card" is an argument about physical parts and PCBs — exactly where "card" belongs — and it is cited by name from `theory.md`, three chip headers and two board headers. It is not an exception to this rule; it is an instance of it.
+
 ---
 
 ## 1. Purpose, goals, non-goals

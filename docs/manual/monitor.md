@@ -4,7 +4,7 @@ The `altairsim>` prompt is **the monitor**: the front panel of the machine, and 
 which here are the same thing. Everything the front panel of a real Altair could do, the
 monitor can do — and a great deal it could not. It breakpoints, it single-steps, it
 disassembles, and it will show you the bus itself: who decodes what, who is pulling which
-interrupt line, and where two cards are fighting over an address. That is the **debugging**
+interrupt line, and where two boards are fighting over an address. That is the **debugging**
 chapter, and it is most of why this program exists.
 
 What it is not is a *menu* — a layer sitting between you and the machine, offering a fixed set
@@ -16,7 +16,7 @@ have. The panel and the debugger are one object because on an Altair they were o
 man at the switches, reading lamps.
 
 The machine does not have to be running for the monitor to work. Most of what follows —
-examining memory, running a bus cycle, fitting a card — works on a machine with the power on
+examining memory, running a bus cycle, fitting a board — works on a machine with the power on
 and the processor idle, which is exactly the arrangement the front panel was for.
 
 ## Commands resolve by prefix
@@ -41,7 +41,7 @@ takes to be unambiguous, and the first command that matches wins.
 ```
 
 Type the part before the bracket. `D` is `DUMP`; `DE` is `DEPOSIT`; `RES` is `RESET`. Case
-does not matter, here or in the name of any card.
+does not matter, here or in the name of any board.
 
 The `*` marks the six commands that **resolve but are not built yet**. Type `SN` and it will
 tell you that `SNAPSHOT` is waiting on the debugger. That is on purpose: their abbreviations are
@@ -76,20 +76,20 @@ contradiction and is rejected rather than guessed at).
 This rule is the same everywhere — in the monitor, in a machine file, and in every board's
 settings. There is no second convention to learn.
 
-## Naming a card: `<id>[:<unit>]`
+## Naming a board: `<id>[:<unit>]`
 
-Every card in the machine has an **id** you chose (`cpu0`, `sio0`, `dsk0`), and some cards
-have **units** inside them — the two channels of a serial card, the four drives on a floppy
-controller, the ROM socket on a memory card.
+Every board in the machine has an **id** you chose (`cpu0`, `sio0`, `dsk0`), and some boards
+have **units** inside them — the two channels of a serial board, the four drives on a floppy
+controller, the ROM socket on a memory board.
 
 ```
-SHOW sio0              the card
+SHOW sio0              the board
 SET  sio0:a baud=1200  one channel of it
 MOUNT dsk0:drive1 my.dsk
 ```
 
 **You may leave out anything that carries no information.** If there is only one floppy
-controller in the machine, `dsk` will find it. If a card has only one thing you could mount
+controller in the machine, `dsk` will find it. If a board has only one thing you could mount
 into, you need not name it — `MOUNT ACR tape.bin` puts a cassette in the one recorder.
 
 But anything **genuinely plural you must say**. There are four drives on that controller and
@@ -111,22 +111,22 @@ altairsim> BOARDS
   * holds the console
 ```
 
-That is the backplane: what is plugged in, what ports each card answers to, what is in its
+That is the backplane: what is plugged in, what ports each board answers to, what is in its
 units, and what it decodes in memory.
 
 | Command | Shows |
 |---|---|
 | `BOARDS` | the backplane |
-| `SHOW <id>` | one card: every setting, its value, and what it will accept |
+| `SHOW <id>` | one board: every setting, its value, and what it will accept |
 | `SHOW MACHINE` | the whole machine |
 | `SHOW CONSOLE` | which unit holds your keyboard, and how bytes are being transformed |
 | `SHOW BUS MAP` | who decodes which addresses — and what floats |
 | `SHOW BUS IO` | who decodes which ports |
 | `SHOW BUS IRQ` | who is strapped to which interrupt line, and who is pulling it |
-| `SHOW BUS CONTENTION` | where two cards are fighting |
+| `SHOW BUS CONTENTION` | where two boards are fighting |
 
 `SHOW <id>` is worth dwelling on, because it is the **only** thing you need in order to
-configure a card. It lists every property, what it is set to, and what values are legal —
+configure a board. It lists every property, what it is set to, and what values are legal —
 and those property names **are** the keys you write in a machine file. There is no second
 schema anywhere in this program. The board reference at the back of this manual is printed
 from the same source.
@@ -137,7 +137,7 @@ from the same source.
 SET cpu0 clock_hz=2000000      give it the real 2 MHz crystal
 SET mem0 fill=zero             RAM comes up zeroed instead of random
 SET fp0  sense=80              set the SENSE switches
-BOARDS ADD 2sio sio1 port=20   fit a second serial card
+BOARDS ADD 2sio sio1 port=20   fit a second serial board
 BOARDS REMOVE sio1             pull it out
 CONFIG SAVE mine.toml          write out the machine you are actually running
 ```
@@ -155,7 +155,7 @@ RUN          carry on from wherever the processor is
 There is no `BOOT` command in this program, and there should not be: a machine that ought to
 start says so with the operator's own keystroke.
 
-If a card holds the console, **the guest gets the keyboard** — every key, including `^C`,
+If a board holds the console, **the guest gets the keyboard** — every key, including `^C`,
 which a CP/M program is entitled to read.
 
 ### ATTN takes it back
@@ -185,7 +185,7 @@ runs, and `^C` stops it.
 
 ## Speed
 
-**It runs flat out by default.** `clock_hz` on the CPU card is `0`, which means "as fast as
+**It runs flat out by default.** `clock_hz` on the CPU board is `0`, which means "as fast as
 this host can go", and a cassette that took a real Altair 110 seconds comes off in about one.
 
 ```
@@ -216,14 +216,14 @@ a cassette does not. See the troubleshooting chapter.
 `RESET` does not clear memory because pressing RESET on a real Altair did not clear memory.
 That is not a simplification; it is the behaviour a lot of period software depends on.
 
-### RESET* is a wire, and every card is listening
+### RESET* is a wire, and every board is listening
 
 The processor is not the only thing that hears it. `RESET*` is a **line on the backplane**, and
-it runs past every card in the machine — so `RESET` is not an instruction the simulator carries
+it runs past every board in the machine — so `RESET` is not an instruction the simulator carries
 out on your behalf. It is a signal put on the bus, and each board answers it the way its own
 silicon answered it, which is not the same answer twice:
 
-- The **memory card** clears its bank latch — and does not touch one byte of RAM. A RAM chip has
+- The **memory board** clears its bank latch — and does not touch one byte of RAM. A RAM chip has
   no reset pin to touch it with.
 - The **floppy controller** flushes the sector it was in the middle of writing, deselects the
   drive, and lets the head unload. On the 5¼″ minidisk the motor spins down; on the 8″ drive
@@ -245,7 +245,7 @@ to tidy it.
 ### And `POWER` is a *different wire*
 
 This is the part that makes `POWER` a different event rather than a bigger one. Switching the
-machine on drives **`POC*`** — Power-On Clear, its own line on the backplane — and a card is
+machine on drives **`POC*`** — Power-On Clear, its own line on the backplane — and a board is
 free to treat the two lines differently, because the real cards did.
 
 The **88-VI/RTC** is the case that proves it. Its manual is explicit that POC disables every
@@ -255,12 +255,12 @@ enabled **stays armed through a `RESET`**, and comes back only when you `POWER` 
 That is not our shortcut; it is the card, and it is why a program that resets its way out of
 trouble can still be taking interrupts it forgot it asked for.
 
-`POC*` is also the only moment RAM is allowed to forget. On `POWER` the memory card refills
+`POC*` is also the only moment RAM is allowed to forget. On `POWER` the memory board refills
 itself — with **random bytes by default**, because static RAM does not come up zeroed, and a
 simulator that quietly zeroes it will never once catch the program that assumed otherwise — and
 re-reads every ROM image from disk.
 
 | | The processor | The boards | RAM |
 |---|---|---|---|
-| `RESET` | restarts at `0000` | `RESET*` on the bus; each card answers as its silicon did — some do nothing | **survives** |
-| `POWER` | restarts at `0000` | `POC*` on the bus; the cards come up as they do from cold | **refilled**, ROMs re-read |
+| `RESET` | restarts at `0000` | `RESET*` on the bus; each board answers as its silicon did — some do nothing | **survives** |
+| `POWER` | restarts at `0000` | `POC*` on the bus; the boards come up as they do from cold | **refilled**, ROMs re-read |

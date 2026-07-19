@@ -8,7 +8,7 @@ std::vector<Property> Cpu8080Board::properties() {
     {
         Property x;
         x.name = "clock_hz";
-        x.help = "Crystal on the card. 0 runs flat out -- as fast as the host can.";
+        x.help = "Crystal on the board. 0 runs flat out -- as fast as the host can.";
         x.kind = Kind::Int;
         x.radix = 10;   // A clock rate never goes on the wire, so it is DECIMAL
                         // (DESIGN.md 10.0.1). `SET cpu0 clock_hz=2000000` is two

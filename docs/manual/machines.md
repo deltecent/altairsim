@@ -1,7 +1,7 @@
 # Machines
 
-A **machine** is a backplane with cards in it. Which cards, with what settings, in what state —
-that is all a machine is, and it is the only thing `altairsim` needs to be told.
+A **machine** is a backplane with boards in it. Which boards, with what settings, in what
+state — that is all a machine is, and it is the only thing `altairsim` needs to be told.
 
 You tell it in one of three ways: name a **built-in**, name a **file**, or say **nothing** and
 take the default. This chapter is about how that choice is made, and about the one rule that
@@ -125,8 +125,8 @@ $ altairsim -n
 ```
 
 No boards. No memory. No processor. `-n` is a bare chassis, and every `BOARDS ADD` from there
-is yours. It is the honest starting point when you are building a machine up card by card, and
-it is the one way to be certain nothing is in there that you did not put there.
+is yours. It is the honest starting point when you are building a machine up board by board,
+and it is the one way to be certain nothing is in there that you did not put there.
 
 ## The path rule, and it has two halves
 
@@ -226,7 +226,7 @@ nothing was re-based:
 ```
 
 `SHOW MOUNTS` is the companion: every disk, tape and ROM in the machine and what is in each,
-across all the cards at once.
+across all the boards at once.
 
 ```
 altairsim> SHOW MOUNTS
@@ -287,4 +287,4 @@ fi
 ## Which chapter next
 
 The **configuring** chapter is the machine file itself: every table, every key, and the four
-things a `[[board]]` entry can mean. The **boards** chapter is what the fourteen cards *are*.
+things a `[[board]]` entry can mean. The **boards** chapter is what the fourteen boards *are*.

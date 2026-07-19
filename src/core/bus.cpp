@@ -186,7 +186,7 @@ void Bus::verifyHold() const {
                      "\npHOLD WIRE-OR COUNT IS WRONG\n"
                      "  the bus thinks %d board(s) are pulling pin 74\n"
                      "  %d actually are\n"
-                     "A card went into or out of the backplane without the count following.\n",
+                     "A board went into or out of the backplane without the count following.\n",
                      holdCount_, live);
         std::abort();
     }
@@ -246,7 +246,7 @@ void Bus::verifyInt() const {
                      "\npINT WIRE-OR COUNT IS WRONG\n"
                      "  the bus thinks %d board(s) are pulling pin 73\n"
                      "  %d actually are\n"
-                     "A card went into or out of the backplane without the count following.\n",
+                     "A board went into or out of the backplane without the count following.\n",
                      intCount_, live);
         std::abort();
     }
@@ -281,7 +281,7 @@ void Bus::verifyVi() const {
                      "\nVI%d WIRE-OR COUNT IS WRONG\n"
                      "  the bus thinks %d board(s) are pulling it\n"
                      "  %d actually are\n"
-                     "A card went into or out of the backplane without the count following.\n",
+                     "A board went into or out of the backplane without the count following.\n",
                      i, viCount_[i], live[i]);
         std::abort();
     }

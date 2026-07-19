@@ -117,7 +117,7 @@ every register, every byte and every disk survives, and a bare RUN resumes at th
 exact instruction. Stopped is not lost, and the debugger is at its most useful
 here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.
 
-IT RUNS FLAT OUT unless the CPU card has a crystal. `clock_hz` defaults to 0,
+IT RUNS FLAT OUT unless the CPU board has a crystal. `clock_hz` defaults to 0,
 so a cassette that took a real Altair 110 seconds comes off in about one. `SET
 cpu0 clock_hz=2000000` buys back the 2 MHz machine AND its 110 seconds. What
 the guest sees is identical either way -- the tape still costs the same
@@ -161,8 +161,8 @@ RO is accepted and means the same -- it is the word for a ROM, which is
 read-only because of what it is.
 
 A NAME IS CASE-BLIND, and you may leave off what carries no information: the
-trailing index when only one such card is in the machine, and the unit when the
-card has only one you could mount into. Anything genuinely plural you must say,
+trailing index when only one such board is in the machine, and the unit when the
+board has only one you could mount into. Anything genuinely plural you must say,
 and it will tell you so.
 
 ```
@@ -233,7 +233,7 @@ unconfigured tracepoint traces to the console.
 CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>
 ```
 THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually
-running -- which cards, in what order, every property SET can write, what each
+running -- which boards, in what order, every property SET can write, what each
 unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It
 is the same format you would write by hand, and the same one a built-in is
 written in, so a saved machine is a first-class machine: LOAD it back, or name
@@ -247,13 +247,13 @@ RAM             what you DEPOSITed is gone. LOAD/SAVE <file> <range> is for
                 memory, and it is a separate file for a reason.
 the registers   PC included, so a LOADed machine has not started.
 breakpoints     nor tracepoints, nor where TRACE was pointed.
-CONSOLE         attn and the transforms are the HOST's terminal, not a card
+CONSOLE         attn and the transforms are the HOST's terminal, not a board
                 in the backplane. They survive CONFIG LOAD untouched.
 ```
 
 A SAVE IS A READ: it asks every property for its value and writes to nothing.
 
-LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the cards you had
+LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the boards you had
 are out of the backplane, the new ones are in, and it is powered up and running
 its startup list -- a file whose startup says RUN comes up running. Naming that
 same file on the command line does the identical thing; there is one road.
@@ -477,7 +477,7 @@ MOVE <range> <dest>
 WHO <addr> | WHO IO <port>
 ```
 Who WOULD answer -- it looks without running a cycle, so nothing is consumed
-and no card is poked. Reports contention, and reports PHANTOM*.
+and no board is poked. Reports contention, and reports PHANTOM*.
 
 ```
 WHO FF00
@@ -490,7 +490,7 @@ WHO IO 10
 ```
 BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>
 ```
-The backplane: what is in it, what each card answers to, and what is in its
+The backplane: what is in it, what each board answers to, and what is in its
 sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a
 ROM range says which image is in it -- an empty socket decodes nothing, so it
 is not in the memory column at all; it is in UNITS, marked (empty).
@@ -498,7 +498,7 @@ is not in the memory column at all; it is in UNITS, marked (empty).
 ```
 BOARDS                   the backplane
 BOARD                    the same thing: a prefix of BOARDS
-BOARDS TYPES             every card, and its properties
+BOARDS TYPES             every board, and its properties
 BOARDS ADD memory mem0
 ```
 
@@ -523,7 +523,7 @@ SET REG PC=FF00
 ```
 REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]
 ```
-A region is a POPULATED part of a card. What is not covered by one is an
+A region is a POPULATED part of a board. What is not covered by one is an
 empty socket: it decodes nothing and floats to FF. `at` is an address, so it
 is hex; `size` is a size, so it is decimal, and K/M work.
 
@@ -634,11 +634,11 @@ To choose WHICH unit the console is wired to, that is CONNECT.
 ```
 CONNECT <id>:<u> <endpoint>
 ```
-PLUG IN THE OTHER END OF THE CABLE. A unit is a socket on the back of a card --
+PLUG IN THE OTHER END OF THE CABLE. A unit is a socket on the back of a board --
 one of the 2SIO's two ports, say; an ENDPOINT is the thing at the far end of the
-cable, on the HOST side of the machine. It is not a card, it has no address, and
+cable, on the HOST side of the machine. It is not a board, it has no address, and
 the guest cannot see it: the 6850 clocks bytes the same way whether the wire ends
-at your terminal, a telnet session, a real RS-232 port, or nothing at all. No card
+at your terminal, a telnet session, a real RS-232 port, or nothing at all. No board
 in the machine knows what any of these words mean.
 
 Endpoints: {endpoints}
@@ -651,7 +651,7 @@ scripted    a terminal with a caller in place of a human -- what the MCP tools
             and the test suite type into. No tty need exist.
 socket:     PORT alone LISTENS: that is the telnet-in case. HOST:PORT CALLS OUT.
 serial:     a real port on this host. It is opened at 9600 8N1 and then
-            immediately re-programmed by the card, which is the only thing that
+            immediately re-programmed by the board, which is the only thing that
             knows what it is strapped to.
 file:       PATH -- a host file, write-only: a printout, or a capture of the
             line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.
