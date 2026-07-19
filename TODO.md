@@ -45,6 +45,49 @@ wall clock and the cursor blinks at a rate that means nothing. This is the same
 confusion of emulated time for wall time that made the VDM-1 repaint 500 times
 per emulated millisecond (#63); the redraw half was fixed, the blink half was
 not.
+### The manual still names media beyond the three shipped examples
+
+`examples/{cpm,basic,sol}` now ship and are booted by tests, so the quick start's
+promise is finally true and `docs/package.map`'s tokens point at files a reader
+has. What is **not** fixed is everything past those three: `disks.md`,
+`file-transfer.md` and parts of `running.md` and `examples.md` still print paths
+like the 8 MB `cpm-8mb.dsk`, the Burcon and Lifeboat CP/M variants and the
+minidisk images as though you could type them. Those are correct in *form* and
+impossible to run from a clone or from the archive.
+
+Each such example wants a one-line statement that it needs an image you supply,
+so a reader stops being told to type a path that cannot work. The alternative —
+shipping the rest of the media — waits on the separate packages repository, which
+does not exist yet.
+
+### Wire `build-package.sh` into the release workflow
+
+**Nothing runs `tools/build-package.sh`.** It assembles the archive the manual
+describes, and no workflow, test or release step invokes it — `grep` over
+`.github/workflows/` finds no reference to it. v0.1.0's three platform archives
+were assembled without it.
+
+The consequence is that two different archives exist and the documented one has
+never been published:
+
+| | Contents |
+|---|---|
+| What v0.1.0 shipped | `altairsim`, `README.md`, `LICENSE` |
+| What `build-package.sh` builds, and the manual describes | `altairsim`, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, `examples/{cpm,basic,sol}` **with media** |
+
+The script works — run for real (it needs `pandoc`), the unpacked archive boots
+CP/M from `examples/cpm/cpm22-buffered.toml` and mounts `examples/sol/TRK80.WAV`
+to the byte-identical line the tapes chapter quotes. What is missing is only that
+a release runs it.
+
+Two smaller things to settle while doing it:
+
+- **The built archive has no `LICENSE`.** `package.map`'s FILE table does not
+  place one; the hand-built v0.1.0 archives did carry it. An MIT project's
+  archive should — one `FILE` line.
+- **`tools/build-package.sh:7`** still summarises the contents as `disks/
+  tapes/`, which `examples/` replaced. The DIR loop below it is correct; only
+  the header comment lies, and it is the file that defines the package.
 
 ---
 
@@ -181,6 +224,24 @@ not.
   issue pending a call on whether creation belongs in `MOUNT` or a verb of its
   own.
 
+- **A mount can only vouch for framing, never for data** — found 2026-07-19
+  while documenting the CUTS format. `DemodResult::confidence()` is
+  `bytes / (bytes + framingErrors)`: it reports that start and stop bits landed
+  where they belonged, and cannot say the eight bits between them are the ones
+  recorded. deramp.com's archived `TRK80.WAV` is the counterexample — it frames
+  at 99.7% and 6,778 of its 7,840 payload bytes are wrong. The **wording** is
+  fixed (the mount line now says "of frames intact", not "clean", and
+  `docs/manual/tapes.md` says what the number does not cover), but the
+  **capability gap** is open: a tape can clear `kTapeConfidenceFloor` comfortably
+  and still be unloadable, and the operator finds out when the program crashes.
+  A SOLOS tape carries its own answer — a header checksum and a checksum after
+  every 256-byte block (see `examples/sol/make-trek80-tape.sh`), and the archived
+  tape's header checksum `D9` verifies even though its payload does not. So the
+  data *is* checkable for CUTS. The question is layering: `tapecodec.cpp`
+  demodulates and knows nothing of SOLOS file structure, and teaching the codec
+  one guest's format would be the wrong seam. Probably belongs in `tapetool` as
+  a `verify` verb first, where being format-aware is the point.
+
 ### MCP
 
 Built: `run`, `send`, `recv`, `regs`, `who`, `bus_map`, `bus_io`,
@@ -311,6 +372,25 @@ and checks the manual against it, which is exactly why the manual could promise
 `acceptance-examples` now covers the *examples* (it boots `examples/cpm` and
 `examples/basic` from a scratch directory), which is the load-bearing half. What
 is still missing is the manual-versus-package check.
+
+**And the manual's TRANSCRIPTS drift too, which is the half nobody is watching.**
+Found 2026-07-19 in `docs/manual/tapes.md`: the `MOUNT ... TRK80.WAV` example
+printed `7932 bytes, 27 framing errors (99.7% clean)` and the ACR refusal below
+it printed `2398 Hz / 1206 Hz`. Both were captured from deramp.com's *archived*
+recording, which has never been in the tree. The tape that actually ships is
+synthesized by `examples/sol/make-trek80-tape.sh` and mounts at `7939 bytes, 0
+framing errors`, carrying `2390 / 1205 Hz`. Every figure on both lines was
+wrong, and no test could tell — the repo's rule is that transcripts are captured
+rather than composed, but nothing re-captures them. A check that runs the
+manual's own fenced commands and diffs the output against the fence is the
+missing piece; it would have caught this and the "CP/M in one command" gap in
+the same pass.
+
+**`tools/build-package.sh:7` still describes the contents as `disks/ tapes/`**
+in its header comment, which `examples/` replaced. One line, and the script's
+own DIR loop is correct — but it is the file that defines the package, so a
+stale summary at the top of it is the worst place for one. Not fixed here
+because it is a tool, not documentation.
 
 ### Dead `if(EXISTS ...)` gates on files that are tracked
 

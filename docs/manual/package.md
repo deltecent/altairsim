@@ -3,54 +3,140 @@
 ```
 altairsim                the program. One file, no dependencies, nothing to install.
 altairsim-manual.pdf     this.
-disks/                   disk images, each with the machine file that boots it.
-tapes/                   cassette images, each with the machine file that boots it.
+USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
+examples/                three machines that boot, media included.
 ```
 
-That is the whole distribution. There is no library to install, no runtime, and no
-configuration file you must write before the program will start.
+That is the whole archive. There is no library to install, no runtime, and no configuration
+file you must write before the program will start.
 
-## The disks and tapes are *examples*, and each one is self-contained
+The **Developer Guide** is not in here — it is a separate download from the same release page
+this came from, and you want it only if you intend to build a board of your own.
 
-Every example is a **directory**, and it holds both the media and the machine file that
-knows what to do with it:
+### `USING-ALTAIRSIM.md`
+
+This one is not for you, exactly. It is a briefing document for an **AI assistant**: drop it in
+a working directory, start an assistant there, and say *"using altairsim, boot CP/M and show me
+what is on the disk."* It tells the assistant how to drive the machine over the program's MCP
+interface. Ignore it if that is not how you work — nothing else depends on it.
+
+## The machines are in the program
+
+You do not need any files to get a running machine. Twelve machine descriptions are
+compiled into the binary, and naming one boots it:
 
 ```
-{{MACHINE_CPM}}          the machine: a 56K Altair with a floppy controller
-{{DISK_CPM}}             the disk that goes in it
+$ altairsim --list                what the built-in names are
+$ altairsim altmon                a monitor in ROM, on a terminal
+$ altairsim sol20                 a Processor Technology Sol-20, running SOLOS
 ```
 
-Naming the machine file boots it:
+A built-in is an ordinary machine file that happens to live inside the executable — the same
+TOML format you would write yourself.
+
+**Four of them carry their software in ROM and need nothing else at all**: `altmon`, `sol20`,
+`cuter` and `vdm1` come up running, with nothing fetched and nothing mounted.
+
+The rest carry at most a **boot PROM**, which is not the same thing. `default` and `minidisk`
+hold the PROM that *would* boot a disk, and their drives are empty — the PROM runs, finds no
+disk, and waits. They want media, and the next section is about where that comes from.
+
+`CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
+edit — which is the usual way to start one of your own.
+
+## Three examples, media included
+
+`examples/` holds three complete machines. **Each is a folder with the media in it**, so every
+one of them boots the moment you unzip the archive — nothing to fetch, nothing to mount:
+
+```
+examples/cpm      CP/M 2.2 on an 8" floppy. This is the quick start.
+examples/basic    {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
+examples/sol      A Sol-20 with {{NAME_SOL}} in the cassette deck.
+```
 
 ```
 $ altairsim {{MACHINE_CPM}}
 ```
 
-**The directory is the unit, and you may move it anywhere.** A path written *inside* a
-machine file is resolved against **that file**, not against wherever you happened to be
-standing when you ran the program. So the machine file above names its disk as simply
-`cpm22b23-56k.dsk` — the one lying next to it — and the folder still boots after you copy
-it to your desktop, rename it, or mail it to somebody.
+**The folder is the unit, and you may move it anywhere.** A path written *inside* a machine
+file resolves against **that file**, not against wherever you were standing when you ran the
+program — so `{{MACHINE_CPM}}` names its disk as plain `cpm22b23-56k.dsk`, the one lying next
+to it, and the folder still boots after you copy it to your desktop, rename it, or mail it to
+somebody.
 
-(The other half of that rule matters just as much: a path *you type* at the prompt is
-relative to **your shell**, because you are the one who can see your own directory. The two
-halves are covered in the machines chapter.)
+(The other half of that rule matters just as much: a path *you type* at the prompt is relative
+to **your shell**, because you are the one who can see your own directory. The machines chapter
+covers both halves.)
 
-## The examples
+The examples chapter walks through all three, and `examples/sol` ships Processor Technology's
+own manual for the game alongside the tape.
 
-| Directory | What it is |
-|---|---|
-| `disks/cpm22` | **CP/M 2.2** on an 8″ floppy. This is the quick start. |
-| `tapes/basic` | **{{NAME_BASIC}}** on a cassette, with the period bootstrap you toggle in to load it. |
+## What is *not* in the package: everything else to run
 
-> **{{NAME_DISKBASIC}} — not yet included.** The disk-BASIC example is still to be
-> assembled. Where this manual describes it, it says so.
+**Those three are the whole of the shipped media.** The other built-ins that want a disk or a
+tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an empty
+drive:
 
-## What is *not* in the package
+```
+$ altairsim -x "SHOW MOUNTS" basic4k
+altairsim> SHOW MOUNTS
+  UNIT       KIND  HOLDS
+  acr0:tape  tape  (empty)
+```
 
-The **source code** is not here. `altairsim` is an open project and the source is a separate
-thing to fetch; nothing in this manual requires it, and nothing in this manual refers to it.
+You supply the media and `MOUNT` it. The disks and tapes chapters describe how — and where
+those chapters name an image that is not one of the three above, they are showing you the
+shape of the command, not a file you already have.
 
-The one exception worth naming: **if you want to build a board of your own** — which is what
-the simulator is really for — you need the source, and you want the *Developer Guide*, which
-is a different document. This one is about driving the machine, not extending it.
+> **Where the rest will come from.** A separate **`altairsim-packages`** repository is planned
+> to hold the wider collection of disks, tapes and machine files, packaged the same way — each
+> example a self-contained folder you can drop anywhere. **It is not published yet**, and
+> exactly which images go in it has not been settled, so there is nothing to link to here yet.
+
+The bulk of the media is kept out of the program's own archive on purpose: an image is large,
+most of the good ones are not ours to redistribute, and the simulator's version and the
+software's have no reason to move together. The three that ship are the ones that make the
+manual's first chapters true.
+
+## What is *not* in the package: the source
+
+The **source code** is not here. `altairsim` is an open project under the MIT licence, and
+the source is a separate thing to fetch:
+
+**<https://github.com/deltecent/altairsim>**
+
+Nothing in this manual requires it. The one exception worth naming: **if you want to build a
+board of your own** — which is what the simulator is really for — you need the source, and
+you want the *Developer Guide*, which is a different document. This one is about driving the
+machine, not extending it.
+
+## Reporting a bug, or asking for something
+
+Both go in the same place — the **Issues** tab of that repository:
+
+**<https://github.com/deltecent/altairsim/issues>**
+
+Search it first; if nobody has raised your problem, open a new issue. You need a GitHub
+account, and nothing else.
+
+**What makes a bug report useful** is enough for somebody else to see what you saw:
+
+- The **version** — the line `altairsim` prints at startup, or `altairsim --version` — and
+  which operating system.
+- The **machine**: the built-in's name, or the machine file itself, which is a small text
+  file you can paste.
+- **What you typed and what happened.** Paste the terminal, prompt and all. The monitor
+  echoes every command, so a pasted session is a complete record of what was asked of it.
+- What you expected instead, when that is not obvious.
+
+If the guest software misbehaved rather than the simulator, say which software and where you
+got it — a period program failing on real hardware in 1976 is a fair thing for it to do here
+too, and knowing the image is how that gets untangled.
+
+**A feature request is an issue as well**, and does not need an apology. Say what you are
+trying to do rather than only which knob you want, because the machine often has a way in
+already; and if it does not, the shape of the problem is what decides the shape of the
+answer. A missing S-100 card is a particularly good request when you can name the manual it
+was documented in — every board here was modelled from its own documentation, and a card
+with no surviving source is one nobody can build honestly.

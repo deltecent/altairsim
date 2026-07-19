@@ -183,6 +183,24 @@ decoded payload. A wrong tone pair or a wrong bit rate does not produce a valid 
 self-consistent length — that agreement is what makes this a measurement rather than a guess.
 `altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
 
+**That recording is sound as SIGNAL and unusable as DATA. Both halves matter — do not delete
+either.** The archived `TRK80.WAV` frames at 99.7% (27 framing errors in ~7,900 frames) and its
+16-byte SOLOS header decodes correctly, header checksum `D9` included. But **6,778 of its 7,840
+payload bytes are wrong**: the tape will not load. That is a worn or badly-dubbed recording, not
+a wrong parameter — a wrong tone pair or bit rate does not yield a valid header, a matching
+`SIZE` and a correct checksum, and this one does all three.
+
+So the timing table above **stands**. It was measured from the carrier — cycle counts, bit cell,
+framing — and the carrier is intact; that is exactly why the framing rate is so high. What the
+carrier does not vouch for is the bit values it carried. A later reader who tries to *load* this
+recording will find it broken and may reasonably conclude the parameters were wrong. They were
+not. Check the header before doubting the table.
+
+This is also why `examples/sol/TRK80.WAV` is **synthesized** from `TREK80.ENT` by
+`examples/sol/make-trek80-tape.sh` rather than being the archived recording: the shipped tape
+decodes at 100.0% with 0 framing errors and actually boots. The archived one is a measurement
+source, not an example.
+
 ### Leader, trailer, and what a whole tape looks like (MEASURED)
 
 Five genuine Sol cassette dubs from the same archive, all 1200 baud. These are *recordings of
@@ -233,6 +251,25 @@ fixed at `FEh`, independent of the video memory page.)
 `IN SENSE` reads the 8-position DIP sense switches (the `fp` board). SOLOS 1.3 defines the port
 but does not read it for console selection — the default console is always keyboard-in / VDM-out
 (pseudo-port 0).
+
+## CPU clock
+
+**Source: Sol Systems Manual, Theory of Operation §VIII** — the φ1/φ2 pulse-width table, which
+gives a clock rate against the pulse widths for each 8080 part the board was jumpered for.
+
+| Part | Clock | φ1 | φ2 |
+|---|---|---|---|
+| **8080A (stock)** | **2.045 MHz** | 140 ns | 280 ns |
+| 8080A-2 | 2.386 MHz | — | — |
+| 8080A-1 | 2.863 MHz | — | — |
+
+The 2.045 MHz is not a round number by accident: it is the **14.31818 MHz dot clock ÷ 7**. The
+Sol derives the CPU clock from the video timing chain, so the processor rate is a consequence of
+NTSC colour-burst arithmetic. The faster two are jumper options for the faster-binned parts, not
+separate designs.
+
+altairsim's `examples/sol/trek80.toml` sets `clock_hz = 2045000` for this reason; `machines/sol20.toml`
+leaves the clock free-running, which is the simulator's default — a period-accurate rate is opt-in.
 
 ## Memory map
 
