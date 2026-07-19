@@ -199,6 +199,24 @@ the divergence.
   issue pending a call on whether creation belongs in `MOUNT` or a verb of its
   own.
 
+- **A mount can only vouch for framing, never for data** — found 2026-07-19
+  while documenting the CUTS format. `DemodResult::confidence()` is
+  `bytes / (bytes + framingErrors)`: it reports that start and stop bits landed
+  where they belonged, and cannot say the eight bits between them are the ones
+  recorded. deramp.com's archived `TRK80.WAV` is the counterexample — it frames
+  at 99.7% and 6,778 of its 7,840 payload bytes are wrong. The **wording** is
+  fixed (the mount line now says "of frames intact", not "clean", and
+  `docs/manual/tapes.md` says what the number does not cover), but the
+  **capability gap** is open: a tape can clear `kTapeConfidenceFloor` comfortably
+  and still be unloadable, and the operator finds out when the program crashes.
+  A SOLOS tape carries its own answer — a header checksum and a checksum after
+  every 256-byte block (see `examples/sol/make-trek80-tape.sh`), and the archived
+  tape's header checksum `D9` verifies even though its payload does not. So the
+  data *is* checkable for CUTS. The question is layering: `tapecodec.cpp`
+  demodulates and knows nothing of SOLOS file structure, and teaching the codec
+  one guest's format would be the wrong seam. Probably belongs in `tapetool` as
+  a `verify` verb first, where being format-aware is the point.
+
 ### MCP
 
 Built: `run`, `send`, `recv`, `regs`, `who`, `bus_map`, `bus_io`,
@@ -329,6 +347,19 @@ and checks the manual against it, which is exactly why the manual could promise
 `acceptance-examples` now covers the *examples* (it boots `examples/cpm` and
 `examples/basic` from a scratch directory), which is the load-bearing half. What
 is still missing is the manual-versus-package check.
+
+**And the manual's TRANSCRIPTS drift too, which is the half nobody is watching.**
+Found 2026-07-19 in `docs/manual/tapes.md`: the `MOUNT ... TRK80.WAV` example
+printed `7932 bytes, 27 framing errors (99.7% clean)` and the ACR refusal below
+it printed `2398 Hz / 1206 Hz`. Both were captured from deramp.com's *archived*
+recording, which has never been in the tree. The tape that actually ships is
+synthesized by `examples/sol/make-trek80-tape.sh` and mounts at `7939 bytes, 0
+framing errors`, carrying `2390 / 1205 Hz`. Every figure on both lines was
+wrong, and no test could tell — the repo's rule is that transcripts are captured
+rather than composed, but nothing re-captures them. A check that runs the
+manual's own fenced commands and diffs the output against the fence is the
+missing piece; it would have caught this and the "CP/M in one command" gap in
+the same pass.
 
 ### Dead `if(EXISTS ...)` gates on files that are tracked
 

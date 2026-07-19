@@ -150,9 +150,13 @@ Most surviving Altair and Sol cassettes are not files of bytes. They are **audio
 put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one,
 on either card.
 
+**There is one in the package.** `examples/sol/TRK80.WAV` is a CUTS cassette carrying *Star
+Trek*, and the machine beside it is set up to read it, so this is a line you can actually
+type:
+
 ```
 altairsim> MOUNT sol0:tape1 TRK80.WAV
-TRK80.WAV: cuts1200, 7932 bytes, 27 framing errors (99.7% clean)
+TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
 ```
 
 Nothing else changes. The recording is demodulated **once, when you mount it** — never while
@@ -163,6 +167,14 @@ of M bytes"* and `REWIND`, means exactly what it meant for a `.TAP`. The guest c
 the number that matters: a tape that decoded at 60% is noise, not a program, and you want to
 know that now rather than after the loader has crashed. A decode below 90% is refused outright.
 
+**But it is a framing rate, not a clean bill of health.** The percentage counts frames whose
+start and stop bits landed where they belonged; it cannot tell you the eight bits between them
+are the ones that were recorded. The two really do come apart. The genuine archived recording
+of this same Star Trek tape frames at 99.7% and is still *unusable*, with most of its payload
+bytes wrong — good enough as a signal to measure the CUTS timings from, and nowhere near good
+enough to load. A high percentage means the demodulator kept its footing, and no more. If a
+tape mounts well and the program still will not run, a worn recording is the likely answer.
+
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
 
@@ -171,9 +183,9 @@ still read as bytes, and a recording renamed `.TAP` is still demodulated.
 That example mounted a Sol tape on a Sol. Put it in an Altair and the card says no:
 
 ```
-altairsim> MOUNT acr0:tape TRK80.WAV
-TRK80.WAV: this card's modem cannot hear that tape -- it carries 2398 Hz / 1206 Hz,
-and this card reads fsk300
+altairsim> MOUNT acr0:tape examples/sol/TRK80.WAV
+acr0: examples/sol/TRK80.WAV: this card's modem cannot hear that tape -- it carries
+2390 Hz / 1205 Hz, and this card reads fsk300
 ```
 
 This is deliberate, and it is not the simulator being fussy.
