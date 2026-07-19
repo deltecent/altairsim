@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "platform/foreground.h"
+
 #include <cstdio>
 
 namespace altair {
@@ -21,6 +23,24 @@ SdlDisplay::~SdlDisplay() {
 bool SdlDisplay::ensureWindow(int w, int h) {
     if (renderer_) return true;
     if (!inited_) {
+        // Do not come to the front just because a board drew a frame. This must be set
+        // BEFORE SDL_Init -- it is read while the backend registers the application,
+        // and setting it afterwards is too late. It suppresses the activation, and it
+        // also suppresses the activation POLICY, which platform/foreground.h puts back
+        // below; see that header for why the two have to be separated.
+        SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+
+        // Eligible for the foreground, but not asking for it: clicking the window still
+        // focuses it, which it must, because this window is a real input device.
+        //
+        // BEFORE SDL_Init, and that ordering is load-bearing. Measured 2026-07-19:
+        // granting the policy after the backend has registered the application brings
+        // the process to the front then and there -- the transition INTO the regular
+        // policy is itself an activation -- so the window stole focus exactly as it did
+        // with no fix at all. Granted first, there is no launched application to
+        // activate, and SDL then declines to activate one because of the hint above.
+        platform::allowForegroundActivation();
+
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             std::fprintf(stderr, "SDL: video init failed: %s\n", SDL_GetError());
             return false;
@@ -28,11 +48,25 @@ bool SdlDisplay::ensureWindow(int w, int h) {
         inited_ = true;
     }
 
+    // The window half of the same thing: do not activate the window when it is shown.
+    // The hint is consulted on the SHOW path, so it only bites if the window is created
+    // hidden and shown deliberately below -- which also means it never appears
+    // half-configured, before the renderer and the logical presentation are set.
+    //
+    // Not SDL_WINDOW_NOT_FOCUSABLE: that would make the window permanently unable to
+    // take focus, and this window is a real input device. Unfocused is also not the
+    // same as behind -- the terminal stays active, but this window may still be ordered
+    // in front of it (on macOS the non-activating show is orderFront:), and SDL wraps
+    // no "order back". Outside macOS this is a hint a window manager is free to ignore,
+    // so the whole arrangement is best-effort and cannot be asserted in a test.
+    SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+
     // Open at an integer multiple so the pixels are visible; the user can resize and
     // the integer-scale logical presentation keeps the aspect and the crisp edges.
     const int scale = 3;
     if (!SDL_CreateWindowAndRenderer("altairsim -- VDM-1", w * scale, h * scale,
-                                     SDL_WINDOW_RESIZABLE, &window_, &renderer_)) {
+                                     SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &window_,
+                                     &renderer_)) {
         std::fprintf(stderr, "SDL: window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
@@ -43,6 +77,10 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // '$' or a capital letter arrives correct without us reimplementing a keymap. The
     // control keys and Ctrl-combinations still come through SDL_EVENT_KEY_DOWN.
     SDL_StartTextInput(window_);
+
+    // Everything above is configured, so show it -- unfocused, per the hint set before
+    // the window was created.
+    SDL_ShowWindow(window_);
     return true;
 }
 

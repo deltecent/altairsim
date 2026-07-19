@@ -52,6 +52,40 @@ so a reader stops being told to type a path that cannot work. The alternative �
 shipping the rest of the media — waits on the separate packages repository, which
 does not exist yet.
 
+### A key typed in a video window waits for the cursor to blink
+
+Found 2026-07-19 while testing the unfocused-window change on `sol20`: typing in
+the VDM-1 window echoes about 200 ms late. Typing at the terminal is unaffected.
+
+The cause is a coupling, not a slow path. **SDL's event queue is drained only
+inside `SdlDisplay::present()`** (`src/host/display_sdl.cpp`), and `present()` is
+reached only from `VdmBoard::render()`, which `pump()` gates behind two tests
+(`src/boards/proctech-vdm1.cpp:134`):
+
+```
+if (!frameChanged()) return;      // would this frame look different?
+if (!g_display->wantsFrame()) return;   // does the host want one now?
+```
+
+So **keystrokes are collected at the rate frames are produced.** Sitting at a
+SOLOS prompt nothing on screen is changing, and the only thing that returns true
+from `frameChanged()` is the cursor blink — `kBlinkHalfPeriod = 0.5` seconds
+(`proctech-vdm1.cpp:37`), i.e. ~2 Hz. That is the observed delay: a key waits for
+the next blink edge, up to 500 ms, ~250 ms on average.
+
+**The sharper form of it is a deadlock, and nothing in tree hits it today only by
+luck.** With a non-blinking cursor a fully static screen produces no frames at
+all: no frame → the queue is never drained → the key is never delivered → the
+guest never echoes it → nothing changes → still no frame. Every shipped machine
+(`sol20`, `cuter`, `vdm1`) sets `cursor = "blink"`, so the blink is the only
+thing keeping the input path alive. `cursor = "solid"` would make the window go
+deaf, and it reads as a display preference.
+
+Draining input is not the same job as drawing a frame and should not be behind
+either gate — the fix is to pump the event queue every time slice, independently
+of whether a board renders. Note that `present()` is also where a close request
+is noticed, so that would decouple too.
+
 ### Wire `build-package.sh` into the release workflow
 
 **Nothing runs `tools/build-package.sh`.** It assembles the archive the manual
@@ -170,40 +204,6 @@ Two smaller things to settle while doing it:
   feature gap, not drift. The four transforms that did land (`upper`,
   `strip7in`/`strip7out`, `crlf`, `bsdel`) settled the question the list was
   really asking, which is *where* a transform belongs.
-- **Open the video window without stealing the terminal's focus** — today the
-  first frame from a video board opens an SDL window that becomes the active,
-  key window, so a person typing at the `altairsim>` prompt (or at a guest's
-  console) has their keystrokes go somewhere else mid-sentence. The window
-  should come up unfocused and leave the terminal active; clicking it should
-  still focus it, because for the Sol-20 that window *is* the keyboard.
-
-  SDL3 can do this. In `SdlDisplay::ensureWindow`
-  (`src/host/display_sdl.cpp:21`): set
-  `SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0")` before creating the
-  window, add `SDL_WINDOW_HIDDEN` to the `SDL_CreateWindowAndRenderer` flags,
-  and call `SDL_ShowWindow(window_)` at the end of the function once the
-  renderer, logical presentation and text input are set up. Creating hidden and
-  showing explicitly is what makes the hint bite: it is consulted on the show
-  path, and it also means the window never appears half-configured. Set
-  `SDL_HINT_WINDOW_ACTIVATE_WHEN_RAISED` to `"0"` alongside it if we ever start
-  calling `SDL_RaiseWindow`; nothing does today.
-
-  **Do not reach for `SDL_WINDOW_NOT_FOCUSABLE`.** It looks like the same
-  feature and is not: it makes the window permanently unable to take focus, and
-  the video window is a real input device — the key sink wired in `main.cpp`
-  feeds the Console, and the Sol-20's keyboard has no other home. A window you
-  can never click into cannot be typed into.
-
-  Two things to be honest about before building it. *Unfocused is not behind*:
-  the hint guarantees the terminal stays the active window, but the video window
-  may still be ordered visually in front of it, and SDL exposes no "order back"
-  — on macOS the non-activating show is `orderFront:`. If the requirement is
-  literally *behind*, that needs a platform call SDL does not wrap. And it is a
-  hint on every backend other than macOS: a window manager is free to ignore it,
-  so this is a best-effort behavior and cannot be asserted in a test. Whether it
-  is unconditional or a knob is an open design call — someone driving a Sol-20
-  wants the focus — but there is no `[display]` configuration section to hang a
-  property on yet, so unconditional-with-a-flag is the smaller change.
 - **Show the commit the binary was built from** — `--version` and the banner say
   `altairsim 0.1.0` and nothing more, so a binary in hand cannot be traced to a
   commit. Between releases that is most of them: every CI artifact, every local
