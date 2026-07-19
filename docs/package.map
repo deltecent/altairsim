@@ -1,9 +1,14 @@
 # THE PACKAGE -- what we hand people, and the ONLY thing the User Manual may name.
 #
-# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`,
-# and some disks and tapes. They do NOT get this repository -- no src/, no CMakeLists, no
-# tests, no DESIGN.md, no docs/boards/. So the manual may not reference any of it, and every
-# path it prints must be a path that exists INSIDE THE ZIP.
+# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, and
+# the examples/ tree -- each example a self-contained folder holding a machine file and the
+# media it mounts. The DIR table below is the list of them, and this sentence deliberately
+# does not repeat it: naming them twice in one file is how the previous wording ("some disks
+# and tapes") outlived the layout it described.
+#
+# They do NOT get this repository -- no src/, no CMakeLists, no tests, no DESIGN.md, no
+# docs/boards/. So the manual may not reference any of it, and every path it prints must be
+# a path that exists INSIDE THE ZIP.
 #
 # TWO documents ship, not one. The manual (a PDF) is for the human. USING-ALTAIRSIM.md is for
 # an AI assistant driving the machine over MCP -- it is dropped, verbatim, into a working
