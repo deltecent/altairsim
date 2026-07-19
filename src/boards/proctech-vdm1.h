@@ -61,7 +61,10 @@ public:
     // I/O port (0xFE, DSTAT) owned by the composite `sol` board, not this card's own
     // jumpered port -- so the sol board forwards its OUT 0xFE here. On a stand-alone
     // VDM-1 the identical latch happens in write() (IoWrite) instead.
-    void setScroll(uint8_t row) { scroll_ = row & 0x0F; }
+    void setScroll(uint8_t row) {
+        if ((row & 0x0F) != scroll_) dirty_ = true;
+        scroll_ = row & 0x0F;
+    }
 
     // ---- For tests, without a window: what the card would show. ----
     uint8_t vram(uint16_t off) const { return off < kBytes ? screen_[off] : 0xFF; }
@@ -74,6 +77,14 @@ private:
 
     void render();  // paint the current screen into the injected Display
 
+    // WOULD THE PICTURE LOOK DIFFERENT FROM THE ONE ALREADY ON SCREEN? Painting is
+    // expensive (see Display::wantsFrame) and most pumps change nothing at all -- a
+    // guest waiting on a disk, or reading a cassette, leaves the screen untouched for
+    // millions of instructions. This is the DETERMINISTIC half of the economy: it
+    // depends only on emulated state, never on a host clock, so a headless build and a
+    // test skip exactly the same frames the windowed build does.
+    bool frameChanged() const;
+
     uint8_t  screen_[kBytes];
     uint32_t base_   = 0xCC00;  // 1 KB-aligned screen-RAM base
     uint8_t  port_   = 0xCC;    // I/O port (scroll out / status in); low 2 bits zero
@@ -85,6 +96,21 @@ private:
     // count, so it is deterministic and replay-safe -- derived from emulated time,
     // never a host timer (reference file 3.3).
     uint64_t timerExpiry_ = 0;
+
+    // ---- Change detection (frameChanged) ----
+    //
+    // `dirty_` starts true so the first pump always paints: a freshly powered card
+    // owes the host one frame, even though that frame is blank.
+    bool dirty_ = true;
+
+    // A BLINKING CURSOR CHANGES THE PICTURE WITH NO WRITE BEHIND IT, so the blink
+    // phase is remembered and compared. Only when a cursor is actually ON the screen,
+    // though -- `hasCursorCell_` is set by render() when it meets a byte with D7 set.
+    // Without that guard a blinking-but-cursorless screen would repaint forever, and
+    // free-running it would do so thousands of times a second, since the phase comes
+    // off emulated time and emulated time races the wall.
+    bool lastBlinkOn_   = true;
+    bool hasCursorCell_ = false;
 };
 
 } // namespace altair

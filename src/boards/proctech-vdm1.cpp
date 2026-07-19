@@ -64,11 +64,18 @@ void VdmBoard::write(const BusCycle& c) {
         // Load the scroll (top character row) and fire the status one-shot. Only the
         // low 4 bits are a row number; the rest of the latch does not change what a
         // guest can observe (reference 3.1).
-        scroll_ = c.data & 0x0F;
+        uint8_t row = c.data & 0x0F;
+        if (row != scroll_) dirty_ = true;  // a different row at the top: repaint
+        scroll_ = row;
         timerExpiry_ = (clock_ ? clock_->now() : 0) + kTimerTStates;
         return;
     }
-    screen_[c.addr - base_] = c.data;  // MemWrite
+    // MemWrite. Only a byte that actually CHANGES needs a repaint -- a guest that
+    // rewrites the same character (a cursor walking over unchanged text, a redraw of a
+    // static field) is common, and costs nothing here.
+    uint8_t& cell = screen_[c.addr - base_];
+    if (cell != c.data) dirty_ = true;
+    cell = c.data;
 }
 
 bool VdmBoard::peek(uint16_t addr, uint8_t& out) const {
@@ -97,14 +104,37 @@ void VdmBoard::power() {
     for (auto& b : screen_) b = 0x00;
     scroll_ = 0;
     timerExpiry_ = 0;
+    dirty_ = true;  // the blanked screen still owes the host one frame
 }
 
 // ---------------------------------------------------------------------------
 // The host turn: paint the frame and show it. Once per time slice, on the main
 // thread (DESIGN.md 7.4) -- never inside a bus cycle.
 // ---------------------------------------------------------------------------
+// TWO GATES, AND THEY ANSWER DIFFERENT QUESTIONS. The board asks "would this frame
+// look any different?" -- deterministic, emulated state only, so headless and windowed
+// builds skip identically. The host then asks "do I want a frame right now?" -- wall
+// clock, and only a windowed back end has an opinion. Both are checked BEFORE
+// render(), because the 213,000 pixel operations are the cost being avoided.
+//
+// Neither gate clears `dirty_`: a change deferred by the frame limiter is still owed,
+// and render() is what finally discharges it.
 void VdmBoard::pump() {
-    if (g_display) render();
+    if (!g_display) return;
+    if (!frameChanged()) return;
+    if (!g_display->wantsFrame()) return;
+    render();
+}
+
+bool VdmBoard::frameChanged() const {
+    if (dirty_) return true;
+
+    // Nothing was written -- but a blinking cursor repaints itself on its own clock.
+    if (cursorMode_ == 1 && hasCursorCell_ && clock_) {
+        bool blinkOn = ((clock_->now() / kBlinkTStates) & 1) == 0;
+        if (blinkOn != lastBlinkOn_) return true;
+    }
+    return false;
 }
 
 void VdmBoard::render() {
@@ -123,11 +153,16 @@ void VdmBoard::render() {
 
     s->clear(0);  // background
 
+    // Whether ANY cell carries the cursor bit, set as we go: it is what decides
+    // whether a later blink-phase flip can change the picture at all (frameChanged).
+    bool sawCursorCell = false;
+
     for (int dr = 0; dr < kRows; ++dr) {
         int srcRow = (scroll_ + dr) & (kRows - 1);  // hardware scroll wraps mod 16
         for (int col = 0; col < kCols; ++col) {
             uint8_t byte = screen_[srcRow * kCols + col];
             uint8_t code = byte & 0x7F;
+            if (byte & 0x80) sawCursorCell = true;
             bool cursor = (byte & 0x80) && cursorShown;
 
             int px = col * kCellW, py = dr * kCellH;
@@ -145,6 +180,12 @@ void VdmBoard::render() {
             }
         }
     }
+
+    // The frame is on the host. Remember what it was painted FROM, so the next pump
+    // can tell whether anything has moved since.
+    dirty_         = false;
+    lastBlinkOn_   = blinkOn;
+    hasCursorCell_ = sawCursorCell;
 
     g_display->present(s);
 }
@@ -202,6 +243,7 @@ std::vector<Property> VdmBoard::properties() {
         x.get     = [this] { return Value::ofStr(reverse_ ? "reverse" : "normal"); };
         x.set     = [this](const Value& v, std::string&) {
             reverse_ = (v.s() == "reverse");
+            dirty_   = true;  // the palette is only re-sent by render()
             return true;
         };
         p.push_back(std::move(x));
@@ -219,6 +261,7 @@ std::vector<Property> VdmBoard::properties() {
         };
         x.set = [this](const Value& v, std::string&) {
             cursorMode_ = (v.s() == "off") ? 0 : (v.s() == "steady") ? 2 : 1;
+            dirty_      = true;
             return true;
         };
         p.push_back(std::move(x));

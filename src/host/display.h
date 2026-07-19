@@ -27,6 +27,7 @@
 // events into it. The board still reads only its ByteStream; window and terminal
 // keys merge in the Console before any board sees them, so RECORD/REPLAY is intact.
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <span>
@@ -146,6 +147,35 @@ public:
     uint8_t specialKey(SpecialKey k) const { return special_[(size_t)k]; }
     void    setSpecialKey(SpecialKey k, uint8_t code) { special_[(size_t)k] = code; }
 
+    // IS THE HOST READY FOR ANOTHER FRAME? A board asks BEFORE it paints, because
+    // painting is the expensive half: a VDM-1 frame is 106,496 pixels cleared and
+    // 106,496 glyph bits walked, and the run loop pumps every 2000 instructions. Left
+    // unchecked that is ~106 pixel operations per emulated instruction, which measured
+    // as a 94x slowdown on any machine with a video card in it -- the card, not the
+    // CPU, was the emulator's speed limit.
+    //
+    // THE FRAME RATE IS THE HOST'S BUSINESS, NOT THE BOARD'S. A real VDM-1 scanned at
+    // the monitor's rate no matter what the 8080 was doing, and the guest could not
+    // observe the difference -- nothing on the S-100 side reads back a pixel. So this
+    // is a pure host-side economy: it changes what is DRAWN, never what is COMPUTED,
+    // and the status bits a guest CAN time (D0's one-shot, D1's scan-advance) come off
+    // the Clock and are untouched by it.
+    //
+    // DEFAULT IS UNLIMITED, AND THAT IS DELIBERATE. Wall-clock rate limiting is
+    // nondeterministic, so a test must be able to opt out and get "paint every time I
+    // ask". tests/main.cpp leaves the limit at 0; src/main.cpp sets 60. The board's
+    // own change detection is the deterministic half and is always on.
+    void setFrameLimitHz(double hz) { frameMinPeriod_ = hz > 0 ? 1.0 / hz : 0.0; }
+
+    bool wantsFrame() {
+        if (frameMinPeriod_ <= 0.0) return true;  // unlimited -- tests, and headless
+        auto now = std::chrono::steady_clock::now();
+        std::chrono::duration<double> since = now - lastFrame_;
+        if (since.count() < frameMinPeriod_) return false;
+        lastFrame_ = now;
+        return true;
+    }
+
     // HAS THE OPERATOR ASKED TO CLOSE THE WINDOW SINCE WE LAST ASKED? A windowed
     // host sets this from its own event queue; the run loop asks once a slice and
     // stops the guest, which is the same place ATTN lands you (DESIGN.md 7.4).
@@ -180,6 +210,10 @@ private:
 
     // Sol-20 Table 7-4: up 97, down 9A, left 81, right 93, HOME CURSOR 8E.
     uint8_t special_[(size_t)SpecialKey::Count_] = {0x97, 0x9A, 0x81, 0x93, 0x8E};
+
+    // Minimum seconds between accepted frames; 0 = no limit. See wantsFrame().
+    double frameMinPeriod_ = 0.0;
+    std::chrono::steady_clock::time_point lastFrame_{};
 };
 
 } // namespace altair
