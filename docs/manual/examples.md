@@ -74,7 +74,7 @@ The disk is mounted **read/write** and there is no undo. Copy the folder first �
 self-contained and boots from anywhere:
 
 ```
-$ cp -R disks/cpm22 my-cpm
+$ cp -R examples/cpm my-cpm
 $ altairsim my-cpm/cpm22-buffered.toml
 ```
 
@@ -177,6 +177,78 @@ altairsim> RUN 0
 
 …and now it takes 110 seconds, because the tape costs the same number of T-states either way.
 **What the guest sees is identical.** The crystal buys period *feel*, not period *behaviour*.
+
+---
+
+## 3. A Sol-20 loading {{NAME_SOL}} off cassette
+
+```
+$ altairsim {{MACHINE_SOL}}
+```
+
+The Sol-20 is not an Altair with a terminal on it. It is an integrated computer with a
+**keyboard and a screen built in**, and that changes what this example looks like on your
+terminal — so read the next paragraph before deciding something is broken.
+
+**The Sol's screen is a VDM-1, and nothing it displays reaches your terminal.** SOLOS signs on,
+`XE TRK80` echoes, the game paints its starfield — all of it into the VDM's video memory at
+`CC00`–`CFFF`, which is a *display*, not a serial line. If altairsim was built with SDL you get
+a window and you watch it there. If it was not, the machine still runs perfectly and the
+console stays quiet. That quiet is correct.
+
+Your typing goes the other way, and does work: keystrokes at the terminal reach the Sol's
+keyboard port just as the window's would.
+
+```
+startup> MOUNT sol0:tape1 "TRK80.TAP"
+sol0:tape1: mounted TRK80.TAP
+altairsim> RUN C000
+[console -- ^E returns to the monitor]
+XE TRK80
+```
+
+The `MOUNT` is the machine file's doing — the tape is in the deck before you arrive. `RUN C000`
+cold-starts SOLOS, and `XE TRK80` is yours to type: `startup` runs *monitor* commands, and no
+machine file can type at a guest.
+
+Then wait. **The tape takes about a minute**, because `{{MACHINE_SOL}}` sets the Sol's real
+2.045 MHz and a cassette at 1200 baud takes what a cassette took. That minute is the example
+being honest, not the simulator being slow — `SET cpu0 clock_hz=0` buys the wall clock back
+and changes nothing the guest can observe.
+
+### Reading the screen without a screen
+
+With no window, you can still see what the game painted: stop the machine and dump the VDM's
+memory. Each row is 64 bytes and `DUMP` prints the ASCII beside the hex, so one row is one
+line. `^E` first, then:
+
+```
+altairsim> DUMP CD00-CD3F WIDTH=64
+CD00  43 4F 50 59 52 49 47 48 54 ... 43 4F 52 50 2E  COPYRIGHT (C) 1977  PROCESSOR TECHNOLOGY CORP.
+```
+
+That is the game's own copyright line, off a 1977 tape, read out of the screen it drew it on.
+And the row near the bottom is where it stops to ask you something:
+
+```
+altairsim> DUMP CFC0-CFFF WIDTH=64
+CFC0  45 4E 54 45 52 20 53 50 ... 54 29 29           ENTER SPEED FACTOR (9(SLOW)-0(FAST))
+```
+
+`RUN` resumes, and the answer you type reaches the game.
+
+### The same tape, as audio
+
+`{{TAPE_SOL}}` is a file of bytes. Beside it is `{{WAV_SOL}}` — the *same* program as a
+cassette recording — and the machine reads either:
+
+```
+altairsim> MOUNT sol0:tape1 TRK80.WAV
+TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
+```
+
+Everything above this line is unchanged: SOLOS's tape reader cannot tell, because the
+demodulation happens once, at mount. The tapes chapter has the detail.
 
 ---
 

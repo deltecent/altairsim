@@ -65,7 +65,7 @@ $ altairsim --list                      what the built-in names are
 ```
 
 A **built-in** is a machine file that lives inside the program. There is nothing special
-about it — it is written in the same format as the ones in `disks/` and `tapes/`. To see what
+about it — it is written in the same format as the ones under `examples/`. To see what
 is actually in one, boot it and look:
 
 ```

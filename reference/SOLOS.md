@@ -187,6 +187,55 @@ Block access (`RDBLK`/`WRBLK`) moves a whole file per call; byte access (`FOPEN`
 for data files. `RDBLK`/`WRBLK` take unit+speed in `A`: **bit 5** speed (0 = 1200, 1 = 300), **bit
 7** = tape 1, **bit 6** = tape 2, all other bits 0.
 
+### What a whole tape file looks like on the wire
+
+Source: `WHEAD`/`WTBL`/`DOCRC` in `roms/SOLOS/SOLOS13.ASM`, confirmed byte-for-byte against
+`examples/sol/TRK80.TAP`.
+
+```
+50 × 00   | 01   | 16-byte header | cksum | 256 data | cksum | 256 data | cksum | … | tail | cksum
+ leader    sync                                    one checksum byte after every block
+```
+
+- **50 zero bytes**, then a **single `01` sync byte** (`WHEAD`: `MVI D,50` / `MVI A,1`).
+- The **16-byte header** above, followed by **one checksum byte** over those 16.
+- The data in **256-byte blocks, each followed by its own checksum byte.** The last block is
+  short — whatever `SIZE` leaves over — and is checksummed the same way.
+- Nothing marks the end. The reader stops because `SIZE` says to, which is why `SIZE` being a
+  *length* rather than a last address matters.
+
+`TRK80.TAP` is exactly this: 50 + 1 + 16 + 1 + (30 × 257) + 160 + 1 = **7,939 bytes** for a
+7,840-byte program, and it consumes to the final byte with nothing left over.
+
+### The checksum — and why a bad one is SILENT
+
+Every block, header included, is covered by one byte. SOLOS calls it a CRC; it is not one.
+`DOCRC` runs six instructions per byte:
+
+```asm
+DOCRC:  SUB  C      ; A = byte - C
+        MOV  C,A
+        XRA  C      ; A = 0
+        CMA         ; A = FF
+        SUB  C      ; A = FF - C
+        MOV  C,A
+        RET
+```
+
+which is, net, a running subtraction seeded at zero (`WTBL: MVI C,0`):
+
+> **`C = (C − byte − 1) mod 256`**, over the block's bytes, and the result is written after them.
+
+Verified against `TRK80.TAP`: header checksum `D9` and all 31 data-block checksums reproduce
+with zero mismatches.
+
+**A tape whose checksums are wrong is invisible, not faulty.** `CA` lists nothing, `GE` finds
+nothing, and no error is printed anywhere — so "the file is not on the tape" and "the file is on
+the tape and does not verify" look identical to the operator. That is the single most important
+practical fact about this format, and it is why `examples/sol/make-trek80-tape.sh` derives its
+tape by having SOLOS itself `SA`ve the image rather than assembling the bytes by hand: the
+checksums are then the machine's own arithmetic, and reading it back is the only honest proof.
+
 ## Memory map (Sol-20)
 
 See `Sol-20.md` for the full picture; the parts SOLOS defines:

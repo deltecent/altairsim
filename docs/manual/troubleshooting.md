@@ -77,7 +77,7 @@ or copy the folder. It is a directory with a machine file and an image in it, an
 from anywhere:
 
 ```
-$ cp -R disks/cpm22 my-cpm
+$ cp -R examples/cpm my-cpm
 ```
 
 ## `MOUNT` says "no such file" and the file is right there

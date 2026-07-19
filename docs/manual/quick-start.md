@@ -126,7 +126,7 @@ You have two ways to be safe, and they answer different questions.
 host cannot change no matter what the guest does:
 
 ```
-altairsim> MOUNT dsk0:drive0 cpm22-buffered.dsk RO
+altairsim> MOUNT dsk0:drive0 {{DISK_CPM}} RO
 ```
 
 In a machine file it is `readonly = true` in the drive's table. Use it when you want to *look
@@ -143,7 +143,7 @@ save a BASIC program, assemble something, use `PIP`. It is a directory with a ma
 and a disk image in it, and it boots from anywhere:
 
 ```
-$ cp -R disks/cpm22 my-cpm
+$ cp -R examples/cpm my-cpm
 $ altairsim my-cpm/cpm22-buffered.toml
 ```
 
