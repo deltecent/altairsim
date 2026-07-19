@@ -220,6 +220,36 @@ void test_vdm1() {
         CHECK(g.disp.frames() == off, "with the cursor off, the blink is not a change");
     }
 
+    SECTION("VDM-1 -- a still screen paints nothing, so input must not ride on frames");
+    {
+        // THE PRECONDITION BEHIND A DEADLOCK, PINNED SO IT CANNOT BE RE-CREATED.
+        //
+        // Draining the window's event queue used to live inside present(), which a
+        // board reaches only after frameChanged() and wantsFrame() both say yes. This
+        // section proves the half that made that fatal: with a steady cursor and
+        // nothing being written, a VDM-1 produces NO frames at all, however long it is
+        // pumped and however much wall time passes. Keys collected on that path would
+        // never arrive -- no frame, so no key; no key, so no echo; no echo, so nothing
+        // changed and still no frame -- and the machine would sit deaf at its prompt.
+        //
+        // So this is not really a test about painting. It is the reason
+        // Display::pollEvents() exists and is called from the run loop instead: what a
+        // still picture costs must never be what reading the operator costs.
+        Rig g;
+        std::string err;
+        CHECK(setProperty(*g.vdm, "cursor", "steady", err), "cursor=steady is accepted");
+        g.poke(0, 'A' | 0x80);  // a cursor cell, but one that does not blink
+        g.vdm->pump();
+
+        const uint64_t settled = g.disp.frames();
+        for (int i = 0; i < 100; ++i) {
+            g.disp.advanceHostSeconds(0.5);  // blink half-periods, for a card not blinking
+            g.vdm->pump();
+        }
+        CHECK(g.disp.frames() == settled,
+              "100 pumps across 50 s of wall time and a still screen paints not one frame");
+    }
+
     SECTION("VDM-1 -- the blink is the card's oscillator, not the CPU's crystal");
     {
         // THE REGRESSION. The blink phase used to come off the Clock, so at the DEFAULT

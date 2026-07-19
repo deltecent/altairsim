@@ -1331,4 +1331,46 @@ void test_achieved_hz() {
         // this one inherits a pointer to a destroyed stack object.
         Monitor::setDisplay(nullptr);
     }
+
+    SECTION("the window is named after the MACHINE, and renaming the machine renames it");
+    {
+        // The board that draws cannot answer this: the same VDM-1 is the screen of a
+        // bare `vdm1` and of a Sol-20, so the run loop publishes the machine's name
+        // instead (host/display.h). What SdlDisplay does with the string is SDL's
+        // business; that it is TOLD, and told again when the machine changes, is not.
+        struct TitledDisplay : NullDisplay {
+            std::string title;
+            int         calls = 0;
+            void setTitle(const std::string& t) override { title = t; ++calls; }
+        };
+        TitledDisplay disp;
+        Monitor::setDisplay(&disp);
+
+        Machine mt;
+        mt.name = "sol20";
+        Monitor monT(mt);
+        std::ostringstream st;
+        monT.exec("BOARDS ADD 8080 cpu0", st);
+        monT.exec("BOARDS ADD memory mem0", st);
+        monT.exec("SET mem0 fill=zero", st);
+        monT.exec("REGION ADD mem0 type=ram at=0 size=1K", st);
+        monT.exec("POWER ON", st);
+        monT.exec("DEPOSIT 0100 76", st);  // HLT -- stops on its own
+
+        CHECK(disp.calls == 0, "nothing is published before the guest has ever been run");
+
+        monT.exec("EX 0100", st);
+        monT.exec("RUN", st);
+        CHECK(disp.title == "sol20", "starting the guest names the window after the machine");
+
+        // THE POINT OF PUBLISHING RATHER THAN WIRING. CONFIG LOAD replaces the machine
+        // wholesale, and it can do it with the window still open -- so a name captured
+        // once would leave the window claiming to be a machine that no longer exists.
+        mt.name = "cuter";
+        monT.exec("EX 0100", st);
+        monT.exec("RUN", st);
+        CHECK(disp.title == "cuter", "and the next run re-publishes it, so a swap is caught");
+
+        Monitor::setDisplay(nullptr);
+    }
 }

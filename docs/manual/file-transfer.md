@@ -267,7 +267,10 @@ in it would end the paste, and the bytes above `7Fh` would not survive the trip 
 paste the **`R.HEX`** that `LOAD` was going to turn into `R.COM` anyway. It is Intel HEX:
 colons, hex digits and line ends, about 4.8 KB of them, and every byte of it is printable.
 
-It ships in the package, beside the sources, in `cpm/hostbridge/`.
+**It is not in the package.** The utilities live in the source repository — sources, `.HEX`
+and assembled `.COM` together, in `cpm/hostbridge/` — and the package chapter says where to
+fetch that. The CP/M disk that *does* ship, in `examples/cpm`, already has `R.COM`, `W.COM` and
+`HDIR.COM` on it, which is exactly why this section is about the other kind of disk.
 
 **1. Tell PIP to write a file from the console.**
 
@@ -280,7 +283,7 @@ stop.
 
 **2. Paste the whole of `R.HEX` into the terminal.**
 
-Open `cpm/hostbridge/R.HEX` on your host, select all of it, and paste it into the window where
+Open the `R.HEX` you fetched on your host, select all of it, and paste it into the window where
 `altairsim` is running. It echoes as it goes — 108 lines of it — because PIP echoes console
 input, and that echo is your confirmation the guest is really receiving it.
 
