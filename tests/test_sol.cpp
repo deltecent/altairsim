@@ -94,9 +94,18 @@ constexpr uint8_t STBE = 0x80;  // serial transmitter empty -- active high
 // A machine that actually boots SOLOS: RAM under the ROM, SOLOS at C000, the VDM at
 // CC00, the fp and the sol card. Runs the 8080 until the '>' prompt appears in the
 // VDM's screen RAM, or a generous step budget is spent.
+// A headless Display that can be told a key was pressed. emitSpecialKey() is the
+// protected hand-off an SDL window calls from its own event queue; a test reaches it
+// the same way test_cli's ClosableDisplay reaches takeQuitRequest -- by being a
+// Display. So everything below the graphics library is exercised with no window:
+// the code table, the sink, and what SOLOS does when the byte arrives.
+struct KeyDisplay : NullDisplay {
+    void press(SpecialKey k) { emitSpecialKey(k); }
+};
+
 struct BootRig {
     Machine     m;
-    NullDisplay disp;
+    KeyDisplay  disp;
     SolBoard*   sol = nullptr;
 
     BootRig() {
@@ -150,6 +159,25 @@ struct BootRig {
         std::string err;
         sol->connect("keyboard", "scripted", err);
         return dynamic_cast<ScriptedStream*>(sol->unitStream("keyboard"));
+    }
+
+    // ...and point the window's key sink at that same stream, which is what main.cpp
+    // does one layer up when it aims the sink at Console::inject: a key pressed in the
+    // window joins what the terminal typed, on one queue, before any board sees it.
+    ScriptedStream* connectKeyboardToWindow() {
+        ScriptedStream* kbd = connectKeyboard();
+        disp.setKeySink([kbd](const uint8_t* p, size_t n) {
+            kbd->feed(std::string((const char*)p, n));
+        });
+        return kbd;
+    }
+
+    // Where SOLOS is holding the cursor: the one screen byte with D7 set. -1 if the
+    // screen has no cursor on it at all.
+    int cursor() {
+        for (uint16_t off = 0; off < 1024; ++off)
+            if (m.bus.memRead(0xCC00 + off) & 0x80) return (int)off;
+        return -1;
     }
 
     // Run the CPU, pumping the host side (so keystrokes cross into the guest) the way
@@ -435,6 +463,73 @@ void test_sol() {
             b.m.clock.advance(s.tStates);
         }
         CHECK(b.screenHas('>'), "the prompt is still there -- SOLOS is resting, not looping");
+    }
+
+    SECTION("Sol-20 -- the arrow and HOME keys send the codes Table 7-4 says they do");
+    {
+        // The defaults are the Sol-20's own keyboard codes. A window has no other way
+        // to say "up": ASCII has no character for it, so the byte is a decision, and
+        // this is where the decision is written down.
+        KeyDisplay d;
+        CHECK(d.specialKey(Display::SpecialKey::Up) == 0x97, "up sends 97");
+        CHECK(d.specialKey(Display::SpecialKey::Down) == 0x9A, "down sends 9A");
+        CHECK(d.specialKey(Display::SpecialKey::Left) == 0x81, "left sends 81");
+        CHECK(d.specialKey(Display::SpecialKey::Right) == 0x93, "right sends 93");
+        CHECK(d.specialKey(Display::SpecialKey::Home) == 0x8E, "HOME CURSOR sends 8E");
+
+        std::string got;
+        d.setKeySink([&got](const uint8_t* p, size_t n) {
+            got.append((const char*)p, n);
+        });
+        d.press(Display::SpecialKey::Left);
+        CHECK(got.size() == 1 && (uint8_t)got[0] == 0x81, "pressing it emits that one byte");
+
+        // A GUEST THAT WANTS NOTHING GETS NOTHING, and specifically does not get a NUL.
+        // On a Sol a NUL is MODE SELECT, so an unmapped key that injected one would not
+        // be inert -- it would silently throw the operator out to the command prompt.
+        got.clear();
+        d.setSpecialKey(Display::SpecialKey::Left, 0);
+        d.press(Display::SpecialKey::Left);
+        CHECK(got.empty(), "a key mapped to 0 sends nothing at all -- not a NUL");
+    }
+
+    SECTION("Sol-20 -- an arrow key pressed in the window moves SOLOS's cursor");
+    {
+        // THE END-TO-END CHECK, and the reason it is worth having: the codes above are
+        // only right if SOLOS agrees, and SOLOS is what decides. This presses the key
+        // at the Display, exactly where an SDL window would, and then asks the VDM
+        // screen where the cursor ended up -- so the table, the sink, the keyboard
+        // unit, port FCh and SOLOS's display driver are all in the path.
+        BootRig b;
+        CHECK(b.runToPrompt(4'000'000), "SOLOS is at its prompt");
+
+        ScriptedStream* kbd = b.connectKeyboardToWindow();
+        kbd->feed("ABC");
+        b.steps(400'000);
+        const int typed = b.cursor();
+        CHECK(typed > 0, "typing put the cursor somewhere on the screen");
+        CHECK(b.screenHas('C'), "and the characters are on the screen");
+
+        b.disp.press(Display::SpecialKey::Left);
+        b.steps(400'000);
+        CHECK(b.cursor() == typed - 1, "LEFT backs the cursor over the last character");
+
+        b.disp.press(Display::SpecialKey::Right);
+        b.steps(400'000);
+        CHECK(b.cursor() == typed, "RIGHT puts it back");
+
+        b.disp.press(Display::SpecialKey::Up);
+        b.steps(400'000);
+        CHECK(b.cursor() == typed - 64, "UP is one row of 64, not one character");
+
+        b.disp.press(Display::SpecialKey::Down);
+        b.steps(400'000);
+        CHECK(b.cursor() == typed, "and DOWN comes back down");
+
+        b.disp.press(Display::SpecialKey::Home);
+        b.steps(400'000);
+        CHECK(b.cursor() == 0, "HOME CURSOR goes to the first position, top left");
+        CHECK(b.screenHas('C'), "...and did not erase anything on the way -- that is CLEAR's job");
     }
 
     SECTION("Sol-20 -- SOLOS SAVEs a file to the cassette and GETs it back");
