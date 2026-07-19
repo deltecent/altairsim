@@ -399,17 +399,28 @@ free disk and that image arrives with 18K. So on a fresh clone the committed
 `.HEX` is checked against the committed `.COM`, and the `.ASM` behind them is
 checked by nobody unless you run the above.
 
-### `docs/package.map` claims a test that does not exist
+### Nothing checks the manual against the package
 
-`docs/package.map:20` says `tests/acceptance/manual.cmake` builds the package in
-a directory with no repository in sight and runs the manual's own commands
-against it. **That file does not exist.** Nothing assembles the package layout
-and checks the manual against it, which is exactly why the manual could promise
-"CP/M in one command" while the published archive contained no media at all.
+**The false claim is fixed** (2026-07-19): `docs/package.map` said
+`tests/acceptance/manual.cmake` builds the package somewhere with no repository
+in sight and runs the manual's own commands against it. No such file has ever
+existed. The comment now describes the two tests that are real —
+`docs-manual.cmake` (greps the chapters for references outside the package,
+checks `ORDER`) and `examples.cmake` (boots `examples/basic` and `examples/cpm`
+from a scratch directory) — and says plainly what neither of them does.
 
-`acceptance-examples` now covers the *examples* (it boots `examples/cpm` and
-`examples/basic` from a scratch directory), which is the load-bearing half. What
-is still missing is the manual-versus-package check.
+**The gap is not fixed, and it was never a documentation bug.** Nothing
+assembles the package layout and checks the manual against it, because
+`tools/build-package.sh` is run by no workflow and no test — only by hand. That
+is why the manual could promise "CP/M in one command" while the published
+archive contained no media at all, and it is why v0.1.0's archives were
+assembled by hand without it.
+
+`acceptance-examples` covers the load-bearing half, the examples themselves —
+though only two of the four: `examples/sol` and `examples/diskbasic` are not in
+it. Note the shape of the original failure before writing the fix: a *claimed*
+test is worse than a missing one, because it is the missing test plus the belief
+that you have it. This entry has now been the evidence for that twice.
 
 **And the manual's TRANSCRIPTS drift too, which is the half nobody is watching.**
 The demonstrated case, found and **fixed** 2026-07-19 in `docs/manual/tapes.md`:
