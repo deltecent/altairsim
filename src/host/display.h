@@ -176,6 +176,27 @@ public:
         return true;
     }
 
+    // SECONDS OF WALL TIME, monotonic, zero at the first call. FOR A BOARD'S OWN
+    // OSCILLATOR, AND FOR NOTHING ELSE.
+    //
+    // Emulated time is the Clock's, and a board must never take a duration a guest
+    // can OBSERVE from anywhere else (DESIGN.md 7.5). But some of the metal on a
+    // video card is not on the CPU's crystal and never was: the VDM-1's cursor blink
+    // runs off its own oscillator at about 1 Hz (reference/Processor Technology
+    // VDM-1.md), asynchronous to the 8080, and nothing on the S-100 side can read its
+    // phase back. Driving it from the Clock made it a function of how fast the HOST
+    // retires instructions -- so at `clock_hz = 0` the cursor strobed, which is not
+    // what the card does and not something a guest could have caused.
+    //
+    // It lives HERE, behind the injected service, for the same reason wantsFrame()
+    // does: the board stays pure, a headless host answers deterministically, and a
+    // test can say what time it is instead of racing one (display_null.h).
+    virtual double hostSeconds() {
+        auto now = std::chrono::steady_clock::now();
+        if (!epochSet_) { epoch_ = now; epochSet_ = true; }
+        return std::chrono::duration<double>(now - epoch_).count();
+    }
+
     // HAS THE OPERATOR ASKED TO CLOSE THE WINDOW SINCE WE LAST ASKED? A windowed
     // host sets this from its own event queue; the run loop asks once a slice and
     // stops the guest, which is the same place ATTN lands you (DESIGN.md 7.4).
@@ -214,6 +235,12 @@ private:
     // Minimum seconds between accepted frames; 0 = no limit. See wantsFrame().
     double frameMinPeriod_ = 0.0;
     std::chrono::steady_clock::time_point lastFrame_{};
+
+    // Where hostSeconds() counts from -- fixed at its first call rather than at
+    // construction, so the number stays small and a board that never asks pays
+    // nothing.
+    std::chrono::steady_clock::time_point epoch_{};
+    bool epochSet_ = false;
 };
 
 } // namespace altair

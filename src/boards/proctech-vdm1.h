@@ -80,10 +80,19 @@ private:
     // WOULD THE PICTURE LOOK DIFFERENT FROM THE ONE ALREADY ON SCREEN? Painting is
     // expensive (see Display::wantsFrame) and most pumps change nothing at all -- a
     // guest waiting on a disk, or reading a cassette, leaves the screen untouched for
-    // millions of instructions. This is the DETERMINISTIC half of the economy: it
-    // depends only on emulated state, never on a host clock, so a headless build and a
-    // test skip exactly the same frames the windowed build does.
+    // millions of instructions. This is the CHEAP half of the economy: it looks only
+    // at what would actually be drawn, so a headless build and a test skip the same
+    // frames the windowed build does, given the same time.
+    //
+    // "Given the same time" is the one caveat, and it is the blink's: the phase comes
+    // off the host's seconds now (blinkOn), so a test SETS the time rather than
+    // inheriting the Clock's. NullDisplay's wall clock only moves when a test moves
+    // it, which is what keeps that deterministic.
     bool frameChanged() const;
+
+    // The blink oscillator's phase -- true while the cursor is lit. Wall time, not
+    // T-states; see kBlinkHalfPeriod in the .cpp for why this one duration is.
+    bool blinkOn() const;
 
     uint8_t  screen_[kBytes];
     uint32_t base_   = 0xCC00;  // 1 KB-aligned screen-RAM base
@@ -106,9 +115,8 @@ private:
     // A BLINKING CURSOR CHANGES THE PICTURE WITH NO WRITE BEHIND IT, so the blink
     // phase is remembered and compared. Only when a cursor is actually ON the screen,
     // though -- `hasCursorCell_` is set by render() when it meets a byte with D7 set.
-    // Without that guard a blinking-but-cursorless screen would repaint forever, and
-    // free-running it would do so thousands of times a second, since the phase comes
-    // off emulated time and emulated time races the wall.
+    // Without that guard a blinking-but-cursorless screen would repaint forever,
+    // twice a second, for a change nobody could see.
     bool lastBlinkOn_   = true;
     bool hasCursorCell_ = false;
 };

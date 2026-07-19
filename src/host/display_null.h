@@ -36,6 +36,16 @@ public:
         palette_.assign(colors.begin(), colors.end());
     }
 
+    // WALL TIME A TEST CAN SET. The base Display reads steady_clock, which is right
+    // for a window and useless for an assertion -- a test that wanted to watch a
+    // cursor blink would have to sleep half a second to see one phase. Here the
+    // clock only moves when a test moves it, so a blink is exact and instant, and a
+    // headless run is as deterministic as it was before boards had a wall clock at
+    // all.
+    double hostSeconds() override { return hostSeconds_; }
+    void   setHostSeconds(double s) { hostSeconds_ = s; }
+    void   advanceHostSeconds(double s) { hostSeconds_ += s; }
+
     // ---- For tests: look at what the board drew, without a window. ----
     const Surface* surface() const { return surface_.get(); }
     uint64_t frames() const { return frames_; }
@@ -45,6 +55,7 @@ private:
     std::unique_ptr<Surface> surface_;
     std::vector<Color> palette_;
     uint64_t frames_ = 0;
+    double   hostSeconds_ = 0.0;
 };
 
 } // namespace altair
