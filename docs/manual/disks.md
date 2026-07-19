@@ -142,6 +142,11 @@ count** and works it out:
 A file of 337,568 bytes is an 8″ floppy. There is nothing else it could be. This is why the
 quick start never mentions a format: there was nothing to mention.
 
+**Only the 8″ floppy ships.** The disk in `examples/cpm` is the 337,568-byte one, and it is the
+only image in the package — a `minidisk` or an `fdc8mb` image is one **you supply**. The `mds`
+board and the 8 MB medium are both here and both work; what is not here is a disk to put in
+them.
+
 When the size genuinely cannot decide — a truncated image, a format you are inventing — a
 `media` key on the drive forces the answer.
 
@@ -164,7 +169,10 @@ and D:, so that you can `PIP` between the big disk and something you can hand to
 else.
 
 **Both of these are images you supply.** Neither is in the package, so the two lines below are
-the shape of the command rather than files you already have.
+the shape of the command rather than files you already have. The period 8 MB CP/M image is one
+the **source repository** can fetch for you — it carries a script, `tools/fetch-disk-images.sh`,
+that downloads it and checks it against a known hash — and the package chapter says where the
+source is.
 
 ```
 altairsim> MOUNT dsk0:drive0 big.dsk
