@@ -39,24 +39,40 @@ SdlDisplay::~SdlDisplay() {
 // the host's problem, not a reason the guest cannot run.
 bool SdlDisplay::ensureWindow(int w, int h) {
     if (renderer_) return true;
+
+    // Whether the operator is expected to type here or in the terminal (host/display.h).
+    // Read once, at the moment the window is built, because that is when every hint
+    // below has to be decided -- and taken again in yieldFocus(), which is the other
+    // moment it means anything.
+    const bool wantsFocus = Display::focusPolicy();
+
     if (!inited_) {
         // Do not come to the front just because a board drew a frame. This must be set
         // BEFORE SDL_Init -- it is read while the backend registers the application,
         // and setting it afterwards is too late. It suppresses the activation, and it
         // also suppresses the activation POLICY, which platform/foreground.h puts back
         // below; see that header for why the two have to be separated.
-        SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
-
-        // Eligible for the foreground, but not asking for it: clicking the window still
-        // focuses it, which it must, because this window is a real input device.
         //
-        // BEFORE SDL_Init, and that ordering is load-bearing. Measured 2026-07-19:
-        // granting the policy after the backend has registered the application brings
-        // the process to the front then and there -- the transition INTO the regular
-        // policy is itself an activation -- so the window stole focus exactly as it did
-        // with no fix at all. Granted first, there is no launched application to
-        // activate, and SDL then declines to activate one because of the hint above.
-        platform::allowForegroundActivation();
+        // Skipped entirely when the window is meant to be the console: then coming to
+        // the front IS the wanted behavior, and SDL's own default -- register, set the
+        // policy, activate -- is exactly right. This is the one place the two policies
+        // diverge before SDL exists, which is why it is read this early.
+        if (!wantsFocus) {
+            SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+
+            // Eligible for the foreground, but not asking for it: clicking the window
+            // still focuses it, which it must, because this window is a real input
+            // device.
+            //
+            // BEFORE SDL_Init, and that ordering is load-bearing. Measured 2026-07-19:
+            // granting the policy after the backend has registered the application
+            // brings the process to the front then and there -- the transition INTO the
+            // regular policy is itself an activation -- so the window stole focus
+            // exactly as it did with no fix at all. Granted first, there is no launched
+            // application to activate, and SDL then declines to activate one because of
+            // the hint above.
+            platform::allowForegroundActivation();
+        }
 
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             std::fprintf(stderr, "SDL: video init failed: %s\n", SDL_GetError());
@@ -76,7 +92,7 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // in front of it (on macOS the non-activating show is orderFront:), and SDL wraps
     // no "order back". Outside macOS this is a hint a window manager is free to ignore,
     // so the whole arrangement is best-effort and cannot be asserted in a test.
-    SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+    SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, wantsFocus ? "1" : "0");
 
     // OPEN AT AN EXACT INTEGER MULTIPLE OF THE FRAME -- and pick the multiple to FIT,
     // rather than assuming one and hoping.
@@ -167,8 +183,14 @@ void SdlDisplay::setTitle(const std::string& name) {
 //
 // Guarded on there being a window at all: the run loop asks on every stop of every
 // machine, and most machines never open one.
+//
+// And declined outright when the window is the console (host/display.h). Handing the
+// keyboard back at every stop is the right answer for a machine you drive from the
+// altairsim> prompt and the wrong one for a Sol-20, where it would take the keyboard
+// out of the window at each breakpoint and each close of the guest -- undoing, once a
+// stop, exactly what the setting asked for.
 void SdlDisplay::yieldFocus() {
-    if (window_) platform::yieldForeground();
+    if (window_ && !Display::focusPolicy()) platform::yieldForeground();
 }
 
 Surface* SdlDisplay::acquire(int w, int h, PixelFormat fmt) {

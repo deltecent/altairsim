@@ -275,6 +275,31 @@ operator talking, so it does what `ATTN` does: the guest stops at an instruction
 get the monitor prompt back, with the machine exactly where it was. `RUN` resumes it into the same
 window; `QUIT` is still how you leave.
 
+**Which window has your keyboard is yours to say.** By default the terminal keeps it: the video
+window opens behind whatever you were doing, and when the guest stops you can type at
+`altairsim>` straight away. You can still click the window and type into it — keys typed there
+and keys typed at the terminal reach the guest as one stream — but the next time the guest stops,
+the keyboard goes back to the terminal.
+
+That is the right default for a machine you drive from the monitor, and the wrong one for a
+Sol-20, where the window *is* the console. So:
+
+```
+altairsim> SET DISPLAY focus=on
+```
+
+and the window comes to the front when it opens and keeps the keyboard when the guest stops.
+`SHOW DISPLAY` says which way it is set, and a machine file can ask for it directly:
+
+```toml
+[display]
+focus = true
+```
+
+It is a setting of the **display**, not of this board — a machine with two video boards still has
+one operator with one keyboard — so it reads the same whichever board is drawing. Setting it says
+what should happen from now on; it does not go back and re-focus a window that is already open.
+
 Bit 7 of each byte is the **cursor/blink** flag rather than part of the character, so the board
 draws 128 glyphs from a real character ROM, not 256.
 

@@ -11,6 +11,7 @@
 #include "boards/s100-memory.h"
 #include "cli/commands.h"
 #include "cli/monitor.h"
+#include "config/toml.h"
 #include "core/machine.h"
 #include "cpu/cpu.h"
 #include "host/display_null.h"
@@ -1417,6 +1418,56 @@ void test_achieved_hz() {
         monF.exec("STEP", sf);
         CHECK(disp.yields == 2, "a STEP does not run the guest, so it has nothing to give back");
 
+        // ...UNLESS THE WINDOW IS MEANT TO HAVE THE KEYBOARD. The run loop still asks
+        // on every stop; what changes is the answer the display gives, which is where
+        // the policy belongs -- the run loop has no business knowing about windows.
+        Display::setFocusPolicy(true);
+        monF.exec("EX 0100", sf);
+        monF.exec("RUN", sf);
+        CHECK(disp.yields == 3, "the run loop asks regardless -- the display decides");
+        Display::setFocusPolicy(false);
+
         Monitor::setDisplay(nullptr);
+    }
+
+    SECTION("the video window's focus is a display setting, not a board's");
+    {
+        // A 1975 video card has no opinion about window managers, and a machine with
+        // two of them still has one operator with one keyboard -- so this is the
+        // display's, alongside the console's own transforms, and it answers even in a
+        // build with no video at all (host/display.h).
+        CHECK(!Display::focusPolicy(), "the terminal keeps the keyboard by default");
+
+        Machine md;
+        Monitor monD(md);
+        std::ostringstream sd;
+
+        monD.exec("SET DISPLAY focus=on", sd);
+        CHECK(Display::focusPolicy(), "SET DISPLAY reaches it");
+
+        sd.str("");
+        monD.exec("SHOW DISPLAY", sd);
+        CHECK(sd.str().find("focus") != std::string::npos, "and SHOW DISPLAY reports it");
+
+        // A bad value is refused by the same Property layer as everything else, which
+        // is the point of it being a Property and not a flag parsed here.
+        sd.str("");
+        monD.exec("SET DISPLAY focus=maybe", sd);
+        CHECK(Display::focusPolicy(), "a value that does not parse leaves it alone");
+
+        sd.str("");
+        monD.exec("SET DISPLAY nosuchkey=1", sd);
+        CHECK(sd.str().find("nosuchkey") != std::string::npos, "and an unknown key is named");
+
+        // THE REASON IT IS ANSWERABLE BEFORE A WINDOW EXISTS: a machine file says what
+        // it wants at load time, and the window does not open until the first frame.
+        Display::setFocusPolicy(false);
+        Machine mc;
+        std::string err;
+        CHECK(loadTomlText("[display]\nfocus = true\n", "test", mc, err),
+              "a machine file can ask for it");
+        CHECK(Display::focusPolicy(), "and it takes effect with no window in sight");
+
+        Display::setFocusPolicy(false);  // a process-wide setting: put it back
     }
 }

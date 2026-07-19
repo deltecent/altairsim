@@ -27,6 +27,8 @@
 // events into it. The board still reads only its ByteStream; window and terminal
 // keys merge in the Console before any board sees them, so RECORD/REPLAY is intact.
 
+#include "core/value.h"
+
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -271,6 +273,39 @@ public:
     // application-wide foreground to give up (platform/foreground.h).
     virtual void yieldFocus() {}
 
+    // ---- WHICH WINDOW THE OPERATOR IS EXPECTED TO BE TYPING IN ----
+    //
+    // Off by default: the terminal keeps the keyboard, the video window opens behind
+    // whatever you were doing, and the guest handing back control hands the keyboard
+    // back with it. That is right for the machine you drive from the altairsim>
+    // prompt, which is most of them -- a window that grabs focus the moment a board
+    // draws a frame takes the keyboard out of a sentence you were in the middle of.
+    //
+    // On, the video window is the terminal: it comes to the front when it opens and
+    // keeps the keyboard when the guest stops. That is right for a Sol-20, where the
+    // window IS the machine's console and the host terminal is the back door.
+    //
+    // ONE SETTING FOR THE WHOLE SESSION, hence static. It is not per-board -- a board
+    // has no opinion about window managers, and a machine with two video boards still
+    // has one operator with one keyboard. It is not per-instance either, because it
+    // must be answerable BEFORE any window exists: the window opens lazily on the
+    // first frame, long after a machine file has said what it wants (config/toml.cpp,
+    // [display]).
+    //
+    // Read at the moment it matters rather than cached -- when a window is created,
+    // and at every stop. So setting it mid-session takes effect from there on; it
+    // does not retitle or re-focus a window that is already open, because the setting
+    // says what should happen NEXT, not what should have happened.
+    static bool focusPolicy() { return focusPolicy_; }
+    static void setFocusPolicy(bool on) { focusPolicy_ = on; }
+
+    // Declared through the same Property layer as a board's or the console's, so
+    // `SET DISPLAY focus=on`, `SHOW DISPLAY`, `[display]` in a machine file and
+    // CONFIG SAVE all pick it up with no code anywhere else. Static for the same
+    // reason the policy is: this answers even in a build with no video at all, so a
+    // machine file that asks for it is not a machine file that fails to load.
+    static std::vector<Property> properties();
+
 protected:
     // A subclass that captures keystrokes calls this to hand them off; a no-op when
     // no sink is wired.
@@ -302,6 +337,30 @@ private:
     // nothing.
     std::chrono::steady_clock::time_point epoch_{};
     bool epochSet_ = false;
+
+    // The session's focus preference; see focusPolicy(). Inline so the seam stays
+    // header-only for everyone who only draws into it.
+    static inline bool focusPolicy_ = false;
 };
+
+// The `display` settings object -- one property today, and the same shape as the
+// console's so a second one costs nothing.
+inline std::vector<Property> Display::properties() {
+    std::vector<Property> p;
+    {
+        Property x;
+        x.name = "focus";
+        x.help = "Whether the video window takes the keyboard. Off: the terminal keeps "
+                 "it and gets it back when the guest stops. On: the window is the console";
+        x.kind = Kind::Bool;
+        x.get  = [] { return Value::ofBool(focusPolicy_); };
+        x.set  = [](const Value& v, std::string&) {
+            focusPolicy_ = v.b();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    return p;
+}
 
 } // namespace altair

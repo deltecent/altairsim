@@ -120,6 +120,7 @@ units, and what it decodes in memory.
 | `SHOW <id>` | one board: every setting, its value, and what it will accept |
 | `SHOW MACHINE` | the whole machine |
 | `SHOW CONSOLE` | which unit holds your keyboard, and how bytes are being transformed |
+| `SHOW DISPLAY` | the video window, and whether it or the terminal has the keyboard |
 | `SHOW BUS MAP` | who decodes which addresses — and what floats |
 | `SHOW BUS IO` | who decodes which ports |
 | `SHOW BUS IRQ` | who is strapped to which interrupt line, and who is pulling it |

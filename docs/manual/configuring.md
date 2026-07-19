@@ -41,6 +41,7 @@ instead of the typo. A misconfiguration in this program cannot be silent.
 | `[[board.region]]` | a memory region on a `memory` board |
 | `[[board.drive]]` | a drive on a disk controller |
 | `[console]` | **your terminal.** Not a board — see below |
+| `[display]` | **your video window.** Not a board either — see below |
 
 ## `[machine]` — and it has exactly three keys
 
@@ -372,6 +373,33 @@ Altair never knew anything about it.
 | `echo` | echo typed characters locally |
 | `bell` | let the guest ring your terminal's bell |
 | `bsdel` | `off` \| `bs` \| `del` — what your Backspace key sends |
+
+## `[display]` — your video window, which is not a board either
+
+```toml
+[display]
+focus = true
+```
+
+Same idea as `[console]`, one table down: it describes *the window on your desk in 2026*, not the
+card that draws into it. A VDM-1 has no opinion about window managers, and a machine with two
+video boards still has one operator with one keyboard — so the setting lives here, once, rather
+than on each board.
+
+| Key | |
+|---|---|
+| `focus` | whether the video window takes the keyboard. Default `false` |
+
+With `focus = false` — the default — the terminal keeps the keyboard. The window opens behind
+whatever you were doing, and when the guest stops you can type at `altairsim>` immediately. You
+can still click into the window and type there; the keys join the terminal's on one stream.
+
+With `focus = true` the window comes to the front when it opens and keeps the keyboard when the
+guest stops. That is what a **Sol-20** wants, because there the window *is* the console and the
+terminal is the back door.
+
+On a build without SDL3 the key is still accepted and simply has no window to apply to, so a
+machine file that asks for it stays portable.
 
 ## The transform chain belongs to the console, and only to the console
 

@@ -45,8 +45,8 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
 | `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
-| `SE[T]` | `SET <id> <k>=<v>` |
-| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|SYMBOLS\|MACHINE` |
+| `SE[T]` | `SET <id>\|CONSOLE\|DISPLAY <k>=<v>` |
+| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|MACHINE` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |

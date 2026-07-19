@@ -272,22 +272,26 @@ CONFIG LOAD machines/mine.toml      ...and this is how you get it back
 ### SET — `SE[T]`
 
 ```
-SET <id> <k>=<v>
+SET <id>|CONSOLE|DISPLAY <k>=<v>
 ```
 SHOW <id> lists every property, its value, and whether it can be set while
 the machine runs. A property's base is its own: a port is hex, a baud rate
 is decimal.
 
+CONSOLE and DISPLAY are the HOST's terminal and video window rather than
+boards, and they take settings the same way.
+
 ```
 SET mem0 fill=zero
 SET mem0 phantom=read
+SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
 ```
 
 
 ### SHOW — `SH[OW]`
 
 ```
-SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|SYMBOLS|MACHINE
+SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|MACHINE
 ```
 
 ```
@@ -297,6 +301,7 @@ SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins
 SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
 SHOW PATHS       what a path resolves against -- and there is more than one answer
 SHOW CONSOLE     which unit holds the keyboard, and its transforms
+SHOW DISPLAY     the host video window, and whether it takes the keyboard
 SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS
 SHOW ROMS        the ROM images built into this binary, and where each came from
 ```
