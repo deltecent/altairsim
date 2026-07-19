@@ -219,8 +219,8 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
     }
 
     if (best.confidence() < kTapeConfidenceFloor) {
-        err = path + ": decoded as " + bestFmt.name + " at only " + pct(best.confidence()) +
-              " clean (" + std::to_string(best.bytes.size()) + " bytes, " +
+        err = path + ": decoded as " + bestFmt.name + " with only " + pct(best.confidence()) +
+              " of frames intact (" + std::to_string(best.bytes.size()) + " bytes, " +
               std::to_string(best.framingErrors) +
               " framing errors) -- that is noise, not a tape. Set the unit's `format` "
               "property if this is the wrong modulation";
@@ -229,9 +229,19 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
 
     // Say what happened, always -- a clean mount narrates too, because "0 framing
     // errors" is information and its absence is not.
+    //
+    // "OF FRAMES INTACT", NOT "CLEAN". The percentage is bytes/(bytes+framingErrors):
+    // it says every frame had its start and stop bits where they belonged, and it says
+    // NOTHING about whether the eight bits between them are the ones that were recorded.
+    // The two come apart badly. deramp.com's archived TRK80.WAV frames at 99.7% and yet
+    // 6,778 of its 7,840 payload bytes are wrong -- a tape that is sound as SIGNAL (the
+    // CUTS timings in reference/Sol-20.md were measured off it) and unusable as DATA.
+    // Called "clean" that number reads as a verdict on the recording, which is the one
+    // thing it cannot give. Named for what it measures, it is honest and still scales
+    // the framing-error count against the confidence floor.
     log.push_back(path + ": " + bestFmt.name + ", " + std::to_string(best.bytes.size()) +
                   " bytes, " + std::to_string(best.framingErrors) + " framing errors (" +
-                  pct(best.confidence()) + " clean)");
+                  pct(best.confidence()) + " of frames intact)");
 
     detected = bestFmt.name;
     return std::make_unique<AudioTapeMedia>(std::move(media), std::move(best.bytes), bestFmt,
