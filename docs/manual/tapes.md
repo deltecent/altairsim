@@ -5,10 +5,26 @@ cassette deck from a department store, with a microphone jack and an earphone ja
 sold you a card that turned bytes into a noise it could record and turned the noise back into
 bytes. That card is the **88-ACR**, and it is in this simulator.
 
-This chapter is how you load {{NAME_BASIC}} the way it was actually loaded in 1976: nothing in
-ROM, nothing on a disk, a bootstrap you enter by hand, and a tape.
+So is the other one. Two machines here have cassette interfaces, and they are not the same
+hardware:
 
-## The card
+| | **88-ACR** | **Sol-20** |
+|---|---|---|
+| What it is | An S-100 card you plug into an Altair | Built into the Sol-PC motherboard |
+| Board id | `acr` | part of `sol` |
+| Units | one — `tape` | two — `tape1`, `tape2` |
+| Modulation | `fsk300` (2400/1850 Hz) | `cuts1200`, `kcs300` (Kansas City, 2400/1200 Hz) |
+| Speed | 300 baud, soldered | 300 or 1200, the *guest* picks |
+| Motor control | none | yes, `OUT 0FAh` |
+
+They are described one at a time below. Everything after them — mounting, rewinding, audio
+files, recording — works the same way on both, and is written once.
+
+The chapter ends with the thing this is all for: loading {{NAME_BASIC}} the way it was actually
+loaded in 1976, with nothing in ROM, nothing on a disk, a bootstrap you enter by hand, and a
+tape.
+
+## The 88-ACR
 
 `acr` is the **MITS 88-ACR** — an Audio Cassette Record/playback interface.
 
@@ -20,16 +36,6 @@ picked.
 
 It has one unit: **`tape`**. There is one slot in a cassette recorder.
 
-### `mode = play | record`
-
-```
-altairsim> SET acr0:tape mode=record
-```
-
-Play and record are **mutually exclusive**, and not because it was easier to write that way.
-It is **one head and one physical button**. You cannot press PLAY and RECORD at the same time
-on a cassette recorder, so you cannot do it here.
-
 ### You cannot `CONNECT` it to anything
 
 The ACR takes no endpoint. It cannot be wired to your terminal, to a socket, or to a real
@@ -39,7 +45,51 @@ to a cassette deck and nowhere else. **It is a cassette interface, not a serial 
 the fact that it is built out of a serial port does not make it one. The serial chapter is
 about the cards that *do* take endpoints.
 
-## The tape is not hardware
+### It cannot work the motor
+
+**An 88-ACR cannot start the tape, stop it, or rewind it.** It can only listen to whatever is
+going past the head. The machine genuinely does not know a tape is there, so the simulator
+does not pretend that it does — which is why mounting is something you type, below.
+
+## The Sol-20's cassette interface
+
+The **Sol-20** has a CUTS cassette interface built into its motherboard rather than on a card
+of its own, and it has **two decks**:
+
+```
+altairsim> MOUNT sol0:tape1 "mytape.tap"
+altairsim> SET sol0:tape1 mode=record
+altairsim> REW sol0:tape1
+```
+
+Two differences from the ACR are worth knowing, and both are the hardware talking.
+
+**The Sol can work the motors.** `OUT 0FAh` starts and stops each transport, and SOLOS does it
+for you — `SAVE` spins the deck up, writes, and spins it down. So a Sol tape plays only while
+the guest is running it, and a deck whose motor is off yields nothing at all rather than
+merely nothing yet.
+
+It still cannot **rewind**. There is no rewind bit on a Sol-PC — a motor line only says
+*turn*, not *which way* — so `REWIND` is your finger here too. Because there are two decks,
+you must name one: a bare `REW sol0` is refused rather than guessing which tape to wind back.
+
+**And the speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at
+300 or 1200 and `OUT 0FAh` D5 picks, at run time. SOLOS's `SE TA` command is that bit.
+
+Once a tape is in, SOLOS's own commands work:
+
+```
+>SA MYPROG 0100 01FF        (save memory to the tape)
+>GE MYPROG                  (find it again and load it)
+>CA                         (catalog what is on the tape)
+```
+
+## Working a tape
+
+Everything in this section is the same on both cards. Only the unit name differs — `acr0:tape`
+on the Altair, `sol0:tape1` or `sol0:tape2` on the Sol.
+
+### The tape is not hardware
 
 **The tape is NOT in the machine file, deliberately.**
 
@@ -48,14 +98,9 @@ how much memory is on the bus. Which cassette is sitting in the recorder is not 
 is a thing you did with your hands, this morning, and you can do a different thing with your
 hands this afternoon without unscrewing the lid.
 
-There is also a mechanical reason, and it is the honest one: **the card has no motor
-control.** An 88-ACR cannot start the tape, stop it, or rewind it. It can only listen to
-whatever is going past the head. The machine genuinely does not know a tape is there. So the
-simulator does not pretend that it does.
-
 **You put the tape in, and you press PLAY.** That is `MOUNT`, and it is a thing you type.
 
-## Putting a tape in
+### Putting a tape in
 
 ```
 altairsim> MOUNT acr0:tape "{{TAPE_BASIC}}"
@@ -67,14 +112,26 @@ The ACR has one unit, so the unit carries no information, so you may drop it:
 altairsim> MOUNT ACR tape.bin
 ```
 
+A Sol has two, so you may not: name the deck.
+
 Names are case-blind. The rules are the ones in the disks chapter, and they are the same rules.
 
-## `REWIND`
-
-The ACR brings a verb of its own:
+### `mode = play | record`
 
 ```
-REWIND <id>:tape
+altairsim> SET acr0:tape mode=record
+```
+
+Play and record are **mutually exclusive**, and not because it was easier to write that way.
+It is **one head and one physical button**. You cannot press PLAY and RECORD at the same time
+on a cassette recorder, so you cannot do it here.
+
+### `REWIND`
+
+A tape unit brings a verb of its own:
+
+```
+REWIND <id>:<unit>
 ```
 
 `REW` will do. It winds the cassette back to the beginning.
@@ -87,14 +144,15 @@ once.
 altairsim> REW acr0:tape
 ```
 
-## Mounting a real recording — `.WAV`
+## Audio tapes — `.WAV`
 
 Most surviving Altair and Sol cassettes are not files of bytes. They are **audio**: somebody
-put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one.
+put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one,
+on either card.
 
 ```
-altairsim> MOUNT acr0:tape TRK80.WAV
-TRK80.WAV: fsk300, 4439 bytes, 0 framing errors (100.0% clean)
+altairsim> MOUNT sol0:tape1 TRK80.WAV
+TRK80.WAV: cuts1200, 7932 bytes, 27 framing errors (99.7% clean)
 ```
 
 Nothing else changes. The recording is demodulated **once, when you mount it** — never while
@@ -108,6 +166,28 @@ know that now rather than after the loader has crashed. A decode below 90% is re
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
 
+### A card will refuse audio it could not really have heard
+
+That example mounted a Sol tape on a Sol. Put it in an Altair and the card says no:
+
+```
+altairsim> MOUNT acr0:tape TRK80.WAV
+TRK80.WAV: this card's modem cannot hear that tape -- it carries 2398 Hz / 1206 Hz,
+and this card reads fsk300
+```
+
+This is deliberate, and it is not the simulator being fussy.
+
+Not all published Altair cassette audio is in the 88-ACR's modulation. The ACR uses
+**2400/1850 Hz FSK**; plenty of archive tapes — the Sol's included — are **Kansas City**, at
+2400/1200. The demodulator here measures the tones actually on the tape, so it *could* read
+the Kansas City ones perfectly well — but a real 88-ACR could not. Its demodulator is a PLL
+centred at 2125 Hz with about ±100 Hz of range, and a 1200 Hz tone is nowhere near that. A
+real card fed that tape does not read it badly; it reads **nothing**.
+
+Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
+produced. So the card says what the tape is instead, and you go find a machine that reads it.
+
 ### Recording back out to a `.WAV`
 
 Put the recorder in `record`, and when the transport stops the tape is re-modulated and
@@ -118,6 +198,18 @@ altairsim> SET acr0:tape mode record
 altairsim> RUN 0                        (the guest records)
 altairsim> SET acr0:tape mode play      (...and the WAV is written here)
 ```
+
+**This records over a WAV you already mounted; it does not make one.** The format and the
+sample rate to re-modulate into are the ones the decode found at mount time, so they have to
+have come from somewhere — and the only place they come from is a real recording that was
+already in the file. There is no blank tape: `MOUNT` needs a file that exists, and a file
+that is not a WAV is not made into one by naming it `.WAV`. To record fresh audio, start
+from a WAV you have and record over it.
+
+**A file called `.WAV` that is not one mounts as a byte tape, quietly.** The magic decides,
+so an empty file — or anything else that is not RIFF/WAVE — falls through to `raw`, and
+recording then puts *bytes* in it, not audio. It will look like it worked. Nothing will play
+it. If you meant audio and you get `raw` on the mount line, that is what happened.
 
 The stop is what writes it. `UNMOUNT` and `REWIND` are stops too, and on the Sol so is the
 guest dropping the motor line — that card can see a deck stop, which the 88-ACR cannot.
@@ -144,27 +236,6 @@ boundaries, so the gaps a real operator left between programs are not reproduced
 
 Recording to a `.TAP` works as it always has, and is unaffected by any of this.
 
-### A card will refuse audio it could not really have heard
-
-```
-altairsim> MOUNT acr0:tape KANSAS.WAV
-KANSAS.WAV: this card's modem cannot hear that tape -- it carries 2398 Hz / 1206 Hz,
-and this card reads fsk300
-```
-
-This is deliberate, and it is not the simulator being fussy.
-
-Not all published Altair cassette audio is in the 88-ACR's modulation. The ACR uses
-**2400/1850 Hz FSK**; plenty of archive tapes are **Kansas City**, at 2400/1200. The
-demodulator here measures the tones actually on the tape, so it *could* read the Kansas City
-ones perfectly well — but a real 88-ACR could not. Its demodulator is a PLL centred at
-2125 Hz with about ±100 Hz of range, and a 1200 Hz tone is nowhere near that. A real card fed
-that tape does not read it badly; it reads **nothing**.
-
-Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
-produced. So the card says what the tape is instead, and you go find a machine that reads it —
-which, for a Kansas City tape, is the Sol-20 below.
-
 ### `format`, when you need to overrule the sniff
 
 Each tape unit has a `format` property. `auto` is the default and is almost always right.
@@ -178,7 +249,7 @@ altairsim> SHOW acr0:tape
 |---|---|
 | `auto` | Sniff for RIFF magic; demodulate a recording, read anything else as bytes |
 | `raw` | Read the file's own bytes **even if it is a WAV** — how you inspect a tape that decodes badly |
-| a modulation | Force one, e.g. `fsk300` on the ACR, `cuts1200` or `kcs300` on the Sol |
+| a modulation | Force one: `fsk300` on the ACR, `cuts1200` or `kcs300` on the Sol |
 
 It selects a *reading*; it never widens the hardware. Telling an 88-ACR to demodulate
 `cuts1200` is refused just as firmly as letting it sniff one — the card has the modem it has.
@@ -186,40 +257,6 @@ A companion read-only `detected` property reports what the mounted tape turned o
 
 `format` takes effect at the **next** `MOUNT`, because a tape is decoded once, when you put
 it in.
-
-## The other machine with cassettes: the Sol-20
-
-The 88-ACR is not the only card here that turns bytes into noise. The **Sol-20** has a CUTS
-cassette interface built into its motherboard, and it has **two decks**:
-
-```
-altairsim> MOUNT sol0:tape1 "mytape.tap"
-altairsim> SET sol0:tape1 mode=record
-altairsim> REW sol0:tape1
-```
-
-Two differences are worth knowing, and both are the hardware talking.
-
-**The Sol can work the motors, and the Altair cannot.** Everything above about the 88-ACR
-having no motor control is true of the 88-ACR. On a Sol, `OUT 0FAh` starts and stops each
-transport, and SOLOS does it for you — `SAVE` spins the deck up, writes, and spins it down.
-So a Sol tape plays only while the guest is running it, and a deck whose motor is off yields
-nothing at all rather than merely nothing yet.
-
-It still cannot **rewind**. There is no rewind bit on a Sol-PC — a motor line only says
-*turn*, not *which way* — so `REWIND` is your finger here too. Because there are two decks,
-you must name one: a bare `REW sol0` is refused rather than guessing which tape to wind back.
-
-**And the speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at
-300 or 1200 and `OUT 0FAh` D5 picks, at run time. SOLOS's `SE TA` command is that bit.
-
-Once a tape is in, SOLOS's own commands work:
-
-```
->SA MYPROG 0100 01FF        (save memory to the tape)
->GE MYPROG                  (find it again and load it)
->CA                         (catalog what is on the tape)
-```
 
 ## Loading {{NAME_BASIC}} — the three-step ritual
 
@@ -282,7 +319,7 @@ $ altairsim {{MACHINE_BASIC}}
 That machine file types those three lines on your behalf. It gets no special powers — every
 line in it is a line you could have typed.
 
-## The sense switches matter
+### The sense switches matter
 
 The machine file sets **`sense = 0x80`** on the front panel, and it is not decoration.
 
@@ -295,7 +332,7 @@ to a teletype that isn't there.
 If a tape load hangs and you are sure the tape is mounted, **check the sense switches first.**
 The front-panel chapter says where they live.
 
-## Speed, and what the crystal actually buys you
+### Speed, and what the crystal actually buys you
 
 **The machine runs flat out by default.** A cassette that took a real Altair about **110
 seconds** to load comes off the tape in **about one**.

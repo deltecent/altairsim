@@ -156,9 +156,9 @@ HISTORY 100      the last hundred
 MOUNT <id>[:<u>] <file> [WP]
 ```
 Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
-WP is the write-protect tab: the guest may read it and may not write it.
-RO is accepted and means the same -- it is the word for a ROM, which has no
-tab to move.
+WP write-protects it: the guest may read it and may not write it.
+RO is accepted and means the same -- it is the word for a ROM, which is
+read-only because of what it is.
 
 A NAME IS CASE-BLIND, and you may leave off what carries no information: the
 trailing index when only one such card is in the machine, and the unit when the

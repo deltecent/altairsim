@@ -156,7 +156,7 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive on the daisy chain |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | The write-protect tab. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere |
 | `media` | enum | `8in` \| `fdc8mb` | Force the format instead of probing the image's size |
 
 ### Board properties
@@ -180,7 +180,7 @@ MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 R
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive on the daisy chain |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | The write-protect tab. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere |
 | `media` | enum | `minidisk` | Force the format instead of probing the image's size |
 
 ### Board properties

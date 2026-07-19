@@ -60,14 +60,14 @@ std::unique_ptr<MediaFile> openHostFile(const std::string& path, bool readOnly, 
     h->onDisk_ = h->bytes_.size();
 
     // WRITE-PROTECT IS DISCOVERED AT MOUNT, NOT AT SYNC -- and it is not an ERROR.
-    // A file the host will not let us write is a disk with the write-protect tab
-    // out, which is an entirely ordinary disk: it mounts, and it mounts read-only.
+    // A file the host will not let us write is a write-protected disk, which is an
+    // entirely ordinary disk: it mounts, and it mounts read-only.
     // The read-only flag goes on by itself, and the operator is told that it did
     // (Patrick, 2026-07-12).
     //
     // What must not happen is the SILENT version of it, and that is what
     // readOnlyForced() is for: the operator typed no RO, so the board has to say
-    // that it put the tab in on their behalf. Discovering it at sync() instead --
+    // that it protected the file on their behalf. Discovering it at sync() instead --
     // after CP/M has spent an afternoon writing to the thing and the flush fails
     // with the work gone -- is the failure this is here to prevent.
     if (!readOnly) {

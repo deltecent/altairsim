@@ -576,7 +576,7 @@ void test_hostbridge() {
         CHECK(r.errCode() == (uint8_t)HbError::Permission, "...Permission (0x02)");
         CHECK(r.dir->has("KEEP.TXT"), "and the file is still there");
 
-        // Reading still works. `readonly` is a write-protect tab, not an off switch.
+        // Reading still works. `readonly` is a write-protect, not an off switch.
         r.cmd(Cmd::OpenRead);
         r.name("KEEP.TXT");
         CHECK(!r.err(), "reads still work");

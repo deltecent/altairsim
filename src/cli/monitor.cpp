@@ -428,15 +428,16 @@ void Monitor::flush(std::ostream& out) {
 // SHOW
 // ---------------------------------------------------------------------------
 
-// WHAT A PROTECTED MEDIUM IS CALLED. A floppy and a cassette have a WRITE-PROTECT TAB --
-// that is the physical thing, the operator can move it, and it is the word the 88-DCDD
-// manual uses. A ROM has no tab to move; it is read-only because of what it IS, and
-// calling it write-protected would promise a switch that does not exist.
+// WHAT A PROTECTED MEDIUM IS CALLED. A floppy and a cassette can each be WRITE-PROTECTED --
+// on a diskette by the notch in its jacket, on a cassette by knocking out its tab -- and
+// that is the physical thing, and the word the 88-DCDD manual uses. A ROM has no such
+// mechanism; it is read-only because of what it IS, and calling it write-protected would
+// promise a switch that does not exist.
 static const char* protectedWord(UnitKind k) {
     return k == UnitKind::Rom ? "read-only" : "write-protected";
 }
 
-// The tab, in words, for a unit that has something in it.
+// The protection, in words, for a unit that has something in it.
 //
 // FORCED IS THE ONE WORTH THE INK. Write-protected when the operator asked for it is them
 // being told what they asked for; write-protected when they did NOT is the difference
@@ -2475,13 +2476,13 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         UnitDef u;
         if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;
 
-        // WP IS THE WRITE-PROTECT TAB, and until now it was documented in HELP and
+        // WP IS THE WRITE-PROTECT, and until now it was documented in HELP and
         // silently thrown away here (`readOnly = false`, hardcoded). That is fine
         // for a ROM, which cannot be written anyway -- and it is a disk you are
         // about to let CP/M loose on.
         //
-        // BOTH SPELLINGS, and neither is a legacy alias to be regretted: WP is the tab
-        // on the medium, which is what this does to a floppy or a tape; RO is what the
+        // BOTH SPELLINGS, and neither is a legacy alias to be regretted: WP is a property
+        // of the MEDIUM, which is what this does to a floppy or a tape; RO is what the
         // file becomes, which is what it does to a ROM socket. They are one flag because
         // the card can only do one thing about them, and an operator who reaches for the
         // other word is not making a mistake worth an error message.

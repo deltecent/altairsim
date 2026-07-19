@@ -66,6 +66,29 @@ piece of `DESIGN.md` drift knowingly left standing.
   `reference/Cromemco Dazzler.md`; provenance in `docs/sources.md`.
 - **Sol-20 CUTS tape** — the Sol-PC composite board ships without its cassette
   interface. Deferred when the board landed (PR #32).
+- **Sol-20 keyboard: the special keys have nowhere to come from** — noted
+  2026-07-18 while working on the manual. The Sol-20's keyboard is not a subset
+  of a modern one: it carries keys a PC keyboard has no equivalent of (MODE
+  SELECT, LOCAL, CLEAR and the locking UPPER CASE among them), and some of them
+  are how you drive SOLOS and the VDM. They need mapping onto keys a host
+  keyboard actually has.
+  - **Nothing maps them today.** The SDL key path
+    (`src/host/display_sdl.cpp`, `SDL_EVENT_KEY_DOWN`) handles Ctrl-letters
+    plus Return, Backspace, Tab, Escape and Delete, and passes printable text
+    through `SDL_EVENT_TEXT_INPUT`. Every Sol-specific key falls through the
+    `default:` and is dropped silently — so a user cannot press them at all,
+    and gets no indication that a key exists to press.
+  - **Source it first.** `reference/Sol-20.md` documents the keyboard *port*
+    (`FCh` `KDATA`, ready on `FAh` bit 0, active low) but has **no key table**
+    — no codes, no key list. The names above are from general knowledge, not
+    from a Processor Technology document, so the first step is the manual: what
+    the keys are, and what byte each sends. The repo rule is that a hardware
+    number has a source, and this one has none yet.
+  - **Then decide the mapping, which is a real design call.** Function keys,
+    a modifier plus a letter, and a keypad-style prefix all have precedent in
+    other emulators, and whatever is chosen has to be discoverable — a key
+    nobody can guess is a key nobody uses. It also has to survive the terminal
+    console path, not just the SDL window: the Sol takes keystrokes from both.
 - **A sample-machine TOML for the Eberhard ROMs** — `cdbl`, `hdbl`, `amon` and
   `acuter` are built-in (PR #30) but no machine boots one by name the way
   `altairsim basic4k` does.
@@ -141,6 +164,25 @@ piece of `DESIGN.md` drift knowingly left standing.
   reachable only in the session that recorded it. Filed 2026-07-18 with the
   design questions open (what number the counter is; what the operator types)
   and **deliberately not implemented** — waiting on comments.
+
+- **No way to create a blank tape** — found 2026-07-18 while correcting the
+  manual's recording section. `MOUNT` refuses a file that does not exist
+  (`openHostFile`, `src/host/media.cpp`), and nothing in the CLI creates a media
+  file, so recording can only ever write back over a tape already in hand. Two
+  parts to it:
+  - **The trap, which is the sharper half.** The format sniff goes by magic
+    (`openTapeMedia`, `src/host/tapecodec.cpp`), so an empty file — or any
+    non-RIFF file named `.WAV` — falls through to `raw` and mounts as a *byte*
+    tape. Recording then puts bytes in it and reports success. Nothing will play
+    the result. Silent, and it looks like it worked.
+  - **The design question, and why this is not just a missing `touch`.** An
+    `AudioTapeMedia` inherits its format and sample rate from the decode at
+    mount. A blank has neither, so creating one means both must be stated:
+    `format` would have to mean something other than `auto`, and the sample rate
+    has no property at all today.
+  Documented as a limitation for now (`docs/manual/tapes.md`); not filed as an
+  issue pending a call on whether creation belongs in `MOUNT` or a verb of its
+  own.
 
 ### MCP
 

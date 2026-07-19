@@ -59,7 +59,7 @@ void test_media() {
         auto  m  = mem(64, /*ro=*/true);
         const uint8_t w = 0xFF;
         CHECK(m->readOnly(), "write protected");
-        CHECK(!m->writeAt(0, &w, 1), "the tab is out: the write is REFUSED");
+        CHECK(!m->writeAt(0, &w, 1), "protected: the write is REFUSED");
         uint8_t b = 0;
         CHECK(m->readAt(0, &b, 1) && b == 0, "and the byte is untouched");
     }
@@ -117,11 +117,11 @@ void test_media() {
         m3.reset();
         m4.reset();
 
-        // The tab, put in FOR the operator (Patrick: auto-RO, and say so).
+        // Protected FOR the operator (Patrick: auto-RO, and say so).
         // Clear EVERY write bit, not just owner_write: a host reports one file as
         // read-only or not (Windows has a single read-only attribute, which the
         // C++ filesystem maps from *all* the write bits, not owner_write alone), so
-        // dropping just one leaves the file writable there and the tab never goes in.
+        // dropping just one leaves the file writable there and it is never protected.
         constexpr auto all_write =
             fs::perms::owner_write | fs::perms::group_write | fs::perms::others_write;
         fs::permissions(p, all_write, fs::perm_options::remove);
@@ -309,7 +309,7 @@ void test_media() {
         auto    d = dcdd8(mem(337568, /*ro=*/true));
         uint8_t w[137] = {};
         size_t  n      = 137;
-        CHECK(d->readOnly(), "the tab is out");
+        CHECK(d->readOnly(), "the disk is write-protected");
         CHECK(!d->writeSector(0, 0, 0, w, &n), "so the write is refused at the disk, not the file");
 
         // A truncated image: the geometry says 337,568 bytes and the file has fewer.
