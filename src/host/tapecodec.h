@@ -47,11 +47,16 @@
 // A mount narrates what it found through the board's drainLog(), which monitor.cpp
 // already flushes right after MOUNT:
 //
-//     TRK80.WAV: CUTS 1200 baud, 7932 bytes, 27 framing errors (99.7% clean)
+//     TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
 //
 // The difference between that line and silence is the difference between a feature and
 // a support burden. A tape that decoded at 40% is noise, and saying so beats handing the
 // guest three thousand bytes of garbage and letting them debug the loader.
+//
+// But read the percentage for exactly what it is: a FRAMING rate, not a verdict on the
+// data. It counts frames whose start and stop bits landed where they belonged. A tape
+// can frame almost perfectly and still be mostly wrong between the stop bits -- see the
+// note above the log line in tapecodec.cpp for the archived recording that does.
 
 #include "host/media.h"
 #include "host/tapemodem.h"

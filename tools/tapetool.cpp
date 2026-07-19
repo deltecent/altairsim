@@ -6,7 +6,7 @@
 // BEFORE any of the simulator works. When a tape decodes badly the question is always
 // "what is actually on it?", and the answer must not require booting a machine.
 //
-//   tapetool info   TAPE.WAV              what modulation, what rate, how clean
+//   tapetool info   TAPE.WAV              what modulation, what rate, how well it frames
 //   tapetool decode TAPE.WAV OUT.BIN      tones -> bytes
 //   tapetool encode IN.BIN TAPE.WAV [fmt] bytes -> tones
 //
