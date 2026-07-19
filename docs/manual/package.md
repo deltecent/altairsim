@@ -32,9 +32,14 @@ $ altairsim sol20                 a Processor Technology Sol-20, running SOLOS
 ```
 
 A built-in is an ordinary machine file that happens to live inside the executable — the same
-TOML format you would write yourself. Several carry their ROM with them (`altmon`, `sol20`,
-`cuter`, `vdm1`, and the boot PROM in `default` and `minidisk`), so they run out of the box
-with nothing fetched and nothing mounted.
+TOML format you would write yourself.
+
+**Four of them carry their software in ROM and need nothing else at all**: `altmon`, `sol20`,
+`cuter` and `vdm1` come up running, with nothing fetched and nothing mounted.
+
+The rest carry at most a **boot PROM**, which is not the same thing. `default` and `minidisk`
+hold the PROM that *would* boot a disk, and their drives are empty — the PROM runs, finds no
+disk, and waits. They want media, and the next section is about where that comes from.
 
 `CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
 edit — which is the usual way to start one of your own.
