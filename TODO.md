@@ -45,6 +45,24 @@ wall clock and the cursor blinks at a rate that means nothing. This is the same
 confusion of emulated time for wall time that made the VDM-1 repaint 500 times
 per emulated millisecond (#63); the redraw half was fixed, the blink half was
 not.
+### The manual still names media beyond the three shipped examples
+
+`examples/{cpm,basic,sol}` now ship and are booted by tests, so the quick start's
+promise is finally true and `docs/package.map`'s tokens point at files a reader
+has. What is **not** fixed is everything past those three: `disks.md`,
+`file-transfer.md` and parts of `running.md` and `examples.md` still print paths
+like the 8 MB `cpm-8mb.dsk`, the Burcon and Lifeboat CP/M variants and the
+minidisk images as though you could type them. Those are correct in *form* and
+impossible to run from a clone or from the archive.
+
+Each such example wants a one-line statement that it needs an image you supply,
+so a reader stops being told to type a path that cannot work. The alternative —
+shipping the rest of the media — waits on the separate packages repository, which
+does not exist yet.
+
+`tools/build-package.sh` is a second thread: it still assembles a directory whose
+shape nobody has confirmed is what ships, and nothing runs it, so nothing catches
+the divergence.
 
 ---
 

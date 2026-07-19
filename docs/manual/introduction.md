@@ -79,7 +79,8 @@ This section is here because a manual that only lists strengths is an advertisem
 
 ## What is in the box
 
-You have the `altairsim` program, this manual, and some disks and tapes. The next chapter
-says what they are.
+You have the `altairsim` program and this manual. Thirteen machines are built into the
+program itself, so it has something to run the moment you unzip it; the disks and tapes are
+not included, and the next chapter says where they will come from.
 
 There is no installer, no configuration, and nothing to set up. Unzip it and run it.
