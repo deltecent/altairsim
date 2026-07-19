@@ -90,6 +90,70 @@ JZ WRWAT`.
   audio at 300 or 1200 baud; `IN TDATA` also clears the UART's error flags. For the audio
   itself, see "CUTS audio format" below.
 
+## Keyboard — the codes each key sends
+
+Source: Sol Systems Manual **Table 7-4** (Sol Keyboard Assignments) and §7.7 (Individual Key
+Descriptions), pages VII-17…VII-25. Every code below is corroborated by the SOLOS 1.3 equates
+(`roms/SOLOS/SOLOS13.ASM` lines 1944-1957), which agree with the table exactly.
+
+The keyboard is **parallel ASCII**, not a scanning matrix the guest decodes: `IN KDATA` (`FCh`)
+returns one finished byte, ready is `FAh` bit 0 (`KDR`, active low), the read clears the strobe,
+and the hardware has N-key rollover. Ordinary keys send what you would expect — unshifted lower
+case, shifted upper case, `CTRL`+letter = `01`–`1A`, `ESCAPE` = `1B`, `TAB` = `09`,
+`RETURN` = `0D`, `LINE FEED` = `0A`, `SPACE` = `20`. The arithmetic pad duplicates the
+typewriter keys and is unaffected by SHIFT; its ÷ key sends `/`.
+
+### Special keys — the eight with no ASCII equivalent
+
+All eight set **bit 7**, and all send the same code unshifted, shifted and with CTRL (one value
+across all three columns of Table 7-4):
+
+| Key | Code | Function |
+|---|---|---|
+| `MODE SELECT` | `80` | Enter the SOLOS command mode. |
+| `←` | `81` | Cursor left one. |
+| `CLEAR` | `8B` | Erase the screen, cursor home. |
+| `LOAD` | `8C` | Nothing in SOLOS — see below. |
+| `HOME CURSOR` | `8E` | Cursor to the first position, top left. |
+| `→` | `93` | Cursor right one. |
+| `↑` | `97` | Cursor up one. |
+| `↓` | `9A` | Cursor down one. |
+
+**A special key's code is `80h` + the VDM driver control code for the same action.** That is not
+a coincidence and it is the whole trick of the design: SOLOS's display driver table is written
+literally as `DB CLEAR-80H`, `DB UP-80H`, `DB HOME-80H` … (`SOLOS13.ASM`, `TBL:`), and `VDMOT`
+does `ANI 7FH` on its way in. So `CLEAR` (`8B`) and a received Ctrl-K (`0B`) reach the same
+handler, `HOME CURSOR` (`8E`) and Ctrl-N (`0E`), `←` (`81`) and Ctrl-A (`01`), and so on. See the
+VDM driver control-code table in `SOLOS.md`.
+
+### Keys that send no code at all
+
+These are wired to hardware, not to the keyboard's data byte, so nothing appears at `FCh` and a
+guest cannot see them:
+
+| Key | What it does | Indicator |
+|---|---|---|
+| `BREAK` | Forces the serial (SDI) output to a space level while held. | — |
+| `LOCAL` | Loops the SDI output back to its input and disables transmission. | yes |
+| `REPEAT` | Held with another key, repeats that key at ≈15/second. | — |
+| `SHIFT` / `SHIFT LOCK` | Ordinary shift; SHIFT LOCK is a locking key. | SHIFT LOCK |
+| `UPPER CASE` | Locking upper-case mode. | yes |
+
+`UPPER CASE` + `REPEAT` pressed together is the **keyboard restart** — the same effect as power-on
+or the RST switch, and the documented way out of a program that ignores `MODE SELECT` or has hung.
+
+### Quirks
+
+- **`MODE SELECT` and Ctrl-@ are the same key to SOLOS.** Its command-mode input paths mask with
+  `ANI 7FH` and then test for zero (`GCLIN`, `HBOUT`, `STAT` in `SOLOS13.ASM`), so `80h` and
+  `00h` both mean "mode". Terminal mode (`TERM1`) is the exception: it compares against `80h`
+  before masking, so there `00h` goes out the serial line like any other character.
+- **`LOAD` (`8C`) is dead in both personality modules.** §7.7.13: the key exists and generates
+  the code, but neither CONSOL nor SOLOS acts on it; it is there for a program to claim.
+- **The character generator matters for what you *see*, not what is sent.** Table 7-4 gives
+  separate display columns for the 6574 and 6575 ROMs. The code on the port is the same either
+  way.
+
 ## CUTS audio format (MEASURED, not from a manual)
 
 **Provenance: this section is not sourced from a Processor Technology document.** None of the

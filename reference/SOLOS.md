@@ -142,11 +142,19 @@ sequences (the driver is why SOLOS can do cursor addressing a hardcopy terminal 
 | Code | Key | Function |
 |---|---|---|
 | `01` | Ctrl-A (SOH) | Cursor left one (wraps). |
+| `0A` | Ctrl-J (LF)  | Cursor down one line; does **not** erase to the right. |
 | `0B` | Ctrl-K (VT)  | Clear screen, cursor home. |
 | `0D` | Ctrl-M (CR)  | Clear to end of line, cursor to start of line. |
+| `0E` | Ctrl-N (SO)  | Cursor home (top left), screen untouched. |
 | `13` | Ctrl-S (DC3) | Cursor right one (wraps). |
 | `17` | Ctrl-W (ETB) | Cursor up one line (wraps). |
 | `1A` | Ctrl-Z (SUB) | Cursor down one line (wraps). |
+| `5F` | `_` (underscore) | **Backspace** (`BACKS EQU 5FH`) — not `08`. |
+
+`VDMOT` masks its argument with `ANI 7FH` before this lookup, which is why each of the Sol's
+bit-7 special keys lands on the entry `80h` below it — `CLEAR` (`8B`) → `0B`, `HOME CURSOR`
+(`8E`) → `0E`, `←` (`81`) → `01`, and so on. The driver table in `SOLOS13.ASM` is literally
+written that way (`DB CLEAR-80H`). See the keyboard section of `Sol-20.md`.
 
 Escape sequences begin with `1B` (ESC); `##` is a following data byte:
 
