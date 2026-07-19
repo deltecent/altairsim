@@ -235,8 +235,8 @@ Two properties do that, in seconds:
 
 | Property | 88-ACR | Sol | Where the number comes from |
 |---|---|---|---|
-| `leader` | `15` | `3` | ACR: the MITS manual's *at least ~15 s of steady tone*. Sol: measured off TRK80.WAV, a real dub, which carries 3.05 s |
-| `trailer` | `5` | `2` | ACR: §8's *at least 5 s between batches*. Sol: TRK80's measured 1.93 s |
+| `leader` | `15` | `3` | ACR: the MITS manual's *at least ~15 s of steady tone*. Sol: measured off the archived Star Trek recording, a real dub, which carries 3.05 s |
+| `trailer` | `5` | `2` | ACR: §8's *at least 5 s between batches*. Sol: that recording's measured 1.93 s |
 
 Set either to `0` to trim the file to its data — which is what the published archive `.wav`
 files are, and why they will not load on real hardware. Even then a floor of sixteen bit times
@@ -309,10 +309,11 @@ MEMORY SIZE?
 TERMINAL WIDTH?
 WANT SIN? Y
 
- 742 BYTES FREE
+742 BYTES FREE
 
 ALTAIR BASIC VERSION 3.1
 [FOUR-K VERSION]
+
 OK
 ```
 

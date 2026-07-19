@@ -254,6 +254,22 @@ if(ALTAIRSIM_ENABLE_SDL)
     target_sources(altair_core PRIVATE src/host/display_sdl.cpp)
     target_link_libraries(altair_core PUBLIC SDL3::SDL3)
     target_compile_definitions(altair_core PUBLIC ALTAIRSIM_ENABLE_SDL)
+
+    # Whether the process may be brought to the foreground, and when (2.1: one file per
+    # OS, CMake picks; src/platform/foreground.h says why it is needed at all). It is
+    # selected HERE, inside the SDL block, rather than alongside the other platform
+    # sources, because only a video board can raise the question -- so a headless build
+    # never compiles it and macOS never links AppKit for a simulator with no window.
+    if(APPLE)
+      enable_language(OBJCXX)
+      target_sources(altair_core PRIVATE src/platform/posix/macos/foreground_macos.mm)
+      target_link_libraries(altair_core PUBLIC "-framework AppKit")
+    elseif(WIN32)
+      target_sources(altair_core PRIVATE src/platform/win32/foreground_win32.cpp)
+    else()
+      target_sources(altair_core PRIVATE src/platform/posix/foreground_posix.cpp)
+    endif()
+
     message(STATUS "SDL3 found -- video boards enabled (windowed)")
   else()
     message(STATUS "SDL3 not found -- video boards build headless (null display). "

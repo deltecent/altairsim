@@ -20,7 +20,17 @@ the same rule.)
 ## The disk images are not in this repository
 
 `*.dsk` is in `.gitignore` — they are large and not ours to redistribute. **Download them into this
-directory:**
+directory** — this is a **manual download you have to supply yourself**: these two images are *not*
+in `tools/fetch-disk-images.sh`, so a fresh clone has neither of them.
+
+**Without `cpm56k.dsk` sitting in this directory, `cpm22-burcon.toml` will not start at all.** It is
+not a machine that boots to a dead prompt — the mount fails while the machine file is being read,
+and `altairsim` says so and stops:
+
+```
+disks/mits-88dcdd/cpm22/burcon/cpm22-burcon.toml: dsk0: 'disks/mits-88dcdd/cpm22/burcon/cpm56k.dsk': no such file
+  ('cpm56k.dsk' is relative to the machine file that wrote it, in disks/mits-88dcdd/cpm22/burcon/)
+```
 
 > <https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/Burcon%20CPM/>
 

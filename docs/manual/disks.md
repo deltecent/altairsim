@@ -163,6 +163,9 @@ BIOSes expect exactly that, an 8 MB disk on A: and B: and ordinary 77-track flop
 and D:, so that you can `PIP` between the big disk and something you can hand to somebody
 else.
 
+**Both of these are images you supply.** Neither is in the package, so the two lines below are
+the shape of the command rather than files you already have.
+
 ```
 altairsim> MOUNT dsk0:drive0 big.dsk
 altairsim> MOUNT dsk0:drive2 floppy.dsk
