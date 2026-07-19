@@ -37,21 +37,6 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### The manual still names media beyond the three shipped examples
-
-`examples/{cpm,basic,sol}` now ship and are booted by tests, so the quick start's
-promise is finally true and `docs/package.map`'s tokens point at files a reader
-has. What is **not** fixed is everything past those three: `disks.md`,
-`file-transfer.md` and parts of `running.md` and `examples.md` still print paths
-like the 8 MB `cpm-8mb.dsk`, the Burcon and Lifeboat CP/M variants and the
-minidisk images as though you could type them. Those are correct in *form* and
-impossible to run from a clone or from the archive.
-
-Each such example wants a one-line statement that it needs an image you supply,
-so a reader stops being told to type a path that cannot work. The alternative —
-shipping the rest of the media — waits on the separate packages repository, which
-does not exist yet.
-
 ### Wire `build-package.sh` into the release workflow
 
 **Nothing runs `tools/build-package.sh`.** It assembles the archive the manual
