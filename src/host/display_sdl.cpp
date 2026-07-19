@@ -111,6 +111,16 @@ void SdlDisplay::present(Surface* s) {
                 case SDLK_TAB:       c = 0x09; break;
                 case SDLK_ESCAPE:    c = 0x1B; break;
                 case SDLK_DELETE:    c = 0x7F; break;
+
+                // The keys ASCII has no code for. What byte each is worth is the
+                // guest's business, so the table is on Display, not here -- this
+                // back end only says which key the operator pressed.
+                case SDLK_UP:    emitSpecialKey(SpecialKey::Up);    break;
+                case SDLK_DOWN:  emitSpecialKey(SpecialKey::Down);  break;
+                case SDLK_LEFT:  emitSpecialKey(SpecialKey::Left);  break;
+                case SDLK_RIGHT: emitSpecialKey(SpecialKey::Right); break;
+                case SDLK_HOME:  emitSpecialKey(SpecialKey::Home);  break;
+
                 default:             break;
                 }
             }

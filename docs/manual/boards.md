@@ -301,22 +301,26 @@ display window when there is one, and from your terminal when there is not.
 The Sol's keyboard is not a subset of a modern one. Eight of its keys send codes with no ASCII
 equivalent at all, and they are how you drive SOLOS and the screen:
 
-| Key | Sends | What it does | Type this instead |
-|---|---|---|---|
-| `MODE SELECT` | `80` | Return to the command mode, restarting the command line | Ctrl-@ |
-| `CLEAR` | `8B` | Erase the screen, cursor home | Ctrl-K |
-| `HOME CURSOR` | `8E` | Cursor to the top left, screen untouched | Ctrl-N |
-| `←` | `81` | Cursor left one | Ctrl-A |
-| `→` | `93` | Cursor right one | Ctrl-S |
-| `↑` | `97` | Cursor up one | Ctrl-W |
-| `↓` | `9A` | Cursor down one | Ctrl-Z |
-| `LOAD` | `8C` | Nothing — neither SOLOS nor CONSOL ever claimed it | — |
+| Key | Sends | What it does | Press | Or type |
+|---|---|---|---|---|
+| `←` | `81` | Cursor left one | ← | Ctrl-A |
+| `→` | `93` | Cursor right one | → | Ctrl-S |
+| `↑` | `97` | Cursor up one | ↑ | Ctrl-W |
+| `↓` | `9A` | Cursor down one | ↓ | Ctrl-Z |
+| `HOME CURSOR` | `8E` | Cursor to the top left, screen untouched | Home | Ctrl-N |
+| `MODE SELECT` | `80` | Return to the command mode, restarting the command line | — | Ctrl-@ |
+| `CLEAR` | `8B` | Erase the screen, cursor home | — | Ctrl-K |
+| `LOAD` | `8C` | Nothing — neither SOLOS nor CONSOL ever claimed it | — | — |
 
-**No host key produces the codes in the second column.** A PC keyboard has no MODE SELECT, and
-the arrow keys it does have send escape sequences rather than a single byte, so at present they
-are dropped. That is a gap, and it is on the list.
+**The `Press` column works in the video window only.** Your keyboard's own arrows and Home send
+these codes when the window has focus. They cannot work from a terminal: there an arrow key sends
+an escape sequence rather than a single byte, and `ESC` is a character the guest legitimately
+needs, so there is nothing to safely match on.
 
-**The last column is the way round it, and it is not a hack** — it is how the hardware was built.
+**`MODE SELECT` and `CLEAR` have no key yet** — a PC keyboard simply has nothing to put them on,
+and choosing what to borrow is a decision that has not been made. Use the last column.
+
+**That last column is not a hack** — it is how the hardware was built.
 Each special key's code is exactly `80` plus the control code for the same action, because SOLOS's
 display driver masks the top bit off everything it is handed before it looks the character up. So
 `CLEAR` and Ctrl-K arrive at one routine, `HOME CURSOR` and Ctrl-N at another. The command-mode

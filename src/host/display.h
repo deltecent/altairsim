@@ -125,6 +125,27 @@ public:
     using KeySink = std::function<void(const uint8_t*, size_t)>;
     void setKeySink(KeySink s) { keySink_ = std::move(s); }
 
+    // KEYS WITH NO ASCII CODE. A host keyboard has arrows and a Home key; ASCII has
+    // no character for either, so a windowed host has to be told what byte to send
+    // and the answer is the guest's, not the terminal's.
+    //
+    // The defaults are the Processor Technology codes (reference/Sol-20.md, Table
+    // 7-4), because the machines with a window are the ones with a VDM in them: a
+    // Sol-20's own keyboard sends these, and SOLOS's display driver masks the top
+    // bit, so the same byte drives CUTER and a bare VDM-1 the same way. A guest that
+    // wants something else -- or nothing, which is what `0` means -- can be given it
+    // here rather than by editing the host. That knob is not exposed to the operator
+    // yet; see the mapping design in issue #59.
+    //
+    // THE TABLE LIVES HERE, NOT IN THE SDL BACK END. The window's job is to say
+    // WHICH key was pressed; deciding what that key is worth in bytes is the same
+    // kind of call as RETURN sending 0D, and belongs where it can be read, tested
+    // and overridden without a graphics library.
+    enum class SpecialKey { Up, Down, Left, Right, Home, Count_ };
+
+    uint8_t specialKey(SpecialKey k) const { return special_[(size_t)k]; }
+    void    setSpecialKey(SpecialKey k, uint8_t code) { special_[(size_t)k] = code; }
+
     // HAS THE OPERATOR ASKED TO CLOSE THE WINDOW SINCE WE LAST ASKED? A windowed
     // host sets this from its own event queue; the run loop asks once a slice and
     // stops the guest, which is the same place ATTN lands you (DESIGN.md 7.4).
@@ -145,8 +166,20 @@ protected:
         if (keySink_ && n) keySink_(p, n);
     }
 
+    // One of the no-ASCII keys, resolved through the table above. A code of `0` is
+    // "this key sends nothing", so it is dropped rather than injected as a NUL --
+    // which on a Sol would be MODE SELECT, and a key that quietly did that would be
+    // worse than a key that does nothing.
+    void emitSpecialKey(SpecialKey k) {
+        uint8_t c = specialKey(k);
+        if (c) emitKeys(&c, 1);
+    }
+
 private:
     KeySink keySink_;
+
+    // Sol-20 Table 7-4: up 97, down 9A, left 81, right 93, HOME CURSOR 8E.
+    uint8_t special_[(size_t)SpecialKey::Count_] = {0x97, 0x9A, 0x81, 0x93, 0x8E};
 };
 
 } // namespace altair

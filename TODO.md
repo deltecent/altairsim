@@ -66,17 +66,17 @@ piece of `DESIGN.md` drift knowingly left standing.
   `reference/Cromemco Dazzler.md`; provenance in `docs/sources.md`.
 - **Sol-20 CUTS tape** — the Sol-PC composite board ships without its cassette
   interface. Deferred when the board landed (PR #32).
-- **Sol-20 keyboard: the eight special keys cannot be typed** — [issue
-  #59](https://github.com/deltecent/altairsim/issues/59). `MODE SELECT`, `CLEAR`,
-  `LOAD`, `HOME CURSOR` and the four arrows send bit-7 codes (`80`, `8B`, `8C`,
-  `8E`, `93`, `97`, `9A`, `81`) that no host key produces, so a user cannot reach
-  the SOLOS command mode the documented way. **Sourced 2026-07-19** from Sol
-  Systems Manual Table 7-4 and confirmed against the SOLOS 1.3 equates; the codes
-  and the five no-code keys are now in `reference/Sol-20.md`. The issue carries
-  the design: a translation step in `SolBoard::latchKeyboard()` rather than in the
-  machine-agnostic SDL layer, driven by settable `sol` board properties with a
-  prefix key. Open questions there — arrow keys in the SDL window, prefix versus
-  eight direct codes, and discoverability.
+- **Sol-20 keyboard: `MODE SELECT` and `CLEAR` still have no host key** — [issue
+  #59](https://github.com/deltecent/altairsim/issues/59). **Sourced 2026-07-19**
+  from Sol Systems Manual Table 7-4, confirmed against the SOLOS 1.3 equates, and
+  recorded in `reference/Sol-20.md`. The four arrows and `HOME CURSOR` now work in
+  the video window (`Display::SpecialKey`, defaults `97`/`9A`/`81`/`93`/`8E`), and
+  every one of the eight is reachable from any console as a control code, because
+  SOLOS masks bit 7 — so this is now an ergonomics gap, not a missing capability.
+  What is left: a key for `MODE SELECT` and `CLEAR`, which is a real design call
+  (a PC keyboard has nothing obvious to borrow); arrows from a *terminal*, which
+  needs escape-sequence matching and collides with `ESC`; and exposing the code
+  table to the operator instead of leaving it a compile-time default.
 - **A sample-machine TOML for the Eberhard ROMs** — `cdbl`, `hdbl`, `amon` and
   `acuter` are built-in (PR #30) but no machine boots one by name the way
   `altairsim basic4k` does.
