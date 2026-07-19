@@ -60,9 +60,34 @@ so a reader stops being told to type a path that cannot work. The alternative �
 shipping the rest of the media — waits on the separate packages repository, which
 does not exist yet.
 
-`tools/build-package.sh` is a second thread: it still assembles a directory whose
-shape nobody has confirmed is what ships, and nothing runs it, so nothing catches
-the divergence.
+### Wire `build-package.sh` into the release workflow
+
+**Nothing runs `tools/build-package.sh`.** It assembles the archive the manual
+describes, and no workflow, test or release step invokes it — `grep` over
+`.github/workflows/` finds no reference to it. v0.1.0's three platform archives
+were assembled without it.
+
+The consequence is that two different archives exist and the documented one has
+never been published:
+
+| | Contents |
+|---|---|
+| What v0.1.0 shipped | `altairsim`, `README.md`, `LICENSE` |
+| What `build-package.sh` builds, and the manual describes | `altairsim`, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, `examples/{cpm,basic,sol}` **with media** |
+
+The script works — run for real (it needs `pandoc`), the unpacked archive boots
+CP/M from `examples/cpm/cpm22-buffered.toml` and mounts `examples/sol/TRK80.WAV`
+to the byte-identical line the tapes chapter quotes. What is missing is only that
+a release runs it.
+
+Two smaller things to settle while doing it:
+
+- **The built archive has no `LICENSE`.** `package.map`'s FILE table does not
+  place one; the hand-built v0.1.0 archives did carry it. An MIT project's
+  archive should — one `FILE` line.
+- **`tools/build-package.sh:7`** still summarises the contents as `disks/
+  tapes/`, which `examples/` replaced. The DIR loop below it is correct; only
+  the header comment lies, and it is the file that defines the package.
 
 ---
 
