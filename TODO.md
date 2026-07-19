@@ -37,15 +37,6 @@ Either build it or cut the paragraph; leaving it reads as shipped.
 **Deliberately held until after 0.1.0** (Patrick, 2026-07-18). It is the one
 piece of `DESIGN.md` drift knowingly left standing.
 
-### The SDL window cannot be closed — [#53]
-
-`SdlDisplay` pumps the quit event and sets a flag (`src/host/display_sdl.cpp:81`,
-exposed as `quitRequested()`), and nothing ever reads it — `grep -rn
-"quitRequested" src/` finds the definition and no caller. Clicking the close box
-does nothing. The open question is what closing the window should *mean* (back
-to the monitor, quit the process, or detach the display); the issue lays out the
-three readings.
-
 ---
 
 ## Features
@@ -264,4 +255,3 @@ Settled. Recorded here so they are not proposed again.
 [#26]: https://github.com/deltecent/altairsim/issues/26
 [#43]: https://github.com/deltecent/altairsim/issues/43
 [#48]: https://github.com/deltecent/altairsim/issues/48
-[#53]: https://github.com/deltecent/altairsim/issues/53

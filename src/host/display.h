@@ -125,6 +125,19 @@ public:
     using KeySink = std::function<void(const uint8_t*, size_t)>;
     void setKeySink(KeySink s) { keySink_ = std::move(s); }
 
+    // HAS THE OPERATOR ASKED TO CLOSE THE WINDOW SINCE WE LAST ASKED? A windowed
+    // host sets this from its own event queue; the run loop asks once a slice and
+    // stops the guest, which is the same place ATTN lands you (DESIGN.md 7.4).
+    //
+    // CONSUMING, exactly like Console::takeAttn(): asking clears it, so one click
+    // stops one run and cannot stop the next one too. And it is the DISPLAY that is
+    // asked, not the display that stops the machine -- the seam runs one way, and a
+    // board's pump() must never be able to halt the backplane it is sitting in.
+    //
+    // A headless host never fires it, so the base answers no and NullDisplay
+    // inherits that: a test and a no-SDL build see this as if it did not exist.
+    virtual bool takeQuitRequest() { return false; }
+
 protected:
     // A subclass that captures keystrokes calls this to hand them off; a no-op when
     // no sink is wired.

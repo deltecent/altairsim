@@ -13,6 +13,7 @@
 #include "cli/monitor.h"
 #include "core/machine.h"
 #include "cpu/cpu.h"
+#include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
 #include "test.h"
@@ -1264,5 +1265,70 @@ void test_achieved_hz() {
         CHECK(b2.str().find("0100") == std::string::npos, "and a cleared name no longer resolves");
 
         fs::remove_all(dir, ec);
+    }
+
+    SECTION("closing the video window stops the guest and hands back the monitor");
+    {
+        // A window nobody has closed answers no forever; one that has been closed
+        // says so ONCE. That is the whole contract SdlDisplay implements against a
+        // real close box, minus SDL -- so this runs headless, on every platform.
+        struct ClosableDisplay : NullDisplay {
+            bool closed = false;
+            bool takeQuitRequest() override {
+                bool q = closed;
+                closed = false;
+                return q;
+            }
+        };
+        ClosableDisplay disp;
+        Monitor::setDisplay(&disp);
+
+        Machine mw;
+        Monitor monW(mw);
+        std::ostringstream sw;
+        monW.exec("BOARDS ADD 8080 cpu0", sw);
+        monW.exec("BOARDS ADD memory mem0", sw);
+        monW.exec("SET mem0 fill=zero", sw);
+        monW.exec("REGION ADD mem0 type=ram at=0 size=64K", sw);
+        monW.exec("POWER ON", sw);
+
+        // 0200: JMP 0200 -- a guest that will NEVER stop on its own. If the close box
+        // is not read, this test hangs rather than fails, which is the honest shape:
+        // the bug is that nothing stops the run.
+        monW.exec("DEPOSIT 0200 C3 00 02", sw);
+        // 0300: HLT -- the same machine, stopping for a reason of its own.
+        monW.exec("DEPOSIT 0300 76", sw);
+
+        {
+            disp.closed = true;
+            std::ostringstream out;
+            monW.exec("EX 0200", sw);
+            monW.exec("RUN", out);
+            CHECK(out.str().find("window closed") != std::string::npos,
+                  "closing the window stops the run, and the monitor says so");
+            CHECK(mw.cpu()->pc() == 0x0200,
+                  "and the machine is exactly where it was -- RUN resumes it");
+            // Same family as ATTN: the operator stopped it, so there is no work to
+            // tally. A tally here would read as though the guest had finished.
+            CHECK(out.str().find("instructions,") == std::string::npos,
+                  "an operator stop prints no instruction tally");
+        }
+
+        {
+            // CONSUMING. One click stops one run: the next RUN must stop for its own
+            // reason, not inherit a stale close. This is the bug takeAttn() already
+            // learned to avoid.
+            std::ostringstream out;
+            monW.exec("EX 0300", sw);
+            monW.exec("RUN", out);
+            CHECK(out.str().find("window closed") == std::string::npos,
+                  "the close is consumed -- it cannot stop the NEXT run too");
+            CHECK(out.str().find("HLT") != std::string::npos,
+                  "which leaves the guest free to stop for its own reason");
+        }
+
+        // setDisplay is a process-global. Put it back, or every test that runs after
+        // this one inherits a pointer to a destroyed stack object.
+        Monitor::setDisplay(nullptr);
     }
 }

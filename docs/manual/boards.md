@@ -270,6 +270,11 @@ the software uses to avoid writing while the beam is in the way.
 **It needs a display.** Built with SDL3, it opens a real window; built without, it runs headless
 and everything else still works — a program writing to the screen simply has nowhere to show it.
 
+**Closing that window stops the machine, it does not quit the simulator.** The close box is the
+operator talking, so it does what `ATTN` does: the guest stops at an instruction boundary and you
+get the monitor prompt back, with the machine exactly where it was. `RUN` resumes it into the same
+window; `QUIT` is still how you leave.
+
 Bit 7 of each byte is the **cursor/blink** flag rather than part of the character, so the card
 draws 128 glyphs from a real character ROM, not 256.
 

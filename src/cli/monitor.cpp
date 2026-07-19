@@ -13,6 +13,7 @@
 #include "core/roms.h"
 #include "core/symbols.h"
 #include "host/console.h"
+#include "host/display.h"
 #include "host/endpoint.h"
 #include "isa/isa.h"
 
@@ -954,6 +955,12 @@ bool isRst(uint8_t op) { return (op & 0xC7) == 0xC7; }  // RST 0..7 (C7..FF), 1 
 // Both paths stop on a breakpoint, on a HLT nothing can wake, and on ^C, and
 // both report through the same reportStop. That is why GO had nothing left to be.
 // ---------------------------------------------------------------------------
+// The window, injected by the composition root (monitor.h). Borrowed, and null on
+// every build and every test that has no window.
+static Display* g_display = nullptr;
+
+void Monitor::setDisplay(Display* d) { g_display = d; }
+
 void Monitor::runMachine(std::ostream& out, bool stepOver) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
@@ -1081,6 +1088,17 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
             r.why = StopReason::Attn;
             break;
         }
+
+        // The close box on the video window, asked once a slice for the same reason
+        // ATTN is: it is the operator talking, and this is the only place that can
+        // act on it. m_.pump() above is what drained the window's event queue, so
+        // the click is already known by the time we ask. Null when there is no
+        // window at all -- headless, a test, a piped script.
+        if (g_display && g_display->takeQuitRequest()) {
+            r.why = StopReason::WindowClosed;
+            break;
+        }
+
         if (r.why != StopReason::Steps) break;  // breakpoint, HLT, ^C
 
         // ---- Knowing when to stop, WITH NOBODY THERE TO TELL US ----
@@ -1255,10 +1273,11 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // user breakpoint fired, the callee halted, or ATTN/^C took it back. Say those.
     if (!stepOver || r.why != StopReason::StepTarget) reportStop(r, m_.debug, out);
 
-    // The tally is about WORK DONE, and neither taking the keyboard back nor
-    // running out of script is a fault worth counting instructions over. NEXT is a
-    // single logical step, so it never prints a tally either.
-    if (!stepOver && r.why != StopReason::Attn && r.why != StopReason::InputEnded) {
+    // The tally is about WORK DONE, and none of taking the keyboard back, closing
+    // the window, or running out of script is a fault worth counting instructions
+    // over. NEXT is a single logical step, so it never prints a tally either.
+    if (!stepOver && r.why != StopReason::Attn && r.why != StopReason::InputEnded &&
+        r.why != StopReason::WindowClosed) {
         std::snprintf(buf, sizeof buf, "%llu instructions, %llu T-states.",
                       (unsigned long long)r.steps, (unsigned long long)r.tStates);
         out << buf << "\n";
@@ -1749,6 +1768,15 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         break;
     case StopReason::Interrupted:
         out << "^C -- stopped at the instruction boundary. The machine is intact.\n";
+        break;
+    case StopReason::WindowClosed:
+        // CLOSING THE WINDOW IS NOT QUITTING. It stops the guest and gives you the
+        // prompt -- the machine is untouched and the window is still there, so say
+        // both, and say how to go on and how to actually leave.
+        std::snprintf(buf, sizeof buf,
+                      "window closed -- the machine is still at %04X. RUN resumes; QUIT exits.",
+                      r.pc);
+        out << buf << "\n";
         break;
     case StopReason::NoCpu:
         out << "no CPU in this machine.  BOARDS ADD 8080 cpu0\n";

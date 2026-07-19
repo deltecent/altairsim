@@ -40,9 +40,15 @@ public:
     void     present(Surface* s) override;
     void     setPalette(std::span<const Color> colors) override;
 
-    // Has the user asked to close the window? The run loop may read this later to
-    // stop; for now the window simply stays open and responsive.
-    bool quitRequested() const { return quit_; }
+    // The close box, remembered by present()'s event pump and handed to the run loop
+    // (host/display.h). Consuming: the window itself stays open and responsive --
+    // closing it stops the GUEST and hands you the monitor, and the machine is still
+    // there, so RUN resumes into the same window.
+    bool takeQuitRequest() override {
+        bool q = quit_;
+        quit_ = false;
+        return q;
+    }
 
 private:
     bool ensureWindow(int w, int h);  // lazy: no SDL work until the first frame

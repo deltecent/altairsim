@@ -90,6 +90,9 @@ enum class StopReason {
     InputEnded,   // a SCRIPT's input ran out and the guest went quiet asking for
                   // more. Nobody stopped it; there is just nobody left to type.
     Interrupted,  // the operator pressed ^C
+    WindowClosed, // the operator closed the display window. Like Attn, not a fault
+                  // and invisible to the guest -- a bare RUN resumes it, into the
+                  // same window (host/display.h takeQuitRequest).
     NoCpu,        // there is no processor in this machine, which is a real machine
     StepTarget,   // NEXT ran to the return address of a stepped-over CALL/RST. Not a
                   // user breakpoint -- an internal one-shot the monitor set and cleared.

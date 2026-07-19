@@ -200,6 +200,12 @@ int main(int argc, char** argv) {
     // terminal and SOLOS sees one stream (DESIGN.md 7.4). A NullDisplay never fires it.
     g_display.setKeySink([](const uint8_t* p, size_t n) { Console::instance().inject(p, n); });
 
+    // And the other direction, once a slice: the run loop asks the window whether the
+    // operator closed it, and stops the guest if so -- the same place ATTN lands you
+    // (cli/monitor.h). The board that draws into the window deliberately cannot do
+    // this; only the run loop can stop a machine.
+    Monitor::setDisplay(&g_display);
+
     // The same seam for the other kind of endpoint: a disk board asks openMedia()
     // for a path and gets a medium back, and this is the one line that decides the
     // medium is a file on the host. A test replaces it with one made of RAM.
