@@ -22,7 +22,7 @@ interface. Ignore it if that is not how you work — nothing else depends on it.
 
 ## The machines are in the program
 
-You do not need any files to get a running machine. Thirteen machine descriptions are
+You do not need any files to get a running machine. Sixteen machine descriptions are
 compiled into the binary, and naming one boots it:
 
 ```
@@ -34,8 +34,9 @@ $ altairsim sol20                 a Processor Technology Sol-20, running SOLOS
 A built-in is an ordinary machine file that happens to live inside the executable — the same
 TOML format you would write yourself.
 
-**Four of them carry their software in ROM and need nothing else at all**: `altmon`, `sol20`,
-`cuter` and `vdm1` come up running, with nothing fetched and nothing mounted.
+**Six of them carry their software in ROM and need nothing else at all**: `altmon`, `sol20`,
+`cuter`, `vdm1`, `amon` and `acuter` come up running, with nothing fetched and nothing
+mounted.
 
 The rest carry at most a **boot PROM**, which is not the same thing. `default` and `minidisk`
 hold the PROM that *would* boot a disk, and their drives are empty — the PROM runs, finds no
