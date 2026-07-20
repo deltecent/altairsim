@@ -106,9 +106,32 @@ one `FILE` line, verified byte-identical in a built zip.
   (a PC keyboard has nothing obvious to borrow); arrows from a *terminal*, which
   needs escape-sequence matching and collides with `ESC`; and exposing the code
   table to the operator instead of leaving it a compile-time default.
-- **A sample-machine TOML for the Eberhard ROMs** — `cdbl`, `hdbl`, `amon` and
-  `acuter` are built-in (PR #30) but no machine boots one by name the way
-  `altairsim basic4k` does.
+- ~~**A sample-machine TOML for the Eberhard ROMs**~~ — **DONE 2026-07-19.**
+  `altairsim amon`, `altairsim acuter` and `altairsim cdbl` are built-in machines
+  now. The original entry: `cdbl`, `hdbl`, `amon` and `acuter` are built-in
+  (PR #30) but no machine boots one by name the way `altairsim basic4k` does.
+
+  **`hdbl` deliberately got none, and it is a missing BOARD, not a missing machine
+  file.** HDBL boots an 88-HDSK and there is no 88-HDSK controller here — nothing
+  decodes `A0`–`A7`, so the loader reads a floating bus and stops with `LOAD ERR`.
+  A machine that cannot boot is not a sample; shipping one would have answered the
+  letter of this entry and taught the reader something false. `roms/HDBL/README.md`
+  says so out loud, and the day the controller exists the machine file is four
+  lines. (The same loader is inside `amon` at its `FC00` entry, absent for the same
+  reason.)
+
+  Each machine is what its ROM requires and not a set of preferences, which is why
+  the ACR is in two of them: AMON's default transfer port is 6 (`DTPORT`), and
+  CUTER is a cassette operating system, so a machine without one has had the point
+  removed. `cdbl` is written as `base = "default"` with one region changed, because
+  that is exactly what it is.
+
+  Backed by `acceptance-eberhard-roms`, which RUNS all three — `test_machines.cpp`
+  proves a built-in loads, and a config can parse perfectly with the ROM at the
+  wrong address or the console on a port the firmware never reads. It checks
+  AMON's `RAM: DF00` line (the guest measuring the memory card), a dump of
+  ACUTER's own first bytes rather than its bare `>` prompt, and CP/M booting off
+  the tracked 8″ image.
 
 ### Debugger and monitor
 

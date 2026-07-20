@@ -35,6 +35,15 @@ Commands abort with `CTRL-@`, as in CUTER.
 
 ## Use it
 
+```
+$ altairsim acuter
+>
+```
+
+`machines/acuter.toml` is the built-in machine that does it — 56K (ACUTER's own
+1 KB system area sits at `BC00h`), an 88-2SIO whose two halves are CUTER pseudo-ports
+0 and 1, and an 88-ACR for the cassette. To put the ROM in a machine of your own:
+
 ```toml
 [[board.region]]
 type  = "rom"

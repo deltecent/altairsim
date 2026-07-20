@@ -94,9 +94,9 @@ only so that it is always there.
 $ altairsim --list
 ```
 
-names them. They are `default`, `4k`, `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`,
-`minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20` and `z80`; the machine reference at the back
-of this manual says what each one is.
+names them. They are `default`, `4k`, `altmon`, `amon`, `acuter`, `basic4k`, `basic8k`, `cdbl`,
+`ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20` and `z80`; the machine
+reference at the back of this manual says what each one is.
 
 To see what is in one:
 

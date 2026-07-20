@@ -1,0 +1,52 @@
+# The `default` machine with the Combo Disk Boot Loader in the PROM socket.
+#
+#     altairsim cdbl
+#     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
+#     RUN FF00
+#     -> 56K CP/M 2.2b v2.3
+#
+# ONE PROM FOR BOTH DRIVE SIZES, which is the whole reason it exists. MITS shipped two
+# bootstraps -- `builtin:dbl` for the 8" 88-DCDD and `builtin:mdbl` for the 5.25"
+# 88-MDS -- and you had to have the right one in the socket. CDBL 3.00 (Martin Eberhard
+# and Mike Douglas, 2016) probes for sector 16 after it relocates: present means 32
+# sectors to a track and an 8" disk, absent means 16 and a minidisk. So the same 245
+# bytes boot either system, and this file boots the minidisk too -- swap the `dcdd`
+# below for the `mds` in `minidisk` and change nothing else.
+#
+# It is also the one of the four that is a drop-in for a PROM this program already
+# ships, so it is written as what it is: `default`, with one region different.
+#
+# THE MACHINE HAS TO BE BIG ENOUGH. CDBL copies itself to 4C00 and runs there, so it
+# needs at least 20K of zero-wait-state RAM from address 0 and it caps the boot file at
+# 19K. 56K clears both by a wide margin. On an unrecoverable error it lights the INTE
+# lamp, leaves an ASCII code at address 0 and the offending address at 1-2, and prints
+# the code to every standard Altair terminal until you STOP/RESET: `C` checksum, `M`
+# memory, `O` the boot file would have overrun CDBL's own page.
+#
+# A BUILT-IN CANNOT MOUNT ANYTHING, and that is not an oversight -- a built-in is
+# compiled into the binary, so a filename in it would name a file that may not exist on
+# the machine running it (machines/minidisk.toml says the same thing at more length).
+# Hence the empty drives and the MOUNT line above.
+
+[machine]
+name = "cdbl"
+base = "default"
+
+# THE MEMORY CARD IS REPLACED, NOT EDITED, because a region list is a list: putting a
+# different PROM in means restating the RAM underneath it. 56K is not a preference --
+# the CP/M images beside this tree were BUILT for it, and the "56K" in CP/M's own
+# banner is this number.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"                # 0000-DFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:cdbl"      # where `default` has `builtin:dbl` -- the one difference

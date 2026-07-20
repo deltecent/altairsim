@@ -696,6 +696,21 @@ add_test(NAME acceptance-examples
 set_tests_properties(acceptance-examples PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # ---------------------------------------------------------------------------
+# THE EBERHARD ROM MACHINES ACTUALLY RUN.
+#
+# test_machines.cpp proves every built-in loads; that cannot tell you the ROM is at the
+# address its firmware expects, or that the console is on the port it talks to. This
+# switches `amon`, `acuter` and `cdbl` on and reads the terminal. It needs no fetched
+# media -- the one disk it uses is tracked.
+# ---------------------------------------------------------------------------
+add_test(NAME acceptance-eberhard-roms
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/eberhard-roms.cmake)
+set_tests_properties(acceptance-eberhard-roms PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ---------------------------------------------------------------------------
 # THE MANUAL'S REFERENCE MAY NOT DRIFT FROM THE BINARY.
 #
 # docs/manual/ref/*.md is committed (a reader of the repo, and the PDF build, should need
