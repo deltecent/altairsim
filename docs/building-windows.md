@@ -280,7 +280,7 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 > 19.44.35228.0` / `Check for working CXX compiler: ...\BuildTools\...\cl.exe - skipped`. The
 > full build produced `altairsim.exe` and `ctest -LE slow` passed 16/17 (the 17th being the
 > `terminal-hw` harness artifact in §5). The scripted setup that got there is §1.1.
-> **Approach C is now largely settled too (same machine, 2026-07-20).**
+> **Approach C is settled end to end (same machine, 2026-07-20).**
 > `tools\build-sdl3-static.bat` ran on its first outing, exit 0, and produced a 13 MB
 > `SDL3-static.lib` with no stray `SDL3.dll`. Built against it with
 > `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`, `altairsim.exe` came out **windowed**
@@ -294,7 +294,10 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 > (the MSVC-CRLF strip held), and the linkage check printed its "cannot check on this host — run
 > `dumpbin`" note without blocking. Unpacked outside the repository the shipped `altairsim.exe`
 > is self-contained (only system DLLs) and **CP/M boots from it** to `A>` and a `DIR` listing.
-> **The one thing left unrun on Windows is the human video check (H1–H6)**, `DISTRIBUTION.md` §7.
+> **And the human video checks passed** (`DISTRIBUTION.md` §7): a VDM-1 window opened in the
+> VMware guest with a sharp banner (H1), a blinking cursor (H2), keyboard into the window (H3),
+> the reverse-video toggle (H5), and the close-while-running behaviour (H6). **Nothing on Windows
+> is now unproven** — the whole pipeline, bare machine to a window on screen, has run here.
 > **Approach B (Ninja + chained `vcvars`) remains untried** — the VS generator has carried
 > every build so far, so nothing has needed it.
 
