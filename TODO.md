@@ -267,11 +267,24 @@ is true, and name the consequence.
 loop* (`src/host/display_sdl.cpp`), so with the machine stopped — at a `HLT`, or at the
 monitor prompt — nothing drains the SDL event queue and nothing redraws.
 
-**One fact, three symptoms**, which is why it is worth a single entry rather than three:
+**One fact, four symptoms**, which is why it is worth a single entry rather than four:
 
+- **The OS offers to KILL the process.** With the machine stopped at the prompt, any window
+  event — moving it, a keystroke — goes unanswered, and after ~5s the compositor declares the
+  window hung and pops *"altairsim is not responding — Force Quit or Wait."* A click on Force
+  Quit loses the session and the guest. **This is the sharp end, and it is on an ordinary
+  documented path:** H5 (`^E`, then a `SET`) parks you in exactly this state, so any pause
+  mid-H5 trips it. Found at the machine on the **Linux box, 2026-07-20** (Wayland/XWayland;
+  identical under `SDL_VIDEODRIVER=x11`). The reporter root-caused it precisely: the compositor
+  pings every window for liveness (`_NET_WM_PING` / xdg-shell ping), SDL answers automatically
+  *from its event pump*, and the pump — `g_display->pollEvents()` at `src/cli/monitor.cpp:1160`
+  — runs only inside the RUN loop; a stopped machine sits in `Monitor::repl()` blocked on
+  `ed.read()` at `src/cli/monitor.cpp:3746` and pumps nothing. **This is almost certainly
+  latent on macOS too** — the pump is equally idle there — and Linux merely surfaced it first.
+  It is a real bug, not cosmetic, and materially worse than the close-button symptom below.
 - **The close button is dead, and at a `HLT` permanently so.** The window can never be
-  closed. This is the sharp end: `machines/vdm1.toml`'s demo halts by design, so the
-  *documented first thing a new user runs* leaves an uncloseable window on their screen.
+  closed. `machines/vdm1.toml`'s demo halts by design, so the *documented first thing a new
+  user runs* leaves an uncloseable window on their screen.
 - **`SET vdm0 video=reverse` does not render** until the machine is resumed with `R`.
 - **The blinking cursor cannot be observed on `vdm1` at all**, because the CPU is stopped
   by the time you look.
@@ -286,9 +299,19 @@ verified, exit 0, no hang. That is a warning, not a fix, and the entry stays ope
 
 **Whether to fix it is a design question, not a defect report** — the display seam is
 deliberately driven by the run loop (`DESIGN.md`), and pumping events from the monitor prompt
-means deciding what a stopped machine's window *is*. But the uncloseable window is a trap
-either way. Recorded here rather than fixed, because inventing the answer is the mistake §7
-exists to prevent.
+means deciding what a stopped machine's window *is*. But the Force-Quit symptom raises the
+stakes past the uncloseable-window annoyance: the OS offering to kill the process on a
+documented path is a real bug, not a cosmetic one.
+
+**The Linux reporter argues the fix is safe and small, and the argument is worth weighing:** a
+stopped machine advances no emulated time, so RECORD/REPLAY (`DESIGN.md` §13) is not in play,
+and draining the window's event queue at the prompt is *outside* the clocked event queue
+entirely — no thread, no hardware behavior touched, consistent with the "check the host layer,
+never give hardware a behavior to fix a software symptom" rule. Draining `pollEvents()` from
+`Monitor::repl()`'s wait — or answering the liveness ping there — would let the compositor see
+a live window without changing what the machine does. **Still recorded rather than fixed**,
+because it is Patrick's call whether it gates the release, and a change to the repl's blocking
+read wants testing on a real desktop on more than one platform.
 
 Two smaller things fell out of the same session and are features, not bugs:
 
@@ -328,17 +351,82 @@ because the automated half can be fooled rather than merely being incomplete.
 The candidates, none tried:
 
 1. **Have `build-sdl3-static.sh` assert a real backend** after building — the honest place,
-   since that is where the answer is decided. Needs a reliable way to ask a static archive
-   what it was configured with; the `strings` idiom in the Linux job sheet is a guess.
-2. **Ask at runtime instead.** `SDL_GetCurrentVideoDriver()` names the driver actually in use,
-   which is the real answer — but it requires initialising video, and reporting `dummy` from
-   a `SHOW VERSION` that currently initialises nothing is a behaviour change.
+   since that is where the answer is decided. **The Linux box found the reliable idiom** the
+   job sheet was missing: a video driver is a `*_bootstrap` symbol, so
+   `nm -g libSDL3.a | grep -oE '[A-Za-z0-9_]*bootstrap'` names exactly what was compiled in
+   (`X11_bootstrap`, `DUMMY_bootstrap`, …) with no display and no false positives. **The
+   `strings` guess was wrong in both directions** — it reported `wayland` (leftover strings
+   from source that compiled but was not wired in) and *missed* `x11` (never a bare string) —
+   so it would have failed a good build and passed a dummy one. `nm` is what to use.
+2. **Ask at runtime instead.** `SDL_GetVideoDriver(i)` enumerates the compiled-in drivers in
+   priority order **without initialising video**, so unlike `SDL_GetCurrentVideoDriver()` it
+   needs no window and is safe to call from a `SHOW VERSION` that initialises nothing. The
+   Linux box confirmed a 3-line probe prints `x11 / offscreen / dummy / evdev` on a real build
+   and would print only `dummy`/`offscreen` on a broken one. This is the runtime one-liner that
+   would actually close the hole.
 3. **Leave it to H1** and say so louder. Cheapest, and consistent with §7 already conceding
    that a window reaching a screen is a human check.
 
-**The Linux box is being asked to establish whether this is real** before anything is built on
-top of it (`~/LINUX-JOB-1.md`, step 2). If it reports `x11`/`wayland` present, the hole is
-theoretical but still real; if it reports only `dummy`, it has happened.
+**The Linux box established this is real, 2026-07-20** (`~/linux-job1-report.md`). Its build
+had a genuine `X11_bootstrap`, so the dummy-only disaster did *not* happen — **but it was saved
+by an unrelated hard failure, not by any check.** SDL3 3.4.12 treats XTEST as a *hard* X11
+dependency, so a missing `libxtst-dev` stopped the build loudly; had that header been present
+and only, say, the Wayland/other headers missing, the build would have gone through with a
+weaker backend and every automated check would still have passed. The hole is confirmed, and
+the fix is now known (option 1's `nm` idiom, or option 2's probe) rather than a guess.
+
+### Building a packageable altairsim on Linux needs X11 headers the docs never list
+
+**Found on the Linux box, 2026-07-20**, doing the first static-SDL3 packaging build on Linux.
+`docs/building-linux.md` lists only `build-essential cmake git` — right for the ordinary
+headless build, and it has never needed more because CI's Linux leg has no SDL3. **A
+*packageable* build (static SDL3, real video) needs a pile of X11/Wayland dev headers**, and
+two gaps bite:
+
+- **`libxtst-dev` is a HARD requirement.** SDL3 3.4.12 treats XTEST as a mandatory X11
+  dependency; without the header the SDL3 configure fails outright
+  (`Couldn't find dependency package for XTEST`). CMake offers `-DSDL_X11_XTEST=OFF`, which is
+  the wrong answer — it disables part of the very backend the build exists to prove. Install
+  the header.
+- **Native Wayland will not build on Ubuntu 22.04 at all.** `wayland-protocols` is 1.25 there,
+  too old for SDL3 3.4.12's Wayland backend, which SDL treats as *optional* and silently skips.
+  **So a package built on 22.04 is X11-only**; on Wayland desktops it runs through XWayland.
+  That is fine for shipping (XWayland is universal), but it means the build host's distro
+  decides whether native Wayland is even an option — worth stating wherever the glibc-age rule
+  is stated (`DISTRIBUTION.md` §4.3), since it is the same "the build host decides who can run
+  it" concern one layer up.
+- **`expect` belongs on the list too.** It is not a packaging dependency but the full test
+  suite needs it: 13 interactive acceptance tests are gated on `find_program(EXPECT_EXECUTABLE
+  expect)` and silently unregister without it. macOS ships it, which is why both Macs got
+  30/33 and Linux got 17/20 — *not* "optional disk images," which is what the test-cadence note
+  currently implies. Install `expect` for a representative N.
+
+The full apt list that worked (add to `docs/building-linux.md` or a packaging appendix):
+`build-essential cmake git ninja-build pkg-config expect libx11-dev libxext-dev libxrandr-dev
+libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev
+wayland-protocols libdecor-0-dev libasound2-dev libpulse-dev`.
+
+### `build-sdl3-static.sh` — two rough edges the Linux run exposed
+
+Both from the Linux box, 2026-07-20. Neither is urgent; both waste a build machine's time.
+
+- **It deletes its own evidence on failure.** `trap 'rm -rf "$work" EXIT'` wipes the temp build
+  tree — including the `CMakeError.log` the failure message tells you to read — before you can
+  open it. All a build machine ever gets is the script's `tail -20` of the configure log.
+  Survivable when the error is self-explanatory (XTEST was); blinding on a subtler one. Keep
+  the work tree on failure, or copy the logs out before the trap fires.
+- **It hardcodes a bare `--parallel`** in its own build step, so a job sheet's `--parallel 2`
+  guidance for a small box cannot reach the SDL3 build — which, being the heaviest compile in
+  the job, is exactly where an OOM would strike on a 2-core/3-GB machine. Take an optional job
+  count, or honour one from the environment.
+
+### The `expect`-missing warning names one test but 13 go unregistered
+
+Linux box, 2026-07-20. `CMakeLists.txt`'s gate prints *"expect not found -- SKIPPING the
+interactive CLI test (acceptance-cli)"* — but **13** interactive acceptance tests unregister,
+not one. The promise ("a test that silently is not there is worse than one that fails") is
+kept, but the message names a single test and understates the blast radius. Widen it to say how
+many, or list the label.
 
 ---
 
