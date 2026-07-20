@@ -25,6 +25,44 @@ already in front of you when you do the work; reconstructing it later is not.
 
 ---
 
+## Priority
+
+### Build the release pipeline `DISTRIBUTION.md` describes
+
+**Patrick, 2026-07-20. This is the next task.** `DISTRIBUTION.md` (repo root) now says how a
+release is built and where it goes: four packages, each built natively on its own machine
+with SDL3 present, collected into a draft GitHub Release, published to both that release and
+altairsim.com. **The document is written; the pipeline is not.**
+
+It is deliberately written to be executed by an assistant on a build machine that has never
+seen this repository — literal commands, the exact string to check after each, and a STOP
+condition on every check. That is the standard the tooling has to meet as well.
+
+What has to be built, roughly in order:
+
+1. **`tools/build-package.sh --target <name>`** — it always emits `altairsim-<ver>.zip` from
+   whatever `build/altairsim` happens to be. It needs a target, per-platform archive format
+   (`tar.gz` for Unix, `zip` for Windows), and a `Compress-Archive` path since it is
+   `/bin/sh` and assumes `zip`.
+2. **`--pdf <file>`** so a machine can be handed a prebuilt manual instead of rebuilding it.
+   This is what keeps pandoc, Chrome and poppler off the three secondary machines, and it is
+   what makes the pandoc 3.6-vs-3.10 trap structurally impossible rather than merely known.
+3. **The SDL3 copy and the install-name fixups** — bundling plus `install_name_tool`/`@rpath`
+   on macOS, `$ORIGIN` on Linux, DLL-beside-exe on Windows. Nothing does this today, and
+   without it a packaged macOS binary starts on no machine but the one that built it.
+4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
+   other. Nothing produces checksums.
+
+**The open decision inside it is where SDL3 comes from** — a fetch script, committed to git,
+or Git LFS. `DISTRIBUTION.md` §3.1 lays out all three with measured sizes and recommends LFS;
+that recommendation is not yet a decision. See *All distributed packages must ship with SDL3*
+under Features for the full working.
+
+Two things that block a clean run and are tracked separately: nothing has ever run a shipped
+`.exe` on a clean Windows box, and MinGW has never been built at all.
+
+---
+
 ## Bugs
 
 ### `SET BUS UNCLAIMED` is documented but was never built — [#43]
@@ -466,17 +504,19 @@ The mechanics that have to be decided, none of them settled:
 - **The fourth would be the macOS split** (Patrick, 2026-07-20): Intel and Apple Silicon as
   separate packages rather than one universal build — *if* it turned out to be forced.
 
-  **IT IS NOT FORCED. Checked 2026-07-20, so there are three packages, not four.** What was
-  ever measured is only that *Homebrew's* SDL3 is `arm64`-only, which is a fact about brew
-  and not about SDL3 or about fat binaries. SDL upstream's own macOS release
-  (`SDL3-<ver>.dmg`, from `libsdl-org/SDL`) ships an **`SDL3.xcframework` whose
-  `macos-arm64_x86_64` slice is genuinely universal** — verified with
-  `lipo -archs …/SDL3.framework/Versions/A/SDL3` → `x86_64 arm64`. Link that instead of
-  brew's and a universal `altairsim` keeps its window on both architectures.
+  **It is not *forced*. Checked 2026-07-20.** What was ever measured is only that
+  *Homebrew's* SDL3 is `arm64`-only, which is a fact about brew and not about SDL3 or about
+  fat binaries. SDL upstream's own macOS release (`SDL3-<ver>.dmg`, from `libsdl-org/SDL`)
+  ships an **`SDL3.xcframework` whose `macos-arm64_x86_64` slice is genuinely universal** —
+  verified with `lipo -archs …/SDL3.framework/Versions/A/SDL3` → `x86_64 arm64`.
 
-  So macOS stays **one** universal package. Building SDL3 from source with
-  `-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"` is the fallback if the framework proves
-  awkward to consume, but it should not be needed.
+  **SPLIT ANYWAY — four packages. Patrick, 2026-07-20**, superseding this entry's earlier
+  "three, not four" conclusion. Since universal *is* possible, the split is a choice, and it
+  was made for two reasons: the download halves for everyone who takes it, and **each slice
+  is then built and tested on the hardware it targets**. That second one closes a hole both
+  releases so far have admitted to in their own notes — CI's macOS runner is arm64, so the
+  `x86_64` half of every universal binary shipped exercised by nobody. `DISTRIBUTION.md` §1
+  is now the statement of record.
 
   Note the knock-on: consuming a `.framework` is not the same as consuming brew's
   `.dylib` — `find_package(SDL3 CONFIG)` wants the framework's config, and the packaged

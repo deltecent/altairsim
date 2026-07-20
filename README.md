@@ -6,7 +6,7 @@ A C++ simulator of the **MITS Altair 8800** and the **S-100 bus**.
 
 It boots Altair 4K and 8K BASIC off a cassette, MITS Programming System II (polled *and* interrupt-driven), and CP/M 2.2 off both an 8″ floppy and a 5¼″ minidisk — every one of them a real period artifact, running unmodified.
 
-Every one of those boots is an **acceptance test**: it runs the period software on the whole machine through the real CLI and checks what lands on the terminal. Three CP/M images are tracked in git — one 8″ floppy and the minidisk's two — so a fresh clone boots CP/M and runs those tests without downloading anything first. The three examples that ship — CP/M, cassette BASIC and a Sol-20 running TREK80 — live in `examples/`, one directory each, and `acceptance-examples` boots them from a scratch directory with no repository in sight. The larger images that are not needed by any test (the 8 MB FDC+ disk, the 24K build) are fetched by `tools/fetch-disk-images.sh`.
+Every one of those boots is an **acceptance test**: it runs the period software on the whole machine through the real CLI and checks what lands on the terminal. Three CP/M images are tracked in git — one 8″ floppy and the minidisk's two — so a fresh clone boots CP/M and runs those tests without downloading anything first. The four examples that ship — CP/M, cassette BASIC, a Sol-20 running TREK80, and Altair Disk BASIC — live in `examples/`, one directory each, and `acceptance-examples` boots them from a scratch directory with no repository in sight. The larger images that are not needed by any test (the 8 MB FDC+ disk, the 24K build) are fetched by `tools/fetch-disk-images.sh`.
 
 ```
 $ altairsim basic4k
@@ -150,6 +150,7 @@ The disk-image tests run on a fresh clone: the 88-MDS and 8″ 88-DCDD images th
 | [`docs/manual/`](docs/manual/) | **The User Manual** — boot CP/M, drive the monitor, mount disks and tapes, move files. Written for someone holding a release package and nothing else, so it cites no source file and no repository path. Builds to `altairsim-manual.pdf`, which is what ships. |
 | [`docs/devguide/`](docs/devguide/) | **The Developer Guide** — Theory of Operation, and a worked example that adds a new board at port `FFH`. Needs the source, so it does not ship. |
 | [`DESIGN.md`](DESIGN.md) | The design, and the reasoning. Read this first. |
+| [`DISTRIBUTION.md`](DISTRIBUTION.md) | How a release is built and where it goes — the four packages, the machine each is built on, and the checks that must pass before one ships. Written to be followed step by step on a build machine that has never seen this repository. |
 | [`docs/config.md`](docs/config.md) | *Why* the TOML format is shaped as it is, by annotated example. **Not the grammar** — that is the manual's, so there is one normative copy of it. |
 | [`docs/cli-commands.md`](docs/cli-commands.md) | Why the monitor's commands rank and abbreviate as they do. **Not a command reference** — `HELP` is, and it comes off the same table the monitor resolves against. |
 | [`docs/boards/`](docs/boards/) | One file per board: the real hardware, the register map, how it is simulated, and the quirks it reproduces. |
