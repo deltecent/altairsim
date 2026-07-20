@@ -54,6 +54,22 @@ Property irqJumperProperty(std::string name, std::string help, IrqJumper& j) {
     return x;
 }
 
+// DOES THIS KEY NAME THIS PROPERTY? The one answer, for every path that takes a key from
+// a human or a file -- SET, a unit's SET, the console's, and a [[board.<table>]] entry.
+//
+// Two rules, and both are already load-bearing elsewhere: a key is CASE-INSENSITIVE (the
+// same rule board ids obey), and a key may be one of the property's other spellings
+// (Property::aliases). Neither is allowed to be a local string compare in one caller,
+// because the value of the reflection layer is that these four paths cannot disagree
+// about what is legal -- see setOne() below and Board::loadSubUnit().
+static bool named(const Property& p, const std::string& key) {
+    std::string k = lower(key);
+    if (lower(p.name) == k) return true;
+    for (const auto& a : p.aliases)
+        if (lower(a) == k) return true;
+    return false;
+}
+
 // A unit's name is the board's, and the board is the only one who knows them.
 // Nothing here guesses, and nothing accepts an index.
 bool Board::findUnit(const std::string& name, UnitDef& out) const {
@@ -76,9 +92,8 @@ bool Board::findUnit(const std::string& name, UnitDef& out) const {
 static bool setOne(std::vector<Property> props, const std::string& who, const std::string& key,
                    const std::string& text, std::string& err) {
     const Property* p = nullptr;
-    std::string k = lower(key);
     for (const auto& x : props)
-        if (lower(x.name) == k) p = &x;
+        if (named(x, key)) p = &x;
 
     if (!p) {
         err = who + " has no property '" + key + "'. Known:";
@@ -173,10 +188,18 @@ bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::stri
 
     auto schema = subUnitProperties(table);
 
+    // WHAT THE BOARD WILL BE HANDED: the same pairs, under the schema's own spellings.
+    // An alias is resolved HERE and nowhere else, so addSubUnit() below still compares
+    // against one string per key and a board that gains an alias gains no code at all.
+    KeyValues canon;
+    // ...and how each of those keys was actually SPELLED in the file, for the one error
+    // message below that has to quote the reader's own words back.
+    std::vector<std::string> written;
+
     for (const auto& [k, text] : kv) {
         const Property* p = nullptr;
         for (const auto& x : schema)
-            if (lower(x.name) == lower(k)) p = &x;
+            if (named(x, k)) p = &x;
 
         // A KEY THE BOARD NEVER DECLARED. Say what it does take -- the reason this bug
         // was worth fixing is that `readonly` existed and nobody could find it, so a
@@ -207,9 +230,27 @@ bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::stri
             err = where + err;
             return false;
         }
+
+        // ONE KEY, TWO SPELLINGS, IN THE SAME TABLE. TOML itself refuses a repeated key,
+        // so `readonly` beside `writeprotect` is the only way to write the same drive
+        // setting twice -- and whichever we then honoured, the file would be saying two
+        // things and only one of them would happen. There is no reading of that file that
+        // is safe to guess at, so say so instead.
+        // NAME BOTH KEYS AS THE FILE WROTE THEM. `canon` has already had the first one
+        // renamed, so reporting out of it would say "`readonly` as well as `readonly`" and
+        // send the reader looking for a duplicate that is not there.
+        for (size_t i = 0; i < canon.size(); i++)
+            if (canon[i].first == p->name) {
+                err = where + "says `" + k + "` as well as `" + written[i] +
+                      "`, which are two spellings of one key -- use either, not both";
+                return false;
+            }
+
+        canon.emplace_back(p->name, text);
+        written.push_back(k);
     }
 
-    return addSubUnit(table, kv, err);
+    return addSubUnit(table, canon, err);
 }
 
 } // namespace altair

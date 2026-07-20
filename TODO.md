@@ -171,9 +171,25 @@ one `FILE` line, verified byte-identical in a built zip.
 
 ### Configuration
 
-- **`writeprotect` as a TOML alias for `readonly`** — the CLI says WP and
-  "write-protected" everywhere; `[[board.drive]]` still says `readonly = true`.
-  Add the alias; **never break `readonly`**. Deferred by Patrick 2026-07-16 when
+- ~~**`writeprotect` as a TOML alias for `readonly`**~~ — **DONE 2026-07-19.**
+  `writeprotect = true` is accepted in a `[[board.drive]]`; `readonly` is
+  unchanged and is still the only spelling written back, so no existing machine
+  file moves and none of the ones we ship gain a second vocabulary.
+
+  Done as `Property::aliases` in the schema rather than another string compare in
+  the board, which is what makes the rest of it free: the same validator (an alias
+  cannot become a laxer door), the generated reference, the MCP schema and `SHOW`
+  all say so without being told, and both floppy controllers got it off one line
+  because they are one class. `Board::loadSubUnit` canonicalises at the door, so
+  no board learns its key has two names.
+
+  Two spellings of one key in the same table is an **error**, not a last-wins:
+  TOML already refuses a repeated key, so it is the only way to write the setting
+  twice, and either answer would be a file saying two things with one of them
+  silently happening.
+
+  Original entry: the CLI says WP and "write-protected" everywhere while
+  `[[board.drive]]` said `readonly = true`. Deferred by Patrick 2026-07-16 when
   PR #12 merged.
 
 ### Media

@@ -129,7 +129,8 @@ host cannot change no matter what the guest does:
 altairsim> MOUNT dsk0:drive0 {{DISK_CPM}} RO
 ```
 
-In a machine file it is `readonly = true` in the drive's table. Use it when you want to *look
+In a machine file it is `readonly = true` in the drive's table — or `writeprotect = true`,
+which is the same key said the way the rest of the program says it. Use it when you want to *look
 around* — boot it, `DIR`, `TYPE`, run `STARTRK` — with the image guaranteed untouched. It is
 the stronger promise about your file, because it does not depend on you remembering anything.
 

@@ -278,6 +278,14 @@ Json subUnitsJson(Board* b) {
             Json j = Json::obj();
             j["name"] = Json(p.name);
             j["help"] = Json(p.help);
+            // A key with more than one spelling says so, and says which one is real:
+            // `name` is what an agent should WRITE (it is what CONFIG SAVE writes back),
+            // `aliases` is what it must be able to READ in somebody's existing file.
+            if (!p.aliases.empty()) {
+                Json a = Json::arr();
+                for (const auto& x : p.aliases) a.push(Json(x));
+                j["aliases"] = a;
+            }
             switch (p.kind) {
             case Kind::Bool: j["kind"] = Json("bool"); break;
             case Kind::Str:  j["kind"] = Json("string"); break;

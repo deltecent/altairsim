@@ -602,6 +602,13 @@ std::vector<Property> HardSectorFdc::subUnitProperties(const std::string& table)
         x.help = "Write-protect the disk. The DRIVE senses it, so the guest is never told: "
                  "it writes, the head is inhibited, the bytes go nowhere";
         x.kind = Kind::Bool;
+        // THE OPERATOR'S WORD FOR IT, accepted in a machine file. Everything a person
+        // reads calls this write-protect -- SHOW MOUNTS prints WP, the manual says
+        // write-protected, and on the real diskette it is a notch you cover -- while the
+        // file said `readonly`, which is a word about a FILE. Both now work; `readonly`
+        // is still what is written back, so no existing machine file changes and no
+        // second spelling creeps into the ones we ship.
+        x.aliases = {"writeprotect"};
         p.push_back(std::move(x));
     }
     {
