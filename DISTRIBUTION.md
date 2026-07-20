@@ -63,27 +63,27 @@ The Developer Guide is **not** in the package. It is about the source, which is 
 
 ---
 
-## 3. SDL3 — the one open decision
+## 3. SDL3
 
-**Every binary this project has ever shipped is headless.** No CI leg installs SDL3, so `find_package(SDL3 CONFIG QUIET)` fails, `display_sdl.cpp` is never compiled, and the archives carry a null display. Verified against the published v0.2.0 files: `otool -L` links no SDL, and `strings` finds neither `libSDL3` nor `SDL_CreateWindow` in any of the three. **The video window the manual documents at length cannot be opened from anything we have released.** Fixing that is the whole reason packages are now built locally rather than from CI artifacts.
+**Every binary this project shipped through v0.2.0 is headless.** No CI leg had SDL3, so `find_package(SDL3 CONFIG QUIET)` failed, `display_sdl.cpp` was compiled nowhere, and the archives carried a null display. Verified against the published v0.2.0 files: `otool -L` links no SDL, and `strings` finds neither `libSDL3` nor `SDL_CreateWindow` in any of the three. **The video window the manual documents at length could not be opened from anything released so far.** Fixing that is the whole reason packages are now built locally rather than from CI artifacts.
 
-### 3.1 Where the libraries come from — UNDECIDED
+**Two things changed on 2026-07-20.** Packages are built on machines that have SDL3 (§4), and **the macOS CI leg now installs it** and builds native `arm64` — so `display_sdl.cpp` is compiled somewhere on every push, and that leg **fails if it comes up headless**. Linux and Windows still build against the null display; one leg is enough to stop a break going green everywhere, which is what it was doing.
 
-Three options. The numbers are measured, from SDL 3.4.12: macOS universal framework binary **5.0M**, Windows x64 DLL **2.7M**, Linux `.so` ~3M — about **11M per SDL3 version**, against a 67M `.git`.
+### 3.1 Where the libraries come from — SETTLED
 
-| | Works offline? | Cost | The catch |
-|---|---|---|---|
-| A fetch script | No — network once per machine | Free; git stays clean | Matches `tools/fetch-disk-images.sh` and `tools/fetch-ci-binaries.sh`. Needs a mirror if upstream moves. |
-| Commit to git | Yes | ~11M per version, **permanent** | `.gitignore`'s own header records vendor binaries being "burned into this repo's history twice already". |
-| **Git LFS** | Yes | 10 GB storage *and* transfer free | Conversion rewrites history. **New files only.** |
+**Each build machine maintains its own SDL3, installed natively. Nothing is vendored into this repository.** (Patrick, 2026-07-20.)
 
-**RECOMMENDED: Git LFS.** It is the only option that is both offline-capable and does not permanently inflate every future clone. GitHub includes 10 GB of storage and 10 GB/month of transfer on Free **and** Pro alike — note a paid *personal* plan does not raise this; only Team/Enterprise get 250 GB. At ~11M of libraries that is roughly 300 pushes a month before the quota notices.
+```
+macOS     brew install sdl3
+Windows   vcpkg install sdl3, or upstream's SDL3-devel-<ver>-VC.zip
+Linux     the distro package where it exists, else built from source
+```
 
-**The LFS trap is conversion, not cost.** `git lfs migrate import` rewrites history and changes every commit SHA from the conversion point forward, which would invalidate the published `v0.1.0` and `v0.2.0` tags and break every existing clone. So if LFS is adopted, it is for **newly added files only** — never for anything already committed.
+**SDL3 is a prerequisite, exactly like the compiler.** There is no `third_party/`, no fetch script, no Git LFS, and no committed binaries — options that were weighed and are not needed, because a machine that can build `altairsim` can install SDL3 the ordinary way. This also keeps ~11M per SDL3 version out of a 67M `.git` permanently.
 
-**This decision is open. Nothing below depends on which way it goes** — only on the libraries being present when a build machine configures.
+**The consequence to keep in view: the version is per-machine and nothing enforces it.** Two build machines can hold different SDL3 releases and neither will complain. That is acceptable — SDL3 is ABI-stable within a major version and the packages are independent artifacts — but if a video bug ever appears on one platform and not another, **check the SDL3 versions first.** §4.2 asks each machine to record its version for exactly this reason.
 
-### 3.2 The absolute-path trap — THIS IS LIVE RIGHT NOW
+### 3.2 The absolute-path trap — THIS IS THE REAL WORK
 
 A macOS build on a machine with Homebrew's SDL3 links **`/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` by absolute path**. Zip that binary, hand it to somebody without that exact Homebrew prefix, and it does not start.
 
@@ -153,6 +153,11 @@ tools/build-package.sh --pdf <path to the coordinator's manual> --target <target
 # 7. Upload into the draft release.
 gh release upload vX.Y.Z dist/altairsim-X.Y.Z-<target>.<ext>
 ```
+
+**Record the SDL3 version you built against** — in the release notes, or wherever the release
+is being tracked. Nothing enforces that the four machines agree (§3.1), so this is the only
+record there will be, and it is the first thing to check if a video bug shows on one platform
+and not another.
 
 `<target>` is one of `macos-arm64`, `macos-x86_64`, `windows-x86_64`, `linux-x86_64`.
 

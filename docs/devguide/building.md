@@ -80,8 +80,10 @@ CMake auto-detects with `find_package(SDL3 CONFIG)`; found → it compiles `src/
 links `SDL3::SDL3`, and defines `ALTAIRSIM_ENABLE_SDL`. Force a headless build even where SDL3 is
 installed with **`-DALTAIRSIM_ENABLE_SDL=OFF`**. That flag is what a macOS *universal* build
 needs, because a Homebrew SDL3 is single-arch and cannot link into an `x86_64;arm64` fat binary.
-**CI does not pass it, and does not need to: no CI leg installs SDL3 at all**, so every runner
-takes the not-found path above and builds headless. Only
+**CI passes it nowhere. One leg — macOS — installs SDL3 from Homebrew and builds native
+`arm64`, so it is the only place `display_sdl.cpp` is compiled at all**, and the workflow fails
+that leg if it comes up headless. Linux and Windows take the not-found path above and build
+against the null display. Only
 `display_sdl.cpp` and the composition root (`src/main.cpp`) are macro-gated; the boards themselves
 `#include` no SDL and compile in every configuration. Then:
 
@@ -93,9 +95,9 @@ altairsim vdm1               # a VDM-1 with a banner-drawing demo (roms/VDM1DEMO
 
 **Built and tested on Linux, macOS, and Windows.** The code is written to be portable — C++20,
 no dependencies, and every OS difference confined to `src/platform/` behind a header with zero
-conditionals — and that portability is now proven, not asserted: Linux (Ubuntu/GCC), macOS as a
-universal `x86_64`+`arm64` binary (Intel and Apple Silicon both), and Windows on MSVC all build
-and pass the suite. The Windows platform layer, once merely written, is field-proven.
+conditionals — and that portability is now proven, not asserted: Linux (Ubuntu/GCC), macOS on
+Apple Silicon (and on Intel, built natively there rather than in CI), and Windows on MSVC all
+build and pass the suite. The Windows platform layer, once merely written, is field-proven.
 
 **CI runs the suite on every push.** GitHub Actions builds and tests on all three platforms —
 Linux, macOS, and Windows are each a required check — so a regression on any of them shows up

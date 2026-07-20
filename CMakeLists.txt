@@ -330,11 +330,14 @@ target_include_directories(altair_core PUBLIC src "${CMAKE_BINARY_DIR}/generated
 # macos-arm64_x86_64 slice that is genuinely universal, so a universal windowed build is
 # possible -- link that rather than brew's dylib. See TODO.md.
 #
-# NO CI LEG INSTALLS SDL3, so every CI binary takes the not-found path and is headless.
-# This comment used to say the macOS leg passed the flag; it never has, and it does not
-# need to. The consequence is not free and is tracked in TODO.md: nothing anywhere
-# compiles display_sdl.cpp, so a change that breaks it goes green on all three
-# platforms, and every DISTRIBUTED binary to date can open no window.
+# EXACTLY ONE CI LEG HAS SDL3: macOS, which installs it from Homebrew and builds native
+# arm64. It is therefore the only place display_sdl.cpp is compiled, and the workflow
+# FAILS that leg if it comes up headless -- otherwise the coverage lapses in silence,
+# which is what happened before. Linux and Windows still take the not-found path.
+#
+# (Through v0.2.0 no leg had SDL3 at all, so nothing compiled display_sdl.cpp and every
+# shipped binary was headless. This comment also used to claim the macOS leg passed
+# -DALTAIRSIM_ENABLE_SDL=OFF; it never did.)
 #
 # ONLY src/host/display_sdl.cpp includes SDL. The boards see host/display.h and
 # never learn a window exists, so they compile in every configuration; only this
