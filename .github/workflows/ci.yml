@@ -40,13 +40,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The legs. cmake_args is intentionally NOT here -- the macOS universal flag is
-          # applied in the Configure step so this JSON stays simple strings.
-          #   macos-14 is the Apple-Silicon runner and is plentiful; the Intel macos-13 image
-          #   is scarce and deprecating, so the mac leg cross-builds BOTH slices (x86_64+arm64)
-          #   into one universal binary and ctest exercises the arm64 slice natively.
+          # The legs.
+          #   macos-14 is the Apple-Silicon runner. This leg BUILDS NATIVE arm64 and is the
+          #   one leg with SDL3 installed, so it is the only place display_sdl.cpp is
+          #   compiled at all -- see the Configure step. It used to cross-build a universal
+          #   x86_64+arm64 binary, back when CI artifacts WERE the release. They are not any
+          #   more (DISTRIBUTION.md: each package is built natively on its own machine,
+          #   including an Intel Mac), and universal is mutually exclusive with a Homebrew
+          #   SDL3, which is arm64-only and will not link into a fat binary. Native buys the
+          #   video path a compiler; the x86_64 slice is covered natively off-CI instead.
           linux='{"name":"linux-x86_64","os":"ubuntu-latest","artifact":"altairsim-linux-x86_64","binary":"build/altairsim"}'
-          macos='{"name":"macos-universal","os":"macos-14","artifact":"altairsim-macos-universal","binary":"build/altairsim"}'
+          macos='{"name":"macos-arm64","os":"macos-14","artifact":"altairsim-macos-arm64","binary":"build/altairsim"}'
           windows='{"name":"windows-x86_64","os":"windows-latest","artifact":"altairsim-windows-x86_64","binary":"build/Release/altairsim.exe"}'
           full="{\"include\":[$linux,$macos,$windows]}"
           docsonly="{\"include\":[$linux]}"
@@ -119,17 +123,38 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y expect
 
-      # The macOS leg builds a universal (x86_64 + arm64) binary; every other leg builds
-      # native. An array keeps the "x86_64;arm64" value intact past the shell.
+      # SDL3 ON EXACTLY ONE LEG, AND THAT IS THE POINT. display_sdl.cpp is macro-gated
+      # behind find_package(SDL3), so with no SDL3 anywhere in CI it was compiled by
+      # NOTHING and a change that broke it went green on all three platforms. Every
+      # binary the project shipped through v0.2.0 was headless for the same reason.
+      # One leg with a real SDL3 closes that. macOS is the cheap one: brew has it, and
+      # this leg no longer builds universal, which is what made brew's arm64-only SDL3
+      # unusable here before.
+      - name: Install SDL3 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl3
+
+      # Configure ONCE and keep the log: the SDL3 line is printed by the configure that
+      # evaluates find_package, so re-running to "check" it is both wasteful and unreliable
+      # against a warm cache. Capture, then assert against what was captured.
       - name: Configure
         shell: bash
         run: |
           set -euo pipefail
-          args=(-B build -DCMAKE_BUILD_TYPE=Release)
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            args+=(-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64")
-          fi
-          cmake "${args[@]}"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release 2>&1 | tee configure.log
+          grep -E "SDL3 (found|not found)" configure.log || true
+
+      # AND FAIL THE MAC LEG IF IT CAME UP HEADLESS. That line has been in the configure
+      # log all along; nobody read it, and that is the entire history of the bug above.
+      # This reads it every time, so the coverage cannot lapse silently.
+      - name: The macOS leg must have SDL3
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          grep -q "SDL3 found" configure.log || {
+            echo "::error::this leg came up HEADLESS -- it is the only one that compiles display_sdl.cpp"
+            exit 1
+          }
 
       - name: Build
         run: cmake --build build --config Release --parallel

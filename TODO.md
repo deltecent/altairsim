@@ -133,12 +133,20 @@ release runs, and draws nowhere.
 
 Two distinct problems live here, and they want different fixes:
 
-1. **Nothing anywhere compiles `display_sdl.cpp`.** It is macro-gated out of all three
-   CI legs, so a change that breaks it is green on every platform. That is a test-coverage
-   hole as much as a packaging one, and it is the cheaper half to close: one leg with SDL3
-   installed would do it.
-2. **The shipped product has no video.** That is the packaging half — see *All distributed
-   packages must ship with SDL3* under Features.
+1. ~~**Nothing anywhere compiles `display_sdl.cpp`.**~~ **FIXED 2026-07-20.** The macOS CI
+   leg installs SDL3 from Homebrew and builds native `arm64`, so the file is compiled on
+   every push, and the workflow **fails that leg if it configures headless** — the check
+   exists because the configure log always carried the answer and nobody read it. Linux and
+   Windows still build against the null display, which is fine: one leg is enough to stop a
+   break going green everywhere.
+
+   That leg **stopped building universal** to make this possible — Homebrew's SDL3 is
+   `arm64`-only and will not link into a fat binary. The cost is no x86_64 macOS compile in
+   CI, and it is a cost worth naming: it is covered instead by building and testing that
+   slice natively on an Intel Mac, which is strictly better than a cross-compile nothing
+   ever ran. CI artifacts are no longer the release artifacts, so universal bought nothing.
+2. **The shipped product has no video.** Still open, and now the whole of this item — see
+   *All distributed packages must ship with SDL3* under Features.
 
 **The drift that hid this is fixed in the same commit.** `CMakeLists.txt` and
 `docs/devguide/building.md` both stated that the CI macOS-universal leg passes
@@ -486,15 +494,24 @@ library travel together.
 
 The mechanics that have to be decided, none of them settled:
 
-- **Linking and layout.** Static SDL3, or dynamic with the library beside the binary? If
-  dynamic: `SDL3.dll` next to the `.exe` on Windows; a bundled `.dylib` with an `@rpath`
-  that survives being unzipped anywhere on macOS; a `.so` plus `$ORIGIN` on Linux. This is
-  the part that most often ships "working on the machine that built it" — and this tree is
-  already in that state. A local macOS build links
-  `/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` **by absolute path**, so zipping today's
-  `build/altairsim` and handing it to anyone without that exact Homebrew prefix produces a
-  binary that will not start. Bundling the dylib and rewriting the install name
-  (`install_name_tool`, `@rpath`/`@executable_path`) is mandatory, not a refinement.
+- **Linking — SETTLED for macOS: STATIC. Measured 2026-07-20.** Homebrew ships only a
+  dylib, so this needs SDL3 built once from source with `-DSDL_STATIC=ON -DSDL_SHARED=OFF`;
+  `find_package` then picks the static target up with **no change to `CMakeLists.txt`**.
+  Verified end to end: the binary boots CP/M from an unpacked package and `otool -L` shows
+  **no SDL at all**, only system frameworks.
+
+  It costs about **0.3M** — 1.7M binary plus a 2.4M dylib to bundle becomes a 4.4M
+  self-contained one — and it deletes the entire bundling problem: nothing to copy, no
+  `install_name_tool`, no `@rpath`, nothing to verify at release time. The package gains
+  only `LICENSE-SDL3`.
+
+  **`CMAKE_OSX_DEPLOYMENT_TARGET` is a separate and equally mandatory flag** on both the
+  SDL3 build and the simulator build, or the binary refuses to start on anything older than
+  the build machine. `vtool -show-build` confirms it.
+
+  **Linux and Windows are expected to work the same way and have not been tried.** If either
+  ends up dynamic, bundling is the fallback and is mandatory there — `$ORIGIN` on Linux,
+  DLL-beside-exe on Windows.
 - **macOS universal is the hard one, and it is measured, not assumed.** Homebrew's SDL3 is
   `arm64` only — `lipo -archs /opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` says exactly
   that, which is the whole reason `-DALTAIRSIM_ENABLE_SDL=OFF` exists. So a windowed macOS
@@ -527,10 +544,16 @@ The mechanics that have to be decided, none of them settled:
   name paths that ship.
 - **SDL3 is zlib-licensed**, so bundling it is straightforward; record its licence in the
   package alongside `LICENSE` rather than treating it as a blocker.
-- **Where SDL3 itself comes from — fetched, or built and tracked?** Patrick asked
-  (2026-07-20) whether to build SDL3 from source into an untracked directory in the repo
-  and track only the resulting libraries. Both halves are workable; the second is the one
-  to think about.
+- **Where SDL3 comes from — SETTLED 2026-07-20: each build machine maintains its own.**
+  Installed natively (`brew install sdl3`, vcpkg, the distro package or a source build),
+  exactly like the compiler. **Nothing is vendored into this repository** — no
+  `third_party/`, no fetch script, no Git LFS, no committed binaries. The workings below
+  are kept because they were measured and would have to be re-derived if this is ever
+  reopened; they are **not** live options.
+
+  The consequence worth remembering: **the SDL3 version is per-machine and nothing
+  enforces it.** If a video bug ever shows on one platform and not another, check the SDL3
+  versions before anything else.
 
   Measured sizes, 3.4.12: macOS universal framework binary **5.0M**, Windows x64
   `SDL3.dll` **2.7M**, Linux `.so` ~3M — call it **~11M per SDL3 version**, against a

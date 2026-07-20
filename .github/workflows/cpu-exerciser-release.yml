@@ -14,10 +14,13 @@ name: CPU exercisers (release)
 # exercised as compiled by GCC is a bet, and a release is the wrong place to still be betting.
 #
 # WHAT THIS STILL DOES NOT COVER, stated plainly rather than implied by a green tick: the macOS
-# leg builds the universal binary that ships but runs on an arm64 runner, so only the arm64
-# slice is exercised. The x86_64 slice ships exercised by nobody. Closing that needs an Intel
-# Mac runner, which is scarce and deprecating (see ci.yml) -- the alternative would be to stop
-# shipping a universal binary, which is worse. It is a known hole, not an oversight.
+# leg runs on an arm64 runner, so no x86_64 Mac exerciser runs here. That was equally true when
+# this leg cross-built a universal binary -- a fat binary still executes only the slice the
+# runner can run -- so the coverage has not changed, only the honesty of the description.
+#
+# It is no longer unclosable, though. GitHub's Intel Mac runners are scarce and deprecating,
+# but an Intel Mac now builds and tests a package of its own (DISTRIBUTION.md 4), so this is a
+# job to run there rather than a hole to apologise for in the release notes.
 #
 # No tags exist yet; v* is the convention this expects. workflow_dispatch makes it runnable on
 # demand today, which is also how you use it before cutting the first one.
@@ -37,7 +40,7 @@ jobs:
       matrix:
         include:
           - { name: linux-x86_64,    os: ubuntu-latest }
-          - { name: macos-universal, os: macos-14 }
+          - { name: macos-arm64,     os: macos-14 }
           - { name: windows-x86_64,  os: windows-latest }
 
     steps:
@@ -48,18 +51,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Match ci.yml's configuration exactly -- the point is to exercise the binary that
-      # ships, so the mac leg builds the same universal (x86_64 + arm64) artifact. An array
-      # keeps the "x86_64;arm64" value intact past the shell.
+      # Match ci.yml: every leg builds NATIVE. The mac leg used to cross-build a universal
+      # x86_64+arm64 binary to mirror the shipped artifact, and that stopped making sense
+      # twice over -- CI artifacts are no longer what ships (DISTRIBUTION.md), and a
+      # universal build exercised only its arm64 slice anyway, because that is the
+      # architecture the runner executes.
+      #
+      # SO THE x86_64 MAC EXERCISER RUNS NOWHERE IN CI, and that is not a regression: it
+      # never ran. Both prior releases said so in their notes. It is now a real, runnable
+      # job on the Intel Mac instead of an admission in a release note.
       - name: Configure
         shell: bash
-        run: |
-          set -euo pipefail
-          args=(-B build -DCMAKE_BUILD_TYPE=Release)
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            args+=(-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64")
-          fi
-          cmake "${args[@]}"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release --parallel
