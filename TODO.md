@@ -300,6 +300,46 @@ Two smaller things fell out of the same session and are features, not bugs:
 - **`SET DISPLAY focus=on` has never been tested.** Whether it genuinely opens a window
   focused is unverified; it needs a human, since no pipe can tell.
 
+### The headless check cannot catch an SDL3 built with no video backend
+
+**Found while writing the Linux job sheet, 2026-07-20. This is a hole in the check added the
+same day, and it is worth stating plainly: the check is sound on macOS and insufficient on
+Linux.**
+
+`build-package.sh` refuses to package a binary whose `SHOW VERSION` does not report
+`video  SDL3`. That row is emitted from `#ifdef ALTAIRSIM_ENABLE_SDL`, so it answers **"was
+SDL3 compiled in"** — which is not the same question as **"can a window open"**. On macOS the
+two coincide, because Cocoa is unconditional. On Linux they come apart:
+
+- SDL3 detects its video backends **at configure time**. With no X11 or Wayland development
+  headers present it configures happily with only the **dummy** driver.
+- `tools/build-sdl3-static.sh` then passes: it checks that `libSDL3.a` exists and that no
+  shared library sits beside it, and **nothing about what is inside the archive**.
+- `find_package(SDL3)` succeeds, `ALTAIRSIM_ENABLE_SDL` is defined, `SHOW VERSION` reports
+  `SDL3 -- windowed`, `ldd` names no SDL, and the linkage check passes too.
+
+**So every automated check in the project passes on a binary that cannot open a window** —
+which is the exact failure v0.2.0 shipped, reached by a different road. `DISTRIBUTION.md` §7
+already says the `video` row *"does not say a window reached a screen"* and hands that to a
+human (H1); this entry records that on Linux the gap is wider than that sentence implies,
+because the automated half can be fooled rather than merely being incomplete.
+
+**Not fixed, because the fix is not obvious and guessing is what this file exists to stop.**
+The candidates, none tried:
+
+1. **Have `build-sdl3-static.sh` assert a real backend** after building — the honest place,
+   since that is where the answer is decided. Needs a reliable way to ask a static archive
+   what it was configured with; the `strings` idiom in the Linux job sheet is a guess.
+2. **Ask at runtime instead.** `SDL_GetCurrentVideoDriver()` names the driver actually in use,
+   which is the real answer — but it requires initialising video, and reporting `dummy` from
+   a `SHOW VERSION` that currently initialises nothing is a behaviour change.
+3. **Leave it to H1** and say so louder. Cheapest, and consistent with §7 already conceding
+   that a window reaching a screen is a human check.
+
+**The Linux box is being asked to establish whether this is real** before anything is built on
+top of it (`~/LINUX-JOB-1.md`, step 2). If it reports `x11`/`wayland` present, the hole is
+theoretical but still real; if it reports only `dummy`, it has happened.
+
 ---
 
 ## Features
