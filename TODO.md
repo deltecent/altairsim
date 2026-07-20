@@ -44,6 +44,21 @@ What has to be built, roughly in order:
    whatever `build/altairsim` happens to be. It needs a target, per-platform archive format
    (`tar.gz` for Unix, `zip` for Windows), and a `Compress-Archive` path since it is
    `/bin/sh` and assumes `zip`.
+
+   **This is also a live footgun, hit for real on 2026-07-20.** The script leaves
+   `dist/altairsim-<ver>/` and `dist/altairsim-<ver>.zip` behind, which look exactly like the
+   release and are not it — they hold whatever local `build/altairsim` existed when the script
+   ran. Patrick ran `dist/altairsim-0.2.0/altairsim`, got
+   `AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)`, and reasonably concluded the version fix
+   had been missed. It had not: the shipped archives report a bare `AltairSim 0.2.0`. The
+   stale directory was the pre-tag local build, arm64-only and dynamically linked against
+   Homebrew's SDL3.
+
+   **The script's closing message points straight at it** (*"Now check the one thing that
+   matters… `cd dist/altairsim-<ver>`"*), so it actively directs you at the misleading copy.
+   `--target` mostly fixes this by itself — staging into `dist/altairsim-<ver>-<target>/`
+   self-documents — but the closing message needs to name what it is either way, and the
+   script should probably clear stale siblings when it runs.
 2. **`--pdf <file>`** so a machine can be handed a prebuilt manual instead of rebuilding it.
    This is what keeps pandoc, Chrome and poppler off the three secondary machines, and it is
    what makes the pandoc 3.6-vs-3.10 trap structurally impossible rather than merely known.
@@ -52,6 +67,27 @@ What has to be built, roughly in order:
    without it a packaged macOS binary starts on no machine but the one that built it.
 4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
    other. Nothing produces checksums.
+5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
+   *after* the packaging work: anyone who clones this repository should be able to run a
+   single script (or `.bat` on Windows) and end up with a binary. No reading, no flags, no
+   choosing a generator.
+
+   The README already gives the three commands and that is three too many for a first
+   encounter. The script should configure Release, build, print where the binary landed and
+   what `--version` says, and fail with a sentence a newcomer can act on if CMake is
+   missing. **SDL3 stays optional** — a plain run must work with nothing installed, which is
+   the project's loudest claim; getting a window is a flag (`--with-sdl`, wiring in
+   `tools/build-sdl3-static.sh`), never a prerequisite.
+
+   `build.bat` needs no Developer shell: the Visual Studio generator locates MSVC itself,
+   so a plain `cmake -B build` + `cmake --build build --config Release` works from any
+   PowerShell — which is the *whole* value of the script on Windows, since the current
+   documentation makes it look like a Developer shell is required.
+
+   **Worth doing BEFORE the Windows verification in `docs/building-windows.md` §6**, not
+   after: three of the approaches that section asks somebody to settle by hand are exactly
+   what the script would encapsulate, and a script is a far better thing to hand a remote
+   machine than a list of commands to retype.
 
 **The open decision inside it is where SDL3 comes from** — a fetch script, committed to git,
 or Git LFS. `DISTRIBUTION.md` §3.1 lays out all three with measured sizes and recommends LFS;
@@ -59,7 +95,7 @@ that recommendation is not yet a decision. See *All distributed packages must sh
 under Features for the full working.
 
 Two things that block a clean run and are tracked separately: nothing has ever run a shipped
-`.exe` on a clean Windows box, and MinGW has never been built at all.
+`.exe` on a clean Windows box, and `tools\build-sdl3-static.bat` has never been executed.
 
 ---
 
@@ -609,42 +645,6 @@ The mechanics that have to be decided, none of them settled:
 even compiles (Bugs, above), and the Windows+SDL3 recipe is not written down (next item).
 Both of those are in the way of building these packages by hand repeatably.
 
-#### Building on Windows with mingw is untried, and undocumented
-
-**Raised by a user; recorded 2026-07-20.** Every Windows instruction we ship assumes
-MSVC — `docs/building-windows.md` walks through installing Visual Studio or the Build
-Tools, insists on a *Developer* shell, and describes the Visual Studio generator. A
-reader with mingw-w64 has nothing to follow.
-
-**Nothing in the source is knowingly MSVC-only**, which is the encouraging half. Checked
-2026-07-20:
-
-| | |
-|---|---|
-| `_MSC_VER` / `__declspec` in `src/` | **none** |
-| Windows headers | already lowercase (`<windows.h>`, `<winsock2.h>`) |
-| entry point | plain `int main(int, char**)` — no `wmain`, so no `-municode` |
-| `if(MSVC)` in `CMakeLists.txt` | has a working `else()`; mingw gets `-Wall -Wextra -Wpedantic` |
-| `ws2_32` | linked by CMake `target_link_libraries`, not only by a pragma |
-| the old `strncasecmp` portability fix | **gone** — no case-compare intrinsic anywhere in `src/` |
-
-**One real MSVC-ism:** `src/platform/win32/socket_win32.cpp:18` has
-`#pragma comment(lib, "ws2_32.lib")`. GCC ignores it, but `-Wall` implies
-`-Wunknown-pragmas`, so mingw warns on every build. It is redundant on *every*
-toolchain — CMake already links `ws2_32` — so guard it with `#ifdef _MSC_VER` or delete
-it.
-
-**"Should build" is not "builds", and that is the whole item.** The work is to actually
-run it on Windows with mingw-w64 (`cmake -B build -G Ninja`), fix whatever falls out —
-`-Wpedantic` noise from Windows headers is the likeliest — and then write the recipe
-into `docs/building-windows.md` *alongside* the MSVC path, not instead of it. Patrick
-has a Windows 10 box, so this needs no CI leg to answer; a CI leg is only worth adding
-afterwards, to keep the answer true.
-
-**It also connects to the SDL3 work above:** upstream ships
-`SDL3-devel-<ver>-mingw.tar.gz`, so mingw is a supported SDL3 configuration and may
-well be the *easier* route to a windowed Windows package than vcpkg + MSVC.
-
 #### The developer guide is thin on building under Windows with SDL3
 
 **Patrick, 2026-07-20.** `docs/devguide/building.md` covers SDL3 detection well in
@@ -735,6 +735,38 @@ known, and guessing would be inventing hardware.
 ## Declined
 
 Settled. Recorded here so they are not proposed again.
+
+- **MinGW as a supported Windows toolchain — DECLINED 2026-07-20 (Patrick).** Raised by
+  a user; **MSVC is the only supported Windows toolchain.**
+
+  The case was weaker than it first looked. **Compiler diversity is already covered** by
+  Linux/GCC + macOS/Clang + Windows/MSVC, so MinGW-GCC would largely duplicate Linux-GCC;
+  the only genuinely new combination is GCC compiling `src/platform/win32/`, which is a
+  narrow slice. Its one clear advantage — easy fully-static linking — **evaporated when
+  `/MT` was shown to give MSVC an `.exe` needing no VC++ redistributable.** Against that,
+  supporting it permanently doubles the Windows surface: two toolchains, two SDL3
+  acquisition paths, two CRT stories, two things to verify every release. And MSVC is the
+  one with evidence: the CI leg builds it on every push and `src/platform/win32/` is
+  field-proven against it.
+
+  **A common misconception, recorded because it is what makes MinGW look attractive:**
+  MinGW is closer to Linux in *toolchain* (GCC, libstdc++) but **not in *platform***. It
+  emits native PE binaries against the Win32 API — it is not a POSIX layer, that is
+  Cygwin/MSYS2. So `src/platform/win32/` is exactly what compiles either way; you do not
+  get the POSIX platform layer. The thing that is genuinely closer to Linux is WSL, which
+  cannot see MSVC at all.
+
+  **Nothing in the source is knowingly MSVC-only** — checked 2026-07-20: no `_MSC_VER` or
+  `__declspec` anywhere in `src/`, Windows headers already lowercase, a plain
+  `int main(int, char**)` so no `-municode`, `if(MSVC)` has a working `else()`, and
+  `ws2_32` is linked by CMake rather than only by a pragma. The old `strncasecmp`
+  portability fix that `docs/building-windows.md` once cited is gone entirely. **So MinGW
+  would very likely build** — that is an argument for not needing to *support* it, not for
+  supporting it. It is untested, undocumented and unshipped.
+
+  The one real MSVC-ism, if this is ever reopened: `src/platform/win32/socket_win32.cpp`
+  has `#pragma comment(lib, "ws2_32.lib")`, which GCC ignores and `-Wall` warns about. It
+  is redundant on every toolchain, since CMake links the library anyway.
 
 - **`SET <board> ENABLED=OFF` as a runtime property** — `DESIGN.md`:387 argues
   for it as a *planned* operator switch and is marked unbuilt. `Board::enabled_`

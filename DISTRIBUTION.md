@@ -75,11 +75,18 @@ The Developer Guide is **not** in the package. It is about the source, which is 
 **Each build machine maintains its own SDL3, installed natively. Nothing is vendored into this repository.** (Patrick, 2026-07-20.)
 
 ```
-macOS     built from source, STATIC -- see 3.2. brew install sdl3 gives you a
-          dylib only, which works for development but not for a package.
-Windows   vcpkg install sdl3, or upstream's SDL3-devel-<ver>-VC.zip
-Linux     the distro package for development; a static source build for a package
+macOS     tools/build-sdl3-static.sh    -- run ONCE, installs to ~/opt/sdl3-static
+Linux     tools/build-sdl3-static.sh    -- same script, same prefix
+Windows   tools\build-sdl3-static.bat   -- %USERPROFILE%\opt\sdl3-static   [UNVERIFIED]
 ```
+
+**Both scripts pin the same SDL3 version**, build it static, install to a fixed prefix, and are a no-op on a second run. That pin is the only thing making four independently-maintained machines agree — change it deliberately, and rerun the script everywhere when you do.
+
+**The `.bat` has never been run.** It was written from the working shell script and is here to be tested; `docs/building-windows.md` §6 says how to report what actually happens. **It is a `.bat` and not a `.ps1` on purpose:** PowerShell's execution policy blocks unsigned scripts by default, so a freshly-cloned `.ps1` will not run until the user changes a machine setting. `curl.exe` and `tar.exe` have shipped in Windows since 10 1803, so it needs nothing installed but CMake.
+
+**THE WINDOWS TRAP IS THE C RUNTIME, and it has no Unix equivalent.** MSVC links the CRT dynamically by default (`/MD`), so the `.exe` then needs the VC++ redistributable — present on most Windows 10 machines, absent on a clean one, and a package that requires an install first is a broken package. Building with the **static** CRT (`/MT`, i.e. `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`) removes that requirement — **but SDL3 and `altairsim` must agree.** Mixing the two gives duplicate-symbol link errors at best, and two separate C runtime heaps at worst. Set it on both builds, or neither.
+
+`brew install sdl3` is fine for *development* — it is what CI's macOS leg uses — but it ships a dylib only and cannot produce a package. See §3.2.
 
 **SDL3 is a prerequisite, exactly like the compiler.** There is no `third_party/`, no fetch script, no Git LFS, and no committed binaries — options that were weighed and are not needed, because a machine that can build `altairsim` can install SDL3 the ordinary way. This also keeps ~11M per SDL3 version out of a 67M `.git` permanently.
 
@@ -89,22 +96,21 @@ Linux     the distro package for development; a static source build for a packag
 
 A macOS build against Homebrew's SDL3 links **`/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` by absolute path**. Zip that binary, hand it to anyone without that exact Homebrew prefix, and it does not start. The obvious fix is to bundle the dylib and rewrite the install name. **There is a better one.**
 
-**LINK SDL3 STATICALLY. Measured on macOS/arm64 2026-07-20, and it is the recommended approach.** Homebrew ships no static library — only the dylib — so this needs SDL3 built from source once per machine:
+**LINK SDL3 STATICALLY. Measured on macOS/arm64 2026-07-20, and it is the recommended approach.** Homebrew ships no static library — only the dylib, and the one `.a` there is `libSDL3_test.a`, SDL's test harness. So this needs a source build, which is what the script is for:
 
 ```sh
-curl -LO https://github.com/libsdl-org/SDL/releases/download/release-<ver>/SDL3-<ver>.tar.gz
-tar xzf SDL3-<ver>.tar.gz && cd SDL3-<ver>
-cmake -B b -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=ON -DSDL_SHARED=OFF \
-      -DCMAKE_INSTALL_PREFIX=<prefix> -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-cmake --build b --parallel && cmake --install b
+tools/build-sdl3-static.sh            # once per machine; ~/opt/sdl3-static
 ```
 
-then point the simulator at it — `find_package` picks the static target up with no change to `CMakeLists.txt`:
+then point the simulator at it — `find_package` resolves `SDL3::SDL3` to the static target with **no change to `CMakeLists.txt`**:
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<prefix> \
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static" \
       -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 ```
+
+The script builds with `-DSDL_STATIC=ON -DSDL_SHARED=OFF`. **Both flags matter:** with a shared library also present in the prefix, `find_package` resolves to *that* and the static build is silently undone. The script refuses to finish if it finds one.
 
 **What it buys, measured rather than asserted:**
 
@@ -208,20 +214,13 @@ and not another.
 
 **Windows.** Steps run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe`. And **Windows has no `zip`** — archiving is `Compress-Archive`. See §4.4, because the toolchain changes more than the paths.
 
-### 4.4 Windows: two toolchains, one shipped
+### 4.4 Windows: MSVC, and only MSVC
 
-**MSVC produces the shipped package. MinGW is a documented and supported build path that is not a shipped artifact.**
+**MSVC is the only supported Windows toolchain.** MinGW was considered and **declined** on 2026-07-20; `TODO.md` → *Declined* carries the reasoning so it does not get re-raised.
 
-The reason is evidence. MSVC is what the Windows CI leg builds on every push, and what `src/platform/win32/` is field-proven against — serial against two real FTDI ports, sockets against the real TCP stack, the terminal against a real console. **MinGW has never been built here at all.** A toolchain nobody has run is not one to hand to strangers, but it is one to document, because people ask for it and because nothing in the source is knowingly MSVC-only.
+The short version: compiler diversity is already covered by Linux/GCC, macOS/Clang and Windows/MSVC, so MinGW-GCC would mostly duplicate Linux-GCC. Its one real advantage — easy fully-static linking — evaporated once `/MT` was shown to give MSVC a `.exe` with no redistributable requirement. And MSVC is the toolchain with evidence behind it: it is what the Windows CI leg builds on every push, and what `src/platform/win32/` is field-proven against — serial against two real FTDI ports, sockets against the real TCP stack, the terminal against a real console.
 
-| | **MSVC** — shipped | **MinGW** — documented |
-|---|---|---|
-| generator | Visual Studio (multi-config); `--config Release` required | Ninja or MinGW Makefiles (single-config) |
-| shell | Developer PowerShell for VS 2022 | any shell with the toolchain on `PATH` |
-| binary at | `build\Release\altairsim.exe` | `build\altairsim.exe` |
-| SDL3 from | vcpkg, via `-DCMAKE_TOOLCHAIN_FILE=…\vcpkg.cmake` | upstream `SDL3-devel-<ver>-mingw.tar.gz` |
-| warnings | `/W4 /permissive-` | `-Wall -Wextra -Wpedantic`, from the `else()` branch |
-| status | proved, and a required check | **untried — expect to correct this document** |
+*Nothing in the source is knowingly MSVC-only (no `_MSC_VER`, lowercase Windows headers, a plain `main()`), so MinGW would very likely build. It is simply not tested, not documented and not shipped.*
 
 #### No Developer shell is needed, and this matters for an assistant
 
@@ -238,27 +237,23 @@ overstated for the default generator — see the note there.)*
 Working directory carries over; environment variables do not. So "run `vcvarsall.bat`, then
 build" is not a strategy — the second command starts with a clean environment. Plan for it:
 
-| toolchain | setup needed | how to do it in one shot |
+| generator | setup needed | how to do it in one shot |
 |---|---|---|
-| **MSVC + Visual Studio generator** | **none** | `cmake -B build` then `cmake --build build --config Release` |
-| MSVC + Ninja | `vcvars` every time | `cmd /c "call vcvars64.bat && cmake --build build"` |
-| MinGW | `PATH` only | `setx PATH "%PATH%;C:\mingw64\bin"` **once** — `setx` writes the persistent user `PATH`, so every future shell has it |
+| **Visual Studio** (CMake's default) | **none** | `cmake -B build` then `cmake --build build --config Release` |
+| Ninja | `vcvars` every time | `cmd /c "call vcvars64.bat && cmake --build build"` |
 
 **Use the Visual Studio generator for the shipped build.** It requires no environment
 manipulation, which is precisely what makes it safe to run unattended, and it is the
 configuration CI already exercises.
 
-**None of the three rows has been run interactively on the Windows box.** Row 1 rests on CI
-rather than on a person; rows 2 and 3 rest on reading. `docs/building-windows.md` §6 is the
-job that settles them, with the commands and a template for reporting back — **do that
-before the first release build on Windows**, and correct this table with what it finds.
+**Neither row has been run interactively on the Windows box.** The first rests on CI rather
+than on a person; the second rests on reading. `docs/building-windows.md` §6 is the job that
+settles them, with the commands and a template for reporting back — **do that before the first
+release build on Windows**, and correct this table with what it finds.
 
-**THE RUNTIME DEPENDENCY IS WHAT BITES, AND IT DIFFERS BY TOOLCHAIN.** A package that requires the user to install something before it runs is a broken package.
+**THE RUNTIME DEPENDENCY IS WHAT BITES.** A package that requires the user to install something before it runs is a broken package. MSVC links the Visual C++ runtime dynamically by default, so the `.exe` wants `VCRUNTIME140.dll` and friends — present on most Windows 10 machines, absent on a clean one. **Set `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`** (static `/MT`) so the package carries no such requirement; static is the right default for something people download. **SDL3 must be built with the same setting** — see §3.1, because mixing `/MT` and `/MD` is a link error at best and two separate C runtime heaps at worst.
 
-- **MSVC** links the Visual C++ runtime dynamically by default, so the `.exe` wants `VCRUNTIME140.dll` and friends. Those are present on most Windows 10 machines and absent on a clean one. **Set `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`** — static `/MT` — so the package carries no such requirement. Static is the right default for something people download.
-- **MinGW** wants `libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll` unless built with `-static-libgcc -static-libstdc++ -static`. Fully static is easy here, and is a large part of MinGW's appeal despite it being unproved.
-
-**The verification is the same for both, and it is not optional: run the packaged `.exe` on a Windows machine that has never had a compiler on it.** That is the only test that separates "works on the build box" from "works". **Nothing has ever done this** — not CI, not the v0.2.0 process.
+**The verification is not optional: run the packaged `.exe` on a Windows machine that has never had a compiler on it.** That is the only test separating "works on the build box" from "works". **Nothing has ever done this** — not CI, not the v0.2.0 process.
 
 ---
 
@@ -316,6 +311,8 @@ Publish `SHA256SUMS` alongside the four so the two locations can be checked agai
 
 **A PACKAGE IS PROVED BY UNPACKING IT SOMEWHERE `git rev-parse` FAILS, AND RUNNING IT THERE.** Not in `dist/`, not anywhere under the repository. A package that only works next to its own source tree is the failure this catches, and it is not hypothetical — see §3.2.
 
+> **Test the ARCHIVE, never `dist/altairsim-<ver>/`.** That directory is `build-package.sh`'s staging area and holds whatever local `build/altairsim` existed when it ran — not the binary that ships. On 2026-07-20 it was a pre-tag, arm64-only, dynamically-linked build reporting `AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)` while the shipped archives correctly reported a bare `AltairSim 0.2.0`. It looks exactly like a package and the script's closing message points at it. Unpack the `.tar.gz`/`.zip` you are actually going to publish.
+
 For each of the four:
 
 ```sh
@@ -336,7 +333,16 @@ tar xzf altairsim-X.Y.Z-<target>.tar.gz && cd altairsim-X.Y.Z
 | Linux | `ldd altairsim` | no SDL line at all | a path resolving beside the binary | a distro path |
 | Windows | `dumpbin /dependents altairsim.exe` | no `SDL3.dll` line | `SDL3.dll`, present beside the `.exe` | `SDL3.dll` absent from the package |
 
-**"No SDL line at all" is the pass condition for a static build and the failure condition for a headless one** — they look identical here, which is why the window check below is not optional. `strings altairsim | grep SDL_CreateWindow` tells them apart: a static build has SDL inside it, a headless build has no SDL anywhere.
+**"No SDL line at all" is the pass condition for a static build and the failure condition for a headless one** — they are indistinguishable in the table above, so a second check is required:
+
+```sh
+nm altairsim | grep -c SDL_        # static: thousands.  headless: 0.
+```
+
+**Use `nm`, not `strings`.** `SDL_CreateWindow` is a symbol, not a string literal, so
+`strings altairsim | grep SDL_CreateWindow` reports **0 on a correct static build** — a check
+that fails the thing it is meant to pass. (This document said `strings` until 2026-07-20, when
+running it against a known-good static binary produced the false negative.)
 
 **Also confirm the deployment target** on macOS: `vtool -show-build altairsim | grep minos` should report the floor you set, not the build machine's OS.
 
@@ -354,6 +360,6 @@ Stated plainly, because a design document that describes a process nobody has au
 - **Nothing produces `SHA256SUMS`.**
 - **Nothing assembles the package and runs the manual's own commands against it.** `docs/package.map`'s own header says so, and names a `tests/acceptance/manual.cmake` that has never existed — a claimed test being worse than a missing one.
 - **Nothing has ever run a shipped `.exe` on a clean Windows box.**
-- **MinGW has never been built.** §4.4 describes the path from reading the source, not from running it. The first person to try it is doing so for the first time and should correct this section afterwards.
+- **`tools\build-sdl3-static.bat` has never been run.** It was written from the working shell script. `docs/building-windows.md` §6 is the job that settles it.
 
 `TODO.md` is the live index of these; this list is a snapshot of why they matter, not a substitute for it.

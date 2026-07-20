@@ -17,9 +17,10 @@ package after you upload it.
 
 **On Windows, you do not need a Developer shell.** With CMake's default Visual Studio
 generator, MSBuild finds the toolchain itself — a plain PowerShell works. Remember that your
-own environment does not survive between commands: if you use Ninja or MinGW instead, set up
-`PATH` *within* the same command (`cmd /c "call vcvars64.bat && …"`), or once and
-persistently with `setx`. `DISTRIBUTION.md` §4.4 has the table.
+own environment does not survive between commands: if you use Ninja instead, set up the
+environment *within* the same command (`cmd /c "call vcvars64.bat && …"`).
+`DISTRIBUTION.md` §4.4 has the table. **MSVC is the only supported Windows toolchain** —
+MinGW was declined; see `TODO.md` → *Declined*.
 
 **Your environment does not carry over from the terminal that launched you** — each command
 runs in a fresh process, so a Developer PowerShell's `vcvars` setup never reaches your build
@@ -28,9 +29,10 @@ needs no environment at all.
 
 > **First time on the Windows box? Start with `docs/building-windows.md` §6.** It is a job,
 > not a description: three build approaches that are *believed* to work and have never been
-> run here, with the commands to settle each and how to report what you find. **MinGW has
-> never been built at all.** Do that before attempting a release build — and if something
-> fails, report it rather than working around it. A failure there is the point.
+> run here, with the commands to settle each and how to report what you find — including
+> `tools\build-sdl3-static.bat`, which was written from the working shell script and never
+> executed. Do that before attempting a release build, and if something fails, report it
+> rather than working around it. A failure there is the point.
 
 ## Before changing anything else
 
