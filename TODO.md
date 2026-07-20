@@ -93,6 +93,24 @@ What has to be built, roughly in order:
    The absolute-path half is not portable and does not pretend to be: it runs where
    `otool`/`ldd` exist and **prints that it could not check** elsewhere, rather than passing
    silently and reading as verified.
+
+   **Also fixed here, found by the Intel Mac running the flags for real (2026-07-20): the
+   no-`--pdf` path rewrote two TRACKED PDFs and never said so.** `build-docs.sh`'s argument is
+   its *output* directory and it was handed `$root/docs`, so packaging overwrote
+   `docs/altairsim-manual.pdf` **and `docs/altairsim-devguide.pdf`** — the devguide is not even
+   part of packaging — leaving them one `git commit -a` from overwriting CI's. That is the
+   v0.2.0 trap wearing a different hat: `--pdf` kept a local PDF out of the *package* while
+   this kept one in the *repository*. `CLAUDE.md`'s "`git checkout --` the PDFs afterwards"
+   rule is attached to `build-docs.sh`, and nobody running the *packaging* script has any
+   reason to think they just invoked it. It now builds into a temp directory under `dist/`.
+
+   The warning also gained a clause for when the local pandoc **is** 3.6: it printed
+   `pandoc 3.6` directly above *"docs.yml pins pandoc 3.6"*, which reads as a broken check.
+
+   **`docs/manual/whats-new.md` and `package.md` are corrected**, and `DISTRIBUTION.md` §7 now
+   carries a **human checklist** (H1–H6) for the things a pipe cannot verify — the Intel Mac
+   asked for it after reporting a `focus` value it could not interpret. **H6 (what closing the
+   window does) is an open question nobody has answered.**
 4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
    other. Nothing produces checksums. **This is now the first of these left.**
 5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,

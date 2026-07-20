@@ -359,7 +359,26 @@ Simpler than any of the above, and the one to reach for first — **ask the bina
 
 **Nothing said this before 2026-07-20.** `--version`, `--help`, `-l`, `SHOW VERSION` and `SHOW DISPLAY` were byte-identical between a windowed build and a headless one, so the only way to tell was `nm`/`otool`/`dumpbin` on the file — and `SHOW DISPLAY`'s *"no video service in this build"* was dead code that never fired, because `main.cpp` hands a headless build a non-null `NullDisplay`. A string that claims to be the discriminator and is not is worse than none, which is the same lesson as the phantom `manual.cmake`.
 
-Then **open a window**: run `altairsim sol20` or `altairsim vdm1` and confirm one actually appears. `SHOW DISPLAY` reports whether the window has the keyboard. **This is still an eyeball check and cannot be automated** — the `video` row says SDL3 is compiled in, not that a window reached a screen.
+Then **open a window**: run `altairsim vdm1`, or `altairsim sol20` — **on `sol20`, press `^E` first**, because it boots into SOLOS with `startup = ["RUN C000"]` and typing a monitor command at it just sends the text to the guest, which echoes it onto the video screen. That looks exactly like a layering bug and is not one (observed and chased down on the Intel Mac, 2026-07-20; the tell is that the monitor prints *no* output at all).
+
+`SHOW DISPLAY` reports one property, **`focus`** — that is the "does the window have the keyboard" answer, and there is no line labelled keyboard. It reads `false` when driven over a pipe, which is honest rather than broken.
+
+**This is an eyeball check and cannot be automated.** The `video` row says SDL3 is compiled in; it does not say a window reached a screen. **Give it to a human, with a stated pass/fail per item** — an assistant driving a pipe cannot click a window, and will otherwise report a `focus` value it has no way to interpret.
+
+#### The human checklist
+
+Written so somebody who does not know the codebase can execute it cold and answer yes or no. Proposed from the Intel Mac, 2026-07-20, after that machine verified an SDL window over a pipe and reported a `focus` value it had no business trusting.
+
+| | do this | pass is |
+|---|---|---|
+| **H1** | `altairsim vdm1` | a window opens showing `PROCESSOR TECHNOLOGY VDM-1 READY` in a blocky font, **sharp-edged** — it scales nearest-neighbour, so blurring means the scaler is wrong |
+| **H2** | same window | a visible cursor, blinking at roughly one cycle a second, steady rather than stuttering |
+| **H3** | `altairsim sol20`, wait for the SOLOS `>` **in the window**, click it, type `HELLO` **into the window** | the characters appear in the window. **A pipe cannot do this one** — it is the whole reason this table exists |
+| **H4** | with `sol20` running, click the window, `^E`, `SHOW DISPLAY`; then click another application and repeat | `focus` reads `true`, then `false` |
+| **H5** | with `vdm1` running, `^E`, `SET vdm0 video=inverse`, then `video=normal` | the window flips dark-on-light and back |
+| **H6** | with `vdm1` running, click the window's close button | **unknown — record what happens.** Nobody has established what this is supposed to do |
+
+H6 is a genuine open question, not a check with a known answer. Answer it once and it becomes one.
 
 ---
 

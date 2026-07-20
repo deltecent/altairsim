@@ -198,12 +198,36 @@ cp "$sim" "$pkg/"
 if [ -n "$pdf" ]; then
   cp "$pdf" "$pkg/altairsim-manual.pdf"
 else
+  local_pandoc=$(pandoc --version 2>/dev/null | head -1 || true)
   echo "build-package: WARNING -- rebuilding the manual with the LOCAL toolchain." >&2
-  echo "  $(pandoc --version 2>/dev/null | head -1 || echo 'pandoc: not found')" >&2
-  echo "  docs.yml pins pandoc 3.6, and a different pandoc is a different document." >&2
+  echo "  ${local_pandoc:-pandoc: NOT FOUND}" >&2
+  # SAY WHY WHEN THE NUMBERS MATCH, or the warning reads as a false alarm and gets ignored.
+  # Reported from the Intel Mac, 2026-07-20: it has pandoc 3.6, so the warning printed
+  # "pandoc 3.6" directly above "docs.yml pins pandoc 3.6" and looked like a broken check.
+  # It is not -- the rebuild there really did produce a different document.
+  if [ "$local_pandoc" = "pandoc 3.6" ]; then
+    echo "  docs.yml pins pandoc 3.6 -- the SAME NUMBER, and still not the same document:" >&2
+    echo "  fonts and browser differ per machine, and the paginator is what makes the PDF." >&2
+  else
+    echo "  docs.yml pins pandoc 3.6, and a different pandoc is a different document." >&2
+  fi
   echo "  For a RELEASE, pass --pdf with the manual the coordinator built." >&2
-  "$root/tools/build-docs.sh" "$root/docs" > /dev/null
-  cp "$root/docs/altairsim-manual.pdf" "$pkg/"
+
+  # BUILD IT SOMEWHERE ELSE. build-docs.sh's argument is its OUTPUT directory, and it was
+  # handed $root/docs -- so this path rewrote docs/altairsim-manual.pdf AND
+  # docs/altairsim-devguide.pdf, both tracked, and said nothing about it. Reported from the
+  # Intel Mac, 2026-07-20. The devguide is not even part of packaging.
+  #
+  # That is the v0.2.0 trap wearing a different hat: --pdf keeps a local PDF out of the
+  # PACKAGE, and this kept it in the REPOSITORY, one `git commit -a` away from overwriting
+  # CI's. CLAUDE.md's "git checkout -- the PDFs afterwards" rule is attached to build-docs.sh,
+  # and nobody running the PACKAGING script has any reason to think they just invoked it.
+  docs_tmp=$out/.docs-build
+  rm -rf "$docs_tmp"
+  mkdir -p "$docs_tmp"
+  "$root/tools/build-docs.sh" "$docs_tmp" > /dev/null
+  cp "$docs_tmp/altairsim-manual.pdf" "$pkg/"
+  rm -rf "$docs_tmp"
 fi
 
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.
