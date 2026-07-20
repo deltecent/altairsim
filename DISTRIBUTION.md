@@ -361,7 +361,9 @@ Simpler than any of the above, and the one to reach for first — **ask the bina
 
 Then **open a window**: run `altairsim vdm1`, or `altairsim sol20` — **on `sol20`, press `^E` first**, because it boots into SOLOS with `startup = ["RUN C000"]` and typing a monitor command at it just sends the text to the guest, which echoes it onto the video screen. That looks exactly like a layering bug and is not one (observed and chased down on the Intel Mac, 2026-07-20; the tell is that the monitor prints *no* output at all).
 
-`SHOW DISPLAY` reports one property, **`focus`** — that is the "does the window have the keyboard" answer, and there is no line labelled keyboard. It reads `false` when driven over a pipe, which is honest rather than broken.
+`SHOW DISPLAY` reports one property, **`focus`** — and it is **not** the "does the window have the keyboard" answer, despite reading like one. It is `Display::focusPolicy_` (`src/host/display.h`), a session *policy*, default `false`, set by `SET DISPLAY focus=on` or `[display]` in a machine file, governing whether the window takes the keyboard **when it opens**. `src/cli/commands.cpp` states it: *"the video window takes the keyboard, not the terminal"*. It does not track where the keyboard is now, and clicking between applications never changes it. **Nothing reports live window focus.**
+
+Reading it as a live report is a mistake that has now been made twice — once by the Intel Mac over a pipe, and once in the job sheet that corrected it. The keyboard question is answered by **H3**, by typing into the window and watching characters appear; there is no property that answers it. (Established at the machine, 2026-07-20.)
 
 **This is an eyeball check and cannot be automated.** The `video` row says SDL3 is compiled in; it does not say a window reached a screen. **Give it to a human, with a stated pass/fail per item** — an assistant driving a pipe cannot click a window, and will otherwise report a `focus` value it has no way to interpret.
 
@@ -369,16 +371,25 @@ Then **open a window**: run `altairsim vdm1`, or `altairsim sol20` — **on `sol
 
 Written so somebody who does not know the codebase can execute it cold and answer yes or no. Proposed from the Intel Mac, 2026-07-20, after that machine verified an SDL window over a pipe and reported a `focus` value it had no business trusting.
 
+**Corrected 2026-07-20, at the machine, on the first run of this table.** Four of the six checks were wrong: H2 named a machine that halts before you can look, H4 tested a value that cannot behave as described, H5 named a value that does not exist and omitted the resume, and H6 had no observations. The code was right in every case the table was wrong. **A checklist nobody has executed is a draft**, and this one shipped into a job sheet as though it were verified.
+
 | | do this | pass is |
 |---|---|---|
 | **H1** | `altairsim vdm1` | a window opens showing `PROCESSOR TECHNOLOGY VDM-1 READY` in a blocky font, **sharp-edged** — it scales nearest-neighbour, so blurring means the scaler is wrong |
-| **H2** | same window | a visible cursor, blinking at roughly one cycle a second, steady rather than stuttering |
-| **H3** | `altairsim sol20`, wait for the SOLOS `>` **in the window**, click it, type `HELLO` **into the window** | the characters appear in the window. **A pipe cannot do this one** — it is the whole reason this table exists |
-| **H4** | with `sol20` running, click the window, `^E`, `SHOW DISPLAY`; then click another application and repeat | `focus` reads `true`, then `false` |
-| **H5** | with `vdm1` running, `^E`, `SET vdm0 video=inverse`, then `video=normal` | the window flips dark-on-light and back |
-| **H6** | with `vdm1` running, click the window's close button | **unknown — record what happens.** Nobody has established what this is supposed to do |
+| **H2** | `altairsim sol20` — **not `vdm1`**; wait for the SOLOS `>` in the window | a visible cursor, blinking at roughly one cycle a second, steady rather than stuttering |
+| **H3** | `altairsim sol20`, wait for the SOLOS `>` **in the window**, click it, type `HELLO` **into the window** | the characters appear in the window. **A pipe cannot do this one** — it is the whole reason this table exists. This is also the only evidence that the window receives the keyboard; no property reports it |
+| **H4** | — | **STRUCK.** It asked for `focus` to read `true` then `false` as you clicked between applications. `focus` is a launch policy and cannot do that; see the paragraph above. Whether `SET DISPLAY focus=on` actually causes a window to open focused is **untested** — write a check for it before trusting it |
+| **H5** | `sol20` or `vdm1` **running**, `^E`, `SET vdm0 video=reverse`, `R`; then `^E`, `SET vdm0 video=normal`, `R` | the window flips dark-on-light and back. The value is **`reverse`** — there is no `inverse`. The `R` matters: a stopped machine does not redraw |
+| **H6** | with `sol20` **running**, click the window's close button | the monitor prints `window closed -- the machine is still at <PC>. RUN resumes; QUIT exits.` and gives you the prompt, **with the window still open**. That is the design, not a bug — see below |
 
-H6 is a genuine open question, not a check with a known answer. Answer it once and it becomes one.
+**H2 and H5 need a RUNNING machine, and `vdm1` is not one.** Its demo `HLT`s after drawing — `machines/vdm1.toml` says so — and *"the window is live while a program RUNs"*. Point anything that needs live pixels at `sol20`, whose SOLOS loops. Three of the six checks originally tripped over this.
+
+**H6 was the open question. It is now answered — the running case is deliberate, and the stopped case is a real limitation.** Observed at the machine on the Intel Mac, 2026-07-20, then read back to the source:
+
+- **`sol20`, running:** close prints `window closed …` and returns to the monitor, **and the window stays open.** This is **intended**. `src/cli/monitor.cpp` says so at the `StopReason::WindowClosed` arm: *closing the window is not quitting* — it stops the guest and hands back the prompt, leaving the machine untouched and the window there to `RUN` back into. The message names the **event**, not a state of the window, and its own second half says the machine is intact and how to actually leave. **Reading only the first two words makes it look like output asserting something that did not happen; the whole line does not.** Quote it in full before judging it.
+- **Machine not running:** the close button is **disabled**, and at a `HLT` that is permanent — the window can never be closed. **This one is a genuine limitation**, and it is the same root cause as H2 and H5: `SdlDisplay::pollEvents()` is called *by the run loop*, so with the CPU stopped nothing drains the SDL queue and the OS sees an unresponsive window. Tracked in `TODO.md`.
+
+**The Intel Mac's inference was right, and it explains three checks at once.** *"The window is live while a program RUNs"* (`machines/vdm1.toml`) is not a remark about the demo — it is the event pump's actual scope. H2's absent blink, H5's un-rendered flip and H6's dead close button are one fact, not three.
 
 ---
 

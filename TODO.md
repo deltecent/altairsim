@@ -109,8 +109,30 @@ What has to be built, roughly in order:
 
    **`docs/manual/whats-new.md` and `package.md` are corrected**, and `DISTRIBUTION.md` §7 now
    carries a **human checklist** (H1–H6) for the things a pipe cannot verify — the Intel Mac
-   asked for it after reporting a `focus` value it could not interpret. **H6 (what closing the
-   window does) is an open question nobody has answered.**
+   asked for it after reporting a `focus` value it could not interpret.
+
+   **That checklist was then executed for the first time, and four of its six checks were
+   wrong** (Intel Mac, at the machine, 2026-07-20). H2 named a machine that halts before you
+   can look; H4 asked a launch policy to behave as a live focus report; H5 named a `video`
+   value that does not exist and omitted the resume; H6 had no observations. **The code was
+   right in every case the table was wrong.** A checklist nobody has executed is a draft, and
+   this one shipped into a job sheet reading as verified — the same species of defect as the
+   `SHOW DISPLAY` branch above, one layer up. §7 is corrected and says so in place; the pump
+   limitation it uncovered is under *The video window is only serviced while the CPU is
+   running*.
+
+   **Also found there and fixed: a refused run left the previous run's archive in place**,
+   under the exact name the release process expects and at its original timestamp. Both
+   refusals exit before staging, so the presence of `dist/altairsim-….tar.gz` was not evidence
+   the last run succeeded — anyone uploading by filename rather than watching the exit code
+   could ship a stale package. The stale-sibling cleanup now runs **before** the refusals, so
+   a refused run leaves nothing that can be mistaken for its output.
+
+   **Both refusals have been exercised against real binaries** (arm64, 2026-07-20): static →
+   packages; headless → stops; **Homebrew-dynamic → stops on the linkage ground**, and that
+   third one is the instructive case, because it reports `SDL3 -- windowed` and is still
+   unshippable. The Intel Mac could not run it (no Homebrew SDL3 there) and correctly refused
+   to install one for the purpose.
 4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
    other. Nothing produces checksums. **This is now the first of these left.**
 5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
@@ -237,6 +259,42 @@ a Homebrew SDL3 is single-arch and will not link into an `x86_64;arm64` fat bina
 attributing it to a guard that does not exist made the headless build look deliberate and
 bounded to macOS, when it is in fact incidental and universal. Both comments now say what
 is true, and name the consequence.
+
+### The video window is only serviced while the CPU is running
+
+**Found at the machine on the Intel Mac, 2026-07-20**, on the first execution of
+`DISTRIBUTION.md` §7's human checklist. `SdlDisplay::pollEvents()` is called *by the run
+loop* (`src/host/display_sdl.cpp`), so with the machine stopped — at a `HLT`, or at the
+monitor prompt — nothing drains the SDL event queue and nothing redraws.
+
+**One fact, three symptoms**, which is why it is worth a single entry rather than three:
+
+- **The close button is dead, and at a `HLT` permanently so.** The window can never be
+  closed. This is the sharp end: `machines/vdm1.toml`'s demo halts by design, so the
+  *documented first thing a new user runs* leaves an uncloseable window on their screen.
+- **`SET vdm0 video=reverse` does not render** until the machine is resumed with `R`.
+- **The blinking cursor cannot be observed on `vdm1` at all**, because the CPU is stopped
+  by the time you look.
+
+`machines/vdm1.toml` already says *"the window is live while a program RUNs."* That reads as
+a remark about the demo; it is in fact the exact scope of the event pump, and nothing says so
+where somebody would look for it.
+
+**Whether to fix it is a design question, not a defect report** — the display seam is
+deliberately driven by the run loop (`DESIGN.md`), and pumping events from the monitor prompt
+means deciding what a stopped machine's window *is*. But the uncloseable window is a trap
+either way. Recorded here rather than fixed, because inventing the answer is the mistake §7
+exists to prevent.
+
+Two smaller things fell out of the same session and are features, not bugs:
+
+- **Nothing reports live window focus.** `SHOW DISPLAY`'s `focus` is `Display::focusPolicy_`,
+  a session *policy* governing whether a window grabs the keyboard **when it opens**. It is
+  not a live report and never changes as you click between applications. **It has now been
+  misread as one twice** — once by a machine over a pipe, once in the job sheet written to
+  correct that. The keyboard question is answerable only by typing into the window.
+- **`SET DISPLAY focus=on` has never been tested.** Whether it genuinely opens a window
+  focused is unverified; it needs a human, since no pipe can tell.
 
 ---
 

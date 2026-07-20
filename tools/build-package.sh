@@ -124,6 +124,20 @@ done
 
 ver=$("$sim" --version | awk '{print $2}')
 
+# CLEAR STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
+#
+# A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever build/altairsim existed
+# THEN -- and it looks exactly like the release. That is not hypothetical: on 2026-07-20 a stale
+# pre-tag staging directory reported "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read
+# as a version bug in the shipped archives, which were correct.
+#
+# It runs HERE because the refusals below exit 1, and until 2026-07-20 they exited leaving the
+# PREVIOUS run's archive sitting under the exact name the release process expects (observed on
+# the Intel Mac: a refused headless run left the good tarball untouched at its original
+# timestamp). Anyone uploading by filename rather than by watching the exit code would ship it.
+# A refused run must leave nothing that can be mistaken for its output.
+rm -rf "$out"/altairsim-*
+
 # ---------------------------------------------------------------------------
 # REFUSE TO PACKAGE A BINARY THAT CANNOT OPEN A WINDOW.
 #
@@ -175,13 +189,8 @@ fi
 
 pkg=$out/altairsim-$ver-$target
 
-# CLEAR STALE SIBLINGS. A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever
-# build/altairsim existed THEN -- and it looks exactly like the release. That is not
-# hypothetical: on 2026-07-20 a stale pre-tag staging directory reported
-# "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read as a version bug in the shipped
-# archives, which were correct. The target suffix makes the directory self-documenting; this
-# makes sure it is also the only one here.
-rm -rf "$out"/altairsim-*
+# The target suffix makes the staging directory self-documenting; the cleanup above (which runs
+# before the refusals, deliberately) makes sure it is also the only one here.
 mkdir -p "$pkg"
 
 cp "$sim" "$pkg/"
