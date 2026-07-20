@@ -167,8 +167,15 @@ configure_file("${CMAKE_SOURCE_DIR}/cmake/version.h.in"
 # entire mechanism, and it is the only place in the build that asks what OS it is
 # on. Nothing in src/ ever does.
 #
-# The win32 half is WRITTEN BUT UNBUILT on this machine -- see docs/porting-notes.md,
-# which says so plainly rather than letting someone discover it on a Windows box.
+# The win32 half is FIELD-PROVEN, not merely written: serial against two real FTDI
+# ports, socket against the real TCP stack, terminal against a real console, each a
+# leg of `ctest -L hw` (docs/porting-notes.md has the counts). This comment used to
+# say it was written-but-unbuilt and cite that same file as agreeing; the file has
+# said the opposite since 2026-07-15.
+#
+# MSVC is the proved toolchain. mingw is UNTRIED -- nothing here is knowingly
+# MSVC-only (no _MSC_VER anywhere in src/, lowercase Windows headers, plain main()),
+# but "should work" is not "does". Tracked in TODO.md.
 # ---------------------------------------------------------------------------
 if(WIN32)
   set(PLATFORM_SOURCES
