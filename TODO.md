@@ -498,11 +498,13 @@ The mechanics that have to be decided, none of them settled:
   another copy that cannot be reclaimed, and `.gitignore`'s own header records that
   vendor binaries were "burned into this repo's history twice already".
 
-  **One machine cannot build all of them regardless.** A universal macOS dylib needs a
-  Mac; a Linux `.so` that runs on more than the builder's distro needs an old-glibc
-  baseline (a container); Windows needs MSVC or mingw. So "build them here" means "build
-  each on its own machine and commit three artifacts", which is a workflow question as
-  much as a storage one.
+  **Cross-compiling is not required, because the hardware exists.** Patrick builds and
+  tests natively on macOS Apple Silicon, macOS **Intel**, Windows 10 and Ubuntu, and can
+  spin up a VM for any x86 Linux (2026-07-20). So each platform's SDL3 gets built on that
+  platform, which is the straightforward path and sidesteps every cross-toolchain problem.
+  The remaining care is Linux-specific: a `.so` built on a current Ubuntu will not load on
+  older distros, so build that one against an old-glibc baseline (a container or an older
+  VM) if the package is meant to travel.
 
   **The repo already has the other pattern**, twice: `tools/fetch-disk-images.sh` and
   `tools/fetch-ci-binaries.sh`. A `tools/fetch-sdl3.sh` pulling upstream's official
@@ -519,6 +521,42 @@ The mechanics that have to be decided, none of them settled:
 **Prerequisite, and it is the honest ordering:** nothing currently proves `display_sdl.cpp`
 even compiles (Bugs, above), and the Windows+SDL3 recipe is not written down (next item).
 Both of those are in the way of building these packages by hand repeatably.
+
+#### Building on Windows with mingw is untried, and undocumented
+
+**Raised by a user; recorded 2026-07-20.** Every Windows instruction we ship assumes
+MSVC — `docs/building-windows.md` walks through installing Visual Studio or the Build
+Tools, insists on a *Developer* shell, and describes the Visual Studio generator. A
+reader with mingw-w64 has nothing to follow.
+
+**Nothing in the source is knowingly MSVC-only**, which is the encouraging half. Checked
+2026-07-20:
+
+| | |
+|---|---|
+| `_MSC_VER` / `__declspec` in `src/` | **none** |
+| Windows headers | already lowercase (`<windows.h>`, `<winsock2.h>`) |
+| entry point | plain `int main(int, char**)` — no `wmain`, so no `-municode` |
+| `if(MSVC)` in `CMakeLists.txt` | has a working `else()`; mingw gets `-Wall -Wextra -Wpedantic` |
+| `ws2_32` | linked by CMake `target_link_libraries`, not only by a pragma |
+| the old `strncasecmp` portability fix | **gone** — no case-compare intrinsic anywhere in `src/` |
+
+**One real MSVC-ism:** `src/platform/win32/socket_win32.cpp:18` has
+`#pragma comment(lib, "ws2_32.lib")`. GCC ignores it, but `-Wall` implies
+`-Wunknown-pragmas`, so mingw warns on every build. It is redundant on *every*
+toolchain — CMake already links `ws2_32` — so guard it with `#ifdef _MSC_VER` or delete
+it.
+
+**"Should build" is not "builds", and that is the whole item.** The work is to actually
+run it on Windows with mingw-w64 (`cmake -B build -G Ninja`), fix whatever falls out —
+`-Wpedantic` noise from Windows headers is the likeliest — and then write the recipe
+into `docs/building-windows.md` *alongside* the MSVC path, not instead of it. Patrick
+has a Windows 10 box, so this needs no CI leg to answer; a CI leg is only worth adding
+afterwards, to keep the answer true.
+
+**It also connects to the SDL3 work above:** upstream ships
+`SDL3-devel-<ver>-mingw.tar.gz`, so mingw is a supported SDL3 configuration and may
+well be the *easier* route to a windowed Windows package than vcpkg + MSVC.
 
 #### The developer guide is thin on building under Windows with SDL3
 
