@@ -335,6 +335,87 @@ Built: `run`, `send`, `recv`, `regs`, `who`, `bus_map`, `bus_io`,
 
 The snapshot/restore tools are blocked on board serialization, above.
 
+### Documentation and packaging
+
+#### Take the release notes out of the manual; ship `changelog.pdf` instead
+
+**Patrick, 2026-07-20 — for the next release.** v0.2.0 added
+`docs/manual/whats-new.md` as a manual chapter. That was the wrong home: the
+manual describes *the program as it is*, and a chapter that describes *what
+changed* ages differently from everything around it — by 0.4.0 the manual would
+carry three of them, or one that has quietly become a changelog with a chapter
+number.
+
+So: **remove the chapter, and add a separate `changelog.pdf` to the
+distribution.** The archive gains a document; the manual loses one.
+
+What that touches, none of it hard but none of it optional:
+
+- **`docs/manual/whats-new.md` and its `ORDER` line go together.**
+  `tests/acceptance/docs-manual.cmake` fails a chapter file that is not in
+  `ORDER`, so deleting one without the other is a red test either way round.
+- **A changelog needs a source and a build step.** `tools/build-docs.sh` builds a
+  document from a directory with an `ORDER` in it; the changelog is one file and
+  wants either its own tiny source dir or a special case. Decide which before
+  writing it.
+- **`docs/package.map` needs a `FILE` line for it**, which is also what puts it in
+  the archive — the map is the only source of truth for package contents.
+- **`docs/manual/package.md` must name it.** That chapter lists what is in the
+  archive, and the manual may only name paths that actually ship.
+- **Whether `docs.yml` builds and commits it like the other two PDFs.** If it does
+  not, the release inherits the pandoc-version trap v0.2.0 hit: `build-package.sh`
+  rebuilds with the local pandoc (3.10 via brew) while `docs.yml` pins 3.6, and a
+  different pandoc is a different document.
+
+Open question worth settling first: **does the changelog cover 0.2.0 retroactively,
+or start at 0.3.0?** The 0.2.0 content already exists as prose in `whats-new.md`
+and in the v0.2.0 release notes, so retroactive is cheap; starting fresh is
+cleaner but loses it.
+
+#### The table of contents needs improving, or removing
+
+**Patrick, 2026-07-20.** As it stands the contents page lists chapters only
+(`tools/build-docs.sh`, `--toc-depth=1`), and it is the **only** navigation the
+PDF has: `--print-to-pdf` emits no bookmark tree at all — verified, zero
+`/Outlines` in the file. So a reader who wants a subsection reaches it through its
+chapter or by text-searching, and a reader in a PDF viewer gets no sidebar.
+
+Both directions are open, and they are genuinely different bets:
+
+- **Improve it.** The real fix is probably not a deeper `--toc-depth` — depth 2
+  was tried and listed all 146 subsection headings across five pages, which is
+  what got it cut. It is to emit a **real PDF outline**, which `--print-to-pdf`
+  cannot do; that means a different PDF path (a LaTeX/Typst engine, or a
+  post-pass that injects an outline), and that is a build-chain change, not a flag.
+- **Remove it.** If the document is navigated by search anyway, a chapter-only
+  contents page costs pages and earns little.
+
+**Note that `build-docs.sh`'s own comment currently forbids reopening this** — it
+says that if a chapter grows big enough to need finding-by-subsection, the answer
+is to split the chapter. Whichever way this goes, that comment is now stale and
+gets rewritten with it, or the next person reads it as settled.
+
+#### The developer guide is thin on building under Windows with SDL3
+
+**Patrick, 2026-07-20.** `docs/devguide/building.md` covers SDL3 detection well in
+general — `find_package(SDL3 CONFIG)`, the `ALTAIRSIM_ENABLE_SDL` macro, the
+headless fallback — but its entire Windows instruction is the one line
+`vcpkg install sdl3`. That is the easy half. The half that stops people is wiring
+vcpkg into the configure step (`-DCMAKE_TOOLCHAIN_FILE=...`, the triplet, and
+where `SDL3Config.cmake` has to be for `find_package` to see it), and none of it
+is written down.
+
+`docs/building-windows.md` is worse: it mentions SDL **zero times**, so the
+document specifically about building on Windows never tells you how to get a
+window.
+
+**This cannot be copied out of CI, which is the catch.** No workflow installs
+SDL3 — `grep -i sdl .github/workflows/` finds nothing — so every CI leg,
+Windows included, builds headless. There is no known-good Windows+SDL3 recipe in
+the tree to transcribe. Somebody has to do it on a real Windows box, note what
+actually worked, and write that down; and the obvious follow-on is whether the
+Windows CI leg should then build *with* SDL3 so the path stays proved.
+
 ---
 
 ## Blocked on documentation
