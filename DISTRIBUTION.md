@@ -53,11 +53,12 @@ examples/diskbasic/                   Altair Disk BASIC 4.1
 **Added by the SDL3 work, and NOT PRESENT YET:**
 
 ```
-SDL3.dll | SDL3.framework | libSDL3.so.0    per platform -- see 3
-LICENSE-SDL3                                SDL3's zlib licence
+LICENSE-SDL3                          SDL3's zlib licence
 ```
 
-**The contents come from `docs/package.map` and nowhere else.** Adding the SDL3 library and its licence means adding `FILE` lines *there* — not editing `tools/build-package.sh`, and not copying them in by hand at release time. `docs/manual/package.md` must then name them too, because the manual may only name paths that actually ship.
+**One file, because SDL3 is linked statically into the binary (§3.2) rather than shipped beside it.** That is the whole benefit: no `SDL3.dll`, no `.framework`, no `libSDL3.so.0`, and nothing to copy or rewrite at release time. The licence still ships — the code is in there, so its licence belongs in the package.
+
+**The contents come from `docs/package.map` and nowhere else.** Adding the licence means adding a `FILE` line *there* — not editing `tools/build-package.sh`. `docs/manual/package.md` must then name it too, because the manual may only name paths that actually ship.
 
 The Developer Guide is **not** in the package. It is about the source, which is not in there either.
 
@@ -74,28 +75,60 @@ The Developer Guide is **not** in the package. It is about the source, which is 
 **Each build machine maintains its own SDL3, installed natively. Nothing is vendored into this repository.** (Patrick, 2026-07-20.)
 
 ```
-macOS     brew install sdl3
+macOS     built from source, STATIC -- see 3.2. brew install sdl3 gives you a
+          dylib only, which works for development but not for a package.
 Windows   vcpkg install sdl3, or upstream's SDL3-devel-<ver>-VC.zip
-Linux     the distro package where it exists, else built from source
+Linux     the distro package for development; a static source build for a package
 ```
 
 **SDL3 is a prerequisite, exactly like the compiler.** There is no `third_party/`, no fetch script, no Git LFS, and no committed binaries — options that were weighed and are not needed, because a machine that can build `altairsim` can install SDL3 the ordinary way. This also keeps ~11M per SDL3 version out of a 67M `.git` permanently.
 
 **The consequence to keep in view: the version is per-machine and nothing enforces it.** Two build machines can hold different SDL3 releases and neither will complain. That is acceptable — SDL3 is ABI-stable within a major version and the packages are independent artifacts — but if a video bug ever appears on one platform and not another, **check the SDL3 versions first.** §4.2 asks each machine to record its version for exactly this reason.
 
-### 3.2 The absolute-path trap — THIS IS THE REAL WORK
+### 3.2 The absolute-path trap, and why the answer is STATIC
 
-A macOS build on a machine with Homebrew's SDL3 links **`/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` by absolute path**. Zip that binary, hand it to somebody without that exact Homebrew prefix, and it does not start.
+A macOS build against Homebrew's SDL3 links **`/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` by absolute path**. Zip that binary, hand it to anyone without that exact Homebrew prefix, and it does not start. The obvious fix is to bundle the dylib and rewrite the install name. **There is a better one.**
 
-**Bundling the library and rewriting how the binary finds it is mandatory, on every platform**, not a refinement:
+**LINK SDL3 STATICALLY. Measured on macOS/arm64 2026-07-20, and it is the recommended approach.** Homebrew ships no static library — only the dylib — so this needs SDL3 built from source once per machine:
 
-| | what to do |
+```sh
+curl -LO https://github.com/libsdl-org/SDL/releases/download/release-<ver>/SDL3-<ver>.tar.gz
+tar xzf SDL3-<ver>.tar.gz && cd SDL3-<ver>
+cmake -B b -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=ON -DSDL_SHARED=OFF \
+      -DCMAKE_INSTALL_PREFIX=<prefix> -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+cmake --build b --parallel && cmake --install b
+```
+
+then point the simulator at it — `find_package` picks the static target up with no change to `CMakeLists.txt`:
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<prefix> \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+```
+
+**What it buys, measured rather than asserted:**
+
+| | dynamic (brew) | static |
+|---|---|---|
+| binary | 1.7M **+ a 2.4M dylib to bundle** | **4.4M, self-contained** |
+| `otool -L` | `/opt/homebrew/...` — the trap | system frameworks only |
+| packaging work | copy the dylib, `install_name_tool`, `@rpath`, and verify all three | **none** |
+
+About **0.3M** on the package, and the entire bundling problem disappears — nothing to copy, no install names to rewrite, nothing to get wrong at release time. Verified: the resulting binary boots CP/M from an unpacked package and `otool -L` shows no SDL at all.
+
+**`CMAKE_OSX_DEPLOYMENT_TARGET` is a separate requirement and is not optional.** Without it the binary targets whatever the build machine runs and will refuse to start on anything older. Set it on **both** the SDL3 build and the simulator build; `vtool -show-build` confirms it (`minos 11.0`).
+
+*(SDL upstream generally prefers dynamic linking, so a user can update SDL independently of the app. That argument is weaker for a self-contained simulator handed to someone as a zip, and SDL3's zlib licence permits static linking outright.)*
+
+**Linux and Windows should work the same way — `-DSDL_STATIC=ON` is not macOS-specific — but neither has been tried.** If a platform ends up dynamic after all, then bundling is the fallback and it is mandatory there:
+
+| | fallback if dynamic |
 |---|---|
-| macOS | copy the framework/dylib into the package; `install_name_tool -change … @executable_path/…` (or `@rpath` plus an `LC_RPATH`) |
+| macOS | copy the dylib in; `install_name_tool -change … @executable_path/…` |
 | Linux | copy `libSDL3.so.0` in; link with `-Wl,-rpath,'$ORIGIN'` |
 | Windows | put `SDL3.dll` beside the `.exe` — the loader looks there first |
 
-§7 has the check that proves you did it.
+§7 has the check that proves you did one or the other.
 
 ---
 
@@ -123,8 +156,12 @@ git, and gh authenticated against the repository
 git fetch --tags
 git checkout vX.Y.Z
 
-# 2. Configure. SDL3 MUST be found.
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+# 2. Configure. SDL3 MUST be found -- and for a PACKAGE it should be the static
+#    build (3.2), not the system dylib. macOS also needs a deployment target,
+#    or the binary will not start on anything older than this machine.
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_PREFIX_PATH=<static SDL3 prefix> \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0        # macOS only
 #    CHECK the configure output contains:
 #        -- SDL3 found -- video boards enabled (windowed)
 #    STOP if it instead says:
@@ -293,11 +330,15 @@ tar xzf altairsim-X.Y.Z-<target>.tar.gz && cd altairsim-X.Y.Z
 
 **And the check that would have caught the headless releases**, which is the one most likely to be skipped because everything above passes without it:
 
-| | run | it must NOT show |
-|---|---|---|
-| macOS | `otool -L altairsim` | `/opt/homebrew/…`, or no SDL3 line at all |
-| Linux | `ldd altairsim` | a distro path for SDL3, or no SDL3 line at all |
-| Windows | `dumpbin /dependents altairsim.exe` | a missing `SDL3.dll` beside the binary |
+| | run | a STATIC build shows | a BUNDLED build shows | FAIL if it shows |
+|---|---|---|---|---|
+| macOS | `otool -L altairsim` | no SDL line at all | `@executable_path/…` | `/opt/homebrew/…` |
+| Linux | `ldd altairsim` | no SDL line at all | a path resolving beside the binary | a distro path |
+| Windows | `dumpbin /dependents altairsim.exe` | no `SDL3.dll` line | `SDL3.dll`, present beside the `.exe` | `SDL3.dll` absent from the package |
+
+**"No SDL line at all" is the pass condition for a static build and the failure condition for a headless one** — they look identical here, which is why the window check below is not optional. `strings altairsim | grep SDL_CreateWindow` tells them apart: a static build has SDL inside it, a headless build has no SDL anywhere.
+
+**Also confirm the deployment target** on macOS: `vtool -show-build altairsim | grep minos` should report the floor you set, not the build machine's OS.
 
 Then **open a window**: run `altairsim sol20` or `altairsim vdm1` and confirm one actually appears. `SHOW DISPLAY` reports whether the window has the keyboard. A headless build runs these machines perfectly happily and draws nothing, which is precisely why the eyeball check is on this list.
 

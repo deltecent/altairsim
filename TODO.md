@@ -494,15 +494,24 @@ library travel together.
 
 The mechanics that have to be decided, none of them settled:
 
-- **Linking and layout.** Static SDL3, or dynamic with the library beside the binary? If
-  dynamic: `SDL3.dll` next to the `.exe` on Windows; a bundled `.dylib` with an `@rpath`
-  that survives being unzipped anywhere on macOS; a `.so` plus `$ORIGIN` on Linux. This is
-  the part that most often ships "working on the machine that built it" — and this tree is
-  already in that state. A local macOS build links
-  `/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` **by absolute path**, so zipping today's
-  `build/altairsim` and handing it to anyone without that exact Homebrew prefix produces a
-  binary that will not start. Bundling the dylib and rewriting the install name
-  (`install_name_tool`, `@rpath`/`@executable_path`) is mandatory, not a refinement.
+- **Linking — SETTLED for macOS: STATIC. Measured 2026-07-20.** Homebrew ships only a
+  dylib, so this needs SDL3 built once from source with `-DSDL_STATIC=ON -DSDL_SHARED=OFF`;
+  `find_package` then picks the static target up with **no change to `CMakeLists.txt`**.
+  Verified end to end: the binary boots CP/M from an unpacked package and `otool -L` shows
+  **no SDL at all**, only system frameworks.
+
+  It costs about **0.3M** — 1.7M binary plus a 2.4M dylib to bundle becomes a 4.4M
+  self-contained one — and it deletes the entire bundling problem: nothing to copy, no
+  `install_name_tool`, no `@rpath`, nothing to verify at release time. The package gains
+  only `LICENSE-SDL3`.
+
+  **`CMAKE_OSX_DEPLOYMENT_TARGET` is a separate and equally mandatory flag** on both the
+  SDL3 build and the simulator build, or the binary refuses to start on anything older than
+  the build machine. `vtool -show-build` confirms it.
+
+  **Linux and Windows are expected to work the same way and have not been tried.** If either
+  ends up dynamic, bundling is the fallback and is mandatory there — `$ORIGIN` on Linux,
+  DLL-beside-exe on Windows.
 - **macOS universal is the hard one, and it is measured, not assumed.** Homebrew's SDL3 is
   `arm64` only — `lipo -archs /opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` says exactly
   that, which is the whole reason `-DALTAIRSIM_ENABLE_SDL=OFF` exists. So a windowed macOS
