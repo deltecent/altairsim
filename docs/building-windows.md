@@ -280,9 +280,18 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 > 19.44.35228.0` / `Check for working CXX compiler: ...\BuildTools\...\cl.exe - skipped`. The
 > full build produced `altairsim.exe` and `ctest -LE slow` passed 16/17 (the 17th being the
 > `terminal-hw` harness artifact in §5). The scripted setup that got there is §1.1.
-> **Approaches B (Ninja + chained `vcvars`) and C (`build-sdl3-static.bat`) are still open** —
-> B is untried, and C is the packaging prerequisite, exercised by the SDL3/packaging job, not
-> this one.
+> **Approach C is now largely settled too (same machine, 2026-07-20).**
+> `tools\build-sdl3-static.bat` ran on its first outing, exit 0, and produced a 13 MB
+> `SDL3-static.lib` with no stray `SDL3.dll`. Built against it with
+> `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`, `altairsim.exe` came out **windowed**
+> (`video SDL3 -- windowed`), **4.2 MB, and self-contained** — `dumpbin /dependents` shows no
+> `SDL3.dll` and, crucially, **no `VCRUNTIME140.dll`/`MSVCP140.dll`, so the static CRT
+> propagated through SDL and no VC++ redistributable is needed.** `ctest -LE slow` passed 16/17
+> (the `terminal-hw` harness artifact in §5). **What is still unrun on Windows: the packaging
+> script itself (`tools/build-package.sh` under Git Bash) and the human video checks** — that is
+> the packaging job, next.
+> **Approach B (Ninja + chained `vcvars`) remains untried** — the VS generator has carried
+> every build so far, so nothing has needed it.
 
 **This section is a job, not a description.** It states three things that are *believed*
 true and have never been run on this machine, gives the exact commands to settle each,
@@ -368,11 +377,23 @@ cmake --build build --config Release --target altairsim
 that flag it gets `/MD`, and mixing them gives duplicate-symbol link errors or two separate C
 runtime heaps. If you change it, change it in both places.
 
-Verify it took with **both** checks — `dumpbin /dependents` must not list `SDL3.dll`, **and**
-`dumpbin /symbols … | findstr SDL_` must find symbols. The first alone cannot tell a static
-build from a headless one, since neither wants the DLL. Do **not** use `strings`:
-`SDL_CreateWindow` is a symbol, not a string literal, and it reports nothing on a good static
-build.
+Verify it took (**confirmed on Windows 10 22H2, 2026-07-20** — the values below are what a good
+build actually produced):
+
+- `dumpbin /dependents build\Release\altairsim.exe` — must list **no `SDL3.dll`** (SDL is
+  static) and **no `VCRUNTIME140.dll` / `MSVCP140.dll`** (the CRT is static, so the package
+  needs no VC++ redistributable). What it *should* list is only system DLLs — `KERNEL32`,
+  `USER32`, `GDI32`, `WINMM`, `IMM32`, `ole32`, `OLEAUT32`, `VERSION`, `ADVAPI32`, `SETUPAPI`,
+  `SHELL32`, `WS2_32` — all present on every Windows. That was the whole `dumpbin` output on a
+  4.2 MB self-contained `altairsim.exe`.
+- `altairsim.exe -n -x "SHOW VERSION"` — must show `video  SDL3 -- windowed`. **This, not
+  symbols, is what distinguishes a static-windowed build from a headless one**, because both
+  lack `SDL3.dll`.
+
+**Do NOT use `dumpbin /symbols … | findstr SDL_`.** On a *linked release* `.exe` the COFF symbol
+table is empty — the symbols are in the PDB — so that check finds **nothing on a good build**
+(observed: 0 matches). It works on the static `.lib`, not the `.exe`. And `strings` is no good
+either: `SDL_CreateWindow` is a symbol, not a string literal.
 
 ### What to record
 

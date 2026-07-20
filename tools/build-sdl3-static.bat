@@ -109,12 +109,17 @@ echo     cmake -B build -DCMAKE_PREFIX_PATH="%prefix%" ^^
 echo           -DCMAKE_MSVC_RUNTIME_LIBRARY=%MSVC_RUNTIME%
 echo     cmake --build build --config Release
 echo.
-echo Then confirm it took, WITH BOTH CHECKS:
-echo     dumpbin /dependents build\Release\altairsim.exe    ^(must NOT list SDL3.dll^)
-echo     dumpbin /symbols build\Release\altairsim.exe ^| findstr /c:"SDL_" ^(must find some^)
+echo Then confirm it took:
+echo     dumpbin /dependents build\Release\altairsim.exe
+echo         must list NO SDL3.dll ^(SDL is static^) and NO VCRUNTIME140.dll / MSVCP140.dll
+echo         ^(the CRT is static too, so the package needs no VC++ redistributable^).
+echo     build\Release\altairsim.exe -n -x "SHOW VERSION"
+echo         must show:  video  SDL3 -- windowed
 echo.
-echo The first alone cannot tell a static build from a HEADLESS one -- neither wants
-echo SDL3.dll. And do not use `strings`: SDL_CreateWindow is a symbol, not a string.
+echo SHOW VERSION -- not symbols -- is what tells a static-windowed build from a HEADLESS
+echo one, since both lack SDL3.dll. Do NOT use `dumpbin /symbols ^| findstr SDL_`: on a
+echo linked RELEASE .exe the COFF symbol table is empty ^(symbols live in the PDB^), so it
+echo finds nothing on a GOOD build. `strings` is no good either: SDL_CreateWindow is a symbol.
 exit /b 0
 
 :fail
