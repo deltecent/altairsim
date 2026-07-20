@@ -128,11 +128,20 @@ What has to be built, roughly in order:
    could ship a stale package. The stale-sibling cleanup now runs **before** the refusals, so
    a refused run leaves nothing that can be mistaken for its output.
 
-   **Both refusals have been exercised against real binaries** (arm64, 2026-07-20): static →
+   **Both refusals have been exercised against real binaries** on arm64 (2026-07-20): static →
    packages; headless → stops; **Homebrew-dynamic → stops on the linkage ground**, and that
    third one is the instructive case, because it reports `SDL3 -- windowed` and is still
    unshippable. The Intel Mac could not run it (no Homebrew SDL3 there) and correctly refused
    to install one for the purpose.
+
+   **The `ldd` half of the linkage check — a separate code path from `otool` — is now proven
+   too, on Linux (2026-07-20).** A deliberately-dynamic build was refused on the linkage
+   ground, for the right reason (it cleared the headless gate reporting `SDL3 -- windowed`,
+   then the linkage gate stopped it), naming the path and citing §3.2. This also settled an
+   open question the job sheet flagged: **CMake's default RPATH on Linux embeds an absolute
+   build-tree path** (`/tmp/sdl3-shared/lib/libSDL3.so.0`), not an `$ORIGIN`-relative one — so
+   a dynamic Linux build trips the check by default rather than sliding through the allowed
+   `$ORIGIN` fallback. Every branch of both refusals has now run on real binaries.
 4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
    other. Nothing produces checksums. **This is now the first of these left.**
 5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
