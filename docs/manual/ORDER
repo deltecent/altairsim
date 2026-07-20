@@ -9,6 +9,12 @@
 # `cmake --build build --target docs-reference`.
 
 introduction.md
+
+# Release notes, directly after the introduction on purpose. A returning reader opens the
+# manual to find out what moved; a first-time reader skips one short chapter to get to the
+# on-ramp, which is the cheaper of the two costs.
+whats-new.md
+
 package.md
 running.md
 quick-start.md
