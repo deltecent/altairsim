@@ -763,6 +763,21 @@ void Monitor::showVersion(std::ostream& out) {
 
     row("altairsim", versionNumber());
 
+    // WHETHER THIS BUILD CAN OPEN A WINDOW, and it is here because NOTHING ELSE SAYS.
+    // Through v0.2.0 every released binary was headless and no output distinguished one:
+    // --version, --help, -l, SHOW DISPLAY and this command were byte-identical either way,
+    // so the only way to tell was nm/otool/dumpbin on the file. That is a toolchain the
+    // machine holding the package may not have -- Git Bash on Windows has no `nm` at all --
+    // which is why the answer belongs in the binary rather than in a probe of it.
+    //
+    // It is a row here rather than a line on --version because 4.2 step 5 checks --version
+    // for a BARE "AltairSim X.Y.Z" and a second line there invites a false STOP.
+#ifdef ALTAIRSIM_ENABLE_SDL
+    row("video", "SDL3 -- windowed");
+#else
+    row("video", "none -- headless (null display)");
+#endif
+
     // "unknown" is a real answer here, not a failure to look. There is no .git in a
     // release tarball, so there is nothing to describe -- and printing the version
     // number again in this slot would be a guess wearing provenance's clothes.
@@ -1366,9 +1381,20 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
 // there -- a machine file that asks for it still loads, and still means it on a host
 // that can show it -- and reporting "no video service" beats reporting nothing and
 // leaving the reader to wonder whether the property took.
+// THE TEST IS THE MACRO, NOT THE POINTER. This asked `!g_display` until 2026-07-20, which
+// reads like the discriminator and is not one: main.cpp calls setDisplay() UNCONDITIONALLY,
+// handing a headless build a NullDisplay -- a perfectly non-null pointer. So the message
+// never fired in any shipping binary, and the one place that claimed to say "this build has
+// no video" said nothing, on the builds where it was the only thing that would have.
+// A null pointer still means something (an embedder that never called setDisplay, as the
+// unit tests do), so it keeps its own answer rather than being folded into the other.
 void Monitor::showDisplay(std::ostream& out) {
     out << "display  (the host video window";
-    if (!g_display) out << " -- no video service in this build";
+#ifndef ALTAIRSIM_ENABLE_SDL
+    out << " -- no video service in this build";
+#else
+    if (!g_display) out << " -- no video service wired up";
+#endif
     out << ")\n";
     showProps(Display::properties(), out);
 }

@@ -123,15 +123,74 @@ done
 }
 
 ver=$("$sim" --version | awk '{print $2}')
+
+# CLEAR STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
+#
+# A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever build/altairsim existed
+# THEN -- and it looks exactly like the release. That is not hypothetical: on 2026-07-20 a stale
+# pre-tag staging directory reported "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read
+# as a version bug in the shipped archives, which were correct.
+#
+# It runs HERE because the refusals below exit 1, and until 2026-07-20 they exited leaving the
+# PREVIOUS run's archive sitting under the exact name the release process expects (observed on
+# the Intel Mac: a refused headless run left the good tarball untouched at its original
+# timestamp). Anyone uploading by filename rather than by watching the exit code would ship it.
+# A refused run must leave nothing that can be mistaken for its output.
+rm -rf "$out"/altairsim-*
+
+# ---------------------------------------------------------------------------
+# REFUSE TO PACKAGE A BINARY THAT CANNOT OPEN A WINDOW.
+#
+# THIS IS THE CHECK v0.2.0 DID NOT HAVE. All three archives shipped headless: no CI leg had
+# SDL3, find_package failed, display_sdl.cpp compiled nowhere, and the video window the manual
+# documents at length could not be opened from anything released. Nothing caught it, because a
+# headless binary runs `altairsim vdm1` perfectly happily and draws nothing. DISTRIBUTION.md
+# 4.2 step 2 puts a STOP on the configure line -- but that is a line a person has to read, and
+# not reading it is exactly how this shipped. This one cannot be not-read.
+#
+# ASK THE BINARY, DO NOT PROBE THE FILE. nm/otool/dumpbin all mean a toolchain the packaging
+# machine may not have -- Git Bash on Windows has no `nm` -- and 7 records that `strings` gives
+# a FALSE NEGATIVE here, because SDL_CreateWindow is a symbol and not a literal. SHOW VERSION
+# carries a `video` row for this, so the answer is the same on all four machines.
+if ! "$sim" -n -x 'SHOW VERSION' 2>/dev/null | grep -q '^ *video *SDL3'; then
+  echo "build-package: THIS BINARY IS HEADLESS -- refusing to package it." >&2
+  echo >&2
+  "$sim" -n -x 'SHOW VERSION' 2>&1 | sed 's/^/    /' >&2
+  echo >&2
+  echo "A headless build runs the video machines and draws nothing, which is what every" >&2
+  echo "v0.2.0 archive shipped. Configure against a real SDL3 and look for" >&2
+  echo "    -- SDL3 found -- video boards enabled (windowed)" >&2
+  echo "    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<static SDL3 prefix>" >&2
+  exit 1
+fi
+
+# ...and refuse one that links SDL by a path only this machine has. A Homebrew build names
+# /opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib absolutely, so it starts on no other machine --
+# 3.2's trap, and the reason static is the answer. A path relative to the binary
+# (@executable_path, @rpath, $ORIGIN) is the documented dynamic FALLBACK and is allowed.
+#
+# There is no portable way to ask this, so it runs where the tool exists and SAYS SO when it
+# does not, rather than passing quietly and reading as checked.
+case $(uname -s) in
+  Darwin) linkage=$(otool -L "$sim" 2>/dev/null | grep -i sdl || true) ;;
+  Linux)  linkage=$(ldd     "$sim" 2>/dev/null | grep -i sdl || true) ;;
+  *)      linkage=""
+          echo "build-package: NOTE -- cannot check SDL linkage on this host ($(uname -s))." >&2
+          echo "  Per DISTRIBUTION.md 7, run: dumpbin /dependents altairsim.exe" >&2 ;;
+esac
+if [ -n "$linkage" ] && ! echo "$linkage" | grep -q '@executable_path\|@rpath\|\$ORIGIN'; then
+  echo "build-package: THIS BINARY LINKS SDL BY ABSOLUTE PATH -- refusing to package it." >&2
+  echo "$linkage" | sed 's/^/    /' >&2
+  echo >&2
+  echo "It starts on no machine but this one. Build SDL3 static (tools/build-sdl3-static.sh)" >&2
+  echo "and configure with -DCMAKE_PREFIX_PATH=<that prefix>. See DISTRIBUTION.md 3.2." >&2
+  exit 1
+fi
+
 pkg=$out/altairsim-$ver-$target
 
-# CLEAR STALE SIBLINGS. A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever
-# build/altairsim existed THEN -- and it looks exactly like the release. That is not
-# hypothetical: on 2026-07-20 a stale pre-tag staging directory reported
-# "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read as a version bug in the shipped
-# archives, which were correct. The target suffix makes the directory self-documenting; this
-# makes sure it is also the only one here.
-rm -rf "$out"/altairsim-*
+# The target suffix makes the staging directory self-documenting; the cleanup above (which runs
+# before the refusals, deliberately) makes sure it is also the only one here.
 mkdir -p "$pkg"
 
 cp "$sim" "$pkg/"
@@ -148,12 +207,36 @@ cp "$sim" "$pkg/"
 if [ -n "$pdf" ]; then
   cp "$pdf" "$pkg/altairsim-manual.pdf"
 else
+  local_pandoc=$(pandoc --version 2>/dev/null | head -1 || true)
   echo "build-package: WARNING -- rebuilding the manual with the LOCAL toolchain." >&2
-  echo "  $(pandoc --version 2>/dev/null | head -1 || echo 'pandoc: not found')" >&2
-  echo "  docs.yml pins pandoc 3.6, and a different pandoc is a different document." >&2
+  echo "  ${local_pandoc:-pandoc: NOT FOUND}" >&2
+  # SAY WHY WHEN THE NUMBERS MATCH, or the warning reads as a false alarm and gets ignored.
+  # Reported from the Intel Mac, 2026-07-20: it has pandoc 3.6, so the warning printed
+  # "pandoc 3.6" directly above "docs.yml pins pandoc 3.6" and looked like a broken check.
+  # It is not -- the rebuild there really did produce a different document.
+  if [ "$local_pandoc" = "pandoc 3.6" ]; then
+    echo "  docs.yml pins pandoc 3.6 -- the SAME NUMBER, and still not the same document:" >&2
+    echo "  fonts and browser differ per machine, and the paginator is what makes the PDF." >&2
+  else
+    echo "  docs.yml pins pandoc 3.6, and a different pandoc is a different document." >&2
+  fi
   echo "  For a RELEASE, pass --pdf with the manual the coordinator built." >&2
-  "$root/tools/build-docs.sh" "$root/docs" > /dev/null
-  cp "$root/docs/altairsim-manual.pdf" "$pkg/"
+
+  # BUILD IT SOMEWHERE ELSE. build-docs.sh's argument is its OUTPUT directory, and it was
+  # handed $root/docs -- so this path rewrote docs/altairsim-manual.pdf AND
+  # docs/altairsim-devguide.pdf, both tracked, and said nothing about it. Reported from the
+  # Intel Mac, 2026-07-20. The devguide is not even part of packaging.
+  #
+  # That is the v0.2.0 trap wearing a different hat: --pdf keeps a local PDF out of the
+  # PACKAGE, and this kept it in the REPOSITORY, one `git commit -a` away from overwriting
+  # CI's. CLAUDE.md's "git checkout -- the PDFs afterwards" rule is attached to build-docs.sh,
+  # and nobody running the PACKAGING script has any reason to think they just invoked it.
+  docs_tmp=$out/.docs-build
+  rm -rf "$docs_tmp"
+  mkdir -p "$docs_tmp"
+  "$root/tools/build-docs.sh" "$docs_tmp" > /dev/null
+  cp "$docs_tmp/altairsim-manual.pdf" "$pkg/"
+  rm -rf "$docs_tmp"
 fi
 
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.

@@ -67,9 +67,75 @@ What has to be built, roughly in order:
    `$ORIGIN`, no DLL beside the `.exe`. Confirmed on both macOS arches (arm64 §3.2; x86_64 on
    the Intel Mac, 2026-07-20 — 4.7M self-contained, `otool -L` clean, 5426 `SDL_` symbols).
    It comes back only if Linux or Windows cannot build SDL3 static, which is untested.
-3. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
+3. ~~**A linkage check in `build-package.sh`**~~ — **DONE 2026-07-20**, before the Windows
+   work rather than after, because Windows is where it is most needed: no CI leg there has
+   SDL3 and `tools\build-sdl3-static.bat` has never been run, so a headless `.exe` is the
+   likeliest outcome of the first attempt and would have passed every check that existed.
+
+   The script now refuses to package a **headless** binary, and one that links SDL by an
+   **absolute path** (§3.2's Homebrew trap; a path relative to the binary is the documented
+   dynamic fallback and is allowed).
+
+   **The headless half asks the binary rather than probing the file**, which is what makes it
+   work on all four machines: `nm`/`otool`/`dumpbin` all mean a toolchain the packaging
+   machine may not have, and **Git Bash on Windows has no `nm`**. That needed a source change
+   — `SHOW VERSION` gained a `video` row — because *nothing the binary printed distinguished
+   a headless build from a windowed one*: `--version`, `--help`, `-l`, `SHOW VERSION` and
+   `SHOW DISPLAY` were byte-identical either way.
+
+   **`SHOW DISPLAY` looked like it already said, and did not.** Its *"no video service in this
+   build"* tested `!g_display`, but `main.cpp` calls `setDisplay()` unconditionally and hands
+   a headless build a `NullDisplay` — a perfectly non-null pointer. So the branch never fired
+   in any shipping binary, and the one place claiming to report headlessness reported nothing
+   on precisely the builds where it was the only thing that would have. Now tests the macro.
+   **Third instance of *a claimed check is worse than a missing one*** in this file.
+
+   The absolute-path half is not portable and does not pretend to be: it runs where
+   `otool`/`ldd` exist and **prints that it could not check** elsewhere, rather than passing
+   silently and reading as verified.
+
+   **Also fixed here, found by the Intel Mac running the flags for real (2026-07-20): the
+   no-`--pdf` path rewrote two TRACKED PDFs and never said so.** `build-docs.sh`'s argument is
+   its *output* directory and it was handed `$root/docs`, so packaging overwrote
+   `docs/altairsim-manual.pdf` **and `docs/altairsim-devguide.pdf`** — the devguide is not even
+   part of packaging — leaving them one `git commit -a` from overwriting CI's. That is the
+   v0.2.0 trap wearing a different hat: `--pdf` kept a local PDF out of the *package* while
+   this kept one in the *repository*. `CLAUDE.md`'s "`git checkout --` the PDFs afterwards"
+   rule is attached to `build-docs.sh`, and nobody running the *packaging* script has any
+   reason to think they just invoked it. It now builds into a temp directory under `dist/`.
+
+   The warning also gained a clause for when the local pandoc **is** 3.6: it printed
+   `pandoc 3.6` directly above *"docs.yml pins pandoc 3.6"*, which reads as a broken check.
+
+   **`docs/manual/whats-new.md` and `package.md` are corrected**, and `DISTRIBUTION.md` §7 now
+   carries a **human checklist** (H1–H6) for the things a pipe cannot verify — the Intel Mac
+   asked for it after reporting a `focus` value it could not interpret.
+
+   **That checklist was then executed for the first time, and four of its six checks were
+   wrong** (Intel Mac, at the machine, 2026-07-20). H2 named a machine that halts before you
+   can look; H4 asked a launch policy to behave as a live focus report; H5 named a `video`
+   value that does not exist and omitted the resume; H6 had no observations. **The code was
+   right in every case the table was wrong.** A checklist nobody has executed is a draft, and
+   this one shipped into a job sheet reading as verified — the same species of defect as the
+   `SHOW DISPLAY` branch above, one layer up. §7 is corrected and says so in place; the pump
+   limitation it uncovered is under *The video window is only serviced while the CPU is
+   running*.
+
+   **Also found there and fixed: a refused run left the previous run's archive in place**,
+   under the exact name the release process expects and at its original timestamp. Both
+   refusals exit before staging, so the presence of `dist/altairsim-….tar.gz` was not evidence
+   the last run succeeded — anyone uploading by filename rather than watching the exit code
+   could ship a stale package. The stale-sibling cleanup now runs **before** the refusals, so
+   a refused run leaves nothing that can be mistaken for its output.
+
+   **Both refusals have been exercised against real binaries** (arm64, 2026-07-20): static →
+   packages; headless → stops; **Homebrew-dynamic → stops on the linkage ground**, and that
+   third one is the instructive case, because it reports `SDL3 -- windowed` and is still
+   unshippable. The Intel Mac could not run it (no Homebrew SDL3 there) and correctly refused
+   to install one for the purpose.
+4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
    other. Nothing produces checksums. **This is now the first of these left.**
-4. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
+5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
    *after* the packaging work: anyone who clones this repository should be able to run a
    single script (or `.bat` on Windows) and end up with a binary. No reading, no flags, no
    choosing a generator.
@@ -193,6 +259,86 @@ a Homebrew SDL3 is single-arch and will not link into an `x86_64;arm64` fat bina
 attributing it to a guard that does not exist made the headless build look deliberate and
 bounded to macOS, when it is in fact incidental and universal. Both comments now say what
 is true, and name the consequence.
+
+### The video window is only serviced while the CPU is running
+
+**Found at the machine on the Intel Mac, 2026-07-20**, on the first execution of
+`DISTRIBUTION.md` §7's human checklist. `SdlDisplay::pollEvents()` is called *by the run
+loop* (`src/host/display_sdl.cpp`), so with the machine stopped — at a `HLT`, or at the
+monitor prompt — nothing drains the SDL event queue and nothing redraws.
+
+**One fact, three symptoms**, which is why it is worth a single entry rather than three:
+
+- **The close button is dead, and at a `HLT` permanently so.** The window can never be
+  closed. This is the sharp end: `machines/vdm1.toml`'s demo halts by design, so the
+  *documented first thing a new user runs* leaves an uncloseable window on their screen.
+- **`SET vdm0 video=reverse` does not render** until the machine is resumed with `R`.
+- **The blinking cursor cannot be observed on `vdm1` at all**, because the CPU is stopped
+  by the time you look.
+
+`machines/vdm1.toml` already says *"the window is live while a program RUNs."* That reads as
+a remark about the demo; it is in fact the exact scope of the event pump, and nothing says so
+where somebody would look for it.
+
+**The manual now warns about it** (`docs/manual/boards.md`, the VDM-1 section): the three
+symptoms are named as one fact, and `QUIT` is given as the way out of an uncloseable window —
+verified, exit 0, no hang. That is a warning, not a fix, and the entry stays open.
+
+**Whether to fix it is a design question, not a defect report** — the display seam is
+deliberately driven by the run loop (`DESIGN.md`), and pumping events from the monitor prompt
+means deciding what a stopped machine's window *is*. But the uncloseable window is a trap
+either way. Recorded here rather than fixed, because inventing the answer is the mistake §7
+exists to prevent.
+
+Two smaller things fell out of the same session and are features, not bugs:
+
+- **Nothing reports live window focus.** `SHOW DISPLAY`'s `focus` is `Display::focusPolicy_`,
+  a session *policy* governing whether a window grabs the keyboard **when it opens**. It is
+  not a live report and never changes as you click between applications. **It has now been
+  misread as one twice** — once by a machine over a pipe, once in the job sheet written to
+  correct that. The keyboard question is answerable only by typing into the window.
+- **`SET DISPLAY focus=on` has never been tested.** Whether it genuinely opens a window
+  focused is unverified; it needs a human, since no pipe can tell.
+
+### The headless check cannot catch an SDL3 built with no video backend
+
+**Found while writing the Linux job sheet, 2026-07-20. This is a hole in the check added the
+same day, and it is worth stating plainly: the check is sound on macOS and insufficient on
+Linux.**
+
+`build-package.sh` refuses to package a binary whose `SHOW VERSION` does not report
+`video  SDL3`. That row is emitted from `#ifdef ALTAIRSIM_ENABLE_SDL`, so it answers **"was
+SDL3 compiled in"** — which is not the same question as **"can a window open"**. On macOS the
+two coincide, because Cocoa is unconditional. On Linux they come apart:
+
+- SDL3 detects its video backends **at configure time**. With no X11 or Wayland development
+  headers present it configures happily with only the **dummy** driver.
+- `tools/build-sdl3-static.sh` then passes: it checks that `libSDL3.a` exists and that no
+  shared library sits beside it, and **nothing about what is inside the archive**.
+- `find_package(SDL3)` succeeds, `ALTAIRSIM_ENABLE_SDL` is defined, `SHOW VERSION` reports
+  `SDL3 -- windowed`, `ldd` names no SDL, and the linkage check passes too.
+
+**So every automated check in the project passes on a binary that cannot open a window** —
+which is the exact failure v0.2.0 shipped, reached by a different road. `DISTRIBUTION.md` §7
+already says the `video` row *"does not say a window reached a screen"* and hands that to a
+human (H1); this entry records that on Linux the gap is wider than that sentence implies,
+because the automated half can be fooled rather than merely being incomplete.
+
+**Not fixed, because the fix is not obvious and guessing is what this file exists to stop.**
+The candidates, none tried:
+
+1. **Have `build-sdl3-static.sh` assert a real backend** after building — the honest place,
+   since that is where the answer is decided. Needs a reliable way to ask a static archive
+   what it was configured with; the `strings` idiom in the Linux job sheet is a guess.
+2. **Ask at runtime instead.** `SDL_GetCurrentVideoDriver()` names the driver actually in use,
+   which is the real answer — but it requires initialising video, and reporting `dummy` from
+   a `SHOW VERSION` that currently initialises nothing is a behaviour change.
+3. **Leave it to H1** and say so louder. Cheapest, and consistent with §7 already conceding
+   that a window reaching a screen is a human check.
+
+**The Linux box is being asked to establish whether this is real** before anything is built on
+top of it (`~/LINUX-JOB-1.md`, step 2). If it reports `x11`/`wayland` present, the hole is
+theoretical but still real; if it reports only `dummy`, it has happened.
 
 ---
 
