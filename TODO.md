@@ -335,6 +335,43 @@ Built: `run`, `send`, `recv`, `regs`, `who`, `bus_map`, `bus_io`,
 
 The snapshot/restore tools are blocked on board serialization, above.
 
+### Documentation and packaging
+
+#### Take the release notes out of the manual; ship `changelog.pdf` instead
+
+**Patrick, 2026-07-20 — for the next release.** v0.2.0 added
+`docs/manual/whats-new.md` as a manual chapter. That was the wrong home: the
+manual describes *the program as it is*, and a chapter that describes *what
+changed* ages differently from everything around it — by 0.4.0 the manual would
+carry three of them, or one that has quietly become a changelog with a chapter
+number.
+
+So: **remove the chapter, and add a separate `changelog.pdf` to the
+distribution.** The archive gains a document; the manual loses one.
+
+What that touches, none of it hard but none of it optional:
+
+- **`docs/manual/whats-new.md` and its `ORDER` line go together.**
+  `tests/acceptance/docs-manual.cmake` fails a chapter file that is not in
+  `ORDER`, so deleting one without the other is a red test either way round.
+- **A changelog needs a source and a build step.** `tools/build-docs.sh` builds a
+  document from a directory with an `ORDER` in it; the changelog is one file and
+  wants either its own tiny source dir or a special case. Decide which before
+  writing it.
+- **`docs/package.map` needs a `FILE` line for it**, which is also what puts it in
+  the archive — the map is the only source of truth for package contents.
+- **`docs/manual/package.md` must name it.** That chapter lists what is in the
+  archive, and the manual may only name paths that actually ship.
+- **Whether `docs.yml` builds and commits it like the other two PDFs.** If it does
+  not, the release inherits the pandoc-version trap v0.2.0 hit: `build-package.sh`
+  rebuilds with the local pandoc (3.10 via brew) while `docs.yml` pins 3.6, and a
+  different pandoc is a different document.
+
+Open question worth settling first: **does the changelog cover 0.2.0 retroactively,
+or start at 0.3.0?** The 0.2.0 content already exists as prose in `whats-new.md`
+and in the v0.2.0 release notes, so retroactive is cheap; starting fresh is
+cleaner but loses it.
+
 ---
 
 ## Blocked on documentation
