@@ -339,9 +339,10 @@ which needs a new platform primitive ("wait for console input with timeout": POS
 **The cost and the risk:** a new platform primitive on *two* input layers, and the Win32
 console-wait is unwritten and would be untested — so the fix, like the packaging work, wants a
 staffed desktop on Linux (reproduces) *and* Windows. It is a localized, low-risk change when
-done, not a redesign. **Recommendation: does not gate the next tag** (narrow trigger; v0.2.0
-shipped headless, so nothing regresses), fix it in a dedicated cross-platform round — but that
-is Patrick's call.
+done, not a redesign. **DECIDED 2026-07-20 (Patrick): recorded and deferred — it does NOT gate
+the next tag.** Narrow trigger, v0.2.0 shipped headless so nothing regresses, and the Win32 half
+is unwritten; fix it in a dedicated cross-platform round with both desktops staffed, alongside
+the close-button and stopped-redraw symptoms above, which share this root cause.
 
 Two smaller things fell out of the same session and are features, not bugs:
 
