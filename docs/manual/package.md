@@ -4,6 +4,7 @@
 altairsim                the program. One file, no dependencies, nothing to install.
 altairsim-manual.pdf     this.
 USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
+LICENSE                  the MIT licence this is published under.
 examples/                four machines that boot, media included.
 ```
 
