@@ -1,0 +1,99 @@
+#!/usr/bin/expect -f
+#
+# THE EBERHARD MONITORS, TYPED AT -- `amon` and `acuter`.
+#
+# The .cmake test beside this one proves each machine STARTS: AMON's banner and the RAM
+# page it measured, and CP/M coming up under `cdbl`. That is everything those machines
+# say on their own. This one is the other half -- the machines ANSWERING -- and it is a
+# separate file for a reason that cost a red CI leg to learn.
+#
+# WHY THIS CANNOT BE A PIPE. The first version of this test piped `DU F000 F00F\r` into
+# the machine and grepped for the answer. It passed here and failed on macOS CI, and it
+# was not macOS: piped keystrokes are already in the console buffer before the guest is
+# switched on, and they clock into the 6850's ONE-BYTE receive register at 9600 baud
+# while AMON is still doing its startup RAM scan. Each byte that arrives before the
+# previous one is read overwrites it. So the command line arrives mangled, AMON answers
+# `?`, and whether it does is a race between the host's clock and the guest's -- 4 runs
+# in 40 failed locally once I went looking.
+#
+# A REAL TERMINAL FIXES IT BY WAITING. `expect` types after the prompt appears, which is
+# what an operator does, and which is the only thing that makes the guest ready for the
+# byte. There is no amount of padding or sleeping that makes the pipe version correct.
+#
+# TRAPS (each has bitten this suite before -- see 2sio-echo.exp):
+#
+#   1. `expect` PATTERNS ARE GLOBS. Every literal here is `-ex`.
+#   2. EVERY `expect` HAS A TIMEOUT ARM, and none of them is empty. A test with no
+#      timeout does not fail, it hangs.
+#   3. ATTN IS ^E. ^C belongs to the guest -- AMON uses it to abort a command.
+#
+# usage: expect -f eberhard-roms.exp <altairsim>
+
+set timeout 30
+log_user 0
+
+set sim [lindex $argv 0]
+
+# ---------------------------------------------------------------------------
+# Start a ROM monitor, wait until it has actually asked for a command, dump the first
+# bytes of its own ROM, and require them back.
+#
+# THE DUMP IS THE ASSERTION, and it is chosen over the sign-on because it says more:
+# ACUTER's entire sign-on is a bare `>`, which almost any wreckage would produce. The
+# bytes are the ROM's own first instruction, so getting them back proves the image is at
+# the address the machine file put it, that it is intact, and that the console is on the
+# port the firmware actually talks to -- none of which loading the config can tell you.
+# ---------------------------------------------------------------------------
+proc dumps {sim machine ready want} {
+    spawn $sim $machine
+
+    # The machine files auto-start (`startup = ["RUN F000"]`), so we land in the guest.
+    expect {
+        -ex "\[console" {}
+        timeout { puts "### FAIL ($machine): the machine never started"; exit 1 }
+    }
+
+    # WAIT FOR THE MONITOR TO ASK. This is the whole point of the file: nothing may be
+    # typed until the guest is at its prompt with an empty receive register.
+    expect {
+        -ex $ready {}
+        timeout { puts "### FAIL ($machine): no prompt -- never saw '$ready'"; exit 1 }
+    }
+
+    send "DU F000 F00F\r"
+    expect {
+        -ex $want { puts "### $machine: dumped its own ROM -- $want" }
+        -ex "?" {
+            puts "### FAIL ($machine): the monitor answered '?' -- it got a mangled command"
+            puts "###   line. Something typed before the prompt; see the header of this file."
+            exit 1
+        }
+        timeout {
+            puts "### FAIL ($machine): asked for F000-F00F and never saw '$want'."
+            puts "###   The ROM is not where the machine file put it, or the console is on"
+            puts "###   the wrong port."
+            exit 1
+        }
+    }
+
+    send "\005"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "### FAIL ($machine): ATTN did not return to the monitor"; exit 1 }
+    }
+    send "QUIT\r"
+    expect {
+        eof {}
+        timeout { puts "### FAIL ($machine): would not quit"; exit 1 }
+    }
+}
+
+# AMON: its command table starts `AD` `AL` `BO` -- 41 44 3F. Waiting on the RAM line and
+# not the `>` because AMON prints the prompt only after the scan, and the scan is the
+# slow part.
+dumps $sim amon "RAM: DF00" "41 44 3F"
+
+# ACUTER: 7F C3 81 F0 is the JMP at its cold-start entry, the first bytes of the image.
+dumps $sim acuter ">" "7F C3 81 F0"
+
+puts "### ALL STEPS PASSED"

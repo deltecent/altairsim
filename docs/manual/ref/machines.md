@@ -18,9 +18,12 @@ what is actually in one.
 | Machine | What it is |
 |---|---|
 | `4k` | The Altair as it actually left Albuquerque. |
+| `acuter` | ACUTER at F000 -- CUTER on a plain Altair, with a terminal instead of a VDM. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |
+| `amon` | AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor. |
 | `basic4k` | The machine Altair 4K BASIC was sold to run on: a cassette in the ACR, a Teletype |
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal |
+| `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
 | `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |

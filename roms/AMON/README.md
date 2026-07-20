@@ -39,6 +39,18 @@ Control-C (Escape too, on the 4K build). See the manual for full syntax.
 
 ## Use it
 
+```
+$ altairsim amon
+
+AMON 3.1 by M. Eberhard
+RAM: DF00
+>
+```
+
+`machines/amon.toml` is the built-in machine that does it — 56K, an 88-2SIO
+console at `10h`, an 88-ACR on AMON's default transfer port, and an 88-DCDD for
+the `FF00h` boot entry. To put the ROM in a machine of your own:
+
 ```toml
 [[board.region]]
 type  = "rom"
@@ -46,7 +58,9 @@ at    = 0xF000
 mount = "builtin:amon"
 ```
 
-Console on an 88-2SIO port 0; cold-start at `F800h`.
+Console on an 88-2SIO port 0; cold-start at `F800h`. Give it the **whole 4 KB**
+span: the boot entry points at `FC00h`, `FE00h` and `FF00h` are part of this same
+image, and a ROM region that stops short of them takes them away.
 
 ## Files here
 

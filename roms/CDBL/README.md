@@ -39,6 +39,19 @@ to every standard Altair terminal until you STOP/RESET:
 
 ## Use it
 
+```
+$ altairsim cdbl
+altairsim> MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
+altairsim> RUN FF00
+
+56K CP/M 2.2b v2.3
+```
+
+`machines/cdbl.toml` is the built-in machine that does it: the `default` machine
+with this PROM in the socket instead of [`dbl`](../DBL). Swap its `dcdd` for the
+`mds` in `machines/minidisk.toml` and the same PROM boots the minidisk — that is
+the point of it. To put the ROM in a machine of your own:
+
 ```toml
 [[board.region]]
 type  = "rom"

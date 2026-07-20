@@ -24,10 +24,14 @@ const char* versionCommit();
 // files do not count -- see the CMake comment for why.
 bool versionDirty();
 
-// The one line `--version` prints and the banner opens with:
-//   altairsim 0.1.0 (v0.1.0-37-gcc64cca)
-//   altairsim 0.1.0 (v0.1.0-37-gcc64cca, modified)
-//   altairsim 0.1.0 (commit unknown)
+// The one line `--version` prints and the banner opens with. `git describe` already
+// starts with the tag, so the version number is NOT printed twice -- the describe
+// string carries the release, the distance past it and the commit by itself:
+//   AltairSim 0.1.0-37-gcc64cca
+//   AltairSim 0.1.0-37-gcc64cca (modified)
+//   AltairSim 0.1.0                          built exactly on the tag
+//   AltairSim 0.1.0 (cc64cca)                a history with no tags in it
+//   AltairSim 0.1.0 (commit unknown)         no git at all
 const char* versionString();
 
 }  // namespace altair

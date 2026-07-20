@@ -29,12 +29,24 @@ code; the error byte is left in memory for inspection.
 
 ## Use it
 
+**There is no built-in machine for this one, and that is a missing board rather
+than a missing machine file.** HDBL boots an 88-HDSK, and this simulator has no
+88-HDSK controller: nothing decodes `A0h`–`A7h`, so the loader reads a floating
+bus, fails to find a Pack Descriptor Page, and stops with `LOAD ERR`. A machine
+that cannot boot is not a sample. The other three Eberhard ROMs have one —
+`altairsim amon`, `acuter`, `cdbl`.
+
+You can still put the PROM in a machine; it is the drive that is absent:
+
 ```toml
 [[board.region]]
 type  = "rom"
 at    = 0xFC00
 mount = "builtin:hdbl"
 ```
+
+The same loader is already reachable inside [`amon`](../AMON), at its `FC00h`
+entry point, and it is absent there for exactly the same reason.
 
 ## Files here
 

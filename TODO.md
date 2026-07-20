@@ -106,9 +106,43 @@ one `FILE` line, verified byte-identical in a built zip.
   (a PC keyboard has nothing obvious to borrow); arrows from a *terminal*, which
   needs escape-sequence matching and collides with `ESC`; and exposing the code
   table to the operator instead of leaving it a compile-time default.
-- **A sample-machine TOML for the Eberhard ROMs** — `cdbl`, `hdbl`, `amon` and
-  `acuter` are built-in (PR #30) but no machine boots one by name the way
-  `altairsim basic4k` does.
+- ~~**A sample-machine TOML for the Eberhard ROMs**~~ — **DONE 2026-07-19.**
+  `altairsim amon`, `altairsim acuter` and `altairsim cdbl` are built-in machines
+  now. The original entry: `cdbl`, `hdbl`, `amon` and `acuter` are built-in
+  (PR #30) but no machine boots one by name the way `altairsim basic4k` does.
+
+  **`hdbl` deliberately got none, and it is a missing BOARD, not a missing machine
+  file.** HDBL boots an 88-HDSK and there is no 88-HDSK controller here — nothing
+  decodes `A0`–`A7`, so the loader reads a floating bus and stops with `LOAD ERR`.
+  A machine that cannot boot is not a sample; shipping one would have answered the
+  letter of this entry and taught the reader something false. `roms/HDBL/README.md`
+  says so out loud, and the day the controller exists the machine file is four
+  lines. (The same loader is inside `amon` at its `FC00` entry, absent for the same
+  reason.)
+
+  Each machine is what its ROM requires and not a set of preferences, which is why
+  the ACR is in two of them: AMON's default transfer port is 6 (`DTPORT`), and
+  CUTER is a cassette operating system, so a machine without one has had the point
+  removed. `cdbl` is written as `base = "default"` with one region changed, because
+  that is exactly what it is.
+
+  Backed by two acceptance tests, because `test_machines.cpp` proving a built-in
+  loads cannot tell you the ROM is at the address its firmware expects or that the
+  console is on the port it talks to. `acceptance-eberhard-roms` (a pipe) checks
+  only what each machine says unprompted — AMON's `RAM: DF00`, which is the guest
+  measuring the memory card, and CP/M booting off the tracked 8″ image.
+  `acceptance-eberhard-typed` (expect, a pty) asks AMON and ACUTER to dump their
+  own first bytes.
+
+  **The split is the finding, and CI found it.** The first version piped the
+  keystrokes and was FLAKY — 4 runs in 40 here once I went looking, and one red
+  macOS leg. Keystrokes down a pipe are in the console buffer before the guest is
+  switched on and clock into the 6850's one-byte receive register at 9600 baud
+  whether or not it has read the last one, so a command typed at a monitor that is
+  still doing its startup RAM scan arrives mangled and AMON answers `?`. No amount
+  of padding fixes that; waiting for the prompt does, which is what a pty is for.
+  Passing locally was luck, and the mutation test I did run (shrink the RAM,
+  watch it fail) could not have caught it.
 
 ### Debugger and monitor
 

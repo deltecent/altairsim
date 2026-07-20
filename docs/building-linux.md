@@ -117,7 +117,7 @@ A full `-j$(nproc)` is fine *only* on a machine with ample RAM.
 ## 3. Smoke test
 
 ```bash
-./build/altairsim --version      # prints "altairsim 0.1.0 ..."
+./build/altairsim --version      # prints "AltairSim 0.1.0-…"
 ./build/altairsim --list         # lists built-in machines (4k, default, minidisk, ...)
 ./build/altairsim -x "help" default   # boots the default machine, runs one monitor command, exits
 ./build/altairsim                # interactive: the default machine's front panel + monitor

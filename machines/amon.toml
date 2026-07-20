@@ -1,0 +1,113 @@
+# AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor.
+#
+#     altairsim amon
+#
+#     AMON 3.1 by M. Eberhard
+#     RAM: DF00
+#     >
+#
+# The second line is AMON telling you where it put itself: it hunts for the highest
+# contiguous 256-byte page of RAM at startup and relocates its stack, variables and
+# buffers there, then prints the page it found. Change the memory card below and that
+# number changes with it -- it is a measurement, not a constant.
+#
+# WHAT IT IS FOR. `altmon` is the small monitor you can talk to; this is the big one.
+# It examines and fills memory, uploads and downloads in Intel HEX and Altair Absolute
+# Binary, programs EPROMs through a Bytesaver-style memory-mapped programmer, and boots
+# every Altair boot device there was -- because Eberhard's own loaders are rolled into
+# it as fixed entry points (roms/AMON/README.md):
+#
+#     F800   cold start, command loop     FE00   boot Altair tape (MITS's MBL)
+#     FC00   boot an 88-HDSK hard disk    FF00   boot an 8" floppy or a minidisk
+#
+# FF00 is `builtin:cdbl`, sitting where a boot PROM sits, so this machine boots a
+# floppy without a boot PROM in it -- see `cdbl` for that PROM on its own.
+#
+# `DU F000 F00F` dumps; `?` prints the command list (a 4K build only -- the 2K build
+# drops `?` and `MT` for room). Control-C aborts a command, Escape too.
+#
+# Like every file in here, this is not a set of choices: it is what the ROM requires,
+# and the source it requires it in is roms/AMON/AMON.ASM.
+
+[machine]
+name    = "amon"
+
+# A monitor in ROM runs the moment the machine is switched on, because that is what a
+# monitor in ROM did. There is no BOOT command (DESIGN.md 10.0) -- a machine that
+# should start says so in the operator's own keystrokes, written down.
+startup = ["RUN F800"]
+
+# The front panel, and its switches are not decorative here: AMON reads the sense
+# switches (SSWTCH equ 0FFh) for its load-device selection, masked with LDMASK = 007H.
+# All eight down is the setting, and it means "take the boot device from the command
+# rather than the switches".
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0                  # flat out (the default); `SET cpu0 clock_hz=2000000` for 2 MHz
+
+# The console: an 88-2SIO at 10, channel A. AMON is built for an 88-2SIOJP, an 88-2SIO
+# or an 88-UIO, and the 2SIO equates in its source say 10h (AMON.ASM: SIOBAS equ 10h).
+# Channel B is the second line and is left unconnected -- an unconnected 6850 sits with
+# TDRE set forever, which is exactly what the card does with nothing in the socket.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE ACR IS HERE BECAUSE AMON ASKS FOR IT. Its transfer commands -- AD, AL, HD, HL,
+# TE, TP -- move bytes over a port that is separate from the console so that a download
+# does not fight the terminal for the line, and this build's default is port 6
+# (AMON.ASM: DTPORT equ 6), which is the 88-ACR. `TP` moves it if you want it elsewhere.
+#
+# No tape is mounted, which is the same honest default as the empty drives below:
+#
+#     MOUNT acr0:tape mytape.tap
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+# The floppy controller, for AMON's FF00 boot entry. Four drives and nothing in them --
+# an Altair shipped with the controller and the cable; the diskette was yours.
+#
+#     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
+#     RUN FF00
+[[board]]
+type   = "dcdd"
+id     = "dsk0"
+port   = 08
+drives = 4
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  # 56K, 0000-DFFF. The top page of it, DF00, is the page AMON relocates into and
+  # prints on its second line -- so this size is visible in the banner.
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"
+
+  # THE WHOLE 4K EPROM, not a page of it. AMON's boot entry points live at FC00, FE00
+  # and FF00, which are inside this span: they are part of the same image, and a ROM
+  # region that stopped at F800 would take them away.
+  [[board.region]]
+  type  = "rom"
+  at    = F000
+  mount = "builtin:amon"
