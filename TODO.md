@@ -40,34 +40,36 @@ condition on every check. That is the standard the tooling has to meet as well.
 
 What has to be built, roughly in order:
 
-1. **`tools/build-package.sh --target <name>`** — it always emits `altairsim-<ver>.zip` from
-   whatever `build/altairsim` happens to be. It needs a target, per-platform archive format
-   (`tar.gz` for Unix, `zip` for Windows), and a `Compress-Archive` path since it is
-   `/bin/sh` and assumes `zip`.
+1. ~~**`tools/build-package.sh --target <name>`**~~ and ~~**`--pdf <file>`**~~ — **DONE
+   2026-07-20.** Both flags exist, with the spelling §4.2 already documented.
 
-   **This is also a live footgun, hit for real on 2026-07-20.** The script leaves
-   `dist/altairsim-<ver>/` and `dist/altairsim-<ver>.zip` behind, which look exactly like the
-   release and are not it — they hold whatever local `build/altairsim` existed when the script
-   ran. Patrick ran `dist/altairsim-0.2.0/altairsim`, got
-   `AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)`, and reasonably concluded the version fix
-   had been missed. It had not: the shipped archives report a bare `AltairSim 0.2.0`. The
-   stale directory was the pre-tag local build, arm64-only and dynamically linked against
-   Homebrew's SDL3.
+   `--target` takes `macos-arm64`, `macos-x86_64`, `linux-x86_64` or `windows-x86_64`, picks
+   `tar.gz` or `zip` from it, and **defaults to the detected host** so the bare invocation
+   still works. An unknown target is fatal. `--pdf` takes the coordinator's manual and skips
+   `build-docs.sh` entirely — verified that the tree's PDF is not touched and the packaged
+   copy is byte-identical to the file handed in. Without it the script still rebuilds, but
+   warns and names the local pandoc.
 
-   **The script's closing message points straight at it** (*"Now check the one thing that
-   matters… `cd dist/altairsim-<ver>`"*), so it actively directs you at the misleading copy.
-   `--target` mostly fixes this by itself — staging into `dist/altairsim-<ver>-<target>/`
-   self-documents — but the closing message needs to name what it is either way, and the
-   script should probably clear stale siblings when it runs.
-2. **`--pdf <file>`** so a machine can be handed a prebuilt manual instead of rebuilding it.
-   This is what keeps pandoc, Chrome and poppler off the three secondary machines, and it is
-   what makes the pandoc 3.6-vs-3.10 trap structurally impossible rather than merely known.
-3. **The SDL3 copy and the install-name fixups** — bundling plus `install_name_tool`/`@rpath`
-   on macOS, `$ORIGIN` on Linux, DLL-beside-exe on Windows. Nothing does this today, and
-   without it a packaged macOS binary starts on no machine but the one that built it.
-4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
-   other. Nothing produces checksums.
-5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
+   **The footgun is closed too.** Staging is now `dist/altairsim-<ver>-<target>/`, stale
+   `dist/altairsim-*` siblings are cleared on every run, and the closing message points at
+   the **archive** with §7's rule (unpack where `git rev-parse` fails) instead of directing
+   you into the staging copy.
+
+   **Still `/bin/sh`, deliberately** — on Windows it runs under Git Bash. A PowerShell sibling
+   was considered and declined: two parsers of `docs/package.map` would drift. Git Bash ships
+   no `zip`, so the `.zip` branch falls back `zip` → `Compress-Archive` → `bsdtar`.
+
+   **Only exercised on macOS/arm64.** Linux and Windows are unrun; the `.zip` fallback chain
+   in particular has never fired.
+2. ~~**The SDL3 copy and the install-name fixups**~~ — **moot under static linking, and that
+   is the point.** `DISTRIBUTION.md` §3.2 settled on `-DSDL_STATIC=ON`, which deletes this
+   item rather than doing it: no dylib to copy, no `install_name_tool`, no `@rpath`, no
+   `$ORIGIN`, no DLL beside the `.exe`. Confirmed on both macOS arches (arm64 §3.2; x86_64 on
+   the Intel Mac, 2026-07-20 — 4.7M self-contained, `otool -L` clean, 5426 `SDL_` symbols).
+   It comes back only if Linux or Windows cannot build SDL3 static, which is untested.
+3. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
+   other. Nothing produces checksums. **This is now the first of these left.**
+4. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
    *after* the packaging work: anyone who clones this repository should be able to run a
    single script (or `.bat` on Windows) and end up with a binary. No reading, no flags, no
    choosing a generator.
@@ -575,11 +577,20 @@ The mechanics that have to be decided, none of them settled:
   `.dylib` — `find_package(SDL3 CONFIG)` wants the framework's config, and the packaged
   layout becomes an embedded framework rather than a loose dylib. That is a build-glue
   question, not an architecture one.
-- **`package.map` gains the library**, since it is the only source of truth for package
-  contents — and `docs/manual/package.md` then has to name it, because the manual may only
-  name paths that ship.
-- **SDL3 is zlib-licensed**, so bundling it is straightforward; record its licence in the
-  package alongside `LICENSE` rather than treating it as a blocker.
+- ~~**`package.map` gains the library**~~ — **DONE 2026-07-20, and it gains only the
+  licence.** Under static linking there is no library file to ship, so what the map gained is
+  a single `FILE LICENSE-SDL3 <= LICENSE-SDL3` line; `docs/manual/package.md` names it, and
+  its "no dependencies" sentence was corrected — SDL3 *is* a dependency, it is simply
+  compiled in rather than beside.
+
+  **The licence text is SDL3 3.4.12's own**, copied verbatim from what
+  `tools/build-sdl3-static.sh` installs at `share/licenses/SDL3/LICENSE.txt` (884 bytes). If
+  the pin in that script moves, re-copy it.
+- ~~**SDL3 is zlib-licensed**~~ — done, per the above. Worth keeping the reason it stopped
+  being optional: zlib requires the notice to travel with the distribution, and while every
+  shipped binary was headless there was no SDL3 code in one. The Intel Mac built the first
+  binary with SDL3 statically inside it (2026-07-20), which turned this from a to-do into a
+  compliance item.
 - **Where SDL3 comes from — SETTLED 2026-07-20: each build machine maintains its own.**
   Installed natively (`brew install sdl3`, vcpkg, the distro package or a source build),
   exactly like the compiler. **Nothing is vendored into this repository** — no
@@ -844,6 +855,17 @@ though only two of the four: `examples/sol` and `examples/diskbasic` are not in
 it. Note the shape of the original failure before writing the fix: a *claimed*
 test is worse than a missing one, because it is the missing test plus the belief
 that you have it. This entry has now been the evidence for that twice.
+
+**The cheap half of this is worth doing first, and it is not the expensive half.**
+`docs-manual.cmake` is a pure **blacklist** — it checks the manual does not name
+anything *outside* the package, and it never reads `docs/package.map` at all. So
+the reverse drift is unguarded: **every `FILE`/`DIR` destination in the map should
+appear in `docs/manual/package.md`, and nothing in that chapter's manifest block
+should be absent from the map.** That is a text comparison of two files in the
+tree — no build, no packaging, no binary — and it would have caught `LICENSE-SDL3`
+being added to one and not the other, which is exactly the mistake that was
+available while doing it on 2026-07-20. The full "assemble and run the manual's
+commands" test still needs `build-package.sh` under a workflow; this does not.
 
 **And the manual's TRANSCRIPTS drift too, which is the half nobody is watching.**
 The demonstrated case, found and **fixed** 2026-07-19 in `docs/manual/tapes.md`:

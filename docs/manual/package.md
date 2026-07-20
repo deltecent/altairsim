@@ -1,15 +1,21 @@
 # What is in the package
 
 ```
-altairsim                the program. One file, no dependencies, nothing to install.
+altairsim                the program. One file, nothing to install.
 altairsim-manual.pdf     this.
 USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
 LICENSE                  the MIT licence this is published under.
+LICENSE-SDL3             the licence of SDL3, which is built into the program.
 examples/                four machines that boot, media included.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
 file you must write before the program will start.
+
+`altairsim` is a single self-contained program. The one outside library it uses — **SDL3**,
+which opens the window the video boards draw into — is compiled *into* it rather than shipped
+beside it, so there is nothing to install and nothing that can go missing. `LICENSE-SDL3` is
+that library's licence, and it is in the package because its code is in the program.
 
 The **Developer Guide** is not in here — it is a separate download from the same release page
 this came from, and you want it only if you intend to build a board of your own.

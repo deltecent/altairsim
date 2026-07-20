@@ -65,6 +65,13 @@ DIR  examples/diskbasic  <=  examples/diskbasic
 
 FILE  USING-ALTAIRSIM.md   <=  docs/USING-ALTAIRSIM.md
 FILE  LICENSE              <=  LICENSE
+FILE  LICENSE-SDL3         <=  LICENSE-SDL3
+
+# LICENSE-SDL3 is SDL3's zlib licence, and it ships because SDL3 is LINKED STATICALLY INTO
+# THE BINARY (DISTRIBUTION.md 3.2) -- the code is in there, so its licence belongs in here.
+# There is no library beside the program to point at; this file is the only notice the
+# package carries. It was harmless to omit while every shipped binary was headless, and it
+# stopped being harmless the moment one was not.
 
 # Disk BASIC WAS the TBD here, and it is now real (2026-07-19): an image, a machine file
 # and an acceptance test that reaches its OK prompt. The DIR line above is the two lines

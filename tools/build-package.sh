@@ -1,13 +1,19 @@
 #!/bin/sh
 #
-# Assemble the distribution: the zip we actually hand people.
+# Assemble the distribution: the archive we actually hand people.
 #
 #   altairsim                the program
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
 #   USING-ALTAIRSIM.md       the same machines, written for an AI assistant driving them over MCP
+#   LICENSE                  ours (MIT)
+#   LICENSE-SDL3             SDL3's, because SDL3 is linked STATICALLY INTO the program
 #   examples/cpm/            \
-#   examples/basic/           > the examples, each a self-contained folder: a machine file and
-#   examples/sol/            /  the media it mounts, lying beside it
+#   examples/basic/           \  the examples, each a self-contained folder: a machine file
+#   examples/sol/             /  and the media it mounts, lying beside it
+#   examples/diskbasic/      /
+#
+# ONE ARCHIVE, FOR ONE PLATFORM, BUILT ON THAT PLATFORM. --target names it and picks the
+# format; it does not cross-compile, because nothing here does. See DISTRIBUTION.md 1 and 4.2.
 #
 # THE CONTENTS COME FROM docs/package.map, and from nowhere else. That file is the single
 # source of truth for three things that would otherwise drift: the tokens the manual writes
@@ -22,28 +28,133 @@
 # PACKAGE rather than quietly shipping a folder with a machine file and no machine in it --
 # which would boot to a dead prompt and look like our bug.
 #
-#   usage: tools/build-package.sh [outdir]
+#   usage: tools/build-package.sh [--target <target>] [--pdf <file>] [outdir]
+#
+#     --target   macos-arm64 | macos-x86_64 | linux-x86_64 | windows-x86_64
+#                Names the archive and picks its format (.tar.gz, or .zip for Windows).
+#                DEFAULTS TO THIS HOST, which is right on all four machines: each one
+#                builds NATIVELY (DISTRIBUTION.md 4.3), so this is a naming and format
+#                choice and never cross-compilation.
+#     --pdf      Use THIS manual instead of rebuilding one. See below -- it is the flag
+#                that keeps four machines shipping the SAME document.
 
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-out=${1:-$root/dist}
 map=$root/docs/package.map
 
-sim=$root/build/altairsim
-[ -x "$sim" ] || { echo "build-package: $sim is not built. cmake --build build" >&2; exit 1; }
+target=""
+pdf=""
+out=""
+
+usage() {
+  cat <<'USAGE'
+usage: tools/build-package.sh [--target <target>] [--pdf <file>] [outdir]
+
+  --target   macos-arm64 | macos-x86_64 | linux-x86_64 | windows-x86_64
+             Names the archive and picks its format (.tar.gz, or .zip for Windows).
+             Defaults to this host.
+  --pdf      Use THIS manual instead of rebuilding one. Pass the manual the
+             coordinator built; see DISTRIBUTION.md 4.2 step 6.
+  outdir     Where to stage and write the archive. Default: dist/
+USAGE
+  exit "${1:-0}"
+}
+
+while [ $# -gt 0 ]; do
+  case $1 in
+    --target) [ $# -ge 2 ] || { echo "build-package: --target needs a value" >&2; exit 1; }
+              target=$2; shift 2 ;;
+    --pdf)    [ $# -ge 2 ] || { echo "build-package: --pdf needs a value" >&2; exit 1; }
+              # Check it HERE, not where it is used: by then the staging directory has been
+              # wiped and rebuilt, so a mistyped path costs a rebuild to discover.
+              [ -f "$2" ] || { echo "build-package: --pdf $2 does not exist" >&2; exit 1; }
+              pdf=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
+              shift 2 ;;
+    -h|--help) usage 0 ;;
+    -*)       echo "build-package: unknown option $1" >&2; usage 1 ;;
+    *)        [ -z "$out" ] || { echo "build-package: only one outdir, got '$out' and '$1'" >&2; exit 1; }
+              out=$1; shift ;;
+  esac
+done
+
+out=${out:-$root/dist}
+
+# WHICH TARGET, AND SO WHICH ARCHIVE FORMAT. A typo here would otherwise produce a
+# correctly-built package under a name nobody is looking for, uploaded to a release where
+# nothing checks it -- so an unknown target is fatal, not a warning.
+if [ -z "$target" ]; then
+  case "$(uname -s)" in
+    Darwin)  case "$(uname -m)" in
+               arm64)  target=macos-arm64 ;;
+               x86_64) target=macos-x86_64 ;;
+             esac ;;
+    Linux)   [ "$(uname -m)" = "x86_64" ] && target=linux-x86_64 ;;
+    MINGW*|MSYS*|CYGWIN*) target=windows-x86_64 ;;
+  esac
+  [ -n "$target" ] || {
+    echo "build-package: cannot tell what this host is ($(uname -s)/$(uname -m))." >&2
+    echo "Pass one explicitly: --target macos-arm64|macos-x86_64|linux-x86_64|windows-x86_64" >&2
+    exit 1
+  }
+fi
+
+case $target in
+  macos-arm64|macos-x86_64|linux-x86_64) ext=tar.gz ;;
+  windows-x86_64)                        ext=zip ;;
+  *) echo "build-package: unknown target '$target'" >&2
+     echo "It is one of: macos-arm64 macos-x86_64 linux-x86_64 windows-x86_64" >&2
+     exit 1 ;;
+esac
+
+# WHERE THE BINARY IS. MSVC's generator is multi-config and puts it under Release/, so the
+# plain build/altairsim that every Unix machine has is not universal. Probe rather than
+# assume -- and do NOT test -x on the Windows paths, where the execute bit means nothing.
+sim=""
+for cand in "$root/build/altairsim" "$root/build/Release/altairsim.exe" "$root/build/altairsim.exe"; do
+  case $cand in
+    *.exe) [ -f "$cand" ] && { sim=$cand; break; } ;;
+    *)     [ -x "$cand" ] && { sim=$cand; break; } ;;
+  esac
+done
+[ -n "$sim" ] || {
+  echo "build-package: no built binary under $root/build. cmake --build build --config Release" >&2
+  exit 1
+}
 
 ver=$("$sim" --version | awk '{print $2}')
-pkg=$out/altairsim-$ver
-rm -rf "$pkg"
+pkg=$out/altairsim-$ver-$target
+
+# CLEAR STALE SIBLINGS. A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever
+# build/altairsim existed THEN -- and it looks exactly like the release. That is not
+# hypothetical: on 2026-07-20 a stale pre-tag staging directory reported
+# "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read as a version bug in the shipped
+# archives, which were correct. The target suffix makes the directory self-documenting; this
+# makes sure it is also the only one here.
+rm -rf "$out"/altairsim-*
 mkdir -p "$pkg"
 
 cp "$sim" "$pkg/"
 
 # The manual. It is a DELIVERABLE, not an optional extra -- a package without it is a binary
 # and a pile of disk images, and nobody can tell what to do with those.
-"$root/tools/build-docs.sh" "$root/docs" > /dev/null
-cp "$root/docs/altairsim-manual.pdf" "$pkg/"
+#
+# HAND IT IN (--pdf) FOR A RELEASE. The coordinator builds this document ONCE and gives the
+# same file to all four machines. Rebuilding it here instead means each machine's local
+# toolchain decides what ships: pandoc's HTML is the paginator's input, docs.yml PINS pandoc
+# at 3.6, Homebrew ships 3.10, and A DIFFERENT PANDOC IS A DIFFERENT DOCUMENT. v0.2.0 hit
+# exactly this and was fixed by restoring CI's PDF over this script's output. The flag is
+# also what keeps pandoc, a Chromium and poppler off the three secondary machines entirely.
+if [ -n "$pdf" ]; then
+  cp "$pdf" "$pkg/altairsim-manual.pdf"
+else
+  echo "build-package: WARNING -- rebuilding the manual with the LOCAL toolchain." >&2
+  echo "  $(pandoc --version 2>/dev/null | head -1 || echo 'pandoc: not found')" >&2
+  echo "  docs.yml pins pandoc 3.6, and a different pandoc is a different document." >&2
+  echo "  For a RELEASE, pass --pdf with the manual the coordinator built." >&2
+  "$root/tools/build-docs.sh" "$root/docs" > /dev/null
+  cp "$root/docs/altairsim-manual.pdf" "$pkg/"
+fi
 
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.
 
@@ -146,10 +257,43 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
+name=altairsim-$ver-$target
+archive=$out/$name.$ext
+
 echo
-echo "build-package: $pkg"
-( cd "$out" && zip -qr "altairsim-$ver.zip" "altairsim-$ver" )
-echo "build-package: $out/altairsim-$ver.zip"
+echo "build-package: staged $pkg"
+
+# tar.gz everywhere but Windows. WINDOWS HAS NO `zip`: Git Bash does not ship one, so the
+# obvious command is the one that is missing on the one platform that needs this branch.
+# Windows 10 1803+ does ship tar.exe (bsdtar), whose -a picks the format from the suffix,
+# and PowerShell has Compress-Archive. Try all three rather than rest on any one.
+if [ "$ext" = "zip" ]; then
+  if command -v zip > /dev/null 2>&1; then
+    ( cd "$out" && zip -qr "$name.zip" "$name" )
+  elif command -v powershell.exe > /dev/null 2>&1; then
+    ( cd "$out" && powershell.exe -NoProfile -Command \
+        "Compress-Archive -Path '$name' -DestinationPath '$name.zip' -Force" )
+  elif tar --version 2>/dev/null | grep -qi bsdtar; then
+    ( cd "$out" && tar -a -cf "$name.zip" "$name" )
+  else
+    echo "build-package: no zip, no powershell.exe, no bsdtar -- cannot make a .zip" >&2
+    exit 1
+  fi
+else
+  ( cd "$out" && tar czf "$name.tar.gz" "$name" )
+fi
+
+[ -f "$archive" ] || { echo "build-package: $archive was not created" >&2; exit 1; }
+
+echo "build-package: $archive"
 echo
-echo "Now check the one thing that matters, from OUTSIDE the repository:"
-echo "    cd $pkg && ./altairsim examples/cpm/cpm22-buffered.toml"
+# POINT AT THE ARCHIVE, NOT THE STAGING DIRECTORY. This message used to name $pkg, which is
+# the copy that is NOT shipped -- and being told to cd into it is how a stale build gets
+# mistaken for the release. The archive is the artifact; prove that.
+echo "Now prove it, from OUTSIDE the repository -- somewhere \`git rev-parse\` FAILS:"
+case $ext in
+  tar.gz) echo "    tar xzf $archive -C /tmp && cd /tmp/$name" ;;
+  zip)    echo "    unzip $archive -d /tmp && cd /tmp/$name" ;;
+esac
+echo "    ./altairsim --version                            # a bare 'AltairSim $ver'"
+echo "    ./altairsim examples/cpm/cpm22-buffered.toml     # CP/M reaches A>"

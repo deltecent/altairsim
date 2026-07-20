@@ -50,7 +50,7 @@ examples/sol/                         a Sol-20 with TREK80
 examples/diskbasic/                   Altair Disk BASIC 4.1
 ```
 
-**Added by the SDL3 work, and NOT PRESENT YET:**
+**Added by the SDL3 work** (2026-07-20):
 
 ```
 LICENSE-SDL3                          SDL3's zlib licence
@@ -153,7 +153,9 @@ SDL3 for that platform
 git, and gh authenticated against the repository
 ```
 
-**That is the whole list. No pandoc, no Chrome, no poppler.** The manual PDF is built once by the coordinator and handed to the others, so `build-package.sh` is invoked with `--pdf` rather than being allowed to rebuild it. This is not a convenience: `build-package.sh` currently calls `build-docs.sh` unconditionally, which needs **pandoc pinned at 3.6** (Homebrew ships 3.10, and a different pandoc is a different document), a Chromium browser as the paginator, and `pdffonts` for the font check. Four machines rebuilding it independently means four subtly different manuals in four packages.
+**That is the whole list. No pandoc, no Chrome, no poppler.** The manual PDF is built once by the coordinator and handed to the others, so `build-package.sh` is invoked with `--pdf` rather than being allowed to rebuild it. This is not a convenience: **without `--pdf` the script calls `build-docs.sh`**, which needs **pandoc pinned at 3.6** (Homebrew ships 3.10, and a different pandoc is a different document), a Chromium browser as the paginator, and `pdffonts` for the font check. Four machines rebuilding it independently means four subtly different manuals in four packages. With `--pdf` none of that runs, and the packaged PDF is byte-identical to the one handed in — **the script warns loudly on the rebuild path**, which only the coordinator should ever take.
+
+**On Windows, add Git Bash** — `build-package.sh` is `/bin/sh` and is not being duplicated in PowerShell, because two parsers of `docs/package.map` would drift. Git for Windows supplies it, and the box needs Git to clone this anyway.
 
 ### 4.2 The seven steps, on every machine
 
@@ -212,7 +214,7 @@ and not another.
 
 **Linux.** Build on the **oldest glibc you can reasonably get** — a container or an older VM. A binary and a `.so` built on current Ubuntu will refuse to start on an older distro, and this is the one target where the choice of build host decides who can run the result. Everywhere else the host is incidental.
 
-**Windows.** Steps run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe`. And **Windows has no `zip`** — archiving is `Compress-Archive`. See §4.4, because the toolchain changes more than the paths.
+**Windows.** Steps 1–5 run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe` — **the script probes for it**, so step 6 needs no extra flag. **Step 6 runs in Git Bash**, not PowerShell, because the script is `/bin/sh`. **Windows has no `zip`** and Git Bash ships none; the script falls back to `Compress-Archive`, then to `bsdtar` (`tar.exe`, present since Windows 10 1803). **Which of the three actually fires here has never been observed** — report it. See §4.4, because the toolchain changes more than the paths.
 
 ### 4.4 Windows: MSVC, and only MSVC
 
@@ -355,8 +357,8 @@ Then **open a window**: run `altairsim sol20` or `altairsim vdm1` and confirm on
 Stated plainly, because a design document that describes a process nobody has automated should not read as though it has been.
 
 - **No workflow runs `tools/build-package.sh`.** It is invoked by hand, by a person, on four machines.
-- **`build-package.sh` does not yet take `--target` or `--pdf`.** It always emits `altairsim-<ver>.zip` from whatever `build/altairsim` happens to be, and always rebuilds the manual. Both flags in §4.2 are described here before they exist; adding them is the first piece of work this document implies. It also assumes `zip` and is `/bin/sh`, so Windows needs a `Compress-Archive` path.
-- **Nothing copies SDL3 into the package or fixes the install names.** §3.2 is a manual procedure today.
+- ~~**`build-package.sh` does not yet take `--target` or `--pdf`.**~~ **Both exist now** (2026-07-20). `--target` names the archive and picks its format (`.tar.gz`, `.zip` for Windows), defaulting to the detected host; `--pdf` takes the coordinator's manual and skips `build-docs.sh` entirely, so pandoc never runs on a secondary machine. Staging moved to `dist/altairsim-<ver>-<target>/`, and the script clears stale siblings — the un-suffixed directory was the footgun §7 warns about. It is still `/bin/sh`: **on Windows it runs under Git Bash**, and the `.zip` branch falls back from `zip` to `Compress-Archive` to `bsdtar`, because Git Bash ships no `zip`. **None of this has run on Windows or Linux yet** — only macOS/arm64.
+- **Nothing copies SDL3 into the package or fixes the install names — and under §3.2 there is nothing to copy.** Static linking is the answer precisely because it deletes this step: no dylib, no `install_name_tool`, no `@rpath`. This bullet stands only for the dynamic fallback in §3.2's table, which no machine uses today.
 - **Nothing produces `SHA256SUMS`.**
 - **Nothing assembles the package and runs the manual's own commands against it.** `docs/package.map`'s own header says so, and names a `tests/acceptance/manual.cmake` that has never existed — a claimed test being worse than a missing one.
 - **Nothing has ever run a shipped `.exe` on a clean Windows box.**
