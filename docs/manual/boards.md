@@ -310,7 +310,23 @@ draws 128 glyphs from a real character ROM, not 256.
 Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo that draws on it, and
 **`cuter`**, which runs the period CUTER monitor with its own built-in VDM-1 driver.
 
----
+### The window is live while a program runs
+
+The display is serviced by the running machine, so **a stopped machine's window does not redraw
+and does not answer its close button.** This surprises people in three places, and they are all
+the same fact:
+
+- **`vdm1`'s demo halts once it has drawn.** That is the point — it draws the banner and stops —
+  but it means the window you are looking at belongs to a stopped machine. Its **close button will
+  not work**, and there is no way to close it from the window itself. **`QUIT` at the monitor
+  prompt closes it and exits**, which is the way out.
+- **A change like `SET vdm0 video=reverse` does not appear** until you `RUN` again.
+- **The cursor does not blink** while the machine is stopped. To watch it blink, use `sol20`,
+  whose SOLOS sits in a loop rather than halting.
+
+Closing the window of a **running** machine is not the same as quitting: it stops the guest and
+gives you the monitor prompt, leaving the machine exactly where it was and the window on screen.
+`RUN` goes back into it; `QUIT` exits.
 
 ## `sol` — Processor Technology Sol-PC
 

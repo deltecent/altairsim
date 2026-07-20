@@ -280,6 +280,10 @@ monitor prompt — nothing drains the SDL event queue and nothing redraws.
 a remark about the demo; it is in fact the exact scope of the event pump, and nothing says so
 where somebody would look for it.
 
+**The manual now warns about it** (`docs/manual/boards.md`, the VDM-1 section): the three
+symptoms are named as one fact, and `QUIT` is given as the way out of an uncloseable window —
+verified, exit 0, no hang. That is a warning, not a fix, and the entry stays open.
+
 **Whether to fix it is a design question, not a defect report** — the display seam is
 deliberately driven by the run loop (`DESIGN.md`), and pumping events from the monitor prompt
 means deciding what a stopped machine's window *is*. But the uncloseable window is a trap
