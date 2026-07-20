@@ -122,7 +122,12 @@ done
   exit 1
 }
 
-ver=$("$sim" --version | awk '{print $2}')
+# STRIP CR, OR WINDOWS PUTS ONE IN EVERY FILENAME BELOW. MSVC opens stdout in TEXT MODE, so
+# the .exe emits "AltairSim 0.2.0\r\n" -- and awk's default field separator is [ \t\n], which
+# does NOT include \r. So $2 would be "0.2.0<CR>", and that CR would land in the staging
+# directory name, the archive name, and the version echoed in the closing message. A no-op
+# everywhere else: there are no carriage returns in this output on Unix.
+ver=$("$sim" --version | tr -d '\r' | awk '{print $2}')
 
 # CLEAR STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
 #
@@ -378,5 +383,7 @@ case $ext in
   tar.gz) echo "    tar xzf $archive -C /tmp && cd /tmp/$name" ;;
   zip)    echo "    unzip $archive -d /tmp && cd /tmp/$name" ;;
 esac
-echo "    ./altairsim --version                            # a bare 'AltairSim $ver'"
-echo "    ./altairsim examples/cpm/cpm22-buffered.toml     # CP/M reaches A>"
+# Name the binary the reader actually has: altairsim.exe on Windows, altairsim elsewhere.
+# A runbook that says ./altairsim on a machine holding altairsim.exe reads as a broken package.
+echo "    ./$(basename "$sim") --version                            # a bare 'AltairSim $ver'"
+echo "    ./$(basename "$sim") examples/cpm/cpm22-buffered.toml     # CP/M reaches A>"
