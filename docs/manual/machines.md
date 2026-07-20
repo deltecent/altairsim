@@ -70,7 +70,7 @@ If you name **nothing at all**, and the working directory contains a file called
 
 ```
 $ altairsim
-altairsim 0.1.0 (v0.1.0-37-gcc64cca) -- 8080, full speed.
+AltairSim 0.1.0-37-gcc64cca -- 8080, full speed.
 machine: ./altairsim.toml
 altairsim>
 ```

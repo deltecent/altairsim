@@ -710,6 +710,10 @@ add_test(NAME acceptance-eberhard-roms
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/eberhard-roms.cmake)
 set_tests_properties(acceptance-eberhard-roms PROPERTIES LABELS acceptance TIMEOUT 120)
 
+# ...and the half that TYPES is a pty test, registered further down with the other
+# expect ones. That split is not organisational: a pipe hands the guest keystrokes it
+# has not asked for, which mangles a command line whenever the host wins the race.
+
 # ---------------------------------------------------------------------------
 # THE MANUAL'S REFERENCE MAY NOT DRIFT FROM THE BINARY.
 #
@@ -845,6 +849,23 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/2sio-echo.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-2sio-echo PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE EBERHARD MONITORS, ANSWERING. `amon` and `acuter` are asked to dump their own
+  # first bytes, which is what proves the image is at the address the machine file put
+  # it and that the console is on the port the firmware talks to.
+  #
+  # It is here rather than in eberhard-roms.cmake because it TYPES, and typing down a
+  # pipe races the guest's receive register -- see the header of the .exp file, which
+  # records the CI failure that moved it.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-eberhard-typed
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/eberhard-roms.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-eberhard-typed PROPERTIES
                        LABELS acceptance TIMEOUT 120
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

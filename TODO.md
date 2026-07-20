@@ -126,12 +126,23 @@ one `FILE` line, verified byte-identical in a built zip.
   removed. `cdbl` is written as `base = "default"` with one region changed, because
   that is exactly what it is.
 
-  Backed by `acceptance-eberhard-roms`, which RUNS all three — `test_machines.cpp`
-  proves a built-in loads, and a config can parse perfectly with the ROM at the
-  wrong address or the console on a port the firmware never reads. It checks
-  AMON's `RAM: DF00` line (the guest measuring the memory card), a dump of
-  ACUTER's own first bytes rather than its bare `>` prompt, and CP/M booting off
-  the tracked 8″ image.
+  Backed by two acceptance tests, because `test_machines.cpp` proving a built-in
+  loads cannot tell you the ROM is at the address its firmware expects or that the
+  console is on the port it talks to. `acceptance-eberhard-roms` (a pipe) checks
+  only what each machine says unprompted — AMON's `RAM: DF00`, which is the guest
+  measuring the memory card, and CP/M booting off the tracked 8″ image.
+  `acceptance-eberhard-typed` (expect, a pty) asks AMON and ACUTER to dump their
+  own first bytes.
+
+  **The split is the finding, and CI found it.** The first version piped the
+  keystrokes and was FLAKY — 4 runs in 40 here once I went looking, and one red
+  macOS leg. Keystrokes down a pipe are in the console buffer before the guest is
+  switched on and clock into the 6850's one-byte receive register at 9600 baud
+  whether or not it has read the last one, so a command typed at a monitor that is
+  still doing its startup RAM scan arrives mangled and AMON answers `?`. No amount
+  of padding fixes that; waiting for the prompt does, which is what a pty is for.
+  Passing locally was luck, and the mutation test I did run (shrink the RAM,
+  watch it fail) could not have caught it.
 
 ### Debugger and monitor
 
