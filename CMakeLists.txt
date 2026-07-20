@@ -317,8 +317,17 @@ target_include_directories(altair_core PUBLIC src "${CMAKE_BINARY_DIR}/generated
 # docs/devguide/ for how to install SDL3.
 #
 # ALTAIRSIM_ENABLE_SDL is ON by default (= "use SDL3 if it is here"); set it OFF to
-# force a headless build even where SDL3 is installed (the CI macOS-universal leg
-# does this -- a Homebrew SDL3 is single-arch and will not link into a fat binary).
+# force a headless build even where SDL3 is installed. That is what a macOS UNIVERSAL
+# build needs *against a Homebrew SDL3*, which is single-arch (arm64) and will not link
+# into a fat binary. It is NOT a limit of SDL3: upstream's SDL3.xcframework carries a
+# macos-arm64_x86_64 slice that is genuinely universal, so a universal windowed build is
+# possible -- link that rather than brew's dylib. See TODO.md.
+#
+# NO CI LEG INSTALLS SDL3, so every CI binary takes the not-found path and is headless.
+# This comment used to say the macOS leg passed the flag; it never has, and it does not
+# need to. The consequence is not free and is tracked in TODO.md: nothing anywhere
+# compiles display_sdl.cpp, so a change that breaks it goes green on all three
+# platforms, and every DISTRIBUTED binary to date can open no window.
 #
 # ONLY src/host/display_sdl.cpp includes SDL. The boards see host/display.h and
 # never learn a window exists, so they compile in every configuration; only this

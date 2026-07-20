@@ -78,8 +78,10 @@ The configure step reports which backend it chose:
 
 CMake auto-detects with `find_package(SDL3 CONFIG)`; found → it compiles `src/host/display_sdl.cpp`,
 links `SDL3::SDL3`, and defines `ALTAIRSIM_ENABLE_SDL`. Force a headless build even where SDL3 is
-installed with **`-DALTAIRSIM_ENABLE_SDL=OFF`** — the CI macOS-universal leg does this, because a
-Homebrew SDL3 is single-arch and cannot link into the `x86_64;arm64` fat binary. Only
+installed with **`-DALTAIRSIM_ENABLE_SDL=OFF`**. That flag is what a macOS *universal* build
+needs, because a Homebrew SDL3 is single-arch and cannot link into an `x86_64;arm64` fat binary.
+**CI does not pass it, and does not need to: no CI leg installs SDL3 at all**, so every runner
+takes the not-found path above and builds headless. Only
 `display_sdl.cpp` and the composition root (`src/main.cpp`) are macro-gated; the boards themselves
 `#include` no SDL and compile in every configuration. Then:
 

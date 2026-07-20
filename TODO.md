@@ -78,6 +78,38 @@ Two things that by-hand run learned, and that an automated one must handle:
 The archive's missing `LICENSE` was the sub-item here and is fixed (2026-07-19):
 one `FILE` line, verified byte-identical in a built zip.
 
+### Every distributed binary is headless, and nothing compiles `display_sdl.cpp`
+
+**Found 2026-07-20, cutting v0.2.0.** `ALTAIRSIM_ENABLE_SDL` defaults to `ON`, which
+means *"use SDL3 if it is here"* — and on a CI runner it is not here. **No workflow
+installs SDL3**; `grep -i sdl .github/workflows/` returns nothing. So
+`find_package(SDL3 CONFIG QUIET)` fails on every leg and every CI binary is built
+against the `NullDisplay`.
+
+**Verified against the published v0.2.0 archives, not the build tree:** `otool -L` on
+the macOS binary links no SDL, and `strings` finds neither `libSDL3` nor
+`SDL_CreateWindow` in any of the three. So the video window — which the manual
+documents at length, and which v0.2.0's own release notes lead on — **cannot be
+opened from any binary this project has ever shipped.** `altairsim sol20` from the
+release runs, and draws nowhere.
+
+Two distinct problems live here, and they want different fixes:
+
+1. **Nothing anywhere compiles `display_sdl.cpp`.** It is macro-gated out of all three
+   CI legs, so a change that breaks it is green on every platform. That is a test-coverage
+   hole as much as a packaging one, and it is the cheaper half to close: one leg with SDL3
+   installed would do it.
+2. **The shipped product has no video.** That is the packaging half — see *All distributed
+   packages must ship with SDL3* under Features.
+
+**The drift that hid this is fixed in the same commit.** `CMakeLists.txt` and
+`docs/devguide/building.md` both stated that the CI macOS-universal leg passes
+`-DALTAIRSIM_ENABLE_SDL=OFF`. **It never has.** The reasoning behind the flag is sound —
+a Homebrew SDL3 is single-arch and will not link into an `x86_64;arm64` fat binary — but
+attributing it to a guard that does not exist made the headless build look deliberate and
+bounded to macOS, when it is in fact incidental and universal. Both comments now say what
+is true, and name the consequence.
+
 ---
 
 ## Features
@@ -394,6 +426,99 @@ Both directions are open, and they are genuinely different bets:
 says that if a chapter grows big enough to need finding-by-subsection, the answer
 is to split the chapter. Whichever way this goes, that comment is now stale and
 gets rewritten with it, or the next person reads it as settled.
+
+#### All distributed packages must ship with SDL3
+
+**Patrick, 2026-07-20.** Every distributed package is to contain the SDL3 library, for
+all three (or four) operating systems, so that the video boards open a real window out
+of the box. Today none of them do — see *Every distributed binary is headless* under
+Bugs.
+
+**This does not have to happen on GitHub, and does not have to happen in CI.** The
+packages carrying SDL3 are for distribution on **altairsim.com**; if the only way to get
+them is to build each platform locally, that is acceptable and is the instruction. What
+matters is that a package can be **built and packaged locally for every target**, not
+that a workflow does it.
+
+That reframes the release story rather than extending it. `build-package.sh` currently
+assembles one tree and takes whatever `build/altairsim` happens to be; v0.2.0 then had
+each platform's CI binary swapped in by hand. Shipping SDL3 means each platform's package
+has to come from a machine that *has* SDL3 for that platform, so the binary and its
+library travel together.
+
+The mechanics that have to be decided, none of them settled:
+
+- **Linking and layout.** Static SDL3, or dynamic with the library beside the binary? If
+  dynamic: `SDL3.dll` next to the `.exe` on Windows; a bundled `.dylib` with an `@rpath`
+  that survives being unzipped anywhere on macOS; a `.so` plus `$ORIGIN` on Linux. This is
+  the part that most often ships "working on the machine that built it" — and this tree is
+  already in that state. A local macOS build links
+  `/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` **by absolute path**, so zipping today's
+  `build/altairsim` and handing it to anyone without that exact Homebrew prefix produces a
+  binary that will not start. Bundling the dylib and rewriting the install name
+  (`install_name_tool`, `@rpath`/`@executable_path`) is mandatory, not a refinement.
+- **macOS universal is the hard one, and it is measured, not assumed.** Homebrew's SDL3 is
+  `arm64` only — `lipo -archs /opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` says exactly
+  that, which is the whole reason `-DALTAIRSIM_ENABLE_SDL=OFF` exists. So a windowed macOS
+  build today is Apple Silicon only. Either build SDL3 from source as a fat binary and link
+  that, or stop shipping one universal package and ship `x86_64` and `arm64` separately.
+  Worth deciding early — it is the difference between three packages and four.
+- **The fourth would be the macOS split** (Patrick, 2026-07-20): Intel and Apple Silicon as
+  separate packages rather than one universal build — *if* it turned out to be forced.
+
+  **IT IS NOT FORCED. Checked 2026-07-20, so there are three packages, not four.** What was
+  ever measured is only that *Homebrew's* SDL3 is `arm64`-only, which is a fact about brew
+  and not about SDL3 or about fat binaries. SDL upstream's own macOS release
+  (`SDL3-<ver>.dmg`, from `libsdl-org/SDL`) ships an **`SDL3.xcframework` whose
+  `macos-arm64_x86_64` slice is genuinely universal** — verified with
+  `lipo -archs …/SDL3.framework/Versions/A/SDL3` → `x86_64 arm64`. Link that instead of
+  brew's and a universal `altairsim` keeps its window on both architectures.
+
+  So macOS stays **one** universal package. Building SDL3 from source with
+  `-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"` is the fallback if the framework proves
+  awkward to consume, but it should not be needed.
+
+  Note the knock-on: consuming a `.framework` is not the same as consuming brew's
+  `.dylib` — `find_package(SDL3 CONFIG)` wants the framework's config, and the packaged
+  layout becomes an embedded framework rather than a loose dylib. That is a build-glue
+  question, not an architecture one.
+- **`package.map` gains the library**, since it is the only source of truth for package
+  contents — and `docs/manual/package.md` then has to name it, because the manual may only
+  name paths that ship.
+- **SDL3 is zlib-licensed**, so bundling it is straightforward; record its licence in the
+  package alongside `LICENSE` rather than treating it as a blocker.
+- **Where SDL3 itself comes from — fetched, or built and tracked?** Patrick asked
+  (2026-07-20) whether to build SDL3 from source into an untracked directory in the repo
+  and track only the resulting libraries. Both halves are workable; the second is the one
+  to think about.
+
+  Measured sizes, 3.4.12: macOS universal framework binary **5.0M**, Windows x64
+  `SDL3.dll` **2.7M**, Linux `.so` ~3M — call it **~11M per SDL3 version**, against a
+  67M `.git` today. Tracking is *permanent and compounding*: every version bump adds
+  another copy that cannot be reclaimed, and `.gitignore`'s own header records that
+  vendor binaries were "burned into this repo's history twice already".
+
+  **One machine cannot build all of them regardless.** A universal macOS dylib needs a
+  Mac; a Linux `.so` that runs on more than the builder's distro needs an old-glibc
+  baseline (a container); Windows needs MSVC or mingw. So "build them here" means "build
+  each on its own machine and commit three artifacts", which is a workflow question as
+  much as a storage one.
+
+  **The repo already has the other pattern**, twice: `tools/fetch-disk-images.sh` and
+  `tools/fetch-ci-binaries.sh`. A `tools/fetch-sdl3.sh` pulling upstream's official
+  prebuilts into an untracked `third_party/sdl3/`, checksum-verified, keeps git history
+  flat and costs one command on a fresh clone. Upstream ships macOS universal and all
+  three Windows arches already; **only Linux has no official prebuilt**, so that is the
+  single platform actually needing a from-source build.
+
+  **The trade to settle:** fetching needs the network once, tracking does not. If
+  local packaging must work genuinely offline, track them — but pin one SDL3 version,
+  bump rarely, and un-ignore each file explicitly, the way the `.dsk` images already are
+  (`.gitignore:91`, `:116`). Otherwise fetch.
+
+**Prerequisite, and it is the honest ordering:** nothing currently proves `display_sdl.cpp`
+even compiles (Bugs, above), and the Windows+SDL3 recipe is not written down (next item).
+Both of those are in the way of building these packages by hand repeatably.
 
 #### The developer guide is thin on building under Windows with SDL3
 
