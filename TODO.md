@@ -1214,6 +1214,22 @@ change outside that task. Empty-means-absent is the bug: an empty dirname and no
 machine file are different answers — the same shape as the `read() == 0` bug in
 issue #25, where a quiet tty and an ended pipe shared one value.
 
+### `terminal-hw` fails under `ctest` on Windows — it should skip when stdout is redirected
+
+Found on the bare-machine Windows build, 2026-07-20. `terminal-hw`
+(`src/platform/win32/terminaltest_win32.cpp`) decides whether to skip (exit 77) by checking
+**stdin only** (`:58`, `if (!stdinIsTty())`). But `ctest` captures a child's stdout through a
+pipe, so under `ctest` stdin is the console while **stdout is not** — the skip path is not
+taken, the suite runs, and the `CHECK(stdoutIsTty())` at `:84` fails. The other 14 checks pass,
+and running the executable directly (`.\build\Release\altair_terminaltest.exe`) gives a clean
+15/0. So the terminal layer is fine; the **test** reports a spurious failure on the documented
+`ctest -LE slow` cadence, on every Windows run.
+
+The fix is to make the skip decision account for stdout too: if a real console cannot be taken
+for **both** streams (open `CONIN$`/`CONOUT$`, else `AllocConsole`), skip rather than run half a
+suite against a pipe. `docs/building-windows.md` §5 now documents the artifact and the direct-run
+workaround; this closes it properly. Low priority — it misreads as a failure but hides nothing.
+
 ### Eleven tests do not run on Windows
 
 `CMakeLists.txt:687-688` gates eleven tests on `find_program(EXPECT_EXECUTABLE

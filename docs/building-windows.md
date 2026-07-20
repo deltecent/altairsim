@@ -19,6 +19,11 @@ all the write bits. §6 still describes the fast-loop for the next win32 issue.
 There are **no third-party dependencies** — the binary links only against the
 system C/C++ runtime and `ws2_32` (Winsock).
 
+**A clean Windows 10 22H2 was taken from nothing to a working build on 2026-07-20** — MSVC Build
+Tools, CMake/Ninja and Git installed with only `curl.exe`, then `altairsim` built from a plain
+PowerShell and the suite run. That walk-through, with the commands and the traps a bare machine
+actually has, is **§1.1**.
+
 ---
 
 ## 1. Prerequisites
@@ -53,6 +58,90 @@ Optionally install the **GitHub CLI** (`winget install GitHub.cli`) for `gh`.
 | C++20 compiler | MSVC v143 (VS 2022) | Desktop development with C++ |
 | CMake | ≥ 3.20 | bundled with that workload |
 | git | any | Git for Windows |
+
+### 1.1 From a bare machine, scripted — the reproducible route
+
+**Proven end to end on a clean Windows 10 22H2 (build 19045), 2026-07-20.** The GUI installer
+above works, but a machine set up by clicking is not reproducible and the next person cannot
+tell what you did. This route uses only what a fresh Windows already has, and every step is a
+command. **Run these in a normal Windows PowerShell** unless a step says otherwise.
+
+**First, what a clean Windows 10 actually ships with — and does not:**
+
+```powershell
+[System.Environment]::OSVersion.Version                       # 10.0.19045.0
+(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').DisplayVersion   # 22H2
+Get-Command curl.exe, tar.exe -ErrorAction SilentlyContinue   # BOTH present, in System32
+Get-Command winget            -ErrorAction SilentlyContinue   # may be ABSENT on a fresh image
+```
+
+`curl.exe` and `tar.exe` have shipped in `System32` since Windows 10 1803, so they are there.
+**`winget` is not guaranteed** — on this clean 22H2 image it was absent — so do **not** build the
+setup around `winget install`. `curl.exe` is the dependable fetcher.
+
+**The MSVC Build Tools — install elevated, unattended.** The installer writes under Program
+Files, so it needs administrator rights: open **Windows PowerShell as administrator** for this
+one step (the plain 64-bit console — not x86, not ISE).
+
+```powershell
+curl.exe -L -o "$env:TEMP\vs_BuildTools.exe" https://aka.ms/vs/17/release/vs_BuildTools.exe
+Start-Process "$env:TEMP\vs_BuildTools.exe" -Wait -ArgumentList `
+  '--quiet','--wait','--norestart', `
+  '--add','Microsoft.VisualStudio.Workload.VCTools', `
+  '--add','Microsoft.VisualStudio.Component.VC.CMake.Project', `
+  '--includeRecommended'
+"exit: $LASTEXITCODE"    # 0 or 3010 = success
+```
+
+`Workload.VCTools` is the C++ compiler and Windows SDK; `VC.CMake.Project` bundles CMake **and**
+Ninja. It is a multi-GB download and installs silently for several minutes — `Start-Process
+-Wait` blocks until it is genuinely done. Verify it landed (nothing is put on `PATH`, so `where
+cl` will fail — that is expected, and §1.1's next step fixes it):
+
+```powershell
+$vsw = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vs  = & $vsw -products * -latest -property installationPath
+"$vs"                                                    # ...\2022\BuildTools
+Get-ChildItem "$vs\VC\Tools\MSVC" | Select-Object Name  # e.g. 14.44.35207
+```
+
+**Put CMake and Ninja on your PATH — the step the GUI docs skip.** Build Tools installs them
+under the VS tree, not on `PATH`, so a plain shell cannot invoke `cmake` until you add them. Do
+it once, persistently (user scope — no admin needed):
+
+```powershell
+$mk = "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake"
+$u  = [Environment]::GetEnvironmentVariable('Path','User'); if (-not $u) { $u = '' }
+foreach ($d in @("$mk\CMake\bin", "$mk\Ninja")) {
+  if (($u -split ';') -notcontains $d) { $u = ($u.TrimEnd(';') + ';' + $d) }
+}
+[Environment]::SetEnvironmentVariable('Path', $u.TrimStart(';'), 'User')
+```
+
+**Open a new PowerShell** (so it picks up the new PATH), then confirm — no Developer shell, no
+`vcvars`:
+
+```powershell
+cmake --version    # 3.31.x-msvc...
+ninja --version    # 1.12.x
+```
+
+**Git for Windows — also scriptable, no `winget`.** This lands `git` *and* Git Bash (the latter
+is needed later for `tools/build-package.sh`). Fetch the current 64-bit installer straight from
+the project's releases and install it silently (run this elevated too):
+
+```powershell
+$rel = curl.exe -sL https://api.github.com/repos/git-for-windows/git/releases/latest | ConvertFrom-Json
+$url = ($rel.assets | Where-Object { $_.name -match '64-bit\.exe$' -and $_.name -notmatch 'Portable|Mini|arm' }).browser_download_url
+curl.exe -L -o "$env:TEMP\git.exe" $url
+Start-Process "$env:TEMP\git.exe" -Wait -ArgumentList '/VERYSILENT','/NORESTART','/SP-','/SUPPRESSMSGBOXES','/NOCANCEL'
+```
+
+In a new shell, `git --version` should answer.
+
+**That is the whole toolchain.** Clone and build with §2 — the plain-PowerShell VS-generator
+path there is **confirmed** to find MSVC on this exact setup with no Developer shell (§6,
+approach A).
 
 ---
 
@@ -165,9 +254,35 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
   ctest --test-dir build -C Release -L hw --output-on-failure
   ```
 
+  **`terminal-hw` will show as *Failed* under `ctest`, and that is a test-harness
+  artifact, not a layer bug** (observed 2026-07-20). `ctest` captures a child's stdout
+  through a pipe, so `stdoutIsTty()` is false — and the test's skip logic keys only on
+  *stdin*, so with a console stdin but a piped stdout it runs the suite and fails the one
+  `stdoutIsTty()` check (the other 14 pass). Run the executable **directly**, with stdout
+  on the real console, to see the true result:
+
+  ```powershell
+  .\build\Release\altair_terminaltest.exe    # 15 checks, 0 failed, exit 0
+  ```
+
+  So on a routine `ctest --test-dir build -C Release -LE slow`, expect `terminal-hw`
+  reported failed; confirm the layer with the direct run above. Making the test *skip*
+  when stdout alone is redirected is tracked in `TODO.md`.
+
 ---
 
 ## 6. NOT verified: building without a Developer shell, and static SDL3
+
+> **Approach A is now SETTLED — it works (Windows 10 22H2, 2026-07-20).** A plain
+> (non-Developer) PowerShell, `cmake -S . -B build` with the default Visual Studio generator,
+> found the Build Tools MSVC on its own:
+> `-- Building for: Visual Studio 17 2022` / `The CXX compiler identification is MSVC
+> 19.44.35228.0` / `Check for working CXX compiler: ...\BuildTools\...\cl.exe - skipped`. The
+> full build produced `altairsim.exe` and `ctest -LE slow` passed 16/17 (the 17th being the
+> `terminal-hw` harness artifact in §5). The scripted setup that got there is §1.1.
+> **Approaches B (Ninja + chained `vcvars`) and C (`build-sdl3-static.bat`) are still open** —
+> B is untried, and C is the packaging prerequisite, exercised by the SDL3/packaging job, not
+> this one.
 
 **This section is a job, not a description.** It states three things that are *believed*
 true and have never been run on this machine, gives the exact commands to settle each,
