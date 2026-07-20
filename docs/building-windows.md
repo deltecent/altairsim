@@ -167,7 +167,7 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 
 ---
 
-## 6. NOT verified: building without a Developer shell, and MinGW
+## 6. NOT verified: building without a Developer shell, and static SDL3
 
 **This section is a job, not a description.** It states three things that are *believed*
 true and have never been run on this machine, gives the exact commands to settle each,
@@ -236,22 +236,28 @@ Adjust the path to your VS edition:
 cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build-ninja --target altairsim"
 ```
 
-**C. MinGW — needs only `PATH`, set once and persistently.**
-`setx` writes the user `PATH` in the registry, so **new** shells inherit it (the current
-one does not — open a fresh shell to test). **MinGW has never been built here at all**;
-expect to correct this file.
+**C. `tools\build-sdl3-static.bat` — written, never run.**
+It pins SDL3 3.4.12, builds it static into `%USERPROFILE%\opt\sdl3-static`, and is a no-op
+on a second run. Needs only CMake — `curl.exe` and `tar.exe` ship with Windows 10 1803+.
 
 ```powershell
-setx PATH "$env:PATH;C:\mingw64\bin"
-# then, in a NEW shell:
-cmake -S . -B build-mingw -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build-mingw --target altairsim
+tools\build-sdl3-static.bat
+# then, against the prefix it reports:
+cmake -B build -DCMAKE_PREFIX_PATH="$env:USERPROFILE\opt\sdl3-static" `
+      -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+cmake --build build --config Release --target altairsim
 ```
 
-SDL3 for MinGW is upstream's `SDL3-devel-<ver>-mingw.tar.gz`, not vcpkg. Expect the one
-known MSVC-ism to warn rather than fail: `src/platform/win32/socket_win32.cpp` has a
-`#pragma comment(lib, "ws2_32.lib")` that GCC ignores and `-Wall` complains about. It is
-redundant — CMake already links `ws2_32` — so if it is noisy, that is the fix.
+**The CRT setting must match between the two.** The script builds SDL3 with the static CRT
+(`/MT`) so the finished `.exe` needs no VC++ redistributable; if `altairsim` is built without
+that flag it gets `/MD`, and mixing them gives duplicate-symbol link errors or two separate C
+runtime heaps. If you change it, change it in both places.
+
+Verify it took with **both** checks — `dumpbin /dependents` must not list `SDL3.dll`, **and**
+`dumpbin /symbols … | findstr SDL_` must find symbols. The first alone cannot tell a static
+build from a headless one, since neither wants the DLL. Do **not** use `strings`:
+`SDL_CreateWindow` is a symbol, not a string literal, and it reports nothing on a good static
+build.
 
 ### What to record
 
@@ -274,11 +280,12 @@ launched from             : ?   (plain PowerShell / other -- should be plain)
 
 approach A (MSVC + VS generator, no env setup)  : PASS / FAIL  ?
 approach B (MSVC + Ninja, chained vcvars)       : PASS / FAIL  ?
-approach C (MinGW, setx PATH)                   : PASS / FAIL  ?
+approach C (build-sdl3-static.bat)              : PASS / FAIL  ?
 
 VS edition + version : ?
-MinGW flavour        : ?    (w64devkit / MSYS2 UCRT64 / other)
-SDL3 found by A/B/C  : ?
+SDL3 found by A/B    : ?
+C: SDL3-static.lib produced?             : ?
+C: altairsim links it, no SDL3.dll?      : ?
 commands needed rewriting for the shell? : ?
 first error, if any  : ?
 ```
@@ -307,8 +314,12 @@ exists precisely because nobody knows the answer. Do not work around it silently
 not "fix" the build to make an approach succeed; that turns an unknown into a different
 unknown.
 
-Once settled: this section shrinks to a statement of fact and moves into §5, `DISTRIBUTION.md`
-§4.4's table gets corrected, and `TODO.md`'s mingw item can close.
+Once settled: this section shrinks to a statement of fact and moves into §5, and
+`DISTRIBUTION.md` §4.4 gets corrected.
+
+> **MinGW is not covered here, deliberately.** MSVC is the only supported Windows toolchain —
+> `TODO.md` → *Declined* has the reasoning. Nothing in the source is knowingly MSVC-only, so
+> MinGW would very likely build; it is simply not tested, not documented and not shipped.
 
 ---
 
