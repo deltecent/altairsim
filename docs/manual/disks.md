@@ -120,6 +120,10 @@ id = "dsk0"                    # no `type`: the controller is already there
   # readonly = true            # refuse every write; your file cannot change
 ```
 
+`writeprotect = true` says the same thing, and is there because everything *else* here calls
+it write-protect — `SHOW MOUNTS` prints `WP`, `MOUNT` takes `RO`, and on the real diskette it
+was a notch. `readonly` is the spelling a machine file is saved with.
+
 The two forms do the same thing. The difference is only *when*: one is the drive as the
 machine ships, the other is you, at the prompt, changing your mind.
 

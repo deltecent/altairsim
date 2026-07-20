@@ -78,6 +78,31 @@ struct Property {
     int radix = 10;                     // 16 for addresses, so SHOW reads right
     std::string unit;                   // "Hz", "bytes" -- display only
 
+    // OTHER SPELLINGS THAT ARE ACCEPTED, AND NEVER WRITTEN.
+    //
+    // `name` stays the one true spelling: it is what SHOW prints, what the generated
+    // reference tables, what CONFIG SAVE writes back, and what the board's own code
+    // compares against. An alias is accepted AT THE DOOR and canonicalised there, so a
+    // board cannot learn that its key has two names and no two consumers can disagree
+    // about which one is real. That is the whole reason this is one field on the schema
+    // rather than an extra string compare in each board.
+    //
+    // It exists because the operator's vocabulary and the file's drifted apart: a drive
+    // is WRITE-PROTECTED everywhere a person is spoken to -- the CLI, SHOW MOUNTS, the
+    // manual, the tab on a real diskette -- and `readonly = true` in the file. Neither
+    // spelling is wrong, so the fix is to accept both rather than to break the one that
+    // is in every machine file that already exists.
+    //
+    // Use it SPARINGLY. Two spellings for one key is a small tax on everybody reading
+    // somebody else's file; it is worth paying to reconcile vocabulary we already ship,
+    // and not worth paying to save a reader a trip to the reference.
+    //
+    // ACCEPTING is generic (Board::loadSubUnit, setOne); DISPLAYING is per-consumer, and
+    // today the only aliased key is a sub-unit one, so the generated reference, the MCP
+    // schema and SHOW's `[[board.<table>]]` listing print aliases and Monitor::showProps
+    // does not. Put an alias on a SETTABLE property and that is the fourth place to teach.
+    std::vector<std::string> aliases;
+
     // "I AM AN INTERRUPT STRAP." Set by irqJumperProperty() and by nothing else.
     //
     // The eight VI lines are the one part of the backplane you cannot see, and a

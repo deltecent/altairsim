@@ -477,6 +477,37 @@ void test_dcdd() {
         setMediaResolver(openHostFile);  // put the real filesystem back
     }
 
+    SECTION("88-DCDD -- `writeprotect` is `readonly`, all the way to the drive and back");
+    {
+        // The alias is declared in the SCHEMA (tests/test_machines.cpp checks that end), so
+        // what is left to prove is that it lands on the same flag rather than being accepted
+        // and dropped -- and that CONFIG SAVE writes back ONE spelling, so a file that has
+        // been through the program does not gain a second vocabulary.
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        withDisk(337568);
+
+        std::string err;
+        CHECK(b.loadSubUnit("drive", {{"unit", "0"}, {"mount", "wp.dsk"}, {"writeprotect", "true"}},
+                            err),
+              "a drive mounted with `writeprotect = true` loads");
+        CHECK(b.units()[0].readOnly,
+              "...and the DRIVE is write-protected -- the alias reached the tab, it was not "
+              "merely tolerated by the parser");
+
+        auto su = b.subUnits();
+        bool sawRo = false, sawAlias = false;
+        for (const auto& f : su[0].fields) {
+            if (f.key == "readonly") sawRo = true;
+            if (f.key == "writeprotect") sawAlias = true;
+        }
+        CHECK(sawRo, "and it SAVES as `readonly` -- one canonical spelling is written back");
+        CHECK(!sawAlias, "...never as the alias, or every save would spread the second word");
+
+        setMediaResolver(openHostFile);
+    }
+
     SECTION("88-DCDD -- sixteen drives on the daisy chain, and the top one really works");
     {
         // THE FOURTH BIT IS THE WHOLE DIFFERENCE between this card and the 88-MDS, and

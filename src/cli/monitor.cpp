@@ -543,6 +543,15 @@ void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
         }
         std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(), kind, legal.c_str());
         out << buf << "\n";
+
+        // A SECOND SPELLING GETS ITS OWN LINE, under the real one. It cannot share the key
+        // column: the name there is what CONFIG SAVE writes, and an operator reading a
+        // slash-separated pair has no way to tell which of the two that is.
+        for (const auto& a : p.aliases) {
+            std::snprintf(buf, sizeof buf, "  %-16s (another spelling of %s)", a.c_str(),
+                          p.name.c_str());
+            out << buf << "\n";
+        }
     }
 }
 

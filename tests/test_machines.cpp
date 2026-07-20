@@ -631,4 +631,50 @@ void test_subunit_schema() {
     CHECK(m->loadSubUnit("region", {{"type", "ram"}, {"at", "0000"}, {"size", "48K"}}, err),
           "...while the real thing still loads: `at` is hex and `size` takes a K, off the "
           "property's own radix");
+
+    // ---- `writeprotect`: the operator's word for `readonly`, accepted in a file ----
+    //
+    // The vocabulary had drifted: everything a person reads says WRITE-PROTECTED (the CLI,
+    // SHOW MOUNTS, the manual, the notch on the diskette) and the machine file said
+    // `readonly`. Both spellings work now -- and the point of doing it in the SCHEMA rather
+    // than as one more string compare in the board is everything below: the same validator,
+    // the same error, one canonical name written back, and no board code at all.
+    bool declared = false;
+    for (const auto& p : drive)
+        if (p.name == "readonly")
+            for (const auto& a : p.aliases)
+                if (a == "writeprotect") declared = true;
+    CHECK(declared, "`writeprotect` is DECLARED as another spelling of `readonly` -- so the "
+                    "reference, the MCP schema and SHOW all say so without being told");
+
+    CHECK(b->loadSubUnit("drive", {{"unit", "0"}, {"writeprotect", "true"}}, err),
+          "and a [[board.drive]] may say `writeprotect`");
+    CHECK(b->loadSubUnit("drive", {{"unit", "1"}, {"WriteProtect", "true"}}, err),
+          "...in any case, like every other key");
+    CHECK(b->loadSubUnit("drive", {{"unit", "2"}, {"readonly", "true"}}, err),
+          "...and `readonly` still loads, which is the one thing this may not break: it is "
+          "in every machine file that already exists");
+
+    CHECK(!b->loadSubUnit("drive", {{"unit", "0"}, {"writeprotect", "maybe"}}, err),
+          "an alias goes through the SAME validator -- there is no second, laxer door");
+
+    // TWO SPELLINGS OF ONE KEY IN ONE TABLE. TOML refuses a repeated key, so this is the
+    // only way to write the same drive setting twice, and either answer would be the file
+    // saying two things while one of them silently happened.
+    CHECK(!b->loadSubUnit("drive", {{"unit", "0"}, {"readonly", "true"}, {"writeprotect", "false"}},
+                          err),
+          "`readonly` beside `writeprotect` is refused rather than guessed at");
+    CHECK(err.find("writeprotect") != std::string::npos && err.find("readonly") != std::string::npos,
+          "...and the refusal names both, because the reader has to know which two words "
+          "collided");
+
+    // THE OTHER ORDER, AND IT IS NOT THE SAME TEST. The alias is canonicalised as it is
+    // read, so with `writeprotect` FIRST the collision is found against a key that has
+    // already been renamed -- and the message said "`readonly` as well as `readonly`",
+    // sending the reader to look for a duplicate that was not in their file.
+    CHECK(!b->loadSubUnit("drive", {{"unit", "0"}, {"writeprotect", "false"}, {"readonly", "true"}},
+                          err),
+          "...whichever spelling comes first");
+    CHECK(err.find("writeprotect") != std::string::npos && err.find("readonly") != std::string::npos,
+          "...and it still quotes BOTH of the reader's own words, not the canonical one twice");
 }

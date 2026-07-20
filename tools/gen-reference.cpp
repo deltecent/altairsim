@@ -105,6 +105,20 @@ std::string kindName(Kind k) {
 // may put in a TOML file would be lying in the same way.
 bool readOnly(const Property& p) { return !p.set; }
 
+// A KEY WITH A SECOND SPELLING SAYS SO, in the row for the spelling that is real. The Key
+// column stays the canonical name alone -- that is what SHOW prints and what CONFIG SAVE
+// writes -- so a reader copying out of this table gets the same file we would have written,
+// and a reader who typed the other one still finds it here (Property::aliases).
+std::string alsoSpelled(const Property& p) {
+    if (p.aliases.empty()) return "";
+    std::string o = " *(also ";
+    for (size_t i = 0; i < p.aliases.size(); i++) {
+        if (i) o += ", ";
+        o += "`" + p.aliases[i] + "`";
+    }
+    return o + ")*";
+}
+
 void propTable(std::ostream& o, std::vector<Property>& props) {
     if (props.empty()) {
         o << "*No settable properties.*\n";
@@ -125,6 +139,7 @@ void propTable(std::ostream& o, std::vector<Property>& props) {
         std::string meaning = cell(p.help);
         if (readOnly(p)) meaning += " **(read-only — not a key you may set)**";
         if (p.irqJumper) meaning += " *(interrupt strap)*";
+        meaning += alsoSpelled(p);
         o << "| `" << p.name << "` | " << kindName(p.kind) << " | " << def << " | "
           << (readOnly(p) ? "—" : legal(p)) << " | " << meaning << " |\n";
     }
@@ -144,7 +159,7 @@ void schemaTable(std::ostream& o, std::vector<Property>& props) {
     o << "|---|---|---|---|\n";
     for (auto& p : props)
         o << "| `" << p.name << "` | " << kindName(p.kind) << " | " << legal(p) << " | "
-          << cell(p.help) << " |\n";
+          << cell(p.help) << alsoSpelled(p) << " |\n";
     o << "\n";  // a heading may follow immediately, and pandoc wants the blank line
 }
 
