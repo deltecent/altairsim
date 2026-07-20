@@ -46,24 +46,34 @@ piece of `DESIGN.md` drift knowingly left standing.
 
 ### Wire `build-package.sh` into the release workflow
 
-**Nothing runs `tools/build-package.sh`.** It assembles the archive the manual
-describes, and no workflow, test or release step invokes it — `grep` over
-`.github/workflows/` finds no reference to it. v0.1.0's three platform archives
-were assembled without it.
+**No workflow runs `tools/build-package.sh`** — `grep` over `.github/workflows/`
+still finds no reference to it. What has changed is that the archive it builds is
+no longer hypothetical.
 
-The consequence is that two different archives exist and the documented one has
-never been published:
+**v0.2.0 shipped it** (2026-07-20). The two-archive split below is closed: all
+three platform archives are now `altairsim`, `altairsim-manual.pdf`,
+`USING-ALTAIRSIM.md`, `LICENSE` and `examples/{cpm,basic,sol,diskbasic}` **with
+their media**, which is what the manual has always described. v0.1.0's
+binary-only archives were the last of that shape.
 
-| | Contents |
-|---|---|
-| What v0.1.0 shipped | `altairsim`, `README.md`, `LICENSE` |
-| What `build-package.sh` builds, and the manual describes | `altairsim`, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, `LICENSE`, `examples/{cpm,basic,sol,diskbasic}` **with media** |
+**What is still missing is only the automation.** The 0.2.0 archives were
+assembled by hand: `build-package.sh` locally, then each platform's CI binary
+swapped into a copy of the tree. So gap 2 of the release design — *the script has
+never run on Linux or Windows* — is untouched, because it still has not; it ran
+once, on macOS, driving three archives.
 
-The script works — run for real (it needs `pandoc`), the unpacked archive boots
-CP/M from `examples/cpm/cpm22-buffered.toml`, reaches Altair BASIC 4.1's prompt
-from `examples/diskbasic/`, and mounts `examples/sol/TRK80.WAV` to the
-byte-identical line the tapes chapter quotes. What is missing is only that a
-release runs it.
+Two things that by-hand run learned, and that an automated one must handle:
+
+- **The script rebuilds the PDF with whatever `pandoc` is local.** Homebrew gives
+  3.10 and `docs.yml` pins 3.6, and a different pandoc is a different document. The
+  0.2.0 archives ship CI's 3.6 PDF, copied over the script's output after the fact
+  and checked byte-identical. A workflow should build the PDF once on Linux and
+  hand it to the other legs rather than rebuilding per platform.
+- **CI must build at the tag, not at the merge.** The first fetch produced binaries
+  reporting `v0.1.0-86-g59dbba8`, because the run predated the tag and `git
+  describe` found the older one. `gh workflow run ci.yml --ref v0.2.0` fixed it —
+  a `workflow_dispatch` has no `event.before`, so it also takes the full matrix.
+  The shipped binaries report a bare `AltairSim 0.2.0`.
 
 The archive's missing `LICENSE` was the sub-item here and is fixed (2026-07-19):
 one `FILE` line, verified byte-identical in a built zip.
