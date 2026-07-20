@@ -513,10 +513,34 @@ The mechanics that have to be decided, none of them settled:
   three Windows arches already; **only Linux has no official prebuilt**, so that is the
   single platform actually needing a from-source build.
 
-  **The trade to settle:** fetching needs the network once, tracking does not. If
-  local packaging must work genuinely offline, track them — but pin one SDL3 version,
-  bump rarely, and un-ignore each file explicitly, the way the `.dsk` images already are
-  (`.gitignore:91`, `:116`). Otherwise fetch.
+  **Or Git LFS, which is the third option and is cheaper than it looks.** Checked
+  2026-07-20: GitHub's included allowance is now **10 GB of storage AND 10 GB/month of
+  transfer** for Free *and* Pro (data packs are gone; overage is metered at $0.07/GiB
+  stored, $0.0875/GiB transferred, billed to the **repo owner**). At ~11M of libraries and
+  three CI legs per push that is roughly 300 pushes a month before the quota notices, so
+  the "permanent history growth" objection above largely dissolves — LFS objects do not
+  bloat a clone the way committed blobs do, and `actions/checkout` only pulls them with
+  `lfs: true`.
+
+  Note `deltecent` is a **User** account: a paid *personal* plan does not raise this.
+  Free and Pro are both 10 GB; only Team/Enterprise get 250 GB.
+
+  **The LFS trap is conversion, not cost.** `git lfs migrate import` rewrites history and
+  changes every commit SHA from the conversion point forward — with `v0.1.0` and `v0.2.0`
+  published on a public repo, that invalidates both tags and breaks existing clones. So if
+  LFS is used, use it for **newly added** files only.
+
+  **The trade to settle:** fetching needs the network once and keeps git clean; tracking
+  (plain or LFS) works offline. If local packaging must work genuinely offline, LFS is the
+  better of the two tracking routes. Whichever is picked, pin one SDL3 version and bump
+  rarely.
+
+  **Not a factor either way: where the finished packages are hosted.** Distribution is
+  altairsim.com. That is independent of this decision, which is only about where the
+  libraries live as *build inputs*. (For the record, a GitHub Release could also carry an
+  SDL3-bearing package — Release assets are file hosting, and v0.2.0's archives were built
+  locally and uploaded by hand. v0.2.0 shipped without SDL3 because its binaries came from
+  CI, not because a Release cannot carry one.)
 
 **Prerequisite, and it is the honest ordering:** nothing currently proves `display_sdl.cpp`
 even compiles (Bugs, above), and the Windows+SDL3 recipe is not written down (next item).
