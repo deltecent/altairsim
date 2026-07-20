@@ -313,6 +313,36 @@ a live window without changing what the machine does. **Still recorded rather th
 because it is Patrick's call whether it gates the release, and a change to the repl's blocking
 read wants testing on a real desktop on more than one platform.
 
+**Blast radius (investigated 2026-07-20, against the source).** The naive "call `pollEvents()`
+in `repl()`" does not work: `repl()` is not spinning, it is parked inside a synchronous
+`::read(STDIN, &c, 1)` — `platform::readInputBlocking()`, called from the line editor's outer
+input loop (`src/cli/lineedit.cpp:73`). Nothing on that thread can pump the window while it is
+blocked there, and there are **no threads anywhere** — `pollEvents()` (run loop) and `repl()`
+are both the one main thread. So the real fix is: make the *outer* first-byte wait a
+**timeout loop** — "wait for stdin-readable OR ~100 ms; on timeout, pump the window; repeat" —
+which needs a new platform primitive ("wait for console input with timeout": POSIX
+`poll(STDIN, …)`, Win32 `WaitForSingleObject`/`PeekConsoleInput`). Scope:
+
+- **Touches only the interactive raw-mode read.** The piped/`getline` path (`lineedit.cpp:55,62`)
+  has no window and is untouched. The inner escape-sequence reads (`:134,:149`) stay blocking —
+  their bytes arrive together, only the outer wait needs the timeout.
+- **Does not touch the clocked queue, emulated time, or hardware** — a stopped machine advances
+  none; consistent with the "host layer, not hardware" rule.
+- **Record/replay is avoidable entirely** by pumping for *liveness only* at the prompt and
+  discarding window keystrokes there (do not forward to `keySink_` while stopped), so
+  determinism (`DESIGN.md` §13) is untouched. Forwarding stopped-state keystrokes to the guest
+  is a *separate* opt-in policy choice, not required to kill the Force-Quit dialog.
+- **Stays single-threaded**, which matters: `SDL_PollEvent` must run on the main thread
+  (Cocoa), so a background pump thread is off the table and the timeout-loop is the right shape.
+- **Breakpoints/HLT need no special case** — they drop to the same `repl()`, covered identically.
+
+**The cost and the risk:** a new platform primitive on *two* input layers, and the Win32
+console-wait is unwritten and would be untested — so the fix, like the packaging work, wants a
+staffed desktop on Linux (reproduces) *and* Windows. It is a localized, low-risk change when
+done, not a redesign. **Recommendation: does not gate the next tag** (narrow trigger; v0.2.0
+shipped headless, so nothing regresses), fix it in a dedicated cross-platform round — but that
+is Patrick's call.
+
 Two smaller things fell out of the same session and are features, not bugs:
 
 - **Nothing reports live window focus.** `SHOW DISPLAY`'s `focus` is `Display::focusPolicy_`,
