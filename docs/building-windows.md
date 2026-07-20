@@ -287,9 +287,14 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 > (`video SDL3 -- windowed`), **4.2 MB, and self-contained** — `dumpbin /dependents` shows no
 > `SDL3.dll` and, crucially, **no `VCRUNTIME140.dll`/`MSVCP140.dll`, so the static CRT
 > propagated through SDL and no VC++ redistributable is needed.** `ctest -LE slow` passed 16/17
-> (the `terminal-hw` harness artifact in §5). **What is still unrun on Windows: the packaging
-> script itself (`tools/build-package.sh` under Git Bash) and the human video checks** — that is
-> the packaging job, next.
+> (the `terminal-hw` harness artifact in §5). **And the packaging ran too:**
+> `tools/build-package.sh` under Git Bash, exit 0, produced a 3.8 MB `.zip` — Git Bash ships no
+> `zip`, so it fell to `powershell.exe Compress-Archive` (the middle of the fallback chain), and
+> the Git-Bash-path-meets-PowerShell translation was a non-issue. The archive name came out clean
+> (the MSVC-CRLF strip held), and the linkage check printed its "cannot check on this host — run
+> `dumpbin`" note without blocking. Unpacked outside the repository the shipped `altairsim.exe`
+> is self-contained (only system DLLs) and **CP/M boots from it** to `A>` and a `DIR` listing.
+> **The one thing left unrun on Windows is the human video check (H1–H6)**, `DISTRIBUTION.md` §7.
 > **Approach B (Ninja + chained `vcvars`) remains untried** — the VS generator has carried
 > every build so far, so nothing has needed it.
 
