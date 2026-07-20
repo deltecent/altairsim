@@ -28,8 +28,8 @@ Thumbs.db
 *.replay
 altairsim.log
 
-# The assembled distribution. tools/build-package.sh writes dist/altairsim-<ver>/ and the
-# zip beside it -- an OUTPUT of the tree, never an input to it.
+# The assembled distribution. tools/build-package.sh writes dist/altairsim-<ver>-<target>/
+# and the archive beside it -- an OUTPUT of the tree, never an input to it.
 /dist/
 
 # Binaries CI built, pulled down by tools/fetch-ci-binaries.sh. Scratch: overwritten on
