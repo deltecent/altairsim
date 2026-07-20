@@ -335,6 +335,8 @@ tar xzf altairsim-X.Y.Z-<target>.tar.gz && cd altairsim-X.Y.Z
 | Linux | `ldd altairsim` | no SDL line at all | a path resolving beside the binary | a distro path |
 | Windows | `dumpbin /dependents altairsim.exe` | no `SDL3.dll` line | `SDL3.dll`, present beside the `.exe` | `SDL3.dll` absent from the package |
 
+**`build-package.sh` now refuses to package a binary that fails either of these** (2026-07-20). It asks the binary — `SHOW VERSION` carries a `video` row — so the check is the same on all four machines and needs no toolchain, which matters because Git Bash on Windows has no `nm`. It also rejects an SDL path that is absolute rather than relative to the binary, where `otool`/`ldd` exist; **on Windows it says it could not check** rather than passing quietly. The checks below are still worth running on the unpacked archive, because they test the artifact rather than the staging input.
+
 **"No SDL line at all" is the pass condition for a static build and the failure condition for a headless one** — they are indistinguishable in the table above, so a second check is required:
 
 ```sh
@@ -348,7 +350,16 @@ running it against a known-good static binary produced the false negative.)
 
 **Also confirm the deployment target** on macOS: `vtool -show-build altairsim | grep minos` should report the floor you set, not the build machine's OS.
 
-Then **open a window**: run `altairsim sol20` or `altairsim vdm1` and confirm one actually appears. `SHOW DISPLAY` reports whether the window has the keyboard. A headless build runs these machines perfectly happily and draws nothing, which is precisely why the eyeball check is on this list.
+Simpler than any of the above, and the one to reach for first — **ask the binary**:
+
+```sh
+./altairsim -n -x 'SHOW VERSION'      # the `video` row: "SDL3 -- windowed", or
+                                      # "none -- headless (null display)"
+```
+
+**Nothing said this before 2026-07-20.** `--version`, `--help`, `-l`, `SHOW VERSION` and `SHOW DISPLAY` were byte-identical between a windowed build and a headless one, so the only way to tell was `nm`/`otool`/`dumpbin` on the file — and `SHOW DISPLAY`'s *"no video service in this build"* was dead code that never fired, because `main.cpp` hands a headless build a non-null `NullDisplay`. A string that claims to be the discriminator and is not is worse than none, which is the same lesson as the phantom `manual.cmake`.
+
+Then **open a window**: run `altairsim sol20` or `altairsim vdm1` and confirm one actually appears. `SHOW DISPLAY` reports whether the window has the keyboard. **This is still an eyeball check and cannot be automated** — the `video` row says SDL3 is compiled in, not that a window reached a screen.
 
 ---
 

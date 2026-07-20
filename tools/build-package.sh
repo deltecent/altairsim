@@ -123,6 +123,56 @@ done
 }
 
 ver=$("$sim" --version | awk '{print $2}')
+
+# ---------------------------------------------------------------------------
+# REFUSE TO PACKAGE A BINARY THAT CANNOT OPEN A WINDOW.
+#
+# THIS IS THE CHECK v0.2.0 DID NOT HAVE. All three archives shipped headless: no CI leg had
+# SDL3, find_package failed, display_sdl.cpp compiled nowhere, and the video window the manual
+# documents at length could not be opened from anything released. Nothing caught it, because a
+# headless binary runs `altairsim vdm1` perfectly happily and draws nothing. DISTRIBUTION.md
+# 4.2 step 2 puts a STOP on the configure line -- but that is a line a person has to read, and
+# not reading it is exactly how this shipped. This one cannot be not-read.
+#
+# ASK THE BINARY, DO NOT PROBE THE FILE. nm/otool/dumpbin all mean a toolchain the packaging
+# machine may not have -- Git Bash on Windows has no `nm` -- and 7 records that `strings` gives
+# a FALSE NEGATIVE here, because SDL_CreateWindow is a symbol and not a literal. SHOW VERSION
+# carries a `video` row for this, so the answer is the same on all four machines.
+if ! "$sim" -n -x 'SHOW VERSION' 2>/dev/null | grep -q '^ *video *SDL3'; then
+  echo "build-package: THIS BINARY IS HEADLESS -- refusing to package it." >&2
+  echo >&2
+  "$sim" -n -x 'SHOW VERSION' 2>&1 | sed 's/^/    /' >&2
+  echo >&2
+  echo "A headless build runs the video machines and draws nothing, which is what every" >&2
+  echo "v0.2.0 archive shipped. Configure against a real SDL3 and look for" >&2
+  echo "    -- SDL3 found -- video boards enabled (windowed)" >&2
+  echo "    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<static SDL3 prefix>" >&2
+  exit 1
+fi
+
+# ...and refuse one that links SDL by a path only this machine has. A Homebrew build names
+# /opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib absolutely, so it starts on no other machine --
+# 3.2's trap, and the reason static is the answer. A path relative to the binary
+# (@executable_path, @rpath, $ORIGIN) is the documented dynamic FALLBACK and is allowed.
+#
+# There is no portable way to ask this, so it runs where the tool exists and SAYS SO when it
+# does not, rather than passing quietly and reading as checked.
+case $(uname -s) in
+  Darwin) linkage=$(otool -L "$sim" 2>/dev/null | grep -i sdl || true) ;;
+  Linux)  linkage=$(ldd     "$sim" 2>/dev/null | grep -i sdl || true) ;;
+  *)      linkage=""
+          echo "build-package: NOTE -- cannot check SDL linkage on this host ($(uname -s))." >&2
+          echo "  Per DISTRIBUTION.md 7, run: dumpbin /dependents altairsim.exe" >&2 ;;
+esac
+if [ -n "$linkage" ] && ! echo "$linkage" | grep -q '@executable_path\|@rpath\|\$ORIGIN'; then
+  echo "build-package: THIS BINARY LINKS SDL BY ABSOLUTE PATH -- refusing to package it." >&2
+  echo "$linkage" | sed 's/^/    /' >&2
+  echo >&2
+  echo "It starts on no machine but this one. Build SDL3 static (tools/build-sdl3-static.sh)" >&2
+  echo "and configure with -DCMAKE_PREFIX_PATH=<that prefix>. See DISTRIBUTION.md 3.2." >&2
+  exit 1
+fi
+
 pkg=$out/altairsim-$ver-$target
 
 # CLEAR STALE SIBLINGS. A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever

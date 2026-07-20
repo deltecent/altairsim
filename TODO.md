@@ -67,9 +67,35 @@ What has to be built, roughly in order:
    `$ORIGIN`, no DLL beside the `.exe`. Confirmed on both macOS arches (arm64 §3.2; x86_64 on
    the Intel Mac, 2026-07-20 — 4.7M self-contained, `otool -L` clean, 5426 `SDL_` symbols).
    It comes back only if Linux or Windows cannot build SDL3 static, which is untested.
-3. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
+3. ~~**A linkage check in `build-package.sh`**~~ — **DONE 2026-07-20**, before the Windows
+   work rather than after, because Windows is where it is most needed: no CI leg there has
+   SDL3 and `tools\build-sdl3-static.bat` has never been run, so a headless `.exe` is the
+   likeliest outcome of the first attempt and would have passed every check that existed.
+
+   The script now refuses to package a **headless** binary, and one that links SDL by an
+   **absolute path** (§3.2's Homebrew trap; a path relative to the binary is the documented
+   dynamic fallback and is allowed).
+
+   **The headless half asks the binary rather than probing the file**, which is what makes it
+   work on all four machines: `nm`/`otool`/`dumpbin` all mean a toolchain the packaging
+   machine may not have, and **Git Bash on Windows has no `nm`**. That needed a source change
+   — `SHOW VERSION` gained a `video` row — because *nothing the binary printed distinguished
+   a headless build from a windowed one*: `--version`, `--help`, `-l`, `SHOW VERSION` and
+   `SHOW DISPLAY` were byte-identical either way.
+
+   **`SHOW DISPLAY` looked like it already said, and did not.** Its *"no video service in this
+   build"* tested `!g_display`, but `main.cpp` calls `setDisplay()` unconditionally and hands
+   a headless build a `NullDisplay` — a perfectly non-null pointer. So the branch never fired
+   in any shipping binary, and the one place claiming to report headlessness reported nothing
+   on precisely the builds where it was the only thing that would have. Now tests the macro.
+   **Third instance of *a claimed check is worse than a missing one*** in this file.
+
+   The absolute-path half is not portable and does not pretend to be: it runs where
+   `otool`/`ldd` exist and **prints that it could not check** elsewhere, rather than passing
+   silently and reading as verified.
+4. **`SHA256SUMS`**, so altairsim.com and the GitHub Release can be checked against each
    other. Nothing produces checksums. **This is now the first of these left.**
-4. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
+5. **One script to clone-and-build — `build.sh` and `build.bat`.** Patrick, 2026-07-20,
    *after* the packaging work: anyone who clones this repository should be able to run a
    single script (or `.bat` on Windows) and end up with a binary. No reading, no flags, no
    choosing a generator.

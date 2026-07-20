@@ -60,11 +60,16 @@ tree now (`examples/`), each with its own `README.md` saying what it is and what
 ```
 altairsim> SHOW VERSION
   altairsim  0.2.0
+  video      SDL3 -- windowed
   commit     v0.2.0
   tree       clean
 ```
 
-`--version` says the same thing on the way past. This exists because *"`0.1.0`"* named every
+The `video` row says whether **this** copy can open a window. A build made where SDL3 was not
+installed reads `none -- headless (null display)`: it still runs the video machines, and draws
+nothing. Nothing else distinguishes the two, so if a window never appears, ask here first.
+
+`--version` gives the number and the commit on the way past. This exists because *"`0.1.0`"* named every
 build anyone had — a nightly, a CI artifact, a binary somebody was handed — and a bug report
 against one of them could not be traced to the code that produced it. A binary now names the
 commit it was built from, and says so plainly when the tree was dirty at build time.
