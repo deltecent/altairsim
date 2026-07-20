@@ -1283,6 +1283,16 @@ invention; it is not.
 
 ## Housekeeping
 
+- **MSVC `/W4` floods `monitor.cpp` with C4456 shadowing warnings.** Noticed on the Windows
+  build, 2026-07-20. `c` is a pervasive scratch name in that file — `CpuCore* c`, `Board* c`,
+  `size_t c`, `bool c`, a dozen `CpuCore* c = needCpu(out)`, and several `for (… c : …)` — and
+  wherever one nests inside another's scope MSVC warns *"declaration of 'c' hides previous local
+  declaration."* Every instance inspected is benign name reuse, not a case that meant the outer
+  `c`, and the build has no `/WX` so it completes. **The cost is signal, not correctness:** a
+  wall of benign shadow warnings is exactly where a *real* shadow bug would hide, and CI's
+  Windows leg has been emitting these on every push. Worth a mechanical rename of the inner
+  `c`s. **Catch it at the desk** by building once with `-Wshadow` on clang/gcc rather than only
+  seeing it on Windows — the warning is portable even if only MSVC enables it by default.
 - **Inspecting the `lineprinter` machine creates a file.** `altairsim -x "SHOW
   MACHINE" lineprinter` drops a `printout.txt` in the working directory without
   a byte having been printed — the C700's `file:` sink is opened when the
