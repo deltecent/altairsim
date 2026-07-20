@@ -59,6 +59,10 @@ jobs:
     name: Rebuild the PDFs
     runs-on: ubuntu-latest
     steps:
+      # DEPTH 1 ON PURPOSE, unlike every other workflow here. This job builds no binary,
+      # and the only thing it stamps is build-docs.sh's `git rev-parse --short HEAD`,
+      # which needs no tag and no ancestry. Add a step that wants `git describe` and you
+      # want fetch-depth: 0 with it -- ci.yml says why.
       - uses: actions/checkout@v5
 
       # PINNED, and pinned to what the humans have. pandoc's HTML is the paginator's input,

@@ -509,7 +509,23 @@ Not a regression, and not urgent. Recorded because "runs in CI" now means two
 platforms out of three for this group, and the next person to read the test list
 should not have to rediscover why.
 
-### CI checks out at depth 1, so a CI binary cannot name its commit
+### ~~CI checks out at depth 1, so a CI binary cannot name its commit~~ — FIXED 2026-07-19
+
+`fetch-depth: 0` added to the three workflows that build a binary — `ci.yml`,
+`cpu-exerciser.yml`, `cpu-exerciser-release.yml`. Verified by configuring a
+`--depth 1` clone and a full one side by side and reading the generated
+`version_generated.h`: `"88527de"` against `"v0.1.0-74-g88527de"`.
+
+**`docs.yml` was deliberately left at depth 1** and now says so in a comment. It
+builds no binary, and its only stamp is `git rev-parse --short HEAD`, which needs
+neither a tag nor ancestry.
+
+`ci.yml` also gained a `Version` step that runs the built binary with `--version`
+on every leg. Nothing else in the run would fail if the checkout regressed to the
+default depth — the artifacts would build, the tests would pass, and the binaries
+would quietly stop naming their tag. The log line is where that is visible.
+
+The original entry follows.
 
 `--version` now reports `git describe` output (PR #73), but `.github/workflows/`
 checks out with `fetch-depth: 1`, so no tag is reachable and a CI-built binary

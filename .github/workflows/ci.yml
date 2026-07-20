@@ -103,7 +103,14 @@ jobs:
       matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
 
     steps:
+      # FULL HISTORY, BECAUSE THE BINARY NAMES ITS OWN COMMIT. CMakeLists.txt bakes
+      # `git describe --tags --always` into --version, and at the default depth of 1 no
+      # tag is reachable -- so every CI artifact reported a bare short sha instead of
+      # v0.1.0-N-gsha. Both are traceable; only one is legible in a bug report, and these
+      # are the binaries handed to people to try (tools/fetch-ci-binaries.sh pulls them).
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       # expect drives the interactive acceptance tests. Ubuntu needs it installed;
       # macOS ships it; Windows gets none -- those tests self-skip at configure time
@@ -126,6 +133,16 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      # SAY WHICH COMMIT THIS IS, in the log, on every leg. The version string is baked in
+      # at configure time from `git describe`, so it is the one thing in the run that can
+      # go quietly wrong without failing anything: revert the checkout above to the default
+      # depth and the artifacts still build, still pass, and silently stop naming their
+      # tag. This line is where that would be visible.
+      - name: Version
+        shell: bash
+        run: |
+          "${{ matrix.binary }}" --version
 
       # Fast suite only. -C Release is required by the Windows multi-config generator
       # and harmless elsewhere. serial-hw self-skips (exit 77); disk-gated tests are

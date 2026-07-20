@@ -47,7 +47,12 @@ jobs:
     name: CPU exercisers (slow)
     runs-on: ubuntu-latest
     steps:
+      # Full history: see ci.yml. This job builds no artifact, but it does print the
+      # banner in its logs, and a run whose version line disagrees with ci.yml's for the
+      # same commit is a puzzle nobody should have to solve twice.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release

@@ -41,7 +41,12 @@ jobs:
           - { name: windows-x86_64,  os: windows-latest }
 
     steps:
+      # Full history for the same reason as ci.yml: --version is `git describe`, and at
+      # depth 1 there is no tag to describe against. This workflow runs on a `v*` tag,
+      # which is exactly the case where the describe output should be the tag itself.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       # Match ci.yml's configuration exactly -- the point is to exercise the binary that
       # ships, so the mac leg builds the same universal (x86_64 + arm64) artifact. An array
