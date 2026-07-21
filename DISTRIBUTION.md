@@ -289,6 +289,14 @@ always use the name, never a raw IP). §4.2 is the same seven steps on all four;
 specifics differ — the **SDL3 prefix**, the **platform flags**, the **`--target`**, and, for a
 worker, the **`scp` back**. Filled in with the project's real paths (verified 2026-07-21):
 
+**THREE OF THE FOUR BOXES ARE ONE PHYSICAL MACHINE — build the x86 targets serially (2026-07-21).**
+The Intel Mac is the physical host; the **Windows box and the Linux box are both VMware guests
+running on that same Intel Mac.** So `macos-x86_64`, `windows-x86_64` and `linux-x86_64` share one
+CPU and one pool of RAM, and running their builds at the same time only makes them contend — do
+them **one at a time**. `macos-arm64` (the coordinator) is the only box that is genuinely separate
+and can run in parallel with any of them. This is why §5 step 5 says "any order" but not "all at
+once".
+
 ```
                  ┌─────────────────────────────────────────────────┐
                  │  COORDINATOR — macOS Apple Silicon (this box)    │
@@ -452,7 +460,7 @@ Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — t
 
 **4. Open the draft.** `gh release create vX.Y.Z --draft --notes-file <notes>`. The collection point has to exist before any machine starts building.
 
-**5. Build, on all four machines.** §4.2 / §4.5. Independent — any order, or all at once. **The three workers `scp` their archive into the coordinator's repo `dist/` (over `dist.altairsim.com`); the coordinator builds `macos-arm64` straight into the same `dist/`.** No worker authenticates to GitHub.
+**5. Build, on all four machines.** §4.2 / §4.5. Independent, and any order — but **build the three x86 targets one at a time, not all at once.** The Intel Mac, the Windows box and the Linux box are **one physical machine** — the Intel Mac is the host, and Windows and Linux are VMware guests on it (§4.5) — so building `macos-x86_64`, `windows-x86_64` and `linux-x86_64` concurrently just makes them fight for one CPU and one pool of RAM. Only `macos-arm64` (the M4 coordinator, a genuinely separate machine) can build in parallel with them. **The three workers `scp` their archive into the coordinator's repo `dist/` (over `dist.altairsim.com`); the coordinator builds `macos-arm64` straight into the same `dist/`.** No worker authenticates to GitHub.
 
 **6. Upload all four, then publish — all on the coordinator.** When `dist/` holds all four and §7 passes: `gh release upload vX.Y.Z dist/altairsim-X.Y.Z-*.tar.gz dist/altairsim-X.Y.Z-*.zip`, then `gh release edit vX.Y.Z --draft=false`, then mirror the identical files to altairsim.com. **Only the coordinator has GitHub credentials.**
 
