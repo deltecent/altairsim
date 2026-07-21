@@ -334,6 +334,13 @@ tools/build-package.sh --pdf docs/altairsim-manual.pdf --target macos-arm64
 # its archive is now in dist/ beside the workers' deliveries; all four upload in §5 step 6
 ```
 
+> **Start from a clean `build/`.** This box's day-to-day `build/` is configured against
+> Homebrew's *dynamic* SDL3. CMake caches that `SDL3_DIR`, and re-running the configure above
+> does **not** override it — the build links `/opt/homebrew/.../libSDL3.0.dylib`, and
+> `build-package.sh` refuses it (an absolute path that starts on no other Mac). So `rm -rf build`
+> before the configure. A *clean* configure prefers the static prefix correctly — verified on the
+> 2026-07-21 dry run, where the stale-cache build was caught by exactly that refusal.
+
 **Box 2 — macOS Intel worker** *(`ssh patrick@192.168.94.22`)*. Same prefix and `11.0` floor as
 Box 1 — only the target and the delivery differ.
 ```sh
@@ -348,6 +355,12 @@ ctest --test-dir build -C Release -LE slow
 tools/build-package.sh --pdf docs/altairsim-manual.pdf --target macos-x86_64
 scp dist/altairsim-X.Y.Z-macos-x86_64.tar.gz patrick@dist.altairsim.com:~/src/altairsim/dist/
 ```
+
+> **Driving this box over ssh? Put `cmake` on `PATH` yourself.** A non-login shell
+> (`ssh … 'bash -s'`) does not read the profile that adds `/usr/local/bin`, so `cmake` is not
+> found and the configure fails at line 1. Prefix the remote script with
+> `export PATH="/usr/local/bin:$PATH"` (verified 2026-07-21). At the machine's own terminal this
+> does not arise, and Linux is unaffected — its `cmake` is in `/usr/bin`, always on `PATH`.
 
 **Box 3 — Windows 10 worker** *(VMware guest on the Intel Mac; takes no inbound ssh)*. Steps 1–5
 in **PowerShell**; steps 6–7 in **Git Bash**. `MultiThreaded` and `--config Release` are
@@ -387,7 +400,7 @@ scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 > still pending).**
 > **On the coordinator:** turn **Remote Login** ON (System Settings → General → Sharing), and add
 > each worker's delivery public key to `~/.ssh/authorized_keys`. The collection dir needs nothing:
-> `dist/` is **tracked empty** (`dist/.gitkeep`), so every checkout already has it — a worker can
+> `dist/` is **tracked** (via `dist/README.md`), so every checkout already has it — a worker can
 > deliver before the coordinator has built — and `build-package.sh`'s cleanup is scoped to the
 > target it builds, so a delivered sibling archive is never wiped.
 > **On each worker:** point `origin` at the https URL (`git remote set-url origin
@@ -400,8 +413,10 @@ scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 > ~/.ssh/altairsim_deploy` / `IdentitiesOnly yes` — so the plain `scp` above uses it and only it.
 > That key is a worker's ONLY credential: it writes to `dist/` and nothing else, and grants no
 > GitHub access at all.
-> **The scp path is proven on the Intel Mac and Linux (2026-07-21); Windows and the full
-> build→package→deliver dry run remain before it is relied on at release time.**
+> **The full build→package→deliver→collect dry run passed on the coordinator, the Intel Mac and
+> Linux (2026-07-21): each built native, the two workers `scp`'d their archive into the
+> coordinator's `dist/`, and all three collected there with no sibling wiped. The Windows leg —
+> and Windows's own delivery key — remain before this is relied on at release time.**
 
 ---
 
