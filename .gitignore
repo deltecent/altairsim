@@ -30,11 +30,11 @@ altairsim.log
 
 # The assembled distribution. tools/build-package.sh writes dist/altairsim-<ver>-<target>/
 # and the archive beside it -- an OUTPUT of the tree, never an input to it. The directory
-# itself is TRACKED (empty, via dist/.gitkeep) so it always exists after a checkout: dist/ is
+# itself is TRACKED (via dist/README.md) so it always exists after a checkout: dist/ is
 # also the release COLLECTION point (DISTRIBUTION.md 6), and a worker must be able to scp into
-# it before the coordinator has built anything. Contents stay ignored; the .gitkeep does not.
+# it before the coordinator has built anything. Contents stay ignored; the README does not.
 /dist/*
-!/dist/.gitkeep
+!/dist/README.md
 
 # Binaries CI built, pulled down by tools/fetch-ci-binaries.sh. Scratch: overwritten on
 # every fetch, read by nothing in the build or the tests.
