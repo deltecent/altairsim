@@ -4,6 +4,7 @@
 #
 #   altairsim                the program
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
+#   altairsim-changelog.pdf  what changed, per release (docs/changelog/, built by docs.yml)
 #   USING-ALTAIRSIM.md       the same machines, written for an AI assistant driving them over MCP
 #   LICENSE                  ours (MIT)
 #   LICENSE-SDL3             SDL3's, because SDL3 is linked STATICALLY INTO the program
@@ -251,6 +252,21 @@ else
   cp "$docs_tmp/altairsim-manual.pdf" "$pkg/"
   rm -rf "$docs_tmp"
 fi
+
+# The changelog. Also a DELIVERABLE (docs/manual/package.md names it), and also a committed CI
+# artifact -- docs.yml builds and commits docs/altairsim-changelog.pdf exactly like the manual,
+# so a checkout AT THE TAG already has it. Copy it STRAIGHT FROM THE TREE, not through the FILE
+# loop below: that loop runs expand()'s token-substitution sed over every file, and sed over a
+# binary PDF is a way to corrupt one. No --changelog flag, deliberately -- there is no local
+# rebuild to guard against here as there is for the manual (--pdf), only the one committed file.
+changelog=$root/docs/altairsim-changelog.pdf
+[ -f "$changelog" ] || {
+  echo "build-package: docs/altairsim-changelog.pdf is missing -- CI (docs.yml) builds it." >&2
+  echo "  It is committed at the tag, so a checkout of vX.Y.Z has it. Are you on the tag, or" >&2
+  echo "  packaging before docs.yml has run on master? See DISTRIBUTION.md 5 step 2." >&2
+  exit 1
+}
+cp "$changelog" "$pkg/"
 
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.
 

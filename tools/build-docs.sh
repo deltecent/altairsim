@@ -1,8 +1,9 @@
 #!/bin/sh
 #
-# Build the two documents.
+# Build the documents.
 #
 #   docs/manual/    -> altairsim-manual.pdf     SHIPS IN THE PACKAGE. Self-contained.
+#   docs/changelog/ -> altairsim-changelog.pdf  SHIPS IN THE PACKAGE. What changed, per release.
 #   docs/devguide/  -> altairsim-devguide.pdf   Repo only. May talk about the source.
 #
 # THIS IS NOT PART OF THE BUILD, and it must never become part of it. altairsim's loudest
@@ -183,5 +184,6 @@ build() {  # build <docdir> <output-name> <title>
 }
 
 mkdir -p "$out"
-build manual   altairsim-manual   "altairsim — User Manual"
-build devguide altairsim-devguide "altairsim — Developer Guide"
+build manual    altairsim-manual    "altairsim — User Manual"
+build changelog altairsim-changelog "altairsim — Changelog"
+build devguide  altairsim-devguide  "altairsim — Developer Guide"

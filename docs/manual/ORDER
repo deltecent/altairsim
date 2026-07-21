@@ -10,11 +10,10 @@
 
 introduction.md
 
-# Release notes, directly after the introduction on purpose. A returning reader opens the
-# manual to find out what moved; a first-time reader skips one short chapter to get to the
-# on-ramp, which is the cheaper of the two costs.
-whats-new.md
-
+# The release notes are NOT here. They used to be a chapter (whats-new.md), but a document
+# that describes the program AS IT IS ages badly with a chapter that describes what CHANGED --
+# by 0.4.0 the manual carries three of them. So the notes ship as their own document now,
+# docs/changelog/ -> altairsim-changelog.pdf, beside the manual in the package. (2026-07-21.)
 package.md
 running.md
 quick-start.md
