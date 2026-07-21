@@ -129,19 +129,27 @@ done
 # everywhere else: there are no carriage returns in this output on Unix.
 ver=$("$sim" --version | tr -d '\r' | awk '{print $2}')
 
-# CLEAR STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
+# CLEAR THIS TARGET'S STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
 #
-# A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever build/altairsim existed
-# THEN -- and it looks exactly like the release. That is not hypothetical: on 2026-07-20 a stale
-# pre-tag staging directory reported "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read
-# as a version bug in the shipped archives, which were correct.
+# A leftover altairsim-<ver>-<target>/ from an earlier run holds whatever build/altairsim
+# existed THEN -- and it looks exactly like the release. That is not hypothetical: on 2026-07-20
+# a stale pre-tag staging directory reported "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)"
+# and read as a version bug in the shipped archives, which were correct.
 #
 # It runs HERE because the refusals below exit 1, and until 2026-07-20 they exited leaving the
 # PREVIOUS run's archive sitting under the exact name the release process expects (observed on
 # the Intel Mac: a refused headless run left the good tarball untouched at its original
 # timestamp). Anyone uploading by filename rather than by watching the exit code would ship it.
-# A refused run must leave nothing that can be mistaken for its output.
-rm -rf "$out"/altairsim-*
+# A refused run must leave nothing that can be mistaken for ITS OWN output.
+#
+# SCOPED TO THIS TARGET, deliberately (2026-07-21). dist/ is also the release COLLECTION point:
+# the other three machines scp their finished archives here (DISTRIBUTION.md 6), so the old
+# broad `rm -rf altairsim-*` would delete a sibling platform's delivered package on any re-run.
+# Clearing only altairsim-*-<target> removes this run's own stale staging dir and archive and
+# nothing else -- no target name is a suffix of another, so the glob cannot cross platforms.
+# (The old un-suffixed altairsim-<ver>/ is no longer produced -- staging is always suffixed.)
+rm -rf "$out"/altairsim-*-"$target" \
+       "$out"/altairsim-*-"$target".*
 
 # ---------------------------------------------------------------------------
 # REFUSE TO PACKAGE A BINARY THAT CANNOT OPEN A WINDOW.
@@ -351,20 +359,51 @@ archive=$out/$name.$ext
 echo
 echo "build-package: staged $pkg"
 
-# tar.gz everywhere but Windows. WINDOWS HAS NO `zip`: Git Bash does not ship one, so the
-# obvious command is the one that is missing on the one platform that needs this branch.
-# Windows 10 1803+ does ship tar.exe (bsdtar), whose -a picks the format from the suffix,
-# and PowerShell has Compress-Archive. Try all three rather than rest on any one.
+# tar.gz everywhere but Windows. The Windows .zip is where the footguns are, and building one
+# on the Win10 guest (2026-07-21) sprang every one:
+#
+#   * Git Bash ships NO Info-ZIP `zip`.
+#   * Its `tar` is GNU tar (/usr/bin/tar), which CANNOT write zip -- `--format zip` is an
+#     "Invalid archive format" and `-a -cf x.zip` yields a file `unzip` will not read. So the
+#     old `tar --version | grep bsdtar` branch never fired here (bare tar is GNU tar), and had
+#     it fired it would have run the wrong tar.
+#   * PowerShell 5.1 -- what Windows 10 ships -- Compress-Archive writes BACKSLASH path
+#     separators. The listing looks right and `unzip -t` passes, but actual extraction on any
+#     Unix `unzip` FAILS ("appears to use backslashes as path separators"). PowerShell 7 fixed
+#     it; the release box has 5.1.
+#
+# What DOES emit a conformant, forward-slash zip is bsdtar (libarchive) with `--format zip`.
+# It ships in every Windows 10 1803+ as %SystemRoot%\System32\tar.exe -- absent only from Git
+# Bash's PATH, where GNU tar shadows it. So find a REAL bsdtar (bare `tar` already is one on
+# macOS; on Windows reach System32\tar.exe by absolute path) and prefer it. Compress-Archive
+# stays as a last resort, but WARNS, because its output may not open off Windows.
 if [ "$ext" = "zip" ]; then
+  bsdtar=""
+  if tar --version 2>/dev/null | grep -qi bsdtar; then
+    bsdtar=tar
+  else
+    # Git Bash's GNU tar cannot zip; reach the Windows-native bsdtar by absolute path.
+    for t in "$(cygpath -u "${SYSTEMROOT:-}" 2>/dev/null)/System32/tar.exe" \
+             /c/Windows/System32/tar.exe; do
+      if [ -x "$t" ] && "$t" --version 2>/dev/null | grep -qi bsdtar; then
+        bsdtar=$t
+        break
+      fi
+    done
+  fi
+
   if command -v zip > /dev/null 2>&1; then
     ( cd "$out" && zip -qr "$name.zip" "$name" )
+  elif [ -n "$bsdtar" ]; then
+    ( cd "$out" && "$bsdtar" --format zip -cf "$name.zip" "$name" )
   elif command -v powershell.exe > /dev/null 2>&1; then
+    echo "build-package: WARNING -- no Info-ZIP zip and no bsdtar; using Compress-Archive." >&2
+    echo "  Windows PowerShell 5.1 writes BACKSLASH separators that Unix \`unzip\` cannot" >&2
+    echo "  extract. VERIFY this archive unpacks on a non-Windows box before shipping it." >&2
     ( cd "$out" && powershell.exe -NoProfile -Command \
         "Compress-Archive -Path '$name' -DestinationPath '$name.zip' -Force" )
-  elif tar --version 2>/dev/null | grep -qi bsdtar; then
-    ( cd "$out" && tar -a -cf "$name.zip" "$name" )
   else
-    echo "build-package: no zip, no powershell.exe, no bsdtar -- cannot make a .zip" >&2
+    echo "build-package: no zip, no bsdtar, no powershell.exe -- cannot make a .zip" >&2
     exit 1
   fi
 else

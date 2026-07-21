@@ -56,17 +56,29 @@ What has to be built, roughly in order:
    you into the staging copy.
 
    **Still `/bin/sh`, deliberately** — on Windows it runs under Git Bash. A PowerShell sibling
-   was considered and declined: two parsers of `docs/package.map` would drift. Git Bash ships
-   no `zip`, so the `.zip` branch falls back `zip` → `Compress-Archive` → `bsdtar`.
+   was considered and declined: two parsers of `docs/package.map` would drift. The `.zip` branch
+   prefers Info-ZIP `zip`, then **bsdtar `--format zip`**, and only then Compress-Archive, which
+   now WARNS. That order was earned on the Win10 guest, 2026-07-21: Git Bash ships no `zip`; its
+   `tar` is GNU tar, which cannot write zip at all (`--format zip` is "Invalid archive format");
+   and PowerShell 5.1's Compress-Archive writes BACKSLASH separators that pass `unzip -t` but
+   FAIL real extraction on any Unix `unzip`. The conformant path is the Windows-native bsdtar at
+   `%SystemRoot%\System32\tar.exe` (libarchive), reached by absolute path because GNU tar shadows
+   it on Git Bash's PATH.
 
-   **Only exercised on macOS/arm64.** Linux and Windows are unrun; the `.zip` fallback chain
-   in particular has never fired.
+   **Exercised end-to-end on ALL FOUR boxes** (the 2026-07-21 dry run: each built native,
+   packaged, and the three workers `scp`'d their archive to the coordinator's `dist/`). The
+   Windows leg was proven the same day and to the same bar — native MSVC build, 17/17 tests, a
+   self-contained `.exe` (`dumpbin`: system DLLs only, no `SDL3.dll`, no `VCRUNTIME140`), and a
+   conformant `.zip` that extracts clean off Windows — so **v0.3.0 ships four platforms, Windows
+   no longer deferred.** The `.zip` archiver was fixed to get there (see the chain above).
 2. ~~**The SDL3 copy and the install-name fixups**~~ — **moot under static linking, and that
    is the point.** `DISTRIBUTION.md` §3.2 settled on `-DSDL_STATIC=ON`, which deletes this
    item rather than doing it: no dylib to copy, no `install_name_tool`, no `@rpath`, no
    `$ORIGIN`, no DLL beside the `.exe`. Confirmed on both macOS arches (arm64 §3.2; x86_64 on
    the Intel Mac, 2026-07-20 — 4.7M self-contained, `otool -L` clean, 5426 `SDL_` symbols).
-   It comes back only if Linux or Windows cannot build SDL3 static, which is untested.
+   It comes back only if a platform cannot build SDL3 static — and none is left that cannot.
+   Linux static SDL3 is confirmed (windowed, `ldd`-clean), and Windows too (2026-07-21: windowed
+   `.exe`, `dumpbin`-clean — no `SDL3.dll`, no `VCRUNTIME140` — static SDL3 *and* static `/MT`).
 3. ~~**A linkage check in `build-package.sh`**~~ — **DONE 2026-07-20**, before the Windows
    work rather than after, because Windows is where it is most needed: no CI leg there has
    SDL3 and `tools\build-sdl3-static.bat` has never been run, so a headless `.exe` is the

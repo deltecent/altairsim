@@ -148,19 +148,35 @@ About **0.3M** on the package, and the entire bundling problem disappears — no
 ### 4.1 What each machine needs
 
 ```
-a C++20 compiler and CMake >= 3.20
-SDL3 for that platform
-git, and gh authenticated against the repository
+every machine     a C++20 compiler and CMake >= 3.20
+                  SDL3 for that platform (the static build, §3)
+                  git
+
+a WORKER only     git reaches GitHub over ANONYMOUS https -- no login, no token, ever
+                  an ssh client, to scp the finished archive to the coordinator
+                    (Windows: scp.exe ships in Windows 10)
+
+the COORDINATOR   git authenticated for push, and gh authenticated -- it does ALL GitHub work
+(this box only)   Remote Login (sshd) ON, so the three workers can scp their archives in
 ```
 
-**That is the whole list. No pandoc, no Chrome, no poppler.** The manual PDF is built once by the coordinator and handed to the others, so `build-package.sh` is invoked with `--pdf` rather than being allowed to rebuild it. This is not a convenience: **without `--pdf` the script calls `build-docs.sh`**, which needs **pandoc pinned at 3.6** (Homebrew ships 3.10, and a different pandoc is a different document), a Chromium browser as the paginator, and `pdffonts` for the font check. Four machines rebuilding it independently means four subtly different manuals in four packages. With `--pdf` none of that runs, and the packaged PDF is byte-identical to the one handed in — **the script warns loudly on the rebuild path**, which only the coordinator should ever take.
+**A worker holds no credentials.** It clones the public repo over `https://` with no authentication, builds, and hands its one archive back over `scp`. It never logs in to GitHub, never holds a token, and never runs `gh`. **Everything that touches the repository with credentials — the tag, the push, the draft, every upload, the publish — happens on the coordinator, and only there.** A worker's sole outbound credential is the ssh key that lets it `scp` to this box; it is powerless against the repository. (Posture set 2026-07-21.)
+
+**No pandoc, no Chrome, no poppler on any machine.** The manual PDF is built once by CI and committed at the tag (§5 step 2), so every checkout already carries `docs/altairsim-manual.pdf` and `build-package.sh` is invoked with `--pdf` rather than rebuilding it. Without `--pdf` the script calls `build-docs.sh`, which needs **pandoc pinned at 3.6** (Homebrew ships 3.10, and a different pandoc is a different document), a Chromium browser as the paginator, and `pdffonts` for the font check — so four machines rebuilding it independently means four subtly different manuals. With `--pdf` none of that runs and the packaged PDF is byte-identical to CI's; **the script warns loudly on the rebuild path**, which only the coordinator should ever take.
 
 **On Windows, add Git Bash** — `build-package.sh` is `/bin/sh` and is not being duplicated in PowerShell, because two parsers of `docs/package.map` would drift. Git for Windows supplies it, and the box needs Git to clone this anyway.
 
 ### 4.2 The seven steps, on every machine
 
+**For these same steps filled in with each box's real paths, flags and target — the version to
+run at release time, plus a diagram of the whole flow — see §4.5.**
+
 ```sh
-# 1. THE TAG, NEVER A BRANCH.
+# 1. THE SOURCE, AT THE TAG, NEVER A BRANCH.
+#    A WORKER clones the PUBLIC repo over anonymous https -- no login, no token:
+#        git clone https://github.com/deltecent/altairsim.git      # first time only
+#    Its remote must be the https URL, so fetch needs no credential. The COORDINATOR
+#    uses its own authenticated tree; only workers use anonymous https.
 git fetch --tags
 git checkout vX.Y.Z
 
@@ -195,8 +211,12 @@ ctest --test-dir build -C Release -LE slow
 # 6. Package, with the manual handed in rather than rebuilt.
 tools/build-package.sh --pdf <path to the coordinator's manual> --target <target>
 
-# 7. Upload into the draft release.
-gh release upload vX.Y.Z dist/altairsim-X.Y.Z-<target>.<ext>
+# 7. DELIVER the archive. A WORKER never touches GitHub -- it scps its one archive into the
+#    coordinator's repo dist/. build-package.sh's cleanup is scoped to its OWN target, so a
+#    sibling platform's already-delivered archive is not wiped (see the script, DISTRIBUTION.md 6):
+scp dist/altairsim-X.Y.Z-<target>.<ext> patrick@dist.altairsim.com:~/src/altairsim/dist/
+#    The COORDINATOR's own archive is already in that dist/ (it built there); it uploads all
+#    four with gh (§5 step 6).
 ```
 
 **Record the SDL3 version you built against** — in the release notes, or wherever the release
@@ -206,7 +226,7 @@ and not another.
 
 `<target>` is one of `macos-arm64`, `macos-x86_64`, `windows-x86_64`, `linux-x86_64`.
 
-**IF ANY CHECK FAILS, STOP AND REPORT IT.** Do not upload, do not work around it, and do not decide it is probably fine. A package that reaches altairsim.com is one somebody downloads; there is no later gate.
+**IF ANY CHECK FAILS, STOP AND REPORT IT.** Do not deliver it (no `scp`, no upload), do not work around it, and do not decide it is probably fine. A package that reaches altairsim.com is one somebody downloads; there is no later gate.
 
 ### 4.3 Per-platform divergence
 
@@ -214,7 +234,7 @@ and not another.
 
 **Linux.** Build on the **oldest glibc you can reasonably get** — a container or an older VM. A binary and a `.so` built on current Ubuntu will refuse to start on an older distro, and this is the one target where the choice of build host decides who can run the result. Everywhere else the host is incidental.
 
-**Windows.** Steps 1–5 run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe` — **the script probes for it**, so step 6 needs no extra flag. **Step 6 runs in Git Bash**, not PowerShell, because the script is `/bin/sh`. **Windows has no `zip`** and Git Bash ships none; the script falls back to `Compress-Archive`, then to `bsdtar` (`tar.exe`, present since Windows 10 1803). **Which of the three actually fires here has never been observed** — report it. See §4.4, because the toolchain changes more than the paths.
+**Windows.** Steps 1–5 run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe` — **the script probes for it**, so step 6 needs no extra flag. **Step 6 runs in Git Bash**, not PowerShell, because the script is `/bin/sh`. **Windows has no Info-ZIP `zip`** and Git Bash ships none — and its `tar` is GNU tar, which cannot write zip at all. The script now makes the `.zip` with the **Windows-native bsdtar** (`%SystemRoot%\System32\tar.exe --format zip`), which emits a conformant, forward-slash archive; Compress-Archive is a last resort only, because Windows-10 PowerShell 5.1 writes backslash separators that Unix `unzip` cannot extract (observed and fixed 2026-07-21). See §4.4.
 
 ### 4.4 Windows: MSVC, and only MSVC
 
@@ -257,11 +277,171 @@ release build on Windows**, and correct this table with what it finds.
 
 **The verification is not optional: run the packaged `.exe` on a Windows machine that has never had a compiler on it.** That is the only test separating "works on the build box" from "works". **Nothing has ever done this** — not CI, not the v0.2.0 process.
 
+### 4.5 The four boxes, concretely — what you actually type
+
+**One coordinator, three workers.** The coordinator (this box) is the only machine with
+credentials — it tags, pushes, and does every `gh` operation. The three workers hold nothing:
+they clone the **public** repo over **anonymous `https://`**, build, and `scp` their one archive
+to the coordinator's repo **`dist/`** (`~/src/altairsim/dist`) — reached at
+**`dist.altairsim.com`**, this box's public name (its LAN address is DHCP-assigned and floats, so
+always use the name, never a raw IP). §4.2 is the same seven steps on all four; only the per-box
+specifics differ — the **SDL3 prefix**, the **platform flags**, the **`--target`**, and, for a
+worker, the **`scp` back**. Filled in with the project's real paths (verified 2026-07-21):
+
+```
+                 ┌─────────────────────────────────────────────────┐
+                 │  COORDINATOR — macOS Apple Silicon (this box)    │
+                 │  dist.altairsim.com · only box with credentials  │
+                 │  §5: bump·merge·wait for CI PDFs·tag·push        │
+                 │      gh release create --draft                   │
+                 │  builds macos-arm64 straight into repo dist/     │
+                 └───────────────────────┬─────────────────────────┘
+              the coordinator's push puts the source, at the tag, on github.com
+     workers read it over ANONYMOUS https │ (public repo — no login, no token on a worker)
+                                          ▼
+   ┌───────────────────────┬──────────────────────────┬───────────────────────┐
+   │ Intel Mac   ssh .22   │ Windows 10   VM on .22    │ Ubuntu Linux ssh .246 │
+   │ build macos-x86_64    │ build windows-x86_64      │ build linux-x86_64    │
+   │        .tar.gz        │        .zip               │        .tar.gz        │
+   └───────────┬───────────┴─────────────┬────────────┴───────────┬───────────┘
+               └─────────── scp → coordinator dist/ ───────────┘
+                                          ▼
+                 the repo's dist/ on the coordinator — all four collect here
+                                          │  gh release upload   (coordinator only, §6)
+                                          ▼
+                    draft release vX.Y.Z  →  publish  →  GitHub + altairsim.com
+```
+
+**Two things are the same on every box.** (1) After `git checkout vX.Y.Z` the tree already holds
+CI's manual at `docs/altairsim-manual.pdf` (§5 step 2 tags the commit CI built it in), so `--pdf
+docs/altairsim-manual.pdf` uses the one correct PDF and pandoc never runs. (2) Every archive
+lands in the repo's `dist/` — which is also the **collection point**: the three workers `scp`
+their archive here and the coordinator builds `macos-arm64` here. `build-package.sh` used to wipe
+the whole `dist/altairsim-*` each run; its cleanup is now **scoped to the target it builds**
+(2026-07-21), so packaging one platform never deletes another's already-delivered archive.
+
+**Box 1 — macOS Apple Silicon** *(the coordinator; also builds `macos-arm64`)*. Uses its own
+authenticated tree.
+```sh
+git fetch --tags && git checkout vX.Y.Z
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static" \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release -LE slow            # CHECK: 100% tests passed
+./build/altairsim --version                           # CHECK: bare "AltairSim X.Y.Z"
+tools/build-package.sh --pdf docs/altairsim-manual.pdf --target macos-arm64
+# its archive is now in dist/ beside the workers' deliveries; all four upload in §5 step 6
+```
+
+> **Start from a clean `build/`.** This box's day-to-day `build/` is configured against
+> Homebrew's *dynamic* SDL3. CMake caches that `SDL3_DIR`, and re-running the configure above
+> does **not** override it — the build links `/opt/homebrew/.../libSDL3.0.dylib`, and
+> `build-package.sh` refuses it (an absolute path that starts on no other Mac). So `rm -rf build`
+> before the configure. A *clean* configure prefers the static prefix correctly — verified on the
+> 2026-07-21 dry run, where the stale-cache build was caught by exactly that refusal.
+
+**Box 2 — macOS Intel worker** *(`ssh patrick@192.168.94.22`)*. Same prefix and `11.0` floor as
+Box 1 — only the target and the delivery differ.
+```sh
+git clone https://github.com/deltecent/altairsim.git   # first time only; no login, no token
+git fetch --tags && git checkout vX.Y.Z
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static" \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release -LE slow
+./build/altairsim --version
+tools/build-package.sh --pdf docs/altairsim-manual.pdf --target macos-x86_64
+scp dist/altairsim-X.Y.Z-macos-x86_64.tar.gz patrick@dist.altairsim.com:~/src/altairsim/dist/
+```
+
+> **Driving this box over ssh? Put `cmake` on `PATH` yourself.** A non-login shell
+> (`ssh … 'bash -s'`) does not read the profile that adds `/usr/local/bin`, so `cmake` is not
+> found and the configure fails at line 1. Prefix the remote script with
+> `export PATH="/usr/local/bin:$PATH"` (verified 2026-07-21). At the machine's own terminal this
+> does not arise, and Linux is unaffected — its `cmake` is in `/usr/bin`, always on `PATH`.
+
+**Box 3 — Windows 10 worker** *(VMware guest on the Intel Mac)*. Steps 1–5
+in **PowerShell**; steps 6–7 in **Git Bash**. `MultiThreaded` and `--config Release` are
+load-bearing (§4.4); the binary lands in `build\Release\`. `scp.exe` ships in Windows 10 and
+reaches the coordinator over the LAN.
+
+> **PROVEN end-to-end, 2026-07-21.** This leg now matches the other three: native MSVC build
+> (static SDL3 + static `/MT` CRT), 17/17 tests, `dumpbin /dependents` showing system DLLs only
+> (no `SDL3.dll`, no `VCRUNTIME140`), a conformant `.zip`, and `scp` outbound into the
+> coordinator's `dist/`. Three findings worth keeping:
+> **(1) The `.zip` archiver bit hard.** In Git Bash `zip` is absent and `tar` is GNU tar, which
+> cannot write zip at all; PowerShell 5.1's Compress-Archive writes BACKSLASH separators that
+> pass `unzip -t` but FAIL extraction on any Unix `unzip`. `build-package.sh` now emits the zip
+> with the Windows-native bsdtar (`%SystemRoot%\System32\tar.exe --format zip`), so step 6 needs
+> nothing extra — but do not "fix" a broken zip by reaching for Compress-Archive.
+> **(2) Delivery is `scp.exe` outbound** and needs only a deploy key (`~/.ssh/altairsim_deploy`,
+> its public half in the coordinator's `authorized_keys`) — no inbound `sshd`. The guest also
+> accepts inbound ssh now (offline Win32-OpenSSH; an admin key lives in
+> `%ProgramData%\ssh\administrators_authorized_keys` with an ACL of exactly {Administrators,
+> SYSTEM}, or sshd silently ignores it), which lets the coordinator drive the whole leg — but a
+> release needs only the outbound path.
+> **(3) The walls, if you drive it by hand:** elevation loses mapped drives (use the
+> `\\vmware-host\Shared Folders\…` UNC path); the firewall has three profiles, not one;
+> `Expand-Archive` denies `_manifest`, so extract with `tar.exe`.
+```powershell
+# --- PowerShell ---   (first time only:  git clone https://github.com/deltecent/altairsim.git)
+git fetch --tags; git checkout vX.Y.Z
+cmake -B build -DCMAKE_BUILD_TYPE=Release `
+      -DCMAKE_PREFIX_PATH="$env:USERPROFILE\opt\sdl3-static" `
+      -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release -LE slow
+.\build\Release\altairsim.exe --version
+```
+```sh
+# --- Git Bash, from the repo root ---
+tools/build-package.sh --pdf docs/altairsim-manual.pdf --target windows-x86_64
+scp dist/altairsim-X.Y.Z-windows-x86_64.zip patrick@dist.altairsim.com:~/src/altairsim/dist/
+```
+
+**Box 4 — Ubuntu Linux worker** *(`ssh patrick@192.168.94.246` when up; the 22.04 VM — oldest
+glibc here, §4.3)*. Needs the X11 dev headers installed once (`libxtst-dev` and friends) or SDL3
+will not configure.
+```sh
+git clone https://github.com/deltecent/altairsim.git   # first time only; no login, no token
+git fetch --tags && git checkout vX.Y.Z
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static"
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release -LE slow
+./build/altairsim --version
+tools/build-package.sh --pdf docs/altairsim-manual.pdf --target linux-x86_64
+scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/altairsim/dist/
+```
+
+> **One-time setup for the scp path (proven coordinator↔Intel-Mac↔Linux 2026-07-21; Windows
+> still pending).**
+> **On the coordinator:** turn **Remote Login** ON (System Settings → General → Sharing), and add
+> each worker's delivery public key to `~/.ssh/authorized_keys`. The collection dir needs nothing:
+> `dist/` is **tracked** (via `dist/README.md`), so every checkout already has it — a worker can
+> deliver before the coordinator has built — and `build-package.sh`'s cleanup is scoped to the
+> target it builds, so a delivered sibling archive is never wiped.
+> **On each worker:** point `origin` at the https URL (`git remote set-url origin
+> https://github.com/deltecent/altairsim.git`) so fetches need no credential, and give it a
+> **passphrase-less** ssh key dedicated to this — the scp runs unattended, so a
+> passphrase-protected key will not do. All three workers — Mac, Linux and Windows — use a
+> dedicated `altairsim_deploy` ed25519 key; the shared passphrase-protected key only worked on
+> the Intel Mac by accident of macOS Keychain unlocking it, and not on Linux at all — so a
+> dedicated key is the uniform rule. Point `~/.ssh/config` at it — `Host dist.altairsim.com` /
+> `IdentityFile ~/.ssh/altairsim_deploy` / `IdentitiesOnly yes` — so the plain `scp` above uses
+> it and only it. That key is a worker's ONLY credential: it writes to `dist/` and nothing else,
+> and grants no GitHub access at all.
+> **The full build→package→deliver→collect dry run passed on ALL FOUR boxes (2026-07-21): each
+> built native, the three workers `scp`'d their archive into the coordinator's `dist/`, and all
+> four collected there with no sibling wiped.** The Windows leg is proven to the same bar as the
+> others (§4.5 Box 3) — self-contained `.exe`, conformant `.zip` — so v0.3.0 ships four platforms.
+
 ---
 
 ## 5. The release sequence
 
-Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines.
+Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — the three workers `scp` their archives to the coordinator, which alone talks to GitHub.
 
 **1. Bump the version.** `project(altairsim VERSION X.Y.Z …)` in `CMakeLists.txt` is the only place it lives; everything else derives from it or from `git describe`.
 
@@ -271,9 +451,9 @@ Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines.
 
 **4. Open the draft.** `gh release create vX.Y.Z --draft --notes-file <notes>`. The collection point has to exist before any machine starts building.
 
-**5. Build, on all four machines.** §4.2. They are independent and can run in any order or at the same time.
+**5. Build, on all four machines.** §4.2 / §4.5. Independent — any order, or all at once. **The three workers `scp` their archive into the coordinator's repo `dist/` (over `dist.altairsim.com`); the coordinator builds `macos-arm64` straight into the same `dist/`.** No worker authenticates to GitHub.
 
-**6. Publish.** When all four are uploaded and §7 passes: `gh release edit vX.Y.Z --draft=false`, then mirror the identical files to altairsim.com.
+**6. Upload all four, then publish — all on the coordinator.** When `dist/` holds all four and §7 passes: `gh release upload vX.Y.Z dist/altairsim-X.Y.Z-*.tar.gz dist/altairsim-X.Y.Z-*.zip`, then `gh release edit vX.Y.Z --draft=false`, then mirror the identical files to altairsim.com. **Only the coordinator has GitHub credentials.**
 
 ### The two traps that actually bit v0.2.0
 
@@ -285,18 +465,23 @@ Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines.
 
 ## 6. Where the artifacts go
 
-**A draft GitHub Release is the collection point.** No shared filesystem, no `scp`, no cloud folder — it works identically from all four operating systems, needs only `gh`, and nothing is visible to anyone until it is published.
+**The coordinator is the single collection point; the draft GitHub Release is where the artifacts become public.** The workers have no GitHub credentials, so they do not upload — each `scp`s its one archive into the coordinator's repo `dist/` (over `dist.altairsim.com`), the coordinator builds `macos-arm64` into the same `dist/`, and then the coordinator alone pushes all four to the draft release. That `dist/` is the repo's own gitignored scratch dir; `build-package.sh`'s cleanup is scoped to the target it builds, so collecting siblings there is safe across re-runs.
 
 ```
-   each machine
-   dist/altairsim-X.Y.Z-<target>.<ext>        gitignored scratch
-              |
-              |  gh release upload
-              v
-   draft release vX.Y.Z                       the only place all four meet
-              |
-              |  gh release edit --draft=false
-              v
+   worker (x3)                               coordinator (this box)
+   packages its target into dist/            packages macos-arm64 into dist/
+              |                                        |
+              |  scp -> dist.altairsim.com             | (already local)
+              +------------------+---------------------+
+                                 v
+                 the repo's dist/  —  all four collect here
+                                 |
+                                 |  gh release upload      <- coordinator only
+                                 v
+                       draft release vX.Y.Z
+                                 |
+                                 |  gh release edit --draft=false
+                                 v
      +------------------------+------------------------------+
      |                        |                              |
   GitHub Release          altairsim.com/download
@@ -403,6 +588,7 @@ Stated plainly, because a design document that describes a process nobody has au
 - **Nothing produces `SHA256SUMS`.**
 - **Nothing assembles the package and runs the manual's own commands against it.** `docs/package.map`'s own header says so, and names a `tests/acceptance/manual.cmake` that has never existed — a claimed test being worse than a missing one.
 - **Nothing has ever run a shipped `.exe` on a clean Windows box.**
+- **The workers deliver by `scp`.** By design (2026-07-21) only the coordinator holds GitHub credentials; the workers clone the public repo over anonymous `https://` and `scp` their archive into the coordinator's repo `dist/` (`dist.altairsim.com`), which then uploads all four. Nothing automates the scp, the collection, or the four-at-once upload — that is the manual part of §4.5. The scp path — anonymous https, `dist.altairsim.com` resolution, a passphrase-less delivery key, and `dist/` existing at checkout — is now **proven on all four boxes** (2026-07-21), Windows included: the full build→package→deliver→collect dry run landed four conformant archives in the coordinator's `dist/` with no sibling wiped. See §4.5.
 - **`tools\build-sdl3-static.bat` has never been run.** It was written from the working shell script. `docs/building-windows.md` §6 is the job that settles it.
 
 `TODO.md` is the live index of these; this list is a snapshot of why they matter, not a substitute for it.
