@@ -19,17 +19,16 @@
 //
 // `cycleCounted` therefore steers modulate() and NOT demodulate(). That is not a
 // shortcut, it is what the signals are: in BOTH schemes the tone is simply held for
-// the whole bit cell, so a receiver that classifies each cycle and samples the
-// resulting level at the centre of each cell is correct for both. Kansas City's
-// integer cycle counts make a transmitter's life tidy and buy the receiver nothing it
-// did not already have. One demodulator, verified against real tapes in both
-// modulations (see below).
+// the whole bit cell, so a receiver that measures which tone's energy fills each cell
+// is correct for both. Kansas City's integer cycle counts make a transmitter's life
+// tidy and buy the receiver nothing it did not already have. One demodulator, verified
+// against real tapes in both modulations (see below).
 //
 // ---- THE RECEIVER CALIBRATES ITSELF, AND MUST --------------------------------------
 //
-// demodulate() does NOT slice at the nominal midpoint between markHz and spaceHz. It
-// measures the two tones actually present and slices between THOSE, because the
-// nominal threshold is wrong on real media in three independent ways:
+// demodulate() does NOT assume the nominal markHz/spaceHz. It measures the two tones
+// actually present and runs its matched filter at THOSE, because the nominal frequency
+// is wrong on real media in three independent ways:
 //
 //   * WAVEFORM SHAPE CHANGES THE COUNT. A recovered cassette signal may be a sine or
 //     a sawtooth (the MITS modem shapes its square waves into one deliberately). A

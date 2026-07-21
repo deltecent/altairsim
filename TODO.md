@@ -705,37 +705,13 @@ many, or list the label.
   issue pending a call on whether creation belongs in `MOUNT` or a verb of its
   own.
 
-- **A mount can only vouch for framing, never for data** — found 2026-07-19
-  while documenting the CUTS format. `DemodResult::confidence()` is
-  `bytes / (bytes + framingErrors)`: it reports that start and stop bits landed
-  where they belonged, and cannot say the eight bits between them are the ones
-  recorded. deramp.com's archived `TRK80.WAV` is the counterexample — it frames
-  at 99.7% and 6,778 of its 7,840 payload bytes are wrong. The **wording** is
-  fixed (the mount line now says "of frames intact", not "clean", and
-  `docs/manual/tapes.md` says what the number does not cover), but the
-  **capability gap** is open: a tape can clear `kTapeConfidenceFloor` comfortably
-  and still be unloadable, and the operator finds out when the program crashes.
-  A SOLOS tape carries its own answer — a header checksum and a checksum after
-  every 256-byte block (see `examples/sol/make-trek80-tape.sh`), and the archived
-  tape's header checksum `D9` verifies even though its payload does not. So the
-  data *is* checkable for CUTS. The question is layering: `tapecodec.cpp`
-  demodulates and knows nothing of SOLOS file structure, and teaching the codec
-  one guest's format would be the wrong seam. Probably belongs in `tapetool` as
-  a `verify` verb first, where being format-aware is the point.
-
-  - **Update, verified on real hardware (Patrick, 2026-07-21):** deramp.com's
-    archived `TRK80.WAV` — the counterexample above — **loads correctly on a real
-    machine.** That inverts the reading of this finding: if the recording is good
-    and real hardware recovers it, then the 27 framing errors and the desynced
-    payload are **our demodulator's**, not the tape's. So this is not only a
-    "confidence can't vouch for data" documentation gap — it is evidence the CUTS
-    decoder in `tapecodec.cpp` is **less tolerant than the hardware it models**,
-    and mis-decodes a WAV that period hardware reads without trouble. That is a
-    simulator bug to chase, not a bad file to warn about. It also puts
-    `docs/sources.md`'s characterization of that file (7,932 bytes, 27 framing
-    errors, 6,778 payload bytes wrong) in question — the numbers are what *we*
-    decode, not what the recording *is*. Re-check the demodulator against this
-    file before trusting either.
+- **`confidence()` vouches for framing, not data.** `DemodResult::confidence()`
+  is `bytes / (bytes + framingErrors)`: it reports that start and stop bits landed
+  where they belonged, not that the eight bits between them are the ones recorded.
+  It is moot for a tape that decodes clean, but a format-aware `verify` verb in
+  `tapetool` — checking the SOLOS header and the checksum after every 256-byte
+  block — remains the honest way to tell an operator a mount is *loadable*, not
+  merely well-framed.
 
 ### MCP
 
