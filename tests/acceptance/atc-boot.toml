@@ -1,0 +1,20 @@
+# TEST FIXTURE, not product -- the shipped example is examples/sol/atc.toml.
+#
+# Proves a SECOND Sol game auto-launches off its own real tape (Philip Lord's ATC.WAV), so
+# the game tapes are not shipped unguarded: trek80 alone could pass while an ATC.WAV that
+# never decoded sat beside it. Same shape as the shipped file -- MOUNT, TYPE the XE, RUN --
+# but flat out with the idle nap off so the test does not pay the tape's real load time.
+
+[machine]
+name    = "atc-boot"
+base    = "sol20"
+startup = [
+  "MOUNT sol0:tape1 \"../../examples/sol/ATC.WAV\"",
+  "TYPE \"XE ATC\\r\"",
+  "RUN C000",
+]
+
+[[board]]
+id       = "cpu0"
+clock_hz = 0
+idle     = false

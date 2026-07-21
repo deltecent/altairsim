@@ -14,6 +14,7 @@
 #include "config/toml.h"
 #include "core/machine.h"
 #include "cpu/cpu.h"
+#include "host/console.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
@@ -208,6 +209,12 @@ void test_cli() {
     CHECK(tr && tr->built, "and now it is built");
     const CommandDef* h = resolveCommand("H");
     CHECK(h && std::string(h->name) == "HISTORY" && h->built, "H is HISTORY, and built");
+
+    // TYPE landed after TRACE, so `T` still means TRACE and TYPE pays `TY`. Adding a
+    // command must not silently change what a shorter prefix already resolves to.
+    const CommandDef* ty = resolveCommand("TY");
+    CHECK(ty && std::string(ty->name) == "TYPE" && ty->built, "TY is TYPE, and built");
+    CHECK(std::string(resolveCommand("T")->name) == "TRACE", "and T is still TRACE, above it");
 
     // Reserved commands still RESOLVE and still say what they wait on. SNAPSHOT and
     // RECORD are genuinely not here yet, and they hold their prefixes so that the day
@@ -941,6 +948,33 @@ void test_cli() {
         mon6.exec("SET cpu0 idle=on", o);
         CHECK(m6.clock.idle() && !m6.clock.free(),
               "a 2 MHz machine idles too -- the two are orthogonal");
+    }
+
+    // TYPE puts keystrokes in the console's input buffer, as though a key were pressed --
+    // which is how a machine file's `startup` reaches a program the monitor cannot, like
+    // SOLOS `XE` (examples/sol). Here the whole point is the DECODING: the escapes turn
+    // into control bytes, so `XE TRK80\r` ends in a real carriage return and SOLOS runs it.
+    SECTION("cli: TYPE injects keystrokes at the guest, escapes decoded");
+    {
+        Console& con = Console::instance();
+        uint8_t  drop;
+        while (con.read(&drop, 1)) {}     // start from an empty buffer
+
+        Machine            mt;
+        Monitor            mont(mt);
+        std::ostringstream ts;
+
+        mont.exec("TYPE \"XE TRK80\\r\"", ts);
+        std::string got;
+        uint8_t     b;
+        while (con.read(&b, 1)) got += (char)b;
+        CHECK(got == "XE TRK80\r", "the text verbatim, with \\r decoded to a carriage return");
+
+        // \t decodes; an unknown escape (\z) keeps its backslash rather than vanishing.
+        mont.exec("TYPE \"a\\tb\\zc\"", ts);
+        got.clear();
+        while (con.read(&b, 1)) got += (char)b;
+        CHECK(got == "a\tb\\zc", "a tab, and an unknown escape left as written");
     }
 }
 

@@ -3300,6 +3300,32 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // RUN -- the switch on the panel. `RUN <addr>` is EXAMINE + RUN: it loads the
     // PC exactly as EXAMINE does, because on the panel that is literally the pair of
     // switches you throw. Everything else is in runMachine().
+    if (cmd == "TYPE") {
+        // Inject keystrokes at the guest console -- type-ahead, exactly what a key from
+        // the VDM window or the terminal does (host/console.h). A `startup` line does this
+        // BEFORE the RUN that boots the guest, which is how a machine file launches a
+        // program the monitor cannot reach (e.g. SOLOS `XE`). See the command's HELP.
+        if (!need(2, "TYPE \"text\"")) return true;
+        const std::string s = unquote(a[1]);
+        std::string keys;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '\\' && i + 1 < s.size()) {
+                switch (s[++i]) {
+                    case 'r': keys += '\r'; break;
+                    case 'n': keys += '\n'; break;
+                    case 't': keys += '\t'; break;
+                    case '\\': keys += '\\'; break;
+                    case '"': keys += '"'; break;
+                    default: keys += '\\'; keys += s[i]; break;  // leave an unknown escape as written
+                }
+            } else {
+                keys += s[i];
+            }
+        }
+        Console::instance().inject(keys);
+        return true;
+    }
+
     if (cmd == "RUN") {
         CpuCore* c = needCpu(out);
         if (!c) return true;

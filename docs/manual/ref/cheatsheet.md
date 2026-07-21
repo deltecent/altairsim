@@ -70,6 +70,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `RES[ET]` | `RESET [CPU]` |
 | `P[OWER]` | `POWER` |
 | `T[RACE]` | `TRACE ON\|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]` |
+| `TY[PE]` | `TYPE "text"` |
 | `STO[P]` \* | `STOP` |
 | `SN[APSHOT]` \* | `SNAPSHOT <file>` |
 | `REST[ORE]` \* | `RESTORE <file>` |

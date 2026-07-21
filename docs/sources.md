@@ -121,24 +121,30 @@ grant that had been tied to one website) — <http://www.cpm.z80.de/license.html
 the acceptance tests boot. The rule was never "media is untracked"; it is "*huge* media that is not
 ours is untracked."
 
-## `examples/` — TREK80, off a real Sol-20 cassette
+## `examples/` — Sol-20 games, off real cassettes
 
-`examples/sol/` ships a Processor Technology **Sol-20** running **TREK80** (© 1977 Processor
-Technology Corp.). All of it was fetched from deramp.com on 2026-07-19 — the image and the manual
-from the MFE archive, the cassette recording from `tape_wav_files`, a set of Sol-20 tape
-digitizations that directory credits to **Philip Lord** ("P. Lord"). deramp.com hosts them; it
-did not make them.
+`examples/sol/` ships a Processor Technology **Sol-20** and four 1977 cassette games: **TREK80**
+(© 1977 Processor Technology Corp.), **ATC** (Air Traffic Controller, © 1978 Creative Computing
+Software / David Mannering), **PAC-MAN**, and **RAIDERS**. The four tapes are Sol-20 cassette
+digitizations that deramp.com's `tape_wav_files` directory credits to **Philip Lord** ("P. Lord")
+— deramp hosts them, it did not make them — all fetched 2026-07-19. TREK80's `ENTER`-script image
+and its manual came from the deramp.com MFE archive; the ATC manual came from sol20.org.
 
-<https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-Processor%20Technology/40-PTC%20Software/63-TREK80/>
+<https://deramp.com/downloads/processor_technology/sol-20/software/tape_wav_files/> (the tapes)
+<https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-Processor%20Technology/40-PTC%20Software/63-TREK80/> (TREK80's image + manual)
 
 | File | Provenance |
 |---|---|
-| `TRK80.WAV` | `…/sol-20/software/tape_wav_files/TRK80.WAV` on deramp.com — a **Sol-20 cassette digitized by Philip Lord**, real 1200-baud CUTS audio. **This is the tape that ships**, and it is the recording `reference/Sol-20.md` measured the CUTS parameters from. |
+| `TRK80.WAV` | `…/tape_wav_files/TRK80.WAV` on deramp.com — a **Sol-20 cassette digitized by Philip Lord**, real 1200-baud CUTS audio. **The tape that ships**, and the recording `reference/Sol-20.md` measured the CUTS parameters from. |
+| `ATC.WAV` · `PACMAN.WAV` · `RAIDERS.WAV` | `…/tape_wav_files/` on deramp.com — the same, Philip Lord's Sol-20 digitizations. They decode to SOLOS files `ATC` (2,623 B), `PACMA` (3,415 B) and `RAID` (4,218 B), each at 0 framing errors. |
 | `TRK80.TAP` | The byte stream, `altair_tapetool decode`d from `TRK80.WAV` (`cuts1200`). 7,939 bytes. Committed so the fast-path example needs no audio decode. |
 | `TREK80.ENT` | `…/63-TREK80/Hex Dump/TREK80.ENT` — a SOLOS `ENTER` script: 7,840 bytes loading at `0000`, entry `AF C3 5C 1D`. Kept as the source for the tape-writing demonstration below. |
-| `Trek80 Manual.pdf` | `…/63-TREK80/` — Processor Technology's own manual for the game. |
+| `Trek80 Manual.pdf` | `…/63-TREK80/` on deramp.com — Processor Technology's own manual for the game. |
+| `ATC Manual.pdf` | `sol20.org/manuals/atc.pdf` — Creative Computing Software's *Air Traffic Controller* manual (David Mannering, CS-8001), 6 pp. |
 
-**Reading Lord's real recording was the whole point, and it now reads clean.** `TRK80.WAV`
+**Reading Lord's real recordings was the whole point, and they now read clean** — all four decode
+to valid SOLOS tapes at 0 framing errors. TREK80 is the one with an independent oracle, so it is the
+one the story is told through. `TRK80.WAV`
 decodes to **7,939 bytes with 0 framing errors** — a valid SOLOS tape: `01` sync, name `TRK80`,
 `SIZE` field `1EA0`, header checksum `D9`, the payload matching the `.ENT` image. That was **not**
 always true. Until the demodulator fix (`src/host/tapemodem.cpp`; TODO's *CUTS demod* entry), the
