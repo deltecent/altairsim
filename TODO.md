@@ -1214,6 +1214,22 @@ change outside that task. Empty-means-absent is the bug: an empty dirname and no
 machine file are different answers — the same shape as the `read() == 0` bug in
 issue #25, where a quiet tty and an ended pipe shared one value.
 
+### `terminal-hw` fails under `ctest` on Windows — it should skip when stdout is redirected
+
+Found on the bare-machine Windows build, 2026-07-20. `terminal-hw`
+(`src/platform/win32/terminaltest_win32.cpp`) decides whether to skip (exit 77) by checking
+**stdin only** (`:58`, `if (!stdinIsTty())`). But `ctest` captures a child's stdout through a
+pipe, so under `ctest` stdin is the console while **stdout is not** — the skip path is not
+taken, the suite runs, and the `CHECK(stdoutIsTty())` at `:84` fails. The other 14 checks pass,
+and running the executable directly (`.\build\Release\altair_terminaltest.exe`) gives a clean
+15/0. So the terminal layer is fine; the **test** reports a spurious failure on the documented
+`ctest -LE slow` cadence, on every Windows run.
+
+The fix is to make the skip decision account for stdout too: if a real console cannot be taken
+for **both** streams (open `CONIN$`/`CONOUT$`, else `AllocConsole`), skip rather than run half a
+suite against a pipe. `docs/building-windows.md` §5 now documents the artifact and the direct-run
+workaround; this closes it properly. Low priority — it misreads as a failure but hides nothing.
+
 ### Eleven tests do not run on Windows
 
 `CMakeLists.txt:687-688` gates eleven tests on `find_program(EXPECT_EXECUTABLE
@@ -1293,6 +1309,22 @@ invention; it is not.
   Windows leg has been emitting these on every push. Worth a mechanical rename of the inner
   `c`s. **Catch it at the desk** by building once with `-Wshadow` on clang/gcc rather than only
   seeing it on Windows — the warning is portable even if only MSVC enables it by default.
+
+  **The full `/W4` inventory, from the first SDL3-linked Windows build (2026-07-20).** All
+  benign (no `/WX`), none a bug the exercisers would let through, but recorded so a *real* one
+  is not lost in the noise, and so nobody re-derives the list:
+  - **C4456** (×38) — the `c` shadowing above.
+  - **C4244 / C4267 / C4310** (×16 together) — narrowing conversions (`uint64_t`→`uint8_t`,
+    `size_t`→`uint32_t`, constant-cast truncation), mostly in `altair_tests` and the
+    byte-twiddling core. Intentional, but each is a place a real narrowing could hide.
+  - **C4996** (×10) — MSVC deprecation nags on `fopen`/`getenv` ("use `fopen_s`/`_dupenv_s`").
+    Pure MSVC noise; the standard calls are fine. Silence with `_CRT_SECURE_NO_WARNINGS` on the
+    MSVC build if it ever costs more than it is worth.
+  - **C4127** (×2) — "conditional expression is constant," the usual template/constexpr case.
+
+  **No `LNK4098`** (CRT mismatch) — verified, consistent with `dumpbin` showing the `.exe` wants
+  no `VCRUNTIME140.dll`: the static CRT propagated cleanly through SDL. If any of these ever gets
+  a `/WX`, do the C4996 suppression and the C4456 rename first.
 - **Inspecting the `lineprinter` machine creates a file.** `altairsim -x "SHOW
   MACHINE" lineprinter` drops a `printout.txt` in the working directory without
   a byte having been printed — the C700's `file:` sink is opened when the
