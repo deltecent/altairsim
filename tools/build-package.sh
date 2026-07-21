@@ -129,19 +129,27 @@ done
 # everywhere else: there are no carriage returns in this output on Unix.
 ver=$("$sim" --version | tr -d '\r' | awk '{print $2}')
 
-# CLEAR STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
+# CLEAR THIS TARGET'S STALE SIBLINGS -- BEFORE THE REFUSALS BELOW, NOT AFTER.
 #
-# A leftover dist/altairsim-<ver>*/ from an earlier run holds whatever build/altairsim existed
-# THEN -- and it looks exactly like the release. That is not hypothetical: on 2026-07-20 a stale
-# pre-tag staging directory reported "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)" and read
-# as a version bug in the shipped archives, which were correct.
+# A leftover altairsim-<ver>-<target>/ from an earlier run holds whatever build/altairsim
+# existed THEN -- and it looks exactly like the release. That is not hypothetical: on 2026-07-20
+# a stale pre-tag staging directory reported "AltairSim 0.2.0 (v0.1.0-82-gb634269) (modified)"
+# and read as a version bug in the shipped archives, which were correct.
 #
 # It runs HERE because the refusals below exit 1, and until 2026-07-20 they exited leaving the
 # PREVIOUS run's archive sitting under the exact name the release process expects (observed on
 # the Intel Mac: a refused headless run left the good tarball untouched at its original
 # timestamp). Anyone uploading by filename rather than by watching the exit code would ship it.
-# A refused run must leave nothing that can be mistaken for its output.
-rm -rf "$out"/altairsim-*
+# A refused run must leave nothing that can be mistaken for ITS OWN output.
+#
+# SCOPED TO THIS TARGET, deliberately (2026-07-21). dist/ is also the release COLLECTION point:
+# the other three machines scp their finished archives here (DISTRIBUTION.md 6), so the old
+# broad `rm -rf altairsim-*` would delete a sibling platform's delivered package on any re-run.
+# Clearing only altairsim-*-<target> removes this run's own stale staging dir and archive and
+# nothing else -- no target name is a suffix of another, so the glob cannot cross platforms.
+# (The old un-suffixed altairsim-<ver>/ is no longer produced -- staging is always suffixed.)
+rm -rf "$out"/altairsim-*-"$target" \
+       "$out"/altairsim-*-"$target".*
 
 # ---------------------------------------------------------------------------
 # REFUSE TO PACKAGE A BINARY THAT CANNOT OPEN A WINDOW.
