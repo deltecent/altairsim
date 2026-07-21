@@ -219,8 +219,9 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     }
 
     const size_t n = a.s.size();
-    const double sp = double(a.rate) / f.baud;  // samples per bit
-    if (sp < 2.0) return r;                     // baud too high for this rate
+    double       sp = double(a.rate) / f.baud;  // samples per bit -- the NOMINAL rate. It
+    if (sp < 2.0) return r;                      // is adapted to the real one below, because
+    const double spNominal = sp;                 // a tape running 3% fast has a 3% short bit
 
     // ---- Stage 5a: the TONE DISCRIMINATOR IS A MATCHED FILTER, not a slicer. ------
     //
@@ -248,21 +249,25 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     const double spaceF = double(a.rate) / (2.0 * ivSpace);
     const double wM = 2.0 * 3.14159265358979 * markF  / a.rate;
     const double wS = 2.0 * 3.14159265358979 * spaceF / a.rate;
-    const double halfWin = 0.5 * sp;  // one bit cell, Hann-weighted
-
+    // ONE BIT CELL, RECTANGULAR, NOT WINDOWED -- and the window width tracks `sp`, which
+    // the framer eases toward the real tape speed below. Rectangular is deliberate: a cell
+    // is a WHOLE number of both tones (the 2:1 ratio and the cycle count guarantee it -- at
+    // any rate, a cuts mark cell is two mark periods and one space period), so a plain
+    // integral over exactly the cell makes the two tones ORTHOGONAL and a pure mark scores
+    // zero in the space bin. A Hann taper would break that integer-period orthogonality and
+    // bleed a space tone into the mark bin -- invisible at 44 kHz, a wrong bit at 11 kHz
+    // where a cell is only nine samples and there is no resolution to spare.
     auto energy = [&](double centre, double w) -> double {
+        const double halfWin = 0.5 * sp;
         long lo = long(std::floor(centre - halfWin));
         long hi = long(std::ceil(centre + halfWin));
-        long len = hi - lo;
-        if (len < 2) return 0.0;
+        if (hi - lo < 2) return 0.0;
         double re = 0.0, im = 0.0;
-        for (long idx = 0, i = lo; i < hi; ++i, ++idx) {
+        for (long i = lo; i < hi; ++i) {
             if (i < 0 || i >= long(n)) continue;
-            const double han = 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979 * idx / double(len - 1));
-            const double s   = han * double(hp[size_t(i)]);
             const double ang = w * double(i);
-            re += s * std::cos(ang);
-            im += s * std::sin(ang);
+            re += double(hp[size_t(i)]) * std::cos(ang);
+            im += double(hp[size_t(i)]) * std::sin(ang);
         }
         return std::hypot(re, im);
     };
@@ -322,11 +327,47 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
         return -1.0;
     };
 
-    const double frameAdv = (1.0 + f.dataBits + f.stopBits) * sp;
+    // THE BIT CLOCK ADAPTS TO THE REAL TAPE SPEED. `sp` starts at rate/baud, but a tape
+    // that plays 3% fast has a bit cell 3% short, and the NOMINAL cell would then sample
+    // the eighth data bit a quarter of a cell into the ninth -- correct at the start bit,
+    // wrong by the stop bit, which is the deletion that desyncs a block. So every contiguous
+    // byte MEASURES its own length -- the refined start of the next character is exactly
+    // `frameBits` cells past this one -- and eases `sp` toward it. Speed is not the tone
+    // (the octave ambiguity forbids reading it there) but the DATA rate, and the data rate
+    // is what the frame spacing is. A tape at a steady 3% is tracked within a byte or two;
+    // one that drifts is followed. The blend is slow enough that a single mis-refined start
+    // cannot yank the clock, and the update is clamped to a sane band around the nominal.
+    const double frameBits = 1.0 + f.dataBits + f.stopBits;
+
+    // SEED THE CLOCK FROM THE DATA, not the nominal rate, so byte zero is already at the
+    // right speed rather than easing toward it. The spacing between validated start edges
+    // is a whole number of bit cells; divide it out and the median of those quotients is
+    // the real cell, robust to the odd mis-anchored edge. A relabelled sample rate (a tape
+    // played fast) moves every span together, so the median moves with it -- which the
+    // per-cell nominal cannot. Clamped to a sane band so noise never seeds a wild clock.
+    {
+        std::vector<double> cell;
+        double prev = -1.0;
+        for (size_t k = 0; k < falls.size(); ++k) {
+            const double e = double(falls[k]);
+            if (!isStart(e)) continue;
+            if (prev >= 0.0) {
+                const double bits = std::round((e - prev) / spNominal);
+                if (bits >= 1.0 && bits <= frameBits + 1.0) cell.push_back((e - prev) / bits);
+            }
+            prev = e;
+        }
+        if (!cell.empty()) {
+            std::sort(cell.begin(), cell.end());
+            const double med = cell[cell.size() / 2];
+            if (med > 0.8 * spNominal && med < 1.25 * spNominal) sp = med;
+        }
+    }
+
     size_t       fi  = 0;
     double       pos = firstLock(0);
 
-    while (pos >= 0.0 && pos + frameAdv < double(n)) {
+    while (pos >= 0.0 && pos + frameBits * sp < double(n)) {
         const double e = pos;
 
         uint32_t by = 0;
@@ -340,12 +381,17 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
         if (!isMark(e + (1.5 + f.dataBits) * sp)) ++r.framingErrors;
         r.bytes.push_back(uint8_t(by));
 
-        const double pred = e + frameAdv;
-        if (pred + frameAdv < double(n) && isStart(pred)) {
+        const double pred = e + frameBits * sp;
+        if (pred + frameBits * sp < double(n) && isStart(pred)) {
             pos = refine(pred);                 // contiguous next byte: trust the clock
+            const double measured = (pos - e) / frameBits;   // ...but measure the cell it
+            if (measured > 0.8 * spNominal && measured < 1.25 * spNominal)  // just spanned
+                sp += 0.10 * (measured - sp);   // and follow slow drift (wow and flutter)
         } else {
-            // An idle gap (or the end): re-acquire from the next real falling edge.
+            // An idle gap (or the end): re-acquire from the next real falling edge, and
+            // forget the tracked speed -- the gap gives no phase to carry across it.
             while (fi < falls.size() && double(falls[fi]) < pred - 0.5 * sp) ++fi;
+            sp  = spNominal;
             pos = firstLock(fi);
         }
     }
