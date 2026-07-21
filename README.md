@@ -46,6 +46,12 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 
 **Built and run on Linux, macOS, and Windows.** The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and all three platforms are now proven: Linux (Ubuntu/GCC), macOS (a universal `x86_64`+`arm64` binary, so Intel and Apple Silicon both), and Windows on MSVC. See [`docs/building-linux.md`](docs/building-linux.md), [`docs/building-windows.md`](docs/building-windows.md), and [`docs/porting-notes.md`](docs/porting-notes.md).
 
+> **Pre-built packages for every platform.** The downloadable v0.3.0 archives cover macOS
+> (Apple Silicon and Intel), Linux `x86_64`, and Windows `x86_64` — each built natively on its
+> own platform and self-contained: SDL3 is linked statically, and on Windows so is the C
+> runtime, so there is nothing to install and no redistributable to chase. Prefer to build it
+> yourself? See [`docs/building-windows.md`](docs/building-windows.md) and its siblings.
+
 **CI runs the suite on every push.** GitHub Actions builds `altairsim` and runs the tests on all three platforms — Linux, macOS, and Windows are each a required check. The tests below are the same ones; you can run them yourself with `ctest`.
 
 ## What is in the box

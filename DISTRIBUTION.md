@@ -234,7 +234,7 @@ and not another.
 
 **Linux.** Build on the **oldest glibc you can reasonably get** — a container or an older VM. A binary and a `.so` built on current Ubuntu will refuse to start on an older distro, and this is the one target where the choice of build host decides who can run the result. Everywhere else the host is incidental.
 
-**Windows.** Steps 1–5 run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe` — **the script probes for it**, so step 6 needs no extra flag. **Step 6 runs in Git Bash**, not PowerShell, because the script is `/bin/sh`. **Windows has no `zip`** and Git Bash ships none; the script falls back to `Compress-Archive`, then to `bsdtar` (`tar.exe`, present since Windows 10 1803). **Which of the three actually fires here has never been observed** — report it. See §4.4, because the toolchain changes more than the paths.
+**Windows.** Steps 1–5 run in PowerShell. `--config Release` is load-bearing on the multi-config MSVC generator. The binary lands at `build\Release\altairsim.exe`, not `build\altairsim.exe` — **the script probes for it**, so step 6 needs no extra flag. **Step 6 runs in Git Bash**, not PowerShell, because the script is `/bin/sh`. **Windows has no Info-ZIP `zip`** and Git Bash ships none — and its `tar` is GNU tar, which cannot write zip at all. The script now makes the `.zip` with the **Windows-native bsdtar** (`%SystemRoot%\System32\tar.exe --format zip`), which emits a conformant, forward-slash archive; Compress-Archive is a last resort only, because Windows-10 PowerShell 5.1 writes backslash separators that Unix `unzip` cannot extract (observed and fixed 2026-07-21). See §4.4.
 
 ### 4.4 Windows: MSVC, and only MSVC
 
@@ -362,10 +362,29 @@ scp dist/altairsim-X.Y.Z-macos-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 > `export PATH="/usr/local/bin:$PATH"` (verified 2026-07-21). At the machine's own terminal this
 > does not arise, and Linux is unaffected — its `cmake` is in `/usr/bin`, always on `PATH`.
 
-**Box 3 — Windows 10 worker** *(VMware guest on the Intel Mac; takes no inbound ssh)*. Steps 1–5
+**Box 3 — Windows 10 worker** *(VMware guest on the Intel Mac)*. Steps 1–5
 in **PowerShell**; steps 6–7 in **Git Bash**. `MultiThreaded` and `--config Release` are
 load-bearing (§4.4); the binary lands in `build\Release\`. `scp.exe` ships in Windows 10 and
-reaches the coordinator over the LAN even though the guest itself accepts no inbound ssh.
+reaches the coordinator over the LAN.
+
+> **PROVEN end-to-end, 2026-07-21.** This leg now matches the other three: native MSVC build
+> (static SDL3 + static `/MT` CRT), 17/17 tests, `dumpbin /dependents` showing system DLLs only
+> (no `SDL3.dll`, no `VCRUNTIME140`), a conformant `.zip`, and `scp` outbound into the
+> coordinator's `dist/`. Three findings worth keeping:
+> **(1) The `.zip` archiver bit hard.** In Git Bash `zip` is absent and `tar` is GNU tar, which
+> cannot write zip at all; PowerShell 5.1's Compress-Archive writes BACKSLASH separators that
+> pass `unzip -t` but FAIL extraction on any Unix `unzip`. `build-package.sh` now emits the zip
+> with the Windows-native bsdtar (`%SystemRoot%\System32\tar.exe --format zip`), so step 6 needs
+> nothing extra — but do not "fix" a broken zip by reaching for Compress-Archive.
+> **(2) Delivery is `scp.exe` outbound** and needs only a deploy key (`~/.ssh/altairsim_deploy`,
+> its public half in the coordinator's `authorized_keys`) — no inbound `sshd`. The guest also
+> accepts inbound ssh now (offline Win32-OpenSSH; an admin key lives in
+> `%ProgramData%\ssh\administrators_authorized_keys` with an ACL of exactly {Administrators,
+> SYSTEM}, or sshd silently ignores it), which lets the coordinator drive the whole leg — but a
+> release needs only the outbound path.
+> **(3) The walls, if you drive it by hand:** elevation loses mapped drives (use the
+> `\\vmware-host\Shared Folders\…` UNC path); the firewall has three profiles, not one;
+> `Expand-Archive` denies `_manifest`, so extract with `tar.exe`.
 ```powershell
 # --- PowerShell ---   (first time only:  git clone https://github.com/deltecent/altairsim.git)
 git fetch --tags; git checkout vX.Y.Z
@@ -406,17 +425,17 @@ scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 > **On each worker:** point `origin` at the https URL (`git remote set-url origin
 > https://github.com/deltecent/altairsim.git`) so fetches need no credential, and give it a
 > **passphrase-less** ssh key dedicated to this — the scp runs unattended, so a
-> passphrase-protected key will not do. Both the Mac and Linux workers use a dedicated
-> `altairsim_deploy` ed25519 key; the shared passphrase-protected key only worked on the Intel
-> Mac by accident of macOS Keychain unlocking it, and not on Linux at all — so a dedicated key is
-> the uniform rule. Point `~/.ssh/config` at it — `Host dist.altairsim.com` / `IdentityFile
-> ~/.ssh/altairsim_deploy` / `IdentitiesOnly yes` — so the plain `scp` above uses it and only it.
-> That key is a worker's ONLY credential: it writes to `dist/` and nothing else, and grants no
-> GitHub access at all.
-> **The full build→package→deliver→collect dry run passed on the coordinator, the Intel Mac and
-> Linux (2026-07-21): each built native, the two workers `scp`'d their archive into the
-> coordinator's `dist/`, and all three collected there with no sibling wiped. The Windows leg —
-> and Windows's own delivery key — remain before this is relied on at release time.**
+> passphrase-protected key will not do. All three workers — Mac, Linux and Windows — use a
+> dedicated `altairsim_deploy` ed25519 key; the shared passphrase-protected key only worked on
+> the Intel Mac by accident of macOS Keychain unlocking it, and not on Linux at all — so a
+> dedicated key is the uniform rule. Point `~/.ssh/config` at it — `Host dist.altairsim.com` /
+> `IdentityFile ~/.ssh/altairsim_deploy` / `IdentitiesOnly yes` — so the plain `scp` above uses
+> it and only it. That key is a worker's ONLY credential: it writes to `dist/` and nothing else,
+> and grants no GitHub access at all.
+> **The full build→package→deliver→collect dry run passed on ALL FOUR boxes (2026-07-21): each
+> built native, the three workers `scp`'d their archive into the coordinator's `dist/`, and all
+> four collected there with no sibling wiped.** The Windows leg is proven to the same bar as the
+> others (§4.5 Box 3) — self-contained `.exe`, conformant `.zip` — so v0.3.0 ships four platforms.
 
 ---
 
@@ -569,7 +588,7 @@ Stated plainly, because a design document that describes a process nobody has au
 - **Nothing produces `SHA256SUMS`.**
 - **Nothing assembles the package and runs the manual's own commands against it.** `docs/package.map`'s own header says so, and names a `tests/acceptance/manual.cmake` that has never existed — a claimed test being worse than a missing one.
 - **Nothing has ever run a shipped `.exe` on a clean Windows box.**
-- **The workers deliver by `scp`, and that path has never been run.** By design (2026-07-21) only the coordinator holds GitHub credentials; the workers clone the public repo over anonymous `https://` and `scp` their archive into the coordinator's repo `dist/` (`dist.altairsim.com`), which then uploads all four. Nothing automates the scp, the collection, or the four-at-once upload. The scp path — anonymous https, Remote Login, `dist.altairsim.com` resolution, a passphrase-less delivery key, and `dist/` existing at checkout — is now **proven on the coordinator, Intel Mac and Linux** (2026-07-21); the full build→package→deliver dry run and the whole Windows leg remain. See §4.5.
+- **The workers deliver by `scp`.** By design (2026-07-21) only the coordinator holds GitHub credentials; the workers clone the public repo over anonymous `https://` and `scp` their archive into the coordinator's repo `dist/` (`dist.altairsim.com`), which then uploads all four. Nothing automates the scp, the collection, or the four-at-once upload — that is the manual part of §4.5. The scp path — anonymous https, `dist.altairsim.com` resolution, a passphrase-less delivery key, and `dist/` existing at checkout — is now **proven on all four boxes** (2026-07-21), Windows included: the full build→package→deliver→collect dry run landed four conformant archives in the coordinator's `dist/` with no sibling wiped. See §4.5.
 - **`tools\build-sdl3-static.bat` has never been run.** It was written from the working shell script. `docs/building-windows.md` §6 is the job that settles it.
 
 `TODO.md` is the live index of these; this list is a snapshot of why they matter, not a substitute for it.
