@@ -1,15 +1,17 @@
 #!/bin/sh
-# Rebuild TRK80.TAP and TRK80.WAV from TREK80.ENT.
+# DEMONSTRATION: have SOLOS write its own TREK80 tape from TREK80.ENT.
 #
 #     ./make-trek80-tape.sh [path/to/altairsim] [path/to/altair_tapetool]
 #
-# TREK80.ENT IS THE SOURCE; the .TAP and the .WAV beside it are DERIVED, and this script
-# is the derivation. Same relationship tools/install-hostbridge-utils.sh has to the CP/M
-# image: the artifacts are committed so nobody needs a toolchain to run the example, and
-# the recipe is committed so nobody has to take them on trust.
+# THIS IS NOT HOW THE SHIPPED TAPE IS MADE. examples/sol/TRK80.WAV is Philip Lord's Sol-20
+# cassette digitization (hosted on deramp.com), and the current decoder reads it clean --
+# 7,939 bytes, 0 framing errors (docs/sources.md). This script exists because it used not to: an earlier
+# demodulator garbled that recording, so the example tape had to be synthesized from the
+# archived ENTER script instead. It is kept as a demonstration, and it writes to
+# TRK80-solos.TAP / TRK80-solos.WAV so running it never touches the shipped recording.
 #
-# WHY A TAPE CANNOT BE HAND-ASSEMBLED. A SOLOS cassette is not leader + sync + header +
-# data. It is:
+# WHAT IT DEMONSTRATES -- WHY A SOLOS TAPE CANNOT BE HAND-ASSEMBLED. A SOLOS cassette is
+# not leader + sync + header + data. It is:
 #
 #     50 bytes of 00 | 01 sync | 16-byte header | 1 header-checksum byte
 #                    | data in 256-byte blocks, each followed by 1 checksum byte
@@ -19,15 +21,10 @@
 # load the image into a running Sol-20, put a blank tape in deck 1 in record mode, and
 # `SA`ve. The checksums are then the machine's own arithmetic, not ours.
 #
-# The cross-check that this is the real artifact and not merely a plausible one: the header
-# checksum SOLOS computes here is D9, the same byte in the same position as on the genuine
-# archived tape (deramp.com's TRK80.WAV). That recording is unusable as DATA -- it decodes
-# with 27 framing errors and 6,778 of its 7,840 payload bytes wrong -- but its header is
-# readable, and it agrees.
-#
-# The archived ENTER script is the authority instead: 7,840 bytes loading at 0000, entry
-# AF C3 5C 1D, matching the SIZE field (1EA0) in the genuine tape's header. See
-# docs/sources.md for where it came from.
+# And it cross-checks against the real thing: the header checksum SOLOS computes here is
+# D9, the same byte in the same position as on Lord's recording -- which the decoder
+# now reads byte-for-byte -- and the SIZE it writes (1EA0) matches the archived ENTER
+# script: 7,840 bytes loading at 0000, entry AF C3 5C 1D. See docs/sources.md.
 set -eu
 
 cd "$(dirname "$0")"
@@ -123,8 +120,8 @@ expect eof
 EXP
 
 test -s "$work/TRK80.TAP" || { echo "SOLOS wrote no tape" >&2; exit 1; }
-cp "$work/TRK80.TAP" TRK80.TAP
-echo "TRK80.TAP: $(wc -c < TRK80.TAP | tr -d ' ') bytes"
+cp "$work/TRK80.TAP" TRK80-solos.TAP
+echo "TRK80-solos.TAP: $(wc -c < TRK80-solos.TAP | tr -d ' ') bytes"
 
 # ---- 3. THE AUDIO. ---------------------------------------------------------------------
 #
@@ -132,7 +129,7 @@ echo "TRK80.TAP: $(wc -c < TRK80.TAP | tr -d ' ') bytes"
 # a real deck needs tone before the data to lock on, and the trailer keeps the last byte
 # off the end of the file. Decodes back byte-identical with 0 framing errors -- which the
 # check below insists on, because a WAV that merely EXISTS is not a WAV that loads.
-"$TAPETOOL" encode TRK80.TAP TRK80.WAV cuts1200 22050 3 2
-"$TAPETOOL" decode TRK80.WAV "$work/roundtrip.bin" cuts1200
-cmp TRK80.TAP "$work/roundtrip.bin"
-echo "TRK80.WAV: $(wc -c < TRK80.WAV | tr -d ' ') bytes, round-trips byte-identical"
+"$TAPETOOL" encode TRK80-solos.TAP TRK80-solos.WAV cuts1200 22050 3 2
+"$TAPETOOL" decode TRK80-solos.WAV "$work/roundtrip.bin" cuts1200
+cmp TRK80-solos.TAP "$work/roundtrip.bin"
+echo "TRK80-solos.WAV: $(wc -c < TRK80-solos.WAV | tr -d ' ') bytes, round-trips byte-identical"

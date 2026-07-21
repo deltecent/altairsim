@@ -56,23 +56,24 @@ REW sol0:tape1
 | File | What it is |
 |---|---|
 | `trek80.toml` | The machine: `base = "sol20"`, the tape, and the clock. |
-| `TREK80.ENT` | **The source.** A SOLOS `ENTER` script from the archive — 7,840 bytes loading at `0000`, entry `AF C3 5C 1D`. |
-| `TRK80.TAP` | **Derived.** The cassette as a byte stream. |
-| `TRK80.WAV` | **Derived.** The same cassette as CUTS audio at 1200 baud — real tones, decoded the way the hardware did. `MOUNT sol0:tape1 "TRK80.WAV"` and it loads, slower. |
+| `TRK80.WAV` | **The tape.** A Sol-20 cassette digitized by Philip Lord (hosted on deramp.com) — real CUTS audio at 1200 baud, decoded the way the hardware did. This is what `trek80.toml` mounts. |
+| `TRK80.TAP` | The same cassette as a byte stream, decoded from `TRK80.WAV`. `MOUNT sol0:tape1 "TRK80.TAP"` skips the audio and loads faster; it is otherwise identical. |
+| `TREK80.ENT` | A SOLOS `ENTER` script from the archive — 7,840 bytes loading at `0000`, entry `AF C3 5C 1D`. The source for the tape-writing demonstration below. |
 | `Trek80 Manual.pdf` | Processor Technology's manual for the game. |
-| `make-trek80-tape.sh` | The derivation: `.ENT` → `.TAP` → `.WAV`. |
+| `make-trek80-tape.sh` | A demonstration: it has SOLOS write its own tape from `TREK80.ENT`. |
 
-**The tape is synthesized, and that is not a compromise.** Both archived recordings of TREK80 are
-unusable as *data*: deramp's `TRK80.WAV` decodes with 27 framing errors, and those errors
-desynchronize the byte stream badly enough that 6,778 of its 7,840 payload bytes come out wrong.
-(It is still a historically important recording — it is the tape the simulator's CUTS timing
-parameters were measured from.) The archived `ENTER` script is intact, so the tape here is written
-**by SOLOS itself** from that image: mount a blank tape in record mode and `SA`ve. A SOLOS cassette
-carries a header checksum and one after every 256-byte block, and a hand-assembled tape with the
-wrong checksums is *invisible* — `CA` lists nothing and `GE` never finds the file.
+**The tape is Philip Lord's real recording, and reading it is the point.** `TRK80.WAV` decodes to a
+valid SOLOS tape with **zero framing errors** — the header names `TRK80`, its `SIZE` is `1EA0`, and
+its checksum is `D9`, all matching the archived `ENTER` script byte for byte. That did not used to
+work: an earlier decoder garbled this exact recording (27 framing errors, most of the payload
+wrong), and the example tape had to be *synthesized* from the `.ENT` instead. The demodulator now
+reads the real cassette, so the real cassette is what ships.
 
-The cross-check that this is the real artifact rather than a plausible one: the header checksum
-SOLOS computes here is `D9`, the same byte in the same position as on the genuine archived tape.
+The synthesis is kept as `make-trek80-tape.sh` because it demonstrates the one thing a SOLOS tape
+cannot fake: a SOLOS cassette carries a header checksum and one after every 256-byte block, and a
+tape whose checksums are wrong is *invisible* — `CA` lists nothing and `GE` never finds the file.
+The script has SOLOS `SA`ve the image so the checksums are the machine's own arithmetic; it writes
+to a separate `TRK80-solos.*` so it never overwrites the shipped recording, and it proves the two
+agree — SOLOS computes the same `D9` header checksum the real tape carries.
 
-See `docs/sources.md` for provenance, and run `make-trek80-tape.sh` to rebuild both derived files
-from `TREK80.ENT`.
+See `docs/sources.md` for full provenance.

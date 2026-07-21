@@ -169,11 +169,10 @@ know that now rather than after the loader has crashed. A decode below 90% is re
 
 **But it is a framing rate, not a clean bill of health.** The percentage counts frames whose
 start and stop bits landed where they belonged; it cannot tell you the eight bits between them
-are the ones that were recorded. The two really do come apart. The genuine archived recording
-of this same Star Trek tape frames at 99.7% and is still *unusable*, with most of its payload
-bytes wrong — good enough as a signal to measure the CUTS timings from, and nowhere near good
-enough to load. A high percentage means the demodulator kept its footing, and no more. If a
-tape mounts well and the program still will not run, a worn recording is the likely answer.
+are the ones that were recorded. The two can come apart: a worn or poorly dubbed recording can
+keep its framing and still hand the loader wrong bytes. A high percentage means the demodulator
+kept its footing, and no more. If a tape mounts well and the program still will not run, a worn
+recording is the likely answer.
 
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
@@ -185,7 +184,7 @@ That example mounted a Sol tape on a Sol. Put it in an Altair and the board says
 ```
 altairsim> MOUNT acr0:tape examples/sol/TRK80.WAV
 acr0: examples/sol/TRK80.WAV: this board's modem cannot hear that tape -- it carries
-2390 Hz / 1205 Hz, and this board reads fsk300
+2393 Hz / 1204 Hz, and this board reads fsk300
 ```
 
 This is deliberate, and it is not the simulator being fussy.

@@ -1140,12 +1140,13 @@ commands" test still needs `build-package.sh` under a workflow; this does not.
 The demonstrated case, found and **fixed** 2026-07-19 in `docs/manual/tapes.md`:
 the `MOUNT ... TRK80.WAV` example printed `7932 bytes, 27 framing errors (99.7%
 clean)` and the ACR refusal below it printed `2398 Hz / 1206 Hz`. Both had been
-captured from deramp.com's *archived* recording, which has never been in the
-tree, while the tape that actually ships is synthesized by
+captured from deramp.com's *archived* recording, which was not then in the tree,
+while the tape that shipped at the time was synthesized by
 `examples/sol/make-trek80-tape.sh`. Every figure on both lines was wrong. They
-now read `7939 bytes, 0 framing errors (100.0% of frames intact)` and `2390 Hz /
-1205 Hz`; the surviving `99.7%` at `tapes.md:173` is deliberate, describing the
-archived rip as a cautionary example.
+now read `7939 bytes, 0 framing errors (100.0% of frames intact)` and `2393 Hz /
+1204 Hz`. (That `99.7%` cautionary example at `tapes.md` has since been removed:
+the demodulator fix made deramp's archived recording load, so it is no longer
+unusable and is now the shipped tape itself.)
 
 **The gap that produced it is still open.** No test could tell — the repo's rule
 is that transcripts are captured rather than composed, but nothing re-captures

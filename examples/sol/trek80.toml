@@ -32,7 +32,10 @@ base = "sol20"
 #
 # The .WAV goes through the modem -- real tones, decoded the way the hardware did -- and
 # takes about a minute of emulated time at the clock below. The .TAP skips the audio and
-# is otherwise identical. Both are derived from TREK80.ENT by make-trek80-tape.sh.
+# is otherwise identical. TRK80.WAV is a Sol-20 cassette digitized by Philip Lord (hosted on
+# deramp.com); TRK80.TAP is decoded from it. (make-trek80-tape.sh demonstrates SOLOS writing its
+# own tape from the
+# TREK80.ENT archive script -- see README.md; it is not how these files are made.)
 #
 # REW sol0:tape1 rewinds; nothing in the guest can wind a tape back, so that verb is your
 # finger on the recorder. You will want it if you `XE TRK80` twice.

@@ -159,7 +159,8 @@ or the RST switch, and the documented way out of a program that ignores `MODE SE
 **Provenance: this section is not sourced from a Processor Technology document.** None of the
 manuals we hold state the CUTS cycle counts — this page previously said only "Kansas-City-standard
 FSK audio at 300 or 1200 baud". The numbers below were **measured** from a genuine Sol-20 cassette
-recording, deramp.com's `TRK80.WAV`, and are recorded here because the repo's rule is that a
+recording -- Philip Lord's `TRK80.WAV` (digitized by him, hosted on deramp.com) -- and are
+recorded here because the repo's rule is that a
 hardware number has a source. Treat a period manual as authoritative over this table if one turns
 up.
 
@@ -176,30 +177,28 @@ steady 2400 Hz tone.
 **Framing is 8N2** — one start bit, eight data bits LSB first, **two** stop bits. Measured as 11.0
 bit times between consecutive start bits over 7,325 of ~7,900 frames.
 
-**How the measurement was checked.** `TRK80.WAV` (44.1 kHz mono) demodulates under the above
-parameters to 7,932 bytes with 27 framing errors, and the result carries a well-formed SOLOS file
-header at offset 52: name `TRK80`, then a `SIZE` field of `0x1EA0` (7,840) that matches the
-decoded payload. A wrong tone pair or a wrong bit rate does not produce a valid header and a
-self-consistent length — that agreement is what makes this a measurement rather than a guess.
-`altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
+**How the measurement was checked.** `TRK80.WAV` demodulates under the above parameters to
+7,939 bytes with **0 framing errors**, and the result carries a well-formed SOLOS file header at
+offset 52: name `TRK80`, then a `SIZE` field of `0x1EA0` (7,840) that matches the decoded
+payload, header checksum `D9`. A wrong tone pair or a wrong bit rate does not produce a valid
+header and a self-consistent length — that agreement is what makes this a measurement rather than
+a guess. `altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
 
-**That recording is sound as SIGNAL and unusable as DATA. Both halves matter — do not delete
-either.** The archived `TRK80.WAV` frames at 99.7% (27 framing errors in ~7,900 frames) and its
-16-byte SOLOS header decodes correctly, header checksum `D9` included. But **6,778 of its 7,840
-payload bytes are wrong**: the tape will not load. That is a worn or badly-dubbed recording, not
-a wrong parameter — a wrong tone pair or bit rate does not yield a valid header, a matching
-`SIZE` and a correct checksum, and this one does all three.
+**This recording used to decode badly, and the story is worth keeping.** An earlier demodulator
+classified and sliced each half-cycle interval, and on this dub — recorded an octave low, in the
+1-to-2-crossings-per-bit regime a real Sol tape sits in — it kept its framing (99.7%, 27 errors
+in ~7,900 frames) but got the DATA wrong: **6,778 of 7,840 payload bytes bad**, the tape
+unloadable. That was a genuine trap. The carrier was intact and the framing rate high, so the
+parameters above looked confirmed — yet the bytes were garbage. What broke the tie was the
+header: it decoded (checksum `D9`, `SIZE 0x1EA0`), which proved the timing table right and the
+**decoder** wrong. The matched-filter decoder (`src/host/tapemodem.cpp`) now reads all 7,939
+bytes correctly and the tape loads.
 
-So the timing table above **stands**. It was measured from the carrier — cycle counts, bit cell,
-framing — and the carrier is intact; that is exactly why the framing rate is so high. What the
-carrier does not vouch for is the bit values it carried. A later reader who tries to *load* this
-recording will find it broken and may reasonably conclude the parameters were wrong. They were
-not. Check the header before doubting the table.
-
-This is also why `examples/sol/TRK80.WAV` is **synthesized** from `TREK80.ENT` by
-`examples/sol/make-trek80-tape.sh` rather than being the archived recording: the shipped tape
-decodes at 100.0% with 0 framing errors and actually boots. The archived one is a measurement
-source, not an example.
+So the timing table above **stands**, and always did — it was measured from the carrier, and the
+carrier was intact even when the decoder was not. A high framing rate vouches for the carrier,
+not the bit values; check the header before doubting the table. And because the archived
+recording now reads clean, it is the shipped example: `examples/sol/TRK80.WAV` **is** this tape,
+and `acceptance-trek80-wav` reads it back through SOLOS as the decoder's regression.
 
 ### Leader, trailer, and what a whole tape looks like (MEASURED)
 

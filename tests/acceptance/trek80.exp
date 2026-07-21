@@ -7,12 +7,13 @@
 # SOLOS's own tape reader, the `sol` board's motor and 0FBh data register, the CUTS modem when
 # the media is a .WAV, the VDM-1 screen the game paints on -- against a 1977 artifact.
 #
-# AND IT PROVES THE TAPE ITSELF, which is the part that could not be proven any other way.
-# TRK80.TAP is DERIVED (examples/sol/make-trek80-tape.sh writes it by getting SOLOS to SAVE
-# the archived .ENT image). A SOLOS tape carries a header checksum and a checksum after every
-# 256-byte block, and a tape whose checksums are wrong is INVISIBLE -- `CA` lists nothing, `GE`
-# reports nothing, and there is no error anywhere to tell you why. So the only honest test of
-# the derivation is to make SOLOS read it back.
+# AND IT PROVES THE DECODE ITSELF, which is the part that could not be proven any other way.
+# TRK80.WAV is Philip Lord's Sol-20 cassette digitization (hosted on deramp.com) -- the recording
+# an earlier decoder garbled and the matched-filter decoder now reads clean -- and TRK80.TAP is
+# decoded from it.
+# A SOLOS tape carries a header checksum and a checksum after every 256-byte block, and a tape
+# whose checksums are wrong is INVISIBLE -- `CA` lists nothing, `GE` reports nothing, and there
+# is no error anywhere to tell you why. So the only honest test is to make SOLOS read it back.
 #
 # WHY THE VERDICT IS A MEMORY DUMP AND NOT THE TERMINAL. The Sol-20's screen is the VDM-1's
 # RAM at 0CC00H. TREK80 writes there; nothing it prints ever reaches stdout. So the machine is
