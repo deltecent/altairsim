@@ -1,0 +1,14 @@
+# The Changelog, in order -- newest release first.
+#
+# This is a SEPARATE document from the User Manual (docs/manual/), built by the same
+# tools/build-docs.sh into altairsim-changelog.pdf and shipped beside the manual in the
+# package. It lives on its own because the manual describes the program AS IT IS, and a
+# record of what CHANGED ages differently from everything around it -- so it is not a
+# manual chapter (it was, once: docs/manual/whats-new.md, removed 2026-07-21).
+#
+# Unlike the manual, this document is NOT checked by tests/acceptance/docs-manual.cmake --
+# it is free to name the archive filenames and the version numbers that a changelog is
+# entirely about. Add a new release at the TOP of changelog.md; do not add files here
+# unless the changelog genuinely outgrows one page per release.
+
+changelog.md

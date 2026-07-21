@@ -3,6 +3,7 @@
 ```
 altairsim                the program. One file, nothing to install.
 altairsim-manual.pdf     this.
+altairsim-changelog.pdf  what changed in this release, and the ones before it.
 USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
@@ -11,6 +12,11 @@ examples/                four machines that boot, media included.
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
 file you must write before the program will start.
+
+`altairsim-changelog.pdf` is the release history — what this version does that the last one did
+not, and the same for the versions before it. It is a separate document from this manual on
+purpose: the manual describes the program as it is *now*, and a record of what changed reads
+better on its own than as a chapter that would have to grow one section per release.
 
 `altairsim` is a single self-contained program. The one outside library it uses — **SDL3**,
 which opens the window the video boards draw into — is compiled *into* it rather than shipped

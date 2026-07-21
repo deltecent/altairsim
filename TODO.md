@@ -723,6 +723,20 @@ many, or list the label.
   one guest's format would be the wrong seam. Probably belongs in `tapetool` as
   a `verify` verb first, where being format-aware is the point.
 
+  - **Update, verified on real hardware (Patrick, 2026-07-21):** deramp.com's
+    archived `TRK80.WAV` — the counterexample above — **loads correctly on a real
+    machine.** That inverts the reading of this finding: if the recording is good
+    and real hardware recovers it, then the 27 framing errors and the desynced
+    payload are **our demodulator's**, not the tape's. So this is not only a
+    "confidence can't vouch for data" documentation gap — it is evidence the CUTS
+    decoder in `tapecodec.cpp` is **less tolerant than the hardware it models**,
+    and mis-decodes a WAV that period hardware reads without trouble. That is a
+    simulator bug to chase, not a bad file to warn about. It also puts
+    `docs/sources.md`'s characterization of that file (7,932 bytes, 27 framing
+    errors, 6,778 payload bytes wrong) in question — the numbers are what *we*
+    decode, not what the recording *is*. Re-check the demodulator against this
+    file before trusting either.
+
 ### MCP
 
 Built: `run`, `send`, `recv`, `regs`, `who`, `bus_map`, `bus_io`,
@@ -739,40 +753,33 @@ The snapshot/restore tools are blocked on board serialization, above.
 
 ### Documentation and packaging
 
-#### Take the release notes out of the manual; ship `changelog.pdf` instead
+#### ~~Take the release notes out of the manual; ship `changelog.pdf` instead~~ — **DONE 2026-07-21, for v0.3.0**
 
-**Patrick, 2026-07-20 — for the next release.** v0.2.0 added
-`docs/manual/whats-new.md` as a manual chapter. That was the wrong home: the
-manual describes *the program as it is*, and a chapter that describes *what
-changed* ages differently from everything around it — by 0.4.0 the manual would
-carry three of them, or one that has quietly become a changelog with a chapter
-number.
+The manual's `whats-new.md` chapter is gone, and the release notes now ship as
+their own document — `docs/changelog/` → `altairsim-changelog.pdf`, beside the
+manual in the package. Built by the same `tools/build-docs.sh` (one more `build`
+line) and committed by `docs.yml` like the other PDFs.
 
-So: **remove the chapter, and add a separate `changelog.pdf` to the
-distribution.** The archive gains a document; the manual loses one.
+How the open questions were settled:
 
-What that touches, none of it hard but none of it optional:
-
-- **`docs/manual/whats-new.md` and its `ORDER` line go together.**
-  `tests/acceptance/docs-manual.cmake` fails a chapter file that is not in
-  `ORDER`, so deleting one without the other is a red test either way round.
-- **A changelog needs a source and a build step.** `tools/build-docs.sh` builds a
-  document from a directory with an `ORDER` in it; the changelog is one file and
-  wants either its own tiny source dir or a special case. Decide which before
-  writing it.
-- **`docs/package.map` needs a `FILE` line for it**, which is also what puts it in
-  the archive — the map is the only source of truth for package contents.
-- **`docs/manual/package.md` must name it.** That chapter lists what is in the
-  archive, and the manual may only name paths that actually ship.
-- **Whether `docs.yml` builds and commits it like the other two PDFs.** If it does
-  not, the release inherits the pandoc-version trap v0.2.0 hit: `build-package.sh`
-  rebuilds with the local pandoc (3.10 via brew) while `docs.yml` pins 3.6, and a
-  different pandoc is a different document.
-
-Open question worth settling first: **does the changelog cover 0.2.0 retroactively,
-or start at 0.3.0?** The 0.2.0 content already exists as prose in `whats-new.md`
-and in the v0.2.0 release notes, so retroactive is cheap; starting fresh is
-cleaner but loses it.
+- **Its own source dir, not a special case.** `docs/changelog/` has an `ORDER`
+  and a single `changelog.md`, so it reuses `build()` unchanged — same tokens,
+  same font check, same TOC.
+- **Retroactive to 0.1.0.** The open question was 0.3.0-only vs retroactive;
+  retroactive won, because a changelog wants its history and the 0.2.0/0.1.0
+  prose already existed (old `whats-new.md` and the v0.1.0/v0.2.0 release notes).
+  Newest first, 0.3.0 given the fullest treatment.
+- **NOT a `package.map` `FILE` line — the one plan assumption that was wrong.**
+  A `FILE` line runs `expand()`'s token-substitution `sed` over the file, and
+  `sed` over a binary PDF corrupts it. So `build-package.sh` copies
+  `docs/altairsim-changelog.pdf` straight from the tree (exactly as the manual is
+  handled outside the map), and refuses to build if it is missing. `package.map`'s
+  header still owns the DIRS/FILES contract; PDFs are the documented exception,
+  same as `altairsim-manual.pdf` always was.
+- **`docs/manual/package.md` names it** (the manual may only name shipping paths),
+  and `tests/acceptance/docs-manual.cmake` does not scan `docs/changelog/`, so the
+  changelog is free to name archive filenames and version numbers — as the
+  developer guide already is.
 
 #### The table of contents needs improving, or removing
 

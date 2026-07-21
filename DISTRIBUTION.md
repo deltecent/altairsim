@@ -42,6 +42,7 @@ It is the right choice for two reasons. The download is half the size for everyo
 ```
 altairsim[.exe]                       the program
 altairsim-manual.pdf                  the User Manual
+altairsim-changelog.pdf               the release history (docs/changelog/, built by CI)
 USING-ALTAIRSIM.md                    the briefing for an AI assistant driving it over MCP
 LICENSE                               ours (MIT)
 examples/cpm/                         CP/M 2.2 on an 8" floppy
@@ -162,7 +163,7 @@ the COORDINATOR   git authenticated for push, and gh authenticated -- it does AL
 
 **A worker holds no credentials.** It clones the public repo over `https://` with no authentication, builds, and hands its one archive back over `scp`. It never logs in to GitHub, never holds a token, and never runs `gh`. **Everything that touches the repository with credentials — the tag, the push, the draft, every upload, the publish — happens on the coordinator, and only there.** A worker's sole outbound credential is the ssh key that lets it `scp` to this box; it is powerless against the repository. (Posture set 2026-07-21.)
 
-**No pandoc, no Chrome, no poppler on any machine.** The manual PDF is built once by CI and committed at the tag (§5 step 2), so every checkout already carries `docs/altairsim-manual.pdf` and `build-package.sh` is invoked with `--pdf` rather than rebuilding it. Without `--pdf` the script calls `build-docs.sh`, which needs **pandoc pinned at 3.6** (Homebrew ships 3.10, and a different pandoc is a different document), a Chromium browser as the paginator, and `pdffonts` for the font check — so four machines rebuilding it independently means four subtly different manuals. With `--pdf` none of that runs and the packaged PDF is byte-identical to CI's; **the script warns loudly on the rebuild path**, which only the coordinator should ever take.
+**No pandoc, no Chrome, no poppler on any machine.** The manual and changelog PDFs are built once by CI and committed at the tag (§5 step 2), so every checkout already carries `docs/altairsim-manual.pdf` and `docs/altairsim-changelog.pdf`; `build-package.sh` is invoked with `--pdf` for the manual and copies the changelog straight from the tree, rather than rebuilding either. Without `--pdf` the script calls `build-docs.sh`, which needs **pandoc pinned at 3.6** (Homebrew ships 3.10, and a different pandoc is a different document), a Chromium browser as the paginator, and `pdffonts` for the font check — so four machines rebuilding it independently means four subtly different manuals. With `--pdf` none of that runs and the packaged PDF is byte-identical to CI's; **the script warns loudly on the rebuild path**, which only the coordinator should ever take.
 
 **On Windows, add Git Bash** — `build-package.sh` is `/bin/sh` and is not being duplicated in PowerShell, because two parsers of `docs/package.map` would drift. Git for Windows supplies it, and the box needs Git to clone this anyway.
 
@@ -445,7 +446,7 @@ Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — t
 
 **1. Bump the version.** `project(altairsim VERSION X.Y.Z …)` in `CMakeLists.txt` is the only place it lives; everything else derives from it or from `git describe`.
 
-**2. Merge, then wait for the PDFs.** `docs.yml` rebuilds both PDFs on master and commits them as *"Rebuild the PDFs for `<sha>`"*. **Tag that commit**, not the merge — otherwise the tagged tree carries stale PDFs.
+**2. Merge, then wait for the PDFs.** `docs.yml` rebuilds all three PDFs on master — the manual, the **changelog** (`docs/changelog/`), and the developer guide — and commits the ones that changed as *"Rebuild the PDFs for `<sha>`"*. **Tag that commit**, not the merge — otherwise the tagged tree carries a stale manual, or no changelog at all. The manual is handed to `build-package.sh` with `--pdf`; the changelog needs no flag — the script copies `docs/altairsim-changelog.pdf` straight from the tagged tree (it is a committed artifact, same as the manual, and it must not go through the token-substitution loop).
 
 **3. Tag and push.** This fires `cpu-exerciser-release.yml`: 8080EXM, ZEXDOC and ZEXALL on all three CI platforms, roughly 15 billion instructions each. **Wait for it to go green before publishing anything.**
 
