@@ -383,16 +383,25 @@ tools/build-package.sh --pdf docs/altairsim-manual.pdf --target linux-x86_64
 scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/altairsim/dist/
 ```
 
-> **One-time setup for the scp path — none of it has been done yet (2026-07-21).**
-> **On the coordinator:** (1) turn **Remote Login** ON (System Settings → General → Sharing) so
-> the workers can reach it; (2) add each worker's public key to `~/.ssh/authorized_keys`. The
-> collection dir is just the repo's own gitignored `dist/` — nothing to create, and
-> `build-package.sh` no longer wipes a sibling's archive there (its cleanup is scoped to the
-> target it builds). **On each worker:** point `origin` at the https URL (`git remote set-url
-> origin https://github.com/deltecent/altairsim.git`) so fetches need no credential, and give it
-> an ssh key for the coordinator. That key is a worker's ONLY credential — it writes to that
-> `dist/` and nothing else, and grants no GitHub access at all.
-> **The scp delivery has never been run; exercise it once before relying on it at release time.**
+> **One-time setup for the scp path (proven coordinator↔Intel-Mac↔Linux 2026-07-21; Windows
+> still pending).**
+> **On the coordinator:** turn **Remote Login** ON (System Settings → General → Sharing), and add
+> each worker's delivery public key to `~/.ssh/authorized_keys`. The collection dir needs nothing:
+> `dist/` is **tracked empty** (`dist/.gitkeep`), so every checkout already has it — a worker can
+> deliver before the coordinator has built — and `build-package.sh`'s cleanup is scoped to the
+> target it builds, so a delivered sibling archive is never wiped.
+> **On each worker:** point `origin` at the https URL (`git remote set-url origin
+> https://github.com/deltecent/altairsim.git`) so fetches need no credential, and give it a
+> **passphrase-less** ssh key dedicated to this — the scp runs unattended, so a
+> passphrase-protected key will not do. Both the Mac and Linux workers use a dedicated
+> `altairsim_deploy` ed25519 key; the shared passphrase-protected key only worked on the Intel
+> Mac by accident of macOS Keychain unlocking it, and not on Linux at all — so a dedicated key is
+> the uniform rule. Point `~/.ssh/config` at it — `Host dist.altairsim.com` / `IdentityFile
+> ~/.ssh/altairsim_deploy` / `IdentitiesOnly yes` — so the plain `scp` above uses it and only it.
+> That key is a worker's ONLY credential: it writes to `dist/` and nothing else, and grants no
+> GitHub access at all.
+> **The scp path is proven on the Intel Mac and Linux (2026-07-21); Windows and the full
+> build→package→deliver dry run remain before it is relied on at release time.**
 
 ---
 
@@ -545,7 +554,7 @@ Stated plainly, because a design document that describes a process nobody has au
 - **Nothing produces `SHA256SUMS`.**
 - **Nothing assembles the package and runs the manual's own commands against it.** `docs/package.map`'s own header says so, and names a `tests/acceptance/manual.cmake` that has never existed — a claimed test being worse than a missing one.
 - **Nothing has ever run a shipped `.exe` on a clean Windows box.**
-- **The workers deliver by `scp`, and that path has never been run.** By design (2026-07-21) only the coordinator holds GitHub credentials; the workers clone the public repo over anonymous `https://` and `scp` their archive into the coordinator's repo `dist/` (`dist.altairsim.com`), which then uploads all four. Nothing automates the scp, the collection, or the four-at-once upload — and the coordinator's Remote Login, `dist.altairsim.com` resolution, and the workers' ssh keys + https remotes are one-time setup still to be verified end-to-end. See §4.5.
+- **The workers deliver by `scp`, and that path has never been run.** By design (2026-07-21) only the coordinator holds GitHub credentials; the workers clone the public repo over anonymous `https://` and `scp` their archive into the coordinator's repo `dist/` (`dist.altairsim.com`), which then uploads all four. Nothing automates the scp, the collection, or the four-at-once upload. The scp path — anonymous https, Remote Login, `dist.altairsim.com` resolution, a passphrase-less delivery key, and `dist/` existing at checkout — is now **proven on the coordinator, Intel Mac and Linux** (2026-07-21); the full build→package→deliver dry run and the whole Windows leg remain. See §4.5.
 - **`tools\build-sdl3-static.bat` has never been run.** It was written from the working shell script. `docs/building-windows.md` §6 is the job that settles it.
 
 `TODO.md` is the live index of these; this list is a snapshot of why they matter, not a substitute for it.
