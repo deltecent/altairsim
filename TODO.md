@@ -56,8 +56,14 @@ What has to be built, roughly in order:
    you into the staging copy.
 
    **Still `/bin/sh`, deliberately** — on Windows it runs under Git Bash. A PowerShell sibling
-   was considered and declined: two parsers of `docs/package.map` would drift. Git Bash ships
-   no `zip`, so the `.zip` branch falls back `zip` → `Compress-Archive` → `bsdtar`.
+   was considered and declined: two parsers of `docs/package.map` would drift. The `.zip` branch
+   prefers Info-ZIP `zip`, then **bsdtar `--format zip`**, and only then Compress-Archive, which
+   now WARNS. That order was earned on the Win10 guest, 2026-07-21: Git Bash ships no `zip`; its
+   `tar` is GNU tar, which cannot write zip at all (`--format zip` is "Invalid archive format");
+   and PowerShell 5.1's Compress-Archive writes BACKSLASH separators that pass `unzip -t` but
+   FAIL real extraction on any Unix `unzip`. The conformant path is the Windows-native bsdtar at
+   `%SystemRoot%\System32\tar.exe` (libarchive), reached by absolute path because GNU tar shadows
+   it on Git Bash's PATH.
 
    **Only exercised on macOS/arm64.** Linux and Windows are unrun; the `.zip` fallback chain
    in particular has never fired.

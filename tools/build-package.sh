@@ -359,20 +359,51 @@ archive=$out/$name.$ext
 echo
 echo "build-package: staged $pkg"
 
-# tar.gz everywhere but Windows. WINDOWS HAS NO `zip`: Git Bash does not ship one, so the
-# obvious command is the one that is missing on the one platform that needs this branch.
-# Windows 10 1803+ does ship tar.exe (bsdtar), whose -a picks the format from the suffix,
-# and PowerShell has Compress-Archive. Try all three rather than rest on any one.
+# tar.gz everywhere but Windows. The Windows .zip is where the footguns are, and building one
+# on the Win10 guest (2026-07-21) sprang every one:
+#
+#   * Git Bash ships NO Info-ZIP `zip`.
+#   * Its `tar` is GNU tar (/usr/bin/tar), which CANNOT write zip -- `--format zip` is an
+#     "Invalid archive format" and `-a -cf x.zip` yields a file `unzip` will not read. So the
+#     old `tar --version | grep bsdtar` branch never fired here (bare tar is GNU tar), and had
+#     it fired it would have run the wrong tar.
+#   * PowerShell 5.1 -- what Windows 10 ships -- Compress-Archive writes BACKSLASH path
+#     separators. The listing looks right and `unzip -t` passes, but actual extraction on any
+#     Unix `unzip` FAILS ("appears to use backslashes as path separators"). PowerShell 7 fixed
+#     it; the release box has 5.1.
+#
+# What DOES emit a conformant, forward-slash zip is bsdtar (libarchive) with `--format zip`.
+# It ships in every Windows 10 1803+ as %SystemRoot%\System32\tar.exe -- absent only from Git
+# Bash's PATH, where GNU tar shadows it. So find a REAL bsdtar (bare `tar` already is one on
+# macOS; on Windows reach System32\tar.exe by absolute path) and prefer it. Compress-Archive
+# stays as a last resort, but WARNS, because its output may not open off Windows.
 if [ "$ext" = "zip" ]; then
+  bsdtar=""
+  if tar --version 2>/dev/null | grep -qi bsdtar; then
+    bsdtar=tar
+  else
+    # Git Bash's GNU tar cannot zip; reach the Windows-native bsdtar by absolute path.
+    for t in "$(cygpath -u "${SYSTEMROOT:-}" 2>/dev/null)/System32/tar.exe" \
+             /c/Windows/System32/tar.exe; do
+      if [ -x "$t" ] && "$t" --version 2>/dev/null | grep -qi bsdtar; then
+        bsdtar=$t
+        break
+      fi
+    done
+  fi
+
   if command -v zip > /dev/null 2>&1; then
     ( cd "$out" && zip -qr "$name.zip" "$name" )
+  elif [ -n "$bsdtar" ]; then
+    ( cd "$out" && "$bsdtar" --format zip -cf "$name.zip" "$name" )
   elif command -v powershell.exe > /dev/null 2>&1; then
+    echo "build-package: WARNING -- no Info-ZIP zip and no bsdtar; using Compress-Archive." >&2
+    echo "  Windows PowerShell 5.1 writes BACKSLASH separators that Unix \`unzip\` cannot" >&2
+    echo "  extract. VERIFY this archive unpacks on a non-Windows box before shipping it." >&2
     ( cd "$out" && powershell.exe -NoProfile -Command \
         "Compress-Archive -Path '$name' -DestinationPath '$name.zip' -Force" )
-  elif tar --version 2>/dev/null | grep -qi bsdtar; then
-    ( cd "$out" && tar -a -cf "$name.zip" "$name" )
   else
-    echo "build-package: no zip, no powershell.exe, no bsdtar -- cannot make a .zip" >&2
+    echo "build-package: no zip, no bsdtar, no powershell.exe -- cannot make a .zip" >&2
     exit 1
   fi
 else
