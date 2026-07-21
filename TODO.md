@@ -723,6 +723,20 @@ many, or list the label.
   one guest's format would be the wrong seam. Probably belongs in `tapetool` as
   a `verify` verb first, where being format-aware is the point.
 
+  - **Update, verified on real hardware (Patrick, 2026-07-21):** deramp.com's
+    archived `TRK80.WAV` — the counterexample above — **loads correctly on a real
+    machine.** That inverts the reading of this finding: if the recording is good
+    and real hardware recovers it, then the 27 framing errors and the desynced
+    payload are **our demodulator's**, not the tape's. So this is not only a
+    "confidence can't vouch for data" documentation gap — it is evidence the CUTS
+    decoder in `tapecodec.cpp` is **less tolerant than the hardware it models**,
+    and mis-decodes a WAV that period hardware reads without trouble. That is a
+    simulator bug to chase, not a bad file to warn about. It also puts
+    `docs/sources.md`'s characterization of that file (7,932 bytes, 27 framing
+    errors, 6,778 payload bytes wrong) in question — the numbers are what *we*
+    decode, not what the recording *is*. Re-check the demodulator against this
+    file before trusting either.
+
 ### MCP
 
 Built: `run`, `send`, `recv`, `regs`, `who`, `bus_map`, `bus_io`,
