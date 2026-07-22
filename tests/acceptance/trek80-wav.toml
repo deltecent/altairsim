@@ -1,0 +1,20 @@
+# TEST FIXTURE, not product -- the shipped example is examples/sol/trek80.toml.
+#
+# The .WAV twin of trek80-tap.toml: it mounts the real cassette audio, so this fixture is
+# the CUTS demodulator's regression as well as the auto-launch test -- it decodes Philip
+# Lord's TRK80.WAV through the modem and proves SOLOS loads the result. Flat out, idle off,
+# for the same reasons as the .TAP fixture beside it.
+
+[machine]
+name    = "trek80-wav"
+base    = "sol20"
+startup = [
+  "MOUNT sol0:tape1 \"../../examples/sol/TRK80.WAV\"",
+  "TYPE \"XE TRK80\\r\"",
+  "RUN C000",
+]
+
+[[board]]
+id       = "cpu0"
+clock_hz = 0
+idle     = false

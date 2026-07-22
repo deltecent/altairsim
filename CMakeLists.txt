@@ -977,42 +977,50 @@ if(EXPECT_EXECUTABLE)
   # the download is an open task, not a settled one.
 
   # ---------------------------------------------------------------------------
-  # THE SOL-20 EXAMPLE LOADS ITS GAME OFF THE CASSETTE.
+  # THE SOL-20 EXAMPLE AUTO-LAUNCHES ITS GAME OFF THE CASSETTE.
   #
-  # examples/sol is product: a machine file, a tape, and a README telling the reader to type
-  # `XE TRK80`. This types it. It is the acceptance test for the SOLOS tape path end to end
-  # -- and, for the .WAV media, the REGRESSION TEST for the CUTS demodulator: TRK80.WAV is
-  # Philip Lord's Sol-20 cassette digitization (hosted on deramp.com), which an earlier decoder
-  # garbled (27 framing errors, most of the payload wrong) and the matched-filter decoder now
-  # reads clean. A
-  # SOLOS tape carries a header checksum and one after every 256-byte block, and a tape with
-  # the wrong checksums is INVISIBLE: `CA` lists nothing, `GE` finds nothing, and no error is
-  # printed anywhere. Reading it back through SOLOS is the only honest check that it is right.
+  # examples/sol is product: a machine file, a tape, and a README. The shipped trek80.toml
+  # MOUNTs the tape, `TYPE`s `XE TRK80` at the console, and RUNs SOLOS -- so the game comes up
+  # by itself. This runs that path end to end, and for the .WAV media it is also the REGRESSION
+  # TEST for the CUTS demodulator: TRK80.WAV is Philip Lord's Sol-20 cassette digitization
+  # (hosted on deramp.com), which an earlier decoder garbled (27 framing errors, most of the
+  # payload wrong) and the matched-filter decoder now reads clean. A SOLOS tape carries a
+  # header checksum and one after every 256-byte block, and a tape with the wrong checksums is
+  # INVISIBLE: `CA` lists nothing, `GE` finds nothing, and no error is printed anywhere.
+  # Reading it back through SOLOS is the only honest check that it is right.
   #
   # IT NEEDS EXPECT because the verdict is a memory dump. TREK80 paints the VDM-1's screen
   # RAM at 0CC00H and nothing it prints reaches stdout, so the machine has to be stopped
   # with ATTN and the screen READ -- which is also what lets this run headless, with no
   # window and no SDL.
   #
-  # TWO MEDIA: the byte stream, and the same tape as CUTS audio at 1200 baud through the
-  # modem. Both are about 7 seconds -- the VDM-1 redraw fix is what made that affordable,
-  # and before it this same test took over two minutes and did not finish.
+  # THE FIXTURE IS NOT THE SHIPPED FILE: trek80-{tap,wav}.toml carry the shipped auto-launch
+  # `startup` but flat out with the idle nap off, so the test does not pay the minute a real
+  # 2.045 MHz Sol spends reading a cassette. Two fixtures, one per media: the byte stream, and
+  # the same tape as CUTS audio at 1200 baud through the modem.
   # ---------------------------------------------------------------------------
   add_test(NAME acceptance-trek80
            COMMAND ${EXPECT_EXECUTABLE}
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
                    $<TARGET_FILE:altairsim>
-                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol
-                   tap)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80-tap.toml)
   set_tests_properties(acceptance-trek80 PROPERTIES LABELS acceptance TIMEOUT 180)
 
   add_test(NAME acceptance-trek80-wav
            COMMAND ${EXPECT_EXECUTABLE}
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
                    $<TARGET_FILE:altairsim>
-                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol
-                   wav)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80-wav.toml)
   set_tests_properties(acceptance-trek80-wav PROPERTIES LABELS acceptance TIMEOUT 180)
+
+  # A SECOND GAME, A SECOND TAPE. trek80 proves the mechanism and the decoder on one tape;
+  # this proves ATC off its own -- so a game tape cannot ship without something reading it.
+  add_test(NAME acceptance-atc
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/atc.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/atc-boot.toml)
+  set_tests_properties(acceptance-atc PROPERTIES LABELS acceptance TIMEOUT 180)
 
   # ---------------------------------------------------------------------------
   # THE SHIPPED DISK BASIC EXAMPLE REACHES ITS PROMPT -- acceptance-diskbasic.

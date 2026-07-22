@@ -1,0 +1,67 @@
+#!/usr/bin/expect -f
+#
+# A SECOND SOL-20 GAME AUTO-LAUNCHES OFF ITS OWN CASSETTE -- acceptance-atc.
+#
+# trek80.exp proves the auto-launch mechanism and the CUTS decoder on ONE tape. This proves
+# a different game on a different tape: ATC (Air Traffic Controller, Creative Computing,
+# 1978), off Philip Lord's ATC.WAV. Without it a corrupt ATC.WAV would ship unnoticed --
+# nothing else reads it. The fixture (atc-boot.toml) carries the shipped auto-launch
+# `startup`, flat out so the test is quick.
+#
+# The verdict is the VDM-1 screen, read with ATTN + DUMP, for the same reason as trek80.exp:
+# the game paints memory-mapped video at 0CC00H and nothing it draws reaches stdout.
+#
+# usage: expect -f atc.exp <altairsim> <fixture.toml>
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set fix [lindex $argv 1]
+
+spawn $exe $fix -i
+expect {
+    -ex "console -- " {}
+    eof     { puts "FAIL: the machine did not start"; exit 1 }
+    timeout { puts "FAIL: never reached the guest console"; exit 1 }
+}
+
+# Poll: ATTN, read the row ATC signs its title on, look for it, RUN on and retry. Wait for
+# DUMP's own "CFC0  " token first, never the echoed prompt -- see trek80.exp for that trap.
+set found 0
+for {set try 0} {$try < 15 && !$found} {incr try} {
+    sleep 4
+    send "\005"
+    expect {
+        -ex "altairsim> " {}
+        eof     { puts "FAIL: the machine died while loading the tape"; exit 1 }
+        timeout { puts "FAIL: ATTN did not return to the monitor"; exit 1 }
+    }
+    send "DUMP CFC0-CFFF WIDTH=64\r"
+    expect {
+        -ex "CFC0  " {}
+        timeout { puts "FAIL: DUMP did not answer -- the monitor is wedged"; exit 1 }
+    }
+    expect {
+        -ex "David Mannering" { set found 1 }
+        -ex "altairsim> "     {}
+        timeout { puts "FAIL: DUMP printed a row and then stopped"; exit 1 }
+    }
+    if {!$found} {
+        send "RUN\r"
+        expect {
+            -ex "console -- " {}
+            timeout { puts "FAIL: RUN did not resume the machine"; exit 1 }
+        }
+    }
+}
+
+if {!$found} {
+    puts "FAIL: the auto-launched `XE ATC` never reached the game. The Sol-20 sat at SOLOS's\
+          prompt, or ATC.WAV did not decode -- a bad SOLOS tape is SILENT."
+    exit 1
+}
+
+send "QUIT\r"
+expect eof
+puts "OK: the machine auto-launched ATC off its cassette -- the title is on the VDM-1's screen."
+exit 0

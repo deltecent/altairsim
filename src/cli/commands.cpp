@@ -463,6 +463,25 @@ static const std::vector<CommandDef> kCommands = {
      "ON, or a tracepoint, resumes to the same file and mask. That is what lets you\n"
      "aim a tracepoint at a file: TRACE ON run.log MASK=DMA, then TRACE OFF to arm\n"
      "it without emitting, then BREAK <addr> TRACE ON. See BREAK."},
+    {"TYPE", true, nullptr, "TYPE \"text\"",  // TY (TRACE has T, TR)
+     "Put characters in the console's input buffer as if they were typed at the\n"
+     "guest -- the same keystrokes the VDM window or a terminal would send. The\n"
+     "guest reads them when it next looks at the keyboard, so they are TYPE-AHEAD:\n"
+     "they wait in the buffer and are not forced on a program that is not reading.\n"
+     "\n"
+     "Escapes: \\r carriage return, \\n line feed, \\t tab, \\\\ backslash, \\\" quote.\n"
+     "ENTER sends a carriage return, so a command line for the guest ends in \\r.\n"
+     "\n"
+     "This is how a machine file starts a program the monitor cannot reach. `startup`\n"
+     "runs MONITOR commands; `XE TRK80` is input to SOLOS, a program INSIDE the machine.\n"
+     "Put TYPE before the RUN that starts the guest and the guest reads it at its first\n"
+     "prompt -- in a TOML the backslash doubles (\\\\r), because the config parser keeps\n"
+     "one for the command:\n"
+     "  startup = [\"MOUNT sol0:tape1 \\\"TRK80.WAV\\\"\", \"TYPE \\\"XE TRK80\\\\r\\\"\", \"RUN C000\"]\n"
+     "  TYPE \"XE TRK80\\r\"        type it now, at a running guest\n"
+     "\n"
+     "A program that clears its keyboard as it starts drops keystrokes sent before it\n"
+     "is ready; TYPE cannot help there, no more than a fast typist could."},
     // STOP is still reserved, and CONSOLE mode has now made it MORE clearly a
     // separate thing rather than less. The machine runs while you are in CONSOLE,
     // but the monitor is not there -- the guest has the keyboard. STOP is for the

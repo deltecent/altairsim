@@ -729,6 +729,35 @@ aim a tracepoint at a file: TRACE ON run.log MASK=DMA, then TRACE OFF to arm
 it without emitting, then BREAK <addr> TRACE ON. See BREAK.
 
 
+### TYPE — `TY[PE]`
+
+```
+TYPE "text"
+```
+Put characters in the console's input buffer as if they were typed at the
+guest -- the same keystrokes the VDM window or a terminal would send. The
+guest reads them when it next looks at the keyboard, so they are TYPE-AHEAD:
+they wait in the buffer and are not forced on a program that is not reading.
+
+Escapes: \r carriage return, \n line feed, \t tab, \\ backslash, \" quote.
+ENTER sends a carriage return, so a command line for the guest ends in \r.
+
+This is how a machine file starts a program the monitor cannot reach. `startup`
+runs MONITOR commands; `XE TRK80` is input to SOLOS, a program INSIDE the machine.
+Put TYPE before the RUN that starts the guest and the guest reads it at its first
+prompt -- in a TOML the backslash doubles (\\r), because the config parser keeps
+one for the command:
+
+```
+startup = ["MOUNT sol0:tape1 \"TRK80.WAV\"", "TYPE \"XE TRK80\\r\"", "RUN C000"]
+TYPE "XE TRK80\r"        type it now, at a running guest
+```
+
+
+A program that clears its keyboard as it starts drops keystrokes sent before it
+is ready; TYPE cannot help there, no more than a fast typist could.
+
+
 ### NOBREAK — `NO[BREAK]`
 
 ```

@@ -1,61 +1,44 @@
 #!/usr/bin/expect -f
 #
-# THE SHIPPED SOL-20 EXAMPLE MUST LOAD ITS GAME OFF THE CASSETTE.
+# THE SHIPPED SOL-20 EXAMPLE MUST LOAD ITS GAME OFF THE CASSETTE, BY ITSELF.
 #
-# examples/sol is product, not a fixture: trek80.toml, a tape, and a README that tells the
-# reader to type two words. This runs those two words. It proves the whole path end to end --
-# SOLOS's own tape reader, the `sol` board's motor and 0FBh data register, the CUTS modem when
-# the media is a .WAV, the VDM-1 screen the game paints on -- against a 1977 artifact.
+# examples/sol is product: trek80.toml, a tape, and a README. The shipped machine file
+# AUTO-LAUNCHES -- its `startup` MOUNTs the tape, `TYPE`s `XE TRK80` at the console, and
+# RUNs SOLOS, so the game comes up with no keystroke from anyone. This runs that path end
+# to end: SOLOS's own tape reader, the `sol` board's motor and 0FBh data register, the CUTS
+# modem when the media is a .WAV, the VDM-1 screen the game paints on -- against a 1977
+# artifact, and against the `TYPE` type-ahead that a machine file uses to reach the guest.
 #
 # AND IT PROVES THE DECODE ITSELF, which is the part that could not be proven any other way.
-# TRK80.WAV is Philip Lord's Sol-20 cassette digitization (hosted on deramp.com) -- the recording
-# an earlier decoder garbled and the matched-filter decoder now reads clean -- and TRK80.TAP is
-# decoded from it.
-# A SOLOS tape carries a header checksum and a checksum after every 256-byte block, and a tape
-# whose checksums are wrong is INVISIBLE -- `CA` lists nothing, `GE` reports nothing, and there
-# is no error anywhere to tell you why. So the only honest test is to make SOLOS read it back.
+# TRK80.WAV is Philip Lord's Sol-20 cassette digitization (hosted on deramp.com) -- the
+# recording an earlier decoder garbled and the matched-filter decoder now reads clean -- and
+# TRK80.TAP is decoded from it. A SOLOS tape carries a header checksum and a checksum after
+# every 256-byte block, and a tape whose checksums are wrong is INVISIBLE -- `CA` lists
+# nothing, `GE` reports nothing, and there is no error anywhere to tell you why. So the only
+# honest test is to make SOLOS read it back.
 #
 # WHY THE VERDICT IS A MEMORY DUMP AND NOT THE TERMINAL. The Sol-20's screen is the VDM-1's
 # RAM at 0CC00H. TREK80 writes there; nothing it prints ever reaches stdout. So the machine is
 # stopped with ATTN and the screen is READ -- which is also the only way this test could run
 # headless in CI, with no window and no SDL.
 #
-# usage: expect -f trek80.exp <altairsim> <example-dir> <tap|wav>
+# THE MACHINE IS A TEST FIXTURE, not the shipped file: tests/acceptance/trek80-{tap,wav}.toml.
+# It has the shipped `startup` -- MOUNT, TYPE the XE, RUN -- but at flat-out speed with the
+# idle nap off, so the test does not pay the minute a 2.045 MHz Sol spends reading a cassette.
+# The two fixtures differ only in the media they mount: the byte stream, and the same tape as
+# CUTS audio at 1200 baud through the modem.
 #
+# usage: expect -f trek80.exp <altairsim> <fixture.toml>
 set timeout 120
 log_user 0
 
-set exe  [lindex $argv 0]
-set dir  [lindex $argv 1]
-set kind [lindex $argv 2]
+set exe   [lindex $argv 0]
+set fix   [lindex $argv 1]
 
-if {$kind eq "wav"} {
-    set media "TRK80.WAV"
-} else {
-    set media "TRK80.TAP"
-}
-
-cd $dir
-
-# FLAT OUT, ON PURPOSE, AND IT IS AN OVERRIDE OF THE EXAMPLE. trek80.toml sets the Sol-20's
-# real 2.045 MHz because that is the speed the game was played at, and at that speed the
-# cassette takes the minute a cassette took. A test does not want the minute; it wants the
-# bytes. `clock_hz=0` buys back the wall clock and changes nothing the guest can observe.
-#
-# `idle=false` IS INSURANCE, and it is honest to say it changes nothing measurable here (the
-# test runs in the same 7 seconds either way). The reason to set it anyway: reading a cassette
-# IS a poll loop -- SOLOS sits on the tape status register -- and the idle policy decides
-# "waiting for a person" from CONSOLE traffic, which a byte arriving on the TAPE is not. On a
-# slower box, or with this test's own stop-and-look restarting the warmup, a machine that is
-# working could be taken for one at a prompt. Nothing here needs the nap.
-#
-# `-i` KEEPS THE MONITOR ALIVE after the -x commands. Without it altairsim runs them and
-# EXITS, and every expect below fails with a broken pipe rather than a verdict.
-spawn $exe trek80.toml -i \
-      -x "MOUNT sol0:tape1 \"$media\"" \
-      -x "SET cpu0 clock_hz=0" \
-      -x "SET cpu0 idle=false" \
-      -x "RUN 0C000"
+# `-i` KEEPS THE MONITOR ALIVE. The fixture auto-launches (RUN is in its `startup`), so the
+# machine comes up running with no -x needed; -i is what leaves a monitor for ATTN to return
+# to, instead of the process exiting the moment the run loop is entered.
+spawn $exe $fix -i
 
 expect {
     -ex "console -- " {}
@@ -63,11 +46,10 @@ expect {
     timeout { puts "FAIL: never reached the guest console"; exit 1 }
 }
 
-# SOLOS has to be at its prompt before it will look at the keyboard. It clears the screen and
-# signs on first, and a byte sent before that is a byte thrown away.
-sleep 2
-send "XE TRK80\r"
-
+# NOTHING IS TYPED HERE. The fixture's `TYPE "XE TRK80\r"` already queued the command as
+# type-ahead before SOLOS signed on; SOLOS reads it at its first prompt and loads the tape.
+# All this test does is wait for the paint and read it back.
+#
 # NOW POLL, rather than guess a sleep. ATTN stops the machine without disturbing it (it is
 # not RESET), so the screen can be read and the machine sent on its way as many times as we
 # like. A fixed sleep long enough for the .WAV would be dead time on the .TAP, and a fixed
@@ -118,7 +100,7 @@ for {set try 0} {$try < 20 && !$found} {incr try} {
 }
 
 if {!$found} {
-    puts "FAIL: `XE TRK80` never reached the game off $media.\
+    puts "FAIL: the auto-launched `XE TRK80` never reached the game.\
           The Sol-20 sat at SOLOS's prompt, or the tape's checksums do not read back --\
           a bad SOLOS tape is SILENT, so this is what that failure looks like."
     exit 1
@@ -142,6 +124,6 @@ expect {
 send "QUIT\r"
 expect eof
 
-puts "OK: XE TRK80 off $media reached the game -- the copyright line and the speed-factor\
-      prompt are both on the VDM-1's screen."
+puts "OK: the machine auto-launched TREK80 and reached the game -- the copyright line and\
+      the speed-factor prompt are both on the VDM-1's screen."
 exit 0

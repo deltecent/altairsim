@@ -1,0 +1,40 @@
+# ATC (Air Traffic Controller) on a Processor Technology Sol-20 -- boots SOLOS, loads the
+# game off the cassette, and starts it. Just:
+#
+#     cd examples/sol && altairsim atc.toml
+#
+# and ATC comes up. On a real Sol-20 you would type `XE ATC` at the SOLOS prompt; the
+# `TYPE` line below does that for you (see README.md).
+#
+# The tape is ATC.WAV -- a Sol-20 cassette digitized by Philip Lord (hosted on deramp.com),
+# real 1200-baud CUTS audio, which the simulator's demodulator reads directly. It loads in
+# about the time a cassette took: that wait is the tape, and it is authentic.
+#
+# `base = "sol20"` IS THE MACHINE -- the Sol-PC's three cards (front panel, VDM-1 video at
+# 0CC00H, the composite `sol` I/O card at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
+# machines/sol20.toml. This file adds a tape, the launch keystrokes, and the clock.
+
+[machine]
+name = "atc"
+base = "sol20"
+
+# PUT THE TAPE IN, TYPE THE COMMAND, BOOT. `startup` runs monitor commands in order:
+#   1. MOUNT the cassette in deck 1 -- PLAY is pressed; the deck plays only while SOLOS
+#      turns the motor (OUT 0FAH), which it does when you ask it to read.
+#   2. TYPE queues `XE ATC` and a carriage return at the console -- type-ahead SOLOS reads
+#      at its first prompt. The backslash DOUBLES in a TOML (`\\r`): the config parser
+#      keeps one for the command.
+#   3. RUN C000 cold-starts SOLOS, which signs on, reads the queued `XE ATC`, and loads.
+# REW sol0:tape1 rewinds it -- your finger on the recorder if you `XE ATC` twice.
+startup = [
+  "MOUNT sol0:tape1 \"ATC.WAV\"",
+  "TYPE \"XE ATC\\r\"",
+  "RUN C000",
+]
+
+# 2.045 MHz -- THE STOCK SOL-20 (14.31818 MHz / 7; Sol Systems Manual, Theory of
+# Operation VIII). This is a GAME: it was played at this speed, and the tape takes the
+# time a tape took. `SET cpu0 clock_hz=0` puts it back to flat out.
+[[board]]
+id       = "cpu0"
+clock_hz = 2045000

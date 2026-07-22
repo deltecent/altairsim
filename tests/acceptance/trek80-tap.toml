@@ -1,0 +1,23 @@
+# TEST FIXTURE, not product -- the shipped example is examples/sol/trek80.toml.
+#
+# This exercises the SHIPPED auto-launch path (MOUNT + TYPE the XE + RUN in `startup`),
+# but at flat-out speed so the acceptance test does not pay the minute a 2.045 MHz Sol
+# spends reading a cassette. `idle=false` because reading a tape is a poll loop that a
+# console-traffic idle test cannot see (docs/manual/tapes.md); nothing here should nap.
+#
+# The media path is relative to THIS file (core/paths.h), so it finds the shipped tape
+# whatever directory ctest runs from. trek80.exp reads the VDM back to prove it loaded.
+
+[machine]
+name    = "trek80-tap"
+base    = "sol20"
+startup = [
+  "MOUNT sol0:tape1 \"../../examples/sol/TRK80.TAP\"",
+  "TYPE \"XE TRK80\\r\"",
+  "RUN C000",
+]
+
+[[board]]
+id       = "cpu0"
+clock_hz = 0
+idle     = false
