@@ -197,6 +197,21 @@ To find out who *would* have answered, without running a cycle:
 altairsim> WHO IO 10
 ```
 
+And if the symptom is a **hang** — a machine you assembled yourself starts, prints nothing, and
+never comes back — the cause is often exactly this: it is polling a port for a board that is not
+there, reading `FF` forever. Arm the bus to say so:
+
+```
+altairsim> SET BUS UNCLAIMED=WARN
+altairsim> RUN
+warning: IN 10 -> FF at PC=0043: no board decodes port 0x10. it floated to 0xFF.
+```
+
+`WARN` prints the port and the address that reached for it and keeps running; `HALT` stops the
+machine right there, so `SHOW REG` and a `DUMP` show it exactly as it wedged. It watches I/O
+only — memory is normal to scan — and names each absent port once per run. The default is
+`SILENT`; you turn it on when you need it.
+
 ## `RESET` did not clear memory
 
 It is not supposed to.

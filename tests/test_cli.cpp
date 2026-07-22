@@ -1509,4 +1509,76 @@ void test_achieved_hz() {
 
         Display::setFocusPolicy(false);  // a process-wide setting: put it back
     }
+
+    SECTION("SET BUS UNCLAIMED -- the floating-bus diagnostic, from the CLI (DESIGN.md 4.6.1)");
+    {
+        // A guest that OUTs to a port no board decodes, then HLTs: OUT FE ; HLT. Each
+        // policy gets a FRESH machine, because a CPU that reached HLT stays halted and a
+        // second RUN would not re-execute the OUT (that is 8080 HLT, not this feature).
+        auto fresh = [](Monitor& mon) {
+            std::ostringstream s;
+            mon.exec("BOARDS ADD 8080 cpu0", s);
+            mon.exec("BOARDS ADD memory mem0", s);
+            mon.exec("SET mem0 fill=zero", s);
+            mon.exec("REGION ADD mem0 type=ram at=0 size=64K", s);
+            mon.exec("POWER ON", s);
+            mon.exec("DEPOSIT 0100 D3 FE 76", s);  // OUT FE ; HLT
+        };
+        auto run = [](Monitor& mon, const char* line) {
+            std::ostringstream o;
+            mon.exec(line, o);
+            return o.str();
+        };
+
+        // The command parses and echoes the policy it set -- it is NOT the old error.
+        {
+            Machine mp;
+            Monitor mon(mp);
+            fresh(mon);
+            CHECK(run(mon, "SET BUS UNCLAIMED=WARN").find("bus: unclaimed=WARN") != std::string::npos,
+                  "SET BUS UNCLAIMED=WARN is accepted and echoed");
+            CHECK(run(mon, "SET BUS UNCLAIMED=HALT").find("bus: unclaimed=HALT") != std::string::npos,
+                  "and HALT");
+            CHECK(run(mon, "SET BUS UNCLAIMED=SILENT").find("bus: unclaimed=SILENT") !=
+                      std::string::npos,
+                  "and SILENT");
+            CHECK(run(mon, "SET BUS NONSENSE=1").find("UNCLAIMED=WARN|HALT|SILENT") !=
+                      std::string::npos,
+                  "a bad SET BUS subcommand names UNCLAIMED alongside CONTENTION");
+        }
+
+        // WARN: the machine runs to the HLT and the warning names the port and PC.
+        {
+            Machine mw;
+            Monitor mon(mw);
+            fresh(mon);
+            run(mon, "SET BUS UNCLAIMED=WARN");
+            std::string warn = run(mon, "RUN 0100");
+            CHECK(warn.find("warning: OUT FE <- 00 at PC=0100: no board decodes port 0xFE") !=
+                      std::string::npos,
+                  "under WARN the run finishes and the port+PC are named");
+            CHECK(warn.find("HLT at 0103") != std::string::npos, "the guest ran on to its HLT");
+        }
+
+        // HALT: the machine stops at the offending cycle, before the HLT.
+        {
+            Machine mh;
+            Monitor mon(mh);
+            fresh(mon);
+            run(mon, "SET BUS UNCLAIMED=HALT");
+            std::string halt = run(mon, "RUN 0100");
+            CHECK(halt.find("stopped: OUT to port 0xFE") != std::string::npos,
+                  "under HALT the guest is stopped at the unclaimed access");
+        }
+
+        // SILENT is the default -- an unclaimed port says nothing, so no existing
+        // machine or acceptance transcript gains a line.
+        {
+            Machine md;
+            Monitor mon(md);
+            fresh(mon);
+            CHECK(run(mon, "RUN 0100").find("no board decodes") == std::string::npos,
+                  "the default is SILENT");
+        }
+    }
 }

@@ -1031,6 +1031,11 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
 
+    // Re-arm the unclaimed-port de-dup for this run, so an absent port that was
+    // reported on the last run is reported again on this one (DESIGN.md 4.6.1).
+    // Without this a guest polling an absent UART would warn once, ever.
+    m_.bus.resetUnclaimedWarnings();
+
     // TWO QUESTIONS THAT ARE NOT THE SAME ONE, and conflating them was a bug (#6).
     //
     // anyConsole: is a line wired to the INTERACTIVE console -- the host keyboard? That is
@@ -1901,6 +1906,16 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         break;
     case StopReason::Steps:
         break;
+    case StopReason::Unclaimed:
+        // SET BUS UNCLAIMED=HALT caught the guest reaching a port no board decodes --
+        // the hang this diagnostic exists to find (DESIGN.md 4.6.1). The warning line
+        // with the exact PC is in the bus log, flushed right after this.
+        std::snprintf(buf, sizeof buf,
+                      "stopped: %s port 0x%02X, which no board decodes -- see the warning "
+                      "below. RUN resumes.",
+                      r.write ? "OUT to" : "IN from", r.port);
+        out << buf << "\n";
+        break;
     }
 }
 
@@ -2321,7 +2336,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 out << "bus: contention=" << v << "\n";
                 return true;
             }
-            out << "SET BUS CONTENTION=WARN|ERROR|SILENT\n";
+            if (upper(a[2]).rfind("UNCLAIMED", 0) == 0) {
+                // The floating-bus diagnostic (DESIGN.md 4.6.1). HALT stops the guest
+                // at the offending cycle; WARN just logs it; SILENT is the default.
+                Unclaimed p = v == "SILENT" ? Unclaimed::Silent
+                              : v == "HALT" ? Unclaimed::Halt
+                                            : Unclaimed::Warn;
+                m_.bus.setUnclaimedPolicy(p);
+                out << "bus: unclaimed="
+                    << (p == Unclaimed::Silent ? "SILENT" : p == Unclaimed::Halt ? "HALT" : "WARN")
+                    << "\n";
+                return true;
+            }
+            out << "SET BUS CONTENTION=WARN|ERROR|SILENT | UNCLAIMED=WARN|HALT|SILENT\n";
             failed_ = true;
             return true;
         }

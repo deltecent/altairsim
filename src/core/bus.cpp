@@ -102,6 +102,45 @@ void Bus::reportContention(const BusCycle& c, const std::vector<Board*>& who) {
     log_.push_back(m);
 }
 
+// The floating-bus diagnostic (DESIGN.md 4.6.1). A guest that reaches for a board
+// that isn't there reads 0xFF for ever and hangs -- this is the line that says why.
+// Called from the four I/O paths only; memory is deliberately never warned. The PC
+// is whatever the run loop last published (setInstrPc); on a bare interactive I/O
+// with no run in flight it is simply the last instruction the CPU retired.
+void Bus::reportUnclaimed(const BusCycle& c) {
+    // The caller has already checked the policy is not Silent, but keep the guard so
+    // the function is safe to call unconditionally too.
+    if (unclaimedPolicy_ == Unclaimed::Silent) return;
+
+    const bool write = c.isWrite();
+    std::bitset<256>& seen = write ? warnedIoWrite_ : warnedIoRead_;
+    const uint8_t port = c.port();
+    if (seen.test(port)) return;  // once per port+direction per run -- see resetUnclaimedWarnings()
+    seen.set(port);
+
+    char buf[160];
+    if (write)
+        // e.g. warning: OUT 0FE <- 01 at PC=0113: no board decodes port 0xFE. reads float to 0xFF.
+        std::snprintf(buf, sizeof buf,
+                      "warning: OUT %02X <- %02X at PC=%04X: no board decodes port 0x%02X. "
+                      "reads float to 0xFF.",
+                      port, c.data, instrPc_, port);
+    else
+        // e.g. warning: IN 0FE -> FF at PC=0113: no board decodes port 0xFE. it floated to 0xFF.
+        std::snprintf(buf, sizeof buf,
+                      "warning: IN %02X -> %02X at PC=%04X: no board decodes port 0x%02X. "
+                      "it floated to 0xFF.",
+                      port, c.data, instrPc_, port);
+    log_.push_back(buf);
+
+    // Halt names the same access to the run loop, which stops at the boundary.
+    if (unclaimedPolicy_ == Unclaimed::Halt) {
+        unclaimedHalt_ = true;
+        haltPort_ = port;
+        haltWrite_ = write;
+    }
+}
+
 // THE CYCLE HANDED TO settle() IS THE FINISHED ONE, AND `data` IS ALWAYS VALID HERE.
 //
 // BusCycle::data is documented as "valid on writes", and during the cycle that is
@@ -357,6 +396,7 @@ uint8_t Bus::ioReadExact(uint8_t port) {
     contended_ = (d.n > 1);
     uint8_t v = d.first ? d.first->read(c) : 0xFF;
     c.data = v;  // what got driven -- see settle()
+    if (unclaimedPolicy_ != Unclaimed::Silent && d.n == 0) reportUnclaimed(c);
     settle(c);
     return v;
 }
@@ -369,6 +409,7 @@ void Bus::ioWriteExact(uint8_t port, uint8_t data) {
     contended_ = (d.n > 1);
     if (d.n == 1) d.first->write(c);
     else if (d.n > 1) for (Board* b : decoders(c)) b->write(c);
+    if (unclaimedPolicy_ != Unclaimed::Silent && d.n == 0) reportUnclaimed(c);
     settle(c);
 }
 
@@ -509,6 +550,7 @@ uint8_t Bus::ioRead(uint8_t port) {
     unclaimed_ = (s.who == nullptr);
     uint8_t v = s.who ? s.who->read(c) : 0xFF;
     c.data = v;  // what got driven -- see settle()
+    if (unclaimedPolicy_ != Unclaimed::Silent && s.who == nullptr) reportUnclaimed(c);
     settle(c);
     return v;
 }
@@ -523,6 +565,7 @@ void Bus::ioWrite(uint8_t port, uint8_t data) {
     BusCycle c{Cycle::IoWrite, port, data, false};
     unclaimed_ = (s.who == nullptr);
     if (s.who) s.who->write(c);
+    if (unclaimedPolicy_ != Unclaimed::Silent && s.who == nullptr) reportUnclaimed(c);
     settle(c);
 }
 
