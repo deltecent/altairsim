@@ -1,6 +1,7 @@
 #include "boards/mits-88virtc.h"
 
 #include "core/bus.h"
+#include "core/statefile.h"
 
 namespace altair {
 
@@ -154,6 +155,26 @@ void VirtcBoard::reset(Reset r) {
 }
 
 void VirtcBoard::power() { reset(Reset::PowerOn); }
+
+void VirtcBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.boolean(viEnabled_);
+    w.boolean(levelLive_);
+    w.u32((uint32_t)(int32_t)curLevel_);
+    w.boolean(rtcEnabled_);
+    w.boolean(rtcInt_);
+}
+
+void VirtcBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    viEnabled_  = r.boolean();
+    levelLive_  = r.boolean();
+    curLevel_   = (int)(int32_t)r.u32();
+    rtcEnabled_ = r.boolean();
+    rtcInt_     = r.boolean();
+    armRtc();       // re-arm the divider one-shot from the restored enable/divide
+    intChanged();   // and re-derive the VI wire
+}
 
 // A jumper moved: `rtc_interrupt` changes which wire RI is soldered to, and
 // `rtc_source`/`rtc_divide` change the interval the chain is counting. All three move

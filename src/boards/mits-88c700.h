@@ -50,6 +50,11 @@ public:
     void reset(Reset) override;
     void pump() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The one bit of software state -- the stored
+    // interrupt-enable. The port is a strap and the output line is a host handle.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     std::vector<Property> properties() override;
     std::vector<UnitDef>  units() const override;
     std::vector<MapEntry> ioMap() const override;

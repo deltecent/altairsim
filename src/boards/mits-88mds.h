@@ -59,6 +59,14 @@ public:
 
     std::vector<Property> properties() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The shared controller state (base) plus the
+    // motor: the Disk Enable flip-flop and the three deadlines. They are absolute
+    // T-states and stay valid because the Clock's t_ travels; the `motor` policy is
+    // config. Nothing is scheduled on the Clock here -- the deadlines are compared
+    // against now() -- so there is no callback to re-arm.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 protected:
     const std::vector<HsFormat>& formats() const override { return mdsFormats(); }
 

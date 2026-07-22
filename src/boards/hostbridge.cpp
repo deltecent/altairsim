@@ -1,5 +1,7 @@
 #include "boards/hostbridge.h"
 
+#include "core/statefile.h"
+
 #include <filesystem>
 #include <system_error>
 #include <utility>
@@ -417,6 +419,41 @@ void HostBridgeBoard::reset(Reset) {
 }
 
 void HostBridgeBoard::power() { reset(Reset::PowerOn); }
+
+void HostBridgeBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.u8((uint8_t)mode_);
+    w.u8((uint8_t)pending_);
+    w.u8((uint8_t)err_.code);
+    w.str(err_.msg);
+    w.blob(out_);
+    w.u32((uint32_t)pos_);
+    w.blob(in_);
+    w.str(writeName_);
+    w.u32((uint32_t)names_.size());
+    for (const auto& n : names_) w.str(n);
+    w.u32((uint32_t)idx_);
+    w.boolean(dirOpen_);
+}
+
+void HostBridgeBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    mode_       = (Mode)r.u8();
+    pending_    = (Cmd)r.u8();
+    err_.code   = (HbError)r.u8();
+    err_.msg    = r.str();
+    out_        = r.blob();
+    pos_        = (size_t)r.u32();
+    in_         = r.blob();
+    writeName_  = r.str();
+    uint32_t n  = r.u32();
+    names_.clear();
+    for (uint32_t i = 0; i < n; ++i) names_.push_back(r.str());
+    idx_        = (size_t)r.u32();
+    dirOpen_    = r.boolean();
+    // dir_ is a host handle rebuilt lazily from the (unchanged) sandbox config; the
+    // enumerator's names_ travel, so DIR_NEXT resumes where it was.
+}
 
 // ---------------------------------------------------------------------------
 // Reflection.

@@ -2,6 +2,7 @@
 
 #include "boards/proctech-vdm1.h"  // VdmBoard::setScroll -- the OUT 0xFE target
 #include "core/bus.h"              // bus_->boards(), to find the VDM
+#include "core/statefile.h"
 #include "host/media.h"
 
 #include <cstdio>
@@ -226,6 +227,43 @@ void SolBoard::reset(Reset) {
 }
 
 void SolBoard::power() { reset(Reset::PowerOn); }
+
+void SolBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    serial_.serialize(w);
+    tapeUart_.serialize(w);
+    for (const Deck* d : {&deck1_, &deck2_}) {
+        w.u8(d->mode == TapeStream::Mode::Record ? 1 : 0);
+        w.boolean(d->motor);
+        w.u64(d->tape ? d->tape->pos() : 0);
+    }
+    w.u8(kbData_);
+    w.boolean(kbHave_);
+    w.u64(kbRx_);
+    w.u8(tapeCtl_);
+    w.boolean(stop1_);
+    w.boolean(stop2_);
+}
+
+void SolBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    serial_.deserialize(r);
+    tapeUart_.deserialize(r);
+    for (Deck* d : {&deck1_, &deck2_}) {
+        d->mode = r.u8() ? TapeStream::Mode::Record : TapeStream::Mode::Play;
+        d->motor = r.boolean();
+        uint64_t pos = r.u64();
+        if (d->tape) d->tape->setPos(pos);
+    }
+    kbData_ = r.u8();
+    kbHave_ = r.boolean();
+    kbRx_   = r.u64();
+    tapeCtl_ = r.u8();
+    stop1_ = r.boolean();
+    stop2_ = r.boolean();
+    programTapeBaud();  // the baud select in tapeCtl_ is now restored
+    retape();           // put the CUTS line back on the running deck at its head position
+}
 
 VdmBoard* SolBoard::vdm() const {
     if (!bus_) return nullptr;

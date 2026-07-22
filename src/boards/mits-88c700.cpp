@@ -1,5 +1,7 @@
 #include "boards/mits-88c700.h"
 
+#include "core/statefile.h"
+
 namespace altair {
 namespace {
 
@@ -122,6 +124,16 @@ void C700Board::reset(Reset) {
     // reset does not unplug the printer.
     intEnabled_ = false;
     stream_->flush();
+}
+
+void C700Board::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.boolean(intEnabled_);
+}
+
+void C700Board::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    intEnabled_ = r.boolean();
 }
 
 // The one door to the outside world (DESIGN.md 7.1): let a socket accept/drain, and

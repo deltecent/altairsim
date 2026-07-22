@@ -54,6 +54,14 @@ public:
     void reset(Reset) override;
     void power() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). A transfer in flight -- the mode, the pending
+    // command, the last error, both buffers (the uncommitted `in_` is exactly the
+    // state that is NOT on the host yet and so must travel), and the directory
+    // enumerator. The sandbox root and read-only strap are config; the HostDir
+    // handle is rebuilt lazily from them.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     // ---- reflection ----
     std::vector<Property> properties() override;
     std::vector<MapEntry> ioMap() const override;

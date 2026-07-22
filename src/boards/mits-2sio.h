@@ -54,6 +54,12 @@ public:
     void pump() override;
     void configChanged() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The two 6850s carry the state; the base port
+    // is a strap. deserialize() re-arms the card's one deadline via refresh(), from
+    // the chip state it just read -- no Clock::Handle is serialized.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     // Both ports, because either can carry the transfer. The console is usually 'a' and
     // a file transfer usually 'b', but nothing here needs to know which -- a byte on any
     // line is a byte arriving. (Board::rxBytes.)

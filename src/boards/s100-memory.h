@@ -114,6 +114,16 @@ public:
     void reset(Reset r) override;
     void power() override;
 
+    // ---- state: SNAPSHOT / RESTORE (DESIGN.md 13) ----
+    //
+    // The store (RAM, and any ROM plane the guest or the burner mutated) and the
+    // selected bank travel. The regions, straps, fill policy and mount paths are
+    // config and are already correct in a matching machine. RESTORE writes store_
+    // directly -- it must NOT go through power(), which re-fills RAM and re-reads
+    // ROM images and would wipe exactly the state being restored.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     // ---- reflection ----
     std::vector<Property> properties() override;
 

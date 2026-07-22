@@ -284,6 +284,13 @@ public:
     // For SHOW and for tests: is a command running, and which.
     bool busy() const { return phase_ != Phase::Idle; }
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The whole register file and state machine --
+    // including any command in flight (phase_, due_, the transfer buffer) and the
+    // Force-Interrupt arming. The drive_ pointer and the format straps do not
+    // travel; the owning card re-arms the Clock from due_ after restore.
+    void serialize(StateWriter& w) const;
+    void deserialize(StateReader& r);
+
 private:
     // ---- THE STATUS REGISTER IS SIX DIFFERENT REGISTERS (Table 6) ----
     //

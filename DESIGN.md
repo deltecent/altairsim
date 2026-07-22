@@ -319,12 +319,15 @@ public:
     // Reset — see §6.
     virtual void     reset(Reset kind) = 0;
 
-    // State (snapshot / restore) -- DESIGNED, NOT BUILT. There is no serialize()
-    // or deserialize() on Board today, and no Writer/Reader: SNAPSHOT, RESTORE,
-    // RECORD and REPLAY all resolve at the prompt and answer "not implemented
-    // yet" (10.1). They are drawn here because the shape is settled and every
-    // board's reset() already separates the state that would have to travel --
-    // but nothing in src/ implements them, and a board author writes neither.
+    // State (snapshot / restore) -- BUILT for SNAPSHOT/RESTORE (13). Every board,
+    // the CPU core and the Clock implement serialize()/deserialize() over
+    // StateWriter/StateReader (core/statefile.h); Machine::snapshot()/restore()
+    // drive them, and the two monitor commands drive that. A board writes its
+    // RUNTIME STATE and re-arms its own Clock deadlines on the way back in; config,
+    // host handles and derived caches do not travel (13.1). RECORD/REPLAY, which add
+    // a T-stamped event log on top, are NOT built yet and resolve at the prompt.
+    virtual void serialize(StateWriter&) const;
+    virtual void deserialize(StateReader&);
 };
 ```
 
@@ -1250,9 +1253,11 @@ DEBUG
                                     A .PRN/.LST listing or a CP/M .SYM, so a name works
                                     wherever an address is typed (§10.3.2). HOST-SIDE like a
                                     breakpoint: survives RESET/POWER/CONFIG LOAD.
-  SNAPSHOT <file> | RESTORE <file> | RECORD <file> | REPLAY <file>
-                                    ALL FOUR ARE NOT BUILT (10.1, 13). They resolve and
-                                    say so; there is no Board::serialize() (4).
+  SNAPSHOT <file> | RESTORE <file>  BUILT (13): the machine's STATE to a file, and back
+                                    into a machine of the same shape. Board::serialize()
+                                    on every board, the CPU core and the Clock (4, 13.1).
+  RECORD <file> | REPLAY <file>     NOT BUILT (10.1, 13). They resolve and say so; they add
+                                    a T-stamped event log on top of SNAPSHOT -- the next phase.
   SET BUS CONTENTION=WARN|ERROR|SILENT
 ```
 
@@ -1609,17 +1614,42 @@ Until then, **§12.1's Host Bridge is the supported path**, and host-side image 
 
 ## 13. Snapshots and deterministic replay
 
-> **NONE OF THIS IS BUILT.** There is no `Board::serialize()` (§4), no `Writer`/`Reader`, and
-> `SNAPSHOT`/`RESTORE`/`RECORD`/`REPLAY` all resolve at the prompt and say they are not
-> implemented (§10.1). The section stays because the *constraints* below are live and are being
-> honored today — the `seed` property, the `Clock`-as-single-source-of-time rule, and the
-> no-`chrono::now()`-in-a-board rule all exist so that this remains possible to add. What is
-> designed here is not a description of the program.
+> **HALF BUILT.** `SNAPSHOT` and `RESTORE` are done — `Board::serialize()`/`deserialize()`
+> exist on every board, the CPU core and the `Clock`; `StateWriter`/`StateReader`
+> (`src/core/statefile.h`) are the byte-exact, little-endian, CRC-checked primitive; and
+> `Machine::snapshot()`/`restore()` write and read a file the two monitor commands drive. A
+> snapshot is machine **state**, restored into a machine built from the same config — it
+> refuses a topology that does not match (§13.1). **`RECORD`/`REPLAY` and `ReplayStream` are
+> NOT built** — the deterministic-replay half below still resolves at the prompt and says so
+> (§10.1). It builds directly on the snapshot foundation and is the next phase.
 
-- **Snapshot** = versioned, explicitly-serialized CPU + bus + every board's `serialize()`. Byte-identical across platforms.
-- **Replay** = snapshot + an event log (keystrokes, socket input, SDL keystrokes, DMA completions) stamped with **T-state timestamps**, so a session replays exactly.
+- **Snapshot** = versioned, explicitly-serialized CPU + `Clock` time + every board's `serialize()`. Byte-identical across platforms. **Done.**
+- **Replay** = snapshot + an event log (keystrokes, socket input, SDL keystrokes, DMA completions) stamped with **T-state timestamps**, so a session replays exactly. **Not built.**
 
 This is the bug-reproduction and regression-test foundation, and it is why **every source of nondeterminism (host time, socket arrival, RNG, window events) must funnel through one clocked event queue.**
+
+### 13.1 What travels, what is rebuilt (the serialize contract)
+
+The line every `Board::serialize()` draws, and why the snapshot is small and portable:
+
+- **Serialize (runtime state):** the CPU register file *and its hidden micro-state* (the
+  EI-after-next latch, the mid-INTA fetch, and on a Z80 WZ/MEMPTR, IFF2, the interrupt mode);
+  every board's registers, latches, RAM, in-flight buffers and `enabled_`; absolute-T-state
+  deadlines as plain integers; the `Clock`'s `t_` and handle counter.
+- **Rebuilt, never serialized:** the bus decode cache and the interrupt/hold wire-OR counts
+  (re-derived from each board's latched pins after restore); the `Clock` event queue, whose
+  entries are `std::function` closures that cannot travel — so **each board re-arms its own
+  deadlines** in `deserialize()` from the state it just read, into a queue `Clock::deserialize`
+  has emptied. A `Clock::Handle` is never written.
+- **Skipped:** TOML straps/config (already correct in a matching machine); host resources — a
+  `ByteStream`/socket, a `DiskImage`, the `Display`, a `HostDir` — re-opened from their
+  unchanged config. **In-flight bytes that are not yet on the host DO travel**: an uncommitted
+  disk-write buffer, a half-typed hostbridge transfer, a tape head position. Host-side operator
+  views (`syms`, breakpoints) and diagnostics are not machine state and stay put.
+
+There are **no free-floating counters** to serialize — rotation, TDRE/TBMT, the RTC and the
+minidisk motor are all absolute deadlines or pure functions of `Clock::now()`, which is exactly
+what lets a deadline survive as one integer once `t_` travels with it.
 
 ---
 

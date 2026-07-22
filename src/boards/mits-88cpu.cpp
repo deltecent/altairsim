@@ -1,6 +1,18 @@
 #include "boards/mits-88cpu.h"
 
+#include "core/statefile.h"
+
 namespace altair {
+
+void Cpu8080Board::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    core_->serialize(w);
+}
+
+void Cpu8080Board::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    core_->deserialize(r);
+}
 
 std::vector<Property> Cpu8080Board::properties() {
     std::vector<Property> p;

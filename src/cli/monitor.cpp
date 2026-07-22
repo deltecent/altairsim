@@ -3618,6 +3618,33 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         flush(out);
         return true;
     }
+    if (cmd == "SNAPSHOT") {
+        if (!need(2, "SNAPSHOT <file>")) return true;
+        std::string shown = unquote(a[1]);
+        std::string file  = resolveFrom(startupDir_, shown);
+        std::string err;
+        if (!m_.snapshot(file, err)) {
+            out << "SNAPSHOT: " << err << "\n";
+            failed_ = true;
+            return true;
+        }
+        out << "snapshot written to " << shown << "\n";
+        return true;
+    }
+    if (cmd == "RESTORE") {
+        if (!need(2, "RESTORE <file>")) return true;
+        std::string shown = unquote(a[1]);
+        std::string file  = resolveFrom(startupDir_, shown);
+        std::string err;
+        if (!m_.restore(file, err)) {
+            out << "RESTORE: " << err << "\n";
+            failed_ = true;
+            return true;
+        }
+        out << "restored from " << shown << "\n";
+        flush(out);
+        return true;
+    }
 
     // ---------------- CONFIG ----------------
     if (cmd == "SYMBOLS") {

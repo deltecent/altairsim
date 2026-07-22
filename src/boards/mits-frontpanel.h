@@ -143,6 +143,14 @@ public:
     uint8_t dataLamps() const { return dataLeds_; }
     uint8_t statusLamps() const { return status_; }
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The switch row is machine-visible state -- the
+    // guest reads the sense switches at port FF, and only a finger moves them, so
+    // they survive resets and must travel. The lamp latches travel too; the next
+    // snooped cycle would refresh them, but restoring them makes the panel look right
+    // the instant the machine stops.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 private:
     // ONE ROW OF SIXTEEN. SA0..SA15. The low eight are the DATA switches the panel
     // deposits with; the high eight are the sense switches. Model the row once and

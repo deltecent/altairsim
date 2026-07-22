@@ -234,10 +234,11 @@ the file will not be there.
 ## The disk is real, and there is no undo
 
 A mounted disk is mounted **read/write**, and every write goes through to the file on your
-host as it happens. There is no journal, no snapshot, and no way back. A CP/M cannot save your
-work onto a disk it is not allowed to write, so read/write is the only default that lets the
-machine be a machine — and the price of it is that you can destroy the example disk with one
-mistyped `ERA`.
+host as it happens. There is no journal and no way back — and `SNAPSHOT` will not save you
+either: it captures the machine's *state*, not your host files, so the disk image is not in it.
+A CP/M cannot save your work onto a disk it is not allowed to write, so read/write is the only
+default that lets the machine be a machine — and the price of it is that you can destroy the
+example disk with one mistyped `ERA`.
 
 **Copy the directory before you experiment.** It is self-contained and boots from anywhere.
 

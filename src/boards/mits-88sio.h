@@ -68,6 +68,12 @@ public:
     void pump() override;
     void configChanged() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The UART's state plus the two interrupt-enable
+    // flip-flops on the card (IC B). The straps and the port are config. The ACR
+    // extends this. deserialize() re-arms via refresh() from the restored state.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     // One UART. The ACR inherits this board and this override with it -- a cassette
     // arriving is traffic too. (Board::rxBytes.)
     uint64_t rxBytes() const override { return u_.rxBytes(); }

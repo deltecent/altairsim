@@ -21,6 +21,8 @@
 namespace altair {
 
 class ByteStream;  // host/stream.h -- a serial unit's connector, borrowed by unitStream()
+class StateWriter; // core/statefile.h -- SNAPSHOT/RESTORE
+class StateReader;
 
 // The key/value pairs of one TOML sub-unit table, in file order.
 using KeyValues = std::vector<std::pair<std::string, std::string>>;
@@ -465,6 +467,39 @@ public:
         intChanged();   // a card that is out of the machine is not pulling pin 73
         holdChanged();  // ...and it is not asking for the bus either
     }
+
+    // ---- State: SNAPSHOT / RESTORE (DESIGN.md 13) ----
+    //
+    // Write the card's RUNTIME STATE, and read it back. This is what travels in a
+    // snapshot: registers, latches, RAM, in-flight buffers, enabled_, and any
+    // absolute-T-state deadline (as an integer -- it stays valid because the
+    // Clock's t_ travels too).
+    //
+    // THREE THINGS DO NOT TRAVEL, and getting the line right is the whole design:
+    //
+    //   - CONFIG / STRAPS set once at construction from TOML (port, baud, banks,
+    //     phantom jumpers). A snapshot RESTOREs into a machine built from the same
+    //     config, so these are already correct -- writing them would be a second
+    //     copy that could disagree. (Machine::restore refuses a topology mismatch.)
+    //
+    //   - HOST RESOURCES -- a ByteStream/socket, a DiskImage, a Display, a HostDir.
+    //     A handle cannot be serialized; it is re-opened from its (unchanged)
+    //     config. In-flight bytes ON such a resource are the card's to keep: an
+    //     uncommitted disk-write buffer or a half-typed hostbridge transfer IS
+    //     runtime state and DOES travel, because it is not on the host yet.
+    //
+    //   - A Clock::Handle. NEVER serialize one. The Clock's event queue is closures
+    //     that cannot travel (core/clock.h), so a board RE-ARMS its own deadlines in
+    //     deserialize() -- via the path it already has (refresh(), armRtc(), ...) --
+    //     from the state it just read. It does not try to restore the queue.
+    //
+    // The base handles enabled_ (a boot ROM that switched itself out must travel).
+    // An override CHAINS to the base and adds its own fields. After every board has
+    // read its state, Machine::restore rebuilds what is derived: the bus decode
+    // cache and the interrupt/hold wires (intChanged()/holdChanged()), so a board
+    // does not serialize those either.
+    virtual void serialize(StateWriter& w) const;
+    virtual void deserialize(StateReader& r);
 
     // ---- Reflection (DESIGN.md 5) ----
     // The single source of truth for SET, SHOW, TOML, CONFIG SAVE, MCP schemas,

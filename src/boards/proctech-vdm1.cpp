@@ -1,6 +1,7 @@
 #include "boards/proctech-vdm1.h"
 
 #include "boards/proctech-vdm1-font.h"
+#include "core/statefile.h"
 #include "host/display.h"
 
 namespace altair {
@@ -117,6 +118,21 @@ void VdmBoard::power() {
     scroll_ = 0;
     timerExpiry_ = 0;
     dirty_ = true;  // the blanked screen still owes the host one frame
+}
+
+void VdmBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.raw(screen_, kBytes);
+    w.u8(scroll_);
+    w.u64(timerExpiry_);
+}
+
+void VdmBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    r.raw(screen_, kBytes);
+    scroll_ = r.u8();
+    timerExpiry_ = r.u64();
+    dirty_ = true;  // the restored screen owes the host a full redraw
 }
 
 // ---------------------------------------------------------------------------

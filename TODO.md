@@ -572,12 +572,15 @@ many, or list the label.
   (`src/cli/commands.cpp:165`). Interactive deposit where Enter advances;
   waiting on the line editor. It resolves today so its abbreviation cannot
   change under your fingers once it lands.
-- **`SNAPSHOT` / `RESTORE` / `RECORD` / `REPLAY`** — all four resolve at the
-  prompt and answer "not implemented yet" (`docs/cli-commands.md:358`). They
-  need `Board::serialize()`/`deserialize()`, which are **designed and unbuilt**:
-  `DESIGN.md` §4 draws the shape and states plainly that nothing in `src/`
-  implements it and no board author writes either method. This is the single
-  largest unbuilt piece of the design.
+- **`RECORD` / `REPLAY`** — the deterministic-replay half of the tentpole, and
+  now the largest unbuilt piece. **`SNAPSHOT` and `RESTORE` are DONE** (the
+  serialization foundation: `Board::serialize()`/`deserialize()` on every board,
+  the CPU core and the `Clock`; `StateWriter`/`StateReader` in
+  `src/core/statefile.h`; `Machine::snapshot()`/`restore()`; the two monitor
+  commands — see `DESIGN.md` §13/§13.1). `RECORD`/`REPLAY` add a T-stamped event
+  log of host inputs (keystrokes, socket bytes, SDL keys, DMA completions) on top
+  of a snapshot, so a session plays back exactly. They resolve at the prompt and
+  say they are not built. **Unblocked by SNAPSHOT** — this is the next phase.
 - **`ReplayStream`** — the last unimplemented `ByteStream` (`DESIGN.md`:716).
   Blocked on `RECORD`/`REPLAY` above.
 - **Symbolic annotation of disassembly** — `JMP 0100` → `JMP START`. Symbols

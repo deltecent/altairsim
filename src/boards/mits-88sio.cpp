@@ -1,5 +1,6 @@
 #include "boards/mits-88sio.h"
 
+#include "core/statefile.h"
 #include "host/stream.h"
 
 #include <utility>
@@ -238,6 +239,21 @@ uint8_t SioBoard::assertsVi() const {
 // entirely ordinary driver, and the only thing that can wake it is a deadline this
 // card set for itself.
 // ---------------------------------------------------------------------------
+void SioBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    u_.serialize(w);
+    w.boolean(inIntEnabled_);
+    w.boolean(outIntEnabled_);
+}
+
+void SioBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    u_.deserialize(r);
+    inIntEnabled_  = r.boolean();
+    outIntEnabled_ = r.boolean();
+    refresh();  // re-drive pin 73 and re-arm the deadline from the restored state
+}
+
 void SioBoard::refresh() {
     if (!clock_) return;
 

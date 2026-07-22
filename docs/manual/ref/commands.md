@@ -22,10 +22,8 @@ under your fingers when they land — and they tell you what they are waiting on
 |---|---|
 | `E[DIT]` | the line editor |
 | `STO[P]` | a monitor that runs alongside the machine (ATTN leaves CONSOLE today) |
-| `SN[APSHOT]` | the debugger |
-| `REST[ORE]` | the debugger |
-| `REC[ORD]` | the debugger |
-| `REP[LAY]` | the debugger |
+| `REC[ORD]` | RECORD/REPLAY (it builds on SNAPSHOT, now done) |
+| `REP[LAY]` | RECORD/REPLAY (it builds on SNAPSHOT, now done) |
 
 ## The commands
 
@@ -756,6 +754,35 @@ TYPE "XE TRK80\r"        type it now, at a running guest
 
 A program that clears its keyboard as it starts drops keystrokes sent before it
 is ready; TYPE cannot help there, no more than a fast typist could.
+
+
+### SNAPSHOT — `SN[APSHOT]`
+
+```
+SNAPSHOT <file>
+```
+Write the machine's STATE to a file: the CPU, the clock, and every board's
+registers, RAM and latches. NOT its configuration -- a snapshot is state, the
+way a machine file is configuration. RESTORE reads it back.
+
+```
+SNAPSHOT before-boot.snap
+```
+
+
+### RESTORE — `REST[ORE]`
+
+```
+RESTORE <file>
+```
+Load a SNAPSHOT back into THIS machine. The machine must be the same shape the
+snapshot was taken from -- the same boards, same ids, same order (build it with
+the same machine file, or a CONFIG LOAD, first) -- and a file that does not match
+is refused with the reason, the running machine untouched.
+
+```
+RESTORE before-boot.snap
+```
 
 
 ### NOBREAK — `NO[BREAK]`

@@ -1,6 +1,7 @@
 #include "boards/mits-88mds.h"
 
 #include "core/clock.h"
+#include "core/statefile.h"
 
 namespace altair {
 
@@ -77,6 +78,22 @@ bool MdsBoard::atSpeed() const {
 bool MdsBoard::stepping() const { return now() < settleAt_; }
 
 void MdsBoard::restartTimer() { disableAt_ = now() + tFromUs(kDisableTimerUs); }
+
+void MdsBoard::serialize(StateWriter& w) const {
+    HardSectorFdc::serialize(w);
+    w.boolean(diskEnable_);
+    w.u64(disableAt_);
+    w.u64(atSpeedAt_);
+    w.u64(settleAt_);
+}
+
+void MdsBoard::deserialize(StateReader& r) {
+    HardSectorFdc::deserialize(r);
+    diskEnable_ = r.boolean();
+    disableAt_  = r.u64();
+    atSpeedAt_  = r.u64();
+    settleAt_   = r.u64();
+}
 
 // ---------------------------------------------------------------------------
 // OUT 08 -- drive enable. The base has already masked the drive number down to two bits and

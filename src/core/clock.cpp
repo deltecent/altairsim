@@ -1,5 +1,7 @@
 #include "core/clock.h"
 
+#include "core/statefile.h"
+
 #include <algorithm>
 
 namespace altair {
@@ -71,6 +73,25 @@ void Clock::power() {
     live_.clear();
     // next_ is NOT reset. See the header: a board still holding a handle from the
     // machine's last life must not be able to cancel an event in this one.
+}
+
+void Clock::serialize(StateWriter& w) const {
+    w.u64(t_);
+    w.u64(next_);
+}
+
+void Clock::deserialize(StateReader& r) {
+    // CLEAR THE QUEUE FIRST, and this is load-bearing. RESTORE applies onto a live
+    // machine whose queue holds deadlines scheduled against the OLD time. Once t_
+    // jumps to the snapshot's value those are all in the past and would fire in a
+    // storm on the next advance(); worse, a handle re-armed by a board could collide
+    // with a stale one still sitting here. So the queue is emptied and every board
+    // that had a deadline re-arms it in its own deserialize() -- into a clean queue,
+    // against the restored time.
+    heap_.clear();
+    live_.clear();
+    t_    = r.u64();
+    next_ = r.u64();
 }
 
 } // namespace altair

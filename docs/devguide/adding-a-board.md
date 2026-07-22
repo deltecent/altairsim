@@ -109,6 +109,40 @@ These are **two different events** and a card is entitled to treat them differen
 coming up, and it is the only thing that loses RAM. For our lamps they mean the same thing:
 the lights go out. For a memory card they emphatically do not.
 
+### Its state — SNAPSHOT and RESTORE
+
+A board writes its **runtime state** so `SNAPSHOT` can save it and `RESTORE` can put it
+back (`DESIGN.md` §13). Chain to the base — it handles `enabled_` — then read and write
+your own fields in the same order:
+
+```cpp
+void serialize(StateWriter& w) const override {
+    Board::serialize(w);
+    w.u8(latch_);
+}
+void deserialize(StateReader& r) override {
+    Board::deserialize(r);
+    latch_ = r.u8();
+}
+```
+
+`StateWriter`/`StateReader` (`core/statefile.h`) are explicit and little-endian — `u8`,
+`u16`, `u32`, `u64`, `boolean`, `str`, `blob`, and `raw` for a fixed array — so a snapshot
+reads back byte-for-byte on every target. Three rules decide what goes in:
+
+- **Write runtime state, not configuration.** A snapshot is RESTOREd into a machine built
+  from the same machine file, so your straps (the port, a baud rate, a jumper) are already
+  correct — writing them would be a second copy that could disagree. Write the registers,
+  latches, RAM and in-flight buffers that a running machine accumulates.
+- **Do not write a host handle.** A `ByteStream`, a disk image, the `Display` — those are
+  re-opened from the (unchanged) config. But bytes that are **not on the host yet** — an
+  uncommitted write buffer, a tape's head position — *are* your state and *do* travel.
+- **Never write a `Clock::Handle`.** The event queue does not survive a snapshot. If your
+  card sets a deadline, **re-arm it in `deserialize()`** from the state you just read — call
+  the same `refresh()`/`arm…()` you already call when a jumper moves. Store the deadline as
+  an absolute T-state if you need the timing back; it stays valid because the clock's time
+  travels with it.
+
 ### Its settings — and this is the part that pays
 
 ```cpp

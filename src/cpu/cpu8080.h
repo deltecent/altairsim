@@ -40,6 +40,9 @@ public:
     uint8_t psw() const;
     void setPsw(uint8_t f);
 
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 private:
     // ---- fetch/store. EVERYTHING goes through the Bus -- there is no pointer to
     // RAM and no back door, which is why a fetch from an empty socket reads a

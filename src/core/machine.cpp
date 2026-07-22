@@ -2,8 +2,13 @@
 
 #include "boards/s100-memory.h"
 #include "boards/registry.h"
+#include "core/crc32.h"
+#include "core/statefile.h"
 
 #include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <span>
 
 namespace altair {
 
@@ -151,6 +156,145 @@ void Machine::power() {
     clock.power();
     for (auto& b : boards_) b->power();
     for (auto& b : boards_) b->reset(Reset::PowerOn);
+}
+
+// ---------------------------------------------------------------------------
+// SNAPSHOT / RESTORE (DESIGN.md 13). The file:
+//
+//   magic "ALTRSNP1" | u32 version | str name | u32 boardCount
+//   blob clock
+//   { str id | str type | blob board-state } x boardCount
+//   u32 crc32   (over everything above)
+//
+// Each board's state is a length-prefixed blob so RESTORE hands it to the board in
+// a sub-reader that cannot over- or under-run into the next section, and so a board
+// that grows its state does not silently shift every board after it.
+// ---------------------------------------------------------------------------
+namespace {
+constexpr char     kMagic[8]     = {'A', 'L', 'T', 'R', 'S', 'N', 'P', '1'};
+constexpr uint32_t kFormatVersion = 1;
+}  // namespace
+
+bool Machine::snapshot(const std::string& path, std::string& err) const {
+    StateWriter w;
+    w.raw((const uint8_t*)kMagic, sizeof(kMagic));
+    w.u32(kFormatVersion);
+    w.str(name);
+    w.u32((uint32_t)boards_.size());
+
+    {
+        StateWriter cw;
+        clock.serialize(cw);
+        w.blob(cw.data());
+    }
+
+    for (const auto& b : boards_) {
+        w.str(b->id);
+        w.str(b->type());
+        StateWriter bw;
+        b->serialize(bw);
+        w.blob(bw.data());
+    }
+
+    // A checksum over the whole payload, so RESTORE knows a truncated or edited file
+    // before it tries to make sense of one.
+    uint32_t crc = crc32(std::span<const uint8_t>(w.data().data(), w.data().size()));
+    w.u32(crc);
+
+    std::ofstream f(path, std::ios::binary);
+    if (!f) {
+        err = "cannot open '" + path + "' for writing";
+        return false;
+    }
+    f.write((const char*)w.data().data(), (std::streamsize)w.data().size());
+    if (!f) {
+        err = "write to '" + path + "' failed";
+        return false;
+    }
+    return true;
+}
+
+bool Machine::restore(const std::string& path, std::string& err) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) {
+        err = "cannot open '" + path + "'";
+        return false;
+    }
+    std::vector<uint8_t> buf((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+    // The checksum is the last four bytes, over everything before it.
+    if (buf.size() < sizeof(kMagic) + 4 + 4) {
+        err = "'" + path + "' is not an altairsim snapshot (too short)";
+        return false;
+    }
+    size_t   payloadLen = buf.size() - 4;
+    uint32_t stored = (uint32_t)buf[payloadLen] | ((uint32_t)buf[payloadLen + 1] << 8) |
+                      ((uint32_t)buf[payloadLen + 2] << 16) | ((uint32_t)buf[payloadLen + 3] << 24);
+    uint32_t calc = crc32(std::span<const uint8_t>(buf.data(), payloadLen));
+    if (stored != calc) {
+        err = "'" + path + "' is corrupt (checksum mismatch)";
+        return false;
+    }
+
+    StateReader r(buf.data(), payloadLen);
+    char magic[sizeof(kMagic)];
+    r.raw((uint8_t*)magic, sizeof(kMagic));
+    if (std::memcmp(magic, kMagic, sizeof(kMagic)) != 0) {
+        err = "'" + path + "' is not an altairsim snapshot";
+        return false;
+    }
+    uint32_t ver = r.u32();
+    if (ver != kFormatVersion) {
+        err = "'" + path + "' is snapshot format " + std::to_string(ver) + "; this build reads " +
+              std::to_string(kFormatVersion);
+        return false;
+    }
+    (void)r.str();  // the machine name, for the record; topology is what we enforce
+    uint32_t n = r.u32();
+    if (n != boards_.size()) {
+        err = "snapshot has " + std::to_string(n) + " boards; this machine has " +
+              std::to_string(boards_.size()) + " -- restore into the same configuration";
+        return false;
+    }
+
+    // PASS 1: read every section and VALIDATE the topology, applying nothing. A file
+    // that does not describe this exact backplane is refused whole, so a running
+    // machine is never left half-restored.
+    std::vector<uint8_t>              clockBytes = r.blob();
+    std::vector<std::vector<uint8_t>> boardBytes(n);
+    for (uint32_t i = 0; i < n; ++i) {
+        std::string id   = r.str();
+        std::string type = r.str();
+        boardBytes[i]    = r.blob();
+        if (lowerAscii(id) != lowerAscii(boards_[i]->id) || type != boards_[i]->type()) {
+            err = "snapshot board " + std::to_string(i) + " is '" + id + "' (" + type +
+                  "); this machine has '" + boards_[i]->id + "' (" + boards_[i]->type() +
+                  ") -- restore into the same configuration";
+            return false;
+        }
+    }
+    if (!r.ok()) {
+        err = "'" + path + "' is truncated";
+        return false;
+    }
+
+    // PASS 2: apply. Clock first (it empties the event queue and sets the time), then
+    // each board (which re-arms its own deadlines against that time), then rebuild
+    // what is derived: the bus decode cache and the interrupt/hold wires.
+    {
+        StateReader cr(clockBytes);
+        clock.deserialize(cr);
+    }
+    for (uint32_t i = 0; i < n; ++i) {
+        StateReader br(boardBytes[i]);
+        boards_[i]->deserialize(br);
+    }
+    bus.invalidateDecode();
+    for (auto& b : boards_) {
+        b->intChanged();
+        b->holdChanged();
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

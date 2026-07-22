@@ -215,6 +215,7 @@ add_library(altair_core STATIC
   ${PLATFORM_SOURCES}
   src/core/version.cpp
   src/core/crc32.cpp
+  src/core/statefile.cpp
   src/core/hex.cpp
   src/core/symbols.cpp
   src/core/paths.cpp
@@ -424,6 +425,8 @@ add_executable(altair_tests
   tests/main.cpp
   tests/test_bus.cpp
   tests/test_clock.cpp
+  tests/test_statefile.cpp
+  tests/test_snapshot.cpp
   tests/test_memory.cpp
   tests/test_hex.cpp
   tests/test_symbols.cpp
@@ -697,6 +700,19 @@ add_test(NAME acceptance-cwdconfig
                  -DBIN=${CMAKE_CURRENT_BINARY_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
 set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
+# SNAPSHOT / RESTORE through the real monitor -- the command wiring (DESIGN.md 13).
+# The state round-trip is proved at the unit level (tests/test_snapshot.cpp); this
+# proves the two commands write and read a file the operator named, and refuse one
+# that is not a snapshot.
+# ---------------------------------------------------------------------------
+add_test(NAME acceptance-snapshot
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/snapshot.cmake)
+set_tests_properties(acceptance-snapshot PROPERTIES LABELS acceptance TIMEOUT 60)
 
 # ---------------------------------------------------------------------------
 # THE EXAMPLES, IN THE LAYOUT WE ACTUALLY SHIP THEM IN.

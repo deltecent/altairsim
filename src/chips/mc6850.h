@@ -194,6 +194,16 @@ public:
     // never stop.
     uint64_t nextEdge(const Clock& clk) const;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The owning card calls these. What travels is
+    // the chip's live state -- the control byte, the received character and its
+    // flags, the /DCD latch group, the sampled pins, and the two absolute-T-state
+    // deadlines (txFreeAt_/rxNextAt_ stay valid because the Clock's t_ travels).
+    // What does NOT: the straps (jumper/dcdStrap/ctsStrap/baud_ -- config) and the
+    // stream_ (a host handle, re-CONNECTed). The card re-arms the Clock from
+    // nextEdge() after restore; no Clock::Handle lives here to serialize.
+    void serialize(StateWriter& w) const;
+    void deserialize(StateReader& r);
+
 private:
     // How long one character occupies the line, in T-states. Falls out of the
     // word-select bits the guest wrote to the control register -- so a guest that

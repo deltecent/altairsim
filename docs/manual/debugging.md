@@ -421,13 +421,16 @@ altairsim> BREAK MEM W E400
 altairsim> RUN
 ```
 
-## The tools that are not here yet
+## Saving state, and the tools that are not here yet
 
-`SNAPSHOT`, `RESTORE`, `RECORD` and `REPLAY` all **resolve** and all tell you they are waiting
-on the debugger. There is no rewind: `TRACE` logs the machine as it runs and `HISTORY` shows you
-the run-up to a stop, but you cannot save the machine's state and step *backwards* into it, and
-there is no record-and-replay to reproduce a run from the start. When you stop the machine, you
-stop it where it is.
+`SNAPSHOT` writes the machine's whole state — the CPU, the clock, and every board's registers,
+RAM and latches — to a file, and `RESTORE` reads it back into a machine of the same shape. So
+you *can* save the machine at a moment and return to it later.
+
+What is not here yet is *rewind*: `RECORD` and `REPLAY` **resolve** and tell you they are not
+built. `TRACE` logs the machine as it runs and `HISTORY` shows you the run-up to a stop, but you
+cannot yet record a session and step *backwards* through it, or replay a run from the start.
+When you stop the machine, you stop it where it is.
 
 Say so plainly rather than let you find out: if you need to catch a bug that happens once in ten
 million instructions and you cannot predict where, a conditional breakpoint (`BREAK <addr> IF

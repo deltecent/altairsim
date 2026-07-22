@@ -1,6 +1,18 @@
 #include "boards/mits-z80cpu.h"
 
+#include "core/statefile.h"
+
 namespace altair {
+
+void CpuZ80Board::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    core_->serialize(w);
+}
+
+void CpuZ80Board::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    core_->deserialize(r);
+}
 
 // A near-verbatim copy of Cpu8080Board::properties() -- the crystal, the idle nap,
 // and the read-only achieved-crystal companion, identical in every respect but the

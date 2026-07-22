@@ -72,8 +72,8 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `T[RACE]` | `TRACE ON\|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]` |
 | `TY[PE]` | `TYPE "text"` |
 | `STO[P]` \* | `STOP` |
-| `SN[APSHOT]` \* | `SNAPSHOT <file>` |
-| `REST[ORE]` \* | `RESTORE <file>` |
+| `SN[APSHOT]` | `SNAPSHOT <file>` |
+| `REST[ORE]` | `RESTORE <file>` |
 | `REC[ORD]` \* | `RECORD <file>` |
 | `REP[LAY]` \* | `REPLAY <file>` |
 | `NO[BREAK]` | `NOBREAK [id]` |

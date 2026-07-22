@@ -81,6 +81,14 @@ public:
     void power() override;
     void pump() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The two UARTs, the keyboard holding register,
+    // the OUT-0FAh control latch (motors + baud), each deck's mode/motor and head
+    // position, and the two deferred stop flags. The tape bytes and every stream are
+    // host-backed; deserialize() reprograms the baud and relines the tape from the
+    // restored deck state.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     // A keystroke arriving is live traffic too, so the idle policy stands the machine
     // back up for it -- not just serial bytes (Board::rxBytes, [[idle policy]]).
     uint64_t rxBytes() const override { return serial_.rxBytes() + kbRx_; }

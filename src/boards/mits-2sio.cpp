@@ -1,5 +1,6 @@
 #include "boards/mits-2sio.h"
 
+#include "core/statefile.h"
 #include "host/stream.h"
 
 #include <utility>
@@ -201,6 +202,19 @@ void Sio2Board::pump() {
     a_.pump();
     b_.pump();
     refresh();
+}
+
+void Sio2Board::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    a_.serialize(w);
+    b_.serialize(w);
+}
+
+void Sio2Board::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    a_.deserialize(r);
+    b_.deserialize(r);
+    refresh();  // re-drive pin 73 and re-arm the deadline from the restored chip state
 }
 
 // A jumper moved: `interrupt` (which wire the IRQ is soldered to), `baud` (how long

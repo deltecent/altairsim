@@ -1,10 +1,27 @@
 #include "chips/uart1602.h"
 
+#include "core/statefile.h"
 #include "host/stream.h"
 
 #include <utility>
 
 namespace altair {
+
+void Uart1602::serialize(StateWriter& w) const {
+    w.u8(rxData_);
+    w.u64(rxCount_);
+    w.boolean(rda_);
+    w.u64(txFreeAt_);
+    w.u64(rxNextAt_);
+}
+
+void Uart1602::deserialize(StateReader& r) {
+    rxData_   = r.u8();
+    rxCount_  = r.u64();
+    rda_      = r.boolean();
+    txFreeAt_ = r.u64();
+    rxNextAt_ = r.u64();
+}
 
 // ---------------------------------------------------------------------------
 // Timing

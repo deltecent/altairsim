@@ -47,6 +47,14 @@ public:
     void power() override;
     void pump() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The screen RAM the guest wrote, the scroll
+    // latch, and the status one-shot's expiry (an absolute T-state, valid because
+    // the Clock's t_ travels). The video polarity and cursor mode are switches. The
+    // render-change flags are derived, so restore just marks the screen dirty and
+    // the next frame redraws it whole.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     std::vector<Property> properties() override;
     std::vector<MapEntry> memMap() const override;
     std::vector<MapEntry> ioMap() const override;

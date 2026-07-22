@@ -1,5 +1,7 @@
 #include "cpu/cpu8080.h"
 
+#include "core/statefile.h"
+
 #include <array>
 
 namespace altair {
@@ -591,6 +593,29 @@ StepResult Cpu8080::step(Bus& bus) {
 
     if (takingInterrupt) intFetch_ = false;
     return {t, halted_ ? RunStatus::Halted : RunStatus::Ok};
+}
+
+// SNAPSHOT/RESTORE (DESIGN.md 13). The flags travel as the PSW byte -- the same
+// S Z 0 AC 0 P 1 CY layout PUSH PSW uses -- so the two constant bits stay
+// constant and there is one obvious thing to eyeball in a hex dump.
+void Cpu8080::serialize(StateWriter& w) const {
+    w.u8(a_); w.u8(b_); w.u8(c_); w.u8(d_); w.u8(e_); w.u8(h_); w.u8(l_);
+    w.u16(sp_); w.u16(pc_);
+    w.u8(psw());
+    w.boolean(ie_);
+    w.boolean(halted_);
+    w.boolean(eiPending_);
+    w.boolean(intFetch_);
+}
+
+void Cpu8080::deserialize(StateReader& r) {
+    a_ = r.u8(); b_ = r.u8(); c_ = r.u8(); d_ = r.u8(); e_ = r.u8(); h_ = r.u8(); l_ = r.u8();
+    sp_ = r.u16(); pc_ = r.u16();
+    setPsw(r.u8());
+    ie_        = r.boolean();
+    halted_    = r.boolean();
+    eiPending_ = r.boolean();
+    intFetch_  = r.boolean();
 }
 
 } // namespace altair

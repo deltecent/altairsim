@@ -216,13 +216,18 @@ void test_cli() {
     CHECK(ty && std::string(ty->name) == "TYPE" && ty->built, "TY is TYPE, and built");
     CHECK(std::string(resolveCommand("T")->name) == "TRACE", "and T is still TRACE, above it");
 
-    // Reserved commands still RESOLVE and still say what they wait on. SNAPSHOT and
-    // RECORD are genuinely not here yet, and they hold their prefixes so that the day
-    // they arrive they do not steal one from something else.
+    // SNAPSHOT and RESTORE are built now (SN/REST); their prefixes are theirs.
     const CommandDef* snap = resolveCommand("SN");
-    CHECK(snap && !snap->built, "SNAPSHOT resolves but is not built yet");
-    CHECK(snap && snap->waiting && std::string(snap->waiting) == "the debugger",
-          "and says what it is waiting on");
+    CHECK(snap && std::string(snap->name) == "SNAPSHOT" && snap->built,
+          "SN is SNAPSHOT, and built");
+
+    // Reserved commands still RESOLVE and still say what they wait on. RECORD and
+    // REPLAY are genuinely not here yet (they build on SNAPSHOT), and they hold
+    // their prefixes so the day they arrive they do not steal one from something else.
+    const CommandDef* rec = resolveCommand("REC");
+    CHECK(rec && std::string(rec->name) == "RECORD" && !rec->built,
+          "RECORD resolves but is not built yet");
+    CHECK(rec && rec->waiting && *rec->waiting, "and says what it is waiting on");
 
     // Every command in the table is either BUILT (and then it needs no excuse) or
     // RESERVED (and then it must say what it is waiting for). A reserved command

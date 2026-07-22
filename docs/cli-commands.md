@@ -68,10 +68,10 @@ The eight that own their prefix, in Patrick's ranking (2026-07-11): **DUMP, STEP
 | `P` | POWER | |
 | `T` | TRACE | logs every bus cycle — to the console or a file |
 | `STO` | STOP | *waiting on a monitor that runs alongside the machine — ATTN leaves a RUN today* |
-| `SN` | SNAPSHOT | *waiting on the debugger* |
-| `REST` | RESTORE | *waiting on the debugger* |
-| `REC` | RECORD | *waiting on the debugger* |
-| `REP` | REPLAY | *waiting on the debugger* |
+| `SN` | SNAPSHOT | writes the machine's state to a file |
+| `REST` | RESTORE | reads a snapshot back into a machine of the same shape |
+| `REC` | RECORD | *waiting on RECORD/REPLAY — it builds on SNAPSHOT* |
+| `REP` | REPLAY | *waiting on RECORD/REPLAY — it builds on SNAPSHOT* |
 | `NO` | NOBREAK | `N` is NEXT — the step you type mid-debug wins the letter |
 | `HE` | HELP | or `?` |
 | `Q` | QUIT | the only way out — there is no EXIT |
@@ -349,13 +349,36 @@ altairsim> EX 8000
 8000  FF  .  11111111   (nobody drives this -- the bus floated it)
 ```
 
-## Commands that do not exist yet still resolve
+## SNAPSHOT and RESTORE: the machine's state, saved and reloaded
 
-SNAPSHOT, RESTORE, RECORD, REPLAY and the rest are all in the table, and typing `SN` today prints:
+`SNAPSHOT <file>` writes the whole machine's **state** — the CPU, the clock, and every board's
+registers, RAM and latches — to a file. `RESTORE <file>` reads it back into a machine you have
+already built.
 
 ```
-altairsim> SN
-SNAPSHOT: not implemented yet -- waiting on the debugger.
+altairsim> SNAPSHOT before-boot.snap
+snapshot written to before-boot.snap
+altairsim> RESTORE before-boot.snap
+restored from before-boot.snap
+```
+
+**A snapshot is state, not configuration.** It does not carry the *shape* of the machine — which
+boards, at which ports — the way a machine file does. So RESTORE loads into a machine of the
+**same shape** (build it with the same machine file, or a `CONFIG LOAD`, first), and a file that
+does not match — a board missing, a type changed — is refused with the reason and your running
+machine is left untouched. A corrupt or truncated file is caught by its checksum and refused the
+same way.
+
+`RECORD` and `REPLAY` — a recorded session you can play back exactly — build on this and are not
+implemented yet; see below.
+
+## Commands that do not exist yet still resolve
+
+RECORD, REPLAY, STOP and the rest are in the table, and typing `REC` today prints:
+
+```
+altairsim> REC
+RECORD: not implemented yet -- waiting on RECORD/REPLAY (it builds on SNAPSHOT, now done).
 ```
 
 **This is the point, not an oversight.** If only the built commands were listed, `S` would mean SHOW today and silently start meaning STEP the day the CPU lands — and someone's fingers would keep typing `S` and get something else. Abbreviations are a contract with muscle memory, so the contract is fixed now, before anyone has any muscle memory to break.

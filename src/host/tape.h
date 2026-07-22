@@ -42,6 +42,11 @@ public:
 
     void rewind() { pos_ = 0; }  // <- what the CLI verb drives
 
+    // Put the head back where a snapshot found it (SNAPSHOT/RESTORE, DESIGN.md 13).
+    // The tape's bytes are host-backed and travel with the file; only this position
+    // is runtime state, so it is the one thing the ACR/Sol deck restores by hand.
+    void setPos(uint64_t p) { pos_ = p; }
+
     uint64_t pos() const { return pos_; }
     uint64_t size() const { return media_->size(); }
     bool     atEnd() const { return pos_ >= media_->size(); }

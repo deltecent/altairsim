@@ -57,6 +57,9 @@
 
 namespace altair {
 
+class StateWriter;  // core/statefile.h -- SNAPSHOT/RESTORE
+class StateReader;
+
 class Clock {
 public:
     // A scheduled thing, cancellable. AN INTEGER AND NOT A POINTER, on purpose:
@@ -159,6 +162,18 @@ public:
     // How many events are live. For tests, and for the assertion that a board
     // which re-arms on every character is not LEAKING one per character.
     size_t queued() const { return live_.size(); }
+
+    // SNAPSHOT/RESTORE (DESIGN.md 13). Only t_ and next_ travel: t_ is emulated
+    // time itself, and next_ keeps handles from a restored board's re-arm from
+    // colliding with a stale number. The QUEUE does NOT travel -- its entries are
+    // std::function closures (see the header note), and each board re-arms its own
+    // deadlines in deserialize() from the state it read. hz_/free_/idle_ are the
+    // CPU card's to publish and are already correct in a matching machine, so they
+    // are not written here. deserialize() EMPTIES the event queue (see its .cpp) so
+    // the boards can re-arm their deadlines into a clean queue against the restored
+    // time -- a live machine's stale deadlines would otherwise fire in the past.
+    void serialize(StateWriter& w) const;
+    void deserialize(StateReader& r);
 
 private:
     // A binary min-heap keyed by (when, handle).

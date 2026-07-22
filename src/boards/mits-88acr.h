@@ -88,6 +88,14 @@ public:
     // For the tests, so they can watch the head move without a filesystem.
     const TapeImage* tape() const { return tape_.get(); }
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The SIO half (UART + interrupt enables) plus
+    // this card's two runtime facts: which button is down (mode_) and where the head
+    // is (the tape's position). The tape's bytes are host-backed and do not travel;
+    // deserialize() relines the stream so it runs in the restored mode from the
+    // restored position.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     // What a mount had to say for itself. Merged with the UART's, because the SIO's
     // drainLog() is the UART's alone and a mount that demodulated a WAV has its own
     // news (host/tapecodec.h -- report, do not hide).

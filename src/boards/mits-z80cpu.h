@@ -52,6 +52,11 @@ public:
 
     std::vector<UnitDef> units() const override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The card's state is the core's; the crystal
+    // and idle straps are config, re-published on attach.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 private:
     void publishPolicy();
 

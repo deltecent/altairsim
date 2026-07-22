@@ -1,5 +1,6 @@
 #include "boards/mits-88acr.h"
 
+#include "core/statefile.h"
 #include "host/media.h"
 #include "host/stream.h"
 
@@ -279,6 +280,21 @@ std::vector<UnitDef> AcrBoard::units() const {
 // the TapeImage (host/tape.h -- non-owning, on purpose, so the chip cannot reach
 // REWIND). The old stream must die before the tape it points at does, and before the
 // tape it points at is replaced.
+void AcrBoard::serialize(StateWriter& w) const {
+    SioBoard::serialize(w);
+    w.u8(mode_ == TapeStream::Mode::Record ? 1 : 0);
+    w.u64(tape_ ? tape_->pos() : 0);
+}
+
+void AcrBoard::deserialize(StateReader& r) {
+    SioBoard::deserialize(r);
+    mode_ = r.u8() ? TapeStream::Mode::Record : TapeStream::Mode::Play;
+    uint64_t pos = r.u64();
+    if (tape_) tape_->setPos(pos);
+    reline();  // rebuild the line onto the tape in the restored mode, from the head
+               // position just set. reline() re-arms the UART too.
+}
+
 void AcrBoard::reline() {
     attachStream(std::make_unique<NullStream>());  // the old line dies here
 

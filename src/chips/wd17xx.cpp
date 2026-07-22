@@ -1,6 +1,72 @@
 #include "chips/wd17xx.h"
 
+#include "core/statefile.h"
+
 namespace altair {
+
+void Wd1771::serialize(StateWriter& w) const {
+    w.u8(command_);
+    w.u8(status_);
+    w.u8(track_);
+    w.u8(sector_);
+    w.u8(data_);
+    w.u8((uint8_t)ctx_);
+    w.u8((uint8_t)phase_);
+    w.boolean(intrq_);
+    w.boolean(drq_);
+    w.u64(due_);
+    w.boolean(dirIn_);
+    w.u32((uint32_t)stepsLeft_);
+    w.boolean(headLoaded_);
+    w.u64(hldAt_);
+    w.blob(buf_);
+    w.u32((uint32_t)idx_);
+    w.boolean(lost_);
+    w.u8((uint8_t)end_);
+    w.u32((uint32_t)id_.track);
+    w.u32((uint32_t)id_.sector);
+    w.u32((uint32_t)id_.size);
+    w.u32((uint32_t)id_.lengthCode);
+    w.boolean(id_.deleted);
+    w.boolean(id_.idCrcOk);
+    w.boolean(id_.dataCrcOk);
+    w.u8(fiConds_);
+    w.boolean(prevReady_);
+    w.boolean(prevIndex_);
+    w.u32((uint32_t)raCursor_);
+}
+
+void Wd1771::deserialize(StateReader& r) {
+    command_ = r.u8();
+    status_  = r.u8();
+    track_   = r.u8();
+    sector_  = r.u8();
+    data_    = r.u8();
+    ctx_     = (Ctx)r.u8();
+    phase_   = (Phase)r.u8();
+    intrq_   = r.boolean();
+    drq_     = r.boolean();
+    due_     = r.u64();
+    dirIn_   = r.boolean();
+    stepsLeft_  = (int)r.u32();
+    headLoaded_ = r.boolean();
+    hldAt_      = r.u64();
+    buf_        = r.blob();
+    idx_        = (size_t)r.u32();
+    lost_       = r.boolean();
+    end_        = (Ending)r.u8();
+    id_.track      = (int)r.u32();
+    id_.sector     = (int)r.u32();
+    id_.size       = (int)r.u32();
+    id_.lengthCode = (int)r.u32();
+    id_.deleted    = r.boolean();
+    id_.idCrcOk    = r.boolean();
+    id_.dataCrcOk  = r.boolean();
+    fiConds_    = r.u8();
+    prevReady_  = r.boolean();
+    prevIndex_  = r.boolean();
+    raCursor_   = (int)r.u32();
+}
 
 namespace {
 

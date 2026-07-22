@@ -2,6 +2,7 @@
 
 #include "core/bus.h"
 #include "core/clock.h"
+#include "core/statefile.h"
 #include "host/media.h"
 
 #include <cstdio>
@@ -374,6 +375,63 @@ void HardSectorFdc::reset(Reset) {
     st_ = Status{};
     for (auto& d : drive_) d.loaded = false;
     invalidatePosition();
+}
+
+void HardSectorFdc::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.boolean(st_.enwd);
+    w.boolean(st_.moveok);
+    w.boolean(st_.hdstat);
+    w.boolean(st_.dsken);
+    w.boolean(st_.inten);
+    w.boolean(st_.track0);
+    w.boolean(st_.nrda);
+    w.u32((uint32_t)(int32_t)sel_);
+    w.u32((uint32_t)drive_.size());
+    for (const auto& d : drive_) {
+        w.boolean(d.loaded);
+        w.boolean(d.roSaid);
+        w.u32((uint32_t)(int32_t)d.track);
+    }
+    w.boolean(writing_);
+    w.raw(buf_, kHsSectorBytes);
+    w.u32((uint32_t)(int32_t)bufSector_);
+    w.u32((uint32_t)(int32_t)readPos_);
+    w.raw(wbuf_, kHsSectorBytes);
+    w.u32((uint32_t)(int32_t)writePos_);
+    w.u32((uint32_t)(int32_t)wSector_);
+    w.u32((uint32_t)(int32_t)wTrack_);
+}
+
+void HardSectorFdc::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    st_.enwd   = r.boolean();
+    st_.moveok = r.boolean();
+    st_.hdstat = r.boolean();
+    st_.dsken  = r.boolean();
+    st_.inten  = r.boolean();
+    st_.track0 = r.boolean();
+    st_.nrda   = r.boolean();
+    sel_ = (int)(int32_t)r.u32();
+    uint32_t n = r.u32();
+    for (uint32_t i = 0; i < n; ++i) {
+        bool loaded = r.boolean();
+        bool roSaid = r.boolean();
+        int  track  = (int)(int32_t)r.u32();
+        if (i < drive_.size()) {
+            drive_[i].loaded = loaded;
+            drive_[i].roSaid = roSaid;
+            drive_[i].track  = track;
+        }
+    }
+    writing_ = r.boolean();
+    r.raw(buf_, kHsSectorBytes);
+    bufSector_ = (int)(int32_t)r.u32();
+    readPos_   = (int)(int32_t)r.u32();
+    r.raw(wbuf_, kHsSectorBytes);
+    writePos_ = (int)(int32_t)r.u32();
+    wSector_  = (int)(int32_t)r.u32();
+    wTrack_   = (int)(int32_t)r.u32();
 }
 
 // ---------------------------------------------------------------------------

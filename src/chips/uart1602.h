@@ -153,6 +153,13 @@ public:
     // the tape's clock is the board's to build.
     int bitsPerChar() const;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The card calls these. State only -- the
+    // received byte, the RDA flip-flop, and the two absolute deadlines (valid past
+    // restore because the Clock's t_ travels). The format pins (baud/dataBits/...)
+    // are straps and the stream_ is a host handle: neither travels.
+    void serialize(StateWriter& w) const;
+    void deserialize(StateReader& r);
+
 private:
     // How long one character occupies the line, in T-states. Falls straight out of
     // the format pins, which is why they are on the chip and not on the card.

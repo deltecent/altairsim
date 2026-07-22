@@ -42,6 +42,8 @@ int main() {
     test_tapecodec();
     test_roms();
     test_clock();
+    test_statefile();
+    test_snapshot();
     test_bus();
     test_memory();
     test_readonly_props();

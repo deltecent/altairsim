@@ -1,5 +1,7 @@
 #include "cpu/cpuZ80.h"
 
+#include "core/statefile.h"
+
 #include <array>
 
 namespace altair {
@@ -994,6 +996,39 @@ StepResult CpuZ80::execED(Bus& bus) {
     case 0xBB: blockOut(bus, -1, true);  return {16, RunStatus::Ok}; // OTDR
     default: return {8, RunStatus::Ok};   // undefined ED -- a 2-byte NOP
     }
+}
+
+// SNAPSHOT/RESTORE (DESIGN.md 13). The whole architectural state, plus the four
+// bits registers() cannot show: WZ/MEMPTR (it leaks into F5/F3), IFF2 (LD A,I
+// copies it into P/V), the interrupt mode, and the two EI/INTA latches. Miss any
+// of them and a snapshot taken between an EI and its RET, or mid-block-transfer,
+// resumes subtly wrong.
+void CpuZ80::serialize(StateWriter& w) const {
+    w.u8(a_); w.u8(f_); w.u8(b_); w.u8(c_); w.u8(d_); w.u8(e_); w.u8(h_); w.u8(l_);
+    w.u8(a2_); w.u8(f2_); w.u8(b2_); w.u8(c2_); w.u8(d2_); w.u8(e2_); w.u8(h2_); w.u8(l2_);
+    w.u16(ix_); w.u16(iy_); w.u16(sp_); w.u16(pc_);
+    w.u8(i_); w.u8(r_);
+    w.u16(wz_);
+    w.u8(im_);
+    w.boolean(iff1_);
+    w.boolean(iff2_);
+    w.boolean(halted_);
+    w.boolean(eiPending_);
+    w.boolean(intFetch_);
+}
+
+void CpuZ80::deserialize(StateReader& r) {
+    a_ = r.u8(); f_ = r.u8(); b_ = r.u8(); c_ = r.u8(); d_ = r.u8(); e_ = r.u8(); h_ = r.u8(); l_ = r.u8();
+    a2_ = r.u8(); f2_ = r.u8(); b2_ = r.u8(); c2_ = r.u8(); d2_ = r.u8(); e2_ = r.u8(); h2_ = r.u8(); l2_ = r.u8();
+    ix_ = r.u16(); iy_ = r.u16(); sp_ = r.u16(); pc_ = r.u16();
+    i_ = r.u8(); r_ = r.u8();
+    wz_ = r.u16();
+    im_ = r.u8();
+    iff1_      = r.boolean();
+    iff2_      = r.boolean();
+    halted_    = r.boolean();
+    eiPending_ = r.boolean();
+    intFetch_  = r.boolean();
 }
 
 } // namespace altair

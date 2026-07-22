@@ -126,6 +126,16 @@ public:
 
     std::vector<std::string> drainLog() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The shared controller state: the status
+    // flags, the selected drive, each drive's head track / loaded / write-protect
+    // note, and the in-flight read and (uncommitted) write buffers. The 88-MDS
+    // extends this with its motor timers. The disk IMAGES are host-backed and do
+    // not travel -- but the uncommitted write buffer IS runtime state (it is not on
+    // the host yet), which is exactly why it is here. Rotation is a pure function of
+    // the Clock, so there is no rotational counter to restore.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 protected:
     bool addSubUnit(const std::string& table, const KeyValues& kv, std::string& err) override;
 

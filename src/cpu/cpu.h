@@ -20,6 +20,9 @@
 
 namespace altair {
 
+class StateWriter;  // core/statefile.h -- SNAPSHOT/RESTORE
+class StateReader;
+
 // ---------------------------------------------------------------------------
 // REGISTERS ARE REFLECTION -- the same trick as Board::properties() (DESIGN.md
 // 3.0.3, 5).
@@ -96,6 +99,15 @@ public:
 
     virtual bool halted() const = 0;
     virtual bool interruptsEnabled() const = 0;
+
+    // SNAPSHOT/RESTORE (DESIGN.md 13). Every architectural register AND the hidden
+    // micro-state that registers() does not expose -- the EI-after-next latch, the
+    // mid-INTA fetch flag, and on a Z80 the WZ/MEMPTR latch, IFF2, the interrupt
+    // mode and the alternate bank. registers() is enough for REGS and SET REG; it
+    // is NOT enough to resume execution cycle-for-cycle, so a core writes its state
+    // explicitly here rather than being walked generically.
+    virtual void serialize(StateWriter& w) const = 0;
+    virtual void deserialize(StateReader& r) = 0;
 };
 
 // ---------------------------------------------------------------------------

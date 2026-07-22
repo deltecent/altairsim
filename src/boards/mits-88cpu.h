@@ -71,6 +71,11 @@ public:
     // cpu0:8080 foo.dsk` gets told so in a sentence instead of half-working.
     std::vector<UnitDef> units() const override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The card's state is the core's state; the
+    // crystal and idle straps are config, re-published on attach.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 private:
     void publishPolicy();
 

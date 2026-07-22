@@ -152,6 +152,13 @@ public:
     void power() override;
     void configChanged() override;
 
+    // SNAPSHOT/RESTORE (DESIGN.md 13). The VI section's enable/level latches and the
+    // RTC's enable and interrupt flip-flop. The port, source, divide and jumper are
+    // config. deserialize() re-arms the RTC divider's one-shot via armRtc() -- no
+    // Clock::Handle travels.
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
     std::vector<Property> properties() override;
     std::vector<MapEntry> ioMap() const override;
 

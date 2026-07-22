@@ -40,6 +40,9 @@ public:
     bool halted() const override { return halted_; }
     bool interruptsEnabled() const override { return iff1_; }
 
+    void serialize(StateWriter& w) const override;
+    void deserialize(StateReader& r) override;
+
 private:
     // ---- The F register bit layout: S Z F5 H F3 P/V N C. F5 and F3 are the
     // undocumented copies of result bits 5 and 3; the whole reason ZEXALL is the

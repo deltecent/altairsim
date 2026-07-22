@@ -490,10 +490,19 @@ static const std::vector<CommandDef> kCommands = {
     // today, and it does not stop the machine: it takes the keyboard back.
     {"STOP", false, "a monitor that runs alongside the machine (ATTN leaves CONSOLE today)",
      "STOP", nullptr},  // STO
-    {"SNAPSHOT", false, "the debugger", "SNAPSHOT <file>", nullptr},      // SN
-    {"RESTORE", false, "the debugger", "RESTORE <file>", nullptr},        // REST
-    {"RECORD", false, "the debugger", "RECORD <file>", nullptr},          // REC
-    {"REPLAY", false, "the debugger", "REPLAY <file>", nullptr},          // REP
+    {"SNAPSHOT", true, nullptr, "SNAPSHOT <file>",                        // SN
+     "Write the machine's STATE to a file: the CPU, the clock, and every board's\n"
+     "registers, RAM and latches. NOT its configuration -- a snapshot is state, the\n"
+     "way a machine file is configuration. RESTORE reads it back.\n"
+     "  SNAPSHOT before-boot.snap\n"},
+    {"RESTORE", true, nullptr, "RESTORE <file>",                          // REST
+     "Load a SNAPSHOT back into THIS machine. The machine must be the same shape the\n"
+     "snapshot was taken from -- the same boards, same ids, same order (build it with\n"
+     "the same machine file, or a CONFIG LOAD, first) -- and a file that does not match\n"
+     "is refused with the reason, the running machine untouched.\n"
+     "  RESTORE before-boot.snap\n"},
+    {"RECORD", false, "RECORD/REPLAY (it builds on SNAPSHOT, now done)", "RECORD <file>", nullptr},  // REC
+    {"REPLAY", false, "RECORD/REPLAY (it builds on SNAPSHOT, now done)", "REPLAY <file>", nullptr},  // REP
     {"NOBREAK", true, nullptr, "NOBREAK [id]",
      "Bare NOBREAK clears them all. An id is not on the wire, so it is decimal.\n"
      "  NOBREAK 2\n"

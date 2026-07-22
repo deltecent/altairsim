@@ -1,5 +1,6 @@
 #include "boards/mits-frontpanel.h"
 
+#include "core/statefile.h"
 #include "core/value.h"
 
 namespace altair {
@@ -29,6 +30,22 @@ void FrontPanelBoard::power() {
     addrLeds_ = 0;
     dataLeds_ = 0;
     status_   = 0;
+}
+
+void FrontPanelBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.u16(sw_);
+    w.u16(addrLeds_);
+    w.u8(dataLeds_);
+    w.u8(status_);
+}
+
+void FrontPanelBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    sw_       = r.u16();
+    addrLeds_ = r.u16();
+    dataLeds_ = r.u8();
+    status_   = r.u8();
 }
 
 std::vector<Property> FrontPanelBoard::properties() {

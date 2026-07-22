@@ -1,5 +1,7 @@
 #include "core/board.h"
 
+#include "core/statefile.h"
+
 #include <cctype>
 
 namespace altair {
@@ -22,6 +24,14 @@ const char* unitKindName(UnitKind k) {
     }
     return "?";
 }
+
+// SNAPSHOT/RESTORE, base (DESIGN.md 13). The one thing every card has that can
+// move at runtime is enabled_ -- a boot ROM switches itself out after boot, and a
+// snapshot taken afterwards must remember that. The wires (intWire_/viWire_/
+// holdWire_) are derived and are re-latched by Machine::restore; a board that
+// overrides these chains here first, then writes its own fields.
+void Board::serialize(StateWriter& w) const { w.boolean(enabled_); }
+void Board::deserialize(StateReader& r) { enabled_ = r.boolean(); }
 
 // THE `interrupt` STRAP, FOR EVERY BOARD THAT HAS ONE.
 //

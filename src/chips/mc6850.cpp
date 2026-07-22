@@ -1,10 +1,45 @@
 #include "chips/mc6850.h"
 
+#include "core/statefile.h"
 #include "host/stream.h"
 
 #include <utility>
 
 namespace altair {
+
+void Mc6850::serialize(StateWriter& w) const {
+    w.u8(control_);
+    w.u8(rxData_);
+    w.u64(rxCount_);
+    w.boolean(rdrf_);
+    w.boolean(ovrn_);
+    w.boolean(dcdFlag_);
+    w.boolean(dcdIrq_);
+    w.boolean(dcdStatusRead_);
+    w.boolean(dcdPinLost_);
+    w.boolean(dcdFollow_);
+    w.boolean(ctsPin_);
+    w.boolean(txRoom_);
+    w.u64(txFreeAt_);
+    w.u64(rxNextAt_);
+}
+
+void Mc6850::deserialize(StateReader& r) {
+    control_       = r.u8();
+    rxData_        = r.u8();
+    rxCount_       = r.u64();
+    rdrf_          = r.boolean();
+    ovrn_          = r.boolean();
+    dcdFlag_       = r.boolean();
+    dcdIrq_        = r.boolean();
+    dcdStatusRead_ = r.boolean();
+    dcdPinLost_    = r.boolean();
+    dcdFollow_     = r.boolean();
+    ctsPin_        = r.boolean();
+    txRoom_        = r.boolean();
+    txFreeAt_      = r.u64();
+    rxNextAt_      = r.u64();
+}
 
 // ---------------------------------------------------------------------------
 // 6850 status register -- TRUE SENSE.

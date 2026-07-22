@@ -43,10 +43,10 @@ takes to be unambiguous, and the first command that matches wins.
 Type the part before the bracket. `D` is `DUMP`; `DE` is `DEPOSIT`; `RES` is `RESET`. Case
 does not matter, here or in the name of any board.
 
-The `*` marks the six commands that **resolve but are not built yet**. Type `SN` and it will
-tell you that `SNAPSHOT` is waiting on the debugger. That is on purpose: their abbreviations are
-claimed *now*, so the day they land, `SN` does not quietly stop meaning what your fingers have
-learned it means. An abbreviation is a contract.
+The `*` marks the commands that **resolve but are not built yet**. Type `REC` and it will
+tell you that `RECORD` is not built and what it is waiting on. That is on purpose: their
+abbreviations are claimed *now*, so the day they land, `REC` does not quietly stop meaning
+what your fingers have learned it means. An abbreviation is a contract.
 
 `HELP <command>` gives you the usage and worked examples for one of them, and `?` is the same
 as `HELP`.

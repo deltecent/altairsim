@@ -1,6 +1,7 @@
 #include "boards/s100-memory.h"
 
 #include "core/roms.h"
+#include "core/statefile.h"
 
 #include <cctype>
 #include <cstdio>
@@ -387,6 +388,21 @@ void MemoryBoard::power() {
     }
     bank_ = 0;
     enabled_ = true;
+}
+
+void MemoryBoard::serialize(StateWriter& w) const {
+    Board::serialize(w);
+    w.blob(store_);
+    w.u32((uint32_t)bank_);
+}
+
+void MemoryBoard::deserialize(StateReader& r) {
+    Board::deserialize(r);
+    // The store is assigned wholesale -- this is the one board where restore must
+    // NOT run the power() path, which re-fills RAM and re-reads ROM over exactly
+    // these bytes. The regions and page map are config, unchanged and already built.
+    store_ = r.blob();
+    bank_  = (int)r.u32();
 }
 
 bool MemoryBoard::blit(const Image& img, std::string& err) {
