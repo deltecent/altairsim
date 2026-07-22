@@ -20,6 +20,7 @@
 #include "host/stream.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -100,7 +101,17 @@ public:
     // The buttons on the front of the recorder. The CARD cannot press them.
     enum class Mode { Play, Record };
 
-    explicit TapeStream(TapeImage& t, Mode m = Mode::Play) : tape_(t), mode_(m) {}
+    // THE TAPE'S OWN CLOCK, and it is a WALL clock, not the guest's. `nsPerByte` is 0
+    // for FULL SPEED -- a byte is ready the instant the register frees, so the tape
+    // empties as fast as the loader reads it, at any CPU clock. A positive value paces
+    // playback in real host time at that many nanoseconds per byte, which is the card's
+    // baud turned into a duration the CPU's speed cannot touch (see AcrBoard::reline and
+    // SolBoard::retape). `hostNs` is where wall time comes from -- injectable so a test
+    // can drive it, defaulting to a monotonic host clock. It is consulted ONLY when
+    // nsPerByte > 0, so full speed stays a pure function of the tape and the tests that
+    // run flat out never touch the wall at all.
+    explicit TapeStream(TapeImage& t, Mode m = Mode::Play, uint64_t nsPerByte = 0,
+                        std::function<uint64_t()> hostNs = {});
 
     std::string describe() const override { return tape_.describe(); }
     size_t read(uint8_t* buf, size_t n) override;
@@ -109,13 +120,27 @@ public:
     // Nothing plays back out of a recorder that is recording, and nothing is cut
     // into a tape that is merely playing. The write-protect tab is a SECOND, and
     // independent, reason a tape may refuse to record.
-    bool readable() const override { return mode_ == Mode::Play && !tape_.atEnd(); }
+    //
+    // AND, when the tape carries a baud (nsPerByte > 0), the byte is not readable until
+    // wall time reaches its turn -- that is how the cassette paces itself without the
+    // UART's emulated clock, and why pacesItself() is true.
+    bool readable() const override;
     bool writable() const override { return mode_ == Mode::Record && !tape_.readOnly(); }
+    bool pacesItself() const override { return true; }
     void flush() override { tape_.sync(); }
 
 private:
     TapeImage& tape_;
     Mode       mode_;
+
+    // 0 = full speed. Otherwise the wall-clock byte interval, and the machinery to hold
+    // each byte back until its moment: hostNs_() is real time, nextReadyNs_ is when the
+    // next byte may leave, started_ lets the FIRST byte go at once (a real transport is
+    // already up to speed by the time the loader looks -- the leader saw to that).
+    uint64_t                  nsPerByte_ = 0;
+    std::function<uint64_t()> hostNs_;
+    uint64_t                  nextReadyNs_ = 0;
+    bool                      started_     = false;
 };
 
 } // namespace altair

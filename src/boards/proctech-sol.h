@@ -164,6 +164,17 @@ private:
         // the two transports hold two different cassettes.
         long long leader  = 3;
         long long trailer = 2;
+
+        // The CARRIER SHAPE this deck writes audio with: "square" (default -- what a real
+        // Sol modem lays down and what a genuine dub sounds like) or "sine". Audible only;
+        // a re-mount decodes either identically (host/tapemodem.h).
+        std::string wave = "square";
+
+        // HOW FAST THIS DECK PLAYS BACK, on the tape's clock and not the CPU's. "full"
+        // (default) empties the cassette as fast as the loader reads it, at any clock_hz;
+        // "real" paces playback in wall time at the baud the guest has selected (0FAh D5:
+        // 300 or 1200), the wait a real Sol made you serve. See host/tape.h.
+        std::string rate = "full";
     };
 
     // WHAT THIS CARD'S CUTS MODEM CAN HEAR -- two formats, HONESTLY: the UART really

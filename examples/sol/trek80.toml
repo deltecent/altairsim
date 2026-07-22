@@ -50,9 +50,10 @@ startup = [
 # 8080A; 2.386 and 2.863 MHz are the jumper options for the faster A-2 and A-1 parts).
 #
 # THE DEFAULT IS FLAT OUT, and that is the right default -- it stays where it is in the
-# built-in `sol20`. It is set HERE because this is a GAME: it was played at this speed,
-# the tape takes the time a tape took, and free-running would give you a Klingon attack
-# resolved before the screen finished drawing.
+# built-in `sol20`. It is set HERE because this is a GAME: it was played at this speed, and
+# free-running would give you a Klingon attack resolved before the screen finished drawing.
+# (The TAPE has its own clock and loads at full speed either way; `SET sol0:tape1 rate=real`
+# is the knob for the authentic ~40 s cassette wait.)
 #
 # It is not the only thing governing the pace, mind. TREK80 asks for a speed factor of its
 # own before it starts -- 9 slow, 0 fast -- and that is the knob the 1977 player had.

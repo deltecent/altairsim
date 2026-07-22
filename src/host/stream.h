@@ -97,6 +97,15 @@ public:
     virtual bool readable() const = 0;  // -> drives RDRF
     virtual bool writable() const = 0;  // -> drives TDRE
 
+    // THIS STREAM CARRIES ITS OWN CLOCK. A cassette releases bytes at a cadence of its
+    // own -- full speed, or a wall-clock baud the CPU's speed cannot drag -- and it
+    // reports that cadence through readable(). When this is true the UART must NOT also
+    // impose its emulated line-rate gate, or the two clocks fight and the tape runs at
+    // whatever the crystal happens to be (see Uart1602::poll and host/tape.h). Every
+    // other line -- a socket, a real serial port, a keyboard -- has no cadence but the
+    // one the UART's baud gives it, so this stays false for them.
+    virtual bool pacesItself() const { return false; }
+
     virtual void flush() {}
 
     // The far end's pins. A LEVEL, with no memory: the stream says "carrier is

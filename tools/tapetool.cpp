@@ -46,8 +46,9 @@ int usage() {
     std::fprintf(stderr,
                  "usage: tapetool info   TAPE.WAV\n"
                  "       tapetool decode TAPE.WAV OUT.BIN [FORMAT]\n"
-                 "       tapetool encode IN.BIN TAPE.WAV [FORMAT] [RATE] [LEADER] [TRAILER]\n"
+                 "       tapetool encode IN.BIN TAPE.WAV [FORMAT] [RATE] [LEADER] [TRAILER] [WAVE]\n"
                  "\nLEADER and TRAILER are seconds of idle tone, default 5 and 0.\n"
+                 "WAVE is the carrier shape: square (default, like real hardware) | sine.\n"
                  "\nFORMAT is one of:");
     for (const TapeFormat& f : tapeformats::all())
         std::fprintf(stderr, " %s", f.name);
@@ -96,13 +97,18 @@ int main(int argc, char** argv) {
         const double lead  = (argc >= 7) ? std::stod(argv[6]) : 5.0;
         const double trail = (argc >= 8) ? std::stod(argv[7]) : 0.0;
 
-        AudioBuffer a = modulate(in, f, rate, lead, trail);
+        // The carrier shape. Square by default -- what a real modem lays down and what a
+        // genuine dub sounds like; a re-decode reads either the same (host/tapemodem.h).
+        const Waveform wave = (argc >= 9) ? waveformByName(argv[8]) : Waveform::Square;
+
+        AudioBuffer a = modulate(in, f, rate, lead, trail, wave);
         if (!spit(argv[3], buildWav(a))) {
             std::fprintf(stderr, "tapetool: cannot write %s\n", argv[3]);
             return 1;
         }
-        std::printf("%s: %zu bytes -> %s, %.1fs at %u Hz (leader %.1fs, trailer %.1fs)\n",
-                    f.name, in.size(), argv[3], a.seconds(), a.rate, lead, trail);
+        std::printf("%s: %zu bytes -> %s, %.1fs at %u Hz (leader %.1fs, trailer %.1fs, %s)\n",
+                    f.name, in.size(), argv[3], a.seconds(), a.rate, lead, trail,
+                    waveformName(wave));
         return 0;
     }
 

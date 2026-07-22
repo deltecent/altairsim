@@ -63,6 +63,15 @@ uint8_t SolBoard::read(const BusCycle& c) {
             if (clock_) serial_.poll(*clock_);
             return serial_.readData();
         case 2:  // FA -- general/tape status
+            // ADVANCE THE TAPE RECEIVER FIRST, exactly as the serial status read does
+            // above (case 0). SOLOS's cassette loader tests TDR here, in a tight poll,
+            // and never touches 0FBh until it is set -- so if this did not fetch, the
+            // only thing that ever would is pump(), once a slice, and the tape would
+            // crawl at the slice rate no matter what clock the deck is on. With the
+            // fetch here, the loader's own polling clocks the tape: full speed empties
+            // it as fast as SOLOS looks, and `real` still holds each byte to its baud
+            // through readable() (host/tape.h).
+            if (clock_) tapeUart_.poll(*clock_);
             return generalStatus();
         case 3:  // FB -- tape (CUTS) data. The read strobe clears Tape Data Ready.
             if (clock_) tapeUart_.poll(*clock_);
@@ -280,7 +289,15 @@ void SolBoard::retape() {
     else if (deck2_.motor && deck2_.tape) d = &deck2_;
     if (!d) return;  // both stopped, or the running deck is empty: dead line
 
-    tapeUart_.connect(std::make_unique<TapeStream>(*d->tape, d->mode));
+    // THE DECK'S CLOCK, from the baud the guest just selected. `full` -> 0 -> as fast as
+    // the loader reads; `real` -> the byte time in nanoseconds at the current 300/1200,
+    // a wall clock clock_hz cannot drag. retape() runs on every OUT 0FAh, so a guest
+    // that changes speed mid-load gets the new cadence without a re-mount (host/tape.h).
+    uint64_t nsPerByte = 0;
+    if (d->rate == "real" && tapeUart_.baud > 0)
+        nsPerByte = (uint64_t)(1000000000ull * tapeUart_.bitsPerChar() / tapeUart_.baud);
+
+    tapeUart_.connect(std::make_unique<TapeStream>(*d->tape, d->mode, nsPerByte));
 }
 
 bool SolBoard::mount(const std::string& unit, const std::string& path, bool ro,
@@ -321,7 +338,8 @@ bool SolBoard::mount(const std::string& unit, const std::string& path, bool ro,
 }
 
 void SolBoard::applyEncoding(Deck* d) {
-    if (d->audio) d->audio->setEncoding(double(d->leader), double(d->trailer));
+    if (d->audio)
+        d->audio->setEncoding(double(d->leader), double(d->trailer), waveformByName(d->wave));
 }
 
 void SolBoard::commitTape(Deck* d) {
@@ -466,6 +484,40 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
             return true;
         };
         p.push_back(std::move(trail));
+
+        // THE CARRIER SHAPE, when this deck writes audio. Square is the default because it
+        // is what a real Sol-PC modem lays down and what a genuine dub sounds like; sine is
+        // the smoother, quieter tone. It is audible only -- a re-mount decodes either the
+        // same (host/tapemodem.h) -- so it changes how a tape SOUNDS, never what it holds.
+        Property wav;
+        wav.name    = "waveform";
+        wav.help    = "Carrier shape when writing audio: square (like real hardware) | sine";
+        wav.kind    = Kind::Enum;
+        wav.choices = {"square", "sine"};
+        wav.get     = [d] { return Value::ofStr(d->wave); };
+        wav.set     = [d](const Value& v, std::string&) {
+            d->wave = v.s();
+            applyEncoding(d);  // NOW, not at the next mount: SET then record must mean it
+            return true;
+        };
+        p.push_back(std::move(wav));
+
+        // HOW FAST THIS DECK PLAYS -- on the tape's clock, not the guest's. `full`
+        // (default) hands the loader bytes as fast as it reads them; `real` paces
+        // playback in wall time at the baud the guest has selected (0FAh D5). clock_hz
+        // stops dragging the tape either way, which is the whole reason it exists.
+        Property rt;
+        rt.name    = "rate";
+        rt.help    = "Playback speed: full (as fast as the guest reads) | real (wall-clock baud)";
+        rt.kind    = Kind::Enum;
+        rt.choices = {"full", "real"};
+        rt.get     = [d] { return Value::ofStr(d->rate); };
+        rt.set     = [this, d](const Value& v, std::string&) {
+            d->rate = v.s();
+            retape();  // if this deck is the one turning, its cadence changes now
+            return true;
+        };
+        p.push_back(std::move(rt));
 
         // READ-ONLY, so there is no setter at all: it is a measurement, not a switch.
         Property det;

@@ -129,10 +129,12 @@ public:
     const std::string& describe() const override { return under_->describe(); }
 
     // How much idle tone to lay down either side of the data when this is written
-    // back, in seconds. Pushed down by the board from its `leader`/`trailer`
-    // properties -- at MOUNT and again whenever one is SET, so that setting it and
-    // then recording does what it plainly says.
-    void setEncoding(double leaderSeconds, double trailerSeconds);
+    // back, in seconds, and the carrier SHAPE to write it with. Pushed down by the board
+    // from its `leader`/`trailer`/`waveform` properties -- at MOUNT and again whenever one
+    // is SET, so that setting it and then recording does what it plainly says. The shape is
+    // only audible: it changes nothing about what a re-mount decodes (host/tapemodem.h).
+    void setEncoding(double leaderSeconds, double trailerSeconds,
+                     Waveform wave = Waveform::Square);
 
     // What this tape turned out to be. Reported by the read-only `detected` property.
     const TapeFormat& format() const { return fmt_; }
@@ -144,9 +146,10 @@ private:
     TapeFormat                 fmt_;
     uint32_t                   rate_ = 0;
 
-    bool   dirty_   = false;
-    double leader_  = 5.0;
-    double trailer_ = 0.0;
+    bool     dirty_   = false;
+    double   leader_  = 5.0;
+    double   trailer_ = 0.0;
+    Waveform wave_    = Waveform::Square;
 };
 
 // ---------------------------------------------------------------------------

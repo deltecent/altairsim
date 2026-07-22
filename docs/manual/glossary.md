@@ -54,9 +54,10 @@ in a way that would take you a week. `SHOW BUS CONTENTION` names them instead.
 the reason the 8080 mattered. Write a program for CP/M and it ran on every 8080 machine ever
 built, whoever built it — the first time that was true of anything.
 
-**CUTS** — Computer Users Tape Standard. The Sol-20's cassette scheme, and a faster cousin of
-Kansas City: the same 2400/1200 Hz tones, but four times fewer cycles per bit, giving 1200
-baud instead of 300. The Sol's UART does both, and the guest picks which at `OUT 0FAh` D5.
+**CUTS** — Computer Users Tape System. The Sol-20's cassette scheme, and a faster cousin of
+Kansas City: at its default 1200 baud it drops an octave to **1200/600 Hz** tones and packs a
+bit into one cycle (a "1") or a half cycle (a "0"); its slower 300-baud mode is Kansas City
+proper, 2400/1200 Hz. The Sol's UART does both, and the guest picks which at `OUT 0FAh` D5.
 
 **DBL** — Disk Boot Loader. The boot PROM on the MITS floppy controller, at `FF00`. It reads
 one sector off track 0 and jumps into it. **There is no `BOOT` command on an Altair** — you set
@@ -89,8 +90,9 @@ a one. It is how the ACR got data onto a cassette, and it is why a loading tape 
 it does.
 
 The tones were **not** standard across machines, which matters more than it sounds: the
-88-ACR uses 2400/1850 Hz and holds a tone for the whole bit, while Kansas City and CUTS use
-2400/1200 Hz and count *whole cycles* per bit. A board can only read the modulation its own
+88-ACR uses 2400/1850 Hz and holds a tone for the whole bit; Kansas City counts *whole cycles*
+of 2400/1200 Hz per bit, and CUTS at its 1200-baud default does the same an octave down
+(1200/600 Hz, a half cycle for a "0"). A board can only read the modulation its own
 modem was built for, so mounting a recording in the wrong one is refused rather than decoded.
 See the tapes chapter.
 

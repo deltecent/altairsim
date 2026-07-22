@@ -8,8 +8,9 @@
 #
 # THE NAME IS `RAID`: SOLOS file names are five characters at most. The tape is RAIDERS.WAV
 # -- a Sol-20 cassette digitized by Philip Lord (hosted on deramp.com), real 1200-baud CUTS
-# audio, which the simulator's demodulator reads directly. It loads in about the time a
-# cassette took: that wait is the tape, and it is authentic.
+# audio, which the simulator's demodulator reads directly. It loads in a second or two: the
+# cassette carries its own clock and the default is full speed, not the ~40 s a real
+# recorder took. `SET sol0:tape1 rate=real` buys back the authentic wait.
 #
 # `base = "sol20"` IS THE MACHINE -- the Sol-PC's three cards (front panel, VDM-1 video at
 # 0CC00H, the composite `sol` I/O card at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
@@ -34,8 +35,9 @@ startup = [
 ]
 
 # 2.045 MHz -- THE STOCK SOL-20 (14.31818 MHz / 7; Sol Systems Manual, Theory of
-# Operation VIII). This is a GAME: it was played at this speed, and the tape takes the
-# time a tape took. `SET cpu0 clock_hz=0` puts it back to flat out.
+# Operation VIII). This is a GAME: it was played at this speed, so it PLAYS authentically.
+# The tape has its own clock and loads at full speed regardless. `SET cpu0 clock_hz=0`
+# puts it back to flat out.
 [[board]]
 id       = "cpu0"
 clock_hz = 2045000

@@ -154,25 +154,27 @@ or the RST switch, and the documented way out of a program that ignores `MODE SE
   separate display columns for the 6574 and 6575 ROMs. The code on the port is the same either
   way.
 
-## CUTS audio format (MEASURED, not from a manual)
+## CUTS audio format
 
-**Provenance: this section is not sourced from a Processor Technology document.** None of the
-manuals we hold state the CUTS cycle counts — this page previously said only "Kansas-City-standard
-FSK audio at 300 or 1200 baud". The numbers below were **measured** from a genuine Sol-20 cassette
-recording -- Philip Lord's `TRK80.WAV` (digitized by him, hosted on deramp.com) -- and are
-recorded here because the repo's rule is that a
-hardware number has a source. Treat a period manual as authoritative over this table if one turns
-up.
+**Provenance: Processor Technology's *CUTS, Computer Users Tape System — Assembly and Test
+Instructions* (© 1977),** distilled in [`reference/CUTS Assembly and Test.md`](CUTS%20Assembly%20and%20Test.md)
+and corroborated by H. Holden's 2018 scope-and-counter teardown of the same modem. The table is
+the manual's, cross-checked against Philip Lord's genuine `TRK80.WAV` dub (digitized by him,
+hosted on deramp.com), which measures exactly these tones. **An earlier version of this page
+carried a *measured* table with the 1200-baud tones an octave too high (2400/1200 Hz).** Those
+are in fact the *300-baud* Kansas City tones; the manual settled it.
 
 | | 300 baud (`SE TA 1`) | 1200 baud (`SE TA 0`, the default) |
 |---|---|---|
-| Logic 1 (mark) | 8 cycles of 2400 Hz | **2 cycles of 2400 Hz** |
-| Logic 0 (space) | 4 cycles of 1200 Hz | **1 cycle of 1200 Hz** |
+| Logic 1 (mark) | 8 cycles of 2400 Hz | **1 cycle of 1200 Hz** |
+| Logic 0 (space) | 4 cycles of 1200 Hz | **½ cycle of 600 Hz** |
 | Bit cell | 3.33 ms | **833 µs** |
+| Idle line (mark) | steady 2400 Hz | steady **1200 Hz** |
 
-Both symbols occupy the same time, which is the whole point of the 2:1 tone choice — a receiver
-counts cycles instead of trusting a clock. The idle line is mark, so an unrecorded stretch is a
-steady 2400 Hz tone.
+The 1200-baud default is an **octave below** Kansas City — its tones are **1200/600 Hz**, and a
+"0" is a single *half* cycle of 600 Hz (Manchester-style), not a whole cycle. Only the 300-baud
+mode uses the 2400/1200 Hz Kansas City tones. Both symbols in a mode fill one 833 µs bit cell, and
+the idle line is mark, so an unrecorded stretch of a high-speed tape is a steady 1200 Hz tone.
 
 **Framing is 8N2** — one start bit, eight data bits LSB first, **two** stop bits. Measured as 11.0
 bit times between consecutive start bits over 7,325 of ~7,900 frames.
@@ -185,20 +187,21 @@ header and a self-consistent length — that agreement is what makes this a meas
 a guess. `altair_tapetool info` reproduces it (`tools/tapetool.cpp`).
 
 **This recording used to decode badly, and the story is worth keeping.** An earlier demodulator
-classified and sliced each half-cycle interval, and on this dub — recorded an octave low, in the
-1-to-2-crossings-per-bit regime a real Sol tape sits in — it kept its framing (99.7%, 27 errors
-in ~7,900 frames) but got the DATA wrong: **6,778 of 7,840 payload bytes bad**, the tape
-unloadable. That was a genuine trap. The carrier was intact and the framing rate high, so the
-parameters above looked confirmed — yet the bytes were garbage. What broke the tie was the
-header: it decoded (checksum `D9`, `SIZE 0x1EA0`), which proved the timing table right and the
-**decoder** wrong. The matched-filter decoder (`src/host/tapemodem.cpp`) now reads all 7,939
-bytes correctly and the tape loads.
+classified and sliced each half-cycle interval, and on this dub — a genuine 1200-baud CUTS
+recording, whose 1200/600 Hz tones and half-cycle "0" put only one or two crossings in a bit — it
+kept its framing (99.7%, 27 errors in ~7,900 frames) but got the DATA wrong: **6,778 of 7,840
+payload bytes bad**, the tape unloadable. That was a genuine trap. The carrier was intact and the
+framing rate high, so the parameters looked confirmed — yet the bytes were garbage. What broke the
+tie was the header: it decoded (checksum `D9`, `SIZE 0x1EA0`), which proved the bit *rate* right
+and the **decoder** wrong. The matched-filter decoder (`src/host/tapemodem.cpp`) now reads all
+7,939 bytes correctly and the tape loads.
 
-So the timing table above **stands**, and always did — it was measured from the carrier, and the
-carrier was intact even when the decoder was not. A high framing rate vouches for the carrier,
-not the bit values; check the header before doubting the table. And because the archived
-recording now reads clean, it is the shipped example: `examples/sol/TRK80.WAV` **is** this tape,
-and `acceptance-trek80-wav` reads it back through SOLOS as the decoder's regression.
+The lesson stands even though our old table did not: a high framing rate vouches for the carrier
+and the bit *rate*, not the tone frequencies or the bit *values*. The old decoder held framing on
+a correct 1200-baud cell while mis-reading both the tones (an octave off) and the data; check the
+header before trusting a decode. And because the archived recording now reads clean, it is the
+shipped example: `examples/sol/TRK80.WAV` **is** this tape, and `acceptance-trek80-wav` reads it
+back through SOLOS as the decoder's regression.
 
 ### Leader, trailer, and what a whole tape looks like (MEASURED)
 
@@ -214,7 +217,7 @@ operator's finger:
 | `ALS8` | 3.83 s | 1.23 s | 50 | `ALS8`, 8,320 B |
 | `TINY_TREK` | 3.68 s | 2.30 s | 50 | `TTREK`, 8,194 B |
 
-So a CUTS tape is: **~4 s of idle 2400 Hz**, then **~51 bytes of `00`**, then a **`01` sync byte**,
+So a CUTS tape is: **~4 s of idle 1200 Hz**, then **~51 bytes of `00`**, then a **`01` sync byte**,
 then the 16-byte SOLOS header (`FOPEN` layout, above), then the payload, then **~2 s of idle tone**.
 The byte-level leader and sync are written by SOLOS itself, so they survive in a byte tape image;
 only the audio seconds are lost, and only they must be synthesized when writing audio back out.

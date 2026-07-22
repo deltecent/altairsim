@@ -139,7 +139,15 @@ void Uart1602::masterReset(const Clock& clk) {
 // ---------------------------------------------------------------------------
 void Uart1602::poll(const Clock& clk) {
     if (rda_) return;                    // register still full: the line waits
-    if (clk.now() < rxNextAt_) return;   // the character has not finished arriving
+
+    // THE EMULATED LINE-RATE GATE, unless the line paces itself. A socket or a real
+    // serial port has no cadence of its own, so this baud clock -- measured in the
+    // guest's own T-states -- is what stops a paste arriving as an instant burst. But a
+    // cassette DOES carry its own clock (full speed, or a wall-clock baud), and there
+    // that gate would drag the tape to whatever the crystal is set to. So it steps
+    // aside and lets the stream's readable() be the sole authority on when a byte lands.
+    if (!stream_->pacesItself() && clk.now() < rxNextAt_) return;
+
     if (!stream_->readable()) return;
 
     uint8_t b = 0;

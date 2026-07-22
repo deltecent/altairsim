@@ -146,11 +146,23 @@ void test_tapecodec() {
     // -----------------------------------------------------------------------
     SECTION("tape modem: round trip, every format, every rate");
     // The floor is deliberate. 8 kHz gives a 2400 Hz tone barely three samples a
-    // cycle, and cycle-counted 1200 baud does not survive it; no archive is at 8 kHz
-    // and modulate() defaults to 44100. 11 kHz up is the supported range, and it is
-    // stated in docs/manual/tapes.md rather than left for someone to discover.
+    // cycle, and a 300-baud KCS tape does not survive it; no archive is at 8 kHz and
+    // modulate() defaults to 44100. 11 kHz up is the supported range for the cycle-counted
+    // formats, and it is stated in docs/manual/tapes.md rather than left to discover.
+    //
+    // cuts1200 is the exception, and it is a property of the MODULATION, not a bug: genuine
+    // 1200-baud CUTS encodes a "0" as a HALF cycle of 600 Hz (a Manchester symbol -- see
+    // reference/CUTS Assembly and Test.md), which is not a whole number of periods in the
+    // cell and so breaks the matched filter's integer-period orthogonality. That wants
+    // oversampling: cuts is byte-perfect at 44.1 kHz (the archive standard and modulate()'s
+    // default) and above, and slips to a few framing errors below. So it is round-tripped
+    // at the rates a real CUTS dub actually uses.
+    const std::vector<uint32_t> allRates  = {11025u, 22050u, 44100u, 48000u};
+    const std::vector<uint32_t> cutsRates = {44100u, 48000u};
     for (const TapeFormat& f : {kcs, cuts, fsk}) {
-        for (uint32_t rate : {11025u, 22050u, 44100u, 48000u}) {
+        const std::vector<uint32_t>& rates =
+            std::string(f.name) == "cuts1200" ? cutsRates : allRates;
+        for (uint32_t rate : rates) {
             const std::vector<uint8_t> in = payload(512);
             DemodResult r = demodulate(modulate(in, f, rate, 0.25), f);
             CHECK(same(in, r.bytes), (std::string("round trip ") + f.name + " @" +
@@ -173,8 +185,11 @@ void test_tapecodec() {
     // MEASURED BEFORE IT WAS FIXED: with no floor, 300-baud FSK lost exactly one byte
     // and gained two framing errors. This is that bug, held down.
     for (const TapeFormat& f : {kcs, cuts, fsk}) {
+        // 44.1 kHz for cuts (its half-cycle "0" wants oversampling, see above); 22 kHz is
+        // plenty for the cycle-counted formats and is where the lost-byte bug was measured.
+        const uint32_t rate = std::string(f.name) == "cuts1200" ? 44100u : 22050u;
         const std::vector<uint8_t> in = payload(64);
-        DemodResult r = demodulate(modulate(in, f, 22050, 0.0, 0.0), f);
+        DemodResult r = demodulate(modulate(in, f, rate, 0.0, 0.0), f);
         CHECK(same(in, r.bytes),
               (std::string("no leader, nothing lost: ") + f.name).c_str());
         CHECK(r.framingErrors == 0,

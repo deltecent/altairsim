@@ -148,11 +148,12 @@ one the story is told through. `TRK80.WAV`
 decodes to **7,939 bytes with 0 framing errors** — a valid SOLOS tape: `01` sync, name `TRK80`,
 `SIZE` field `1EA0`, header checksum `D9`, the payload matching the `.ENT` image. That was **not**
 always true. Until the demodulator fix (`src/host/tapemodem.cpp`; TODO's *CUTS demod* entry), the
-decoder classified each half-cycle interval and sliced it, and on a dub recorded an octave low —
-the 1-to-2-crossings-per-bit regime a real Sol tape sits in — it desynchronized: **27 framing
-errors, 6,778 of 7,840 payload bytes wrong**, the entry point reading `00 00 00 00`. The tape was
-effectively invisible. The matched-filter decoder measures which tone's energy fills each cell and
-reads it byte-for-byte. `acceptance-trek80-wav` is that regression, run against this exact file.
+decoder classified each half-cycle interval and sliced it, and on a genuine 1200-baud CUTS dub —
+whose 1200/600 Hz tones and half-cycle "0" put only one or two crossings in a bit — it
+desynchronized: **27 framing errors, 6,778 of 7,840 payload bytes wrong**, the entry point reading
+`00 00 00 00`. The tape was effectively invisible. The matched-filter decoder measures which
+tone's energy fills each cell and reads it byte-for-byte. `acceptance-trek80-wav` is that
+regression, run against this exact file.
 
 (The MFE archive's separate **MP3** is a different, lossy dub of a different build — 8,285 bytes,
 31 errors — and is not the tape here.)

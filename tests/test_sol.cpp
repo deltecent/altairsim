@@ -319,13 +319,16 @@ void test_sol() {
         CHECK((g.in(STAPT) & TDR) == 0, "motor off: nothing comes off the tape");
 
         g.out(STAPT, MOTOR1);  // OUT 0FAh -- GET TAPE MOVING
-        g.tapeTime();
+        g.sol->pump();
         CHECK((g.in(STAPT) & TDR) != 0, "motor on: TDR rises, a byte is waiting");
         CHECK(g.in(TDATA) == 'H', "IN 0FBH returns it");
-        CHECK((g.in(STAPT) & TDR) == 0, "...and the read strobe clears TDR");
 
-        g.tapeTime();
-        CHECK(g.in(TDATA) == 'I', "the next byte follows it off the tape");
+        // FULL SPEED IS THE DEFAULT (host/tape.h): the cassette does not make the guest
+        // wait a baud time between bytes, so the next one is already on the line. Reading
+        // FB is what advances the head; the emulated clock does not have to. The wait
+        // that a real recorder made you serve is `rate = real`, tested below.
+        CHECK((g.in(STAPT) & TDR) != 0, "full speed: the next byte follows at once");
+        CHECK(g.in(TDATA) == 'I', "...and IN 0FBH returns it");
         CHECK(g.sol->tape(1)->pos() == 2, "the head has moved two bytes down the tape");
     }
 
@@ -404,49 +407,50 @@ void test_sol() {
         CHECK(err.find("tape1") != std::string::npos, "...naming a deck to type");
     }
 
-    SECTION("Sol cassette -- OUT 0FAh D5 picks the speed, and the guest can feel it");
+    SECTION("Sol cassette -- the default is FULL SPEED: the guest does not wait for the baud");
     {
         withTape("AB");
         Rig         g;
         std::string err;
         CHECK(g.sol->mount("tape1", "t.tap", false, err), "MOUNT sol0:tape1");
 
-        // 1200 baud (D5 clear) is the default. A character is 11 bit times -- 8N2 --
-        // so at 2 MHz it occupies ~18,300 T-states, and at 300 baud four times that.
-        //
-        // THE FIRST BYTE OFF A TAPE IS FREE, on this UART and on the 88-ACR's: the
-        // receiver has no character in flight when the transport starts, so it takes
-        // one at once and only then begins pacing. So the speed is measured on the
-        // SECOND byte, which is the first one the line actually clocked.
-        g.out(STAPT, MOTOR1);
+        // FULL SPEED empties the tape as fast as the guest reads it, at any CPU clock and
+        // at EITHER 0FAh D5 speed. The byte is on the line the moment the register is
+        // free -- no ~18,300 T-state baud wait (host/tape.h). D5 still SETS the baud (it
+        // is what `rate = real` would pace to); it simply does not gate a full-speed tape.
+        g.out(STAPT, MOTOR1 | SLOW);  // even at the SLOW strap, full speed ignores it
         g.sol->pump();
         CHECK(g.in(TDATA) == 'A', "the first byte comes off as the motor starts");
-
-        g.m.clock.advance(12000);  // less than one character at 1200 baud
-        g.sol->pump();
-        CHECK((g.in(STAPT) & TDR) == 0, "1200 baud: too early for the second byte");
-        g.m.clock.advance(12000);
-        g.sol->pump();
-        CHECK((g.in(STAPT) & TDR) != 0, "...and by ~18,300 T-states it has arrived");
+        CHECK((g.in(STAPT) & TDR) != 0, "the second is already there -- no baud wait");
+        CHECK(g.in(TDATA) == 'B', "...and it is the next byte off the tape");
     }
 
-    SECTION("Sol cassette -- ...and 0FAh D5 set is four times slower, not a no-op");
+    SECTION("Sol cassette -- `rate = real` hands the baud back, and the guest feels it again");
     {
         withTape("AB");
         Rig         g;
         std::string err;
         CHECK(g.sol->mount("tape1", "t.tap", false, err), "MOUNT sol0:tape1");
+        CHECK(setUnitProperty(*g.sol, "tape1", "rate", "real", err), "SET sol0:tape1 rate=real");
 
-        g.out(STAPT, MOTOR1 | SLOW);  // 300 baud from the start, so the pacing is 300's
+        // In `real` the cassette paces playback on a WALL clock the CPU cannot hurry
+        // (host/tape.h). The first byte is free -- the receiver had none in flight -- but
+        // the second must wait its baud time in REAL seconds. This test spends only
+        // microseconds of wall time, so the second byte is not there yet -- and, the
+        // point, NO amount of emulated time buys it: `rate = real` is deaf to clock.now().
+        g.out(STAPT, MOTOR1);
         g.sol->pump();
         CHECK(g.in(TDATA) == 'A', "the first byte is still free");
+        g.m.clock.advance(1'000'000);  // a great deal of EMULATED time -- and it buys nothing
+        g.sol->pump();
+        CHECK((g.in(STAPT) & TDR) == 0, "real: the emulated clock does not clock the tape");
 
-        g.m.clock.advance(24000);  // ample at 1200; a third of a character at 300
+        // Flip back to full speed and the byte the baud was holding is delivered at once,
+        // which proves the gate was the RATE and not the end of the tape.
+        CHECK(setUnitProperty(*g.sol, "tape1", "rate", "full", err), "SET sol0:tape1 rate=full");
         g.sol->pump();
-        CHECK((g.in(STAPT) & TDR) == 0, "300 baud: the wait that sufficed at 1200 does not");
-        g.m.clock.advance(60000);
-        g.sol->pump();
-        CHECK((g.in(STAPT) & TDR) != 0, "...and by ~73,300 T-states the byte is there");
+        CHECK((g.in(STAPT) & TDR) != 0, "full: the held byte arrives the instant the gate lifts");
+        CHECK(g.in(TDATA) == 'B', "...and it is 'B'");
     }
 
     SECTION("Sol-20 -- SOLOS cold-starts, paints its '>' prompt, and rests on the keyboard");

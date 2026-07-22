@@ -10,11 +10,14 @@
 //
 // TWO SCHEMES -- BUT ONLY THE TRANSMITTER CAN TELL THEM APART:
 //
-//   CONTINUOUS FSK (the 88-ACR's modem board). The tone is held for the bit cell and
-//   nothing lines up: at 1850 Hz and 300 baud a cell is 6.17 cycles.
+//   HOLD THE TONE FOR THE CELL. The transmitter emits one tone for the whole bit time and
+//   lets the cycle fall where it may. The 88-ACR's continuous FSK is this (at 1850 Hz and
+//   300 baud a cell is 6.17 cycles), and so is the Sol's 1200-baud CUTS -- there a mark
+//   cell holds exactly one 1200 Hz cycle and a space cell a half cycle of 600 Hz
+//   (Manchester-style), which is a nice fraction only by coincidence of the numbers.
 //
-//   KANSAS CITY (the Sol's CUTS, and the ordinary microcomputer standard). A bit is a
-//   WHOLE NUMBER of cycles -- the tones are 2:1 so that N cycles of the high tone and
+//   KANSAS CITY (the Sol's 300-baud mode, and the ordinary microcomputer standard). A bit
+//   is a WHOLE NUMBER of cycles -- the tones are 2:1 so that N cycles of the high tone and
 //   N/2 of the low occupy the same time.
 //
 // `cycleCounted` therefore steers modulate() and NOT demodulate(). That is not a
@@ -49,13 +52,14 @@
 // tone (reference/Altair 88-ACR Cassette Interface.md, sections 6 and 7). The
 // demodulator's PLL sits at 2125 Hz -- halfway -- and tolerates about +/-100 Hz.
 //
-// The Sol's CUTS cycle counts are NOT in any manual we hold: reference/Sol-20.md says
-// only "Kansas-City-standard FSK audio at 300 or 1200 baud". They were MEASURED, off
-// a real Sol tape (deramp.com's TRK80.WAV), and the measurement is what is encoded
-// below: tones 2400/1200, a bit cell of exactly 1/1200 s, and ELEVEN bit times
-// between consecutive frames -- i.e. 8N2, not 8N1. The tape decodes to a valid SOLOS
-// header ("TRK80", SIZE 0x1EA0) whose length matches the payload, which is the
-// oracle that makes the measurement a fact rather than a guess. See
+// The Sol's CUTS cycle counts ARE in a manual: Processor Technology's CUTS Assembly and
+// Test Instructions (1977), distilled in reference/CUTS Assembly and Test.md and
+// corroborated by H. Holden's 2018 teardown of the Sol-PC modem. At its 1200-baud default
+// a mark is ONE cycle of 1200 Hz and a space a HALF cycle of 600 Hz -- an octave below
+// Kansas City, whose 2400/1200 Hz tones the Sol uses only in its 300-baud (SE TA 1) mode.
+// Framing is 8N2 (one start, eight data, TWO stop). deramp.com's TRK80.WAV agrees with the
+// manual and decodes to a valid SOLOS header ("TRK80", SIZE 0x1EA0) whose length matches
+// the payload -- the oracle that makes it a fact. See reference/Sol-20.md and
 // docs/boards/proctech-sol.md.
 //
 // ---- A CARD DECLARES WHAT ITS OWN MODEM CAN HEAR, AND REFUSES THE REST -------------
@@ -92,6 +96,26 @@ namespace altair {
 struct AudioBuffer;
 
 // ---------------------------------------------------------------------------
+// The SHAPE of the emitted carrier -- audible, not semantic.
+//
+// The real Sol-PC and 88-ACR modems lay down a SQUARE wave (flip-flop outputs, only
+// gently rounded by the recorder's own bandwidth), so `Square` is the default: it is
+// what a genuine cassette dub sounds like, and it is louder than a sine at the same
+// amplitude, which is exactly the difference an ear notices between our old recordings
+// and a real one. `Sine` is offered because a square's odd harmonics are bandwidth a
+// real recorder removes, and a naive comparator could miscount them as extra cycles.
+//
+// It is only a SHAPE. A square and a sine of the same frequency cross zero at the same
+// instants, and this demodulator reads crossings and integrates the fundamental -- so it
+// decodes either one identically. Nothing downstream can tell them apart; only a speaker
+// can. Selected per tape by the unit's `waveform` property and by `tapetool encode`.
+// ---------------------------------------------------------------------------
+enum class Waveform { Square, Sine };
+
+const char* waveformName(Waveform w);              // "square" | "sine"
+Waveform    waveformByName(const std::string& s);  // anything but "sine" -> Square
+
+// ---------------------------------------------------------------------------
 // A modulation, as data. Add a card by adding one of these.
 // ---------------------------------------------------------------------------
 struct TapeFormat {
@@ -118,11 +142,13 @@ struct TapeFormat {
 
 namespace tapeformats {
 
-// Kansas City proper: 8 cycles of 2400 for a 1, 4 cycles of 1200 for a 0.
+// Kansas City proper: 8 cycles of 2400 for a 1, 4 cycles of 1200 for a 0. The Sol's SLOW
+// mode (SE TA 1).
 TapeFormat kcs300();
 
-// CUTS fast mode -- the same tones, a quarter of the cycles: 2 cycles of 2400 for a
-// 1, 1 cycle of 1200 for a 0. What SOLOS writes with `SE TA 0` (the default).
+// CUTS fast mode -- an octave BELOW Kansas City: one cycle of 1200 Hz for a 1, a HALF
+// cycle of 600 Hz for a 0 (Manchester-style: hold the tone for the 833 us cell). What
+// SOLOS writes with `SE TA 0`, the default. NOT 2400/1200 -- those are the slow mode's.
 TapeFormat cuts1200();
 
 // The MITS modem board: continuous FSK, 2400 mark / 1850 space, 300 baud, 8N1.
@@ -190,6 +216,6 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f);
 // carries, and neither is a fact about the modulation.
 AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
                      uint32_t rate = 44100, double leaderSeconds = 5.0,
-                     double trailerSeconds = 0.0);
+                     double trailerSeconds = 0.0, Waveform wave = Waveform::Square);
 
 } // namespace altair

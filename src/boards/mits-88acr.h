@@ -135,6 +135,18 @@ private:
     long long leader_  = 15;
     long long trailer_ = 5;
 
+    // The CARRIER SHAPE this card writes audio with: "square" (default -- what a real modem
+    // lays down) or "sine". Audible only; a re-mount decodes either the same (tapemodem.h).
+    std::string wave_ = "square";
+
+    // HOW FAST THE TAPE PLAYS BACK, and it is the tape's clock, not the CPU's. "full"
+    // (default) empties the cassette as fast as the loader reads it, at any clock_hz --
+    // no waiting for a machine that never had to wait to read its own memory. "real"
+    // paces playback in wall time at the card's 300-baud strap, the way a recorder does,
+    // whatever the crystal is set to. See host/tape.h; it is playback only -- recording
+    // is the operator's finger on the button and takes as long as it takes.
+    std::string rate_ = "full";
+
     std::vector<std::string> log_;
 
     // PLAY, until somebody says otherwise. It is what you do with a cassette 99 times

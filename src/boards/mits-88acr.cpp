@@ -196,6 +196,39 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
     };
     p.push_back(std::move(trail));
 
+    // THE CARRIER SHAPE, when this card writes audio. Square is the default -- what a real
+    // 88-ACR modem lays down -- and sine is the smoother, quieter tone. Audible only: a
+    // re-mount decodes either the same (host/tapemodem.h), so it is how a tape SOUNDS.
+    Property wav;
+    wav.name    = "waveform";
+    wav.help    = "Carrier shape when writing audio: square (like real hardware) | sine";
+    wav.kind    = Kind::Enum;
+    wav.choices = {"square", "sine"};
+    wav.get     = [this] { return Value::ofStr(wave_); };
+    wav.set     = [this](const Value& v, std::string&) {
+        wave_ = v.s();
+        applyEncoding();
+        return true;
+    };
+    p.push_back(std::move(wav));
+
+    // HOW FAST THE TAPE PLAYS -- on the tape's clock, not the guest's. `full` (default)
+    // hands the loader bytes as fast as it reads them; `real` paces playback in wall
+    // time at the 300-baud strap, the wait a real cassette made you serve. The CPU's
+    // clock_hz no longer drags it either way -- that is the whole point of the switch.
+    Property rt;
+    rt.name    = "rate";
+    rt.help    = "Playback speed: full (as fast as the guest reads) | real (wall-clock baud)";
+    rt.kind    = Kind::Enum;
+    rt.choices = {"full", "real"};
+    rt.get     = [this] { return Value::ofStr(rate_); };
+    rt.set     = [this](const Value& v, std::string&) {
+        rate_ = v.s();
+        reline();  // the line's cadence changes now, not at the next mount
+        return true;
+    };
+    p.push_back(std::move(rt));
+
     // ...and what the tape in the recorder actually turned out to be. READ-ONLY, which
     // means no setter at all (adding-a-board.md): it is a measurement, not a switch.
     Property d;
@@ -248,7 +281,15 @@ std::vector<UnitDef> AcrBoard::units() const {
 // tape it points at is replaced.
 void AcrBoard::reline() {
     attachStream(std::make_unique<NullStream>());  // the old line dies here
-    if (tape_) attachStream(std::make_unique<TapeStream>(*tape_, mode_));
+
+    // THE TAPE'S CLOCK, built from the card's strap. `full` -> 0 -> as fast as the guest
+    // reads; `real` -> the 300-baud byte time in nanoseconds, a wall clock the CPU's
+    // speed cannot touch (host/tape.h). The frame is the UART's to know (bitsPerChar);
+    // turning it into a duration is the board's.
+    uint64_t nsPerByte = 0;
+    if (rate_ == "real" && u_.baud > 0)
+        nsPerByte = (uint64_t)(1000000000ull * u_.bitsPerChar() / u_.baud);
+    if (tape_) attachStream(std::make_unique<TapeStream>(*tape_, mode_, nsPerByte));
 
     // THE TAPE IS NOW MOVING. A cassette does not wait to be asked -- press PLAY and
     // the bytes come off it -- and refresh() is what tells the UART there may be
@@ -305,7 +346,7 @@ bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, 
 // What to lay down either side of the data when this tape is written back. A no-op on a
 // byte tape, which has no audio to put it in.
 void AcrBoard::applyEncoding() {
-    if (audio_) audio_->setEncoding(double(leader_), double(trailer_));
+    if (audio_) audio_->setEncoding(double(leader_), double(trailer_), waveformByName(wave_));
 }
 
 // THE TRANSPORT STOPPED -- so an audio tape re-encodes itself and goes to the host now.

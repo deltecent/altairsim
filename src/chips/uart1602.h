@@ -147,10 +147,15 @@ public:
     // world, and pump() is the door it comes through (DESIGN.md 7.1).
     bool rxWaiting() const { return !rda_ && stream_->readable(); }
 
+    // How many bits a character occupies on the wire -- start, data, maybe parity, stop.
+    // Public because the CARD needs it to turn the straps into a wall-clock byte time
+    // for a cassette that paces itself (host/tape.h): the frame is the chip's to know,
+    // the tape's clock is the board's to build.
+    int bitsPerChar() const;
+
 private:
     // How long one character occupies the line, in T-states. Falls straight out of
     // the format pins, which is why they are on the chip and not on the card.
-    int      bitsPerChar() const;
     uint64_t charTStates(const Clock& clk) const;
 
     std::string name_;

@@ -139,13 +139,32 @@ spells `REW` after RUN took `R` from RESET, because the letters it needed were n
 
 Rewinding also **discards the byte the UART is still holding** — see *Limitations*.
 
-### Pacing: the `baud` jumper, and no invented `speed` knob
+### Pacing: `rate = full | real`, the tape's own clock
 
-The UART already paces the line at the strapped rate (`Uart1602::poll` — one byte, held, one
-character time apart), and the `Clock` is a T-state counter with no wall-clock throttle. So
-**300 baud costs essentially nothing** and there is no reason to fake it. The plan proposed a
-`speed = fast | real` property; it was dropped, because `baud` is a **real jumper** that already
-does exactly that job.
+The UART used to pace the line purely in emulated time (`Uart1602::poll` — one byte, held, one
+character time apart, `now + charTStates`). That was period-correct *in T-states*, but it had a
+consequence: because `charTStates = clock_hz × bits ÷ baud`, the tape's **wall-clock** speed
+rode entirely on the CPU crystal. At the real 2.045 MHz a Sol game took ~40 s to load (right);
+flat out it loaded in a blink (also right, by the T-state argument) — but a machine set to
+2 MHz *for authentic gameplay* was then forced to sit through a 40 s load it never asked for,
+and nothing but the CPU clock could change that. The tape and the CPU had been fused onto one
+crystal, which the hardware never did.
+
+So the tape now carries **its own clock**, a per-deck `rate` property:
+
+- **`full`** (default) — the receiver's emulated gate steps aside (`ByteStream::pacesItself()`,
+  which `TapeStream` returns true and a socket returns false), so a byte is ready the instant the
+  holding register frees. The tape empties as fast as the guest reads it, **at any `clock_hz`**.
+  Safe for exactly the loaders that exist: a polled cassette loader self-paces, and the `rda_`
+  flag still forbids an overrun, so this is not the declined `baud = 0` (that was the interactive
+  *console*, which the guest times and flow-controls — see `TODO.md` and the 6850's notes).
+- **`real`** — `TapeStream` paces `readable()` off a **wall clock** (`steadyNs`, injectable for
+  tests) at the strap's byte time, so a load takes real seconds no matter the CPU speed. This is
+  the same call the VDM-1 blink made: a board's own oscillator is wall time, not T-states.
+
+An earlier plan had *dropped* a `speed = fast | real` knob, reasoning that `baud` already did the
+job. It did not: `baud` sets the T-state cost, and the T-state cost is exactly what couples the
+tape to `clock_hz`. `rate` is the decoupling `baud` could not provide.
 
 ## Quirks reproduced
 
@@ -228,6 +247,13 @@ tape that opened on the start bit itself would lose its first byte.
 **Idle is a tone, not silence** — the UART's output pin idles high, high is mark, and the modem
 board has no squelch, so a card recording nothing lays down continuous 2400 Hz. Leader and
 trailer are that tone.
+
+**The `waveform` property shapes that tone** — `square` (default) or `sine`. A real modem is a
+flip-flop into an RC network, so `square` — a band-limited square, rounded as the hardware's own
+bandwidth rounds it — is both the authentic shape and the louder, fuller sound of a genuine dub.
+It is audible only: a tape written either way demodulates back to the same bytes, because the two
+shapes share their zero-crossings and their fundamental. (An *ideal* square is deliberately not
+offered — its aliased harmonics wreck the round trip; `src/host/tapemodem.cpp` carries the why.)
 
 **A multi-file tape comes back as one continuous run.** The decoded byte stream has no file
 boundaries in it, so nothing at this layer can know where one program ends and the next begins,

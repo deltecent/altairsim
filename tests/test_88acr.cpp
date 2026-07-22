@@ -29,8 +29,11 @@
 #include "test.h"
 
 #include "boards/mits-88acr.h"
+#include "chips/uart1602.h"
+#include "core/clock.h"
 #include "core/machine.h"
 #include "host/media.h"
+#include "host/tape.h"
 
 #include <cstdio>
 #include <memory>
@@ -326,15 +329,21 @@ void test_88acr() {
         CHECK(r.acr->tape()->atEnd(), "confirmed: at the end");
 
         CHECK(r.rewind(said), "REW");
-        CHECK(r.acr->tape()->pos() == 0, "the head is back at the beginning");
 
-        // 🔴 AND THE CARD IS NOT STILL HOLDING A BYTE FROM THE TAPE IT WOUND PAST.
+        // THE HEAD IS BACK AT THE START. At full speed (the default -- host/tape.h) the
+        // relined receiver latches byte 0 the instant the tape is back, so the head may
+        // already read 1 rather than 0 -- an eager UART, not a failed rewind. What the
+        // rewind guarantees is that it is at the START, not stuck at the END (which was 2).
+        CHECK(r.acr->tape()->pos() <= 1, "the head is back at the beginning, not at the end");
+
+        // 🔴 AND THE CARD IS NOT STILL HOLDING THE BYTE FROM THE TAPE IT WOUND PAST.
         //
         // The UART receives eagerly, so at the moment you rewind there is normally a
-        // character sitting in its receive register. Leave it there and the guest's
-        // next read gets that stale byte, and then gets it AGAIN when the tape
-        // replays it -- a byte DUPLICATED, by us, in the middle of a program image.
-        CHECK(r.getByte(b) && b == 'H', "and the tape replays from 'H'...");
+        // character sitting in its receive register. Leave the OLD one there and the
+        // guest's next read gets that stale byte -- a byte DUPLICATED, by us, in the
+        // middle of a program image. So the replay must begin at 'H', the wound-to byte,
+        // and never the 'I' that was in flight when the operator hit rewind.
+        CHECK(r.getByte(b) && b == 'H', "the tape replays from 'H'...");
         CHECK(r.getByte(b) && b == 'I', "...then 'I' -- no stale byte duplicated at the seam");
     }
 
@@ -399,5 +408,82 @@ void test_88acr() {
         CHECK(r.acr->tape()->pos() != 0, "...and it does NOT rewind it");
         CHECK(r.acr->tape()->pos() == was + 1,
               "the byte in flight is lost to the UART's MR pin, and the tape rolls on");
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. THE TAPE CARRIES ITS OWN CLOCK -- full speed vs `real`, at the stream itself.
+    //
+    // The board sections run the whole card; this pins the pacing, deterministically,
+    // with an INJECTED wall clock so nothing sleeps and the result does not depend on
+    // how fast this host happens to be. The point of the design: a tape that paces
+    // itself is the sole authority on when a byte is ready, and the 1602 steps aside
+    // for it (chips/uart1602.h) -- so the SAME UART delivers a whole tape at once, or
+    // one byte per baud time, on the stream's say-so and not the emulated clock's.
+    // -----------------------------------------------------------------------
+    {
+        SECTION("88-ACR -- the tape's own clock: full speed empties it, `real` paces it");
+
+        auto image = [](const std::string& s) {
+            return std::make_unique<TapeImage>(std::make_unique<MemoryMedia>(
+                "t", std::vector<uint8_t>(s.begin(), s.end()), false));
+        };
+        // How many bytes a UART pulls off a stream WITHOUT the emulated clock moving --
+        // the whole question is whether the baud gate belongs to the stream or the chip.
+        auto drain = [](Uart1602& u, Clock& clk, int tries) {
+            std::string got;
+            for (int i = 0; i < tries; ++i) {
+                u.poll(clk);
+                if (u.dataAvailable()) got.push_back((char)u.readData());
+            }
+            return got;
+        };
+
+        // FULL SPEED (nsPerByte = 0): the clock never moves and the whole tape comes off.
+        {
+            Clock    clk;
+            auto     tape = image("ABCD");
+            Uart1602 u("acr");
+            u.connect(std::make_unique<TapeStream>(*tape, TapeStream::Mode::Play));
+            CHECK(drain(u, clk, 8) == "ABCD", "full speed: the tape empties with the clock at rest");
+        }
+
+        // REAL: a wall clock I hand it. The first byte is free (the receiver had none in
+        // flight); every one after waits its baud time in that injected wall time, and
+        // NOTHING in the emulated clock (which never moves here) can hurry it.
+        {
+            Clock          clk;
+            uint64_t       nowNs = 1'000'000;      // an arbitrary, controllable 'now'
+            const uint64_t step  = 9'000'000;      // ~one 1200-baud 8N2 byte, in ns
+            auto           tape  = image("ABCD");
+            Uart1602       u("acr");
+            u.connect(std::make_unique<TapeStream>(*tape, TapeStream::Mode::Play, step,
+                                                   [&] { return nowNs; }));
+
+            CHECK(drain(u, clk, 8) == "A", "real: the free first byte, then nothing until wall time moves");
+            nowNs += step;
+            CHECK(drain(u, clk, 8) == "B", "real: one baud time buys exactly one byte");
+            nowNs += step * 5;  // room for five -- but a paced tape never bursts
+            CHECK(drain(u, clk, 8) == "C", "real: a long wait still yields ONE byte, not a burst");
+            nowNs += step;
+            CHECK(drain(u, clk, 8) == "D", "real: ...and the next baud time the next one");
+        }
+
+        // FOUR TIMES SLOWER IS NOT A NO-OP: a 300-baud interval still holds the second
+        // byte across a wait a 1200-baud tape would have released it in.
+        {
+            Clock          clk;
+            uint64_t       nowNs = 0;
+            const uint64_t fast = 9'000'000, slow = fast * 4;
+            auto           tf = image("AB");
+            auto           ts = image("AB");
+            Uart1602       uf("fast"), us("slow");
+            uf.connect(std::make_unique<TapeStream>(*tf, TapeStream::Mode::Play, fast, [&] { return nowNs; }));
+            us.connect(std::make_unique<TapeStream>(*ts, TapeStream::Mode::Play, slow, [&] { return nowNs; }));
+            (void)drain(uf, clk, 4);  // take the free first byte off each
+            (void)drain(us, clk, 4);
+            nowNs += fast + 1;        // one 1200-baud interval
+            CHECK(drain(uf, clk, 4) == "B", "1200 baud: the second byte has arrived");
+            CHECK(drain(us, clk, 4) == "",  "300 baud: the same wait is not enough -- four times slower");
+        }
     }
 }

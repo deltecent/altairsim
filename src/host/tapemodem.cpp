@@ -20,8 +20,18 @@ TapeFormat kcs300() {
 TapeFormat cuts1200() {
     TapeFormat f;
     f.name = "cuts1200";
-    f.markHz = 2400; f.spaceHz = 1200; f.baud = 1200;
-    f.cycleCounted = true; f.stopBits = 2;
+    // GENUINE PT CUTS, 1200-baud mode: mark = 1200 Hz, space = 600 Hz -- NOT the
+    // 2400/1200 of Kansas City. A bit is 0.833 ms either way (1200 baud), which makes a
+    // mark ONE cycle of 1200 Hz and a space a HALF cycle of 600 Hz. That half-cycle is
+    // why this is `cycleCounted = false` (hold the tone for the cell) and not the
+    // integer-cycle Kansas City scheme: the cell is not a whole number of space cycles,
+    // and forcing it to be would double the space's length and break the bit rate. The
+    // 2400/1200 tones belong to this same card's OTHER mode -- 300-baud KCS, see
+    // kcs300() -- which is the confusion the code carried until it was measured against
+    // real hardware. (H. Holden, "The SOL-20 Computer's Cassette interface", 2018;
+    // matches all five deramp.com Sol dubs at 1200/600 Hz. reference/Sol-20.md.)
+    f.markHz = 1200; f.spaceHz = 600; f.baud = 1200;
+    f.cycleCounted = false; f.stopBits = 2;
     return f;
 }
 
@@ -45,6 +55,11 @@ const TapeFormat* byName(const std::string& n) {
 }
 
 } // namespace tapeformats
+
+const char* waveformName(Waveform w) { return w == Waveform::Sine ? "sine" : "square"; }
+Waveform    waveformByName(const std::string& s) {
+    return s == "sine" ? Waveform::Sine : Waveform::Square;
+}
 
 namespace {
 
@@ -241,10 +256,11 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     //
     // The tones are the ACTUAL fundamentals present, derived from the measured crossing
     // spacing as rate/(2*interval): recovered cassette audio is a sine (two crossings a
-    // cycle), and a Sol dub often sits an octave below nominal -- 600/1200 Hz where the
-    // format names 1200/2400. The perCycle fit above answered a different question (is
-    // this even our format, within tolerance); the matched filter needs the frequency
-    // the energy is really at, and that is the crossing rate halved.
+    // cycle), and its exact frequency is not the nominal one. It drifts with tape speed,
+    // and a dub may be at another speed entirely -- so the matched filter measures rather
+    // than assumes. The perCycle fit above answered a different question (is this even
+    // our format, within tolerance); the matched filter needs the frequency the energy is
+    // really at, and that is the crossing rate halved.
     const double markF  = double(a.rate) / (2.0 * ivMark);
     const double spaceF = double(a.rate) / (2.0 * ivSpace);
     const double wM = 2.0 * 3.14159265358979 * markF  / a.rate;
@@ -333,8 +349,9 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     // wrong by the stop bit, which is the deletion that desyncs a block. So every contiguous
     // byte MEASURES its own length -- the refined start of the next character is exactly
     // `frameBits` cells past this one -- and eases `sp` toward it. Speed is not the tone
-    // (the octave ambiguity forbids reading it there) but the DATA rate, and the data rate
-    // is what the frame spacing is. A tape at a steady 3% is tracked within a byte or two;
+    // (a sine trips the comparator twice a cycle and a sawtooth once, so the tone reads a
+    // factor of two off from shape alone) but the DATA rate, and the data rate is what the
+    // frame spacing is. A tape at a steady 3% is tracked within a byte or two;
     // one that drifts is followed. The blend is slow enough that a single mis-refined start
     // cannot yank the clock, and the update is clamped to a sane band around the nominal.
     const double frameBits = 1.0 + f.dataBits + f.stopBits;
@@ -400,7 +417,8 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
 
 // ---------------------------------------------------------------------------
 AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
-                     uint32_t rate, double leaderSeconds, double trailerSeconds) {
+                     uint32_t rate, double leaderSeconds, double trailerSeconds,
+                     Waveform wave) {
     AudioBuffer a;
     a.rate = rate ? rate : 44100;
 
@@ -415,15 +433,49 @@ AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
     // means the error never accumulates past half a sample.
     double want = 0.0;
 
-    // A sine, not a square: a square's harmonics are what a real recorder's bandwidth
-    // removes anyway, and a decoder that sees them may count them as cycles.
+    // THE WAVEFORM. Square by default, because that is what the real Sol-PC and 88-ACR
+    // modems lay down -- and what a genuine dub sounds like: a square carries more energy
+    // than a sine at the same amplitude, which is the loudness difference an ear hears.
+    //
+    // BUT A ROUNDED SQUARE, NOT AN IDEAL ONE, and that is not a compromise -- it is the
+    // hardware. A real modem is a flip-flop into an RC network; its edges are curved and
+    // its harmonics roll off. An IDEAL square is worse than merely inauthentic here: its
+    // high odd harmonics fold past Nyquist at cassette rates (a 2400 Hz mark's 3rd harmonic
+    // aliases below 11 kHz) and land in the matched filter's bins as energy that was never
+    // at that frequency, and its half-cycle CUTS "0" becomes a broadband click. Both wreck
+    // the very round trip a writer exists to survive -- measured: an ideal square failed to
+    // decode its own tape back at every rate. So `Square` is synthesized from a few odd
+    // harmonics, each kept below Nyquist: audibly square, and its fundamental reads back
+    // clean. `Sine` is the smooth, quieter alternative.
+    constexpr double kPi   = 3.14159265358979;
+    constexpr int    kHarm = 5;  // odd harmonics 1,3,5,7,9 -- squarish, still band-limited
     auto tone = [&](double hz, double seconds) {
         want += seconds * a.rate;
-        const double dp = 2.0 * 3.14159265358979 * hz / a.rate;
+        const double dp  = 2.0 * kPi * hz / a.rate;
+        const double nyq = 0.45 * a.rate;
+        // A SEGMENT SHORTER THAN ONE CYCLE HAS NO SQUARE. The genuine CUTS "0" is a HALF
+        // cycle of 600 Hz -- there is no flat top to it, so "square" is meaningless, and
+        // stamping harmonics onto that half-hump is exactly what turned it into a
+        // broadband click the matched filter misread (byte-wrong round trips, measured).
+        // Emit it as the clean half-hump the hardware's RC filter would round it into
+        // anyway. Full-cycle tones (every mark, and all of KCS/FSK) still go square.
+        const bool square = (wave == Waveform::Square) && (hz * seconds >= 0.9);
         while (double(a.s.size()) < want) {
-            a.s.push_back(float(0.8 * std::sin(phase)));
+            double v;
+            if (square) {
+                double sum = 0.0;
+                for (int h = 0; h < kHarm; ++h) {
+                    const double k = 2.0 * h + 1.0;  // 1, 3, 5, ...
+                    if (k * hz >= nyq) break;        // never synthesize past Nyquist
+                    sum += std::sin(k * phase) / k;
+                }
+                v = std::clamp(sum * (4.0 / kPi), -1.0, 1.0);  // ~unit fundamental
+            } else {
+                v = std::sin(phase);
+            }
+            a.s.push_back(float(0.8 * v));
             phase += dp;
-            if (phase > 2.0 * 3.14159265358979) phase -= 2.0 * 3.14159265358979;
+            if (phase > 2.0 * kPi) phase -= 2.0 * kPi;
         }
     };
 
@@ -435,9 +487,9 @@ AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
             // is a WHOLE NUMBER of cycles; carrying phase across the boundary produces
             // a partial cycle at every tone change, and that fragment is neither
             // tone's length, so the receiver cannot classify it. At 300 baud (8 or 4
-            // cycles a bit) one bad fragment is lost in the crowd -- at 1200 baud,
-            // where a bit is one or two cycles, it IS the bit. Continuous FSK is the
-            // opposite case and keeps the carry: see the else branch.
+            // cycles a bit) one bad fragment is lost in the crowd. kcs300 is the only
+            // cycle-counted format we carry; the hold-for-the-cell branch keeps the
+            // phase carry -- see the else branch.
             phase = 0.0;
             // Kansas City: a whole number of cycles, so the cell is exactly 1/baud
             // only if the tones divide evenly -- which is the point of choosing them
@@ -446,8 +498,12 @@ AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
             const double cycles = std::max(1.0, std::floor(hz / f.baud + 0.5));
             tone(hz, cycles / hz);
         } else {
-            // Continuous FSK: hold the tone for the bit time and let the cycle fall
-            // where it may. The phase carry above is what keeps this glitch-free.
+            // HOLD THE TONE FOR THE BIT and let the cycle fall where it may -- the phase
+            // carry above keeps it glitch-free. This is the 88-ACR's continuous FSK AND
+            // the Sol's 1200-baud CUTS: a mark holds one 1200 Hz cycle and a space a HALF
+            // cycle of 600 Hz, which is exactly what falls out of holding each tone for
+            // one 833 us cell. The half-cycle "0" is genuine CUTS (Manchester-style), not
+            // an approximation -- see reference/CUTS Assembly and Test.md.
             tone(hz, 1.0 / f.baud);
         }
     };

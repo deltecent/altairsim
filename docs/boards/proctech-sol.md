@@ -126,11 +126,19 @@ deck with its motor off is not a slow line, it is *no* line: nothing comes off i
   tape turned out to be. A multi-file tape re-recorded here comes back as one continuous
   run: the decoded byte stream holds no file boundaries, so the gaps between SOLOS files
   cannot be recovered — only put back deliberately.
+- **The recorded carrier is shaped by `waveform`** — `square` (default) or `sine`, per deck.
+  A real Sol-PC modem is a flip-flop into an RC filter, so `square` (a band-limited square,
+  rounded the way that filter rounds it) is both the authentic shape and the louder, fuller
+  sound of a genuine dub; `sine` is the smoother, quieter tone. It is audible only: either shape
+  demodulates back to the same bytes, so it changes how a recording sounds and not what it holds.
+  An *ideal* square is not offered — its harmonics alias at cassette rates and its half-cycle
+  CUTS *0* becomes a click, both of which break the round trip (`src/host/tapemodem.cpp`).
 - **Two speeds, honestly, and nothing else.** `auto` picks between `cuts1200` and `kcs300`
   by which one the tape actually carries, because both really are this hardware — the
   guest chooses between them at `OUT 0FAh` D5. An 88-ACR tape (2400/1850 Hz FSK) is
-  *refused*, with its measured tones named: this demodulator is built around a 1200 Hz
-  space tone, and a real Sol fed one of those tapes would read nothing at all.
+  *refused*, with its measured tones named: this demodulator is built around the CUTS tones
+  (1200/600 Hz at 1200 baud, 2400/1200 Hz for the Kansas City mode), and a real Sol fed an
+  ACR tape — with its 1850 Hz space — would read nothing at all.
 - **Both motors on is not modeled; deck 1 wins.** On the real machine both transports
   move and both preamps drive one audio bus, which the manual does not describe and no
   program does on purpose. Picking one beats inventing what a shorted line sounds like.
@@ -138,6 +146,15 @@ deck with its motor off is not a slow line, it is *no* line: nothing comes off i
   it — the UART pulls a byte only when it has room — where a real deck keeps rolling and
   puts data on the floor. The tape framing (`FA` D3) and overrun (`FA` D4) error bits
   therefore exist and always read 0: there is no line to have noise on.
+- **The cassette runs on its own clock, not the CPU's** — a per-deck `rate` property.
+  `full` (default) empties the tape as fast as the guest reads it, at any `clock_hz`; `real`
+  paces playback in wall time at the guest-selected baud (`FA` D5). This is the decoupling
+  the 88-ACR grew for the same reason (see its `.md`): the old emulated-`charTStates` pacing
+  fused the tape's wall-clock speed to the crystal, so a Sol at its authentic 2.045 MHz was
+  made to sit through a ~40 s load. The bit that reads the tape (`IN 0FBH`) and the *status*
+  read (`IN 0FAH`) both advance the receiver now, exactly as the serial half already did — so
+  the loader's own polling clocks the tape at full speed, and `real` holds each byte to its
+  baud on the wall clock instead. D5 still **selects** 300 vs 1200; it is what `real` paces to.
 - **`RESET` stops both motors** (the latch behind `FAh` clears) but does not eject a
   cassette or move a head. Pressing RESET is not the same as opening the deck.
 - **There is no rewind bit, and there was none.** The guest can start and stop a motor;
@@ -158,8 +175,10 @@ deck with its motor off is not a slow line, it is *no* line: nothing comes off i
   keyboard poll (not looping).
 - The cassette, in the same file: a tape plays only while its motor turns; the motor bits
   pick which of the two decks is on the line; `RECORD` writes through to the host file;
-  a deck refuses `CONNECT` and says to `MOUNT` instead; and `OUT 0FAh` D5 really is four
-  times slower rather than a bit that is merely remembered.
+  a deck refuses `CONNECT` and says to `MOUNT` instead; the default `rate = full` empties
+  the tape with the emulated clock at rest; and `rate = real` holds the next byte to a
+  **wall clock** that `clock.now()` cannot hurry (`test_88acr.cpp` pins the baud math — 300
+  really is four times slower than 1200 — with an injected clock, so nothing sleeps).
 - **And the round trip, which is the acceptance test for the whole cassette path:** SOLOS
   `SA`ves sixteen bytes to a mounted tape, the operator rewinds, and SOLOS `GE`ts them
   back *to a different address*. SOLOS's own driver writes the leader and header and

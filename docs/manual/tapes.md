@@ -13,7 +13,7 @@ hardware:
 | What it is | An S-100 card you plug into an Altair | Built into the Sol-PC motherboard |
 | Board id | `acr` | part of `sol` |
 | Units | one — `tape` | two — `tape1`, `tape2` |
-| Modulation | `fsk300` (2400/1850 Hz) | `cuts1200`, `kcs300` (Kansas City, 2400/1200 Hz) |
+| Modulation | `fsk300` (2400/1850 Hz) | `cuts1200` (1200/600 Hz), `kcs300` (Kansas City, 2400/1200 Hz) |
 | Speed | 300 baud, soldered | 300 or 1200, the *guest* picks |
 | Motor control | none | yes, `OUT 0FAh` |
 
@@ -144,6 +144,28 @@ once.
 altairsim> REW acr0:tape
 ```
 
+### `rate = full | real`
+
+**The cassette carries its own clock, and by default it runs flat out.** `rate = full` — the
+default — hands the guest each byte the moment it is ready to read the next one, so a tape
+loads in about a second whatever speed the CPU is set to. This is almost always what you want:
+a program you are trying to run should not make you wait for a recorder that has been gone for
+forty years.
+
+```
+altairsim> SET sol0:tape1 rate=real
+```
+
+`rate = real` paces playback in **real wall-clock time** at the tape's baud — 1200 or 300 —
+so a load takes as long as it took on the day. Set it when the *wait itself* is the point: a
+demo, a screen recording, the sound of the thing. It is playback only; recording takes as long
+as the guest drives it either way.
+
+**What this is *not* is the CPU clock.** The tape's clock and the processor's are separate
+crystals on the real hardware, and they are separate here — see *Speed* below. A faster or
+slower CPU no longer drags the tape with it; `rate` is the only thing that governs how fast a
+tape plays.
+
 ## Audio tapes — `.WAV`
 
 Most surviving Altair and Sol cassettes are not files of bytes. They are **audio**: somebody
@@ -190,11 +212,12 @@ acr0: examples/sol/TRK80.WAV: this board's modem cannot hear that tape -- it car
 This is deliberate, and it is not the simulator being fussy.
 
 Not all published Altair cassette audio is in the 88-ACR's modulation. The ACR uses
-**2400/1850 Hz FSK**; plenty of archive tapes — the Sol's included — are **Kansas City**, at
-2400/1200. The demodulator here measures the tones actually on the tape, so it *could* read
-the Kansas City ones perfectly well — but a real 88-ACR could not. Its demodulator is a PLL
-centred at 2125 Hz with about ±100 Hz of range, and a 1200 Hz tone is nowhere near that. A
-real card fed that tape does not read it badly; it reads **nothing**.
+**2400/1850 Hz FSK**; plenty of archive tapes are **Kansas City** (2400/1200 Hz), and the Sol's
+own CUTS tapes are an octave lower still — **1200/600 Hz** at its default 1200 baud. The
+demodulator here measures the tones actually on the tape, so it *could* read them perfectly well
+— but a real 88-ACR could not. Its demodulator is a PLL centred at 2125 Hz with about ±100 Hz of
+range, and a 1200 Hz (let alone 600 Hz) tone is nowhere near that. A real card fed that tape does
+not read it badly; it reads **nothing**.
 
 Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
 produced. So the board says what the tape is instead, and you go find a machine that reads it.
@@ -241,6 +264,17 @@ Set either to `0` to trim the file to its data — which is what the published a
 files are, and why they will not load on real hardware. Even then a floor of sixteen bit times
 goes on each end, because a start bit is found by its **edge**: a tape that opened on the start
 bit itself would lose its first byte.
+
+**The carrier can be shaped like the real hardware, or smoothed.** A third property, `waveform`,
+chooses how the tone is drawn when audio is written back:
+
+| Property | Default | Choices | What it does |
+|---|---|---|---|
+| `waveform` | `square` | `square` \| `sine` | `square` is what the real modem lays down — a fuller, louder tone that sounds like a genuine cassette dub. `sine` is a smoother, quieter tone. |
+
+It is audible, not structural: a tape written either way decodes back to the same bytes, so this
+changes how the recording **sounds**, never what it holds. `square` is the default because it is
+the closer match to a real recorder.
 
 **A multi-file tape comes back as one continuous run.** The decoded bytes carry no file
 boundaries, so the gaps a real operator left between programs are not reproduced.
@@ -346,27 +380,34 @@ The front-panel chapter says where they live.
 
 ### Speed, and what the crystal actually buys you
 
-**The machine runs flat out by default.** A cassette that took a real Altair about **110
-seconds** to load comes off the tape in **about one**.
+**The machine runs flat out by default, and so does the tape.** A cassette that took a real
+Altair about **110 seconds** to load comes off the tape in **about one**.
 
-You can have the 110 seconds back:
+**The tape and the CPU are on separate clocks — as they were in the hardware.** The processor's
+speed is `clock_hz` on the CPU card; the tape's is `rate` on the deck (above). Setting the CPU
+back to a real 2 MHz:
 
 ```
 altairsim> SET cpu0 clock_hz=2000000
 ```
 
-That is the real 2 MHz Altair, and the tape now takes as long as a tape took.
+buys back the period *feel of the machine* — a game plays at the speed it was played at — but
+it **no longer drags the tape with it**. If you want the load itself to take as long as a load
+took, that is a separate switch:
 
-Here is the part worth understanding. **What the guest sees is identical either way.** The
-tape costs the same number of T-states whichever way you run it — the ACR is clocked in
-T-states, not in wall-clock seconds, and 300 baud means *this many T-states per bit* no matter
-how fast those T-states are going past. The bytes arrive in the same order with the same gaps
-between them, measured in the only clock the guest has.
+```
+altairsim> SET acr0:tape rate=real
+```
 
-So **the crystal buys you period *feel*, not period *behaviour*.** If you want to watch the
-tape load at the speed your uncle watched it load, set it. If you want your BASIC prompt, do
-not. Nothing inside the machine can tell the difference, and no program from the period ever
-could.
+Here is the part worth understanding. In `rate = full`, **what the guest sees is identical**
+whatever the CPU clock: the ACR is clocked in T-states, and a byte is simply ready whenever the
+guest asks for the next — no program from the period could tell, because a polled loader only
+ever asked. In `rate = real`, the gaps are paced in real seconds instead, off a wall clock the
+CPU speed cannot touch — which is the one and only way to make a load take *wall-clock* time.
+
+So **`clock_hz` buys period feel for the processor; `rate = real` buys it for the tape.** They
+are independent, because on a Sol-20 or an Altair the cassette UART and the CPU each ran off
+their own crystal, and neither could hurry the other.
 
 ## {{NAME_DISKBASIC}}
 

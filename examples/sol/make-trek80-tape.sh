@@ -125,11 +125,15 @@ echo "TRK80-solos.TAP: $(wc -c < TRK80-solos.TAP | tr -d ' ') bytes"
 
 # ---- 3. THE AUDIO. ---------------------------------------------------------------------
 #
-# cuts1200 at 22050 Hz, 3 s of leader and 2 s of trailer. The leader is not decoration:
+# cuts1200 at 44100 Hz, 3 s of leader and 2 s of trailer, in the default SQUARE waveform --
+# what a real Sol modem lays down, and the louder, fuller sound of a genuine dub (pass a
+# trailing `sine` to encode for the smoother tone instead). The leader is not decoration:
 # a real deck needs tone before the data to lock on, and the trailer keeps the last byte
-# off the end of the file. Decodes back byte-identical with 0 framing errors -- which the
-# check below insists on, because a WAV that merely EXISTS is not a WAV that loads.
-"$TAPETOOL" encode TRK80-solos.TAP TRK80-solos.WAV cuts1200 22050 3 2
+# off the end of the file. 44.1 kHz because genuine CUTS encodes a "0" as a half cycle of
+# 600 Hz, which wants oversampling to read back exactly (reference/CUTS Assembly and
+# Test.md). Decodes back byte-identical with 0 framing errors -- which the check below
+# insists on, because a WAV that merely EXISTS is not a WAV that loads.
+"$TAPETOOL" encode TRK80-solos.TAP TRK80-solos.WAV cuts1200 44100 3 2
 "$TAPETOOL" decode TRK80-solos.WAV "$work/roundtrip.bin" cuts1200
 cmp TRK80-solos.TAP "$work/roundtrip.bin"
 echo "TRK80-solos.WAV: $(wc -c < TRK80-solos.WAV | tr -d ' ') bytes, round-trips byte-identical"

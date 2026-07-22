@@ -47,9 +47,10 @@ bool AudioTapeMedia::resize(uint64_t n) {
     return true;
 }
 
-void AudioTapeMedia::setEncoding(double leaderSeconds, double trailerSeconds) {
+void AudioTapeMedia::setEncoding(double leaderSeconds, double trailerSeconds, Waveform wave) {
     leader_  = leaderSeconds;
     trailer_ = trailerSeconds;
+    wave_    = wave;
 }
 
 // RE-MODULATE THE WHOLE TAPE AND REWRITE THE FILE. Not a punch-in: the audio for byte N
@@ -71,7 +72,7 @@ bool AudioTapeMedia::commit(std::string& err) {
         return false;
     }
 
-    const AudioBuffer          a   = modulate(bytes_, fmt_, rate_, leader_, trailer_);
+    const AudioBuffer          a   = modulate(bytes_, fmt_, rate_, leader_, trailer_, wave_);
     const std::vector<uint8_t> wav = buildWav(a);
 
     if (!under_->resize(wav.size())) {

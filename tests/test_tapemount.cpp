@@ -19,7 +19,7 @@
 //     actually tested rather than merely commented.
 //
 //   * A REFUSAL MUST SAY WHAT THE TAPE IS. "Cannot mount" sends the operator to the
-//     source; "it carries 2400/1200 Hz and this card reads fsk300" ends it.
+//     source; "it carries a Kansas-City-ish tone pair and this card reads fsk300" ends it.
 //
 //   * A RECORDING MUST SURVIVE A ROUND TRIP, and must not leave the OLD tape behind it
 //     when it is shorter. Re-encoding rewrites the whole file, so a missing truncate
@@ -252,8 +252,13 @@ void test_tapemount() {
         CHECK(!r.acr->mount("tape", "KANSAS.WAV", false, err),
               "the 88-ACR refuses a Kansas City tape");
         CHECK(r.acr->tape() == nullptr, "and nothing is in the recorder afterwards");
+        // A genuine 1200-baud CUTS tape carries 1200/600 Hz (its "0" a half cycle of 600).
+        // The ACR's demodulator, reading under its own sawtooth assumption, doubles that to
+        // ~2330/1310 Hz: a mark near Kansas City's 2400 but a space nowhere near the ACR's
+        // 1850, which is exactly why it is refused. The refusal quotes what it measured.
         const std::vector<double> tones = tonesIn(err);
-        CHECK(tones.size() == 2 && near(tones[0], 2400) && near(tones[1], 1200),
+        CHECK(tones.size() == 2 && near(tones[0], 2400, 0.06) &&
+                  tones[1] > 1150 && tones[1] < 1500,
               "and the refusal quotes the tones the tape actually carries");
         CHECK(mentions(err, "fsk300"), "and names what this card does read");
     }
