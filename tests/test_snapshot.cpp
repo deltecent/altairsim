@@ -125,9 +125,18 @@ void test_snapshot() {
         CHECK(m.snapshot(p1, err), "first snapshot writes");
         CHECK(m.snapshot(p2, err), "second snapshot writes");
 
-        std::ifstream f1(p1, std::ios::binary), f2(p2, std::ios::binary);
-        std::vector<uint8_t> b1((std::istreambuf_iterator<char>(f1)), {});
-        std::vector<uint8_t> b2((std::istreambuf_iterator<char>(f2)), {});
+        std::vector<uint8_t> b1, b2;
+        {
+            // Scope the streams so they CLOSE before the remove() below. On Windows a
+            // file that is still open cannot be deleted, and the throwing
+            // std::filesystem::remove then throws filesystem_error -- which on Unix it
+            // never does, because unlinking an open file is legal there. Reading the
+            // bytes in a nested scope closes the handles first and keeps the cleanup
+            // portable. (This is why the Windows unit binary faulted with 0xC0000409.)
+            std::ifstream f1(p1, std::ios::binary), f2(p2, std::ios::binary);
+            b1.assign(std::istreambuf_iterator<char>(f1), {});
+            b2.assign(std::istreambuf_iterator<char>(f2), {});
+        }
         CHECK(!b1.empty() && b1 == b2, "two snapshots of one state are identical bytes");
         std::filesystem::remove(p1);
         std::filesystem::remove(p2);
