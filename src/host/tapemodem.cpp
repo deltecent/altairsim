@@ -54,7 +54,7 @@ namespace {
 // The three defences against real media, in order. Each exists because a recovered
 // cassette signal breaks a decoder that omits it -- see the header.
 // ---------------------------------------------------------------------------
-std::vector<double> crossings(const AudioBuffer& a) {
+std::vector<double> crossings(const AudioBuffer& a, std::vector<float>* hpOut = nullptr) {
     const size_t n = a.s.size();
     std::vector<double> out;
     if (n < 4 || !a.rate) return out;
@@ -106,6 +106,10 @@ std::vector<double> crossings(const AudioBuffer& a) {
             sign = -1;
         }
     }
+    // The DC-blocked signal is also the input to the matched filter in demodulate():
+    // the crossing detector already paid for the high-pass, so hand it on rather than
+    // computing it twice.
+    if (hpOut) *hpOut = std::move(hp);
     return out;
 }
 
@@ -160,7 +164,8 @@ std::pair<double, double> calibrate(std::vector<double> iv, double ratio) {
 // ---------------------------------------------------------------------------
 DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     DemodResult r;
-    const std::vector<double> cr = crossings(a);
+    std::vector<float> hp;
+    const std::vector<double> cr = crossings(a, &hp);
     if (cr.size() < 4 || !a.rate) return r;
 
     std::vector<double> iv;
@@ -213,13 +218,84 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
         return r;
     }
 
-    const double split = std::sqrt(ivMark * ivSpace);  // the ratio-fair midpoint
-
-    // The level timeline: mark (1) or space (0) at every sample. Built once, so the
-    // framer below can sample any instant in constant time. The idle line is MARK --
-    // that is what an unrecorded stretch of tape sounds like to the card, and it is
-    // what makes the start-bit hunt below terminate at the end of the tape.
     const size_t n = a.s.size();
+    double       sp = double(a.rate) / f.baud;  // samples per bit -- the NOMINAL rate. It
+    if (sp < 2.0) return r;                      // is adapted to the real one below, because
+    const double spNominal = sp;                 // a tape running 3% fast has a 3% short bit
+
+    // ---- Stage 5a: the TONE DISCRIMINATOR IS A MATCHED FILTER, not a slicer. ------
+    //
+    // The obvious discriminator classifies each zero-crossing interval as mark or space
+    // by its length. It works on our own clean re-encodes and FAILS on real Sol dubs:
+    // a recovered cassette waveform carries the occasional spurious crossing (a baseline
+    // wobble that clears the hysteresis, an asymmetric half-cycle), and one stray
+    // crossing splits a long space interval into two short ones -- flipping the whole
+    // bit to mark. On the deramp.com corpus that is a wrong byte every few hundred, and
+    // since a SOLOS block carries a checksum that a SINGLE bad byte fails, every one of
+    // those tapes is unloadable while a real Sol reads them without trouble.
+    //
+    // The fix is what the hardware does: integrate over the bit, don't trust one edge.
+    // For each candidate bit centre we run a one-cell Goertzel at the mark tone and at
+    // the space tone and take whichever holds more energy. A lone spurious crossing
+    // barely moves either integral, so the bit is read from the WHOLE cell's shape.
+    //
+    // The tones are the ACTUAL fundamentals present, derived from the measured crossing
+    // spacing as rate/(2*interval): recovered cassette audio is a sine (two crossings a
+    // cycle), and a Sol dub often sits an octave below nominal -- 600/1200 Hz where the
+    // format names 1200/2400. The perCycle fit above answered a different question (is
+    // this even our format, within tolerance); the matched filter needs the frequency
+    // the energy is really at, and that is the crossing rate halved.
+    const double markF  = double(a.rate) / (2.0 * ivMark);
+    const double spaceF = double(a.rate) / (2.0 * ivSpace);
+    const double wM = 2.0 * 3.14159265358979 * markF  / a.rate;
+    const double wS = 2.0 * 3.14159265358979 * spaceF / a.rate;
+    // ONE BIT CELL, RECTANGULAR, NOT WINDOWED -- and the window width tracks `sp`, which
+    // the framer eases toward the real tape speed below. Rectangular is deliberate: a cell
+    // is a WHOLE number of both tones (the 2:1 ratio and the cycle count guarantee it -- at
+    // any rate, a cuts mark cell is two mark periods and one space period), so a plain
+    // integral over exactly the cell makes the two tones ORTHOGONAL and a pure mark scores
+    // zero in the space bin. A Hann taper would break that integer-period orthogonality and
+    // bleed a space tone into the mark bin -- invisible at 44 kHz, a wrong bit at 11 kHz
+    // where a cell is only nine samples and there is no resolution to spare.
+    auto energy = [&](double centre, double w) -> double {
+        const double halfWin = 0.5 * sp;
+        long lo = long(std::floor(centre - halfWin));
+        long hi = long(std::ceil(centre + halfWin));
+        if (hi - lo < 2) return 0.0;
+        double re = 0.0, im = 0.0;
+        for (long i = lo; i < hi; ++i) {
+            if (i < 0 || i >= long(n)) continue;
+            const double ang = w * double(i);
+            re += double(hp[size_t(i)]) * std::cos(ang);
+            im += double(hp[size_t(i)]) * std::sin(ang);
+        }
+        return std::hypot(re, im);
+    };
+    auto isMark  = [&](double c) { return energy(c, wM) >= energy(c, wS); };
+    // A start bit is space for its whole cell and is preceded by mark (idle, or the
+    // stop bits of the previous character). Both halves checked, as the old slicer did.
+    auto isStart = [&](double p) { return !isMark(p + 0.5 * sp) && isMark(p - 0.5 * sp); };
+    // Re-anchor to the actual mark->space edge within +/-0.4 bit, so phase never drifts
+    // more than a fraction of a cell into the character however the coarse anchor landed.
+    auto refine = [&](double p) -> double {
+        double best = -1.0, bp = p;
+        for (double o = -0.4; o <= 0.4 + 1e-9; o += 0.1) {
+            const double q = p + o * sp;
+            if (isMark(q - 0.5 * sp) && !isMark(q + 0.5 * sp)) {
+                const double sc = (energy(q - 0.5 * sp, wM) - energy(q - 0.5 * sp, wS)) -
+                                  (energy(q + 0.5 * sp, wM) - energy(q + 0.5 * sp, wS));
+                if (best < 0.0 || sc > best) { best = sc; bp = q; }
+            }
+        }
+        return bp;
+    };
+
+    // ---- Stage 5b: candidate start edges, for lock and re-acquire. ----------------
+    //
+    // A coarse level timeline (interval < split = mark) still gives the list of places a
+    // character can BEGIN -- it does not have to be right about every bit, only to mark
+    // the falling edges. The matched filter above decides what the bits actually are.
+    const double split = std::sqrt(ivMark * ivSpace);
     std::vector<uint8_t> lev(n, 1);
     for (size_t i = 1; i < cr.size(); ++i) {
         const uint8_t v = ((cr[i] - cr[i - 1]) < split) ? 1 : 0;
@@ -228,84 +304,96 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
         if (e > n) e = n;
         for (size_t j = b; j < e; ++j) lev[j] = v;
     }
-
-    // ---- Stage 5: the UART framer. -----------------------------------------------
-    //
-    // Shared by both schemes, because both hand it the same thing: a line that is
-    // mark or space at every instant.
-    const double sp = double(a.rate) / f.baud;  // samples per bit
-    if (sp < 2.0) return r;                     // baud too high for this rate
-
-    auto L = [&](double x) -> bool {
-        if (x < 0) return true;
-        size_t i = size_t(x);
-        return (i < n) ? (lev[i] != 0) : true;
-    };
-
-    // A BIT IS NOT ONE INSTANT. Sampling the level at the exact centre of the cell
-    // trusts a single classified interval, and the interval that straddles a tone
-    // change belongs to neither tone -- so a bit that follows a transition can be read
-    // from the tail of the tone before it. Integrating across the middle half of the
-    // cell and taking the majority is what a real receiver does with an RC network,
-    // and it is the difference between one wrong byte in four thousand and none.
-    auto bitAt = [&](double centre) -> bool {
-        int votes = 0, mark = 0;
-        for (double d = -0.25; d <= 0.25 + 1e-9; d += 0.1) {
-            ++votes;
-            if (L(centre + d * sp)) ++mark;
-        }
-        return mark * 2 > votes;
-    };
-
-    // EVERY FALLING EDGE ON THE LINE -- i.e. every candidate start bit. Anchoring on
-    // the edge ITSELF, rather than on wherever a coarse scan happened to notice it,
-    // is the whole of the framer's timing accuracy. A hunt that steps in tenths of a
-    // bit and then guesses the edge is half a bit later carries up to half a bit of
-    // phase error into the character; at 1200 baud a bit is under two cycles of tone,
-    // so half a bit is most of a cycle and the last data bits sample the wrong cell.
-    // Re-anchoring here, on every frame, is also what absorbs tape speed error: the
-    // phase only has to survive the ten or eleven bit times of ONE character.
     std::vector<size_t> falls;
     for (size_t i = 1; i < n; ++i)
         if (lev[i - 1] && !lev[i]) falls.push_back(i);
 
-    const double frame = (1.0 + f.dataBits + f.stopBits) * sp;
-    size_t       fi    = 0;
-    double       done  = -1.0;  // end of the last accepted character
+    // ---- Stage 5c: the UART framer, WITH A PREDICTED CLOCK. -----------------------
+    //
+    // SOLOS/CUTS writes its bytes BACK TO BACK -- eleven bit times apart, no gap inside a
+    // record. So once locked, the next start bit is at +11 bits whether or not a clean
+    // falling edge was recovered there. The old framer hunted the edge list for every
+    // start and, on a real dub, would now and then find no edge where a start truly was
+    // (its mark stop bits mis-sliced to space, so no mark->space transition) and DROP the
+    // byte -- a deletion that desynchronises the 256-byte block and every block after it.
+    // Predicting the contiguous start and only falling back to the edge list at a genuine
+    // idle gap is what turns "eight of thirty blocks" into "thirty of thirty".
+    auto firstLock = [&](size_t from) -> double {
+        for (size_t k = from; k < falls.size(); ++k) {
+            const double e = double(falls[k]);
+            if (e + (1.0 + f.dataBits + f.stopBits) * sp < double(n) && isStart(e))
+                return refine(e);
+        }
+        return -1.0;
+    };
 
-    while (fi < falls.size()) {
-        const double e = double(falls[fi]);
-        if (e < done) { ++fi; continue; }          // inside the character just read
-        if (e + frame >= double(n)) break;         // not enough tape left
+    // THE BIT CLOCK ADAPTS TO THE REAL TAPE SPEED. `sp` starts at rate/baud, but a tape
+    // that plays 3% fast has a bit cell 3% short, and the NOMINAL cell would then sample
+    // the eighth data bit a quarter of a cell into the ninth -- correct at the start bit,
+    // wrong by the stop bit, which is the deletion that desyncs a block. So every contiguous
+    // byte MEASURES its own length -- the refined start of the next character is exactly
+    // `frameBits` cells past this one -- and eases `sp` toward it. Speed is not the tone
+    // (the octave ambiguity forbids reading it there) but the DATA rate, and the data rate
+    // is what the frame spacing is. A tape at a steady 3% is tracked within a byte or two;
+    // one that drifts is followed. The blend is slow enough that a single mis-refined start
+    // cannot yank the clock, and the update is clamped to a sane band around the nominal.
+    const double frameBits = 1.0 + f.dataBits + f.stopBits;
 
-        // IS THIS EDGE ACTUALLY A START BIT? An edge in the level timeline can be
-        // manufactured by a SINGLE misclassified interval -- the one that straddles a
-        // tone change is neither tone's length, so it may fall on the wrong side of
-        // the split. A real start bit is space for a whole bit time and is preceded by
-        // mark (idle, or the stop bits of the character before). Checking both costs
-        // two lookups and removes the whole class of false starts; without it, two
-        // bytes in four thousand decoded wrong on a clean synthetic tape.
-        if (bitAt(e + 0.5 * sp) || !bitAt(e - 0.5 * sp)) { ++fi; continue; }
+    // SEED THE CLOCK FROM THE DATA, not the nominal rate, so byte zero is already at the
+    // right speed rather than easing toward it. The spacing between validated start edges
+    // is a whole number of bit cells; divide it out and the median of those quotients is
+    // the real cell, robust to the odd mis-anchored edge. A relabelled sample rate (a tape
+    // played fast) moves every span together, so the median moves with it -- which the
+    // per-cell nominal cannot. Clamped to a sane band so noise never seeds a wild clock.
+    {
+        std::vector<double> cell;
+        double prev = -1.0;
+        for (size_t k = 0; k < falls.size(); ++k) {
+            const double e = double(falls[k]);
+            if (!isStart(e)) continue;
+            if (prev >= 0.0) {
+                const double bits = std::round((e - prev) / spNominal);
+                if (bits >= 1.0 && bits <= frameBits + 1.0) cell.push_back((e - prev) / bits);
+            }
+            prev = e;
+        }
+        if (!cell.empty()) {
+            std::sort(cell.begin(), cell.end());
+            const double med = cell[cell.size() / 2];
+            if (med > 0.8 * spNominal && med < 1.25 * spNominal) sp = med;
+        }
+    }
 
-        // The start bit begins AT the edge, so the data bits sit at 1.5, 2.5 ... bit
-        // times after it and the stop bit at 1.5 + dataBits.
+    size_t       fi  = 0;
+    double       pos = firstLock(0);
+
+    while (pos >= 0.0 && pos + frameBits * sp < double(n)) {
+        const double e = pos;
+
         uint32_t by = 0;
         for (int b = 0; b < f.dataBits; ++b)
-            if (bitAt(e + (1.5 + b) * sp)) by |= (1u << b);  // LSB first
+            if (isMark(e + (1.5 + b) * sp)) by |= (1u << b);  // LSB first
 
-        // ONLY THE FIRST STOP BIT IS CHECKED, and `stopBits` is therefore a MINIMUM.
-        // An 8N2 tape read as 8N1 still frames correctly (the extra stop bit is more
-        // mark, and the hunt skips mark); the reverse would reject every frame. Being
-        // generous is what lets one decoder read tapes whose framing nobody recorded.
-        if (bitAt(e + (1.5 + f.dataBits) * sp)) {
-            r.bytes.push_back(uint8_t(by));
-            done = e + (0.5 + f.dataBits) * sp;  // resume hunting inside the stop bits
+        // ONLY THE FIRST STOP BIT IS CHECKED, so stopBits is a MINIMUM: an 8N2 tape read
+        // as 8N1 still frames. A framing error still yields its eight data bits -- a real
+        // UART latches the byte and merely raises a flag -- so the byte is EMITTED and
+        // counted, never dropped. Dropping it is the deletion that desyncs a block.
+        if (!isMark(e + (1.5 + f.dataBits) * sp)) ++r.framingErrors;
+        r.bytes.push_back(uint8_t(by));
+
+        const double pred = e + frameBits * sp;
+        if (pred + frameBits * sp < double(n) && isStart(pred)) {
+            pos = refine(pred);                 // contiguous next byte: trust the clock
+            const double measured = (pos - e) / frameBits;   // ...but measure the cell it
+            if (measured > 0.8 * spNominal && measured < 1.25 * spNominal)  // just spanned
+                sp += 0.10 * (measured - sp);   // and follow slow drift (wow and flutter)
         } else {
-            // Never emit a suspect byte. Move to the next edge and try again -- the
-            // edge list is already the set of places a character can begin.
-            ++r.framingErrors;
+            // An idle gap (or the end): re-acquire from the next real falling edge, and
+            // forget the tracked speed -- the gap gives no phase to carry across it.
+            while (fi < falls.size() && double(falls[fi]) < pred - 0.5 * sp) ++fi;
+            sp  = spNominal;
+            pos = firstLock(fi);
         }
-        ++fi;
     }
     return r;
 }

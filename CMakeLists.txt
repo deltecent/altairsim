@@ -981,11 +981,13 @@ if(EXPECT_EXECUTABLE)
   #
   # examples/sol is product: a machine file, a tape, and a README telling the reader to type
   # `XE TRK80`. This types it. It is the acceptance test for the SOLOS tape path end to end
-  # -- and, just as importantly, for the TAPE ITSELF, which is DERIVED (make-trek80-tape.sh
-  # has SOLOS write it from the archived .ENT). A SOLOS tape carries a header checksum and
-  # one after every 256-byte block, and a tape with the wrong checksums is INVISIBLE: `CA`
-  # lists nothing, `GE` finds nothing, and no error is printed anywhere. Reading it back
-  # through SOLOS is the only honest check of the derivation.
+  # -- and, for the .WAV media, the REGRESSION TEST for the CUTS demodulator: TRK80.WAV is
+  # Philip Lord's Sol-20 cassette digitization (hosted on deramp.com), which an earlier decoder
+  # garbled (27 framing errors, most of the payload wrong) and the matched-filter decoder now
+  # reads clean. A
+  # SOLOS tape carries a header checksum and one after every 256-byte block, and a tape with
+  # the wrong checksums is INVISIBLE: `CA` lists nothing, `GE` finds nothing, and no error is
+  # printed anywhere. Reading it back through SOLOS is the only honest check that it is right.
   #
   # IT NEEDS EXPECT because the verdict is a memory dump. TREK80 paints the VDM-1's screen
   # RAM at 0CC00H and nothing it prints reaches stdout, so the machine has to be stopped

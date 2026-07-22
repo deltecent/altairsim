@@ -233,12 +233,14 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
     // "OF FRAMES INTACT", NOT "CLEAN". The percentage is bytes/(bytes+framingErrors):
     // it says every frame had its start and stop bits where they belonged, and it says
     // NOTHING about whether the eight bits between them are the ones that were recorded.
-    // The two come apart badly. deramp.com's archived TRK80.WAV frames at 99.7% and yet
-    // 6,778 of its 7,840 payload bytes are wrong -- a tape that is sound as SIGNAL (the
-    // CUTS timings in reference/Sol-20.md were measured off it) and unusable as DATA.
-    // Called "clean" that number reads as a verdict on the recording, which is the one
-    // thing it cannot give. Named for what it measures, it is honest and still scales
-    // the framing-error count against the confidence floor.
+    // The two can come apart, and this exact tape once proved it: an earlier demodulator
+    // read Philip Lord's TRK80.WAV recording at 99.7% framing yet got 6,778 of its 7,840
+    // payload bytes wrong (the CUTS timings in reference/Sol-20.md were measured off it even
+    // then). This decoder now reads that recording clean, but the number's meaning is
+    // unchanged -- it is a verdict on the carrier, not on the bits the carrier held.
+    // Called "clean" it would read as a verdict on the recording, which is the one thing
+    // it cannot give. Named for what it measures, it is honest and still scales the
+    // framing-error count against the confidence floor.
     log.push_back(path + ": " + bestFmt.name + ", " + std::to_string(best.bytes.size()) +
                   " bytes, " + std::to_string(best.framingErrors) + " framing errors (" +
                   pct(best.confidence()) + " of frames intact)");

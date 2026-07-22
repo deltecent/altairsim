@@ -121,43 +121,48 @@ grant that had been tied to one website) — <http://www.cpm.z80.de/license.html
 the acceptance tests boot. The rule was never "media is untracked"; it is "*huge* media that is not
 ours is untracked."
 
-## `examples/` — TREK80, and a tape we made ourselves
+## `examples/` — TREK80, off a real Sol-20 cassette
 
 `examples/sol/` ships a Processor Technology **Sol-20** running **TREK80** (© 1977 Processor
-Technology Corp.). Everything there came from the deramp.com MFE archive, fetched 2026-07-19:
+Technology Corp.). All of it was fetched from deramp.com on 2026-07-19 — the image and the manual
+from the MFE archive, the cassette recording from `tape_wav_files`, a set of Sol-20 tape
+digitizations that directory credits to **Philip Lord** ("P. Lord"). deramp.com hosts them; it
+did not make them.
 
 <https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-Processor%20Technology/40-PTC%20Software/63-TREK80/>
 
 | File | Provenance |
 |---|---|
-| `TREK80.ENT` | `…/63-TREK80/Hex Dump/TREK80.ENT` — a SOLOS `ENTER` script: 7,840 bytes loading at `0000`, entry `AF C3 5C 1D`. **This is the authoritative image**, and it is the only tracked *source* in that directory. |
+| `TRK80.WAV` | `…/sol-20/software/tape_wav_files/TRK80.WAV` on deramp.com — a **Sol-20 cassette digitized by Philip Lord**, real 1200-baud CUTS audio. **This is the tape that ships**, and it is the recording `reference/Sol-20.md` measured the CUTS parameters from. |
+| `TRK80.TAP` | The byte stream, `altair_tapetool decode`d from `TRK80.WAV` (`cuts1200`). 7,939 bytes. Committed so the fast-path example needs no audio decode. |
+| `TREK80.ENT` | `…/63-TREK80/Hex Dump/TREK80.ENT` — a SOLOS `ENTER` script: 7,840 bytes loading at `0000`, entry `AF C3 5C 1D`. Kept as the source for the tape-writing demonstration below. |
 | `Trek80 Manual.pdf` | `…/63-TREK80/` — Processor Technology's own manual for the game. |
-| `TRK80.TAP`, `TRK80.WAV` | **Derived**, by `examples/sol/make-trek80-tape.sh`. Not downloaded. |
 
-**Why the tape is derived rather than downloaded, which is the part worth recording.** The archived
-recording (`…/sol-20/software/tape_wav_files/TRK80.WAV` on deramp.com) decodes to 7,932 bytes with
-**27 framing errors**, and those errors desynchronize the byte stream: **6,778 of 7,840 payload
-bytes are wrong**, and the entry point reads `00 00 00 00` instead of `AF C3 5C 1D`. It cannot be
-loaded. (It is still historically important — it is byte-identical to the recording
-`reference/Sol-20.md` measured the CUTS parameters from.) The MFE archive's MP3 is a different dub
-of a different build (8,285 bytes, 31 errors) and is no better.
+**Reading Lord's real recording was the whole point, and it now reads clean.** `TRK80.WAV`
+decodes to **7,939 bytes with 0 framing errors** — a valid SOLOS tape: `01` sync, name `TRK80`,
+`SIZE` field `1EA0`, header checksum `D9`, the payload matching the `.ENT` image. That was **not**
+always true. Until the demodulator fix (`src/host/tapemodem.cpp`; TODO's *CUTS demod* entry), the
+decoder classified each half-cycle interval and sliced it, and on a dub recorded an octave low —
+the 1-to-2-crossings-per-bit regime a real Sol tape sits in — it desynchronized: **27 framing
+errors, 6,778 of 7,840 payload bytes wrong**, the entry point reading `00 00 00 00`. The tape was
+effectively invisible. The matched-filter decoder measures which tone's energy fills each cell and
+reads it byte-for-byte. `acceptance-trek80-wav` is that regression, run against this exact file.
 
-A SOLOS cassette also cannot be hand-assembled: it carries a header checksum and one after every
-256-byte block, and a tape whose checksums are wrong is **invisible** — `CA` lists nothing, `GE`
-never finds the file, and nothing prints an error. So the tape is written **by SOLOS itself**:
+(The MFE archive's separate **MP3** is a different, lossy dub of a different build — 8,285 bytes,
+31 errors — and is not the tape here.)
 
-1. convert `TREK80.ENT` to Intel HEX;
-2. `LOAD` it into a running Sol-20, mount a blank `.TAP` in record mode;
-3. `SA TRK80 0000 1E9F 0000` — the fourth argument is the execute address, which is what makes
-   `XE TRK80` work rather than only `GE`;
-4. `UNMOUNT` to commit. Result: 7,939 bytes.
-5. `altair_tapetool encode TRK80.TAP TRK80.WAV cuts1200 22050 3 2` → a 3.4 MB WAV with **0** framing
-   errors that decodes back byte-identical.
-
-The cross-check that the result is the real artifact and not merely a plausible one: the header
-checksum SOLOS computes is `D9`, the same byte in the same position as on the genuine archived tape,
-whose `SIZE` field (`1EA0`) also agrees with the `.ENT`. `acceptance-trek80` reads the tape back
-through SOLOS, for both media, which is the only honest test of a derivation like this.
+**The tape used to be synthesized, and the machinery is kept as a demonstration.** Because that
+recording could not be read, the example tape was once *written by SOLOS itself* — `TREK80.ENT`
+loaded into a running Sol-20 and `SA`ved back out (`make-trek80-tape.sh`). That workaround is no
+longer needed and no longer ships, but the script and the `.ENT` are kept, because they show the
+one thing that has to be true for any SOLOS tape to load: a SOLOS cassette carries a header checksum
+and one after every 256-byte block, and a tape whose checksums are wrong is **invisible** — `CA`
+lists nothing, `GE` never finds the file, and nothing prints an error. The script now writes to a
+**separate output** (`TRK80-solos.*`) so it never overwrites the shipped recording, and its own
+cross-check is the proof that both are the genuine artifact: the header checksum SOLOS computes is
+`D9`, the same byte Lord's recording carries in the same position, and the `SIZE` it writes
+(`1EA0`) agrees with the `.ENT`. `acceptance-trek80` reads the tape back through SOLOS for both
+media, which is the honest test either way.
 
 ## Traps, paid for once
 
