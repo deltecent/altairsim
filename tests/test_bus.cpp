@@ -88,4 +88,68 @@ void test_bus() {
         CHECK(m.bus.respondersTo({Cycle::MemRead, 0x0100, 0, false}).size() == 1,
               "the RAM still answers everywhere the ROM is not");
     }
+
+    {
+        // SET BUS UNCLAIMED (DESIGN.md 4.6.1): a guest reaching an I/O port no board
+        // decodes reads 0xFF for ever and hangs -- this names the port and the PC.
+        // I/O only, default Silent, de-duped once per port+direction per run.
+        Machine m;                 // empty backplane: no board decodes anything
+        m.bus.setInstrPc(0x0113);  // what the run loop publishes each instruction
+
+        // Default is Silent -- the whole point is that no existing machine gains a line.
+        m.bus.clearLog();
+        m.bus.ioWrite(0xFE, 0x01);
+        CHECK(m.bus.drain().empty(), "SILENT is the default -- an unclaimed OUT says nothing");
+        CHECK(!m.bus.takeUnclaimedHalt(), "and it does not arm a halt");
+
+        // WARN names the port, the PC, the byte and the direction, in the doc's words.
+        m.bus.setUnclaimedPolicy(Unclaimed::Warn);
+        m.bus.clearLog();
+        m.bus.ioWrite(0xFE, 0x01);
+        CHECK(m.bus.drain().size() == 1, "WARN emits exactly one line for an unclaimed OUT");
+        CHECK(m.bus.drain()[0] ==
+                  "warning: OUT FE <- 01 at PC=0113: no board decodes port 0xFE. "
+                  "reads float to 0xFF.",
+              "and it is the line DESIGN.md 4.6.1 documents, verbatim");
+        CHECK(!m.bus.takeUnclaimedHalt(), "WARN runs on -- it does not arm a halt");
+
+        // De-dup: the same port+direction again this run is silent -- a poll loop on an
+        // absent UART must not bury the console.
+        m.bus.clearLog();
+        m.bus.ioWrite(0xFE, 0x02);
+        CHECK(m.bus.drain().empty(), "the SAME port+direction warns once per run, not every time");
+
+        // The other direction on the same port is a different fact, and IS reported.
+        m.bus.clearLog();
+        m.bus.ioRead(0xFE);
+        CHECK(m.bus.drain().size() == 1, "IN from the same port is a separate warning");
+        CHECK(m.bus.drain()[0].rfind("warning: IN FE -> FF", 0) == 0, "and it floated to FF");
+
+        // resetUnclaimedWarnings re-arms, as the start of each RUN does.
+        m.bus.resetUnclaimedWarnings();
+        m.bus.clearLog();
+        m.bus.ioWrite(0xFE, 0x03);
+        CHECK(m.bus.drain().size() == 1, "resetUnclaimedWarnings re-arms the port for a new run");
+
+        // Memory is NEVER warned -- guests scan memory constantly and it is normal.
+        m.bus.resetUnclaimedWarnings();
+        m.bus.clearLog();
+        m.bus.memRead(0x1234);
+        m.bus.memWrite(0x1234, 0x00);
+        CHECK(m.bus.drain().empty(), "unclaimed MEMORY is silent under WARN -- I/O only (4.6.1)");
+    }
+
+    {
+        // HALT logs AND arms the boundary stop the run loop honors (takeUnclaimedHalt),
+        // once, naming the offending access.
+        Machine m;
+        m.bus.setInstrPc(0x0200);
+        m.bus.setUnclaimedPolicy(Unclaimed::Halt);
+        m.bus.clearLog();
+        m.bus.ioWrite(0xEF, 0xAB);
+        CHECK(m.bus.drain().size() == 1, "HALT still logs the warning line");
+        CHECK(m.bus.haltPort() == 0xEF && m.bus.haltWasWrite(), "and records which access tripped it");
+        CHECK(m.bus.takeUnclaimedHalt(), "HALT arms the boundary stop");
+        CHECK(!m.bus.takeUnclaimedHalt(), "take is read-and-clear -- it fires once");
+    }
 }

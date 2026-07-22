@@ -326,6 +326,12 @@ RunResult Debugger::run(uint64_t maxSteps) {
     };
 
     for (;;) {
+        // The bus cannot see the PC, so hand it this instruction's address before the
+        // cycles run -- it is what an unclaimed-port warning names (DESIGN.md 4.6.1).
+        // Captured here, at the boundary, because by the time an OUT cycle fires the
+        // CPU's own PC has already stepped past the opcode and its operand.
+        m_.bus.setInstrPc(cpu->pc());
+
         StepResult s = master->step(m_.bus);
         ++r.steps;
         r.tStates += s.tStates;
@@ -350,6 +356,16 @@ RunResult Debugger::run(uint64_t maxSteps) {
         if (armed && cycleHit_) {
             r.why = StopReason::Breakpoint;
             r.bp = cycleHit_;
+            break;
+        }
+
+        // SET BUS UNCLAIMED=HALT: the guest reached an I/O port no board decodes.
+        // The bus armed this during the cycle; we stop at the boundary, exactly as a
+        // cycle breakpoint does, and for the same reason (DESIGN.md 4.6.1).
+        if (m_.bus.takeUnclaimedHalt()) {
+            r.why = StopReason::Unclaimed;
+            r.port = m_.bus.haltPort();
+            r.write = m_.bus.haltWasWrite();
             break;
         }
 

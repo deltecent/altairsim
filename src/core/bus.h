@@ -9,6 +9,7 @@
 // heard of ROM. Every one of those lives in a board. When you are tempted to
 // add "if (board is a ROM)" here, you have found a bug in your board instead.
 
+#include <bitset>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -54,6 +55,14 @@ enum class Reset {
 // chip has no POC* pin.
 
 enum class Contention { Silent, Warn, Error };
+
+// The floating-bus diagnostic (DESIGN.md 4.6.1). A guest that hits a board that
+// isn't there reads 0xFF for ever and hangs with no explanation -- this names the
+// port and the PC when it happens. I/O only: guests scan MEMORY constantly and it
+// is normal, so memory cycles are never warned. Default Silent -- opt-in, so no
+// existing machine gains a line and the hot I/O path pays one enum compare when
+// off. Warn logs and runs on; Halt logs AND stops the guest at the boundary.
+enum class Unclaimed { Silent, Warn, Halt };
 
 // ---------------------------------------------------------------------------
 // BOARDS RESPOND TO BUS CYCLES. A BUS MASTER ORIGINATES THEM. (DESIGN.md 3)
@@ -244,6 +253,36 @@ public:
     void setContentionPolicy(Contention p) { policy_ = p; }
     Contention contentionPolicy() const { return policy_; }
 
+    // The unclaimed-I/O diagnostic (DESIGN.md 4.6.1, and enum Unclaimed above).
+    void setUnclaimedPolicy(Unclaimed p) { unclaimedPolicy_ = p; }
+    Unclaimed unclaimedPolicy() const { return unclaimedPolicy_; }
+
+    // The CPU's current instruction address, so an unclaimed-port warning can name
+    // the PC. The bus has no other way to know it -- published once per instruction
+    // by the run loop (Debugger::run) BEFORE the instruction's cycles are driven.
+    void setInstrPc(uint16_t pc) { instrPc_ = pc; }
+
+    // Re-arm the once-per-(port,direction) de-dup. Called at the start of each
+    // operator RUN/GO so an absent port is re-reported on a later run -- otherwise a
+    // guest polling an absent UART thousands of times would bury the console.
+    void resetUnclaimedWarnings() {
+        warnedIoRead_.reset();
+        warnedIoWrite_.reset();
+        unclaimedHalt_ = false;
+    }
+
+    // Read-and-clear the pending Halt request: Unclaimed::Halt set it when a guest
+    // hit an unclaimed I/O port. The run loop checks this at the instruction
+    // boundary, exactly as it checks a cycle breakpoint.
+    bool takeUnclaimedHalt() {
+        bool h = unclaimedHalt_;
+        unclaimedHalt_ = false;
+        return h;
+    }
+    // Which access tripped the last Halt -- for the stop message.
+    uint8_t haltPort() const { return haltPort_; }
+    bool haltWasWrite() const { return haltWrite_; }
+
     // Every message the bus has emitted (contention, discarded writes). The
     // monitor prints these; MCP returns them as structured data.
     const std::vector<std::string>& drain() const { return log_; }
@@ -285,6 +324,11 @@ private:
 
     std::vector<Board*> decoders(const BusCycle& c) const;
     void reportContention(const BusCycle& c, const std::vector<Board*>& who);
+
+    // An I/O cycle no board decoded, under a non-Silent Unclaimed policy. Formats
+    // one line into log_ (de-duped per port+direction) and, under Halt, arms the
+    // boundary stop. Called only from the four I/O paths -- never from memory.
+    void reportUnclaimed(const BusCycle& c);
 
     // ---- The cached decode ----
     //
@@ -367,6 +411,15 @@ private:
     Contention policy_ = Contention::Warn;
     bool unclaimed_ = false;
     bool contended_ = false;
+
+    // The unclaimed-I/O diagnostic (DESIGN.md 4.6.1). Default Silent -- opt-in.
+    Unclaimed unclaimedPolicy_ = Unclaimed::Silent;
+    uint16_t instrPc_ = 0;                // the running instruction's PC, for the message
+    std::bitset<256> warnedIoRead_;       // ports already warned this run: IN ...
+    std::bitset<256> warnedIoWrite_;      // ... and OUT, kept apart -- the message names it
+    bool unclaimedHalt_ = false;          // Halt tripped; the run loop stops at the boundary
+    uint8_t haltPort_ = 0;                // which port, and ...
+    bool haltWrite_ = false;              // ... which direction, for the stop message
 
     std::vector<std::pair<int, Observer>> observers_;
     int nextObserver_ = 1;

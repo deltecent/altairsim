@@ -601,13 +601,13 @@ The failure this prevents is a quiet one, and it was in this code until Patrick 
 
 `tests/test_boundary.cpp` enforces it. Shared *helpers* that several boards call are fine — that is code reuse, not the bus growing opinions.
 
-**But silence is how an unimplemented device becomes an unexplained hang.** The behavior above is correct and must stay; the *diagnostic* is separate. `SET BUS UNCLAIMED=WARN|ERROR|SILENT` (default `WARN`) names the port and the PC:
+**But silence is how an unimplemented device becomes an unexplained hang.** The behavior above is correct and must stay; the *diagnostic* is separate. `SET BUS UNCLAIMED=WARN|HALT|SILENT` (default `SILENT`) names the port and the PC:
 
 ```
 warning: OUT 0FE <- 01 at PC=0113: no board decodes port 0xFE. reads float to 0xFF.
 ```
 
-Memory reads are **not** warned by default — guests scan memory constantly, and it is normal.
+`WARN` logs the line and runs on; `HALT` logs it and stops the guest at that instruction boundary — the hang caught in the act, so `SHOW REG` and a `DUMP` are looking at the machine as it wedged. It is **I/O only** — memory is never warned, because guests scan memory constantly and it is normal — and it is de-duplicated to once per port and direction per run, so a poll loop on an absent UART reports the port once rather than burying the console. The default is `SILENT`: the diagnostic is opt-in, so no machine that was quiet becomes noisy, and the hot I/O path pays a single compare when it is off. Reach for it — `SET BUS UNCLAIMED=HALT` — when a machine you assembled yourself hangs with nothing on the screen.
 
 ### 4.7 Fast path
 
@@ -1259,6 +1259,8 @@ DEBUG
   RECORD <file> | REPLAY <file>     NOT BUILT (10.1, 13). They resolve and say so; they add
                                     a T-stamped event log on top of SNAPSHOT -- the next phase.
   SET BUS CONTENTION=WARN|ERROR|SILENT
+  SET BUS UNCLAIMED=WARN|HALT|SILENT   floating-bus diagnostic, default SILENT (4.6.1). HALT
+                                       stops the guest at an I/O port no board decodes.
 ```
 
 ### 10.0.0 The command line, and the built-in machines

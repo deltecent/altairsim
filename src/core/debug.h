@@ -96,6 +96,8 @@ enum class StopReason {
     NoCpu,        // there is no processor in this machine, which is a real machine
     StepTarget,   // NEXT ran to the return address of a stepped-over CALL/RST. Not a
                   // user breakpoint -- an internal one-shot the monitor set and cleared.
+    Unclaimed,    // SET BUS UNCLAIMED=HALT and the guest reached an I/O port no board
+                  // decodes. Stopped at the boundary, like a cycle breakpoint (4.6.1).
 };
 
 struct RunResult {
@@ -104,6 +106,8 @@ struct RunResult {
     uint64_t tStates = 0;
     uint16_t pc = 0;
     int bp = 0;   // which breakpoint, when why == Breakpoint
+    uint8_t port = 0;    // which port, when why == Unclaimed
+    bool write = false;  // OUT (true) or IN, when why == Unclaimed
 };
 
 class Debugger {
