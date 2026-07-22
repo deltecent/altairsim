@@ -679,12 +679,61 @@ many, or list the label.
   and where CUPS is absent leave `printer:` out of `endpointHelp()` rather than
   failing to configure a build that works today.
 
-- **A tape counter and a `WIND` verb** — [#48]. A mounted tape has a position
-  (`TapeImage::pos()`, shown by `SHOW MOUNTS`) but the only control is `REWIND`,
-  which sets it to zero. Put two programs on one tape and the second is
-  reachable only in the session that recorded it. Filed 2026-07-18 with the
-  design questions open (what number the counter is; what the operator types)
-  and **deliberately not implemented** — waiting on comments.
+- **A tape counter and a `WIND` verb** — [#48], and [#102] ("visual" counter),
+  which is the same feature from the "watch it load" angle. A mounted tape has a
+  position (`TapeImage::pos()`, shown live by `SHOW MOUNTS`) but the only control
+  is `REWIND`, which zeros it. Put two programs on one tape — the PS II cassette
+  carried MONITOR, ASM, EDT, AM2 and DBG one after another — and the second is
+  reachable only in the session that recorded it. **Deliberately not
+  implemented** — the open questions were posted to [#102] on 2026-07-22, waiting
+  on the reporter's answers.
+
+  Design that emerged from the exploration (three independent layers, core first):
+  - **`counter` read-only unit property** — expose `pos()` as a machine-readable
+    number beside `mode`/`format`/`detected` (modelled on read-only `detected`:
+    a `get` lambda, no setter). Available headless. On both boards.
+  - **`WIND <id>:unit <n>|START|END` verb** — `TapeImage::seek(uint64_t)` clamped
+    to `size()`, plus a second `CommandDef`/`runCommand` branch on each board.
+    Factor the shared REWIND triple (commit recording → move head → drop the
+    UART's held byte → reline/retape) into a `stageAt()` helper; `REWIND` becomes
+    `stageAt(0)`. `WI` is the shortest spelling. Absolute bytes; `REWIND`
+    untouched; relative winds (`+N`) deferred. This is the core — likely all that
+    is actually needed, and exactly what #48 describes.
+  - **Live progress display (DEFERRED, build only if the reporter wants it).** A
+    board-agnostic `Board::activityLabel()` seam (joins `units()`/`rxBytes()`),
+    non-empty only for a deck loading at `rate=real` (the sole watchable case —
+    `rate=full` empties in ~1 s). Home is a `\r`-refreshed **status line on the
+    monitor terminal**, which is *free during a load*: on the Sol the guest paints
+    the VDM-1 video window and never touches stdout, and a bare-Altair load prints
+    nothing. Shown automatically where the terminal is free (`anyConsole` already
+    computed in the run loop), opt-in only on a serial-console machine that owns
+    stdout. Works headless; more informative than the title bar, which is a minor
+    optional extra where a window exists.
+
+  Open questions on [#102], with recommendations: (1) counter number — **bytes**,
+  not tape-seconds. The real tapes *do* have ~10 s gaps between programs (visible
+  in trgeuy's table, and the landmarks a real deck winds to) — but we demodulate a
+  WAV to bytes at MOUNT and count byte offsets, and the decode drops the silent
+  gaps (no carrier → no start bits → no bytes), so byte-offset and tape-seconds
+  are not linear. True seconds would need the WAV's byte→time map (extra state,
+  WAV-only); a `.TAP` has only a baud-synthesized second, which the Sol's
+  run-time-selected 300/1200 baud makes unstable. Bytes are exact and work for
+  both. (2) is a *live* counter even needed, or does `counter` + `WIND` suffice;
+  (3) if live, the terminal status line is the surface.
+
+  Bigger question flagged under [#102] (may warrant reevaluating the whole tape
+  transport): a real cassette system has THREE independent variables, and we fuse
+  two — the data on the tape (byte offset), the encoded audio's data rate (baud,
+  what `rate=real` models), and the tape *transport* itself (leader, inter-program
+  gaps, wind travel — durations of tape *moving*, independent of data). At
+  `rate=real` the gaps are NOT reproduced: the mount-time decode drops silence (no
+  carrier → no bytes), and `rate=real` paces the concatenated data at one fixed
+  ns/byte, so program 2 starts ~one byte-time after program 1, not the ~10 s of
+  real silence. A real deck's counter measured transport, which is why byte offset
+  and tape-seconds diverge. Modelling all three independently (tape as a linear
+  medium of data spans + gap/leader spans the transport moves through) is a real
+  departure from the deliberate decode-to-bytes-at-mount choice; weigh against
+  that simplicity. `counter` + `WIND` is the self-contained step regardless.
 
 - **No way to create a blank tape** — found 2026-07-18 while correcting the
   manual's recording section. `MOUNT` refuses a file that does not exist
@@ -1399,3 +1448,4 @@ invention; it is not.
 [#43]: https://github.com/deltecent/altairsim/issues/43
 [#48]: https://github.com/deltecent/altairsim/issues/48
 [#70]: https://github.com/deltecent/altairsim/issues/70
+[#102]: https://github.com/deltecent/altairsim/issues/102
