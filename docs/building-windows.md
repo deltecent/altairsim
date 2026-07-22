@@ -271,7 +271,7 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 
 ---
 
-## 6. NOT verified: building without a Developer shell, and static SDL3
+## 6. The three Windows build approaches (only Ninja + `vcvars` still unverified)
 
 > **Approach A is now SETTLED — it works (Windows 10 22H2, 2026-07-20).** A plain
 > (non-Developer) PowerShell, `cmake -S . -B build` with the default Visual Studio generator,
@@ -301,10 +301,12 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 > **Approach B (Ninja + chained `vcvars`) remains untried** — the VS generator has carried
 > every build so far, so nothing has needed it.
 
-**This section is a job, not a description.** It states three things that are *believed*
-true and have never been run on this machine, gives the exact commands to settle each,
-and says how to get the answer back into the project. **If you are an assistant on the
-Windows box, this is the work.**
+**This section is a job, not a description** — but most of it is now discharged. Of the three
+approaches it lists, **A and C are settled** (A on 2026-07-20; C's `build-sdl3-static.bat`
+re-verified from scratch on 2026-07-22 — exit 0 in ~3.5 min, valid `SDL3-static.lib` — see the
+note above and `DISTRIBUTION.md` §8). **Only approach B (Ninja + chained `vcvars`) remains
+untried.** The commands to settle it, and how to report back, follow. **If you are an assistant
+on the Windows box, approach B is the work that is left.**
 
 Why it matters: an unattended build — a script, or an assistant — cannot rely on a shell
 that has to be launched from the Start menu. And **an assistant's environment does not
@@ -368,9 +370,12 @@ Adjust the path to your VS edition:
 cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build-ninja --target altairsim"
 ```
 
-**C. `tools\build-sdl3-static.bat` — written, never run.**
+**C. `tools\build-sdl3-static.bat` — VERIFIED (2026-07-20; re-run from scratch 2026-07-22).**
 It pins SDL3 3.4.12, builds it static into `%USERPROFILE%\opt\sdl3-static`, and is a no-op
-on a second run. Needs only CMake — `curl.exe` and `tar.exe` ship with Windows 10 1803+.
+on a second run. Needs only CMake — `curl.exe` and `tar.exe` ship with Windows 10 1803+. Both
+paths are confirmed on Windows 10 / MSVC 2022 Build Tools: the from-scratch build produces a
+13 MB `SDL3-static.lib` (plus headers and `cmake/SDL3Config.cmake`) in ~3.5 min, and the
+idempotent "already installed 3.4.12" path works. The commands below are the record of what ran.
 
 ```powershell
 tools\build-sdl3-static.bat

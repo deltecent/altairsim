@@ -81,7 +81,7 @@ What has to be built, roughly in order:
    `.exe`, `dumpbin`-clean — no `SDL3.dll`, no `VCRUNTIME140` — static SDL3 *and* static `/MT`).
 3. ~~**A linkage check in `build-package.sh`**~~ — **DONE 2026-07-20**, before the Windows
    work rather than after, because Windows is where it is most needed: no CI leg there has
-   SDL3 and `tools\build-sdl3-static.bat` has never been run, so a headless `.exe` is the
+   SDL3 and `tools\build-sdl3-static.bat` had never been run, so a headless `.exe` was the
    likeliest outcome of the first attempt and would have passed every check that existed.
 
    The script now refuses to package a **headless** binary, and one that links SDL by an
@@ -183,8 +183,14 @@ or Git LFS. `DISTRIBUTION.md` §3.1 lays out all three with measured sizes and r
 that recommendation is not yet a decision. See *All distributed packages must ship with SDL3*
 under Features for the full working.
 
-Two things that block a clean run and are tracked separately: nothing has ever run a shipped
-`.exe` on a clean Windows box, and `tools\build-sdl3-static.bat` has never been executed.
+Two things that used to block a clean run are now both **resolved (2026-07-22, on the Windows
+box; see `DISTRIBUTION.md` §8):** the shipped v0.3.0 `.exe` runs from a fresh extract and is
+self-contained (`dumpbin`: base Windows system DLLs only — no `SDL3.dll`, no `VCRUNTIME140`),
+and `tools\build-sdl3-static.bat` was run end-to-end — its idempotent path plus a from-scratch
+fetch/build/install (exit 0, ~3.5 min, valid `SDL3-static.lib`). **One caveat remains:** the
+checks ran on the build box, not a toolchain-free machine, so a truly pristine clean-box run is
+still nominally unproven. The `.bat`'s `*** UNVERIFIED … never run on Windows` banner and
+`docs/building-windows.md` §6's "written, never run" wording were corrected in the same pass.
 
 ---
 

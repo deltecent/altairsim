@@ -9,9 +9,10 @@ rem This is the Windows half of tools/build-sdl3-static.sh; the two pin the SAME
 rem version on purpose. See that file for why static linking rather than bundling, and
 rem DISTRIBUTION.md 3.2 for the measurements.
 rem
-rem   *** UNVERIFIED. Written 2026-07-20 from the working macOS script and never run on
-rem   *** Windows. It is here to be TESTED, not trusted -- see docs/building-windows.md 6,
-rem   *** which says how to report what actually happens. Expect to correct this file.
+rem   VERIFIED on Windows 10 (MSVC 2022 Build Tools), 2026-07-22: a from-scratch run built
+rem   and installed a static SDL3 3.4.12 in ~3.5 min (exit 0 -- SDL3-static.lib, headers,
+rem   cmake config, version marker), and the idempotent "already installed" path works too.
+rem   See DISTRIBUTION.md 8. Written 2026-07-20 from the working macOS script.
 rem
 rem WHY A .BAT AND NOT A .PS1. PowerShell's execution policy blocks unsigned .ps1 files by
 rem default, so a script somebody just cloned will not run without them changing a machine
