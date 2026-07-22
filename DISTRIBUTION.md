@@ -285,6 +285,20 @@ always use the name, never a raw IP). §4.2 is the same seven steps on all four;
 specifics differ — the **SDL3 prefix**, the **platform flags**, the **`--target`**, and, for a
 worker, the **`scp` back**. Filled in with the project's real paths (verified 2026-07-21):
 
+**Where the boxes are — the coordinator drives each over ssh (key auth, all verified 2026-07-22):**
+
+| Box | Target | ssh | Host | Repo |
+|---|---|---|---|---|
+| 1 · coordinator | `macos-arm64` | *local (this M4 Mac)* | — | `~/src/altairsim` |
+| 2 | `macos-x86_64` | `ssh patrick@192.168.94.22` | `Patricks-iMac-2` | `~/src/altairsim` |
+| 3 | `windows-x86_64` | `ssh patrick@192.168.94.27` | `DESKTOP-KM1QG0H` | `c:\altairsim` |
+| 4 | `linux-x86_64` | `ssh patrick@192.168.94.28` | `claude-ubuntu` | `~/src/altairsim` |
+
+Boxes 2–4 are one physical Intel Mac (box 2) hosting the Windows and Linux VMware guests; these LAN
+IPs are static. If one ever moves, find it from box 2's VMware NAT leases / `arp -a`; a reassigned
+address may need `ssh-keygen -R <ip>` to clear a stale host key. (Ubuntu was DHCP `.246` until made
+static `.28` on 2026-07-22.)
+
 **THREE OF THE FOUR BOXES ARE ONE PHYSICAL MACHINE — build the x86 targets serially (2026-07-21).**
 The Intel Mac is the physical host; the **Windows box and the Linux box are both VMware guests
 running on that same Intel Mac.** So `macos-x86_64`, `windows-x86_64` and `linux-x86_64` share one
@@ -305,7 +319,7 @@ once".
      workers read it over ANONYMOUS https │ (public repo — no login, no token on a worker)
                                           ▼
    ┌───────────────────────┬──────────────────────────┬───────────────────────┐
-   │ Intel Mac   ssh .22   │ Windows 10   VM on .22    │ Ubuntu Linux ssh .246 │
+   │ Intel Mac   ssh .22   │ Windows 10   ssh .27      │ Ubuntu Linux ssh .28  │
    │ build macos-x86_64    │ build windows-x86_64      │ build linux-x86_64    │
    │        .tar.gz        │        .zip               │        .tar.gz        │
    └───────────┬───────────┴─────────────┬────────────┴───────────┬───────────┘
@@ -367,7 +381,7 @@ scp dist/altairsim-X.Y.Z-macos-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 > `export PATH="/usr/local/bin:$PATH"` (verified 2026-07-21). At the machine's own terminal this
 > does not arise, and Linux is unaffected — its `cmake` is in `/usr/bin`, always on `PATH`.
 
-**Box 3 — Windows 10 worker** *(VMware guest on the Intel Mac)*. Steps 1–5
+**Box 3 — Windows 10 worker** *(`ssh patrick@192.168.94.27`; VMware guest on the Intel Mac)*. Steps 1–5
 in **PowerShell**; steps 6–7 in **Git Bash**. `MultiThreaded` and `--config Release` are
 load-bearing (§4.4); the binary lands in `build\Release\`. `scp.exe` ships in Windows 10 and
 reaches the coordinator over the LAN.
@@ -406,7 +420,7 @@ tools/build-package.sh --pdf docs/altairsim-manual.pdf --target windows-x86_64
 scp dist/altairsim-X.Y.Z-windows-x86_64.zip patrick@dist.altairsim.com:~/src/altairsim/dist/
 ```
 
-**Box 4 — Ubuntu Linux worker** *(`ssh patrick@192.168.94.246` when up; the 22.04 VM — oldest
+**Box 4 — Ubuntu Linux worker** *(`ssh patrick@192.168.94.28` (static); the 22.04 VM — oldest
 glibc here, §4.3)*. Needs the X11 dev headers installed once (`libxtst-dev` and friends) or SDL3
 will not configure.
 ```sh
