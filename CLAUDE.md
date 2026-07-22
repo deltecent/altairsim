@@ -19,10 +19,7 @@ package after you upload it.
 generator, MSBuild finds the toolchain itself — a plain PowerShell works. Remember that your
 own environment does not survive between commands: if you use Ninja instead, set up the
 environment *within* the same command (`cmd /c "call vcvars64.bat && …"`).
-`DISTRIBUTION.md` §4.4 has the table. **MSVC is the only supported Windows toolchain** —
-MinGW was declined (2026-07-20): `/MT` gives MSVC a redistributable-free `.exe`, so MinGW's
-one edge (easy static linking) evaporates, and a second toolchain would double the Windows
-surface for no new compiler coverage.
+`DISTRIBUTION.md` §4.4 has the table. **MSVC is the only supported Windows toolchain.**
 
 **Your environment does not carry over from the terminal that launched you** — each command
 runs in a fresh process, so a Developer PowerShell's `vcvars` setup never reaches your build

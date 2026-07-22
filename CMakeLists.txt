@@ -173,11 +173,9 @@ configure_file("${CMAKE_SOURCE_DIR}/cmake/version.h.in"
 # say it was written-but-unbuilt and cite that same file as agreeing; the file has
 # said the opposite since 2026-07-15.
 #
-# MSVC is the ONLY supported Windows toolchain; mingw was declined 2026-07-20 (its one edge,
-# static linking, evaporated once /MT gave MSVC a redistributable-free .exe, and a second
-# toolchain would double the Windows surface). Nothing here is knowingly MSVC-only (no _MSC_VER
-# anywhere in src/, lowercase Windows headers, plain main()), so mingw would probably
-# build -- it is simply not tested, documented or shipped.
+# MSVC is the ONLY supported Windows toolchain -- it is what CI builds and what is shipped.
+# Nothing here is knowingly MSVC-only (no _MSC_VER anywhere in src/, lowercase Windows headers,
+# plain main()); MSVC is simply the only toolchain tested and shipped.
 # ---------------------------------------------------------------------------
 if(WIN32)
   set(PLATFORM_SOURCES

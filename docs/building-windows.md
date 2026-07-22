@@ -466,12 +466,6 @@ unknown.
 Once settled: this section shrinks to a statement of fact and moves into §5, and
 `DISTRIBUTION.md` §4.4 gets corrected.
 
-> **MinGW is not covered here, deliberately.** MSVC is the only supported Windows toolchain:
-> `/MT` gives MSVC a redistributable-free `.exe`, so MinGW's one edge (static linking)
-> evaporates, and a second toolchain would double the Windows surface. Nothing in the source is
-> knowingly MSVC-only, so MinGW would very likely build; it is simply not tested, not documented
-> and not shipped.
-
 ---
 
 ## 7. Debugging the win32 layer locally (the fast loop)

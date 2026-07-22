@@ -239,11 +239,7 @@ and not another.
 
 ### 4.4 Windows: MSVC, and only MSVC
 
-**MSVC is the only supported Windows toolchain.** MinGW was considered and **declined** on 2026-07-20: `/MT` gives MSVC a redistributable-free `.exe`, so MinGW's one edge (easy static linking) evaporates, and supporting a second toolchain would double the Windows surface for no new compiler coverage.
-
-The short version: compiler diversity is already covered by Linux/GCC, macOS/Clang and Windows/MSVC, so MinGW-GCC would mostly duplicate Linux-GCC. Its one real advantage — easy fully-static linking — evaporated once `/MT` was shown to give MSVC a `.exe` with no redistributable requirement. And MSVC is the toolchain with evidence behind it: it is what the Windows CI leg builds on every push, and what `src/platform/win32/` is field-proven against — serial against two real FTDI ports, sockets against the real TCP stack, the terminal against a real console.
-
-*Nothing in the source is knowingly MSVC-only (no `_MSC_VER`, lowercase Windows headers, a plain `main()`), so MinGW would very likely build. It is simply not tested, not documented and not shipped.*
+**MSVC is the only supported Windows toolchain** — it is what the Windows CI leg builds on every push, and what `src/platform/win32/` is field-proven against: serial against two real FTDI ports, sockets against the real TCP stack, the terminal against a real console.
 
 #### No Developer shell is needed, and this matters for an assistant
 
