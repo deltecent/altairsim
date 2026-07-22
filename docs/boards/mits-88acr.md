@@ -157,7 +157,7 @@ So the tape now carries **its own clock**, a per-deck `rate` property:
   holding register frees. The tape empties as fast as the guest reads it, **at any `clock_hz`**.
   Safe for exactly the loaders that exist: a polled cassette loader self-paces, and the `rda_`
   flag still forbids an overrun, so this is not the declined `baud = 0` (that was the interactive
-  *console*, which the guest times and flow-controls — see `TODO.md` and the 6850's notes).
+  *console*, which the guest times and flow-controls — see the 6850's notes).
 - **`real`** — `TapeStream` paces `readable()` off a **wall clock** (`steadyNs`, injectable for
   tests) at the strap's byte time, so a load takes real seconds no matter the CPU speed. This is
   the same call the VDM-1 blink made: a board's own oscillator is wall time, not T-states.

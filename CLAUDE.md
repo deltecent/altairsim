@@ -20,7 +20,9 @@ generator, MSBuild finds the toolchain itself — a plain PowerShell works. Reme
 own environment does not survive between commands: if you use Ninja instead, set up the
 environment *within* the same command (`cmd /c "call vcvars64.bat && …"`).
 `DISTRIBUTION.md` §4.4 has the table. **MSVC is the only supported Windows toolchain** —
-MinGW was declined; see `TODO.md` → *Declined*.
+MinGW was declined (2026-07-20): `/MT` gives MSVC a redistributable-free `.exe`, so MinGW's
+one edge (easy static linking) evaporates, and a second toolchain would double the Windows
+surface for no new compiler coverage.
 
 **Your environment does not carry over from the terminal that launched you** — each command
 runs in a fresh process, so a Developer PowerShell's `vcvars` setup never reaches your build
@@ -39,17 +41,17 @@ needs no environment at all.
 | | |
 |---|---|
 | [`DESIGN.md`](DESIGN.md) | The architecture and the reasoning. **Read the relevant section before implementing** — most surprises here are deliberate and explained. |
-| [`TODO.md`](TODO.md) | The single work list: bugs, features, deferred, declined. Declined items are kept **with their reasons** so they do not get re-raised — check before proposing something. |
+| [GitHub issues](https://github.com/deltecent/altairsim/issues) | The public work list: bugs and features. Check before proposing something — a declined idea may be recorded here with its reason so it does not get re-raised. (`TODO.md` is the maintainer's local, **untracked** brainstorming scratch and is not in the tree.) |
 | [`DISTRIBUTION.md`](DISTRIBUTION.md) | How a release is built and shipped. |
 | `docs/manual/` | The User Manual, for someone holding a release package. |
 | `docs/devguide/` | The Developer Guide, for someone changing the source. |
 
 ## Rules that bite
 
-- **Every change goes on a branch off `master` and is merged when done.** The exception is
-  `TODO.md` — **do not open a pull request for a TODO-only change without asking first.**
-- **`TODO.md` is updated in the same commit as the work it describes.** A commit that fixes
-  the tree and leaves the entry standing is how that file rots.
+- **Every change goes on a branch off `master` and is merged when done.**
+- **`TODO.md` is untracked** — a local, fast-moving working doc, not in the tree. Its edits
+  never go through git, so they need no branch and no PR. Anything in it meant for the public
+  becomes a GitHub issue instead.
 - **The word is "board", not "card"** (`DESIGN.md` §0.3), for the object, the command and
   the table. *Card* only where the sentence is genuinely about the physical 1970s artifact.
 - **`docs/manual/ref/` is GENERATED from the binary.** Edit the emitter and run

@@ -267,7 +267,7 @@ aggregate with `0xC0000409`, §6 shows how to isolate it.
 
   So on a routine `ctest --test-dir build -C Release -LE slow`, expect `terminal-hw`
   reported failed; confirm the layer with the direct run above. Making the test *skip*
-  when stdout alone is redirected is tracked in `TODO.md`.
+  when stdout alone is redirected is an open task.
 
 ---
 
@@ -466,9 +466,11 @@ unknown.
 Once settled: this section shrinks to a statement of fact and moves into §5, and
 `DISTRIBUTION.md` §4.4 gets corrected.
 
-> **MinGW is not covered here, deliberately.** MSVC is the only supported Windows toolchain —
-> `TODO.md` → *Declined* has the reasoning. Nothing in the source is knowingly MSVC-only, so
-> MinGW would very likely build; it is simply not tested, not documented and not shipped.
+> **MinGW is not covered here, deliberately.** MSVC is the only supported Windows toolchain:
+> `/MT` gives MSVC a redistributable-free `.exe`, so MinGW's one edge (static linking)
+> evaporates, and a second toolchain would double the Windows surface. Nothing in the source is
+> knowingly MSVC-only, so MinGW would very likely build; it is simply not tested, not documented
+> and not shipped.
 
 ---
 

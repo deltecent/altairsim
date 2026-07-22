@@ -173,8 +173,9 @@ configure_file("${CMAKE_SOURCE_DIR}/cmake/version.h.in"
 # say it was written-but-unbuilt and cite that same file as agreeing; the file has
 # said the opposite since 2026-07-15.
 #
-# MSVC is the ONLY supported Windows toolchain; mingw was declined 2026-07-20 and the
-# reasoning is in TODO.md > Declined. Nothing here is knowingly MSVC-only (no _MSC_VER
+# MSVC is the ONLY supported Windows toolchain; mingw was declined 2026-07-20 (its one edge,
+# static linking, evaporated once /MT gave MSVC a redistributable-free .exe, and a second
+# toolchain would double the Windows surface). Nothing here is knowingly MSVC-only (no _MSC_VER
 # anywhere in src/, lowercase Windows headers, plain main()), so mingw would probably
 # build -- it is simply not tested, documented or shipped.
 # ---------------------------------------------------------------------------
@@ -330,7 +331,7 @@ target_include_directories(altair_core PUBLIC src "${CMAKE_BINARY_DIR}/generated
 # build needs *against a Homebrew SDL3*, which is single-arch (arm64) and will not link
 # into a fat binary. It is NOT a limit of SDL3: upstream's SDL3.xcframework carries a
 # macos-arm64_x86_64 slice that is genuinely universal, so a universal windowed build is
-# possible -- link that rather than brew's dylib. See TODO.md.
+# possible -- link that rather than brew's dylib.
 #
 # EXACTLY ONE CI LEG HAS SDL3: macOS, which installs it from Homebrew and builds native
 # arm64. It is therefore the only place display_sdl.cpp is compiled, and the workflow
@@ -989,8 +990,8 @@ if(EXPECT_EXECUTABLE)
   # floppy in drive 2 at once (FDC+ manual 3.7.4) was the only proof that the format and the
   # Spindle are PER DRIVE rather than per card, and it broke as CORRUPTION rather than as an
   # error, which is why it weighed the bytes. It required an 8.6 MB download, so it skipped
-  # on every fresh clone and in all of CI. See TODO.md -- rebuilding that coverage without
-  # the download is an open task, not a settled one.
+  # on every fresh clone and in all of CI. Rebuilding that coverage without the download is an
+  # open task, not a settled one.
 
   # ---------------------------------------------------------------------------
   # THE SOL-20 EXAMPLE AUTO-LAUNCHES ITS GAME OFF THE CASSETTE.

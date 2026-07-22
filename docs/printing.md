@@ -379,8 +379,7 @@ building one.
 gone away, a printer that is off — these produce an error string from both APIs,
 and it has to reach the operator through `Board::drainLog()`, the same route a
 serial port uses to say it cannot do 76800 baud. The precedent to avoid is the
-blank-tape trap in `TODO.md`: an operation that reports success and produces
-nothing usable.
+blank-tape trap: an operation that reports success and produces nothing usable.
 
 **`list_queues` earns a `SHOW`.** The `serial:` endpoint already names the ports
 this host actually has when the open fails, because "cannot open the printer"
