@@ -44,6 +44,11 @@ ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
 ./build/altairsim                    # the default machine
 ```
 
+**Or just run the one-command build.** `./build.sh` (`build.bat` on Windows) configures a
+Release build, builds it, and prints where the binary landed and what version it is — no
+flags, no generator to choose, and a plain sentence to act on if CMake is missing. SDL3
+stays optional; add `--with-sdl` to link a private static SDL3 and get a window.
+
 **Built and run on Linux, macOS, and Windows.** The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and all three platforms are now proven: Linux (Ubuntu/GCC), macOS (a universal `x86_64`+`arm64` binary, so Intel and Apple Silicon both), and Windows on MSVC. See [`docs/building-linux.md`](docs/building-linux.md), [`docs/building-windows.md`](docs/building-windows.md), and [`docs/porting-notes.md`](docs/porting-notes.md).
 
 > **Pre-built packages for every platform.** The downloadable v0.3.0 archives cover macOS

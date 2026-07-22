@@ -11,6 +11,11 @@
 *.cmake text eol=lf
 *.md   text eol=lf
 
+# .bat files are Windows-only and only ever run by cmd.exe. Store them CRLF so a
+# checkout matches the platform they belong to -- the native convention there, and the
+# one line ending cmd.exe is guaranteed to parse without surprises around labels/goto.
+*.bat  text eol=crlf
+
 # CP/M symbol-file fixtures are real toolchain output (tests/programs/symbols/README.md):
 # their CRLF line endings and trailing ^Z padding are part of the format under test, so
 # git must never normalise them. The README stays ordinary text.
