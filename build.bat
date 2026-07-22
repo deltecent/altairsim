@@ -18,9 +18,10 @@ rem installed. --with-sdl builds a private static SDL3 (tools\build-sdl3-static.
 rem links it -- and on Windows also matches the C runtime (/MT), so the .exe needs no VC++
 rem redistributable and asks nothing of the machine it runs on.
 rem
-rem UNVERIFIED: written from the working build.sh, never run on Windows. Its macOS twin was
-rem exercised end to end (plain, --with-sdl with static-link check, and the missing-CMake
-rem path). Settle this one on the Windows box before trusting it, per docs/building-windows.md.
+rem VERIFIED on Windows 10 (MSVC 2022 Build Tools), 2026-07-22, from a clean build dir: a plain
+rem run built altairsim.exe and printed its version with no Developer shell; --with-sdl linked a
+rem static SDL3 and a static /MT CRT (dumpbin /dependents showed system DLLs only -- no SDL3.dll,
+rem no VCRUNTIME140); --help rendered and a bad argument exited 2. The macOS twin is build.sh.
 
 rem Run from anywhere: everything is relative to the repository this script lives in.
 set "root=%~dp0"
