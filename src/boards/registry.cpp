@@ -7,6 +7,7 @@
 #include "boards/mits-88cpu.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88dcdd.h"
+#include "boards/mits-88hdsk.h"
 #include "boards/mits-88mds.h"
 #include "boards/mits-88virtc.h"
 #include "boards/mits-frontpanel.h"
@@ -40,6 +41,7 @@ std::vector<BoardType> boardTypes() {
         {"sio", "MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits"},
         {"dcdd", "MITS 88-DCDD: 8\" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits"},
         {"mds", "MITS 88-MDS: 5.25\" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s"},
+        {"hdsk", "MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers"},
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the REWIND verb"},
         {"c700", "MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file"},
         {"pio", "MITS 88-PIO: 8-bit parallel port, units 'out'/'in'. Two ports at BASE+0..1 (default 04). CONNECT a printer, a keyboard, a socket"},
@@ -60,6 +62,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "sio") return std::make_unique<SioBoard>();
     if (type == "dcdd") return std::make_unique<DcddBoard>();
     if (type == "mds") return std::make_unique<MdsBoard>();
+    if (type == "hdsk") return std::make_unique<HdskBoard>();
     if (type == "acr") return std::make_unique<AcrBoard>();
     if (type == "c700") return std::make_unique<C700Board>();
     if (type == "pio") return std::make_unique<PioBoard>();

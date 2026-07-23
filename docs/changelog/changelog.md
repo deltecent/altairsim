@@ -8,6 +8,18 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Boot CP/M off a hard disk — the 88-HDSK Datakeeper
+
+The **MITS 88-HDSK** hard disk controller joins the backplane (`hdsk`), and with it CP/M boots
+off a Pertec platter instead of a floppy. It is an outboard "Datakeeper" controller — eight ports
+at `A0h`–`A7h`, a command/handshake protocol, and four internal 256-byte page buffers — so unlike
+the floppy cards it moves whole sectors for you rather than shifting bits in real time. The
+**HDBL** PROM at `FC00` (already in the tree, and until now a boot loader with nothing to boot)
+reads the disk's descriptor page and brings the system up. `examples/hdsk/` is the ready-made
+machine: `altairsim hdsk.toml` lands you at `A>` on a 4.8 MB CP/M 2.2 platter. It is read/write —
+CP/M saves to it — and `docs/boards/mits-88hdsk.md` and `reference/88-HDSK.md` have the full
+protocol, the geometry, and the one place the manual's prose and the boot ROM disagree.
+
 ### Edit memory a byte at a time — `EDIT`
 
 `EDIT <addr>` is an interactive `DEPOSIT`. The prompt shows an address and the byte that is

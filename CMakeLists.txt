@@ -278,6 +278,10 @@ add_library(altair_core STATIC
   src/boards/mits-hardsector.cpp
   src/boards/mits-88dcdd.cpp
   src/boards/mits-88mds.cpp
+  # The 88-HDSK Datakeeper hard disk -- a "controller does the work" card (Board
+  # directly, not HardSectorFdc): it decodes A0h-A7h and serves 256-byte sectors from
+  # a linear .DSK through a command/handshake protocol. See src/boards/mits-88hdsk.h.
+  src/boards/mits-88hdsk.cpp
   src/boards/mits-2sio.cpp
   src/boards/mits-88sio.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
@@ -464,6 +468,7 @@ add_executable(altair_tests
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
   tests/test_mds.cpp
+  tests/test_hdsk.cpp
   tests/test_frontpanel.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp

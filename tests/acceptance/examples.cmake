@@ -173,6 +173,51 @@ execute_process(
 )
 expect_cpm("${out}" "`altairsim examples/cpm/cpm22-buffered.toml` from the dist root did not boot CP/M")
 
+# ---- 4b. THE HARD DISK -- CP/M booted through the 88-HDSK Datakeeper controller. -------
+#
+# Same shape as the floppy CP/M above, and here for the same reason: the disk is beside the
+# machine file, so booting it from its own directory and by path proves the shipped folder
+# works where the user is handed it. But it also proves something the floppy cannot -- the
+# whole 88-HDSK command/handshake controller and its (cyl,side,sector) mapping, exercised
+# by HDBL loading the boot pages and by CP/M reading the directory off the platter.
+#
+# One directory line is enough to be a real claim: `A: BOOT     ASM` is an entry read off
+# the image through the controller, and DIR stops after one line because a CR is already
+# waiting in the pipe (the same CP/M behaviour, and the same reason, as the floppy case).
+file(COPY "${SRC}/examples/hdsk" DESTINATION "${dist}/examples")
+set(hdsk "${dist}/examples/hdsk")
+
+function(expect_hdsk out why)
+  foreach(want "HDBL 2.00" "48K CP/M 2.2b v1.6" "For MITS 88-HDSK" "A0>" "A: BOOT     ASM")
+    string(FIND "${out}" "${want}" hit)
+    if(hit LESS 0)
+      message(FATAL_ERROR "examples: ${why}\n"
+                          "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+    endif()
+  endforeach()
+endfunction()
+
+execute_process(
+  COMMAND           "${SIM}" hdsk.toml
+  WORKING_DIRECTORY "${hdsk}"
+  INPUT_FILE        "${SRC}/tests/acceptance/hdsk-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_hdsk("${out}" "`cd examples/hdsk && altairsim hdsk.toml` did not boot CP/M off the hard disk")
+
+# ...and by path from the distribution root, where the platter is NOT.
+execute_process(
+  COMMAND           "${SIM}" examples/hdsk/hdsk.toml
+  WORKING_DIRECTORY "${dist}"
+  INPUT_FILE        "${SRC}/tests/acceptance/hdsk-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_hdsk("${out}" "`altairsim examples/hdsk/hdsk.toml` from the dist root did not boot CP/M")
+
 # ---- 5. THE DEBUGGER WALKTHROUGH -- symbols and hex loaded from beside the file. -------
 #
 # examples/debugger is a taught exercise: a 46-byte program, its .PRN listing and its .HEX,

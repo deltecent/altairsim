@@ -1,6 +1,7 @@
 # Altair Hard Disk (88-HDSK) — Datakeeper Controller
 
-Source: [88-HDSK.pdf](#)
+Source: [88-HDSK.pdf](https://deramp.com/downloads/altair/hardware/hard_disk/88-HDSK.pdf)
+and [HDSK Doc Errata.pdf](https://deramp.com/downloads/altair/hardware/hard_disk/HDSK%20Doc%20Errata.pdf)
 
 MITS 88-HDSK "Datakeeper" hard disk system, Preliminary Documentation,
 October 1977. This reference distills the parts needed to emulate the
