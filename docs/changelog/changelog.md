@@ -8,6 +8,15 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Reach the host shell without leaving the machine — `!`
+
+A monitor line that begins with `!` runs the rest of it in **your host shell** and returns you to
+the prompt when it finishes — `!ls`, `!cp game.dsk save.dsk`, `!vi HELLO.PRN` to edit a file in
+place. Everything after the `!` is passed through verbatim, spaces and all, and an interactive
+program like `vi` gets a normal terminal because the monitor is not holding the keyboard when it
+hands off. It runs with *your* privileges, not the guest's, and the machine keeps its state
+underneath — `!` borrows you, not the processor. A bare `!` just shows the form.
+
 ### Save the machine and pick it back up — `SNAPSHOT` and `RESTORE`
 
 `SNAPSHOT <file>` writes the whole machine's **state** to a small, portable, CRC-checked file: the

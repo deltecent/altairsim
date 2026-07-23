@@ -55,6 +55,25 @@ as `HELP`.
 > that costs nothing if you did not mean it. A bare `R` that reset the machine would be one
 > you had to set up again. `RESET` pays the letters: `RES`.
 
+## Reaching the host: `!`
+
+A line that begins with `!` is not a monitor command at all — everything after the `!` is
+handed to **your host shell**, verbatim, and the monitor waits until it is done before it
+prompts again. The rest of the line is passed through untouched, spaces and all:
+
+```
+!ls                 list the directory you started from
+!vi HELLO.PRN       open a file in your editor, then :q back to the prompt
+!cp game.dsk save.dsk   keep a copy of a disk without unmounting it
+```
+
+This is **your** shell, with your own privileges — not the machine's, and nothing the guest
+can see or reach. It is also why an editor works: the monitor is not holding the keyboard when
+it hands off, so `vi` gets a normal terminal and gives it back when it exits. The machine keeps
+running underneath; `!` only borrows *you*, not the processor.
+
+A bare `!` with nothing after it just reminds you of the form.
+
 ## Numbers: one rule, and it is not negotiable
 
 > **On the wire → hex. Never on the wire → decimal.**
