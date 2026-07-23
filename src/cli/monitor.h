@@ -122,6 +122,14 @@ private:
     // and nothing else. Peeks, for the same reason.
     struct Insn insnAt(uint32_t addr, const class Disassembler& d);
 
+    // Rewrite a disassembled operand as a symbol when one is loaded: `CALL 0005`
+    // becomes `CALL BDOS`. A four-hex-digit token is, in both emitters, only ever a
+    // 16-bit address operand (bytes are two digits, displacements carry a sign), so
+    // resolving those against the symbol table needs no operand structure from the
+    // decoder. Returns the text unchanged when nothing is loaded, so a symbol-less
+    // machine disassembles exactly as before.
+    std::string annotateOperands(const std::string& text) const;
+
     // The active core, or null with a message already printed. Every CPU command
     // starts here, and none of them assume the machine has a processor -- because
     // a backplane without one is a machine you can build and the one 1a ran.

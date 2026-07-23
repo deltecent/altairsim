@@ -1490,11 +1490,17 @@ parsed table**, the same bargain `builtin:` makes for a ROM (§10.3.1).
 typed (`BREAK`, `DUMP`, `EXAMINE`, a `BREAK … IF` operand) — not where a port or a byte is,
 which is why the resolution is gated per call-site and not folded into the one overloaded
 address parser. A symbol wins over a bare hex literal, with the same leading-zero escape that
-tells the register `A` from the number `0A`. Annotating disassembly (`JMP 0100` → `JMP START`)
-is deferred: an `Insn` melts its operand into text before anyone sees it, and `%W` is not
-always an address (`LXI B,%W` is a constant, `JMP %W` is not), so correct annotation needs an
-operand-kind split across both opcode tables. The reverse (address→name) map is built now so
-that work is display-only when it comes.
+tells the register `A` from the number `0A`. **Annotating disassembly (`JMP 0100` → `JMP START`,
+`CALL 0005` → `CALL BDOS`) is built** — and it needs no operand-kind split across the opcode
+tables, because an `Insn` melts its operand into text and that text is enough: a run of exactly
+four uppercase hex digits is, in both the 8080 and Z80 emitters, only ever a 16-bit operand or a
+relative-jump target (a byte immediate is two digits, an index displacement carries a sign). So
+`Monitor::annotateOperands` names any four-hex token that *resolves* to a symbol and leaves the
+rest alone — which does mean a 16-bit constant (`LXI B,%W`) reads as a symbol when its value
+happens to match one, the accepted price of not modelling operand kind. Two maps, two rules: a
+leading `NAME:` line comes from the label-only reverse map (`byAddr`), so an `EQU` never heads a
+line; an operand is named by `operandName`, which prefers a label but falls back to any symbol
+with the value, so an `EQU` that is really an address (`BDOS`) still names its target.
 
 **Two formats, and absolute addresses only.** A **`.PRN`/`.LST`** is an assembler listing (CP/M
 `ASM`, Microsoft `M80`, DR `MAC` — one column geometry: address in columns 2–5, `=` in column

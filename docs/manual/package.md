@@ -7,7 +7,7 @@ altairsim-changelog.pdf  what changed in this release, and the ones before it.
 USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
-examples/                four machines that boot, media included.
+examples/                five machines that boot, media included.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
@@ -58,16 +58,17 @@ disk, and waits. They want media, and the next section is about where that comes
 `CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
 edit — which is the usual way to start one of your own.
 
-## Four examples, media included
+## Five examples, media included
 
-`examples/` holds four complete machines. **Each is a folder with the media in it**, so every
-one of them boots the moment you unzip the archive — nothing to fetch, nothing to mount:
+`examples/` holds five complete machines. **Each is a folder with the media in it**, so every
+one of them comes up the moment you unzip the archive — nothing to fetch, nothing to mount:
 
 ```
 examples/cpm        CP/M 2.2 on an 8" floppy. This is the quick start.
 examples/basic      {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
 examples/sol        A Sol-20 with {{NAME_SOL}} in the cassette deck.
 examples/diskbasic  {{NAME_DISKBASIC}} on an 8" floppy.
+examples/debugger   A 46-byte program and a guided tour of the symbolic debugger.
 ```
 
 ```

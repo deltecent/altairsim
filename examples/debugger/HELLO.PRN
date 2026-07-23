@@ -1,0 +1,40 @@
+                ;----------------------------------------------------------------------
+                ;  HELLO.ASM -- a symbolic-debugger demo for altairsim.
+                ;
+                ;  Prints "HELLO, WORLD" to the console through the 88-2SIO, then halts.
+                ;  Assembled at 0100H. Small on purpose: every label, every EQU and every
+                ;  kind of operand is here to be looked at under the debugger.
+                ;----------------------------------------------------------------------
+                
+ 0010 =         TTYS	EQU	10H	;2SIO status port (channel A)
+ 0011 =         TTYD	EQU	11H	;2SIO data port
+ 0002 =         TXRDY	EQU	02H	;status bit: transmitter empty
+ 000D =         CR	EQU	0DH
+ 000A =         LF	EQU	0AH
+                
+ 0100           	ORG	0100H
+                
+ 0100 313E01    START:	LXI	SP,STACK	;set up a stack
+ 0103 211F01    	LXI	H,MSG		;HL -> the string
+ 0106 7E        LOOP:	MOV	A,M		;fetch the next character
+ 0107 B7        	ORA	A		;zero terminator?
+ 0108 CA1201    	JZ	DONE		;yes -- we are finished
+ 010B CD1301    	CALL	PUTC		;no  -- send it
+ 010E 23        	INX	H		;step to the next character
+ 010F C30601    	JMP	LOOP
+ 0112 76        DONE:	HLT		;stop; the debugger takes over
+                
+                ;  PUTC -- send the character in A, waiting for the transmitter first.
+ 0113 F5        PUTC:	PUSH	PSW
+ 0114 DB10      PWAIT:	IN	TTYS		;read 2SIO status
+ 0116 E602      	ANI	TXRDY		;transmitter ready?
+ 0118 CA1401    	JZ	PWAIT		;no -- keep polling
+ 011B F1        	POP	PSW
+ 011C D311      	OUT	TTYD		;yes -- send the byte
+ 011E C9        	RET
+                
+ 011F 48454C4C4FMSG:	DB	'HELLO, WORLD',CR,LF,0
+ 012E           	DS	16		;room for the stack to grow down into
+ 013E =         STACK	EQU	$		;top of stack (grows downward from here)
+                
+ 0100           	END	START

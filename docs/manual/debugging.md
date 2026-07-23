@@ -174,39 +174,47 @@ SHOW SYMBOLS SIO*                  filtered by a glob
 SYMBOLS CLEAR                      forget them
 ```
 
-The same disassembly, with `ALTMON.PRN` loaded, can be asked for by name — a symbol is
-accepted exactly where a hex address was:
+The same disassembly, with `ALTMON.PRN` loaded, reads symbolically. A symbol is accepted
+wherever a hex address was — so you can name the range — and the output names what it can:
 
 ```
 altairsim> SYMBOLS LOAD ALTMON.PRN
 96 symbol(s) from ALTMON.PRN
 altairsim> DISASM MONIT-F811
+MONIT:
 F800  3E 03     MVI A,03
 F802  D3 10     OUT 10
 F804  D3 12     OUT 12
 F806  3E 11     MVI A,11
 F808  D3 10     OUT 10
 F80A  D3 12     OUT 12
-F80C  31 00 C0  LXI SP,C000
-F80F  CD A5 FB  CALL FBA5
+F80C  31 00 C0  LXI SP,SPTR
+F80F  CD A5 FB  CALL DSPMSG
 ```
 
-`MONIT` resolves to `F800`, so the range starts where you named it. The rows are otherwise
-byte-for-byte identical to the hex form above: naming an address is *reference*, and that
-already works everywhere an address is typed. The reverse has not landed — the operands still
-read `CALL FBA5`, not `CALL DSPMSG`. Annotating the disassembly itself is the piece still to
-come (see *The tools that are not here yet*, below).
+`MONIT` resolves to `F800`, so the range starts where you named it — naming an address is
+*reference*, and that works everywhere an address is typed. Two more things happen on top of it.
+A program **label** heads its own line the way an assembler listing prints it: `MONIT:` sits
+above `F800`, so a jump destination announces itself where it lands. And a 16-bit **operand**
+reads as a name — `CALL FBA5` becomes `CALL DSPMSG`, and `LXI SP,C000` becomes `LXI SP,SPTR`.
 
-Look at `F80C  31 00 C0  LXI SP,C000`. `ALTMON.ASM` defines `SPTR equ 0C000h`, the symbol is
-loaded (`SHOW SYMBOLS SPTR` proves it), and yet the operand stays `C000` — for **two** reasons,
-and the second outlasts the first. One: back-annotation is deferred, as just noted, so *no*
-operand is named yet. Two: even once it lands, `C000` still will not print as `SPTR`, because
-`SPTR` is an **`EQU`**, not a program label. The listing marks it with an `=`, and only real
-labels feed the address→name direction — the same rule that keeps `0005` from printing as
-`BDOS`. The loader cannot tell a constant that happens to equal a stack address from one that
-happens to equal a string length, so it keeps every `EQU` out of the reverse map. `SPTR`
-resolves the *other* way perfectly — `DISASM SPTR` disassembles from `C000` — but it is
-reference, not annotation.
+The two use the symbol table differently, and the difference is deliberate. A leading label comes
+from **program labels only**: `SPTR` is an **`EQU`** (the listing marks it with an `=`), so it
+never *heads* a line — a constant that merely equals a code address must not masquerade as one,
+the same rule that keeps `0005` from printing a phantom `BDOS:` label. But an operand is a value
+the instruction *points at*, and there an `EQU` that is really an address is exactly what you want
+to read: so `LXI SP,SPTR` names its target even though `SPTR` is an `EQU`, and `CALL 0005` reads
+as `CALL BDOS` for the same reason. A real label wins when a label and an `EQU` share a value.
+
+Only a 16-bit operand is treated as an address. A byte immediate stays a number — an `MVI A,03`
+is not turned into a symbol even if some `EQU` happens to equal three, because two hex digits are
+a count, not an address.
+
+> **Try it.** `examples/debugger/` is a 46-byte program built for exactly this — a `.PRN` to
+> `SYMBOLS LOAD`, a `.HEX` to `LOAD`, and a `README` that walks you from a symbolic `DISASM`
+> through single-stepping, breaking on a label, and running it until it prints. Every rule above
+> is something you can watch happen there, including the `EQU`-address operand and the byte that
+> stays a number.
 
 **Two kinds of file, and the toolchains that write them.** A **`.SYM`** is a flat list of
 name = value. Two toolchains write one: Digital Research's `MAC`/`RMAC` assemblers (every
@@ -436,6 +444,7 @@ Say so plainly rather than let you find out: if you need to catch a bug that hap
 million instructions and you cannot predict where, a conditional breakpoint (`BREAK <addr> IF
 …`) and the `HISTORY` ring are the tools you have — but nothing here will replay it for you.
 
-Symbols go one way for now: you can name an address (`BREAK START`), but `DISASM` and `DUMP`
-still print the machine in hex — they do not yet annotate a `JMP 0100` as `JMP START`. Loading
-the symbols is what that display will read when it lands.
+`DISASM` reads symbolically once you `SYMBOLS LOAD` a listing — labels head their lines and
+operands name their targets (see *Naming addresses* above). `DUMP` does not: a hex/ASCII dump
+still prints the machine in hex, because there is no instruction there to say which bytes are an
+address and which are data.

@@ -6,6 +6,65 @@ as it is now; this document is the record of how it got there.
 
 ---
 
+## Unreleased
+
+### Save the machine and pick it back up — `SNAPSHOT` and `RESTORE`
+
+`SNAPSHOT <file>` writes the whole machine's **state** to a small, portable, CRC-checked file: the
+CPU — down to the hidden micro-state a register dump never shows, the EI and interrupt-acknowledge
+latches, the Z80's `WZ`, `IFF2` and interrupt mode — the clock, and every board's registers,
+latches and RAM. `RESTORE <file>` reads it back into a machine of the same shape. A snapshot is
+*state*, not configuration, so `RESTORE` validates the file's checksum, version and board topology
+**before** it applies a single byte: a corrupt or mismatched file is refused with the reason, and
+your running machine is left untouched. This is the largest piece of the design's replay
+groundwork; the deterministic `RECORD`/`REPLAY` half stays reserved and is unblocked by it.
+
+### The disassembler reads symbols
+
+Load an assembler listing and `DISASM` stops speaking in hex. A program label heads its own line
+the way a listing prints it, and a 16-bit operand shows the name it points at — `CALL 0005` becomes
+`CALL BDOS`, `JMP 0100` becomes `JMP LOOP`. Single-stepping shows it too, on the `STEP` and `REGS`
+line. A leading `LABEL:` line comes from real program labels only — an `EQU` never heads a line,
+because a constant that merely equals a code address must not masquerade as one — but an operand
+*reference* uses any symbol, so `CALL BDOS` works even though `BDOS` is an `EQU`, and a real label
+wins when the two share a value. Only a 16-bit operand is an address: a byte like `IN 10` stays a
+number. Nothing changes until you `SYMBOLS LOAD`.
+
+`examples/debugger/` is new alongside it — a 46-byte program with its listing and Intel HEX, a
+machine that comes up at the monitor prompt, and a walkthrough (shipped as `README.pdf` as well as
+Markdown) from `SYMBOLS LOAD` through symbolic `DISASM`, single-stepping, breaking on a label *by
+name*, and running it until it prints `HELLO, WORLD`. It is the fifth example in the package.
+
+### The examples boot themselves — a new `TYPE` command
+
+`TYPE` injects keystrokes into the console the way a key from the terminal or the VDM window does —
+type-ahead the guest reads when it next looks, with `\r`, `\n`, `\t`, `\\` and `\"` decoded. A
+machine file's `startup` runs *monitor* commands and so could never reach a program running inside
+the guest; a `TYPE` before the `RUN` that boots it leaves the command waiting at the first prompt.
+That is what now lets the four Sol-20 cassette games — `trek80`, `atc`, `pacman`, `raiders` —
+mount their tape, type their own `XE <name>` and come up on their own at the Sol's real 2.045 MHz,
+instead of dropping you at the SOLOS prompt to launch them by hand.
+
+### The bus says when a board isn't there — `SET BUS UNCLAIMED`
+
+A guest that reached for a board that isn't in the backplane used to read `0xFF` forever and hang
+with nothing on the screen. `SET BUS UNCLAIMED WARN` now logs the reach — `warning: OUT 0FE <- 01
+at PC=0113: no board decodes port 0xFE` — and runs on; `HALT` logs it and stops the guest at that
+instruction, so `SHOW REG` and `DUMP` see the machine exactly as it wedged. It is I/O only (a guest
+scans memory constantly), reported once per port and direction per `RUN`, and `Silent` by default
+so nothing that was quiet becomes noisy.
+
+### One command from clone to binary
+
+`build.sh`, and its plain-PowerShell twin `build.bat`, takes a fresh clone to a built binary in one
+command — no flags to choose, no generator to pick — and if CMake is missing it prints how to get
+it for your platform rather than failing deep in a configure. SDL3 stays optional: a plain build
+needs nothing installed, and `--with-sdl` links a private static SDL3 so the binary carries its
+own. For a release, `tools/build-checksums.sh` writes `dist/SHA256SUMS`, refusing unless all four
+platform archives of a version are present — a partial checksum file is worse than none.
+
+---
+
 ## 0.3.0
 
 **0.3.0 adds no machines and no boards. It changes one thing, and it is the thing the manual
