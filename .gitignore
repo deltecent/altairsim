@@ -118,6 +118,7 @@ examples/**
 !examples/**/*.toml
 !examples/**/README.md
 !examples/cpm/cpm22b23-56k.dsk
+!examples/hdsk/HDCPM22v16-48K.DSK
 !examples/diskbasic/Disk BASIC 4.1.dsk
 !examples/basic/4K BASIC Ver 3-1.tap
 !examples/basic/LDR4K31.HEX

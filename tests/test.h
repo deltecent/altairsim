@@ -56,6 +56,7 @@ void test_wd17xx();
 void test_spindle();
 void test_dcdd();
 void test_mds();
+void test_hdsk();
 void test_88acr();
 void test_c700();
 void test_pio();

@@ -1,0 +1,59 @@
+# Altair CP/M 2.2 on an 88-HDSK "Datakeeper" hard disk.
+#
+#     cd examples/hdsk && altairsim hdsk.toml
+#     -> CP/M on an Altair hard disk
+#        A>
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk
+# image is lying in this directory, so this file names it and no directory -- which is
+# what lets the folder be copied somewhere else and still boot.
+#
+# THIS FILE IS A DELTA. `base = "default"` brings the machine -- front panel, 8080,
+# 88-2SIO console at 0x10, 88-DCDD at 0x08, 56K of RAM, DBL boot PROM at FF00. On top of
+# that this file adds the 88-HDSK controller, the hard-disk boot PROM at FC00, and the
+# platter to boot from. See machines/default.toml for what the base contains.
+#
+# THE 88-HDSK is an outboard Datakeeper controller that plugs into the Altair through an
+# 88-4PIO at ports A0h-A7h. It is NOT a floppy card: it moves whole 256-byte sectors for
+# you between the disk and its own buffers over a command/handshake protocol. The image
+# is one Pertec platter -- 406 cylinders x 2 sides x 24 sectors x 256 bytes = 4,988,928
+# bytes. See docs/boards/mits-88hdsk.md and reference/88-HDSK.md.
+#
+# THERE IS NO UNDO ON THIS DISK. It is tracked, so in a clone `git checkout` will put it
+# back -- but in the package you were handed there is no such rope. CP/M writes to A: for
+# anything you create, and drive 0 is mounted read/write because that is what a real
+# machine is. Copy the image first, or add `readonly = true` below, before testing writes
+# in anger.
+
+[machine]
+name = "hdsk"
+base = "default"
+
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0). HDBL sits at
+# FC00; it reads the disk's Pack Descriptor Page (cyl 0 / side 0 / sector 0), which names
+# the boot pages, loads them, and jumps in. Sense switch A11 picks the platter -- down (the
+# default `sense = 0x00`) is the removable cartridge, which is this image.
+startup = ["RUN FC00"]
+
+# THE CONTROLLER, at its standard ports A0h-A7h (240 octal), with one platter in drive 0.
+# A logical drive is one platter; `unit` is the slot (unit*2 + platter), and unit 0 /
+# platter 0 is drive 0.
+[[board]]
+type = "hdsk"
+id   = "hd0"
+port = A0
+
+  [[board.drive]]
+  unit  = 0
+  mount = "HDCPM22v16-48K.DSK"
+
+# THE HDBL PROM. The base's memory card already carries RAM 0000-DFFF and DBL at FF00;
+# naming its `id` with no `type` ADDS a region rather than replacing the card, so this
+# drops the hard-disk loader in at FC00 alongside DBL.
+[[board]]
+id = "mem0"
+
+  [[board.region]]
+  type  = "rom"
+  at    = FC00
+  mount = "builtin:hdbl"

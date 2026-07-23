@@ -79,6 +79,7 @@ int main() {
     test_spindle();
     test_dcdd();
     test_mds();
+    test_hdsk();
     test_88acr();
     test_c700();
     test_pio();
