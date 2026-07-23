@@ -162,7 +162,14 @@ static const std::vector<CommandDef> kCommands = {
      "Where the trace GOES is TRACE's business, not the tracepoint's: set it up with\n"
      "TRACE ON <file> MASK=..., then TRACE OFF to arm it without emitting. An\n"
      "unconfigured tracepoint traces to the console."},
-    {"EDIT", false, "the line editor", "EDIT <addr>  -- interactive; Enter advances", nullptr},
+    {"EDIT", true, nullptr, "EDIT <addr> [ROM]",  // ED
+     "Interactive DEPOSIT. The prompt shows an address and the byte that is there;\n"
+     "type a new value and Enter writes it and drops to the next byte, bare Enter\n"
+     "leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus\n"
+     "writes, so it says so if no board decodes the address; ROM burns instead (10.2).\n"
+     "  EDIT 100     0100 C3 C3\n"
+     "               0101 00 .\n"
+     "  (needs an interactive or piped session -- with none, use DEPOSIT)"},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually\n"
      "running -- which boards, in what order, every property SET can write, what each\n"

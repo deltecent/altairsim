@@ -16,7 +16,8 @@
 
 namespace altair {
 
-class Display;   // host/display.h -- the run loop only asks it a question
+class Display;      // host/display.h -- the run loop only asks it a question
+class LineEditor;   // cli/lineedit.h -- an interactive command reads follow-up lines through it
 
 class Monitor {
 public:
@@ -205,6 +206,14 @@ private:
     // stream has to outlive the run. It is closed by TRACE OFF (and, being a member,
     // when the monitor goes). TRACE ON with no file traces to the console instead.
     std::ofstream traceFile_;
+
+    // THE MONITOR'S OWN INPUT, while a REPL is running -- so an interactive command
+    // (EDIT) can read the follow-up lines it prompts for. Null on every non-interactive
+    // path: a `startup` list, an MCP `command` call, before repl() and after it. A
+    // command that needs them must check, and say so when they are absent rather than
+    // dereference null. Set at the top of repl(), cleared on the way out.
+    std::istream* in_ = nullptr;
+    LineEditor*   ed_ = nullptr;
 };
 
 std::vector<std::string> tokenize(const std::string& line);

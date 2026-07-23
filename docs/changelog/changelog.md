@@ -8,6 +8,17 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Edit memory a byte at a time — `EDIT`
+
+`EDIT <addr>` is an interactive `DEPOSIT`. The prompt shows an address and the byte that is
+there — `0100 C3 ` — and you type its replacement; Enter writes it and drops to the next byte,
+a bare Enter leaves the byte as it was and drops to the next, and `.` returns you to the
+monitor. It runs the same real bus write `DEPOSIT` does, so it tells you when no board decodes
+the address rather than letting the byte vanish, and `EDIT <addr> ROM` burns a PROM the same
+way. It reads its bytes from the monitor's own input, so it works at the keyboard and from a
+piped script alike; where there is no input at all — an MCP `command`, a `startup` list — it
+says so and points you at `DEPOSIT`.
+
 ### Two parallel-I/O boards — `pio` and `4pio`
 
 The MITS parallel ports join the backplane, with the same connect-anything interface as the

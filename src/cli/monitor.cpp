@@ -2962,6 +2962,74 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         return true;
     }
 
+    if (cmd == "EDIT") {
+        // INTERACTIVE DEPOSIT (DESIGN.md 10). Show the address and the byte there, take
+        // a new one, drop to the next. It writes through the REAL bus exactly like
+        // DEPOSIT -- and burns a ROM the same way -- so it needs no CPU and, unlike
+        // EXAMINE, does NOT move the PC: it is not the front panel. Its cursor is a
+        // local that is gone the moment you type '.'.
+        if (!need(2, "EDIT <addr> [ROM]")) return true;
+        uint32_t A;
+        if (!addrSym(a[1], A, out)) return true;
+        if (A > 0xFFFF) {
+            out << "address is 16 bits: 0000-FFFF\n";
+            failed_ = true;
+            return true;
+        }
+        // No keyboard to take the new bytes from -- an MCP `command`, a `startup` list,
+        // any exec() that is not inside a REPL. Loop on nothing and it would spin, so say
+        // so: DEPOSIT is the non-interactive way to write memory.
+        if (!in_ || !ed_) {
+            out << "EDIT needs an interactive or piped session -- use DEPOSIT here.\n";
+            return true;
+        }
+        for (;;) {
+            uint8_t v = rd(A);
+            std::snprintf(buf, sizeof buf, "%04X %02X ", A, v);
+            std::string resp;
+            if (!ed_->read(buf, resp, *in_)) break;  // EOF / Ctrl-D -- done
+            size_t b0 = resp.find_first_not_of(" \t");
+            std::string tok;
+            if (b0 != std::string::npos) tok = resp.substr(b0, resp.find_last_not_of(" \t") - b0 + 1);
+            if (tok == ".") break;                                   // done
+            if (tok.empty()) { A = (A + 1) & 0xFFFF; continue; }     // leave it, next byte
+            uint32_t nv;
+            std::string e;
+            if (!parseNum(tok, nv, 16, e) || nv > 0xFF) {
+                out << "?  a byte is 00-FF, or '.' to stop\n";       // stay put, re-prompt
+                continue;
+            }
+            if (romOverride) {
+                std::string why;
+                if (!burn(A, (uint8_t)nv, why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    out << buf << "\n";
+                    failed_ = true;
+                    break;  // a ROM you cannot burn will not burn on the next byte either
+                }
+            } else {
+                m_.bus.memWrite((uint16_t)A, (uint8_t)nv);
+                // Same silence-is-a-bug rule DEPOSIT keeps: if nobody latched the byte,
+                // SAY SO rather than let it vanish into a gap in the memory map.
+                if (m_.bus.lastUnclaimed()) {
+                    BusCycle bc;
+                    bc.type = Cycle::MemRead;
+                    bc.addr = (uint16_t)A;
+                    auto rdr = m_.bus.respondersTo(bc);
+                    std::snprintf(buf, sizeof buf, "%04X: no board decodes writes here", A);
+                    out << buf;
+                    if (!rdr.empty())
+                        out << " (" << rdr.front()->id << " answers reads -- it is ROM)";
+                    out << ". byte discarded.\n";
+                }
+            }
+            A = (A + 1) & 0xFFFF;
+        }
+        out << ".\n";
+        flush(out);
+        return true;
+    }
+
     // ---------------- IN / OUT ----------------
     //
     // These run a REAL bus cycle -- the same ioRead/ioWrite the CPU will run once
@@ -3890,6 +3958,18 @@ void Monitor::runStartup(std::ostream& out) {
 int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
     std::string line;
     LineEditor ed;
+
+    // Lend this input to any interactive command (EDIT) for the life of the loop, and
+    // take it back on the way out -- through every exit, including a `break`. Cleared to
+    // null is the honest state everywhere else: a command that reads follow-up lines
+    // must find nothing here when nobody is typing.
+    in_ = &in;
+    ed_ = &ed;
+    struct Lend {
+        Monitor& m;
+        ~Lend() { m.in_ = nullptr; m.ed_ = nullptr; }
+    } lend{*this};
+
     while (!quit_) {
         if (interactive) {
             // The editor decides for itself whether stdin is really a terminal --

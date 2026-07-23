@@ -109,9 +109,9 @@ DUMP 100/20       0100-011F  (a length, and it is part of the address, so it is 
 DUMP 0 WIDTH=8    eight bytes to a line (a count: decimal)
 ```
 
-## One byte at a time — `EXAMINE`, `DEPOSIT`
+## One byte at a time — `EXAMINE`, `DEPOSIT`, `EDIT`
 
-These two are **the front panel's switches**, and they behave like them. `EXAMINE` shows a
+These are **the front panel's switches**, and they behave like them. `EXAMINE` shows a
 single byte — hex, ASCII, and its bits — and a bare `EXAMINE` steps to the next one, which is
 the panel's EXAMINE NEXT.
 
@@ -123,6 +123,20 @@ notepad.
 EXAMINE 2C00      one byte: hex, ASCII, and its bits
 EXAMINE           the next one — the panel's EXAMINE NEXT
 DEPOSIT 100 C3 00 2C
+```
+
+`EDIT` is `DEPOSIT` done interactively — the way you patch a run of bytes without retyping the
+address each time. The prompt shows an address and the byte that is there; type a new value and
+Enter writes it and drops to the next byte, a bare Enter leaves the byte untouched and drops to
+the next, and `.` returns you to the monitor. It is the same real bus write, so it warns the
+same way when nothing decodes the address, and `EDIT <addr> ROM` burns a PROM. `EDIT` needs a
+keyboard — at the prompt or down a pipe — so where there is none (an automated `startup` list)
+reach for `DEPOSIT` instead.
+
+```
+EDIT 100          0100 C3 3E     type 3E, Enter — written, on to 0101
+                  0101 00        Enter alone — left as 00, on to 0102
+                  0102 2C .      a '.' stops and returns to the monitor
 ```
 
 ## Disassembling — `DISASM`

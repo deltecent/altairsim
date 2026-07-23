@@ -1179,8 +1179,11 @@ MEMORY
                                     Mnemonics follow the ACTIVE CPU -- you never type
                                     CPU=. It is the override for a machine with no CPU
                                     card in it, or for looking at foreign code (§3.0.2).
-  EDIT <addr>                       NOT BUILT (10.1). Interactive: show byte, type new
-                                    value, Enter advances.
+  EDIT <addr> [ROM]                 Interactive DEPOSIT: the prompt shows an address and
+                                    the byte there; a value writes it and drops to the next,
+                                    a bare Enter leaves it and drops to the next, '.' stops.
+                                    A REAL bus write (says so if nobody decodes it; ROM
+                                    burns). Reads the new bytes from the monitor's own input.
   EXAMINE [<addr>]                  ONE byte: hex, ASCII, bits. Bare = EXAMINE NEXT.
                                     THE PANEL'S SWITCH IS THE CPU: it jams the address
                                     into the PROGRAM COUNTER and the CPU drives the
