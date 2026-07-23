@@ -1,7 +1,9 @@
 #include "test.h"
 
 #include "boards/mits-2sio.h"
+#include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
+#include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
@@ -23,6 +25,8 @@ int main() {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
+    altair::PioBoard::setResolver(altair::resolveEndpoint);
+    altair::Pio4Board::setResolver(altair::resolveEndpoint);
     altair::SolBoard::setResolver(altair::resolveEndpoint);
 
     // A graphics board draws into an injected Display; headless tests give it a
@@ -77,6 +81,8 @@ int main() {
     test_mds();
     test_88acr();
     test_c700();
+    test_pio();
+    test_4pio();
     test_vdm1();
     test_sol();
     test_tapemount();

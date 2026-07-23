@@ -8,6 +8,20 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Two parallel-I/O boards — `pio` and `4pio`
+
+The MITS parallel ports join the backplane, with the same connect-anything interface as the
+line printer. The **88-PIO** (`pio`) is an 8-bit parallel port with two lines you `CONNECT`
+independently — `out` (an output device) and `in` (an input device) — so it drives a printer to
+a `file:`, reads a keyboard off the `console`, or moves bytes over a `socket:`, all at once. The
+**88-4PIO** (`4pio`) is its programmable cousin, up to four Motorola 6820 PIAs whose data
+direction the guest sets in software; each section (`ja`, `jb`, … per populated port) is its own
+connectable line. Both come up at the monitor and in a machine file exactly like every other
+board — `SET pio0 port=…`, `CONNECT pio0:out file:print.txt`, `SHOW`, `CONFIG SAVE` — and
+`machines/parallel.toml` is a ready-made example. Both are **polled** (like the C700): a byte
+moves when a driver polls the status port for it. `docs/boards/mits-88pio.md` and
+`docs/boards/mits-884pio.md` have the full register maps and the deliberate departures.
+
 ### Reach the host shell without leaving the machine — `!`
 
 A monitor line that begins with `!` runs the rest of it in **your host shell** and returns you to

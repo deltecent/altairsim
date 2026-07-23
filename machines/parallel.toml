@@ -1,0 +1,31 @@
+# The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO.
+#
+# It exists to show the parallel cards end to end. The 88-PIO's output line captures
+# to a host file; CONNECT its `in` line (or any 4PIO section) to the console, a
+# socket, or a file the same way. Nothing about the wiring is parallel-specific --
+# it is the same CONNECT the line printer and the serial cards use.
+
+[machine]
+name = "parallel"
+base = "default"
+
+# The 88-PIO parallel port. Two connectable lines: `out` (the output device) and
+# `in` (the input device). Here the output captures to a file -- a printer -- and
+# the input is left unconnected; CONNECT pio0:in console to read a keyboard, or
+# point either line at a socket. The base is even (control/status at 04, data at 05).
+[[board]]
+type = "pio"
+id   = "pio0"
+port = 04
+
+[board.unit.out]
+connect = "file:parallel-out.txt"
+
+# The 88-4PIO: one populated 6820 (port J), sections A and B. Each section's data
+# direction is set by the guest (the DDR), and each is a line you CONNECT. 16
+# addresses from base 20 (port J at 20..23).
+[[board]]
+type  = "4pio"
+id    = "pio1"
+port  = 20
+ports = 1
