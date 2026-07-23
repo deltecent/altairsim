@@ -29,15 +29,15 @@ takes to be unambiguous, and the first command that matches wins.
 ```
   BO[ARDS]          B[REAK]           COM[PARE]         C[ONFIG]
   CONN[ECT]         CONS[OLE]         DE[POSIT]         DI[SASM]
-  DISC[ONNECT]      D[UMP]            E[DIT]*           EX[AMINE]
+  DISC[ONNECT]      D[UMP]            E[DIT]            EX[AMINE]
   F[ILL]            HE[LP]            H[ISTORY]         I[N]
   L[OAD]            M[OUNT]           MOV[E]            N[EXT]
   NO[BREAK]         O[UT]             P[OWER]           Q[UIT]
   REC[ORD]*         REGI[ON]          RE[GS]            REP[LAY]*
-  RES[ET]           REST[ORE]*        R[UN]             SA[VE]
-  SEA[RCH]          SE[T]             SH[OW]            SN[APSHOT]*
+  RES[ET]           REST[ORE]         R[UN]             SA[VE]
+  SEA[RCH]          SE[T]             SH[OW]            SN[APSHOT]
   S[TEP]            STO[P]*           SY[MBOLS]         T[RACE]
-  U[NMOUNT]         W[HO]
+  TY[PE]            U[NMOUNT]         W[HO]
 ```
 
 Type the part before the bracket. `D` is `DUMP`; `DE` is `DEPOSIT`; `RES` is `RESET`. Case

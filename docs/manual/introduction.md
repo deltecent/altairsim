@@ -56,8 +56,8 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 This section is here because a manual that only lists strengths is an advertisement.
 
 - **It runs an 8080 or a Z80 — not an 8085.** Software that needs an 8085 will not run.
-- **Four monitor commands are reserved but not built** — `RECORD`, `REPLAY`, `EDIT` and
-  `STOP`. They **resolve**: type `REC` and you are told that `RECORD` is not built and what it
+- **Three monitor commands are reserved but not built** — `RECORD`, `REPLAY` and `STOP`.
+  They **resolve**: type `REC` and you are told that `RECORD` is not built and what it
   is waiting on, rather than being told nothing at all. That is deliberate — their
   abbreviations are claimed *now*, so that the day they land, `REC` does not silently stop
   meaning what your fingers think it means.

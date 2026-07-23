@@ -1633,4 +1633,51 @@ void test_achieved_hz() {
         CHECK(shell.str().find("unknown command") == std::string::npos,
               "!echo is handed to the shell, never resolved as a command");
     }
+
+    // ---------------------------------------------------------------------
+    // EDIT -- interactive DEPOSIT. It reads its follow-up bytes from the
+    // monitor's own input, so it is driven through repl(), not a bare exec()
+    // (which is exactly the case that has no keyboard -- see the last check).
+    // ---------------------------------------------------------------------
+    SECTION("EDIT -- interactive DEPOSIT: type a byte and drop to the next, '.' stops");
+    {
+        Machine me;
+        Monitor mon(me);
+        std::ostringstream setup;
+        mon.exec("BOARDS ADD memory mem0", setup);
+        mon.exec("SET mem0 fill=zero", setup);
+        mon.exec("REGION ADD mem0 type=ram at=0 size=64K", setup);
+        mon.exec("DEPOSIT 0100 00 00 00", setup);
+
+        // A whole session: a byte written, a bare Enter that LEAVES the byte, a bad
+        // token that re-prompts without advancing, a byte written, then '.' to stop.
+        // The follow-up lines are EDIT's -- if it did not consume them, repl would
+        // see them as commands and answer "unknown command".
+        std::istringstream in(
+            "EDIT 0100\n"
+            "3E\n"       // 0100 <- 3E, advance
+            "\n"         // 0101 left at 00, advance
+            "ZZ\n"       // not a byte -> re-prompt, stay on 0102
+            "C3\n"       // 0102 <- C3, advance
+            ".\n"        // stop
+            "DUMP 0100-0102\n"
+            "QUIT\n");
+        std::ostringstream out;
+        mon.repl(in, out, /*interactive=*/false);
+        std::string s = out.str();
+
+        CHECK(s.find("3E 00 C3") != std::string::npos,
+              "0100<-3E, 0101 left at 00 by a bare Enter, 0102<-C3");
+        CHECK(s.find("a byte is 00-FF") != std::string::npos,
+              "a token that is not a byte re-prompts instead of writing garbage");
+        CHECK(s.find("unknown command") == std::string::npos,
+              "EDIT consumed its own follow-up lines -- none reached the command loop");
+
+        // No REPL, no keyboard: a bare exec() has nothing to read the bytes from, so
+        // EDIT says so rather than spinning. This is the MCP/startup path.
+        std::ostringstream noinput;
+        mon.exec("EDIT 0100", noinput);
+        CHECK(noinput.str().find("interactive or piped session") != std::string::npos,
+              "EDIT with no input stream points you at DEPOSIT");
+    }
 }

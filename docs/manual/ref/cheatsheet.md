@@ -43,7 +43,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `H[ISTORY]` | `HISTORY [n]` |
 | `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP]` |
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
-| `E[DIT]` \* | `EDIT <addr>  -- interactive; Enter advances` |
+| `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id>\|CONSOLE\|DISPLAY <k>=<v>` |
 | `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|MACHINE\|VERSION` |

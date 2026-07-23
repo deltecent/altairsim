@@ -20,7 +20,6 @@ under your fingers when they land — and they tell you what they are waiting on
 
 | Command | Waiting on |
 |---|---|
-| `E[DIT]` | the line editor |
 | `STO[P]` | a monitor that runs alongside the machine (ATTN leaves CONSOLE today) |
 | `REC[ORD]` | RECORD/REPLAY (it builds on SNAPSHOT, now done) |
 | `REP[LAY]` | RECORD/REPLAY (it builds on SNAPSHOT, now done) |
@@ -223,6 +222,23 @@ BREAK 200 IF HL==8000 TRACE ON    conditional, and still does not stop
 Where the trace GOES is TRACE's business, not the tracepoint's: set it up with
 TRACE ON <file> MASK=..., then TRACE OFF to arm it without emitting. An
 unconfigured tracepoint traces to the console.
+
+
+### EDIT — `E[DIT]`
+
+```
+EDIT <addr> [ROM]
+```
+Interactive DEPOSIT. The prompt shows an address and the byte that is there;
+type a new value and Enter writes it and drops to the next byte, bare Enter
+leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus
+writes, so it says so if no board decodes the address; ROM burns instead (10.2).
+
+```
+EDIT 100     0100 C3 C3
+             0101 00 .
+(needs an interactive or piped session -- with none, use DEPOSIT)
+```
 
 
 ### CONFIG — `C[ONFIG]`
