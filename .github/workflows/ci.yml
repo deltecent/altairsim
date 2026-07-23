@@ -51,7 +51,7 @@ jobs:
           #   video path a compiler; the x86_64 slice is covered natively off-CI instead.
           linux='{"name":"linux-x86_64","os":"ubuntu-latest","artifact":"altairsim-linux-x86_64","binary":"build/altairsim"}'
           macos='{"name":"macos-arm64","os":"macos-14","artifact":"altairsim-macos-arm64","binary":"build/altairsim"}'
-          windows='{"name":"windows-x86_64","os":"windows-latest","artifact":"altairsim-windows-x86_64","binary":"build/Release/altairsim.exe"}'
+          windows='{"name":"windows-x86_64","os":"windows-latest","artifact":"altairsim-windows-x86_64","binary":"build/altairsim.exe"}'
           full="{\"include\":[$linux,$macos,$windows]}"
           docsonly="{\"include\":[$linux]}"
 
@@ -98,6 +98,20 @@ jobs:
     needs: scope
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # THE WAIT IN CI IS THE COMPILE, NOT THE TESTS. The fast suite is seconds; a cold C++
+    # build is minutes. Two levers, and they are not the same lever on every leg:
+    #   - sccache caches object files across runs keyed on the preprocessed source and the
+    #     compiler+flags, so a warm push only recompiles the TUs the diff touched. MEASURED:
+    #     Linux 46s->22s (87% hit), macOS 44s->31s (37%). GitHub Actions cache is the backend
+    #     (SCCACHE_GHA_ENABLED); no actions/cache step needed.
+    #   - Ninja instead of MSBuild on Windows (see the MSVC step) -- and on Windows that is
+    #     the ENTIRE win: the leg dropped 258s->188s from the generator alone, while sccache
+    #     gets 0% there (all writes fail against the Actions cache v2 backend with MSVC; a
+    #     known sccache issue, non-fatal -- the build still passes, it just does not cache).
+    # Net wall-clock ~4.5 min -> ~3.4 min, Windows still the long pole. Closing the Windows
+    # cache is the remaining prize and is tracked separately, not blocking.
+    env:
+      SCCACHE_GHA_ENABLED: "true"
     # All legs that run are required to pass. Windows was advisory (continue-on-error) while
     # src/platform/win32/ was being brought up; it now compiles, links, and passes the full
     # suite on MSVC, so a Windows regression blocks a PR like any other. fail-fast is off so
@@ -115,6 +129,24 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      # The compiler cache. Installs the sccache binary and wires it to the Actions cache.
+      # The Configure step below points CMake's compiler launcher at it on every leg.
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      # WINDOWS BUILDS WITH NINJA + MSVC, NOT THE VISUAL STUDIO GENERATOR. Two reasons, and the
+      # first turned out to be the one that pays: Ninja is simply faster than MSBuild here (leg
+      # 258s->188s). The second was the original motive -- sccache hooks in through CMake's
+      # COMPILER_LAUNCHER, which the VS/MSBuild generator ignores while Ninja and Makefiles
+      # honor it -- but MSVC+sccache gets 0% against the Actions cache today, so on this leg
+      # the launcher is wired and waiting rather than helping. Ninja is a single-config
+      # generator, which is why the Windows binary is build/altairsim.exe (no Release/ subdir)
+      # above. msvc-dev-cmd puts cl.exe and the MSVC environment into GITHUB_ENV so every later
+      # step -- Configure, Build, Test -- sees the toolchain without a vcvars dance of its own.
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       # expect drives the interactive acceptance tests. Ubuntu needs it installed;
       # macOS ships it; Windows gets none -- those tests self-skip at configure time
@@ -141,7 +173,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -B build -DCMAKE_BUILD_TYPE=Release 2>&1 | tee configure.log
+          # Ninja on Windows (see the MSVC step); the platform default elsewhere. The compiler
+          # launcher is set on every leg -- Makefiles (Linux/macOS default) and Ninja both honor
+          # it, which is the whole reason Windows is on Ninja.
+          gen=""
+          [ "${{ runner.os }}" = "Windows" ] && gen="-G Ninja"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            $gen 2>&1 | tee configure.log
           grep -E "SDL3 (found|not found)" configure.log || true
 
       # AND FAIL THE MAC LEG IF IT CAME UP HEADLESS. That line has been in the configure
@@ -159,6 +199,12 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      # What the cache actually did this run. A near-100% hit rate on a warm run is the
+      # payoff; a run that shows all misses (a new compiler image, a cache eviction) is the
+      # cold case this is meant to make rare, and this line is where you see which you got.
+      - name: sccache stats
+        run: sccache --show-stats
+
       # SAY WHICH COMMIT THIS IS, in the log, on every leg. The version string is baked in
       # at configure time from `git describe`, so it is the one thing in the run that can
       # go quietly wrong without failing anything: revert the checkout above to the default
@@ -169,9 +215,10 @@ jobs:
         run: |
           "${{ matrix.binary }}" --version
 
-      # Fast suite only. -C Release is required by the Windows multi-config generator
-      # and harmless elsewhere. serial-hw self-skips (exit 77); disk-gated tests are
-      # not registered without the (non-git) CP/M images.
+      # Fast suite only. Every leg is single-config now (Windows moved to Ninja), so -C Release
+      # is a harmless no-op rather than the requirement it was under the VS generator -- kept
+      # so the line reads the same everywhere. serial-hw self-skips (exit 77); disk-gated tests
+      # are not registered without the (non-git) CP/M images.
       - name: Test (fast)
         run: ctest --test-dir build -C Release -LE slow --output-on-failure
 

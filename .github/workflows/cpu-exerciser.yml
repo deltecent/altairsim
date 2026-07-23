@@ -46,6 +46,11 @@ jobs:
   exerciser:
     name: CPU exercisers (slow)
     runs-on: ubuntu-latest
+    # Share ci.yml's compiler cache. The run's cost is the billions of instructions, not the
+    # build, so this is a small win -- but it is the same Linux compiler as ci.yml, so the
+    # object files are already warm in the Actions cache and the build is nearly free here.
+    env:
+      SCCACHE_GHA_ENABLED: "true"
     steps:
       # Full history: see ci.yml. This job builds no artifact, but it does print the
       # banner in its logs, and a run whose version line disagrees with ci.yml's for the
@@ -54,8 +59,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         run: cmake --build build --parallel
