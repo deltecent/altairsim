@@ -1598,4 +1598,39 @@ void test_achieved_hz() {
                   "the default is SILENT");
         }
     }
+
+    // -----------------------------------------------------------------------
+    // The `!` shell escape. The monitor's OWN behaviour is what a unit test can
+    // reach: the parse (a leading `!`, after any whitespace, is recognised and
+    // never mistaken for a command word) and the bare-`!` help. The actual
+    // shell-out -- whose child writes to the real fd, not to this ostream -- is
+    // proved on a real pty in tests/acceptance/cli.exp.
+    // -----------------------------------------------------------------------
+    SECTION("! -- a leading bang is the shell escape, not a command word");
+    {
+        Machine mb;
+        Monitor mon(mb);
+
+        std::ostringstream bare;
+        mon.exec("!", bare);
+        CHECK(bare.str().find("host shell") != std::string::npos,
+              "a bare ! reminds you of the form");
+
+        // Whitespace before the bang still counts -- it is the first non-blank
+        // character that decides, so a spaced-out empty escape is the same help.
+        std::ostringstream spaced;
+        mon.exec("   !  ", spaced);
+        CHECK(spaced.str().find("host shell") != std::string::npos,
+              "leading whitespace before ! is skipped, and an empty escape is the help");
+
+        // `!echo ...` is DISPATCHED as a shell line, not resolved as a command.
+        // `echo` is a builtin of both /bin/sh and cmd.exe, so this is portable
+        // and harmless; we assert only that the monitor did not reject it. (Its
+        // output goes to the process stdout, not to `out`, so there is nothing
+        // to match there.)
+        std::ostringstream shell;
+        mon.exec("!echo altairsim-shell-test", shell);
+        CHECK(shell.str().find("unknown command") == std::string::npos,
+              "!echo is handed to the shell, never resolved as a command");
+    }
 }

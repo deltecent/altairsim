@@ -139,6 +139,17 @@ expect {
 }
 expect -ex "altairsim> "
 
+# ---- 6b. THE `!` SHELL ESCAPE -- a host command runs and its output comes back. ----
+# This is a tty-only round trip. The child inherits the fd behind this pty, so what it
+# prints appears here; under a pipe it would write to the real fd and never be seen. `echo`
+# is a shell builtin on every host, and the string is unmistakable so no other line matches.
+send "!echo hello-from-shell\r"
+expect {
+    -ex "hello-from-shell" { ok "! ran a command in the host shell and the output came back" }
+    timeout               { fail "the ! shell escape produced no output" }
+}
+expect -ex "altairsim> "
+
 send "QUIT\r"
 expect eof
 

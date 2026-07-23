@@ -23,6 +23,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -1966,6 +1967,32 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
 // ---------------------------------------------------------------------------
 
 bool Monitor::exec(const std::string& line, std::ostream& out) {
+    // A leading `!` is the shell escape: everything after it is handed to the host shell
+    // VERBATIM, spaces and all. It is caught HERE, ahead of tokenize(), because tokenize
+    // would split the line on spaces and treat a `#` or `;` as a comment -- and none of
+    // that is the monitor's business to do to a shell command. The terminal is already in
+    // the operator's own cooked mode at this point (the line editor's raw mode is scoped
+    // to its read() and long since given back, src/cli/lineedit.cpp), so an interactive
+    // program like `vi` inherits a normal terminal with nothing for us to set up or undo.
+    if (size_t bang = line.find_first_not_of(" \t");
+        bang != std::string::npos && line[bang] == '!') {
+        std::string sh = line.substr(bang + 1);
+        if (sh.find_first_not_of(" \t") == std::string::npos) {
+            out << "  !<command>  -- run <command> in your host shell"
+                   "   e.g. !ls, !vi HELLO.PRN\n";
+            return true;
+        }
+        if (std::system(nullptr) == 0) {  // no command processor to hand it to
+            out << "! -- no host shell is available.\n";
+            failed_ = true;
+            return true;
+        }
+        out.flush();
+        std::cout.flush();  // our text lands before the child's, not tangled with it
+        std::system(sh.c_str());
+        return true;
+    }
+
     auto a = tokenize(line);
     if (a.empty()) return true;
 
@@ -2149,7 +2176,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (col) out << "\n";
         out << "\n  Type the part before the [brackets]. * = not built yet; it will say so.\n"
-               "  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n\n"
+               "  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n"
+               "  !<command> runs a command in your host shell -- e.g. !vi HELLO.PRN.\n\n"
                "  Numbers: on the wire is HEX (addresses, ports, bytes), never on the\n"
                "  wire is DECIMAL (counts, widths, sizes). 0x/$/h force hex, # forces\n"
                "  decimal, and a K/M suffix is always decimal.\n";
