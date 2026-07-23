@@ -5,6 +5,7 @@
 #include "boards/mits-88c700.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
+#include "boards/mits-turnkey.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "host/display_null.h"
@@ -23,6 +24,7 @@ int main() {
     // machines/default.toml would be exercised here in a configuration that no
     // user will ever run, and the first thing to break would be the real one.
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
+    altair::TurnkeyBoard::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
     altair::PioBoard::setResolver(altair::resolveEndpoint);
@@ -88,6 +90,7 @@ int main() {
     test_sol();
     test_tapemount();
     test_frontpanel();
+    test_turnkey();
     test_virtc();
     test_hostdir();
     test_hostbridge();

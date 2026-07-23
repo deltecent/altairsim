@@ -30,6 +30,7 @@ printed in each property's own base.
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
 | [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT) |
 | [`fp`](#fp) | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
+| [`turnkey`](#turnkey) | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
 
@@ -397,6 +398,40 @@ Altair front panel: the SENSE switches at port FF (read-only), and the lamps
 |---|---|---|---|---|
 | `sense` | int | `0x0` | `0x0` .. `0xFF` | The SENSE switches, SA8..SA15 -- what IN 0FFH reads |
 | `data` | int | `0x0` | `0x0` .. `0xFF` | The DATA switches, SA0..SA7. Not readable by the guest -- see the .md |
+
+
+## `turnkey`
+
+MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]]
+
+**Units:** `tty` (serial)
+
+### `[[board.socket]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `at` | int | any | Where the socket sits in the window (FC00/FD00/FE00/FF00) |
+| `mount` | string | text | What is in the socket: builtin:<name> or a HEX/BIN path. Relative to THIS FILE. |
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `prom` | int | `0xFC00` | `0x0` .. `0xFC00` | PROM ADDR switches: base of the 1K boot-PROM window (FC00-FFFF normal) |
+| `start` | int | `0xFC00` | `0x0` .. `0xFF00` | START ADDR switches: Auto-Start jams JMP here at reset (a multiple of 256) |
+| `sense` | int | `0x0` | `0x0` .. `0xFF` | Sense switches (SW6/SW7), read at port FF |
+| `sio_base` | int | `0x10` | `0x0` .. `0xFE` | Base address of the integrated 6850 SIO (0x10 = 2SIO Port A) |
+
+### Unit `tty` — `[board.unit.tty]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | int | `9600` | `50` .. `76800` | Line rate. A JUMPER on the real card -- software cannot change it, and there is no free-running setting: the rate paces the line |
+| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
+| `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
+| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
 ## `virtc`

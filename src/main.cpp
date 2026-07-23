@@ -3,6 +3,7 @@
 #include "boards/mits-88c700.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
+#include "boards/mits-turnkey.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
@@ -190,6 +191,7 @@ int main(int argc, char** argv) {
     // nobody else's -- a board that could reach `resolveEndpoint` itself would be
     // one `#include` away from knowing what a socket is.
     Sio2Board::setResolver(resolveEndpoint);
+    TurnkeyBoard::setResolver(resolveEndpoint);  // shares Sio2Port's resolver
     SioBoard::setResolver(resolveEndpoint);
     C700Board::setResolver(resolveEndpoint);
     PioBoard::setResolver(resolveEndpoint);

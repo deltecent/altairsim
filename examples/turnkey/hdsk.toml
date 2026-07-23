@@ -1,0 +1,40 @@
+# CP/M 2.2 on an 8800bt booting off an 88-HDSK "Datakeeper" hard disk.
+#
+#     cd examples/turnkey && altairsim hdsk.toml
+#     -> 48K CP/M 2.2b, booted by the turnkey board's HDBL PROM
+#        A0>
+#
+# THIS FILE IS A DELTA on the built-in `turnkey` machine. It does three things: drops the
+# hard-disk boot loader HDBL into the turnkey board's socket L1 (FC00), retargets the
+# Auto-Start switches to FC00 so the jam runs HDBL instead of DBL, and adds the 88-HDSK
+# controller with a platter in drive 0. This is exactly examples/hdsk, but on an 8800bt --
+# the boot PROM, the console SIO and the sense switches are on the Turnkey Module instead
+# of spread across an fp card, a 2SIO and a memory region.
+#
+# HDBL sits at FC00; the Auto-Start jam runs it, it reads the disk's Pack Descriptor Page,
+# loads the boot pages, and jumps in. The image is one Pertec platter, borrowed from the
+# sibling examples/hdsk directory. See docs/boards/mits-88hdsk.md and reference/88-HDSK.md.
+
+[machine]
+name = "turnkey-hdsk"
+base = "turnkey"
+
+# Retarget the Turnkey Module: HDBL in socket L1 at FC00, and the Auto-Start switches to
+# FC00 so `RUN 0000` jams `JMP FC00`.
+[[board]]
+id    = "tk0"
+start = FC00
+
+  [[board.socket]]
+  at    = FC00
+  mount = "builtin:hdbl"
+
+# The Datakeeper controller at its standard ports A0h-A7h, one platter in drive 0.
+[[board]]
+type = "hdsk"
+id   = "hd0"
+port = A0
+
+  [[board.drive]]
+  unit  = 0
+  mount = "../hdsk/HDCPM22v16-48K.DSK"

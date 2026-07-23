@@ -13,7 +13,7 @@ what will bite you. **It does not list their parameters.** Every key of every bo
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The fourteen boards
+## The fifteen boards
 
 | Type | What it is |
 |---|---|
@@ -30,6 +30,7 @@ be wrong.
 | `sol` | Processor Technology Sol-PC — the Sol-20's onboard I/O, on one card |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
 | `fp` | the front panel |
+| `turnkey` | MITS 8800b Turnkey Module — the front-panel-less Altair, on one card |
 | `hostbridge` | file transfer to your host. **Ours, not a period card** |
 
 ---
@@ -435,6 +436,49 @@ It has no way to.
 
 `sense` is a **board property**, because the switches are on the panel. There is no machine-level
 `sense`, and asking for one is an error that says so.
+
+---
+
+## `turnkey` — the MITS 8800bt, on one card
+
+The 8800b "turnkey" system had **no front panel**. One board — the Systems Turnkey Module —
+did the panel's job and more: it carried the boot PROM, the terminal serial port, the sense
+switches, and a circuit that booted the machine the moment you switched it on. This board is
+that card, so a `turnkey` machine has **no `fp` and no separate `2sio`** — all three live here.
+`altairsim turnkey` is the machine; `examples/turnkey` boots CP/M on it off a floppy and off a
+hard disk.
+
+### It boots itself
+
+There is no front panel to toggle a bootstrap in from, so the card has an **Auto-Start**
+circuit. `RUN 0000` starts the processor at address 0, and the card jams a `JMP` onto the bus
+so the first thing that runs is the boot PROM — exactly what pressing the panel's START switch
+did. The `start` property is the START ADDR switches: `FF00` runs the floppy loader, `FC00` the
+hard-disk loader. A `startup = ["RUN 0000"]` in the machine file makes it happen at launch.
+
+### The boot PROM gets out of the way
+
+The PROM sits at `FC00`–`FFFF` and **shadows the RAM underneath it for reads** — until the
+first `IN` from port `FE` or `FF`, when it switches itself out and the machine has the **full
+64 KB** of RAM. That is why this machine has 64K where a front-panel Altair stops at 56K: the
+PROM is not permanently taking up the top of memory, it is a boot device that steps aside. The
+same `IN FF` that reads the sense switches is what triggers it — which is exactly how period
+software (Altair BASIC, the CP/M loaders) frees the whole 64K without knowing the trick.
+
+### The console and the sense switches
+
+The serial console is the `tty` unit, at port `10h`, and it behaves like the A channel of a
+`2sio` — so the same software drives it. The sense switches answer port `FF`, as on the front
+panel. Because this card owns `FF`, **do not put an `fp` in a `turnkey` machine**: they would
+both try to answer the port.
+
+The PROM sockets are a list, like a memory card's regions:
+
+```
+[[board.socket]]
+at    = FC00        # socket L1 — the hard-disk loader
+mount = "builtin:hdbl"
+```
 
 ---
 

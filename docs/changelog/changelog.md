@@ -8,6 +8,23 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### The 8800bt — an Altair with a Turnkey Module
+
+The **MITS 8800b Turnkey Module** joins the backplane (`turnkey`), and with it the
+front-panel-less "turnkey" Altair. It is one card doing four jobs: a boot PROM at
+`FC00`–`FFFF`, an integrated 6850 serial console at `10h` (compatible with an 88-2SIO's Port
+A), the sense switches at port `FF`, and an **Auto-Start** circuit. There is no front panel to
+toggle a bootstrap in from, so `RUN 0000` starts the CPU at 0 and the Auto-Start circuit
+**jams a `JMP` onto the bus** — running the boot PROM exactly as the panel's START switch
+would. The boot PROM is a **phantom**: it shadows the top of memory for reads until the guest's
+first `IN` from port `FE`/`FF`, then switches itself out so the machine has the full 64 KB of
+RAM — which is why an unmodified Altair BASIC drops into 64K after reading the sense switches
+once. `machines/turnkey.toml` is the machine, and `examples/turnkey/` boots CP/M on it two
+ways: `floppy.toml` off an 88-DCDD (`56K CP/M`, DBL) and `hdsk.toml` off an 88-HDSK hard disk
+(`48K CP/M`, HDBL). `docs/boards/mits-turnkey.md` and `reference/MITS Turn Key Board.md` have
+the phantom one-shot, the Auto-Start byte sequence, and the sockets. The card's serial half is
+a new reusable `Sio2Port` section, which the 88-2SIO will adopt in a later change.
+
 ### Boot CP/M off a hard disk — the 88-HDSK Datakeeper
 
 The **MITS 88-HDSK** hard disk controller joins the backplane (`hdsk`), and with it CP/M boots
