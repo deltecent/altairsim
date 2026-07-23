@@ -288,6 +288,10 @@ add_library(altair_core STATIC
   # port to a ByteStream (a file, the console, a socket). No chip: a printer sends
   # nothing back, so there is no receiver to model. See mits-88c700.h.
   src/boards/mits-88c700.cpp
+  # The 88-PIO parallel port: a bidirectional latch pair (out/in), each a ByteStream.
+  # The 88-4PIO: up to four 6820 PIAs with software-set direction. See mits-88pio.h.
+  src/boards/mits-88pio.cpp
+  src/boards/mits-884pio.cpp
   # The Processor Technology VDM-1: memory-mapped 16x64 video. It renders into a
   # host Display (src/host/display.h) injected at the composition root -- an
   # SdlDisplay in the shipping binary, a NullDisplay headless -- so the card itself
@@ -450,6 +454,8 @@ add_executable(altair_tests
   tests/test_88sio.cpp
   tests/test_88acr.cpp
   tests/test_c700.cpp
+  tests/test_pio.cpp
+  tests/test_4pio.cpp
   tests/test_vdm1.cpp
   tests/test_sol.cpp
   tests/test_tapemount.cpp

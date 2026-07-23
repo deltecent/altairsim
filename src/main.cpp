@@ -1,5 +1,7 @@
 #include "boards/mits-2sio.h"
+#include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
+#include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
@@ -190,6 +192,8 @@ int main(int argc, char** argv) {
     Sio2Board::setResolver(resolveEndpoint);
     SioBoard::setResolver(resolveEndpoint);
     C700Board::setResolver(resolveEndpoint);
+    PioBoard::setResolver(resolveEndpoint);
+    Pio4Board::setResolver(resolveEndpoint);
     SolBoard::setResolver(resolveEndpoint);
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board

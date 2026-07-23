@@ -160,6 +160,10 @@ Testing/Temporary/
 # drops one here -- and an empty one got committed once by a `git add -A` (37afae6).
 printout.txt
 
+# The `parallel` machine's capture file, for the same reason: `machines/parallel.toml`
+# connects the 88-PIO's `out` line to `file:parallel-out.txt`.
+parallel-out.txt
+
 # Agent scratch worktrees -- not repository content.
 .claude/worktrees/
 
