@@ -1,0 +1,33 @@
+# CP/M 2.2 on an 8800bt -- an Altair with a Turnkey Module and an 88-DCDD floppy.
+#
+#     cd examples/turnkey && altairsim floppy.toml
+#     -> 56K CP/M 2.2b, booted by the turnkey board's own DBL PROM
+#        A>
+#
+# THIS FILE IS A DELTA on the built-in `turnkey` machine (machines/turnkey.toml): the
+# 8800bt with the Turnkey Module (boot PROM + 6850 SIO + sense switches + Auto-Start),
+# an 88-DCDD floppy controller, and 64K of RAM. All this file adds is a disk in drive 0.
+#
+# HOW IT BOOTS. The turnkey machine's `startup = ["RUN 0000"]` starts the CPU at 0; the
+# Auto-Start circuit jams `JMP FF00` onto the bus, running DBL out of the phantom boot
+# PROM. DBL relocates itself to RAM, reads the sense switches (which also switches the
+# PROM out, freeing the top 1K of RAM), selects drive 0, and boots the floppy. The same
+# DBL, the same 0x08 controller, and the same 0x10 console every front-panel Altair uses
+# -- the only difference is that it all lives on one card.
+#
+# THE PATH IS RELATIVE TO THIS FILE (core/paths.h). The image lives in the sibling
+# examples/cpm directory (it is the flagship CP/M floppy), so this file borrows it rather
+# than shipping a second copy. See machines/turnkey.toml for the machine.
+
+[machine]
+name = "turnkey-floppy"
+base = "turnkey"
+
+# The disk. Naming the controller by `id` with no `type` adds a drive to the existing
+# 88-DCDD rather than declaring a new card.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "../cpm/cpm22b23-56k.dsk"

@@ -262,6 +262,7 @@ add_library(altair_core STATIC
   # The chips. A chip is not a card: it is modeled from its DATA SHEET, it knows
   # nothing about S-100, and it is shared by every card that has one soldered to it.
   src/chips/mc6850.cpp
+  src/chips/sio2port.cpp
   src/chips/uart1602.cpp
   src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
@@ -305,6 +306,7 @@ add_library(altair_core STATIC
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
+  src/boards/mits-turnkey.cpp
   src/boards/mits-88virtc.cpp
   # OUR OWN CARD -- the only one in this list that is not a period board, and the
   # first genuinely new hardware built against the board API (DESIGN.md 12.1).
@@ -470,6 +472,7 @@ add_executable(altair_tests
   tests/test_mds.cpp
   tests/test_hdsk.cpp
   tests/test_frontpanel.cpp
+  tests/test_turnkey.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp
   tests/test_hostdir.cpp

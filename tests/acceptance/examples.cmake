@@ -218,6 +218,54 @@ execute_process(
 )
 expect_hdsk("${out}" "`altairsim examples/hdsk/hdsk.toml` from the dist root did not boot CP/M")
 
+# ---- 4b. THE 8800bt -- THE SAME CP/M, BOOTED BY THE TURNKEY MODULE. ---------------------
+#
+# examples/turnkey is the front-panel-less 8800b: one card (the Systems Turnkey Module)
+# carries the boot PROM, the 6850 console at 0x10, the sense switches at FF, and the
+# Auto-Start circuit. floppy.toml and hdsk.toml are deltas on the built-in `turnkey`
+# machine that borrow the images from the cpm and hdsk directories copied above -- so this
+# proves the WHOLE card end to end: `RUN 0000` jams `JMP` onto the bus, DBL/HDBL runs out
+# of the phantom PROM, and the top 1K of the machine's 64K becomes RAM once the PROM
+# switches itself out. The two directories above must already be in ${dist}/examples for
+# the ../cpm and ../hdsk mounts to resolve.
+file(COPY "${SRC}/examples/turnkey" DESTINATION "${dist}/examples")
+set(turnkey "${dist}/examples/turnkey")
+
+function(expect_contains out why)
+  math(EXPR last "${ARGC} - 1")
+  foreach(i RANGE 2 ${last})
+    string(FIND "${out}" "${ARGV${i}}" hit)
+    if(hit LESS 0)
+      message(FATAL_ERROR "examples: ${why}\n"
+                          "  '${ARGV${i}}' never reached the terminal.\n--- output ---\n${out}")
+    endif()
+  endforeach()
+endfunction()
+
+# Floppy: DBL, jammed at reset out of the phantom PROM, to 56K CP/M.
+execute_process(
+  COMMAND           "${SIM}" floppy.toml
+  WORKING_DIRECTORY "${turnkey}"
+  INPUT_FILE        "${SRC}/tests/acceptance/hdsk-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_contains("${out}" "`cd examples/turnkey && altairsim floppy.toml` did not boot CP/M off the floppy"
+                "56K CP/M 2.2b" "For Altair 8" "A>")
+
+# Hard disk: HDBL from socket L1, the Auto-Start switches moved to FC00, to 48K CP/M.
+execute_process(
+  COMMAND           "${SIM}" hdsk.toml
+  WORKING_DIRECTORY "${turnkey}"
+  INPUT_FILE        "${SRC}/tests/acceptance/hdsk-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_contains("${out}" "`cd examples/turnkey && altairsim hdsk.toml` did not boot CP/M off the hard disk"
+                "HDBL 2.00" "48K CP/M 2.2b v1.6" "For MITS 88-HDSK" "A0>")
+
 # ---- 5. THE DEBUGGER WALKTHROUGH -- symbols and hex loaded from beside the file. -------
 #
 # examples/debugger is a taught exercise: a 46-byte program, its .PRN listing and its .HEX,

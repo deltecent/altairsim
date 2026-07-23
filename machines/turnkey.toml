@@ -1,0 +1,93 @@
+# The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be.
+#
+# This is the 8800b "turnkey" system: one board (the Systems Turnkey Module, 200372-01)
+# replaces the front panel's logic and carries the boot PROM, the terminal SIO, the sense
+# switches, and the Auto-Start circuit. There is no front panel and no row of lamps -- you
+# turn it on and it boots. See reference/MITS Turn Key Board.md and docs/boards/mits-turnkey.md.
+#
+# WHAT IS DIFFERENT FROM `default`. The stock machine is a front-panel 8800b: an `fp` card
+# with the sense switches at FF, a separate `88-2SIO` console at 0x10, and the DBL boot PROM
+# in a `memory` region at FF00. The Turnkey Module folds the SIO, the sense switches AND the
+# boot PROM onto ONE card -- so this machine has no `fp` and no `2sio`, and the PROM lives in
+# the turnkey board's own socket, not in the memory card. That is why this is a full machine
+# file and not a `base = "default"` delta: it removes three of the base's cards.
+#
+# THE PHANTOM IS THE POINT. On `default` the RAM stops at DFFF to leave room for the PROM.
+# Here the RAM is the full 64K: the boot PROM SHADOWS the top 1K for reads until the guest's
+# first `IN` from port FE/FF, then vanishes so all 64K is usable (reference §9). The RAM card
+# is strapped `honors_phantom = read` -- off for reads while the PROM shadows it, still
+# answering writes, so a byte written under the shadow lands in the RAM beneath.
+#
+# HOW IT BOOTS. There is no BOOT verb (DESIGN.md 10.0). `RUN 0000` starts the CPU at 0, and
+# the Auto-Start circuit JAMS `JMP FF00` onto the bus for the first three fetches -- so the
+# machine runs the DBL boot PROM exactly as pressing the panel's START switch would. DBL
+# relocates itself to RAM, reads the sense switches (which incidentally disables the phantom
+# PROM), selects drive 0, and boots whatever floppy is in it. With no disk mounted it spins,
+# which is the honest default -- an Altair shipped with a drive cable, not with your floppy:
+#
+#     altairsim turnkey
+#     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
+#     RUN 0000
+#     -> 56K CP/M 2.2b
+#
+# ...which is what `examples/turnkey/floppy.toml` writes down. `examples/turnkey/hdsk.toml`
+# is the same machine booting CP/M off an 88-HDSK hard disk instead.
+
+[machine]
+name    = "turnkey"
+startup = ["RUN 0000"]   # PC starts at 0; the Auto-Start jam redirects it to FF00
+
+# THE TURNKEY MODULE. One card: the boot PROM (socket H1 = DBL at FF00), the 6850 SIO at
+# 0x10 (2SIO-Port-A compatible, so DBL and every Altair CP/M BIOS drive it unchanged), the
+# sense switches at port FF, and the Auto-Start circuit set to FF00.
+[[board]]
+type  = "turnkey"
+id    = "tk0"
+sense = 0x00          # SW6/SW7; DBL reads bit 4 (SA12) for the 2SIO stop bits -- see default.toml
+start = FF00          # START ADDR switches: Auto-Start jams JMP FF00
+
+  # THE BOOT PROM SOCKETS. Socket H1 (FF00) carries DBL, the floppy boot loader, exactly as
+  # the base machine's memory card did -- but here it phantoms out so the RAM underneath is
+  # usable. Populate L1 (FC00) with builtin:hdbl to boot a hard disk instead.
+  [[board.socket]]
+  at    = FF00
+  mount = "builtin:dbl"
+
+  # THE CONSOLE. The 6850 SIO's `tty` unit, on the terminal.
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+[[board]]
+type = "8080"
+id   = "cpu0"
+
+# THE FLOPPY CONTROLLER -- an 88-DCDD at 0x08, which DBL is hard-wired to. Four drives, no
+# disks: what an Altair shipped as.
+[[board]]
+type   = "dcdd"
+id     = "dsk0"
+port   = 08
+drives = 4
+
+# THE HOST BRIDGE, at port B0 -- the supported path for moving files in and out of a running
+# CP/M guest. See machines/default.toml for the whole story; `hostdir = ""` is the shell's
+# working directory.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+# 64K OF RAM, and the boot PROM shadows the top 1K of it until it phantoms out. `honors_phantom
+# = read` is what makes the shadow a read-only overlay: writes fall through to the RAM beneath.
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"          # real static RAM does not come up zeroed
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                     # 0000-FFFF; the turnkey PROM overlays FC00-FFFF until IN FE/FF
