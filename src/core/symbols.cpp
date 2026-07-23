@@ -70,6 +70,28 @@ void SymbolTable::clear() {
     loadOrder.clear();
 }
 
+std::vector<std::string> SymbolTable::labelsAt(uint32_t addr) const {
+    std::vector<std::string> out;
+    auto range = byAddr.equal_range(addr & 0xFFFF);
+    for (auto it = range.first; it != range.second; ++it) out.push_back(it->second);
+    return out;
+}
+
+std::string SymbolTable::operandName(uint32_t value) const {
+    value &= 0xFFFF;
+
+    // A real label wins -- byAddr is labels only, so a hit here is unambiguous.
+    auto range = byAddr.equal_range(value);
+    if (range.first != range.second) return range.first->second;
+
+    // No label at this address, but a symbol may still name the value -- an EQU that is
+    // really an address (BDOS EQU 5), or a linker global from a flat .SYM. byName is
+    // ordered by name, so the choice is deterministic when two symbols share a value.
+    for (const auto& [name, s] : byName)
+        if ((s.value & 0xFFFF) == value) return name;
+    return "";
+}
+
 void SymbolTable::put(const std::string& rawName, uint32_t value, bool isAddr,
                       const std::string& source, LoadStats& st) {
     std::string name = upcase(rawName);

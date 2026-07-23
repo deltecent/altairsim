@@ -1787,9 +1787,50 @@ Insn Monitor::insnAt(uint32_t at, const Disassembler& d) {
     return d.at((uint16_t)at, peek);
 }
 
+// Substitute a symbol for a bare 16-bit operand address. The decoder hands back flat
+// text ("CALL 0005"), and in both the 8080 and Z80 emitters a run of exactly four
+// uppercase hex digits is *only* a 16-bit operand or a relative-jump target -- an
+// immediate byte is two digits and an index displacement carries a +/- sign -- so a
+// four-hex token, and nothing else, is an address worth naming. We split on alnum
+// boundaries so a mnemonic like CALL (an L is not hex) or a register pair is never
+// mistaken for a number.
+std::string Monitor::annotateOperands(const std::string& text) const {
+    if (m_.syms.empty()) return text;  // nothing loaded: byte-for-byte the old output
+
+    auto isUpperHex = [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
+    };
+
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size();) {
+        if (!std::isalnum((unsigned char)text[i])) {
+            out += text[i++];
+            continue;
+        }
+        size_t j = i;
+        while (j < text.size() && std::isalnum((unsigned char)text[j])) ++j;
+        std::string tok = text.substr(i, j - i);
+        if (tok.size() == 4 && std::all_of(tok.begin(), tok.end(), isUpperHex)) {
+            uint32_t v = (uint32_t)std::stoul(tok, nullptr, 16);
+            std::string name = m_.syms.operandName(v);
+            if (!name.empty()) tok = name;
+        }
+        out += tok;
+        i = j;
+    }
+    return out;
+}
+
 uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& out) {
     auto peek = [this](uint16_t a) { return m_.bus.peek(a); };
     Insn in = insnAt(at, d);
+
+    // A program label at this address heads its own line, the way an assembler listing
+    // prints it -- so a jump destination reads as a name in the body AND announces
+    // itself where it lands. Labels only (labelsAt), never an EQU: a constant that
+    // happens to equal a code address must not print a phantom header.
+    for (const std::string& label : m_.syms.labelsAt(at)) out << label << ":\n";
 
     std::string bytes;
     char b[8];
@@ -1800,7 +1841,7 @@ uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& ou
 
     char buf[96];
     std::snprintf(buf, sizeof buf, "%04X  %-9s %s", (unsigned)at & 0xFFFF, bytes.c_str(),
-                  in.text.c_str());
+                  annotateOperands(in.text).c_str());
     out << buf << "\n";
     return in.len;
 }
@@ -1847,7 +1888,8 @@ void Monitor::showRegs(std::ostream& out) {
     if (!flags.empty() && !fields.empty()) out << " ";
     out << fields;
 
-    if (const Disassembler* d = disassemblerFor(c->isa())) out << " " << insnAt(c->pc(), *d).text;
+    if (const Disassembler* d = disassemblerFor(c->isa()))
+        out << " " << annotateOperands(insnAt(c->pc(), *d).text);
     out << "\n";
 }
 

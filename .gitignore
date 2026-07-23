@@ -130,6 +130,10 @@ examples/**
 !examples/sol/PACMAN.WAV
 !examples/sol/RAIDERS.WAV
 !examples/sol/ATC Manual.pdf
+!examples/debugger/HELLO.ASM
+!examples/debugger/HELLO.PRN
+!examples/debugger/HELLO.HEX
+!examples/debugger/README.pdf
 
 # Scanned manuals and datasheets. Same reasoning as the disk images, and then
 # some: they are enormous (the 88-DCDD manual alone is 52 MB) and they are not

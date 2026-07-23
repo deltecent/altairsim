@@ -47,7 +47,8 @@ struct SymbolTable {
 
     // Reverse: address -> name, LABELS ONLY. A multimap because M80 truncates names to 6
     // significant characters, so two source labels can land on one address and both should
-    // show. Used by display/annotation (deferred); SHOW SYMBOLS reads byName.
+    // show. Read by labelsAt() for a disassembly's leading `NAME:` lines; SHOW SYMBOLS
+    // reads byName.
     std::multimap<uint32_t, std::string> byAddr;
 
     // The files loaded, in load order (deduped). CONFIG SAVE re-emits one SYMBOLS LOAD per
@@ -58,6 +59,20 @@ struct SymbolTable {
     void clear();
     bool empty() const { return byName.empty(); }
     size_t size() const { return byName.size(); }
+
+    // The program LABELS at an address, for a leading `NAME:` line in a disassembly.
+    // byAddr is labels-only by design (an EQU never lands here, so a constant that
+    // happens to equal a code address does not print a phantom header), which is
+    // exactly what a listing header wants. Empty when nothing is labelled here.
+    std::vector<std::string> labelsAt(uint32_t addr) const;
+
+    // The best name for an address an instruction REFERENCES -- the target of a JMP,
+    // the pointer in an LXI. A real program label wins outright; failing that, ANY
+    // symbol with this value, which is what lets `CALL 0005` read as `CALL BDOS` even
+    // though BDOS is an EQU (the reverse-map rule keeps EQUs out of byAddr, so this
+    // asks byName directly). Empty when no symbol has this value. This is name-for-a-
+    // *referenced*-value, deliberately more permissive than labelsAt's name-for-*here*.
+    std::string operandName(uint32_t value) const;
 
     // Merge one symbol, maintaining byAddr and counting a redefinition. `isAddr` decides
     // whether it also enters the reverse map. Not usually called directly -- loadPrn/loadSym do.

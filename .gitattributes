@@ -24,6 +24,13 @@ tests/programs/symbols/*.PRN binary
 tests/programs/symbols/*.MAC binary
 tests/programs/symbols/*.ASM binary
 
+# The symbolic-debugger example ships the same period toolchain set -- a listing, its
+# source and the Intel HEX (examples/debugger/). They are CRLF like the real CP/M files
+# they imitate; keep them byte-for-byte so a checkout matches on every platform. (.HEX is
+# already binary globally below.)
+examples/debugger/*.PRN binary
+examples/debugger/*.ASM binary
+
 # Period media and disk images are binary -- never munge.
 *.DSK binary
 *.dsk binary

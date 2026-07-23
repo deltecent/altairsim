@@ -1,0 +1,55 @@
+# A small Altair for learning the symbolic debugger.
+#
+#     cd examples/debugger && altairsim debugger.toml
+#     -> the altairsim> monitor prompt, with nothing loaded yet
+#
+# There is NO `startup` here on purpose. This machine comes up at the monitor prompt
+# and does nothing, because the whole point of the exercise is that YOU load the
+# program and drive it by hand -- SYMBOLS LOAD, LOAD, DISASM, STEP, BREAK, RUN. The
+# README beside this file is the lesson; the machine is just the bench it runs on.
+#
+# THE PATHS THE README TYPES ARE RELATIVE TO WHERE YOU ARE STANDING, not to this file
+# (core/paths.h). `HELLO.HEX` and `HELLO.PRN` are lying in this directory, so run the
+# commands from here -- `cd examples/debugger` first -- and they resolve.
+#
+# The hardware is the smallest thing that can run the demo: an 8080, 32K of RAM, and
+# an 88-2SIO whose channel A is the console the program prints "HELLO, WORLD" on. No
+# ROM, no disk, no front panel -- none of it is needed to single-step a program you
+# typed in, which was the whole appeal of the front-panel machine and is the whole
+# appeal of this one.
+
+[machine]
+name = "debugger-demo"
+
+# The processor. `clock_hz = 0` is flat out (the default); the demo is 46 bytes and a
+# short loop, so it finishes the instant you RUN it either way.
+[[board]]
+type = "8080"
+id   = "cpu0"
+
+# The console. An 88-2SIO at port 10 -- status at 10, data at 11 -- with channel A
+# wired to your terminal. Those are the ports HELLO.ASM writes to (TTYS/TTYD).
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+
+# 32K of RAM, 0000-7FFF, zero-filled so an untouched byte reads 00 and a DUMP of the
+# space past the program is quiet. The program assembles at 0100 and its stack lives
+# just above the string, so everything it touches is in here.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "zero"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "32K"

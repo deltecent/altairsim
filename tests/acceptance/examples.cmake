@@ -173,6 +173,58 @@ execute_process(
 )
 expect_cpm("${out}" "`altairsim examples/cpm/cpm22-buffered.toml` from the dist root did not boot CP/M")
 
+# ---- 5. THE DEBUGGER WALKTHROUGH -- symbols and hex loaded from beside the file. -------
+#
+# examples/debugger is a taught exercise: a 46-byte program, its .PRN listing and its .HEX,
+# and a README that walks the monitor's debugger. This runs that walkthrough non-
+# interactively through the SHIPPED binary, from the example's own directory, so it proves
+# two things at once -- the symbolic disassembler names labels and operands the way the
+# README says, and the .prn/.hex resolve beside the machine file rather than beside the repo.
+file(COPY "${SRC}/examples/debugger" DESTINATION "${dist}/examples")
+set(dbg "${dist}/examples/debugger")
+
+execute_process(
+  COMMAND           "${SIM}" debugger.toml
+                    -x "SYMBOLS LOAD HELLO.PRN"
+                    -x "LOAD HELLO.HEX"
+                    -x "DISASM START-DONE"
+                    -x "DISASM PUTC 7"
+                    -x "EXAMINE START"
+                    -x "BREAK DONE"
+                    -x "RUN"
+  WORKING_DIRECTORY "${dbg}"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           30
+)
+
+# What has to be true: the files loaded from beside the machine file; the disassembly is
+# symbolic (a leading label, a label operand, and the EQU-address operand that is the whole
+# point of the feature); and the program actually ran and printed through the 2SIO.
+foreach(want
+        "12 symbol(s) from HELLO.PRN"   # the .PRN resolved beside debugger.toml
+        "loaded 46 bytes"               # so did the .HEX
+        "START:"                        # a program label heads its own line
+        "CALL PUTC"                     # a 16-bit operand reads as a label
+        "LXI SP,STACK"                  # ...and as an EQU-address -- the CALL BDOS case
+        "IN 10"                         # a BYTE operand stays a number (a port is not an address)
+        "HELLO, WORLD"                  # it ran, on the console the file wired up
+        "stopped at 0112")              # and stopped at the DONE breakpoint
+  string(FIND "${out}" "${want}" hit)
+  if(hit LESS 0)
+    message(FATAL_ERROR "examples: the debugger walkthrough did not behave as the README says.\n"
+                        "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+  endif()
+endforeach()
+
+# And the byte operand that must NOT be named: IN 10 stays IN 10, never IN TTYS, because a
+# port is a byte and only a 16-bit operand is an address (README section 2).
+string(FIND "${out}" "IN TTYS" hit)
+if(hit GREATER_EQUAL 0)
+  message(FATAL_ERROR "examples: a BYTE operand was annotated as a symbol.\n"
+                      "  'IN 10' read as 'IN TTYS' -- a port is not an address.\n--- output ---\n${out}")
+endif()
+
 file(REMOVE_RECURSE "${dist}")
 message(STATUS "examples: the shipped examples boot from their own directory, and a typed "
                "path still means the shell's.")

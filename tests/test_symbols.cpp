@@ -45,6 +45,33 @@ void test_symbols() {
         CHECK(t.byAddr.count(0x0117) == 1, "the label DONE is in the reverse map");
         CHECK(t.byAddr.count(0x0005) == 0, "the EQU BDOS is NOT -- 0005 is not a label");
         CHECK(t.byAddr.count(0x0002) == 0, "nor is the function number CONOUT");
+
+        // ---- annotation: labelsAt (headers) vs operandName (referenced values) ----
+        // A leading `NAME:` line comes from labels only, so a disassembly heads START
+        // and DONE but never prints a phantom `BDOS:` at 0005.
+        CHECK(t.labelsAt(0x0100).size() == 1 && t.labelsAt(0x0100)[0] == "START",
+              "labelsAt heads the line with a real label");
+        CHECK(t.labelsAt(0x0005).empty(), "an EQU value is not a line header");
+
+        // An operand names the value it points at. A real label wins; failing that, an
+        // EQU that is really an address (BDOS) still names it -- which is what makes
+        // `CALL 0005` read as `CALL BDOS`.
+        CHECK(t.operandName(0x0100) == "START", "an operand at a label reads as the label");
+        CHECK(t.operandName(0x0005) == "BDOS", "an operand at an EQU-address reads as the EQU");
+        CHECK(t.operandName(0x9999).empty(), "an operand with no matching symbol stays a number");
+    }
+
+    // ---- operandName prefers a real label to an EQU that shares its value ----
+    {
+        // START and a stray EQU both equal 0100. The label must win so the address does
+        // not read as the constant.
+        std::string p = prn("0100", "314201", "START:\tLXI\tSP,STACK") +
+                        prn("0100", "=", "PAGE1\tEQU\t100H");
+        SymbolTable t;
+        SymbolTable::LoadStats st;
+        std::string err;
+        CHECK(loadPrn(sv(p), "x.PRN", t, true, st, err), "loads");
+        CHECK(t.operandName(0x0100) == "START", "a label beats a same-valued EQU");
     }
 
     // ---- .PRN: both label styles, and the object field that abuts column 16 ----

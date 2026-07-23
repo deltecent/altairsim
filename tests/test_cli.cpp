@@ -1251,6 +1251,23 @@ void test_achieved_hz() {
         mon.exec("SYMBOLS LOAD " + prn, s1);
         CHECK(s1.str().find("3 symbol") != std::string::npos, "the .PRN loads its three symbols");
 
+        // DISASM reads symbolic once they are loaded. Lay down CALL 0005 / JMP 0106 /
+        // MVI A,05 at the START label and disassemble it: BDOS (an EQU-address) names
+        // the CALL, LOOP (a label) names the JMP, START and LOOP each head their own
+        // line -- and the *byte* operand 05 stays a number even though BDOS equals 5,
+        // because only a 16-bit operand is an address.
+        mon.exec("DEPOSIT 0100 CD 05 00 C3 06 01 3E 05", o);
+        std::ostringstream dis;
+        mon.exec("DISASM 0100 3", dis);
+        const std::string dtext = dis.str();
+        CHECK(dtext.find("\nSTART:\n") != std::string::npos || dtext.compare(0, 7, "START:\n") == 0,
+              "the START label heads its own line");
+        CHECK(dtext.find("CALL BDOS") != std::string::npos, "CALL 0005 reads as CALL BDOS");
+        CHECK(dtext.find("JMP LOOP") != std::string::npos, "JMP 0106 reads as JMP LOOP");
+        CHECK(dtext.find("LOOP:\n") != std::string::npos, "the LOOP label heads its line where it lands");
+        CHECK(dtext.find("MVI A,05") != std::string::npos && dtext.find("MVI A,BDOS") == std::string::npos,
+              "a byte operand stays a number -- 05 is not the EQU BDOS");
+
         // A symbol resolves anywhere a true address is typed. BREAK names the address it set.
         std::ostringstream b1;
         mon.exec("BREAK START", b1);
