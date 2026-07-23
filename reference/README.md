@@ -34,6 +34,13 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | [6850](6850.md) | Motorola MC6850 ACIA: register map, control/status bit layouts, divide/word-select/transmitter-control tables, master reset, and chip-select logic. |
 | [com2502](com2502.md) | SMC COM2502/COM2017 UART (the 88-SIO's UART): the control-word framing fields, the SWE#-gated status flags, and double-buffered TX/RX holding-register behavior. |
 
+## Parallel I/O
+
+| Reference | What it covers |
+|---|---|
+| [MITS 88-PIO](MITS%2088-PIO.md) | MITS 88-PIO parallel board (discrete TTL, two 8212 latches — *not* a PIA): the two consecutive ports (even Control/Status with A0 split, odd Data), the fixed-direction 8-bit in/out latches, the status bits (DI0 output-ready, DI1 input-has-data), the interrupt-enable bits (DO0/DO1, "BOTH" jumper), the `SBO`/`SBI` strobe + `BO`/`BIN` handshake, and both interrupt paths (88-VI vectored — with the priority-order conflict vs the 88-VI board — or single-level RST 7 → 0x38). |
+| [MITS 88-4PIO](MITS%2088-4PIO.md) | MITS 88-4 parallel board (up to four Motorola 6820 PIAs, ports J/K/L/M): the 16-address-per-board decode (A4–A7 board, A3–A2 port, A1–A0 section/register), the read/write control/status register bit map (bit 7/6 IRQ status, 5–3 C2, 2 DDR-select, 1–0 C1), the C1/C2 edge+enable tables, the CA2/CB2-as-output read/write-strobe modes, DDR direction control, the power-on all-inputs reset, the init/handshake protocol, and both interrupt paths (88-VI vectored or single-level `PINT` → RST → 0x38). |
+
 ## Printer
 
 | Reference | What it covers |
