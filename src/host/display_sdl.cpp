@@ -171,7 +171,7 @@ bool SdlDisplay::ensureWindow(int w, int h) {
 // has no window yet -- so it is recorded and ensureWindow() picks it up. Retitling a live
 // window matters too: CONFIG LOAD swaps the machine underneath an open one.
 void SdlDisplay::setTitle(const std::string& name) {
-    std::string t = name.empty() ? "altairsim" : "altairsim -- " + name;
+    std::string t = name.empty() ? "AltairSim" : "AltairSim -- " + name;
     if (t == title_) return;
     title_ = std::move(t);
     if (window_) SDL_SetWindowTitle(window_, title_.c_str());

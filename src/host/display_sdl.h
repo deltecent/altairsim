@@ -70,7 +70,7 @@ private:
 
     // The title bar. Held rather than pushed straight at SDL, because the run loop names
     // the machine long before a board draws the first frame and opens the window.
-    std::string title_ = "altairsim";
+    std::string title_ = "AltairSim";
 
     bool inited_ = false;
     bool quit_   = false;
