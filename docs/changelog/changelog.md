@@ -8,6 +8,28 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Color graphics — the Cromemco Dazzler
+
+The **Cromemco Dazzler** joins the backplane (`dazzler`), and with it the S-100's first color
+graphics card. It paints a picture out of a **framebuffer in main RAM** — 512 bytes or 2 KB,
+placed anywhere on a 512-byte boundary — through two ports at `0E`/`0F` (control: on/off and
+base; format: resolution, size, color) with a two-bit status read (odd/even line, end-of-frame).
+Four modes fall out of the format byte: 32×32 or 64×64 color/grey elements, and 64×64 or 128×128
+high-resolution on/off elements, in 16 colors or 16 greys. `machines/dazzler.toml` is the
+machine, and `examples/dazzler/kscope.toml` comes up running **Li-Chen Wang's Kaleidoscope**
+(`KSCOPE`), drawing a four-way-mirrored pattern in a window (ATTN breaks back to the monitor).
+Like the VDM-1 it renders
+into the injected `Display`, so a headless build still runs and is tested with no window;
+`docs/boards/cromemco-dazzler.md` and `reference/Cromemco Dazzler.md` have the port map, the
+quadrant scan order, and the byte→pixel encoding for every mode.
+
+The video window learned to **size itself** for it. `[display] scaling` (a new setting, default
+`auto`) opens a window at the largest whole-number multiple that fills about 70% of the screen,
+so the Dazzler's tiny 64×64 frame no longer comes up a sixth the size of a VDM-1's — both land
+near the same size, and a fixed multiple (`scaling = 4`) is still there if you want one. `kscope.toml`
+also sets `[display] focus = true`, so the window comes to the front and takes the keyboard when it
+opens (ATTN hands it back), the way a Sol-20's does.
+
 ### The 8800bt — an Altair with a Turnkey Module
 
 The **MITS 8800b Turnkey Module** joins the backplane (`turnkey`), and with it the

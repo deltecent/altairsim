@@ -62,6 +62,7 @@ void test_c700();
 void test_pio();
 void test_4pio();
 void test_vdm1();
+void test_dazzler();
 void test_sol();
 void test_frontpanel();
 void test_turnkey();

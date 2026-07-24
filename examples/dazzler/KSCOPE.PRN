@@ -1,0 +1,256 @@
+                ;
+                ; CROMEMCO DAZZLER KALEIDOSCOPE
+                ; WRITTEN BY LI-CHEN WANG
+                ;
+                ; REFORMATED AND COMMENTED OCT.2022 H.FRANKE
+                
+                ;-------------------------------------------
+                
+                ; MEMORY STRUCTURE
+                ; 0100..017F PROGRAM
+                ; 0180..01FF STACK (6 BYTES USED)
+                ; 0300..0AFF VIDEO BUFFER
+                
+ 0100 =         TOP@ST   EQU   100H
+ 0200 =         VID@BF   EQU   200H
+                
+                
+                ; DAZZLER VIDEO REGISTERS
+                ; ADDRESS REGISTER AT I/O ADDRESS 0EH
+                ; BIT 8     = ON/OFF
+                ; BIT 6..1  = ADDRESS OF VIDEO BUFFER
+                
+ 000E =         DAZ@A    EQU   0EH                      ; DAZZLER ADDRESS PORT ADDRESS
+ 0080 =         DAZ@ON   EQU   80H                      ; ON/OFF BIT
+                
+                ; MODE REGISTER AT I/O ADDRESS 0FH
+                ; BIT 8     = UNUSED
+                ; BIT 7     = RESOLUTION
+                ;             0 = NORMAL RESOLUTION: 32X32X4 OR 64X64X4
+                ;             1 = HIGH RESOLUTION: 64X64X1 OR 128X128X1
+                ; BIT 6     = MEMORY SIZE
+                ;             0 = 512 BYTES
+                ;             1 = 2 KIB
+                ; BIT 5     = COLOUR OR B&W
+                ;             0 = B&W
+                ;             1 = COLOUR
+                ; BIT 4..1  = IBGR  OR GREY LEVEL FOR SET PIXEL IN HIGH RESOLUTION (BIT 7 SET)
+                
+                ;[NOWADAYS ONE WOULD COMBINE BIT 7..5 INTO A VIDEO MODE NUMBER LIKE
+                ; 0 (000) =  32 X  32 X 16 GREY LEVEL PER PIXEL
+                ; 1 (001) =  32 X  32 X 16 COLOUR PER PIXEL
+                ; 2 (010) =  64 X  64 X 16 GREY LEVEL PER PIXEL
+                ; 3 (011) =  64 X  64 X 16 COLOUR PER PIXEL
+                ; 4 (100) =  64 X  64 B&W WITH ONE PREDEFINED GREY LEVEL AND BLACK
+                ; 5 (101) =  64 X  64 COLOUR WITH ONE PREDEFINED COLOUR AND BLACK
+                ; 6 (110) = 128 X 128 B&W WITH ONE PREDEFINED GREY LEVEL AND BLACK
+                ; 7 (111) = 128 X 128 COLOUR WITH ONE PREDEFINED COLOUR AND BLACK
+                ;]
+                
+ 000F =         DAZ@M    EQU   0FH                      ; DAZZLER ADDRESS PORT ADDRESS
+ 0040 =         DAZ@HR   EQU   40H                      ; HIGH RESOLUTION (1)
+ 0020 =         DAZ@ML   EQU   20H                      ; MEMORY SIZE 512 BYTES (0) OR 2 KIB (1)
+ 0010 =         DAZ@CO   EQU   10H                      ; COLOUR (1) OR B&W (0)
+                
+                ; SYNCHRONISATION REGISTER AT I/O ADDRESS 0EH
+                ;[ADDED FOR COMPLETENESS, NOT USED HERE]
+                ; BIT 8     = EVEN/ODD VIDEO LINE
+                ; BIT 7     = END OF FRAME - SET DURING VERTICAL RETRACE
+                ; BIT 6..1  = UNDEFINED
+ 000E =         DAZ@S    EQU   0EH                      ; DAZZLER SYNCHRONIZATION PORT ADDRESS
+ 0040 =         DAZ@SL   EQU   40H                      ; LINE SYNCHRONISATION
+ 0040 =         DAZ@SF   EQU   40H                      ; FRAME SYNCHRONISATION
+                
+ 0000                    ORG   0000H  ; PROGRAM START AT RESET
+                
+                ; INITIALIZE STACK   
+ 0000 310001             LXI   SP,TOP@ST                ; SET TOP OF STACK TO 100H
+                
+                ; SWITCH DAZZLER OUTPUT ON AND SET ADDRESS TO 0200H
+ 0003 3E81               MVI   A,DAZ@ON+(VID@BF SHR 9) ; ENABLE DAZZLER AND SET THE VIDEO BUFFER START TO 0200H (=081H)
+ 0005 D30E               OUT   DAZ@A                    ; SEND TO ADDRESS PORT
+                
+                ; SET DAZZLER VIDEO MODE TO 64X64 @ 16 INDIVIDUAL COLOURS
+ 0007 3E30               MVI   A,DAZ@ML+DAZ@CO          ; (=30H)
+ 0009 D30F               OUT   DAZ@M                    ; SEND TO MODE PORT
+                
+                ; MAIN LOOP
+                HKS:                  
+                ; REGISTER USAGE DURING MAIN LOOP:
+                ;    H = COLOUR, CYCLES FROM 1FH DOWN TO 01H
+                ;        EVERY ODD CYCLE USES BLACK
+                ;        EVERY EVEN WILL PRODUCE A COLOUR FROM F DOWN TO 1 (BLACK (0) WILL NOT BE REACHED)
+                ;    D = MASK (0..FFH) USED TO 'RANDOMIZE' THE NEXT ADDRESS
+                ;    E = LOOP COUNTER, COUNTS DOWN FROM 03FH TO 0 
+                ;    B = X COORDINATE * 8
+                ;    C = Y COORDINATE * 8
+                ; NOTE:
+                ;    **NO REGISTER IS INITIALIZED PRIOR TO FIRST ITERATION**
+                ;    THEY MAY CONTAIN RANDOM VALUES AFTER RESET.
+                ;    THIS WILL RESULT IN START AT SOME LOCATION WITH SOME COLOUR.
+                
+                ; GENERATE NEXT 'RANDOM' PIXEL COORDINATE
+                
+                ; NEW Y = LAST Y + ((LAST X >> 2) AND MASK)
+ 000B 78                 MOV   A,B                      ; LAST X >> 2
+ 000C 0F                 RRC               
+ 000D 0F                 RRC   
+ 000E A2                 ANA   D                        ; AND MASK
+ 000F 81                 ADD   C                        ; PLUS LAST Y
+ 0010 4F                 MOV   C,A                      ; -> NEW Y
+                ; NEW X = LAST X - ((NEW Y >> 2) AND MASK)
+ 0011 0F                 RRC                            ; NEW Y >> 2
+ 0012 0F                 RRC   
+ 0013 A2                 ANA   D                        ; AND MASK
+ 0014 6F                 MOV   L,A         
+ 0015 78                 MOV   A,B                      ; LAST X
+ 0016 95                 SUB   L
+ 0017 47                 MOV   B,A                      ; -> NEW X
+                
+                ; START DRAWING
+ 0018 C5                 PUSH  B                        ; SAVE REGISTERS TO FREE THEM FOR DATA DURING DRAWING
+ 0019 D5                 PUSH  D  
+ 001A E5                 PUSH  H
+                
+ 001B 110000             LXI   D,0                      ; CLEAR COLOUR(S) (SETTING TO BLACK) IN DE
+ 001E 7C                 MOV   A,H                      ; EXTRACT COLOUR FROM H AND PREPARE TEST FOR DRAW OR CLEAR
+ 001F E61F               ANI   01FH  
+ 0021 1F                 RAR                            ; LOW BIT DEFINES IF BLACK OR OTHER COLOUR IS USED
+ 0022 DA2B00             JC    DBLACK                   ; BIT WAS 0 -> DRAW PIXEL AS BLACK
+                  
+                ; IF IT WAS NOT BLACK, COPY THE 4-BIT VALUE INTO E AND D
+ 0025 5F                 MOV   E,A                      ; COLOUR TO E FOR LOW PIXEL
+ 0026 07                 RLC                            ; SHIFT COLOUR TO HIGH NIBBLE FOR UPPER PIXEL
+ 0027 07                 RLC   
+ 0028 07                 RLC   
+ 0029 07                 RLC   
+ 002A 57                 MOV   D,A                      ;
+                DBLACK: 
+                
+                ; DRAW A PIXEL MIRRORED 4 TIMES
+                ;
+                ; IN:
+                ;   B/C = X/Y 0..31 IN TOP 5 BITS
+                ;   D/E = PREPARED COLOUR VALUE
+                
+                ; WORKS OUT QUITE EASY, AS THE DAZZLER MEMORY IN 2KI MODE
+                ; IS ORGANIZED AS 4 PAGES OF 512 BYTES, EACH HOLDING 1/4TH
+                ; OF THE DISPLAY, 32X32 PIXEL IN THE SELECTED MODE. THEY
+                ; ARE POSITIONED AS:
+                ;
+                ;                          0200H  I  0400H
+                ;    PAGE 1  I  PAGE 2      ...   I   ... 
+                ;            I             03FFH  I  05FFH
+                ;    --------+--------     -------+-------
+                ;            I             0600H  I  0800H
+                ;    PAGE 3  I  PAGE 4      ...   I   ... 
+                ;                          07FFH  I  09FFH
+                ;
+                ; DUE TO THIS ORGANIZATION IN 4 QUADRANTS IT'S QUITE EASY
+                ; TO MIRROR A PIXEL'S COORDINATES ALONG BOTH AXIS BY SIMPLY
+                ; NEGATING EACH AXIS.
+                ;
+                ; DRAWING IS DONE CLOCKWISE STARTING IN THE LOWER RIGHT QUADRANT
+                
+                ; DRAW PIXEL IN LOWER RIGHT QUADRANT
+ 002B 2608               MVI   H,08H                    ; H = BASE ADDRESS PAGE 4, B/C=X/Y PIXEL WITHIN THAT PAGE
+ 002D CD5D00             CALL  OUTPX                    ; SET PIXEL AT X/Y
+                
+                ; DRAW PIXEL IN LOWER LEFT QUADRANT
+ 0030 78                 MOV   A,B                      ; COMPLEMENT B TO FLIP ALONG X AXIS
+ 0031 2F                 CMA
+ 0032 47                 MOV   B,A
+ 0033 2606               MVI   H,06H                    ; H = BASE ADDRESS PAGE 3, B/C=X/Y PIXEL WITHIN THAT PAGE
+ 0035 CD5D00             CALL  OUTPX                    ; SET PIXEL AT -X/Y
+                
+                ; DRAW PIXEL IN UPPER LEFT QUADRANT
+ 0038 79                 MOV   A,C                      ; COMPLEMENT C TO FLIP ALONG Y AXIS
+ 0039 2F                 CMA   
+ 003A 4F                 MOV   C,A  
+ 003B 2602               MVI   H,02H                    ; H = BASE ADDRESS PAGE 1, B/C=X/Y PIXEL WITHIN THAT PAGE
+ 003D CD5D00             CALL  OUTPX                    ; SET PIXEL AT -X/-Y
+                
+                ; DRAW PIXEL IN UPPER RIGHT QUADRANT
+ 0040 78                 MOV   A,B                      ; COMPLEMENT B (AGAIN) TO FLIP (BACK) ALONG X AXIS
+ 0041 2F                 CMA   
+ 0042 47                 MOV   B,A  
+ 0043 2604               MVI   H,04H                    ; H = BASE ADDRESS PAGE 2, B/C=X/Y PIXEL WITHIN THAT PAGE
+ 0045 CD5D00             CALL  OUTPX                    ; SET PIXEL AT X/-Y
+                
+                ; DRAWING COMPLETE, MAIN LOOP CONTINUES
+ 0048 E1                 POP   H                        ; RESTORE REGISTERS FOR MAIN LOOP
+ 0049 D1                 POP   D  
+ 004A C1                 POP   B
+                
+ 004B 1D                 DCR   E                        ; HAVE WE DONE THIS 64 TIMES?
+ 004C C20B00             JNZ   HKS                      ; NO -> BACK TO THE TOP OF THE LOOP
+                
+                ; EVERY 64TH CYCLE, BUMP THE COLORS, LOCATIONS AND MASK TO RANDOMIZE DRAWING
+ 004F 04                 INR   B                        ; X = X + 1/8TH
+ 0050 0C                 INR   C                        ; Y = Y + 1/8TH
+ 0051 1E3F               MVI   E,03FH                   ; PREPARE ANOTHER 64 ROUNDS
+ 0053 25                 DCR   H                        ; BUT USE THE NEXT COLOUR (1FH..1H)
+                                                        ; LOWEST BIT FLIPS BETWEEN BLACK AND COLOUR 0..F
+ 0054 C20B00             JNZ   HKS                      ; UNLESS BLACK -> DO NEXT ITERATION
+                
+ 0057 14                 INR   D                        ; INCREMENT MASK FOR 'RANDOMNESS'
+ 0058 261F               MVI   H,01FH                   ; RESTART WITH COLOUR 0FH AGAIN
+ 005A C30B00             JMP   HKS                      ; START OVER
+                
+                ; OUTPUT A PIXEL SUBROUTINE
+                ; IN:
+                ;    H  HIGH BYTE PAGE BASE (2/4/6/8)
+                ;    L  ---
+                ;    B  X COORDINATE WITHIN PAGE (BIT 8..5 -> A3..A0  BIT 4 -> SELECTS HIGH/LOW PIXEL)
+                ;    C  Y COORDINATE WITHIN PAGE (BIT 8..4 -> A8..A4)   
+                ;    D  PREPARED COLOUR FOR LOW PIXEL  (IN BIT 4..1)
+                ;    E  PREPARED COLOUR FOR HIGH PIXEL (IN BIT 8..5)
+                ; OUT:
+                ;    PIXEL SET
+                ;    A,H,L    DESTROYED
+                ;    B,C,D,E  UNCHANGED
+                
+                ; STEP ONE:
+                ;      TURN 5+5 BIT X/Y ADDRESS INTO 9 BIT ADDRESS
+                ;      PLUS HIGH/LOW PIXEL MARKER
+                
+ 005D 79        OUTPX:   MOV   A,C                      ; UPPER 5 BITS OF PIXEL ADDRESS
+ 005E E6F8               ANI   0F8H                     ; EXTRACT UNDER MASK
+ 0060 17                 RAL                            ; MOVE HIGH BIT TO CARRY
+ 0061 6F                 MOV   L,A                      ; SAVE TO LOW BYTE OF HL POINTER
+                
+ 0062 7C                 MOV   A,H                      ; GET PAGE BASE
+ 0063 CE00               ACI   00H                      ; ADD HIGH BIT TO HIGH BYTE OF HL POINTER
+ 0065 67                 MOV   H,A                      ; SAVE TO HIGH BYTE OF HL POINTER
+                
+ 0066 78                 MOV   A,B                      ; LOWER 5 BIT OF PIXEL ADDRESS
+ 0067 E6F8               ANI   0F8H                     ; EXTRACT UNDER MASK
+ 0069 1F                 RAR                            ; MOVE TOP 4 TO LOWER NIBBLE, LOWEST TO CARRY
+ 006A 1F                 RAR   
+ 006B 1F                 RAR   
+ 006C 1F                 RAR   
+ 006D F5                 PUSH  PSW                      ; PRESERVE CARRY FLAG HOLDING THE PIXEL 'ADDRESS' 
+ 006E 85                 ADD   L                        ; ADD LOWER NIBBLE TO LOW BYTE OF HL POINTER
+ 006F 6F                 MOV   L,A                      ; SAVE TO LOW BYE OF HL POINTER
+ 0070 F1                 POP   PSW                      ; RESTORE CARRY FLAG CONTAINING THE LOWEST PIXEL ADDRESS
+                                                        ; CY=0 LOW PIXEL; CY=1 HIGH PIXEL
+                
+                ; STEP TWO:
+                ;      SET HIGH OR LOW PIXEL, ACCORDING TO THE CARRY BIT, TO THE DRAWING COLOUR 
+                
+ 0071 7E                 MOV   A,M                      ; READ EXISTING PIXEL PAIR
+ 0072 DA7A00             JC    OUTHPX                   ; CY SET -> GO DO HIGH PIXEL
+                                                        ; CY CLEARED -> DO LOW PIXEL
+                ; OUTPUT LOW PIXEL
+ 0075 E6F0               ANI   0F0H                     ; MASK OUT (CLEAR) OLD LOW PIXEL
+ 0077 83                 ADD   E                        ; INSERT NEW LOW PIXEL
+ 0078 77                 MOV   M,A                      ; STORE IN VIDEO BUFFER
+ 0079 C9                 RET
+                
+                ; OUTPUT HIGH PIXEL
+ 007A E60F      OUTHPX:  ANI   0FH                      ; MASK OUT (CLEAR) OLD HIGH PIXEL  
+ 007C 82                 ADD   D                        ; INSERT NEW HIGH PIXEL
+ 007D 77                 MOV   M,A                      ; STORE IN VIDEO BUFFER
+ 007E C9                 RET   
+                
+ 007F                    END

@@ -1,0 +1,54 @@
+# A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card.
+#
+# `altairsim dazzler` comes up at the monitor prompt. The Dazzler draws nothing until a
+# program turns it on and points it at a framebuffer in RAM; the ready-made demo is
+# `examples/dazzler/` (Li-Chen Wang's Kaleidoscope):
+#
+#     cd examples/dazzler && altairsim dazzler.toml
+#     LOAD KSCOPE.HEX
+#     RUN 0
+#
+# The Dazzler needs a host Display. With SDL3 present the picture shows in a window; in a
+# headless build the machine runs identically and draws nothing -- so this is a normal,
+# testable machine either way (reference/Cromemco Dazzler.md, docs/boards/cromemco-dazzler.md).
+
+[machine]
+name = "dazzler"
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 4000000              # 4 MHz (Cromemco Z-1 speed); SET cpu0 clock_hz=0 for flat out
+
+# A console, so the machine is one you can also talk to -- the Dazzler is a DISPLAY, not a
+# keyboard, so a terminal here is how you type at the monitor.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+
+# THE DAZZLER. Control/status at 0EH, format at 0FH (the defaults). It decodes no memory:
+# its framebuffer is ordinary RAM. It needs a Display, injected at the composition root.
+[[board]]
+type = "dazzler"
+id   = "daz0"
+port = 0x0E
+
+# 64K of RAM for the program and its framebuffer. Random fill is how real static RAM powers
+# up, so an un-drawn Dazzler screen is period-correct color noise.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"

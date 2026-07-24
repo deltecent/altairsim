@@ -25,6 +25,7 @@ what is actually in one.
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
 | `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
+| `dazzler` | A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |

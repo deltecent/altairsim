@@ -4,6 +4,7 @@
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
 #include "boards/mits-turnkey.h"
+#include "boards/cromemco-dazzler.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
@@ -204,6 +205,7 @@ int main(int argc, char** argv) {
     // the machine runs identically with nothing to draw on. Static so it outlives the
     // machine, and created once for the whole session.
     VdmBoard::setDisplay(&g_display);
+    DazzlerBoard::setDisplay(&g_display);
 
     // 60 frames a second, and no more. A real VDM-1 scanned at the monitor's rate no
     // matter what the 8080 was doing, and nothing on the S-100 side can read a pixel

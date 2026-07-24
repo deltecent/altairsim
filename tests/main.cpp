@@ -1,5 +1,6 @@
 #include "test.h"
 
+#include "boards/cromemco-dazzler.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
@@ -36,6 +37,7 @@ int main() {
     // with no window. The SAME injection main() does, one backend down.
     static altair::NullDisplay g_display;
     altair::VdmBoard::setDisplay(&g_display);
+    altair::DazzlerBoard::setDisplay(&g_display);
 
     // The REAL media resolver, for the same reason. A test that wants a disk
     // without a filesystem installs a MemoryMedia resolver for the length of the
@@ -87,6 +89,7 @@ int main() {
     test_pio();
     test_4pio();
     test_vdm1();
+    test_dazzler();
     test_sol();
     test_tapemount();
     test_frontpanel();

@@ -318,6 +318,45 @@ if(hit GREATER_EQUAL 0)
                       "  'IN 10' read as 'IN TTYS' -- a port is not an address.\n--- output ---\n${out}")
 endif()
 
+# examples/dazzler is the Cromemco Dazzler bench: KSCOPE (Li-Chen Wang's Kaleidoscope), which
+# kscope.toml LOADs and RUNs from its `startup` list -- so the machine comes up *drawing*. KSCOPE
+# is an endless animation with no HLT, so we hand the run a single ATTN byte (Ctrl-E, 0x05) on
+# stdin to break it back to the monitor, exactly as a person would; then the -x commands prove
+# the framebuffer was loaded, the Dazzler is mapped where the README says, and the running
+# program is the one that drives it. ATTN is host-intercepted and watched every poll (it does not
+# depend on the guest reading input), so this is deterministic, not a piped-keystroke race. The
+# pixels KSCOPE draws are proved headlessly in tests/test_dazzler.cpp.
+file(COPY "${SRC}/examples/dazzler" DESTINATION "${dist}/examples")
+set(daz "${dist}/examples/dazzler")
+
+# A file holding one ATTN byte (Ctrl-E) to feed on stdin -- it breaks the startup RUN.
+string(ASCII 5 attn_byte)
+file(WRITE "${dist}/attn.in" "${attn_byte}")
+
+execute_process(
+  COMMAND           "${SIM}" kscope.toml
+                    -x "SHOW BUS IO"
+                    -x "DISASM 0 6"
+  WORKING_DIRECTORY "${daz}"
+  INPUT_FILE        "${dist}/attn.in"   # ATTN out of the auto-run, then the -x commands run
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           30
+)
+
+foreach(want
+        "loaded 127 bytes"   # kscope.toml's startup LOADed KSCOPE.HEX from beside itself
+        "daz0"               # the Dazzler is in the machine...
+        "Dazzler"            # ...and mapped at its ports (SHOW BUS IO)
+        "OUT 0E"             # the running program turns the card on...
+        "OUT 0F")            # ...and sets its format -- so KSCOPE really drives the Dazzler
+  string(FIND "${out}" "${want}" hit)
+  if(hit LESS 0)
+    message(FATAL_ERROR "examples: the Dazzler example did not behave as the README says.\n"
+                        "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+  endif()
+endforeach()
+
 file(REMOVE_RECURSE "${dist}")
 message(STATUS "examples: the shipped examples boot from their own directory, and a typed "
                "path still means the shell's.")

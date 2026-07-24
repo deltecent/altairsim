@@ -1,0 +1,66 @@
+# A Cromemco Dazzler in an Altair, running Li-Chen Wang's Kaleidoscope.
+#
+#     cd examples/dazzler && altairsim kscope.toml
+#
+# It comes up drawing: the `startup` list loads KSCOPE and RUNs it, so on an SDL3 build a
+# window opens and a four-way-mirrored pattern draws in a 2 KB 64x64 color picture. KSCOPE
+# is an endless animation (no HLT), so press **ATTN** (Ctrl-E) to break back to the monitor
+# prompt; `RUN 0` starts it again. In a headless build the machine runs identically and
+# draws nothing.
+#
+# THE PATHS ARE RELATIVE TO THIS FILE when it runs them from `startup` (core/paths.h), so
+# KSCOPE.HEX lying in this directory resolves whether you launch from here or elsewhere.
+#
+# The Dazzler is a DISPLAY, not a keyboard -- so the 88-2SIO here is just the terminal you
+# type at the monitor with; KSCOPE never uses it.
+
+[machine]
+name    = "kscope"
+startup = ["LOAD KSCOPE.HEX", "RUN 0"]   # comes up drawing; ATTN (Ctrl-E) stops it
+
+# The Dazzler window IS the show here, so bring it to the front and give it the keyboard
+# when it opens (like a Sol-20), rather than letting it come up behind the terminal. ATTN
+# (Ctrl-E) still breaks back to the monitor, and the terminal takes the keyboard back then.
+[display]
+focus = true
+
+# The processor at 4 MHz (the Cromemco Z-1 speed) so the animation runs at an authentic
+# pace instead of flat out. SET cpu0 clock_hz=0 for maximum speed.
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 4000000
+
+# A console, so the machine is one you can also talk to.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+
+# THE DAZZLER. Control/status at 0EH, format at 0FH (the defaults). It decodes no
+# memory -- its framebuffer is ordinary RAM below. It needs a Display, injected at the
+# composition root (src/main.cpp).
+[[board]]
+type = "dazzler"
+id   = "daz0"
+port = 0x0E
+
+# 64K of RAM. KSCOPE loads at 0000 (program 0000-007E, stack up to 0100), and points
+# the Dazzler at a 2 KB framebuffer starting at 0200. Random fill is how real static RAM
+# powers up -- so the picture emerges from period-correct color noise as KSCOPE paints.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
