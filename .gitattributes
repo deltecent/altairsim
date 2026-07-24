@@ -31,6 +31,13 @@ tests/programs/symbols/*.ASM binary
 examples/debugger/*.PRN binary
 examples/debugger/*.ASM binary
 
+# The MBL boot ROM's source and listing are deramp originals, CRLF like every other
+# period artifact here (roms/MBL/). Keep them byte-for-byte so the checkout matches the
+# dump on every platform. (.HEX is binary globally below.) These are scoped to roms/MBL
+# on purpose: the repo-wide `*.ASM`/`*.PRN binary` rule is a separate change.
+roms/MBL/*.PRN binary
+roms/MBL/*.ASM binary
+
 # Period media and disk images are binary -- never munge.
 *.DSK binary
 *.dsk binary
