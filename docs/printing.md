@@ -317,6 +317,19 @@ Whether Apple's CUPS honours the raw job all the way to the device is worth
 confirming on the host — see the no-paper check below, which shows exactly what
 reaches the backend.
 
+**And this workaround is itself on the clock.** Adding a queue with any `.ppd`
+now prints `lpadmin: Printer drivers are deprecated and will stop working in a
+future version of CUPS` — the classic driver/PPD mechanism the generic PPD relies
+on is being removed too, in favour of driverless IPP Everywhere. IPP Everywhere is
+a poor fit for a *raw* line-printer socket, so the honest conclusion is that macOS
+is walking away from raw host printing in both steps it has taken: raw queues are
+gone now, drivers are going next. **`printer:` on macOS is therefore best treated
+as transitional** — good for a bench test today, but the durable home for raw
+line-printer output is Linux (`-m raw`, unaffected) or a network print server that
+exposes a JetDirect/`socket://` queue. This is a property of the host, not of the
+endpoint: `printer:` submits a correct raw job on every platform, and what a
+locked-down CUPS then chooses to do with it is the host's call.
+
 **A no-paper terminal, for testing and for watching the boundaries.** CUPS ships no
 `serial` backend on a current macOS, so a queue cannot target a tty directly — but its
 `socket` (JetDirect/AppSocket) backend is always present, and a listener on that port
