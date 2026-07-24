@@ -29,6 +29,8 @@ struct BuiltinRom {
     Format format;
     const unsigned char* data;
     size_t size;           // bytes of the FILE, not of the decoded image
+    const char* desc;      // one-line summary for SHOW ROMS, from roms/<NAME>/DESC --
+                           // one hand-written line per ROM. "" if a ROM has no DESC.
 };
 
 std::span<const BuiltinRom> builtinRoms();  // defined by the generated TU

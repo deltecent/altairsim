@@ -18,6 +18,10 @@ Put it in a socket with `mount = "builtin:mbl"` (it lives at `FE00`). It is not 
 **mini**disk loader whose name is one letter away — the confusion that prompted this
 (issue #124). Provenance is in `docs/roms.md`.
 
+`SHOW ROMS` now carries a **description** column too — one hand-written line per ROM
+(`roms/<NAME>/DESC`) — so `mbl` and `mdbl` read as what they are instead of two
+near-identical names.
+
 ### A tape counter, and `WIND` to a time
 
 Both cassette boards — the **88-ACR** and the **Sol** decks — now show **where the head is** as

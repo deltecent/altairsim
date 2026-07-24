@@ -42,10 +42,26 @@ foreach(d ${rom_dirs})
   string(LENGTH "${hexstr}" len)
   math(EXPR len "${len} / 2")
 
+  # A one-line description for SHOW ROMS, read from roms/<NAME>/DESC -- one hand-written
+  # line per ROM. Every built-in has one, so the column is uniform and each is visible
+  # and editable in the tree rather than derived by a heuristic nobody can see. A ROM
+  # with no DESC still builds (the column is just blank), but the warning says to add one.
+  set(desc "")
+  if(EXISTS "${ROMS_DIR}/${d}/DESC")
+    file(READ "${ROMS_DIR}/${d}/DESC" desc)
+    string(REGEX REPLACE "\r?\n.*$" "" desc "${desc}")   # first line only
+    string(STRIP "${desc}" desc)
+  else()
+    message(WARNING "embed_roms: roms/${d} has no DESC file -- SHOW ROMS description will be blank")
+  endif()
+  # Escape for a C string literal.
+  string(REPLACE "\\" "\\\\" desc "${desc}")
+  string(REPLACE "\"" "\\\"" desc "${desc}")
+
   string(APPEND body
     "static const unsigned char rom_${sym}[] = {${bytes}};\n")
   string(APPEND table
-    "  { \"${name}\", \"${base}\", ${fmt}, rom_${sym}, ${len} },\n")
+    "  { \"${name}\", \"${base}\", ${fmt}, rom_${sym}, ${len}, \"${desc}\" },\n")
 endforeach()
 
 file(WRITE "${OUT}"

@@ -40,6 +40,10 @@ foreach(d ${ROM_DIRS})
                   "${CMAKE_SOURCE_DIR}/roms/${d}/*.HEX" "${CMAKE_SOURCE_DIR}/roms/${d}/*.hex"
                   "${CMAKE_SOURCE_DIR}/roms/${d}/*.BIN" "${CMAKE_SOURCE_DIR}/roms/${d}/*.bin")
     list(APPEND ROM_IMAGE_FILES ${img})
+    # The SHOW ROMS description is read from roms/<NAME>/DESC, so editing one must
+    # re-run the embed -- same as changing the image itself.
+    file(GLOB descsrc CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/roms/${d}/DESC")
+    list(APPEND ROM_IMAGE_FILES ${descsrc})
   endif()
 endforeach()
 

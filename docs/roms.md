@@ -113,6 +113,7 @@ At build time, CMake turns each file in `roms/` into a byte array in a generated
 - **The board does not care.** A region takes a `span<const uint8_t>`; whether that came from `.rodata` or a file the host service read is not its business (§7). The `builtin:` scheme is resolved by the config loader, above the board.
 - **`CONFIG SAVE` round-trips the name, not the bytes** — `mount = "builtin:dbl"` in, `mount = "builtin:dbl"` out.
 - **A CRC test per ROM.** Cheap, and it turns "someone's editor mangled a binary" from a mystery into a build failure.
+- **The `SHOW ROMS` description is one hand-written line per ROM**, in `roms/<NAME>/DESC`. Every built-in has one, so the column is uniform and each is visible and editable in the tree — not derived by a heuristic no one can see. Editing a `DESC` re-runs the embed; a ROM with no `DESC` still builds (blank column) but warns.
 
 ## References
 
