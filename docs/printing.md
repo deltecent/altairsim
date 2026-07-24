@@ -291,14 +291,39 @@ queue that passes data through untouched and should not try to create one.
 2. Use the exact name from **Devices and Printers** as the queue name. Sharing
    is not required — `OpenPrinter` addresses it by device name directly.
 
-**macOS / Linux (CUPS)**
+**macOS / Linux (CUPS)** — a real printer, on a USB-to-parallel adapter or a
+newer line printer's own USB port:
 
 ```sh
 lpinfo -v                                               # what CUPS can see
 sudo lpadmin -p linewriter -E -v usb://Vendor/Product -m raw
 ```
 
-`-m raw` tells CUPS to skip all filtering; the bytes written are delivered as-is.
+`-m raw` selects the "Raw Queue" model, so CUPS skips all filtering and the bytes
+written are delivered as-is. (`printer:` also asks for raw per job, belt and braces.)
+
+To point the queue at an existing configured printer instead of a device URI, read
+that printer's device off `lpstat -v <name>` and pass it to `-v`.
+
+**A no-paper terminal, for testing and for watching the boundaries.** CUPS on modern
+macOS ships no `serial` backend, so a queue cannot target a tty directly — but its
+`socket` (JetDirect/AppSocket) backend is always present, and that gives the same
+thing: printed output live in another terminal, with nothing wasted.
+
+```sh
+sudo lpadmin -p altairterm -E -v socket://localhost:9100 -m raw -o printer-is-shared=false
+nc -k -l 9100          # in one terminal: every job's raw bytes stream here as it lands
+```
+
+Then `CONNECT lpt0:prn printer:altairterm?idle=3` and print. Each pause longer than
+`idle` closes a job, and it arrives in the `nc` terminal as its own burst — which is
+the job-boundary policy made visible. `nc -k` keeps listening across jobs, because the
+`socket` backend opens one connection per job and closes it. Remove a test queue with
+`sudo lpadmin -x altairterm`.
+
+(If the *only* goal is output on another terminal, a board can skip `printer:`
+entirely and `CONNECT` to `socket:9100` or `serial:` — but that does not exercise the
+host print path, which is the point of testing `printer:`.)
 
 ### 3.3 `print_raw`, both platforms
 
