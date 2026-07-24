@@ -48,6 +48,23 @@ void test_numbers() {
     CHECK(P("0b1010", 10) == 10, "0b is binary");
     CHECK(P("1_000", 10) == 1000, "underscores are just spacing");
 
+    // ---- octal, for the operator who reads MITS documentation ----
+    // The wire class can be spelled hex OR octal (SET CONSOLE base=octal makes it
+    // the DEFAULT); either way both spellings stay typeable, in both directions.
+    CHECK(P("377", 8) == 255, "a byte: bare 377 is 255 when octal is the default");
+    CHECK(P("100", 8) == 64, "an address: bare 100 is 0x40 in octal");
+    CHECK(P("0o377", 16) == 255, "0o forces octal even where hex is the default");
+    CHECK(P("0O10", 10) == 8, "0O is octal too");
+    CHECK(P("377q", 16) == 255, "a trailing q -- the 8080-assembler octal marker");
+    CHECK(P("0x20", 8) == 32, "0x still forces hex even where octal is the default");
+    CHECK(P("#32", 8) == 32, "# still forces decimal where octal is the default");
+    CHECK(P("48", 8) == -1, "8 is not an octal digit -- refused, not truncated");
+
+    // A K/M suffix is decimal by definition, so it contradicts an octal marker
+    // exactly as it does a hex one -- and is refused the same way.
+    CHECK(P("0o10K", 10) == -1, "0o10K is a contradiction and is refused");
+    CHECK(P("10qK", 10) == -1, "so is 10qK");
+
     // ---- a K/M suffix is ALWAYS decimal, and always wins ----
     // This is why nobody has ever had to ask what 10K means.
     CHECK(P("10K", 10) == 10240, "10K is ten K, not sixteen");

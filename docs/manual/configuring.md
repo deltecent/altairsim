@@ -339,6 +339,7 @@ If you want to be explicit — and in your own files, be explicit — say so:
 | | |
 |---|---|
 | `0x10`, `$10`, `10h` | **hex**, whatever the key |
+| `0o20`, `20q` | **octal**, whatever the key |
 | `#16` | **decimal**, whatever the key |
 | `56K`, `1M` | always **decimal**. A suffix implies a count |
 
@@ -350,6 +351,7 @@ which one a given key is.
 ```toml
 [console]
 attn      = 0x05      # the key that gets you back to the monitor. ^E
+base      = hex       # hex | octal -- how you read/write addresses, ports, bytes
 upper     = false
 strip7in  = false
 strip7out = false
@@ -366,6 +368,7 @@ Altair never knew anything about it.
 | Key | |
 |---|---|
 | `attn` | the escape byte. **Hex.** Default `05` = `^E` |
+| `base` | `hex` \| `octal` — how the monitor reads and prints the wire class (addresses, ports, bytes). `octal` is split octal, the MITS front-panel convention |
 | `upper` | fold input to upper case |
 | `strip7in` | clear bit 7 of everything the guest receives |
 | `strip7out` | clear bit 7 of everything the guest sends |

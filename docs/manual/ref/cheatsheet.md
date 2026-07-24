@@ -157,6 +157,7 @@ port = 10                  # remove = true        -> PULL THE CARD OUT
 
 [console]                  # the HOST's terminal -- not a board
 strip7out = true
+base      = octal          # read/print the wire class in split octal (MITS style)
 ```
 
 **Paths:** a path *inside* a machine file is relative to **that file**. A path you

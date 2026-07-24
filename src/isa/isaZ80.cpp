@@ -1,6 +1,7 @@
 #include "isa/isa.h"
 
 #include <cctype>
+#include <cstdio>
 #include <string>
 
 namespace altair {
@@ -26,7 +27,20 @@ namespace {
 // The prefix bytes are summed into Insn::len, which is 1..4.
 // ---------------------------------------------------------------------------
 
-std::string hex(unsigned v, int digits) {
+// An operand in the requested base -- hex (16) or split octal (8). `digits` is the
+// hex width and the width selector: a byte is three octal digits, a word is its two
+// bytes hi-then-lo, one space between. Base 16 is the original hex, untouched. Same
+// rule as the 8080 decoder's fmtNum -- kept file-local rather than shared because
+// each ISA file is otherwise self-contained.
+std::string fmtNum(unsigned v, int digits, int base) {
+    char b[16];
+    if (base == 8) {
+        if (digits <= 2)
+            std::snprintf(b, sizeof b, "%03o", v & 0xFF);
+        else
+            std::snprintf(b, sizeof b, "%03o %03o", (v >> 8) & 0xFF, v & 0xFF);
+        return b;
+    }
     static const char* d = "0123456789ABCDEF";
     std::string s;
     for (int i = digits - 1; i >= 0; --i) s += d[(v >> (i * 4)) & 0xF];
@@ -119,14 +133,14 @@ static const char* kMain[256] = {
 // The absolute destination of a JR/DJNZ. `cur` points at the displacement byte;
 // the instruction after it is one byte further, and the signed displacement is
 // relative to THAT -- which is why a JR to itself reads as e = FE, not 00.
-std::string relTarget(uint16_t cur, int8_t e) {
-    return hex((uint16_t)(cur + 1 + e), 4);
+std::string relTarget(uint16_t cur, int8_t e, int base) {
+    return fmtNum((uint16_t)(cur + 1 + e), 4, base);
 }
 
 // A signed IX/IY displacement, printed +dd / -dd.
-std::string dispStr(int8_t d) {
+std::string dispStr(int8_t d, int base) {
     int mag = d < 0 ? -(int)d : d;
-    return (d < 0 ? std::string("-") : std::string("+")) + hex((unsigned)mag, 2);
+    return (d < 0 ? std::string("-") : std::string("+")) + fmtNum((unsigned)mag, 2, base);
 }
 
 // Walk the `%` tokens left to right, each consuming operand bytes from a cursor
@@ -137,9 +151,13 @@ std::string dispStr(int8_t d) {
 struct Filled {
     std::string text;
     uint8_t operandBytes = 0;
+    // The 16-bit ADDRESS operand a symbol can name -- a W immediate or an R jump
+    // target. Left 0/0 for everything else (a byte immediate, an index displacement).
+    uint16_t operand = 0;
+    int operandBits = 0;
 };
 
-Filled fillOperands(std::string t, const PeekFn& peek, uint16_t firstOperand) {
+Filled fillOperands(std::string t, const PeekFn& peek, uint16_t firstOperand, int base) {
     Filled out;
     uint16_t cur = firstOperand;
     size_t p;
@@ -147,20 +165,25 @@ Filled fillOperands(std::string t, const PeekFn& peek, uint16_t firstOperand) {
         char kind = t[p + 1];
         std::string rep;
         if (kind == 'B') {
-            rep = hex(peek(cur), 2);
+            rep = fmtNum(peek(cur), 2, base);
             cur += 1;
             out.operandBytes += 1;
         } else if (kind == 'W') {
             unsigned w = peek(cur) | (peek((uint16_t)(cur + 1)) << 8);
-            rep = hex(w, 4);
+            rep = fmtNum(w, 4, base);
+            out.operand = (uint16_t)w;
+            out.operandBits = 16;
             cur += 2;
             out.operandBytes += 2;
         } else if (kind == 'R') {
-            rep = relTarget(cur, (int8_t)peek(cur));
+            int8_t e = (int8_t)peek(cur);
+            rep = relTarget(cur, e, base);
+            out.operand = (uint16_t)(cur + 1 + e);  // the absolute jump target
+            out.operandBits = 16;
             cur += 1;
             out.operandBytes += 1;
         } else if (kind == 'D') {
-            rep = dispStr((int8_t)peek(cur));
+            rep = dispStr((int8_t)peek(cur), base);
             cur += 1;
             out.operandBytes += 1;
         } else {
@@ -172,11 +195,14 @@ Filled fillOperands(std::string t, const PeekFn& peek, uint16_t firstOperand) {
     return out;
 }
 
-Insn make(const std::string& text, uint8_t len, bool undoc) {
+Insn make(const std::string& text, uint8_t len, bool undoc, uint16_t operand = 0,
+          int operandBits = 0) {
     Insn in;
     in.text = undoc ? "*" + text : text;
     in.len = len;
     in.undocumented = undoc;
+    in.operand = operand;
+    in.operandBits = operandBits;
     return in;
 }
 
@@ -264,11 +290,11 @@ Insn decodeCB(uint16_t addr, const PeekFn& peek) {
 // DD CB dd op / FD CB dd op -- always four bytes, and the displacement comes
 // BEFORE the opcode. The documented forms operate on (IX+d) (z==6); the z!=6
 // forms ALSO copy the result into register z (BIT ignores z), all undocumented.
-Insn decodeIndexedCB(uint16_t addr, const PeekFn& peek, const std::string& ix) {
+Insn decodeIndexedCB(uint16_t addr, const PeekFn& peek, const std::string& ix, int base) {
     int8_t d = (int8_t)peek((uint16_t)(addr + 2));
     uint8_t op = peek((uint16_t)(addr + 3));
     uint8_t y = (op >> 3) & 7, z = op & 7;
-    std::string tgt = "(" + ix + dispStr(d) + ")";
+    std::string tgt = "(" + ix + dispStr(d, base) + ")";
     const char* copy = r8[z];  // z != 6 here for the undoc forms
 
     if (op < 0x40) {
@@ -292,12 +318,12 @@ Insn decodeIndexedCB(uint16_t addr, const PeekFn& peek, const std::string& ix) {
 // The 0x40..0x7F quadrant is a regular grid (Zilog UM008 table); 0xA0..0xBB are
 // the block moves/searches/I-O and their repeating forms.
 // ---------------------------------------------------------------------------
-Insn decodeED(uint16_t addr, const PeekFn& peek) {
+Insn decodeED(uint16_t addr, const PeekFn& peek, int base) {
     uint8_t op = peek((uint16_t)(addr + 1));
 
     auto fill = [&](const std::string& t, bool undoc) {
-        Filled f = fillOperands(t, peek, (uint16_t)(addr + 2));
-        return make(f.text, (uint8_t)(2 + f.operandBytes), undoc);
+        Filled f = fillOperands(t, peek, (uint16_t)(addr + 2), base);
+        return make(f.text, (uint8_t)(2 + f.operandBytes), undoc, f.operand, f.operandBits);
     };
 
     if (op >= 0x40 && op <= 0x7F) {
@@ -364,10 +390,10 @@ Insn decodeED(uint16_t addr, const PeekFn& peek) {
 // ---------------------------------------------------------------------------
 // The unprefixed main path.
 // ---------------------------------------------------------------------------
-Insn decodeMain(uint16_t addr, const PeekFn& peek) {
+Insn decodeMain(uint16_t addr, const PeekFn& peek, int base) {
     uint8_t op = peek(addr);
-    Filled f = fillOperands(kMain[op], peek, (uint16_t)(addr + 1));
-    return make(f.text, (uint8_t)(1 + f.operandBytes), false);
+    Filled f = fillOperands(kMain[op], peek, (uint16_t)(addr + 1), base);
+    return make(f.text, (uint8_t)(1 + f.operandBytes), false, f.operand, f.operandBits);
 }
 
 // ---------------------------------------------------------------------------
@@ -377,27 +403,27 @@ Insn decodeMain(uint16_t addr, const PeekFn& peek) {
 // last one counts -- so it disassembles as a lone 1-byte NOP and the caller
 // re-decodes the next byte fresh, which is exactly how the chip re-fetches it.
 // ---------------------------------------------------------------------------
-Insn decodeIndexed(uint16_t addr, const PeekFn& peek, const std::string& ix) {
+Insn decodeIndexed(uint16_t addr, const PeekFn& peek, const std::string& ix, int base) {
     uint8_t op = peek((uint16_t)(addr + 1));
-    if (op == 0xCB) return decodeIndexedCB(addr, peek, ix);
+    if (op == 0xCB) return decodeIndexedCB(addr, peek, ix, base);
     if (op == 0xDD || op == 0xFD || op == 0xED) return make("NOP", 1, true);
 
     Subst s = applyIndex(kMain[op], ix, op);
-    Filled f = fillOperands(s.text, peek, (uint16_t)(addr + 2));
-    return make(f.text, (uint8_t)(2 + f.operandBytes), s.undocHalf);
+    Filled f = fillOperands(s.text, peek, (uint16_t)(addr + 2), base);
+    return make(f.text, (uint8_t)(2 + f.operandBytes), s.undocHalf, f.operand, f.operandBits);
 }
 
 class IsaZ80 : public Disassembler {
 public:
     const char* name() const override { return "z80"; }
 
-    Insn at(uint16_t addr, const PeekFn& peek) const override {
+    Insn at(uint16_t addr, const PeekFn& peek, int base) const override {
         uint8_t b0 = peek(addr);
         if (b0 == 0xCB) return decodeCB(addr, peek);
-        if (b0 == 0xED) return decodeED(addr, peek);
-        if (b0 == 0xDD) return decodeIndexed(addr, peek, "IX");
-        if (b0 == 0xFD) return decodeIndexed(addr, peek, "IY");
-        return decodeMain(addr, peek);
+        if (b0 == 0xED) return decodeED(addr, peek, base);
+        if (b0 == 0xDD) return decodeIndexed(addr, peek, "IX", base);
+        if (b0 == 0xFD) return decodeIndexed(addr, peek, "IY", base);
+        return decodeMain(addr, peek, base);
     }
 };
 

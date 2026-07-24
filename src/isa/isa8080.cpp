@@ -1,6 +1,7 @@
 #include "isa/isa.h"
 
 #include <cctype>
+#include <cstdio>
 
 namespace altair {
 namespace {
@@ -102,7 +103,19 @@ static const Op kOps[256] = {
 };
 // clang-format on
 
-std::string hex(unsigned v, int digits) {
+// An operand in the requested base. `digits` is the HEX width (2 for a byte, 4 for
+// a word) and doubles as the width selector: octal renders a byte as three digits
+// (000..377) and a word as SPLIT octal -- its two bytes, hi then lo, one space
+// between. Base 16 is the original hex, untouched.
+std::string fmtNum(unsigned v, int digits, int base) {
+    char b[16];
+    if (base == 8) {
+        if (digits <= 2)
+            std::snprintf(b, sizeof b, "%03o", v & 0xFF);
+        else
+            std::snprintf(b, sizeof b, "%03o %03o", (v >> 8) & 0xFF, v & 0xFF);
+        return b;
+    }
     static const char* d = "0123456789ABCDEF";
     std::string s;
     for (int i = digits - 1; i >= 0; --i) s += d[(v >> (i * 4)) & 0xF];
@@ -113,7 +126,7 @@ class Isa8080 : public Disassembler {
 public:
     const char* name() const override { return "8080"; }
 
-    Insn at(uint16_t addr, const PeekFn& peek) const override {
+    Insn at(uint16_t addr, const PeekFn& peek, int base) const override {
         const Op& op = kOps[peek(addr)];
         Insn in;
         in.undocumented = op.undoc;
@@ -124,13 +137,15 @@ public:
             in.len = 1;
         } else if (t[p + 1] == 'B') {
             in.len = 2;
-            t = t.substr(0, p) + hex(peek((uint16_t)(addr + 1)), 2) + t.substr(p + 2);
+            t = t.substr(0, p) + fmtNum(peek((uint16_t)(addr + 1)), 2, base) + t.substr(p + 2);
         } else {
             in.len = 3;
             // Low byte first: that is how the 8080 stores an address, and reading
             // it any other way is the classic transposition bug.
             unsigned w = peek((uint16_t)(addr + 1)) | (peek((uint16_t)(addr + 2)) << 8);
-            t = t.substr(0, p) + hex(w, 4) + t.substr(p + 2);
+            in.operand = (uint16_t)w;  // the address a symbol can name
+            in.operandBits = 16;
+            t = t.substr(0, p) + fmtNum(w, 4, base) + t.substr(p + 2);
         }
 
         // A leading `*` on the ten undocumented opcodes. A run of them is nearly

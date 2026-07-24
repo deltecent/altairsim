@@ -32,9 +32,17 @@ namespace altair {
 // One decoded instruction. `len` is 1..3 for the 8080; a caller stepping through
 // memory adds it to the address and asks again.
 struct Insn {
-    std::string text;      // "LXI H,FF13"
+    std::string text;      // "LXI H,FF13"  (operands in the requested base)
     uint8_t len = 1;
     bool undocumented = false;  // 08, CB, D9... -- real silicon runs these
+
+    // THE 16-BIT OPERAND, when there is one (`operandBits == 16`), as a VALUE. A
+    // JMP/CALL/LXI target is the one operand a symbol can name, and the monitor
+    // resolves it by value -- so it needs the number, not a guess at which run of
+    // digits in `text` was the address. Left 0 for instructions with no word
+    // operand (operandBits == 0), which is every one a symbol would not annotate.
+    uint16_t operand = 0;
+    int operandBits = 0;
 };
 
 // Read a byte at an address. The disassembler is handed one of these rather than
@@ -47,7 +55,11 @@ class Disassembler {
 public:
     virtual ~Disassembler() = default;
     virtual const char* name() const = 0;   // "8080" -- the registry key
-    virtual Insn at(uint16_t addr, const PeekFn& peek) const = 0;
+    // `base` is how operands are spelled in the returned text: 16 (hex, the
+    // default, and what every non-monitor caller wants) or 8 (split octal, when
+    // the monitor's operator has SET CONSOLE base=octal). It changes only the
+    // spelling; the decode, the length and the operand VALUE are the same.
+    virtual Insn at(uint16_t addr, const PeekFn& peek, int base = 16) const = 0;
 };
 
 // Null if we do not speak that instruction set. The caller reports it; this does

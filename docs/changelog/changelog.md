@@ -8,6 +8,23 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Octal, the MITS way
+
+The monitor can now read and print the **wire class** — addresses, ports, data bytes — in
+**octal**, the base MITS documentation and the Altair front panel used. `SET CONSOLE base=octal`
+(or `[console] base = octal` in a machine file) switches it, and it is authentic **split octal**:
+each byte reads as its own `000`–`377` group and a 16-bit address as two of them, so `0x1234`
+prints `022 064` — the way the front-panel address lamps group. It moves `EXAMINE`, `DEPOSIT`,
+`DUMP`, `REGISTERS`, `DISASM` and the rest of the wire class, on both display **and** the default
+parse base; the decimal class (counts, widths, **baud**) does not move, because octal-vs-hex was
+never its question. `base=hex` remains the default.
+
+Octal notation is always typeable regardless of the default: `0o377` (matching the `0x`/`0b`
+family) or a trailing `377q` (the historic 8080-assembler marker). And the escapes still work in
+both directions — in octal mode `0x1234`/`$1234`/`1234h` force hex and `#4660` forces decimal,
+just as `0o`/`q` force octal in hex mode. (`0o10K` is refused, the same contradiction as `0x10K`:
+a `K`/`M` suffix is always decimal.)
+
 ### Joysticks — the Cromemco D+7A and the JS-1
 
 The **Cromemco D+7A** joins the backplane (`d7a`): an analog **and** parallel I/O card — one

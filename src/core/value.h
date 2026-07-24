@@ -63,9 +63,10 @@ bool parseValue(const std::string& text, Kind kind, Value& out, std::string& err
 //
 // Notations, all understood regardless of the default, in both directions:
 //   0xFF  $FF  FFh  0FFH   force hex        #255   forces decimal
-//   0b1010  binary          1_000  digit separators
+//   0o377  377q            force octal      0b1010 binary
+//   1_000  digit separators
 //   48K  2M                 a SIZE SUFFIX IS ALWAYS DECIMAL and always wins,
-//                           so `0x10K` is a contradiction and is REJECTED.
+//                           so `0x10K` / `0o10K` is a contradiction and is REJECTED.
 bool parseNumber(const std::string& text, long long& out, std::string& err, int base = 10);
 
 struct Property {
