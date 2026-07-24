@@ -97,6 +97,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `pio` | MITS 88-PIO: 8-bit parallel port, units 'out'/'in'. Two ports at BASE+0..1 (default 04). CONNECT a printer, a keyboard, a socket |
 | `4pio` | MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BASE (default 20). Software-set direction; CONNECT each section |
 | `vdm1` | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
+| `dazzler` | Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BASE+0..1 (default 0E): control/status and format. 32x32 to 128x128, 16 colors/greys. Needs a Display |
 | `sol` | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT) |
 | `fp` | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
 | `turnkey` | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
@@ -115,6 +116,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
 | `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
+| `dazzler` | A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |

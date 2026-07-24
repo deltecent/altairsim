@@ -302,6 +302,10 @@ add_library(altair_core STATIC
   # SdlDisplay in the shipping binary, a NullDisplay headless -- so the card itself
   # links with no graphics library and is tested with no window. See proctech-vdm1.h.
   src/boards/proctech-vdm1.cpp
+  # The Cromemco Dazzler: color graphics scanned from a framebuffer in main RAM.
+  # Renders into the same host Display seam as the VDM-1; no bus-mastering. See
+  # cromemco-dazzler.h.
+  src/boards/cromemco-dazzler.cpp
   # The Processor Technology Sol-PC's integrated I/O as one composite card (serial,
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/proctech-sol.cpp
@@ -463,6 +467,7 @@ add_executable(altair_tests
   tests/test_pio.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
+  tests/test_dazzler.cpp
   tests/test_sol.cpp
   tests/test_tapemount.cpp
   tests/test_lines.cpp

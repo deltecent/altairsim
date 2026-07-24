@@ -29,6 +29,7 @@
 
 #include "core/value.h"
 
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -299,6 +300,20 @@ public:
     static bool focusPolicy() { return focusPolicy_; }
     static void setFocusPolicy(bool on) { focusPolicy_ = on; }
 
+    // ---- HOW BIG THE WINDOW OPENS, as a whole-number multiple of the board's pixels ----
+    //
+    // 0 means AUTO: the back end picks the largest multiple that keeps the window near 70%
+    // of the usable screen, so a 64x64 Dazzler frame and a 512-wide VDM-1 frame open at a
+    // similar size instead of one being a sixth of the other. A positive value is a fixed
+    // multiple the operator asked for (still brought down if it would not fit the display).
+    //
+    // WHOLE MULTIPLES ONLY, and that is the point of an integer: nearest-neighbor scaling
+    // keeps a 1970s pixel a crisp square, and a fractional scale would blur it. Static and
+    // session-wide for the same reasons focusPolicy_ is -- one operator, one desktop, and
+    // it must answer before any window exists (a machine file sets it in [display]).
+    static int  windowScale() { return scale_; }
+    static void setWindowScale(int s) { scale_ = s; }
+
     // Declared through the same Property layer as a board's or the console's, so
     // `SET DISPLAY focus=on`, `SHOW DISPLAY`, `[display]` in a machine file and
     // CONFIG SAVE all pick it up with no code anywhere else. Static for the same
@@ -341,6 +356,9 @@ private:
     // The session's focus preference; see focusPolicy(). Inline so the seam stays
     // header-only for everyone who only draws into it.
     static inline bool focusPolicy_ = false;
+
+    // The session's window-scale preference; see windowScale(). 0 = auto.
+    static inline int scale_ = 0;
 };
 
 // The `display` settings object -- one property today, and the same shape as the
@@ -356,6 +374,37 @@ inline std::vector<Property> Display::properties() {
         x.get  = [] { return Value::ofBool(focusPolicy_); };
         x.set  = [](const Value& v, std::string&) {
             focusPolicy_ = v.b();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "scaling";
+        x.help = "Window size, as a whole-number multiple of the board's pixels: 'auto' fits "
+                 "about 70% of the screen (default), or a fixed number like 4. The window is "
+                 "never larger than the display, and always a whole multiple so pixels stay crisp";
+        x.kind = Kind::Str;
+        x.get  = [] {
+            return Value::ofStr(scale_ == 0 ? std::string("auto") : std::to_string(scale_));
+        };
+        x.set  = [](const Value& v, std::string& err) {
+            std::string s = v.s();
+            for (char& c : s) c = (char)std::tolower((unsigned char)c);
+            if (s == "auto") { scale_ = 0; return true; }
+            int n = 0;
+            bool any = false;
+            for (char c : s) {
+                if (c < '0' || c > '9') { any = false; break; }
+                n = n * 10 + (c - '0');
+                any = true;
+                if (n > 99) break;
+            }
+            if (!any || n < 1 || n > 32) {
+                err = "scaling must be 'auto' or a whole number from 1 to 32";
+                return false;
+            }
+            scale_ = n;
             return true;
         };
         p.push_back(std::move(x));

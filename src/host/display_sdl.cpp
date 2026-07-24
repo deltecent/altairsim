@@ -13,11 +13,17 @@ namespace altair {
 
 namespace {
 
-// How big the window may open, as a multiple of the board's frame. Big enough that a
-// 1975 screen is comfortable on a modern panel, small enough to leave the desktop
-// usable -- and a ceiling, not a promise: ensureWindow() comes down from here until it
-// fits the display it is actually on.
+// The fallback window multiple, used ONLY when the display's usable bounds cannot be read
+// (SDL_GetDisplayUsableBounds failed) -- so neither the auto target nor the fit-loop has a
+// screen size to work from. With bounds, `scaling` decides: auto fits ~70% of the screen,
+// a fixed number is honored and clamped to fit. See ensureWindow().
 constexpr int kMaxScale = 3;
+
+// What fraction of the usable screen an auto-scaled window aims to fill, as a percent. A
+// board's frame is scaled up by the largest WHOLE multiple that stays under this on both
+// axes -- so a 64x64 Dazzler frame opens about as big as a 512-wide VDM-1 one, and neither
+// swamps the desktop.
+constexpr int kAutoFillPercent = 70;
 
 // A rough allowance for the title bar, in points, so a window sized against the
 // display's usable height does not open with its title bar off the top of the screen.
@@ -106,16 +112,32 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // and 104 top and bottom. The WIDTH is what fails, but the border appears on all
     // four sides, because one scale has to serve both axes.
     //
-    // Ask the display how much room there is, and never ask for more than that.
-    int      scale = kMaxScale;
-    SDL_Rect usable{};
-    if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable)) {
-        // Usable bounds already exclude the menu bar and the Dock, but not this
-        // window's own title bar, and a window whose title bar is off-screen cannot be
-        // moved. kChromeH is a rough allowance for it -- rough is enough, because the
-        // answer is an integer and the next multiple down is a long way away.
-        while (scale > 1 && (w * scale > usable.w || h * scale + kChromeH > usable.h))
-            --scale;
+    // Ask the display how much room there is, and never ask for more than that. Usable
+    // bounds already exclude the menu bar and the Dock, but not this window's own title
+    // bar, and a window whose title bar is off-screen cannot be moved -- kChromeH is a
+    // rough allowance for it, rough being enough because the answer is a whole number and
+    // the next multiple is a long way away.
+    SDL_Rect   usable{};
+    const bool haveBounds = SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable);
+    const int  requested  = Display::windowScale();  // 0 = auto
+
+    int scale;
+    if (requested > 0) {
+        // A fixed multiple the operator asked for, brought down only if it would not fit.
+        scale = requested;
+        if (haveBounds)
+            while (scale > 1 && (w * scale > usable.w || h * scale + kChromeH > usable.h))
+                --scale;
+    } else if (haveBounds) {
+        // AUTO: the largest whole multiple that keeps the window under ~70% of the usable
+        // screen on BOTH axes. Small frames grow a lot, wide frames a little, and both land
+        // near the same size -- which is why a fixed ceiling could not do this job.
+        const int tw = usable.w * kAutoFillPercent / 100;
+        const int th = (usable.h - kChromeH) * kAutoFillPercent / 100;
+        scale = 1;
+        while (w * (scale + 1) <= tw && h * (scale + 1) <= th) ++scale;
+    } else {
+        scale = kMaxScale;  // no bounds to fit to: the plain fallback multiple
     }
 
     if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale, h * scale,
