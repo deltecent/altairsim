@@ -31,6 +31,12 @@ a boundary instead of running into the next program; move the mark forward, or `
 carry on. It halts playback only (a recording writes through it) and travels in a snapshot with
 the head position.
 
+And **`extract`** turns a multi-program cassette WAV into per-program `.TAP` files:
+`MOUNT games.wav extract` (or the `EXTRACT <id>:tape` verb on an already-mounted tape) demodulates
+the recording and writes each program — split at the seconds of silence between them — to its own
+`games-1.tap`, `games-2.tap`, … beside the WAV, printing each file's name and size. A
+single-program tape becomes just `games.tap`; `extract=<base>` names them yourself.
+
 ### Octal, the MITS way
 
 The monitor can now read and print the **wire class** — addresses, ports, data bytes — in

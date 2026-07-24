@@ -903,14 +903,33 @@ std::vector<CommandDef> SolBoard::commands() const {
             "\n"
             "REW is the shortest spelling: RESET already answers to R, RE and RES.",
         },
+        {
+            "EXTRACT",
+            true,
+            nullptr,
+            "EXTRACT <id>:tape1|tape2 [base] -- write a deck's WAV programs out as .TAP files",
+            "A cassette WAV often holds several programs one after another, separated by a\n"
+            "few seconds of silence. EXTRACT demodulates the deck's mounted WAV and writes\n"
+            "each program as its own raw .TAP file, named beside the WAV (foo.wav ->\n"
+            "foo-1.tap, foo-2.tap, ...; a single-program tape is just foo.tap) or under a\n"
+            "base you give, printing each file's name and size. Name the deck, as there are\n"
+            "two. It reads the tape and writes files; it changes nothing in the machine.\n"
+            "Only a WAV can be extracted -- a .TAP is already bytes.\n"
+            "\n"
+            "  MOUNT sol0:tape1 \"games.wav\"\n"
+            "  EXTRACT sol0:tape1         (writes games-1.tap, games-2.tap, ... beside it)\n"
+            "\n"
+            "MOUNT ... extract does the same in one step, at mount time.",
+        },
     };
 }
 
 bool SolBoard::runCommand(const std::string& name, const std::vector<std::string>& args,
                           std::ostream& out, std::string& err) {
-    const bool rewind = (name == "REWIND");
-    if (!rewind && name != "WIND") {
-        err = "the Sol's verbs are WIND and REWIND";
+    const bool rewind  = (name == "REWIND");
+    const bool extract = (name == "EXTRACT");
+    if (!rewind && !extract && name != "WIND") {
+        err = "the Sol's verbs are WIND, REWIND and EXTRACT";
         return false;
     }
 
@@ -938,6 +957,19 @@ bool SolBoard::runCommand(const std::string& name, const std::vector<std::string
     if (!d->tape) {
         err = "there is no cassette in deck " + std::to_string(n) + ". MOUNT one first.";
         return false;
+    }
+
+    // EXTRACT: demodulate the deck's WAV into its programs and write each as a .TAP. Only a
+    // WAV has an audio timeline to find gaps in; a byte tape is already the bytes.
+    if (extract) {
+        if (!d->audio) {
+            err = d->path + " in deck " + std::to_string(n) +
+                  " is a byte tape, not a WAV -- there is nothing to demodulate and split";
+            return false;
+        }
+        const std::string base =
+            args.size() > 2 ? resolvePath(args[2]) : stripWavExt(resolvePath(d->path));
+        return extractTapePrograms(*d->audio, base, kExtractGapSeconds, out, err);
     }
 
     // Where to. REWIND is the start; WIND takes a time (mm:ss or bare seconds) or the

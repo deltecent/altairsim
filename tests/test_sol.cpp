@@ -419,9 +419,9 @@ void test_sol() {
 
         // The verbs are WIND and its REWIND alias.
         auto cs = g.sol->commands();
-        CHECK(cs.size() == 2 && std::string(cs[0].name) == "WIND" &&
-                  std::string(cs[1].name) == "REWIND",
-              "the Sol brings WIND and REWIND");
+        CHECK(cs.size() == 3 && std::string(cs[0].name) == "WIND" &&
+                  std::string(cs[1].name) == "REWIND" && std::string(cs[2].name) == "EXTRACT",
+              "the Sol brings WIND, REWIND and EXTRACT");
 
         auto posText = [&](const char* unit) {
             for (Property& p : g.sol->unitProperties(unit))

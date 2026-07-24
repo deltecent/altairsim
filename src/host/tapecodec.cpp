@@ -3,6 +3,7 @@
 #include "host/wav.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 
 namespace altair {
@@ -33,6 +34,27 @@ uint64_t AudioTapeMedia::byteAt(double seconds) const {
     // offset_ is monotonic non-decreasing: the first byte whose start is at or past `sample`.
     auto it = std::lower_bound(offset_.begin(), offset_.end(), sample);
     return uint64_t(it - offset_.begin());  // == offset_.size() (== EOF) when past the last byte
+}
+
+std::vector<std::vector<uint8_t>> AudioTapeMedia::splitByGaps(double minGapSeconds) const {
+    std::vector<std::vector<uint8_t>> out;
+    if (bytes_.empty()) return out;
+    // No audio clock to read gaps from (or the caller asked not to split): one program.
+    if (!hasTimeline() || minGapSeconds <= 0.0) {
+        out.push_back(bytes_);
+        return out;
+    }
+    const uint64_t gap = uint64_t(minGapSeconds * rate_);
+    const size_t   n   = std::min(offset_.size(), bytes_.size());
+    size_t         run = 0;  // the current program's first byte
+    for (size_t i = 1; i < n; ++i) {
+        if (offset_[i] - offset_[i - 1] >= gap) {  // seconds of idle -- a program boundary
+            out.emplace_back(bytes_.begin() + run, bytes_.begin() + i);
+            run = i;
+        }
+    }
+    out.emplace_back(bytes_.begin() + run, bytes_.end());  // the last (or only) program
+    return out;
 }
 
 // See the header: the backstop for a recording nobody stopped. `under_` is declared
@@ -271,6 +293,34 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
     return std::make_unique<AudioTapeMedia>(std::move(media), std::move(best.bytes), bestFmt,
                                             audio.rate, std::move(best.byteSampleOffset),
                                             best.totalSamples);
+}
+
+bool extractTapePrograms(const AudioTapeMedia& audio, const std::string& base,
+                         double minGapSeconds, std::ostream& out, std::string& err) {
+    const std::vector<std::vector<uint8_t>> progs = audio.splitByGaps(minGapSeconds);
+    if (progs.empty()) {
+        err = "the tape decoded to no bytes -- there is nothing to extract";
+        return false;
+    }
+    // A single program keeps the plain stem; several take a 1..N index. Write each, and say
+    // its name and size -- not its bytes.
+    const bool indexed = progs.size() > 1;
+    for (size_t i = 0; i < progs.size(); ++i) {
+        const std::string name =
+            indexed ? base + "-" + std::to_string(i + 1) + ".tap" : base + ".tap";
+        if (!writeHostFile(name, progs[i], err)) return false;
+        out << "  " << name << "  " << progs[i].size() << " bytes\n";
+    }
+    out << progs.size() << (progs.size() == 1 ? " program extracted" : " programs extracted")
+        << "\n";
+    return true;
+}
+
+std::string stripWavExt(const std::string& path) {
+    if (path.size() < 4) return path;
+    std::string tail = path.substr(path.size() - 4);
+    for (char& c : tail) c = char(std::tolower((unsigned char)c));
+    return tail == ".wav" ? path.substr(0, path.size() - 4) : path;
 }
 
 } // namespace altair

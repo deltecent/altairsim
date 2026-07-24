@@ -172,6 +172,20 @@ abbreviation by being plugged in.
 
 Both verbs also **discard the byte the UART is still holding** — see *Limitations*.
 
+### `EXTRACT` — a WAV's programs, as `.TAP` files
+
+A third verb, and the one place a card *produces* a host file rather than mounting one.
+`EXTRACT <id>:tape [base]` demodulates the mounted WAV and writes each program to its own raw
+`.TAP`. The split is `AudioTapeMedia::splitByGaps()`: a multi-program cassette records seconds of
+idle between programs, idle carries no start bits, so the decoded bytes jump in audio time at each
+boundary (`byteSampleOffset`), and a jump of `kExtractGapSeconds` (1 s) or more is a boundary. One
+program keeps the stem (`foo.tap`); several take a `-1`…`-N` index. The files land beside the WAV
+(or under `base`), and each name and size is printed — not its bytes. Writing goes through the new
+`writeHostFile()` host helper, the same plain write `SAVE` does. `MOUNT … extract` is the monitor
+running this verb right after the mount, so the option and the verb are one code path. A byte
+`.TAP` has no `AudioTapeMedia` and so no gaps to find — EXTRACT there says there is nothing to
+demodulate.
+
 ### Pacing: `rate = full | real`, the tape's own clock
 
 The UART used to pace the line purely in emulated time (`Uart1602::poll` — one byte, held, one

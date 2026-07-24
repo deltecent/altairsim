@@ -601,14 +601,33 @@ std::vector<CommandDef> AcrBoard::commands() const {
             "\n"
             "REW is the shortest spelling: RESET already answers to R, RE and RES.",
         },
+        {
+            "EXTRACT",
+            true,
+            nullptr,
+            "EXTRACT <id>:tape [base] -- write a mounted WAV's programs out as .TAP files",
+            "A cassette WAV often holds several programs one after another, separated by a\n"
+            "few seconds of silence. EXTRACT demodulates the mounted WAV and writes each\n"
+            "program as its own raw .TAP file -- so you can mount, load or archive them one\n"
+            "at a time. It names them beside the WAV (foo.wav -> foo-1.tap, foo-2.tap, ...;\n"
+            "a single-program tape is just foo.tap), or under a base you give, and prints\n"
+            "each file's name and size. It reads the tape and writes files; it changes\n"
+            "nothing in the machine. Only a WAV can be extracted -- a .TAP is already bytes.\n"
+            "\n"
+            "  MOUNT acr0:tape \"games.wav\"\n"
+            "  EXTRACT acr0:tape          (writes games-1.tap, games-2.tap, ... beside it)\n"
+            "\n"
+            "MOUNT ... extract does the same in one step, at mount time.",
+        },
     };
 }
 
 bool AcrBoard::runCommand(const std::string& name, const std::vector<std::string>& args,
                           std::ostream& out, std::string& err) {
-    const bool rewind = (name == "REWIND");
-    if (!rewind && name != "WIND") {
-        err = "the 88-ACR's verbs are WIND and REWIND";
+    const bool rewind  = (name == "REWIND");
+    const bool extract = (name == "EXTRACT");
+    if (!rewind && !extract && name != "WIND") {
+        err = "the 88-ACR's verbs are WIND, REWIND and EXTRACT";
         return false;
     }
 
@@ -630,6 +649,19 @@ bool AcrBoard::runCommand(const std::string& name, const std::vector<std::string
     if (!tape_) {
         err = "there is no cassette in the recorder. MOUNT one first.";
         return false;
+    }
+
+    // EXTRACT: demodulate the WAV into its programs and write each as a .TAP. Only a WAV
+    // has an audio timeline to find gaps in; a byte tape is already the bytes.
+    if (extract) {
+        if (!audio_) {
+            err = path_ + " is a byte tape, not a WAV -- there is nothing to demodulate "
+                          "and split";
+            return false;
+        }
+        const std::string base =
+            args.size() > 2 ? resolvePath(args[2]) : stripWavExt(resolvePath(path_));
+        return extractTapePrograms(*audio_, base, kExtractGapSeconds, out, err);
     }
 
     // Where to. REWIND is the start; WIND takes a time (mm:ss or bare seconds) or the

@@ -2798,11 +2798,20 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         //
         // Anything else in the slot IS a typo, and a typo that we accepted would mount
         // the disk READ/WRITE while the operator believed they had protected it. Refuse.
-        bool                                             readOnly = false;
+        bool                                             readOnly    = false;
+        bool                                             extract     = false;
+        std::string                                      extractBase;  // "" -> beside the WAV
         std::vector<std::pair<std::string, std::string>> opts;  // key=value, applied post-mount
         for (size_t i = 3; i < a.size(); ++i) {
             if (is(a[i], "WP") || is(a[i], "RO")) {
                 readOnly = true;
+                continue;
+            }
+            // EXTRACT is not a property -- it writes files after the mount (below), so it is
+            // handled here rather than routed to setUnitProperty. `extract` uses the default
+            // name; `extract=<base>` names the files.
+            if (is(a[i], "EXTRACT")) {
+                extract = true;
                 continue;
             }
             // ANY key=value is a unit property set, applied once the tape is in (below), so
@@ -2811,12 +2820,18 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // is the board's own argument to mount(), not a property.
             size_t eq = a[i].find('=');
             if (eq != std::string::npos && eq > 0) {
-                opts.emplace_back(a[i].substr(0, eq), a[i].substr(eq + 1));
+                std::string key = a[i].substr(0, eq), val = a[i].substr(eq + 1);
+                if (upper(key) == "EXTRACT") {
+                    extract     = true;
+                    extractBase = val;
+                    continue;
+                }
+                opts.emplace_back(std::move(key), std::move(val));
                 continue;
             }
-            out << "MOUNT: '" << a[i] << "': options are WP (RO means the same) or key=value "
+            out << "MOUNT: '" << a[i] << "': options are WP (RO), extract[=<base>], or key=value "
                 << "(e.g. counter=off, stop=2:05). usage: MOUNT <id>:<unit> <file> [WP] "
-                << "[key=value ...]\n";
+                << "[extract[=<base>]] [key=value ...]\n";
             failed_ = true;
             return true;
         }
@@ -2847,6 +2862,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ":" << u.name << ": mounted "
                 << resolveFrom(startupDir_, unquote(a[2]))
                 << (readOnly ? std::string(" (") + protectedWord(u.kind) + ")" : "") << "\n";
+
+            // ...and, if asked, split the just-mounted WAV into per-program .TAP files. This
+            // runs the board's own EXTRACT verb, so the mount option and the verb are one
+            // code path; the board narrates each file it wrote to `out`.
+            if (extract) {
+                std::vector<std::string> ea{"EXTRACT", b->id + ":" + u.name};
+                if (!extractBase.empty()) ea.push_back(extractBase);
+                std::string eerr;
+                if (!b->runCommand("EXTRACT", ea, out, eerr)) {
+                    out << b->id << ":" << u.name << ": " << eerr << "\n";
+                    failed_ = true;
+                }
+            }
         }
         // ...AND SAY WHAT THE BOARD SAID, HERE, WHERE IT HAPPENED.
         //

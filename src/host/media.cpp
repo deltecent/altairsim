@@ -80,6 +80,21 @@ std::unique_ptr<MediaFile> openHostFile(const std::string& path, bool readOnly, 
     return h;
 }
 
+bool writeHostFile(const std::string& path, const std::vector<uint8_t>& data, std::string& err) {
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        err = "cannot write '" + path + "'";
+        return false;
+    }
+    if (!data.empty())
+        f.write(reinterpret_cast<const char*>(data.data()), (std::streamsize)data.size());
+    if (!f) {
+        err = "write to '" + path + "' failed";
+        return false;
+    }
+    return true;
+}
+
 HostFile::~HostFile() {
     // The last line of defence, not the plan. UNMOUNT and shutdown both sync
     // explicitly, because a destructor cannot report that the write FAILED.

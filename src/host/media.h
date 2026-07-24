@@ -137,6 +137,12 @@ std::unique_ptr<MediaFile> openMedia(const std::string& path, bool readOnly, std
 // The real one -- the host filesystem. This is what both mains install.
 std::unique_ptr<MediaFile> openHostFile(const std::string& path, bool readOnly, std::string& err);
 
+// Write a fresh host file, truncating any that is there. For a verb that PRODUCES a file
+// rather than mounting one -- EXTRACT's per-program .TAPs. Unlike openMedia() this is not
+// behind the resolver (there is nothing to slurp and no board to hold it); it is the plain
+// host write the monitor's SAVE does, factored so a card can produce a file too.
+bool writeHostFile(const std::string& path, const std::vector<uint8_t>& data, std::string& err);
+
 // ---------------------------------------------------------------------------
 // The host file. Slurped at open, written back at sync.
 //

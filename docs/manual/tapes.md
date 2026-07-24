@@ -271,6 +271,36 @@ recording is the likely answer.
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
 
+### `extract` — split a WAV into per-program `.TAP` files
+
+A cassette WAV often holds several programs one after another, separated by a few seconds of
+silence. **`extract` writes each program out as its own `.TAP`** — so you can keep, mount or load
+them one at a time instead of winding through the whole tape. Ask for it at `MOUNT`:
+
+```
+altairsim> MOUNT acr0:tape "games.wav" extract
+acr0:tape: mounted games.wav
+  games-1.tap  2048 bytes
+  games-2.tap  3120 bytes
+2 programs extracted
+```
+
+The files land **beside the WAV**, named from it: `games.wav` becomes `games-1.tap`,
+`games-2.tap`, … with a 1-to-N index (a single-program tape is just `games.tap`, no index). Each
+line prints the file's name and size. `extract=<base>` names them yourself
+(`extract=disk1` → `disk1-1.tap`, …). It only **reads** the tape and **writes** the files —
+nothing in the machine changes.
+
+The same thing has a verb, so you can split a WAV that is already in the deck without re-mounting:
+
+```
+altairsim> EXTRACT acr0:tape          (on the Sol, name the deck: EXTRACT sol0:tape1)
+```
+
+Only a `.WAV` can be extracted — a `.TAP` is already the bytes, and has no gaps left to split on.
+The boundary is a second or more of silence, which is far longer than the gaps *inside* a program,
+so programs come apart cleanly and none is cut in half.
+
 ### A board will refuse audio it could not really have heard
 
 That example mounted a Sol tape on a Sol. Put it in an Altair and the board says no:

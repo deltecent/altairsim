@@ -78,6 +78,12 @@ tape can be cued to stop at a boundary — set a new mark and go on. It gates pl
 (a recording writes through it), it is per deck, and `stopAt_` travels in a snapshot
 alongside the head position.
 
+**`EXTRACT`.** `EXTRACT <id>:tape1|tape2 [base]` writes a deck's mounted WAV out as one raw
+`.TAP` per program, split at the silent inter-program gaps (`AudioTapeMedia::splitByGaps`),
+named beside the WAV (`foo.wav` → `foo-1.tap`, …; single → `foo.tap`) and printing each name
+and size. Name the deck. `MOUNT … extract` runs the same verb at mount time. A `.TAP` has no
+audio and nothing to split.
+
 `SET sol0:tape1 mode=record` is the button on the front of the recorder, exactly as on
 the [88-ACR](mits-88acr.md): a tape that is playing cannot be written over, and a deck
 that is recording does not hand back what used to be on it.

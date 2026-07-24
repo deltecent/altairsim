@@ -34,8 +34,12 @@
 #include "core/machine.h"
 #include "host/media.h"
 #include "host/tape.h"
+#include "host/tapecodec.h"
+#include "host/tapemodem.h"
+#include "host/wav.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -327,10 +331,12 @@ void test_88acr() {
         // The verbs are declared, REACHABLE, and the ones the .md promises: WIND and its
         // REWIND alias.
         auto cs = r.acr->commands();
-        CHECK(cs.size() == 2, "the card brings two verbs");
-        CHECK(std::string(cs[0].name) == "WIND" && std::string(cs[1].name) == "REWIND",
-              "WIND, and REWIND as its wind-to-start alias");
-        CHECK(cs[0].built && cs[0].waiting == nullptr && cs[1].built && cs[1].waiting == nullptr,
+        CHECK(cs.size() == 3, "the card brings three verbs");
+        CHECK(std::string(cs[0].name) == "WIND" && std::string(cs[1].name) == "REWIND" &&
+                  std::string(cs[2].name) == "EXTRACT",
+              "WIND, REWIND (its wind-to-start alias), and EXTRACT");
+        CHECK(cs[0].built && cs[0].waiting == nullptr && cs[1].built && cs[1].waiting == nullptr &&
+                  cs[2].built && cs[2].waiting == nullptr,
               "a card that is IN THE MACHINE has no unbuilt verbs");
 
         // With no cassette in it, REWIND fails with a sentence rather than a crash.
@@ -512,6 +518,57 @@ void test_88acr() {
         r.m.clock.advance(r.m.clock.tStatesPer(30));
         CHECK(tapeBytes() == "NEDTAPE!",
               "the write landed at byte zero -- the stop mark does not gate recording");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6f. EXTRACT -- split a mounted WAV into one .TAP per program, at the gaps.
+    // -----------------------------------------------------------------------
+    {
+        // A two-program WAV: program A (40 bytes) then a ~4 s gap then program B (50 bytes).
+        const TapeFormat f = tapeformats::fsk300_1850();
+        const AudioBuffer a = modulate(std::vector<uint8_t>(40, 0x41), f, 22050, 2.0, 2.0);
+        const AudioBuffer b = modulate(std::vector<uint8_t>(50, 0x42), f, 22050, 2.0, 2.0);
+        AudioBuffer       both;
+        both.rate = 22050;
+        both.s    = a.s;
+        both.s.insert(both.s.end(), b.s.begin(), b.s.end());
+        const std::vector<uint8_t> wav = buildWav(both);
+
+        withTape(std::string(wav.begin(), wav.end()));
+        Rig r;
+        r.mount("games.wav");
+
+        namespace fs           = std::filesystem;
+        const std::string base = (fs::temp_directory_path() / "altairsim-extract-test").string();
+        const std::string f1 = base + "-1.tap", f2 = base + "-2.tap";
+        fs::remove(f1);
+        fs::remove(f2);
+
+        std::ostringstream o;
+        std::string        err;
+        CHECK(r.acr->runCommand("EXTRACT", {"EXTRACT", "acr0:tape", base}, o, err),
+              ("EXTRACT runs: " + err).c_str());
+        CHECK(fs::exists(f1) && fs::file_size(f1) == 40, "program 1 was written, 40 bytes");
+        CHECK(fs::exists(f2) && fs::file_size(f2) == 50, "program 2 was written, 50 bytes");
+        CHECK(o.str().find("40 bytes") != std::string::npos &&
+                  o.str().find("2 programs") != std::string::npos,
+              ("the console names the files and their sizes: " + o.str()).c_str());
+        fs::remove(f1);
+        fs::remove(f2);
+    }
+
+    // -----------------------------------------------------------------------
+    // 6g. EXTRACT refuses a byte tape -- there is nothing to demodulate.
+    // -----------------------------------------------------------------------
+    {
+        withTape("RAWBYTES");
+        Rig r;
+        r.mount("raw.tap");
+        std::ostringstream o;
+        std::string        err;
+        CHECK(!r.acr->runCommand("EXTRACT", {"EXTRACT", "acr0:tape"}, o, err),
+              "EXTRACT on a byte tape is refused");
+        CHECK(err.find("byte tape") != std::string::npos, ("...and says why: " + err).c_str());
     }
 
     // -----------------------------------------------------------------------
