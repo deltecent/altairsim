@@ -302,38 +302,36 @@ sudo lpadmin -p linewriter -E -v usb://Vendor/Product -m raw
 `-m raw` selects the "Raw Queue" model, so CUPS skips all filtering and the bytes
 written are delivered as-is. (`printer:` also asks for raw per job, belt and braces.)
 
-**macOS — raw queues are gone, but raw jobs are not.** A current macOS
-(`lpadmin: Raw queues are no longer supported on macOS`) refuses `-m raw`: the
-no-PPD "raw queue" concept was removed. The `document-format application/vnd.cups-raw`
-that `printer:` sends *per job* still passes through, though, so the queue just needs
-a nominal driver — one of the surviving generic PPDs (`lpinfo -m` lists them):
+**macOS — prefer `socket:` over a CUPS queue, and do not build a bridge.** Apple's
+CUPS is backing out of raw host printing in two steps, and both showed up the moment
+this was tried on a current Mac. Raw queues are gone now — `lpadmin: Raw queues are no
+longer supported on macOS`, so `-m raw` is refused. And the classic driver/PPD
+mechanism is deprecated next — any `.ppd` queue prints `lpadmin: Printer drivers are
+deprecated and will stop working in a future version of CUPS` — in favour of driverless
+IPP Everywhere, which is a poor fit for a *raw* line-printer socket. A macOS-specific
+CUPS workaround would be built on exactly the mechanism the platform is deleting, so it
+is not worth writing: negative-value engineering, cost now for breakage later.
 
-```sh
-sudo lpadmin -p linewriter -E -v usb://Vendor/Product \
-             -m drv:///sample.drv/generic.ppd -o printer-is-shared=false
+The durable macOS answer needs no CUPS queue at all. For any network-capable printer,
+or a print server fronting a parallel one, altairsim's own `socket:` endpoint sends the
+raw bytes straight to the JetDirect/AppSocket port:
+
+```
+CONNECT lpt0:prn socket:printer-host:9100
 ```
 
-Whether Apple's CUPS honours the raw job all the way to the device is worth
-confirming on the host — see the no-paper check below, which shows exactly what
-reaches the backend.
+No drivers, no deprecation, the same 8-bit-clean stream the CUPS path would have
+delivered — this is the recommended route on macOS. `printer:` over CUPS is still the
+right endpoint on **Linux** (`-m raw`, unaffected) and against a print server, and it
+remains correct on macOS wherever the host still lets a raw job through; there is just
+no reason to wire a macOS-only CUPS bridge for it. `printer:` submits a correct raw job
+on every platform regardless — what a locked-down CUPS does with it is the host's call,
+not the endpoint's.
 
-**And this workaround is itself on the clock.** Adding a queue with any `.ppd`
-now prints `lpadmin: Printer drivers are deprecated and will stop working in a
-future version of CUPS` — the classic driver/PPD mechanism the generic PPD relies
-on is being removed too, in favour of driverless IPP Everywhere. IPP Everywhere is
-a poor fit for a *raw* line-printer socket, so the honest conclusion is that macOS
-is walking away from raw host printing in both steps it has taken: raw queues are
-gone now, drivers are going next. **`printer:` on macOS is therefore best treated
-as transitional** — good for a bench test today, but the durable home for raw
-line-printer output is Linux (`-m raw`, unaffected) or a network print server that
-exposes a JetDirect/`socket://` queue. This is a property of the host, not of the
-endpoint: `printer:` submits a correct raw job on every platform, and what a
-locked-down CUPS then chooses to do with it is the host's call.
-
-**A no-paper terminal, for testing and for watching the boundaries.** CUPS ships no
-`serial` backend on a current macOS, so a queue cannot target a tty directly — but its
-`socket` (JetDirect/AppSocket) backend is always present, and a listener on that port
-shows every job's bytes live, wasting nothing:
+**Bench test only (the deprecated path), for watching the boundaries with no paper.**
+To exercise the CUPS submit path on a macOS box *today*, accepting both warnings above,
+a nominal generic PPD stands in for the removed raw queue, and the `socket` backend
+plus `nc` shows exactly what reaches the device:
 
 ```sh
 sudo lpadmin -p altairterm -E -v socket://localhost:9100 \
@@ -341,23 +339,14 @@ sudo lpadmin -p altairterm -E -v socket://localhost:9100 \
 nc -k -l 9100          # in one terminal: every job's bytes stream here as it lands
 ```
 
-Then `CONNECT lpt0:prn printer:altairterm?idle=3` and print; `DISCONNECT lpt0:prn`
-flushes at once (its destructor submits synchronously, so no run loop is needed).
-Each closed job arrives in the `nc` terminal as its own burst — the job-boundary
-policy made visible, and the check for whether the raw job survived filtering: clean
-bytes mean passthrough, a PostScript wrapper means the host filtered it. `nc -k` keeps
-listening across jobs (the `socket` backend opens one connection per job). Remove a
-test queue with `sudo lpadmin -x altairterm`.
-
-**Just want the output on a terminal, no CUPS?** A board can skip `printer:` and
-`CONNECT lpt0:prn socket:9100`, then `nc localhost 9100` from another terminal — but
-that services the socket only while the machine is *running* (the accept happens in
-the run loop), and it does not exercise the host print path, which is the point of
-testing `printer:`.
-
-(If the *only* goal is output on another terminal, a board can skip `printer:`
-entirely and `CONNECT` to `socket:9100` or `serial:` — but that does not exercise the
-host print path, which is the point of testing `printer:`.)
+Then `CONNECT lpt0:prn printer:altairterm?idle=3`, print, and `DISCONNECT lpt0:prn` to
+flush at once (the destructor submits synchronously, so no run loop is needed). Each
+closed job arrives in the `nc` terminal as its own burst — the job-boundary policy made
+visible, and the check for whether the raw job survived filtering: clean bytes mean
+passthrough, a PostScript wrapper means the host filtered it anyway. `nc -k` keeps
+listening across jobs (the `socket` backend opens one connection per job). Remove the
+queue with `sudo lpadmin -x altairterm`. On Linux this is the same recipe with `-m raw`
+and no deprecation attached.
 
 ### 3.3 `print_raw`, both platforms
 
