@@ -60,9 +60,29 @@ REW     sol0:tape1
 ```
 
 **The decks are MOUNTed, not CONNECTed.** A cassette has a *position* — the head is
-where it is, and the only way back to the start of the program is `REWIND` — which a
-byte stream has nowhere to keep. `tape` is accepted as a name for `tape1`, so a machine
-file written against the older single line still resolves.
+where it is, and the way to any program on it is to `WIND` there (`REWIND` is `WIND …
+START`) — which a byte stream has nowhere to keep. `tape` is accepted as a name for
+`tape1`, so a machine file written against the older single line still resolves.
+
+**The tape counter.** Each deck reports where its head is as `position` — `mm:ss / total
+(percent)` — real recording time for a `.WAV` (from the audio's own clock, gaps and
+leader included) and an estimate from the guest-selected baud for a `.CUTS`. `WIND
+<id>:tape1|tape2 <mm:ss | START | END>` moves the head to a time; the deck must be named,
+as there are two. `activityLabel()` paints a live counter on the console during a `rate =
+real` load, but only for the deck whose motor is on; `counter = on | off` (default on,
+settable at `MOUNT` with `counter=off`) is its switch.
+
+**The `stop` mark.** Each deck also has a `stop = off | end | <mm:ss>` (settable at `MOUNT`
+and with `SET`): the head halts there and the deck's line falls quiet, so a multi-program
+tape can be cued to stop at a boundary — set a new mark and go on. It gates playback only
+(a recording writes through it), it is per deck, and `stopAt_` travels in a snapshot
+alongside the head position.
+
+**`EXTRACT`.** `EXTRACT <id>:tape1|tape2 [base]` writes a deck's mounted WAV out as one raw
+`.TAP` per program, split at the silent inter-program gaps (`AudioTapeMedia::splitByGaps`),
+named beside the WAV (`foo.wav` → `foo-1.tap`, …; single → `foo.tap`) and printing each name
+and size. Name the deck. `MOUNT … extract` runs the same verb at mount time. A `.TAP` has no
+audio and nothing to split.
 
 `SET sol0:tape1 mode=record` is the button on the front of the recorder, exactly as on
 the [88-ACR](mits-88acr.md): a tape that is playing cannot be written over, and a deck

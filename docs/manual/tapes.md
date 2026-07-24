@@ -69,9 +69,10 @@ for you — `SAVE` spins the deck up, writes, and spins it down. So a Sol tape p
 the guest is running it, and a deck whose motor is off yields nothing at all rather than
 merely nothing yet.
 
-It still cannot **rewind**. There is no rewind bit on a Sol-PC — a motor line only says
-*turn*, not *which way* — so `REWIND` is your finger here too. Because there are two decks,
-you must name one: a bare `REW sol0` is refused rather than guessing which tape to wind back.
+It still cannot **wind the tape** on its own. There is no rewind bit on a Sol-PC — a motor line
+only says *turn*, not *which way* — so `WIND` (and its `REWIND` shorthand) is your finger here
+too. Because there are two decks, you must name one: a bare `WIND sol0` is refused rather than
+guessing which tape to move.
 
 **And the speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at
 300 or 1200 and `OUT 0FAh` D5 picks, at run time. SOLOS's `SE TA` command is that bit.
@@ -126,15 +127,46 @@ Play and record are **mutually exclusive**, and not because it was easier to wri
 It is **one head and one physical button**. You cannot press PLAY and RECORD at the same time
 on a cassette recorder, so you cannot do it here.
 
-### `REWIND`
+### Where the head is — the tape counter
+
+`SHOW MOUNTS`, and `SHOW <id>`, report where the head is sitting as a position on the tape:
+
+```
+altairsim> SHOW MOUNTS
+  acr0:tape  tape  BASIC.WAV  00:15 / 01:28 (17%)  301/2048 bytes
+```
+
+The counter is a **time and a percentage** — minutes and seconds into the tape, and how far
+along it you are. For a `.WAV` that time is the recording's *own*: it counts the leader and
+any silent gaps between programs, exactly as a real cassette counter would, so a program a
+manual indexes by "seconds from the start of the tape" is at the second the manual says. For a
+byte `.TAP`, which carries no audio, the time is estimated from the baud. The byte count is
+still there beside it.
+
+### `WIND` — move the head to a time
 
 A tape unit brings a verb of its own:
 
 ```
-REWIND <id>:<unit>
+WIND <id>:<unit> <mm:ss | START | END>
 ```
 
-`REW` will do. It winds the cassette back to the beginning.
+`WI` will do. It winds the head to a time on the tape — so a cassette holding several programs
+one after another is **reachable**: read the counter (or a manual) for where the next one
+begins, and wind there.
+
+```
+altairsim> WIND acr0:tape 2:05
+acr0:tape: wound to 02:05 / 08:40 (24%) -- BASIC.WAV (...)
+```
+
+The position is a time — `mm:ss`, or a bare number of seconds — or the words `START` and
+`END`. A time past the end lands at the end. On the Sol you must name the deck, because there
+are two.
+
+### `REWIND` — wind to the start
+
+`REWIND <id>:<unit>` (`REW`) is `WIND … START`: the common case, kept as its own verb.
 
 **You need it to load the same tape twice.** A tape that has been read is a tape whose head is
 at the end of the tape, and playing it again gets you silence. This surprises people exactly
@@ -143,6 +175,44 @@ once.
 ```
 altairsim> REW acr0:tape
 ```
+
+### Watching a load — the live counter
+
+When a tape plays in real time (`rate = real`, below) the counter **ticks up on the console
+while it loads**, so you can watch a long tape's progress. It is on by default; turn it off for
+a machine whose guest is writing to the same terminal:
+
+```
+altairsim> MOUNT acr0:tape "tape.wav" counter=off
+```
+
+or `SET acr0:tape counter=off` at any time. Turning it off changes nothing about `SHOW` — the
+position is always there to ask for.
+
+### `stop` — halt the tape at a time
+
+A multi-program tape runs one program straight into the next. The `stop` mark is your finger on
+the recorder's **STOP button at a counter mark**: set it to a time and the tape goes quiet there
+instead of running on. Set it at `MOUNT`, or with `SET` any time after:
+
+```
+altairsim> MOUNT acr0:tape "tape.wav" stop=2:05
+altairsim> SET  acr0:tape stop=2:05
+```
+
+Load program 1 and the line falls silent at 2:05 — the same quiet the end of the tape gives — so
+the loader stops there rather than reading into program 2. To carry on, move the mark forward
+(or clear it) and go again:
+
+```
+altairsim> SET acr0:tape stop=5:30      (the next boundary)
+altairsim> SET acr0:tape stop=off       (play to the physical end)
+```
+
+It is `off` (play to the end) unless you set it. `SHOW` shows an armed mark as `stop @ 02:05`. It
+halts **playback only** — a recording writes straight through it — and it is independent of
+`WIND`: winding the head past an armed stop leaves the tape parked there (SHOW says why), so move
+or clear the mark to continue.
 
 ### `rate = full | real`
 
@@ -182,8 +252,10 @@ TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
 ```
 
 Nothing else changes. The recording is demodulated **once, when you mount it** — never while
-the machine is running — and from that moment everything above it, including `SHOW`'s *"at N
-of M bytes"* and `REWIND`, means exactly what it meant for a `.TAP`. The guest cannot tell.
+the machine is running — and from that moment everything above it, including `SHOW`'s byte
+count and `WIND`/`REWIND`, means exactly what it meant for a `.TAP`. The one thing the audio
+adds is a *real* clock: the tape counter reads the recording's own minutes and seconds, gaps
+and leader included, where a byte tape can only estimate them. The guest cannot tell.
 
 **Read that first line.** A mount always says what it found, and the framing-error count is
 the number that matters: a tape that decoded at 60% is noise, not a program, and you want to
@@ -198,6 +270,36 @@ recording is the likely answer.
 
 **What decides is the file's magic, never its name.** A `.TAP` somebody renamed `.WAV` is
 still read as bytes, and a recording renamed `.TAP` is still demodulated.
+
+### `extract` — split a WAV into per-program `.TAP` files
+
+A cassette WAV often holds several programs one after another, separated by a few seconds of
+silence. **`extract` writes each program out as its own `.TAP`** — so you can keep, mount or load
+them one at a time instead of winding through the whole tape. Ask for it at `MOUNT`:
+
+```
+altairsim> MOUNT acr0:tape "games.wav" extract
+acr0:tape: mounted games.wav
+  games-1.tap  2048 bytes
+  games-2.tap  3120 bytes
+2 programs extracted
+```
+
+The files land **beside the WAV**, named from it: `games.wav` becomes `games-1.tap`,
+`games-2.tap`, … with a 1-to-N index (a single-program tape is just `games.tap`, no index). Each
+line prints the file's name and size. `extract=<base>` names them yourself
+(`extract=disk1` → `disk1-1.tap`, …). It only **reads** the tape and **writes** the files —
+nothing in the machine changes.
+
+The same thing has a verb, so you can split a WAV that is already in the deck without re-mounting:
+
+```
+altairsim> EXTRACT acr0:tape          (on the Sol, name the deck: EXTRACT sol0:tape1)
+```
+
+Only a `.WAV` can be extracted — a `.TAP` is already the bytes, and has no gaps left to split on.
+The boundary is a second or more of silence, which is far longer than the gaps *inside* a program,
+so programs come apart cleanly and none is cut in half.
 
 ### A board will refuse audio it could not really have heard
 
@@ -245,8 +347,9 @@ so an empty file — or anything else that is not RIFF/WAVE — falls through to
 recording then puts *bytes* in it, not audio. It will look like it worked. Nothing will play
 it. If you meant audio and you get `raw` on the mount line, that is what happened.
 
-The stop is what writes it. `UNMOUNT` and `REWIND` are stops too, and on the Sol so is the
-guest dropping the motor line — that board can see a deck stop, which the 88-ACR cannot.
+The stop is what writes it. `UNMOUNT` and any `WIND` (`REWIND` included) are stops too, and on
+the Sol so is the guest dropping the motor line — that board can see a deck stop, which the
+88-ACR cannot.
 
 The whole file is rewritten each time, not patched: the audio for a byte starts at an offset
 that depends on every byte before it, so there is no cheaper splice.

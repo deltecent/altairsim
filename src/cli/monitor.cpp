@@ -1181,6 +1181,14 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     uint64_t lastStarved = con.starved();
     int      quiet       = 0;
 
+    // A LIVE TAPE COUNTER, painted a few times a second while a deck loads in wall time.
+    // `statusShown` is whether our \r-status line is currently on the terminal (so we can
+    // wipe it when the load ends or the guest starts talking); `seenWritten` remembers how
+    // much the guest had written to the console at the previous paint, so we can tell a
+    // free terminal from one the guest is using. See the paint site in the sample block.
+    bool     statusShown = false;
+    uint64_t seenWritten = con.written();
+
     // WHEN THE GUEST LAST DID ANYTHING BUT WAIT. Default-constructed means "it is doing
     // something" -- and it has to persist in doing nothing before we believe it (see the
     // nap, at the bottom of the loop).
@@ -1376,8 +1384,38 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
             card->reportAchievedHz((long long)((double)(m_.clock.now() - measT) / measReal));
             measT = m_.clock.now();
             measW = clk::now();
+
+            // THE LIVE TAPE COUNTER. A board that is loading a cassette in wall time hands
+            // back a one-line label here (Board::activityLabel); the run loop paints it and
+            // knows nothing about tapes. Only on a real terminal, and only when the guest is
+            // NOT itself writing to it -- on a Sol the guest paints its video window and on a
+            // bare-Altair load nothing is printed, so the line is free exactly where a load
+            // is slow enough to watch. A machine whose guest owns stdout keeps its output;
+            // the counter yields and SHOW still reports the position on demand.
+            if (tty) {
+                std::string label;
+                for (const auto& b : m_.boards()) {
+                    label = b->activityLabel();
+                    if (!label.empty()) break;
+                }
+                const bool consoleQuiet = (con.written() == seenWritten);
+                if (!label.empty() && consoleQuiet) {
+                    out << '\r' << label << "\x1b[K" << std::flush;  // repaint over our line
+                    statusShown = true;
+                } else if (statusShown && consoleQuiet) {
+                    out << "\r\x1b[K" << std::flush;  // load done: take our line back cleanly
+                    statusShown = false;
+                } else if (statusShown) {
+                    statusShown = false;  // the guest is talking now -- never wipe over it
+                }
+                seenWritten = con.written();
+            }
         }
     }
+
+    // A live counter still on the terminal when the run stops (ATTN mid-load) must not be
+    // left for the prompt to print on top of.
+    if (statusShown) out << "\r\x1b[K" << std::flush;
 
     // The tail: capture the final partial window so SHOW reflects what the machine was
     // doing when you stopped it -- and so a run shorter than one window (a CPU test, a
@@ -2742,7 +2780,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- MOUNT ----------------
     if (cmd == "MOUNT") {
-        if (!need(3, "MOUNT <id>:<unit> <file> [WP]")) return true;
+        if (!need(3, "MOUNT <id>:<unit> <file> [WP] [key=value ...]")) return true;
         Board* b;
         UnitDef u;
         if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;
@@ -2760,15 +2798,42 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         //
         // Anything else in the slot IS a typo, and a typo that we accepted would mount
         // the disk READ/WRITE while the operator believed they had protected it. Refuse.
-        bool readOnly = false;
-        if (a.size() > 3) {
-            if (!is(a[3], "WP") && !is(a[3], "RO")) {
-                out << "MOUNT: '" << a[3] << "': the only option is WP (RO means the same). "
-                    << "usage: MOUNT <id>:<unit> <file> [WP]\n";
-                failed_ = true;
-                return true;
+        bool                                             readOnly    = false;
+        bool                                             extract     = false;
+        std::string                                      extractBase;  // "" -> beside the WAV
+        std::vector<std::pair<std::string, std::string>> opts;  // key=value, applied post-mount
+        for (size_t i = 3; i < a.size(); ++i) {
+            if (is(a[i], "WP") || is(a[i], "RO")) {
+                readOnly = true;
+                continue;
             }
-            readOnly = true;
+            // EXTRACT is not a property -- it writes files after the mount (below), so it is
+            // handled here rather than routed to setUnitProperty. `extract` uses the default
+            // name; `extract=<base>` names the files.
+            if (is(a[i], "EXTRACT")) {
+                extract = true;
+                continue;
+            }
+            // ANY key=value is a unit property set, applied once the tape is in (below), so
+            // `counter=off`/`stop=2:05` need no per-key code here and a new unit property
+            // works at MOUNT the day it exists. WP/RO stay bare flags -- the read-only fence
+            // is the board's own argument to mount(), not a property.
+            size_t eq = a[i].find('=');
+            if (eq != std::string::npos && eq > 0) {
+                std::string key = a[i].substr(0, eq), val = a[i].substr(eq + 1);
+                if (upper(key) == "EXTRACT") {
+                    extract     = true;
+                    extractBase = val;
+                    continue;
+                }
+                opts.emplace_back(std::move(key), std::move(val));
+                continue;
+            }
+            out << "MOUNT: '" << a[i] << "': options are WP (RO), extract[=<base>], or key=value "
+                << "(e.g. counter=off, stop=2:05). usage: MOUNT <id>:<unit> <file> [WP] "
+                << "[extract[=<base>]] [key=value ...]\n";
+            failed_ = true;
+            return true;
         }
 
         std::string err;
@@ -2776,6 +2841,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
+            // The trailing key=value options are applied as unit properties now the tape is
+            // in -- so `counter=off`/`stop=2:05` at MOUNT and SET later are the one mechanism.
+            // A unit with no such property (a disk, a ROM) says so rather than ignoring it.
+            for (const auto& kv : opts) {
+                std::string perr;
+                if (!setUnitProperty(*b, u.name, kv.first, kv.second, perr)) {
+                    out << b->id << ":" << u.name << ": " << perr << "\n";
+                    failed_ = true;
+                }
+            }
             // SAY WHERE THE DISK ACTUALLY IS, not what the file called it. The board
             // stores the name as written -- SHOW and CONFIG SAVE need that -- but the
             // narration is a report of what just HAPPENED, and what happened is that we
@@ -2787,6 +2862,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ":" << u.name << ": mounted "
                 << resolveFrom(startupDir_, unquote(a[2]))
                 << (readOnly ? std::string(" (") + protectedWord(u.kind) + ")" : "") << "\n";
+
+            // ...and, if asked, split the just-mounted WAV into per-program .TAP files. This
+            // runs the board's own EXTRACT verb, so the mount option and the verb are one
+            // code path; the board narrates each file it wrote to `out`.
+            if (extract) {
+                std::vector<std::string> ea{"EXTRACT", b->id + ":" + u.name};
+                if (!extractBase.empty()) ea.push_back(extractBase);
+                std::string eerr;
+                if (!b->runCommand("EXTRACT", ea, out, eerr)) {
+                    out << b->id << ":" << u.name << ": " << eerr << "\n";
+                    failed_ = true;
+                }
+            }
         }
         // ...AND SAY WHAT THE BOARD SAID, HERE, WHERE IT HAPPENED.
         //

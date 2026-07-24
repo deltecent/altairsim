@@ -62,6 +62,7 @@
 #include "host/tapemodem.h"
 
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -101,7 +102,8 @@ namespace altair {
 class AudioTapeMedia : public MediaFile {
 public:
     AudioTapeMedia(std::unique_ptr<MediaFile> under, std::vector<uint8_t> decoded,
-                   TapeFormat fmt, uint32_t rate);
+                   TapeFormat fmt, uint32_t rate,
+                   std::vector<uint64_t> byteSampleOffset = {}, uint64_t totalSamples = 0);
 
     // THE LAST LINE OF DEFENCE, NOT THE PLAN -- the same bargain ~HostFile() makes, and
     // for the same reason. The plan is that a board commits when the transport stops.
@@ -140,11 +142,40 @@ public:
     const TapeFormat& format() const { return fmt_; }
     uint32_t          sampleRate() const { return rate_; }
 
+    // ---- THE POSITION-TO-TIME MAP -----------------------------------------------------
+    //
+    // Where byte `bytePos` sits in the ORIGINAL recording, in seconds, and how long the
+    // recording runs. Unlike the byte count, this includes the leader and the silent gaps
+    // between programs, because the map was taken from the audio at decode -- so it lines
+    // up with a real cassette counter and with a manual that indexes files by seconds.
+    //
+    // `hasTimeline()` is false when no map was captured (a byte tape, or a WAV decoded by
+    // an older path); the board then estimates time from baud instead. `secondsAt` past the
+    // decoded end (after a recording grew the tape) clamps to the last known time -- the
+    // rewritten region has no audio yet, and the counter says so by not advancing there.
+    bool   hasTimeline() const { return !offset_.empty() && rate_ != 0; }
+    double totalSeconds() const { return rate_ ? double(totalSamples_) / rate_ : 0.0; }
+    double secondsAt(uint64_t bytePos) const;
+    // The inverse, for WIND: the first byte at or after `seconds`. A time that lands in an
+    // inter-program gap resolves to the first byte of the NEXT program -- exactly the seek
+    // target. Clamps to [0, size()].
+    uint64_t byteAt(double seconds) const;
+
+    // THE TAPE, CUT AT ITS SILENT GAPS -- one byte vector per program. A multi-program
+    // cassette records seconds of idle between programs, and idle carries no start bits, so
+    // the decoded bytes have a large jump in their audio offset at each boundary. This finds
+    // those jumps (>= `minGapSeconds` of tape) and returns the runs between them, which is
+    // exactly what a per-program .TAP holds. One segment (the whole tape) when there is no
+    // gap or no timeline. Empty only for an empty tape.
+    std::vector<std::vector<uint8_t>> splitByGaps(double minGapSeconds) const;
+
 private:
     std::unique_ptr<MediaFile> under_;
     std::vector<uint8_t>       bytes_;
     TapeFormat                 fmt_;
     uint32_t                   rate_ = 0;
+    std::vector<uint64_t>      offset_;        // byte -> source sample index (start bit)
+    uint64_t                   totalSamples_ = 0;
 
     bool     dirty_   = false;
     double   leader_  = 5.0;
@@ -175,5 +206,23 @@ std::vector<std::string> tapeFormatChoices(const std::vector<TapeFormat>& candid
 // Below this, a decode is not a tape -- it is noise that happened to contain start
 // bits. Mounting it would hand the guest garbage; refusing names the override.
 inline constexpr double kTapeConfidenceFloor = 0.90;
+
+// The shortest run of idle tape that counts as a boundary between two programs, for
+// EXTRACT. Real inter-program gaps run to seconds; within a program the bytes are back to
+// back (milliseconds apart), so a one-second floor separates programs with a wide margin
+// and never splits one in half.
+inline constexpr double kExtractGapSeconds = 1.0;
+
+// Split a mounted WAV into its programs and write each as a raw `.TAP` beside the source,
+// narrating "<name>  <n> bytes" per file to `out`. `base` is a resolved path stem with no
+// extension: one program writes `<base>.tap`, several write `<base>-1.tap` .. `<base>-N.tap`
+// with a 1..N index. Returns false (with `err`) if a file cannot be written. This is what
+// the EXTRACT verb and MOUNT's `extract` option both run.
+bool extractTapePrograms(const AudioTapeMedia& audio, const std::string& base,
+                         double minGapSeconds, std::ostream& out, std::string& err);
+
+// Drop a trailing ".wav" (any case) so EXTRACT's default base is the WAV's stem -- so
+// "foo.wav" yields "foo.tap", not "foo.wav.tap". Anything else is returned unchanged.
+std::string stripWavExt(const std::string& path);
 
 } // namespace altair

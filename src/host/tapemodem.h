@@ -169,6 +169,16 @@ struct DemodResult {
     std::vector<uint8_t> bytes;
     uint32_t             framingErrors = 0;
 
+    // THE AUDIO CLOCK, KEPT. `byteSampleOffset[i]` is the sample index of the start bit of
+    // `bytes[i]` in the source audio, and `totalSamples` is that audio's length. The framer
+    // below already tracks this fractional offset for every byte and then dropped it; kept,
+    // it is the ONE thing that lets a byte position become a time in the recording -- leader
+    // and inter-record gaps included, which a byte image cannot hold (see modulate()'s note
+    // on synthesized durations). Monotonic non-decreasing. Empty for a byte tape that never
+    // went through the demodulator; the board falls back to bytes x frame-bits / baud there.
+    std::vector<uint64_t> byteSampleOffset;
+    uint64_t              totalSamples = 0;
+
     // The tones the tape ACTUALLY carries, as measured. Zero if the audio held no
     // two separable tones at all (a blank, or pure leader).
     double measuredMarkHz = 0;

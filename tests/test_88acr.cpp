@@ -34,8 +34,12 @@
 #include "core/machine.h"
 #include "host/media.h"
 #include "host/tape.h"
+#include "host/tapecodec.h"
+#include "host/tapemodem.h"
+#include "host/wav.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -101,6 +105,20 @@ struct Rig {
         bool ok = acr->runCommand("REWIND", {"REW", "acr0:tape"}, o, err);
         said    = ok ? o.str() : err;
         return ok;
+    }
+    // Wind to a position (a time, START or END), through the verb.
+    bool wind(const std::string& where, std::string& said) {
+        std::ostringstream o;
+        std::string        err;
+        bool ok = acr->runCommand("WIND", {"WI", "acr0:tape", where}, o, err);
+        said    = ok ? o.str() : err;
+        return ok;
+    }
+    // Read a tape-unit property (position, counter, ...) as text.
+    std::string prop(const std::string& name) {
+        for (Property& p : acr->unitProperties("tape"))
+            if (p.name == name) return p.get().s();
+        return "<none>";
     }
     // Take the next byte off the tape the way a loader does: poll until DAV, read.
     // Returns false if the tape ran out. `budget` is in character times.
@@ -310,11 +328,15 @@ void test_88acr() {
         withTape("HI");
         Rig r;
 
-        // The verb is declared, it is REACHABLE, and it is the one the .md promises.
+        // The verbs are declared, REACHABLE, and the ones the .md promises: WIND and its
+        // REWIND alias.
         auto cs = r.acr->commands();
-        CHECK(cs.size() == 1 && std::string(cs[0].name) == "REWIND",
-              "the card brings exactly one verb, and it is REWIND");
-        CHECK(cs[0].built && cs[0].waiting == nullptr,
+        CHECK(cs.size() == 3, "the card brings three verbs");
+        CHECK(std::string(cs[0].name) == "WIND" && std::string(cs[1].name) == "REWIND" &&
+                  std::string(cs[2].name) == "EXTRACT",
+              "WIND, REWIND (its wind-to-start alias), and EXTRACT");
+        CHECK(cs[0].built && cs[0].waiting == nullptr && cs[1].built && cs[1].waiting == nullptr &&
+                  cs[2].built && cs[2].waiting == nullptr,
               "a card that is IN THE MACHINE has no unbuilt verbs");
 
         // With no cassette in it, REWIND fails with a sentence rather than a crash.
@@ -345,6 +367,208 @@ void test_88acr() {
         // and never the 'I' that was in flight when the operator hit rewind.
         CHECK(r.getByte(b) && b == 'H', "the tape replays from 'H'...");
         CHECK(r.getByte(b) && b == 'I', "...then 'I' -- no stale byte duplicated at the seam");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6b. WIND -- the counter, and moving the head to a time.
+    //
+    // A byte tape has no audio, so its time is the honest estimate from the 300-baud
+    // strap: bytes x frame-bits / baud. This card is 8N1, so a frame is 10 bits and a
+    // byte is a thirtieth of a second. 3000 bytes is therefore exactly 100 s = 01:40,
+    // which is a tape long enough to read a real mm:ss off. (The WAV exact-timeline path
+    // -- where the time is the recording's own -- is covered end to end in test_cli.)
+    // -----------------------------------------------------------------------
+    {
+        // 3000 bytes, byte i = i & 0xFF, so a head position can be verified by content.
+        std::string big;
+        for (int i = 0; i < 3000; ++i) big += char(i & 0xFF);
+        withTape(big);
+        Rig r;
+
+        std::string said;
+        CHECK(!r.wind("0:30", said), "WIND with no tape in the recorder is refused");
+
+        r.mount("t.tap");
+        CHECK(r.acr->tape()->size() == 3000, "a 3000-byte tape -- 100 s at 300 baud");
+
+        // The counter reads a real time and percent, and it is READ-ONLY.
+        CHECK(r.prop("position") == "00:00 / 01:40 (0%)",
+              ("at the top the counter is 00:00 of 01:40: " + r.prop("position")).c_str());
+        bool posWritable = false;
+        for (Property& p : r.acr->unitProperties("tape"))
+            if (p.name == "position") posWritable = (bool)p.set;
+        CHECK(!posWritable, "position is a measurement, not a switch -- no setter");
+
+        // WIND to a time lands the head there (+/- the one byte an eager UART pulls).
+        CHECK(r.wind("0:50", said), "WIND acr0:tape 0:50");
+        CHECK(r.acr->tape()->pos() >= 1500 && r.acr->tape()->pos() <= 1501,
+              ("0:50 is 1500 bytes in at 300 baud: " + std::to_string(r.acr->tape()->pos())).c_str());
+        CHECK(r.prop("position") == "00:50 / 01:40 (50%)",
+              ("halfway, by time: " + r.prop("position")).c_str());
+
+        // END winds to the end; START back to the top.
+        CHECK(r.wind("END", said), "WIND acr0:tape END");
+        CHECK(r.acr->tape()->atEnd(), "END is the end of the tape");
+        CHECK(r.wind("START", said), "WIND acr0:tape START");
+        CHECK(r.acr->tape()->pos() <= 1, "START is the top (eager UART may sit at 1)");
+
+        // A time past the end lands AT the end, visibly -- not an error.
+        CHECK(r.wind("99:00", said), "WIND past the end is allowed");
+        CHECK(r.acr->tape()->atEnd(), "...and clamps to the end");
+
+        // Garbage is refused with a sentence, not silently taken as zero.
+        CHECK(!r.wind("banana", said), "WIND to nonsense is refused");
+        CHECK(said.find("not a position") != std::string::npos,
+              ("...and says why: " + said).c_str());
+    }
+
+    // -----------------------------------------------------------------------
+    // 6c. The live counter's switch, and the activityLabel() seam the run loop paints.
+    //
+    // activityLabel() is non-empty only when a tape is actually playing through the
+    // middle of itself with the counter on -- which is the whole gate the run loop
+    // leans on without knowing what a tape is.
+    // -----------------------------------------------------------------------
+    {
+        std::string big(2000, 'x');
+        withTape(big);
+        Rig r;
+        r.mount("t.tap");
+
+        // Mounted and relined, the eager UART has pulled byte 0, so the head is one in --
+        // playing, mid-tape, counter on by default: the run loop has a line to paint.
+        CHECK(r.prop("counter") == "on", "the counter is on by default");
+        CHECK(!r.acr->activityLabel().empty(),
+              "a tape playing mid-way reports a live label");
+        CHECK(r.acr->activityLabel().find("tape:") == 0,
+              ("...and it is the tape counter: " + r.acr->activityLabel()).c_str());
+
+        // Turn it off and the line goes quiet, though SHOW's position still answers.
+        std::string err;
+        CHECK(setUnitProperty(*r.acr, "tape", "counter", "off", err), "counter=off");
+        CHECK(r.acr->activityLabel().empty(), "counter off: nothing to paint");
+        CHECK(r.prop("position") != "<none>", "...but SHOW still reports the position");
+
+        // Back on, and wound to the very end, there is again nothing to watch.
+        CHECK(setUnitProperty(*r.acr, "tape", "counter", "on", err), "counter=on");
+        std::string said;
+        r.wind("END", said);
+        CHECK(r.acr->activityLabel().empty(), "at the end there is nothing loading");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6d. The auto-stop mark -- playback halts at a time, and moving it resumes.
+    //
+    // The operator's STOP button at a counter mark: the tape stops handing bytes back at
+    // the mark (a quiet line, like the physical end), so a multi-program tape can be cued
+    // to halt at a boundary. It gates PLAYBACK only -- a recording writes through it. At
+    // 300 baud with 10-bit frames a byte is a thirtieth of a second, so 0:05 is 150 bytes.
+    // -----------------------------------------------------------------------
+    {
+        std::string big;
+        for (int i = 0; i < 300; ++i) big += char(i & 0xFF);  // 300 bytes = 10 s
+        withTape(big);
+        Rig         r;
+        std::string err;
+        r.mount("t.tap");
+
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "0:05", err), "SET stop=0:05");
+        CHECK(r.prop("stop") == "00:05", ("the stop reads back as a time: " + r.prop("stop")).c_str());
+
+        // Read until the line goes quiet -- it must halt AT the mark, not at the end.
+        uint8_t b;
+        int     got = 0;
+        while (r.getByte(b)) ++got;
+        CHECK(r.acr->tape()->pos() == 150,
+              ("the head halted at the 150-byte mark: " + std::to_string(r.acr->tape()->pos())).c_str());
+        CHECK(r.acr->tape()->atStop() && !r.acr->tape()->atEnd(),
+              "parked at the stop, which is NOT the end of the tape");
+        CHECK(got == 150, ("exactly the bytes before the mark came off: " + std::to_string(got)).c_str());
+
+        // Move the stop on: more bytes come, up to the new mark.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "0:08", err), "SET stop=0:08 -- 240 bytes");
+        while (r.getByte(b)) ++got;
+        CHECK(r.acr->tape()->pos() == 240,
+              ("now halted at 240: " + std::to_string(r.acr->tape()->pos())).c_str());
+
+        // Clear it and the rest of the tape runs out at the physical end.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "off", err), "SET stop=off");
+        CHECK(r.prop("stop") == "off", "the stop reads back off");
+        while (r.getByte(b)) ++got;
+        CHECK(r.acr->tape()->atEnd(), "cleared: the tape now runs to its physical end");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6e. A RECORDING WRITES STRAIGHT THROUGH THE STOP -- it gates playback only.
+    // -----------------------------------------------------------------------
+    {
+        withTape("OLDTAPE!");
+        Rig         r;
+        std::string err;
+        r.mount("t.tap");
+
+        CHECK(r.press("record"), "RECORD goes down");
+        std::string said;
+        r.rewind(said);
+        // A stop at the very start would freeze ALL playback -- but this is a recording.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "0:00", err), "arm a stop at byte 0");
+        out(*r.acr, 0x07, 'N');
+        r.m.clock.advance(r.m.clock.tStatesPer(30));
+        out(*r.acr, 0x07, 'E');
+        r.m.clock.advance(r.m.clock.tStatesPer(30));
+        CHECK(tapeBytes() == "NEDTAPE!",
+              "the write landed at byte zero -- the stop mark does not gate recording");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6f. EXTRACT -- split a mounted WAV into one .TAP per program, at the gaps.
+    // -----------------------------------------------------------------------
+    {
+        // A two-program WAV: program A (40 bytes) then a ~4 s gap then program B (50 bytes).
+        const TapeFormat f = tapeformats::fsk300_1850();
+        const AudioBuffer a = modulate(std::vector<uint8_t>(40, 0x41), f, 22050, 2.0, 2.0);
+        const AudioBuffer b = modulate(std::vector<uint8_t>(50, 0x42), f, 22050, 2.0, 2.0);
+        AudioBuffer       both;
+        both.rate = 22050;
+        both.s    = a.s;
+        both.s.insert(both.s.end(), b.s.begin(), b.s.end());
+        const std::vector<uint8_t> wav = buildWav(both);
+
+        withTape(std::string(wav.begin(), wav.end()));
+        Rig r;
+        r.mount("games.wav");
+
+        namespace fs           = std::filesystem;
+        const std::string base = (fs::temp_directory_path() / "altairsim-extract-test").string();
+        const std::string f1 = base + "-1.tap", f2 = base + "-2.tap";
+        fs::remove(f1);
+        fs::remove(f2);
+
+        std::ostringstream o;
+        std::string        err;
+        CHECK(r.acr->runCommand("EXTRACT", {"EXTRACT", "acr0:tape", base}, o, err),
+              ("EXTRACT runs: " + err).c_str());
+        CHECK(fs::exists(f1) && fs::file_size(f1) == 40, "program 1 was written, 40 bytes");
+        CHECK(fs::exists(f2) && fs::file_size(f2) == 50, "program 2 was written, 50 bytes");
+        CHECK(o.str().find("40 bytes") != std::string::npos &&
+                  o.str().find("2 programs") != std::string::npos,
+              ("the console names the files and their sizes: " + o.str()).c_str());
+        fs::remove(f1);
+        fs::remove(f2);
+    }
+
+    // -----------------------------------------------------------------------
+    // 6g. EXTRACT refuses a byte tape -- there is nothing to demodulate.
+    // -----------------------------------------------------------------------
+    {
+        withTape("RAWBYTES");
+        Rig r;
+        r.mount("raw.tap");
+        std::ostringstream o;
+        std::string        err;
+        CHECK(!r.acr->runCommand("EXTRACT", {"EXTRACT", "acr0:tape"}, o, err),
+              "EXTRACT on a byte tape is refused");
+        CHECK(err.find("byte tape") != std::string::npos, ("...and says why: " + err).c_str());
     }
 
     // -----------------------------------------------------------------------

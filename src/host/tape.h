@@ -44,8 +44,21 @@ public:
 
     // Put the head back where a snapshot found it (SNAPSHOT/RESTORE, DESIGN.md 13).
     // The tape's bytes are host-backed and travel with the file; only this position
-    // is runtime state, so it is the one thing the ACR/Sol deck restores by hand.
+    // -- and the stop mark below -- is runtime state, so it is what the ACR/Sol deck
+    // restores by hand.
     void setPos(uint64_t p) { pos_ = p; }
+
+    // A MOVABLE SECOND END OF TAPE -- the operator's STOP button at a counter mark, and
+    // NOTHING the guest can reach. When the head reaches `stopAt_` the tape stops handing
+    // bytes BACK -- a quiet line, exactly as the physical end is -- so a multi-program
+    // cassette can be cued to stop at a boundary instead of running into the next program.
+    // `kNoStop` means "play to the physical end", the default. It gates READS only: a
+    // recording writes straight through it (playback-only, by construction). Exclusive:
+    // everything strictly before the mark plays, then the line falls silent.
+    static constexpr uint64_t kNoStop = ~uint64_t(0);
+    void     setStop(uint64_t p) { stopAt_ = p; }
+    uint64_t stopAt() const { return stopAt_; }
+    bool     atStop() const { return pos_ >= stopAt_; }
 
     uint64_t pos() const { return pos_; }
     uint64_t size() const { return media_->size(); }
@@ -65,7 +78,8 @@ public:
 
 private:
     std::unique_ptr<MediaFile> media_;
-    uint64_t                   pos_ = 0;
+    uint64_t                   pos_    = 0;
+    uint64_t                   stopAt_ = kNoStop;  // the auto-stop mark; kNoStop = the real end
 };
 
 // ---------------------------------------------------------------------------
@@ -147,5 +161,22 @@ private:
     uint64_t                  nextReadyNs_ = 0;
     bool                      started_     = false;
 };
+
+// ---------------------------------------------------------------------------
+// The tape counter, as text. Shared so the 88-ACR and the Sol format a position
+// identically -- the boards supply the seconds (real audio time for a WAV, an estimate
+// from baud for a .TAP), and the percentage tracks that time so the clock and the
+// percent always tell the same story.
+// ---------------------------------------------------------------------------
+
+// "01:23", or "1:02:03" once past an hour. Negative or NaN reads as "00:00".
+std::string tapeTimeMMSS(double secs);
+
+// "01:23 / 04:56 (28%)". A zero total (a blank or unknowable tape) drops to "00:00 (0%)".
+std::string tapeCounterText(double curSecs, double totalSecs);
+
+// Parse a WIND target time: "MM:SS", "H:MM:SS", or a bare number of seconds ("83", "1.5").
+// False on anything malformed. START/END are the caller's business, not a time.
+bool parseTapeTime(const std::string& s, double& secs);
 
 } // namespace altair

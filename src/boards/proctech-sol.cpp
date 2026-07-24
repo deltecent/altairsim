@@ -236,6 +236,7 @@ void SolBoard::serialize(StateWriter& w) const {
         w.u8(d->mode == TapeStream::Mode::Record ? 1 : 0);
         w.boolean(d->motor);
         w.u64(d->tape ? d->tape->pos() : 0);
+        w.u64(d->tape ? d->tape->stopAt() : TapeImage::kNoStop);  // the auto-stop mark travels
     }
     w.u8(kbData_);
     w.boolean(kbHave_);
@@ -252,8 +253,12 @@ void SolBoard::deserialize(StateReader& r) {
     for (Deck* d : {&deck1_, &deck2_}) {
         d->mode = r.u8() ? TapeStream::Mode::Record : TapeStream::Mode::Play;
         d->motor = r.boolean();
-        uint64_t pos = r.u64();
-        if (d->tape) d->tape->setPos(pos);
+        uint64_t pos    = r.u64();
+        uint64_t stopAt = r.u64();
+        if (d->tape) {
+            d->tape->setPos(pos);
+            d->tape->setStop(stopAt);
+        }
     }
     kbData_ = r.u8();
     kbHave_ = r.boolean();
@@ -384,6 +389,59 @@ void SolBoard::commitTape(Deck* d) {
     if (!d || !d->tape) return;
     std::string err;
     if (!d->tape->commit(err)) log_.push_back("sol: " + err);
+}
+
+// The whole of what REWIND and WIND share, per deck -- see host/tape.h. Order matters:
+// flush BEFORE the head moves, drop the byte the CUTS UART pulled off the OLD position,
+// retape last so the line runs from the new one.
+void SolBoard::stageAt(Deck* d, uint64_t pos) {
+    if (!d || !d->tape) return;
+    commitTape(d);
+    d->tape->setPos(pos > d->tape->size() ? d->tape->size() : pos);
+    (void)tapeUart_.readData();
+    retape();
+}
+
+// SECONDS INTO THE RECORDING. A WAV kept its audio clock, so the head's time is the real
+// one -- leader and inter-program gaps included. A byte tape (.CUTS) has no audio, so its
+// time is the estimate the guest-selected baud gives: bytes x frame-bits / baud. The baud
+// is dynamic (0FAh D5), so a byte tape's estimate follows the speed the guest last picked.
+double SolBoard::deckSeconds(const Deck* d, uint64_t bytePos) const {
+    if (d && d->audio && d->audio->hasTimeline()) return d->audio->secondsAt(bytePos);
+    const double baud = tapeUart_.baud > 0 ? double(tapeUart_.baud) : 1200.0;
+    return double(bytePos) * tapeUart_.bitsPerChar() / baud;
+}
+
+double SolBoard::deckTotalSeconds(const Deck* d) const {
+    if (d && d->audio && d->audio->hasTimeline()) return d->audio->totalSeconds();
+    if (!d || !d->tape) return 0.0;
+    const double baud = tapeUart_.baud > 0 ? double(tapeUart_.baud) : 1200.0;
+    return double(d->tape->size()) * tapeUart_.bitsPerChar() / baud;
+}
+
+uint64_t SolBoard::deckByteAt(const Deck* d, double secs) const {
+    if (!d || !d->tape) return 0;
+    if (d->audio && d->audio->hasTimeline()) return d->audio->byteAt(secs);
+    const double baud  = tapeUart_.baud > 0 ? double(tapeUart_.baud) : 1200.0;
+    double       bytes = secs * baud / tapeUart_.bitsPerChar();
+    if (bytes < 0.0) bytes = 0.0;
+    uint64_t b = uint64_t(bytes + 0.5);
+    return b > d->tape->size() ? d->tape->size() : b;
+}
+
+// Only the deck whose motor is on has anything to say, and only while it is playing
+// through the middle of a tape. retape()'s "deck 1 wins if both turn" rule is mirrored
+// here so the label names the deck the line is actually on.
+std::string SolBoard::activityLabel() const {
+    const Deck* d = nullptr;
+    if (deck1_.motor && deck1_.tape)      d = &deck1_;
+    else if (deck2_.motor && deck2_.tape) d = &deck2_;
+    if (!d || !d->liveCounter || d->mode != TapeStream::Mode::Play) return {};
+    const uint64_t p = d->tape->pos(), sz = d->tape->size();
+    if (p == 0 || p >= sz || d->tape->atStop()) return {};
+    const int which = (d == &deck1_) ? 1 : 2;
+    return "tape" + std::to_string(which) + ": " +
+           tapeCounterText(deckSeconds(d, p), deckTotalSeconds(d));
 }
 
 // The two speeds the CUTS UART really runs at. The guest picks between them at
@@ -565,6 +623,71 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
         det.get  = [d] { return Value::ofStr(d->detected); };
         p.push_back(std::move(det));
 
+        // WHERE THIS DECK'S HEAD IS, as mm:ss / total (percent). READ-ONLY. Real audio
+        // time for a WAV; an estimate from the current baud for a byte tape.
+        Property pos;
+        pos.name = "position";
+        pos.help = "Where this deck's head is now: mm:ss / total (percent) -- read-only";
+        pos.kind = Kind::Str;
+        pos.get  = [this, d] {
+            return Value::ofStr(d->tape ? tapeCounterText(deckSeconds(d, d->tape->pos()),
+                                                          deckTotalSeconds(d))
+                                        : std::string());
+        };
+        p.push_back(std::move(pos));
+
+        // The LIVE counter's switch for this deck. On by default; SHOW's `position` is
+        // unaffected by it.
+        Property cnt;
+        cnt.name    = "counter";
+        cnt.help    = "Live tape counter on the console during a load: on | off";
+        cnt.kind    = Kind::Enum;
+        cnt.choices = {"on", "off"};
+        cnt.get     = [d] { return Value::ofStr(d->liveCounter ? "on" : "off"); };
+        cnt.set     = [d](const Value& v, std::string&) {
+            d->liveCounter = (v.s() != "off");
+            return true;
+        };
+        p.push_back(std::move(cnt));
+
+        // THE AUTO-STOP MARK for this deck -- a time at which playback halts (the operator's
+        // STOP button), so a multi-program tape can be cued. `off`/`end` clears it. Playback
+        // only: a recording writes straight through it.
+        Property stp;
+        stp.name = "stop";
+        stp.help = "Auto-stop playback at this time: off | end | <mm:ss>";
+        stp.kind = Kind::Str;
+        stp.get  = [this, d] {
+            if (!d->tape || d->tape->stopAt() == TapeImage::kNoStop ||
+                d->tape->stopAt() >= d->tape->size())
+                return Value::ofStr(std::string("off"));
+            return Value::ofStr(tapeTimeMMSS(deckSeconds(d, d->tape->stopAt())));
+        };
+        stp.set = [this, d](const Value& v, std::string& err) {
+            const std::string lo    = lowerAscii(v.s());
+            const bool        clear = (lo == "off" || lo == "none" || lo == "end");
+            if (!d->tape) {
+                // No cassette: clearing is a no-op, and `stop=off` is what an empty deck
+                // round-trips through CONFIG SAVE. A time has no tape to measure against.
+                if (clear) return true;
+                err = "there is no cassette in this deck. MOUNT one first.";
+                return false;
+            }
+            if (clear) {
+                d->tape->setStop(TapeImage::kNoStop);
+            } else {
+                double secs;
+                if (!parseTapeTime(v.s(), secs)) {
+                    err = "'" + v.s() + "' is not a stop -- use a time (mm:ss or seconds), or off";
+                    return false;
+                }
+                d->tape->setStop(deckByteAt(d, secs));
+            }
+            retape();  // re-arm the line: resume, or park, from the new mark
+            return true;
+        };
+        p.push_back(std::move(stp));
+
         return p;
     }
 
@@ -632,10 +755,16 @@ UnitDef SolBoard::deckUnit(int n) const {
     const Deck* d = deck(n);
     UnitDef     u{"tape" + std::to_string(n), UnitKind::Tape, "(empty)"};
     if (d->tape) {
-        char buf[224];
-        std::snprintf(buf, sizeof buf, "%s  at %llu of %llu bytes%s  [%s, motor %s]",
-                      d->path.c_str(), (unsigned long long)d->tape->pos(),
+        char        buf[320];
+        std::string stopNote;
+        if (d->tape->stopAt() != TapeImage::kNoStop && d->tape->stopAt() < d->tape->size())
+            stopNote = "  stop @ " + tapeTimeMMSS(deckSeconds(d, d->tape->stopAt()));
+        std::snprintf(buf, sizeof buf, "%s  %s  %llu/%llu bytes%s%s  [%s, motor %s]",
+                      d->path.c_str(),
+                      tapeCounterText(deckSeconds(d, d->tape->pos()), deckTotalSeconds(d)).c_str(),
+                      (unsigned long long)d->tape->pos(),
                       (unsigned long long)d->tape->size(),
+                      stopNote.c_str(),
                       d->tape->atEnd() ? "  [END OF TAPE]" : "",
                       d->mode == TapeStream::Mode::Record ? "record" : "play",
                       d->motor ? "on" : "off");
@@ -737,43 +866,84 @@ ByteStream* SolBoard::unitStream(const std::string& unit) {
 // and it names its deck, because there are two and neither is a sensible default.
 // ---------------------------------------------------------------------------
 std::vector<CommandDef> SolBoard::commands() const {
-    return {{
-        "REWIND",
-        true,     // a card that is IN THE MACHINE has no unbuilt verbs
-        nullptr,  // ...so it is waiting on nothing
-        "REWIND <id>:tape1|tape2 -- wind a cassette back to the beginning",
-        "The Sol-PC reads and writes a tape from wherever the head is sitting, and\n"
-        "after a load the head is at the end of the program. The guest can start and\n"
-        "stop the motor (OUT 0FAh D7/D6) but it cannot wind one back -- there is no\n"
-        "rewind bit on the Sol-PC -- so this is your finger on the deck.\n"
-        "\n"
-        "Load the same tape twice:\n"
-        "  MOUNT sol0:tape1 \"tapes/trk80.tap\"\n"
-        "  GO 0                       (SOLOS GETs it, to the end of the tape)\n"
-        "  REW sol0:tape1             (...and now the tape is back at the start)\n"
-        "\n"
-        "REW is the shortest spelling: RESET already answers to R, RE and RES.",
-    }};
+    return {
+        {
+            "WIND",
+            true,     // a card that is IN THE MACHINE has no unbuilt verbs
+            nullptr,  // ...so it is waiting on nothing
+            "WIND <id>:tape1|tape2 <mm:ss | START | END> -- move a cassette to a position",
+            "The Sol-PC reads and writes a tape from wherever the head is sitting. WIND is\n"
+            "your finger on the deck: it moves the head to a time on the tape, so a tape\n"
+            "holding several programs one after another is reachable. Name the deck -- there\n"
+            "are two, and neither is a sensible default.\n"
+            "\n"
+            "The position is a time -- mm:ss, or a bare number of seconds -- or START / END.\n"
+            "For a WAV the time is the recording's own; SHOW <id> reports the current\n"
+            "position the same way.\n"
+            "\n"
+            "  MOUNT sol0:tape1 \"tape.wav\"\n"
+            "  GO 0                    (SOLOS GETs the first program, to its end)\n"
+            "  WIND sol0:tape1 2:05    (...to where the second program begins)\n"
+            "\n"
+            "WI is the shortest spelling.",
+        },
+        {
+            "REWIND",
+            true,
+            nullptr,
+            "REWIND <id>:tape1|tape2 -- wind a cassette back to the beginning (WIND START)",
+            "REWIND is WIND to the start of a deck -- the common case, kept as its own verb.\n"
+            "The guest can start and stop the motor (OUT 0FAh D7/D6) but cannot wind one\n"
+            "back -- there is no rewind bit on the Sol-PC -- so this is your finger.\n"
+            "\n"
+            "Load the same tape twice:\n"
+            "  MOUNT sol0:tape1 \"tapes/trk80.tap\"\n"
+            "  GO 0                       (SOLOS GETs it, to the end of the tape)\n"
+            "  REW sol0:tape1             (...and now the tape is back at the start)\n"
+            "\n"
+            "REW is the shortest spelling: RESET already answers to R, RE and RES.",
+        },
+        {
+            "EXTRACT",
+            true,
+            nullptr,
+            "EXTRACT <id>:tape1|tape2 [base] -- write a deck's WAV programs out as .TAP files",
+            "A cassette WAV often holds several programs one after another, separated by a\n"
+            "few seconds of silence. EXTRACT demodulates the deck's mounted WAV and writes\n"
+            "each program as its own raw .TAP file, named beside the WAV (foo.wav ->\n"
+            "foo-1.tap, foo-2.tap, ...; a single-program tape is just foo.tap) or under a\n"
+            "base you give, printing each file's name and size. Name the deck, as there are\n"
+            "two. It reads the tape and writes files; it changes nothing in the machine.\n"
+            "Only a WAV can be extracted -- a .TAP is already bytes.\n"
+            "\n"
+            "  MOUNT sol0:tape1 \"games.wav\"\n"
+            "  EXTRACT sol0:tape1         (writes games-1.tap, games-2.tap, ... beside it)\n"
+            "\n"
+            "MOUNT ... extract does the same in one step, at mount time.",
+        },
+    };
 }
 
 bool SolBoard::runCommand(const std::string& name, const std::vector<std::string>& args,
                           std::ostream& out, std::string& err) {
-    if (name != "REWIND") {
-        err = "the Sol has one verb, and it is REWIND";
+    const bool rewind  = (name == "REWIND");
+    const bool extract = (name == "EXTRACT");
+    if (!rewind && !extract && name != "WIND") {
+        err = "the Sol's verbs are WIND, REWIND and EXTRACT";
         return false;
     }
 
     // args[1] is `<id>` or `<id>:<unit>` -- the monitor has already used it to find
     // THIS board (core/board.h). NAMING THE DECK IS NOT OPTIONAL: with two of them, a
-    // bare `REW sol0` would have to guess, and guessing wrong rewinds the tape the
-    // operator was in the middle of writing.
+    // bare verb would have to guess, and guessing wrong moves the tape the operator was
+    // in the middle of writing.
     std::string u;
     if (args.size() > 1) {
         size_t c = args[1].find(':');
         if (c != std::string::npos) u = args[1].substr(c + 1);
     }
     if (u.empty()) {
-        err = "the Sol has two cassette decks -- say which: REW " +
+        err = "the Sol has two cassette decks -- say which: " + std::string(name) + " " +
               (args.size() > 1 ? args[1] : id) + ":tape1";
         return false;
     }
@@ -789,21 +959,51 @@ bool SolBoard::runCommand(const std::string& name, const std::vector<std::string
         return false;
     }
 
-    // Everything the guest has recorded is on its way to the host file, and the head
-    // is about to go somewhere else. Flush BEFORE moving it.
-    commitTape(d);
-    d->tape->rewind();
+    // EXTRACT: demodulate the deck's WAV into its programs and write each as a .TAP. Only a
+    // WAV has an audio timeline to find gaps in; a byte tape is already the bytes.
+    if (extract) {
+        if (!d->audio) {
+            err = d->path + " in deck " + std::to_string(n) +
+                  " is a byte tape, not a WAV -- there is nothing to demodulate and split";
+            return false;
+        }
+        const std::string base =
+            args.size() > 2 ? resolvePath(args[2]) : stripWavExt(resolvePath(d->path));
+        return extractTapePrograms(*d->audio, base, kExtractGapSeconds, out, err);
+    }
 
-    // AND THROW AWAY THE BYTE THE CARD IS STILL HOLDING -- it came off a part of the
-    // tape we have just wound past, and left in place the guest would read it once
-    // now and again when the tape replays it. See AcrBoard::runCommand, which has the
-    // long version of this argument.
-    (void)tapeUart_.readData();
+    // Where to. REWIND is the start; WIND takes a time (mm:ss or bare seconds) or the
+    // words START / END, resolved against THIS deck's tape (a WAV's own audio clock).
+    uint64_t target = 0;
+    if (!rewind) {
+        if (args.size() < 3) {
+            err = "WIND needs a position: a time (mm:ss or seconds), START, or END";
+            return false;
+        }
+        const std::string& a  = args[2];
+        const std::string  lo = lowerAscii(a);
+        if (lo == "start") {
+            target = 0;
+        } else if (lo == "end") {
+            target = d->tape->size();
+        } else {
+            double secs;
+            if (!parseTapeTime(a, secs)) {
+                err = "'" + a + "' is not a position -- use a time (mm:ss or seconds), "
+                      "START, or END";
+                return false;
+            }
+            target = deckByteAt(d, secs);
+        }
+    }
 
-    retape();
+    // The staging (flush, seek, drop the eagerly-read byte, retape) is shared with
+    // REWIND -- see stageAt().
+    stageAt(d, target);
 
-    out << id << ":tape" << n << ": rewound -- " << d->path << " is at the beginning ("
-        << d->tape->size() << " bytes)\n";
+    out << id << ":tape" << n << ": " << (rewind ? "rewound" : "wound") << " to "
+        << tapeCounterText(deckSeconds(d, d->tape->pos()), deckTotalSeconds(d)) << " -- "
+        << d->path << " (" << d->tape->pos() << " of " << d->tape->size() << " bytes)\n";
     return true;
 }
 

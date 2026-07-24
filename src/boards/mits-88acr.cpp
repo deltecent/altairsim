@@ -239,6 +239,73 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
     d.get  = [this] { return Value::ofStr(detected_); };
     p.push_back(std::move(d));
 
+    // WHERE THE HEAD IS, as mm:ss / total (percent). READ-ONLY -- a measurement, no setter.
+    // The time is the real recording's for a WAV (leader and inter-program gaps included)
+    // and an estimate from the 300-baud strap for a byte tape.
+    Property pos;
+    pos.name = "position";
+    pos.help = "Where the tape head is now: mm:ss / total (percent) -- read-only";
+    pos.kind = Kind::Str;
+    pos.get  = [this] {
+        return Value::ofStr(tape_ ? tapeCounterText(tapeSeconds(tape_->pos()), tapeTotalSeconds())
+                                  : std::string());
+    };
+    p.push_back(std::move(pos));
+
+    // The LIVE counter's switch. On by default; the console counter is off when this is,
+    // and a machine whose guest talks to stdout can turn it off so the load is not
+    // scribbled on. SHOW's `position` above is unaffected either way.
+    Property cnt;
+    cnt.name    = "counter";
+    cnt.help    = "Live tape counter on the console during a load: on | off";
+    cnt.kind    = Kind::Enum;
+    cnt.choices = {"on", "off"};
+    cnt.get     = [this] { return Value::ofStr(liveCounter_ ? "on" : "off"); };
+    cnt.set     = [this](const Value& v, std::string&) {
+        liveCounter_ = (v.s() != "off");
+        return true;
+    };
+    p.push_back(std::move(cnt));
+
+    // THE AUTO-STOP MARK -- a time at which the tape stops playing, so a multi-program tape
+    // can be cued to halt at a boundary rather than running on into the next program. `off`
+    // (or `end`) clears it. It is the operator's STOP button, and it gates playback only:
+    // a recording writes straight through it.
+    Property stp;
+    stp.name = "stop";
+    stp.help = "Auto-stop playback at this time: off | end | <mm:ss>";
+    stp.kind = Kind::Str;
+    stp.get  = [this] {
+        if (!tape_ || tape_->stopAt() == TapeImage::kNoStop || tape_->stopAt() >= tape_->size())
+            return Value::ofStr(std::string("off"));
+        return Value::ofStr(tapeTimeMMSS(tapeSeconds(tape_->stopAt())));
+    };
+    stp.set = [this](const Value& v, std::string& err) {
+        const std::string lo    = lowerAscii(v.s());
+        const bool        clear = (lo == "off" || lo == "none" || lo == "end");
+        if (!tape_) {
+            // No cassette: clearing is a harmless no-op -- and `stop=off` is exactly what
+            // an empty recorder round-trips through CONFIG SAVE. A real time has no tape to
+            // measure against, so it says so rather than storing a number it cannot honor.
+            if (clear) return true;
+            err = "there is no cassette in the recorder. MOUNT one first.";
+            return false;
+        }
+        if (clear) {
+            tape_->setStop(TapeImage::kNoStop);
+        } else {
+            double secs;
+            if (!parseTapeTime(v.s(), secs)) {
+                err = "'" + v.s() + "' is not a stop -- use a time (mm:ss or seconds), or off";
+                return false;
+            }
+            tape_->setStop(secondsToByte(secs));
+        }
+        reline();  // re-arm: a cleared/raised stop resumes now, a lowered one parks now
+        return true;
+    };
+    p.push_back(std::move(stp));
+
     return p;
 }
 
@@ -256,12 +323,19 @@ std::vector<MapEntry> AcrBoard::ioMap() const {
 std::vector<UnitDef> AcrBoard::units() const {
     UnitDef u{"tape", UnitKind::Tape, "(empty)"};
     if (tape_) {
-        char buf[192];
+        char buf[288];
         // The write-protect tab is NOT spelt into this string any more -- it is a field
         // on UnitDef, so that SHOW and the mount table read the same answer from the same
-        // place and a disk controller cannot forget to mention it (board.h).
-        std::snprintf(buf, sizeof buf, "%s  at %llu of %llu bytes%s", path_.c_str(),
+        // place and a disk controller cannot forget to mention it (board.h). The counter
+        // leads; the byte count stays (the codec header's promise that it is literally true);
+        // an armed auto-stop says where the tape will halt.
+        std::string stopNote;
+        if (tape_->stopAt() != TapeImage::kNoStop && tape_->stopAt() < tape_->size())
+            stopNote = "  stop @ " + tapeTimeMMSS(tapeSeconds(tape_->stopAt()));
+        std::snprintf(buf, sizeof buf, "%s  %s  %llu/%llu bytes%s%s", path_.c_str(),
+                      tapeCounterText(tapeSeconds(tape_->pos()), tapeTotalSeconds()).c_str(),
                       (unsigned long long)tape_->pos(), (unsigned long long)tape_->size(),
+                      stopNote.c_str(),
                       tape_->atEnd() ? "  [END OF TAPE]" : "");
         u.state          = buf;
         u.readOnly       = tape_->readOnly();
@@ -284,15 +358,20 @@ void AcrBoard::serialize(StateWriter& w) const {
     SioBoard::serialize(w);
     w.u8(mode_ == TapeStream::Mode::Record ? 1 : 0);
     w.u64(tape_ ? tape_->pos() : 0);
+    w.u64(tape_ ? tape_->stopAt() : TapeImage::kNoStop);  // the auto-stop mark travels too
 }
 
 void AcrBoard::deserialize(StateReader& r) {
     SioBoard::deserialize(r);
     mode_ = r.u8() ? TapeStream::Mode::Record : TapeStream::Mode::Play;
-    uint64_t pos = r.u64();
-    if (tape_) tape_->setPos(pos);
+    uint64_t pos    = r.u64();
+    uint64_t stopAt = r.u64();
+    if (tape_) {
+        tape_->setPos(pos);
+        tape_->setStop(stopAt);
+    }
     reline();  // rebuild the line onto the tape in the restored mode, from the head
-               // position just set. reline() re-arms the UART too.
+               // position and stop mark just set. reline() re-arms the UART too.
 }
 
 void AcrBoard::reline() {
@@ -375,6 +454,51 @@ void AcrBoard::commitTape() {
     if (!tape_->commit(err)) log_.push_back("acr: " + err);
 }
 
+// The whole of what REWIND and WIND share -- see host/tape.h. Order matters: flush the
+// recording BEFORE the head moves, drop the byte the UART pulled off the OLD position (or
+// the guest reads it, then reads it again when the tape replays it), and reline last.
+void AcrBoard::stageAt(uint64_t pos) {
+    if (!tape_) return;
+    commitTape();
+    tape_->setPos(pos > tape_->size() ? tape_->size() : pos);
+    (void)u_.readData();
+    reline();
+}
+
+// SECONDS INTO THE RECORDING. A WAV kept its audio clock at decode, so the head's time is
+// the real one -- leader and gaps and all. A byte tape (.TAP) never had audio, so its time
+// is the honest estimate a 300-baud strap gives: bytes x frame-bits / baud.
+double AcrBoard::tapeSeconds(uint64_t bytePos) const {
+    if (audio_ && audio_->hasTimeline()) return audio_->secondsAt(bytePos);
+    const double baud = u_.baud > 0 ? double(u_.baud) : 300.0;
+    return double(bytePos) * u_.bitsPerChar() / baud;
+}
+
+double AcrBoard::tapeTotalSeconds() const {
+    if (audio_ && audio_->hasTimeline()) return audio_->totalSeconds();
+    if (!tape_) return 0.0;
+    const double baud = u_.baud > 0 ? double(u_.baud) : 300.0;
+    return double(tape_->size()) * u_.bitsPerChar() / baud;
+}
+
+uint64_t AcrBoard::secondsToByte(double secs) const {
+    if (!tape_) return 0;
+    if (audio_ && audio_->hasTimeline()) return audio_->byteAt(secs);
+    const double baud  = u_.baud > 0 ? double(u_.baud) : 300.0;
+    double       bytes = secs * baud / u_.bitsPerChar();
+    if (bytes < 0.0) bytes = 0.0;
+    uint64_t b = uint64_t(bytes + 0.5);
+    return b > tape_->size() ? tape_->size() : b;
+}
+
+std::string AcrBoard::activityLabel() const {
+    if (!tape_ || !liveCounter_ || mode_ != TapeStream::Mode::Play) return {};
+    const uint64_t p = tape_->pos(), sz = tape_->size();
+    // Nothing to watch before it starts, once it ends, or while it is parked at a stop mark.
+    if (p == 0 || p >= sz || tape_->atStop()) return {};
+    return "tape: " + tapeCounterText(tapeSeconds(p), tapeTotalSeconds());
+}
+
 // One modem, one modulation. This is the list a tape is judged against.
 const std::vector<TapeFormat>& AcrBoard::modem() {
     static const std::vector<TapeFormat> v = {tapeformats::fsk300_1850()};
@@ -438,36 +562,78 @@ bool AcrBoard::disconnect(const std::string& unit, std::string& err) {
 // table: pull the 88-ACR out of the machine and there is nothing left that can rewind.
 // ---------------------------------------------------------------------------
 std::vector<CommandDef> AcrBoard::commands() const {
-    return {{
-        "REWIND",
-        true,     // a card that is IN THE MACHINE has no unbuilt verbs
-        nullptr,  // ...so it is waiting on nothing
-        "REWIND <id>:tape -- wind the cassette back to the beginning",
-        "The 88-ACR reads and writes a tape from wherever its head is sitting, and\n"
-        "after a load the head is at the end of the program. Nothing in the guest can\n"
-        "move it back: the real card has NO MOTOR CONTROL -- the operator pressed the\n"
-        "buttons -- so REWIND is your finger on the recorder.\n"
-        "\n"
-        "Load the same tape twice:\n"
-        "  MOUNT acr0:tape \"tapes/4kbas.tap\"\n"
-        "  GO 0                       (the loader reads to the end of the tape)\n"
-        "  REW acr0:tape              (...and now the tape is back at the start)\n"
-        "  GO 0\n"
-        "\n"
-        "REW is the shortest spelling: RESET already answers to R, RE and RES.",
-    }};
+    return {
+        {
+            "WIND",
+            true,     // a card that is IN THE MACHINE has no unbuilt verbs
+            nullptr,  // ...so it is waiting on nothing
+            "WIND <id>:tape <mm:ss | START | END> -- move the cassette to a position",
+            "The 88-ACR reads and writes a tape from wherever its head is sitting. WIND is\n"
+            "your finger on the recorder's transport: it moves the head to a time on the\n"
+            "tape, so a tape holding several programs one after another is reachable.\n"
+            "\n"
+            "The position is a time -- mm:ss, or a bare number of seconds -- or START / END.\n"
+            "For a WAV the time is the recording's own, so a program indexed in a manual by\n"
+            "seconds from the start of tape winds straight there. SHOW <id> reports the\n"
+            "current position the same way.\n"
+            "\n"
+            "  MOUNT acr0:tape \"tape.wav\"\n"
+            "  GO 0                 (the loader reads the first program to its end)\n"
+            "  WIND acr0:tape 2:05  (...to where the second program begins)\n"
+            "  GO 0\n"
+            "\n"
+            "WI is the shortest spelling.",
+        },
+        {
+            "REWIND",
+            true,
+            nullptr,
+            "REWIND <id>:tape -- wind the cassette back to the beginning (WIND START)",
+            "REWIND is WIND to the start of the tape -- the common case, kept as its own\n"
+            "verb. After a load the head is at the end of the program; nothing in the guest\n"
+            "can move it back (the real card has NO MOTOR CONTROL), so this is your finger.\n"
+            "\n"
+            "Load the same tape twice:\n"
+            "  MOUNT acr0:tape \"tapes/4kbas.tap\"\n"
+            "  GO 0                       (the loader reads to the end of the tape)\n"
+            "  REW acr0:tape              (...and now the tape is back at the start)\n"
+            "  GO 0\n"
+            "\n"
+            "REW is the shortest spelling: RESET already answers to R, RE and RES.",
+        },
+        {
+            "EXTRACT",
+            true,
+            nullptr,
+            "EXTRACT <id>:tape [base] -- write a mounted WAV's programs out as .TAP files",
+            "A cassette WAV often holds several programs one after another, separated by a\n"
+            "few seconds of silence. EXTRACT demodulates the mounted WAV and writes each\n"
+            "program as its own raw .TAP file -- so you can mount, load or archive them one\n"
+            "at a time. It names them beside the WAV (foo.wav -> foo-1.tap, foo-2.tap, ...;\n"
+            "a single-program tape is just foo.tap), or under a base you give, and prints\n"
+            "each file's name and size. It reads the tape and writes files; it changes\n"
+            "nothing in the machine. Only a WAV can be extracted -- a .TAP is already bytes.\n"
+            "\n"
+            "  MOUNT acr0:tape \"games.wav\"\n"
+            "  EXTRACT acr0:tape          (writes games-1.tap, games-2.tap, ... beside it)\n"
+            "\n"
+            "MOUNT ... extract does the same in one step, at mount time.",
+        },
+    };
 }
 
 bool AcrBoard::runCommand(const std::string& name, const std::vector<std::string>& args,
                           std::ostream& out, std::string& err) {
-    if (name != "REWIND") {
-        err = "the 88-ACR has one verb, and it is REWIND";
+    const bool rewind  = (name == "REWIND");
+    const bool extract = (name == "EXTRACT");
+    if (!rewind && !extract && name != "WIND") {
+        err = "the 88-ACR's verbs are WIND, REWIND and EXTRACT";
         return false;
     }
 
     // args[1] is `<id>` or `<id>:<unit>` -- the monitor has already used it to find
     // THIS board (core/board.h). All that is left is to check the unit, if one was
-    // named: `REWIND acr0:tty` should say what is wrong rather than rewind a tape the
+    // named: `WIND acr0:tty` should say what is wrong rather than move a tape the
     // operator did not mean.
     if (args.size() > 1) {
         size_t c = args[1].find(':');
@@ -485,32 +651,52 @@ bool AcrBoard::runCommand(const std::string& name, const std::vector<std::string
         return false;
     }
 
-    // Everything the guest has recorded is on its way to the host file, and the head
-    // is about to go somewhere else. Flush BEFORE moving it, for the same reason the
-    // DCDD flushes a partial sector before it invalidates its buffer.
-    commitTape();
-    tape_->rewind();
+    // EXTRACT: demodulate the WAV into its programs and write each as a .TAP. Only a WAV
+    // has an audio timeline to find gaps in; a byte tape is already the bytes.
+    if (extract) {
+        if (!audio_) {
+            err = path_ + " is a byte tape, not a WAV -- there is nothing to demodulate "
+                          "and split";
+            return false;
+        }
+        const std::string base =
+            args.size() > 2 ? resolvePath(args[2]) : stripWavExt(resolvePath(path_));
+        return extractTapePrograms(*audio_, base, kExtractGapSeconds, out, err);
+    }
 
-    // AND THROW AWAY THE BYTE THE CARD IS STILL HOLDING.
-    //
-    // The UART receives eagerly, so at the moment you rewind there is typically a
-    // character sitting in its receive register -- one that came off a part of the
-    // tape you have just wound PAST. Leave it there and the guest's next read gets
-    // that byte, and then gets it AGAIN when the tape replays it: a duplicated byte,
-    // manufactured by us, in a program image.
-    //
-    // A DELIBERATE DEPARTURE, and small. On the real card the receiver is fed by a
-    // phase-locked loop behind a CARRIER DETECT, so a stopped tape delivers it
-    // nothing and the question never arises. We have no carrier to lose, so we drop
-    // the byte by hand. Reading the data register is exactly how the guest would have
-    // dropped it (it is the chip's /RDAR strobe), so nothing here reaches past the
-    // pins. See the .md, Limitations.
-    (void)u_.readData();
+    // Where to. REWIND is the start; WIND takes a time (mm:ss or bare seconds) or the
+    // words START / END. A time past the end lands at the end, visibly (echoed below).
+    uint64_t target = 0;
+    if (!rewind) {
+        if (args.size() < 3) {
+            err = "WIND needs a position: a time (mm:ss or seconds), START, or END";
+            return false;
+        }
+        const std::string& a  = args[2];
+        const std::string  lo = lowerAscii(a);
+        if (lo == "start") {
+            target = 0;
+        } else if (lo == "end") {
+            target = tape_->size();
+        } else {
+            double secs;
+            if (!parseTapeTime(a, secs)) {
+                err = "'" + a + "' is not a position -- use a time (mm:ss or seconds), "
+                      "START, or END";
+                return false;
+            }
+            target = secondsToByte(secs);
+        }
+    }
 
-    reline();  // and the head is at the top of the tape again
+    // The staging (flush the recording, seek, drop the eagerly-read byte off the OLD
+    // position, reline) is shared with REWIND -- see stageAt() and its long note there
+    // on why the held byte must go.
+    stageAt(target);
 
-    out << id << ":tape: rewound -- " << path_ << " is at the beginning ("
-        << tape_->size() << " bytes)\n";
+    out << id << ":tape: " << (rewind ? "rewound" : "wound") << " to "
+        << tapeCounterText(tapeSeconds(tape_->pos()), tapeTotalSeconds()) << " -- " << path_
+        << " (" << tape_->pos() << " of " << tape_->size() << " bytes)\n";
     return true;
 }
 

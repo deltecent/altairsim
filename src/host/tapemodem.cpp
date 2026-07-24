@@ -234,6 +234,7 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
     }
 
     const size_t n = a.s.size();
+    r.totalSamples = n;                         // the audio clock's length, for a % and a total
     double       sp = double(a.rate) / f.baud;  // samples per bit -- the NOMINAL rate. It
     if (sp < 2.0) return r;                      // is adapted to the real one below, because
     const double spNominal = sp;                 // a tape running 3% fast has a 3% short bit
@@ -397,6 +398,7 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
         // counted, never dropped. Dropping it is the deletion that desyncs a block.
         if (!isMark(e + (1.5 + f.dataBits) * sp)) ++r.framingErrors;
         r.bytes.push_back(uint8_t(by));
+        r.byteSampleOffset.push_back(uint64_t(e < 0.0 ? 0.0 : e));  // this byte's place in time
 
         const double pred = e + frameBits * sp;
         if (pred + frameBits * sp < double(n) && isStart(pred)) {
