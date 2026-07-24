@@ -291,8 +291,8 @@ queue that passes data through untouched and should not try to create one.
 2. Use the exact name from **Devices and Printers** as the queue name. Sharing
    is not required — `OpenPrinter` addresses it by device name directly.
 
-**macOS / Linux (CUPS)** — a real printer, on a USB-to-parallel adapter or a
-newer line printer's own USB port:
+**Linux (CUPS)** — a real printer, on a USB-to-parallel adapter or a newer line
+printer's own USB port:
 
 ```sh
 lpinfo -v                                               # what CUPS can see
@@ -302,24 +302,45 @@ sudo lpadmin -p linewriter -E -v usb://Vendor/Product -m raw
 `-m raw` selects the "Raw Queue" model, so CUPS skips all filtering and the bytes
 written are delivered as-is. (`printer:` also asks for raw per job, belt and braces.)
 
-To point the queue at an existing configured printer instead of a device URI, read
-that printer's device off `lpstat -v <name>` and pass it to `-v`.
-
-**A no-paper terminal, for testing and for watching the boundaries.** CUPS on modern
-macOS ships no `serial` backend, so a queue cannot target a tty directly — but its
-`socket` (JetDirect/AppSocket) backend is always present, and that gives the same
-thing: printed output live in another terminal, with nothing wasted.
+**macOS — raw queues are gone, but raw jobs are not.** A current macOS
+(`lpadmin: Raw queues are no longer supported on macOS`) refuses `-m raw`: the
+no-PPD "raw queue" concept was removed. The `document-format application/vnd.cups-raw`
+that `printer:` sends *per job* still passes through, though, so the queue just needs
+a nominal driver — one of the surviving generic PPDs (`lpinfo -m` lists them):
 
 ```sh
-sudo lpadmin -p altairterm -E -v socket://localhost:9100 -m raw -o printer-is-shared=false
-nc -k -l 9100          # in one terminal: every job's raw bytes stream here as it lands
+sudo lpadmin -p linewriter -E -v usb://Vendor/Product \
+             -m drv:///sample.drv/generic.ppd -o printer-is-shared=false
 ```
 
-Then `CONNECT lpt0:prn printer:altairterm?idle=3` and print. Each pause longer than
-`idle` closes a job, and it arrives in the `nc` terminal as its own burst — which is
-the job-boundary policy made visible. `nc -k` keeps listening across jobs, because the
-`socket` backend opens one connection per job and closes it. Remove a test queue with
-`sudo lpadmin -x altairterm`.
+Whether Apple's CUPS honours the raw job all the way to the device is worth
+confirming on the host — see the no-paper check below, which shows exactly what
+reaches the backend.
+
+**A no-paper terminal, for testing and for watching the boundaries.** CUPS ships no
+`serial` backend on a current macOS, so a queue cannot target a tty directly — but its
+`socket` (JetDirect/AppSocket) backend is always present, and a listener on that port
+shows every job's bytes live, wasting nothing:
+
+```sh
+sudo lpadmin -p altairterm -E -v socket://localhost:9100 \
+             -m drv:///sample.drv/generic.ppd -o printer-is-shared=false   # Linux: -m raw
+nc -k -l 9100          # in one terminal: every job's bytes stream here as it lands
+```
+
+Then `CONNECT lpt0:prn printer:altairterm?idle=3` and print; `DISCONNECT lpt0:prn`
+flushes at once (its destructor submits synchronously, so no run loop is needed).
+Each closed job arrives in the `nc` terminal as its own burst — the job-boundary
+policy made visible, and the check for whether the raw job survived filtering: clean
+bytes mean passthrough, a PostScript wrapper means the host filtered it. `nc -k` keeps
+listening across jobs (the `socket` backend opens one connection per job). Remove a
+test queue with `sudo lpadmin -x altairterm`.
+
+**Just want the output on a terminal, no CUPS?** A board can skip `printer:` and
+`CONNECT lpt0:prn socket:9100`, then `nc localhost 9100` from another terminal — but
+that services the socket only while the machine is *running* (the accept happens in
+the run loop), and it does not exercise the host print path, which is the point of
+testing `printer:`.
 
 (If the *only* goal is output on another terminal, a board can skip `printer:`
 entirely and `CONNECT` to `socket:9100` or `serial:` — but that does not exercise the
