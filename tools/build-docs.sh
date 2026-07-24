@@ -79,7 +79,7 @@ expand() {  # expand <src.md> <dst.md>
 # ---------------------------------------------------------------------------
 # One document.
 # ---------------------------------------------------------------------------
-build() {  # build <docdir> <output-name> <title>
+build() {  # build <docdir> <output-name> <title> [notoc]
   dir=$1; name=$2; title=$3
   src=$root/docs/$dir
 
@@ -120,10 +120,16 @@ build() {  # build <docdir> <output-name> <title>
   # chapters are short and whose reference lives at the back -- but if a chapter ever grows big
   # enough to need finding-by-subsection, the answer is to SPLIT IT, not to reopen this.
   #
+  # The changelog opts out of the contents page entirely (build ... notoc): it is read
+  # newest-first, top to bottom, so a list of the release headings is just the first pages
+  # over again. Every other document keeps the chapter-level contents described above.
+  toc_args="--toc --toc-depth=1"
+  [ "${4:-}" = notoc ] && toc_args=""
+
   # shellcheck disable=SC2086
   pandoc $chapters \
     --standalone --embed-resources \
-    --toc --toc-depth=1 \
+    $toc_args \
     --from=gfm --to=html5 \
     --metadata title="$title" \
     --css "$root/docs/print.css" \
@@ -185,5 +191,5 @@ build() {  # build <docdir> <output-name> <title>
 
 mkdir -p "$out"
 build manual    altairsim-manual    "altairsim — User Manual"
-build changelog altairsim-changelog "altairsim — Changelog"
+build changelog altairsim-changelog "altairsim — Changelog" notoc
 build devguide  altairsim-devguide  "altairsim — Developer Guide"
