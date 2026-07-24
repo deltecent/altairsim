@@ -328,6 +328,32 @@ no reason to wire a macOS-only CUPS bridge for it. `printer:` submits a correct 
 on every platform regardless — what a locked-down CUPS does with it is the host's call,
 not the endpoint's.
 
+**`socket:` delivers during a RUN; `printer:` delivers on DISCONNECT.** These two are
+not interchangeable for how you drive them, and the difference is in the transport. A
+`socket:` call-out only sends once the TCP connection is *established*, and that is
+advanced in `pump()` — which runs only inside the run loop (`host/tcp.cpp`). So
+`socket:` is right for a **real guest program printing while the machine runs**, but
+bytes typed by hand with `OUT` at the monitor prompt sit unsent until a `RUN`. `printer:`
+is the opposite: its job is submitted synchronously at a boundary, and `DISCONNECT`
+flushes it there and then — so it is the one you can drive **by hand** from the prompt.
+For a bench poke-test, reach for `printer:`; for a booted CP/M or BASIC that prints,
+either works and `socket:` is cleaner.
+
+*Confirmed on real hardware.* A page reading `ALTAIRSIM` came out of a Brother
+MFC-L5700DW laser (a modern AirPrint printer, but with an open JetDirect port and
+PCL/Epson-FX/text auto-emulation) via a raw CUPS queue at its socket port:
+
+```sh
+sudo lpadmin -p brother_raw -E -v socket://192.0.2.234:9100 \
+             -m drv:///sample.drv/generic.ppd -o printer-is-shared=false   # your printer's IP
+
+```
+
+Then `CONNECT lpt0:prn printer:brother_raw`, print the text, and end with a form feed
+(`OUT 03 0C`, or let `?onff` do it) so the printer ejects the page — a raw laser holds
+the last page until a form feed or end-of-job tells it the page is done. The printer
+must be in its Auto (or a text/PCL) emulation, which is the factory default.
+
 **Bench test only (the deprecated path), for watching the boundaries with no paper.**
 To exercise the CUPS submit path on a macOS box *today*, accepting both warnings above,
 a nominal generic PPD stands in for the removed raw queue, and the `socket` backend
