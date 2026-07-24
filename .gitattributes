@@ -16,20 +16,26 @@
 # one line ending cmd.exe is guaranteed to parse without surprises around labels/goto.
 *.bat  text eol=crlf
 
-# CP/M symbol-file fixtures are real toolchain output (tests/programs/symbols/README.md):
-# their CRLF line endings and trailing ^Z padding are part of the format under test, so
-# git must never normalise them. The README stays ordinary text.
-tests/programs/symbols/*.SYM binary
-tests/programs/symbols/*.PRN binary
-tests/programs/symbols/*.MAC binary
-tests/programs/symbols/*.ASM binary
+# CP/M source and listing artifacts (.ASM, .PRN, .HEX, .INC) originated on a CP/M system
+# and are meant to be transferred verbatim onto a CP/M disk -- pasted with PIP x=CON:, run
+# through the assembler's LOAD, or carried in a bootable image -- where CP/M expects CRLF
+# line terminators (and, for text, a trailing ^Z). The global `eol=lf` rule above would
+# strip them to LF on checkout, which broke `PIP R.ASM=CON:`: the pasted source arrived as
+# one line with no terminators, so ASM emitted nothing (issue #118). Mark them binary so
+# git preserves the exact CRLF bytes on every platform and never normalises them. (.HEX is
+# already binary in the media section below.)
+*.ASM binary
+*.asm binary
+*.PRN binary
+*.prn binary
+*.INC binary
+*.inc binary
 
-# The symbolic-debugger example ships the same period toolchain set -- a listing, its
-# source and the Intel HEX (examples/debugger/). They are CRLF like the real CP/M files
-# they imitate; keep them byte-for-byte so a checkout matches on every platform. (.HEX is
-# already binary globally below.)
-examples/debugger/*.PRN binary
-examples/debugger/*.ASM binary
+# The CP/M symbol-file fixtures carry two more format-under-test extensions
+# (tests/programs/symbols/README.md): their CRLF and trailing ^Z padding are part of the
+# format, so keep these binary too. (.ASM/.PRN there are covered by the rule above.)
+tests/programs/symbols/*.SYM binary
+tests/programs/symbols/*.MAC binary
 
 # The MBL boot ROM's source and listing are deramp originals, CRLF like every other
 # period artifact here (roms/MBL/). Keep them byte-for-byte so the checkout matches the
