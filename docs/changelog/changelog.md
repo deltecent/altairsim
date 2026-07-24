@@ -8,6 +8,23 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### A tape counter, and `WIND` to a time
+
+Both cassette boards — the **88-ACR** and the **Sol** decks — now show **where the head is** as
+`mm:ss / total (percent)`, on `SHOW MOUNTS`, on `SHOW <id>`, and as a read-only `position` unit
+property. For a `.WAV` the time is the *recording's own*: the demodulator now keeps each byte's
+place in the audio, so the counter reads real minutes and seconds with the leader and the silent
+gaps between programs included — the way a real cassette counter (and a manual that indexes
+files by seconds) reads. For a byte `.TAP`, which has no audio, the time is estimated from the
+baud.
+
+A new **`WIND <id>:tape <mm:ss | START | END>`** verb moves the head to a time, so a cassette
+holding several programs one after another is finally reachable: read the counter for where the
+next one starts and wind there. `REWIND` stays as its `WIND … START` shorthand, so every old
+script still spells `REW`. And when a tape plays in real time (`rate = real`), a **live counter**
+ticks up on the console while it loads; it is on by default and turns off with `counter=off` at
+`MOUNT` or `SET` for a machine whose guest writes to the same terminal.
+
 ### Octal, the MITS way
 
 The monitor can now read and print the **wire class** — addresses, ports, data bytes — in

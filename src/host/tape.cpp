@@ -1,6 +1,9 @@
 #include "host/tape.h"
 
 #include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 namespace altair {
 
@@ -63,6 +66,58 @@ size_t TapeStream::write(const uint8_t* buf, size_t n) {
     size_t put = 0;
     while (put < n && tape_.write(buf[put])) ++put;
     return put;
+}
+
+// ---------------------------------------------------------------------------
+std::string tapeTimeMMSS(double secs) {
+    if (!(secs > 0.0)) secs = 0.0;  // also catches NaN
+    long total = long(secs + 0.5);
+    long h = total / 3600, m = (total % 3600) / 60, s = total % 60;
+    char b[32];
+    if (h > 0) std::snprintf(b, sizeof b, "%ld:%02ld:%02ld", h, m, s);
+    else std::snprintf(b, sizeof b, "%02ld:%02ld", m, s);
+    return b;
+}
+
+std::string tapeCounterText(double curSecs, double totalSecs) {
+    int pct = (totalSecs > 0.0) ? int(curSecs / totalSecs * 100.0 + 0.5) : 0;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    char b[80];
+    std::snprintf(b, sizeof b, "%s / %s (%d%%)", tapeTimeMMSS(curSecs).c_str(),
+                  tapeTimeMMSS(totalSecs).c_str(), pct);
+    return b;
+}
+
+bool parseTapeTime(const std::string& s, double& secs) {
+    if (s.empty()) return false;
+    // Colon form: split on ':' into 2 (MM:SS) or 3 (H:MM:SS) integer fields.
+    if (s.find(':') != std::string::npos) {
+        double parts[3];
+        int n = 0;
+        size_t i = 0;
+        while (i <= s.size() && n < 3) {
+            size_t j = s.find(':', i);
+            std::string tok = s.substr(i, j == std::string::npos ? std::string::npos : j - i);
+            if (tok.empty()) return false;
+            char* end = nullptr;
+            double v = std::strtod(tok.c_str(), &end);
+            if (end == tok.c_str() || *end != '\0' || v < 0.0) return false;
+            parts[n++] = v;
+            if (j == std::string::npos) break;
+            i = j + 1;
+        }
+        if (n == 2) secs = parts[0] * 60.0 + parts[1];
+        else if (n == 3) secs = parts[0] * 3600.0 + parts[1] * 60.0 + parts[2];
+        else return false;
+        return true;
+    }
+    // Bare seconds.
+    char* end = nullptr;
+    double v = std::strtod(s.c_str(), &end);
+    if (end == s.c_str() || *end != '\0' || v < 0.0) return false;
+    secs = v;
+    return true;
 }
 
 } // namespace altair

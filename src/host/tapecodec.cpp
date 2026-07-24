@@ -2,6 +2,7 @@
 
 #include "host/wav.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace altair {
@@ -11,8 +12,28 @@ namespace altair {
 // ---------------------------------------------------------------------------
 
 AudioTapeMedia::AudioTapeMedia(std::unique_ptr<MediaFile> under, std::vector<uint8_t> decoded,
-                               TapeFormat fmt, uint32_t rate)
-    : under_(std::move(under)), bytes_(std::move(decoded)), fmt_(fmt), rate_(rate) {}
+                               TapeFormat fmt, uint32_t rate,
+                               std::vector<uint64_t> byteSampleOffset, uint64_t totalSamples)
+    : under_(std::move(under)), bytes_(std::move(decoded)), fmt_(fmt), rate_(rate),
+      offset_(std::move(byteSampleOffset)), totalSamples_(totalSamples) {}
+
+// The map is sampled at byte starts; between two bytes the head is somewhere in that one
+// character, so clamping to the nearest captured start is accurate to a byte time. Past the
+// decoded bytes (a recording that grew the tape) there is no audio, so hold at the end.
+double AudioTapeMedia::secondsAt(uint64_t bytePos) const {
+    if (!hasTimeline()) return 0.0;
+    if (bytePos >= offset_.size()) return totalSeconds();
+    return double(offset_[size_t(bytePos)]) / rate_;
+}
+
+uint64_t AudioTapeMedia::byteAt(double seconds) const {
+    if (!hasTimeline()) return 0;
+    if (seconds <= 0.0) return 0;
+    const uint64_t sample = uint64_t(seconds * rate_);
+    // offset_ is monotonic non-decreasing: the first byte whose start is at or past `sample`.
+    auto it = std::lower_bound(offset_.begin(), offset_.end(), sample);
+    return uint64_t(it - offset_.begin());  // == offset_.size() (== EOF) when past the last byte
+}
 
 // See the header: the backstop for a recording nobody stopped. `under_` is declared
 // first and so destroyed last, which is what makes it still valid in here.
@@ -248,7 +269,8 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
 
     detected = bestFmt.name;
     return std::make_unique<AudioTapeMedia>(std::move(media), std::move(best.bytes), bestFmt,
-                                            audio.rate);
+                                            audio.rate, std::move(best.byteSampleOffset),
+                                            best.totalSamples);
 }
 
 } // namespace altair

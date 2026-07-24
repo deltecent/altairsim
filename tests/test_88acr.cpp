@@ -102,6 +102,20 @@ struct Rig {
         said    = ok ? o.str() : err;
         return ok;
     }
+    // Wind to a position (a time, START or END), through the verb.
+    bool wind(const std::string& where, std::string& said) {
+        std::ostringstream o;
+        std::string        err;
+        bool ok = acr->runCommand("WIND", {"WI", "acr0:tape", where}, o, err);
+        said    = ok ? o.str() : err;
+        return ok;
+    }
+    // Read a tape-unit property (position, counter, ...) as text.
+    std::string prop(const std::string& name) {
+        for (Property& p : acr->unitProperties("tape"))
+            if (p.name == name) return p.get().s();
+        return "<none>";
+    }
     // Take the next byte off the tape the way a loader does: poll until DAV, read.
     // Returns false if the tape ran out. `budget` is in character times.
     bool getByte(uint8_t& b, int budget = 4) {
@@ -310,11 +324,13 @@ void test_88acr() {
         withTape("HI");
         Rig r;
 
-        // The verb is declared, it is REACHABLE, and it is the one the .md promises.
+        // The verbs are declared, REACHABLE, and the ones the .md promises: WIND and its
+        // REWIND alias.
         auto cs = r.acr->commands();
-        CHECK(cs.size() == 1 && std::string(cs[0].name) == "REWIND",
-              "the card brings exactly one verb, and it is REWIND");
-        CHECK(cs[0].built && cs[0].waiting == nullptr,
+        CHECK(cs.size() == 2, "the card brings two verbs");
+        CHECK(std::string(cs[0].name) == "WIND" && std::string(cs[1].name) == "REWIND",
+              "WIND, and REWIND as its wind-to-start alias");
+        CHECK(cs[0].built && cs[0].waiting == nullptr && cs[1].built && cs[1].waiting == nullptr,
               "a card that is IN THE MACHINE has no unbuilt verbs");
 
         // With no cassette in it, REWIND fails with a sentence rather than a crash.
@@ -345,6 +361,93 @@ void test_88acr() {
         // and never the 'I' that was in flight when the operator hit rewind.
         CHECK(r.getByte(b) && b == 'H', "the tape replays from 'H'...");
         CHECK(r.getByte(b) && b == 'I', "...then 'I' -- no stale byte duplicated at the seam");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6b. WIND -- the counter, and moving the head to a time.
+    //
+    // A byte tape has no audio, so its time is the honest estimate from the 300-baud
+    // strap: bytes x frame-bits / baud. This card is 8N1, so a frame is 10 bits and a
+    // byte is a thirtieth of a second. 3000 bytes is therefore exactly 100 s = 01:40,
+    // which is a tape long enough to read a real mm:ss off. (The WAV exact-timeline path
+    // -- where the time is the recording's own -- is covered end to end in test_cli.)
+    // -----------------------------------------------------------------------
+    {
+        // 3000 bytes, byte i = i & 0xFF, so a head position can be verified by content.
+        std::string big;
+        for (int i = 0; i < 3000; ++i) big += char(i & 0xFF);
+        withTape(big);
+        Rig r;
+
+        std::string said;
+        CHECK(!r.wind("0:30", said), "WIND with no tape in the recorder is refused");
+
+        r.mount("t.tap");
+        CHECK(r.acr->tape()->size() == 3000, "a 3000-byte tape -- 100 s at 300 baud");
+
+        // The counter reads a real time and percent, and it is READ-ONLY.
+        CHECK(r.prop("position") == "00:00 / 01:40 (0%)",
+              ("at the top the counter is 00:00 of 01:40: " + r.prop("position")).c_str());
+        bool posWritable = false;
+        for (Property& p : r.acr->unitProperties("tape"))
+            if (p.name == "position") posWritable = (bool)p.set;
+        CHECK(!posWritable, "position is a measurement, not a switch -- no setter");
+
+        // WIND to a time lands the head there (+/- the one byte an eager UART pulls).
+        CHECK(r.wind("0:50", said), "WIND acr0:tape 0:50");
+        CHECK(r.acr->tape()->pos() >= 1500 && r.acr->tape()->pos() <= 1501,
+              ("0:50 is 1500 bytes in at 300 baud: " + std::to_string(r.acr->tape()->pos())).c_str());
+        CHECK(r.prop("position") == "00:50 / 01:40 (50%)",
+              ("halfway, by time: " + r.prop("position")).c_str());
+
+        // END winds to the end; START back to the top.
+        CHECK(r.wind("END", said), "WIND acr0:tape END");
+        CHECK(r.acr->tape()->atEnd(), "END is the end of the tape");
+        CHECK(r.wind("START", said), "WIND acr0:tape START");
+        CHECK(r.acr->tape()->pos() <= 1, "START is the top (eager UART may sit at 1)");
+
+        // A time past the end lands AT the end, visibly -- not an error.
+        CHECK(r.wind("99:00", said), "WIND past the end is allowed");
+        CHECK(r.acr->tape()->atEnd(), "...and clamps to the end");
+
+        // Garbage is refused with a sentence, not silently taken as zero.
+        CHECK(!r.wind("banana", said), "WIND to nonsense is refused");
+        CHECK(said.find("not a position") != std::string::npos,
+              ("...and says why: " + said).c_str());
+    }
+
+    // -----------------------------------------------------------------------
+    // 6c. The live counter's switch, and the activityLabel() seam the run loop paints.
+    //
+    // activityLabel() is non-empty only when a tape is actually playing through the
+    // middle of itself with the counter on -- which is the whole gate the run loop
+    // leans on without knowing what a tape is.
+    // -----------------------------------------------------------------------
+    {
+        std::string big(2000, 'x');
+        withTape(big);
+        Rig r;
+        r.mount("t.tap");
+
+        // Mounted and relined, the eager UART has pulled byte 0, so the head is one in --
+        // playing, mid-tape, counter on by default: the run loop has a line to paint.
+        CHECK(r.prop("counter") == "on", "the counter is on by default");
+        CHECK(!r.acr->activityLabel().empty(),
+              "a tape playing mid-way reports a live label");
+        CHECK(r.acr->activityLabel().find("tape:") == 0,
+              ("...and it is the tape counter: " + r.acr->activityLabel()).c_str());
+
+        // Turn it off and the line goes quiet, though SHOW's position still answers.
+        std::string err;
+        CHECK(setUnitProperty(*r.acr, "tape", "counter", "off", err), "counter=off");
+        CHECK(r.acr->activityLabel().empty(), "counter off: nothing to paint");
+        CHECK(r.prop("position") != "<none>", "...but SHOW still reports the position");
+
+        // Back on, and wound to the very end, there is again nothing to watch.
+        CHECK(setUnitProperty(*r.acr, "tape", "counter", "on", err), "counter=on");
+        std::string said;
+        r.wind("END", said);
+        CHECK(r.acr->activityLabel().empty(), "at the end there is nothing loading");
     }
 
     // -----------------------------------------------------------------------

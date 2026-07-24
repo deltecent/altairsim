@@ -69,9 +69,10 @@ for you — `SAVE` spins the deck up, writes, and spins it down. So a Sol tape p
 the guest is running it, and a deck whose motor is off yields nothing at all rather than
 merely nothing yet.
 
-It still cannot **rewind**. There is no rewind bit on a Sol-PC — a motor line only says
-*turn*, not *which way* — so `REWIND` is your finger here too. Because there are two decks,
-you must name one: a bare `REW sol0` is refused rather than guessing which tape to wind back.
+It still cannot **wind the tape** on its own. There is no rewind bit on a Sol-PC — a motor line
+only says *turn*, not *which way* — so `WIND` (and its `REWIND` shorthand) is your finger here
+too. Because there are two decks, you must name one: a bare `WIND sol0` is refused rather than
+guessing which tape to move.
 
 **And the speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at
 300 or 1200 and `OUT 0FAh` D5 picks, at run time. SOLOS's `SE TA` command is that bit.
@@ -126,15 +127,46 @@ Play and record are **mutually exclusive**, and not because it was easier to wri
 It is **one head and one physical button**. You cannot press PLAY and RECORD at the same time
 on a cassette recorder, so you cannot do it here.
 
-### `REWIND`
+### Where the head is — the tape counter
+
+`SHOW MOUNTS`, and `SHOW <id>`, report where the head is sitting as a position on the tape:
+
+```
+altairsim> SHOW MOUNTS
+  acr0:tape  tape  BASIC.WAV  00:15 / 01:28 (17%)  301/2048 bytes
+```
+
+The counter is a **time and a percentage** — minutes and seconds into the tape, and how far
+along it you are. For a `.WAV` that time is the recording's *own*: it counts the leader and
+any silent gaps between programs, exactly as a real cassette counter would, so a program a
+manual indexes by "seconds from the start of the tape" is at the second the manual says. For a
+byte `.TAP`, which carries no audio, the time is estimated from the baud. The byte count is
+still there beside it.
+
+### `WIND` — move the head to a time
 
 A tape unit brings a verb of its own:
 
 ```
-REWIND <id>:<unit>
+WIND <id>:<unit> <mm:ss | START | END>
 ```
 
-`REW` will do. It winds the cassette back to the beginning.
+`WI` will do. It winds the head to a time on the tape — so a cassette holding several programs
+one after another is **reachable**: read the counter (or a manual) for where the next one
+begins, and wind there.
+
+```
+altairsim> WIND acr0:tape 2:05
+acr0:tape: wound to 02:05 / 08:40 (24%) -- BASIC.WAV (...)
+```
+
+The position is a time — `mm:ss`, or a bare number of seconds — or the words `START` and
+`END`. A time past the end lands at the end. On the Sol you must name the deck, because there
+are two.
+
+### `REWIND` — wind to the start
+
+`REWIND <id>:<unit>` (`REW`) is `WIND … START`: the common case, kept as its own verb.
 
 **You need it to load the same tape twice.** A tape that has been read is a tape whose head is
 at the end of the tape, and playing it again gets you silence. This surprises people exactly
@@ -143,6 +175,19 @@ once.
 ```
 altairsim> REW acr0:tape
 ```
+
+### Watching a load — the live counter
+
+When a tape plays in real time (`rate = real`, below) the counter **ticks up on the console
+while it loads**, so you can watch a long tape's progress. It is on by default; turn it off for
+a machine whose guest is writing to the same terminal:
+
+```
+altairsim> MOUNT acr0:tape "tape.wav" counter=off
+```
+
+or `SET acr0:tape counter=off` at any time. Turning it off changes nothing about `SHOW` — the
+position is always there to ask for.
 
 ### `rate = full | real`
 
@@ -182,8 +227,10 @@ TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
 ```
 
 Nothing else changes. The recording is demodulated **once, when you mount it** — never while
-the machine is running — and from that moment everything above it, including `SHOW`'s *"at N
-of M bytes"* and `REWIND`, means exactly what it meant for a `.TAP`. The guest cannot tell.
+the machine is running — and from that moment everything above it, including `SHOW`'s byte
+count and `WIND`/`REWIND`, means exactly what it meant for a `.TAP`. The one thing the audio
+adds is a *real* clock: the tape counter reads the recording's own minutes and seconds, gaps
+and leader included, where a byte tape can only estimate them. The guest cannot tell.
 
 **Read that first line.** A mount always says what it found, and the framing-error count is
 the number that matters: a tape that decoded at 60% is noise, not a program, and you want to
@@ -245,8 +292,9 @@ so an empty file — or anything else that is not RIFF/WAVE — falls through to
 recording then puts *bytes* in it, not audio. It will look like it worked. Nothing will play
 it. If you meant audio and you get `raw` on the mount line, that is what happened.
 
-The stop is what writes it. `UNMOUNT` and `REWIND` are stops too, and on the Sol so is the
-guest dropping the motor line — that board can see a deck stop, which the 88-ACR cannot.
+The stop is what writes it. `UNMOUNT` and any `WIND` (`REWIND` included) are stops too, and on
+the Sol so is the guest dropping the motor line — that board can see a deck stop, which the
+88-ACR cannot.
 
 The whole file is rewritten each time, not patched: the audio for a byte starts at an offset
 that depends on every byte before it, so there is no cheaper splice.

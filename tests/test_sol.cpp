@@ -407,6 +407,64 @@ void test_sol() {
         CHECK(err.find("tape1") != std::string::npos, "...naming a deck to type");
     }
 
+    SECTION("Sol cassette -- WIND moves a deck to a time, and the counter is motor-gated");
+    {
+        // A byte tape long enough to read a counter off. The CUTS UART is 1200 baud, 8N2,
+        // so time is bytes x 11 / 1200 -- and a WAV would instead carry its own audio clock.
+        std::string big(3000, 'x');
+        withTape(big);
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "a.tap", false, err), "a tape goes in deck 1");
+
+        // The verbs are WIND and its REWIND alias.
+        auto cs = g.sol->commands();
+        CHECK(cs.size() == 2 && std::string(cs[0].name) == "WIND" &&
+                  std::string(cs[1].name) == "REWIND",
+              "the Sol brings WIND and REWIND");
+
+        auto posText = [&](const char* unit) {
+            for (Property& p : g.sol->unitProperties(unit))
+                if (p.name == "position") return p.get().s();
+            return std::string("<none>");
+        };
+
+        // Naming the deck is not optional -- for WIND as for REWIND, there are two.
+        std::ostringstream o;
+        CHECK(!g.sol->runCommand("WIND", {"WI", "sol0", "0:05"}, o, err),
+              "a bare WIND is refused -- which deck?");
+        CHECK(err.find("tape1") != std::string::npos, "...and it says to name one");
+
+        // END winds to the end, START back to the top.
+        CHECK(g.sol->runCommand("WIND", {"WI", "sol0:tape1", "END"}, o, err), "WIND END");
+        CHECK(g.sol->tape(1)->atEnd(), "deck 1 is at the end");
+        CHECK(g.sol->runCommand("WIND", {"WI", "sol0:tape1", "START"}, o, err), "WIND START");
+        CHECK(g.sol->tape(1)->pos() == 0, "...and back at the top (the motor is off: no eager read)");
+
+        // WIND to a time lands the head in the middle, and the counter reads a real mm:ss.
+        CHECK(g.sol->runCommand("WIND", {"WI", "sol0:tape1", "0:10"}, o, err), "WIND 0:10");
+        CHECK(g.sol->tape(1)->pos() > 0 && !g.sol->tape(1)->atEnd(),
+              ("the head is mid-tape: " + std::to_string(g.sol->tape(1)->pos())).c_str());
+        CHECK(posText("tape1").find(" / ") != std::string::npos,
+              ("the counter reads mm:ss / total: " + posText("tape1")).c_str());
+
+        // THE LIVE LABEL SPEAKS ONLY FOR THE DECK WHOSE MOTOR IS ON. With both motors off
+        // nothing is loading; spin deck 1 and it is deck 1 the counter names.
+        CHECK(g.sol->activityLabel().empty(), "motor off: nothing to paint");
+        g.out(STAPT, MOTOR1);
+        CHECK(g.sol->activityLabel().rfind("tape1:", 0) == 0,
+              ("motor on, mid-tape: the counter names deck 1: " + g.sol->activityLabel()).c_str());
+
+        // The empty deck 2 never appears, even spun; and counter=off silences deck 1.
+        g.out(STAPT, (uint8_t)(MOTOR1 | MOTOR2));
+        CHECK(g.sol->activityLabel().rfind("tape1:", 0) == 0,
+              "deck 2 is empty, so deck 1 (which wins when both turn) is still the one");
+        CHECK(setUnitProperty(*g.sol, "tape1", "counter", "off", err), "counter=off on deck 1");
+        CHECK(g.sol->activityLabel().empty(),
+              "counter off: nothing to paint, though SHOW still answers");
+        CHECK(posText("tape1") != "<none>", "...and SHOW's position still reports");
+    }
+
     SECTION("Sol cassette -- the default is FULL SPEED: the guest does not wait for the baud");
     {
         withTape("AB");

@@ -19,6 +19,8 @@
 // The numbers are not decorative: 3% speed error is inside the +/-5% the real 88-ACR
 // tolerated, and a tape that fades to a fifth of its level is an ordinary tape.
 
+#include "host/media.h"
+#include "host/tapecodec.h"
 #include "host/tapemodem.h"
 #include "host/wav.h"
 #include "test.h"
@@ -26,6 +28,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -383,5 +386,52 @@ void test_tapecodec() {
         err.clear();
         CHECK(parseWav(cut.data(), cut.size(), a, err),
               "a truncated recording still opens, with the samples that survived");
+    }
+
+    // -----------------------------------------------------------------------
+    SECTION("tape timeline: the audio clock is kept at decode, and inverts");
+    // A byte image holds no time, but the AUDIO does, and the framer already knows where
+    // in it every byte began. Kept, that offset is what makes a byte position a mm:ss in
+    // the real recording -- leader and gaps and all -- which a synthetic bytes/baud
+    // estimate cannot give. This proves the map is captured, monotonic, and invertible.
+    {
+        const uint32_t             rate    = 22050;
+        const double               leaderS = 2.0;
+        const std::vector<uint8_t> in      = payload(300);
+        const AudioBuffer          a       = modulate(in, fsk, rate, leaderS, 0.0);
+        const DemodResult          r       = demodulate(a, fsk);
+
+        CHECK(same(in, r.bytes), "the bytes still round-trip");
+        CHECK(r.byteSampleOffset.size() == r.bytes.size(), "one sample offset per byte");
+        CHECK(r.totalSamples == a.s.size(), "the total length is the audio's own");
+
+        bool mono = true;
+        for (size_t i = 1; i < r.byteSampleOffset.size(); ++i)
+            mono = mono && r.byteSampleOffset[i] >= r.byteSampleOffset[i - 1];
+        CHECK(mono, "the offsets are monotonic -- a head only moves forward");
+
+        // Byte 0 sits at the END of the leader (~2 s in), NOT at zero. That offset is the
+        // whole difference from a synthetic estimate, and the reason a manual's seconds line up.
+        const double firstS = double(r.byteSampleOffset.front()) / rate;
+        CHECK(firstS > leaderS * 0.8 && firstS < leaderS * 1.2,
+              ("byte 0 is one leader in, ~2 s: " + std::to_string(firstS)).c_str());
+
+        // Wrapped as an AudioTapeMedia, seconds and their inverse round-trip.
+        AudioTapeMedia m(std::make_unique<MemoryMedia>("x", std::vector<uint8_t>{}, false),
+                         r.bytes, fsk, rate, r.byteSampleOffset, r.totalSamples);
+        CHECK(m.hasTimeline(), "the timeline is present on the medium");
+        CHECK(std::fabs(m.totalSeconds() - double(a.s.size()) / rate) < 1e-6,
+              "totalSeconds is the audio length");
+        for (uint64_t k : {uint64_t(0), uint64_t(150), uint64_t(299)}) {
+            const double s = m.secondsAt(k);
+            CHECK(std::fabs(s - double(r.byteSampleOffset[size_t(k)]) / rate) < 1e-6,
+                  "secondsAt reads the map");
+            CHECK(m.byteAt(s) == k, "byteAt inverts secondsAt");
+        }
+
+        // A time in the leader lands on byte 0; a huge time is the end (== size).
+        CHECK(m.byteAt(0.0) == 0, "the very start winds to byte 0");
+        CHECK(m.byteAt(1e9) == r.bytes.size(), "a time past the end is the end");
+        CHECK(m.secondsAt(9999) == m.totalSeconds(), "a byte past the end clamps to the end");
     }
 }

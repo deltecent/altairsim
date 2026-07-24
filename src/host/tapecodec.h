@@ -101,7 +101,8 @@ namespace altair {
 class AudioTapeMedia : public MediaFile {
 public:
     AudioTapeMedia(std::unique_ptr<MediaFile> under, std::vector<uint8_t> decoded,
-                   TapeFormat fmt, uint32_t rate);
+                   TapeFormat fmt, uint32_t rate,
+                   std::vector<uint64_t> byteSampleOffset = {}, uint64_t totalSamples = 0);
 
     // THE LAST LINE OF DEFENCE, NOT THE PLAN -- the same bargain ~HostFile() makes, and
     // for the same reason. The plan is that a board commits when the transport stops.
@@ -140,11 +141,32 @@ public:
     const TapeFormat& format() const { return fmt_; }
     uint32_t          sampleRate() const { return rate_; }
 
+    // ---- THE POSITION-TO-TIME MAP -----------------------------------------------------
+    //
+    // Where byte `bytePos` sits in the ORIGINAL recording, in seconds, and how long the
+    // recording runs. Unlike the byte count, this includes the leader and the silent gaps
+    // between programs, because the map was taken from the audio at decode -- so it lines
+    // up with a real cassette counter and with a manual that indexes files by seconds.
+    //
+    // `hasTimeline()` is false when no map was captured (a byte tape, or a WAV decoded by
+    // an older path); the board then estimates time from baud instead. `secondsAt` past the
+    // decoded end (after a recording grew the tape) clamps to the last known time -- the
+    // rewritten region has no audio yet, and the counter says so by not advancing there.
+    bool   hasTimeline() const { return !offset_.empty() && rate_ != 0; }
+    double totalSeconds() const { return rate_ ? double(totalSamples_) / rate_ : 0.0; }
+    double secondsAt(uint64_t bytePos) const;
+    // The inverse, for WIND: the first byte at or after `seconds`. A time that lands in an
+    // inter-program gap resolves to the first byte of the NEXT program -- exactly the seek
+    // target. Clamps to [0, size()].
+    uint64_t byteAt(double seconds) const;
+
 private:
     std::unique_ptr<MediaFile> under_;
     std::vector<uint8_t>       bytes_;
     TapeFormat                 fmt_;
     uint32_t                   rate_ = 0;
+    std::vector<uint64_t>      offset_;        // byte -> source sample index (start bit)
+    uint64_t                   totalSamples_ = 0;
 
     bool     dirty_   = false;
     double   leader_  = 5.0;

@@ -80,10 +80,16 @@ public:
     bool connect(const std::string& unit, const std::string& endpoint, std::string& err) override;
     bool disconnect(const std::string& unit, std::string& err) override;
 
-    // REWIND. The one verb, and the reason Board::commands() exists at all.
+    // WIND (and REWIND, its wind-to-start alias). The reason Board::commands() exists.
     std::vector<CommandDef> commands() const override;
     bool runCommand(const std::string& name, const std::vector<std::string>& args,
                     std::ostream& out, std::string& err) override;
+
+    // A LIVE TAPE COUNTER while a tape loads. Non-empty only when a cassette is actually
+    // playing (0 < head < end) and the operator did not turn the counter off -- the run
+    // loop prints it and knows nothing about tapes (core/board.h). Empty at full speed in
+    // practice, because a full-rate load empties the tape inside one repaint.
+    std::string activityLabel() const override;
 
     // For the tests, so they can watch the head move without a filesystem.
     const TapeImage* tape() const { return tape_.get(); }
@@ -113,6 +119,18 @@ private:
     // Called wherever an OPERATOR action ends a recording -- UNMOUNT, REWIND, releasing
     // RECORD. See MediaFile::commit() for why this is not sync().
     void commitTape();
+
+    // Move the head to `pos` (clamped to the tape), sharing REWIND's and WIND's staging:
+    // commit any recording, seek, drop the byte the UART is still holding from where the
+    // head used to be, and reline. REWIND is stageAt(0).
+    void stageAt(uint64_t pos);
+
+    // Where the head is, in seconds into the recording, and the recording's length.
+    // Real audio time for a WAV (audio_->secondsAt); an estimate from the 300-baud strap
+    // for a byte tape, which carries no audio to measure.
+    double   tapeSeconds(uint64_t bytePos) const;
+    double   tapeTotalSeconds() const;
+    uint64_t secondsToByte(double secs) const;  // the inverse, for WIND to a time
 
     // THE BOARD OWNS THE TAPE; THE UART OWNS ONLY A STREAM ONTO IT (host/tape.h).
     // That split is what keeps REWIND out of the chip's reach: a UART that could
@@ -154,6 +172,11 @@ private:
     // whatever the crystal is set to. See host/tape.h; it is playback only -- recording
     // is the operator's finger on the button and takes as long as it takes.
     std::string rate_ = "full";
+
+    // Show the live counter on the console while a tape loads. Default ON; the operator
+    // turns it off at MOUNT (`counter=off`) or with SET on a serial-console machine where
+    // the guest owns stdout. On-demand SHOW works either way. See activityLabel().
+    bool liveCounter_ = true;
 
     std::vector<std::string> log_;
 

@@ -148,4 +148,21 @@ private:
     bool                      started_     = false;
 };
 
+// ---------------------------------------------------------------------------
+// The tape counter, as text. Shared so the 88-ACR and the Sol format a position
+// identically -- the boards supply the seconds (real audio time for a WAV, an estimate
+// from baud for a .TAP), and the percentage tracks that time so the clock and the
+// percent always tell the same story.
+// ---------------------------------------------------------------------------
+
+// "01:23", or "1:02:03" once past an hour. Negative or NaN reads as "00:00".
+std::string tapeTimeMMSS(double secs);
+
+// "01:23 / 04:56 (28%)". A zero total (a blank or unknowable tape) drops to "00:00 (0%)".
+std::string tapeCounterText(double curSecs, double totalSecs);
+
+// Parse a WIND target time: "MM:SS", "H:MM:SS", or a bare number of seconds ("83", "1.5").
+// False on anything malformed. START/END are the caller's business, not a time.
+bool parseTapeTime(const std::string& s, double& secs);
+
 } // namespace altair

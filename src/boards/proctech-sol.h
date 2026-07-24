@@ -109,12 +109,17 @@ public:
                std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;
 
-    // REWIND, for the same reason the 88-ACR has it: after a load the head is at the
-    // end of the program, and nothing in the guest can wind it back. The Sol needs
-    // the unit spelled out, because it has two decks and no sensible default.
+    // WIND (and REWIND, its wind-to-start alias), for the same reason the 88-ACR has
+    // them: after a load the head is at the end of the program, and nothing in the guest
+    // can wind it back. The Sol needs the deck spelled out -- two decks, no default.
     std::vector<CommandDef> commands() const override;
     bool runCommand(const std::string& name, const std::vector<std::string>& args,
                     std::ostream& out, std::string& err) override;
+
+    // A LIVE TAPE COUNTER while a tape loads -- for the deck whose motor is on, if its
+    // counter is on and it is actually playing (0 < head < end). "" otherwise. The run
+    // loop paints it and knows nothing about tapes (core/board.h).
+    std::string activityLabel() const override;
 
     // For the tests, so they can watch a head move without a filesystem. 1 or 2.
     const TapeImage* tape(int deck) const;
@@ -183,6 +188,11 @@ private:
         // "real" paces playback in wall time at the baud the guest has selected (0FAh D5:
         // 300 or 1200), the wait a real Sol made you serve. See host/tape.h.
         std::string rate = "full";
+
+        // Show a live counter on the console while THIS deck loads. Default ON; off at
+        // MOUNT (`counter=off`) or by SET. On-demand SHOW works either way. See
+        // activityLabel(), which only ever speaks for the deck whose motor is on.
+        bool liveCounter = true;
     };
 
     // WHAT THIS CARD'S CUTS MODEM CAN HEAR -- two formats, HONESTLY: the UART really
@@ -217,6 +227,18 @@ private:
     // and -- uniquely to this card -- the guest dropping the motor line, which the
     // 88-ACR has no way to do. See MediaFile::commit() for why this is not sync().
     void commitTape(Deck* d);
+
+    // Move a deck's head to `pos` (clamped), sharing REWIND's and WIND's staging: commit
+    // any recording, seek, drop the byte the CUTS UART is still holding, retape. REWIND
+    // is stageAt(d, 0).
+    void stageAt(Deck* d, uint64_t pos);
+
+    // Where a deck's head is in seconds into its recording, and the recording's length.
+    // Real audio time for a WAV; an estimate from the guest-selected baud for a byte
+    // tape. And the inverse, for WIND to a time.
+    double   deckSeconds(const Deck* d, uint64_t bytePos) const;
+    double   deckTotalSeconds(const Deck* d) const;
+    uint64_t deckByteAt(const Deck* d, double secs) const;
 
     // The baud strap that is not a strap: OUT 0FAh D5 picks 300 or 1200, at run time,
     // from the guest. See the .cpp -- it is the one place the Sol's cassette differs

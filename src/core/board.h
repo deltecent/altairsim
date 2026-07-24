@@ -555,6 +555,15 @@ public:
     // happens to have a UART.
     virtual uint64_t rxBytes() const { return 0; }
 
+    // A ONE-LINE PROGRESS LABEL FOR SOMETHING SLOW THE OPERATOR IS WATCHING, or "" for a
+    // card with nothing to report -- which is nearly all of them, on nearly every cycle.
+    // A tape deck loading in wall-clock time returns its counter here; the run loop paints
+    // it as a status line and knows NOTHING about tapes, exactly as rxBytes() lets it ask
+    // "is a byte arriving?" without a dynamic_cast for the one card with a UART. Pure and
+    // side-effect-free, like drainLog() is not (this does not clear anything): a status
+    // repaint must not perturb the machine it is describing.
+    virtual std::string activityLabel() const { return {}; }
+
     // The machine's clock, set when the card goes into the backplane (DESIGN.md
     // 7.5). A card with nothing time-dependent on it never looks at this, and
     // most don't. A UART absolutely does: TDRE is a deadline, not a flag.

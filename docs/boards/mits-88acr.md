@@ -86,7 +86,7 @@ What the ACR overrides is only what the modem and the cassette actually change:
 | **the unit** | `UnitKind::Tape` (MOUNT), not `UnitKind::Serial` (CONNECT). |
 | **`connect` is gone** | There is no connector. The UART's serial pins are soldered to the modem. `CONNECT` is refused *with the reason*. |
 | **the transform chain is gone** | Below. |
-| **`REWIND`** | The card brings its own verb (`Board::commands()`). |
+| **`WIND` / `REWIND`** | The card brings its own verbs (`Board::commands()`). |
 | **`mode`** | The buttons on the recorder. |
 
 ### No `upper`, no `crlf`, no `bsdel` — and that is not tidiness
@@ -123,21 +123,42 @@ in.
 `MOUNT` puts the cassette in **and presses PLAY**, because that is what you are always about to
 do. To record from the beginning, **REWIND first** — exactly as you would have.
 
-### `REWIND` — the one board-injected verb in the machine
+### The tape counter — `position` and the live readout
+
+A tape has a **position**, and the card reports it two ways. The read-only `position` unit
+property (and the `SHOW MOUNTS` / `SHOW <id>` lines) give it as **`mm:ss / total (percent)`**.
+For a `.WAV` the time is the recording's *own*, taken from the audio at decode: the demodulator
+already knows the sample offset of every byte (`DemodResult::byteSampleOffset`), and
+`AudioTapeMedia::secondsAt()` turns a head position into a real time — **leader and inter-record
+gaps included**, which a byte image cannot hold. For a `.TAP` there is no audio, so the time is
+the honest estimate `bytes × frame-bits ÷ baud` the board computes from the 300-baud strap.
+
+The **live counter** is `Board::activityLabel()`: non-empty only while a tape is actually
+playing through the middle of itself with the counter on, so the run loop can paint a
+`\r`-refreshed status line during a `rate = real` load without knowing a tape exists. The
+`counter = on | off` unit property (settable at `MOUNT` with `counter=off`, default on) is its
+switch; `position` answers regardless.
+
+### `WIND` / `REWIND` — the board-injected verbs
 
 A tape is the only medium with a position you cannot seek: you can step a disk's head to any
-track and its sector comes round in 5 ms whether you asked or not. So `REWIND` exists **only
-while an 88-ACR is in a slot**, which is the entire reason `Board::commands()` exists
-(DESIGN.md §5.4). Pull the card and it is an unknown command — correctly, because nothing in the
-machine can then rewind anything.
+track and its sector comes round in 5 ms whether you asked or not. So these exist **only while an
+88-ACR is in a slot**, which is the entire reason `Board::commands()` exists (DESIGN.md §5.4).
+Pull the card and they are unknown commands — correctly, because nothing in the machine can then
+wind anything.
 
-It spells as **`REW`**: the built-ins already own `R` (RUN), `RE` (REGS) and `RES` (RESET), and
-**the static menu always wins**. `REW` is simply the first prefix of REWIND that no built-in
-claims. No card can shorten or shadow a built-in abbreviation by being plugged in — and by the
-same rule, re-ranking the built-ins cannot silently move a card's verb either: REWIND still
-spells `REW` after RUN took `R` from RESET, because the letters it needed were never in play.
+`WIND <id>:tape <mm:ss | START | END>` moves the head to a **time**; `AudioTapeMedia::byteAt()`
+inverts the map for a `.WAV` (a time inside a gap lands on the first byte of the next program),
+and the byte estimate inverts for a `.TAP`. `REWIND` is `WIND … START` — kept as its own verb,
+so every old script and the acceptance tests still spell `REW`. Both share one `stageAt()`
+helper: commit any recording, seek, drop the byte the UART is still holding, reline.
 
-Rewinding also **discards the byte the UART is still holding** — see *Limitations*.
+`WI` and `REW` are the shortest spellings. The built-ins own `R` (RUN), `RE` (REGS) and `RES`
+(RESET), and **the static menu always wins** — `REW` is simply the first prefix of REWIND that
+no built-in claims, and `WI` the first of WIND. No card can shorten or shadow a built-in
+abbreviation by being plugged in.
+
+Both verbs also **discard the byte the UART is still holding** — see *Limitations*.
 
 ### Pacing: `rate = full | real`, the tape's own clock
 
