@@ -1,0 +1,78 @@
+# The Cromemco D+7A joystick diagnostic, ADCTEST, launched automatically under CP/M.
+#
+#     cd examples/dazzler && altairsim adctest.toml
+#
+# It boots CP/M and runs ADCTEST for you: the `startup` list queues the command as
+# type-ahead (TYPE) and then boots the machine (RUN FF00), so CP/M reads `C:ADCTEST` at
+# the A> prompt and launches it -- the same trick examples/sol/raiders.toml uses for SOLOS.
+#
+# ADCTEST turns the Dazzler on and loops reading the D+7A joysticks -- joystick 1's X/Y at
+# IN 19H/1AH, joystick 2's at 1BH/1CH, and the buttons at 18H -- and displays them. On an
+# SDL3 build a window opens; plug in a USB gamepad (joystick1 = "auto" below) and the values
+# move, or use the keyboard (arrow keys + Space/Z/X/C). With no controller the axes sit at
+# 00 (centered) and the buttons read all-1s (active-low, released). ATTN (Ctrl-E) breaks
+# back to the monitor.
+#
+# ADCTEST.COM lives on the C: disk (dazzler_stuff_altair.dsk) beside KSCOPE and DAZCHESS;
+# see cpm.toml for the plain CP/M console with the whole demo disk set. Paths are relative
+# to this file (core/paths.h).
+
+[machine]
+name    = "adctest"
+base    = "default"            # fp, 8080, 2SIO console at 10, 88-DCDD at 08 (4 drives), 56K, DBL PROM
+# Queue the command, THEN boot: type-ahead sits in the console until CP/M's CCP reads it at
+# the A> prompt. The leading CR is a lightning rod -- the BIOS re-inits the 2SIO on boot and
+# eats the first byte (same reason tools/install-hostbridge-utils.sh leads with one).
+startup = ["TYPE \"\\rC:ADCTEST\\r\"", "RUN FF00"]
+
+# The Dazzler window is the show -- bring it to the front (focus). A Dazzler is a DISPLAY,
+# not a keyboard, so `keyboard = "none"` keeps window keystrokes out of CP/M/the monitor
+# (they drive the joystick instead); Ctrl-E in the window still stops the guest.
+[display]
+focus    = true
+keyboard = "none"
+
+# Backspace: a modern terminal sends DEL (0x7F); CP/M wants BS (0x08). Fold it (filter.cpp).
+[console]
+bsdel = "bs"
+
+# THE CPU -- a Z80, replacing the base's 8080. ADCTEST (like most Dazzler programs) is Z80
+# code: its frame-sync uses Z80 JR instructions, which an 8080 reads as no-ops, so on an
+# 8080 it never draws its readout -- the Dazzler just shows uncleared RAM. CP/M runs fine on
+# the Z80. `type` on the base's id REPLACES that card. 4 MHz = Cromemco Z-1 speed.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE DISKS (all beside this file). A: boots CP/M; C: carries ADCTEST.COM (and KSCOPE,
+# DAZCHESS, ...); B: is the graphics-demo disk, along for the ride.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm22b23-56k.dsk"
+
+  [[board.drive]]
+  unit  = 1
+  mount = "dazzler_graphics_altair.dsk"
+
+  [[board.drive]]
+  unit  = 2
+  mount = "dazzler_stuff_altair.dsk"
+
+# THE DAZZLER -- ADCTEST turns it on and draws the joystick readout.
+[[board]]
+type = "dazzler"
+id   = "daz0"
+port = 0x0E
+
+# THE D+7A -- the joysticks ADCTEST reads. Joystick 1 follows the host's first USB gamepad,
+# or the keyboard if none.
+[[board]]
+type      = "d7a"
+id        = "d7a0"
+port      = 0x18
+joystick1 = "auto"
+joystick2 = "none"

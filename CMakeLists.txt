@@ -306,6 +306,11 @@ add_library(altair_core STATIC
   # Renders into the same host Display seam as the VDM-1; no bus-mastering. See
   # cromemco-dazzler.h.
   src/boards/cromemco-dazzler.cpp
+  # The Cromemco D+7A: analog + parallel I/O. A block of eight ports -- one parallel
+  # port and seven two's-complement A/D-in/D/A-out channels -- that reads one or two
+  # JS-1 joysticks from an injected host Joystick service (src/host/joystick.h), like
+  # the Dazzler reads a Display. See cromemco-d7a.h.
+  src/boards/cromemco-d7a.cpp
   # The Processor Technology Sol-PC's integrated I/O as one composite card (serial,
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/proctech-sol.cpp
@@ -364,6 +369,11 @@ if(ALTAIRSIM_ENABLE_SDL)
   find_package(SDL3 CONFIG QUIET)
   if(SDL3_FOUND)
     target_sources(altair_core PRIVATE src/host/display_sdl.cpp)
+    # The SDL3-backed game-controller service (host/joystick.h): a D+7A reads its JS-1
+    # sticks from this. Part of the SAME SDL3::SDL3 already linked -- gamepad and audio
+    # need no extra find_package. It self-manages the SDL_INIT_GAMEPAD subsystem, so it
+    # never contends with the display's video subsystem. See host/joystick_sdl.h.
+    target_sources(altair_core PRIVATE src/host/joystick_sdl.cpp)
     target_link_libraries(altair_core PUBLIC SDL3::SDL3)
     target_compile_definitions(altair_core PUBLIC ALTAIRSIM_ENABLE_SDL)
 
@@ -468,6 +478,7 @@ add_executable(altair_tests
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
   tests/test_dazzler.cpp
+  tests/test_d7a.cpp
   tests/test_sol.cpp
   tests/test_tapemount.cpp
   tests/test_lines.cpp

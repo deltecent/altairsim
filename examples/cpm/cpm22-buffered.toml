@@ -51,6 +51,13 @@ base = "default"
 # belongs to CP/M (it is warm boot) and CP/M is entitled to read it.
 startup = ["RUN FF00"]
 
+# THE BACKSPACE KEY. A modern terminal's Backspace sends DEL (0x7F), and CP/M's line editor
+# wants BS (0x08) -- so without this, Backspace at the A> prompt does not erase. `bsdel = bs`
+# folds DEL -> BS on the way in (src/host/filter.cpp). It is a property of the TERMINAL, so it
+# lives on the [console], not on a line (which stays 8-bit clean, DESIGN.md 7.2).
+[console]
+bsdel = "bs"
+
 # THE DISK. `id` with NO `type` means "the card already in this machine" -- the base's
 # 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a second
 # controller.

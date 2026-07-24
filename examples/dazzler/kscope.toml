@@ -22,7 +22,9 @@ startup = ["LOAD KSCOPE.HEX", "RUN 0"]   # comes up drawing; ATTN (Ctrl-E) stops
 # when it opens (like a Sol-20), rather than letting it come up behind the terminal. ATTN
 # (Ctrl-E) still breaks back to the monitor, and the terminal takes the keyboard back then.
 [display]
-focus = true
+focus    = true
+keyboard = "none"   # display-only: the Dazzler has no keyboard, so window keys don't reach
+                    # the monitor; Ctrl-E in the window still stops KSCOPE and returns you here
 
 # The processor at 4 MHz (the Cromemco Z-1 speed) so the animation runs at an authentic
 # pace instead of flat out. SET cpu0 clock_hz=0 for maximum speed.

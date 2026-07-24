@@ -1,0 +1,85 @@
+# A Cromemco Dazzler game console under CP/M: the 8" system disk plus two disks of
+# period Dazzler demos and games, and the D+7A joysticks.
+#
+#     cd examples/dazzler && altairsim cpm.toml
+#     -> 56K CP/M 2.2b v2.3
+#        A>B:            <- the graphics demos
+#        B>GDEMO         <- or DAZZPLOT, GRAPHX, BARPLOT
+#        A>C:            <- more programs
+#        C>DAZCHESS      <- Dazzler chess; C>KSCOPE is the kaleidoscope
+#
+# On an SDL3 build the Dazzler draws in a window; the D+7A reads a USB gamepad (or the
+# keyboard) for any program that wants a joystick. In a headless build it all runs and
+# draws nothing. ATTN (Ctrl-E) breaks back to the monitor.
+#
+# THE DISKS (all beside this file; paths are relative to it, core/paths.h):
+#   A: cpm22b23-56k.dsk           -- the bootable 56K CP/M 2.2b system disk
+#   B: dazzler_graphics_altair.dsk-- GDEMO, DAZZPLOT, GRAPHX, BARPLOT, BASIC, + data/source
+#   C: dazzler_stuff_altair.dsk   -- DAZCHESS, KSCOPE, MICRO80
+#
+# For the bare-metal (no-CP/M) kaleidoscope, see kscope.toml beside this file.
+
+[machine]
+name    = "dazzler-cpm"
+base    = "default"            # fp, 8080, 2SIO console at 10, 88-DCDD at 08 (4 drives), 56K, DBL PROM
+startup = ["RUN FF00"]         # EXAMINE FF00 / RUN -- DBL boots CP/M off drive 0
+
+# The Dazzler window is the show, so bring it to the front (focus). But a Dazzler is a
+# DISPLAY, not a keyboard -- `keyboard = "none"` keeps window keystrokes out of CP/M (they
+# drive the joystick instead); Ctrl-E in the window still stops the guest and returns you
+# to the monitor. Type at CP/M in the terminal, or play with a USB gamepad / the keyboard.
+[display]
+focus    = true
+keyboard = "none"
+
+# THE BACKSPACE KEY. A modern terminal's Backspace sends DEL (0x7F), and CP/M's line editor
+# wants BS (0x08) -- so without this, Backspace at the A> prompt does not erase. `bsdel = bs`
+# folds DEL -> BS on the way in (src/host/filter.cpp). It is a property of the TERMINAL, so it
+# lives on the [console], not on a line (which stays 8-bit clean).
+[console]
+bsdel = "bs"
+
+# THE CPU -- a Z80, replacing the base's 8080. Most Dazzler programs (DAZCHESS, GDEMO,
+# and the graphics demos) are Z80 code and use Z80-only instructions (JR, ...) -- on an
+# 8080 those are no-ops and the program runs off into garbage. CP/M itself is 8080 code and
+# runs fine on the Z80. `type` on the base's id REPLACES that card. 4 MHz = Cromemco Z-1 speed.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE DISKS. `id` with no `type` puts media in the base's existing 88-DCDD drives rather
+# than fitting a second controller.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm22b23-56k.dsk"
+
+  [[board.drive]]
+  unit  = 1
+  mount = "dazzler_graphics_altair.dsk"
+
+  [[board.drive]]
+  unit  = 2
+  mount = "dazzler_stuff_altair.dsk"
+
+  # drive 3 (D:) is left open -- e.g. MOUNT dsk0:drive3 "scratch.dsk", or FORMAT one from
+  # inside CP/M. (dazzlergraphics.dsk in this directory is a 0-byte placeholder.)
+
+# THE DAZZLER -- the picture. Control/status at 0EH, format at 0FH (the defaults). It
+# decodes no memory; its framebuffer is ordinary RAM.
+[[board]]
+type = "dazzler"
+id   = "daz0"
+port = 0x0E
+
+# THE D+7A -- the joysticks. Eight ports from 0x18: buttons at 0x18, analog channels at
+# 0x19..0x1F. Joystick 1 follows the host's first USB gamepad, or the keyboard if none.
+[[board]]
+type      = "d7a"
+id        = "d7a0"
+port      = 0x18
+joystick1 = "auto"
+joystick2 = "none"

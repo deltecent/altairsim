@@ -4,13 +4,16 @@
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
 #include "boards/mits-turnkey.h"
+#include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
 #include "host/display_sdl.h"
+#include "host/joystick_sdl.h"
 #else
 #include "host/display_null.h"
+#include "host/joystick_null.h"
 #endif
 #include "cli/monitor.h"
 #include "config/toml.h"
@@ -38,6 +41,20 @@ using namespace altair;
 static SdlDisplay g_display;
 #else
 static NullDisplay g_display;
+#endif
+
+// The host game-controller service for a D+7A's JS-1 joysticks (host/joystick.h). A real
+// USB gamepad (or the keyboard) where SDL3 was found; a no-op headless otherwise.
+//
+// DECLARED AFTER g_display ON PURPOSE. These two SDL-backed statics are destroyed in
+// reverse construction order, so this one tears down FIRST -- it quits only the
+// SDL_INIT_GAMEPAD subsystem while the display's video subsystem is still up, and the
+// display's SDL_Quit() then cleans up whatever remains. Neither service disturbs the
+// other's SDL subsystem (host/joystick_sdl.h).
+#ifdef ALTAIRSIM_ENABLE_SDL
+static SdlJoystick g_joystick;
+#else
+static NullJoystick g_joystick;
 #endif
 
 // Version AND the commit it was built from (core/version.h). Most binaries in
@@ -206,6 +223,12 @@ int main(int argc, char** argv) {
     // machine, and created once for the whole session.
     VdmBoard::setDisplay(&g_display);
     DazzlerBoard::setDisplay(&g_display);
+
+    // The same seam for game controllers (host/joystick.h): a D+7A reads its one or two
+    // JS-1 joysticks from here and never learns it is SDL. A real gamepad (or the
+    // keyboard) in the shipping binary; a NullJoystick headless, so the card runs
+    // identically with every stick centered and no buttons.
+    D7aBoard::setJoystick(&g_joystick);
 
     // 60 frames a second, and no more. A real VDM-1 scanned at the monitor's rate no
     // matter what the 8080 was doing, and nothing on the S-100 side can read a pixel

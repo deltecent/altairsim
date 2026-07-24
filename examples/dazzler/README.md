@@ -53,6 +53,47 @@ RAM (here at `0200`), not on the card. Two `OUT` ports drive it:
 `IN 0EH` reads two status bits (odd/even scan line, end-of-frame) a program can poll to pace
 its drawing to the frame. See `docs/boards/cromemco-dazzler.md` for the full reference.
 
+## A disk of Dazzler demos, under CP/M — and the joysticks
+
+`kscope.toml` is the bare machine — one program, no operating system. `cpm.toml` is the
+game console: it boots **56K CP/M 2.2b** off an 8″ floppy with two more disks of period
+Dazzler software, plus a **Cromemco D+7A** so a joystick works.
+
+```
+cd examples/dazzler
+altairsim cpm.toml
+      -> 56K CP/M 2.2b v2.3
+         A>
+```
+
+Three drives are mounted:
+
+- **A:** `cpm22b23-56k.dsk` — the bootable CP/M system disk.
+- **B:** `dazzler_graphics_altair.dsk` — `GDEMO`, `DAZZPLOT`, `GRAPHX`, `BARPLOT`, `BASIC`,
+  and their data/source (`CUBE.DAT`, `CROMEMCO.DAT`, …).
+- **C:** `dazzler_stuff_altair.dsk` — `DAZCHESS` (Dazzler chess), `KSCOPE` (the CP/M build of
+  the kaleidoscope), `MICRO80`, and **`ADCTEST`** (the D+7A joystick diagnostic).
+
+Change drive and run one — `B:` then `GDEMO`, or `C:` then `DAZCHESS`. On an SDL3 build the
+Dazzler window opens the moment a program turns the card on; `[display] focus = true` brings it
+to the front. It is a **display, not a keyboard** (`[display] keyboard = "none"`): what you type
+in the window drives the joystick, not CP/M, and only **`Ctrl-E`** in it stops the guest and hands
+you back the monitor — type CP/M commands in the terminal.
+
+These are **Z80** programs (`DAZCHESS`, the graphics demos, and `ADCTEST` all use Z80
+instructions), so the machine runs a **Z80** CPU — an 8080 reads those opcodes as no-ops and the
+programs run off into garbage.
+
+**The joysticks.** The `d7a` board reads one or two Cromemco JS-1 joysticks off the host:
+`joystick1 = "auto"` follows the first USB gamepad you plug in, or the keyboard (arrow keys +
+Space/Z/X/C) if there is none. Any program that reads the D+7A ports — the buttons at `IN 18H`,
+the axes at `IN 19H`/`1AH` (and `1BH`/`1CH` for a second stick) — sees it. **`adctest.toml`** boots
+CP/M and auto-runs `ADCTEST`, which displays each stick's X/Y and buttons on the Dazzler. See
+`docs/boards/cromemco-d7a.md` and `reference/JS-1.md`.
+
+The two demo disks are a collection of period Cromemco Dazzler software (graphics demos and
+games); `ADCTEST.COM` was copied onto the C: disk with the hostbridge file-transfer utility.
+
 ## Try it yourself
 
 - **Watch it draw into memory.** Break out (`Ctrl-E`) and `DUMP 0200` — the framebuffer bytes
