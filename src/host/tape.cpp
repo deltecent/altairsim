@@ -21,14 +21,14 @@ TapeStream::TapeStream(TapeImage& t, Mode m, uint64_t nsPerByte, std::function<u
     : tape_(t), mode_(m), nsPerByte_(nsPerByte), hostNs_(hostNs ? std::move(hostNs) : steadyNs) {}
 
 bool TapeStream::readable() const {
-    if (mode_ != Mode::Play || tape_.atEnd()) return false;
+    if (mode_ != Mode::Play || tape_.atEnd() || tape_.atStop()) return false;
     if (nsPerByte_ == 0) return true;                 // full speed: always ready
     if (!started_) return true;                       // the first byte does not wait
     return hostNs_() >= nextReadyNs_;                 // the rest arrive at the baud
 }
 
 bool TapeImage::read(uint8_t& b) {
-    if (atEnd()) return false;
+    if (atEnd() || atStop()) return false;  // the physical end, or the operator's stop mark
     if (!media_->readAt(pos_, &b, 1)) return false;
     ++pos_;
     return true;

@@ -267,6 +267,45 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
     };
     p.push_back(std::move(cnt));
 
+    // THE AUTO-STOP MARK -- a time at which the tape stops playing, so a multi-program tape
+    // can be cued to halt at a boundary rather than running on into the next program. `off`
+    // (or `end`) clears it. It is the operator's STOP button, and it gates playback only:
+    // a recording writes straight through it.
+    Property stp;
+    stp.name = "stop";
+    stp.help = "Auto-stop playback at this time: off | end | <mm:ss>";
+    stp.kind = Kind::Str;
+    stp.get  = [this] {
+        if (!tape_ || tape_->stopAt() == TapeImage::kNoStop || tape_->stopAt() >= tape_->size())
+            return Value::ofStr(std::string("off"));
+        return Value::ofStr(tapeTimeMMSS(tapeSeconds(tape_->stopAt())));
+    };
+    stp.set = [this](const Value& v, std::string& err) {
+        const std::string lo    = lowerAscii(v.s());
+        const bool        clear = (lo == "off" || lo == "none" || lo == "end");
+        if (!tape_) {
+            // No cassette: clearing is a harmless no-op -- and `stop=off` is exactly what
+            // an empty recorder round-trips through CONFIG SAVE. A real time has no tape to
+            // measure against, so it says so rather than storing a number it cannot honor.
+            if (clear) return true;
+            err = "there is no cassette in the recorder. MOUNT one first.";
+            return false;
+        }
+        if (clear) {
+            tape_->setStop(TapeImage::kNoStop);
+        } else {
+            double secs;
+            if (!parseTapeTime(v.s(), secs)) {
+                err = "'" + v.s() + "' is not a stop -- use a time (mm:ss or seconds), or off";
+                return false;
+            }
+            tape_->setStop(secondsToByte(secs));
+        }
+        reline();  // re-arm: a cleared/raised stop resumes now, a lowered one parks now
+        return true;
+    };
+    p.push_back(std::move(stp));
+
     return p;
 }
 
@@ -284,14 +323,19 @@ std::vector<MapEntry> AcrBoard::ioMap() const {
 std::vector<UnitDef> AcrBoard::units() const {
     UnitDef u{"tape", UnitKind::Tape, "(empty)"};
     if (tape_) {
-        char buf[256];
+        char buf[288];
         // The write-protect tab is NOT spelt into this string any more -- it is a field
         // on UnitDef, so that SHOW and the mount table read the same answer from the same
         // place and a disk controller cannot forget to mention it (board.h). The counter
-        // leads; the byte count stays (the codec header's promise that it is literally true).
-        std::snprintf(buf, sizeof buf, "%s  %s  %llu/%llu bytes%s", path_.c_str(),
+        // leads; the byte count stays (the codec header's promise that it is literally true);
+        // an armed auto-stop says where the tape will halt.
+        std::string stopNote;
+        if (tape_->stopAt() != TapeImage::kNoStop && tape_->stopAt() < tape_->size())
+            stopNote = "  stop @ " + tapeTimeMMSS(tapeSeconds(tape_->stopAt()));
+        std::snprintf(buf, sizeof buf, "%s  %s  %llu/%llu bytes%s%s", path_.c_str(),
                       tapeCounterText(tapeSeconds(tape_->pos()), tapeTotalSeconds()).c_str(),
                       (unsigned long long)tape_->pos(), (unsigned long long)tape_->size(),
+                      stopNote.c_str(),
                       tape_->atEnd() ? "  [END OF TAPE]" : "");
         u.state          = buf;
         u.readOnly       = tape_->readOnly();
@@ -314,15 +358,20 @@ void AcrBoard::serialize(StateWriter& w) const {
     SioBoard::serialize(w);
     w.u8(mode_ == TapeStream::Mode::Record ? 1 : 0);
     w.u64(tape_ ? tape_->pos() : 0);
+    w.u64(tape_ ? tape_->stopAt() : TapeImage::kNoStop);  // the auto-stop mark travels too
 }
 
 void AcrBoard::deserialize(StateReader& r) {
     SioBoard::deserialize(r);
     mode_ = r.u8() ? TapeStream::Mode::Record : TapeStream::Mode::Play;
-    uint64_t pos = r.u64();
-    if (tape_) tape_->setPos(pos);
+    uint64_t pos    = r.u64();
+    uint64_t stopAt = r.u64();
+    if (tape_) {
+        tape_->setPos(pos);
+        tape_->setStop(stopAt);
+    }
     reline();  // rebuild the line onto the tape in the restored mode, from the head
-               // position just set. reline() re-arms the UART too.
+               // position and stop mark just set. reline() re-arms the UART too.
 }
 
 void AcrBoard::reline() {
@@ -445,7 +494,8 @@ uint64_t AcrBoard::secondsToByte(double secs) const {
 std::string AcrBoard::activityLabel() const {
     if (!tape_ || !liveCounter_ || mode_ != TapeStream::Mode::Play) return {};
     const uint64_t p = tape_->pos(), sz = tape_->size();
-    if (p == 0 || p >= sz) return {};  // nothing to watch before it starts or once it ends
+    // Nothing to watch before it starts, once it ends, or while it is parked at a stop mark.
+    if (p == 0 || p >= sz || tape_->atStop()) return {};
     return "tape: " + tapeCounterText(tapeSeconds(p), tapeTotalSeconds());
 }
 

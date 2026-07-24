@@ -451,6 +451,70 @@ void test_88acr() {
     }
 
     // -----------------------------------------------------------------------
+    // 6d. The auto-stop mark -- playback halts at a time, and moving it resumes.
+    //
+    // The operator's STOP button at a counter mark: the tape stops handing bytes back at
+    // the mark (a quiet line, like the physical end), so a multi-program tape can be cued
+    // to halt at a boundary. It gates PLAYBACK only -- a recording writes through it. At
+    // 300 baud with 10-bit frames a byte is a thirtieth of a second, so 0:05 is 150 bytes.
+    // -----------------------------------------------------------------------
+    {
+        std::string big;
+        for (int i = 0; i < 300; ++i) big += char(i & 0xFF);  // 300 bytes = 10 s
+        withTape(big);
+        Rig         r;
+        std::string err;
+        r.mount("t.tap");
+
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "0:05", err), "SET stop=0:05");
+        CHECK(r.prop("stop") == "00:05", ("the stop reads back as a time: " + r.prop("stop")).c_str());
+
+        // Read until the line goes quiet -- it must halt AT the mark, not at the end.
+        uint8_t b;
+        int     got = 0;
+        while (r.getByte(b)) ++got;
+        CHECK(r.acr->tape()->pos() == 150,
+              ("the head halted at the 150-byte mark: " + std::to_string(r.acr->tape()->pos())).c_str());
+        CHECK(r.acr->tape()->atStop() && !r.acr->tape()->atEnd(),
+              "parked at the stop, which is NOT the end of the tape");
+        CHECK(got == 150, ("exactly the bytes before the mark came off: " + std::to_string(got)).c_str());
+
+        // Move the stop on: more bytes come, up to the new mark.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "0:08", err), "SET stop=0:08 -- 240 bytes");
+        while (r.getByte(b)) ++got;
+        CHECK(r.acr->tape()->pos() == 240,
+              ("now halted at 240: " + std::to_string(r.acr->tape()->pos())).c_str());
+
+        // Clear it and the rest of the tape runs out at the physical end.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "off", err), "SET stop=off");
+        CHECK(r.prop("stop") == "off", "the stop reads back off");
+        while (r.getByte(b)) ++got;
+        CHECK(r.acr->tape()->atEnd(), "cleared: the tape now runs to its physical end");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6e. A RECORDING WRITES STRAIGHT THROUGH THE STOP -- it gates playback only.
+    // -----------------------------------------------------------------------
+    {
+        withTape("OLDTAPE!");
+        Rig         r;
+        std::string err;
+        r.mount("t.tap");
+
+        CHECK(r.press("record"), "RECORD goes down");
+        std::string said;
+        r.rewind(said);
+        // A stop at the very start would freeze ALL playback -- but this is a recording.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "0:00", err), "arm a stop at byte 0");
+        out(*r.acr, 0x07, 'N');
+        r.m.clock.advance(r.m.clock.tStatesPer(30));
+        out(*r.acr, 0x07, 'E');
+        r.m.clock.advance(r.m.clock.tStatesPer(30));
+        CHECK(tapeBytes() == "NEDTAPE!",
+              "the write landed at byte zero -- the stop mark does not gate recording");
+    }
+
+    // -----------------------------------------------------------------------
     // 7. THERE IS NO CONNECTOR ON THIS CARD, AND NO MOTOR EITHER.
     //
     // The UART's serial pins are soldered to the modem board ("XS" on the Modem to

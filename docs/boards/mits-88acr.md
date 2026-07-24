@@ -139,6 +139,18 @@ playing through the middle of itself with the counter on, so the run loop can pa
 `counter = on | off` unit property (settable at `MOUNT` with `counter=off`, default on) is its
 switch; `position` answers regardless.
 
+### The `stop` mark — auto-stop at a time
+
+`TapeImage::stopAt_` is a **movable second end of tape** (`kNoStop` = the physical end). Once the
+head reaches it, `TapeImage::read()` and `TapeStream::readable()` fall quiet exactly as they do at
+the real end — so a multi-program tape can be cued to halt at a boundary. It gates **reads only**;
+`write()` ignores it, which is "playback only" by construction. The `stop = off | end | <mm:ss>`
+unit property (settable at `MOUNT` and with `SET`) parses a time through `secondsToByte()` — the
+same map `WIND` uses, so a WAV stops at its recording time — and re-arms the line so a moved or
+cleared mark takes effect at once. It is the operator's STOP button: the guest sees only a quiet
+line, never a chip register, and `stopAt_` travels in a snapshot beside the head position (state
+format v2).
+
 ### `WIND` / `REWIND` — the board-injected verbs
 
 A tape is the only medium with a position you cannot seek: you can step a disk's head to any

@@ -2780,7 +2780,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- MOUNT ----------------
     if (cmd == "MOUNT") {
-        if (!need(3, "MOUNT <id>:<unit> <file> [WP] [counter=on|off]")) return true;
+        if (!need(3, "MOUNT <id>:<unit> <file> [WP] [key=value ...]")) return true;
         Board* b;
         UnitDef u;
         if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;
@@ -2798,21 +2798,27 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         //
         // Anything else in the slot IS a typo, and a typo that we accepted would mount
         // the disk READ/WRITE while the operator believed they had protected it. Refuse.
-        bool        readOnly   = false;
-        std::string counterOpt;  // "", "on", or "off" -- the live tape counter (tape units)
+        bool                                             readOnly = false;
+        std::vector<std::pair<std::string, std::string>> opts;  // key=value, applied post-mount
         for (size_t i = 3; i < a.size(); ++i) {
             if (is(a[i], "WP") || is(a[i], "RO")) {
                 readOnly = true;
-            } else if (is(a[i], "COUNTER=OFF")) {
-                counterOpt = "off";
-            } else if (is(a[i], "COUNTER=ON")) {
-                counterOpt = "on";
-            } else {
-                out << "MOUNT: '" << a[i] << "': options are WP (RO means the same) and "
-                    << "counter=on|off. usage: MOUNT <id>:<unit> <file> [WP] [counter=on|off]\n";
-                failed_ = true;
-                return true;
+                continue;
             }
+            // ANY key=value is a unit property set, applied once the tape is in (below), so
+            // `counter=off`/`stop=2:05` need no per-key code here and a new unit property
+            // works at MOUNT the day it exists. WP/RO stay bare flags -- the read-only fence
+            // is the board's own argument to mount(), not a property.
+            size_t eq = a[i].find('=');
+            if (eq != std::string::npos && eq > 0) {
+                opts.emplace_back(a[i].substr(0, eq), a[i].substr(eq + 1));
+                continue;
+            }
+            out << "MOUNT: '" << a[i] << "': options are WP (RO means the same) or key=value "
+                << "(e.g. counter=off, stop=2:05). usage: MOUNT <id>:<unit> <file> [WP] "
+                << "[key=value ...]\n";
+            failed_ = true;
+            return true;
         }
 
         std::string err;
@@ -2820,12 +2826,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
-            // The live-counter option is applied as the unit's `counter` property once the
-            // tape is in -- so `counter=off` at MOUNT and SET later are the one mechanism.
+            // The trailing key=value options are applied as unit properties now the tape is
+            // in -- so `counter=off`/`stop=2:05` at MOUNT and SET later are the one mechanism.
             // A unit with no such property (a disk, a ROM) says so rather than ignoring it.
-            if (!counterOpt.empty()) {
+            for (const auto& kv : opts) {
                 std::string perr;
-                if (!setUnitProperty(*b, u.name, "counter", counterOpt, perr)) {
+                if (!setUnitProperty(*b, u.name, kv.first, kv.second, perr)) {
                     out << b->id << ":" << u.name << ": " << perr << "\n";
                     failed_ = true;
                 }

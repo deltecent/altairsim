@@ -172,7 +172,9 @@ void Machine::power() {
 // ---------------------------------------------------------------------------
 namespace {
 constexpr char     kMagic[8]     = {'A', 'L', 'T', 'R', 'S', 'N', 'P', '1'};
-constexpr uint32_t kFormatVersion = 1;
+// 2: the ACR/Sol tape decks gained an auto-stop mark (`stopAt_`) in their state. A v1
+// snapshot lacks it and is rejected with the format-mismatch message rather than misread.
+constexpr uint32_t kFormatVersion = 2;
 }  // namespace
 
 bool Machine::snapshot(const std::string& path, std::string& err) const {

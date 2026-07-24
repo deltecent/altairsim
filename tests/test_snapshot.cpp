@@ -1,14 +1,19 @@
 #include "test.h"
 
+#include "boards/mits-88acr.h"
 #include "boards/mits-frontpanel.h"
 #include "boards/s100-memory.h"
 #include "core/machine.h"
 #include "cpu/cpu.h"
+#include "host/media.h"
+#include "host/tape.h"
 
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -91,6 +96,46 @@ void test_snapshot() {
         (void)mem;
 
         std::filesystem::remove(path);
+    }
+
+    SECTION("snapshot: a tape's head position and auto-stop mark travel");
+    {
+        // A cassette's bytes are host-backed and do not travel; its head position and its
+        // auto-stop mark are the runtime state that must (DESIGN.md 13). This is what the
+        // v2 format added, and the reason the format version was bumped.
+        setMediaResolver([](const std::string& p, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(p, std::vector<uint8_t>(2000, 0x5A), ro);
+        });
+        Machine     m;
+        std::string err;
+        m.add("8080", "cpu0", err);
+        addRam(m, "mem0", 0x0000, 0x10000);
+        auto* acr = dynamic_cast<AcrBoard*>(m.add("acr", "acr0", err));
+        m.power();
+        CHECK(acr->mount("tape", "t.tap", false, err), "a tape goes in");
+
+        // Arm a stop and move the head, then remember where both are.
+        CHECK(setUnitProperty(*acr, "tape", "stop", "0:20", err), "arm a stop");
+        std::ostringstream o;
+        CHECK(acr->runCommand("WIND", {"WI", "acr0:tape", "0:10"}, o, err), "wind the head in");
+        const uint64_t p0 = acr->tape()->pos();
+        const uint64_t s0 = acr->tape()->stopAt();
+        CHECK(p0 > 0 && s0 != TapeImage::kNoStop, "the head moved and the stop is armed");
+
+        std::string path = tmpSnap("altairsim-snap-tape.snap");
+        CHECK(m.snapshot(path, err), "snapshot writes");
+
+        // Scribble over both -- wind to the end and clear the stop.
+        CHECK(acr->runCommand("WIND", {"WI", "acr0:tape", "END"}, o, err), "wind to the end");
+        CHECK(setUnitProperty(*acr, "tape", "stop", "off", err), "clear the stop");
+        CHECK(acr->tape()->pos() != p0 || acr->tape()->stopAt() != s0, "scribbled");
+
+        CHECK(m.restore(path, err), "restore reads");
+        CHECK(acr->tape()->pos() == p0, "the head position came back");
+        CHECK(acr->tape()->stopAt() == s0, "the auto-stop mark came back");
+
+        std::filesystem::remove(path);
+        setMediaResolver({});  // do not leak the resolver into the next section
     }
 
     SECTION("snapshot: enabled_ travels (a board that switched itself off)");

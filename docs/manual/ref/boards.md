@@ -254,6 +254,7 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
+| `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
 
 ## `c700`
@@ -406,6 +407,7 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
+| `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
 ### Unit `tape2` — `[board.unit.tape2]`
 
@@ -420,6 +422,7 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
+| `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
 
 ## `fp`

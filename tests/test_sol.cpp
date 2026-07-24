@@ -465,6 +465,48 @@ void test_sol() {
         CHECK(posText("tape1") != "<none>", "...and SHOW's position still reports");
     }
 
+    SECTION("Sol cassette -- the auto-stop mark halts a deck's playback, per deck");
+    {
+        std::string big(3000, 'x');
+        withTape(big);
+        Rig         g;
+        std::string err;
+        CHECK(g.sol->mount("tape1", "a.tap", false, err), "a tape in deck 1");
+
+        // Arm a stop on deck 1; it reads back as a time and lands inside the tape.
+        CHECK(setUnitProperty(*g.sol, "tape1", "stop", "0:01", err), "SET stop=0:01 on deck 1");
+        const uint64_t mark = g.sol->tape(1)->stopAt();
+        CHECK(mark > 0 && mark < 3000,
+              ("the stop is a byte inside the tape: " + std::to_string(mark)).c_str());
+
+        // The stop is per deck -- the empty deck 2's is its own, and off.
+        auto stopOf = [&](const char* unit) {
+            for (Property& p : g.sol->unitProperties(unit))
+                if (p.name == "stop") return p.get().s();
+            return std::string("<none>");
+        };
+        CHECK(stopOf("tape2") == "off", "deck 2 has its own stop, and it is off");
+
+        // Spin deck 1 and read until the line falls quiet; it halts AT the mark.
+        g.out(STAPT, MOTOR1);
+        g.tapeTime();  // let the UART pull the first byte
+        int guard = 0;
+        while ((g.in(STAPT) & TDR) && guard < 5000) {
+            (void)g.in(TDATA);
+            g.tapeTime();
+            ++guard;
+        }
+        CHECK(g.sol->tape(1)->pos() == mark,
+              ("deck 1 halted at its stop: " + std::to_string(g.sol->tape(1)->pos())).c_str());
+        CHECK(g.sol->tape(1)->atStop() && !g.sol->tape(1)->atEnd(),
+              "parked at the stop, not the end of the tape");
+
+        // Clear it and the line is live again.
+        CHECK(setUnitProperty(*g.sol, "tape1", "stop", "off", err), "SET stop=off");
+        g.tapeTime();
+        CHECK((g.in(STAPT) & TDR) != 0, "cleared: a byte is waiting again");
+    }
+
     SECTION("Sol cassette -- the default is FULL SPEED: the guest does not wait for the baud");
     {
         withTape("AB");

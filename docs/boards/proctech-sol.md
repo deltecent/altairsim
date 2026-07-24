@@ -72,6 +72,12 @@ as there are two. `activityLabel()` paints a live counter on the console during 
 real` load, but only for the deck whose motor is on; `counter = on | off` (default on,
 settable at `MOUNT` with `counter=off`) is its switch.
 
+**The `stop` mark.** Each deck also has a `stop = off | end | <mm:ss>` (settable at `MOUNT`
+and with `SET`): the head halts there and the deck's line falls quiet, so a multi-program
+tape can be cued to stop at a boundary — set a new mark and go on. It gates playback only
+(a recording writes through it), it is per deck, and `stopAt_` travels in a snapshot
+alongside the head position.
+
 `SET sol0:tape1 mode=record` is the button on the front of the recorder, exactly as on
 the [88-ACR](mits-88acr.md): a tape that is playing cannot be written over, and a deck
 that is recording does not hand back what used to be on it.

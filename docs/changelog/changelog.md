@@ -25,6 +25,12 @@ script still spells `REW`. And when a tape plays in real time (`rate = real`), a
 ticks up on the console while it loads; it is on by default and turns off with `counter=off` at
 `MOUNT` or `SET` for a machine whose guest writes to the same terminal.
 
+A **`stop` mark** completes the pair: `MOUNT … stop=2:05` (or `SET … stop=2:05`) makes the tape
+go quiet at a time — your finger on the recorder's STOP button — so a multi-program load halts at
+a boundary instead of running into the next program; move the mark forward, or `stop=off`, to
+carry on. It halts playback only (a recording writes through it) and travels in a snapshot with
+the head position.
+
 ### Octal, the MITS way
 
 The monitor can now read and print the **wire class** — addresses, ports, data bytes — in

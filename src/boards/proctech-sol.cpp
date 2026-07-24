@@ -236,6 +236,7 @@ void SolBoard::serialize(StateWriter& w) const {
         w.u8(d->mode == TapeStream::Mode::Record ? 1 : 0);
         w.boolean(d->motor);
         w.u64(d->tape ? d->tape->pos() : 0);
+        w.u64(d->tape ? d->tape->stopAt() : TapeImage::kNoStop);  // the auto-stop mark travels
     }
     w.u8(kbData_);
     w.boolean(kbHave_);
@@ -252,8 +253,12 @@ void SolBoard::deserialize(StateReader& r) {
     for (Deck* d : {&deck1_, &deck2_}) {
         d->mode = r.u8() ? TapeStream::Mode::Record : TapeStream::Mode::Play;
         d->motor = r.boolean();
-        uint64_t pos = r.u64();
-        if (d->tape) d->tape->setPos(pos);
+        uint64_t pos    = r.u64();
+        uint64_t stopAt = r.u64();
+        if (d->tape) {
+            d->tape->setPos(pos);
+            d->tape->setStop(stopAt);
+        }
     }
     kbData_ = r.u8();
     kbHave_ = r.boolean();
@@ -433,7 +438,7 @@ std::string SolBoard::activityLabel() const {
     else if (deck2_.motor && deck2_.tape) d = &deck2_;
     if (!d || !d->liveCounter || d->mode != TapeStream::Mode::Play) return {};
     const uint64_t p = d->tape->pos(), sz = d->tape->size();
-    if (p == 0 || p >= sz) return {};
+    if (p == 0 || p >= sz || d->tape->atStop()) return {};
     const int which = (d == &deck1_) ? 1 : 2;
     return "tape" + std::to_string(which) + ": " +
            tapeCounterText(deckSeconds(d, p), deckTotalSeconds(d));
@@ -645,6 +650,44 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
         };
         p.push_back(std::move(cnt));
 
+        // THE AUTO-STOP MARK for this deck -- a time at which playback halts (the operator's
+        // STOP button), so a multi-program tape can be cued. `off`/`end` clears it. Playback
+        // only: a recording writes straight through it.
+        Property stp;
+        stp.name = "stop";
+        stp.help = "Auto-stop playback at this time: off | end | <mm:ss>";
+        stp.kind = Kind::Str;
+        stp.get  = [this, d] {
+            if (!d->tape || d->tape->stopAt() == TapeImage::kNoStop ||
+                d->tape->stopAt() >= d->tape->size())
+                return Value::ofStr(std::string("off"));
+            return Value::ofStr(tapeTimeMMSS(deckSeconds(d, d->tape->stopAt())));
+        };
+        stp.set = [this, d](const Value& v, std::string& err) {
+            const std::string lo    = lowerAscii(v.s());
+            const bool        clear = (lo == "off" || lo == "none" || lo == "end");
+            if (!d->tape) {
+                // No cassette: clearing is a no-op, and `stop=off` is what an empty deck
+                // round-trips through CONFIG SAVE. A time has no tape to measure against.
+                if (clear) return true;
+                err = "there is no cassette in this deck. MOUNT one first.";
+                return false;
+            }
+            if (clear) {
+                d->tape->setStop(TapeImage::kNoStop);
+            } else {
+                double secs;
+                if (!parseTapeTime(v.s(), secs)) {
+                    err = "'" + v.s() + "' is not a stop -- use a time (mm:ss or seconds), or off";
+                    return false;
+                }
+                d->tape->setStop(deckByteAt(d, secs));
+            }
+            retape();  // re-arm the line: resume, or park, from the new mark
+            return true;
+        };
+        p.push_back(std::move(stp));
+
         return p;
     }
 
@@ -712,12 +755,16 @@ UnitDef SolBoard::deckUnit(int n) const {
     const Deck* d = deck(n);
     UnitDef     u{"tape" + std::to_string(n), UnitKind::Tape, "(empty)"};
     if (d->tape) {
-        char buf[288];
-        std::snprintf(buf, sizeof buf, "%s  %s  %llu/%llu bytes%s  [%s, motor %s]",
+        char        buf[320];
+        std::string stopNote;
+        if (d->tape->stopAt() != TapeImage::kNoStop && d->tape->stopAt() < d->tape->size())
+            stopNote = "  stop @ " + tapeTimeMMSS(deckSeconds(d, d->tape->stopAt()));
+        std::snprintf(buf, sizeof buf, "%s  %s  %llu/%llu bytes%s%s  [%s, motor %s]",
                       d->path.c_str(),
                       tapeCounterText(deckSeconds(d, d->tape->pos()), deckTotalSeconds(d)).c_str(),
                       (unsigned long long)d->tape->pos(),
                       (unsigned long long)d->tape->size(),
+                      stopNote.c_str(),
                       d->tape->atEnd() ? "  [END OF TAPE]" : "",
                       d->mode == TapeStream::Mode::Record ? "record" : "play",
                       d->motor ? "on" : "off");

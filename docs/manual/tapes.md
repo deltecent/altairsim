@@ -189,6 +189,31 @@ altairsim> MOUNT acr0:tape "tape.wav" counter=off
 or `SET acr0:tape counter=off` at any time. Turning it off changes nothing about `SHOW` — the
 position is always there to ask for.
 
+### `stop` — halt the tape at a time
+
+A multi-program tape runs one program straight into the next. The `stop` mark is your finger on
+the recorder's **STOP button at a counter mark**: set it to a time and the tape goes quiet there
+instead of running on. Set it at `MOUNT`, or with `SET` any time after:
+
+```
+altairsim> MOUNT acr0:tape "tape.wav" stop=2:05
+altairsim> SET  acr0:tape stop=2:05
+```
+
+Load program 1 and the line falls silent at 2:05 — the same quiet the end of the tape gives — so
+the loader stops there rather than reading into program 2. To carry on, move the mark forward
+(or clear it) and go again:
+
+```
+altairsim> SET acr0:tape stop=5:30      (the next boundary)
+altairsim> SET acr0:tape stop=off       (play to the physical end)
+```
+
+It is `off` (play to the end) unless you set it. `SHOW` shows an armed mark as `stop @ 02:05`. It
+halts **playback only** — a recording writes straight through it — and it is independent of
+`WIND`: winding the head past an armed stop leaves the tape parked there (SHOW says why), so move
+or clear the mark to continue.
+
 ### `rate = full | real`
 
 **The cassette carries its own clock, and by default it runs flat out.** `rate = full` — the
