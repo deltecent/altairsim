@@ -1824,7 +1824,11 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
 
 void Monitor::showRoms(std::ostream& out) {
     char buf[200];
-    out << "name      file         size  CRC32     decodes\n";
+    // Build the header with the SAME field widths as the rows below, so it can never
+    // drift a space out of alignment when a column changes.
+    std::snprintf(buf, sizeof buf, "%-9s %-12s %5s  %-8s  %-11s  %s",
+                  "name", "file", "size", "CRC32", "decodes", "description");
+    out << buf << "\n";
     for (const auto& r : builtinRoms()) {
         Image img;
         std::string err;
@@ -1837,8 +1841,9 @@ void Monitor::showRoms(std::ostream& out) {
             std::snprintf(buf, sizeof buf, "%08X", crc32(flat));
             crc = buf;
         }
-        std::snprintf(buf, sizeof buf, "%-9s %-12s %5zu  %s  %s", r.name, r.file, img.size(),
-                      crc.c_str(), span.c_str());
+        // Description last, so a long one never disturbs the columns before it.
+        std::snprintf(buf, sizeof buf, "%-9s %-12s %5zu  %s  %-11s  %s", r.name, r.file, img.size(),
+                      crc.c_str(), span.c_str(), (r.desc && *r.desc) ? r.desc : "");
         out << buf << "\n";
     }
     if (builtinRoms().empty()) out << "(none compiled in)\n";

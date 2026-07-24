@@ -90,6 +90,10 @@ void test_roms() {
     // distinct from ACUTER, which is Douglas's serial-console Altair port of the same source.
     // SOLOS 1.3 is CUTER's Sol-20 sibling -- the same era and vendor, but the Sol-PC's own OS,
     // driving its integrated I/O at the fixed hardware ports F8-FF (a complete 2048-byte part).
+    // MBL is the odd one out: not a disk loader at all but the Multi Boot Loader, a paper/cassette
+    // tape bootstrap at FE00 (not FF00) that reads any MITS tape format. It is NOT mdbl -- one is
+    // the MINIdisk loader, the other the multi-TAPE loader, and the near-identical names are
+    // exactly the confusion (issue #124) the CRC and address below exist to nail down.
     const Case cases[] = {
         {"cdbl",   0xFF00, 0xFFF4,  245, 0x0558293Eu, true},
         {"hdbl",   0xFC00, 0xFCFE,  255, 0x796FCA9Bu, true},
@@ -97,6 +101,7 @@ void test_roms() {
         {"acuter", 0xF000, 0xF7FF, 2048, 0x4A4E608Du, true},
         {"cuter",  0xC000, 0xC7FA, 2043, 0xB0106ED2u, true},
         {"solos",  0xC000, 0xC7FF, 2048, 0x4D0AF383u, true},
+        {"mbl",    0xFE00, 0xFEFF,  256, 0x5E21410Eu, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

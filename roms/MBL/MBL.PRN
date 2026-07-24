@@ -1,0 +1,334 @@
+
+
+                ; MBL - Multi Boot Loader for the Altair 8800
+                ;
+                ; Disaasembled and commented by Geoff Harrison (ghov solivant com)
+                ;
+                ; This is a boot loader that can be loacated in ROM and which
+                ; can read any of the punched tape formats that MITS designed.
+                ; It runs out of ROM by creating a readbyte routine in RAM which
+                ; is customized for whatever I/O board the user specifies at
+                ; run time on the front panel switches. It then skips over the
+                ; leadin bytes and the second stage loader which always preceed
+                ; the payload on a MITS tape.  Since it doesn't use the
+                ; second stage loader, it doesn't care which of several possible
+                ; versions of tape it is loading.  Normally you have to be sure
+                ; to use the correct 1st stage loader for the tape you are loading,
+                ; with the MBL it doesn't matter.  After skipping the 2nd stage
+                ; loader on the tape, it starts reading and storing payload
+                ; bytes and checking that the checksum is correct for each packet
+                ; of bytes read.  When the entire payload has been read into memory,
+                ; it reads the entry point for the program from the tape and jumps
+                ; to that location.
+                ;
+                ; The format of a MITS paper tape is:
+                ;	- some number of identical bytes, each containing
+                ;		the length (n) of the stage2 loader
+                ;	- n bytes of stage 2 loader
+                ;	- optionally some number of nulls
+                ;	- one or more load records (see below)
+                ;	- an EOF record (see below)
+                ;
+                ; A load record consists of:
+                ;       074     - sync byte (hex 03cH)
+                ;       NNN     - # bytes in record
+                ;       lll     - low byte of load address
+                ;       hhh     - high byte of load address
+                ;   <NNN bytes> - NNN bytes of program data (the payload)
+                ;       ccc     - checksum byte
+                ;                (checksum includes lll & hhh)
+                ; There will be 1 or more prog load records,
+                ; each one with up to 256 bytes of payload
+                ; bytes.
+                ;
+                ; The EOF record consists of:
+                ;       0170    - sync byte (hex 078H)
+                ;       lll     - low byte of start address
+                ;       hhh     - high byte of start address
+                ;
+                ; Before executing this program, the front panel sense switches
+                ; must be set to indicate what device to read the tape from and
+                ; what device the terminal is attached to.  This program uses
+                ; A11..A8 to determine the device attached to the tape reader.
+                ; If the payload is not earlier than Basic 4.0, it uses A15..A12
+                ; to determine where the terminal device is.
+                ; Possible switch values are
+                ;
+                ; Device                Switch value
+                ; 2SIO (2 stop bits)      0000b
+                ; 2SIO (1 stop bit)       0001b
+                ; SIO                     0010b
+                ; ACR                     0011b
+                ; 4PIO                    0100b
+                ; PIO                     0101b
+                ; HSR                     0110b
+                ;
+                ; If a value larger than 7 is entered this program will return
+                ; an error.
+                ;
+                ; Prior to Basic 4.0, MITS used different sense switch settings
+                ; to specify the terminal device.  You should still be able to
+                ; load an older tape with this loader by setting the switches as
+                ; above, stopping the program after it loads and starts, changing
+                ; the sense switches (see the appropriate MITS manual for switch
+                ; settings) and restarting the program at its entry point (e.g.
+                ; 00000H for Basic 3.2).
+                ; 
+                ; This listing was generated from a hex dump of MBL provided by
+                ; Grant Stockly.  The assembly code and comments were reverse
+                ; engineered from that dump by Geoff Harrison.
+                
+                ; Default location is at 0fe00H.  May be assembled to run
+                ; at any location.
+                ;
+                ; Assembler syntax is for the spasm assembler.  To assemble use:
+                ;      spasm mbl /F
+                ;      slink mbl=mbl.obj /c:0fe00
+                ;
+                ; For other assemblers, uncomment the following line and
+                ; (possibly) change the syntax of org, db, etc.
+                ;
+ FE00           		org 0fe00H
+                
+                ;----------------------------------------------------------
+                ; We don't know what I/O cards are in the system, so
+                ; try to initialize just about anything MITS had available
+                ; at the time.
+                ;
+ FE00 F3        		di
+ FE01 AF        		xra a
+ FE02 D320      		out 020H
+ FE04 D321      		out 021H
+ FE06 D324      		out 024H
+ FE08 D325      		out 025H
+ FE0A D326      		out 026H
+ FE0C D322      		out 022H
+ FE0E 2F        		cma
+ FE0F D323      		out 023H
+ FE11 D327      		out 027H
+ FE13 3E0C      		mvi a,00cH
+ FE15 D324      		out 024H
+ FE17 3E2C      		mvi a,02cH
+ FE19 D320      		out 020H
+ FE1B D322      		out 022H
+ FE1D D326      		out 026H
+ FE1F 3E03      		mvi a,003H
+ FE21 D327      		out 027H
+ FE23 D310      		out 010H
+ FE25 3E11      		mvi a,011H
+ FE27 D310      		out 010H
+                
+                ;----------------------------------------------------------
+                ; Find top of RAM.  Assumes that there is not 64k of RAM
+                ; available, a reasonable assumption given that this routine
+                ; resides in ROM somewhere at the top of memory.
+                ;
+ FE29 21FFFF    		lxi h, 0ffffH
+ FE2C 23        scanram:	inx h		; point @ next byte
+ FE2D 7E        		mov a,m		; get it
+ FE2E 47        		mov b,a		; save it
+ FE2F 2F        		cma		; invert it
+ FE30 77        		mov m,a		; try to write it back out
+ FE31 BE        		cmp m		; see if it wrote out correctly
+ FE32 70        		mov m,b		; restore the byte to its orig value
+ FE33 CA2CFE    		jz scanram 	; loop if the byte wrote correctly
+                
+                		; Something's wrong if the failure to write to RAM
+                		; happened on other than a page boundary
+ FE36 AF        		xra a		; a = 0
+ FE37 BD        		cmp l
+ FE38 C2C1FE    		jnz merror 	; if L not zero, go to 'M' error handler
+                
+                		; HL now points to the last writable byte in RAM plus 1.
+                		; Subtract 14 to make room for a stack & initialize SP.
+ FE3B 01F2FF    		lxi b,0fff2H
+ FE3E 09        		dad b		; HL += BC
+ FE3F F9        		sphl		; SP = HL
+                
+ FE40 09        		dad b		; Set HL to point to what will be
+                				; the start of the readbyte routine.
+ FE41 E5        		push h		; save the start address on the stack.
+                
+ FE42 DBFF      		in 0ffH		; read front panel switches
+ FE44 E60F      		ani 00fH	; mask lower 4 bits
+ FE46 FE07      		cpi 007H	; switches set to >= 7?
+ FE48 F2D7FE    		jp ierror 	; y - go to 'I' error handler
+                
+                		; point HL at the Nth entry in the mod table,
+                		; where N = the front panel switch setting
+ FE4B 21EBFE    		lxi h, table1	; point HL to start of the mod table
+ FE4E 04        		inr b		; B currently contains 0ffH, inc it to 0
+ FE4F 4F        		mov c,a		; \
+ FE50 87        		add a		;  \ C = A * 3
+ FE51 81        		add c		;  /
+ FE52 4F        		mov c,a		; /
+ FE53 09        		dad b		; HL += BC
+                
+                ;----------------------------------------------------------
+                ; Construct an input function on the stack.
+                ; Since this is a push down stack, the routine is built in reverse.
+                ; When finished, the routine will look like this. (XX values are
+                ; calculated on the fly or read from the mod table.  The routine
+                ; has to be built dynamically like this because different I/O cards
+                ; require different code to read their data and status.  The user
+                ; specified which card is in use on the front panel switches.)
+                ; readbyte:
+                ;	db xx		in xx		; check port status
+                ;	e6 xx		ani xx
+                ;	xx LO HI	jz/jnz readbyte	; loop 'till byte arrives
+                ;	db xx		in xx		; get input byte
+                ;	f5		push psw	; save it
+                ;	80		add b		; update checksum in B
+                ;	47		mov b,a
+                ;	f1		pop psw		; retrieve input byte
+                ;	c9		ret		; return A=byte, B=checksum
+                ;
+ FE54 D1        		pop d		; DE = the start adress of this routine
+                
+                		; construct RET; POP PSW
+ FE55 01F1C9    		lxi b,0c9f1H
+ FE58 C5        		push b
+                
+                		; construct MOV B,A; ADD B
+ FE59 018047    		lxi b,04780H
+ FE5C C5        		push b
+                
+                		; construct  PUSH PSW; {input port retrieved from mod table}
+ FE5D 06F5      		mvi b,0f5H
+ FE5F 4E        		mov c,m
+ FE60 79        		mov a,c
+ FE61 C5        		push b
+                
+                		; construct IN (used with port constructed above); {high byte of jmp instr}
+ FE62 06DB      		mvi b,0dbH
+ FE64 4A        		mov c,d
+ FE65 C5        		push b
+                
+                		; construct {low byte of jmp}; JZ/JNZ (from mod table)
+ FE66 43        		mov b,e
+ FE67 23        		inx h
+ FE68 4E        		mov c,m
+ FE69 C5        		push b
+                
+                		; construct ANI {mask from mod table}
+ FE6A 23        		inx h
+ FE6B 46        		mov b,m
+ FE6C 0EE6      		mvi c,0e6H
+ FE6E C5        		push b
+                
+                		; construct IN {port status address (port number - 1)}
+ FE6F 3D        		dcr a
+ FE70 47        		mov b,a
+ FE71 0EDB      		mvi c,0dbH
+ FE73 C5        		push b
+                ;----------------------------------------------------------
+                ; Read a stream of input bytes.
+                ;
+ FE74 EB        		xchg		; HL = start of readbyte routine, DE = junk
+                
+                		; ???????????????????????????????????????????????????
+ FE75 3E04      		mvi a,004H	; Why are we sending 04H to device 027H?
+ FE77 D327      		out 027H	; In fact, what is device 027H? Anyone know? Is it the
+                				; 88-HSR?  Perhaps we're switching on the drive motor.
+                		; ???????????????????????????????????????????????????
+                
+                		; Skip over leadin bytes.
+ FE79 CDA5FE    		call link	; flush input buffer
+ FE7C CDA5FE    		call link	; get a byte
+ FE7F 4F        		mov c,a		; remember it
+ FE80 CDA5FE    leadinskip:	call link	; get another byte
+ FE83 B9        		cmp c
+ FE84 CA80FE    		jz leadinskip	; loop until we receive a different byte value
+                
+                		; At this point, C contains the first leadin byte
+                		; that was on the tape, which should represent the
+                		; length of the stage 2 loader.
+                		; Skip over stage 2 loader.
+ FE87 0D        		dcr c
+ FE88 CDA5FE    stage2skip:	call link	; get a byte
+ FE8B 0D        		dcr c
+ FE8C C288FE    		jnz stage2skip	; loop while C > 0
+                
+                		; Now we've skipped over all the unneeded stuff, start
+                		; looking for the first load record.
+ FE8F CDA5FE    findtoken:	call link	; get a byte
+ FE92 FE3C      		cpi 03cH	; is it a load record token?
+ FE94 CAA6FE    		jz loadrecord	; Y - go and process a load record
+ FE97 FE78      		cpi 078H	; is it an EOF token?
+ FE99 C28FFE    		jnz findtoken	; N - keep looking
+                
+                		; Got an EOF token.  Read next two bytes as program
+                		; start address and jump to that address.
+ FE9C CDA5FE    eof:		call link	; get prog start low
+ FE9F 4F        		mov c,a
+ FEA0 CDA5FE    		call link	; get prog start high
+ FEA3 69        		mov l,c
+ FEA4 67        		mov h,a
+                
+                		; This is mostly used to call the byte input routine
+                		; on the stack, but is also used to jump to the entry
+                		; point of the downloaded program.
+ FEA5 E9        link:		pchl		; jmp to (HL)
+                
+                		; Process a load record
+ FEA6 CDA5FE    loadrecord:	call link	; get byte count in this record
+ FEA9 4F        		mov c,a		; save it
+ FEAA 0600      		mvi b,000H	; initialize checksum
+ FEAC CDA5FE    		call link	; get load address low
+ FEAF 5F        		mov e,a
+ FEB0 CDA5FE    		call link	; get load address high
+ FEB3 57        		mov d,a
+                
+ FEB4 7A        loadrec2:	mov a,d
+ FEB5 BC        		cmp h		; Are the incoming bytes about to
+                				;    overwrite the readbyte routine?
+ FEB6 3E4F      		mvi a,04fH	; prepare to send 'O', if necessary
+ FEB8 CAD9FE    		jz errexit	; Y - error exit
+ FEBB CDA5FE    		call link	; N - get another byte
+ FEBE EB        		xchg		; HL = dest pointer, DE = start of readbyte
+ FEBF 77        		mov m,a		; store received byte at destination
+ FEC0 BE        		cmp m		; did it store correctly?
+ FEC1 3E4D      merror:		mvi a,04dH	; prepare to send 'M', if necessary
+ FEC3 C2D9FE    		jnz errexit	; N - error exit
+ FEC6 23        		inx h		; Y - increment destination pointer
+ FEC7 EB        		xchg		; HL = start of readbyte, DE = dest pointer
+ FEC8 0D        		dcr c		; decrement byte counter
+ FEC9 C2B4FE    		jnz loadrec2	; if not 0 then loop to get more bytes
+                
+ FECC 48        		mov c,b		; save calculated checksum value before we update it again
+ FECD CDA5FE    		call link	; get expected checksum from input stream
+ FED0 B9        		cmp c		; does it match our calculated sum?
+ FED1 CA8FFE    		jz findtoken	; Y - look for more records on the tape
+ FED4 3E43      		mvi a,043H      ; N - prepare to send 'C' error
+ FED6 01        		db 001H		; lxi - hides next two bytes
+ FED7 3E        ierror:		db 03eH		; mvi a, 049H	; prepare to send 'I'
+ FED8 49        		db 049H
+                
+                ; Store an error code and the address @ which it happened in
+                ; the first 3 bytes of RAM, then loop forever sending the
+                ; error code to all possible terminal devices.
+                ;
+ FED9 320000    errexit:	sta 00000H
+ FEDC 220100    		shld 00001H
+ FEDF FB        		ei
+ FEE0 D301      forever:	out 001H
+ FEE2 D311      		out 011H
+ FEE4 D305      		out 005H
+ FEE6 D323      		out 023H
+ FEE8 C3E0FE    		jmp forever
+                
+                ;----------------------------------------------------------
+                ; Mod table.
+                ; This is a table of port addresses, commands for checking
+                ; the port status (jz/jnz), and status masks for several
+                ; I/O boards.  The values are stuffed into the readbyte
+                ; routine at runtime to customize it for the hardware
+                ; being used to load the tape.
+                ;
+ FEEB 11CA01    table1:		db	011H, 0CAH, 001H	; 2SIO (2 stop bits)
+ FEEE 11CA01    		db	011H, 0CAH, 001H	; 2SIO (1 stop bit)
+ FEF1 01C201    		db	001H, 0C2H, 001H	; SIO
+ FEF4 07C201    		db	007H, 0C2H, 001H	; ACR
+ FEF7 21CA80    		db	021H, 0CAH, 080H	; 4PIO
+ FEFA 05CA02    		db	005H, 0CAH, 002H	; PIO
+ FEFD 25CA40    		db	025H, 0CAH, 040H	; HSR

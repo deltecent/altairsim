@@ -8,6 +8,20 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### A tape boot loader in the PROM socket: `builtin:mbl`
+
+The Altair **Multi Boot Loader** is now a built-in ROM. Where `dbl`, `mdbl` and `cdbl` boot a
+disk, `mbl` boots a **tape**: it reads any of the punched-/cassette-tape formats MITS designed,
+building a reader routine in RAM for whichever board — 2SIO, SIO, ACR, 4PIO, PIO or HSR — you
+pick on the front-panel switches, then loading and checksumming the payload and jumping to it.
+Put it in a socket with `mount = "builtin:mbl"` (it lives at `FE00`). It is not `mdbl`, the
+**mini**disk loader whose name is one letter away — the confusion that prompted this
+(issue #124). Provenance is in `docs/roms.md`.
+
+`SHOW ROMS` now carries a **description** column too — one hand-written line per ROM
+(`roms/<NAME>/DESC`) — so `mbl` and `mdbl` read as what they are instead of two
+near-identical names.
+
 ### A tape counter, and `WIND` to a time
 
 Both cassette boards — the **88-ACR** and the **Sol** decks — now show **where the head is** as
