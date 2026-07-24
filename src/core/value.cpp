@@ -83,31 +83,44 @@ bool parseNumber(const std::string& in, long long& out, std::string& err, int ba
         base = 10;
     }
 
-    bool forcedHex = false;
+    // An explicit non-decimal marker (hex, binary or octal). Tracked so that a
+    // K/M suffix -- which is decimal by definition -- can be rejected against it.
+    bool forcedExplicit = false;
     if (t.compare(i, 2, "0x") == 0 || t.compare(i, 2, "0X") == 0) {
         base = 16;
-        forcedHex = true;
+        forcedExplicit = true;
+        i += 2;
+    } else if (t.compare(i, 2, "0o") == 0 || t.compare(i, 2, "0O") == 0) {
+        base = 8;
+        forcedExplicit = true;
         i += 2;
     } else if (t.compare(i, 2, "0b") == 0 || t.compare(i, 2, "0B") == 0) {
         base = 2;
+        forcedExplicit = true;
         i += 2;
     } else if (t[i] == '$') {
         base = 16;
-        forcedHex = true;
+        forcedExplicit = true;
         i += 1;
     } else if (t[i] == '#') {
         base = 10;
         i += 1;
     } else if (t.size() > i + 1 && (t.back() == 'h' || t.back() == 'H')) {
         base = 16;
-        forcedHex = true;
+        forcedExplicit = true;
+        t.pop_back();
+    } else if (t.size() > i + 1 && (t.back() == 'q' || t.back() == 'Q')) {
+        // The historic Intel/DEC 8080-assembler octal suffix (`377q`). `q` is not
+        // a digit in any base we parse, so this never collides with the number.
+        base = 8;
+        forcedExplicit = true;
         t.pop_back();
     }
 
-    // `0x10K` demands hex and appends a suffix that is decimal by definition.
+    // `0x10K` demands a base and appends a suffix that is decimal by definition.
     // There is no right answer, so there is no guess.
-    if (mult > 1 && forcedHex) {
-        err = "a K/M suffix is always decimal -- drop the hex marker: '" + in + "'";
+    if (mult > 1 && forcedExplicit) {
+        err = "a K/M suffix is always decimal -- drop the base marker: '" + in + "'";
         return false;
     }
 

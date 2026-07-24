@@ -408,6 +408,55 @@ void test_cli() {
               "DEPOSIT, FILL and DUMP all work on a backplane with no processor");
     }
 
+    SECTION("SET CONSOLE base=octal -- the wire class reads and writes SPLIT octal");
+    {
+        // MITS documentation and the front panel speak octal. base=octal moves the
+        // WIRE class -- addresses, ports, data bytes -- and nothing else, on input
+        // (the default parse base) and output (split octal: each byte 000..377, a
+        // 16-bit value its two bytes hi-then-lo). The decimal class does not move.
+        Machine mo;
+        Monitor mono(mo);
+        std::ostringstream so;
+        mono.exec("BOARDS ADD 8080 cpu0", so);
+        mono.exec("BOARDS ADD memory mem0", so);
+        mono.exec("SET mem0 fill=zero", so);
+        mono.exec("REGION ADD mem0 type=ram at=0 size=1K", so);
+        mono.exec("SET CONSOLE base=octal", so);
+
+        auto run = [&](const char* line) {
+            std::ostringstream o;
+            mono.exec(line, o);
+            return o.str();
+        };
+
+        // A bare number is now octal, so `100` is the 65th byte (0x40), and it reads
+        // back as split octal. `377q` and `0o` still force octal; `0x` still forces hex.
+        run("DEPOSIT 100 0o76 377q");
+        std::string e = run("EX 100");
+        CHECK(e.compare(0, 9, "000 100  ") == 0, "the address 0x0040 reads as split octal 000 100");
+        CHECK(e.compare(9, 3, "076") == 0, "and the byte 0x3E as octal 076");
+
+        // A byte typed with an explicit hex marker still lands, in octal mode.
+        run("DEPOSIT 0x40 0xFF");
+        CHECK(run("EX 100").compare(9, 3, "377") == 0, "0xFF deposited via a hex marker reads back 377");
+
+        // DUMP: the address column and every byte are octal; the ASCII column is not.
+        auto dl = run("D 100-100");
+        CHECK(dl.compare(0, 7, "000 100") == 0, "DUMP's address column is split octal");
+        CHECK(dl.find("377") != std::string::npos, "and its byte column is octal");
+
+        // DISASM: opcode bytes AND the 16-bit operand render in the chosen base.
+        run("DEPOSIT 0 0xC3 0x34 0x12");  // JMP 1234
+        std::string d = run("DISASM 0 1");
+        CHECK(d.find("JMP 022 064") != std::string::npos,
+              "a JMP target renders as split octal (0x1234 -> 022 064)");
+
+        // base=hex comes straight back -- and a bare number is hex again, so 40 (not
+        // 100) is the byte we filled, proving the DEFAULT parse base flipped too.
+        run("SET CONSOLE base=hex");
+        CHECK(run("EX 40").compare(0, 6, "0040  ") == 0, "base=hex restores four-hex-digit addresses");
+    }
+
     Machine m2;
     Monitor mon2(m2);
     std::ostringstream s2;

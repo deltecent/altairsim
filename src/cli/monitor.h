@@ -51,7 +51,7 @@ public:
 private:
     // ---- NUMBER BASE (Patrick, 2026-07-11; was open finding F3) ----
     //
-    //     ON THE WIRE -> HEX.   NEVER ON THE WIRE -> DECIMAL.
+    //     ON THE WIRE -> HEX or OCTAL.   NEVER ON THE WIRE -> DECIMAL.
     //
     // The base belongs to the OPERAND, not to the command line. `addr()` is for
     // the things the 8080 itself sees -- addresses, ports, data bytes -- and they
@@ -59,6 +59,14 @@ private:
     // printed. `count()` is for the things only the operator sees -- step counts,
     // dump widths, history depth, unit numbers -- and they are decimal, because
     // the machine never holds one of them.
+    //
+    // The one operator choice is HOW the wire class is spelled: hex (the default)
+    // or OCTAL (split octal, the MITS front-panel and manual convention). That is
+    // `[console] base` -- Console::base() -- and it moves ONLY the wire class:
+    // addr()'s default parse base and the fmtByte()/fmtWord() display below. The
+    // decimal class does not move, because octal-vs-hex was never its question.
+    // This is not the "global base" that F3 ruled out: that was hex-vs-decimal
+    // spanning both classes (baud can be neither), and this spans neither class.
     //
     // A PROPERTY carries its own `radix` in the reflection layer, which is the
     // same rule reaching the same answer: `SET sio2a port=10` is port 0x10 (a
@@ -124,12 +132,12 @@ private:
     struct Insn insnAt(uint32_t addr, const class Disassembler& d);
 
     // Rewrite a disassembled operand as a symbol when one is loaded: `CALL 0005`
-    // becomes `CALL BDOS`. A four-hex-digit token is, in both emitters, only ever a
-    // 16-bit address operand (bytes are two digits, displacements carry a sign), so
-    // resolving those against the symbol table needs no operand structure from the
-    // decoder. Returns the text unchanged when nothing is loaded, so a symbol-less
+    // becomes `CALL BDOS`. The decoder tells us the 16-bit operand's VALUE (in.operand,
+    // set when in.operandBits==16), so we look the symbol up by value and swap it in
+    // for the rendered operand -- which works whether that operand reads `0005` or
+    // `000 005`. Returns the text unchanged when nothing is loaded, so a symbol-less
     // machine disassembles exactly as before.
-    std::string annotateOperands(const std::string& text) const;
+    std::string annotateOperands(const struct Insn& in) const;
 
     // The active core, or null with a message already printed. Every CPU command
     // starts here, and none of them assume the machine has a processor -- because

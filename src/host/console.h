@@ -107,6 +107,13 @@ namespace altair {
 
 class Console : public ByteStream {
 public:
+    // How the OPERATOR reads and writes wire quantities -- addresses, ports and data
+    // bytes -- at the monitor. Hex is the default; octal is what MITS documentation
+    // and the front panel used (split octal: each byte its own 000..377 group). This
+    // never touches the DECIMAL class (counts, widths, baud): base belongs to the
+    // wire operand, and only its hex/octal spelling is the operator's to choose.
+    enum class NumBase { Hex, Octal };
+
     static Console& instance();
 
     std::string describe() const override { return "console"; }
@@ -155,6 +162,10 @@ public:
     uint64_t dropped() const { return dropped_; }
 
     uint8_t attn() const { return attn_; }
+
+    // The operator's numeric base for wire quantities. The monitor reads it to pick
+    // its display format and its default parse base; explicit markers always win.
+    NumBase base() const { return base_; }
 
     // Is there a human out there at all? False under `-s script.cmd`, under a
     // pipe, and in the test suite -- and CONSOLE mode has to behave differently
@@ -254,6 +265,7 @@ private:
     static constexpr size_t kMaxIn = 256;
 
     uint8_t  attn_     = 0x05;  // Ctrl-E
+    NumBase  base_     = NumBase::Hex;  // hex is the modern default; octal is opt-in
     bool     raw_      = false;
     // Is stdin OURS? enterRaw() takes it (and makes it non-blocking); until then the
     // monitor owns it, and reading it would steal a command or block the simulator.

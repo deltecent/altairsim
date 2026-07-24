@@ -88,12 +88,36 @@ OUT FF 55           port and byte -> both hex
 SET sio0:a baud=9600      a baud rate -> nine thousand six hundred
 ```
 
-You can always force the issue: `0x`, `$` and a trailing `h` force hex; a leading `#` forces
-decimal; and a `K` or `M` suffix is **always** decimal (`48K` is 49,152 — so `0x10K` is a
-contradiction and is rejected rather than guessed at).
+You can always force the issue: `0x`, `$` and a trailing `h` force hex; `0o` and a trailing `q`
+force octal; a leading `#` forces decimal; and a `K` or `M` suffix is **always** decimal (`48K`
+is 49,152 — so `0x10K` is a contradiction and is rejected rather than guessed at).
 
 This rule is the same everywhere — in the monitor, in a machine file, and in every board's
 settings. There is no second convention to learn.
+
+### Reading and writing in octal
+
+The MITS manuals and the Altair front panel spoke **octal**, not hex, and you can too:
+
+```
+SET CONSOLE base=octal
+```
+
+Now the **hex** half of the rule becomes **octal** — the wire class (addresses, ports, data
+bytes, registers) is read and printed in **split octal**, each byte its own `000`–`377` group and
+a 16-bit address as two of them, exactly the way the front-panel address lamps are grouped:
+
+```
+EXAMINE 100         -> 000 100  076   (the byte 0x3E at address 0x40)
+DUMP 100-100        -> 000 100  076
+DISASM 0            -> JMP 022 064     (a jump to 0x1234)
+```
+
+A bare number is octal now too, so `100` is address `0x40`; the decimal class (counts, widths,
+baud) does not change. The forcing markers still work in both directions — `0x1234` is hex even in
+octal mode, and `0o377` is octal even in hex mode — so nothing is ever a base you cannot type your
+way out of. `base=hex` (the default) puts it back. Set it once in a machine file (`[console] base
+= octal`) to start there every time.
 
 ## Naming a board: `<id>[:<unit>]`
 

@@ -95,7 +95,7 @@ static bool is(const std::string& tok, const char* kw) { return upper(tok) == kw
 // ---------------------------------------------------------------------------
 // NUMBERS. Settled 2026-07-11 by Patrick.
 //
-//   ON THE WIRE -> HEX.   NEVER ON THE WIRE -> DECIMAL.
+//   ON THE WIRE -> HEX or OCTAL.   NEVER ON THE WIRE -> DECIMAL.
 //
 // The base is a property of the OPERAND, not of the command line. An address, a
 // data byte and a port number are things the machine itself sees, they are hex
@@ -108,8 +108,17 @@ static bool is(const std::string& tok, const char* kw) { return upper(tok) == kw
 // global base was never actually on the table. Given that, the line is drawn
 // where it means something instead of where it fell.
 //
-// `0x`, `$` and a trailing `h` force hex; `#` forces decimal. Everywhere, both
-// directions, so nothing here is a trap you cannot type your way out of.
+// The ONE operator choice (added later): how the WIRE class is spelled -- hex, or
+// OCTAL, which is what the MITS manuals and the front panel used (split octal, a
+// byte per 000..377 group). `SET CONSOLE base=octal` moves the default parse base
+// and the display of the wire class, and NOTHING ELSE: the decimal class does not
+// move, because octal-vs-hex was never its question. This is not the global base
+// ruled out above -- that was hex-vs-decimal across both classes; this is one
+// class, spelled two ways.
+//
+// `0x`, `$` and a trailing `h` force hex; `0o` and a trailing `q` force octal;
+// `#` forces decimal. Everywhere, both directions, whatever the default, so
+// nothing here is a trap you cannot type your way out of.
 //
 // A `K` or `M` SUFFIX IS ALWAYS BEHIND A DECIMAL NUMBER (Patrick, 2026-07-11).
 // `10K` is 10,240 bytes, never 16K -- which is exactly why nobody has ever had to
@@ -130,11 +139,48 @@ static bool parseNum(const std::string& in, uint32_t& out, int base, std::string
     return true;
 }
 
-// Something the machine sees: an address, a port, a byte. HEX.
+// Is the operator reading and writing wire quantities in octal? One question,
+// asked here so no call site below has to name the enum.
+static bool octalMode() {
+    return Console::instance().base() == Console::NumBase::Octal;
+}
+
+// ---- WIRE QUANTITIES ON THE WAY OUT. One place per width honors the base. ----
+//
+// A byte is two hex digits or three octal (000..377); a 16-bit value is four hex
+// digits or SPLIT octal -- its two bytes, hi then lo, each 000..377, one space
+// between ("022 064"), the way the front-panel address lamps group and every MITS
+// listing prints an address. Every address/port/byte the monitor prints goes
+// through one of these, so the base is honored in exactly one place per width. In
+// hex they reproduce the old %02X/%04X exactly, so hex output does not move.
+//
+// File-local free functions, not Monitor members: the stop-reason reporter is a
+// free function too, and this way it reaches them the same as everyone else.
+static int byteWidth() { return octalMode() ? 3 : 2; }  // columns fmtByte() fills
+
+static std::string fmtByte(uint8_t v) {
+    char b[8];
+    std::snprintf(b, sizeof b, octalMode() ? "%03o" : "%02X", (unsigned)v);
+    return b;
+}
+
+static std::string fmtWord(uint16_t v) {
+    char b[16];
+    if (octalMode())
+        std::snprintf(b, sizeof b, "%03o %03o", (unsigned)(v >> 8), (unsigned)(v & 0xFF));
+    else
+        std::snprintf(b, sizeof b, "%04X", (unsigned)v);
+    return b;
+}
+
+// Something the machine sees: an address, a port, a byte. HEX, or OCTAL when the
+// operator has set that -- either way the WIRE base, never decimal.
 bool Monitor::addr(const std::string& t, uint32_t& out, std::ostream& err) {
     std::string e;
-    if (!parseNum(t, out, 16, e)) {
-        err << e << "  (this one is HEX -- the machine sees it. #123 forces decimal.)\n";
+    if (!parseNum(t, out, octalMode() ? 8 : 16, e)) {
+        err << e << (octalMode()
+                         ? "  (this one is OCTAL -- the machine sees it. 0x forces hex, #123 decimal.)\n"
+                         : "  (this one is HEX -- the machine sees it. #123 forces decimal.)\n");
         failed_ = true;
         return false;
     }
@@ -825,8 +871,8 @@ void Monitor::showSymbols(const std::vector<std::string>& a, std::ostream& out) 
         if (!pat.empty() && !globMatch(pat, name)) continue;
         // An EQU is flagged so a constant is not mistaken for a program address -- it is the
         // one thing SHOW cannot recover from the value alone (core/symbols.h, the EQU rule).
-        std::snprintf(buf, sizeof buf, "%-14s %04X  %-14s %s", name.c_str(),
-                      s.value & 0xFFFF, s.source.c_str(), s.isAddr ? "" : "=");
+        std::snprintf(buf, sizeof buf, "%-14s %s  %-14s %s", name.c_str(),
+                      fmtWord((uint16_t)s.value).c_str(), s.source.c_str(), s.isAddr ? "" : "=");
         out << buf << "\n";
         ++shown;
     }
@@ -854,7 +900,7 @@ void Monitor::showBoards(std::ostream& out) {
         r.disabled = !b->enabled();
 
         for (const auto& e : b->ioMap()) {
-            std::snprintf(buf, sizeof buf, "%s%02X", r.io.empty() ? "" : ",", e.lo);
+            std::snprintf(buf, sizeof buf, "%s%s", r.io.empty() ? "" : ",", fmtByte(e.lo).c_str());
             r.io += buf;
         }
 
@@ -867,8 +913,8 @@ void Monitor::showBoards(std::ostream& out) {
                 detail = sizeText(e.hi - e.lo + 1);
                 if (!e.note.empty()) detail += "  " + e.note;  // "bank 3 of 8"
             }
-            std::snprintf(buf, sizeof buf, "%04X-%04X  %-3s  %s", e.lo, e.hi, e.what.c_str(),
-                          detail.c_str());
+            std::snprintf(buf, sizeof buf, "%s-%s  %-3s  %s", fmtWord(e.lo).c_str(),
+                          fmtWord(e.hi).c_str(), e.what.c_str(), detail.c_str());
             r.mem.push_back(buf);
         }
 
@@ -1111,8 +1157,8 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
             // connected to a terminal is a machine that runs perfectly well. It is how
             // you run a ROM that talks to a disk, or a CPU test that talks to nobody.
             std::string stop = tty ? std::string("^") + attn + " stops it." : "^C stops it.";
-            std::snprintf(buf, sizeof buf, "running from %04X.  %s  (no console connected)",
-                          cpu->pc(), stop.c_str());
+            std::snprintf(buf, sizeof buf, "running from %s.  %s  (no console connected)",
+                          fmtWord(cpu->pc()).c_str(), stop.c_str());
             out << buf << "\n";
         }
         out.flush();
@@ -1573,8 +1619,8 @@ void Monitor::showBusIrq(std::ostream& out, bool table) {
         if (pulling) {
             if (win == i) {
                 now = "WINS";
-                std::snprintf(buf, sizeof buf, "  <-- %s will jam %02X",
-                              encoder ? encoder->id.c_str() : "?", rstOpcode(i));
+                std::snprintf(buf, sizeof buf, "  <-- %s will jam %s",
+                              encoder ? encoder->id.c_str() : "?", fmtByte(rstOpcode(i)).c_str());
                 tail = buf;
             } else if (win >= 0) {
                 now = "pending";  // a higher-priority line is winning right now
@@ -1588,9 +1634,9 @@ void Monitor::showBusIrq(std::ostream& out, bool table) {
             }
         }
 
-        std::snprintf(buf, sizeof buf, "  VI%d   RST %d  %02X -> %04X  %-20s %s%s", i, i,
-                      rstOpcode(i), i * 8, who.empty() ? "--" : who.c_str(), now,
-                      tail.c_str());
+        std::snprintf(buf, sizeof buf, "  VI%d   RST %d  %s -> %s  %-20s %s%s", i, i,
+                      fmtByte(rstOpcode(i)).c_str(), fmtWord((uint16_t)(i * 8)).c_str(),
+                      who.empty() ? "--" : who.c_str(), now, tail.c_str());
         out << buf << "\n";
     }
 
@@ -1642,8 +1688,9 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
         });
         if (rows.empty()) out << "  (nothing -- every address floats to FF)\n";
         for (const auto& r : rows) {
-            std::snprintf(buf, sizeof buf, "  %04X-%04X  %-8s %-4s %s", r.lo, r.hi, r.id.c_str(),
-                          r.what.c_str(), r.note.c_str());
+            std::snprintf(buf, sizeof buf, "  %s-%s  %-8s %-4s %s", fmtWord((uint16_t)r.lo).c_str(),
+                          fmtWord((uint16_t)r.hi).c_str(), r.id.c_str(), r.what.c_str(),
+                          r.note.c_str());
             out << buf << "\n";
         }
         // A hole is not an error. It is an empty socket, and it reads FF.
@@ -1656,8 +1703,9 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
             bool c = (i < 256) && covered[i];
             if (!c && run < 0 && i < 256) run = i;
             if ((c || i == 256) && run >= 0) {
-                std::snprintf(buf, sizeof buf, "%s%04X-%04X", holes.empty() ? "" : ",", run << 8,
-                              (i << 8) - 1);
+                std::snprintf(buf, sizeof buf, "%s%s-%s", holes.empty() ? "" : ",",
+                              fmtWord((uint16_t)(run << 8)).c_str(),
+                              fmtWord((uint16_t)((i << 8) - 1)).c_str());
                 holes += buf;
                 run = -1;
             }
@@ -1671,8 +1719,8 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
         bool any = false;
         for (const auto& b : m_.boards())
             for (const auto& e : b->ioMap()) {
-                std::snprintf(buf, sizeof buf, "  %02X        %-8s %-5s %s", e.lo, b->id.c_str(),
-                              e.what.c_str(), e.note.c_str());
+                std::snprintf(buf, sizeof buf, "  %-8s  %-8s %-5s %s", fmtByte(e.lo).c_str(),
+                              b->id.c_str(), e.what.c_str(), e.note.c_str());
                 out << buf << "\n";
                 any = true;
             }
@@ -1702,7 +1750,7 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
                 if (who.size() > 1) {
                     std::string ids;
                     for (auto* b : who) ids += " " + b->id;
-                    std::snprintf(buf, sizeof buf, "  %04X %-5s driven by%s", A,
+                    std::snprintf(buf, sizeof buf, "  %s %-5s driven by%s", fmtWord((uint16_t)A).c_str(),
                                   t == Cycle::MemRead ? "read" : "write", ids.c_str());
                     out << buf << "\n";
                     ++found;
@@ -1721,7 +1769,7 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
             if (who.size() > 1) {
                 std::string ids;
                 for (auto* b : who) ids += " " + b->id;
-                std::snprintf(buf, sizeof buf, "  port %02X OUT driven by%s", P, ids.c_str());
+                std::snprintf(buf, sizeof buf, "  port %s OUT driven by%s", fmtByte((uint8_t)P).c_str(), ids.c_str());
                 out << buf << "\n";
                 ++found;
             }
@@ -1746,7 +1794,7 @@ void Monitor::showRoms(std::ostream& out) {
         std::string crc = "--------";
         if (decodeRom(r, 0, img, err) && !img.empty()) {
             auto flat = img.flat();
-            std::snprintf(buf, sizeof buf, "%04X-%04X", img.lo(), img.hi());
+            std::snprintf(buf, sizeof buf, "%s-%s", fmtWord(img.lo()).c_str(), fmtWord(img.hi()).c_str());
             span = buf;
             std::snprintf(buf, sizeof buf, "%08X", crc32(flat));
             crc = buf;
@@ -1785,42 +1833,25 @@ CpuCore* Monitor::needCpu(std::ostream& err) {
 // through here too -- and IT would be the one to eat the console's own input.
 Insn Monitor::insnAt(uint32_t at, const Disassembler& d) {
     auto peek = [this](uint16_t a) { return m_.bus.peek(a); };
-    return d.at((uint16_t)at, peek);
+    return d.at((uint16_t)at, peek, octalMode() ? 8 : 16);
 }
 
-// Substitute a symbol for a bare 16-bit operand address. The decoder hands back flat
-// text ("CALL 0005"), and in both the 8080 and Z80 emitters a run of exactly four
-// uppercase hex digits is *only* a 16-bit operand or a relative-jump target -- an
-// immediate byte is two digits and an index displacement carries a +/- sign -- so a
-// four-hex token, and nothing else, is an address worth naming. We split on alnum
-// boundaries so a mnemonic like CALL (an L is not hex) or a register pair is never
-// mistaken for a number.
-std::string Monitor::annotateOperands(const std::string& text) const {
-    if (m_.syms.empty()) return text;  // nothing loaded: byte-for-byte the old output
-
-    auto isUpperHex = [](char c) {
-        return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
-    };
-
-    std::string out;
-    out.reserve(text.size());
-    for (size_t i = 0; i < text.size();) {
-        if (!std::isalnum((unsigned char)text[i])) {
-            out += text[i++];
-            continue;
-        }
-        size_t j = i;
-        while (j < text.size() && std::isalnum((unsigned char)text[j])) ++j;
-        std::string tok = text.substr(i, j - i);
-        if (tok.size() == 4 && std::all_of(tok.begin(), tok.end(), isUpperHex)) {
-            uint32_t v = (uint32_t)std::stoul(tok, nullptr, 16);
-            std::string name = m_.syms.operandName(v);
-            if (!name.empty()) tok = name;
-        }
-        out += tok;
-        i = j;
-    }
-    return out;
+// Substitute a symbol for a 16-bit operand address: `CALL 0005` -> `CALL BDOS`. The
+// decoder tells us the operand's VALUE (in.operand, when in.operandBits == 16) -- a
+// JMP/CALL/LXI immediate or a JR target, the one operand a name can stand for -- so
+// we look the symbol up by value and splice it in for the rendered number. Rendering
+// the number the same way the decoder did (fmtWord) and finding THAT is what makes
+// this work whether the operand reads `0005` (hex) or `000 005` (split octal). No
+// symbols loaded, no word operand, or no match: the text is returned untouched, so a
+// symbol-less machine disassembles exactly as before.
+std::string Monitor::annotateOperands(const Insn& in) const {
+    if (m_.syms.empty() || in.operandBits != 16) return in.text;
+    std::string name = m_.syms.operandName(in.operand);
+    if (name.empty()) return in.text;
+    std::string rendered = fmtWord(in.operand);
+    size_t p = in.text.rfind(rendered);  // the operand is the trailing token
+    if (p == std::string::npos) return in.text;
+    return in.text.substr(0, p) + name + in.text.substr(p + rendered.size());
 }
 
 uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& out) {
@@ -1834,15 +1865,14 @@ uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& ou
     for (const std::string& label : m_.syms.labelsAt(at)) out << label << ":\n";
 
     std::string bytes;
-    char b[8];
     for (int i = 0; i < in.len; ++i) {
-        std::snprintf(b, sizeof b, "%02X ", peek((uint16_t)(at + (uint32_t)i)));
-        bytes += b;
+        bytes += fmtByte(peek((uint16_t)(at + (uint32_t)i)));
+        bytes += ' ';
     }
 
     char buf[96];
-    std::snprintf(buf, sizeof buf, "%04X  %-9s %s", (unsigned)at & 0xFFFF, bytes.c_str(),
-                  annotateOperands(in.text).c_str());
+    std::snprintf(buf, sizeof buf, "%s  %-9s %s", fmtWord((uint16_t)at).c_str(), bytes.c_str(),
+                  annotateOperands(in).c_str());
     out << buf << "\n";
     return in.len;
 }
@@ -1877,7 +1907,13 @@ void Monitor::showRegs(std::ostream& out) {
             // number. That is IE, and anything like it a later core brings.
             if (r.bits < 4)
                 std::snprintf(buf, sizeof buf, "%s=%u ", r.shown().c_str(), r.get());
-            else
+            else if (octalMode()) {
+                // A wire register in split octal -- a byte in three digits, a word in
+                // two byte-groups. Hex keeps the exact %0*X below, so it does not move.
+                std::string val =
+                    r.bits <= 8 ? fmtByte((uint8_t)r.get()) : fmtWord((uint16_t)r.get());
+                std::snprintf(buf, sizeof buf, "%s=%s ", r.shown().c_str(), val.c_str());
+            } else
                 std::snprintf(buf, sizeof buf, "%s=%0*X ", r.shown().c_str(), r.bits / 4,
                               r.get());
             fields += buf;
@@ -1890,7 +1926,7 @@ void Monitor::showRegs(std::ostream& out) {
     out << fields;
 
     if (const Disassembler* d = disassemblerFor(c->isa()))
-        out << " " << annotateOperands(insnAt(c->pc(), *d).text);
+        out << " " << annotateOperands(insnAt(c->pc(), *d));
     out << "\n";
 }
 
@@ -1903,27 +1939,27 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         std::string what = "?";
         for (const Breakpoint& b : dbg.breakpoints())
             if (b.id == r.bp) what = b.describe();
-        std::snprintf(buf, sizeof buf, "breakpoint %d (%s) -- stopped at %04X", r.bp,
-                      what.c_str(), r.pc);
+        std::snprintf(buf, sizeof buf, "breakpoint %d (%s) -- stopped at %s", r.bp,
+                      what.c_str(), fmtWord(r.pc).c_str());
         out << buf << "\n";
         break;
     }
     case StopReason::Halted:
         std::snprintf(buf, sizeof buf,
-                      "HLT at %04X, and nothing can interrupt it -- no board is pulling pINT.",
-                      r.pc);
+                      "HLT at %s, and nothing can interrupt it -- no board is pulling pINT.",
+                      fmtWord(r.pc).c_str());
         out << buf << "\n";
         break;
     case StopReason::Attn:
         // ATTN IS NOT A FAULT. You asked for the keyboard back, and the machine is
         // exactly where you left it -- so say that, and say how to go on.
-        std::snprintf(buf, sizeof buf, "ATTN -- the machine is still at %04X. RUN resumes.",
-                      r.pc);
+        std::snprintf(buf, sizeof buf, "ATTN -- the machine is still at %s. RUN resumes.",
+                      fmtWord(r.pc).c_str());
         out << buf << "\n";
         break;
     case StopReason::InputEnded:
         std::snprintf(buf, sizeof buf,
-                      "input ended -- the machine is still at %04X. RUN resumes.", r.pc);
+                      "input ended -- the machine is still at %s. RUN resumes.", fmtWord(r.pc).c_str());
         out << buf << "\n";
         break;
     case StopReason::Interrupted:
@@ -1934,8 +1970,8 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
         // prompt -- the machine is untouched and the window is still there, so say
         // both, and say how to go on and how to actually leave.
         std::snprintf(buf, sizeof buf,
-                      "window closed -- the machine is still at %04X. RUN resumes; QUIT exits.",
-                      r.pc);
+                      "window closed -- the machine is still at %s. RUN resumes; QUIT exits.",
+                      fmtWord(r.pc).c_str());
         out << buf << "\n";
         break;
     case StopReason::NoCpu:
@@ -2451,7 +2487,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 uint32_t max = r.bits >= 32 ? 0xFFFFFFFFu : (1u << r.bits) - 1;
                 if (val > max) {
                     char e[96];
-                    std::snprintf(e, sizeof e, "%s is %d bits -- %X does not fit.",
+                    std::snprintf(e, sizeof e,
+                                  octalMode() ? "%s is %d bits -- %o does not fit."
+                                              : "%s is %d bits -- %X does not fit.",
                                   r.name.c_str(), r.bits, val);
                     out << e << "\n";
                     failed_ = true;
@@ -2667,7 +2705,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             c.type = Cycle::IoWrite;
             c.addr = (uint16_t)(p & 0xFF);
             auto who = m_.bus.respondersTo(c);
-            std::snprintf(buf, sizeof buf, "port %02X OUT:", (unsigned)(p & 0xFF));
+            std::snprintf(buf, sizeof buf, "port %s OUT:", fmtByte((uint8_t)(p & 0xFF)).c_str());
             out << buf;
             if (who.empty()) out << " nobody (an OUT here goes nowhere)";
             for (auto* b : who) out << " " << b->id;
@@ -2686,7 +2724,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 if (b->enabled() && b->assertsPhantom(c)) ph = true;
             auto who = m_.bus.respondersTo(c);
 
-            std::snprintf(buf, sizeof buf, "%04X %-5s ", A, t == Cycle::MemRead ? "read" : "write");
+            std::snprintf(buf, sizeof buf, "%s %-5s ", fmtWord((uint16_t)A).c_str(),
+                          t == Cycle::MemRead ? "read" : "write");
             out << buf;
             if (who.empty()) {
                 out << "nobody -- floats to FF"
@@ -2841,12 +2880,13 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             for (uint32_t k = 0; k < w; ++k) {
                 uint32_t E = A + k;
                 if (E < lo || E > hi) {
-                    hexs += "   ";  // outside the range: hold the column, show nothing
+                    // outside the range: hold the column (byte + its space), show nothing
+                    hexs += std::string(byteWidth() + 1, ' ');
                     asc += ' ';
                 } else {
                     uint8_t v = rd(E);
-                    std::snprintf(buf, sizeof buf, "%02X ", v);
-                    hexs += buf;
+                    hexs += fmtByte(v);
+                    hexs += ' ';
                     asc += (v >= 0x20 && v < 0x7F) ? (char)v : '.';
                 }
                 // The traditional mid-line gutter. It is OUTSIDE the branch above:
@@ -2854,7 +2894,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 // lands in the wrong place and the alignment we just bought is lost.
                 if (w == 16 && k == 7) hexs += ' ';
             }
-            std::snprintf(buf, sizeof buf, "%04X  %s %s", A, hexs.c_str(), asc.c_str());
+            std::snprintf(buf, sizeof buf, "%s  %s %s", fmtWord((uint16_t)A).c_str(), hexs.c_str(),
+                          asc.c_str());
             out << buf << "\n";
         }
         flush(out);
@@ -2911,7 +2952,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         pcOwner->setPc((uint16_t)A);
 
         uint8_t v = rd(A);
-        std::snprintf(buf, sizeof buf, "%04X  %02X  %c  %c%c%c%c%c%c%c%c", A, v,
+        std::snprintf(buf, sizeof buf, "%s  %s  %c  %c%c%c%c%c%c%c%c", fmtWord((uint16_t)A).c_str(),
+                      fmtByte(v).c_str(),
                       (v >= 0x20 && v < 0x7F) ? (char)v : '.', (v & 0x80) ? '1' : '0',
                       (v & 0x40) ? '1' : '0', (v & 0x20) ? '1' : '0', (v & 0x10) ? '1' : '0',
                       (v & 0x08) ? '1' : '0', (v & 0x04) ? '1' : '0', (v & 0x02) ? '1' : '0',
@@ -2935,7 +2977,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (romOverride) {
                 std::string why;
                 if (!burn(A, (uint8_t)v, why)) {
-                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)A).c_str(), why.c_str());
                     out << buf << "\n";
                     failed_ = true;
                     return true;
@@ -2949,7 +2991,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     c.type = Cycle::MemRead;
                     c.addr = (uint16_t)A;
                     auto rdr = m_.bus.respondersTo(c);
-                    std::snprintf(buf, sizeof buf, "%04X: no board decodes writes here", A);
+                    std::snprintf(buf, sizeof buf, "%s: no board decodes writes here", fmtWord((uint16_t)A).c_str());
                     out << buf;
                     if (!rdr.empty())
                         out << " (" << rdr.front()->id << " answers reads -- it is ROM)";
@@ -2985,7 +3027,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         for (;;) {
             uint8_t v = rd(A);
-            std::snprintf(buf, sizeof buf, "%04X %02X ", A, v);
+            std::snprintf(buf, sizeof buf, "%s %s ", fmtWord((uint16_t)A).c_str(), fmtByte(v).c_str());
             std::string resp;
             if (!ed_->read(buf, resp, *in_)) break;  // EOF / Ctrl-D -- done
             size_t b0 = resp.find_first_not_of(" \t");
@@ -2995,14 +3037,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (tok.empty()) { A = (A + 1) & 0xFFFF; continue; }     // leave it, next byte
             uint32_t nv;
             std::string e;
-            if (!parseNum(tok, nv, 16, e) || nv > 0xFF) {
-                out << "?  a byte is 00-FF, or '.' to stop\n";       // stay put, re-prompt
+            if (!parseNum(tok, nv, octalMode() ? 8 : 16, e) || nv > 0xFF) {
+                out << (octalMode() ? "?  a byte is 000-377, or '.' to stop\n"
+                                    : "?  a byte is 00-FF, or '.' to stop\n");  // stay put, re-prompt
                 continue;
             }
             if (romOverride) {
                 std::string why;
                 if (!burn(A, (uint8_t)nv, why)) {
-                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)A).c_str(), why.c_str());
                     out << buf << "\n";
                     failed_ = true;
                     break;  // a ROM you cannot burn will not burn on the next byte either
@@ -3016,7 +3059,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     bc.type = Cycle::MemRead;
                     bc.addr = (uint16_t)A;
                     auto rdr = m_.bus.respondersTo(bc);
-                    std::snprintf(buf, sizeof buf, "%04X: no board decodes writes here", A);
+                    std::snprintf(buf, sizeof buf, "%s: no board decodes writes here", fmtWord((uint16_t)A).c_str());
                     out << buf;
                     if (!rdr.empty())
                         out << " (" << rdr.front()->id << " answers reads -- it is ROM)";
@@ -3048,7 +3091,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         uint8_t v = m_.bus.ioRead((uint8_t)p);
-        std::snprintf(buf, sizeof buf, "port %02X -> %02X", (unsigned)p, v);
+        std::snprintf(buf, sizeof buf, "port %s -> %s", fmtByte((uint8_t)p).c_str(), fmtByte(v).c_str());
         out << buf;
         // The distinction the bus exists to make. FF from a board and FF from an
         // empty slot are the same byte and completely different faults.
@@ -3068,7 +3111,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         m_.bus.ioWrite((uint8_t)p, (uint8_t)v);
-        std::snprintf(buf, sizeof buf, "port %02X <- %02X", (unsigned)p, (unsigned)(v & 0xFF));
+        std::snprintf(buf, sizeof buf, "port %s <- %s", fmtByte((uint8_t)p).c_str(),
+                      fmtByte((uint8_t)(v & 0xFF)).c_str());
         out << buf;
         if (m_.bus.lastUnclaimed()) out << "   (nobody decodes this port -- the byte is gone)";
         out << "\n";
@@ -3084,7 +3128,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (romOverride) {
                 std::string why;
                 if (!burn(A, (uint8_t)v, why)) {
-                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)A).c_str(), why.c_str());
                     out << buf << "\n";
                     failed_ = true;
                     return true;
@@ -3093,7 +3137,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 m_.bus.memWrite((uint16_t)A, (uint8_t)v);
             }
         }
-        std::snprintf(buf, sizeof buf, "filled %04X-%04X with %02X", lo, hi, v);
+        std::snprintf(buf, sizeof buf, "filled %s-%s with %s", fmtWord((uint16_t)lo).c_str(),
+                      fmtWord((uint16_t)hi).c_str(), fmtByte(v).c_str());
         out << buf << "\n";
         flush(out);
         return true;
@@ -3122,7 +3167,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     break;
                 }
             if (ok) {
-                std::snprintf(buf, sizeof buf, "%04X", A);
+                std::snprintf(buf, sizeof buf, "%s", fmtWord((uint16_t)A).c_str());
                 out << buf << "\n";
                 ++hits;
             }
@@ -3139,7 +3184,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         for (uint32_t A = lo; A <= hi; ++A) {
             uint8_t x = rd(A), y = rd(dst + (A - lo));
             if (x != y) {
-                std::snprintf(buf, sizeof buf, "%04X %02X != %04X %02X", A, x, dst + (A - lo), y);
+                std::snprintf(buf, sizeof buf, "%s %s != %s %s", fmtWord((uint16_t)A).c_str(),
+                              fmtByte(x).c_str(), fmtWord((uint16_t)(dst + (A - lo))).c_str(),
+                              fmtByte(y).c_str());
                 out << buf << "\n";
                 if (++diff > 32) {
                     out << "... (more)\n";
@@ -3161,7 +3208,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (romOverride) {
                 std::string why;
                 if (!burn(dst + (uint32_t)k, tmp[k], why)) {
-                    std::snprintf(buf, sizeof buf, "%04X: %s", (unsigned)(dst + k), why.c_str());
+                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)(dst + k)).c_str(), why.c_str());
                     out << buf << "\n";
                     failed_ = true;
                     return true;
@@ -3252,7 +3299,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (romOverride) {
                 // THE PROM BURNER. Behind the bus, into whichever chip answers here.
                 if (!burn(A, v, why)) {
-                    std::snprintf(buf, sizeof buf, "%04X: %s", A, why.c_str());
+                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)A).c_str(), why.c_str());
                     out << buf << "\n";
                     failed_ = true;
                     return true;
@@ -3262,8 +3309,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 if (m_.bus.lastUnclaimed()) ++gone;
             }
         }
-        std::snprintf(buf, sizeof buf, "loaded %zu bytes from %s (%04X-%04X)%s", img.size(),
-                      a[1].c_str(), img.lo(), img.hi(), romOverride ? " (ROM override)" : "");
+        std::snprintf(buf, sizeof buf, "loaded %zu bytes from %s (%s-%s)%s", img.size(),
+                      a[1].c_str(), fmtWord(img.lo()).c_str(), fmtWord(img.hi()).c_str(),
+                      romOverride ? " (ROM override)" : "");
         out << buf << "\n";
         if (gone) {
             // Loading through the bus is a bus write, so ROM does not take it -- exactly
@@ -3275,7 +3323,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << buf << "\n";
         }
         if (img.hasStart) {
-            std::snprintf(buf, sizeof buf, "  start address %04X (no CPU yet)", img.start);
+            std::snprintf(buf, sizeof buf, "  start address %s (no CPU yet)", fmtWord(img.start).c_str());
             out << buf << "\n";
         }
         flush(out);
@@ -3322,7 +3370,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         } else {
             for (auto v : img.flat()) f.put((char)v);
         }
-        std::snprintf(buf, sizeof buf, "saved %04X-%04X to %s (%s)", lo, hi, a[1].c_str(),
+        std::snprintf(buf, sizeof buf, "saved %s-%s to %s (%s)", fmtWord((uint16_t)lo).c_str(),
+                      fmtWord((uint16_t)hi).c_str(), a[1].c_str(),
                       asHex ? "hex" : "bin");
         out << buf << "\n";
         return true;

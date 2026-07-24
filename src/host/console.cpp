@@ -247,6 +247,24 @@ std::vector<Property> Console::properties() {
         p.push_back(std::move(x));
     }
 
+    // HEX OR OCTAL, for the OPERATOR's eyes. Not a transform -- it changes nothing on
+    // the byte stream -- so it lives here on the terminal, beside `attn`, not in the
+    // filter chain. The monitor reads Console::base() to format wire quantities and to
+    // pick a default parse base; the decimal class and explicit markers are untouched.
+    {
+        Property x;
+        x.name    = "base";
+        x.help    = "Operator's numeric base for addresses/ports/bytes: hex | octal (split octal)";
+        x.kind    = Kind::Enum;
+        x.choices = {"hex", "octal"};
+        x.get     = [this] { return Value::ofStr(base_ == NumBase::Octal ? "octal" : "hex"); };
+        x.set     = [this](const Value& v, std::string&) {
+            base_ = v.s() == "octal" ? NumBase::Octal : NumBase::Hex;
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+
     // THE TRANSFORM CHAIN -- upper, strip7in, strip7out, crlf, echo, bell, bsdel.
     //
     // They are properties of the TERMINAL, which is what this class is, and they are

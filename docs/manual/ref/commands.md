@@ -10,8 +10,11 @@ the table's order, so it is shown here as `D[UMP]` — type the part before the
 bracket. (`?` is the one true alias, for `HELP`.)
 
 **Numbers:** on the wire is **hex** (addresses, ports, bytes); never on the wire is
-**decimal** (counts, widths, sizes). `0x`/`$`/`h` force hex, `#` forces decimal, and
-a `K`/`M` suffix is always decimal.
+**decimal** (counts, widths, sizes). `0x`/`$`/`h` force hex, `0o`/trailing-`q` force
+octal, `#` forces decimal, and a `K`/`M` suffix is always decimal. `SET CONSOLE
+base=octal` makes the wire class read and print in **split octal** (each byte its own
+`000`–`377` group, an address as two of them) — the MITS front-panel convention;
+`base=hex` is the default. Either way both spellings stay typeable.
 
 ## Not built yet
 
