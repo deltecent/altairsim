@@ -451,6 +451,21 @@ from `write()`. Submission happens on the `pump()`/flush path, and if it turns
 out to be slow enough to be felt, it wants a worker — but measure before
 building one.
 
+*Measured (macOS 26, CUPS 2.3.4, `socket` backend to a local `nc`):* a submit is
+**~1–3 seconds**, and the **first job is slower** — daemon and backend warm-up,
+not anything in the buffer. That is slow enough to be felt. As built, the submit
+runs on the run-loop thread (`pump()` → the idle timer → `cupsPrintFile2`), so a
+job boundary that fires **mid-`RUN`** freezes the guest for that interval. At
+`DISCONNECT`/exit it only delays the prompt, which is harmless, and for the usual
+print-a-report-then-return flow the hitch lands while the guest is already idle —
+so Phase 1 ships synchronous. But the measurement clears the note's own gate:
+**deferring submission to a background worker thread is a warranted Phase-2
+improvement.** It is safe to thread precisely because submission is host-side
+dwell that no register exposes — it never touches emulated time, so a worker does
+not endanger determinism the way a guest-visible thread would (§2.1). The failed
+job would then reach `drainLog()` a slice later instead of inline, which is the
+one wrinkle to handle.
+
 **A failed job must be loud and must not be silent data loss.** A queue that has
 gone away, a printer that is off — these produce an error string from both APIs,
 and it has to reach the operator through `Board::drainLog()`, the same route a
