@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace altair {
 
@@ -139,6 +140,14 @@ public:
     // a stream may talk to the host: accept a connection, drain a socket, poll a
     // keyboard. Keeping it out of the board's path is what makes the board pure.
     virtual void pump() {}
+
+    // WHAT THE FAR END WANTS SAID OUT LOUD -- a print job that could not be spooled,
+    // a queue that has gone away. Default empty (most streams have nothing to report:
+    // a file and a socket either work or refused at CONNECT). The BOARD drains this
+    // off its units' streams (Board::drainLog) and the monitor prints it after every
+    // command and run, the same route setParams() uses for "cannot do 76800 baud".
+    // Move-and-clear in the override, like the chips do (chips/uart1602.h).
+    virtual std::vector<std::string> drainLog() { return {}; }
 
     uint8_t readByte() {
         uint8_t b = 0;

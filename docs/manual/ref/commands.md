@@ -678,6 +678,10 @@ serial:     a real port on this host. It is opened at 9600 8N1 and then
             knows what it is strapped to.
 file:       PATH -- a host file, write-only: a printout, or a capture of the
             line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.
+printer:    QUEUE -- a real print queue on this host (only where the build found
+            one). The bytes buffer into a JOB, submitted after a few idle seconds
+            (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling
+            (?max=N). 8-bit clean -- a printer control language is not text.
 ```
 
 
@@ -693,6 +697,7 @@ CONN sio0:b socket:bbs.example:23  the guest dials OUT, to somebody else's port
 CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware
 CONN sio0:b serial:COM3                           ...the same, on Windows
 CONN lpt0:prn file:printout.txt                   capture a printer to a file
+CONN lpt0:prn printer:linewriter                  print to a real host queue
 ```
 
 DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it.

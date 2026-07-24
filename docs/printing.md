@@ -1,15 +1,21 @@
 # Printing to a real printer
 
-**Status: design note. Nothing here is built.** Discussion and the open
-questions live on [issue #70](https://github.com/deltecent/altairsim/issues/70);
-this document is the detail behind it. This is a working document in
-the source tree — it is in neither the User Manual nor the Developer Guide,
-because documenting an unshipped knob in either one is drift, and drift is a
-bug. It exists so the platform research does not have to be done twice, and so
-the design call it depends on is written down before someone starts typing.
+**Status: Phase 1 built (CUPS: macOS + Linux).** The `printer:` endpoint, its
+buffering and job boundaries, and the CUPS submit backend are shipped and covered by
+tests; the User Manual's serial chapter now documents the operator side. Still open
+(later branches): the explicit operator verb (`PRINT FLUSH` / `EJECT`, §2.2) and the
+Windows WinSpool backend (§3). Discussion and the remaining open questions live on
+[issue #70](https://github.com/deltecent/altairsim/issues/70); this document is the
+detail behind it, and the record of the design calls it made.
+
+Three things this note called wrong were corrected when it was built, and the
+corrections are folded into the sections below: the CMake detection is
+`find_package(Cups)`, **not** pkg-config (§3.1); the platform backends live in
+`src/platform/`, **not** `src/host/` (§3.1); and a machine **reset is not a job
+boundary** (§2.1).
 
 The want: a guest program prints, and paper comes out of a printer attached to
-this host. Today the only destinations for printed bytes are `file:PATH` and
+this host. Before this, the only destinations for printed bytes were `file:PATH` and
 `null` — a capture, not a printout.
 
 ---
@@ -87,11 +93,20 @@ the run loop (`src/cli/monitor.cpp:1082`) and nowhere else. A timer ticked only
 from `pump()` would never fire if the guest halts, breakpoints, or the operator
 hits ATTN right after printing — the commonest case of all, since a program that
 just finished a report is often a program that just finished. The buffer must
-therefore also be flushed when the run loop exits, on `DISCONNECT`, on reset, on
-`CONFIG LOAD` (which replaces the machine wholesale), and at exit. The idle
-timer is the *usual* boundary, not the only one. `MediaFile::commit()` is the
-precedent: the thing that guarantees the bytes land is not the thing that
-usually pushes them.
+therefore also be submitted on `DISCONNECT`, on `CONFIG LOAD` (which replaces the
+machine wholesale), and at exit. As built, all three are the **stream's
+destructor**: DISCONNECT swaps in a `NullStream` and destroys the old stream, and
+CONFIG LOAD and exit destroy the boards and their streams — so one `noexcept`
+destructor submit covers every teardown path with no board changed. The idle timer
+is the *usual* boundary, not the only one. `MediaFile::commit()` is the precedent:
+the thing that guarantees the bytes land is not the thing that usually pushes them.
+
+**Reset is not a boundary** (correction to an earlier draft of this note). A warm
+reset keeps the line connected — a real reset does not unplug the printer — and the
+C700's PRIME is a *start*-of-job, not an end (§2.2). Submitting on reset would chop
+an in-flight report the moment a guest reboots and resumes printing. A reset that is
+followed by a halt forever is already covered by the destructor at exit, so nothing
+is lost by leaving reset alone.
 
 **`flush()` is already taken and cannot mean end-of-job.** `ByteStream::flush()`
 means "push what you are holding down the pipe", and the C700 calls it on *every
@@ -218,38 +233,51 @@ raw/passthrough mode is both the most portable route and the correct one.
 
 ### 3.1 Files and CMake wiring
 
-- `printer.h` — the shared interface (`print_raw`, `print_raw_file`,
-  `list_queues`)
-- `printer_windows.cpp` — WinSpool
-- `printer_cups.cpp` — CUPS (macOS + Linux)
+As built, the files are (the pure buffering stream is separate from the platform
+backend, and is always compiled so its boundary policy is tested with no CUPS):
+
+- `src/host/printer_stream.{h,cpp}` — the buffering `PrinterStream` (job boundaries,
+  the never-submit-empty rule). Pure, always compiled.
+- `src/platform/printer.h` — the shared submit interface (`printRaw`,
+  `printRawFile`, `listQueues`), a sibling of `platform/serial.h`.
+- `src/platform/posix/printer_cups.cpp` — CUPS (macOS + Linux).
+- `src/platform/win32/printer_windows.cpp` — WinSpool (Phase 3, not yet written).
+
+**The backends live in `src/platform/`, not `src/host/`** (correction to an earlier
+draft). The WinSpool one needs `<windows.h>`, which `cmake/lint_platform.cmake`
+forbids outside `src/platform/*/` — a build-failing lint. Both backends therefore sit
+under `src/platform/{posix,win32}/` behind the shared interface, exactly like
+`serial.h`/`socket.h`.
 
 ```cmake
-if(WIN32)
-    target_sources(printer PRIVATE printer_windows.cpp)
-    target_link_libraries(printer PRIVATE winspool)
-else()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(CUPS REQUIRED cups)
-    target_sources(printer PRIVATE printer_cups.cpp)
-    target_include_directories(printer PRIVATE ${CUPS_INCLUDE_DIRS})
-    target_link_libraries(printer PRIVATE ${CUPS_LIBRARIES})
+option(ALTAIRSIM_ENABLE_PRINTER "Print to a host queue if CUPS/WinSpool is found" ON)
+if(ALTAIRSIM_ENABLE_PRINTER)
+  if(WIN32)
+    # Phase 3 -- printer_windows.cpp (WinSpool) not yet written.
+  else()
+    find_package(Cups QUIET)          # CMake's own FindCups -> the Cups::Cups target
+    if(Cups_FOUND)
+      target_sources(altair_core PRIVATE src/platform/posix/printer_cups.cpp)
+      target_link_libraries(altair_core PUBLIC Cups::Cups)
+      target_compile_definitions(altair_core PUBLIC ALTAIRSIM_ENABLE_PRINTER)
+    endif()
+  endif()
 endif()
 ```
 
-Only one of the two is ever compiled in, so there is no `#ifdef` at any call
-site and no dead code shipped per platform — the selection happens entirely at
-configure time, matching the existing per-platform source pattern
-(`src/platform/`).
-
-**It must be optional, and this is a finding.** `REQUIRED` above is wrong for
-this tree. CUPS headers are not guaranteed on a build host — a Linux CI runner
-without `libcups2-dev` would stop configuring, which would break a build that
-works today over a feature nobody asked that leg to test. Follow the SDL3
-precedent exactly (`CMakeLists.txt:250`): an `ALTAIRSIM_ENABLE_PRINTER` option
-defaulting to ON meaning *use it if it is here*, a quiet detect, a `message
-(STATUS)` either way, and a build without it where `printer:` is simply not in
-`endpointHelp()` and the resolver says so by name. The one endpoint that cannot
-work on a given host must fail at `CONNECT` with a sentence, not at compile.
+**`find_package(Cups)`, not pkg-config** (correction to an earlier draft). An earlier
+version of this note used `find_package(PkgConfig REQUIRED)` + `pkg_check_modules`.
+That is wrong twice: `pkg-config` is not guaranteed on a macOS dev box (the reference
+Mac has `cups-config`, not `pkg-config`), and CMake already ships a `FindCups` module
+with an imported `Cups::Cups` target (since 3.15). It also must be **optional**, and
+`REQUIRED` fought that: CUPS headers are not guaranteed on a build host — a Linux CI
+runner without `libcups2-dev` would stop configuring, breaking a build that works
+today over a feature nobody asked that leg to test. So it follows the SDL3 precedent
+exactly: an `ALTAIRSIM_ENABLE_PRINTER` option defaulting to ON meaning *use it if it
+is here*, a quiet detect, a `message(STATUS)` either way, and a build without it where
+`printer:` is simply not in `endpointHelp()` and the resolver says so by name. The one
+endpoint that cannot work on a given host fails at `CONNECT` with a sentence, not at
+compile.
 
 ### 3.2 One-time queue setup
 
