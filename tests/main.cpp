@@ -1,5 +1,6 @@
 #include "test.h"
 
+#include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-884pio.h"
@@ -11,6 +12,7 @@
 #include "boards/proctech-vdm1.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
+#include "host/joystick_null.h"
 #include "host/media.h"
 
 #include <cstdio>
@@ -38,6 +40,13 @@ int main() {
     static altair::NullDisplay g_display;
     altair::VdmBoard::setDisplay(&g_display);
     altair::DazzlerBoard::setDisplay(&g_display);
+
+    // The game-controller service, injected the same way: a D+7A reads its JS-1 sticks
+    // from here. Headless tests give it a NullJoystick (every stick centered, no
+    // buttons -- a board with no console plugged in); a test that cares installs its own
+    // stub for its length (see test_d7a.cpp), exactly as test_media swaps resolvers.
+    static altair::NullJoystick g_joystick;
+    altair::D7aBoard::setJoystick(&g_joystick);
 
     // The REAL media resolver, for the same reason. A test that wants a disk
     // without a filesystem installs a MemoryMedia resolver for the length of the
@@ -90,6 +99,7 @@ int main() {
     test_4pio();
     test_vdm1();
     test_dazzler();
+    test_d7a();
     test_sol();
     test_tapemount();
     test_frontpanel();

@@ -41,6 +41,13 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | [MITS 88-PIO](MITS%2088-PIO.md) | MITS 88-PIO parallel board (discrete TTL, two 8212 latches — *not* a PIA): the two consecutive ports (even Control/Status with A0 split, odd Data), the fixed-direction 8-bit in/out latches, the status bits (DI0 output-ready, DI1 input-has-data), the interrupt-enable bits (DO0/DO1, "BOTH" jumper), the `SBO`/`SBI` strobe + `BO`/`BIN` handshake, and both interrupt paths (88-VI vectored — with the priority-order conflict vs the 88-VI board — or single-level RST 7 → 0x38). |
 | [MITS 88-4PIO](MITS%2088-4PIO.md) | MITS 88-4 parallel board (up to four Motorola 6820 PIAs, ports J/K/L/M): the 16-address-per-board decode (A4–A7 board, A3–A2 port, A1–A0 section/register), the read/write control/status register bit map (bit 7/6 IRQ status, 5–3 C2, 2 DDR-select, 1–0 C1), the C1/C2 edge+enable tables, the CA2/CB2-as-output read/write-strobe modes, DDR direction control, the power-on all-inputs reset, the init/handshake protocol, and both interrupt paths (88-VI vectored or single-level `PINT` → RST → 0x38). |
 
+## Analog and game I/O
+
+| Reference | What it covers |
+|---|---|
+| [Cromemco D+7A](D%2B7A.md) | Cromemco D+7A I/O board: the block of **8 consecutive ports** (default base 030 octal / 0x18), one parallel port at BASE+0 and **seven analog channels** at BASE+1..7 that are A/D on read and D/A on write, the 8-bit **two's-complement** 20 mV/LSB scale (−2.56 V … +2.54 V), the 5 µs A/D and the 5.5 µs / 11-wait-state READY hold, and the Dazzler REV B flash mod. The input+sound end of a Dazzler game console. |
+| [Cromemco JS-1](JS-1.md) | Cromemco JS-1 joystick console — a **peripheral**, not a board, that plugs into the D+7A (1 or 2 per board): the two-axis pots → analog inputs, four buttons → parallel-input bits, and speaker → analog D/A output, with Cromemco's recommended console-1/console-2 port map (X/Y → 0x19/0x1A and 0x1B/0x1C; buttons → D0–D3 / D4–D7 of 0x18; speakers → 0x19 / 0x1B). Notes the button-polarity assumption. |
+
 ## Printer
 
 | Reference | What it covers |

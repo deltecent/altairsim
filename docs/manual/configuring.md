@@ -388,7 +388,9 @@ than on each board.
 
 | Key | |
 |---|---|
-| `focus` | whether the video window takes the keyboard. Default `false` |
+| `focus` | whether the video window comes to the front and takes keyboard focus when it opens. Default `false` |
+| `scaling` | window size, as a whole-number multiple of the board's pixels: `auto` (default, fills about 70% of the screen) or a fixed number like `4` |
+| `keyboard` | whether a focused window's keystrokes reach the machine's console: `console` (default) or `none` (display-only). See below |
 
 With `focus = false` — the default — the terminal keeps the keyboard. The window opens behind
 whatever you were doing, and when the guest stops you can type at `altairsim>` immediately. You
@@ -398,8 +400,23 @@ With `focus = true` the window comes to the front when it opens and keeps the ke
 guest stops. That is what a **Sol-20** wants, because there the window *is* the console and the
 terminal is the back door.
 
-On a build without SDL3 the key is still accepted and simply has no window to apply to, so a
-machine file that asks for it stays portable.
+`scaling` opens the window at a whole-number multiple of the board's own pixels, so a low-res 1970s
+frame stays a crisp grid instead of a blur. `auto` (the default) picks the largest multiple that
+fits about 70% of the screen — so a Dazzler's tiny 64×64 frame and a VDM-1's 512-wide one open at a
+similar size — and a fixed number like `scaling = 4` is honored (brought down only if it would not
+fit the display).
+
+`keyboard` decides whether a video window is a *keyboard* at all — which is separate from whether it
+has focus. Default `console`: a focused window is a keyboard, and its keys join the terminal's on the
+one console stream, which is right for a **Sol-20** where the window *is* the console. Set it to
+`none` for a **display-only** board like a **Dazzler**: the window still shows the picture and still
+comes to the front, but its keystrokes do **not** reach the console — they drive a joystick (a
+`d7a`, if the machine has one), and only `Ctrl-E` in the window is honored, stopping the guest and
+handing you back the monitor. This is why typing in a Dazzler game window does not land at the CP/M
+prompt.
+
+On a build without SDL3 these keys are still accepted and simply have no window to apply to, so a
+machine file that asks for them stays portable.
 
 ## The transform chain belongs to the console, and only to the console
 

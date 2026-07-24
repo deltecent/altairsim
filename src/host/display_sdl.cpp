@@ -262,6 +262,7 @@ void SdlDisplay::pollEvents() {
         case SDL_EVENT_TEXT_INPUT:
             // Printable characters, already shift/layout-resolved. The guest is a
             // 7-bit machine, so pass ASCII only; Ctrl-combos come via KEY_DOWN.
+            if (!Display::keyboardToConsole()) break;  // display-only: keys are the joystick's
             for (const char* p = e.text.text; p && *p; ++p) {
                 uint8_t c = (uint8_t)*p;
                 if (c < 0x80) emitKeys(&c, 1);
@@ -269,6 +270,15 @@ void SdlDisplay::pollEvents() {
             break;
         case SDL_EVENT_KEY_DOWN: {
             const SDL_Keycode k = e.key.key;
+            // DISPLAY-ONLY WINDOW (a Dazzler): its keystrokes drive the joystick, read
+            // through SDL_GetKeyboardState (host/joystick_sdl.cpp), NOT the console -- so
+            // they must not land at the CP/M or altairsim> prompt. Honor only ATTN
+            // (Ctrl-E), mapped to the same guest-stop the close box raises, so the window
+            // still hands the operator back the monitor. See Display::keyboardToConsole().
+            if (!Display::keyboardToConsole()) {
+                if ((e.key.mod & SDL_KMOD_CTRL) && k == 'e') quit_ = true;
+                break;
+            }
             uint8_t c = 0;
             if (e.key.mod & SDL_KMOD_CTRL) {
                 // Ctrl-A..Ctrl-Z -> C0 control codes (SOLOS reads Ctrl-C and kin this

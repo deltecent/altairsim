@@ -8,6 +8,34 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Joysticks — the Cromemco D+7A and the JS-1
+
+The **Cromemco D+7A** joins the backplane (`d7a`): an analog **and** parallel I/O card — one
+parallel port and **seven analog channels** in a block of eight ports (default base `18`), each
+channel an A/D converter on read and a D/A on write, in 8-bit two's-complement (`00` = 0 V, `7F` =
++2.54 V, `80` = −2.56 V). Its reason for being here is the input end of a Dazzler game console: it
+reads one or two **JS-1 joystick consoles** — the X/Y pots on analog inputs `19`/`1A` and `1B`/`1C`,
+and the four buttons (active-low) in the parallel byte at `18`, low nibble for one stick and high
+nibble for the other.
+
+The stick comes from the host through a new **`Joystick` service**, injected like the `Display`: a
+USB **gamepad** where SDL3 is present (its left stick and four face buttons map to a JS-1), or the
+**keyboard** as a fallback (arrow keys + Space/Z/X/C), and a no-op headless so the board runs and is
+tested with no controller. `joystick1`/`joystick2` pick which host stick drives each console (`auto`,
+`keyboard`, `none`, or a device index); the board itself never touches SDL. `machines/d7a.toml` is
+the machine; `examples/dazzler/cpm.toml` boots CP/M with a disk of period Dazzler demos (GDEMO,
+DAZCHESS, …), and `examples/dazzler/adctest.toml` auto-runs the **ADCTEST** joystick diagnostic.
+`reference/D+7A.md`, `reference/JS-1.md` and `docs/boards/cromemco-d7a.md` have the port map, the
+two's-complement scale, and the sourcing for the active-low buttons. (Sound — a JS-1 speaker is a
+D/A the CPU writes a waveform to — is designed in the board doc, not yet built.)
+
+The video window learned to be a **display, not a keyboard**. `[display] keyboard` (a new setting,
+default `console`) says where a focused video window's keystrokes go: `console` (the window is a
+keyboard, like a Sol-20) or `none` (display-only, like a Dazzler — the keys drive the joystick
+instead of landing at the CP/M or `altairsim>` prompt, and Ctrl-E in the window stops the guest).
+The Dazzler examples set `keyboard = "none"`, so you can play in the window without your keystrokes
+reaching CP/M.
+
 ### Color graphics — the Cromemco Dazzler
 
 The **Cromemco Dazzler** joins the backplane (`dazzler`), and with it the S-100's first color

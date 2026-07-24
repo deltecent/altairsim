@@ -314,6 +314,26 @@ public:
     static int  windowScale() { return scale_; }
     static void setWindowScale(int s) { scale_ = s; }
 
+    // ---- IS THE VIDEO WINDOW A CONSOLE KEYBOARD, OR A DISPLAY-ONLY SURFACE? ----
+    //
+    // A Sol-20's window IS the machine's console: its keystrokes are the guest's, merged
+    // with the terminal's on the one Console (the note at the top of this header). A
+    // Dazzler is DIFFERENT -- it is a display with no keyboard of its own, and the input
+    // device beside it is a JOYSTICK (the D+7A, host/joystick.h), read separately. So a
+    // Dazzler game's window must NOT pour keystrokes into the console: they are the
+    // joystick's (and would otherwise land at the CP/M or altairsim> prompt).
+    //
+    // `true` (default) -- the window feeds the Console, like a Sol-20/VDM.
+    // `false` -- DISPLAY-ONLY: the back end drops window keystrokes (the joystick reads the
+    //            keyboard itself), and maps ATTN (Ctrl-E) to the same guest-stop the close
+    //            box does, so the window still hands you back the monitor.
+    //
+    // Static and session-wide for the same reasons focusPolicy_ is: one operator, and it
+    // must answer before any window exists (a machine file sets it in [display]). Read at
+    // the moment it matters -- as each keystroke arrives.
+    static bool keyboardToConsole() { return keyboardToConsole_; }
+    static void setKeyboardToConsole(bool on) { keyboardToConsole_ = on; }
+
     // Declared through the same Property layer as a board's or the console's, so
     // `SET DISPLAY focus=on`, `SHOW DISPLAY`, `[display]` in a machine file and
     // CONFIG SAVE all pick it up with no code anywhere else. Static for the same
@@ -359,6 +379,9 @@ private:
 
     // The session's window-scale preference; see windowScale(). 0 = auto.
     static inline int scale_ = 0;
+
+    // Whether the video window's keys go to the console; see keyboardToConsole().
+    static inline bool keyboardToConsole_ = true;
 };
 
 // The `display` settings object -- one property today, and the same shape as the
@@ -405,6 +428,21 @@ inline std::vector<Property> Display::properties() {
                 return false;
             }
             scale_ = n;
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name    = "keyboard";
+        x.help    = "Where the video window's keystrokes go: 'console' (the window is a "
+                    "keyboard, like a Sol-20) or 'none' (display-only, like a Dazzler -- keys "
+                    "drive a joystick and Ctrl-E stops the guest)";
+        x.kind    = Kind::Enum;
+        x.choices = {"console", "none"};
+        x.get     = [] { return Value::ofStr(keyboardToConsole_ ? "console" : "none"); };
+        x.set     = [](const Value& v, std::string&) {
+            keyboardToConsole_ = (v.s() == "console");
             return true;
         };
         p.push_back(std::move(x));
