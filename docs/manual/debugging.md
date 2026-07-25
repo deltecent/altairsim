@@ -336,21 +336,31 @@ SHOW BUS IRQ          the eight interrupt lines: who is strapped where, who is p
 SHOW BUS CONTENTION   where two boards answer the same thing
 ```
 
-## The bus over time — `TRACE`, `HISTORY`
+## The machine over time — `TRACE`, `HISTORY`
 
-`WHO` and `SHOW BUS` are snapshots — the backplane as it is *now*. `TRACE` and `HISTORY` show
-you the same backplane over *time*, which is what you want when the bug is not where the machine
-stopped but somewhere in how it got there.
+`WHO` and `SHOW BUS` are snapshots — the backplane as it is *now*. `REGS` and `STEP` are the
+machine as it is *now*. `TRACE` and `HISTORY` show you all of that over *time*, which is what you
+want when the bug is not where the machine stopped but somewhere in how it got there.
 
-**`HISTORY` is a flight recorder.** A fixed-size ring of the most recent bus cycles is always
-filling while the machine runs, so when a breakpoint fires — or the machine wanders off into the
-weeds — the run-up to it is *already* recorded. You do not arm it; it is on. A bare `HISTORY`
-shows the last sixteen cycles, oldest first; `HISTORY <n>` shows the last *n*. Each line is a
-cycle, not an instruction, so a DMA transfer's cycles are in there too.
+**`HISTORY` is a flight recorder.** A fixed-size ring is always filling while the machine runs,
+so when a breakpoint fires — or the machine wanders off into the weeds — the run-up to it is
+*already* recorded. You do not arm it; it is on. A bare `HISTORY` shows the last sixteen
+**instructions**, oldest first; `HISTORY <n>` shows the last *n*. Each line is exactly what
+`STEP` prints — the registers and flags as the machine stood, and the decoded mnemonic it was
+about to run — so the recording reads like a `STEP` you did not have to be there for. The
+mnemonic is decoded from the bytes that *actually ran* at that address, so self-modifying code
+reads truthfully.
+
+There is a second recorder underneath, for when the CPU view is not enough: **`HISTORY BUS`** is
+the raw bus cycles — no registers and no mnemonics, just `T-STATE`, `TYPE`, `ADDR` and `DATA`,
+with a DMA transfer's cycles in there too (a DMA move originates no instruction, so it shows up
+here and not in the CPU view). `HISTORY CPU` names the default out loud.
 
 ```
-HISTORY               the last 16 cycles
+HISTORY               the last 16 instructions
 HISTORY 100           the last hundred (a count, so decimal)
+HISTORY BUS           the last 16 bus cycles instead
+HISTORY BUS 100       the last hundred cycles
 ```
 
 **`TRACE` logs every cycle as it happens** — to the console, or to a file. Like the breakpoints

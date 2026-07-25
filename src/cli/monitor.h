@@ -10,6 +10,7 @@
 #include "core/machine.h"
 
 #include <fstream>
+#include <functional>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -144,6 +145,17 @@ private:
     // a backplane without one is a machine you can build and the one 1a ran.
     CpuCore* needCpu(std::ostream& err);
     void showRegs(std::ostream& out);
+
+    // The "C0Z0... A=00 B=0000 ... P=0000" prefix -- flags clustered, then fields -- built
+    // from a register set and a source for each register's value. Shared by the LIVE status
+    // line (showRegs) and the RECORDED one (renderInsn / CPU HISTORY), so the two spellings
+    // of the same line can never drift. `valueAt(i)` is the i-th RegDef's value.
+    std::string regLine(const std::vector<RegDef>& regs,
+                        const std::function<uint32_t(size_t)>& valueAt);
+    // One recorded instruction as its DDT-style line -- exactly what STEP printed as it
+    // ran. The register line comes from regLine over the record's stored values; the
+    // mnemonic is disassembled from the record's stored bytes, not live memory.
+    std::string renderInsn(const Debugger::InsnRec& rec);
 
     void showBoard(Board* b, std::ostream& out);
     void showBoards(std::ostream& out, const Machine& m);  // the backplane: BOARDS
