@@ -232,15 +232,28 @@ else"*, and it means it.
 $ cmake --build build -j
 ```
 
-The card is now in the catalogue, with its settings and their help text, and nobody wrote a
-line of code to put it there:
+The card is now in the catalogue. `SHOW BOARDS` lists every type with its description;
+name one to see its settings and their help text -- and nobody wrote a line of code to put
+it there:
 
 ```
-altairsim> BOARDS TYPES
+altairsim> SHOW BOARDS
+  TYPE        DESCRIPTION
+  ----------  ----------------------------------------------------------------
   ...
-  lamp       A write-only latch: OUT FF lights eight LEDs. The Developer Guide builds this
-               port             the port this card latches. Write-only -- an IN here is not ours
-               lamps            what the guest last wrote -- the eight LEDs
+  lamp        A write-only latch: OUT FF lights eight LEDs. The Developer
+              Guide builds this
+
+  SHOW BOARD <type> for a board's properties
+
+altairsim> SHOW BOARD lamp
+  lamp  A write-only latch: OUT FF lights eight LEDs. The Developer Guide
+        builds this
+
+  PROPERTY  HELP
+  --------  ------------------------------------------------------------------
+  port      the port this card latches. Write-only -- an IN here is not ours
+  lamps     what the guest last wrote -- the eight LEDs
 ```
 
 Fit one, and ask the machine the same question we asked at the start:

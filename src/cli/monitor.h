@@ -146,7 +146,7 @@ private:
     void showRegs(std::ostream& out);
 
     void showBoard(Board* b, std::ostream& out);
-    void showBoards(std::ostream& out);  // the backplane: BOARDS
+    void showBoards(std::ostream& out, const Machine& m);  // the backplane: BOARDS
     void showProps(const std::vector<Property>& ps, std::ostream& out);
 
     // A sub-unit table's KEYS -- no value column, because the thing they describe does

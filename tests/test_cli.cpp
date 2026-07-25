@@ -69,8 +69,10 @@ void test_cli() {
     // RESET the machine would be a machine you have to set up again. So RUN takes R,
     // REGS takes RE, and RESET pays RES. Nobody assigned these -- the order did.
     CHECK(R("RE") == "REGS", "RE is the registers -- REGS is the first RE- word in the table");
-    CHECK(R("REC") == "RECORD", "REC records");
-    CHECK(R("REP") == "REPLAY", "REP replays");
+    // RECORD and REPLAY were DROPPED, not deferred (commands.cpp's R-cluster note), so
+    // REC/REP resolve to nothing now -- their prefixes are free for the next claimant.
+    CHECK(R("REC") == "", "REC is nothing now -- RECORD was dropped");
+    CHECK(R("REP") == "", "REP is nothing now -- REPLAY was dropped");
     CHECK(R("RES") == "RESET", "RES resets -- and a reset costs you three letters, on purpose");
     CHECK(R("REST") == "RESTORE", "REST restores -- REST is not a prefix of RESET");
     CHECK(R("REGI") == "REGION", "REGI is a memory region");
@@ -85,7 +87,7 @@ void test_cli() {
     CHECK(R("SH") == "SHOW", "SH shows");
     CHECK(R("SA") == "SAVE", "SA saves");
     CHECK(R("ST") == "STEP", "ST steps");
-    CHECK(R("STO") == "STOP", "STO stops");
+    CHECK(R("STO") == "", "STO is nothing now -- STOP was dropped");
     CHECK(R("SN") == "SNAPSHOT", "SN snapshots");
     // ---- THE N-CLUSTER (Patrick, 2026-07-15) ----
     // NEXT took `N` from NOBREAK, by the same rule that gave RUN `R` and STEP `S`: the
@@ -221,18 +223,18 @@ void test_cli() {
     CHECK(snap && std::string(snap->name) == "SNAPSHOT" && snap->built,
           "SN is SNAPSHOT, and built");
 
-    // Reserved commands still RESOLVE and still say what they wait on. RECORD and
-    // REPLAY are genuinely not here yet (they build on SNAPSHOT), and they hold
-    // their prefixes so the day they arrive they do not steal one from something else.
-    const CommandDef* rec = resolveCommand("REC");
-    CHECK(rec && std::string(rec->name) == "RECORD" && !rec->built,
-          "RECORD resolves but is not built yet");
-    CHECK(rec && rec->waiting && *rec->waiting, "and says what it is waiting on");
+    // RECORD, REPLAY and STOP were DROPPED, not deferred (commands.cpp). Nothing is
+    // reserved today: REC/REP/STO resolve to nothing, so their prefixes are free for
+    // whatever claims them next. The built=false mechanism stays for that day.
+    CHECK(resolveCommand("REC") == nullptr, "REC no longer resolves -- RECORD is gone");
+    CHECK(resolveCommand("REP") == nullptr, "REP no longer resolves -- REPLAY is gone");
+    CHECK(resolveCommand("STO") == nullptr, "STO no longer resolves -- STOP is gone");
 
     // Every command in the table is either BUILT (and then it needs no excuse) or
     // RESERVED (and then it must say what it is waiting for). A reserved command
     // with nothing to say is a dead entry nobody can act on -- and, until a moment
-    // ago, a null pointer this loop walked straight into.
+    // ago, a null pointer this loop walked straight into. Nothing is reserved today,
+    // so this holds vacuously -- but it is the guard the next reserved command needs.
     for (const CommandDef& c : commands())
         CHECK(c.built || (c.waiting && *c.waiting),
               c.built ? "built" : "a reserved command says what it waits on");

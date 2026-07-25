@@ -96,13 +96,17 @@ $ altairsim --list
 
 names them. They are `default`, `4k`, `altmon`, `amon`, `acuter`, `basic4k`, `basic8k`, `cdbl`,
 `ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20` and `z80`; the machine
-reference at the back of this manual says what each one is.
+reference at the back of this manual says what each one is. From the `altairsim>` prompt the
+same list is `SHOW MACHINES`.
 
-To see what is in one:
+To see what is in one — its backplane and its startup — name it:
 
 ```
 $ altairsim -x 'SHOW MACHINE' basic4k
 ```
+
+or, at the prompt, `SHOW MACHINE basic4k`. A bare `SHOW MACHINE` there is the machine you are
+running now.
 
 And to get it as **text you can edit** — the actual machine file, every board, every setting:
 
