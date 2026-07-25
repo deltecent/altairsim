@@ -51,6 +51,7 @@ void test_ddt();
 void test_dma();
 void test_sio2();
 void test_88sio();
+void test_sbc();
 void test_lines();
 void test_wd17xx();
 void test_spindle();

@@ -10,6 +10,7 @@
 #include "boards/cromemco-dazzler.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
+#include "boards/sd-sbc.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
 #include "host/display_sdl.h"
 #include "host/joystick_sdl.h"
@@ -213,6 +214,7 @@ int main(int argc, char** argv) {
     Sio2Board::setResolver(resolveEndpoint);
     TurnkeyBoard::setResolver(resolveEndpoint);  // shares Sio2Port's resolver
     SioBoard::setResolver(resolveEndpoint);
+    SbcBoard::setResolver(resolveEndpoint);
     UioBoard::setResolver(resolveEndpoint);  // serial half; the cassette half refuses CONNECT
     C700Board::setResolver(resolveEndpoint);
     LpcBoard::setResolver(resolveEndpoint);

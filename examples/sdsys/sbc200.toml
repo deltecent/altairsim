@@ -1,0 +1,10 @@
+# The SD Systems SBC-200 running the MSMONR21 monitor -- a thin delta on the built-in
+# `sbc200` machine (machines/sbc200.toml). See the README beside this file.
+#
+#     cd examples/sdsys
+#     altairsim sbc200.toml
+#     (press Enter)   ->   .
+
+[machine]
+name = "sbc200-example"
+base = "sbc200"

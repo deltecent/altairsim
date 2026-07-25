@@ -1,0 +1,72 @@
+# SD Systems SBC-200 -- a 4 MHz Z80 single-board computer running the MSMONR21 monitor.
+#
+#     altairsim sbc200
+#     (press Enter)              <- the monitor auto-detects your baud from the CR
+#     .                          <- the monitor prompt
+#
+# WHY YOU MUST PRESS ENTER FIRST. The SBC-200 wires the 8251 USART's RxD line to its
+# /DSR input. MSMONR21 auto-detects the console baud rate by timing the start bit of
+# the first character you type (a CR), spinning on 8251 status bit 7 (DSR). It prints
+# NOTHING until you press Enter -- that is authentic, not a hang. Then it prints its
+# `.` prompt; the command set is in reference/SD Systems Monitor.md.
+#
+# PHASE 1 IS THE SERIAL CONSOLE ONLY. The Z80-CTC baud generator (port 78), the
+# parallel port (7E/7F), the memory switch-out, the disk BIOS driving a real
+# VersaFloppy, and the reset auto-start-jam-to-E000 (with the IN 7F release) are later
+# phases; here the machine is simply started at the monitor with `RUN E000`.
+
+[machine]
+name    = "sbc200"
+startup = ["RUN E000"]        # the authentic reset jam-to-E000 is a later phase
+
+# THE CPU. The SBC-200 is a 4 MHz Z80. clock_hz sets the crystal the 8251 divides to
+# turn baud into T-states (and it is what makes the auto-baud bit width period-correct).
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE CONSOLE: an Intel 8251 USART at 7C (data) / 7D (status+command), with RxD strapped
+# to /DSR (the board does this by default) so the monitor can auto-baud.
+[[board]]
+type    = "sbc"
+id      = "ser0"
+variant = "sbc200"
+port    = 7C
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+# MEMORY: the monitor EPROM at E000 (MSMONR21, 2K) and the disk BIOS at F000 (DDBIOS,
+# 2K), with RAM filling everything else -- 56K below, and the gaps around the ROMs,
+# including the monitor's FF60-FFFF scratch/stack/register-save area.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"                # 0000-DFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = E000
+  mount = "builtin:msmonr21"  # 2K -> E000-E7FF
+
+  [[board.region]]
+  type = "ram"
+  at   = E800
+  size = "2K"                 # E800-EFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = F000
+  mount = "builtin:ddb200"    # 2K -> F000-F7FF
+
+  [[board.region]]
+  type = "ram"
+  at   = F800
+  size = "2K"                 # F800-FFFF (monitor scratch/stack/registers at FF60-FFFF)
