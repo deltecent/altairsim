@@ -353,8 +353,12 @@ reads truthfully.
 
 There is a second recorder underneath, for when the CPU view is not enough: **`HISTORY BUS`** is
 the raw bus cycles — no registers and no mnemonics, just `T-STATE`, `TYPE`, `ADDR` and `DATA`,
-with a DMA transfer's cycles in there too (a DMA move originates no instruction, so it shows up
-here and not in the CPU view). `HISTORY CPU` names the default out loud.
+and then **who drove the cycle and who answered it**. The processor drives most cycles, so that
+column reads `cpu`; a **DMA transfer names the board** that stole the bus instead (a DMA move
+originates no instruction, so it shows up here and not in the CPU view). The *answered* column is
+the board that decoded the address — or `--` when nobody did and the read floated to `FF`. So a
+guest poking a port that no board decodes reads `cpu -> --`, and a DMA controller filling a
+framebuffer reads `dazzler -> mem0`. `HISTORY CPU` names the default out loud.
 
 ```
 HISTORY               the last 16 instructions

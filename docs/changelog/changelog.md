@@ -8,6 +8,21 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `HISTORY` remembers the processor — and the bus view names names
+
+`HISTORY` is a flight recorder that runs while the machine does, so the run-up to a breakpoint is
+already caught before you ask for it. It now **defaults to the CPU**: the last sixteen
+instructions, each line exactly what `STEP` prints — the registers, flags and the decoded
+mnemonic — read from the bytes that *actually ran*, so self-modifying code reads truthfully. The
+bus-cycle recorder it used to be is still there as **`HISTORY BUS`** (and `HISTORY CPU` names the
+default out loud).
+
+`HISTORY BUS` now also shows **who drove each cycle and who answered it**: `cpu` for an ordinary
+cycle, or the **DMA board** that stole the bus, on one side; the board that decoded the address
+on the other, or `--` when nobody did and the read floated to `FF`. `TRACE` lines carry the same
+two columns. It costs the always-on recorder nothing per cycle — the board is noted by an
+interned handle, not a name copied onto every record.
+
 ### The board and machine catalogues moved to `SHOW`, and read like tables
 
 Asking *what can I build?* is now one family of commands. **`SHOW BOARDS`** lists every board
