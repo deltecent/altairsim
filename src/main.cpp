@@ -4,6 +4,7 @@
 #include "boards/mits-88lpc.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
+#include "boards/mits-88uio.h"
 #include "boards/mits-turnkey.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
@@ -212,6 +213,7 @@ int main(int argc, char** argv) {
     Sio2Board::setResolver(resolveEndpoint);
     TurnkeyBoard::setResolver(resolveEndpoint);  // shares Sio2Port's resolver
     SioBoard::setResolver(resolveEndpoint);
+    UioBoard::setResolver(resolveEndpoint);  // serial half; the cassette half refuses CONNECT
     C700Board::setResolver(resolveEndpoint);
     LpcBoard::setResolver(resolveEndpoint);
     PioBoard::setResolver(resolveEndpoint);

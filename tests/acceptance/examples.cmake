@@ -76,6 +76,49 @@ execute_process(
 )
 expect_basic("${out}" "`altairsim examples/basic/basic4k.toml` from the dist root did not boot BASIC")
 
+# ---- 2b. THE 88-UIO -- 8K BASIC over ONE board that is a serial port AND a cassette. ---
+#
+# examples/uio boots 8K BASIC 3.2 over a single 88-UIO: its 6850 serial at 0x10 (where
+# 88-2SIO Port A lives) and its cassette section at 0x06 (where an 88-ACR lives). So the
+# period bootstrap MITS shipped runs UNMODIFIED against a board that is two cards in one --
+# which is the whole claim the example makes, proved from the shipped directory and by
+# path, exactly as the basic/ and cpm/ examples are.
+file(COPY "${SRC}/examples/uio" DESTINATION "${dist}/examples")
+set(uio "${dist}/examples/uio")
+
+# 8K BASIC prints more than the four: its version banner and the EIGHT-K marker are the
+# cheapest proof it is the 8K image read whole off the cassette, and `42`/`TAPE OK` are a
+# program the interpreter ran after coming off tape.
+function(expect_basic8k out why)
+  foreach(want "ALTAIR BASIC VERSION 3.2" "[EIGHT-K VERSION]" "OK" " 42" "TAPE OK")
+    string(FIND "${out}" "${want}" hit)
+    if(hit LESS 0)
+      message(FATAL_ERROR "examples: ${why}\n"
+                          "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+    endif()
+  endforeach()
+endfunction()
+
+execute_process(
+  COMMAND           "${SIM}" uio.toml
+  WORKING_DIRECTORY "${uio}"
+  INPUT_FILE        "${SRC}/tests/acceptance/basic8k.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_basic8k("${out}" "`cd examples/uio && altairsim uio.toml` did not boot 8K BASIC over the 88-UIO")
+
+execute_process(
+  COMMAND           "${SIM}" examples/uio/uio.toml
+  WORKING_DIRECTORY "${dist}"
+  INPUT_FILE        "${SRC}/tests/acceptance/basic8k.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_basic8k("${out}" "`altairsim examples/uio/uio.toml` from the dist root did not boot 8K BASIC")
+
 # ---- 3. THE NEGATIVE CONTROL, and the only reason to believe either of the above. ------
 #
 # A path a HUMAN TYPES is relative to the SHELL, and it must stay that way. If the config's

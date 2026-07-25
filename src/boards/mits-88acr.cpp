@@ -499,10 +499,11 @@ std::string AcrBoard::activityLabel() const {
     return "tape: " + tapeCounterText(tapeSeconds(p), tapeTotalSeconds());
 }
 
-// One modem, one modulation. This is the list a tape is judged against.
-const std::vector<TapeFormat>& AcrBoard::modem() {
-    static const std::vector<TapeFormat> v = {tapeformats::fsk300_1850()};
-    return v;
+// One modem, one modulation. This is the list a tape is judged against. Virtual so a
+// descendant (the 88-UIO) can present a switch-selected modulation instead; AcrBoard's
+// own answer is the FSK 2400/1850 its single modem board can hear, and only that.
+std::vector<TapeFormat> AcrBoard::modem() const {
+    return {tapeformats::fsk300_1850()};
 }
 
 std::vector<std::string> AcrBoard::drainLog() {

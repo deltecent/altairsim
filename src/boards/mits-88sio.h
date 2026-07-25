@@ -113,7 +113,7 @@ public:
     bool    dataAvailable() const { return u_.dataAvailable(); }
     bool    txBufferEmpty() const;
 
-    // ---- PROTECTED, FOR ONE CARD, AND THAT CARD IS THE 88-ACR ------------------
+    // ---- PROTECTED, FOR THE 88-ACR AND ITS DESCENDANTS -------------------------
     //
     // The 88-ACR is not *like* an 88-SIO. It IS one: "The 88-ACR consists of two
     // separate PC boards mated to each other... One of these is the ACR Modem Board
@@ -128,6 +128,13 @@ public:
     // HERE is the opposite one: two copies of the SAME PCB, which drift the day
     // somebody fixes a bug in one status word and not the other, and then the machine
     // has two different 88-SIO Bs in it.
+    //
+    // The 88-UIO (boards/mits-88uio.h) is the 88-ACR's cassette section verbatim -- the
+    // same 1602-family UART, the same inverted status word, the same FSK modem -- with
+    // a serial 6850 bolted alongside and a motor-control relay and a SW-1 modulation
+    // switch added. So it derives from AcrBoard, and reaches this surface through it.
+    // That is the point of "and its descendants": a THIRD copy of this status word is
+    // the same drift, so UioBoard inherits it rather than growing one.
     //
     // The modem changes nothing on this side of the connector. It is an analog FSK
     // pair -- 2400 Hz for a 1, 1850 Hz for a 0 -- hung off the UART's serial pins, and
