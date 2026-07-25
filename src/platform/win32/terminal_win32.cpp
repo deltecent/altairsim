@@ -206,6 +206,54 @@ int readInputBlocking() {
     return c;
 }
 
+// FIELD-UNTESTED (2026-07-25): written from the readInput() console path below and the
+// POSIX poll() sibling, but not yet run on the Win10 box -- verify at the altairsim>
+// prompt (typing still works after a >100ms pause) before this ships. See TODO.md.
+//
+// The subtlety a plain WaitForSingleObject misses: a console handle goes signaled for
+// ANY input record -- a mouse move, a focus change, a window resize, a key-UP -- not
+// just a character. Returning Ready on one of those would send the caller into
+// readInputBlocking()'s ReadFile, which then BLOCKS, defeating the whole timeout. So we
+// wait, then peek, and DISCARD the non-character records (exactly as readInput() does),
+// only reporting Ready once a real key-down character sits at the head of the queue.
+InputWait waitForInput(int timeoutMs) {
+    HANDLE h = hIn();
+
+    if (!isConsole(h)) {
+        // A pipe or a file. WaitForSingleObject does not usefully wait on these, and the
+        // interactive line editor never takes this path anyway (it is a tty or nothing).
+        // Answer from a peek so a caller that does reach here still makes progress.
+        if (GetFileType(h) == FILE_TYPE_PIPE) {
+            DWORD avail = 0;
+            if (!PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr))
+                return GetLastError() == ERROR_BROKEN_PIPE ? InputWait::Ended
+                                                           : InputWait::Timeout;
+            return avail ? InputWait::Ready : InputWait::Timeout;
+        }
+        return InputWait::Ready;  // a plain file is always readable
+    }
+
+    DWORD deadline = GetTickCount() + (DWORD)(timeoutMs < 0 ? 0 : timeoutMs);
+    for (;;) {
+        DWORD now  = GetTickCount();
+        DWORD left = (timeoutMs < 0) ? INFINITE : (now >= deadline ? 0 : deadline - now);
+
+        DWORD w = WaitForSingleObject(h, left);
+        if (w != WAIT_OBJECT_0) return InputWait::Timeout;  // WAIT_TIMEOUT / error
+
+        INPUT_RECORD rec;
+        DWORD        got = 0;
+        if (!PeekConsoleInputA(h, &rec, 1, &got) || got == 0) return InputWait::Timeout;
+        if (rec.EventType == KEY_EVENT && rec.Event.KeyEvent.bKeyDown &&
+            rec.Event.KeyEvent.uChar.AsciiChar != 0)
+            return InputWait::Ready;  // a real character: readInputBlocking() won't block
+
+        // Not a character -- drain it and keep waiting out the remaining timeout.
+        ReadConsoleInputA(h, &rec, 1, &got);
+        if (timeoutMs >= 0 && GetTickCount() >= deadline) return InputWait::Timeout;
+    }
+}
+
 size_t writeOutput(const uint8_t* buf, size_t n) {
     DWORD put = 0;
     if (!WriteFile(hOut(), buf, (DWORD)n, &put, nullptr)) return 0;

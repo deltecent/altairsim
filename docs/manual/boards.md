@@ -311,19 +311,20 @@ draws 128 glyphs from a real character ROM, not 256.
 Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo that draws on it, and
 **`cuter`**, which runs the period CUTER monitor with its own built-in VDM-1 driver.
 
-### The window is live while a program runs
+### A stopped machine's window is responsive, but it does not redraw
 
-The display is serviced by the running machine, so **a stopped machine's window does not redraw
-and does not answer its close button.** This surprises people in three places, and they are all
-the same fact:
+The window stays live even when the machine is stopped: you can move it, and its close button
+works — clicking it at the monitor prompt closes the window (`RUN` opens a fresh one the next
+time a program draws). What a stopped machine does **not** do is *repaint*, because drawing is the
+running machine's job. Two consequences, and they are the same fact:
 
-- **`vdm1`'s demo halts once it has drawn.** That is the point — it draws the banner and stops —
-  but it means the window you are looking at belongs to a stopped machine. Its **close button will
-  not work**, and there is no way to close it from the window itself. **`QUIT` at the monitor
-  prompt closes it and exits**, which is the way out.
-- **A change like `SET vdm0 video=reverse` does not appear** until you `RUN` again.
+- **A change like `SET vdm0 video=reverse` does not appear** until you `RUN` again — the setting
+  is remembered, but nothing redraws the screen to show it until the machine does.
 - **The cursor does not blink** while the machine is stopped. To watch it blink, use `sol20`,
   whose SOLOS sits in a loop rather than halting.
+
+`vdm1`'s demo halts once it has drawn its banner — that is the point — so the window you are left
+looking at belongs to a stopped machine: still there, still closeable, just not redrawing.
 
 Closing the window of a **running** machine is not the same as quitting: it stops the guest and
 gives you the monitor prompt, leaving the machine exactly where it was and the window on screen.

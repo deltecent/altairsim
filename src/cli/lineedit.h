@@ -19,6 +19,7 @@
 // A pipe or a script is NOT a terminal, so we fall back to getline there. Scripts,
 // the test suite and --mcp all take that path and see no escape sequences at all.
 
+#include <functional>
 #include <istream>
 #include <string>
 #include <vector>
@@ -35,10 +36,18 @@ public:
     // EOF). `line` is set without its newline.
     bool read(const std::string& prompt, std::string& line, std::istream& in);
 
+    // Run this while the editor is PARKED waiting for the operator to type (roughly
+    // every 50 ms of idle). It is how the monitor keeps a stopped machine's video
+    // window alive at the prompt -- the editor knows nothing of SDL, so the work goes
+    // through here (the caller wires it to Display::pollEvents()). Only fires on the
+    // raw-mode interactive path; a pipe/script has no window and never idles here.
+    void setIdleHook(std::function<void()> fn) { onIdle_ = std::move(fn); }
+
     const std::vector<std::string>& history() const { return history_; }
 
 private:
     std::vector<std::string> history_;
+    std::function<void()>    onIdle_;
 };
 
 } // namespace altair

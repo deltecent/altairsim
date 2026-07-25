@@ -4324,6 +4324,23 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
     std::string line;
     LineEditor ed;
 
+    // KEEP THE VIDEO WINDOW ALIVE WHILE THE MACHINE IS STOPPED (DESIGN.md 7.4). The run
+    // loop pumps the SDL host once a slice, but a stopped machine sits here in the line
+    // editor's blocking read and pumps nothing -- so the compositor pings the window for
+    // liveness, gets no answer, and the OS offers to Force-Quit us (TODO). The editor runs
+    // this on each idle tick: pollEvents() drains SDL's whole event queue (window liveness,
+    // AND it tosses any gamepad events sharing that one queue -- so servicing the display
+    // covers the joystick without waking the gamepad subsystem on a machine that has none),
+    // and a close box clicked HERE -- unlike one clicked mid-RUN -- means the operator is
+    // done with the window, so it closes for real. Liveness only: no emulated time advances
+    // and nothing on the backplane is touched. A null display (headless, a test) makes this
+    // a no-op.
+    ed.setIdleHook([] {
+        if (!g_display) return;
+        g_display->pollEvents();
+        if (g_display->takeQuitRequest()) g_display->closeWindow();
+    });
+
     // Lend this input to any interactive command (EDIT) for the life of the loop, and
     // take it back on the way out -- through every exit, including a `break`. Cleared to
     // null is the honest state everywhere else: a command that reads follow-up lines
