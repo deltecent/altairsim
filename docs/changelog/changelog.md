@@ -8,6 +8,20 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### A second printer card: the 88-LPC line-printer controller
+
+`BOARDS ADD lpc` puts a **MITS 88-LPC** in the backplane — the controller for the 88-LP line
+printer, the sibling of the [88-C700](../boards/mits-88lpc.md). It shares the C700's two-port shape
+(control at an even base, data at the odd address above it; MITS default **02**) but drives the
+printer the way it really worked: the guest loads a **6-bit character code** at a time into an
+80-character line buffer (`OUT` the data port), and the line commits on a **PRINT** command or when
+the buffer fills — with **LINE FEED** and **CLEAR** commands beside it (`OUT` the control port). The
+capture is the printed page — the codes decoded to their glyphs, one text line per printed line —
+because unlike the C700's transparent byte pipe, the LPC's line breaks are *commands*, not data.
+`CONNECT` it anywhere a line can go (a `file:`, the `console`, a `socket:`, a `printer:` queue).
+The `machines/lineprinter-lpc.toml` machine has one wired at 02. Polled, like the C700 (the
+hardware interrupt is not modeled).
+
 ### `HISTORY` remembers the processor — and the bus view names names
 
 `HISTORY` is a flight recorder that runs while the machine does, so the run-up to a breakpoint is

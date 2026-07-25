@@ -1,6 +1,7 @@
 #include "boards/mits-2sio.h"
 #include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
+#include "boards/mits-88lpc.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
 #include "boards/mits-turnkey.h"
@@ -212,6 +213,7 @@ int main(int argc, char** argv) {
     TurnkeyBoard::setResolver(resolveEndpoint);  // shares Sio2Port's resolver
     SioBoard::setResolver(resolveEndpoint);
     C700Board::setResolver(resolveEndpoint);
+    LpcBoard::setResolver(resolveEndpoint);
     PioBoard::setResolver(resolveEndpoint);
     Pio4Board::setResolver(resolveEndpoint);
     SolBoard::setResolver(resolveEndpoint);
