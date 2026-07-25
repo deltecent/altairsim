@@ -332,14 +332,15 @@ while IFS='|' read -r dest src; do
   mkdir -p "$pkg/$(dirname "$dest")"
   cp -R "$root/$src" "$pkg/$dest"
 
-  # The assembler listings, the vendor ReadMes, and OUR OWN per-directory README are all
+  # The assembler listings, the vendor ReadMes, and OUR OWN per-directory README.md are all
   # repository artifacts, and none of them belong in the zip.
   #
-  # The README especially. It is written for someone standing in the source tree -- it talks
-  # about .gitignore and about which files are "not in this repository", which are sentences
-  # that mean nothing to a person holding a zip, and which quietly contradict the manual. The
-  # ONLY docs in the zip are the ones the FILE table put there on purpose (the manual PDF and
-  # USING-ALTAIRSIM.md) -- a per-directory README is a repository artifact and is not one.
+  # The README.md especially. It is the SOURCE -- written for someone standing in the tree, it
+  # talks about .gitignore and about which files are "not in this repository", and it is raw
+  # Markdown that a file manager cannot render. So the .md is stripped. What DOES ship is its
+  # rendered sibling, README.pdf (tools/build-docs.sh builds one beside every examples README):
+  # a reader-facing PDF that looks like the rest of the docs and that a package holder can open
+  # without a Markdown viewer. Do NOT add README.pdf to this rm -- it ships on purpose.
   # ...and the same rule takes out SOURCE, which is the other thing that is not product:
   # examples/sol ships a tape, not the ENTER script the tape was derived from nor the script
   # that derives it. Both stay in the repository (docs/sources.md has the provenance).
