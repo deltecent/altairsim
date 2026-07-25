@@ -49,14 +49,26 @@ size_t TapeStream::read(uint8_t* buf, size_t n) {
     size_t got = 0;
     while (got < n && tape_.read(buf[got])) ++got;
 
-    // A byte just left: set when the next one may. From the LATER of now and the byte's
-    // own turn, so a loader that dawdles between reads does not let the tape bunch up
-    // and then spill a burst -- each byte still waits its full interval from the last.
+    // A byte just left: set when the next one may. Advance the schedule by the byte time
+    // from where it ALREADY WAS -- an ABSOLUTE cadence -- not from `now`. The thing pulling
+    // bytes is a single-threaded run loop that keeps pausing: to pace the CPU to its
+    // crystal, and to repaint the tape counter. Each pause makes the guest a hair late to
+    // the byte that came due during it; anchoring the NEXT byte to that late `now` baked the
+    // lateness in and slipped the whole tape a little further every time. Once per pace-sleep
+    // across a nine-minute load that summed to a ~7% drag on a 2 MHz machine (issue #117).
+    // Holding the absolute mark instead lets the guest read the tiny backlog the instant it
+    // polls again, and the average baud is exactly the strap's.
+    //
+    // The exception is a gap longer than a whole byte time: that is not a stall, it is the
+    // transport having been PAUSED -- ATTN at the monitor, a breakpoint -- and resuming must
+    // not spill the backlog as a burst. So a byte that comes due more than its own interval
+    // late re-paces from now: one byte per interval from here, exactly what a dawdling loader
+    // always got (and what the "a long wait still yields ONE byte" test pins).
     if (got && nsPerByte_) {
-        uint64_t now  = hostNs_();
-        uint64_t base = (started_ && nextReadyNs_ > now) ? nextReadyNs_ : now;
-        nextReadyNs_  = base + nsPerByte_ * got;
-        started_      = true;
+        uint64_t now = hostNs_();
+        if (!started_) { nextReadyNs_ = now; started_ = true; }
+        nextReadyNs_ += nsPerByte_ * got;
+        if (now > nextReadyNs_) nextReadyNs_ = now + nsPerByte_ * got;
     }
     return got;  // 0 at the end of the tape: a quiet line, not an error
 }

@@ -709,5 +709,30 @@ void test_88acr() {
             CHECK(drain(uf, clk, 4) == "B", "1200 baud: the second byte has arrived");
             CHECK(drain(us, clk, 4) == "",  "300 baud: the same wait is not enough -- four times slower");
         }
+
+        // A STALL DOES NOT DRIFT (issue #117). The run loop that drains the tape keeps
+        // pausing -- to pace the CPU, to repaint the counter -- so it is a hair late to
+        // each byte. That lateness must NOT accumulate: byte k stays pinned to k*step, not
+        // k*step plus the sum of every prior delay. Read each byte a tenth of an interval
+        // late; the old re-anchor-to-now slipped by that tenth every time and the third
+        // byte was not ready when its true mark had already passed.
+        {
+            Clock          clk;
+            uint64_t       nowNs = 0;
+            const uint64_t step  = 9'000'000;   // one byte time
+            const uint64_t late  = step / 10;   // we always look a little AFTER a byte is due
+            auto           tape  = image("ABCDEFGHIJ");
+            Uart1602       u("acr");
+            u.connect(std::make_unique<TapeStream>(*tape, TapeStream::Mode::Play, step, [&] { return nowNs; }));
+
+            CHECK(drain(u, clk, 4) == "A", "the free first byte");
+            std::string rest;
+            for (int k = 1; k <= 9; ++k) {
+                nowNs = (uint64_t)k * step + late;  // byte k's true mark is k*step; we are `late` past it
+                rest += drain(u, clk, 4);
+            }
+            CHECK(rest == "BCDEFGHIJ",
+                  "absolute cadence: every byte on its own mark, the lateness never piling up");
+        }
     }
 }
