@@ -141,6 +141,8 @@ examples/**
 !examples/dazzler/cpm22b23-56k.dsk
 !examples/dazzler/dazzler_graphics_altair.dsk
 !examples/dazzler/dazzler_stuff_altair.dsk
+!examples/printing/PRINT.ASM
+!examples/printing/PRINT.HEX
 
 # Scanned manuals and datasheets. Same reasoning as the disk images, and then
 # some: they are enormous (the 88-DCDD manual alone is 52 MB) and they are not
