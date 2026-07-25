@@ -379,6 +379,20 @@ It is audible, not structural: a tape written either way decodes back to the sam
 changes how the recording **sounds**, never what it holds. `square` is the default because it is
 the closer match to a real recorder.
 
+**But the recording level and the edge shape are structural — they decide whether a real Sol
+loads the tape.** A genuine Sol CUTS modem is a flip-flop dividing a master clock into a square,
+rounded by an RC network, recorded at a modest level. Two more properties reproduce that, and
+their defaults are measured off the one genuine dub in the package (`TRK80.WAV`):
+
+| Property | 88-ACR | Sol | What it does |
+|---|---|---|---|
+| `level` | `36` | `36` | Recording level, percent of full scale. The old default ran at 80% — more than twice a real dub — which overdrove a real Sol's input AGC so the tape read its header and then failed. |
+| `rc` | — | `4000` | Edge-rounding low-pass corner, Hz. Rounds the square's edges the way the modem's RC network and the cassette's own bandwidth do, so the tone curves like a real dub instead of sitting on a flat top. Sol CUTS only. |
+
+Unlike `waveform`, these are not merely audible. A Sol CUTS tape the simulator writes now lays its
+tones on the same clock grid a real Sol expects, at a real dub's level — so it is built to load on
+the hardware, not only to read back here.
+
 **A multi-file tape comes back as one continuous run.** The decoded bytes carry no file
 boundaries, so the gaps a real operator left between programs are not reproduced.
 

@@ -183,6 +183,16 @@ private:
         // a re-mount decodes either identically (host/tapemodem.h).
         std::string wave = "square";
 
+        // THE OUTPUT-LEVEL KNOB and the EDGE-ROUNDING corner, for the audio this deck
+        // writes. Defaults measured off the one genuine Sol dub (TRK80.WAV): 36% of full
+        // scale (our old 80% overdrove a real Sol's front-end AGC and the tape was
+        // rejected) and a 4000 Hz one-pole low-pass (its tone spends ~72% of the time near
+        // its peak, the dub's curvature, rather than a flip-flop's flat tops). Both are what
+        // makes a CUTS tape THIS deck writes load on a real Sol-20 -- see host/tapemodem.h
+        // and investigations/cuts-write-path.
+        long long level = 36;      // percent of full scale, 1..100
+        long long rc    = 4000;    // edge-rounding low-pass corner, Hz
+
         // HOW FAST THIS DECK PLAYS BACK, on the tape's clock and not the CPU's. "full"
         // (default) empties the cassette as fast as the loader reads it, at any clock_hz;
         // "real" paces playback in wall time at the baud the guest has selected (0FAh D5:

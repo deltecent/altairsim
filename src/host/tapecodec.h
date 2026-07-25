@@ -136,7 +136,8 @@ public:
     // is SET, so that setting it and then recording does what it plainly says. The shape is
     // only audible: it changes nothing about what a re-mount decodes (host/tapemodem.h).
     void setEncoding(double leaderSeconds, double trailerSeconds,
-                     Waveform wave = Waveform::Square);
+                     Waveform wave = Waveform::Square,
+                     double level = 0.36, double rcHz = 4000.0);
 
     // What this tape turned out to be. Reported by the read-only `detected` property.
     const TapeFormat& format() const { return fmt_; }
@@ -181,6 +182,8 @@ private:
     double   leader_  = 5.0;
     double   trailer_ = 0.0;
     Waveform wave_    = Waveform::Square;
+    double   level_   = 0.36;      // peak amplitude, fraction of full scale (see modulate())
+    double   rcHz_    = 4000.0;    // edge-rounding corner, gridToggled formats only
 };
 
 // ---------------------------------------------------------------------------

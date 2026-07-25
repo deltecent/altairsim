@@ -1,5 +1,11 @@
 # Why altairsim-written CUTS WAVs fail on real hardware — investigation
 
+> **RESOLVED 2026-07-25 — read `STATUS.md` first.** This document is the original
+> crossing-smear analysis, and it was right about the mechanism but only half the story: the
+> real cause was TWO independent failure modes (off-grid crossings **and** overdrive level),
+> and the fix addresses both. `STATUS.md` has the resolution; this is kept as the record of how
+> the mechanism was first found.
+
 **Date:** 2026-07-22. Nothing committed. Tools built, analysis run, candidate tapes generated
 for a hardware test loop. Scripts and raw files are in this folder; the reproducible commands
 are at the bottom.

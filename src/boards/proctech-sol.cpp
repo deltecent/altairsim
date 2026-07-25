@@ -382,7 +382,8 @@ bool SolBoard::mount(const std::string& unit, const std::string& path, bool ro,
 
 void SolBoard::applyEncoding(Deck* d) {
     if (d->audio)
-        d->audio->setEncoding(double(d->leader), double(d->trailer), waveformByName(d->wave));
+        d->audio->setEncoding(double(d->leader), double(d->trailer), waveformByName(d->wave),
+                              double(d->level) / 100.0, double(d->rc));
 }
 
 void SolBoard::commitTape(Deck* d) {
@@ -597,6 +598,46 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
             return true;
         };
         p.push_back(std::move(wav));
+
+        // THE RECORDING LEVEL, as a percent of full scale, when this deck writes audio. The
+        // default 36 is the peak of the one genuine Sol dub (TRK80.WAV); the old 80 was more
+        // than twice a real cassette and overdrove a real Sol's front-end AGC, so tapes this
+        // deck wrote read the header and then failed on the machine. Audible AND on the wire:
+        // unlike `waveform` this changes whether a real Sol loads the tape. See host/tapemodem.h.
+        Property lvl;
+        lvl.name = "level";
+        lvl.help = "Recording level as a percent of full scale, when writing audio";
+        lvl.kind = Kind::Int;
+        lvl.min  = 1;
+        lvl.max  = 100;
+        lvl.unit = "%";
+        lvl.get  = [d] { return Value::ofInt(d->level); };
+        lvl.set  = [d](const Value& v, std::string&) {
+            d->level = v.i();
+            applyEncoding(d);
+            return true;
+        };
+        p.push_back(std::move(lvl));
+
+        // THE EDGE-ROUNDING CORNER, in Hz, when this deck writes audio. A real CUTS modem is
+        // a flip-flop into an RC network; this one-pole low-pass stands in for that network
+        // and the cassette's own bandwidth, rounding the square's edges. The default 4000
+        // reproduces the genuine dub's curvature. Only the 1200-baud CUTS format is generated
+        // this way (host/tapemodem.h); at 300-baud KCS it has no effect.
+        Property rc;
+        rc.name = "rc";
+        rc.help = "Edge-rounding low-pass corner in Hz, when writing CUTS audio";
+        rc.kind = Kind::Int;
+        rc.min  = 1000;
+        rc.max  = 20000;
+        rc.unit = "Hz";
+        rc.get  = [d] { return Value::ofInt(d->rc); };
+        rc.set  = [d](const Value& v, std::string&) {
+            d->rc = v.i();
+            applyEncoding(d);
+            return true;
+        };
+        p.push_back(std::move(rc));
 
         // HOW FAST THIS DECK PLAYS -- on the tape's clock, not the guest's. `full`
         // (default) hands the loader bytes as fast as it reads them; `real` paces

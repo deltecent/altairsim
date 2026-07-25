@@ -46,9 +46,11 @@ int usage() {
     std::fprintf(stderr,
                  "usage: tapetool info   TAPE.WAV\n"
                  "       tapetool decode TAPE.WAV OUT.BIN [FORMAT]\n"
-                 "       tapetool encode IN.BIN TAPE.WAV [FORMAT] [RATE] [LEADER] [TRAILER] [WAVE]\n"
+                 "       tapetool encode IN.BIN TAPE.WAV [FORMAT] [RATE] [LEADER] [TRAILER] [WAVE] [LEVEL] [RC]\n"
                  "\nLEADER and TRAILER are seconds of idle tone, default 5 and 0.\n"
                  "WAVE is the carrier shape: square (default, like real hardware) | sine.\n"
+                 "LEVEL is the peak amplitude 0..1, default 0.36 (a genuine Sol dub's level).\n"
+                 "RC is the edge-rounding low-pass corner in Hz, default 4000 (CUTS only).\n"
                  "\nFORMAT is one of:");
     for (const TapeFormat& f : tapeformats::all())
         std::fprintf(stderr, " %s", f.name);
@@ -101,7 +103,13 @@ int main(int argc, char** argv) {
         // genuine dub sounds like; a re-decode reads either the same (host/tapemodem.h).
         const Waveform wave = (argc >= 9) ? waveformByName(argv[8]) : Waveform::Square;
 
-        AudioBuffer a = modulate(in, f, rate, lead, trail, wave);
+        // The recording level (peak, fraction of full scale) and the edge-rounding corner.
+        // Defaults measured off the one genuine Sol dub -- see host/tapemodem.h. RC only
+        // affects a clock-divider format (cuts1200); the others ignore it.
+        const double level = (argc >= 10) ? std::stod(argv[9])  : 0.36;
+        const double rcHz  = (argc >= 11) ? std::stod(argv[10]) : 4000.0;
+
+        AudioBuffer a = modulate(in, f, rate, lead, trail, wave, level, rcHz);
         if (!spit(argv[3], buildWav(a))) {
             std::fprintf(stderr, "tapetool: cannot write %s\n", argv[3]);
             return 1;

@@ -32,6 +32,10 @@ TapeFormat cuts1200() {
     // matches all five deramp.com Sol dubs at 1200/600 Hz. reference/Sol-20.md.)
     f.markHz = 1200; f.spaceHz = 600; f.baud = 1200;
     f.cycleCounted = false; f.stopBits = 2;
+    // Lay the tones with a clock-divider flip-flop on the 2400 Hz grid, the way U2 does,
+    // so the crossings a real Sol's transition-timing decoder reads sit where it expects
+    // them. See TapeFormat::gridToggled and investigations/cuts-write-path.
+    f.gridToggled = true;
     return f;
 }
 
@@ -418,11 +422,103 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f) {
 }
 
 // ---------------------------------------------------------------------------
+// THE CLOCK-DIVIDER GENERATOR -- what a real Sol CUTS modem does, and the only thing a
+// real Sol reads back (investigations/cuts-write-path). Models U2, the JK flip-flop that
+// divides a continuous 2*markHz master clock: a mark cell is one whole cycle of markHz
+// (the flip-flop toggles at the cell start and again at mid-cell), a space cell a half
+// cycle of spaceHz (one toggle, at the cell start). Every toggle is placed at its exact
+// fractional-sample time, so the tape carries exactly two crossing intervals and every
+// cell boundary is itself a crossing -- which is what the hardware's transition-timing
+// decoder expects, and what the free-running oscillator in modulate() fails to produce.
+static AudioBuffer modulateGrid(const std::vector<uint8_t>& bytes, const TapeFormat& f,
+                                uint32_t rate, double leaderSeconds, double trailerSeconds,
+                                double level, double rcHz) {
+    AudioBuffer a;
+    a.rate = rate;
+    constexpr double kPi = 3.14159265358979;
+
+    const double cellS    = double(a.rate) / f.baud;   // samples per bit cell (36.75 @44100)
+    const double markCell = 1.0 / f.baud;
+
+    // The mark/space cell sequence: leader, framed bytes (start, 8N LSB-first, stop), then
+    // trailer. Leader and trailer are floored at sixteen bit times for the reason the
+    // oscillator path floors them -- a start bit is a mark-to-space EDGE and the last cell
+    // must show its end, so a zero-length one would cost the first or last byte (see below).
+    std::vector<uint8_t> cells;   // 1 = mark, 0 = space
+    auto idle = [&](double seconds) {
+        for (double t = 0; t < seconds; t += markCell) cells.push_back(1);
+    };
+    idle(std::max(leaderSeconds, 16.0 * markCell));
+    for (uint8_t b : bytes) {
+        cells.push_back(0);                                                  // start bit
+        for (int i = 0; i < f.dataBits; ++i) cells.push_back((b >> i) & 1);  // data, LSB first
+        for (int i = 0; i < f.stopBits; ++i) cells.push_back(1);             // stop bits
+    }
+    idle(std::max(trailerSeconds, 16.0 * markCell));
+
+    // Flip-flop toggle times, in fractional samples. A cell always toggles at its start; a
+    // mark toggles once more at mid-cell -- the extra edge that makes a full cycle out of a
+    // half. Computed from the absolute cell position, so nothing accumulates.
+    std::vector<double> edges;
+    edges.reserve(cells.size() * 2);
+    double pos = 0.0;
+    for (uint8_t c : cells) {
+        edges.push_back(pos);
+        if (c) edges.push_back(pos + 0.5 * cellS);
+        pos += cellS;
+    }
+    const size_t total = size_t(std::ceil(pos));
+
+    // Render the square as the time-average of the +/-1 flip-flop over each sample [i,i+1).
+    // That places each crossing at its exact sub-sample instant even on an integer sample
+    // grid, so the sampling itself adds no crossing jitter.
+    std::vector<double> sig(total, 0.0);
+    size_t e = 0;                                  // edges strictly before this sample's start
+    for (size_t i = 0; i < total; ++i) {
+        const double lo = double(i), hi = lo + 1.0;
+        double cur = lo;
+        double s   = ((e & 1) == 0) ? 1.0 : -1.0;  // flip-flop level entering the sample
+        double acc = 0.0;
+        while (e < edges.size() && edges[e] < hi) {
+            if (edges[e] > cur) { acc += s * (edges[e] - cur); cur = edges[e]; }
+            s = -s;
+            ++e;
+        }
+        acc += s * (hi - cur);
+        sig[i] = acc;
+    }
+
+    // Round the square edges: a one-pole low-pass at rcHz, standing in for the modem's RC
+    // network and the cassette's own bandwidth. Causal, like the real filter -- it delays
+    // every crossing by the same group delay, so the two grid intervals are preserved.
+    if (rcHz > 0.0 && rcHz < 0.5 * a.rate) {
+        const double alpha = std::exp(-2.0 * kPi * rcHz / a.rate);
+        double y = 0.0;
+        for (size_t i = 0; i < total; ++i) { y = alpha * y + (1.0 - alpha) * sig[i]; sig[i] = y; }
+    }
+
+    // Scale to the requested peak (the recorder's output-level knob). Normalising by the
+    // measured peak makes `level` exact whatever the low-pass took out.
+    double peak = 0.0;
+    for (double v : sig) peak = std::max(peak, std::fabs(v));
+    const double g = peak > 0.0 ? level / peak : 0.0;
+    a.s.reserve(total);
+    for (double v : sig) a.s.push_back(float(v * g));
+    return a;
+}
+
+// ---------------------------------------------------------------------------
 AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
                      uint32_t rate, double leaderSeconds, double trailerSeconds,
-                     Waveform wave) {
+                     Waveform wave, double level, double rcHz) {
     AudioBuffer a;
     a.rate = rate ? rate : 44100;
+
+    // A CLOCK-DIVIDER MODEM (the Sol's CUTS) gets its own generator -- see below. It has
+    // no free-running phase and no harmonic-sum square: it toggles a flip-flop on the
+    // 2*markHz grid and rounds the result, which is the only thing a real Sol reads back.
+    if (f.gridToggled)
+        return modulateGrid(bytes, f, a.rate, leaderSeconds, trailerSeconds, level, rcHz);
 
     double phase = 0.0;  // carried across every tone, so there is never a click
 
@@ -475,7 +571,7 @@ AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
             } else {
                 v = std::sin(phase);
             }
-            a.s.push_back(float(0.8 * v));
+            a.s.push_back(float(level * v));
             phase += dp;
             if (phase > 2.0 * kPi) phase -= 2.0 * kPi;
         }

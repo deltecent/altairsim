@@ -127,6 +127,28 @@ struct TapeFormat {
     int         dataBits = 8;
     int         stopBits = 2;
 
+    // GENERATE THE TONE AS A CLOCK-DIVIDER FLIP-FLOP, NOT A FREE OSCILLATOR.
+    //
+    // The Sol's CUTS modem is a JK flip-flop (U2) dividing a continuous master clock by
+    // two for a mark and four for a space, re-clocked so every bit cell starts on a clock
+    // edge (reference/CUTS Assembly and Test.md, section 5.3.3). Every tone edge therefore
+    // lands on the 2*markHz grid, and because a mark cell is a WHOLE cycle and a space cell
+    // a HALF one, every cell boundary is itself a zero crossing -- the whole tape's
+    // crossings sit on two intervals only. That is not cosmetic: the real read path is a
+    // TRANSITION-TIMING decoder (it counts crossings per cell against a recovered clock),
+    // so a crossing that drifts off the grid misreads. A free-running oscillator whose
+    // phase is carried across the mark<->space boundary (the else branch in modulate())
+    // does exactly that drift -- it round-trips through our own energy-based demodulator,
+    // which is blind to placement, but a genuine dub loads on a real Sol where our writes
+    // did not. Measured on a real Sol-20: a phase-carried CUTS tape shows ~17% of its
+    // half-cycles at neither tone's interval and is rejected; a genuine dub shows 0% and
+    // loads. See investigations/cuts-write-path.
+    //
+    // Only true for cuts1200. The 88-ACR's FSK holds a tone for 6.17 cycles a cell -- not a
+    // whole/half pair, no 2:1 grid -- and its read path is a PLL that tolerates phase, so it
+    // keeps the free-running oscillator. Kansas City has its own zero-phase branch.
+    bool        gridToggled = false;
+
     // HOW FAR THE MEASURED TONES MAY SIT FROM THE ONES ABOVE before this format is
     // ruled out. It is what stops a self-calibrating receiver from reading ANY tape:
     // calibration measures the tones actually present, so without this check a Kansas
@@ -224,8 +246,20 @@ DemodResult demodulate(const AudioBuffer& a, const TapeFormat& f);
 // this argument's job, and it is why the callers make it a property rather than a
 // constant: 15 s is what the MITS manual asks for and 3 s is what a real Sol dub
 // carries, and neither is a fact about the modulation.
+// `level` is the peak amplitude as a fraction of full scale (0..1) -- the recorder's
+// output-level knob. The default is 0.36, the peak of the one genuine Sol dub we hold
+// (TRK80.WAV): our old 0.8 overdrove a real Sol's front-end AGC. `rcHz` is the corner of
+// the one-pole low-pass that rounds a flip-flop's square edges the way the modem's RC
+// network and a cassette's bandwidth do; it only applies to a `gridToggled` format
+// (host/tapemodem.h). Its default (4000 Hz) reproduces the genuine dub's curvature -- the
+// fraction of the tone spent near its peak, ~72%, and the crest factor ~1.13 -- rather than
+// leaving a flip-flop's flat tops. (The dub is not literally a filtered square: it also
+// carries a strong 3rd harmonic, which pulls the other way, so no one corner matches both
+// its curvature and its harmonics; a real Sol reads by crossing timing, which every corner
+// here gets right, so the corner is chosen to look like the dub.) Both are deck properties.
 AudioBuffer modulate(const std::vector<uint8_t>& bytes, const TapeFormat& f,
                      uint32_t rate = 44100, double leaderSeconds = 5.0,
-                     double trailerSeconds = 0.0, Waveform wave = Waveform::Square);
+                     double trailerSeconds = 0.0, Waveform wave = Waveform::Square,
+                     double level = 0.36, double rcHz = 4000.0);
 
 } // namespace altair
