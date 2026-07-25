@@ -7,6 +7,12 @@
 #include "platform/serial.h"
 #include "platform/socket.h"
 
+#ifdef ALTAIRSIM_ENABLE_PRINTER
+#include "core/value.h"
+#include "host/printer_stream.h"
+#include "platform/printer.h"
+#endif
+
 #include <cstdlib>
 #include <fstream>
 #include <string>
@@ -31,7 +37,13 @@ bool parsePort(const std::string& s, uint16_t& out) {
 
 std::string endpointHelp() {
     return "console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | "
-           "serial:DEVICE | file:PATH";
+           "serial:DEVICE | file:PATH"
+#ifdef ALTAIRSIM_ENABLE_PRINTER
+           // Only where a host print system was found at build time. Absent, the
+           // grammar does not advertise a door it cannot open (docs/printing.md 3.1).
+           " | printer:QUEUE"
+#endif
+        ;
 }
 
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {
@@ -132,6 +144,83 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
         }
         return std::make_unique<FileStream>(std::move(out), spec);
     }
+
+#ifdef ALTAIRSIM_ENABLE_PRINTER
+    // ---- printer: -- a host print QUEUE, write-only, buffered into jobs ----
+    //
+    // The one genuinely new grammar this file has grown in a while, so it is spelled
+    // out. `printer:QUEUE[?key[=value][&key...]]`: the FIRST '?' ends the queue name
+    // (a queue name may contain spaces and colons, so nothing before it is special),
+    // and everything after is '&'-separated key[=value]. A bare key is `=true`, so the
+    // common case never types `=1`; the `=value` form still parses, because it is the
+    // only way to write a boolean OFF. Values go through parseValue -- the same
+    // true/yes/on/1 booleans and radix-aware integers every other setting accepts, so
+    // no operator meets a second convention here. The buffering, the boundaries and
+    // the "never submit an empty buffer" rule all live in PrinterStream.
+    if (spec.rfind("printer:", 0) == 0) {
+        std::string rest  = spec.substr(8);
+        std::string queue = rest;
+        std::string query;
+        if (size_t q = rest.find('?'); q != std::string::npos) {
+            queue = rest.substr(0, q);
+            query = rest.substr(q + 1);
+        }
+        if (queue.empty()) {
+            err = "printer: needs a queue name (printer:linewriter)";
+            for (const auto& p : platform::listQueues()) err += "\n  " + p;
+            return nullptr;
+        }
+
+        PrinterStream::Params params;  // defaults per docs/printing.md 2.3
+        for (size_t start = 0; start <= query.size();) {
+            size_t      amp = query.find('&', start);
+            std::string tok =
+                query.substr(start, amp == std::string::npos ? std::string::npos : amp - start);
+            if (!tok.empty()) {
+                size_t      eq  = tok.find('=');
+                std::string key = tok.substr(0, eq);
+                std::string val = eq == std::string::npos ? "true" : tok.substr(eq + 1);
+
+                Value       v;
+                std::string perr;
+                if (key == "idle") {
+                    if (!parseValue(val, Kind::Int, v, perr) || v.i() < 0) {
+                        err = "printer: idle wants host seconds >= 0 (0 = never): " + perr;
+                        return nullptr;
+                    }
+                    params.idleSeconds = (uint64_t)v.i();
+                } else if (key == "max") {
+                    if (!parseValue(val, Kind::Int, v, perr) || v.i() <= 0) {
+                        err = "printer: max wants a positive byte ceiling: " + perr;
+                        return nullptr;
+                    }
+                    params.maxBytes = (uint64_t)v.i();
+                } else if (key == "onff") {
+                    if (!parseValue(val, Kind::Bool, v, perr)) {
+                        err = "printer: onff wants a boolean: " + perr;
+                        return nullptr;
+                    }
+                    params.onFormFeed = v.b();
+                } else {
+                    err = "printer: unknown option '" + key +
+                          "'. Options are idle, onff, max -- and the queue name comes before '?'";
+                    return nullptr;
+                }
+            }
+            if (amp == std::string::npos) break;
+            start = amp + 1;
+        }
+
+        // The board never learns what a print queue is: it is handed a submit sink
+        // already bound to this queue, and PrinterStream calls it at a job boundary.
+        auto submit = [queue](const std::vector<uint8_t>& data, std::string& e) {
+            return platform::printRaw(queue, data, e);
+        };
+        // describe() echoes `spec` verbatim, so SHOW and CONFIG SAVE round-trip what
+        // the operator typed, options and all.
+        return std::make_unique<PrinterStream>(spec, params, std::move(submit));
+    }
+#endif
 
     err = "no endpoint '" + spec + "'. Try: " + endpointHelp();
     return nullptr;

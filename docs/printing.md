@@ -1,15 +1,21 @@
 # Printing to a real printer
 
-**Status: design note. Nothing here is built.** Discussion and the open
-questions live on [issue #70](https://github.com/deltecent/altairsim/issues/70);
-this document is the detail behind it. This is a working document in
-the source tree — it is in neither the User Manual nor the Developer Guide,
-because documenting an unshipped knob in either one is drift, and drift is a
-bug. It exists so the platform research does not have to be done twice, and so
-the design call it depends on is written down before someone starts typing.
+**Status: Phase 1 built (CUPS: macOS + Linux).** The `printer:` endpoint, its
+buffering and job boundaries, and the CUPS submit backend are shipped and covered by
+tests; the User Manual's serial chapter now documents the operator side. Still open
+(later branches): the explicit operator verb (`PRINT FLUSH` / `EJECT`, §2.2) and the
+Windows WinSpool backend (§3). Discussion and the remaining open questions live on
+[issue #70](https://github.com/deltecent/altairsim/issues/70); this document is the
+detail behind it, and the record of the design calls it made.
+
+Three things this note called wrong were corrected when it was built, and the
+corrections are folded into the sections below: the CMake detection is
+`find_package(Cups)`, **not** pkg-config (§3.1); the platform backends live in
+`src/platform/`, **not** `src/host/` (§3.1); and a machine **reset is not a job
+boundary** (§2.1).
 
 The want: a guest program prints, and paper comes out of a printer attached to
-this host. Today the only destinations for printed bytes are `file:PATH` and
+this host. Before this, the only destinations for printed bytes were `file:PATH` and
 `null` — a capture, not a printout.
 
 ---
@@ -87,11 +93,20 @@ the run loop (`src/cli/monitor.cpp:1082`) and nowhere else. A timer ticked only
 from `pump()` would never fire if the guest halts, breakpoints, or the operator
 hits ATTN right after printing — the commonest case of all, since a program that
 just finished a report is often a program that just finished. The buffer must
-therefore also be flushed when the run loop exits, on `DISCONNECT`, on reset, on
-`CONFIG LOAD` (which replaces the machine wholesale), and at exit. The idle
-timer is the *usual* boundary, not the only one. `MediaFile::commit()` is the
-precedent: the thing that guarantees the bytes land is not the thing that
-usually pushes them.
+therefore also be submitted on `DISCONNECT`, on `CONFIG LOAD` (which replaces the
+machine wholesale), and at exit. As built, all three are the **stream's
+destructor**: DISCONNECT swaps in a `NullStream` and destroys the old stream, and
+CONFIG LOAD and exit destroy the boards and their streams — so one `noexcept`
+destructor submit covers every teardown path with no board changed. The idle timer
+is the *usual* boundary, not the only one. `MediaFile::commit()` is the precedent:
+the thing that guarantees the bytes land is not the thing that usually pushes them.
+
+**Reset is not a boundary** (correction to an earlier draft of this note). A warm
+reset keeps the line connected — a real reset does not unplug the printer — and the
+C700's PRIME is a *start*-of-job, not an end (§2.2). Submitting on reset would chop
+an in-flight report the moment a guest reboots and resumes printing. A reset that is
+followed by a halt forever is already covered by the destructor at exit, so nothing
+is lost by leaving reset alone.
 
 **`flush()` is already taken and cannot mean end-of-job.** `ByteStream::flush()`
 means "push what you are holding down the pipe", and the C700 calls it on *every
@@ -218,38 +233,51 @@ raw/passthrough mode is both the most portable route and the correct one.
 
 ### 3.1 Files and CMake wiring
 
-- `printer.h` — the shared interface (`print_raw`, `print_raw_file`,
-  `list_queues`)
-- `printer_windows.cpp` — WinSpool
-- `printer_cups.cpp` — CUPS (macOS + Linux)
+As built, the files are (the pure buffering stream is separate from the platform
+backend, and is always compiled so its boundary policy is tested with no CUPS):
+
+- `src/host/printer_stream.{h,cpp}` — the buffering `PrinterStream` (job boundaries,
+  the never-submit-empty rule). Pure, always compiled.
+- `src/platform/printer.h` — the shared submit interface (`printRaw`,
+  `printRawFile`, `listQueues`), a sibling of `platform/serial.h`.
+- `src/platform/posix/printer_cups.cpp` — CUPS (macOS + Linux).
+- `src/platform/win32/printer_windows.cpp` — WinSpool (Phase 3, not yet written).
+
+**The backends live in `src/platform/`, not `src/host/`** (correction to an earlier
+draft). The WinSpool one needs `<windows.h>`, which `cmake/lint_platform.cmake`
+forbids outside `src/platform/*/` — a build-failing lint. Both backends therefore sit
+under `src/platform/{posix,win32}/` behind the shared interface, exactly like
+`serial.h`/`socket.h`.
 
 ```cmake
-if(WIN32)
-    target_sources(printer PRIVATE printer_windows.cpp)
-    target_link_libraries(printer PRIVATE winspool)
-else()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(CUPS REQUIRED cups)
-    target_sources(printer PRIVATE printer_cups.cpp)
-    target_include_directories(printer PRIVATE ${CUPS_INCLUDE_DIRS})
-    target_link_libraries(printer PRIVATE ${CUPS_LIBRARIES})
+option(ALTAIRSIM_ENABLE_PRINTER "Print to a host queue if CUPS/WinSpool is found" ON)
+if(ALTAIRSIM_ENABLE_PRINTER)
+  if(WIN32)
+    # Phase 3 -- printer_windows.cpp (WinSpool) not yet written.
+  else()
+    find_package(Cups QUIET)          # CMake's own FindCups -> the Cups::Cups target
+    if(Cups_FOUND)
+      target_sources(altair_core PRIVATE src/platform/posix/printer_cups.cpp)
+      target_link_libraries(altair_core PUBLIC Cups::Cups)
+      target_compile_definitions(altair_core PUBLIC ALTAIRSIM_ENABLE_PRINTER)
+    endif()
+  endif()
 endif()
 ```
 
-Only one of the two is ever compiled in, so there is no `#ifdef` at any call
-site and no dead code shipped per platform — the selection happens entirely at
-configure time, matching the existing per-platform source pattern
-(`src/platform/`).
-
-**It must be optional, and this is a finding.** `REQUIRED` above is wrong for
-this tree. CUPS headers are not guaranteed on a build host — a Linux CI runner
-without `libcups2-dev` would stop configuring, which would break a build that
-works today over a feature nobody asked that leg to test. Follow the SDL3
-precedent exactly (`CMakeLists.txt:250`): an `ALTAIRSIM_ENABLE_PRINTER` option
-defaulting to ON meaning *use it if it is here*, a quiet detect, a `message
-(STATUS)` either way, and a build without it where `printer:` is simply not in
-`endpointHelp()` and the resolver says so by name. The one endpoint that cannot
-work on a given host must fail at `CONNECT` with a sentence, not at compile.
+**`find_package(Cups)`, not pkg-config** (correction to an earlier draft). An earlier
+version of this note used `find_package(PkgConfig REQUIRED)` + `pkg_check_modules`.
+That is wrong twice: `pkg-config` is not guaranteed on a macOS dev box (the reference
+Mac has `cups-config`, not `pkg-config`), and CMake already ships a `FindCups` module
+with an imported `Cups::Cups` target (since 3.15). It also must be **optional**, and
+`REQUIRED` fought that: CUPS headers are not guaranteed on a build host — a Linux CI
+runner without `libcups2-dev` would stop configuring, breaking a build that works
+today over a feature nobody asked that leg to test. So it follows the SDL3 precedent
+exactly: an `ALTAIRSIM_ENABLE_PRINTER` option defaulting to ON meaning *use it if it
+is here*, a quiet detect, a `message(STATUS)` either way, and a build without it where
+`printer:` is simply not in `endpointHelp()` and the resolver says so by name. The one
+endpoint that cannot work on a given host fails at `CONNECT` with a sentence, not at
+compile.
 
 ### 3.2 One-time queue setup
 
@@ -263,14 +291,88 @@ queue that passes data through untouched and should not try to create one.
 2. Use the exact name from **Devices and Printers** as the queue name. Sharing
    is not required — `OpenPrinter` addresses it by device name directly.
 
-**macOS / Linux (CUPS)**
+**Linux (CUPS)** — a real printer, on a USB-to-parallel adapter or a newer line
+printer's own USB port:
 
 ```sh
 lpinfo -v                                               # what CUPS can see
 sudo lpadmin -p linewriter -E -v usb://Vendor/Product -m raw
 ```
 
-`-m raw` tells CUPS to skip all filtering; the bytes written are delivered as-is.
+`-m raw` selects the "Raw Queue" model, so CUPS skips all filtering and the bytes
+written are delivered as-is. (`printer:` also asks for raw per job, belt and braces.)
+
+**macOS — prefer `socket:` over a CUPS queue, and do not build a bridge.** Apple's
+CUPS is backing out of raw host printing in two steps, and both showed up the moment
+this was tried on a current Mac. Raw queues are gone now — `lpadmin: Raw queues are no
+longer supported on macOS`, so `-m raw` is refused. And the classic driver/PPD
+mechanism is deprecated next — any `.ppd` queue prints `lpadmin: Printer drivers are
+deprecated and will stop working in a future version of CUPS` — in favour of driverless
+IPP Everywhere, which is a poor fit for a *raw* line-printer socket. A macOS-specific
+CUPS workaround would be built on exactly the mechanism the platform is deleting, so it
+is not worth writing: negative-value engineering, cost now for breakage later.
+
+The durable macOS answer needs no CUPS queue at all. For any network-capable printer,
+or a print server fronting a parallel one, altairsim's own `socket:` endpoint sends the
+raw bytes straight to the JetDirect/AppSocket port:
+
+```
+CONNECT lpt0:prn socket:printer-host:9100
+```
+
+No drivers, no deprecation, the same 8-bit-clean stream the CUPS path would have
+delivered — this is the recommended route on macOS. `printer:` over CUPS is still the
+right endpoint on **Linux** (`-m raw`, unaffected) and against a print server, and it
+remains correct on macOS wherever the host still lets a raw job through; there is just
+no reason to wire a macOS-only CUPS bridge for it. `printer:` submits a correct raw job
+on every platform regardless — what a locked-down CUPS does with it is the host's call,
+not the endpoint's.
+
+**`socket:` delivers during a RUN; `printer:` delivers on DISCONNECT.** These two are
+not interchangeable for how you drive them, and the difference is in the transport. A
+`socket:` call-out only sends once the TCP connection is *established*, and that is
+advanced in `pump()` — which runs only inside the run loop (`host/tcp.cpp`). So
+`socket:` is right for a **real guest program printing while the machine runs**, but
+bytes typed by hand with `OUT` at the monitor prompt sit unsent until a `RUN`. `printer:`
+is the opposite: its job is submitted synchronously at a boundary, and `DISCONNECT`
+flushes it there and then — so it is the one you can drive **by hand** from the prompt.
+For a bench poke-test, reach for `printer:`; for a booted CP/M or BASIC that prints,
+either works and `socket:` is cleaner.
+
+*Confirmed on real hardware.* A page reading `ALTAIRSIM` came out of a Brother
+MFC-L5700DW laser (a modern AirPrint printer, but with an open JetDirect port and
+PCL/Epson-FX/text auto-emulation) via a raw CUPS queue at its socket port:
+
+```sh
+sudo lpadmin -p brother_raw -E -v socket://192.0.2.234:9100 \
+             -m drv:///sample.drv/generic.ppd -o printer-is-shared=false   # your printer's IP
+
+```
+
+Then `CONNECT lpt0:prn printer:brother_raw`, print the text, and end with a form feed
+(`OUT 03 0C`, or let `?onff` do it) so the printer ejects the page — a raw laser holds
+the last page until a form feed or end-of-job tells it the page is done. The printer
+must be in its Auto (or a text/PCL) emulation, which is the factory default.
+
+**Bench test only (the deprecated path), for watching the boundaries with no paper.**
+To exercise the CUPS submit path on a macOS box *today*, accepting both warnings above,
+a nominal generic PPD stands in for the removed raw queue, and the `socket` backend
+plus `nc` shows exactly what reaches the device:
+
+```sh
+sudo lpadmin -p altairterm -E -v socket://localhost:9100 \
+             -m drv:///sample.drv/generic.ppd -o printer-is-shared=false   # Linux: -m raw
+nc -k -l 9100          # in one terminal: every job's bytes stream here as it lands
+```
+
+Then `CONNECT lpt0:prn printer:altairterm?idle=3`, print, and `DISCONNECT lpt0:prn` to
+flush at once (the destructor submits synchronously, so no run loop is needed). Each
+closed job arrives in the `nc` terminal as its own burst — the job-boundary policy made
+visible, and the check for whether the raw job survived filtering: clean bytes mean
+passthrough, a PostScript wrapper means the host filtered it anyway. `nc -k` keeps
+listening across jobs (the `socket` backend opens one connection per job). Remove the
+queue with `sudo lpadmin -x altairterm`. On Linux this is the same recipe with `-m raw`
+and no deprecation attached.
 
 ### 3.3 `print_raw`, both platforms
 
@@ -374,6 +476,21 @@ to the spooler; either can take a noticeable moment, and neither may be called
 from `write()`. Submission happens on the `pump()`/flush path, and if it turns
 out to be slow enough to be felt, it wants a worker — but measure before
 building one.
+
+*Measured (macOS 26, CUPS 2.3.4, `socket` backend to a local `nc`):* a submit is
+**~1–3 seconds**, and the **first job is slower** — daemon and backend warm-up,
+not anything in the buffer. That is slow enough to be felt. As built, the submit
+runs on the run-loop thread (`pump()` → the idle timer → `cupsPrintFile2`), so a
+job boundary that fires **mid-`RUN`** freezes the guest for that interval. At
+`DISCONNECT`/exit it only delays the prompt, which is harmless, and for the usual
+print-a-report-then-return flow the hitch lands while the guest is already idle —
+so Phase 1 ships synchronous. But the measurement clears the note's own gate:
+**deferring submission to a background worker thread is a warranted Phase-2
+improvement.** It is safe to thread precisely because submission is host-side
+dwell that no register exposes — it never touches emulated time, so a worker does
+not endanger determinism the way a guest-visible thread would (§2.1). The failed
+job would then reach `drainLog()` a slice later instead of inline, which is the
+one wrinkle to handle.
 
 **A failed job must be loud and must not be silent data loss.** A queue that has
 gone away, a printer that is off — these produce an error string from both APIs,

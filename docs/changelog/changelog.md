@@ -8,6 +8,21 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Printing to a real printer: the `printer:` endpoint
+
+A line can now go to a **real print queue on the host**, not just to a file. `CONNECT lpt0:prn
+printer:linewriter` hands what the [88-C700](../manual/boards.md) — or any board with a line —
+prints to your operating system's print system as a job. Like `file:` it is a write-only,
+8-bit-clean sink and not tied to any one board, so a serial printer on a 2SIO would use it too.
+
+A printer has no end-of-job signal, so the endpoint decides where one job ends: after a few
+seconds idle (`?idle=N`, the default), on a form feed (`?onff`), or at a byte ceiling (`?max=N`),
+whichever comes first — and an empty buffer never prints, so no blank pages. The queue must pass
+data through untouched (a *raw* queue), created once in your OS printer setup; `printer:` with no
+name lists the queues it can see, and a failed job says so rather than vanishing. Built where the
+host print system is present (CUPS on macOS and Linux); see the User Manual's serial chapter and
+issue #70.
+
 ### A tape boot loader in the PROM socket: `builtin:mbl`
 
 The Altair **Multi Boot Loader** is now a built-in ROM. Where `dbl`, `mdbl` and `cdbl` boot a

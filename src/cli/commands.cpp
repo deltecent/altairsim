@@ -428,6 +428,10 @@ static const std::vector<CommandDef> kCommands = {
      "              knows what it is strapped to.\n"
      "  file:       PATH -- a host file, write-only: a printout, or a capture of the\n"
      "              line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.\n"
+     "  printer:    QUEUE -- a real print queue on this host (only where the build found\n"
+     "              one). The bytes buffer into a JOB, submitted after a few idle seconds\n"
+     "              (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling\n"
+     "              (?max=N). 8-bit clean -- a printer control language is not text.\n"
      "\n"
      "Exactly ONE unit may hold the console; connecting a second STEALS it and says\n"
      "who from. Two boards reading one keyboard would each get half the characters.\n"
@@ -439,6 +443,7 @@ static const std::vector<CommandDef> kCommands = {
      "  CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware\n"
      "  CONN sio0:b serial:COM3                           ...the same, on Windows\n"
      "  CONN lpt0:prn file:printout.txt                   capture a printer to a file\n"
+     "  CONN lpt0:prn printer:linewriter                  print to a real host queue\n"
      "DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it."},
     // RESET sits with POWER, which is the other command that throws state away, and
     // BELOW REGS -- which is what costs it `R` and `RE` and leaves it `RES`. It has to

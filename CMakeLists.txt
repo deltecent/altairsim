@@ -245,6 +245,11 @@ add_library(altair_core STATIC
   # `file:PATH` -- a host file as a write-only sink: a printout, or a capture of a
   # line. A SINK, so it is trivial next to hostserial/tcp (no pump, no read path).
   src/host/file.cpp
+  # `printer:QUEUE` -- a host print queue as a write-only sink that buffers bytes into
+  # JOBS (host/printer_stream.h, issue #70). Always compiled and pure: it knows how to
+  # decide where one job ends but nothing about CUPS -- the platform submit backend is
+  # linked separately and only when found (the printer feature block below).
+  src/host/printer_stream.cpp
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
@@ -403,6 +408,45 @@ if(ALTAIRSIM_ENABLE_SDL)
   endif()
 endif()
 
+# ---------------------------------------------------------------------------
+# The optional host-printer backend (docs/printing.md; issue #70). THE SECOND
+# optional link-time dependency, and it follows the SDL3 rule above exactly: ON by
+# default meaning "use it if it is here", a quiet detect, a message either way, and a
+# build without it where `printer:` is simply not in the endpoint grammar and the
+# resolver says so by name -- the one endpoint that cannot work on a given host fails
+# at CONNECT with a sentence, not at compile.
+#
+# host/printer_stream.cpp is NOT here: it is pure (it decides job boundaries, it does
+# not talk to a spooler) and is always compiled, so its boundary policy is tested with
+# a fake sink on every platform, CUPS or no CUPS. Only the platform submit TU and the
+# ALTAIRSIM_ENABLE_PRINTER define that lights up the resolver arm are gated.
+#
+# macOS AND Linux are the SAME leg: both sit on CUPS, so one file (printer_cups.cpp)
+# serves both and is selected with find_package(Cups) -- CMake's own module, which
+# gives the imported Cups::Cups target. NOT pkg_check_modules: pkg-config is not
+# guaranteed on a macOS dev box (this one has cups-config, not pkg-config), and a
+# REQUIRED pkg check there would fail to configure a build that should just quietly
+# skip the feature. Windows is WinSpool and is a later branch (issue #70 Phase 3).
+option(ALTAIRSIM_ENABLE_PRINTER "Print to a host queue if CUPS/WinSpool is found" ON)
+if(ALTAIRSIM_ENABLE_PRINTER)
+  if(WIN32)
+    # Phase 3 -- the file does not exist yet, so the feature is off on Windows until
+    # it lands. Left here as the shape it will take (WinSpool, StartDocPrinter RAW).
+    message(STATUS "printer: endpoint not yet built on Windows (issue #70 Phase 3)")
+  else()
+    find_package(Cups QUIET)
+    if(Cups_FOUND)
+      target_sources(altair_core PRIVATE src/platform/posix/printer_cups.cpp)
+      target_link_libraries(altair_core PUBLIC Cups::Cups)
+      target_compile_definitions(altair_core PUBLIC ALTAIRSIM_ENABLE_PRINTER)
+      message(STATUS "CUPS found -- printer: endpoint enabled")
+    else()
+      message(STATUS "CUPS not found -- printer: endpoint disabled. "
+                     "Install libcups2-dev (Linux) for host printing.")
+    endif()
+  endif()
+endif()
+
 # Nothing links until the OS is where it belongs.
 add_dependencies(altair_core platform_lint)
 
@@ -478,6 +522,7 @@ add_executable(altair_tests
   tests/test_88sio.cpp
   tests/test_88acr.cpp
   tests/test_c700.cpp
+  tests/test_printer.cpp
   tests/test_pio.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp

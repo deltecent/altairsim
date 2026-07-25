@@ -29,6 +29,7 @@ This table is exhaustive. There are no others.
 | `socket:HOST:PORT` | **CALLS OUT** to that host and that port. |
 | `serial:DEVICE` | a real serial port on this host. |
 | `file:PATH` | a host file, write-only. Captures whatever the board sends. |
+| `printer:QUEUE` | a real print queue on this host, write-only. Buffers the bytes into a job and prints it. Present only where the build found a host print system. |
 
 ### `null` is not an error
 
@@ -142,6 +143,48 @@ the bytes on the wire are the bytes in the file, control codes and all. Nothing 
 you want a printout as tidy host text, that is an editor's job, not the board's. A relative path
 follows the usual rule: relative to the file when it is written in a machine configuration,
 relative to your shell when you type it.
+
+## Printing to a real printer
+
+Where your build was made with host printing, a line can go to a real print queue instead of a
+file:
+
+```
+altairsim> CONNECT lpt0:prn printer:linewriter
+```
+
+`printer:` is a **write-only** sink like `file:`, and just as un-printer-specific — any line can
+use it, not only the [88-C700](boards.md). The difference is what happens to the bytes: they are
+held in a buffer and then handed to the host print system as one **job**.
+
+**When does a job end?** A printer has no "done" signal — a program prints and then simply stops.
+So `altairsim` decides the boundary for you, and you can tune it in the endpoint itself:
+
+| Option | Means | Default |
+|---|---|---|
+| `?idle=N` | end the job after **N seconds** with nothing more printed. `0` = never. | `5` |
+| `?onff` | also end the job on a **form feed** (the page-eject character). | off |
+| `?max=N` | end the job at **N bytes**, so a runaway program cannot fill memory. | a large number |
+
+```
+altairsim> CONNECT lpt0:prn printer:linewriter?idle=15
+altairsim> CONNECT lpt0:prn printer:linewriter?onff
+altairsim> CONNECT lpt0:prn "printer:Generic / Text Only?idle=0&onff"
+```
+
+Write a bare option (`?onff`) to turn it on; the common case never types `=1`. The boundaries
+combine — the first to fire ends the job — and an **empty buffer never prints**, so a form feed
+followed by silence does not leave a blank page behind. A job also goes out when you `DISCONNECT`
+the line, load another machine, or quit, so nothing you printed is ever left un-sent.
+
+The queue must be one the host passes through **untouched** (a *raw* queue): a printer control
+language is not text, and a normal queue would try to reformat it. Creating that queue is a
+one-time step in your operating system's printer setup, outside `altairsim`. If a queue name
+contains spaces, quote the whole endpoint as shown above. Connect to `printer:` with no name and
+`altairsim` lists the queues it can see.
+
+Like `file:`, a printer line is **8-bit clean** — the bytes the program sent are the bytes the
+printer gets.
 
 ## A `CONNECT` it does not understand is an error
 

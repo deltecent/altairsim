@@ -600,7 +600,17 @@ public:
     // about a bad sector had NO WAY to say it, and would have had to grow a second
     // channel or teach the machine about a second board type. Both are the same bug:
     // a general facility with one card's name compiled into it.
-    virtual std::vector<std::string> drainLog() { return {}; }
+    //
+    // THE DEFAULT DRAINS THE FAR END OF EVERY LINE. A card that overrides this (a
+    // memory or disk controller with something to say about its own hardware) speaks
+    // for itself; a card that does not -- the 88-C700, and every printer/serial card
+    // that connects an endpoint -- has the STREAM'S log pulled up through here, so a
+    // print job that could not be spooled reaches the operator with NO per-board code
+    // (docs/printing.md 4). The board forwards opaque strings it never inspects, the
+    // same way Machine::drainBoardLog forwards these up to the monitor: it knows it
+    // has a line, not what is on the far end of it. (Body in board.cpp -- ByteStream
+    // is only forward-declared here.)
+    virtual std::vector<std::string> drainLog();
 
     // THERE IS NO "BEHIND THE BUS" ON A BOARD, and there was: rawSize/rawRead/rawWrite
     // used to live here, so that `RAW <id>` could address ANY card's backing store by a

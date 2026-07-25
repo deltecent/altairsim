@@ -1,6 +1,7 @@
 #include "core/board.h"
 
 #include "core/statefile.h"
+#include "host/stream.h"
 
 #include <cctype>
 
@@ -32,6 +33,21 @@ const char* unitKindName(UnitKind k) {
 // overrides these chains here first, then writes its own fields.
 void Board::serialize(StateWriter& w) const { w.boolean(enabled_); }
 void Board::deserialize(StateReader& r) { enabled_ = r.boolean(); }
+
+// The default: pull the far end of every serial line this card carries, and prefix
+// each line with the card's id so `SHOW`-after-a-run reads "lpt0: print to ...". A
+// card that has no serial units (most of them) returns unitStream() == null for each
+// and this is empty, exactly as before. See the header note -- the board forwards
+// opaque strings and never learns what a printer is.
+std::vector<std::string> Board::drainLog() {
+    std::vector<std::string> out;
+    for (const auto& u : units()) {
+        ByteStream* s = unitStream(u.name);
+        if (!s) continue;
+        for (auto& line : s->drainLog()) out.push_back(id + ": " + std::move(line));
+    }
+    return out;
+}
 
 // THE `interrupt` STRAP, FOR EVERY BOARD THAT HAS ONE.
 //

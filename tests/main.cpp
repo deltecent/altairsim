@@ -95,6 +95,7 @@ int main() {
     test_hdsk();
     test_88acr();
     test_c700();
+    test_printer();
     test_pio();
     test_4pio();
     test_vdm1();
