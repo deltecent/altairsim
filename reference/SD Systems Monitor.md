@@ -30,9 +30,12 @@ exactly.
     exactly as documented in the board reference. This build does the **auto-baud** measurement:
     it waits on 8251 status bit 7, times the start bit of the first character, and loads the CTC
     time constant to match (the manual's "reply with a CR and the baud rate is matched").
-  - **SDMONV21 ("SD" build): data = `01H`, status = `00H`**, with a baud latch written at port
-    `78H`. This is a fixed-console variant for a serial port at 00/01 rather than the 8251 at
-    7C/7D; the command set is otherwise identical.
+  - **SDMONV21 ("SD" build): data = `01H`, status = `00H`** (it polls status **D1** for a
+    received byte — `IN 00H` / `AND 02H` — then reads `01H`). Its source title is "SD monitor
+    v2.10 for SBC-100 **and VDM Console**": ports 00/01 are the **SD Systems VDB-8024** video
+    display board (an intelligent terminal on a board, not the 8251 serial console), so this is
+    the **video-console** build — see [`SD Systems VDB-8024.md`](SD%20Systems%20VDB-8024.md).
+    The command set is otherwise identical to the MS build.
 - Both are **Version 2.10**. Operands are **hex only** (0–9, A–F, uppercase); only the last four
   digits of a number are used, leading zeros assumed; a bad character prints `?` and aborts.
 
