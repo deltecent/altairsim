@@ -1,0 +1,38 @@
+# The `default` machine with an 88-LPC line printer at port 02, captured to a file.
+#
+# The sibling of `lineprinter` (which uses the 88-C700). Where the C700 is a
+# transparent byte pipe, the 88-LPC drives the 88-LP line printer with a LINE-ORIENTED
+# command protocol: the guest loads a 6-bit character CODE at a time into the printer's
+# 80-character buffer, and a PRINT command (or the buffer filling to 80) commits a line.
+#
+#   altairsim lineprinter-lpc
+#   OUT 03 01           a 6-bit code -> the printer buffer.  0x01 decodes to 'A'
+#   OUT 03 02           0x02 -> 'B'
+#   OUT 02 01           CONTROL D0 = PRINT -> the line "AB" + newline -> printout.txt
+#   OUT 02 02           CONTROL D1 = LINE FEED (a blank line); D2 = CLEAR the buffer
+#   IN  02              status: bit 0 = buffer will accept a char, bit 1 = not printing
+#   CONNECT lpt0:prn console      ...or watch it print live on the console instead
+#
+# The 6-bit code is not finished ASCII: the 64-char set (0x20..0x5F) is packed into six
+# bits with bit 6 = the complement of bit 5, so 0x20 -> space, 0x00 -> '@', 0x01 -> 'A'.
+# The card decodes it to the glyph the printer would strike. (See
+# reference/88-LPC Printer Interface.md; the packing is inferred from the standard
+# 64-char subset, the Okidata glyph chart is not in the LPC manual.)
+#
+# The file lands in the directory you ran altairsim from (the usual path rule -- see
+# docs/manual/config.md). It is the printed page: decoded characters, one text line per
+# printed line. LINE FEED advances the paper (a blank line); CLEAR discards a pending
+# line.
+
+[machine]
+name = "lineprinter-lpc"
+base = "default"
+
+# THE PRINTER -- an 88-LPC at 02, the MITS default (Control at 02, Data at 03). MITS
+# software requires address 2. The guest loads 6-bit codes at 03 and commands at 02,
+# and polls status at 02.
+[[board]]
+type    = "lpc"
+id      = "lpt0"
+port    = 02
+connect = "file:printout.txt"

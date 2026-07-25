@@ -28,6 +28,7 @@ what is actually in one.
 | `d7a` | A Cromemco Dazzler + D+7A + JS-1 joysticks -- the S-100 game console of 1976. |
 | `dazzler` | A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
+| `lineprinter-lpc` | The `default` machine with an 88-LPC line printer at port 02, captured to a file. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |

@@ -302,6 +302,10 @@ add_library(altair_core STATIC
   # port to a ByteStream (a file, the console, a socket). No chip: a printer sends
   # nothing back, so there is no receiver to model. See mits-88c700.h.
   src/boards/mits-88c700.cpp
+  # The 88-LPC line-printer controller -- the C700's sibling for the 88-LP printer,
+  # but line-buffered: 6-bit codes decoded to glyphs, committed as a line on PRINT or
+  # at 80 chars. Sinks to a ByteStream like the C700. See mits-88lpc.h.
+  src/boards/mits-88lpc.cpp
   # The 88-PIO parallel port: a bidirectional latch pair (out/in), each a ByteStream.
   # The 88-4PIO: up to four 6820 PIAs with software-set direction. See mits-88pio.h.
   src/boards/mits-88pio.cpp
@@ -522,6 +526,7 @@ add_executable(altair_tests
   tests/test_88sio.cpp
   tests/test_88acr.cpp
   tests/test_c700.cpp
+  tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_pio.cpp
   tests/test_4pio.cpp
