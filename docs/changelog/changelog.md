@@ -11,7 +11,7 @@ as it is now; this document is the record of how it got there.
 ### A second printer card: the 88-LPC line-printer controller
 
 `BOARDS ADD lpc` puts a **MITS 88-LPC** in the backplane — the controller for the 88-LP line
-printer, the sibling of the [88-C700](../boards/mits-88lpc.md). It shares the C700's two-port shape
+printer, the sibling of the [88-C700](../boards/mits-88c700.md). It shares the C700's two-port shape
 (control at an even base, data at the odd address above it; MITS default **02**) but drives the
 printer the way it really worked: the guest loads a **6-bit character code** at a time into an
 80-character line buffer (`OUT` the data port), and the line commits on a **PRINT** command or when
