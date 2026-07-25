@@ -34,6 +34,7 @@ what is actually in one.
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
 | `ps2` | The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
+| `sbc200` | SD Systems SBC-200 -- a 4 MHz Z80 single-board computer running the MSMONR21 monitor. |
 | `sol20` | The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS. |
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
 | `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |

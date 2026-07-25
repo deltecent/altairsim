@@ -12,6 +12,7 @@
 #include "boards/mits-turnkey.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
+#include "boards/sd-sbc.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/joystick_null.h"
@@ -31,6 +32,7 @@ int main() {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::TurnkeyBoard::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
+    altair::SbcBoard::setResolver(altair::resolveEndpoint);
     altair::UioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
     altair::LpcBoard::setResolver(altair::resolveEndpoint);
@@ -91,6 +93,7 @@ int main() {
     test_dma();
     test_sio2();
     test_88sio();
+    test_sbc();
     test_lines();
     test_wd17xx();
     test_spindle();

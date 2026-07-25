@@ -86,6 +86,7 @@ Type the part before the bracket.
 | `z80` | Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core |
 | `2sio` | MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3 |
 | `sio` | MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits |
+| `sbc` | SD Systems SBC-100/200: Z80 SBC console. Intel 8251 USART, unit 'tty'; data at 7C, status/command at 7D. RxD->/DSR auto-baud for MSMONR21. variant=sbc100\|sbc200 |
 | `dcdd` | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
 | `mds` | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers |
@@ -125,6 +126,7 @@ Type the part before the bracket.
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
 | `ps2` | The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
+| `sbc200` | SD Systems SBC-200 -- a 4 MHz Z80 single-board computer running the MSMONR21 monitor. |
 | `sol20` | The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS. |
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
 | `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |

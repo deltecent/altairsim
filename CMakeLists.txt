@@ -273,6 +273,9 @@ add_library(altair_core STATIC
   src/chips/mc6850.cpp
   src/chips/sio2port.cpp
   src/chips/uart1602.cpp
+  # The Intel 8251 USART -- the console chip of the SD Systems SBC-100/200, and the
+  # next 8251 card to turn up gets it for free (src/chips/intel8251.h).
+  src/chips/intel8251.cpp
   src/chips/wd17xx.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
@@ -294,6 +297,9 @@ add_library(altair_core STATIC
   src/boards/mits-88hdsk.cpp
   src/boards/mits-2sio.cpp
   src/boards/mits-88sio.cpp
+  # SD Systems SBC-100/200 -- the 8251 serial console (Phase 1). Structural twin of
+  # the 88-SIO, embedding one Intel8251. See src/boards/sd-sbc.h.
+  src/boards/sd-sbc.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
   # this list is not ordered. It is listed after it so the reader sees the pair.
@@ -528,6 +534,7 @@ add_executable(altair_tests
   tests/test_dma.cpp
   tests/test_sio2.cpp
   tests/test_88sio.cpp
+  tests/test_sbc.cpp
   tests/test_88acr.cpp
   tests/test_88uio.cpp
   tests/test_c700.cpp
