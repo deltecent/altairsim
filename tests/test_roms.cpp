@@ -102,6 +102,11 @@ void test_roms() {
         {"cuter",  0xC000, 0xC7FA, 2043, 0xB0106ED2u, true},
         {"solos",  0xC000, 0xC7FF, 2048, 0x4D0AF383u, true},
         {"mbl",    0xFE00, 0xFEFF,  256, 0x5E21410Eu, true},
+        // SD Systems parts, embedded ahead of the SBC-100/200 and VersaFloppy boards
+        // (docs/roms.md): the MS monitor PROM at E000 and the VersaFloppy DDBIOS at F000,
+        // both complete 2K-window images verified against their own assembler listings.
+        {"ddb200",   0xF000, 0xF7F9, 2042, 0xD94C68DCu, true},
+        {"msmonr21", 0xE000, 0xE7FF, 2048, 0x64428921u, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

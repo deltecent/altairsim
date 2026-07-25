@@ -1,0 +1,3168 @@
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0001 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0002         NAME    DDB200
+                 0003 ;
+                 0004 ;       FLOPPY DISK DRIVER FOR SDOS-COSMOS
+                 0005 ;
+                 0006 ;               BY      REX BROWN
+                 0007 ;
+                 0008 ;       VERSION 3.1     5/10/80
+                 0009 ;                       8/13/80 SPLIT DDBIOS FOR SD100/200
+                 0010 ;               3.2     8/13/81 TRK 0 DTYPE ON BOOT FOR OASIS...DKB
+                 0011 ;               3.3     6/24/82 SET UNIT BYTE TO ZERO FOR BOOT UP..DKB
+                 0012 ;
+                 0013 ;       RUNS ON SD200/700 SYSTEMS
+                 0014 ;
+                 0015 ;
+                 0016 ;       COPYRIGHT 1980 SD SYSTEMS 
+                 0017 ;
+                 0018 ;
+                 0019 ;       VERSION 3.0 OF DDBIOS IS CAPABLE OF SUPPORTING BOTH
+                 0020 ;       DOUBLE DENSITY AND SINGLE DENSITY FORMATS ON EITHER
+                 0021 ;       THE 8" OR THE 5" DRIVES. DDBIOS V3.0 WILL SUPPORT USE
+                 0022 ;       OF EITHER THE 1795 OR THE 1791 CONTROLLER CHIPS.
+                 0023 ;
+                 0024 ;       VERSION 3.1 ALLOWS COLD BOOT FROM HARD DISK WITHOUT 
+                 0025 ;       FLOPPY DISKS IN SYSTEM
+                 0026 ;
+                 0027 ;       *****************************************
+                 0028 ;       *                                       *
+                 0029 ;       *                                       *
+                 0030 ;       *       The BOOT routine dumps track 0  *
+                 0031 ;       *       SECTOR 1 data to address 0080H. *
+                 0032 ;       *                                       *
+                 0033 ;       *****************************************
+                 0034 ;
+                 0035         PSECT   ABS
+ >F000           0036         ORG      0F000H
+                 0037 ;
+                 0038 ;
+                 0039 ;
+                 0040 ;
+ >0031           0041 COBYTE  EQU     031H    ;CAP-CPP CHK DATA
+ >E800           0042 COBSYS  EQU     0E800H  ;CAP-CPP SYS ADDR
+ >00E0           0043 MNBYTE  EQU     0E0H    ;MONITOR CHECK DATA
+ >E002           0044 MNITR   EQU     0E002H  ;MONITOR CHECK ADDR
+ >E003           0045 MONITR  EQU     0E003H  ;MONITOR ENTRY POINT
+ >E800           0046 HDBIOS  EQU     0E800H  ;HARD DISC LINKAGE
+ >0080           0047 NBYTES  EQU     128     ;BYTES PER SECTOR
+                 0048 ;
+                 0049 ;
+ >0000           0050 RBASE   EQU     0000H           ; START OF RAM
+ >0040           0051 TADDR   EQU     RBASE+40H       ; TRANSFER ADDRESS
+ >0042           0052 UNIT    EQU     RBASE+42H       ; NEW UNIT BYTE
+ >0043           0053 SCTR    EQU     RBASE+43H       ; SECTOR
+ >0044           0054 TRK     EQU     RBASE+44H       ; TRACK
+ >0045           0055 NREC    EQU     RBASE+45H       ; # OF SECTORS
+ >0046           0056 ERMASK  EQU     RBASE+46H       ; ERROR MASK
+ >0047           0057 ERSTAT  EQU     RBASE+47H       ; ERROR STATUS
+ >0048           0058 IDSV    EQU     RBASE+48H       ; 4 BYTES
+ >0049           0059 SIDE    EQU     RBASE+49H       ; ID SIDE BYTE
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0002 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ >004C           0060 CMDSV   EQU     RBASE+4CH       ; COMMAND SAVE
+ >004D           0061 SPSV    EQU     RBASE+4DH       ; SP SAVE (2 BYTES)
+ >004F           0062 CICHR   EQU     RBASE+4FH       ; USED FOR BACKSPACE
+ >0050           0063 TEMP1   EQU     RBASE+50H       ; 1 BYTE TEMPORARY REG
+ >0051           0064 TEMP2   EQU     RBASE+51H       ; 2 BYTE TEMPORARY REG
+ >0053           0065 IXSAV   EQU     RBASE+53H       ; IX STORE BUFFER
+ >0055           0066 UNITCK  EQU     RBASE+55H       ; OLD UNIT BYTE
+ >0056           0067 RSEEK   EQU     RBASE+56H       ; NBR OF RESEEKS
+ >0057           0068 RTRY    EQU     RBASE+57H       ; NBR OF RTRYS
+ >0080           0069 SSTACK  EQU     RBASE+80H       ; SYSTEM STACK
+ >0080           0070 COLD    EQU     RBASE+80H       ; COLD START ADDRESS
+                 0071 ;
+                 0072 ;
+                 0073 ;
+                 0074 ;       PORTS USED BY DISK CONTROLLER
+                 0075 ;
+ >0060           0076 X       EQU     60H
+ >0060           0077 RSET    EQU     X+0     ; CONTROLLER RESET ADDR
+ >0063           0078 SELECT  EQU     X+3     ; DRIVE SELECT PORT
+ >0064           0079 STATUS  EQU     X+4     ; STATUS PORT
+ >0065           0080 TRACK   EQU     X+5     ; TRACK PORT
+ >0066           0081 SECTOR  EQU     X+6     ; SECTOR PORT
+ >0067           0082 DATA    EQU     X+7     ; DATA PORT
+ >0064           0083 CMD     EQU     X+4     ; COMMAND PORT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0003 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0085 ;
+                 0086 ;
+                 0087 ;
+                 0088 ;
+                 0089 ; DISK ERROR STATUS BITS (ERSTAT)
+                 0090 ;
+                 0091 ;
+                 0092 ; BIT 7 - DRIVE NOT READY
+                 0093 ; BIT 6 - WRITE PROTECTED
+                 0094 ; BIT 5 - TRACK SEEK ERROR
+                 0095 ; BIT 4 - SECTOR NOT FOUND
+                 0096 ; BIT 3 - CRC ERROR
+                 0097 ; BIT 2 - DATA LOST
+                 0098 ; BIT 1 - DRQ BIT
+                 0099 ; BIT 0 - WRITE DELETED SECTOR READ
+                 0100 ; FEH - CONTROLLER HANG UP
+                 0101 ; 0FH - INVALID TRACK ERROR
+                 0102 ;
+                 0103 ;
+                 0104 ; DISK CONTROLLER COMMAND CODES
+                 0105 ;
+                 0106 ;
+ >00C0           0107 RDACMD  EQU     0C0H    ; READ ADDRESS CMD
+ >0088           0108 RDCMD   EQU     88H     ; READ SECTOR CMD
+ >00A8           0109 WRCMD   EQU     0A8H    ; WRITE SECTOR CMD
+ >00F4           0110 WRTCMD  EQU     0F4H    ; WRITE TRACK CMD
+                 0111 ;
+                 0112 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0004 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0114 ;
+                 0115 ;       SDOS SYSTEM LINKAGES
+                 0116 ;
+                 0117 ;
+ F000  00        0118 BIOS    NOP             ; RESET ENTRY FOR SINGLE 
+ F001  1E00      0119         LD      E,0 ;*
+                 0120 ;       NOP
+                 0121 ;       NOP             ;SDOS CODE
+ F003  C36CF0    0122 WBOOTE  JP      BOOT    ; WARM START ENTRY
+ F006  C306E0    0123 CSE     JP      0E006H  ; TRNSFR CTL TO MONITOR
+ F009  C309E0    0124 CIE     JP      0E009H  ;   "     "   "    "
+ F00C  C30CE0    0125 COE     JP      0E00CH  ;   "     "   "    "
+ F00F  C31BF1    0126 DTYPE   JP      UNITSL  ; SET UP UNIT BYTE
+ F012  00        0127         NOP
+ F013  00        0128         NOP
+ F014  00        0129         NOP
+ F015  00        0130         NOP
+ F016  00        0131         NOP
+ F017  00        0132         NOP
+ F018  C36AF1    0133 HME     JP      HOME    ; MOVE DISK TO TRK 00
+ F01B  C379F1    0134 SDSKE   JP      SELDSK  ; SELECT DISK DRIVE
+ F01E  C37EF1    0135 STRKE   JP      SETTRK  ; SET DISK TRACK
+ F021  C383F1    0136 SSECE   JP      SETSEC  ; SET DISK SECTOR
+ F024  C388F1    0137 SDMAE   JP      SETDMA  ; SET MEM ADDR FOR READ/WRITE
+ F027  C38DF1    0138 RDE     JP      READ    ; READ A SECTOR
+ F02A  C3A9F1    0139 WRE     JP      WRITE   ; WRITE A SECTOR
+ F02D  C3C3F3    0140 LDE     JP      LOADER  ; LOAD 'N' SECTORS
+ F030  C3D0F3    0141 SVE     JP      SAVER   ; SAVE 'N' RECORDS
+ F033  C314F4    0142 FMATE   JP      FMAT    ; FORMAT A DISKETTE
+                 0143 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0005 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0145 ;
+                 0146 ;
+                 0147 ;       THE FOLLOWING TABLES CONTAIN DEFINITIONS
+                 0148 ;       WHICH VARY ACCORDING TO DRIVE TYPE.
+                 0149 ;
+                 0150 ;
+                 0151 ;
+                 0152 ;       8" SINGLE DENSITY DRIVE VARIABLES
+                 0153 ;
+                 0154 ;
+ >F03F           0155         ORG     0F03FH
+ F03F  1A        0156 STDSDT: DEFB    26      ;SECTORS PER TRACK
+ F040  4D        0157         DEFB    77      ;TRACKS PER SIDE
+ F041  49        0158         DEFB    100-27  ;INDEX HEADER GAP
+ F042  06        0159         DEFB     6      ;GAP 1
+ F043  0B        0160         DEFB    11      ;GAP 2
+ F044  1B        0161         DEFB    27      ;GAP 3
+ F045  08        0162         DEFB    08H     ;RESTORE CMD
+ F046  18        0163         DEFB    18H     ;SEEK NO VERIFY CMD
+ F047  1C        0164         DEFB    1CH     ;SEEK WITH VERIFY
+                 0165 ;
+                 0166 ;
+                 0167 ;       8" DOUBLE DENSITY DRIVE VARIABLES
+                 0168 ;
+                 0169 ;
+ F048  32        0170 STDDDT: DEFB    50              ;SECTRS/TRACK
+ F049  4D        0171         DEFB    77              ;TRACKS/SIDE
+ F04A  54        0172         DEFB    100-16          ;HEADER GAP
+ F04B  08        0173         DEFB    8               ;GAP 1
+ F04C  16        0174         DEFB    22              ;GAP 2
+ F04D  10        0175         DEFB    16              ;GAP 3
+ F04E  08        0176         DEFB    8               ;RESTORE CMD
+ F04F  18        0177         DEFB    18H             ;SEEK NO VERIFY
+ F050  1C        0178         DEFB    1CH             ;SEEK WITH VERIFY
+                 0179 ;
+                 0180 ;
+                 0181 ;       8" 256 BYTE DOUBLE DENSITY VARIABLES
+                 0182 ;
+                 0183 ;
+ F051  1A        0184 DDT256: DEFB    26      ;NBR SCTRS/TRK
+ F052  4D        0185         DEFB    77      ;NBR TRKS
+ F053  2E        0186         DEFB    100-54  ;INDEX HEADR GAP
+ F054  08        0187         DEFB    8       ;NBR GAP1 BYTES
+ F055  16        0188         DEFB    22      ;NBR GAP2 BYTES
+ F056  36        0189         DEFB    54      ;NBR GAP3 BYTES
+ F057  08        0190         DEFB    08H     ;RESTORE CMD
+ F058  18        0191         DEFB    18H     ;SK/NO VERIFY
+ F059  1C        0192         DEFB    1CH     ;SK/WTH VERIFY
+                 0193 ;
+                 0194 ;
+                 0195 ;
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0006 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0197 ;
+                 0198 ;
+                 0199 ;       5" SINGLE DENSITY DISK VARIABLES
+                 0200 ;
+                 0201 ;
+ F05A  12        0202 MINSDT  DEFB    18      ;NBR OF SECTRS PER TRACK
+ F05B  23        0203         DEFB    35      ;NBR OF TRACKS PER SIDE
+ F05C  0C        0204         DEFB    20-8    ;INDEX HEADER GAP
+ F05D  06        0205         DEFB     6      ;NBR BYTES IN GAP 1 (PRE ID GAP)
+ F05E  0B        0206         DEFB    11      ;NBR BYTES IN GAP 2 (ID->DATA GAP)
+ F05F  08        0207         DEFB     8      ;NBR BYTES IN GAP 3 ( DATA-->ID GAP)
+ F060  0B        0208         DEFB    0BH     ;RESTORE CMD
+ F061  1B        0209         DEFB    1BH     ;SEEK NO VERIFY CMD
+ F062  1F        0210         DEFB    1FH     ;SEEK WITH VERIFY
+                 0211 ;
+                 0212 ;
+                 0213 ;
+                 0214 ;       5" DOUBLE DENSITY DISK VARIABLES
+                 0215 ;
+                 0216 ;
+ F063  1D        0217 MINDDT  DEFB    29      ;NBR OF SECTORS PER TRACK
+ F064  23        0218         DEFB    35      ;NBR OF TRACKS PER SIDE 
+ F065  54        0219         DEFB    100-16  ;NBR OF HEADER GAP BYTES
+ F066  08        0220         DEFB    8       ;GAP 1 (PRE ID)
+ F067  16        0221         DEFB    22      ;GAP 2 (ID->DATA GAP)
+ F068  10        0222         DEFB    16      ;GAP 3 (DATA-->ID GAP)
+ F069  0B        0223         DEFB    0BH     ;RESTORE COMMAND
+ F06A  1B        0224         DEFB    1BH     ;SEEK NO VERIFY CMD
+ F06B  1F        0225         DEFB    1FH     ;SEEK WITH VERIFY
+                 0226 ;
+                 0227 ;
+                 0228 ;       THE FOLLOWING EQUATES RELATE THE ABOVE FORMAT
+                 0229 ;       TABLES TO THE INDEX REGISTER (IX).
+                 0230 ;
+                 0231 ;
+ >0000           0232 NSCTRS  EQU     0
+ >0001           0233 NTRKS   EQU     1
+ >0002           0234 HEADR   EQU     2
+ >0003           0235 GAP1    EQU     3
+ >0004           0236 GAP2    EQU     4
+ >0005           0237 GAP3    EQU     5
+ >0006           0238 RSCMD   EQU     6
+ >0007           0239 SKNCMD  EQU     7
+ >0008           0240 SKCMD   EQU     8
+                 0241 ;
+                 0242 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0007 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0244 ;
+                 0245 ;       BOOT LOADS A SECTOR FROM DISK TO ADDR 0080H AFTER
+                 0246 ;       CHECKING THE DISK TYPE.  IF THE SECTOR
+                 0247 ;       IS VALID DATA CONTROL IS TRANSFERED TO
+                 0248 ;       THE LOAD ADDRESS.
+                 0249 ;
+                 0250 ;
+ F06C  318000    0251 BOOT    LD      SP,SSTACK       ;SET UP STACK POINTER
+ F06F  DB7F      0252         IN      A,(7FH)
+ F071  3E00      0253         LD      A,0
+ F073  324200    0254         LD      (UNIT),A        ; SET UNIT BYTE TO 0 ;3.3 DKB
+ F076  7B        0255         LD      A,E             ;*
+ F077  FE04      0256         CP      4
+ F079  D203E8    0257         JP      NC,HDBIOS+3
+ F07C  F5        0258         PUSH    AF      ;*
+ F07D  3EEF      0259         LD      A,0EFH          ;STEP DRIVES AWAY FROM TRK 0
+ F07F  E5        0260         PUSH    HL
+ F080  ED734D00  0261         LD      (SPSV),SP
+ F084  E1        0262         POP     HL
+ F085  0F        0263 BT1:    RRCA                    ; SET UP DRIVE SELECT
+ F086  301A      0264         JR      NC,BT2
+ F088  D363      0265         OUT     (SELECT),A
+ F08A  CDB7F3    0266         CALL    FRCINT
+ F08D  E604      0267         AND     4
+ F08F  280D      0268         JR      Z,BT3
+ F091  AF        0269         XOR     A
+ F092  D365      0270         OUT     (TRACK),A               ;TELL CNTRLLR ITS AT 0
+ F094  3E02      0271         LD      A,2
+ F096  324400    0272         LD      (TRK),A
+ F099  3E1A      0273         LD      A,1AH
+ F09B  CD0AF3    0274         CALL    SEEK4
+ F09E  DB63      0275 BT3:    IN      A,(SELECT)
+ F0A0  18E3      0276         JR      BT1
+ F0A2  F1        0277 BT2:    POP     AF      ;*
+ F0A3  F5        0278         PUSH    AF              ; 3.2
+ F0A4  CD6AF1    0279         CALL    HOME            ; 3.2 OASIS MOD
+ F0A7  F1        0280         POP     AF              ; 3.2
+ F0A8  CD1BF1    0281         CALL    UNITSL          ;CHECK DISKETTE TYPE
+ F0AB  2019      0282         JR      NZ,GOMON
+ F0AD  CDD0F0    0283 BT4:    CALL    BOOTLD          ;LOAD IN BOOT LOADER
+ F0B0  218000    0284         LD      HL,COLD
+ F0B3  7E        0285         LD      A,(HL)          ;LOOK FOR
+ F0B4  E6CE      0286         AND     0CEH            ;CPM OR SDOS
+ F0B6  2005      0287         JR      NZ,BT5          ;LOADER
+ F0B8  CB46      0288         BIT     0,(HL)  
+ F0BA  C28000    0289         JP      NZ,COLD         
+ F0BD  3E31      0290 BT5:    LD      A,COBYTE        ;CHK FOR CAP SFTWRE
+ F0BF  2100E8    0291         LD      HL,COBSYS
+ F0C2  BE        0292         CP      (HL)
+ F0C3  CA00E8    0293         JP      Z,COBSYS
+ F0C6  3EE0      0294 GOMON:  LD      A,MNBYTE        ;IF LOADR DIDN'T MAKE IT
+ F0C8  2102E0    0295         LD      HL,MNITR        ;CHK 1ST BYTE OF MONITOR
+ F0CB  BE        0296         CP      (HL)            ;IF IT'S THERE JUMP TO IT
+ F0CC  CA03E0    0297         JP      Z,MONITR
+ F0CF  76        0298 HLT:    HALT 
+ F0D0  218000    0299 BOOTLD  LD      HL,COLD         ;COLD=BOOT LOAD ADDR
+ F0D3  224000    0300 BOOT1   LD      (TADDR),HL
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0008 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F0D6  AF        0301 BOOT2   XOR     A
+ F0D7  324400    0302         LD      (TRK),A         ;SET TO TRACK 0
+ F0DA  3C        0303         INC     A
+ F0DB  324300    0304         LD      (SCTR),A        ;SET TO SECTOR 1
+ F0DE  CD8DF1    0305         CALL    READ            ;READ BOOT SECTOR
+ F0E1  C8        0306         RET     Z               ;RETURN IF NO ERROR
+ F0E2  18E2      0307         JR      GOMON
+ F0E4  3A4200    0308 CHGTYP: LD      A,(UNIT)        ;GET UNIT TYPE REGISTER
+ F0E7  5F        0309         LD      E,A             ;STORE UNIT TYPE IN E
+ F0E8  3E04      0310         LD      A,4             ;IF ERROR CHECK DRIVE TYPE
+ F0EA  B8        0311         CP      B
+ F0EB  2819      0312         JR      Z,DD8256        ;TRY DOUBLE DENSITY 8" 256 BYTE
+ F0ED  3D        0313         DEC     A               ;IF NOT DD-8
+ F0EE  B8        0314         CP      B               ;TRY SINGL DENSE 8"
+ F0EF  280C      0315         JR      Z,SD8
+ F0F1  3D        0316         DEC     A               ;IF NOT SD8
+ F0F2  B8        0317         CP      B               ;TRY SINGLE DENSITY 5"
+ F0F3  2818      0318         JR      Z,SD5-$
+ F0F5  3D        0319         DEC     A               ;IT'S NOT SD-5
+ F0F6  B8        0320         CP      B               ;TRY DOUBLE DENSITY 5"
+ F0F7  281B      0321         JR      Z,DD5-$
+ F0F9  F601      0322         OR      1               ;MUST NOT BE ANY THING OUT
+                 0323                                 ;THERE SET ERROR FLAG
+ F0FB  E1        0324         POP     HL              ;ADJUST RET ADDR
+ F0FC  C9        0325         RET                     ;AND RETURN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0009 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F0FD  7B        0327 SD8     LD      A,E             ;RECALL UNIT TYPE DATA
+ F0FE  CBB7      0328         RES     6,A             ;RESET DOUBLE DENSITY BIT
+ F100  CBBF      0329         RES     7,A             ;GET RID OF 256 BIT
+ F102  324200    0330         LD      (UNIT),A        ;SET UNIT TYPE REGISTER
+ F105  C9        0331         RET     
+ F106  7B        0332 DD8256: LD      A,E             ;UNIT DATA -> A
+ F107  CBFF      0333         SET     7,A             ;SET 256 BYTE CNTRL BIT
+ F109  324200    0334         LD      (UNIT),A        ;STUFF IT
+ F10C  C9        0335         RET     
+ F10D  7B        0336 SD5     LD      A,E             ;GET UNIT DATA
+ F10E  CBEF      0337         SET     5,A             ;RESET 8" SELECT BIT
+ F110  324200    0338         LD      (UNIT),A        ;SET UNIT DATA
+ F113  C9        0339         RET     
+ F114  7B        0340 DD5     LD      A,E             ;GET UNIT DATA
+ F115  CBF7      0341         SET     6,A             ;SET DOUBLE DENSITY BIT
+ F117  324200    0342         LD      (UNIT),A        ;SET UNIT DATA
+ F11A  C9        0343         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0010 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0345 ;
+                 0346 ;
+                 0347 ;       THIS ROUTINE SETS UP THE UNIT BYTE FOR SYSTEM USE
+                 0348 ;       TO INSTALL NEW DISKETTES OR DRIVES.
+                 0349 ;
+                 0350 ;
+ F11B  0604      0351 UNITSL  LD      B,4             ;SET CTR FOR UNIT
+                 0352                                 ;SELECTION
+ F11D  E60F      0353         AND     0FH
+ F11F  F640      0354         OR      40H
+ F121  324200    0355         LD      (UNIT),A        ;SAVE UNIT NUMBER
+ F124  2A4000    0356         LD      HL,(TADDR)      ;SAVE USER TADDDR
+ F127  225100    0357         LD      (TEMP2),HL
+ F12A  CD4DF1    0358         CALL    USL1            ;SET UNIT TYPE BITS
+ F12D  2A5100    0359         LD      HL,(TEMP2)      ;RECALL USER TADDR
+ F130  224000    0360         LD      (TADDR),HL
+ F133  3A4200    0361         LD      A,(UNIT)        ;SAVE UNIT TYPE DATA
+ F136  C0        0362         RET     NZ              ;RETURN IF ERROR FLG SET
+ F137  3002      0363         JR      NC,USL0
+ F139  CBFF      0364         SET     7,A
+ F13B  5F        0365 USL0:   LD      E,A
+ F13C  3A4900    0366         LD      A,(SIDE)        ;CHK DOUBL SIDE BIT
+ F13F  B7        0367         OR      A
+ F140  7B        0368         LD      A,E             ;RECALL UNIT TYPE DATA
+ F141  CBA7      0369         RES     4,A             ;RESET DOUBLE SIDE BIT
+ F143  F248F1    0370         JP      P,SS            ;ALL SET IF SINGL SIDED
+ F146  CBE7      0371         SET     4,A             ;SET DOUBLE SIDE BIT
+ F148  324200    0372 SS      LD      (UNIT),A        ;SET UNIT TYPE REGISTER
+ F14B  AF        0373         XOR     A               ;RESET ERROR FLAG
+ F14C  C9        0374         RET                     ;RETURN TO CALLER
+ F14D  C5        0375 USL1:   PUSH    BC
+ F14E  DDE5      0376         PUSH    IX
+ F150  E5        0377         PUSH    HL
+ F151  ED734D00  0378         LD      (SPSV),SP
+ F155  E1        0379         POP     HL
+ F156  CDE4F1    0380         CALL    DRVSET
+ F159  CD37F2    0381         CALL    IDRD
+ F15C  DDE1      0382         POP     IX
+ F15E  C1        0383         POP     BC
+ F15F  3A4B00    0384         LD      A,(IDSV+3)
+ F162  0F        0385         RRCA 
+ F163  C8        0386         RET     Z       
+ F164  05        0387         DEC     B
+ F165  CDE4F0    0388         CALL    CHGTYP
+ F168  18E3      0389         JR      USL1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0011 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0391 ;
+                 0392 ;
+                 0393 ;
+                 0394 ;       DISK CONTROLLER LINKAGES
+                 0395 ;
+                 0396 ;
+ F16A  ED734D00  0397 HOME    LD      (SPSV),SP
+ F16E  DDE5      0398         PUSH    IX              ;SAVE IX PTR
+ F170  CDE4F1    0399         CALL    DRVSET          ; SELECT DRIVE
+ F173  CDD8F1    0400         CALL    HOME1           ;RESTORE DRIVE
+ F176  DDE1      0401         POP     IX              ;RESTORE IX
+ F178  C9        0402         RET     
+                 0403 ;
+                 0404 ;       SELECT DISK DRIVE
+                 0405 ;
+ F179  79        0406 SELDSK  LD      A,C
+ F17A  324200    0407         LD      (UNIT),A
+ F17D  C9        0408         RET     
+                 0409 ;
+                 0410 ;       SET TRACK NUMBER
+                 0411 ;
+ F17E  79        0412 SETTRK  LD      A,C
+ F17F  324400    0413         LD      (TRK),A
+ F182  C9        0414         RET     
+                 0415 ;
+                 0416 ;       SET SECTOR NUMBER
+                 0417 ;
+ F183  79        0418 SETSEC  LD      A,C
+ F184  324300    0419         LD      (SCTR),A
+ F187  C9        0420         RET     
+                 0421 ;
+                 0422 ;       SET MEMORY TRANSFER ADDRESS FOR DISK READ/WRITE
+                 0423 ;
+ F188  ED434000  0424 SETDMA  LD      (TADDR),BC
+ F18C  C9        0425         RET     
+                 0426 ;
+                 0427 ;       READ A SECTOR
+                 0428 ;
+ F18D  010103    0429 READ    LD      BC,301H
+ F190  ED435600  0430 READBT  LD      (RSEEK),BC      ;SAVE NBR RETRYS
+ F194  DDE5      0431         PUSH    IX              ;SAVE IX
+ F196  DD2A5300  0432         LD      IX,(IXSAV)      ;SET CURRENT VARIABLE
+                 0433                                 ;TABLE
+ F19A  C5        0434 READ1   PUSH    BC
+ F19B  CD6CF2    0435         CALL    RDSC            ; READ A SECTOR
+ F19E  C1        0436         POP     BC
+ F19F  2805      0437         JR      Z,RWRET-$       ; RETURN IF NO ERROR
+ F1A1  CDC2F1    0438         CALL    RETRY           ; RETRY IF ERROR
+ F1A4  18F4      0439         JR      READ1-$
+ F1A6  DDE1      0440 RWRET:  POP     IX              ;RESTORE IX
+ F1A8  C9        0441         RET                     ;RETURN TO CALLER
+                 0442 ;
+                 0443 ;       WRITE A SECTOR
+                 0444 ;
+ F1A9  010103    0445 WRITE   LD      BC,301H
+ F1AC  ED435600  0446 WRBT:   LD      (RSEEK),BC      ;SAVE NBR RETRYS
+ F1B0  DDE5      0447         PUSH    IX              ;SAVE IX
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0012 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F1B2  DD2A5300  0448         LD      IX,(IXSAV)      ;SET CURRENT VARIABLE
+                 0449                                 ;TABLE
+ F1B6  C5        0450 WRITE1: PUSH    BC
+ F1B7  CDBDF2    0451         CALL    WRSC            ; WRITE A SCTR
+ F1BA  C1        0452         POP     BC
+ F1BB  28E9      0453         JR      Z,RWRET-$       ; RETURN IF NO ERROR
+ F1BD  CDC2F1    0454         CALL    RETRY           ; RETRY IF ERROR
+ F1C0  18F4      0455         JR      WRITE1-$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0013 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0457 ;
+                 0458 ;
+                 0459 ;
+ F1C2  1013      0460 RETRY:  DJNZ    RETRY2-$        ;DO (B) RETRYS WITHOUT RESEEK
+ F1C4  3A5700    0461         LD      A,(RTRY)        ;GET RETRY NUMBER
+ F1C7  47        0462         LD      B,A
+ F1C8  0D        0463         DEC     C               ;DO (C) RESEEKS
+ F1C9  F2D2F1    0464         JP      P,RETRY1
+ F1CC  F1        0465         POP     AF
+ F1CD  DDE1      0466         POP     IX              ;RESTORE IX IF ERROR
+ F1CF  AF        0467         XOR     A
+ F1D0  3C        0468         INC     A               ; SET ERROR FLAG
+ F1D1  C9        0469         RET                     ; RETURN TO CALLER
+ F1D2  C5        0470 RETRY1: PUSH    BC
+ F1D3  CDD8F1    0471         CALL    HOME1           ; RESTORE DRIVE
+ F1D6  C1        0472         POP     BC
+ F1D7  C9        0473 RETRY2: RET                     ; TRY AGAIN
+ F1D8  ED734D00  0474 HOME1:  LD      (SPSV),SP       ;SET RET IF ERROR
+ F1DC  DD7E06    0475         LD      A,(IX+RSCMD)    ;RESTORE TO TRK 0
+ F1DF  CD0AF3    0476         CALL    SEEK4           ;TYPE 1 COMMAND EXECUTION
+ F1E2  AF        0477         XOR     A               ;RESET ERROR FLAG
+ F1E3  C9        0478         RET     
+                 0479 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0014 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0481 ;
+                 0482 ;
+                 0483 ; CHECK DRIVE SEL AND CHANGE IF DIFFERENT
+                 0484 ;
+                 0485 ;
+ F1E4  114200    0486 DRVSET: LD      DE,UNIT         ;GET ADDR OF UNIT TYP REG
+ F1E7  1A        0487         LD      A,(DE)          ;PUT UNIT TYPE IN ACC
+ F1E8  E6E0      0488         AND     0E0H            ;GET DRIVE TYPE BITS
+ F1EA  4F        0489         LD      C,A             ;STORE DRIVE TYPE IN C
+ F1EB  1A        0490         LD      A,(DE)          ;GET UNIT DATA
+                 0491                                 ;TO GET DRIVE NUMBER
+ F1EC  E603      0492         AND     03
+ F1EE  47        0493         LD      B,A             ;DRIVE NUMBER IN B
+ F1EF  3E01      0494         LD      A,1             ;IF DRIVE 0
+ F1F1  2803      0495         JR      Z,DRVSEL-$      ;SET SELECT BIT 0
+ F1F3  07        0496 CKDRV1: RLCA                    ;IF NOT SHIFT BIT TO
+ F1F4  10FD      0497         DJNZ    CKDRV1-$        ;PROPER POSITION
+ F1F6  B1        0498 DRVSEL: OR      C               ;COMBINE DRIVE SELECT BITS
+ F1F7  E67F      0499         AND     7FH
+                 0500                                 ;WITH DRIVE TYPE BITS
+ F1F9  47        0501         LD      B,A             ;STORE NEW SELECT DATA
+ F1FA  79        0502         LD      A,C             ;IF NOT CHANGE DRIVE TYPE
+                 0503                                 ;TABLE AND OUTPUT NEW 
+                 0504                                 ;SELECT DATA
+ F1FB  DD213FF0  0505         LD      IX,STDSDT       ;DRIVE TYPE=8" SD
+ F1FF  FE00      0506         CP      0
+ F201  281C      0507         JR      Z,CKDRV-$
+ F203  DD2148F0  0508         LD      IX,STDDDT       ;DRIVE TYPE=8" DD
+ F207  FE40      0509         CP      40H
+ F209  2814      0510         JR      Z,CKDRV-$
+ F20B  DD2151F0  0511         LD      IX,DDT256
+ F20F  FEC0      0512         CP      0C0H            ;CHK FOR 256 BYTE OPTION
+ F211  280C      0513         JR      Z,CKDRV-$
+ F213  DD215AF0  0514         LD      IX,MINSDT       ;DRIVE TYPE=5" SD
+ F217  FE20      0515         CP      20H
+ F219  2804      0516         JR      Z,CKDRV-$
+ F21B  DD2163F0  0517         LD      IX,MINDDT       ;DRIVE TYPE=5" DD
+ F21F  DD225300  0518 CKDRV:  LD      (IXSAV),IX      ;(IXSAV)=NEW TABLE ADDR
+ F223  C5        0519         PUSH    BC              ;SAVE SELECT DATA
+                 0520                                 ;TO ENABLE DELAY
+ F224  F1        0521 DRVST:  POP     AF              ;GET SELECT DATA
+ F225  2F        0522         CPL                     ;HRDWRE REG IS INVERTED
+ F226  D363      0523         OUT     (SELECT),A      ;SET DRV SELECT REG
+ F228  1A        0524         LD      A,(DE)          ; GET NEW DRIVE TYPE
+ F229  325500    0525         LD      (UNITCK),A      ; SET OLD = NEW
+ F22C  CD59F2    0526         CALL    DELAY           ; DRIVE SELECT DELAY
+ F22F  DB64      0527 RDYCK:  IN      A,(STATUS)
+ F231  E680      0528         AND     80H
+ F233  C2E1F2    0529         JP      NZ,END2
+ F236  C9        0530         RET     
+                 0531                                 ;IF NOT AUTOMATIC RETURN
+                 0532                                 ;IN RDYCHK ROUTINE
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0015 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0534 ;
+                 0535 ;
+                 0536 ;
+                 0537 ;
+                 0538 ;
+                 0539 ; READ PRESENT DISK ADDRESS (TRK &SCTR)
+                 0540 ;
+                 0541 ;
+ F237  CD42F3    0542 IDRD:   CALL    WAIT            ;FORCE NOT BUSY
+ F23A  214800    0543         LD      HL,IDSV
+ F23D  016706    0544         LD      BC,600H+DATA
+ F240  3EF8      0545         LD      A,0F8H
+ F242  324600    0546         LD      (ERMASK),A
+ F245  CD75F3    0547         CALL    SWEB
+ F248  3EC0      0548         LD      A,RDACMD
+ F24A  CD77F2    0549         CALL    RDSC0   ; READ ID
+ F24D  3A4800    0550         LD      A,(IDSV)
+ F250  FE4D      0551         CP      77
+ F252  D2FEF2    0552         JP      NC,SEEK0
+ F255  D365      0553         OUT     (TRACK),A
+ F257  AF        0554         XOR     A
+ F258  C9        0555         RET     
+                 0556 ;
+                 0557 ;
+ F259  3A4200    0558 DELAY   LD      A,(UNIT)
+ F25C  CB6F      0559         BIT     5,A             ;TEST MINI/FULL BIT
+ F25E  3E27      0560         LD      A,39            ;32 MS DEL IF FULL
+ F260  2802      0561         JR      Z,DELAY1-$
+ F262  3E3C      0562         LD      A,60            ;50 MS DEL IF MINI
+ F264  0600      0563 DELAY1: LD      B,0
+ F266  10FE      0564         DJNZ    0
+ F268  3D        0565         DEC     A
+ F269  20F9      0566         JR      NZ,DELAY1-$
+ F26B  C9        0567         RET     
+                 0568 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0016 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0570 ;
+                 0571 ;
+                 0572 ; READ SECTOR COMMAND
+                 0573 ;
+                 0574 ;
+ F26C  CD9CF2    0575 RDSC:   CALL    DRINIT
+ F26F  3E88      0576         LD      A,RDCMD         ;READ COMMAND
+ F271  CD90F2    0577         CALL    STSDBT
+ F274  2A4000    0578         LD      HL,(TADDR)      ; SET TRANSFER ADDRESS
+ F277  324C00    0579 RDSC0   LD      (CMDSV),A
+ F27A  ED5B4C00  0580         LD      DE,(CMDSV)
+ F27E  D5        0581         PUSH    DE
+ F27F  F3        0582         DI                      ;DISABLE INT DURING TRX
+ F280  D364      0583         OUT     (CMD),A ; OUTPUT COMMAND
+ F282  1800      0584         JR      2
+ F284  1800      0585         JR      2       ;WAIT FOR STATUS UPDATE
+ F286  EDB2      0586         INIR            ; INPUT A SECTOR
+ F288  D1        0587         POP     DE
+ F289  ED534C00  0588         LD      (CMDSV),DE
+ F28D  FB        0589         EI              ;RE ENABLE INTERRUPTS
+ F28E  1845      0590         JR      END
+                 0591 ;
+                 0592 ;
+ >F290           0593 STSDBT:
+ F290  67        0594         LD      H,A     ; SET UP SIDE BIT IN CMD
+ F291  3A4900    0595         LD      A,(SIDE)
+ F294  6F        0596         LD      L,A
+ F295  E601      0597         AND     1
+ F297  7C        0598         LD      A,H
+ F298  C8        0599         RET     Z       
+ F299  CBCF      0600         SET     1,A
+ F29B  C9        0601         RET     
+                 0602 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0017 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0604 ;       DRIVE INITIALIZATION ROUTINE
+                 0605 ;
+ F29C  E1        0606 DRINIT: POP     HL              ;SET UP ERROR RETURN
+ F29D  ED734D00  0607         LD      (SPSV),SP
+ F2A1  E5        0608         PUSH    HL
+ F2A2  3A4200    0609         LD      A,(UNIT)        ;GET DRIVE SELECT DATA
+ F2A5  57        0610         LD      D,A
+ F2A6  3A5500    0611         LD      A,(UNITCK)      ;GET PREVIOUS SELECT DATA
+ F2A9  BA        0612         CP      D               ;SAME AS BEFORE?
+ F2AA  2806      0613         JR      Z,DINIT1-$              ;IF SO,SKIP DRVSET
+ F2AC  CDE4F1    0614         CALL    DRVSET
+ F2AF  CD37F2    0615         CALL    IDRD
+ F2B2  CDF1F2    0616 DINIT1  CALL    SEEK
+ F2B5  3EFE      0617         LD      A,0FEH
+ F2B7  324600    0618         LD      (ERMASK),A
+ F2BA  C37CF3    0619         JP      TRINT 
+                 0620 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0018 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0622 ;
+                 0623 ;
+                 0624 ; WRITE SECTOR COMMAND
+                 0625 ;
+                 0626 ;
+ F2BD  CD9CF2    0627 WRSC:   CALL    DRINIT
+ F2C0  3EA8      0628         LD      A,WRCMD
+ F2C2  CD90F2    0629         CALL    STSDBT
+ F2C5  2A4000    0630         LD      HL,(TADDR)      ;SET TRANSFER ADDRESS
+ F2C8  324C00    0631         LD      (CMDSV),A
+ F2CB  F3        0632         DI                      ;DISABLE INTERRUPTS
+                 0633                                 ;DURING TRANSFER
+ F2CC  D364      0634         OUT     (CMD),A         ; OUTPUT COMMAND
+ F2CE  1800      0635         JR      2
+ F2D0  1800      0636         JR      2               ;WAIT FOR STATUS UPDATE
+ F2D2  EDB3      0637         OTIR                    ; OUTPUT A SECTOR
+ F2D4  FB        0638         EI                      ;RE-ENABLE INTERRUPTS
+                 0639 ;
+                 0640 ;
+                 0641 ;
+                 0642 ; END OF COMMAND 
+                 0643 ;
+                 0644 ;
+                 0645 ;
+ F2D5  CD42F3    0646 END     CALL    WAIT
+ F2D8  DB64      0647         IN      A,(STATUS)
+ F2DA  57        0648         LD      D,A
+ F2DB  3A4600    0649         LD      A,(ERMASK)
+ F2DE  A2        0650         AND     D       ; CHECK FOR ERRORS
+ F2DF  C8        0651         RET     Z       
+ F2E0  7A        0652 END1    LD      A,D
+ F2E1  324700    0653 END2    LD      (ERSTAT),A      ; SAVE ERROR BITS
+ F2E4  CD59F2    0654         CALL    DELAY
+ F2E7  F601      0655         OR      1
+ F2E9  ED7B4D00  0656         LD      SP,(SPSV)
+ F2ED  CDF4F7    0657         CALL    UNITFX          ;FORCE DRVSET AFTER ERROR
+ F2F0  C9        0658         RET     
+                 0659 ;
+                 0660 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0019 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0662 ;
+                 0663 ;
+                 0664 ;  SEEK TRACK
+                 0665 ;
+ F2F1  CD2FF2    0666 SEEK    CALL    RDYCK
+ F2F4  DD7E01    0667         LD      A,(IX+NTRKS)
+ F2F7  4F        0668         LD      C,A
+ F2F8  3A4400    0669         LD      A,(TRK)
+ F2FB  B9        0670         CP      C               ;CHK FOR VALID TRK
+ F2FC  3804      0671         JR      C,SEEK1-$
+ F2FE  3E0F      0672 SEEK0:  LD      A,0FH
+ F300  18DF      0673         JR      END2-$          ; INVALID TRACK
+ F302  4F        0674 SEEK1:  LD      C,A             ; SAVE NEW TRK #
+ F303  DB65      0675         IN      A,(TRACK)       ; PRESENT TRACK
+ F305  B9        0676         CP      C
+ F306  C8        0677         RET     Z       ; IF SAME TRK, RETURN
+ F307  DD7E08    0678         LD      A,(IX+SKCMD)    ; SEEK COMMAND
+ F30A  324C00    0679 SEEK4:  LD      (CMDSV),A
+ F30D  06D2      0680         LD      B,210
+ F30F  10FE      0681         DJNZ    0
+ F311  CD42F3    0682         CALL    WAIT
+ F314  3A4400    0683         LD      A,(TRK)
+ F317  D367      0684         OUT     (DATA),A
+ F319  3E80      0685         LD      A,80H
+ F31B  324600    0686         LD      (ERMASK),A
+ F31E  3A4C00    0687         LD      A,(CMDSV)
+ F321  D364      0688         OUT     (CMD),A
+ F323  060A      0689         LD      B,10
+ F325  10FE      0690         DJNZ    0
+ F327  CDD5F2    0691         CALL    END
+ F32A  CD59F2    0692         CALL    DELAY
+ F32D  3A4C00    0693         LD      A,(CMDSV)
+ F330  DDBE06    0694         CP      (IX+RSCMD)
+ F333  C8        0695         RET     Z       
+ F334  DB64      0696         IN      A,(STATUS)
+ F336  E610      0697         AND     10H
+ F338  2004      0698         JR      NZ,SEEK2
+ F33A  DB65      0699         IN      A,(TRACK)
+ F33C  B9        0700         CP      C
+ F33D  C8        0701         RET     Z       
+ F33E  3E20      0702 SEEK2:  LD      A,20H
+ F340  189F      0703 END2JP: JR      END2-$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0020 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0705 ;
+                 0706 ;
+                 0707 ;
+ F342  1E00      0708 WAIT:   LD      E,0
+ F344  C5        0709         PUSH    BC
+ F345  0E02      0710         LD      C,2
+ F347  DB64      0711 WAIT2:  IN      A,(STATUS)
+ F349  E601      0712         AND     1
+ F34B  2820      0713         JR      Z,DWAIT
+ F34D  10F8      0714         DJNZ    WAIT2-$
+ F34F  1D        0715         DEC     E
+ F350  20F5      0716         JR      NZ,WAIT2-$
+ F352  0D        0717         DEC     C
+ F353  20F2      0718         JR      NZ,WAIT2
+ F355  C1        0719         POP     BC
+ F356  DB63      0720         IN      A,(SELECT)
+ F358  F680      0721         OR      80H
+ F35A  D360      0722         OUT     (RSET),A
+ F35C  10FE      0723         DJNZ    0               ; RESET TO GET OUT OF WAIT
+ F35E  DB60      0724         IN      A,(RSET)
+ F360  CDB7F3    0725         CALL    FRCINT          ;KILL AUTO RESTORE
+ F363  DD7E06    0726         LD      A,(IX+RSCMD)    ;& RESTORE @ PROPER STEP RATE
+ F366  CD0AF3    0727         CALL    SEEK4
+ F369  3EFE      0728         LD      A,0FEH          ;ERSTAT=FE
+ F36B  18D3      0729         JR      END2JP          ;FORCE RETRY
+                 0730 ;
+                 0731 ;
+                 0732 ;               DISABLE WAIT STATES
+                 0733 ;
+                 0734 ;
+ F36D  C1        0735 DWAIT:  POP     BC
+ F36E  DB63      0736         IN      A,(SELECT)
+ F370  F680      0737         OR      80H     ; NEG TRUE .AND.
+                 0738                         ;RESETS WAIT ENABL BIT
+ F372  D363      0739         OUT     (SELECT),A
+ F374  C9        0740         RET     
+                 0741 ;
+                 0742 ;
+                 0743 ; ENABLE WAIT STATES
+                 0744 ;
+                 0745 ;
+ F375  DB63      0746 SWEB    IN      A,(SELECT)
+ F377  E67F      0747         AND     7FH     ;NEG TRUE .OR.
+                 0748                         ;SETS WAIT ENABL BIT
+ F379  D363      0749         OUT     (SELECT),A
+ F37B  C9        0750         RET     
+                 0751 ;
+                 0752 ;
+                 0753 ;
+                 0754 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0021 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0756 ; INITIALIZE FOR DISK TRANSFER
+                 0757 ;
+                 0758 ;
+ >F37C           0759 TRINT:
+ F37C  0600      0760         LD      B,0
+ F37E  DD7E00    0761         LD      A,(IX+NSCTRS)
+ F381  3C        0762         INC     A
+ F382  4F        0763         LD      C,A
+ F383  3A4300    0764         LD      A,(SCTR)
+ F386  B9        0765         CP      C               ; CHECK FOR SIDE
+ F387  3804      0766         JR      C,TRINT1-$
+ F389  0610      0767         LD      B,10H
+ F38B  0D        0768         DEC     C
+ F38C  91        0769         SUB     C               ; IF SIDE 2, SUBTRACT
+ F38D  F5        0770 TRINT1: PUSH    AF
+ F38E  CDA1F3    0771         CALL    CHGSID          ; CHK SIDE AND CHG IF NEEDED
+ F391  F1        0772         POP     AF
+ F392  D366      0773         OUT     (SECTOR),A
+ F394  016780    0774 TRINT2  LD      BC,.RES.(NBYTES*100H+DATA)
+ F397  3A4200    0775         LD      A,(UNIT)        ; CHK 256 BYTE BIT
+ F39A  07        0776         RLCA
+ F39B  30D8      0777         JR      NC,SWEB
+ F39D  0600      0778         LD      B,0             ;IF SET, MAKE TRX LONGER
+ F39F  18D4      0779         JR      SWEB            ; ENABLE WAIT STATES
+                 0780 ;
+ F3A1  DB63      0781 CHGSID: IN      A,(SELECT)
+ F3A3  2F        0782         CPL 
+ F3A4  5F        0783         LD      E,A             ; CHECK SIDE SELECTED
+ F3A5  E610      0784         AND     10H
+ F3A7  B8        0785         CP      B
+ F3A8  C8        0786         RET     Z               ; IF SAME SIDE, RET
+ F3A9  7B        0787         LD      A,E
+ F3AA  E66F      0788         AND     6FH
+ F3AC  B0        0789         OR      B
+ F3AD  2F        0790         CPL 
+ F3AE  D363      0791         OUT     (SELECT),A      ; SELECT NEW SIDE
+ F3B0  06D2      0792         LD      B,210           ;DELAY FOR SIDE CHANGE
+ F3B2  10FE      0793 TRINT3: DJNZ    TRINT3
+ F3B4  C337F2    0794         JP      IDRD    ; SET UP SIDE BYTE
+                 0795 ;
+                 0796 ;
+                 0797 ;       FORCE CHIP INTERRUPT COMMAND
+                 0798 ;
+                 0799 ;
+ F3B7  3ED0      0800 FRCINT: LD      A,0D0H
+ F3B9  D364      0801         OUT     (CMD),A ; 'FORCE INTERRUPT' CMD
+ F3BB  3E0A      0802         LD      A,10
+ F3BD  3D        0803 FRC1:   DEC     A
+ F3BE  20FD      0804         JR      NZ,FRC1
+ F3C0  DB64      0805         IN      A,(STATUS)
+ F3C2  C9        0806         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0022 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0808 ;
+                 0809 ;
+                 0810 ; LOAD # OF SECTORS IN (NREC)
+                 0811 ;
+                 0812 ;
+ F3C3  CDF4F7    0813 LOADER  CALL    UNITFX          ;FORCE DRIVE SETUP
+ F3C6  CD8DF1    0814 LD1     CALL    READ            ; READ A SECTOR
+ F3C9  C0        0815         RET     NZ
+ F3CA  CDDDF3    0816         CALL    INCP            ; INC TRK/SCTR
+ F3CD  20F7      0817         JR      NZ,LD1-$
+ F3CF  C9        0818         RET     
+                 0819 ;
+                 0820 ;
+                 0821 ;
+                 0822 ;
+                 0823 ; SAVE # OF SECTORS IN (NREC)
+                 0824 ;
+                 0825 ;
+ F3D0  CDF4F7    0826 SAVER   CALL    UNITFX          ;FORCE DRIVE SETUP
+ F3D3  CDA9F1    0827 SV1     CALL    WRITE
+ F3D6  C0        0828         RET     NZ
+ F3D7  CDDDF3    0829         CALL    INCP
+ F3DA  20F7      0830         JR      NZ,SV1-$
+ F3DC  C9        0831         RET     
+                 0832 ;
+                 0833 ; INC SECTOR AND TRACK
+                 0834 ;
+                 0835 ;
+ >F3DD           0836 INCP:
+ F3DD  2A4000    0837         LD      HL,(TADDR)
+ F3E0  118000    0838         LD      DE,NBYTES
+ F3E3  3A4200    0839         LD      A,(UNIT)        ;CHK FOR 256 BYTE BIT
+ F3E6  07        0840         RLCA
+ F3E7  3003      0841         JR      NC,INCP2
+ F3E9  110001    0842         LD      DE,NBYTES*2     ; IF DD THEN MULT BY 2
+ F3EC  19        0843 INCP2:  ADD     HL,DE
+ F3ED  224000    0844         LD      (TADDR),HL
+ F3F0  214500    0845         LD      HL,NREC         ; POINT TO NREC
+ F3F3  35        0846         DEC     (HL)
+ F3F4  C8        0847         RET     Z       
+ F3F5  2B        0848         DEC     HL
+ F3F6  2B        0849         DEC     HL      ; POINT TO SCTR
+ F3F7  34        0850         INC     (HL)    ; INC SCTR #
+ F3F8  3A4900    0851         LD      A,(IDSV+1)      ; SET SIGN BIT IF 2 SIDES
+ F3FB  B7        0852         OR      A               ; CLR CY ,CHK SIGN BIT
+ F3FC  DDE5      0853         PUSH    IX              ; GET INDEX FOR CURRENT DISK
+ F3FE  DD2A5300  0854         LD      IX,(IXSAV)
+ F402  DD7E00    0855         LD      A,(IX+NSCTRS)
+ F405  DDE1      0856         POP     IX
+ F407  F20BF4    0857         JP      P,INCP1
+ F40A  07        0858         RLCA            ;IF DOUBLE SIDED,SHIFT LEFT
+ F40B  3C        0859 INCP1   INC     A
+ F40C  BE        0860         CP      (HL)    ; LAST SCTR ON TRK ?
+ F40D  C0        0861         RET     NZ      ; IF NOT, RETURN
+ F40E  3601      0862         LD      (HL),1  ; SET TO SCTR 1
+ F410  23        0863         INC     HL      ; POINT TO TRK
+ F411  34        0864         INC     (HL)    ; INC TRK #
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0023 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F412  B7        0865         OR      A
+ F413  C9        0866         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0024 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0868 ;
+                 0869 ;
+                 0870 ;************FORMAT CONTROLLER ROUTINE************
+                 0871 ;
+                 0872 ;       THIS ROUTINE WILL FORMAT A DISKETTE
+                 0873 ;       ACCORDING TO THE DISK TYPE STORED IN
+                 0874 ;       UNIT.
+                 0875 ;
+                 0876 ;
+ F414  CDF4F7    0877 FMAT:   CALL    UNITFX          ;FORCE DRIVE SETUP
+ F417  ED735100  0878         LD      (TEMP2),SP      ;SAVE STACK PTR
+ F41B  FDE5      0879         PUSH    IY              ;SAVE IY INDEX PTR
+ F41D  DDE5      0880         PUSH    IX
+ F41F  E5        0881         PUSH    HL              
+ F420  210008    0882         LD      HL,800H         ;SET UP IMAGE AREA
+ F423  224000    0883         LD      (TADDR),HL      ;SET UP SPSV FOR
+ F426  ED734D00  0884         LD      (SPSV),SP       ;PROPER RETURN
+ F42A  E1        0885         POP     HL              ;ADDR.
+ F42B  CDE4F1    0886         CALL    DRVSET          ;SET UP UNIT SELECT REG
+ F42E  CCD8F1    0887         CALL    Z,HOME1         ;CONTINUE IF NO ERRORS
+ F431  2030      0888         JR      NZ,ERXIT-$      ;EXIT IF ERROR
+ F433  CD6AF4    0889         CALL    SCTRIM  ;MAKE SECTOR IMAGE IN RAM
+ F436  CDD9F4    0890         CALL    TRCKIM  ;MAKE TRACK IMAGE IN RAM
+                 0891                         ;SET H&L FOR SIDE DATA
+ F439  AF        0892         XOR     A               ;CLR ACC
+ F43A  CD0DF5    0893 IDSET   CALL    SETID           ;SET SECTOR &TRK ID
+ F43D  C5        0894         PUSH    BC
+ F43E  CD61F5    0895         CALL    FMAT1           ;FORMAT 1 TRACK
+ F441  CDAAF5    0896         CALL    NXTRK           ;IF DOUBLE SIDED
+ F444  C1        0897         POP     BC
+                 0898                                 ;DO BOTH SIDES
+ F445  2005      0899         JR      NZ,FINISH-$     ;QUIT IF ERROR
+ F447  DDBE01    0900         CP      (IX+NTRKS)      ;CHK TRK NBR
+ F44A  20EE      0901         JR      NZ,IDSET-$      ;FORMAT NXT TRK
+                 0902                                 ;IF NOT FINISHED
+ F44C  3E4C      0903 FINISH: LD      A,76
+ F44E  324400    0904         LD      (TRK),A         ;PUTTING 76 HERE ALLOWS
+                 0905                                 ;MONITOR Z COMMAND TO WORK
+ F451  DB63      0906         IN      A,(SELECT)      ;FIX BIT 5 SO MONITOR
+ F453  CBAF      0907         RES     5,A             ;THINKS THE DRIVE IS 
+ F455  D363      0908         OUT     (SELECT),A      ;SINGLE SIDED
+ F457  115500    0909         LD      DE,UNITCK
+ F45A  1A        0910         LD      A,(DE)          ;FIX UNITCK TO REFLECT
+ F45B  CBEF      0911         SET     5,A             ;CHANGE IN SELECT
+ F45D  12        0912         LD      (DE),A          ;REGISTER
+ F45E  DDE1      0913         POP     IX
+ F460  FDE1      0914         POP     IY      ;RESTORE INDEX REGISTERS
+ F462  C9        0915         RET     
+                 0916 ;
+                 0917 ;
+                 0918 ;       UPON LEAVING THIS ROUTINE THE FOLLOWING REGISTER
+                 0919 ;               INFORMATION IS AVAILABLE:
+                 0920 ;
+                 0921 ;               (IXSAV) = ADDR OF TABLE OF VARIABLES
+                 0922 ;                               FOR THE DISK TYPE
+                 0923 ;               A       = 77
+                 0924 ;               BC      = NUMBER OF BYTES PER SECTOR
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0025 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0925 ;               DE      = ADDR OF 1ST BYTE OF LAST SECTOR
+                 0926 ;               H       = NUMBER OF SIDES FORMATED
+                 0927 ;               L       = MSB SET IF DOUBLE SIDED
+                 0928 ;               A'      = FILL CHARACTER
+                 0929 ;               B'      = 0
+                 0930 ;               DE'     = ADDR OF 1ST ID FIELD
+                 0931 ;               HL'     = HL
+                 0932 ;
+                 0933 ;
+ F463  DDE1      0934 ERXIT   POP     IX
+ F465  ED7B5100  0935         LD      SP,(TEMP2)      ;ERROR RETURN
+ F469  C9        0936         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0026 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 0938 ;
+                 0939 ;
+                 0940 ;
+                 0941 ;************SECTOR IMAGE CONTROLLER ROUTINE************
+                 0942 ;
+                 0943 ;
+                 0944 ;
+                 0945 ;       ASSUMES: IX = PTR TO TABLE OF DISK TYPE VARIABLES
+                 0946 ;                TADDR = BUFFER SPACE TO BE USED FOR TRACK
+                 0947 ;                        IMAGE
+                 0948 ;
+                 0949 ;
+ F46A  2A4000    0950 SCTRIM: LD      HL,(TADDR)      ;SET IMAGE BUFFER PTR
+ F46D  DD7E04    0951         LD      A,(IX+GAP2)     ;CHECK FOR DD OR SD
+ F470  0F        0952         RRCA                    ;IF LSB OF GAP =0
+ F471  3E4E      0953         LD      A,4EH           ;FORMAT IS DOUBLE DENSITY
+ F473  D278F4    0954         JP      NC,HEADER       ;DD FILL CHAR = 4E
+ F476  3EFF      0955         LD      A,0FFH          ;SD FILL CHAR = FF
+ F478  5F        0956 HEADER  LD      E,A             ;STORE FILL CHAR IN E
+ F479  DD4602    0957         LD      B,(IX+HEADR)    ;HEADR = NBR OF FILL CHARS
+ F47C  CDD4F4    0958         CALL    IMBLD           ;IN FRONT OF ALL '0' SYNC
+ F47F  DD4605    0959         LD      B,(IX+GAP3)
+ F482  CDD4F4    0960         CALL    IMBLD
+ F485  AF        0961         XOR     A               ;SYNC CHAR IN A
+ F486  DD4603    0962         LD      B,(IX+GAP1)     ;GAP1 = NBR OF SYNC CHARS
+ F489  CDD4F4    0963         CALL    IMBLD
+ F48C  CDCDF4    0964         CALL    MRKCHK          ;IF DD SPECIAL MARK REQD
+ F48F  3EFE      0965 IDMARK: LD      A,0FEH          ;ID MARK IN ACC
+ F491  77        0966         LD      (HL),A          ;PUT ID MRK IN BUFFR
+ F492  23        0967         INC     HL
+ F493  E5        0968         PUSH    HL              ;STORE BFFR LOC OF ID
+ F494  D9        0969         EXX
+ F495  D1        0970         POP     DE              ;IN DE'
+ F496  D9        0971         EXX
+ F497  AF        0972         XOR     A
+ F498  0604      0973         LD      B,4             ;4 BLANK LOCATIONS FOR ID
+ F49A  CDD4F4    0974         CALL    IMBLD
+ F49D  3EF7      0975         LD      A,0F7H          ;SENDING AN F7 CAUSES
+ F49F  77        0976         LD      (HL),A          ;2 CRC BYTES FOR ID
+ F4A0  23        0977         INC     HL
+ F4A1  DD4604    0978         LD      B,(IX+GAP2)     ;GAP2=NBR OF PRE-DATA
+                 0979                                 ;SYNC FILL CHARACTERS
+ F4A4  78        0980         LD      A,B
+ F4A5  CB3F      0981         SRL     A
+ F4A7  3C        0982         INC     A
+ F4A8  4F        0983         LD      C,A             ;TEMP1=NBR OF PREDATA
+ F4A9  7B        0984         LD      A,E             ;SYNC CHARS
+ F4AA  CDD4F4    0985         CALL    IMBLD
+ F4AD  41        0986         LD      B,C
+ F4AE  AF        0987         XOR     A
+ F4AF  CDD4F4    0988         CALL    IMBLD           ;WRITE PRE DATA SYNC
+ F4B2  CDCDF4    0989         CALL    MRKCHK          ;IF DD SPECIAL MRK REQD
+ F4B5  3EFB      0990         LD      A,0FBH          ;WRITE DATA MARK
+ F4B7  77        0991         LD      (HL),A
+ F4B8  23        0992         INC     HL
+ F4B9  0680      0993         LD      B,128           ;WRITE DATA=128 BYTES
+ F4BB  3A4200    0994         LD      A,(UNIT)        ;CHK 256 BYTE BIT
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0027 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F4BE  07        0995         RLCA
+ F4BF  3002      0996         JR      NC,IDM
+ F4C1  0600      0997         LD      B,0             ;IF SET MAKE DATA AREA 256
+ F4C3  3EE5      0998 IDM:    LD      A,0E5H          ;FORMAT DATA=E5
+ F4C5  CDD4F4    0999         CALL    IMBLD
+ F4C8  3EF7      1000         LD      A,0F7H          ;WRITE CRC
+ F4CA  77        1001         LD      (HL),A
+ F4CB  23        1002         INC     HL
+ F4CC  C9        1003         RET     
+                 1004 ;
+                 1005 ;       REGISTERS ARE SET AS FOLLOWS UPON
+                 1006 ;       EXIT FROM SCTRIM:
+                 1007 ;       IX      =DISK VARIABLE TABLE ADDR
+                 1008 ;       A       =F7
+                 1009 ;       B       =0
+                 1010 ;       C       =NUMBER OF DATA SYNC CHARACTERS (0'S)
+                 1011 ;       HL      =CURRENT BYTE IN IMAGE BUFFER PTR
+                 1012 ;       DE'     =ADDR OF 1ST BYTE OF ID (1ST SECTOR)
+                 1013 ;       REMAINING REGISTERS NOT USED IN THIS ROUTINE
+                 1014 ;
+                 1015 ;
+                 1016 ;
+                 1017 ;::::::SPECIAL ID MARK LOADED IF NEEDED::::::
+                 1018 ;
+ F4CD  7B        1019 MRKCHK: LD      A,E
+ F4CE  B7        1020         OR      A               ;CHK SIGN BIT
+ F4CF  F8        1021         RET     M               ;MINUS SIGN NOT SET
+ F4D0  3EF5      1022         LD      A,0F5H          ;IF SPECIAL ID REQUIRED
+ F4D2  0603      1023         LD      B,3             ;3 CHARACTERS NEEDED
+                 1024 ;
+                 1025 ;
+                 1026 ;
+                 1027 ;
+                 1028 ;
+                 1029 ;::::::DATA BLOCK LOADER::::::
+                 1030 ;
+                 1031 ;       ASSUMES:        BC=NUMBER OF LOADS
+                 1032 ;                       HL=PTR TO LOAD ADDR
+                 1033 ;                       A =DATA TO BE LOADED
+                 1034 ;
+ F4D4  77        1035 IMBLD:  LD      (HL),A  ;PUT THE BYTE IN A INTO
+ F4D5  23        1036         INC     HL      ;THE BUFFER
+ F4D6  10FC      1037         DJNZ    -2      ;IF B=0 RETURN
+ F4D8  C9        1038         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0028 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1040 ;
+                 1041 ;************TRACK IMAGE CONTROLLER ROUTINE************
+                 1042 ;
+                 1043 ;       ASSUMES:
+                 1044 ;               DE'     = 1ST BYTE OF ID IN SECTOR
+                 1045 ;                         IMAGE
+                 1046 ;               HL      = BUFFER PTR TO CURRENT BYTE
+                 1047 ;               IX      = ADDR OF DISK VARIABLE TABLE
+                 1048 ;
+                 1049 ;
+ F4D9  D9        1050 TRCKIM: EXX
+ F4DA  DD4600    1051         LD      B,(IX+NSCTRS)   ;BC'=NBR OF SECTORS
+ F4DD  05        1052         DEC     B
+ F4DE  D9        1053         EXX
+ F4DF  ED5B4000  1054         LD      DE,(TADDR)      ;POINT DE TO 1ST BYTE
+ F4E3  E5        1055         PUSH    HL              ;HL POINTS TO 1ST BYTE
+                 1056                                 ;OF 2ND SECTOR
+ F4E4  B7        1057         OR      A               ;CLR CY FLAG
+ F4E5  DD4E02    1058         LD      C,(IX+HEADR)    ;DONT REPEAT HEADER
+ F4E8  0600      1059         LD      B,0
+ F4EA  EB        1060         EX      DE,HL   
+ F4EB  09        1061         ADD     HL,BC
+ F4EC  EB        1062         EX      DE,HL   
+ F4ED  ED52      1063         SBC     HL,DE           ;HL-DE=NBR BYTES/SCTR
+ F4EF  E5        1064         PUSH    HL
+ F4F0  C1        1065         POP     BC              ;HL-->BC
+ F4F1  E1        1066         POP     HL              ;CURRENT BFFR LOC IN HL
+ F4F2  C5        1067         PUSH    BC              ;STORE NBR BYTES/SCTR
+ F4F3  EB        1068         EX      DE,HL           ;SET BUFFER PTRS
+ F4F4  D9        1069         EXX
+ F4F5  D9        1070 BLDTRK  EXX
+ F4F6  EDB0      1071         LDIR                    ;BUILD A SECTOR
+ F4F8  C1        1072         POP     BC              ;RECALL NBR BYTES/SCTR
+ F4F9  C5        1073         PUSH    BC
+ F4FA  D9        1074         EXX
+ F4FB  10F8      1075         DJNZ    BLDTRK          ;REPEAT UNTIL ALL
+ F4FD  D9        1076         EXX                     ;SECTORS LOADED
+ F4FE  C1        1077         POP     BC              ;RESTORE NBR BYTES PER
+                 1078                                 ;SECTOR
+                 1079 ;
+                 1080 ;       REGISTERS ARE SET UP AS FOLLOWS UPON EXIT
+                 1081 ;       FROM TRCKIM:
+                 1082 ;
+                 1083 ;       IX      = ADDR OF DISK VARIABLE TABLE
+                 1084 ;       A       = F7
+                 1085 ;       BC      = NUMBER OF BYTES PER SECTOR
+                 1086 ;       DE      = ADDR OF 1ST BYTE  PAST LAST SECTOR
+                 1087 ;       HL      = ADDR OF 1ST BYTE OF LAST SECTOR
+                 1088 ;       B'      = 0
+                 1089 ;       DE'     = ADDR OF ID OF 1ST SECTOR
+                 1090 ;
+                 1091 ;
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0029 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1093 ;
+                 1094 ;
+                 1095 ;+++++++++SIDE SELECT ROUTINES FOR FORMAT CONTROLLER+++++++++
+                 1096 ;
+                 1097 ;
+                 1098 ;       THIS ROUTINE SETS THE H & L REGISTERS
+                 1099 ;       TO INDICATE SIDE STATUS.
+                 1100 ;
+                 1101 ;
+ F4FF  EB        1102 SIDECK: EX      DE,HL           ;GET FILL CHARACTER
+ F500  3A4200    1103         LD      A,(UNIT)        ;GET DISK TYPE BYTE
+ F503  CB67      1104         BIT     4,A             ;CHK DBLE SIDE BIT
+ F505  3E80      1105         LD      A,80H           ;SET DOUBLE SIDE FLAG
+ F507  2001      1106         JR      NZ,SCHK1        ;IF BIT 4 SET IN UNIT
+ F509  AF        1107         XOR     A               ;CLR DS FLAG IF NOT SET
+ F50A  6F        1108 SCHK1   LD      L,A             ;SET UP L AS FLAG REG
+ F50B  65        1109         LD      H,L             ;H=SIDE#,+SIDE FLG
+ F50C  C9        1110         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0030 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1112 ;
+                 1113 ;************SECTOR ID CONTROLLER ROUTINE************
+                 1114 ;
+                 1115 ;
+                 1116 ;       ASSUMES:
+                 1117 ;               A       = TRACK NUMBER
+                 1118 ;               BC      = NUMBER OF BYTES PER SECTOR
+                 1119 ;               H       = SIDE NUMBER
+                 1120 ;               L       = MSB SET IF DOUBLE SIDED
+                 1121 ;               DE'     = ADDR OF 1ST SECTOR ID
+                 1122 ;               IX      = ADDR OF DISK VARIABLE TABLE
+                 1123 ;
+ F50D  E5        1124 SETID:  PUSH    HL
+ F50E  C5        1125         PUSH    BC
+ F50F  D9        1126         EXX
+ F510  C1        1127         POP     BC              ;GET NBR BYTES / SCTR
+ F511  E1        1128         POP     HL              ;HL-->HL'
+ F512  D5        1129         PUSH    DE              ;PUT 1ST SECTR ID ADDR
+ F513  FDE1      1130         POP     IY              ;IN IY
+ F515  D5        1131         PUSH    DE              ;SAVE 1ST ID ADDR
+ F516  08        1132         EX      AF,AF'  
+ F517  1601      1133         LD      D,1             ;SECTOR NUMBER
+ F519  DD7E00    1134         LD      A,(IX+NSCTRS)   ;A'=NBR OF SECTRS
+ F51C  FE1A      1135         CP      26              ;IF 26 SECTORS,STANDARD
+ F51E  3E01      1136         LD      A,1             ;FORMAT IS USED (8"-SD)
+ F520  2808      1137         JR      Z,ID1-$
+ F522  DD7E00    1138         LD      A,(IX+NSCTRS)   ;IF NOT ALTERNATE
+                 1139                                 ;SECTOR NUMBERS
+ F525  CB3F      1140         SRL     A               ;IF EVEN NBR OF
+                 1141                                 ;SECTORS,SCTR 1
+                 1142                                 ;IS 1ST
+ F527  3C        1143         INC     A               ;IF ODD NBR SCTRS
+                 1144                                 ;NSCTRS/2)+1 IS 1ST
+ F528  3026      1145         JR      NC,ID2-$        ;IF CY=1 ODD # SCTRS
+ F52A  08        1146 ID1     EX      AF,AF'  
+ F52B  FD7700    1147         LD      (IY),A          ;SET TRACK NBR
+ F52E  B5        1148         OR      L               ;SET SIDE BYTE
+ F52F  F237F5    1149         JP      P,ID1A          ;IF DOUBLE SIDED
+ F532  FD7401    1150         LD      (IY+1),H
+ F535  CBBF      1151         RES     7,A             ;CLR BIT SET IN A
+ F537  08        1152 ID1A    EX      AF,AF'  
+ F538  FD7702    1153         LD      (IY+2),A        ;SET SECTOR NUMBER
+ F53B  F5        1154         PUSH    AF
+ F53C  3A4200    1155         LD      A,(UNIT)        ;CHK 256 BYTE BIT
+ F53F  07        1156         RLCA
+ F540  3005      1157         JR      NC,ID4
+ F542  3E01      1158         LD      A,1
+ F544  FD7703    1159         LD      (IY+3),A
+ F547  F1        1160 ID4:    POP     AF
+ F548  DDBE00    1161         CP      (IX+NSCTRS)     ;ALL SCTRS DONE
+ F54B  2810      1162         JR      Z,ID3-$         ;IF SO RETURN
+ F54D  FD09      1163         ADD     IY,BC           ;IF NOT DO NXT SCTR
+ F54F  3C        1164         INC     A
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0031 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F550  5F        1166 ID2     LD      E,A             ;IF 8" SD ,SECTORS ARE
+ F551  3E1A      1167         LD      A,26            ;SEQUENTIAL.  IF NOT
+ F553  DDBE00    1168         CP      (IX+NSCTRS)     ;LOWER HALF ALTERNATES
+ F556  7B        1169         LD      A,E             ;WITH UPPER HALF
+ F557  28D1      1170         JR      Z,ID1-$         ;IF Z=1 DON'T ALTERNATE
+ F559  7A        1171         LD      A,D             ;IF Z=0 ALTERNATE
+ F55A  53        1172         LD      D,E
+ F55B  18CD      1173         JR      ID1-$
+ F55D  08        1174 ID3     EX      AF,AF'          ;RETRN ALT REG SET
+ F55E  D1        1175         POP     DE
+ F55F  D9        1176         EXX
+ F560  C9        1177         RET                     ;AND RETURN
+                 1178 ;
+                 1179 ;
+                 1180 ;       REGISTERS ARE SET AS FOLLOWS UPON EXIT FROM
+                 1181 ;       IDSET:
+                 1182 ;
+                 1183 ;       IX      = ADDR OF DISK VARIABLE TABLE
+                 1184 ;       IY      = ID ADDR OF LAST SECTOR
+                 1185 ;       A       = TRACK NUMBER
+                 1186 ;       BC      = NUMBER OF BYTES PER SECTOR
+                 1187 ;       DE      = 1ST BYTE OF LAST SECTOR (ADDR)
+                 1188 ;       H       = SIDE NUMBER
+                 1189 ;       L       = MSB SET IF DOUBLE SIDED
+                 1190 ;       B'      = 0
+                 1191 ;       DE'     = ADDR OF 1ST ID
+                 1192 ;       HL'     = HL
+                 1193 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0032 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1195 ;
+                 1196 ;
+                 1197 ;************DISK FORMAT WRITE CONTROLLER************
+                 1198 ;
+                 1199 ;
+                 1200 ;       ASSUMES:
+                 1201 ;               A'      = LAST SECTOR NUMBER
+                 1202 ;               BC      = NUMBER BYTES PER SECTOR
+                 1203 ;               (DE)    = 1ST BYTE OF LAST SECTOR
+                 1204 ;               (TADDR) = BEGINNING OF BUFFER
+                 1205 ;
+                 1206 ;
+ F561  D5        1207 FMAT1:  PUSH    DE              ;PUT LOC OF FILL CHARCTR
+                 1208                                 ;ON STACK
+ F562  C5        1209         PUSH    BC              ;PUT NBR BYTES/SCTR ON STK
+ F563  D9        1210         EXX                     ;GET AUX REG SET
+ F564  08        1211         EX      AF,AF'
+ F565  C1        1212         POP     BC
+ F566  D5        1213         PUSH    DE
+ F567  5F        1214         LD      E,A             ;E'=NBR SCTRS/TRK
+                 1215                                 ;C'= NBR BYTES/SCTR
+ F568  51        1216         LD      D,C
+ F569  DD4602    1217         LD      B,(IX+HEADR)            ;D'=C' B'= # HEADR BYTES
+ F56C  0E67      1218         LD      C,DATA          ;C'= DISK DATA PORT ADDR
+ F56E  2A4000    1219         LD      HL,(TADDR)      ;(HL')=LOC OF DATA TRX BFFR
+ F571  3E80      1220         LD      A,80H           ;CHK READY BIT
+ F573  324600    1221         LD      (ERMASK),A
+ F576  CD75F3    1222         CALL    SWEB            ;ENABLE WAIT STATES
+ F579  3A4200    1223         LD      A,(UNIT)        ;CHK 256 BYTE BIT
+ F57C  07        1224         RLCA
+ F57D  3E00      1225         LD      A,0
+ F57F  3002      1226         JR      NC,FMAT3
+ F581  3E01      1227         LD      A,1             ;IF SET INCREASE OUTPUT BY 256
+ F583  325000    1228 FMAT3:  LD      (TEMP1),A
+ F586  3EF4      1229         LD      A,WRTCMD        ;SET UP WRT TRK CMD
+ F588  324C00    1230         LD      (CMDSV),A
+ F58B  F3        1231         DI                      ;DISABLE INTERUPTS
+                 1232                                 ;DURING TRANSFERS
+ F58C  D364      1233         OUT     (CMD),A
+ F58E  3A5000    1234         LD      A,(TEMP1)
+ F591  EDB3      1235         OTIR                    ;OUTPUT HEADER
+ F593  42        1236         LD      B,D             ;LOAD DATA CTR FOR 1ST SCTR
+ F594  EDB3      1237 FMAT5:  OTIR                    ;OUTPUT DATA TO DISK
+ F596  B7        1238         OR      A
+ F597  2802      1239         JR      Z,FMAT4
+ F599  EDB3      1240         OTIR                    ;IF 256 BYTES OUT ANOTHR 256
+ F59B  42        1241 FMAT4:  LD      B,D             ;RELOAD DATA CTR FOR NXT SCTR
+ F59C  1D        1242         DEC     E               ;DECRMNT SCTR CTR
+ F59D  20F5      1243         JR      NZ,FMAT5        ;WRITE NXT SECTOR UNTIL
+                 1244                                 ;ALL DONE
+                 1245 ;
+                 1246 ;       THE ABOVE PORTION OF THE WRITE CONTROLLER
+                 1247 ;       CREATES NSCTRS ON THE DISK.
+                 1248 ;
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0033 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1250 ;
+                 1251 ;       THE NXT SECTION CREATES THE GAP4 TRAILER
+                 1252 ;
+ F59F  D1        1253         POP     DE
+ F5A0  E1        1254         POP     HL              ;POINT HL TO FILL CHAR
+ F5A1  7E        1255         LD      A,(HL)          ;PUT FILL CHAR IN A
+ F5A2  ED79      1256         OUT     (C),A           ;GAP4 =FILL CHAR TO INDEX
+                 1257                                 ;MARK
+ F5A4  10FC      1258         DJNZ    -2
+ F5A6  FB        1259         EI                      ;RE-ENABLE INTERRUPTS
+ F5A7  D9        1260         EXX
+ F5A8  08        1261         EX      AF,AF'          ;RECALL NORMAL REG SET
+ F5A9  C9        1262         RET                     ;RETURN TO CALLER
+                 1263 ;
+                 1264 ;
+                 1265 ;       THE REGISTERS ARE SET AS FOLLOWS UPON EXIT 
+                 1266 ;       FROM FMAT1:
+                 1267 ;
+                 1268 ;       (IX)    = DISK  VARIABLE TABLE
+                 1269 ;       (IY)    = ID OF LAST SECTOR
+                 1270 ;       A       = TRACK NUMBER
+                 1271 ;       BC      = NUMBER BYTES/SECTOR
+                 1272 ;       (DE)    = 1ST BYTE OF LAST SECTOR
+                 1273 ;       H       = SIDE NUMBER +80H IF 2 SIDES
+                 1274 ;       L       = 80H IF DOUBLE SIDED 0 IF NOT
+                 1275 ;       A'      = FILL CHARACTER
+                 1276 ;       B'      = 0
+                 1277 ;       (C')    = DISK DATA PORT
+                 1278 ;       (DE')   = UNCHANGED
+                 1279 ;       (HL')   = (DE)
+                 1280 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0034 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1282 ;
+                 1283 ;
+                 1284 ;       THIS ROUTINE DECIDES WHETHER TO INCREMENT
+                 1285 ;       THE TRACK NUMBER OR TO CHANGE SIDES WHEN
+                 1286 ;       LOOKING FOR THE NEXT TRACK
+                 1287 ;
+ F5AA  08        1288 NXTRK:  EX      AF,AF'  
+ F5AB  3E2F      1289         LD      A,47            ;DELAY FOR TRACK CHANGE
+ F5AD  10FE      1290 DEL1:   DJNZ    0
+ F5AF  3D        1291         DEC     A
+ F5B0  20FB      1292         JR      NZ,DEL1-$
+ F5B2  DB63      1293         IN      A,(SELECT)      ;GET HRDWRE SELECT REG
+ F5B4  F680      1294         OR      80H             ;GET RID OF MSB(NEG LOG)
+ F5B6  CB7D      1295         BIT     7,L             ;CHK SIDE BIT
+ F5B8  2810      1296         JR      Z,INCTRK-$      ;SKP SIDE CHG IF 1 SIDED
+ F5BA  CB44      1297         BIT     0,H             ;CHECK SIDE
+ F5BC  CB84      1298         RES     0,H
+ F5BE  200A      1299         JR      NZ,INCTRK-$     ;IF PREV SIDE = 2 INC TRK
+ F5C0  24        1300         INC     H               ;IF PREV SIDE =1,
+                 1301                                 ;SET TO SIDE 2
+ F5C1  CBA7      1302         RES     4,A             ;(NEG LOG BIT SET)
+ F5C3  D363      1303         OUT     (SELECT),A      ;SET SIDE 2 IN HRDWRE
+ F5C5  10FE      1304         DJNZ    0
+ F5C7  08        1305         EX      AF,AF'  
+ F5C8  BF        1306         CP      A               ;SET Z BIT
+ F5C9  C9        1307         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 SDOS-COSMOS FLOPPY CONTROLLER   SD SYSTEMS Z80 ASSEMBLER PAGE 0035 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F5CA  CBE7      1309 INCTRK  SET     4,A             ;NEG LOG RESET
+ F5CC  D363      1310         OUT     (SELECT),A      ;SET HRDWRE TO SIDE 1
+ F5CE  08        1311         EX      AF,AF'          ;GET TRACK NUMBR
+ F5CF  3C        1312         INC     A               ;NXT TRK NBR
+ F5D0  DDBE01    1313         CP      (IX+NTRKS)      ;LAST TRACK?
+ F5D3  C8        1314         RET     Z               ;IF SO STOP
+ F5D4  324400    1315         LD      (TRK),A         ;SAVE TRACK NUMBER
+ F5D7  E5        1316         PUSH    HL              ;STORE ERROR RET
+ F5D8  ED734D00  1317         LD      (SPSV),SP
+ F5DC  E1        1318         POP     HL
+ F5DD  10FE      1319         DJNZ    0               ;SIDE CHG DELAY
+ F5DF  D9        1320         EXX
+ F5E0  EB        1321         EX      DE,HL           ;DONT DESTROY REGISTERS
+ F5E1  DD7E07    1322         LD      A,(IX+SKNCMD)   ;NO VERIFY SEEK
+ F5E4  CD0AF3    1323         CALL    SEEK4           ;DO SEEK
+ F5E7  EB        1324         EX      DE,HL           ;RESTORE REGISTERS
+ F5E8  D9        1325         EXX
+ F5E9  DB65      1326         IN      A,(TRACK)               ;GET CURRENT TRACK NBR
+ F5EB  47        1327         LD      B,A
+ F5EC  3A4400    1328         LD      A,(TRK)
+ F5EF  B8        1329         CP      B
+ F5F0  0600      1330         LD      B,0
+ F5F2  C9        1331         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0036 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1334 ;
+                 1335 ;       VERSION 1.0     8/15/79
+                 1336 ;       FOR USE WITH VERSAFLOPPY OR VERSAFLOPPY II
+                 1337 ;
+                 1338 ;
+ >F600           1339         ORG     0F600H
+                 1340 ;
+                 1341 ;       BIOS LINKAGES
+                 1342 ;
+ >E741           1343 PTXTR   EQU     0E741H
+ >E707           1344 PTXTV   EQU     0E707H
+ >E79A           1345 SCANR   EQU     0E79AH
+ >E760           1346 SCANV   EQU     0E760H
+ >E74D           1347 PACCR   EQU     0E74DH
+ >E713           1348 PACCV   EQU     0E713H
+ >E72F           1349 CRLFR   EQU     0E72FH
+ >E6F5           1350 CRLFV   EQU     0E6F5H
+                 1351 ;
+ >0039           1352 RQST    EQU     RBASE+39H
+ >0038           1353 RANDS   EQU     RBASE+38H
+ >003A           1354 NUMB    EQU     RBASE+3AH
+                 1355 ;
+                 1356 ;
+ >0800           1357 BFFR1   EQU     RBASE+800H
+ >0900           1358 BFFR2   EQU     RBASE+900H
+ >0080           1359 USRSP   EQU     RBASE+80H
+                 1360 ;
+                 1361 ;
+                 1362 ;
+                 1363 ;
+                 1364 ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0037 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1366 ;
+                 1367 ;
+                 1368 ;
+                 1369 ;
+                 1370 ; DISK DRIVE EVALUATION EXEC
+                 1371 ;
+                 1372 ;
+ F600  318000    1373 DEXEC   LD      SP,USRSP
+ F603  215BF6    1374         LD      HL,MSG1
+ F606  CD38F6    1375         CALL    PTXT    ; "ENTER REQUEST #, DRIVE # "
+ F609  CD41F6    1376         CALL    SCAN
+ F60C  2020      1377         JR      NZ,INERR
+ F60E  7D        1378         LD      A,L
+ F60F  324200    1379         LD      (UNIT),A
+ F612  7C        1380         LD      A,H
+ F613  323900    1381         LD      (RQST),A
+ F616  CD18F0    1382         CALL    HME             ; SET UP TABLE ADDR
+ F619  DD2A5300  1383         LD      IX,(IXSAV)
+ F61D  3A3900    1384         LD      A,(RQST)
+ F620  CD7CF6    1385         CALL    DECODE          ; DECODE AND EXECUTE CMD
+ F623  CD18F0    1386         CALL    HME
+ F626  216EF6    1387         LD      HL,MSG3
+ F629  CD38F6    1388         CALL    PTXT            ; TASK COMPLETE
+ F62C  18D2      1389         JR      DEXEC
+ F62E  0E3F      1390 INERR   LD      C,'?'
+ F630  CD0CF0    1391         CALL    COE
+ F633  CDC6F6    1392         CALL    CRLF
+ F636  18C8      1393         JR      DEXEC
+                 1394 ;
+                 1395 ;
+ F638  CD53F6    1396 PTXT:   CALL    CHKMON
+ F63B  C241E7    1397         JP      NZ,PTXTR
+ F63E  C307E7    1398         JP      PTXTV 
+ F641  CD53F6    1399 SCAN:   CALL    CHKMON
+ F644  C29AE7    1400         JP      NZ,SCANR
+ F647  C360E7    1401         JP      SCANV 
+ F64A  CD53F6    1402 PACC:   CALL    CHKMON
+ F64D  C24DE7    1403         JP      NZ,PACCR
+ F650  C313E7    1404         JP      PACCV 
+                 1405 ;
+                 1406 ;
+ F653  47        1407 CHKMON: LD      B,A             ; SAVE A IN B
+ F654  3A28E0    1408         LD      A,(0E028H)
+ F657  FE01      1409         CP      1
+ F659  78        1410         LD      A,B             ; RESTORE A
+ F65A  C9        1411         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0038 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F65B  54455354  1413 MSG1    DEFM    'TEST#DRV# (TTDD): '
+       23445256
+       23202854
+       54444429
+       3A20
+ F66D  03        1414         DEFB    03
+ F66E  0A0D      1415 MSG3    DEFW    0D0AH
+ F670  5441534B  1416         DEFM    'TASK DONE'
+       20444F4E
+       45
+ F679  0D0A      1417         DEFW    0A0DH
+ F67B  03        1418         DEFB    03
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0039 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1420 ;
+                 1421 ;
+                 1422 ; DECODE REQUEST AND EXECUTE IT
+                 1423 ;
+ F67C  FE00      1424 DECODE  CP      0
+ F67E  CAD1F7    1425         JP      Z,TSTSK ; SEEK TEST
+ F681  FE05      1426         CP      5
+ F683  2819      1427         JR      Z,FORMAT
+ F685  3860      1428         JR      C,DIAG
+ F687  FEFF      1429         CP      0FFH
+ F689  C0        1430         RET     NZ
+ F68A  2194F6    1431         LD      HL,MSG2
+ F68D  CD38F6    1432         CALL    PTXT
+ F690  CD41F6    1433         CALL    SCAN
+ F693  E9        1434         JP      (HL)    
+                 1435 ;
+                 1436 ;
+ F694  41444452  1437 MSG2    DEFM    'ADDRESS: '
+       4553533A
+       20
+ F69D  03        1438         DEFB    3
+                 1439 ;
+                 1440 ;
+ F69E  CD33F0    1441 FORMAT: CALL    FMATE
+ F6A1  C9        1442         RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0040 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1444 ;
+                 1445 ;
+                 1446 ;
+                 1447 ;
+                 1448 ;
+                 1449 ; ERROR PRINT ROUTINE
+                 1450 ;
+                 1451 ;
+ F6A2  21CFF6    1452 ERROR   LD      HL,ERMSG
+ F6A5  CD38F6    1453         CALL    PTXT    ; "DISK ERROR ..."
+ F6A8  3A4C00    1454         LD      A,(CMDSV)
+ F6AB  CDECF7    1455         CALL    PACSPC  ; PRINT COMMAND
+ F6AE  3A4700    1456         LD      A,(ERSTAT)
+ F6B1  CDECF7    1457         CALL    PACSPC  ; PRINT STATUS
+ F6B4  3A4200    1458         LD      A,(UNIT)
+ F6B7  CDECF7    1459         CALL    PACSPC  ; UNIT #
+ F6BA  3A4400    1460         LD      A,(TRK)
+ F6BD  CDECF7    1461         CALL    PACSPC
+ F6C0  3A4300    1462         LD      A,(SCTR)
+ F6C3  CD4AF6    1463         CALL    PACC
+ F6C6  CD53F6    1464 CRLF    CALL    CHKMON
+ F6C9  C22FE7    1465         JP      NZ,CRLFR
+ F6CC  C3F5E6    1466         JP      CRLFV 
+                 1467 ;
+                 1468 ;
+ F6CF  434D4420  1469 ERMSG   DEFM    'CMD STAT DRV TRK SCTR> '
+       53544154
+       20445256
+       2054524B
+       20534354
+       523E20
+ F6E6  03        1470         DEFB    03
+                 1471 ;
+                 1472 ;
+                 1473 ;
+                 1474 ; READ / WRITE DIAGNOSTIC
+                 1475 ; CONTINUES UNTIL A '.' IS ENTERED FROM KEYBOARD
+                 1476 ; 
+                 1477 ;
+                 1478 ;
+ F6E7  AF        1479 DIAG    XOR     A
+ F6E8  324400    1480         LD      (TRK),A
+ F6EB  3C        1481         INC     A
+ F6EC  324300    1482         LD      (SCTR),A
+ F6EF  1854      1483         JR      DIAG1
+ F6F1  210008    1484 DIA10   LD      HL,BFFR1
+ F6F4  224000    1485         LD      (TADDR),HL
+ F6F7  CD2AF0    1486         CALL    WRE
+ F6FA  C4A2F6    1487         CALL    NZ,ERROR
+ F6FD  210009    1488 DIA11   LD      HL,BFFR2
+ F700  224000    1489         LD      (TADDR),HL
+ F703  CD27F0    1490         CALL    RDE
+ F706  C4A2F6    1491         CALL    NZ,ERROR
+ F709  3A3900    1492         LD      A,(RQST)
+ F70C  FE02      1493         CP      2
+ F70E  280F      1494         JR      Z,DIAG3
+ F710  F5        1495         PUSH    AF
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0041 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F711  CD59F7    1496         CALL    COMPR
+ F714  F1        1497         POP     AF
+ F715  FE03      1498         CP      3
+ F717  CAAEF7    1499         JP      Z,RINCR
+ F71A  FE04      1500         CP      4
+ F71C  CA9EF7    1501         JP      Z,DINCR
+ F71F  214300    1502 DIAG3   LD      HL,SCTR
+ F722  34        1503         INC     (HL)    ; INC SECTOR
+ F723  DD7E00    1504         LD      A,(IX+NSCTRS)
+ F726  E5        1505         PUSH    HL
+ F727  214200    1506         LD      HL,UNIT
+ F72A  CB66      1507         BIT     4,(HL)
+ F72C  E1        1508         POP     HL
+ F72D  2801      1509         JR      Z,SS1
+ F72F  07        1510         RLCA
+ F730  3C        1511 SS1     INC     A
+ F731  BE        1512         CP      (HL)
+ F732  2011      1513         JR      NZ,DIAG1 ; IF NOT END OF TRK, JMP
+ F734  3601      1514         LD      (HL),1  ; SET TO SCTR 1
+ F736  23        1515         INC     HL      ; POINT TO TRK
+ F737  34        1516         INC     (HL)    ; INC TRK #
+ F738  DD7E01    1517 DIAG4   LD      A,(IX+NTRKS)
+ F73B  BE        1518         CP      (HL)
+ F73C  2007      1519         JR      NZ,DIAG1
+ F73E  3600      1520         LD      (HL),0  ; SET TO TRK 00
+ F740  0E50      1521         LD      C,'P'
+ F742  CD0CF0    1522         CALL    COE     ; PRINT 'P' EVERY COMPLETE PASS
+ F745  CD06F0    1523 DIAG1   CALL    CSE
+ F748  2806      1524         JR      Z,DIAG2
+ F74A  CD09F0    1525         CALL    CIE
+ F74D  FE2E      1526         CP      '.'
+ F74F  C8        1527         RET     Z
+ F750  3A3900    1528 DIAG2   LD      A,(RQST)
+ F753  FE02      1529         CP      2
+ F755  28A6      1530         JR      Z,DIA11
+ F757  1898      1531         JR      DIA10
+                 1532 ;
+                 1533 ;
+                 1534 ;
+ F759  210009    1535 COMPR:  LD      HL,BFFR2
+ F75C  EB        1536         EX      DE,HL   
+ F75D  210008    1537         LD      HL,BFFR1
+ F760  3A4200    1538         LD      A,(UNIT)
+ F763  07        1539         RLCA
+ F764  0680      1540         LD      B,80H
+ F766  3002      1541         JR      NC,CMPR1
+ F768  0600      1542         LD      B,0
+ F76A  1A        1543 CMPR1   LD      A,(DE)
+ F76B  BE        1544         CP      (HL)
+ F76C  3EFF      1545         LD      A,0FFH
+ F76E  324700    1546         LD      (ERSTAT),A
+ F771  C2A2F6    1547         JP      NZ,ERROR
+ F774  23        1548         INC     HL
+ F775  13        1549         INC     DE
+ F776  10F2      1550         DJNZ    CMPR1
+                 1551 ;
+                 1552 ;
+                 1553 ;
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0042 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+                 1554 ;
+                 1555 ;
+                 1556 ;
+                 1557 ;
+ F778  213800    1558 INCRD   LD      HL,RANDS
+ F77B  110008    1559         LD      DE,BFFR1
+ F77E  0640      1560         LD      B,NBYTES/2
+ F780  3A4200    1561         LD      A,(UNIT)
+ F783  07        1562         RLCA
+ F784  3802      1563         JR      C,IR1
+ F786  CB20      1564         SLA     B
+ F788  7E        1565 IR1:    LD      A,(HL)
+ F789  0F        1566         RRCA
+ F78A  3801      1567         JR      C,HERE
+ F78C  13        1568         INC     DE
+ F78D  ED5F      1569 HERE    LD      A,R     
+ F78F  12        1570         LD      (DE),A
+ F790  13        1571         INC     DE
+ F791  13        1572         INC     DE
+ F792  10F9      1573         DJNZ    HERE
+ F794  7E        1574         LD      A,(HL)
+ F795  0F        1575         RRCA
+ F796  3803      1576         JR      C,SKIP
+ F798  3C        1577         INC     A
+ F799  77        1578         LD      (HL),A
+ F79A  C9        1579         RET     
+ F79B  AF        1580 SKIP    XOR     A
+ F79C  77        1581         LD      (HL),A
+ F79D  C9        1582         RET     
+                 1583 ;
+                 1584 ;
+                 1585 ;
+ F79E  E5        1586 DINCR:  PUSH    HL
+ F79F  214200    1587         LD      HL,UNIT
+ F7A2  7E        1588         LD      A,(HL)
+ F7A3  E6F0      1589         AND     0F0H
+ F7A5  77        1590         LD      (HL),A
+ F7A6  ED5F      1591         LD      A,R
+ F7A8  00        1592         NOP
+ F7A9  E601      1593         AND     1
+ F7AB  B6        1594         OR      (HL)
+ F7AC  77        1595         LD      (HL),A          ;RANDOM UNIT
+ F7AD  E1        1596         POP     HL
+ F7AE  DD7E00    1597 RINCR:  LD      A,(IX+NSCTRS)
+ F7B1  3C        1598         INC     A
+ F7B2  47        1599         LD      B,A
+ F7B3  ED5F      1600         LD      A,R
+ F7B5  E61F      1601         AND     01FH
+ F7B7  B7        1602         OR      A
+ F7B8  28F4      1603         JR      Z,RINCR         ;SECTOR 0 ILLEGAL
+ F7BA  324300    1604         LD      (SCTR),A
+ F7BD  B8        1605         CP      B
+ F7BE  30EE      1606         JR      NC,RINCR        ;IF NO>NSCTRS TRY AGAIN
+ F7C0  DD7E01    1607 ONCM    LD      A,(IX+NTRKS)
+ F7C3  47        1608         LD      B,A
+ F7C4  ED5F      1609         LD      A,R
+ F7C6  E67F      1610         AND     07FH
+ F7C8  324400    1611         LD      (TRK),A
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0043 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ F7CB  B8        1612         CP      B
+ F7CC  30F2      1613         JR      NC,ONCM         ;IF NO>NTRKS TRY AGAIN
+ F7CE  C345F7    1614         JP      DIAG1 
+                 1615 ;
+                 1616 ;
+                 1617 ;
+                 1618 ;
+ F7D1  CD18F0    1619 TSTSK   CALL    HME
+ F7D4  DD7E01    1620         LD      A,(IX+NTRKS)
+ F7D7  3D        1621         DEC     A
+ F7D8  D367      1622         OUT     (DATA),A
+ F7DA  DD7E07    1623         LD      A,(IX+SKNCMD)   ; SEEK (NO VERIFY)
+ F7DD  D364      1624         OUT     (CMD),A
+ F7DF  CD06F0    1625         CALL    CSE
+ F7E2  28ED      1626         JR      Z,TSTSK
+ F7E4  CD09F0    1627         CALL    CIE
+ F7E7  FE2E      1628         CP      '.'
+ F7E9  C8        1629         RET     Z
+ F7EA  18E5      1630         JR      TSTSK
+                 1631 ;
+                 1632 ;
+                 1633 ;
+                 1634 ;
+                 1635 ;
+                 1636 ;
+ F7EC  CD4AF6    1637 PACSPC: CALL    PACC
+ F7EF  0E20      1638         LD      C,' '
+ F7F1  C30CF0    1639         JP      COE 
+                 1640 ;
+                 1641 ;
+                 1642 ;
+                 1643 ;       FORCE DRIVE SETUP
+                 1644 ;
+ F7F4  3EFF      1645 UNITFX: LD      A,0FFH
+ F7F6  325500    1646         LD      (UNITCK),A      ;MAKE UNITCK NOT EQ TO UNIT
+ F7F9  C9        1647 ZEND:   RET     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0044 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ CROSS REFERENCE LISTING
+ SYMBOL VALUE  TYPE   STMT   STATEMENT REFERENCES
+ ------ -----  ----   ----   --------------------
+
+ BFFR1  0800          1357    1559  1537  1484 
+ BFFR2  0900          1358    1535  1488 
+ BIOS   F000          0118 
+ BLDTRK F4F5          1070    1075 
+ BOOT   F06C          0251    0122 
+ BOOT1  F0D3          0300 
+ BOOT2  F0D6          0301 
+ BOOTLD F0D0          0299    0283 
+ BT1    F085          0263    0276 
+ BT2    F0A2          0277    0264 
+ BT3    F09E          0275    0268 
+ BT4    F0AD          0283 
+ BT5    F0BD          0290    0287 
+ CHGSID F3A1          0781    0771 
+ CHGTYP F0E4          0308    0388 
+ CHKMON F653          1407    1464  1402  1399  1396 
+ CICHR  004F          0062 
+ CIE    F009          0124    1627  1525 
+ CKDRV  F21F          0518    0516  0513  0510  0507 
+ CKDRV1 F1F3          0496    0497 
+ CMD    0064          0083    1624  1233  0801  0688  0634  0583 
+ CMDSV  004C          0060    1454  1230  0693  0687  0679  0631  0588  0580 
+-                             0579 
+ CMPR1  F76A          1543    1550  1541 
+ COBSYS E800          0042    0293  0291 
+ COBYTE 0031          0041    0290 
+ COE    F00C          0125    1639  1522  1391 
+ COLD   0080          0070    0299  0289  0284 
+ COMPR  F759          1535    1496 
+ CRLF   F6C6          1464    1392 
+ CRLFR  E72F          1349    1465 
+ CRLFV  E6F5          1350    1466 
+ CSE    F006          0123    1625  1523 
+ DATA   0067          0082    1622  1218  0774  0684  0544 
+ DD5    F114          0340    0321 
+ DD8256 F106          0332    0312 
+ DDT256 F051          0184    0511 
+ DECODE F67C          1424    1385 
+ DEL1   F5AD          1290    1292 
+ DELAY  F259          0558    0692  0654  0526 
+ DELAY1 F264          0563    0566  0561 
+ DEXEC  F600          1373    1393  1389 
+ DIA10  F6F1          1484    1531 
+ DIA11  F6FD          1488    1530 
+ DIAG   F6E7          1479    1428 
+ DIAG1  F745          1523    1614  1519  1513  1483 
+ DIAG2  F750          1528    1524 
+ DIAG3  F71F          1502    1494 
+ DIAG4  F738          1517 
+ DINCR  F79E          1586    1501 
+ DINIT1 F2B2          0616    0613 
+ DRINIT F29C          0606    0627  0575 
+ DRVSEL F1F6          0498    0495 
+ DRVSET F1E4          0486    0886  0614  0399  0380 
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0045 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ DRVST  F224          0521 
+ DTYPE  F00F          0126 
+ DWAIT  F36D          0735    0713 
+ END    F2D5          0646    0691  0590 
+ END1   F2E0          0652 
+ END2   F2E1          0653    0703  0673  0529 
+ END2JP F340          0703    0729 
+ ERMASK 0046          0056    1221  0686  0649  0618  0546 
+ ERMSG  F6CF          1469    1452 
+ ERROR  F6A2          1452    1547  1491  1487 
+ ERSTAT 0047          0057    1546  1456  0653 
+ ERXIT  F463          0934    0888 
+ FINISH F44C          0903    0899 
+ FMAT   F414          0877    0142 
+ FMAT1  F561          1207    0895 
+ FMAT3  F583          1228    1226 
+ FMAT4  F59B          1241    1239 
+ FMAT5  F594          1237    1243 
+ FMATE  F033          0142    1441 
+ FORMAT F69E          1441    1427 
+ FRC1   F3BD          0803    0804 
+ FRCINT F3B7          0800    0725  0266 
+ GAP1   0003          0235    0962 
+ GAP2   0004          0236    0978  0951 
+ GAP3   0005          0237    0959 
+ GOMON  F0C6          0294    0307  0282 
+ HDBIOS E800          0046    0257 
+ HEADER F478          0956    0954 
+ HEADR  0002          0234    1217  1058  0957 
+ HERE   F78D          1569    1573  1567 
+ HLT    F0CF          0298 
+ HME    F018          0133    1619  1386  1382 
+ HOME   F16A          0397    0279  0133 
+ HOME1  F1D8          0474    0887  0471  0400 
+ ID1    F52A          1146    1173  1170  1137 
+ ID1A   F537          1152    1149 
+ ID2    F550          1166    1145 
+ ID3    F55D          1174    1162 
+ ID4    F547          1160    1157 
+ IDM    F4C3          0998    0996 
+ IDMARK F48F          0965 
+ IDRD   F237          0542    0794  0615  0381 
+ IDSET  F43A          0893    0901 
+ IDSV   0048          0058    0851  0550  0543  0384 
+ IMBLD  F4D4          1035    0999  0988  0985  0974  0963  0960  0958 
+ INCP   F3DD          0836    0829  0816 
+ INCP1  F40B          0859    0857 
+ INCP2  F3EC          0843    0841 
+ INCRD  F778          1558 
+ INCTRK F5CA          1309    1299  1296 
+ INERR  F62E          1390    1377 
+ IR1    F788          1565    1563 
+ IXSAV  0053          0065    1383  0854  0518  0448  0432 
+ LD1    F3C6          0814    0817 
+ LDE    F02D          0140 
+ LOADER F3C3          0813    0140 
+ MINDDT F063          0217    0517 
+ MINSDT F05A          0202    0514 
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0046 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ MNBYTE 00E0          0043    0294 
+ MNITR  E002          0044    0295 
+ MONITR E003          0045    0297 
+ MRKCHK F4CD          1019    0989  0964 
+ MSG1   F65B          1413    1374 
+ MSG2   F694          1437    1431 
+ MSG3   F66E          1415    1387 
+ NBYTES 0080          0047    1560  0842  0838  0774 
+ NREC   0045          0055    0845 
+ NSCTRS 0000          0232    1597  1504  1168  1161  1138  1134  1051  0855 
+-                             0761 
+ NTRKS  0001          0233    1620  1607  1517  1313  0900  0667 
+ NUMB   003A          1354 
+ NXTRK  F5AA          1288    0896 
+ ONCM   F7C0          1607    1613 
+ PACC   F64A          1402    1637  1463 
+ PACCR  E74D          1347    1403 
+ PACCV  E713          1348    1404 
+ PACSPC F7EC          1637    1461  1459  1457  1455 
+ PTXT   F638          1396    1453  1432  1388  1375 
+ PTXTR  E741          1343    1397 
+ PTXTV  E707          1344    1398 
+ RANDS  0038          1353    1558 
+ RBASE  0000          0050    1359  1358  1357  1354  1353  1352  0070  0069 
+-                             0068  0067  0066  0065  0064  0063  0062  0061 
+-                             0060  0059  0058  0057  0056  0055  0054  0053 
+-                             0052  0051 
+ RDACMD 00C0          0107    0548 
+ RDCMD  0088          0108    0576 
+ RDE    F027          0138    1490 
+ RDSC   F26C          0575    0435 
+ RDSC0  F277          0579    0549 
+ RDYCK  F22F          0527    0666 
+ READ   F18D          0429    0814  0305  0138 
+ READ1  F19A          0434    0439 
+ READBT F190          0430 
+ RETRY  F1C2          0460    0454  0438 
+ RETRY1 F1D2          0470    0464 
+ RETRY2 F1D7          0473    0460 
+ RINCR  F7AE          1597    1606  1603  1499 
+ RQST   0039          1352    1528  1492  1384  1381 
+ RSCMD  0006          0238    0726  0694  0475 
+ RSEEK  0056          0067    0446  0430 
+ RSET   0060          0077    0724  0722 
+ RTRY   0057          0068    0461 
+ RWRET  F1A6          0440    0453  0437 
+ SAVER  F3D0          0826    0141 
+ SCAN   F641          1399    1433  1376 
+ SCANR  E79A          1345    1400 
+ SCANV  E760          1346    1401 
+ SCHK1  F50A          1108    1106 
+ SCTR   0043          0053    1604  1502  1482  1462  0764  0419  0304 
+ SCTRIM F46A          0950    0889 
+ SD5    F10D          0336    0318 
+ SD8    F0FD          0327    0315 
+ SDMAE  F024          0137 
+ SDSKE  F01B          0134 
+ SECTOR 0066          0081    0773 
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0047 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ SEEK   F2F1          0666    0616 
+ SEEK0  F2FE          0672    0552 
+ SEEK1  F302          0674    0671 
+ SEEK2  F33E          0702    0698 
+ SEEK4  F30A          0679    1323  0727  0476  0274 
+ SELDSK F179          0406    0134 
+ SELECT 0063          0078    1310  1303  1293  0908  0906  0791  0781  0749 
+-                             0746  0739  0736  0720  0523  0275  0265 
+ SETDMA F188          0424    0137 
+ SETID  F50D          1124    0893 
+ SETSEC F183          0418    0136 
+ SETTRK F17E          0412    0135 
+ SIDE   0049          0059    0595  0366 
+ SIDECK F4FF          1102 
+ SKCMD  0008          0240    0678 
+ SKIP   F79B          1580    1576 
+ SKNCMD 0007          0239    1623  1322 
+ SPSV   004D          0061    1317  0884  0656  0607  0474  0397  0378  0261 
+-                            
+ SS     F148          0372    0370 
+ SS1    F730          1511    1509 
+ SSECE  F021          0136 
+ SSTACK 0080          0069    0251 
+ STATUS 0064          0079    0805  0711  0696  0647  0527 
+ STDDDT F048          0170    0508 
+ STDSDT F03F          0156    0505 
+ STRKE  F01E          0135 
+ STSDBT F290          0593    0629  0577 
+ SV1    F3D3          0827    0830 
+ SVE    F030          0141 
+ SWEB   F375          0746    1222  0779  0777  0547 
+ TADDR  0040          0051    1489  1485  1219  1054  0950  0883  0844  0837 
+-                             0630  0578  0424  0360  0356  0300 
+ TEMP1  0050          0063    1234  1228 
+ TEMP2  0051          0064    0935  0878  0359  0357 
+ TRACK  0065          0080    1326  0699  0675  0553  0270 
+ TRCKIM F4D9          1050    0890 
+ TRINT  F37C          0759    0619 
+ TRINT1 F38D          0770    0766 
+ TRINT2 F394          0774 
+ TRINT3 F3B2          0793    0793 
+ TRK    0044          0054    1611  1480  1460  1328  1315  0904  0683  0669 
+-                             0413  0302  0272 
+ TSTSK  F7D1          1619    1630  1626  1425 
+ UNIT   0042          0052    1587  1561  1538  1506  1458  1379  1223  1155 
+-                             1103  0994  0839  0775  0609  0558  0486  0407 
+-                             0372  0361  0355  0342  0338  0334  0330  0308 
+-                             0254 
+ UNITCK 0055          0066    1646  0909  0611  0525 
+ UNITFX F7F4          1645    0877  0826  0813  0657 
+ UNITSL F11B          0351    0281  0126 
+ USL0   F13B          0365    0363 
+ USL1   F14D          0375    0389  0358 
+ USRSP  0080          1359    1373 
+ WAIT   F342          0708    0682  0646  0542 
+ WAIT2  F347          0711    0718  0716  0714 
+ WBOOTE F003          0122 
+ WRBT   F1AC          0446 
+
+
+
+
+
+DDB200 VFDIAG DISK DIAGNOSTIC PROGRAM  SD SYSTEMS Z80 ASSEMBLER PAGE 0048 
+ ADDR  CODE      STMT SOURCE STATEMENT
+
+ WRCMD  00A8          0109    0628 
+ WRE    F02A          0139    1486 
+ WRITE  F1A9          0445    0827  0139 
+ WRITE1 F1B6          0450    0455 
+ WRSC   F2BD          0627    0451 
+ WRTCMD 00F4          0110    1229 
+ X      0060          0076    0083  0082  0081  0080  0079  0078  0077 
+ ZEND   F7F9          1647 
+ERRORS=0000 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
