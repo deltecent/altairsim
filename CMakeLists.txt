@@ -298,6 +298,10 @@ add_library(altair_core STATIC
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
   # this list is not ordered. It is listed after it so the reader sees the pair.
   src/boards/mits-88acr.cpp
+  # The 88-UIO -- a 6850 serial port AND an 88-ACR cassette section on one board. It
+  # DERIVES from the 88-ACR (the cassette half is one, verbatim, plus motor control and a
+  # SW-1 modulation switch) and embeds a Sio2Port for the serial half. See mits-88uio.h.
+  src/boards/mits-88uio.cpp
   # The 88-C700 line-printer controller -- an output-only card that sinks its data
   # port to a ByteStream (a file, the console, a socket). No chip: a printer sends
   # nothing back, so there is no receiver to model. See mits-88c700.h.
@@ -525,6 +529,7 @@ add_executable(altair_tests
   tests/test_sio2.cpp
   tests/test_88sio.cpp
   tests/test_88acr.cpp
+  tests/test_88uio.cpp
   tests/test_c700.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp

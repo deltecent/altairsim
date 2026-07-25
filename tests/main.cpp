@@ -8,6 +8,7 @@
 #include "boards/mits-88lpc.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
+#include "boards/mits-88uio.h"
 #include "boards/mits-turnkey.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
@@ -30,6 +31,7 @@ int main() {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::TurnkeyBoard::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
+    altair::UioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
     altair::LpcBoard::setResolver(altair::resolveEndpoint);
     altair::PioBoard::setResolver(altair::resolveEndpoint);
@@ -96,6 +98,7 @@ int main() {
     test_mds();
     test_hdsk();
     test_88acr();
+    test_88uio();
     test_c700();
     test_lpc();
     test_printer();

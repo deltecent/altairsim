@@ -8,6 +8,7 @@ against the directory you launched from.
 ```
 altairsim examples/cpm/cpm22-buffered.toml     # CP/M 2.2b on an 8" floppy
 altairsim examples/basic/basic4k.toml          # Altair 4K BASIC, off a 1975 cassette
+altairsim examples/uio/uio.toml                # Altair 8K BASIC over ONE 88-UIO (serial + cassette)
 altairsim examples/sol/trek80.toml             # a Sol-20 at SOLOS, with TREK80 in the deck
 altairsim examples/debugger/debugger.toml      # a bench for learning the symbolic debugger
 altairsim examples/dazzler/kscope.toml         # a Cromemco Dazzler, drawing a kaleidoscope
@@ -18,6 +19,7 @@ altairsim examples/printing/printer.toml       # an 88-C700 printer, wired to a 
 |---|---|
 | [`cpm/`](cpm/) | Mike Douglas's track-buffered **CP/M 2.2b v2.3**, 56K, booted by the DBL PROM from an 8" floppy. `A>` in one command. |
 | [`basic/`](basic/) | **Altair 4K BASIC 3.1** read off a period `.tap` by the bootstrap MITS shipped, unmodified. `MEMORY SIZE?` |
+| [`uio/`](uio/) | **Altair 8K BASIC 3.2** over a single **88-UIO** — the board that is a 6850 serial port (at 0x10) *and* an 88-ACR cassette (at 0x06) in one. The period bootstrap runs unmodified. `MEMORY SIZE?` |
 | [`sol/`](sol/) | A **Processor Technology Sol-20** running SOLOS 1.3, with the 1977 game **TREK80** on cassette. Type `XE TRK80`. |
 | [`debugger/`](debugger/) | A 46-byte program with its **symbols** and a guided walk through the monitor's debugger: `SYMBOLS LOAD`, symbolic `DISASM`, single-step, break on a label, run. |
 | [`dazzler/`](dazzler/) | A **Cromemco Dazzler**, the S-100's first color graphics card, running Li-Chen Wang's **Kaleidoscope**. Comes up drawing a four-way-mirrored pattern in a window; ATTN (Ctrl-E) breaks back to the monitor. |

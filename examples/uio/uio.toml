@@ -1,0 +1,78 @@
+# Altair 8K BASIC 3.2, booted over a SINGLE 88-UIO board.
+#
+#     cd examples/uio && altairsim uio.toml
+#     -> MEMORY SIZE?
+#
+# THE POINT OF THIS EXAMPLE is that the 88-UIO is two cards in one. Where basic8k needs a
+# separate 88-2SIO (the console) and an 88-ACR (the cassette), this machine has ONE board
+# doing both: the UIO's 6850 serial port sits at 0x10 -- exactly where 88-2SIO Port A
+# lives -- and its cassette section sits at 0x06 -- exactly where an 88-ACR lives. So the
+# bootstrap MITS shipped runs UNMODIFIED, and 8K BASIC never learns it is talking to a
+# combined card.
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md): the tape and
+# the loader lie in this directory, so the folder can be copied anywhere and still boot.
+
+[machine]
+name = "uio8k"
+
+# What a human did in 1976: put the tape in and press PLAY (that is MOUNT), toggle in the
+# bootstrap, and run it from 0. `REWIND uio0:tape` puts the cassette back at the start.
+startup = [
+  "MOUNT uio0:tape \"8K BASIC Ver 3-2.tap\"",
+  "LOAD \"LDR8K32.HEX\"",
+  "RUN 0",
+]
+
+# SENSE = 0x8C = A15 + A11 + A10 -- straight off the 8K bootstrap's header
+# (tapes/8KBasic32/LDR8K32.ASM): "Set A15 on (cassette load)", "Set A11, A10 on (2SIO
+# terminal)". The UIO's serial half IS a 2SIO-Port-A-compatible 6850, so this is right.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x8C
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
+
+# THE WHOLE I/O SIDE OF THE MACHINE, ON ONE CARD.
+#
+#   * serial_port = 10 -- the 6850 console at 0x10 (== 88-2SIO Port A). SW-2 off.
+#   * port        = 06 -- the cassette at 0x06 (== 88-ACR). SW-3 off.
+#   * standard    = mits (the default) -- the modem reads MITS 2400/1850 tapes, which is
+#                   what an 8K BASIC cassette is. `SET uio0 standard=kansas` for a Kansas
+#                   City tape.
+#
+# Both bases are the defaults, so they could be omitted; they are spelled out here because
+# the whole lesson of this file is WHERE the two halves land.
+[[board]]
+type        = "uio"
+id          = "uio0"
+serial_port = 10
+port        = 06
+
+  # The console is on the SERIAL unit (CONNECT), not the tape. Nothing rewrites a byte:
+  # the line is 8-bit clean, and BASIC's high bit is handled at the [console] below.
+  [board.unit.serial]
+  connect = "console"
+  baud    = 9600
+
+# 16K -- the "8K" in the name is the interpreter, which loads downward from 0x1FAE and
+# needs 8K just to hold itself. 16K leaves BASIC its workspace above it.
+[[board]]
+type = "memory"
+id   = "mem0"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "16K"
+
+# THE TERMINAL. 8K BASIC ends a message by setting bit 7 of its last character, so
+# "MEMORY SIZE?" leaves BASIC as ...'E'|0x80; an unfiltered terminal prints "MEMORY SIZ?".
+# The Teletype ignored the eighth bit, and that ignoring belongs to the TERMINAL -- the
+# only thing allowed to alter a byte (DESIGN.md 7.2). The line itself stays 8-bit clean.
+[console]
+strip7out = true
