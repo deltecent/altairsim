@@ -16,7 +16,7 @@
 # one line ending cmd.exe is guaranteed to parse without surprises around labels/goto.
 *.bat  text eol=crlf
 
-# CP/M source and listing artifacts (.ASM, .PRN, .HEX, .INC) originated on a CP/M system
+# CP/M source and listing artifacts (.ASM, .PRN, .HEX, .INC, .Z80, .LST) originated on a CP/M system
 # and are meant to be transferred verbatim onto a CP/M disk -- pasted with PIP x=CON:, run
 # through the assembler's LOAD, or carried in a bootable image -- where CP/M expects CRLF
 # line terminators (and, for text, a trailing ^Z). The global `eol=lf` rule above would
@@ -30,6 +30,10 @@
 *.prn binary
 *.INC binary
 *.inc binary
+*.Z80 binary
+*.z80 binary
+*.LST binary
+*.lst binary
 
 # The CP/M symbol-file fixtures carry two more format-under-test extensions
 # (tests/programs/symbols/README.md): their CRLF and trailing ^Z padding are part of the
