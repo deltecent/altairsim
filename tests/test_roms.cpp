@@ -107,6 +107,9 @@ void test_roms() {
         // both complete 2K-window images verified against their own assembler listings.
         {"ddb200",   0xF000, 0xF7F9, 2042, 0xD94C68DCu, true},
         {"msmonr21", 0xE000, 0xE7FF, 2048, 0x64428921u, true},
+        // sdmonv21 is the SD (VDB-8024 video console, ports 00/01) sibling of msmonr21;
+        // same E000 window and size, a different console driver -- and a different CRC.
+        {"sdmonv21", 0xE000, 0xE7FF, 2048, 0x4B101B4Bu, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;
