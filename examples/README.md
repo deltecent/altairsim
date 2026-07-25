@@ -11,6 +11,7 @@ altairsim examples/basic/basic4k.toml          # Altair 4K BASIC, off a 1975 cas
 altairsim examples/sol/trek80.toml             # a Sol-20 at SOLOS, with TREK80 in the deck
 altairsim examples/debugger/debugger.toml      # a bench for learning the symbolic debugger
 altairsim examples/dazzler/kscope.toml         # a Cromemco Dazzler, drawing a kaleidoscope
+altairsim examples/printing/printer.toml       # an 88-C700 printer, wired to a real host printer
 ```
 
 | | What it is |
@@ -20,6 +21,7 @@ altairsim examples/dazzler/kscope.toml         # a Cromemco Dazzler, drawing a k
 | [`sol/`](sol/) | A **Processor Technology Sol-20** running SOLOS 1.3, with the 1977 game **TREK80** on cassette. Type `XE TRK80`. |
 | [`debugger/`](debugger/) | A 46-byte program with its **symbols** and a guided walk through the monitor's debugger: `SYMBOLS LOAD`, symbolic `DISASM`, single-step, break on a label, run. |
 | [`dazzler/`](dazzler/) | A **Cromemco Dazzler**, the S-100's first color graphics card, running Li-Chen Wang's **Kaleidoscope**. Comes up drawing a four-way-mirrored pattern in a window; ATTN (Ctrl-E) breaks back to the monitor. |
+| [`printing/`](printing/) | An **88-C700 line printer**, and a banner program that prints through it. The README sets up a real printer on your host — a network printer over `socket:`, or a CUPS queue over `printer:` — and a page comes out. Per-OS host setup (macOS, Linux; Windows pending). |
 
 **This tree is the product**, which is the reason it exists as one directory rather than as media
 scattered through `disks/` and `tapes/`. It is what `tools/build-package.sh` assembles, it is what
