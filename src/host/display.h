@@ -254,6 +254,17 @@ public:
     // inherits that: a test and a no-SDL build see this as if it did not exist.
     virtual bool takeQuitRequest() { return false; }
 
+    // CLOSE THE WINDOW FOR REAL -- tear it down so it is gone from the screen.
+    //
+    // The counterpart to takeQuitRequest()'s deliberate NON-closing. A close box clicked
+    // while the guest RUNS stops the guest and keeps the window (you may want to look at
+    // the last frame, and RUN resumes into it); a close box clicked while the machine is
+    // STOPPED at the monitor prompt means the operator is done with the window, so the
+    // monitor's idle hook calls this. A windowed host destroys its window here; the next
+    // frame a board draws opens a fresh one. The base does nothing, so headless builds
+    // and tests never notice.
+    virtual void closeWindow() {}
+
     // THE GUEST HAS STOPPED AND THE OPERATOR IS WANTED AT THE MONITOR PROMPT. A
     // windowed host that currently holds the keyboard gives it back; everyone else
     // does nothing.

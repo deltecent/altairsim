@@ -47,14 +47,17 @@ public:
     void     yieldFocus() override;
 
     // The close box, remembered by pollEvents() and handed to the run loop
-    // (host/display.h). Consuming: the window itself stays open and responsive --
-    // closing it stops the GUEST and hands you the monitor, and the machine is still
-    // there, so RUN resumes into the same window.
+    // (host/display.h). Consuming: while the guest RUNS the window itself stays open and
+    // responsive -- closing it stops the GUEST and hands you the monitor, and the machine
+    // is still there, so RUN resumes into the same window. The STOPPED-prompt consumer
+    // (the monitor's idle hook) instead calls closeWindow() below and the window goes.
     bool takeQuitRequest() override {
         bool q = quit_;
         quit_ = false;
         return q;
     }
+
+    void closeWindow() override;
 
 private:
     bool ensureWindow(int w, int h);  // lazy: no SDL work until the first frame

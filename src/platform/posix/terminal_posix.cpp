@@ -10,6 +10,7 @@
 #include <csignal>
 #include <cstdio>
 #include <fcntl.h>
+#include <poll.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -169,6 +170,24 @@ size_t readInput(uint8_t* buf, size_t n, bool& eof) {
 int readInputBlocking() {
     unsigned char c = 0;
     return ::read(STDIN_FILENO, &c, 1) == 1 ? (int)c : -1;
+}
+
+InputWait waitForInput(int timeoutMs) {
+    struct pollfd p{};
+    p.fd     = STDIN_FILENO;
+    p.events = POLLIN;
+    int r = ::poll(&p, 1, timeoutMs);
+
+    // EINTR (a signal woke us -- SIGWINCH, a caught ^C on the way out) is not "input
+    // arrived"; treat it as a plain tick so the caller pumps once and asks again.
+    if (r < 0) return InputWait::Timeout;
+    if (r == 0) return InputWait::Timeout;
+
+    // POLLHUP is EOF on a pipe -- the writer is gone and there will never be another
+    // byte. A terminal never reports it. Note POLLHUP can arrive alongside POLLIN
+    // (buffered bytes still to drain), and then Ready is the honest answer: read them.
+    if ((p.revents & POLLHUP) && !(p.revents & POLLIN)) return InputWait::Ended;
+    return InputWait::Ready;
 }
 
 size_t writeOutput(const uint8_t* buf, size_t n) {

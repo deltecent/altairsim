@@ -69,7 +69,30 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
 
     redraw(prompt, buf, cur);
 
+    // How long the FIRST-byte wait naps before it looks up and does idle work. Short
+    // enough that the video window feels live under the mouse; long enough that the wait
+    // is a wait and not a spin.
+    constexpr int kIdleMs = 50;
+
     for (;;) {
+        // Wait for the next byte, but do NOT sleep in a bare read that services nothing:
+        // on a timeout, run the idle hook (the monitor pumps the video window here so a
+        // stopped machine's window stays alive -- DESIGN.md 7.4) and look again. Only the
+        // OUTER wait does this; the escape-sequence reads below stay blocking, because
+        // once ESC has arrived the rest of the sequence is microseconds behind it.
+        for (;;) {
+            platform::InputWait w = platform::waitForInput(kIdleMs);
+            if (w == platform::InputWait::Ended) {  // EOF on the tty
+                put("\n");
+                return false;
+            }
+            if (w == platform::InputWait::Timeout) {
+                if (onIdle_) onIdle_();
+                continue;
+            }
+            break;  // Ready
+        }
+
         int c = platform::readInputBlocking();
         if (c < 0) {  // EOF on the tty
             put("\n");

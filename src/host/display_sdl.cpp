@@ -38,6 +38,20 @@ SdlDisplay::~SdlDisplay() {
     if (inited_) SDL_Quit();
 }
 
+// Tear the window down but leave SDL itself initialized, so the operator closing the
+// window at a stopped prompt (host/display.h) is cheap and reversible: ensureWindow()
+// rebuilds whenever renderer_ is null, so the next frame a board draws -- after a RUN --
+// opens a fresh window with no re-init. pollEvents() keeps working meanwhile (inited_
+// stays true) with simply nothing to drain, and there is no window for the OS to declare
+// unresponsive.
+void SdlDisplay::closeWindow() {
+    if (texture_)  { SDL_DestroyTexture(texture_);   texture_  = nullptr; }
+    if (renderer_) { SDL_DestroyRenderer(renderer_); renderer_ = nullptr; }
+    if (window_)   { SDL_DestroyWindow(window_);     window_   = nullptr; }
+    texW_ = texH_ = 0;
+    quit_ = false;
+}
+
 // Lazily bring up SDL, the window and the renderer on the first frame -- so
 // constructing an SdlDisplay is free, and a machine that never runs a graphics
 // board never opens a window. Returns false (and the display goes quiet) if SDL

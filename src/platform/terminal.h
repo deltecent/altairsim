@@ -100,6 +100,20 @@ size_t readInput(uint8_t* buf, size_t n, bool& eof);
 // and waiting is exactly what it wants.
 int readInputBlocking();
 
+// Wait up to timeoutMs for stdin to have a byte ready, WITHOUT reading it. THREE
+// answers, the same three shapes readInput has:
+//
+//     Ready      a byte is waiting -- readInputBlocking() will return it at once.
+//     Timeout    nothing yet. The caller may do periodic work and ask again.
+//     Ended      the input has ENDED (a pipe/file, never a terminal). No more bytes.
+//
+// This is what lets the MONITOR'S line editor keep the video window alive while parked
+// at the prompt: wait a short while, and on a Timeout pump the host (SDL events) and ask
+// again, instead of sleeping in a bare read() that services nothing (DESIGN.md 7.4).
+// Only the OUTER first-byte wait needs this; an escape sequence's bytes arrive together.
+enum class InputWait { Ready, Timeout, Ended };
+InputWait waitForInput(int timeoutMs);
+
 // Straight to the handle, past every buffer the C++ library owns -- a guest that prints
 // a prompt with no newline after it must still see the prompt appear.
 size_t writeOutput(const uint8_t* buf, size_t n);
