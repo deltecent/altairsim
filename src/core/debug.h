@@ -165,14 +165,31 @@ public:
         bool dma = false;
         bool contended = false;
         uint64_t t = 0;   // clock T-state at the cycle
+        // WHO drove it and WHO answered, as INTERNED HANDLES -- indices into the
+        // debugger's board-name table, NOT pointers and NOT strings. A pointer would
+        // dangle once a board left the backplane; a string would allocate on every one
+        // of the 8192 records in an always-on ring. A small int does neither: the name
+        // is looked up once, at record time, and stored by number. -1 is "nobody" --
+        // the floating bus for `responder`, and the processor itself for `master`
+        // (a normal cycle originates at the CPU; only a DMA grant names a board here).
+        int16_t master = -1;     // who ORIGINATED the cycle: -1 = the CPU, else a DMA board
+        int16_t responder = -1;  // who ANSWERED it: -1 = nobody drove (floating bus)
     };
 
     // The last `n` cycles, OLDEST FIRST. n past what is held returns all of it.
     std::vector<CycleRec> history(size_t n) const;
     void clearHistory();
 
-    // Render one recorded cycle the way TRACE and HISTORY both print it.
-    static std::string formatCycle(const CycleRec&);
+    // The board-name table the CycleRec handles index into. Its slot i is the id of
+    // the board interned as handle i; -1 handles resolve to a literal ("cpu" for the
+    // master, "--" for the responder) and never touch this. The monitor reads it to
+    // render HISTORY BUS; the observer passes it to formatCycle for a live TRACE line.
+    const std::vector<std::string>& boardHandles() const { return boardHandles_; }
+
+    // Render one recorded cycle the way TRACE and HISTORY both print it. `handles` is
+    // boardHandles() -- passed in because this is static (a trace line and a HISTORY
+    // line format identically, and neither should carry a Debugger to say so).
+    static std::string formatCycle(const CycleRec&, const std::vector<std::string>& handles);
 
     // A recorded INSTRUCTION, for CPU HISTORY -- the sibling of CycleRec. It holds the
     // machine as it stood at the instruction boundary: the register VALUES in the active
@@ -247,6 +264,29 @@ private:
     // cycle as DMA -- the origin is deliberately NOT on the BusCycle (a real
     // backplane carries no such tag, bus.h), but the loop that GRANTED the bus knows.
     bool inDma_ = false;
+
+    // Which board holds the bus right now, while inDma_ is true. serviceDma() sets it
+    // before it drives a granted master, so the observer can name WHO originated a DMA
+    // cycle (the CPU needs no entry -- a non-DMA cycle's master is always the CPU).
+    Board* dmaMaster_ = nullptr;
+
+    // The interning table behind CycleRec's `master`/`responder` handles. A board's id
+    // string is stored ONCE, the first time it drives or answers during a run, and the
+    // ring keeps only the small index -- so the always-on recorder never allocates per
+    // cycle and never holds a pointer that could dangle after a board is removed.
+    //
+    // boardHandles_ is the handle -> id table; it only ever GROWS (a ring record from an
+    // earlier run must still resolve), so handles are stable across runs. internPtrs_ is
+    // the pointer -> handle map used to answer "have I seen this board this run?"; it is
+    // rebuilt each run (armObserver clears it) because a raw Board* is only good for the
+    // run that produced it. internMru_/internMruH_ are a one-entry cache in front of it:
+    // consecutive cycles overwhelmingly hit the same board (a loop hammering one RAM
+    // card), so the common case is a single pointer compare and no scan at all.
+    std::vector<std::string> boardHandles_;
+    std::vector<std::pair<Board*, int>> internPtrs_;
+    Board* internMru_ = nullptr;
+    int internMruH_ = -1;
+    int internBoard(Board* b);
 
     // HISTORY's ring. Fixed capacity, overwrite-oldest -- a flight recorder, always
     // running while the machine runs, so it has the run-up to a stop without anyone

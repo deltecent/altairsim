@@ -317,9 +317,28 @@ void test_debug() {
     // and it is a WRITE, and the byte is right -- the recorder saw the same cycle the
     // breakpoint would.
     bool sawWrite = false;
+    Debugger::CycleRec theWrite;
     for (const auto& rec : recent)
-        if (rec.type == Cycle::MemWrite && rec.addr == 0x2000 && rec.data == 0x41) sawWrite = true;
+        if (rec.type == Cycle::MemWrite && rec.addr == 0x2000 && rec.data == 0x41) {
+            sawWrite = true;
+            theWrite = rec;
+        }
     CHECK(sawWrite, "the STA's write to 2000 is on the tape");
+
+    // WHO drove it, WHO answered. The CPU originated this write (master is the -1
+    // sentinel, rendered "cpu"), and the memory board answered -- its handle resolves
+    // through the debugger's name table to the board's id.
+    const auto& handles = hh.m.debug.boardHandles();
+    CHECK(theWrite.master == -1, "a normal cycle's master is the CPU (the -1 sentinel)");
+    CHECK(theWrite.responder >= 0 && (size_t)theWrite.responder < handles.size(),
+          "the responder is an interned handle into the name table");
+    CHECK(handles[(size_t)theWrite.responder] == "mem0",
+          "and it resolves to the board that answered -- mem0");
+
+    // The rendered line names both, and it is the SAME renderer TRACE uses.
+    std::string line = Debugger::formatCycle(theWrite, handles);
+    CHECK(line.find("cpu") != std::string::npos, "the line shows who drove it -- cpu");
+    CHECK(line.find("-> mem0") != std::string::npos, "and who answered it -- mem0");
 
     // Oldest-first, and bounded by what actually ran.
     auto few = hh.m.debug.history(2);

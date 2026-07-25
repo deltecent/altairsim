@@ -364,6 +364,7 @@ uint8_t Bus::memReadExact(uint16_t addr) {
 
     unclaimed_ = (d.n == 0);
     contended_ = (d.n > 1);
+    responder_ = d.first;
     uint8_t v = d.first ? d.first->read(c)
                         : 0xFF;  // floating bus (DESIGN.md 4.6.1)
     c.data = v;                  // what got driven -- see settle()
@@ -380,6 +381,7 @@ void Bus::memWriteExact(uint16_t addr, uint8_t data) {
 
     unclaimed_ = (d.n == 0);
     contended_ = (d.n > 1);
+    responder_ = d.first;
     // Nobody latched it. The byte is simply gone -- the write half of the
     // floating bus. This is what a guest write to ROM does, and the bus needed
     // no rule about ROM to make it happen.
@@ -394,6 +396,7 @@ uint8_t Bus::ioReadExact(uint8_t port) {
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
     contended_ = (d.n > 1);
+    responder_ = d.first;
     uint8_t v = d.first ? d.first->read(c) : 0xFF;
     c.data = v;  // what got driven -- see settle()
     if (unclaimedPolicy_ != Unclaimed::Silent && d.n == 0) reportUnclaimed(c);
@@ -407,6 +410,7 @@ void Bus::ioWriteExact(uint8_t port, uint8_t data) {
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
     contended_ = (d.n > 1);
+    responder_ = d.first;
     if (d.n == 1) d.first->write(c);
     else if (d.n > 1) for (Board* b : decoders(c)) b->write(c);
     if (unclaimedPolicy_ != Unclaimed::Silent && d.n == 0) reportUnclaimed(c);
@@ -518,6 +522,7 @@ uint8_t Bus::memRead(uint16_t addr) {
 
     BusCycle c{Cycle::MemRead, addr, 0, s.phantom};
     unclaimed_ = (s.who == nullptr);
+    responder_ = s.who;
     uint8_t v = s.who ? s.who->read(c) : 0xFF;  // floating bus (DESIGN.md 4.6.1)
     c.data = v;                                 // what got driven -- see settle()
     settle(c);
@@ -533,6 +538,7 @@ void Bus::memWrite(uint16_t addr, uint8_t data) {
 
     BusCycle c{Cycle::MemWrite, addr, data, s.phantom};
     unclaimed_ = (s.who == nullptr);
+    responder_ = s.who;
     // Nobody latched it. The byte is simply gone -- the write half of the floating
     // bus, and what a guest write to ROM does. No rule about ROM was needed.
     if (s.who) s.who->write(c);
@@ -548,6 +554,7 @@ uint8_t Bus::ioRead(uint8_t port) {
 
     BusCycle c{Cycle::IoRead, port, 0, false};
     unclaimed_ = (s.who == nullptr);
+    responder_ = s.who;
     uint8_t v = s.who ? s.who->read(c) : 0xFF;
     c.data = v;  // what got driven -- see settle()
     if (unclaimedPolicy_ != Unclaimed::Silent && s.who == nullptr) reportUnclaimed(c);
@@ -564,6 +571,7 @@ void Bus::ioWrite(uint8_t port, uint8_t data) {
 
     BusCycle c{Cycle::IoWrite, port, data, false};
     unclaimed_ = (s.who == nullptr);
+    responder_ = s.who;
     if (s.who) s.who->write(c);
     if (unclaimedPolicy_ != Unclaimed::Silent && s.who == nullptr) reportUnclaimed(c);
     settle(c);
@@ -574,6 +582,7 @@ uint8_t Bus::intAck() {
     auto who = decoders(c);
     unclaimed_ = who.empty();
     contended_ = who.size() > 1;
+    responder_ = who.empty() ? nullptr : who.front();
     // No vector-interrupt board answered, so nothing drives the bus and it
     // floats high: 0xFF, which the 8080 executes as RST 7. That is the real
     // Altair's behavior, and we get it for free from the same rule that makes

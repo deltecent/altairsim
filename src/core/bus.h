@@ -298,6 +298,16 @@ public:
     // observer reads it so TRACE's CONTENTION mask and HISTORY can flag the cycle.
     bool lastContended() const { return contended_; }
 
+    // WHO answered the last cycle -- the first board in slot order that drove it, or
+    // null when nobody did (the floating bus). This is NOT a new question: the cycle
+    // already resolved the winning decoder (Slot::who, or Decode::first) to move the
+    // byte, and this just keeps the pointer it already had instead of throwing it
+    // away. The observer reads it to record HISTORY's "who responded" column -- so it
+    // costs one pointer store per cycle and never a re-scan (contrast respondersTo(),
+    // which allocates). On contention it is the first driver; lastContended() flags
+    // the rest. Valid only immediately after a cycle, like lastContended().
+    Board* lastResponder() const { return responder_; }
+
 private:
     bool anyAssertsPhantom(const BusCycle& c) const;
 
@@ -411,6 +421,7 @@ private:
     Contention policy_ = Contention::Warn;
     bool unclaimed_ = false;
     bool contended_ = false;
+    Board* responder_ = nullptr;  // who drove the last cycle -- see lastResponder()
 
     // The unclaimed-I/O diagnostic (DESIGN.md 4.6.1). Default Silent -- opt-in.
     Unclaimed unclaimedPolicy_ = Unclaimed::Silent;

@@ -81,6 +81,39 @@ bool Debugger::remove(int id, std::string& err) {
 
 void Debugger::clear() { bps_.clear(); }
 
+// A board -> small handle, for the HISTORY "who" columns. The hot path: a one-entry
+// cache (the same board answered the last cycle), then a short scan of the boards seen
+// so far this run, then -- only on a board's first appearance -- the id string is
+// interned into the stable name table. So a warmed recorder does no allocation and, in
+// the common case, one pointer compare. See the members' comment in debug.h.
+int Debugger::internBoard(Board* b) {
+    if (!b) return -1;
+    if (b == internMru_) return internMruH_;
+    for (const auto& pr : internPtrs_)
+        if (pr.first == b) {
+            internMru_ = b;
+            internMruH_ = pr.second;
+            return pr.second;
+        }
+    // First time this board has driven or answered this run. Give its id a stable
+    // handle -- reusing one from an earlier run if the same id is back -- and remember
+    // the pointer so the rest of this run answers from the scan above.
+    int h = -1;
+    for (size_t i = 0; i < boardHandles_.size(); ++i)
+        if (boardHandles_[i] == b->id) {
+            h = (int)i;
+            break;
+        }
+    if (h < 0) {
+        h = (int)boardHandles_.size();
+        boardHandles_.push_back(b->id);
+    }
+    internPtrs_.emplace_back(b, h);
+    internMru_ = b;
+    internMruH_ = h;
+    return h;
+}
+
 // ---------------------------------------------------------------------------
 // The cycle breakpoints, as a bus observer.
 //
@@ -98,6 +131,12 @@ bool Debugger::armObserver() {
     // (The monitor's own DUMP/DEPOSIT are still safe: the observer exists only for as
     // long as a run does, so a front-panel poke while stopped records nothing.)
     cycleHit_ = 0;
+    // The pointer->handle map is only good for one run (a Board* does not outlive the
+    // machine that held it). Drop it and the cache; the id NAME table (boardHandles_)
+    // survives, so a record still in the ring from a previous run keeps its name.
+    internPtrs_.clear();
+    internMru_ = nullptr;
+    internMruH_ = -1;
     observer_ = m_.bus.observe([this](const BusCycle& c) {
         CycleRec rec;
         rec.type = c.type;
@@ -106,6 +145,11 @@ bool Debugger::armObserver() {
         rec.dma = inDma_;
         rec.contended = m_.bus.lastContended();
         rec.t = m_.clock.now();
+        // WHO drove it, WHO answered -- interned to handles here, at record time. A
+        // non-DMA cycle originates at the CPU, which needs no board entry (-1 renders
+        // "cpu"); a DMA grant names the board serviceDma() handed the bus to.
+        rec.master = (int16_t)(inDma_ ? internBoard(dmaMaster_) : -1);
+        rec.responder = (int16_t)internBoard(m_.bus.lastResponder());
 
         // HISTORY: overwrite-oldest ring.
         if (ring_.size() < kHistoryCap) {
@@ -151,7 +195,7 @@ bool Debugger::armObserver() {
         }
 
         // TRACE: one line per cycle the mask admits.
-        if (tracing() && traceShows(rec)) *traceSink_ << formatCycle(rec) << "\n";
+        if (tracing() && traceShows(rec)) *traceSink_ << formatCycle(rec, boardHandles_) << "\n";
     });
     return true;
 }
@@ -173,7 +217,7 @@ bool Debugger::traceShows(const CycleRec& r) const {
     return (cat & traceMask_) != 0;
 }
 
-std::string Debugger::formatCycle(const CycleRec& r) {
+std::string Debugger::formatCycle(const CycleRec& r, const std::vector<std::string>& handles) {
     const char* what = "?";
     bool io = false, none = false;
     switch (r.type) {
@@ -194,7 +238,25 @@ std::string Debugger::formatCycle(const CycleRec& r) {
     else
         std::snprintf(buf, sizeof buf, "%10llu  %-4s %04X = %02X", (unsigned long long)r.t, what,
                       (unsigned)r.addr, r.data);
+
+    // WHO drove it -> WHO answered. A handle indexes the name table; -1 is a literal:
+    // the CPU for a master (a normal cycle originates there), and the floating bus --
+    // nobody -- for a responder. An out-of-range handle (a table that lost the id)
+    // shows "?" rather than reading past the end.
+    auto name = [&handles](int16_t h, const char* dflt) -> std::string {
+        if (h < 0) return dflt;
+        if ((size_t)h < handles.size()) return handles[(size_t)h];
+        return "?";
+    };
+    // Master padded to a fixed width so the responder column lines up row to row; the
+    // responder is last (bar an optional [DMA]/[CONTENTION] flag) and is NOT padded, so
+    // an ordinary line carries no trailing whitespace.
+    char who[48];
+    std::snprintf(who, sizeof who, "   %-8s -> %s", name(r.master, "cpu").c_str(),
+                  name(r.responder, "--").c_str());
+
     std::string s = buf;
+    s += who;
     if (r.dma) s += "  [DMA]";
     if (r.contended) s += "  [CONTENTION]";
     return s;
@@ -284,10 +346,12 @@ void Debugger::serviceDma() {
         while (b->requestsBus()) {
             // Tag every cycle this grant drives as DMA for the observer -- the
             // BusCycle itself carries no origin (bus.h), but the loop that handed out
-            // the bus knows exactly whose cycles these are.
+            // the bus knows exactly whose cycles these are, and which board it is.
             inDma_ = true;
+            dmaMaster_ = b;
             StepResult ds = dm->step(m_.bus);
             inDma_ = false;
+            dmaMaster_ = nullptr;
             m_.clock.advance(ds.tStates);
 
             // A granted bus cycle costs time. A master that steals zero-time cycles

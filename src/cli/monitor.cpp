@@ -4105,9 +4105,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 return true;
             }
             // Aligned to formatCycle()'s columns: T-state (10, right-justified), type (4),
-            // addr/port (col 17), data (after " = ", col 24). See Debugger::formatCycle.
-            out << "   T-STATE  TYPE ADDR   DATA\n";
-            for (const auto& rec : recs) out << Debugger::formatCycle(rec) << "\n";
+            // addr/port (col 17), data (after " = ", col 24), then who drove -> who
+            // answered. See Debugger::formatCycle. The handles resolve against the
+            // debugger's board-name table.
+            out << "   T-STATE  TYPE ADDR DATA   DROVE    -> ANSWERED\n";
+            const auto& handles = m_.debug.boardHandles();
+            for (const auto& rec : recs) out << Debugger::formatCycle(rec, handles) << "\n";
             return true;
         }
 
