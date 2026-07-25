@@ -77,6 +77,41 @@ expand() {  # expand <src.md> <dst.md>
 }
 
 # ---------------------------------------------------------------------------
+# CHECK WHAT ACTUALLY CAME OUT. Embedding the fonts only guarantees they were OFFERED to the
+# browser; it says nothing about a character neither of them has. Chrome answers that silently,
+# by going shopping on the local machine -- and the very first build with embedded fonts did
+# exactly that, pulling one arrow out of macOS's Lucida Grande because XCharter-Bold has no
+# U+2192. One glyph, no warning, unshippable font, and a different result on a machine without
+# it.
+#
+# So: every face in the finished PDF must be one we shipped. This is the check that catches the
+# NEXT character somebody types that our fonts do not have. Both build() and build_readme() run
+# it, on the temp PDF, before it is allowed to become the shipped file.
+# ---------------------------------------------------------------------------
+check_fonts() {  # check_fonts <pdf> <display-name>
+  pdf=$1; label=$2
+  if have pdffonts; then
+    faces=$(pdffonts "$pdf" | awk 'NR > 2 { print $1 }' | sed 's/^[A-Z]*+//' |
+            sort -u | grep -v '^$' || true)
+    strangers=$(echo "$faces" | grep -vxE 'XCharter-(Roman|Bold|Italic|BoldItalic)|DejaVuSansMono(-Bold)?' || true)
+    if [ -n "$strangers" ]; then
+      echo "build-docs: $label is set in fonts WE DID NOT SHIP:" >&2
+      echo "$strangers" | sed 's/^/              /' >&2
+      echo "            That means some character is not in XCharter or DejaVu Sans Mono, so the" >&2
+      echo "            browser quietly borrowed a face from THIS machine -- which another machine" >&2
+      echo "            will not have. Find the character (the usual suspect is a symbol or arrow" >&2
+      echo "            in bold or italic) and either write it differently or extend the fallback" >&2
+      echo "            chain in docs/print.css. Do not ignore this: it renders differently in CI." >&2
+      exit 1
+    fi
+  else
+    # Not fatal locally -- but CI installs poppler-utils precisely so this always runs
+    # somewhere. See .github/workflows/docs.yml.
+    echo "build-docs: (no pdffonts -- skipping the font check; CI runs it)" >&2
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # One document.
 # ---------------------------------------------------------------------------
 build() {  # build <docdir> <output-name> <title> [notoc]
@@ -155,41 +190,67 @@ build() {  # build <docdir> <output-name> <title> [notoc]
 
   [ -s "$work/$name.pdf" ] || { echo "build-docs: $name.pdf came out empty." >&2; exit 1; }
 
-  # NOW CHECK WHAT ACTUALLY CAME OUT. Embedding the fonts (above) only guarantees they were
-  # OFFERED to the browser; it says nothing about a character neither of them has. Chrome
-  # answers that silently, by going shopping on the local machine -- and the very first
-  # build with embedded fonts did exactly that, pulling one arrow out of macOS's Lucida
-  # Grande because XCharter-Bold has no U+2192. One glyph, no warning, unshippable font,
-  # and a different result on a machine without it.
-  #
-  # So: every face in the finished PDF must be one we shipped. This is the check that
-  # catches the NEXT character somebody types that our fonts do not have.
-  if have pdffonts; then
-    faces=$(pdffonts "$work/$name.pdf" | awk 'NR > 2 { print $1 }' | sed 's/^[A-Z]*+//' |
-            sort -u | grep -v '^$' || true)
-    strangers=$(echo "$faces" | grep -vxE 'XCharter-(Roman|Bold|Italic|BoldItalic)|DejaVuSansMono(-Bold)?' || true)
-    if [ -n "$strangers" ]; then
-      echo "build-docs: $name.pdf is set in fonts WE DID NOT SHIP:" >&2
-      echo "$strangers" | sed 's/^/              /' >&2
-      echo "            That means some character is not in XCharter or DejaVu Sans Mono, so the" >&2
-      echo "            browser quietly borrowed a face from THIS machine -- which another machine" >&2
-      echo "            will not have. Find the character (the usual suspect is a symbol or arrow" >&2
-      echo "            in bold or italic) and either write it differently or extend the fallback" >&2
-      echo "            chain in docs/print.css. Do not ignore this: it renders differently in CI." >&2
-      exit 1
-    fi
-  else
-    # Not fatal locally -- but CI installs poppler-utils precisely so this always runs
-    # somewhere. See .github/workflows/docs.yml.
-    echo "build-docs: (no pdffonts -- skipping the font check; CI runs it)" >&2
-  fi
+  check_fonts "$work/$name.pdf" "$name.pdf"
 
   # It passed. NOW it is the document.
   mv "$work/$name.pdf" "$out/$name.pdf"
   echo "build-docs: $out/$name.pdf"
 }
 
+# ---------------------------------------------------------------------------
+# One example README, rendered beside its source.
+#
+# The per-directory READMEs under examples/ are notes a reader opens in a file manager -- and a
+# file manager has no Markdown viewer, so each one gets a PDF sibling built the SAME way as the
+# manual (same faces, same paginator, same font check), so it looks like the rest of the docs
+# and travels in the package. Unlike the manual these are single files: no ORDER, no {{TOKENS}}
+# (verified -- the READMEs have neither), no images, and NO --toc (a 40-line note does not get
+# a contents page). The output lands beside the source at examples/<dir>/README.pdf, not in
+# $out; .gitignore allowlists examples/**/README.pdf and CI (docs.yml) commits them.
+# ---------------------------------------------------------------------------
+build_readme() {  # build_readme <src.md relative to root>
+  rel=$1
+  src=$root/$rel
+  dst=$root/${rel%.md}.pdf
+  [ -f "$src" ] || { echo "build-docs: $rel does not exist." >&2; exit 1; }
+
+  # The H1 IS the title. Promote it out of the body so it renders once -- as the title block,
+  # the way the manual's title does -- instead of a second time as a heading underneath it.
+  # awk, not `sed '0,/re/'`: that address is a GNU extension BSD/macOS sed silently ignores,
+  # which left the heading in the body (and printed it twice). This drops the FIRST H1 only.
+  title="altairsim — $(sed -n 's/^# *//p' "$src" | head -1)"
+  awk 'dropped || !/^# /{print; next} {dropped=1}' "$src" > "$work/readme.md"
+
+  stamp="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  date="$(date -u '+%Y-%m-%d')"
+
+  pandoc "$work/readme.md" \
+    --standalone --embed-resources \
+    --from=gfm --to=html5 \
+    --metadata title="$title" \
+    --css "$root/docs/print.css" \
+    --metadata subtitle="$date · $stamp" \
+    -o "$work/readme.html"
+
+  "$chrome" --headless --disable-gpu --no-pdf-header-footer \
+            --print-to-pdf="$work/readme.pdf" "$work/readme.html" 2>/dev/null
+
+  [ -s "$work/readme.pdf" ] || { echo "build-docs: $rel -> pdf came out empty." >&2; exit 1; }
+
+  check_fonts "$work/readme.pdf" "$rel -> pdf"
+
+  mv "$work/readme.pdf" "$dst"
+  echo "build-docs: $dst"
+}
+
 mkdir -p "$out"
 build manual    altairsim-manual    "altairsim — User Manual"
 build changelog altairsim-changelog "altairsim — Changelog" notoc
 build devguide  altairsim-devguide  "altairsim — Developer Guide"
+
+# The examples' READMEs, each to a sibling PDF. The index first, then one per directory.
+# Glob against $root, not the caller's cwd -- this script may be run from anywhere.
+for abs in "$root"/examples/README.md "$root"/examples/*/README.md; do
+  [ -f "$abs" ] || continue
+  build_readme "${abs#"$root"/}"
+done

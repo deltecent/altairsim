@@ -134,7 +134,10 @@ examples/**
 !examples/debugger/HELLO.ASM
 !examples/debugger/HELLO.PRN
 !examples/debugger/HELLO.HEX
-!examples/debugger/README.pdf
+# Every example's README is rendered to a sibling README.pdf (tools/build-docs.sh, committed
+# by CI) so a file manager with no Markdown viewer can read it, and so it travels in the
+# package. One glob covers all of them, at any depth.
+!examples/**/README.pdf
 !examples/dazzler/KSCOPE.ASM
 !examples/dazzler/KSCOPE.PRN
 !examples/dazzler/KSCOPE.HEX
