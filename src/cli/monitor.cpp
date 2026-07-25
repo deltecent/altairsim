@@ -1964,46 +1964,77 @@ uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& ou
 //
 // No address and no hex bytes on the instruction -- P= just told you the address,
 // and the bytes are what DISASM is for.
-void Monitor::showRegs(std::ostream& out) {
-    CpuCore* c = m_.cpu();
-    if (!c) return;
-
+std::string Monitor::regLine(const std::vector<RegDef>& regs,
+                             const std::function<uint32_t(size_t)>& valueAt) {
     std::string flags, fields;
     char buf[32];
-    for (const RegDef& r : c->registers()) {
+    for (size_t i = 0; i < regs.size(); ++i) {
+        const RegDef& r = regs[i];
         switch (r.show) {
         case RegShow::Off:
             break;
         case RegShow::Flag:
-            std::snprintf(buf, sizeof buf, "%s%u", r.shown().c_str(), r.get() ? 1u : 0u);
+            std::snprintf(buf, sizeof buf, "%s%u", r.shown().c_str(), valueAt(i) ? 1u : 0u);
             flags += buf;
             break;
         case RegShow::Field:
             // A register narrower than a nibble has no hex digit to print; say the
             // number. That is IE, and anything like it a later core brings.
             if (r.bits < 4)
-                std::snprintf(buf, sizeof buf, "%s=%u ", r.shown().c_str(), r.get());
+                std::snprintf(buf, sizeof buf, "%s=%u ", r.shown().c_str(), valueAt(i));
             else if (octalMode()) {
                 // A wire register in split octal -- a byte in three digits, a word in
                 // two byte-groups. Hex keeps the exact %0*X below, so it does not move.
-                std::string val =
-                    r.bits <= 8 ? fmtByte((uint8_t)r.get()) : fmtWord((uint16_t)r.get());
+                std::string val = r.bits <= 8 ? fmtByte((uint8_t)valueAt(i))
+                                              : fmtWord((uint16_t)valueAt(i));
                 std::snprintf(buf, sizeof buf, "%s=%s ", r.shown().c_str(), val.c_str());
             } else
                 std::snprintf(buf, sizeof buf, "%s=%0*X ", r.shown().c_str(), r.bits / 4,
-                              r.get());
+                              valueAt(i));
             fields += buf;
             break;
         }
     }
 
-    out << flags;
-    if (!flags.empty() && !fields.empty()) out << " ";
-    out << fields;
+    std::string s = flags;
+    if (!flags.empty() && !fields.empty()) s += " ";
+    s += fields;
+    return s;
+}
+
+void Monitor::showRegs(std::ostream& out) {
+    CpuCore* c = m_.cpu();
+    if (!c) return;
+
+    auto regs = c->registers();
+    out << regLine(regs, [&regs](size_t i) { return regs[i].get(); });
 
     if (const Disassembler* d = disassemblerFor(c->isa()))
         out << " " << annotateOperands(insnAt(c->pc(), *d));
     out << "\n";
+}
+
+// The recorded twin of showRegs: the same DDT line, rebuilt from an InsnRec. The
+// register line pairs the active core's register LAYOUT with the record's stored
+// VALUES (index for index -- exact for the usual single-core machine). The mnemonic
+// is disassembled from the bytes that ACTUALLY ran at that PC, handed to the decoder
+// through a peek over the record, so overwritten code still reads as what executed.
+std::string Monitor::renderInsn(const Debugger::InsnRec& rec) {
+    CpuCore* c = m_.cpu();
+    if (!c) return "";
+
+    auto regs = c->registers();
+    std::string s = regLine(
+        regs, [&rec](size_t i) { return i < rec.regs.size() ? rec.regs[i] : 0u; });
+
+    if (const Disassembler* d = disassemblerFor(c->isa())) {
+        auto peek = [&rec](uint16_t a) -> uint8_t {
+            uint16_t off = (uint16_t)(a - rec.pc);
+            return off < rec.nbytes ? rec.bytes[off] : (uint8_t)0;
+        };
+        s += " " + annotateOperands(d->at(rec.pc, peek, octalMode() ? 8 : 16));
+    }
+    return s;
 }
 
 // What stopped it, said out loud. A run that just... comes back, with no reason
@@ -4045,21 +4076,50 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "HISTORY") {
-        size_t n = 16;
+        // The default is the CPU: one DDT-style line per instruction, the flight recorder
+        // that parallels STEP. HISTORY BUS is the bus/cycle recorder (what HISTORY used to
+        // be); HISTORY CPU names the default out loud. Then an optional count -- a depth is
+        // not on the wire, so DECIMAL, and 16 when omitted.
+        bool bus = false;
+        size_t argi = 1;
         if (a.size() >= 2) {
+            std::string sub = upper(a[1]);
+            if (sub == "BUS") {
+                bus = true;
+                argi = 2;
+            } else if (sub == "CPU") {
+                argi = 2;
+            }
+        }
+        size_t n = 16;
+        if (a.size() > argi) {
             uint32_t cnt;
-            if (!count(a[1], cnt, out)) return true;  // a depth is not on the wire: DECIMAL
+            if (!count(a[argi], cnt, out)) return true;
             n = cnt;
         }
-        auto recs = m_.debug.history(n);
-        if (recs.empty()) {
-            out << "no history yet -- it records while the machine RUNs.\n";
+
+        if (bus) {
+            auto recs = m_.debug.history(n);
+            if (recs.empty()) {
+                out << "no bus history yet -- it records while the machine RUNs.\n";
+                return true;
+            }
+            // Aligned to formatCycle()'s columns: T-state (10, right-justified), type (4),
+            // addr/port (col 17), data (after " = ", col 24). See Debugger::formatCycle.
+            out << "   T-STATE  TYPE ADDR   DATA\n";
+            for (const auto& rec : recs) out << Debugger::formatCycle(rec) << "\n";
             return true;
         }
-        // Aligned to formatCycle()'s columns: T-state (10, right-justified), type (4),
-        // addr/port (col 17), data (after " = ", col 24). See Debugger::formatCycle.
-        out << "   T-STATE  TYPE ADDR   DATA\n";
-        for (const auto& rec : recs) out << Debugger::formatCycle(rec) << "\n";
+
+        // CPU: the STEP view, recorded. Each line is the machine as it stood WITH the
+        // instruction it was about to run -- registers, flags and the decoded mnemonic.
+        if (!needCpu(out)) return true;
+        auto recs = m_.debug.insnHistory(n);
+        if (recs.empty()) {
+            out << "no CPU history yet -- it records while the machine RUNs.\n";
+            return true;
+        }
+        for (const auto& rec : recs) out << renderInsn(rec) << "\n";
         return true;
     }
 

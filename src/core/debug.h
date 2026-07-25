@@ -21,6 +21,7 @@
 #include "core/bus.h"
 #include "core/expr.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -173,6 +174,26 @@ public:
     // Render one recorded cycle the way TRACE and HISTORY both print it.
     static std::string formatCycle(const CycleRec&);
 
+    // A recorded INSTRUCTION, for CPU HISTORY -- the sibling of CycleRec. It holds the
+    // machine as it stood at the instruction boundary: the register VALUES in the active
+    // core's registers() order, the PC, and the opcode bytes that ran there. That is
+    // enough for the monitor to render the exact DDT-style line STEP prints -- faithfully,
+    // because the stored bytes are what EXECUTED, not whatever the address holds by the
+    // time you look (self-modifying code stays honest). The core said which registers are
+    // lamps and what they are called; this only carries their numbers, so it never learns
+    // what an 8080 is. Formatting lives in the monitor (it needs the disassembler, the
+    // symbol table and the operator's number base), so there is no formatInsn() here.
+    struct InsnRec {
+        uint16_t pc = 0;
+        std::vector<uint32_t> regs;      // one value per RegDef, in registers() order
+        std::array<uint8_t, 3> bytes{};  // opcode + up to two operand bytes at pc
+        uint8_t nbytes = 0;
+    };
+
+    // The last `n` instructions, OLDEST FIRST -- the CPU counterpart of history().
+    std::vector<InsnRec> insnHistory(size_t n) const;
+    void clearInsnHistory();
+
     // Run. `maxSteps == 0` means until something stops us -- a breakpoint, a HLT,
     // or ^C. Returns WHY it stopped, always: there is no "it just came back".
     RunResult run(uint64_t maxSteps);
@@ -234,6 +255,14 @@ private:
     static constexpr size_t kHistoryCap = 8192;
     std::vector<CycleRec> ring_;
     size_t ringHead_ = 0;
+
+    // The CPU instruction recorder -- the sibling of the bus ring above, and it runs on
+    // the same terms: always on while the machine runs, overwrite-oldest, one record per
+    // instruction retired. Fed from the run loop at the boundary, before the instruction
+    // executes, so a record is the machine STEP would have shown for it.
+    static constexpr size_t kInsnHistoryCap = 8192;
+    std::vector<InsnRec> insnRing_;
+    size_t insnRingHead_ = 0;
 
     // STEP-OVER's internal one-shot PC target, or -1 for none. See setStepTarget.
     int stepTarget_ = -1;

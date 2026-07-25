@@ -40,7 +40,7 @@ Type the part before the bracket.
 | `S[TEP]` | `STEP [n]` |
 | `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
-| `H[ISTORY]` | `HISTORY [n]` |
+| `H[ISTORY]` | `HISTORY [BUS\|CPU] [n]` |
 | `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP]` |
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
 | `E[DIT]` | `EDIT <addr> [ROM]` |

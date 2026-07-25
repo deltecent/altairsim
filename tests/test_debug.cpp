@@ -326,6 +326,44 @@ void test_debug() {
     CHECK(few.size() == 2, "history(n) returns n when it has them");
     CHECK(hh.m.debug.history(100000).size() < 100000, "and never more than it holds");
 
+    SECTION("CPU HISTORY -- the instruction flight recorder, the sibling of the bus ring");
+
+    Rig ih;
+    ih.load({0x3E, 0x41,           // MVI A,41
+             0x32, 0x00, 0x20,     // STA 2000
+             0x76});               // HLT
+    ih.cpu->setPc(0);
+    ih.m.debug.run(0);
+
+    // Three instructions retired -- MVI, STA, HLT -- recorded oldest first. Each carries
+    // the PC it ran at and the opcode byte that ran there, so a later overwrite of the code
+    // cannot change what the tape says executed.
+    auto insns = ih.m.debug.insnHistory(8);
+    CHECK(insns.size() == 3, "exactly the three instructions that ran");
+    CHECK(insns.front().pc == 0x0000 && insns.front().bytes[0] == 0x3E, "MVI A,41 at 0000");
+    CHECK(insns.back().pc == 0x0005 && insns.back().bytes[0] == 0x76, "HLT at 0005");
+
+    // The register snapshot is the state BEFORE each instruction: A is still 0 at the MVI
+    // and 41 by the time the STA runs, because the MVI has landed. Read A by its own name
+    // out of the core's register order, the way the monitor's line does.
+    auto regs = ih.cpu->registers();
+    size_t ai = 0;
+    bool haveA = false;
+    for (size_t i = 0; i < regs.size(); ++i)
+        if (regs[i].name == "A") {
+            ai = i;
+            haveA = true;
+        }
+    CHECK(haveA, "the 8080 exposes an A register to read back");
+    CHECK(insns[0].regs[ai] == 0x00, "A is 0 at the MVI -- the state BEFORE it runs");
+    CHECK(insns[1].regs[ai] == 0x41, "and 41 by the STA -- the MVI has landed");
+
+    // Oldest-first, bounded by what ran, and clearable -- exactly like the bus ring.
+    CHECK(ih.m.debug.insnHistory(2).size() == 2, "insnHistory(n) returns n when it has them");
+    CHECK(ih.m.debug.insnHistory(100000).size() < 100000, "and never more than it holds");
+    ih.m.debug.clearInsnHistory();
+    CHECK(ih.m.debug.insnHistory(4).empty(), "clearInsnHistory wipes the tape");
+
     SECTION("TRACE -- every cycle to a sink, filtered by a mask");
 
     Rig tt;

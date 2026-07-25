@@ -125,34 +125,34 @@ RUN          carry on from wherever the PC is
 ### HISTORY — `H[ISTORY]`
 
 ```
-HISTORY [n]
+HISTORY [BUS|CPU] [n]
 ```
-The last n BUS CYCLES the machine ran, oldest first -- a flight recorder that
+The last n INSTRUCTIONS the machine ran, oldest first -- a flight recorder that
 is always running while the machine runs, so it already holds the run-up to a
-breakpoint or a crash when you ask. n is a count, so it is decimal; bare
-HISTORY shows the last 16. Each line is a cycle, not an instruction, and a DMA
-transfer's cycles are in there too.
+breakpoint or a crash when you ask. Each line is exactly what STEP prints: the
+registers and flags as the machine stood, and the decoded mnemonic it was about
+to run. n is a count, so it is decimal; bare HISTORY shows the last 16.
 
-Four columns -- T-STATE, TYPE, ADDR, DATA:
+The mnemonic is decoded from the bytes that ACTUALLY ran at that address, not
+from what the address holds by the time you look -- so code that rewrote itself
+(a DDT breakpoint going back, an overlay) reads truthfully. The line reflects
+the CPU that is in the socket now: on the twin-core card, switching cores makes
+earlier lines read in the new core's terms.
+
+HISTORY BUS is the other recorder -- the raw BUS CYCLES, no registers and no
+mnemonics: T-STATE, TYPE (MR/MW a memory read/write, IN/OUT a port, INTA an
+interrupt ack), ADDR (or the I/O port) and DATA, with a DMA transfer's cycles
+in there too. HISTORY CPU names the default out loud.
+
+Each recorder is a FIXED ring of its last 8192: it overwrites its own oldest and
+never grows, so it costs the same whether the machine ran for a second or a
+week. Ask for more than 8192 and you get the 8192 it holds.
 
 ```
-T-STATE  the emulated clock time the cycle ran at
-TYPE     MR/MW a memory read/write, IN/OUT a port, INTA an interrupt ack
-ADDR     the memory address -- or the I/O port, for IN/OUT
-DATA     the byte on the bus
-```
-
-No registers and no mnemonics: this is the BUS, not the CPU. STEP is the
-instruction view -- the registers and the decoded mnemonic as each one runs.
-
-The recorder is a FIXED ring of the last 8192 cycles: it overwrites its own
-oldest and never grows, so it costs the same memory whether the machine ran for
-a second or a week. Ask for more than 8192 and you get the 8192 it holds.
-
-```
-HISTORY          the last 16 cycles
-HISTORY 100      the last hundred
-HISTORY 8192     the whole recorder
+HISTORY          the last 16 instructions
+HISTORY 100      the last hundred instructions
+HISTORY BUS      the last 16 bus cycles
+HISTORY BUS 100  the last hundred cycles
 ```
 
 

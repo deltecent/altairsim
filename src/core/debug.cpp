@@ -217,6 +217,23 @@ void Debugger::clearHistory() {
     ringHead_ = 0;
 }
 
+std::vector<Debugger::InsnRec> Debugger::insnHistory(size_t n) const {
+    size_t have = insnRing_.size();
+    if (n > have) n = have;
+    bool full = (have == kInsnHistoryCap);
+    size_t start = full ? insnRingHead_ : 0;   // oldest
+    size_t skip = have - n;                     // keep the LAST n
+    std::vector<InsnRec> out;
+    out.reserve(n);
+    for (size_t i = skip; i < have; ++i) out.push_back(insnRing_[(start + i) % have]);
+    return out;
+}
+
+void Debugger::clearInsnHistory() {
+    insnRing_.clear();
+    insnRingHead_ = 0;
+}
+
 void Debugger::disarmObserver() {
     if (observer_) {
         m_.bus.unobserve(observer_);
@@ -331,6 +348,28 @@ RunResult Debugger::run(uint64_t maxSteps) {
         // Captured here, at the boundary, because by the time an OUT cycle fires the
         // CPU's own PC has already stepped past the opcode and its operand.
         m_.bus.setInstrPc(cpu->pc());
+
+        // CPU HISTORY: snapshot the machine as it stands right now -- the same state STEP
+        // would print for the instruction about to run -- into the instruction ring. The
+        // sibling of the bus flight recorder in armObserver(); always on while running.
+        // A ring slot's regs vector keeps its capacity across wraps, so a warmed ring
+        // records without allocating. Reuses the once-snapshotted `regs` for the getters.
+        {
+            InsnRec* slot;
+            if (insnRing_.size() < kInsnHistoryCap) {
+                insnRing_.emplace_back();
+                slot = &insnRing_.back();
+            } else {
+                slot = &insnRing_[insnRingHead_];
+                insnRingHead_ = (insnRingHead_ + 1) % kInsnHistoryCap;
+            }
+            slot->pc = cpu->pc();
+            slot->regs.resize(regs.size());
+            for (size_t i = 0; i < regs.size(); ++i) slot->regs[i] = regs[i].get();
+            slot->nbytes = 3;
+            for (uint8_t k = 0; k < 3; ++k)
+                slot->bytes[k] = m_.bus.peek((uint16_t)(slot->pc + k));
+        }
 
         StepResult s = master->step(m_.bus);
         ++r.steps;
