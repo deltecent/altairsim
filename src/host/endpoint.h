@@ -24,7 +24,9 @@ namespace altair {
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err);
 
 // The endpoint grammar, for help text and tab completion -- one list, so the
-// help and the parser cannot drift.
-std::string endpointHelp();
+// help and the parser cannot drift. `printer:` appears only where the build found
+// a host print system; pass all=true to force the full list regardless, which the
+// docs generator does so the committed manual is one platform-independent document.
+std::string endpointHelp(bool all = false);
 
 } // namespace altair

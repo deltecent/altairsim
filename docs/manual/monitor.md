@@ -33,20 +33,14 @@ takes to be unambiguous, and the first command that matches wins.
   F[ILL]            HE[LP]            H[ISTORY]         I[N]
   L[OAD]            M[OUNT]           MOV[E]            N[EXT]
   NO[BREAK]         O[UT]             P[OWER]           Q[UIT]
-  REC[ORD]*         REGI[ON]          RE[GS]            REP[LAY]*
-  RES[ET]           REST[ORE]         R[UN]             SA[VE]
-  SEA[RCH]          SE[T]             SH[OW]            SN[APSHOT]
-  S[TEP]            STO[P]*           SY[MBOLS]         T[RACE]
-  TY[PE]            U[NMOUNT]         W[HO]
+  REGI[ON]          RE[GS]            RES[ET]           REST[ORE]
+  R[UN]             SA[VE]            SEA[RCH]          SE[T]
+  SH[OW]            SN[APSHOT]        S[TEP]            SY[MBOLS]
+  T[RACE]           TY[PE]            U[NMOUNT]         W[HO]
 ```
 
 Type the part before the bracket. `D` is `DUMP`; `DE` is `DEPOSIT`; `RES` is `RESET`. Case
 does not matter, here or in the name of any board.
-
-The `*` marks the commands that **resolve but are not built yet**. Type `REC` and it will
-tell you that `RECORD` is not built and what it is waiting on. That is on purpose: their
-abbreviations are claimed *now*, so the day they land, `REC` does not quietly stop meaning
-what your fingers have learned it means. An abbreviation is a contract.
 
 `HELP <command>` gives you the usage and worked examples for one of them, and `?` is the same
 as `HELP`.

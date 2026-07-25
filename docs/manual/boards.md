@@ -511,10 +511,11 @@ Everything a machine file can do to a board, you can do by hand.
 | Command | |
 |---|---|
 | `BOARDS` | what is in the backplane |
-| `BOARDS TYPES` | what you can add |
+| `SHOW BOARDS` | the board types you can add |
+| `SHOW BOARD <type>` | one type's description and its settings |
 | `BOARDS ADD <type> <id>` | fit a board |
 | `BOARDS REMOVE <id>` | pull one out |
-| `SHOW <id>` | one board's settings, with the legal values |
+| `SHOW <id>` | one installed board's settings, with the legal values |
 | `SET <id> <key>=<value>` | change one |
 
 ```

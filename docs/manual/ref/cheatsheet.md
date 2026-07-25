@@ -32,7 +32,7 @@ altairsim [options] [machine]
 
 ## Monitor commands
 
-Type the part before the bracket. `*` = resolves, but not built yet.
+Type the part before the bracket.
 
 | Command | Usage |
 |---|---|
@@ -46,7 +46,7 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id>\|CONSOLE\|DISPLAY <k>=<v>` |
-| `SH[OW]` | `SHOW <id>\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|MACHINE\|VERSION` |
+| `SH[OW]` | `SHOW <id>\|BOARDS\|BOARD <type>\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|VERSION` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |
@@ -56,9 +56,9 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `F[ILL]` | `FILL <range> <byte>` |
 | `SEA[RCH]` | `SEARCH <range> <bytes...>\|"str"` |
 | `COM[PARE]` | `COMPARE <range> <addr>` |
-| `MOV[E]` | `MOVE <range> <dest>` |
+| `MOV[E]` | `MOVE <range> <dest> [ROM]` |
 | `W[HO]` | `WHO <addr> \| WHO IO <port>` |
-| `BO[ARDS]` | `BOARDS [LIST]\|TYPES\|ADD <type> <id> [k=v...]\|REMOVE <id>` |
+| `BO[ARDS]` | `BOARDS [LIST]\|ADD <type> <id> [k=v...]\|REMOVE <id>` |
 | `RE[GS]` | `REGS \| SET REG <r>=<v>` |
 | `REGI[ON]` | `REGION ADD <id> type=ram\|rom at=<addr> [size=\|mount=]` |
 | `DI[SASM]` | `DISASM [<addr>\|<range>] [n] [CPU=8080]` |
@@ -71,11 +71,8 @@ Type the part before the bracket. `*` = resolves, but not built yet.
 | `P[OWER]` | `POWER` |
 | `T[RACE]` | `TRACE ON\|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]` |
 | `TY[PE]` | `TYPE "text"` |
-| `STO[P]` \* | `STOP` |
 | `SN[APSHOT]` | `SNAPSHOT <file>` |
 | `REST[ORE]` | `RESTORE <file>` |
-| `REC[ORD]` \* | `RECORD <file>` |
-| `REP[LAY]` \* | `REPLAY <file>` |
 | `NO[BREAK]` | `NOBREAK [id]` |
 | `HE[LP]` | `HELP [<command>]` |
 | `Q[UIT]` | `QUIT` |

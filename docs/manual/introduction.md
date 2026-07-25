@@ -56,15 +56,10 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 This section is here because a manual that only lists strengths is an advertisement.
 
 - **It runs an 8080 or a Z80 — not an 8085.** Software that needs an 8085 will not run.
-- **Three monitor commands are reserved but not built** — `RECORD`, `REPLAY` and `STOP`.
-  They **resolve**: type `REC` and you are told that `RECORD` is not built and what it
-  is waiting on, rather than being told nothing at all. That is deliberate — their
-  abbreviations are claimed *now*, so that the day they land, `REC` does not silently stop
-  meaning what your fingers think it means.
 - **You can save state, but not replay.** `SNAPSHOT` writes the machine's whole state to a
   file and `RESTORE` reads it back, so you can save a machine and return to it. What you cannot
-  yet do is *record* a session and step backwards through it — `RECORD`/`REPLAY` are reserved
-  but not built.
+  do is *record* a session and step backwards through it, or replay a run from the start —
+  there is no rewind.
 - **The Altair itself had no video and no audio**, and a terminal on a serial port is its
   display, exactly as it was. But **video cards existed for the S-100 bus, and two of them are
   here**: the Processor Technology VDM-1, and the Sol-PC's integrated video. Both open a real

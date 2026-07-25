@@ -8,6 +8,22 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### The board and machine catalogues moved to `SHOW`, and read like tables
+
+Asking *what can I build?* is now one family of commands. **`SHOW BOARDS`** lists every board
+type with its description in an aligned, wrapped table, and **`SHOW BOARD <type>`** drills into
+one — its description and every property, with the help text. This is what `BOARDS TYPES` used
+to do; that spelling is gone, and the catalogue sits beside the new **`SHOW MACHINES`** (the
+built-in machines you can boot, the same list `--list` prints) and **`SHOW MACHINE <name>`**
+(one built-in's backplane and startup, without disturbing the machine you are running). A bare
+`SHOW MACHINE` is still the live machine.
+
+`HELP` gained worked examples and fuller text for `HISTORY`, `BREAK … IF`, `EDIT`, `MOVE`,
+`COMPARE`, `DISASM`, `CONSOLE`, `REGS` and `QUIT`, and the `CONNECT` endpoint grammar now
+reaches the printed reference instead of a literal token. The reserved `RECORD`, `REPLAY` and
+`STOP` commands were **dropped** — not deferred — so their abbreviations are free again and the
+command list no longer carries a `*` legend for entries that do not exist.
+
 ### Printing to a real printer: the `printer:` endpoint
 
 A line can now go to a **real print queue on the host**, not just to a file. `CONNECT lpt0:prn

@@ -16,17 +16,6 @@ base=octal` makes the wire class read and print in **split octal** (each byte it
 `000`–`377` group, an address as two of them) — the MITS front-panel convention;
 `base=hex` is the default. Either way both spellings stay typeable.
 
-## Not built yet
-
-These **resolve** — they take their abbreviation today, so it cannot change
-under your fingers when they land — and they tell you what they are waiting on.
-
-| Command | Waiting on |
-|---|---|
-| `STO[P]` | a monitor that runs alongside the machine (ATTN leaves CONSOLE today) |
-| `REC[ORD]` | RECORD/REPLAY (it builds on SNAPSHOT, now done) |
-| `REP[LAY]` | RECORD/REPLAY (it builds on SNAPSHOT, now done) |
-
 ## The commands
 
 
@@ -144,9 +133,26 @@ breakpoint or a crash when you ask. n is a count, so it is decimal; bare
 HISTORY shows the last 16. Each line is a cycle, not an instruction, and a DMA
 transfer's cycles are in there too.
 
+Four columns -- T-STATE, TYPE, ADDR, DATA:
+
+```
+T-STATE  the emulated clock time the cycle ran at
+TYPE     MR/MW a memory read/write, IN/OUT a port, INTA an interrupt ack
+ADDR     the memory address -- or the I/O port, for IN/OUT
+DATA     the byte on the bus
+```
+
+No registers and no mnemonics: this is the BUS, not the CPU. STEP is the
+instruction view -- the registers and the decoded mnemonic as each one runs.
+
+The recorder is a FIXED ring of the last 8192 cycles: it overwrites its own
+oldest and never grows, so it costs the same memory whether the machine ran for
+a second or a week. Ask for more than 8192 and you get the 8192 it holds.
+
 ```
 HISTORY          the last 16 cycles
 HISTORY 100      the last hundred
+HISTORY 8192     the whole recorder
 ```
 
 
@@ -200,10 +206,16 @@ registers -- and stops only when it holds. A bare word that names a register IS
 that register, so a literal is written with a leading zero (0A is ten, A is the
 accumulator). == != < > <= >= compare; && || combine; & | mask.
 
+The names are the ACTIVE CPU's own -- exactly the set REGS shows, every register
+and flag in it. On an 8080 that is A, BC/DE/HL, SP, PC and CY/Z/S/P/AC; a Z80
+adds IX, IY, the alternate bank and its own flags. A name the running CPU does
+not have is an error, so IF IX==0 waits for a Z80 to be the one in the socket.
+
 ```
 BREAK 100 IF A==0
 BREAK 100 IF HL==8000 && Z==1
 BREAK 100 IF (A&0F)==0
+BREAK 100 IF IX==8000     Z80 -- IX is not an 8080 register
 ```
 
 
@@ -236,10 +248,17 @@ Interactive DEPOSIT. The prompt shows an address and the byte that is there;
 type a new value and Enter writes it and drops to the next byte, bare Enter
 leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus
 writes, so it says so if no board decodes the address; ROM burns instead (10.2).
+Look at four bytes, change the second, and look again:
 
 ```
-EDIT 100     0100 C3 C3
-             0101 00 .
+altairsim> DUMP 100-103 WIDTH=4
+0100  C3 00 01 76  ...v
+altairsim> EDIT 100
+0100 C3             bare Enter leaves it, on to 0101
+0101 00 FF          type FF -- writes it, on to 0102
+0102 01 .           '.' returns to the monitor (0102 untouched)
+altairsim> DUMP 100-103 WIDTH=4
+0100  C3 FF 01 76  ...v      the second byte is now FF
 (needs an interactive or piped session -- with none, use DEPOSIT)
 ```
 
@@ -308,11 +327,15 @@ SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
 ### SHOW — `SH[OW]`
 
 ```
-SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|MACHINE|VERSION
+SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION
 ```
 
 ```
 SHOW mem0        regions and properties
+SHOW BOARDS      the board types you can add
+SHOW BOARD sol   one type's description and properties
+SHOW MACHINES    the built-in machines you can boot
+SHOW MACHINE     the current machine (add a name for a built-in's detail)
 SHOW BUS MAP     who decodes what, and what floats
 SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins
 SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
@@ -485,12 +508,28 @@ SEA 0-FFFF "CP/M"
 ```
 COMPARE <range> <addr>
 ```
+Byte for byte, a <range> against the SAME LENGTH starting at <addr> -- memory to
+memory, both in the machine's address space. Every mismatch prints both
+addresses and their bytes; then a total. It changes nothing and runs no cycle.
+
+```
+COMPARE 0-FF 200        page 0 against page 2
+COMPARE FF00-FFFF E000  the boot PROM against a copy up at E000
+```
 
 
 ### MOVE — `MOV[E]`
 
 ```
-MOVE <range> <dest>
+MOVE <range> <dest> [ROM]
+```
+Copy a range of memory to <dest>. It reads the WHOLE range before it writes, so
+source and dest may overlap either way without a block eating its own tail. The
+writes are real bus cycles; ROM burns instead, the way EDIT and DEPOSIT do.
+
+```
+MOVE 100-1FF 200    page 1 up to page 2
+MOVE 0-FFF 1000     the first 4K, up by 4K
 ```
 
 
@@ -511,7 +550,7 @@ WHO IO 10
 ### BOARDS — `BO[ARDS]`
 
 ```
-BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>
+BOARDS [LIST]|ADD <type> <id> [k=v...]|REMOVE <id>
 ```
 The backplane: what is in it, what each board answers to, and what is in its
 sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a
@@ -521,8 +560,8 @@ is not in the memory column at all; it is in UNITS, marked (empty).
 ```
 BOARDS                   the backplane
 BOARD                    the same thing: a prefix of BOARDS
-BOARDS TYPES             every board, and its properties
-BOARDS ADD memory mem0
+BOARDS ADD memory mem0   fit one -- SHOW BOARDS lists the types
+BOARDS REMOVE mem0       pull one out
 ```
 
 
@@ -534,10 +573,17 @@ REGS | SET REG <r>=<v>
 The flags are registers too, so SET REG CY=1 works. A register value is on
 the wire, so it is HEX.
 
+What it shows is the ACTIVE CPU's own set: an 8080 prints A, the pairs, SP, PC
+and its flags; a Z80 prints those plus IX, IY, I and IM, and keeps the alternate
+bank (AF' BC' DE' HL'), R and the register halves reachable by name though they
+are off the line. SET REG takes any name REGS knows -- and only those, so SET
+REG IX=0 needs a Z80. BREAK ... IF reads the very same names.
+
 ```
 REGS
 SET REG A=3F
 SET REG PC=FF00
+SET REG IX=8000   Z80 only
 ```
 
 
@@ -565,11 +611,17 @@ It needs an INSTRUCTION SET, not a CPU -- so it works on an empty backplane.
 You normally never type CPU=: the active core says what it speaks, and DISASM
 asks it. It PEEKS, so it cannot consume a byte from a UART in the range.
 
+n is how many INSTRUCTIONS to decode -- a count, so it is decimal, and 16 when
+you leave it off. It only applies to a start address: give a RANGE and the range
+decides where to stop. CPU= is an instruction set, one of 8080 or z80, and is
+only for when the machine has no CPU to ask.
+
 ```
 DI FF00      sixteen instructions of the boot PROM
+DI FF00 40   forty of them instead
 DI           carry on from there
 DI 0-2F      exactly that range
-DI FF00 CPU=8080   when there is no CPU in the machine to ask
+DI FF00 CPU=z80    decode as Z80 when nothing in the machine can say
 ```
 
 
@@ -636,20 +688,41 @@ DISC sio0:b
 ```
 CONSOLE [<k>=<v>...]
 ```
-The host's terminal: what it is, who holds it, and how you get back from it.
-Bare CONSOLE shows it; CONSOLE k=v sets it. (SHOW CONSOLE and SET CONSOLE are
-the same thing said the long way.)
+The host's terminal -- your keyboard and screen -- and the knobs that shape
+how bytes cross it. Bare CONSOLE prints those settings (and which board unit
+is wired to the terminal); CONSOLE k=v changes one. It is pure shorthand:
+CONSOLE alone does what SHOW CONSOLE does, and CONSOLE k=v does what SET
+CONSOLE k=v does -- the same two commands, spelled short.
+
+The keys k, and the value v each takes:
+
+```
+attn       a control byte 01-1F (HEX): the key that returns to the monitor
+base       hex | octal -- the operator's number base for what it PRINTS
+upper      on|off: fold typed input to uppercase (much period software insists)
+strip7in   on|off: mask the high bit on input
+strip7out  on|off: mask the high bit on output (MITS BASIC's end-of-message)
+crlf       on|off: add LF after every CR the guest prints -- usually WRONG
+echo       on|off: local echo, for half-duplex hardware
+bell       on|off: pass 07 through to the host bell
+bsdel      off | bs (fold DEL->BS) | del (fold BS->DEL)
+```
+
+These are the TERMINAL's, not a board's; a board's own line coding (baud,
+data_bits) is SHOW sio0. SHOW CONSOLE lists these with their current values.
 
 ATTN is the key that takes the keyboard BACK from a running guest. The host
 intercepts it before the guest is ever offered the byte, so the guest cannot
 disable it -- and that is why it must not be a key the guest needs.
 
 ```
-CONSOLE            what it is set to, and which unit holds it
+CONSOLE            the settings, and which board unit is wired to the terminal
 CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)
+CONSOLE upper=on strip7out=on   two at once, the classic MITS BASIC pair
 ```
 
-To choose WHICH unit the console is wired to, that is CONNECT.
+This command does NOT choose which board is the console -- CONNECT does that
+(CONNECT <id>:<unit> console); bare CONSOLE only reports the one now wired.
 
 
 ### CONNECT — `CONN[ECT]`
@@ -664,7 +737,7 @@ the guest cannot see it: the 6850 clocks bytes the same way whether the wire end
 at your terminal, a telnet session, a real RS-232 port, or nothing at all. No board
 in the machine knows what any of these words mean.
 
-Endpoints: {endpoints}
+Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | file:PATH | printer:QUEUE
 
 ```
 console     the host's terminal -- the keyboard and screen you are typing at
@@ -839,6 +912,13 @@ HELP DUMP    the detail
 
 
 ### QUIT — `Q[UIT]`
+
+```
+QUIT
+```
+Leave the monitor and end the program. It does NOT ask: the machine lives in
+memory, so anything you have not written out -- CONFIG SAVE, SAVE, SNAPSHOT --
+is gone with it. There is no EXIT; QUIT is the one word.
 
 ```
 QUIT

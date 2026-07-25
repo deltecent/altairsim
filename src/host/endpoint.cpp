@@ -35,15 +35,21 @@ bool parsePort(const std::string& s, uint16_t& out) {
 
 } // namespace
 
-std::string endpointHelp() {
-    return "console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | "
-           "serial:DEVICE | file:PATH"
+std::string endpointHelp(bool all) {
+    std::string s = "console | null | loopback | scripted | socket:PORT | "
+                    "socket:HOST:PORT | serial:DEVICE | file:PATH";
+    // `printer:` only where a host print system was found at build time -- absent, the
+    // grammar does not advertise a door it cannot open (docs/printing.md 3.1). The docs
+    // generator passes all=true: the committed manual is one document for every platform,
+    // so it lists the full grammar (the CONNECT gloss says "only where the build found
+    // one") and the committed ref stays byte-identical whatever the build's printer flag.
 #ifdef ALTAIRSIM_ENABLE_PRINTER
-           // Only where a host print system was found at build time. Absent, the
-           // grammar does not advertise a door it cannot open (docs/printing.md 3.1).
-           " | printer:QUEUE"
+    const bool havePrinter = true;
+#else
+    const bool havePrinter = false;
 #endif
-        ;
+    if (all || havePrinter) s += " | printer:QUEUE";
+    return s;
 }
 
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {

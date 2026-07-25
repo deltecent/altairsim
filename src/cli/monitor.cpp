@@ -9,6 +9,7 @@
 #include "core/crc32.h"
 #include "core/debug.h"
 #include "core/hex.h"
+#include "core/machines.h"
 #include "core/paths.h"
 #include "core/roms.h"
 #include "core/symbols.h"
@@ -171,6 +172,29 @@ static std::string fmtWord(uint16_t v) {
     else
         std::snprintf(b, sizeof b, "%04X", (unsigned)v);
     return b;
+}
+
+// Greedy word-wrap on spaces, for the last (prose) column of a table. A word longer than
+// `width` is emitted whole rather than chopped, so an over-long token overhangs instead of
+// being split mid-word. Always returns at least one line (empty input -> one empty line),
+// so a caller can print line[0] on the row and lines[1..] as aligned continuations.
+static std::vector<std::string> wrapText(const std::string& s, size_t width) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::istringstream words(s);
+    std::string w;
+    while (words >> w) {
+        if (line.empty())
+            line = w;
+        else if (line.size() + 1 + w.size() <= width)
+            line += " " + w;
+        else {
+            lines.push_back(std::move(line));
+            line = w;
+        }
+    }
+    lines.push_back(std::move(line));  // the tail, or "" if the input was blank
+    return lines;
 }
 
 // Something the machine sees: an address, a port, a byte. HEX, or OCTAL when the
@@ -882,7 +906,7 @@ void Monitor::showSymbols(const std::vector<std::string>& a, std::ostream& out) 
         out << "no symbol matches '" << a[2] << "'\n";
 }
 
-void Monitor::showBoards(std::ostream& out) {
+void Monitor::showBoards(std::ostream& out, const Machine& m) {
     char buf[256];
 
     struct Row {
@@ -893,7 +917,7 @@ void Monitor::showBoards(std::ostream& out) {
     std::vector<Row> rows;
     bool anyConsole = false;
 
-    for (const auto& b : m_.boards()) {
+    for (const auto& b : m.boards()) {
         Row r;
         r.id = b->id;
         r.type = b->type();
@@ -2251,10 +2275,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                   });
 
         out << "\n";
-        int col = 0;
+        int  col       = 0;
+        bool anyUnbuilt = false;
         for (const CommandDef* c : sorted) {
             std::string shown = abbreviation(*c);
-            if (!c->built) shown += "*";
+            if (!c->built) {
+                shown += "*";
+                anyUnbuilt = true;
+            }
             std::snprintf(buf, sizeof buf, "  %-16s", shown.c_str());
             out << buf;
             if (++col == 4) {
@@ -2263,8 +2291,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
         }
         if (col) out << "\n";
-        out << "\n  Type the part before the [brackets]. * = not built yet; it will say so.\n"
-               "  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n"
+        out << "\n  Type the part before the [brackets].";
+        // The `*` legend only earns its line when something is actually starred --
+        // and nothing is today. It reappears by itself the day a command is reserved
+        // built=false again.
+        if (anyUnbuilt) out << "  * = not built yet; it will say so.";
+        out << "\n  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n"
                "  !<command> runs a command in your host shell -- e.g. !vi HELLO.PRN.\n\n"
                "  Numbers: on the wire is HEX (addresses, ports, bytes), never on the\n"
                "  wire is DECIMAL (counts, widths, sizes). 0x/$/h force hex, # forces\n"
@@ -2295,18 +2327,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // making them type the word LIST to ask it is a toll booth.
         std::string sub = (a.size() < 2) ? "LIST" : upper(a[1]);
 
-        if (sub == "TYPES") {
-            for (const auto& t : boardTypes()) {
-                std::snprintf(buf, sizeof buf, "  %-10s %s", t.name.c_str(),
-                              t.description.c_str());
-                out << buf << "\n";
-                auto b = makeBoard(t.name);
-                for (const auto& p : b->properties()) {
-                    std::snprintf(buf, sizeof buf, "               %-16s %s", p.name.c_str(),
-                                  p.help.c_str());
-                    out << buf << "\n";
-                }
-            }
+        if (sub == "TYPES" || sub == "TYPE") {
+            // The catalog of board TYPES moved to SHOW, next to SHOW MACHINES: both answer
+            // "what can I build?", so they belong together. A bare BOARDS is the backplane
+            // you have; the things you could add are one SHOW away.
+            out << "the board types moved to SHOW BOARDS (and SHOW BOARD <type> for one).\n";
             return true;
         }
         if (sub == "LIST") {
@@ -2314,7 +2339,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 out << "(empty backplane)\n";
                 return true;
             }
-            showBoards(out);
+            showBoards(out, m_);
             return true;
         }
         if (sub == "ADD") {
@@ -2358,7 +2383,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
             return true;
         }
-        out << "BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>\n";
+        out << "BOARDS [LIST]|ADD <type> <id> [k=v...]|REMOVE <id>\n";
         failed_ = true;
         return true;
     }
@@ -2407,8 +2432,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- SHOW / SET ----------------
     if (cmd == "SHOW") {
-        if (!need(2, "SHOW <id> | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS | SHOW MOUNTS"
-                     " | SHOW PATHS | SHOW MACHINE | SHOW VERSION"))
+        if (!need(2, "SHOW <id> | SHOW BOARDS | SHOW BOARD <type> | SHOW MACHINES"
+                     " | SHOW MACHINE [<name>] | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS"
+                     " | SHOW MOUNTS | SHOW PATHS | SHOW VERSION"))
             return true;
         std::string sub = upper(a[1]);
         if (sub == "BUS") {
@@ -2447,7 +2473,129 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             showSymbols(a, out);
             return true;
         }
+        if (sub == "BOARDS" || sub == "BOARD") {
+            // The board catalog -- what you can ADD. Plural BOARDS is the whole list, one
+            // aligned row per type with the description WRAPPED inside its column; singular
+            // BOARD <type> drills into one: its description, then its properties. Either
+            // spelling works with or without a name -- the presence of the name decides.
+            // This lives beside SHOW MACHINES: both answer "what can I build?".
+            const auto types = boardTypes();
+            const int width = 78;  // the monitor's working screen; wider text is a nuisance
+
+            if (a.size() >= 3) {
+                const std::string want = lowerAscii(a[2]);
+                const BoardType* t = nullptr;
+                for (const auto& e : types)
+                    if (lowerAscii(e.name) == want) { t = &e; break; }
+                if (!t) {
+                    out << "no board type '" << a[2] << "'. SHOW BOARDS lists them.\n";
+                    return true;
+                }
+
+                const size_t descCol = 2 + t->name.size() + 2;
+                auto desc = wrapText(t->description, width - descCol);
+                std::snprintf(buf, sizeof buf, "  %s  %s", t->name.c_str(), desc[0].c_str());
+                out << buf << "\n";
+                for (size_t i = 1; i < desc.size(); ++i)
+                    out << std::string(descCol, ' ') << desc[i] << "\n";
+
+                auto b = makeBoard(t->name);
+                const auto props = b->properties();
+                if (props.empty()) {
+                    out << "\n  (no properties)\n";
+                    return true;
+                }
+                size_t wProp = 8;  // "PROPERTY"
+                for (const auto& p : props) wProp = std::max(wProp, p.name.size());
+                const size_t helpCol = 2 + wProp + 2;
+
+                out << "\n";
+                std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wProp, "PROPERTY", "HELP");
+                out << buf << "\n";
+                out << "  " << std::string(wProp, '-') << "  "
+                    << std::string(width - helpCol, '-') << "\n";
+                for (const auto& p : props) {
+                    auto help = wrapText(p.help, width - helpCol);
+                    std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wProp, p.name.c_str(),
+                                  help[0].c_str());
+                    out << buf << "\n";
+                    for (size_t i = 1; i < help.size(); ++i)
+                        out << std::string(helpCol, ' ') << help[i] << "\n";
+                }
+                return true;
+            }
+
+            // The catalog. Name column sized to the data, description wrapped beneath it.
+            size_t wName = 4;  // "TYPE"
+            for (const auto& t : types) wName = std::max(wName, t.name.size());
+            const size_t descCol = 2 + wName + 2;
+
+            std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wName, "TYPE", "DESCRIPTION");
+            out << buf << "\n";
+            out << "  " << std::string(wName, '-') << "  "
+                << std::string(width - descCol, '-') << "\n";
+            for (const auto& t : types) {
+                auto desc = wrapText(t.description, width - descCol);
+                std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wName, t.name.c_str(),
+                              desc[0].c_str());
+                out << buf << "\n";
+                for (size_t i = 1; i < desc.size(); ++i)
+                    out << std::string(descCol, ' ') << desc[i] << "\n";
+            }
+            out << "\n  SHOW BOARD <type> for a board's properties\n";
+            return true;
+        }
+        if (sub == "MACHINES") {
+            // The catalog of built-in machines -- the same list `--list` prints from the
+            // shell, now reachable from the prompt: name + one-line blurb, wrapped.
+            const auto machines = builtinMachines();
+            const int width = 78;
+            size_t wName = 4;  // "NAME"
+            for (const auto& b : machines) wName = std::max(wName, std::string(b.name).size());
+            const size_t blurbCol = 2 + wName + 2;
+
+            std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wName, "NAME", "DESCRIPTION");
+            out << buf << "\n";
+            out << "  " << std::string(wName, '-') << "  "
+                << std::string(width - blurbCol, '-') << "\n";
+            for (const auto& b : machines) {
+                auto blurb = wrapText(b.blurb, width - blurbCol);
+                std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wName, b.name,
+                              blurb[0].c_str());
+                out << buf << "\n";
+                for (size_t i = 1; i < blurb.size(); ++i)
+                    out << std::string(blurbCol, ' ') << blurb[i] << "\n";
+            }
+            out << "\n  SHOW MACHINE <name> for what is in one\n";
+            return true;
+        }
         if (sub == "MACHINE") {
+            if (a.size() >= 3) {
+                // A built-in, loaded into a SCRATCH machine so the live one is untouched --
+                // exactly what `altairsim -x 'SHOW MACHINE' <name>` does, minus the swap.
+                const std::string want = lowerAscii(a[2]);
+                const BuiltinMachine* bm = nullptr;
+                for (const auto& b : builtinMachines())
+                    if (lowerAscii(b.name) == want) { bm = &b; break; }
+                if (!bm) {
+                    out << "no built-in machine '" << a[2] << "'. SHOW MACHINES lists them.\n";
+                    return true;
+                }
+                Machine tmp;
+                std::string err;
+                if (!loadMachine(*bm, tmp, err)) {
+                    out << err << "\n";
+                    return true;
+                }
+                out << "name      " << bm->name << "\n";
+                for (const auto& line : wrapText(bm->blurb, 78 - 10))
+                    out << "          " << line << "\n";
+                out << "startup   " << (tmp.startup.empty() ? "(none)" : "") << "\n";
+                for (const auto& s : tmp.startup) out << "            " << s << "\n";
+                out << "\n";
+                showBoards(out, tmp);
+                return true;
+            }
             out << "name      " << m_.name << "\n";
             out << "startup   " << (m_.startup.empty() ? "(none)" : "") << "\n";
             for (const auto& s : m_.startup) out << "            " << s << "\n";
@@ -3908,6 +4056,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << "no history yet -- it records while the machine RUNs.\n";
             return true;
         }
+        // Aligned to formatCycle()'s columns: T-state (10, right-justified), type (4),
+        // addr/port (col 17), data (after " = ", col 24). See Debugger::formatCycle.
+        out << "   T-STATE  TYPE ADDR   DATA\n";
         for (const auto& rec : recs) out << Debugger::formatCycle(rec) << "\n";
         return true;
     }

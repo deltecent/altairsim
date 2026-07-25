@@ -21,11 +21,13 @@ namespace altair {
 // shortest key goes to the command that cannot destroy anything, and the one that
 // throws away the machine's state costs letters. A bare `R` must not reset. So RUN
 // takes `R`, and the rest fall out of the order below with nobody deciding them:
-//   R[UN]  RE[GS]  REC[ORD]  REP[LAY]  RES[ET]  REST[ORE]  REGI[ON]
+//   R[UN]  RE[GS]  RES[ET]  REST[ORE]  REGI[ON]
 //
-// `built = false` means the command RESOLVES but does not run yet, and says so.
-// That is on purpose: `S` must mean STEP from the first day, so that it does not
-// mean SHOW until the CPU lands and then quietly change under someone's fingers.
+// `built = false` means a command RESOLVES but does not run yet, and says so. That
+// is on purpose: `S` must mean STEP from the first day, so that it does not mean
+// SHOW until the CPU lands and then quietly change under someone's fingers. No
+// command wears it today (RECORD/REPLAY/STOP were dropped, not deferred), but the
+// mechanism stays for the next one that needs to claim a prefix before it works.
 // ---------------------------------------------------------------------------
 static const std::vector<CommandDef> kCommands = {
     // ---- the nine that win their prefix ----
@@ -110,8 +112,21 @@ static const std::vector<CommandDef> kCommands = {
      "breakpoint or a crash when you ask. n is a count, so it is decimal; bare\n"
      "HISTORY shows the last 16. Each line is a cycle, not an instruction, and a DMA\n"
      "transfer's cycles are in there too.\n"
+     "\n"
+     "Four columns -- T-STATE, TYPE, ADDR, DATA:\n"
+     "  T-STATE  the emulated clock time the cycle ran at\n"
+     "  TYPE     MR/MW a memory read/write, IN/OUT a port, INTA an interrupt ack\n"
+     "  ADDR     the memory address -- or the I/O port, for IN/OUT\n"
+     "  DATA     the byte on the bus\n"
+     "No registers and no mnemonics: this is the BUS, not the CPU. STEP is the\n"
+     "instruction view -- the registers and the decoded mnemonic as each one runs.\n"
+     "\n"
+     "The recorder is a FIXED ring of the last 8192 cycles: it overwrites its own\n"
+     "oldest and never grows, so it costs the same memory whether the machine ran for\n"
+     "a second or a week. Ask for more than 8192 and you get the 8192 it holds.\n"
      "  HISTORY          the last 16 cycles\n"
-     "  HISTORY 100      the last hundred"},
+     "  HISTORY 100      the last hundred\n"
+     "  HISTORY 8192     the whole recorder"},
     {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
      "WP write-protects it: the guest may read it and may not write it.\n"
@@ -144,9 +159,15 @@ static const std::vector<CommandDef> kCommands = {
      "registers -- and stops only when it holds. A bare word that names a register IS\n"
      "that register, so a literal is written with a leading zero (0A is ten, A is the\n"
      "accumulator). == != < > <= >= compare; && || combine; & | mask.\n"
+     "\n"
+     "The names are the ACTIVE CPU's own -- exactly the set REGS shows, every register\n"
+     "and flag in it. On an 8080 that is A, BC/DE/HL, SP, PC and CY/Z/S/P/AC; a Z80\n"
+     "adds IX, IY, the alternate bank and its own flags. A name the running CPU does\n"
+     "not have is an error, so IF IX==0 waits for a Z80 to be the one in the socket.\n"
      "  BREAK 100 IF A==0\n"
      "  BREAK 100 IF HL==8000 && Z==1\n"
      "  BREAK 100 IF (A&0F)==0\n"
+     "  BREAK 100 IF IX==8000     Z80 -- IX is not an 8080 register\n"
      "\n"
      "TRACE ON|OFF makes it a TRACEPOINT: instead of stopping, it turns TRACE on or\n"
      "off and the machine RUNS ON. Two of them trace a REGION and nothing else --\n"
@@ -167,8 +188,15 @@ static const std::vector<CommandDef> kCommands = {
      "type a new value and Enter writes it and drops to the next byte, bare Enter\n"
      "leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus\n"
      "writes, so it says so if no board decodes the address; ROM burns instead (10.2).\n"
-     "  EDIT 100     0100 C3 C3\n"
-     "               0101 00 .\n"
+     "Look at four bytes, change the second, and look again:\n"
+     "  altairsim> DUMP 100-103 WIDTH=4\n"
+     "  0100  C3 00 01 76  ...v\n"
+     "  altairsim> EDIT 100\n"
+     "  0100 C3             bare Enter leaves it, on to 0101\n"
+     "  0101 00 FF          type FF -- writes it, on to 0102\n"
+     "  0102 01 .           '.' returns to the monitor (0102 untouched)\n"
+     "  altairsim> DUMP 100-103 WIDTH=4\n"
+     "  0100  C3 FF 01 76  ...v      the second byte is now FF\n"
      "  (needs an interactive or piped session -- with none, use DEPOSIT)"},
     {"CONFIG", true, nullptr, "CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>",
      "THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually\n"
@@ -212,9 +240,13 @@ static const std::vector<CommandDef> kCommands = {
      "  SET mem0 phantom=read\n"
      "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal"},
     {"SHOW", true, nullptr,
-     "SHOW <id>|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|"
-     "MACHINE|VERSION",
+     "SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|"
+     "ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION",
      "  SHOW mem0        regions and properties\n"
+     "  SHOW BOARDS      the board types you can add\n"
+     "  SHOW BOARD sol   one type's description and properties\n"
+     "  SHOW MACHINES    the built-in machines you can boot\n"
+     "  SHOW MACHINE     the current machine (add a name for a built-in's detail)\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
      "  SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins\n"
      "  SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it\n"
@@ -306,8 +338,18 @@ static const std::vector<CommandDef> kCommands = {
     // while and never existed -- the handler parses the third argument as an address and
     // says "not a number" on a path. Help that names a form the program refuses is worse
     // than no help: it sends you looking for the typo in your own command.
-    {"COMPARE", true, nullptr, "COMPARE <range> <addr>", nullptr},  // COM
-    {"MOVE", true, nullptr, "MOVE <range> <dest>", nullptr},               // MOV
+    {"COMPARE", true, nullptr, "COMPARE <range> <addr>",  // COM
+     "Byte for byte, a <range> against the SAME LENGTH starting at <addr> -- memory to\n"
+     "memory, both in the machine's address space. Every mismatch prints both\n"
+     "addresses and their bytes; then a total. It changes nothing and runs no cycle.\n"
+     "  COMPARE 0-FF 200        page 0 against page 2\n"
+     "  COMPARE FF00-FFFF E000  the boot PROM against a copy up at E000"},
+    {"MOVE", true, nullptr, "MOVE <range> <dest> [ROM]",  // MOV
+     "Copy a range of memory to <dest>. It reads the WHOLE range before it writes, so\n"
+     "source and dest may overlap either way without a block eating its own tail. The\n"
+     "writes are real bus cycles; ROM burns instead, the way EDIT and DEPOSIT do.\n"
+     "  MOVE 100-1FF 200    page 1 up to page 2\n"
+     "  MOVE 0-FFF 1000     the first 4K, up by 4K"},
     {"WHO", true, nullptr, "WHO <addr> | WHO IO <port>",
      "Who WOULD answer -- it looks without running a cycle, so nothing is consumed\n"
      "and no board is poked. Reports contention, and reports PHANTOM*.\n"
@@ -315,23 +357,30 @@ static const std::vector<CommandDef> kCommands = {
      "  WHO IO 10"},
     // The name is PLURAL, so both spellings work and neither is an alias: BOARD is
     // a prefix of BOARDS, and a prefix is what this table resolves. `BO` too.
-    {"BOARDS", true, nullptr, "BOARDS [LIST]|TYPES|ADD <type> <id> [k=v...]|REMOVE <id>",  // BO
+    {"BOARDS", true, nullptr, "BOARDS [LIST]|ADD <type> <id> [k=v...]|REMOVE <id>",
      "The backplane: what is in it, what each board answers to, and what is in its\n"
      "sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a\n"
      "ROM range says which image is in it -- an empty socket decodes nothing, so it\n"
      "is not in the memory column at all; it is in UNITS, marked (empty).\n"
      "  BOARDS                   the backplane\n"
      "  BOARD                    the same thing: a prefix of BOARDS\n"
-     "  BOARDS TYPES             every board, and its properties\n"
-     "  BOARDS ADD memory mem0"},
+     "  BOARDS ADD memory mem0   fit one -- SHOW BOARDS lists the types\n"
+     "  BOARDS REMOVE mem0       pull one out"},
     // REGS is the first RE- word in the table, so it takes RE outright -- and it is
     // the one you type between two STEPs, which is as often as anything here.
     {"REGS", true, nullptr, "REGS | SET REG <r>=<v>",  // RE (beats RECORD, REPLAY, RESET, REGION)
      "The flags are registers too, so SET REG CY=1 works. A register value is on\n"
      "the wire, so it is HEX.\n"
+     "\n"
+     "What it shows is the ACTIVE CPU's own set: an 8080 prints A, the pairs, SP, PC\n"
+     "and its flags; a Z80 prints those plus IX, IY, I and IM, and keeps the alternate\n"
+     "bank (AF' BC' DE' HL'), R and the register halves reachable by name though they\n"
+     "are off the line. SET REG takes any name REGS knows -- and only those, so SET\n"
+     "REG IX=0 needs a Z80. BREAK ... IF reads the very same names.\n"
      "  REGS\n"
      "  SET REG A=3F\n"
-     "  SET REG PC=FF00"},
+     "  SET REG PC=FF00\n"
+     "  SET REG IX=8000   Z80 only"},
     {"REGION", true, nullptr, "REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]",  // REGI
      "A region is a POPULATED part of a board. What is not covered by one is an\n"
      "empty socket: it decodes nothing and floats to FF. `at` is an address, so it\n"
@@ -342,10 +391,16 @@ static const std::vector<CommandDef> kCommands = {
      "It needs an INSTRUCTION SET, not a CPU -- so it works on an empty backplane.\n"
      "You normally never type CPU=: the active core says what it speaks, and DISASM\n"
      "asks it. It PEEKS, so it cannot consume a byte from a UART in the range.\n"
+     "\n"
+     "n is how many INSTRUCTIONS to decode -- a count, so it is decimal, and 16 when\n"
+     "you leave it off. It only applies to a start address: give a RANGE and the range\n"
+     "decides where to stop. CPU= is an instruction set, one of 8080 or z80, and is\n"
+     "only for when the machine has no CPU to ask.\n"
      "  DI FF00      sixteen instructions of the boot PROM\n"
+     "  DI FF00 40   forty of them instead\n"
      "  DI           carry on from there\n"
      "  DI 0-2F      exactly that range\n"
-     "  DI FF00 CPU=8080   when there is no CPU in the machine to ask"},
+     "  DI FF00 CPU=z80    decode as Z80 when nothing in the machine can say"},
     // SYMBOLS is not LOAD. LOAD is memory all the way down (every format it takes
     // becomes bytes in the address space); a symbol table has no address space to land
     // in -- it is the debugger's NAMES for one, host-side like a breakpoint, surviving
@@ -385,16 +440,33 @@ static const std::vector<CommandDef> kCommands = {
     // 2026-07-12) -- RUN runs the machine, and a command that quietly started the
     // CPU because you asked to look at a setting is a trap.
     {"CONSOLE", true, nullptr, "CONSOLE [<k>=<v>...]",  // CONS
-     "The host's terminal: what it is, who holds it, and how you get back from it.\n"
-     "Bare CONSOLE shows it; CONSOLE k=v sets it. (SHOW CONSOLE and SET CONSOLE are\n"
-     "the same thing said the long way.)\n"
+     "The host's terminal -- your keyboard and screen -- and the knobs that shape\n"
+     "how bytes cross it. Bare CONSOLE prints those settings (and which board unit\n"
+     "is wired to the terminal); CONSOLE k=v changes one. It is pure shorthand:\n"
+     "CONSOLE alone does what SHOW CONSOLE does, and CONSOLE k=v does what SET\n"
+     "CONSOLE k=v does -- the same two commands, spelled short.\n"
+     "\n"
+     "The keys k, and the value v each takes:\n"
+     "  attn       a control byte 01-1F (HEX): the key that returns to the monitor\n"
+     "  base       hex | octal -- the operator's number base for what it PRINTS\n"
+     "  upper      on|off: fold typed input to uppercase (much period software insists)\n"
+     "  strip7in   on|off: mask the high bit on input\n"
+     "  strip7out  on|off: mask the high bit on output (MITS BASIC's end-of-message)\n"
+     "  crlf       on|off: add LF after every CR the guest prints -- usually WRONG\n"
+     "  echo       on|off: local echo, for half-duplex hardware\n"
+     "  bell       on|off: pass 07 through to the host bell\n"
+     "  bsdel      off | bs (fold DEL->BS) | del (fold BS->DEL)\n"
+     "These are the TERMINAL's, not a board's; a board's own line coding (baud,\n"
+     "data_bits) is SHOW sio0. SHOW CONSOLE lists these with their current values.\n"
      "\n"
      "ATTN is the key that takes the keyboard BACK from a running guest. The host\n"
      "intercepts it before the guest is ever offered the byte, so the guest cannot\n"
      "disable it -- and that is why it must not be a key the guest needs.\n"
-     "  CONSOLE            what it is set to, and which unit holds it\n"
+     "  CONSOLE            the settings, and which board unit is wired to the terminal\n"
      "  CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)\n"
-     "To choose WHICH unit the console is wired to, that is CONNECT."},
+     "  CONSOLE upper=on strip7out=on   two at once, the classic MITS BASIC pair\n"
+     "This command does NOT choose which board is the console -- CONNECT does that\n"
+     "(CONNECT <id>:<unit> console); bare CONSOLE only reports the one now wired."},
     // `{endpoints}` is expanded by the HELP printer from endpointHelp(), which is the
     // one place the grammar lives (host/endpoint.cpp). It is a token and not a list
     // because the list WAS spelled out here, and it rotted: it went on saying "socket:
@@ -494,14 +566,6 @@ static const std::vector<CommandDef> kCommands = {
      "\n"
      "A program that clears its keyboard as it starts drops keystrokes sent before it\n"
      "is ready; TYPE cannot help there, no more than a fast typist could."},
-    // STOP is still reserved, and CONSOLE mode has now made it MORE clearly a
-    // separate thing rather than less. The machine runs while you are in CONSOLE,
-    // but the monitor is not there -- the guest has the keyboard. STOP is for the
-    // day the monitor and a running machine coexist, which needs a second thread
-    // or a multiplexed input loop, and neither exists yet. ATTN is the way out
-    // today, and it does not stop the machine: it takes the keyboard back.
-    {"STOP", false, "a monitor that runs alongside the machine (ATTN leaves CONSOLE today)",
-     "STOP", nullptr},  // STO
     {"SNAPSHOT", true, nullptr, "SNAPSHOT <file>",                        // SN
      "Write the machine's STATE to a file: the CPU, the clock, and every board's\n"
      "registers, RAM and latches. NOT its configuration -- a snapshot is state, the\n"
@@ -513,8 +577,6 @@ static const std::vector<CommandDef> kCommands = {
      "the same machine file, or a CONFIG LOAD, first) -- and a file that does not match\n"
      "is refused with the reason, the running machine untouched.\n"
      "  RESTORE before-boot.snap\n"},
-    {"RECORD", false, "RECORD/REPLAY (it builds on SNAPSHOT, now done)", "RECORD <file>", nullptr},  // REC
-    {"REPLAY", false, "RECORD/REPLAY (it builds on SNAPSHOT, now done)", "REPLAY <file>", nullptr},  // REP
     {"NOBREAK", true, nullptr, "NOBREAK [id]",
      "Bare NOBREAK clears them all. An id is not on the wire, so it is decimal.\n"
      "  NOBREAK 2\n"
@@ -529,7 +591,11 @@ static const std::vector<CommandDef> kCommands = {
     // There is no EXIT. QUIT is the one word for leaving, because two words for one
     // action is two things to learn and nothing gained -- and EXIT was also the only
     // reason EXAMINE could not simply be `EX`.
-    {"QUIT", true, nullptr, "QUIT", nullptr},
+    {"QUIT", true, nullptr, "QUIT",
+     "Leave the monitor and end the program. It does NOT ask: the machine lives in\n"
+     "memory, so anything you have not written out -- CONFIG SAVE, SAVE, SNAPSHOT --\n"
+     "is gone with it. There is no EXIT; QUIT is the one word.\n"
+     "  QUIT"},
 };
 
 const std::vector<CommandDef>& commands() { return kCommands; }

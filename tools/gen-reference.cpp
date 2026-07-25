@@ -30,6 +30,7 @@
 #include "core/board.h"
 #include "core/machines.h"
 #include "core/value.h"
+#include "host/endpoint.h"
 
 #include <cstdio>
 #include <fstream>
@@ -233,7 +234,17 @@ void boards(const std::string& dir) {
 // ---------------------------------------------------------------------------
 void detailBlock(std::ostream& o, const char* detail) {
     if (!detail) return;
-    std::istringstream in(detail);
+
+    // Expand the same `{endpoints}` token the live HELP printer does (monitor.cpp), so
+    // the manual shows the real grammar instead of the literal token. all=true forces the
+    // full, platform-independent list -- see endpointHelp() -- so this file stays byte-
+    // identical across builds and the docs-reference check cannot break on the printer flag.
+    std::string text = detail;
+    const std::string tok = "{endpoints}";
+    for (size_t at = text.find(tok); at != std::string::npos; at = text.find(tok, at))
+        text.replace(at, tok.size(), endpointHelp(true));
+
+    std::istringstream in(text);
     std::string line;
     bool fenced = false;
     while (std::getline(in, line)) {
@@ -348,9 +359,16 @@ void cheatsheet(const std::string& dir) {
          "  -v, --version      -h, --help\n"
          "```\n\n";
 
+    bool anyUnbuilt = false;
+    for (const auto& c : commands())
+        if (!c.built) anyUnbuilt = true;
+
     o << "## Monitor commands\n\n"
-         "Type the part before the bracket. `*` = resolves, but not built yet.\n\n"
-         "| Command | Usage |\n|---|---|\n";
+         "Type the part before the bracket.";
+    // The `*` legend only earns its line when a command is actually starred -- off the
+    // same `built` flag the table reads, so the two can never disagree.
+    if (anyUnbuilt) o << " `*` = resolves, but not built yet.";
+    o << "\n\n| Command | Usage |\n|---|---|\n";
     for (const auto& c : commands())
         o << "| `" << abbreviation(c) << "`" << (c.built ? "" : " \\*") << " | `" << cell(c.usage)
           << "` |\n";
