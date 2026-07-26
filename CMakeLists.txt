@@ -550,6 +550,7 @@ add_executable(altair_tests
   tests/test_88acr.cpp
   tests/test_88uio.cpp
   tests/test_c700.cpp
+  tests/test_papertape.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_pio.cpp

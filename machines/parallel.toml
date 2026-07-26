@@ -19,7 +19,7 @@ id   = "pio0"
 port = 04
 
 [board.unit.out]
-connect = "file:parallel-out.txt"
+connect = "out:parallel-out.txt"
 
 # The 88-4PIO: one populated 6820 (port J), sections A and B. Each section's data
 # direction is set by the guest (the DDR), and each is a line you CONNECT. 16

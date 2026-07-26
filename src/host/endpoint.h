@@ -12,10 +12,32 @@
 
 #include "host/stream.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
 namespace altair {
+
+// Rebase the host PATHs a spec carries, using a board-supplied resolver (the board
+// is the only thing that knows its config dir). Grammar lives HERE, not in the
+// board: only `in:PATH` / `out:PATH` name a path, and each is rewritten in place --
+// `in:tape.tap?cps=300` keeps its options, `in:a,out:b` rebases both parts, and
+// console/socket/serial/null pass through untouched. `describe()` still echoes the
+// operator's ORIGINAL spec, so the board must remember that and rebase only the copy
+// it hands the resolver, or a relative path double-rebases on CONFIG SAVE + reload.
+std::string rebaseEndpointPaths(const std::string&                              spec,
+                                const std::function<std::string(const std::string&)>& rebase);
+
+// A resolver that runs every spec through rebaseEndpointPaths() before opening it, so a
+// machine-file relative in:/out: PATH is config-relative. Hand this to a serial chip's
+// `properties(resolve)` -- the chip's `connect` property setter is the OTHER way a
+// machine file connects a line (the first being the board's connect()), and without it a
+// `[board.unit.a] connect = "in:tape.tap"` on a 6850/8251 card would resolve the file
+// against the shell's cwd instead of the machine file's dir. Identity when `rebase` is
+// null (or resolves to itself, e.g. configDir empty -> a typed path stays shell-relative).
+std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> rebasingResolver(
+    std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> base,
+    std::function<std::string(const std::string&)>                              rebase);
 
 // Returns null and sets `err` on anything it does not understand. It never
 // guesses: `CONNECT sio:a consle` is an error with the list of what it could

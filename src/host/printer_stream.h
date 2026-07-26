@@ -4,7 +4,7 @@
 // (DESIGN.md 7.1, 7.7; docs/printing.md; issue #70).
 //
 // A printer is something on the far end of a line, so it is a ByteStream and not a
-// property of the printer card -- exactly like file: and serial:. The 88-C700 works
+// property of the printer card -- exactly like out: and serial:. The 88-C700 works
 // the day this lands, and every other card that can put a byte on a line (the future
 // 88-LPC, the Sol-20 printer unit, a serial printer on the 2SIO) works later with no
 // board changed. The grammar lives in resolveEndpoint (host/endpoint.cpp), the one

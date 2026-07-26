@@ -1,6 +1,7 @@
 #include "chips/sio2port.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 #include "host/stream.h"
 
 #include <utility>
@@ -175,7 +176,10 @@ std::vector<UnitDef> Sio2Port::units() const {
 }
 
 std::vector<Property> Sio2Port::unitProperties(const std::string& unit) {
-    if (Mc6850* ch = channel(unit)) return ch->properties(g_resolver);
+    // The chip's `connect` property setter (a machine file's declarative way to plug a
+    // line) opens the endpoint itself, so it -- not just the card's connect() -- must
+    // rebase a relative in:/out: PATH against the card's config dir.
+    if (Mc6850* ch = channel(unit)) return ch->properties(rebasingResolver(g_resolver, rebase_));
     return {};
 }
 

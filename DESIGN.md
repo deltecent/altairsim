@@ -728,7 +728,7 @@ Boards must **never** touch a socket, a file handle, or `termios` directly. Ever
 
 ### 7.1 `ByteStream` — the generic serial endpoint
 
-**Built, 2026-07-11** (`src/host/stream.h`). **Sockets, real serial ports and modem control landed 2026-07-12.** Implemented: `NullStream`, `LoopbackStream`, `ScriptedStream`, `Console`, **`TcpListenStream`, `TcpConnectStream` (`src/host/tcp.cpp`), `HostSerialStream` (`src/host/hostserial.cpp`)**. **`FileStream` landed too** (`src/host/file.h`, wired as `file:PATH`). Still to come: `ReplayStream` — which is blocked on RECORD/REPLAY, and those are unbuilt (§10.1).
+**Built, 2026-07-11** (`src/host/stream.h`). **Sockets, real serial ports and modem control landed 2026-07-12.** Implemented: `NullStream`, `LoopbackStream`, `ScriptedStream`, `Console`, **`TcpListenStream`, `TcpConnectStream` (`src/host/tcp.cpp`), `HostSerialStream` (`src/host/hostserial.cpp`)**. **`FileStream` landed too** (`src/host/file.h`) — a **paper-tape reader and punch**, wired as `in:PATH` (a byte source), `out:PATH` (a byte sink), or the combined `in:PATH,out:PATH` (two files, two positions, on one bidirectional line). A reader may be paced — `in:tape.tap?cps=300` is the 88-HSR (issue #152) — via the same wall-clock mechanism `TapeStream` uses. The punch overwrites forward without truncating. Still to come: `ReplayStream` — which is blocked on RECORD/REPLAY, and those are unbuilt (§10.1).
 
 Every board that moves characters (88-SIO, 88-2SIO, 88-ACR, 88-LPC, paper tape, PMMI) talks only to this. `CONNECT` binds an implementation to a unit.
 
@@ -791,7 +791,7 @@ public:
 };
 ```
 
-Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, one client, survive disconnect/reconnect), `TcpConnectStream` (`socket:host:port`), `HostSerialStream` (termios vs `SetCommState`/DCB), `FileStream` (paper tape), `NullStream`, `LoopbackStream` (testing), `ReplayStream` (recorded bytes at recorded T-state stamps).
+Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, one client, survive disconnect/reconnect), `TcpConnectStream` (`socket:host:port`), `HostSerialStream` (termios vs `SetCommState`/DCB), `FileStream` (paper tape — `in:` reader, optionally paced, and/or `out:` punch), `NullStream`, `LoopbackStream` (testing), `ReplayStream` (recorded bytes at recorded T-state stamps).
 
 > **A CLIENT CONNECTING *IS* CARRIER APPEARING**, and everything else falls out of it: a telnet client closes its window and DCD drops (and the 6850 latches that, and interrupts); the guest drops DTR and we hang up on the client; the TCP send buffer fills and CTS falls, so TDRE stays clear and the **guest waits rather than losing a byte**. That is what every terminal server ever built did, and it is what will let a PMMI work over a socket without the board learning what TCP is.
 >
@@ -1096,7 +1096,7 @@ A chip knows nothing about S-100. It has a clock, some pins, and (if it moves by
   **ONE CARD IS NOT ONE KIND OF THING.** A card may carry drives *and* ROM sockets *and* a serial port — the Tarbell carries a boot PROM and a floppy controller on one board (it is **not built**, see §4.2.1, but it is a real card and the constraint is real), and a controller with its own PROM, scratch RAM and a serial port was a completely ordinary 1977 product. Nothing in the bus model ever assumed otherwise: `decodes()` is asked about every cycle and `BusCycle::type` distinguishes memory from I/O, so one card answers both. `tests/test_units.cpp` builds exactly such a card and proves it.
 
   So units are named and typed — `MOUNT dj:drive0`, `MOUNT dj:rom0`, `CONNECT dj:tty` — and **the kind is checked**: mounting a disk image onto a serial port is an error with a sentence explaining it. The integer scheme could not be made safe, which is why it is gone: with a flat namespace, `MOUNT dj:4` on a serial unit can only *fail*, never *explain*, because the board has nothing left to distinguish 4-the-drive from 4-the-port. `SHOW <id>` lists the units, and it reads `Board::units()` — the same list MOUNT reads, so they cannot disagree.
-- Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `file:path` | `null`. **All of them are built** — `console`, `null`, `loopback`, `scripted`, `socket:`, `serial:` and `file:`. (This line read "Built so far: `console`, `null`, `loopback`" long after that stopped being true, which is why the monitor's help text for CONNECT is now *generated* from the resolver's own `endpointHelp()` rather than written out here or in `commands.cpp`.) The resolver **names the legal forms when you ask for one it does not know**, rather than failing as though you had mistyped it.
+- Endpoints: `console` | `socket:PORT` (listening) | `socket:HOST:PORT` (outbound) | `serial:/dev/tty.usbserial-X` or `serial:COM3` | `in:path` (reader) | `out:path` (punch) | `null`. **All of them are built** — `console`, `null`, `loopback`, `scripted`, `socket:`, `serial:` and `in:`/`out:`. (This line read "Built so far: `console`, `null`, `loopback`" long after that stopped being true, which is why the monitor's help text for CONNECT is now *generated* from the resolver's own `endpointHelp()` rather than written out here or in `commands.cpp`.) The resolver **names the legal forms when you ask for one it does not know**, rather than failing as though you had mistyped it.
 - Exactly one unit may hold `console` at a time; the monitor arbitrates. **Connecting a second STEALS it and says who from** — two boards reading one keyboard would each get half the characters, which is not hypothetical: it is what happens the first time a machine has two 2SIOs and you forget.
 - Disk images are buffered and written back. **The board** probes the image size against the formats *it* knows and declares the layout to `DiskImage` (§7.3); `media = ...` forces the choice when the size is ambiguous, and **the choices belong to the card**: an 88-DCDD takes `8in` and `fdc8mb`, an 88-MDS takes `minidisk`. Naming another card's medium is an error, not a probe — the two controllers are register-compatible (`docs/boards/mits-88mds.md`), so nothing else would have caught it. `readonly` supported (the real board's write-protect).
 
@@ -1466,7 +1466,7 @@ Source images live in **`roms/`** in the repo. At build time CMake turns each in
 # mount = "roms/mine.bin"    # a bare path is a host file, and it always wins
 ```
 
-`builtin:` reuses the scheme idiom already established for `connect` (`socket:`, `serial:`, `file:`), so it adds no grammar. Consequences worth stating:
+`builtin:` reuses the scheme idiom already established for `connect` (`socket:`, `serial:`, `in:`/`out:`), so it adds no grammar. Consequences worth stating:
 
 - **The board never knows the difference.** A region takes a `span<const uint8_t>`; whether it came from `.rodata` or from a file the host service read is not the board's business (§7). `builtin:` is resolved by the config loader, above the board.
 - **No filesystem access at runtime** for a built-in.

@@ -1,6 +1,7 @@
 #include "boards/mits-88pio.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 
 namespace altair {
 namespace {
@@ -195,18 +196,20 @@ bool PioBoard::applyEndpoint(const std::string& unit, const std::string& endpoin
         return false;
     }
 
-    // A file: PATH is rebased relative to the config dir (the board is the only
-    // thing that knows it), and the ORIGINAL spec is remembered so a relative path
-    // does not double-rebase on CONFIG SAVE + reload. Same rule the C700 follows.
-    std::string spec = endpoint;
-    if (endpoint.rfind("file:", 0) == 0) {
-        std::string path = endpoint.substr(5);
-        if (!path.empty()) spec = "file:" + resolvePath(path);
-    }
+    // An in:/out: PATH is rebased relative to the config dir (the board is the only
+    // thing that knows it) via rebaseEndpointPaths() -- the one place that knows the
+    // grammar -- and the ORIGINAL spec is remembered so a relative path does not
+    // double-rebase on CONFIG SAVE + reload. The lambda collects each PATH so a failed
+    // open can name the rule. Same rule the C700 follows.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
 
     auto s = g_resolver(spec, err);
     if (!s) {
-        if (endpoint.rfind("file:", 0) == 0) err += pathNote(endpoint.substr(5));
+        for (const std::string& p : paths) err += pathNote(p);
         return false;
     }
 

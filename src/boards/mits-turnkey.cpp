@@ -2,12 +2,14 @@
 
 #include "core/roms.h"
 #include "core/statefile.h"
+#include "host/endpoint.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
 #include <utility>
+#include <vector>
 
 namespace altair {
 
@@ -16,6 +18,10 @@ TurnkeyBoard::TurnkeyBoard()
     // a Board and cannot reach it. `this` is valid here: the base subobject is built.
     : sio_({{"tty", 0}}, [this] { intChanged(); }) {
     std::fill(std::begin(prom_), std::end(prom_), (uint8_t)0xFF);  // unprogrammed EPROM
+    // The section rebases a declarative `[turnkey0.unit.tty] connect = "in:tape.tap"`
+    // (applied through the chip's `connect` property) against the machine file's dir;
+    // the card's connect() rebases the CONNECT command separately.
+    sio_.setRebase([this](const std::string& p) { return resolvePath(p); });
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +133,21 @@ void TurnkeyBoard::power() {
 void TurnkeyBoard::configChanged() {
     decodeChanged();  // `prom`, `sio_base` or `sense` may have moved the decode
     sio_.refresh();   // ...and a SIO strap (baud/interrupt/connect) moved a deadline
+}
+
+bool TurnkeyBoard::connect(const std::string& unit, const std::string& endpoint, std::string& err) {
+    // The Sio2Port has no config dir; the board is the only thing that knows one, so a
+    // machine-file in:/out: PATH is rebased here before the resolver opens it.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
+    if (!sio_.connect(unit, spec, err)) {
+        for (const std::string& p : paths) err += pathNote(p);
+        return false;
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 #include "boards/mits-884pio.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 
 #include <cctype>
 #include <cstdio>
@@ -246,15 +247,19 @@ bool Pio4Board::applyEndpoint(const std::string& unit, const std::string& endpoi
         return false;
     }
 
-    std::string spec = endpoint;
-    if (endpoint.rfind("file:", 0) == 0) {
-        std::string path = endpoint.substr(5);
-        if (!path.empty()) spec = "file:" + resolvePath(path);
-    }
+    // An in:/out: PATH is rebased against the config dir via rebaseEndpointPaths()
+    // (the one place that knows the grammar); the ORIGINAL spec is remembered below so
+    // a relative path does not double-rebase on CONFIG SAVE + reload, and the lambda
+    // collects each PATH so a failed open can name the rule. Same rule the C700 follows.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
 
     auto s = g_resolver(spec, err);
     if (!s) {
-        if (endpoint.rfind("file:", 0) == 0) err += pathNote(endpoint.substr(5));
+        for (const std::string& p : paths) err += pathNote(p);
         return false;
     }
     sec_[i].stream = std::move(s);

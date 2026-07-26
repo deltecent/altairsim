@@ -54,6 +54,13 @@ public:
     // when `connect` turns an endpoint string into a stream.
     static void setResolver(EndpointResolver r);
 
+    // The section has no config dir of its own (it is not a Board). The owning card,
+    // which does, hands down its resolvePath so a machine-file `[card.unit.a] connect =
+    // "in:tape.tap"` -- applied through the chip's `connect` property, not the card's
+    // connect() -- is rebased against the machine file's dir. Left unset, paths pass
+    // through as typed (shell-relative).
+    void setRebase(std::function<std::string(const std::string&)> r) { rebase_ = std::move(r); }
+
     // The card forwards its Clock here from clockAttached(). Null until then, and an
     // unclocked 6850 reads as a dead card rather than dereferencing null.
     void attachClock(Clock* c) { clock_ = c; }
@@ -99,9 +106,10 @@ public:
 private:
     int chanIndexForPort(uint8_t port, bool& isData) const;
 
-    std::vector<ChannelDef> defs_;
-    std::vector<Mc6850>     chans_;   // parallel to defs_, built once in the ctor
-    std::function<void()>   onIntChanged_;
+    std::vector<ChannelDef>                        defs_;
+    std::vector<Mc6850>                            chans_;  // parallel to defs_, built in the ctor
+    std::function<void()>                          onIntChanged_;
+    std::function<std::string(const std::string&)> rebase_;  // config-dir rebase, or null
 
     uint8_t       base_  = 0x10;
     Clock*        clock_ = nullptr;

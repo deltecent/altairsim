@@ -64,7 +64,7 @@ input data arrives and **cleared when the data register is read** — the standa
   or programs the DDR.
 - **`pump()`** drains each section's output line and latches one input byte, setting bit 7 — so a
   polling driver (poll bit 7, read data) works.
-- **Each section is a line you CONNECT** (DESIGN.md §7.7): `file:`, `console`, `socket:`,
+- **Each section is a line you CONNECT** (DESIGN.md §7.7): `in:`/`out:`, `console`, `socket:`,
   `loopback`, `null`. Each round-trips its endpoint through a per-unit `connect` property.
 - Does **not** master the bus, and asserts no interrupt.
 
@@ -72,6 +72,23 @@ input data arrives and **cleared when the data register is read** — the standa
 
 - `Reset::PowerOn` (POC*, cold) and `Reset::Bus` (RESET*, warm) both clear every section's
   registers: all data lines become inputs (DDR = 0), all flags clear. **The lines stay connected.**
+
+## Paper tape: the 88-HSR reader and a punch
+
+A parallel section is where a **paper-tape station** hung, so a section connected to an `in:`/`out:`
+file endpoint *is* a reader and/or punch (see the manual's serial chapter for the full grammar):
+
+```
+CONNECT 4pio0:ja in:tape.tap?cps=300      # the MITS 88-HSR high-speed reader (issue #152)
+CONNECT 4pio0:ja in:tape.tap?cps=30       # the slow reader
+CONNECT 4pio0:jb out:punch.tap            # a punch
+CONNECT 4pio0:ja in:tape.tap,out:punch.tap  # both on one bidirectional section
+```
+
+The section's `pump()` pulls one byte from the reader into the input latch only when the latch is
+empty, so a paced reader (`?cps=`) just works: the byte arrives, bit 7 sets, the driver polls and
+reads the data register (clearing bit 7), and the next byte does not arrive until its wall-clock
+turn. An exhausted reader latches nothing more — the line is quiet, not an error.
 
 ## Quirks reproduced
 

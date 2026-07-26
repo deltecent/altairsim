@@ -108,6 +108,7 @@ int main() {
     test_88acr();
     test_88uio();
     test_c700();
+    test_papertape();
     test_lpc();
     test_printer();
     test_pio();

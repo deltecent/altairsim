@@ -85,9 +85,7 @@ public:
     std::vector<Property> unitProperties(const std::string& unit) override {
         return sio_.unitProperties(unit);
     }
-    bool connect(const std::string& unit, const std::string& endpoint, std::string& err) override {
-        return sio_.connect(unit, endpoint, err);
-    }
+    bool connect(const std::string& unit, const std::string& endpoint, std::string& err) override;
     bool disconnect(const std::string& unit, std::string& err) override {
         return sio_.disconnect(unit, err);
     }

@@ -92,10 +92,10 @@ A 6-bit code on DO0–DO5, decoded to its glyph: `ascii = (code & 0x20) ? code :
   PAPER and LINE FEED OK are always "OK" because a byte-sink is never mid-stroke and cannot jam or
   run out of paper. The bits exist so the day a real parallel port reports one, it lands where the
   manual says.
-- **`pump()`** forwards to the stream, so a `socket:` endpoint accepts and drains and a `file:`
+- **`pump()`** forwards to the stream, so a `socket:` endpoint accepts and drains and an `out:`
   capture is flushed while the machine runs, not only at `DISCONNECT`.
 - **Where the printed text goes is the operator's `CONNECT`**, not the card's business (DESIGN.md
-  §7.7): a `file:`, the `console`, a `socket:`, a real `printer:` queue, or `null`.
+  §7.7): an `out:` file, the `console`, a `socket:`, a real `printer:` queue, or `null`.
 - Does **not** master the bus, and (see below) asserts no interrupt.
 
 `SNAPSHOT`/`RESTORE` serialize the stored interrupt-enable **and the pending line buffer** (the
@@ -146,7 +146,7 @@ Synthesizing those states would invent a hardware event the transport does not h
    **`connect` round-trips** the endpoint spec through the property (for `CONFIG SAVE`).
 
 End-to-end: `machines/lineprinter-lpc.toml` loads the card at port 02; `CONNECT lpt0:prn
-file:printout.txt`, then `OUT 3 <code>` to buffer characters and `OUT 2 01` to print, produces a
+out:printout.txt`, then `OUT 3 <code>` to buffer characters and `OUT 2 01` to print, produces a
 readable page in the host file.
 
 ## References

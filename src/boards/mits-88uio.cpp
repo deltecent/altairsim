@@ -1,9 +1,11 @@
 #include "boards/mits-88uio.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 #include "host/tapemodem.h"
 
 #include <utility>
+#include <vector>
 
 namespace altair {
 
@@ -12,6 +14,11 @@ UioBoard::UioBoard() {
     // Rev 1, interrupt pads left open. The serial section carries Sio2Port's own default
     // base of 0x10 -- 2SIO Port A, the SW-2-OFF address -- so nothing here needs setting.
     // motorOn_ (relay closed) and standard_ ("mits") hold their power-up defaults.
+    //
+    // Hand the serial section our resolvePath, so a machine-file `[uio0.unit.serial]
+    // connect = "in:tape.tap"` (applied through the chip's `connect` property) rebases
+    // against the machine file's dir. The card's connect() rebases separately.
+    serial_.setRebase([this](const std::string& p) { return resolvePath(p); });
 }
 
 bool UioBoard::isSerial(const std::string& unit) { return lowerAscii(unit) == "serial"; }
@@ -197,7 +204,20 @@ std::vector<Property> UioBoard::unitProperties(const std::string& unit) {
 }
 
 bool UioBoard::connect(const std::string& unit, const std::string& endpoint, std::string& err) {
-    if (isSerial(unit)) return serial_.connect(lowerAscii(unit), endpoint, err);
+    if (isSerial(unit)) {
+        // The Sio2Port has no config dir; the board is the only thing that knows one, so a
+        // machine-file in:/out: PATH is rebased here before the resolver opens it.
+        std::vector<std::string> paths;
+        std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+            paths.push_back(p);
+            return resolvePath(p);
+        });
+        if (!serial_.connect(lowerAscii(unit), spec, err)) {
+            for (const std::string& p : paths) err += pathNote(p);
+            return false;
+        }
+        return true;
+    }
     if (lowerAscii(unit) == "tape") return AcrBoard::connect(unit, endpoint, err);  // refused, with reason
     err = "uio has a 'serial' unit to CONNECT and a 'tape' unit to MOUNT, not '" + unit + "'";
     return false;

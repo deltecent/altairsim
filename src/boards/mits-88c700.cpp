@@ -1,6 +1,7 @@
 #include "boards/mits-88c700.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 
 namespace altair {
 namespace {
@@ -201,22 +202,23 @@ bool C700Board::applyEndpoint(const std::string& endpoint, std::string& err) {
         return false;
     }
 
-    // A file: PATH written in a machine file is relative to that file, and typed at
-    // the prompt is relative to the shell -- the same rule every path in the sim
+    // An in:/out: PATH written in a machine file is relative to that file, and typed
+    // at the prompt is relative to the shell -- the same rule every path in the sim
     // follows. resolvePath() is where a mount rebases (mits-hardsector.cpp); a file
-    // endpoint's PATH is a path too. We rebase it here (the board is the only thing
-    // that knows its config dir) and REMEMBER the original spec, so a relative path
-    // does not double-rebase when CONFIG SAVE writes it back and a reload rebases
-    // again. Nothing else in the endpoint grammar is a path.
-    std::string spec = endpoint;
-    if (endpoint.rfind("file:", 0) == 0) {
-        std::string path = endpoint.substr(5);
-        if (!path.empty()) spec = "file:" + resolvePath(path);
-    }
+    // endpoint's PATH is a path too. rebaseEndpointPaths() is the one place that knows
+    // the grammar; we rebase only the copy handed to the resolver and REMEMBER the
+    // original spec, so a relative path does not double-rebase when CONFIG SAVE writes
+    // it back and a reload rebases again. The lambda also collects each PATH, so a
+    // failed open can name the rule that sent it somewhere nobody typed.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
 
     auto s = g_resolver(spec, err);
     if (!s) {
-        if (endpoint.rfind("file:", 0) == 0) err += pathNote(endpoint.substr(5));
+        for (const std::string& p : paths) err += pathNote(p);
         return false;
     }
     stream_      = std::move(s);
