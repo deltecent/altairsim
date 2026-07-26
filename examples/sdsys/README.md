@@ -120,10 +120,28 @@ With SDL3 the screen is a window in the board's own character font; window and t
 both reach the monitor. The command set is identical to the serial machine's. See
 `reference/SD Systems VDB-8024.md` for the board.
 
+`sdosv.toml` boots **SDOS on the video console** -- the video twin of `sdos.toml`:
+
+```
+cd examples/sdsys
+altairsim sdosv.toml
+.               <- the monitor prompt, ON THE VIDEO SCREEN
+C               <- cold-boot SDOS from drive A
+[A]             <- SDOS is live; type at the video window
+```
+
+**The video keyboard is interrupt-driven, and that is the whole trick.** The monitor *polls* the
+VDB keyboard, so it boots and takes the `C` command with no interrupt at all -- but SDOS does not
+poll: its video CBIOS runs console input under a Z80 **mode-2 interrupt**. The VDB's keyboard
+strobe is strapped to S-100 **VI2** (`interrupt = "vi2"` on the board), the SBC-200's **Z80-CTC**
+turns that into the mode-2 vector `0x02`, and the CBIOS keyboard ISR reads the byte. Without it the
+monitor works but a booted OS never sees a key -- which is exactly the same interrupt path SD CP/M's
+*serial* console uses (vector `0x82`), one board over.
+
 ## What is not here yet
 
-The serial console, the video console, the VersaFloppy disk, the CP/M keyboard interrupt and
-the SBC-200 memory switch-out all work today. The Z80-CTC is modeled only as far as that
-keyboard interrupt needs (its baud-generator and timer channels are not observable at flat-out
-speed), and the reset auto-start jam is still stood in for by `startup = ["RUN E000"]` rather
-than the authentic PROM-at-the-reset-vector with its `IN 7F` release.
+The serial console, the video console, the VersaFloppy disk, the SDOS/CP/M keyboard interrupt (on
+both the 8251 and the VDB-8024) and the SBC-200 memory switch-out all work today. The Z80-CTC is
+modeled only as far as those keyboard interrupts need (its baud-generator and timer channels are not
+observable at flat-out speed), and the reset auto-start jam is still stood in for by
+`startup = ["RUN E000"]` rather than the authentic PROM-at-the-reset-vector with its `IN 7F` release.

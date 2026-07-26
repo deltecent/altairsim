@@ -1,5 +1,6 @@
 #include "boards/sd-sbc.h"
 
+#include "core/bus.h"
 #include "core/clock.h"
 #include "core/roms.h"
 #include "core/statefile.h"
@@ -62,7 +63,7 @@ bool SbcBoard::decodes(const BusCycle& c) const {
 
     // The keyboard interrupt's vector: claim the IntAck cycle only when we are the one
     // asking (like the 88-VI), so an unclaimed acknowledge still floats 0xFF.
-    if (c.type == Cycle::IntAck) return ctc_.ch1IntArmed_ && u_.rxReady();
+    if (c.type == Cycle::IntAck) return ctc_.ch1IntArmed_ && ch1Triggered();
 
     if (c.type == Cycle::IoRead || c.type == Cycle::IoWrite) {
         uint8_t p = c.port();
@@ -149,7 +150,16 @@ void SbcBoard::Ctc::writePort(uint8_t chan, uint8_t v) {
 // interrupt. Cleared when the ISR reads the data port (RxRDY drops), so no daisy-chain
 // end-of-interrupt is needed -- RETI is a no-op for a single-channel level like this.
 bool SbcBoard::assertsInt() const {
-    return clock_ && ctc_.ch1IntArmed_ && u_.rxReady();
+    return clock_ && ctc_.ch1IntArmed_ && ch1Triggered();
+}
+
+// The CTC ch1 trigger, from either the on-card 8251 (serial console) or, in a video
+// machine, the VDB-8024's keyboard strobe carried on S-100 VI2 (reference 6). Reading
+// the VI wire off the bus is why the card watchesVi(): when the VDB pulls or drops VI2
+// the bus re-derives our /INT for us, exactly as it does for the 88-VI.
+bool SbcBoard::ch1Triggered() const {
+    if (u_.rxReady()) return true;
+    return bus_ && (bus_->viLines() & viBit(IrqJumper::Vi2)) != 0;
 }
 
 // PHANTOM*, held while the onboard memory is switched in. On a READ in a socket window

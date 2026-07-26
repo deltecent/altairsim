@@ -1,9 +1,12 @@
 #include "test.h"
 
 #include "boards/s100-memory.h"
+#include "boards/sd-sbc.h"
 #include "boards/sd-vdb8024.h"
+#include "boards/sd-versafloppy.h"
 #include "core/machine.h"
 #include "host/display_null.h"
+#include "host/media.h"
 #include "host/stream.h"
 
 #include <string>
@@ -70,6 +73,33 @@ void test_vdb8024() {
         CHECK(g.m.bus.ioRead(0x01) == 'A', "IN 01 yields the keyboard byte");
         CHECK((g.status() & 0x02) == 0, "reading 01 clears D1");
         CHECK(g.vdb->rxBytes() == 1, "and the keystroke counts as live traffic (idle policy)");
+    }
+
+    SECTION("VDB-8024 -- the keyboard-interrupt strap (E17 -> VI): polled by default, VI when set");
+    {
+        // Reference 6: the keyboard strobe can raise an S-100 vectored-interrupt line so the
+        // SBC-200's CTC can vector it (mode-2), which is how the SD video CBIOS runs its
+        // keyboard. The strap is `interrupt`; the vector is not this board's business -- it
+        // only pulls the line while a byte is waiting, and drops it when the byte is read.
+        Rig         g;
+        std::string err;
+
+        CHECK(g.vdb->assertsVi() == 0, "unstrapped, the board pulls no VI line");
+        g.kbd->feed("A");
+        g.vdb->pump();
+        CHECK((g.status() & 0x02) != 0, "polled: a key still shows in status D1...");
+        CHECK(g.vdb->assertsVi() == 0, "...but with interrupt = none it pulls no VI line");
+        CHECK(g.m.bus.ioRead(0x01) == 'A', "drain it");
+
+        CHECK(setProperty(*g.vdb, "interrupt", "vi2", err), "strap the keyboard to VI2");
+        CHECK(g.vdb->assertsVi() == 0, "no key waiting yet -> the line is not pulled");
+        g.kbd->feed("B");
+        g.vdb->pump();
+        CHECK(g.vdb->assertsVi() == 0x04, "a key waiting pulls VI2 (bit 2)");
+        CHECK((g.m.bus.viLines() & 0x04) != 0, "and the bus sees VI2 on the backplane");
+        CHECK(g.m.bus.ioRead(0x01) == 'B', "the keyboard read (the ISR's IN 01H)...");
+        CHECK(g.vdb->assertsVi() == 0, "...drops the strobe, so VI2 falls -- the implicit EOI");
+        CHECK((g.m.bus.viLines() & 0x04) == 0, "the backplane line is released");
     }
 
     SECTION("VDB-8024 -- printable text lands at the cursor and advances it");
@@ -225,5 +255,83 @@ void test_vdb8024() {
         }
         CHECK(vdb->rxBytes() == 10, "all ten keystrokes reached the guest");
         CHECK(answered, "a command typed at the video console was answered on the screen (H -> FF00)");
+    }
+
+    SECTION("VDB-8024 -- SDOS boots on the video console and its INTERRUPT keyboard works");
+    {
+        // THE BUG THIS GUARDS. SDMONV21 (above) polls the keyboard, so it boots and takes
+        // commands with no interrupt hardware at all. The disk operating systems do NOT: the
+        // SD video build of SDOS runs its console input under a Z80 mode-2 interrupt -- the
+        // VDB-8024's keyboard strobe (strapped to VI2) drives the SBC-200's CTC channel 1,
+        // which vectors to the CBIOS keyboard ISR (vector 0x02). Miss that path and the
+        // monitor still works but a booted OS never sees a key. This is the whole machine
+        // (machines/sbc200v.toml + the VersaFloppy): boot SDOS off the disk, then type a
+        // command through the interrupt and watch it echo onto the same screen.
+        Machine m;
+        NullDisplay disp;
+        Vdb8024Board::setDisplay(&disp);
+        std::string err;
+        setMediaResolver(openHostFile);  // a real .DSK off disk (an earlier test may have swapped it)
+
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        auto region = [&](RegionKind k, uint32_t at, uint32_t size, const std::string& mount) {
+            Region r; r.kind = k; r.at = at; r.size = size; r.mount = mount;
+            CHECK(mem->addRegion(r, err), ("region mounts: " + err).c_str());
+        };
+        region(RegionKind::Ram, 0x0000, 0xE000, "");            // 56K 0000-DFFF
+        region(RegionKind::Rom, 0xE000, 0,      "builtin:sdmonv21");
+        region(RegionKind::Ram, 0xE800, 0x0800, "");            // 2K
+        region(RegionKind::Rom, 0xF000, 0,      "builtin:ddb200");
+        region(RegionKind::Ram, 0xF800, 0x0800, "");            // 2K
+        setProperty(*mem, "fill", "zero", err);
+
+        auto* vdb = dynamic_cast<Vdb8024Board*>(m.add("vdb8024", "vdb0", err));
+        CHECK(setProperty(*vdb, "interrupt", "vi2", err), "the VDB keyboard straps to VI2");
+        vdb->connect("keyboard", "scripted", err);
+        auto* kbd = dynamic_cast<ScriptedStream*>(vdb->unitStream("keyboard"));
+
+        // The SBC-200's CTC is what turns the VI2 strobe into the mode-2 vector; the 8251 has
+        // no console here (the VDB is the console).
+        m.add("sbc", "sbc0", err);
+
+        auto* vf = dynamic_cast<VersaFloppyBoard*>(m.add("versafloppy", "vf0", err));
+        CHECK(setProperty(*vf, "port", "60", err), "the VersaFloppy sits at the 60H block");
+        CHECK(setProperty(*vf, "variant", "vfii", err), "an FD1791 (double-density) controller");
+        std::string dsk = std::string(ALTAIR_SOURCE_DIR) + "/examples/sdsys/SDOS-18B-SSDDV-256-32K.DSK";
+        CHECK(vf->loadSubUnit("drive", {{"unit", "0"}, {"mount", dsk}}, err),
+              ("the SDOS video master mounts in drive A: " + err).c_str());
+
+        m.add("z80", "cpu0", err);
+        setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
+        m.power();
+        m.cpu()->setPc(0xE000);  // the reset jam-to-E000 is a later phase (as in sbc200)
+
+        auto run = [&](const char* needle, int budget) {
+            for (int i = 0; i < budget; ++i) {
+                StepResult sr = m.master()->step(m.bus);
+                m.clock.advance(sr.tStates);
+                if ((i & 0x7F) == 0) vdb->pump();  // latch keystrokes; paint nothing (NullDisplay)
+                if ((i & 0x3FF) == 0 && vdb->screenText().find(needle) != std::string::npos)
+                    return true;
+            }
+            return false;
+        };
+
+        CHECK(run(".", 5'000'000), "SDMONV21 printed its '.' prompt onto the VDB screen");
+
+        // COLD-BOOT SDOS. `C` at the monitor prompt is polled (the monitor never armed an
+        // interrupt), so this reaches the DDBIOS the same way a serial machine's would.
+        kbd->feed("C\r");
+        CHECK(run("SD-OS", 40'000'000), "SDOS cold-booted off the VersaFloppy and signed on");
+        CHECK(run("[A]", 20'000'000), "...and reached its [A] command prompt");
+
+        // NOW THE INTERRUPT PATH. SDOS is live; its console input is interrupt-only. Type a
+        // line at the prompt: each character can only arrive through the VI2 -> CTC -> mode-2
+        // ISR, and the CCP echoes it. If the echo lands on the screen, the whole chain works.
+        uint64_t before = vdb->rxBytes();
+        kbd->feed("STAT");
+        CHECK(run("STAT", 20'000'000),
+              "a line typed at the SDOS prompt echoed back -- the interrupt keyboard delivered it");
+        CHECK(vdb->rxBytes() == before + 4, "all four keystrokes crossed into the guest");
     }
 }

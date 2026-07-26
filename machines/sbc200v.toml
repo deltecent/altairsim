@@ -39,13 +39,33 @@ clock_hz = 4000000
 # THE CONSOLE: the SD Systems VDB-8024 video display board at its fixed ports 00 (status)
 # / 01 (keyboard in / display out). Its keyboard unit is wired to the host console, so
 # window and terminal keys both reach SDMONV21.
+#
+# THE KEYBOARD IS STRAPPED FOR INTERRUPTS (interrupt = vi2). The monitor polls the
+# keyboard and does not need this, but the disk operating systems do: SD CP/M and the SD
+# video build of SDOS run their console input under Z80 mode-2 interrupts. The VDB's E17
+# keyboard-strobe strap raises S-100 VI2 on each keystroke; the SBC-200's Z80-CTC below
+# turns that into the mode-2 vector 0x02 the CBIOS keyboard ISR is hung on. Without it the
+# monitor works but a booted OS never sees a key (reference/SD Systems VDB-8024.md 6).
 [[board]]
-type = "vdb8024"
-id   = "vdb0"
-port = 00
+type      = "vdb8024"
+id        = "vdb0"
+port      = 00
+interrupt = "vi2"
 
   [board.unit.keyboard]
   connect = "console"
+
+# THE SBC-200's OWN PERIPHERALS. The real SBC-200 is one board -- CPU, 8251, Z80-CTC and
+# parallel port together -- so the video machine carries them too, even though the console
+# is the VDB and not the 8251. The card is here for the CTC: it generates the mode-2
+# keyboard-interrupt vector (0x02) from the VDB's VI2 strobe, the way it makes 0x82 from
+# the 8251's RxRDY on the serial machine. The 8251 has no console attached here; the
+# parallel port at 7E/7F is SDOS's list device.
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
 
 # MEMORY: the SD monitor EPROM at E000 (SDMONV21, 2K) and the disk BIOS at F000 (DDBIOS,
 # 2K), with RAM filling everything else -- 56K below, and the gaps around the ROMs,

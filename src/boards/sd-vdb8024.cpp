@@ -58,9 +58,20 @@ uint8_t Vdb8024Board::read(const BusCycle& c) {
     if (c.type != Cycle::IoRead) return 0xFF;
     if (c.port() == base_) return statusByte();
     // base+1 IN -- the keyboard data byte. Reading it clears the keyboard-ready strobe
-    // (status D1), exactly as the physical read pulse clears the latch.
+    // (status D1), exactly as the physical read pulse clears the latch. That also drops
+    // the VI line if we are strapped for interrupts -- the ISR's IN 01H is the implicit
+    // end-of-interrupt, so no daisy-chain EOI is needed for this single-source level.
     kbHave_ = false;
+    intChanged();
     return kbData_;
+}
+
+// VI0-VI7. The keyboard-strobe interrupt strap (reference 6). While a byte is waiting
+// (status D1) the board pulls its strapped VI line; `none` pulls nothing. The vector is
+// NOT ours -- the SBC-200's CTC supplies it (mode-2 vector 0x02) by claiming the IntAck
+// cycle; this card only asks, on the wire the jumper chose.
+uint8_t Vdb8024Board::assertsVi() const {
+    return kbHave_ ? viBit(kbIrq_) : 0;
 }
 
 void Vdb8024Board::write(const BusCycle& c) {
@@ -226,6 +237,7 @@ void Vdb8024Board::power() {
     kbData_  = 0;
     kbRx_    = 0;
     dirty_   = true;
+    intChanged();  // no byte waiting -> the VI line, if strapped, stands down
 }
 
 // S-100 RESET resets the onboard Z80, which re-runs its power-up path (INIT then CLEAR):
@@ -235,6 +247,7 @@ void Vdb8024Board::reset(Reset) {
     curAttr_ = 0;
     parse_   = Parse::Normal;
     kbHave_  = false;
+    intChanged();  // the keyboard strobe drops with the reset
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +272,7 @@ void Vdb8024Board::latchKeyboard() {
     kbData_ = (uint8_t)(b & 0x7F);         // a 7-bit ASCII keyboard
     kbHave_ = true;
     ++kbRx_;  // a keystroke crossed into the guest -- the run loop's live-traffic proof
+    intChanged();  // the strobe -- raises status D1 and, if strapped, the VI line
 }
 
 bool Vdb8024Board::frameChanged() const {
@@ -479,6 +493,15 @@ std::vector<Property> Vdb8024Board::properties() {
         };
         p.push_back(std::move(x));
     }
+    // The keyboard-interrupt strap (E17 -> E13-E16). Default `none` = the host polls
+    // status D1. Strapped to a VI line, each keystroke raises that line for an interrupt
+    // controller (the SBC-200's CTC) to vector on -- what the SD video CBIOS needs.
+    p.push_back(irqJumperProperty(
+        "interrupt",
+        "Keyboard-strobe interrupt strap: none = polled (default), or the S-100 VI line "
+        "the keyboard raises while a byte waits (the SBC-200 CTC vectors it -- video CBIOS "
+        "straps vi2)",
+        kbIrq_));
     return p;
 }
 
