@@ -142,15 +142,22 @@ the carry being propagated.
 subtract and does not try. (The Z80 added `N` precisely because of this. Decimal
 subtraction on an 8080 is done by adding the ten's complement.)
 
-## The ten undocumented opcodes
+## The twelve undocumented opcodes
 
 `08 10 18 20 28 30 38` are `NOP`, `CB` is `JMP`, `D9` is `RET`, and `DD ED FD` are
-`CALL`. **Real silicon runs them, so we run them**, and `DISASM` prints them with a
-leading `*`. A disassembler that prints `???` is lying about what the chip does —
-and worse, it would call the 3-byte `CB` a 1-byte unknown and desynchronise the
-rest of the listing. A *run* of starred opcodes almost always means you are looking
-at data, or at a Z80 binary, and being able to see that at a glance is the point of
-the mark.
+`CALL` — seven plus five, twelve in all. **Real silicon runs them, so the CPU runs
+them.**
+
+`DISASM` is a different story from the CPU. It cannot know a byte is code — it may
+be data, or an operand we mis-started on — so it does what real DDT and SID do:
+prints each as `?\?= <byte>  *MNEMONIC` and advances **one byte**. The `?\?=<byte>`
+is DDT's own marker for a byte outside the published set; the bare `*JMP`/`*CALL`
+names what the byte *would* do if executed, but reads no operand and claims no
+length — decoding `CB` as a 3-byte `JMP` would invent an address from whatever
+bytes came next. A *run* of these almost always means you are looking at data or a
+Z80 binary, and seeing that at a glance is the point of the mark. (Note the split:
+the **CPU** really does execute `CB` as a 3-byte `JMP`; only the **disassembler**
+treats it as one opaque byte.)
 
 ## The gate is passed (2026-07-11)
 

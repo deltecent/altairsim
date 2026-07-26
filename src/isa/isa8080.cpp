@@ -19,12 +19,16 @@ namespace {
 // stores it). The length falls out of which one appears -- there is no separate
 // length column to disagree with the text.
 //
-// THE TEN UNDOCUMENTED OPCODES ARE HERE, AND THEY ARE NOT ERRORS. Real silicon
+// THE TWELVE UNDOCUMENTED OPCODES ARE HERE, AND THEY ARE NOT ERRORS. Real silicon
 // executes 08/10/18/20/28/30/38 as NOP, CB as JMP, D9 as RET, and DD/ED/FD as
-// CALL. A disassembler that prints `???` for them lies about what the chip does
-// -- and code in the wild hits them. They are marked, and printed with a `*`, so
-// you can SEE you have wandered into data or into a Z80 binary, which is nearly
-// always what a run of them means.
+// CALL -- seven plus five, twelve in all. But a DISASSEMBLER cannot know a byte is
+// code: it may be data or an operand, so like DDT and SID we advance ONE byte over
+// each and read no operand -- decoding CB as a 3-byte JMP would invent an address
+// from whatever came next. Each prints as DDT's own `??= <byte>` (how real DDT/SID
+// flag a byte outside the published set) followed by the BARE `*` mnemonic of the
+// effect: you SEE you have wandered into data or a Z80 binary, and what the byte
+// would do if it ran, without the length claim that would desync the listing.
+// (The CPU is the other story -- it really does execute CB as a 3-byte JMP.)
 // ---------------------------------------------------------------------------
 struct Op {
     const char* text;
@@ -127,11 +131,29 @@ public:
     const char* name() const override { return "8080"; }
 
     Insn at(uint16_t addr, const PeekFn& peek, int base) const override {
-        const Op& op = kOps[peek(addr)];
+        uint8_t opc = peek(addr);
+        const Op& op = kOps[opc];
         Insn in;
         in.undocumented = op.undoc;
 
         std::string t = op.text;
+
+        // An undocumented opcode is ONE byte -- the way real DDT and SID step over it.
+        // The bytes that follow are NOT its operand: they are far more likely data, or
+        // the tail of a real instruction we mis-started on, so reading them as an
+        // address would invent an operand out of whatever is next. We print DDT's own
+        // `??= <byte>` marker plus the BARE mnemonic of what the byte would do if it
+        // ran (`*JMP`, `*CALL`), consuming nothing and reading no address. The `??=`
+        // says "not real 8080"; the `*JMP` names the effect without pretending to know
+        // its target. The byte follows the console base like every other number here.
+        if (op.undoc) {
+            std::string m = t.substr(0, t.find('%'));  // drop "%W"/"%B": there is no operand
+            while (!m.empty() && m.back() == ' ') m.pop_back();
+            in.len = 1;
+            in.text = "?\?= " + fmtNum(opc, 2, base) + "  *" + m;
+            return in;
+        }
+
         size_t p = t.find('%');
         if (p == std::string::npos) {
             in.len = 1;
@@ -147,11 +169,7 @@ public:
             in.operandBits = 16;
             t = t.substr(0, p) + fmtNum(w, 4, base) + t.substr(p + 2);
         }
-
-        // A leading `*` on the ten undocumented opcodes. A run of them is nearly
-        // always a sign you are disassembling data -- or a Z80 binary -- and that
-        // is worth being able to see at a glance.
-        in.text = op.undoc ? "*" + t : t;
+        in.text = t;
         return in;
     }
 };

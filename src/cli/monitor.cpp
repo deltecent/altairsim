@@ -1946,8 +1946,12 @@ uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& ou
         bytes += ' ';
     }
 
+    // Pad the byte column to the widest instruction (three bytes), each byte being
+    // its digits plus a trailing space -- so the mnemonics line up in octal (four
+    // columns a byte) as they always did in hex (three).
+    int w = 3 * (byteWidth() + 1);
     char buf[96];
-    std::snprintf(buf, sizeof buf, "%s  %-9s %s", fmtWord((uint16_t)at).c_str(), bytes.c_str(),
+    std::snprintf(buf, sizeof buf, "%s  %-*s %s", fmtWord((uint16_t)at).c_str(), w, bytes.c_str(),
                   annotateOperands(in).c_str());
     out << buf << "\n";
     return in.len;

@@ -387,7 +387,7 @@ StepResult Cpu8080::step(Bus& bus) {
         t = (src == 6) ? 7 : 4;
     } else {
         switch (op) {
-        // ---- the ten undocumented opcodes. Real silicon runs them, so we do. ----
+        // ---- the twelve undocumented opcodes. Real silicon runs them, so we do. ----
         case 0x00: case 0x08: case 0x10: case 0x18:
         case 0x20: case 0x28: case 0x30: case 0x38:
             t = 4;  // NOP
