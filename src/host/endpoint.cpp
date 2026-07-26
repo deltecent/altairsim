@@ -92,6 +92,16 @@ std::string rebaseEndpointPaths(const std::string&                              
     return out;
 }
 
+std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> rebasingResolver(
+    std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> base,
+    std::function<std::string(const std::string&)>                              rebase) {
+    if (!rebase) return base;
+    return [base = std::move(base), rebase = std::move(rebase)](const std::string& spec,
+                                                                std::string&       err) {
+        return base(rebaseEndpointPaths(spec, rebase), err);
+    };
+}
+
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {
     if (spec == "console") return std::make_unique<ConsoleRef>();
     if (spec == "null") return std::make_unique<NullStream>();

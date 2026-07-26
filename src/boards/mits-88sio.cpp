@@ -1,9 +1,11 @@
 #include "boards/mits-88sio.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 #include "host/stream.h"
 
 #include <utility>
+#include <vector>
 
 namespace altair {
 
@@ -493,16 +495,9 @@ std::vector<Property> SioBoard::properties() {
         x.help = "The endpoint on the other end of the line (CONNECT sets this)";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(u_.endpoint()); };
-        x.set  = [this](const Value& v, std::string& err) {
-            if (!g_resolver) {
-                err = "no endpoint resolver installed";
-                return false;
-            }
-            auto s = g_resolver(v.s(), err);
-            if (!s) return false;
-            u_.connect(std::move(s));
-            return true;
-        };
+        // Route through connect() so a declarative `[sio0.unit.tty] connect = "in:tape.tap"`
+        // rebases its PATH the same way the CONNECT command does -- one path, one rule.
+        x.set  = [this](const Value& v, std::string& err) { return connect("tty", v.s(), err); };
         p.push_back(std::move(x));
     }
 
@@ -542,8 +537,19 @@ bool SioBoard::connect(const std::string& unit, const std::string& ep, std::stri
         err = "no endpoint resolver installed";
         return false;
     }
-    auto s = g_resolver(ep, err);
-    if (!s) return false;
+    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
+    // resolver opens. The `connect` unit property routes here too, so both the CONNECT
+    // command and a declarative connect are covered.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(ep, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
+    auto s = g_resolver(spec, err);
+    if (!s) {
+        for (const std::string& p : paths) err += pathNote(p);
+        return false;
+    }
     attachStream(std::move(s));
 
     refresh();  // a new line, and it may already have something waiting on it

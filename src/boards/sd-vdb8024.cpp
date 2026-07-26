@@ -3,9 +3,11 @@
 #include "boards/sd-vdb8024-font.h"
 #include "core/statefile.h"
 #include "host/display.h"
+#include "host/endpoint.h"
 
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 namespace altair {
 namespace {
@@ -387,8 +389,19 @@ bool Vdb8024Board::connect(const std::string& unit, const std::string& endpoint,
         err = "no endpoint resolver installed";
         return false;
     }
-    auto s = g_resolver(endpoint, err);
-    if (!s) return false;
+    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
+    // resolver opens (rebaseEndpointPaths knows the grammar). The `connect` unit property
+    // routes here too, so both the CONNECT command and a declarative connect are covered.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
+    auto s = g_resolver(spec, err);
+    if (!s) {
+        for (const std::string& p : paths) err += pathNote(p);
+        return false;
+    }
     kb_ = std::move(s);
     return true;
 }

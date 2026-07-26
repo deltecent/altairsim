@@ -5,6 +5,7 @@
 #include "core/roms.h"
 #include "core/statefile.h"
 #include "core/value.h"
+#include "host/endpoint.h"
 #include "host/stream.h"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <iterator>
 #include <utility>
+#include <vector>
 
 namespace altair {
 
@@ -340,7 +342,10 @@ std::vector<UnitDef> SbcBoard::units() const {
 
 std::vector<Property> SbcBoard::unitProperties(const std::string& unit) {
     if (unit != "tty") return {};
-    return u_.properties(g_resolver);
+    // The 8251's own `connect` property setter opens the endpoint, so it -- like the
+    // card's connect() -- must rebase a relative in:/out: PATH from a machine file.
+    return u_.properties(
+        rebasingResolver(g_resolver, [this](const std::string& p) { return resolvePath(p); }));
 }
 
 std::vector<MapEntry> SbcBoard::ioMap() const {
@@ -377,8 +382,20 @@ bool SbcBoard::connect(const std::string& unit, const std::string& ep, std::stri
         err = "no endpoint resolver installed";
         return false;
     }
-    auto s = g_resolver(ep, err);
-    if (!s) return false;
+    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
+    // resolver opens (rebaseEndpointPaths knows the grammar). The 8251 echoes describe()
+    // for its `connect` property, so SHOW/CONFIG SAVE report the resolved path, which
+    // reloads idempotently. Nothing else in the grammar carries a path.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(ep, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
+    auto s = g_resolver(spec, err);
+    if (!s) {
+        for (const std::string& p : paths) err += pathNote(p);
+        return false;
+    }
     u_.connect(std::move(s));
     refresh();  // a new line, and it may already have something waiting on it
     return true;

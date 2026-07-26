@@ -3,9 +3,12 @@
 #include "boards/proctech-vdm1.h"  // VdmBoard::setScroll -- the OUT 0xFE target
 #include "core/bus.h"              // bus_->boards(), to find the VDM
 #include "core/statefile.h"
+#include "host/endpoint.h"
 #include "host/media.h"
 
 #include <cstdio>
+#include <string>
+#include <vector>
 
 namespace altair {
 namespace {
@@ -846,11 +849,11 @@ std::vector<MapEntry> SolBoard::ioMap() const {
 
 bool SolBoard::connect(const std::string& unit, const std::string& endpoint,
                        std::string& err) {
-    // CONNECT IS NOT "UNIMPLEMENTED" ON A DECK, IT IS WRONG ON A DECK -- and it used
-    // to be worse than wrong. `CONNECT sol0:tape file:tape.cuts` opened the file
-    // write-only and TRUNCATING (host/endpoint.cpp), so the documented way to play a
-    // tape destroyed it on connect and could never read a byte back. A cassette has a
-    // position and a rewind; you put one IN.
+    // CONNECT IS NOT "UNIMPLEMENTED" ON A DECK, IT IS WRONG ON A DECK. `CONNECT
+    // sol0:tape out:tape.cuts` would hang a write-only punch on a cassette deck, and a
+    // reader/punch is not a cassette: a cassette has a position and a rewind, and you
+    // put one IN. (The older `file:` endpoint made this worse still, opening the deck's
+    // tape TRUNCATING -- so the documented way to play a tape destroyed it on connect.)
     if (deckOf(unit)) {
         err = "a cassette goes IN the deck, it does not plug into it -- "
               "MOUNT sol0:" + lowerAscii(unit) + " \"tape.cuts\"";
@@ -864,8 +867,19 @@ bool SolBoard::connect(const std::string& unit, const std::string& endpoint,
         err = "no endpoint resolver installed";
         return false;
     }
-    auto s = g_resolver(endpoint, err);
-    if (!s) return false;
+    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
+    // resolver opens (rebaseEndpointPaths knows the grammar). describe() then echoes the
+    // resolved path, which reloads idempotently. Nothing else in the grammar is a path.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
+    auto s = g_resolver(spec, err);
+    if (!s) {
+        for (const std::string& p : paths) err += pathNote(p);
+        return false;
+    }
 
     if (unit == "serial")        serial_.connect(std::move(s));
     else if (unit == "printer")  printer_ = std::move(s);

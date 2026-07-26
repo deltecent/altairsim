@@ -1,9 +1,11 @@
 #include "boards/mits-2sio.h"
 
 #include "core/statefile.h"
+#include "host/endpoint.h"
 #include "host/stream.h"
 
 #include <utility>
+#include <vector>
 
 namespace altair {
 
@@ -252,7 +254,11 @@ std::vector<Property> Sio2Board::properties() {
 }
 
 std::vector<Property> Sio2Board::unitProperties(const std::string& unit) {
-    if (Mc6850* ch = channel(unit)) return ch->properties(g_resolver);
+    // The 6850's own `connect` property setter opens the endpoint, so it -- like the
+    // card's connect() -- must rebase a relative in:/out: PATH from a machine file.
+    if (Mc6850* ch = channel(unit))
+        return ch->properties(
+            rebasingResolver(g_resolver, [this](const std::string& p) { return resolvePath(p); }));
     return {};
 }
 
@@ -280,8 +286,21 @@ bool Sio2Board::connect(const std::string& unit, const std::string& endpoint, st
         err = "no endpoint resolver installed";
         return false;
     }
-    auto s = g_resolver(endpoint, err);
-    if (!s) return false;
+    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
+    // resolver opens (rebaseEndpointPaths knows the grammar). Unlike the parallel cards,
+    // the 6850 echoes stream->describe() for its `connect` property, so what SHOW/CONFIG
+    // SAVE report is the resolved path -- which reloads idempotently (absolute rebases to
+    // itself). Nothing else in the grammar carries a path, so it passes through untouched.
+    std::vector<std::string> paths;
+    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
+        paths.push_back(p);
+        return resolvePath(p);
+    });
+    auto s = g_resolver(spec, err);
+    if (!s) {
+        for (const std::string& p : paths) err += pathNote(p);
+        return false;
+    }
     ch->connect(std::move(s));
     refresh();  // a new line, and it may already have something waiting on it
     return true;

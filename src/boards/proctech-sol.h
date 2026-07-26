@@ -13,7 +13,7 @@
 // board -- and the functions are named UNITS you drive independently:
 //
 //     CONNECT sol0:serial   socket:2323
-//     CONNECT sol0:printer  file:out.txt
+//     CONNECT sol0:printer  out:printout.txt
 //     CONNECT sol0:keyboard console
 //     MOUNT   sol0:tape1    "tapes/trk80.tap"
 //
