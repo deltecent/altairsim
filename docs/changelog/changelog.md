@@ -8,6 +8,21 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### CP/M 2.2 boots on the SBC-200 — with interrupts and the PROM switch-out
+
+`altairsim examples/sdsys/cpm.toml`, press Enter, type `C`, and **SD Systems CP/M 2.2** comes up to
+its `A>` prompt off the VersaFloppy — and this time everything you type at that prompt arrives
+through a **hardware interrupt**. Where SDOS polled the keyboard, CP/M's CBIOS takes console input
+*only* through a **Z80 mode-2 vectored interrupt**: the [SBC-200](../boards/sd-sbc.md)'s 8251 raises
+its RxRDY line, the onboard **Z80-CTC** turns that into an interrupt on channel 1, and the card puts
+vector `0x82` on the bus so the CPU jumps to the CBIOS keyboard handler. It is the first machine
+here whose console depends on interrupts to work at all. The board also grew the **SBC-200 memory
+switch-out**: `cpm.toml` is a full **64K** machine whose monitor and DDBIOS live in the SBC's own
+**onboard boot-PROM sockets** (`[[board.socket]]`), shadowing RAM until CP/M's cold boot does
+`OUT 7F,3` to drop the PROM out of the map and run from the 64K underneath. Both the interrupt path
+and the switch-out are proven end to end — the acceptance test types `DIR` and reads the directory
+back, which only works if every link in that chain does.
+
 ### A video console: the SD Systems VDB-8024
 
 `BOARDS ADD vdb8024` puts an **SD Systems VDB-8024** in the backplane — an **80×24 video terminal

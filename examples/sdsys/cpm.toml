@@ -1,0 +1,86 @@
+# SD Systems SBC-200 + VersaFloppy II -- boots SD Systems CP/M 2.2.
+#
+#     cd examples/sdsys
+#     altairsim cpm.toml
+#     (press Enter)   ->   .        <- MSMONR21 auto-bauds off the CR
+#     C               ->   64K CP/M 2.2 ...   A>
+#
+# TWO THINGS MAKE THIS CP/M DIFFERENT FROM SDOS (sdos.toml), and both are hardware the
+# SBC-200 always had but Phase 1 did not model:
+#
+#   1. THE KEYBOARD IS INTERRUPT-DRIVEN. The CBIOS console driver (CONIO) arms the
+#      SBC's Z80-CTC channel 1 for a Z80 mode-2 vectored interrupt whose trigger is the
+#      8251's RxRDY line, sets IM 2 with its vector table at FF80, and puts the keyboard
+#      handler's vector at FF82 (vector byte 0x82). Every key you type reaches CP/M
+#      through that interrupt; console OUTPUT stays polled. SDOS polled the keyboard, so
+#      it booted without this -- CP/M will not.
+#
+#   2. THE ONBOARD PROM SWITCHES OUT. This is a full 64K machine: the monitor (E000) and
+#      the DDBIOS (F000) live in the SBC's own boot-PROM sockets, shadowing RAM. When
+#      CP/M's cold boot has loaded the system high, it does `OUT 7F,3` to switch the
+#      onboard PROM out of the map, and the 64K of RAM under it shows through. The RAM
+#      card is `honors_phantom = "read"` so the shadow hides reads while writes fall
+#      straight through to it.
+#
+# WHY YOU MUST PRESS ENTER FIRST. As on every SBC-200 serial machine, MSMONR21 auto-bauds
+# off the start bit of the first character you type. It prints nothing until then -- press
+# Enter. See the README beside this file and reference/SD Systems SBC-100 & SBC-200.md.
+
+[machine]
+name    = "cpm22"
+startup = ["RUN E000"]                 # enter the onboard monitor PROM (as reset would)
+
+# THE CPU. A 4 MHz Z80. On the real board the CPU is on the SBC card itself; here it is
+# the generic z80 card, and the SBC card carries the 8251, CTC, parallel port and PROM.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE SBC-200's I/O and onboard PROM. The 8251 console at 7C/7D, the CTC keyboard
+# interrupt, the parallel port with the memory switch-out at 7F, and the two boot-PROM
+# sockets: the MSMONR21 monitor at E000 and the DDBIOS disk BIOS at F000.
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:msmonr21"           # the RS232 (MS) monitor PROM
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"             # the DDBIOS VersaFloppy boot BIOS
+
+# A PLAIN 64K RAM CARD under the PROM shadow. `honors_phantom = read` is what lets the
+# onboard PROM shadow reads while writes fall through to this RAM -- so after `OUT 7F,3`
+# the whole 64K is live and CP/M runs from it (the monitor's FF80 interrupt table too).
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                        # real static RAM does not come up zeroed
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+
+# THE VERSAFLOPPY II -- a WD FD1791 soft-sector controller at the standard 60H block,
+# with the bootable CP/M master in drive A (8" single-sided double-density, 256-byte
+# sectors, 26x77, sysgen'd for a 64K system). `C` at the monitor prompt cold-boots it.
+[[board]]
+type    = "versafloppy"
+id      = "vf0"
+variant = "vfii"
+port    = 60
+
+  [[board.drive]]
+  unit  = 0
+  mount = "SD-CPM22R4-SSDDR-256-64K.DSK"

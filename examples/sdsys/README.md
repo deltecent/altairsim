@@ -66,6 +66,43 @@ DELTEC ENTERPRISES LLC
 sysgen'd for a 32K system. It is mounted **read/write**, so SDOS can save files; run
 `git checkout` on it to restore the master if you change it.
 
+## Booting CP/M 2.2
+
+`cpm.toml` boots **SD Systems CP/M 2.2** from the same VersaFloppy II, and it exercises two
+pieces of the SBC-200 that SDOS does not:
+
+```
+cd examples/sdsys
+altairsim cpm.toml
+(press Enter)   ->   .
+C               ->   cold-boot CP/M from drive A
+```
+
+```
+64k CP/M vers 2.2 for MS-610
+COMPUTING INFORMATION SCIENCES
+
+A>
+```
+
+`A>` is the CP/M prompt -- type `DIR` for the directory. Two things make this different from
+the SDOS machine:
+
+- **The keyboard is interrupt-driven.** The CP/M CBIOS console driver takes input *only*
+  through a Z80 mode-2 vectored interrupt: the 8251's RxRDY triggers the SBC's Z80-CTC
+  channel 1, which vectors (byte `0x82`) to the keyboard handler. SDOS polled the keyboard, so
+  it booted without interrupts; CP/M will not. Everything you type at `A>` arrives that way.
+- **The onboard PROM switches out.** This is a full **64K** machine whose monitor (E000) and
+  DDBIOS (F000) live in the SBC's onboard boot-PROM sockets, shadowing RAM. When CP/M's cold
+  boot has loaded the system high, it does `OUT 7F,3` to drop the PROM out of the map, and the
+  64K of RAM under it becomes CP/M's. (`sbc200.toml`/`sdos.toml`, by contrast, keep their ROMs
+  on the memory card and never switch anything out.)
+
+The disk is `SD-CPM22R4-SSDDR-256-64K.DSK` -- the same 8" DD-256 format as the SDOS master,
+sysgen'd for a 64K system -- mounted **read/write**. A 32K image
+(`SD-CPM22R4-SSDDR-256-32K.DSK`) boots on the same machine too; being a 32K system it loads
+below the PROM and so never needs the switch-out.
+
 ## A video console instead of a serial terminal
 
 `sbc200v.toml` runs the same machine with the **SD Systems VDB-8024** video board as its console
@@ -85,5 +122,8 @@ both reach the monitor. The command set is identical to the serial machine's. Se
 
 ## What is not here yet
 
-The Z80-CTC baud generator, the parallel port, and the SBC-200 memory switch-out are later
-phases. The serial console, the video console, and the VersaFloppy disk all work today.
+The serial console, the video console, the VersaFloppy disk, the CP/M keyboard interrupt and
+the SBC-200 memory switch-out all work today. The Z80-CTC is modeled only as far as that
+keyboard interrupt needs (its baud-generator and timer channels are not observable at flat-out
+speed), and the reset auto-start jam is still stood in for by `startup = ["RUN E000"]` rather
+than the authentic PROM-at-the-reset-vector with its `IN 7F` release.

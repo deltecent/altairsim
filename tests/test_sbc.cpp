@@ -225,15 +225,24 @@ void test_sbc() {
         setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
         m.power();
 
-        // The default etch is 7C; two ports, and not a third.
+        // The card is one 8-port block, 78-7F on the etch: CTC 78-7B, 8251 7C/7D,
+        // parallel 7E/7F. It decodes all eight and nothing outside them.
         BusCycle c;
         c.type = Cycle::IoRead;
         c.addr = 0x7C;
         CHECK(sbc->decodes(c), "decodes the data port (7C)");
         c.addr = 0x7D;
         CHECK(sbc->decodes(c), "decodes the status/command port (7D)");
+        c.addr = 0x78;
+        CHECK(sbc->decodes(c), "decodes the CTC block (78)");
         c.addr = 0x7E;
-        CHECK(!sbc->decodes(c), "does NOT decode 7E -- that is the parallel port, a later phase");
+        CHECK(sbc->decodes(c), "decodes the parallel data port (7E)");
+        c.addr = 0x7F;
+        CHECK(sbc->decodes(c), "decodes the parallel handshake / mem-switch port (7F)");
+        c.addr = 0x77;
+        CHECK(!sbc->decodes(c), "does NOT decode below the block (77)");
+        c.addr = 0x80;
+        CHECK(!sbc->decodes(c), "does NOT decode above the block (80)");
 
         // The RxD->/DSR jumper is a BOARD property (default on), and it drives the chip's
         // strap -- the auto-baud is a fact about this card, not the generic 8251.
@@ -311,5 +320,113 @@ void test_sbc() {
         }
         CHECK(m.bus.memRead(0x0050) == 0xAA,
               "the auto-baud loop saw DSR pulse 0->1->0 and reached its sentinel");
+    }
+
+    SECTION("SBC board -- the CTC keyboard interrupt: RxRDY raises a mode-2 vector 0x82");
+    {
+        // SD CP/M's CONIO arms CTC channel 1 for a mode-2 vectored interrupt whose
+        // trigger is the 8251's RxRDY, then services it by reading the data port. This
+        // pins the whole path without booting CP/M: arm the CTC the way CONIO does, put
+        // a byte on the line, and watch /INT rise, the acknowledge hand back 0x82, and
+        // the data read clear it again.
+        Machine     m;
+        std::string err;
+        m.bus.setVerify(true);  // re-derive pin 73 every cycle -- catch a missing intChanged()
+
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region rr;
+        rr.kind = RegionKind::Ram;
+        rr.at   = 0;
+        rr.size = 0x10000;
+        mem->addRegion(rr, err);
+        setProperty(*mem, "fill", "zero", err);
+
+        auto* sbc = dynamic_cast<SbcBoard*>(m.add("sbc", "ser0", err));
+        auto  s   = std::make_unique<ScriptedStream>();
+        ScriptedStream* tty = s.get();
+        sbc->usart().connect(std::move(s));
+
+        m.add("z80", "cpu0", err);
+        setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
+        m.power();
+
+        // Program the 8251 (mode 8N1, command RxE) exactly as the monitor does.
+        m.bus.ioWrite(0x7D, 0x4E);
+        m.bus.ioWrite(0x7D, 0x37);
+
+        // A byte arrives BEFORE the CTC is armed: /INT must stay low (nothing armed yet).
+        tty->feed("A");
+        sbc->pump();
+        m.clock.advance(kChar + kBit);
+        CHECK(sbc->usart().rxReady(), "the byte arrived (RxRDY is up)");
+        CHECK(!m.bus.intPending(), "but with ch1 unarmed, no interrupt is asserted");
+
+        // CONIO's arming sequence: vector base 0x80 to ch0 (D0=0), then ch1 control word
+        // 0xD7 (interrupt-enable) + time constant 1.
+        m.bus.ioWrite(0x78, 0x80);  // CTC ch0: interrupt vector base
+        m.bus.ioWrite(0x79, 0xD7);  // CTC ch1: counter, interrupt-enable (D7), TC follows
+        m.bus.ioWrite(0x79, 0x01);  // CTC ch1: time constant
+
+        CHECK(m.bus.intPending(), "now ch1 is armed and RxRDY is up: /INT is asserted");
+        CHECK(m.bus.intAck() == 0x82, "the IntAck hands back vector 0x82 (base 0x80 | ch1<<1)");
+        CHECK(m.bus.ioRead(0x7C) == 'A', "the ISR reads the data port...");
+        CHECK(!m.bus.intPending(), "...which clears RxRDY, so /INT drops -- no EOI needed");
+
+        // A second byte re-raises it (the level tracks RxRDY, arming persists).
+        tty->feed("B");
+        sbc->pump();
+        m.clock.advance(kChar + kBit);
+        CHECK(m.bus.intPending(), "the next character raises /INT again");
+        CHECK(m.bus.intAck() == 0x82, "...with the same vector");
+    }
+
+    SECTION("SBC board -- the onboard PROM shadow and the OUT 7F memory switch-out");
+    {
+        // The authentic single-board layout: the SBC owns its boot PROM (here MSMONR21 at
+        // E000) over a plain 64K RAM card. The PROM shadows RAM for reads; a write falls
+        // through; and OUT 7F bit 1 -- CP/M's cold-boot PROM switch-out -- drops it out of
+        // the map so the RAM shows through. A reset puts it back.
+        Machine     m;
+        std::string err;
+        m.bus.setVerify(true);
+
+        auto* sbc = dynamic_cast<SbcBoard*>(m.add("sbc", "ser0", err));
+        CHECK(sbc->loadSubUnit("socket", {{"at", "E000"}, {"mount", "builtin:msmonr21"}}, err),
+              "a socket takes the MSMONR21 monitor PROM at E000");
+
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region rr;
+        rr.kind = RegionKind::Ram;
+        rr.at   = 0;
+        rr.size = 0x10000;
+        mem->addRegion(rr, err);
+        setProperty(*mem, "fill", "zero", err);
+        CHECK(setProperty(*mem, "honors_phantom", "read", err),
+              "the RAM under the shadow answers writes but stands down on reads");
+
+        m.power();
+
+        CHECK(m.bus.memRead(0xE000) == 0xC3, "E000 reads the PROM (JP E003), not RAM");
+        CHECK(m.bus.memRead(0xE800) == 0x00, "the gap above the 2K ROM falls through to RAM");
+        CHECK(m.bus.memRead(0xFF80) == 0x00, "the interrupt-table page is RAM, not PROM");
+
+        // A write into the PROM window lands in the RAM beneath the shadow.
+        m.bus.memWrite(0xE000, 0x99);
+        CHECK(m.bus.memRead(0xE000) == 0xC3, "reads still come from the PROM...");
+        CHECK(mem->storeAt(0xE000) == 0x99, "...but the write reached the RAM under it");
+
+        // OUT 7F bit 1 = switch the onboard memory out -> RAM shows through.
+        m.bus.ioWrite(0x7F, 0x03);
+        CHECK(m.bus.memRead(0xE000) == 0x99, "OUT 7F,3 switched the PROM out: E000 is RAM now");
+
+        // OUT 7F with bit 1 clear switches it back in.
+        m.bus.ioWrite(0x7F, 0x00);
+        CHECK(m.bus.memRead(0xE000) == 0xC3, "OUT 7F,0 switched the PROM back in");
+
+        // A reset re-arms the onboard memory regardless of the latch's state.
+        m.bus.ioWrite(0x7F, 0x03);
+        CHECK(m.bus.memRead(0xE000) == 0x99, "switched out again");
+        m.reset(Reset::Bus);
+        CHECK(m.bus.memRead(0xE000) == 0xC3, "a reset switched the onboard PROM back in");
     }
 }
