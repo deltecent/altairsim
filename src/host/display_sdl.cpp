@@ -30,11 +30,13 @@ constexpr int kDefaultWidthPercent = 50;
 constexpr int kChromeH = 40;
 
 // A small inset around the picture so macOS's rounded window corners do not clip the
-// bottom-left glyphs. The window is opened this many pixels larger than the exact frame
-// multiple on every side; integer-scale presentation then centers the picture and the
-// leftover band is painted by SDL_RenderClear. Applied on every platform because a thin
-// bezel looks intentional, not clipped.
-constexpr int kBorder = 8;  // pixels per side
+// bottom-left glyphs. This is the bezel we AIM FOR, in device pixels, at the opening size;
+// ensureWindow() turns it into a margin in LOGICAL pixels (border_) that it folds into the
+// logical presentation on every side, so the letterbox band is even on all four sides and
+// STAYS even as the aspect-locked window is dragged (a fixed device-pixel bezel could not,
+// since the window's aspect changes with size). Applied on every platform -- a thin bezel
+// looks intentional, not clipped.
+constexpr int kBorder = 8;  // device pixels per side, at the opening size
 
 }  // namespace
 
@@ -135,11 +137,15 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // and 104 top and bottom. The WIDTH is what fails, but the border appears on all
     // four sides, because one scale has to serve both axes.
     //
-    // We now ADD a small kBorder inset on every side deliberately: the window is opened
-    // frame*scale + 2*kBorder in each axis, and integer-scale presentation centers the
-    // frame and letterboxes exactly kBorder around it. That controlled band is the point
-    // (macOS rounds the window's corners and would otherwise clip the bottom-left glyphs)
-    // -- not the pathological clamp above, which is a wrong SCALE rather than a chosen edge.
+    // We ADD a small bezel on every side deliberately (macOS rounds the window's corners and
+    // would otherwise clip the bottom-left glyphs) -- but it is folded into the LOGICAL size,
+    // not the device size. Below we pick a margin `m` in logical pixels worth about kBorder
+    // device pixels at the opening scale, present a logical frame of (w+2m)x(h+2m), and draw
+    // the picture into the centered [m,m,w,h] sub-rect (present()). Because the window is
+    // locked to the (w+2m):(h+2m) aspect and LETTERBOX preserves exactly that ratio, the
+    // picture fills the window with an even m-scaled band on ALL FOUR sides, and the band
+    // stays even at every drag size. A fixed device-pixel bezel could not: the window's aspect
+    // would change with size, so a single aspect lock would eat the border on the long axis.
     //
     // Ask the display how much room there is, and never ask for more than that. Usable
     // bounds already exclude the menu bar and the Dock, but not this window's own title
@@ -171,8 +177,14 @@ bool SdlDisplay::ensureWindow(int w, int h) {
         scale = kMaxScale;  // no bounds, no request: the plain fallback multiple
     }
 
-    if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale + 2 * kBorder,
-                                     h * scale + 2 * kBorder,
+    // The bezel as a whole number of LOGICAL pixels, worth about kBorder DEVICE pixels at this
+    // opening scale (border_ * scale). Equal on both axes, so the displayed band is equal on
+    // all four sides; folded into the logical size below and drawn as an inset in present().
+    // At least 1 so there is always a hairline, even at large scales.
+    border_ = std::max(1, (int)std::lround((double)kBorder / scale));
+    const int logW = w + 2 * border_, logH = h + 2 * border_;
+
+    if (!SDL_CreateWindowAndRenderer(title_.c_str(), logW * scale, logH * scale,
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &window_,
                                      &renderer_)) {
         std::fprintf(stderr, "SDL: window/renderer failed: %s\n", SDL_GetError());
@@ -193,18 +205,21 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // "ask for less" -- the display query above narrows the guess, this makes it true.
     int gotW = 0, gotH = 0;
     SDL_GetWindowSize(window_, &gotW, &gotH);
-    const int fit = std::max(1, std::min((gotW - 2 * kBorder) / w, (gotH - 2 * kBorder) / h));
-    const int wantW = w * fit + 2 * kBorder, wantH = h * fit + 2 * kBorder;
+    const int fit = std::max(1, std::min(gotW / logW, gotH / logH));
+    const int wantW = logW * fit, wantH = logH * fit;
     if (gotW != wantW || gotH != wantH) SDL_SetWindowSize(window_, wantW, wantH);
 
     // ASPECT-PRESERVING FROM THE START, so the FIRST drag behaves like every one after it.
-    // The window opens at a whole multiple (chosen above), which under LETTERBOX is exactly
-    // an integer scale -- crisp -- and the kBorder inset is the letterbox band. But because
-    // the window is also locked to that opening aspect (below), a resize stays proportional
-    // and the picture keeps filling it, undistorted, at whatever size. The earlier scheme
-    // opened in INTEGER_SCALE and only switched to letterbox when the first resize event
-    // arrived, so that first drag ran free and then snapped -- this removes the seam.
-    SDL_SetRenderLogicalPresentation(renderer_, w, h, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    // The logical frame is the picture PLUS the bezel -- (w+2*border_) x (h+2*border_) -- and
+    // the window opens at exactly `scale` times that, so LETTERBOX shows no bars of its own at
+    // the opening size; the black band you see is the bezel, drawn as an inset in present().
+    // Because the window is locked to this same aspect (below), a resize stays proportional and
+    // the picture-plus-bezel keeps filling it, undistorted and even on all four sides, at any
+    // size. The earlier scheme presented just the picture (w x h): its aspect did not match the
+    // bezel-padded window, so LETTERBOX ate the border on the long axis. Presenting the padded
+    // frame is what keeps the left and right bezel.
+    SDL_SetRenderLogicalPresentation(renderer_, logW, logH,
+                                     SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
     // Ask SDL for layout- and shift-resolved characters (SDL_EVENT_TEXT_INPUT), so a
     // '$' or a capital letter arrives correct without us reimplementing a keymap. The
@@ -237,7 +252,7 @@ bool SdlDisplay::ensureWindow(int w, int h) {
         std::fprintf(stderr,
                      "[video] logical %dx%d  window %dx%d  pixels %dx%d  output %dx%d\n"
                      "[video] presentation rect x=%.1f y=%.1f w=%.1f h=%.1f\n",
-                     w, h, ww, wh, pw, ph, ow, oh, r.x, r.y, r.w, r.h);
+                     logW, logH, ww, wh, pw, ph, ow, oh, r.x, r.y, r.w, r.h);
     }
     return true;
 }
@@ -410,7 +425,13 @@ void SdlDisplay::present(Surface* s) {
 
     SDL_UpdateTexture(texture_, nullptr, rgba_.data(), s->width() * 4);
     SDL_RenderClear(renderer_);
-    SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
+    // Into the centered sub-rect of the logical frame: the logical size is the picture plus a
+    // border_ margin on every side, so this inset leaves an even bezel that RenderClear (black)
+    // fills. Coordinates are logical; the aspect-locked LETTERBOX scales the whole frame to the
+    // window uniformly, keeping the bezel even at any size.
+    const SDL_FRect dst{ (float)border_, (float)border_, (float)s->width(),
+                         (float)s->height() };
+    SDL_RenderTexture(renderer_, texture_, nullptr, &dst);
     SDL_RenderPresent(renderer_);
 }
 

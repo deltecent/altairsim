@@ -333,8 +333,8 @@ public:
     // The height is not a separate knob -- it comes off the width, because the picture is
     // presented at a WHOLE-number multiple of the board's own pixels, chosen as the largest
     // that fits the target width. Whole multiples are the point: nearest-neighbor scaling
-    // keeps a 1970s pixel a crisp square, and a fractional scale would blur it. The leftover
-    // is a thin letterbox (kBorder). See SdlDisplay::ensureWindow().
+    // keeps a 1970s pixel a crisp square, and a fractional scale would blur it. Around it is a
+    // thin, even bezel on all four sides (kBorder). See SdlDisplay::ensureWindow().
     //
     // This is the sizing MECHANISM, not a user setting: `width` is a per-video-board property
     // (Display::widthProperty), and the board hands its choice here just before it draws.

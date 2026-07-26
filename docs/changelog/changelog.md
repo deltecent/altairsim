@@ -12,7 +12,8 @@ as it is now; this document is the record of how it got there.
 
 A video window now opens locked to its picture's aspect ratio, so dragging any corner — the
 first drag included — resizes it proportionally and the picture fills the new size without
-snapping back on the next redraw. While the machine is halted the title bar reads
+snapping back on the next redraw. A thin, even bezel frames the picture on **all four sides**
+and stays even at any size. While the machine is halted the title bar reads
 **"simulator stopped"**, and clears again the moment it runs.
 
 ### The video window's size is now a per-board `width`, in pixels
