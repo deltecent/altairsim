@@ -53,6 +53,41 @@ bool same(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
     return a.size() == b.size() && (a.empty() || std::equal(a.begin(), a.end(), b.begin()));
 }
 
+// The fraction of the tape's zero-crossing intervals that fall at NEITHER tone's
+// half-period. A clock-divider modem (the Sol's CUTS) makes only two intervals, so this
+// is ~0; a free-running oscillator whose phase is carried across the mark<->space boundary
+// makes a blended interval at every symbol change (measured ~17% on a tape a real Sol
+// rejected). The real read path counts transitions per cell, so those off-grid crossings
+// misread -- but our own energy-based demodulator is blind to placement and round-trips
+// them happily, which is exactly how the write-path bug survived every round-trip test
+// until it hit real hardware. See investigations/cuts-write-path and TapeFormat::gridToggled.
+double offGridFraction(const AudioBuffer& a, const TapeFormat& f) {
+    const double markHalf  = double(a.rate) / (2.0 * f.markHz);
+    const double spaceHalf = double(a.rate) / (2.0 * f.spaceHz);
+    std::vector<double> xc;
+    for (size_t i = 1; i < a.s.size(); ++i) {
+        const double p = a.s[i - 1], q = a.s[i];
+        if ((p < 0.0f) != (q < 0.0f)) xc.push_back(double(i - 1) + p / (p - q));
+    }
+    if (xc.size() < 3) return 1.0;
+    size_t off = 0, n = 0;
+    for (size_t i = 1; i < xc.size(); ++i) {
+        const double hp = xc[i] - xc[i - 1];
+        const bool m = std::fabs(hp - markHalf)  < 0.30 * markHalf;
+        const bool s = std::fabs(hp - spaceHalf) < 0.30 * spaceHalf;
+        if (!(m || s)) ++off;
+        ++n;
+    }
+    return n ? double(off) / double(n) : 1.0;
+}
+
+// The peak sample amplitude, as a fraction of full scale.
+double peakLevel(const AudioBuffer& a) {
+    double pk = 0.0;
+    for (float s : a.s) pk = std::max(pk, std::fabs(double(s)));
+    return pk;
+}
+
 // Modulate, damage the audio with `f`, demodulate. Returns true if every byte came
 // back. A short leader keeps the tests quick -- the leader is not what is under test.
 template <typename F>
@@ -175,6 +210,30 @@ void test_tapecodec() {
                    std::to_string(rate)).c_str());
         }
     }
+
+    // -----------------------------------------------------------------------
+    SECTION("tape modem: CUTS lays its crossings on the clock grid, and at a real level");
+    // THE ONE A BYTE ROUND TRIP CANNOT MAKE. The Sol's CUTS modem is a flip-flop dividing a
+    // master clock (TapeFormat::gridToggled), so every zero crossing sits at one of two
+    // intervals and a real Sol's transition-timing decoder reads them. The free-running
+    // oscillator this replaced carried phase across the mark<->space boundary and smeared a
+    // blended crossing in at every symbol change -- invisible to our energy demodulator (the
+    // round-trip section above passes either way) but rejected by real hardware. This asserts
+    // the property directly. See investigations/cuts-write-path.
+    for (uint32_t rate : {44100u, 48000u}) {
+        const AudioBuffer a = modulate(payload(512), cuts, rate, 0.25);
+        CHECK(offGridFraction(a, cuts) < 0.02,
+              (std::string("cuts crossings on the grid @") + std::to_string(rate)).c_str());
+    }
+    // The level is the recorder's knob, and its default is a genuine dub's ~36% -- our old
+    // 0.8 overdrove a real Sol's front-end AGC. modulate()'s default and the peak it writes
+    // must agree, because it is the difference between a tape that loads and one that does not.
+    CHECK(std::fabs(peakLevel(modulate(payload(64), cuts, 44100, 0.25)) - 0.36) < 0.01,
+          "cuts default level is a genuine dub's 0.36 of full scale");
+    // And the level is honoured when asked: a quieter tape is quieter, end to end.
+    CHECK(std::fabs(peakLevel(modulate(payload(64), cuts, 44100, 0.25, 0.0, Waveform::Square,
+                                       0.20)) - 0.20) < 0.01,
+          "cuts level is settable");
 
     // -----------------------------------------------------------------------
     SECTION("tape modem: asking for no leader must not cost a byte");

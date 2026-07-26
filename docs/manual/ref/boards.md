@@ -360,6 +360,7 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 | `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
+| `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
@@ -398,6 +399,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
+| `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
@@ -598,6 +600,8 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `leader` | int | `3` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `2` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
+| `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
+| `rc` | int | `4000` | `1000` .. `20000` | Edge-rounding low-pass corner in Hz, when writing CUTS audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
@@ -613,6 +617,8 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `leader` | int | `3` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `2` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
+| `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
+| `rc` | int | `4000` | `1000` .. `20000` | Edge-rounding low-pass corner in Hz, when writing CUTS audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |

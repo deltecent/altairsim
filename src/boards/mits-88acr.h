@@ -172,6 +172,13 @@ private:
     // lays down) or "sine". Audible only; a re-mount decodes either the same (tapemodem.h).
     std::string wave_ = "square";
 
+    // THE RECORDING LEVEL, percent of full scale, when this card writes audio. 36% is a
+    // realistic cassette level; the old 80% ran more than twice as hot as a genuine dub.
+    // Audible, and it keeps a real recorder's input out of saturation. (Edge-rounding, the
+    // Sol deck's `rc`, does not apply here: the ACR's FSK is not a clock-divider tone --
+    // see TapeFormat::gridToggled in host/tapemodem.h.)
+    long long level_ = 36;   // percent of full scale, 1..100
+
     // HOW FAST THE TAPE PLAYS BACK, and it is the tape's clock, not the CPU's. "full"
     // (default) empties the cassette as fast as the loader reads it, at any clock_hz --
     // no waiting for a machine that never had to wait to read its own memory. "real"

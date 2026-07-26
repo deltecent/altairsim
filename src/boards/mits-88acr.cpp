@@ -213,6 +213,23 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
     };
     p.push_back(std::move(wav));
 
+    // THE RECORDING LEVEL, percent of full scale, when this card writes audio. See the
+    // field in the header: 36% is a realistic cassette level, well below the old 80%.
+    Property lvl;
+    lvl.name = "level";
+    lvl.help = "Recording level as a percent of full scale, when writing audio";
+    lvl.kind = Kind::Int;
+    lvl.min  = 1;
+    lvl.max  = 100;
+    lvl.unit = "%";
+    lvl.get  = [this] { return Value::ofInt(level_); };
+    lvl.set  = [this](const Value& v, std::string&) {
+        level_ = v.i();
+        applyEncoding();
+        return true;
+    };
+    p.push_back(std::move(lvl));
+
     // HOW FAST THE TAPE PLAYS -- on the tape's clock, not the guest's. `full` (default)
     // hands the loader bytes as fast as it reads them; `real` paces playback in wall
     // time at the 300-baud strap, the wait a real cassette made you serve. The CPU's
@@ -441,7 +458,9 @@ bool AcrBoard::mount(const std::string& unit, const std::string& path, bool ro, 
 // What to lay down either side of the data when this tape is written back. A no-op on a
 // byte tape, which has no audio to put it in.
 void AcrBoard::applyEncoding() {
-    if (audio_) audio_->setEncoding(double(leader_), double(trailer_), waveformByName(wave_));
+    if (audio_)
+        audio_->setEncoding(double(leader_), double(trailer_), waveformByName(wave_),
+                            double(level_) / 100.0);
 }
 
 // THE TRANSPORT STOPPED -- so an audio tape re-encodes itself and goes to the host now.
