@@ -13,6 +13,7 @@
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-sbc.h"
+#include "boards/sd-vdb8024.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/joystick_null.h"
@@ -39,6 +40,7 @@ int main() {
     altair::PioBoard::setResolver(altair::resolveEndpoint);
     altair::Pio4Board::setResolver(altair::resolveEndpoint);
     altair::SolBoard::setResolver(altair::resolveEndpoint);
+    altair::Vdb8024Board::setResolver(altair::resolveEndpoint);
 
     // A graphics board draws into an injected Display; headless tests give it a
     // NullDisplay, so a VDM-1 renders into memory and a test reads the pixels back
@@ -46,6 +48,7 @@ int main() {
     static altair::NullDisplay g_display;
     altair::VdmBoard::setDisplay(&g_display);
     altair::DazzlerBoard::setDisplay(&g_display);
+    altair::Vdb8024Board::setDisplay(&g_display);
 
     // The game-controller service, injected the same way: a D+7A reads its JS-1 sticks
     // from here. Headless tests give it a NullJoystick (every stick centered, no
@@ -109,6 +112,7 @@ int main() {
     test_pio();
     test_4pio();
     test_vdm1();
+    test_vdb8024();
     test_dazzler();
     test_d7a();
     test_sol();

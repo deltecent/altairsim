@@ -13,7 +13,7 @@ what will bite you. **It does not list their parameters.** Every key of every bo
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The twenty-four boards
+## The twenty-five boards
 
 | Type | What it is |
 |---|---|
@@ -35,6 +35,7 @@ be wrong.
 | `versafloppy` | SD Systems VersaFloppy I/II — a soft-sector floppy controller. Boots SDOS |
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
+| `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. Needs a display |
 | `d7a` | Cromemco D+7A — analog and parallel I/O; reads joysticks |
 | `sol` | Processor Technology Sol-PC — the Sol-20's onboard I/O, on one card |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
@@ -562,6 +563,46 @@ the period software inverts what it needs.
 
 Fit it with a `vdm1` and you have the **`sol20`** machine, which cold-starts the real SOLOS
 operating system.
+
+---
+
+## `vdb8024` — SD Systems VDB-8024
+
+An **80-column by 24-line video terminal on one board** — the SD Systems answer to a serial
+console. Where the `sbc` card gives an SBC-100/200 a serial port for a teletype or a glass
+terminal, the VDB-8024 gives it *the terminal itself*: a whole intelligent display, keyboard and
+all, plugged straight into the backplane.
+
+**Despite the name, it is not memory-mapped.** Nothing of its screen lives in the machine's
+address space. To the computer it is simply **two I/O ports** — a status port and a data port
+(fixed at `00` and `01`) — that behave like a terminal on a wire: the program reads the status to
+see whether a key is waiting or the display is ready, writes a character or a control code to the
+data port, and reads a typed key back from it. The screen, its memory and its own processor all
+sit behind that pair of ports, invisible, exactly as they were on the real card.
+
+It runs the **SD monitor's video build, `sdmonv21`**, which is the same monitor as the serial
+`sbc200` machine (same commands, same `.` prompt) built to talk to this board instead of the 8251.
+There is **no “press Enter first”** here — the VDB is not a serial line with a speed to measure, so
+the prompt is on the screen the moment the machine starts:
+
+```
+altairsim sbc200v
+```
+
+comes up at the monitor's `.` prompt **on the video display**, and `examples/sdsys/sbc200v.toml`
+is the same thing you can read and change.
+
+**It needs a display**, like the VDM-1: built with SDL3 it opens a real window in the board's own
+character font; built without, it runs headless and the text simply has nowhere to show. And like
+a Sol-20, **the window is the console** — the machine asks for `focus=on`, so the window keeps the
+keyboard while the guest runs, and window keys and terminal keys reach the monitor as one stream.
+The characters are drawn from the board's own character-generator font, with true lower-case
+descenders on `g`, `j`, `p`, `q` and `y`, the way the hardware's socketed font PROM did it.
+
+The board understands the control codes its firmware did: carriage return, line feed, backspace,
+tab, cursor up and right, clear-screen and home, and the `ESC` sequences that position the cursor
+and erase to the end of a line or the screen. A line that fills wraps, and a line feed at the
+bottom scrolls the page up.
 
 ---
 

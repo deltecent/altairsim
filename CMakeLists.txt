@@ -333,6 +333,11 @@ add_library(altair_core STATIC
   # Renders into the same host Display seam as the VDM-1; no bus-mastering. See
   # cromemco-dazzler.h.
   src/boards/cromemco-dazzler.cpp
+  # The SD Systems VDB-8024: an 80x24 video terminal on one board (two I/O ports, NOT
+  # memory-mapped), the video console alternative to the SBC's 8251. Renders the same
+  # host Display seam as the VDM-1 and takes its keyboard from a ByteStream like the
+  # Sol. See sd-vdb8024.h.
+  src/boards/sd-vdb8024.cpp
   # The Cromemco D+7A: analog + parallel I/O. A block of eight ports -- one parallel
   # port and seven two's-complement A/D-in/D/A-out channels -- that reads one or two
   # JS-1 joysticks from an injected host Joystick service (src/host/joystick.h), like
@@ -545,6 +550,7 @@ add_executable(altair_tests
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_pio.cpp
+  tests/test_vdb8024.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
   tests/test_dazzler.cpp

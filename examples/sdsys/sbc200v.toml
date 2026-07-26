@@ -1,0 +1,16 @@
+# The SD Systems SBC-200 with a VDB-8024 VIDEO console -- a thin delta on the built-in
+# `sbc200v` machine (machines/sbc200v.toml). See the README beside this file.
+#
+#     cd examples/sdsys
+#     altairsim sbc200v.toml
+#     .                        <- the monitor prompt, ON THE VIDEO SCREEN
+#
+# This runs the SD build of the monitor (SDMONV21) on the SD Systems VDB-8024 video
+# board, the alternative to the 8251 serial console that `sbc200.toml` uses. The monitor
+# prints its `.` prompt straight onto the 80x24 screen; with SDL3 that is a window, and
+# window or terminal keystrokes both reach it. The command set is identical to the serial
+# machine's (reference/SD Systems Monitor.md).
+
+[machine]
+name = "sbc200v-example"
+base = "sbc200v"
