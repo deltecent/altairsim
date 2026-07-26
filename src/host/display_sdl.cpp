@@ -29,6 +29,13 @@ constexpr int kAutoFillPercent = 70;
 // display's usable height does not open with its title bar off the top of the screen.
 constexpr int kChromeH = 40;
 
+// A small inset around the picture so macOS's rounded window corners do not clip the
+// bottom-left glyphs. The window is opened this many pixels larger than the exact frame
+// multiple on every side; integer-scale presentation then centers the picture and the
+// leftover band is painted by SDL_RenderClear. Applied on every platform because a thin
+// bezel looks intentional, not clipped.
+constexpr int kBorder = 8;  // pixels per side
+
 }  // namespace
 
 SdlDisplay::~SdlDisplay() {
@@ -114,8 +121,8 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // so the whole arrangement is best-effort and cannot be asserted in a test.
     SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, wantsFocus ? "1" : "0");
 
-    // OPEN AT AN EXACT INTEGER MULTIPLE OF THE FRAME -- and pick the multiple to FIT,
-    // rather than assuming one and hoping.
+    // OPEN AT AN EXACT INTEGER MULTIPLE OF THE FRAME (plus a fixed kBorder inset on every
+    // side, see below) -- and pick the multiple to FIT, rather than assuming one and hoping.
     //
     // 3x was assumed, and it does not fit a laptop. A 512-wide VDM-1 frame asks for a
     // 1536-point window on a panel 1470 points wide, so macOS clamps it -- and a
@@ -125,6 +132,12 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // 1024x416 of picture inside a 1470x624 window, a 223-pixel border down each side
     // and 104 top and bottom. The WIDTH is what fails, but the border appears on all
     // four sides, because one scale has to serve both axes.
+    //
+    // We now ADD a small kBorder inset on every side deliberately: the window is opened
+    // frame*scale + 2*kBorder in each axis, and integer-scale presentation centers the
+    // frame and letterboxes exactly kBorder around it. That controlled band is the point
+    // (macOS rounds the window's corners and would otherwise clip the bottom-left glyphs)
+    // -- not the pathological clamp above, which is a wrong SCALE rather than a chosen edge.
     //
     // Ask the display how much room there is, and never ask for more than that. Usable
     // bounds already exclude the menu bar and the Dock, but not this window's own title
@@ -140,26 +153,34 @@ bool SdlDisplay::ensureWindow(int w, int h) {
         // A fixed multiple the operator asked for, brought down only if it would not fit.
         scale = requested;
         if (haveBounds)
-            while (scale > 1 && (w * scale > usable.w || h * scale + kChromeH > usable.h))
+            while (scale > 1 && (w * scale + 2 * kBorder > usable.w ||
+                                 h * scale + 2 * kBorder + kChromeH > usable.h))
                 --scale;
     } else if (haveBounds) {
         // AUTO: the largest whole multiple that keeps the window under ~70% of the usable
         // screen on BOTH axes. Small frames grow a lot, wide frames a little, and both land
-        // near the same size -- which is why a fixed ceiling could not do this job.
+        // near the same size -- which is why a fixed ceiling could not do this job. The
+        // border inset counts toward the window's footprint, so hold it against the target.
         const int tw = usable.w * kAutoFillPercent / 100;
         const int th = (usable.h - kChromeH) * kAutoFillPercent / 100;
         scale = 1;
-        while (w * (scale + 1) <= tw && h * (scale + 1) <= th) ++scale;
+        while (w * (scale + 1) + 2 * kBorder <= tw &&
+               h * (scale + 1) + 2 * kBorder <= th) ++scale;
     } else {
         scale = kMaxScale;  // no bounds to fit to: the plain fallback multiple
     }
 
-    if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale, h * scale,
+    if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale + 2 * kBorder,
+                                     h * scale + 2 * kBorder,
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &window_,
                                      &renderer_)) {
         std::fprintf(stderr, "SDL: window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
+
+    // The border band is whatever SDL_RenderClear paints, so make it black -- a dark bezel
+    // around the picture. present() clears every frame before drawing the texture.
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
 
     // AND TAKE THE WINDOW WE ACTUALLY GOT, not the one we asked for. Any window manager
     // may clamp, tile or otherwise ignore a requested size, and a size that is not a
@@ -171,8 +192,9 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // "ask for less" -- the display query above narrows the guess, this makes it true.
     int gotW = 0, gotH = 0;
     SDL_GetWindowSize(window_, &gotW, &gotH);
-    const int fit = std::max(1, std::min(gotW / w, gotH / h));
-    if (gotW != w * fit || gotH != h * fit) SDL_SetWindowSize(window_, w * fit, h * fit);
+    const int fit = std::max(1, std::min((gotW - 2 * kBorder) / w, (gotH - 2 * kBorder) / h));
+    const int wantW = w * fit + 2 * kBorder, wantH = h * fit + 2 * kBorder;
+    if (gotW != wantW || gotH != wantH) SDL_SetWindowSize(window_, wantW, wantH);
 
     SDL_SetRenderLogicalPresentation(renderer_, w, h,
                                      SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
