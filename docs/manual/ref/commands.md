@@ -9,6 +9,10 @@ no fixed abbreviations: the shortest prefix that reaches a command is derived fr
 the table's order, so it is shown here as `D[UMP]` — type the part before the
 bracket. (`?` is the one true alias, for `HELP`.)
 
+**`.` repeats your last command.** It runs quietly, with no echo, so a single
+keystroke walks the continuing verbs forward: `DI` disassembles a screenful, then
+`.` `.` `.` keeps going; the same holds for `DUMP` and `STEP`.
+
 **Numbers:** on the wire is **hex** (addresses, ports, bytes); never on the wire is
 **decimal** (counts, widths, sizes). `0x`/`$`/`h` force hex, `0o`/trailing-`q` force
 octal, `#` forces decimal, and a `K`/`M` suffix is always decimal. `SET CONSOLE

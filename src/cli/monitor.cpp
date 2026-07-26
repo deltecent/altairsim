@@ -2143,6 +2143,21 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     auto a = tokenize(line);
     if (a.empty()) return true;
 
+    // `.` REPEATS THE LAST COMMAND. Caught here -- after tokenize, before
+    // resolveCommand (which would call it unknown) -- so a single keystroke walks
+    // forward through the continuing verbs: bare DISASM/DUMP resume their cursor and
+    // STEP steps again, so `.` `.` `.` keeps going. It runs quietly, with no echo of
+    // the line it repeats. A `.` is never recorded as lastLine_, so pressing it again
+    // re-runs the ORIGINAL command, not the previous `.` -- and cannot loop.
+    if (a[0] == ".") {
+        if (lastLine_.empty()) {
+            out << ".  -- nothing to repeat yet.\n";
+            return true;  // benign, even in a script: not a failure
+        }
+        return exec(lastLine_, out);
+    }
+    lastLine_ = line;  // a real command -- remember it for the next `.`
+
     // Every command word goes through prefix resolution (cli/commands.cpp), so
     // `D`, `DU`, `DUM` and `DUMP` are the same command and nothing below this line
     // knows that abbreviation exists. From here on `cmd` is a full command name.
@@ -2332,6 +2347,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // built=false again.
         if (anyUnbuilt) out << "  * = not built yet; it will say so.";
         out << "\n  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n"
+               "  . repeats your last command -- e.g. DI to disassemble, then . . . to keep going.\n"
                "  !<command> runs a command in your host shell -- e.g. !vi HELLO.PRN.\n\n"
                "  Numbers: on the wire is HEX (addresses, ports, bytes) -- or OCTAL\n"
                "  under SET CONSOLE base=octal; never on the wire is DECIMAL (counts,\n"

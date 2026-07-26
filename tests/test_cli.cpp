@@ -373,6 +373,42 @@ void test_cli() {
           "EXAMINE distinguishes a real FF from an empty slot");
 
     // ---------------------------------------------------------------------
+    // `.` REPEATS THE LAST COMMAND
+    // ---------------------------------------------------------------------
+    // One keystroke, and no echo: it re-runs the exact last line, which is what
+    // makes the continuing verbs (bare DISASM/DUMP, STEP) walk forward under it.
+    SECTION(". repeats the last command, and never itself");
+
+    // An explicit-address command has no cursor to move, so `.` reproduces it
+    // byte-for-byte. That IS the test that `.` re-ran the exact line.
+    std::string d0 = run("D 0");
+    CHECK(run(".") == d0, ". repeats the last command exactly");
+
+    // `.` is never recorded as the last command, so a second `.` still repeats the
+    // ORIGINAL line -- if it recorded itself, exec would recurse on `.` forever.
+    std::string r1 = run(".");
+    std::string r2 = run(".");
+    CHECK(r1 == d0 && r2 == d0, ". repeats the original, not the previous . (and cannot loop)");
+
+    // The point of it: a bare DISASM continues from its own cursor, so `.` walks
+    // forward. Two `.` after a bare DI land on different addresses each time.
+    run("DI 0");                 // seat the disasm cursor
+    std::string di1 = run("DI"); // bare DI continues; this line becomes the one `.` repeats
+    std::string di2 = run(".");  // repeats "DI" -- continues further, so it differs
+    CHECK(di1 != di2, ". re-runs a continuing verb, walking DISASM forward");
+
+    // A `.` before anything has been typed has nothing to repeat, and says so
+    // rather than doing something -- the way a bare `!` reminds you of its form.
+    {
+        Machine  fresh;
+        Monitor  mf(fresh);
+        std::ostringstream o;
+        mf.exec(".", o);
+        CHECK(o.str().find("nothing to repeat") != std::string::npos,
+              "a . with no prior command reports there is nothing to repeat");
+    }
+
+    // ---------------------------------------------------------------------
     // EXAMINE *IS* THE CPU (Patrick, 2026-07-12)
     // ---------------------------------------------------------------------
     // On the panel this is not a side effect, it is what the switch is FOR: it

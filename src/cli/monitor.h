@@ -201,6 +201,12 @@ private:
     // in -- never the one beside somebody's example config.
     std::string startupDir_;
 
+    // The last command line the operator entered, so `.` can repeat it. A `.` is
+    // never recorded here, so pressing it again re-runs the SAME line -- which is the
+    // point: `.` `.` `.` walks a DISASM or STEPs the CPU. Shell escapes (`!...`) return
+    // before this is set, so `.` repeats monitor commands only.
+    std::string lastLine_;
+
     // Where a bare DUMP resumes. A range moves it; nothing else does.
     uint32_t dumpNext_ = 0;
 
