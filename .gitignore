@@ -121,6 +121,7 @@ examples/**
 !examples/hdsk/HDCPM22v16-48K.DSK
 !examples/diskbasic/Disk BASIC 4.1.dsk
 !examples/basic/4K BASIC Ver 3-1.tap
+!examples/sdsys/SDOS-18B-SSDDR-256-32K-MASTER.DSK
 !examples/basic/LDR4K31.HEX
 !examples/uio/8K BASIC Ver 3-2.tap
 !examples/uio/LDR8K32.HEX

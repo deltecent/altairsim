@@ -300,6 +300,10 @@ add_library(altair_core STATIC
   # SD Systems SBC-100/200 -- the 8251 serial console (Phase 1). Structural twin of
   # the 88-SIO, embedding one Intel8251. See src/boards/sd-sbc.h.
   src/boards/sd-sbc.cpp
+  # SD Systems VersaFloppy I/II -- a WD FD177x soft-sector floppy controller. Owns a
+  # wd17xx chip and a generic DiskImageDrive adapter (floppy-drive). Boots SDOS.
+  src/boards/sd-versafloppy.cpp
+  src/boards/floppy-drive.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
   # this list is not ordered. It is listed after it so the reader sees the pair.
@@ -549,6 +553,7 @@ add_executable(altair_tests
   tests/test_tapemount.cpp
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
+  tests/test_versafloppy.cpp
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
   tests/test_mds.cpp
@@ -1037,6 +1042,25 @@ if(EXPECT_EXECUTABLE)
                    $<TARGET_FILE:altairsim> tests/acceptance/minidisk-dcdd.toml)
   set_tests_properties(acceptance-minidisk-control PROPERTIES
                        LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # SDOS off a VersaFloppy II -- the SD Systems soft-sector floppy controller.
+  #
+  # This is the board's reason to exist: the SBC-200's DDBIOS drives a WD FD1791 and cold-boots
+  # SDOS from the tracked 8" DD-256 master. It is an EXPECT test because the SBC-200 auto-bauds
+  # (nothing prints until a CR is presented in emulated time -- a pipe cannot) and because the
+  # boot is a `C` typed at the monitor prompt -- neither survives a piped run.
+  #
+  # The disk is MOUNTED WRITE-PROTECTED and the .exp shasums it: the boot only reads, and the
+  # test cannot dirty the master (the same discipline as acceptance-dcdd-readonly).
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-sdos
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/sdos.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-sdos PROPERTIES
+                       LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------

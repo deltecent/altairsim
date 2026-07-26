@@ -113,7 +113,7 @@ struct FakeDrive : FloppyDrive {
 // collected). A loop that only services while busy would drop it every time and every
 // read would come up one byte short.
 template <class F>
-uint64_t spin(Wd1771& f, Clock& clk, F svc, uint64_t limit = 60000000) {
+uint64_t spin(Wd17xx& f, Clock& clk, F svc, uint64_t limit = 60000000) {
     const uint64_t t0 = clk.now();
     while (f.busy() && clk.now() - t0 < limit) {
         clk.advance(8);
@@ -124,7 +124,7 @@ uint64_t spin(Wd1771& f, Clock& clk, F svc, uint64_t limit = 60000000) {
     return clk.now() - t0;
 }
 
-inline void idle(Wd1771&) {}
+inline void idle(Wd17xx&) {}
 
 } // namespace
 
@@ -248,7 +248,7 @@ void test_wd17xx() {
         f.writeSectorReg(7);
         std::vector<uint8_t> got;
         f.writeCommand(0x8C, clk);  // Read Sector, m=0, b=1, E=1
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) got.push_back(c.readData(clk));
         });
 
@@ -310,7 +310,7 @@ void test_wd17xx() {
 
         f.writeSectorReg(1);
         f.writeCommand(0x8C, clk);  // Read -> Read context, and we service it properly
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) (void)c.readData(clk);
         });
         // The head has not moved. It is STILL on track 0. But bit 2 no longer says so.
@@ -332,7 +332,7 @@ void test_wd17xx() {
 
         f.writeSectorReg(1);
         f.writeCommand(0x8C, clk);
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) (void)c.readData(clk);
         });
         const uint8_t st = f.readStatus(clk);
@@ -352,7 +352,7 @@ void test_wd17xx() {
         std::vector<uint8_t> out((size_t)128, 0x5A);
         size_t               i = 0;
         f.writeCommand(0xAC, clk);  // Write Sector, m=0, b=1, E=1, a1a0=00 (FB)
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq() && i < out.size()) c.writeData(out[i++], clk);
         });
 
@@ -406,7 +406,7 @@ void test_wd17xx() {
         bool lapsing  = false;
         bool didLapse = false;
         f.writeCommand(0xAC, clk);
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (lapsing) {
                 if (!c.drq()) lapsing = false;  // the chip timed it out; carry on
                 return;
@@ -555,7 +555,7 @@ void test_wd17xx() {
 
         std::vector<uint8_t> got;
         f.writeCommand(0xC4, clk);  // Read Address, E=1
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) got.push_back(c.readData(clk));
         });
 
@@ -584,13 +584,13 @@ void test_wd17xx() {
 
         f.writeSectorReg(1);
         f.writeCommand(0x8C, clk);  // ...read it, and get the CRC error we deserve
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) (void)c.readData(clk);
         });
         CHECK((f.readStatus(clk) & 0x08) != 0, "a bad data-field CRC sets S3 on the read");
 
         f.writeCommand(0xC4, clk);  // now a Read Address, which reads NO data field
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) (void)c.readData(clk);
         });
         CHECK((f.readStatus(clk) & 0x08) == 0,
@@ -609,7 +609,7 @@ void test_wd17xx() {
         f.writeSectorReg(3);  // start at 3: we should get 3 and 4, then stop
         std::vector<uint8_t> got;
         f.writeCommand(0x9C, clk);  // Read Sector, m=1, b=1, E=1
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) got.push_back(c.readData(clk));
         });
 
@@ -643,7 +643,7 @@ void test_wd17xx() {
         size_t               i = 0;
         f.writeSectorReg(5);
         f.writeCommand(0xAF, clk);  // Write, m=0, b=1, E=1, a1a0=11 -> F8, deleted
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq() && i < out.size()) c.writeData(out[i++], clk);
         });
         CHECK(d.find(0, 5)->id.deleted, "a1a0=11 writes a DELETED data mark");
@@ -652,7 +652,7 @@ void test_wd17xx() {
         i = 0;
         f.writeSectorReg(5);
         f.writeCommand(0xAC, clk);  // a1a0=00 -> FB, a normal record
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq() && i < out.size()) c.writeData(out[i++], clk);
         });
         CHECK(!d.find(0, 5)->id.deleted, "...and a1a0=00 clears it again");
@@ -676,7 +676,7 @@ void test_wd17xx() {
 
         f.writeSectorReg(1);
         f.writeCommand(0x8C, clk);
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) (void)c.readData(clk);
         });
         const uint8_t st = f.readStatus(clk);
@@ -769,7 +769,7 @@ void test_wd17xx() {
 
         f.writeSectorReg(1);
         f.writeCommand(0xAC, clk);
-        spin(f, clk, [&](Wd1771& c) {
+        spin(f, clk, [&](Wd17xx& c) {
             if (c.drq()) (void)c.readData(clk);  // read, never load. This services NOTHING.
         });
         CHECK((f.readStatus(clk) & 0x04) != 0,
@@ -814,5 +814,56 @@ void test_wd17xx() {
 
         CHECK((f.readStatus(clk) & 0x20) != 0, "write track on a sector-image drive sets S5 WRITE FAULT");
         CHECK(!f.drainLog().empty(), "...and says why, out loud");
+    }
+
+    // ---- THE FD1791 -- the same register file, four things different (wd17xx.h) ----
+    SECTION("chips/wd17xx: the FD1791 (VersaFloppy II)");
+
+    // Step rate r=0 is 3 ms on the 179x, where it is 6 ms on the 1771. This is the tripwire
+    // that a part did NOT inherit the wrong table.
+    {
+        Clock clk;
+        FakeDrive d;
+        Wd1791    f("fdc");
+        f.attach(&d);
+        f.powerOn(clk);
+        d.head = 5;
+        f.writeCommand(0x50, clk);  // Step In, u=1, rate 0
+        const uint64_t took = spin(f, clk, idle);
+        const uint64_t want = (uint64_t)(clk.hz() * 3 / 1000);  // 3 ms, not the 1771's 6
+        CHECK(took >= want && took < want + 16, "179x step rate r=0 is 3 ms");
+    }
+
+    // Read Address byte 2 carries the SIDE the board selected -- the 1771 hard-zeros it.
+    {
+        Clock clk;
+        FakeDrive d;
+        Wd1791    f("fdc");
+        f.attach(&d);
+        f.powerOn(clk);
+        d.format(5, 26, 128);
+        d.head = 5;
+        f.setSide(1);
+        std::vector<uint8_t> got;
+        f.writeCommand(0xC4, clk);  // Read Address
+        spin(f, clk, [&](Wd17xx& c) { if (c.drq()) got.push_back(c.readData(clk)); });
+        CHECK(got.size() == 6 && got[1] == 1, "179x Read Address byte 2 is the selected side");
+    }
+
+    // The record type is ONE bit on the 179x (S5), where the 1771 uses two (S6|S5).
+    {
+        Clock clk;
+        FakeDrive d;
+        Wd1791    f("fdc");
+        f.attach(&d);
+        f.powerOn(clk);
+        d.format(0, 26, 128);
+        d.find(0, 1)->id.deleted = true;
+        f.writeSectorReg(1);
+        f.writeCommand(0x88, clk);  // Read Sector
+        spin(f, clk, [&](Wd17xx& c) { if (c.drq()) (void)c.readData(clk); });
+        const uint8_t st = f.readStatus(clk);
+        CHECK((st & 0x20) != 0, "a deleted mark sets S5 on the 179x");
+        CHECK((st & 0x40) == 0, "...and NOT S6 -- the 179x has only two data address marks");
     }
 }

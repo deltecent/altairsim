@@ -96,6 +96,7 @@ int main() {
     test_sbc();
     test_lines();
     test_wd17xx();
+    test_versafloppy();
     test_spindle();
     test_dcdd();
     test_mds();

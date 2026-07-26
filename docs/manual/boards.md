@@ -8,12 +8,12 @@ boards doing the real work; take the boards out and there is nothing left but a 
 the CPU *board* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a board out, put a different one in, and find out what the software does about it.
 
-This chapter says what the fourteen boards **are** — what the real hardware was, what it is for, and
+This chapter says what the twenty-four boards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every board is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The fifteen boards
+## The twenty-four boards
 
 | Type | What it is |
 |---|---|
@@ -22,11 +22,20 @@ be wrong.
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
+| `sbc` | SD Systems SBC-100/200 — a Z80 single-board computer's serial console |
 | `acr` | MITS 88-ACR — the cassette interface |
+| `uio` | MITS 88-UIO — a serial port and a cassette, on one card |
 | `c700` | MITS 88-C700 — the line-printer controller. Capture to a file |
+| `lpc` | MITS 88-LPC — the other line-printer controller, line-buffered |
+| `pio` | MITS 88-PIO — an 8-bit parallel port, in and out |
+| `4pio` | MITS 88-4PIO — up to four programmable parallel ports |
 | `dcdd` | MITS 88-DCDD — the 8″ floppy controller |
 | `mds` | MITS 88-MDS — the 5¼″ minidisk controller |
+| `hdsk` | MITS 88-HDSK — the Datakeeper hard-disk controller |
+| `versafloppy` | SD Systems VersaFloppy I/II — a soft-sector floppy controller. Boots SDOS |
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
+| `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
+| `d7a` | Cromemco D+7A — analog and parallel I/O; reads joysticks |
 | `sol` | Processor Technology Sol-PC — the Sol-20's onboard I/O, on one card |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
 | `fp` | the front panel |
@@ -182,6 +191,31 @@ The port must be **even**: control at BASE, data at BASE+1.
 
 ---
 
+## `sbc` — SD Systems SBC-100/200
+
+SD Systems built S-100 boards for people who wanted a whole computer on as few cards as possible,
+and the **SBC-100** and **SBC-200** are the heart of one: a **Z80 single-board computer** —
+processor, some memory, and a serial console — on a single card. `altairsim` models the console
+half, which is the part the software talks to.
+
+That console is an **Intel 8251 USART**, not the 6850 the MITS boards use — unit `tty`, with data
+at `7C` and the status/command register at `7D`. Software written for a 2SIO will not drive it; the
+SBC's own **SD monitor** will.
+
+### It measures your terminal's speed
+
+The board's one memorable trick is **auto-baud**. Run `altairsim sbc200` and the SD monitor is
+waiting — not at a fixed rate, but for you to **press Return**. It times the bits of that one
+character and sets its own baud to match, so a terminal at any common speed just works. Nothing
+happens until that first Return, which surprises people: it is not hung, it is listening.
+
+The `sbc200` machine boots the **SD monitor**. Give the machine the **DDBIOS** disk BIOS in a PROM
+socket and a `versafloppy` controller beside it, and the monitor's `C` command boots **SDOS** — see
+the VersaFloppy below, and `examples/sdsys`. `variant` picks the generation (`sbc200` or `sbc100`).
+The parallel ports, timer and interrupts of the real card are a later phase; the console is here now.
+
+---
+
 ## `acr` — MITS 88-ACR
 
 The **cassette interface**: an 88-SIO channel B with an FSK modem on the end of it, so a byte on the
@@ -194,6 +228,21 @@ pretending otherwise would help nobody.
 This is the board that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
 toggle in by hand, and eight minutes of listening to a cassette. **The tapes chapter is the one to
 read**, and {{NAME_BASIC}} is the machine to run.
+
+---
+
+## `uio` — MITS 88-UIO
+
+**A serial port and a cassette interface on one board** — the Universal I/O card, which is very
+nearly what a 2SIO channel and an 88-ACR are when you put them on the same card and let them share
+the parts. It comes up looking like the two boards it replaces: a **6850 serial port** at `10`
+(unit `serial`) and a **cassette section** at `06` (unit `tape`), the standard addresses, so
+software that expects a 2SIO console and an ACR tape finds both where it left them.
+
+What it adds over two separate cards is **motor control** and a **modulation switch**. `SW-1`
+chooses between the two encodings the era used — the MITS 300-baud format and the Kansas City
+standard — because the UIO was sold to talk to either. The tape half brings the same
+`WIND`/`REWIND`/`EXTRACT` verbs and the position counter the 88-ACR does.
 
 ---
 
@@ -212,6 +261,50 @@ It is **polled**: write a character to the data port (`03`), then poll the statu
 ACKNOWLEDGE, set = ready) before the next. The real card's single-level interrupt is not modeled.
 
 The **`lineprinter`** machine is `default` with one of these already fitted and capturing to a file.
+
+---
+
+## `lpc` — MITS 88-LPC
+
+The **other** line-printer controller — for the 88-LP printer, where the `c700` drives the C700.
+Same two-port shape (control at an even base, data above it; MITS default `02`), but it drives the
+mechanism the way it really worked, and the difference shows in what you capture.
+
+The C700 is a **transparent byte pipe**: the bytes the program sends are the bytes you get, control
+codes and all. The **LPC is line-buffered**. The guest loads a **6-bit character code** at a time
+into an **80-character line buffer**, and nothing prints until it sends a **PRINT** command — or the
+buffer fills. **LINE FEED** and **CLEAR** are commands too. So the capture is the printed *page* —
+the codes decoded to their glyphs, one text line per printed line — not a byte stream, because on
+this board the line breaks are commands, not data.
+
+`CONNECT` its `prn` line wherever a line can go — a `file:`, the `console`, a `socket:`, a real
+`printer:` queue. The **`lineprinter-lpc`** machine has one fitted at `02`. It is polled, like the
+C700; the real card's interrupt is not modeled.
+
+---
+
+## `pio` — MITS 88-PIO
+
+An **8-bit parallel port**, in and out — the simplest way to move a byte that is not a serial
+character. It has **two lines you `CONNECT` independently**: `out` (an output device — a printer, a
+socket) and `in` (an input device — a keyboard, another socket), so one board can drive a printer to
+a `file:` *and* read a keyboard off the `console` at once, because the two directions are two
+separate connections. Default ports `04`/`05`. It is **polled**: a byte moves when a driver polls the
+status port for it.
+
+---
+
+## `4pio` — MITS 88-4PIO
+
+The programmable cousin of the `pio`: up to **four Motorola 6820 PIAs** on one card, whose **data
+direction the guest sets in software** rather than the board fixing it. Each populated port is a
+section — `ja`, `jb`, and so on — and each section is its own connectable line, so a card with two
+PIAs fitted gives you several independent ports to `CONNECT`. Sixteen ports from a default base of
+`20`. Polled, like the `pio`.
+
+Between them the two parallel boards cover the span from *a fixed eight bits each way* to *however
+the software wants it configured* — the same range the real MITS parallel line did. The
+**`parallel`** machine has a `pio` fitted and capturing to a file.
 
 ---
 
@@ -258,6 +351,47 @@ bus. Fit both here and the bus view will name the contention rather than leave y
 the guest has gone strange.
 
 Pick one.
+
+---
+
+## `hdsk` — MITS 88-HDSK Datakeeper
+
+A **hard-disk controller** — the "Datakeeper" — and the board CP/M boots from when it is not booting
+from a floppy. It is an outboard controller with a **command/handshake protocol** and four internal
+**256-byte page buffers**, so unlike the floppy cards it **moves whole sectors for you** rather than
+shifting bits in real time. Eight ports, default `A0`–`A7`.
+
+The **HDBL** boot PROM at `FC00` reads the disk's descriptor page and brings the system up.
+`examples/hdsk` is the ready-made machine: run it and you land at `A>` on a multi-megabyte CP/M 2.2
+platter. It is **read/write** — CP/M saves to it — and the image travels in the package, so there is
+nothing to fetch first.
+
+---
+
+## `versafloppy` — SD Systems VersaFloppy I & II
+
+SD Systems' **soft-sector floppy controller**, built around a **Western Digital FD177x** — and the
+board that boots **SDOS**, a CP/M work-alike, on an SBC-200.
+
+It is **one board covering both generations**, chosen with `variant`: **`vfii`** (the default) is
+the double-density **FD1791** VersaFloppy II, and **`vfi`** the single-density **FD1771**
+VersaFloppy I. They differ only in the controller chip and a few control bits; the port block (eight
+ports, default `60`) and the driver family are the same. Neither carries a boot PROM — the bootstrap
+BIOS lives on a separate PROM, which on the SBC-100/200 is the onboard socket.
+
+Fit a `vfii`, mount an 8″ double-density disk, and with the SBC-200's **DDBIOS** the monitor's disk
+commands come alive: **`C`** cold-boots SDOS, **`R`** and **`W`** read and write sectors. Run
+`altairsim examples/sdsys/sdos.toml`, press Return for the auto-baud, type `C`, and *32K SD-OS*
+comes up to its `[A]` prompt off the disk in the package.
+
+### What it will not do
+
+`Z` **formats** a disk, and here it cannot make one from nothing. A raw disk image is only its data —
+it has none of the gaps and address marks a real format writes *between* the sectors — so there is
+nothing for a low-level format to lay down, and the controller says so (a WRITE FAULT) rather than
+pretending. This is the honest limitation every soft-sector controller here shares: mount a disk that
+already carries a format and read and write work; ask the board to create a blank one and it tells
+you it can't. For a fresh SDOS disk, copy one that is already formatted.
 
 ---
 
@@ -329,6 +463,50 @@ looking at belongs to a stopped machine: still there, still closeable, just not 
 Closing the window of a **running** machine is not the same as quitting: it stops the guest and
 gives you the monitor prompt, leaving the machine exactly where it was and the window on screen.
 `RUN` goes back into it; `QUIT` exits.
+
+---
+
+## `dazzler` — Cromemco Dazzler
+
+The **first color-graphics card for the S-100 bus**, and the second video board here that is not a
+MITS one. Where the VDM-1 paints text, the Dazzler paints a **picture**, and it does it the same
+clever way: out of a **framebuffer in the machine's own RAM**. You point the board at a 512-byte or
+2 KB block anywhere on a 512-byte boundary and it scans that memory onto the screen — so a program
+draws by *storing bytes*, with no port in the inner loop.
+
+Two ports (default `0E`/`0F`) set the rest: on/off and where the framebuffer is, then the format —
+resolution, size and color. Four modes fall out of it: **32×32 or 64×64** color or grey elements,
+and **64×64 or 128×128** on/off elements, in **16 colors** or 16 greys. Small numbers — but this was
+1976, and it was in color.
+
+**It needs a display**, and like the VDM-1 it draws into it: an SDL3 build opens a window, a headless
+build runs and simply has nowhere to show the picture. `examples/dazzler/kscope.toml` comes up
+running **Li-Chen Wang's Kaleidoscope**, a four-way-mirrored pattern turning over in the window
+(`ATTN` breaks back to the monitor); the `dazzler` machine is the bare board to build on. Because a
+64×64 frame is tiny, the video window's `[display] scaling` sizes it up to land near a VDM-1's size
+on your screen rather than a sixth of it.
+
+---
+
+## `d7a` — Cromemco D+7A
+
+An **analog and parallel I/O card** — one parallel port and **seven analog channels** in a block of
+eight ports (default base `18`). Each analog channel is an **A/D converter when you read it and a
+D/A converter when you write it**, in 8-bit two's-complement: `00` is 0 V, `7F` about +2.5 V, `80`
+about −2.5 V. On a real bench it read sensors and drove instruments.
+
+Here its job is the input end of a **game console**. It reads **one or two JS-1 joysticks**: the X
+and Y pots on analog channels, and the four buttons — **active-low** — packed into the parallel byte,
+low nibble for one stick, high nibble for the other. The sticks come from your host through the same
+kind of injected service the display uses: a **USB gamepad** where SDL3 is present, or the
+**keyboard** as a fallback (arrows and a few keys), and nothing at all in a headless build, which
+still runs.
+
+`joystick1`/`joystick2` choose which host device drives each console. The `d7a` machine is the board
+on its own; the Dazzler examples pair it with color graphics and set the video window to be a
+**display, not a keyboard** (`[display] keyboard = none`), so your keystrokes drive the stick instead
+of landing at a prompt. (The board's designed-but-unbuilt sound output — a JS-1's speaker is a D/A
+the CPU writes a waveform to — is not here yet.)
 
 ## `sol` — Processor Technology Sol-PC
 
