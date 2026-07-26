@@ -89,8 +89,14 @@ HardSectorFdc::Position HardSectorFdc::where() const {
     if (into < wstart) {
         p.writeIndex = -1;
     } else {
-        uint64_t i   = (into - wstart) / tPerByte();
-        p.writeIndex = (int)(i < (uint64_t)kHsSectorBytes ? i : kHsSectorBytes - 1);
+        // NOT clamped to kHsSectorBytes, unlike byteIndex above. ENWD free-runs for the
+        // WHOLE write window: the card keeps asking for a byte every byteUs right up to the
+        // sector boundary, past the 137th. That extra request is not optional -- the period
+        // BIOS writes altLen=137 bytes and then loops on ENWD to clock ONE more (a trailing
+        // zero that lands in the inter-sector gap on real media). A card that stopped ENWD at
+        // 137 would hang that loop forever. writeIndex is only ever compared, never used to
+        // index, so letting it run to the end of the sector is safe.
+        p.writeIndex = (int)((into - wstart) / tPerByte());
     }
     return p;
 }
@@ -147,9 +153,12 @@ uint8_t HardSectorFdc::read(const BusCycle& c) {
         st_.moveok = moveOk(*d);
 
         // ENWD -- "the write circuit wants the next byte". Paced by the head, exactly like
-        // NRDA: first at writeStartUs, then one every byteUs.
-        st_.enwd = writing_ && pos.spinning && pos.writeIndex >= 0 &&
-                   writePos_ < kHsSectorBytes && writePos_ <= pos.writeIndex;
+        // NRDA: first at writeStartUs, then one every byteUs -- and it keeps asking to the
+        // end of the sector, NOT only for the first 137 bytes. The BIOS's wrDone loop needs
+        // that last request to place its trailing fill byte; a `writePos_ < kHsSectorBytes`
+        // gate here (there used to be one) killed ENWD at the 137th byte and wedged every
+        // write. The write gate stays open until the head leaves the sector (flushWrite).
+        st_.enwd = writing_ && pos.spinning && pos.writeIndex >= 0 && writePos_ <= pos.writeIndex;
 
         // NRDA: has the disk turned past a byte the guest has not taken yet? The guest
         // cannot read ahead of the medium -- that is the whole point of the flag, and it is
@@ -215,10 +224,19 @@ void HardSectorFdc::write(const BusCycle& c) {
     if (p == 0) { selectDrive((c.data & 0x80) ? -1 : (c.data & selectMask())); return; }
     if (p == 1) { command(c.data); return; }
 
-    // ---- base+2: DATA. Exactly 137 bytes, then commit. ----
+    // ---- base+2: DATA. Up to 137 bytes land; the rest are clocked and discarded. ----
     if (!writing_) return;  // not armed: the byte goes nowhere, as on the real card
-    if (writePos_ < kHsSectorBytes) wbuf_[writePos_++] = c.data;
-    if (writePos_ == kHsSectorBytes) flushWrite();
+
+    // Store the first 137, DROP the rest on the floor -- the write gate stays open and ENWD
+    // keeps pulsing to the end of the sector, so the BIOS's wrDone loop can clock its trailing
+    // fill byte(s). On real media those land in the inter-sector gap; here they simply are not
+    // kept. Count EVERY byte the guest clocks (not just the stored ones) so it stays paced off
+    // the head. The commit is NOT here: the head commits at the sector boundary (syncSector) or
+    // when a step/select/head-unload moves it -- the very same path a short system sector, which
+    // never reaches 137, has always relied on. Committing at exactly 137 was half of the wedge:
+    // it cleared writing_ one byte before the BIOS was done.
+    if (writePos_ < kHsSectorBytes) wbuf_[writePos_] = c.data;
+    ++writePos_;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +297,14 @@ void HardSectorFdc::selectDrive(int n) {
 void HardSectorFdc::armWrite() {
     Drive* d = selected();
     if (!d) return;
+
+    // Commit any write still pending before re-arming. The head now clears writing_ at the
+    // SECTOR BOUNDARY, not at the 137th byte, so a BIOS that arms the next sector's write
+    // before we have crossed that boundary must not clobber the buffer underneath it. In the
+    // normal flow syncSector() has already flushed -- the guest polls the sector port to find
+    // its slot, and that read flushes on the sector change -- so this is usually a no-op; it is
+    // the same flush-before-you-invalidate guard selectDrive() and command() already use.
+    flushWrite();
 
     Position pos = where();
     writing_  = true;

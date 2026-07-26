@@ -60,10 +60,11 @@ void ready(DcddBoard& b) {
     out(b, 0x09, 0x04);  // cHDLOAD
 }
 
-constexpr uint64_t kPerSector = 10416;  // 360 RPM / 32 sectors @ 2 MHz
-constexpr uint64_t kByte      = 64;     // 32 us -- 250 kbit/s
-constexpr uint64_t kTrue      = 60;     // 30 us -- the F4 one-shot
-constexpr uint64_t kReadStart = 280;    // 140 us -- the READ CLEAR one-shot
+constexpr uint64_t kPerSector  = 10416;  // 360 RPM / 32 sectors @ 2 MHz
+constexpr uint64_t kByte       = 64;     // 32 us -- 250 kbit/s
+constexpr uint64_t kTrue       = 60;     // 30 us -- the F4 one-shot
+constexpr uint64_t kReadStart  = 280;    // 140 us -- the READ CLEAR one-shot
+constexpr uint64_t kWriteStart = 560;    // 280 us -- the WRITE CLEAR one-shot
 
 } // namespace
 
@@ -378,6 +379,76 @@ void test_dcdd() {
         CHECK(in(b, 0x0A) == 0x00, "and 134...");
         CHECK(true, "  (software writes the zero, so the bytes match either way -- but the CARD's");
         CHECK(true, "   rule is `repeat the last byte`, and that is what is implemented.)");
+    }
+
+    SECTION("88-DCDD -- ENWD keeps pulsing PAST the 137th byte, so wrDone's trailing byte lands");
+    {
+        // THE WEDGE THIS EXISTS TO KILL. Every period BIOS writes altLen=137 bytes and then
+        // loops on ENWD to clock ONE more -- a trailing zero that on real media falls in the
+        // inter-sector gap and is discarded:
+        //
+        //     wrDone  in   drvStat      ; wait for another write flag
+        //             ana  d
+        //             jnz  wrDone        ; ...forever, if ENWD never comes true again
+        //             out  drvData       ; write the zero
+        //             dcr  b / jnz wrDone
+        //
+        // ENWD free-runs for the WHOLE sector window, so that last request always arrives. A
+        // card that stopped ENWD at the 137th byte -- or cleared the write gate there -- hangs
+        // the guest at wrDone forever: it boots, DIRs and STATs perfectly, then wedges the first
+        // time anything writes. Burcon and Lifeboat CP/M both do this; Mike Douglas's does not,
+        // which is why the boot suite stayed green while every write was broken.
+        // (Reported in the altairsim-machines repo, BUGS.md #1.)
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        withDisk(337568, 0xEE);
+        std::string err;
+        b.mount("drive0", "a.dsk", false, err);
+        ready(b);
+
+        auto enwd = [&] { return (in(b, 0x08) & 0x01) == 0; };  // inverted: true reads 0
+
+        // The BIOS finds its sector by polling the position port -- and that read is load-
+        // bearing here, not decoration: it latches which sector the buffer is for, so the
+        // status polls DURING the write (below) do not read as a sector change and flush the
+        // write out from under it. The whole wedge plays out inside a single sector's window.
+        CHECK(((in(b, 0x09) >> 1) & 0x1F) == 0, "the head is over sector 0");
+
+        out(b, 0x09, 0x80);        // cWRTEN at the top of sector 0
+        c.advance(kWriteStart);    // the write circuit asks for its first byte at 280us
+
+        // Clock all 137 payload bytes in at the byte rate, one per ENWD, as the BIOS does.
+        for (int i = 0; i < kHsSectorBytes; ++i) {
+            out(b, 0x0A, (uint8_t)(0x40 + i));
+            c.advance(kByte);
+        }
+
+        // THE ASSERTION THAT WAS FALSE. All 137 bytes are in, but the head is still inside the
+        // sector (137 bytes is ~4384us of a ~5208us window), so the write circuit asks once
+        // more. On the broken card ENWD is dead here -- the gate cleared at the 137th byte --
+        // and wrDone would spin to eternity.
+        CHECK(enwd(), "after the 137th byte the write circuit STILL asks -- ENWD did not stop at 137");
+
+        out(b, 0x0A, 0x00);  // wrDone's trailing byte, which the gap swallows and we discard
+        CHECK(!enwd(), "and once the guest has answered that request, ENWD drops -- it is paced,");
+        CHECK(true, "  not free: the guest cannot dump a whole second sector into the gap");
+
+        // The trailing byte was DROPPED, not stored as a 138th: read the sector back and it is
+        // the 137 payload bytes, unshifted. Flush by stepping (the pending write is on track 0),
+        // then realign to a sector-0 read window.
+        out(b, 0x09, 0x01);  // step in -- flushes the write to track 0
+        out(b, 0x09, 0x02);  // and back out to track 0
+
+        uint64_t perTrack = kPerSector * 32;
+        c.advance(perTrack - (c.now() % perTrack));  // to the next sector-0 hole
+        c.advance(kReadStart);
+        CHECK(((in(b, 0x09) >> 1) & 0x1F) == 0, "back on sector 0");
+        c.advance(0);
+        CHECK(in(b, 0x0A) == 0x40, "byte 0 of the committed sector is the FIRST byte written...");
+        for (int i = 1; i < kHsSectorBytes - 1; ++i) { in(b, 0x0A); c.advance(kByte); }
+        CHECK(in(b, 0x0A) == (uint8_t)(0x40 + kHsSectorBytes - 1),
+              "...and byte 136 is the 137th -- the trailing zero never became a 138th byte");
     }
 
     SECTION("88-DCDD -- a step FLUSHES before it invalidates. Reverse them and disks rot.");
