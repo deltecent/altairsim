@@ -749,7 +749,7 @@ the guest cannot see it: the 6850 clocks bytes the same way whether the wire end
 at your terminal, a telnet session, a real RS-232 port, or nothing at all. No board
 in the machine knows what any of these words mean.
 
-Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | file:PATH | printer:QUEUE
+Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH | printer:QUEUE
 
 ```
 console     the host's terminal -- the keyboard and screen you are typing at
@@ -761,8 +761,12 @@ socket:     PORT alone LISTENS: that is the telnet-in case. HOST:PORT CALLS OUT.
 serial:     a real port on this host. It is opened at 9600 8N1 and then
             immediately re-programmed by the board, which is the only thing that
             knows what it is strapped to.
-file:       PATH -- a host file, write-only: a printout, or a capture of the
-            line. Opened fresh (truncated); bytes land byte-for-byte, 8-bit clean.
+in:         PATH -- a host file as a READER (a paper-tape reader): its bytes
+            feed the line. ?cps=N (or ?baud=N) paces it -- in:tape.tap?cps=300
+            is the 88-HSR; no option means full speed.
+out:        PATH -- a host file as a PUNCH: the line's bytes land on disk,
+            8-bit clean, from position 0 and never truncating. Combine them
+            for a bidirectional line: in:TAPE.TAP,out:TAPE.PUN
 printer:    QUEUE -- a real print queue on this host (only where the build found
             one). The bytes buffer into a JOB, submitted after a few idle seconds
             (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling
@@ -781,7 +785,9 @@ CONN sio0:b socket:2323            `telnet localhost 2323` now reaches the guest
 CONN sio0:b socket:bbs.example:23  the guest dials OUT, to somebody else's port
 CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware
 CONN sio0:b serial:COM3                           ...the same, on Windows
-CONN lpt0:prn file:printout.txt                   capture a printer to a file
+CONN lpt0:prn out:printout.txt                    capture a printer to a file
+CONN 4pio0:ja in:TAPE.TAP?cps=300                 a paper-tape reader (88-HSR)
+CONN 4pio0:jb out:TAPE.PUN                         a paper-tape punch
 CONN lpt0:prn printer:linewriter                  print to a real host queue
 ```
 

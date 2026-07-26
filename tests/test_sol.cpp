@@ -381,9 +381,9 @@ void test_sol() {
         Rig         g;
         std::string err;
 
-        // `CONNECT sol0:tape file:...` used to open the file WRITE-ONLY AND TRUNCATING
-        // -- the documented way to play a tape destroyed it. It is refused now, and
-        // the refusal has to say what to type instead.
+        // A deck takes a TAPE, not a byte-stream endpoint: CONNECTing any endpoint to
+        // it is refused (a stream has no head to REWIND, no counter, no write-protect),
+        // and the refusal has to say what to type instead -- MOUNT.
         CHECK(!g.sol->connect("tape1", "null", err), "CONNECT is refused on a deck");
         CHECK(err.find("MOUNT") != std::string::npos, "...and it points at MOUNT");
 

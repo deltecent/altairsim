@@ -182,21 +182,21 @@ void test_c700() {
         CHECK(prop(*g.lpt, "connect") == "null", "and the property reads it back for CONFIG SAVE");
     }
 
-    SECTION("file: endpoint -- a write-only host sink, 8-bit clean");
+    SECTION("out: endpoint -- a punch (write-only host sink), 8-bit clean");
     {
         // The endpoint the C700 captures to. Exercised directly (no board): resolve
         // it, write the bytes the printer would send, and read the file back.
         const std::string path = "c700_filetest.tmp";
-        const std::string spec = "file:" + path;
+        const std::string spec = "out:" + path;
         std::remove(path.c_str());
 
         std::string err;
         auto s = resolveEndpoint(spec, err);
-        CHECK(s != nullptr, "file: resolves to a stream");
+        CHECK(s != nullptr, "out: resolves to a stream");
         if (s) {
             CHECK(s->describe() == spec, "describe() returns the exact spec (CONFIG SAVE round-trip)");
-            CHECK(s->writable(), "a file sink is always writable");
-            CHECK(!s->readable(), "and never readable -- nothing comes back off paper");
+            CHECK(s->writable(), "a punch is always writable");
+            CHECK(!s->readable(), "and not readable -- no in: was given");
             CHECK(s->read(nullptr, 0) == 0, "a read yields nothing, and is not an error");
 
             const char* msg = "Hi\r\n\x0E";  // includes control bytes -- must survive
@@ -211,7 +211,7 @@ void test_c700() {
 
         // An unopenable path is a clean refusal, not a crash and not a silent NullStream.
         std::string err2;
-        auto bad = resolveEndpoint("file:/no/such/dir/deep/inside/nowhere.txt", err2);
+        auto bad = resolveEndpoint("out:/no/such/dir/deep/inside/nowhere.txt", err2);
         CHECK(bad == nullptr, "an unopenable path fails");
         CHECK(!err2.empty(), "with a reason the operator can read");
     }

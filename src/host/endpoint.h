@@ -12,10 +12,21 @@
 
 #include "host/stream.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
 namespace altair {
+
+// Rebase the host PATHs a spec carries, using a board-supplied resolver (the board
+// is the only thing that knows its config dir). Grammar lives HERE, not in the
+// board: only `in:PATH` / `out:PATH` name a path, and each is rewritten in place --
+// `in:tape.tap?cps=300` keeps its options, `in:a,out:b` rebases both parts, and
+// console/socket/serial/null pass through untouched. `describe()` still echoes the
+// operator's ORIGINAL spec, so the board must remember that and rebase only the copy
+// it hands the resolver, or a relative path double-rebases on CONFIG SAVE + reload.
+std::string rebaseEndpointPaths(const std::string&                              spec,
+                                const std::function<std::string(const std::string&)>& rebase);
 
 // Returns null and sets `err` on anything it does not understand. It never
 // guesses: `CONNECT sio:a consle` is an error with the list of what it could

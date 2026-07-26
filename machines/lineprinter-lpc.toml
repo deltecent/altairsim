@@ -35,4 +35,4 @@ base = "default"
 type    = "lpc"
 id      = "lpt0"
 port    = 02
-connect = "file:printout.txt"
+connect = "out:printout.txt"

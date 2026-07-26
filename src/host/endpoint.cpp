@@ -1,5 +1,6 @@
 #include "host/endpoint.h"
 
+#include "core/value.h"
 #include "host/console.h"
 #include "host/file.h"
 #include "host/hostserial.h"
@@ -8,14 +9,16 @@
 #include "platform/socket.h"
 
 #ifdef ALTAIRSIM_ENABLE_PRINTER
-#include "core/value.h"
 #include "host/printer_stream.h"
 #include "platform/printer.h"
 #endif
 
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace altair {
 namespace {
@@ -37,7 +40,7 @@ bool parsePort(const std::string& s, uint16_t& out) {
 
 std::string endpointHelp(bool all) {
     std::string s = "console | null | loopback | scripted | socket:PORT | "
-                    "socket:HOST:PORT | serial:DEVICE | file:PATH";
+                    "socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH";
     // `printer:` only where a host print system was found at build time -- absent, the
     // grammar does not advertise a door it cannot open (docs/printing.md 3.1). The docs
     // generator passes all=true: the committed manual is one document for every platform,
@@ -50,6 +53,43 @@ std::string endpointHelp(bool all) {
 #endif
     if (all || havePrinter) s += " | printer:QUEUE";
     return s;
+}
+
+std::string rebaseEndpointPaths(const std::string&                                    spec,
+                                const std::function<std::string(const std::string&)>& rebase) {
+    // Only in:/out: name a path; everything else is returned byte-for-byte.
+    if (spec.rfind("in:", 0) != 0 && spec.rfind("out:", 0) != 0) return spec;
+
+    std::string out;
+    for (size_t start = 0; start <= spec.size();) {
+        size_t      comma = spec.find(',', start);
+        std::string part =
+            spec.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+
+        // Rewrite the PATH inside a `<prefix>PATH[?opts]` part, leaving prefix and
+        // options alone. A part that is neither in: nor out: is passed through -- the
+        // resolver will reject it, with the operator's original text intact.
+        size_t colon = part.find(':');
+        bool   isIn  = part.rfind("in:", 0) == 0;
+        bool   isOut = part.rfind("out:", 0) == 0;
+        if ((isIn || isOut) && colon != std::string::npos) {
+            std::string prefix = part.substr(0, colon + 1);
+            std::string rest   = part.substr(colon + 1);
+            std::string path   = rest, opts;
+            if (size_t q = rest.find('?'); q != std::string::npos) {
+                path = rest.substr(0, q);
+                opts = rest.substr(q);  // keeps the leading '?'
+            }
+            if (!path.empty()) path = rebase(path);
+            part = prefix + path + opts;
+        }
+
+        out += part;
+        if (comma == std::string::npos) break;
+        out += ',';
+        start = comma + 1;
+    }
+    return out;
 }
 
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {
@@ -127,28 +167,144 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
         return std::make_unique<HostSerialStream>(std::move(port), spec);
     }
 
-    // ---- file: -- a host file, write-only. A printout, or a capture of a line ----
+    // ---- in:PATH / out:PATH -- a host file as a reader and/or a punch ----
     //
-    // The path is opened exactly as handed to us. A RELATIVE path written in a
-    // machine file is config-relative, but THAT rebasing is the board's job (it is
-    // the only thing that knows its config dir; see Board::resolvePath and the mount
-    // path in mits-hardsector.cpp) -- and the board keeps the ORIGINAL spec for
-    // round-trip, which is why `spec` below, not the resolved path, is what the
-    // stream describes. Typed at the prompt, the path is the shell's, which is just
-    // the path as-is.
-    if (spec.rfind("file:", 0) == 0) {
-        std::string path = spec.substr(5);
-        if (path.empty()) {
-            err = "file: needs a path (file:printout.txt)";
-            return nullptr;
+    // Direction is the keyword, never a flag: `in:` is a reader (a byte source),
+    // `out:` a punch (a byte sink). One spec may carry BOTH, comma-joined, for a
+    // unit whose single line is bidirectional (a 4PIO section, a 2SIO channel):
+    // `in:reader.tap,out:punch.tap`. Two files, two positions -- which is exactly
+    // why the eager-UART "one head" hazard (host/file.h, host/tape.h) cannot arise.
+    //
+    // A reader may be PACED: `in:tape.tap?cps=300` is the 88-HSR (issue #152).
+    // Options ride the printer:'s `?key[=value][&key...]` grammar; `cps` is bytes
+    // (characters) per second, `baud` the same rate as a line speed (10 bits per
+    // character). Full speed is the default -- no option, no wall clock consulted.
+    //
+    // The PATH is opened as handed to us. A relative path is rebased against the
+    // board's config dir BEFORE we see it (rebaseEndpointPaths) and the board keeps
+    // the ORIGINAL spec for round-trip, so `spec` -- not any resolved path -- is
+    // what describe() echoes. Typed at the prompt, the path is the shell's.
+    if (spec.rfind("in:", 0) == 0 || spec.rfind("out:", 0) == 0) {
+        std::optional<std::vector<uint8_t>> input;
+        std::string inPath, outPath;
+        uint64_t    nsPerByte = 0;
+        bool        sawIn = false, sawOut = false, sawRate = false;
+
+        // Parse one `?key[=value][&key...]` option string into the reader's rate.
+        auto parseInOpts = [&](const std::string& query) -> bool {
+            for (size_t start = 0; start <= query.size();) {
+                size_t      amp = query.find('&', start);
+                std::string tok =
+                    query.substr(start, amp == std::string::npos ? std::string::npos : amp - start);
+                if (!tok.empty()) {
+                    size_t      eq  = tok.find('=');
+                    std::string key = tok.substr(0, eq);
+                    std::string val = eq == std::string::npos ? "" : tok.substr(eq + 1);
+                    Value       v;
+                    std::string perr;
+                    if (key == "cps" || key == "baud") {
+                        if (sawRate) {
+                            err = "in: cps and baud are two spellings of one rate -- give one";
+                            return false;
+                        }
+                        if (!parseValue(val, Kind::Int, v, perr) || v.i() <= 0) {
+                            err = "in: " + key + " wants a positive rate: " + perr;
+                            return false;
+                        }
+                        // cps is bytes/sec; baud is a line rate at 10 bits/character.
+                        nsPerByte = key == "cps" ? 1000000000ull / (uint64_t)v.i()
+                                                 : 1000000000ull * 10 / (uint64_t)v.i();
+                        sawRate = true;
+                    } else {
+                        err = "in: unknown option '" + key + "'. Options are cps, baud.";
+                        return false;
+                    }
+                }
+                if (amp == std::string::npos) break;
+                start = amp + 1;
+            }
+            return true;
+        };
+
+        for (size_t start = 0; start <= spec.size();) {
+            size_t      comma = spec.find(',', start);
+            std::string part =
+                spec.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+
+            if (part.rfind("in:", 0) == 0) {
+                if (sawIn) {
+                    err = "in: given twice in '" + spec + "'";
+                    return nullptr;
+                }
+                sawIn            = true;
+                std::string rest = part.substr(3);
+                std::string path = rest, query;
+                if (size_t q = rest.find('?'); q != std::string::npos) {
+                    path  = rest.substr(0, q);
+                    query = rest.substr(q + 1);
+                }
+                if (path.empty()) {
+                    err = "in: needs a path (in:reader.tap)";
+                    return nullptr;
+                }
+                if (!query.empty() && !parseInOpts(query)) return nullptr;
+                inPath = path;
+            } else if (part.rfind("out:", 0) == 0) {
+                if (sawOut) {
+                    err = "out: given twice in '" + spec + "'";
+                    return nullptr;
+                }
+                sawOut           = true;
+                std::string path = part.substr(4);
+                if (path.find('?') != std::string::npos) {
+                    err = "out: takes no options (a punch runs at the line's speed)";
+                    return nullptr;
+                }
+                if (path.empty()) {
+                    err = "out: needs a path (out:punch.tap)";
+                    return nullptr;
+                }
+                outPath = path;
+            } else if (!part.empty()) {
+                err = "'" + part + "' is not in: or out:. A file endpoint is in:PATH, "
+                                   "out:PATH, or in:PATH,out:PATH";
+                return nullptr;
+            }
+            if (comma == std::string::npos) break;
+            start = comma + 1;
         }
-        // BINARY + trunc: 8-bit clean (a CR stays a CR on every host), opened fresh.
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            err = "cannot open '" + path + "' for writing";
-            return nullptr;
+
+        // A reader slurps its file once (8-bit clean, binary), so readable() is a
+        // pure question of "bytes left" and the position needs no live file handle.
+        if (sawIn) {
+            std::ifstream f(inPath, std::ios::binary);
+            if (!f) {
+                err = "cannot open '" + inPath + "' for reading";
+                return nullptr;
+            }
+            input = std::vector<uint8_t>(std::istreambuf_iterator<char>(f),
+                                         std::istreambuf_iterator<char>());
         }
-        return std::make_unique<FileStream>(std::move(out), spec);
+
+        // A punch opens WITHOUT truncating and seeks to 0: it overwrites forward and
+        // extends past the end, never blanking the file up front. An absent file is
+        // created (out|binary makes an empty one to reopen for update).
+        std::fstream out;
+        if (sawOut) {
+            out.open(outPath, std::ios::in | std::ios::out | std::ios::binary);
+            if (!out.is_open()) {
+                std::ofstream create(outPath, std::ios::binary);  // make it, then reopen
+                create.close();
+                out.open(outPath, std::ios::in | std::ios::out | std::ios::binary);
+            }
+            if (!out.is_open()) {
+                err = "cannot open '" + outPath + "' for writing";
+                return nullptr;
+            }
+            out.seekp(0);
+        }
+
+        return std::make_unique<FileStream>(spec, std::move(input), std::move(out), nsPerByte);
     }
 
 #ifdef ALTAIRSIM_ENABLE_PRINTER
