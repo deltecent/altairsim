@@ -42,27 +42,28 @@ static const std::vector<CommandDef> kCommands = {
      "  D 100/20     0100-011F (LEN is part of the address expression: hex)\n"
      "  D 0 WIDTH=8  eight bytes per line"},
     {"STEP", true, nullptr, "STEP [n]",
-     "One instruction, with REAL bus cycles through the real decode. Prints each\n"
-     "instruction as it goes; past 32 it runs quietly and reports. `n` is a count,\n"
-     "so it is decimal.\n"
+     "One instruction, with REAL bus cycles through the real decode. Prints one line\n"
+     "per instruction; past 32 it runs quietly and reports. `n` is a count, so it is\n"
+     "decimal.\n"
      "\n"
-     "A LINE IS THE STATE BEFORE THE INSTRUCTION ON IT RUNS -- the registers as they\n"
-     "stand, and then what is about to happen to them. So a value you just loaded\n"
-     "appears on the NEXT line, and the line the monitor leaves you on is where you\n"
-     "have stopped: that instruction has not run.\n"
+     "A LINE IS THE STATE AFTER THE INSTRUCTION RAN -- the registers as they now\n"
+     "stand, and the instruction the PC has reached next. So `S 3` prints three lines,\n"
+     "one per step, and the last line is where the monitor has left you: the next\n"
+     "instruction, not yet run.\n"
      "  S            one instruction\n"
      "  S 10         ten of them\n"
      "\n"
      "  altairsim> DEPOSIT 0 3E 05 06 0A 80 76        MVI A,5 / MVI B,0A / ADD B / HLT\n"
+     "  altairsim> EX 0\n"
      "  altairsim> S 3\n"
-     "  C0Z0M0E0I0 A=00 B=0000 D=0000 H=0000 S=0000 IE=0 P=0000  MVI A,05\n"
      "  C0Z0M0E0I0 A=05 B=0000 D=0000 H=0000 S=0000 IE=0 P=0002  MVI B,0A\n"
      "  C0Z0M0E0I0 A=05 B=0A00 D=0000 H=0000 S=0000 IE=0 P=0004  ADD B\n"
      "  C0Z0M0E1I0 A=0F B=0A00 D=0000 H=0000 S=0000 IE=0 P=0005  HLT\n"
-     "Three instructions ran; the fourth line is the HLT waiting. A=05 shows up one\n"
-     "line below the MVI that loaded it. The flags are the 8080's own five, in the\n"
-     "Altair's lettering -- Carry, Zero, Minus, Even parity, Interdigit carry -- and\n"
-     "E goes to 1 on the ADD because 0F has an even number of bits set."},
+     "Three instructions ran, three lines. Each shows the result: A=05 lands on the\n"
+     "line for the MVI that loaded it, and the last line is the HLT waiting, not yet\n"
+     "run. The flags are the 8080's own five, in the Altair's lettering -- Carry,\n"
+     "Zero, Minus, Even parity, Interdigit carry -- and E goes to 1 on the ADD\n"
+     "because 0F has an even number of bits set."},
     // NEXT sits above NOBREAK so `N` -- the letter you reach for between two steps --
     // is NEXT, not NOBREAK. STEP took `S` and RUN took `R` for the same reason: the
     // command you type every few seconds wins the single letter. NOBREAK pays `NO`.
@@ -242,6 +243,7 @@ static const std::vector<CommandDef> kCommands = {
      "boards, and they take settings the same way.\n"
      "  SET mem0 fill=zero\n"
      "  SET mem0 phantom=read\n"
+     "  SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)\n"
      "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal"},
     {"SHOW", true, nullptr,
      "SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|"
@@ -321,17 +323,23 @@ static const std::vector<CommandDef> kCommands = {
      "  LOAD monitor.bin AT F000 ROM      a flat binary, burned into the ROM there\n"
      "  LOAD prog.hex AT 100              relocate: first record goes to 0100\n"
      "  LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called"},
-    {"SAVE", true, nullptr, "SAVE <file> <range> [FORMAT=BIN|HEX]",
+    {"SAVE", true, nullptr, "SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL]",
      "Memory to a file, through the bus -- so what you get is what the CPU would\n"
      "read, ROM included. The range is what to save; a byte nobody drives reads FF.\n"
      "\n"
      "THE NAME DECIDES THE FORMAT, and this is the other half of LOAD's rule rather\n"
      "than the same one: LOAD can open the file and see what it IS, and SAVE cannot\n"
-     "-- the file does not exist yet. So a name ending .HEX writes Intel HEX and\n"
-     "anything else writes a flat binary. FORMAT= says it outright when the name\n"
-     "would guess wrong, and always wins.\n"
+     "-- the file does not exist yet. So a name ending .HEX writes Intel HEX, one\n"
+     "ending .OCT writes an octal listing, and anything else writes a flat binary.\n"
+     "FORMAT= says it outright when the name would guess wrong, and always wins.\n"
+     "\n"
+     "OCTAL is a LISTING, not a load format: split-octal addresses and octal bytes,\n"
+     "the way the MITS manuals and the front panel showed memory, for reading and\n"
+     "eyeballing. LOAD does not read it back -- BIN and HEX round-trip, OCTAL does\n"
+     "not.\n"
      "  SAVE out.hex 0-FFF                Intel HEX, by its name\n"
      "  SAVE out.bin F800-FFFF            a flat binary, by its name\n"
+     "  SAVE out.oct 100-1FF              an octal listing, by its name\n"
      "  SAVE out.dat 0-FFF FORMAT=HEX     hex, though it is not called .hex"},
     {"FILL", true, nullptr, "FILL <range> <byte>",
      "  FILL 0-3FF 00"},

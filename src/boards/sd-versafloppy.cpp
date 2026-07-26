@@ -300,8 +300,8 @@ std::vector<Property> VersaFloppyBoard::properties() {
 
 std::vector<MapEntry> VersaFloppyBoard::ioMap() const {
     return {
-        {(uint32_t)port_ + 0, (uint32_t)port_ + 0, "reset",         "out: controller reset (VF-II)"},
-        {(uint32_t)port_ + 3, (uint32_t)port_ + 3, "control/status","out: drive/side/density/wait   in: readback + INTRQ"},
+        {(uint32_t)port_ + 0, (uint32_t)port_ + 0, "reset",         "controller reset (VF-II)"},
+        {(uint32_t)port_ + 3, (uint32_t)port_ + 3, "control/status","drive/side/density/wait / readback + INTRQ"},
         {(uint32_t)port_ + 4, (uint32_t)port_ + 4, "command/status","FD177x"},
         {(uint32_t)port_ + 5, (uint32_t)port_ + 5, "track",         "FD177x"},
         {(uint32_t)port_ + 6, (uint32_t)port_ + 6, "sector",        "FD177x"},

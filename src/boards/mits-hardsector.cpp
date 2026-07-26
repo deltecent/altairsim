@@ -23,8 +23,8 @@ bool HardSectorFdc::decodes(const BusCycle& c) const {
 
 std::vector<MapEntry> HardSectorFdc::ioMap() const {
     return {
-        {port_,      port_,      "select/status",  "out: drive select   in: status (INVERTED)"},
-        {port_ + 1u, port_ + 1u, "command/sector", "out: step/head/write   in: sector position"},
+        {port_,      port_,      "select/status",  "drive select / status (INVERTED)"},
+        {port_ + 1u, port_ + 1u, "command/sector", "step/head/write / sector position"},
         {port_ + 2u, port_ + 2u, "data",           "137-byte sector slots"},
     };
 }

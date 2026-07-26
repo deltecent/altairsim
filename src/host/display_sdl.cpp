@@ -15,15 +15,15 @@ namespace {
 
 // The fallback window multiple, used ONLY when the display's usable bounds cannot be read
 // (SDL_GetDisplayUsableBounds failed) -- so neither the auto target nor the fit-loop has a
-// screen size to work from. With bounds, `scaling` decides: auto fits ~70% of the screen,
-// a fixed number is honored and clamped to fit. See ensureWindow().
+// screen size to work from. With bounds, a board's `width` decides: auto opens ~half the
+// screen wide, a pixel width is honored and clamped to fit. See ensureWindow().
 constexpr int kMaxScale = 3;
 
-// What fraction of the usable screen an auto-scaled window aims to fill, as a percent. A
-// board's frame is scaled up by the largest WHOLE multiple that stays under this on both
-// axes -- so a 64x64 Dazzler frame opens about as big as a 512-wide VDM-1 one, and neither
-// swamps the desktop.
-constexpr int kAutoFillPercent = 70;
+// What fraction of the usable screen WIDTH an auto-sized window aims for, as a percent. The
+// frame is scaled up by the largest WHOLE multiple whose width stays under this -- so a
+// 64x64 Dazzler frame opens about as wide as a 512-wide VDM-1 one, and neither swamps the
+// desktop. Height then follows the frame's own aspect at that multiple.
+constexpr int kDefaultWidthPercent = 50;
 
 // A rough allowance for the title bar, in points, so a window sized against the
 // display's usable height does not open with its title bar off the top of the screen.
@@ -122,7 +122,9 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, wantsFocus ? "1" : "0");
 
     // OPEN AT AN EXACT INTEGER MULTIPLE OF THE FRAME (plus a fixed kBorder inset on every
-    // side, see below) -- and pick the multiple to FIT, rather than assuming one and hoping.
+    // side, see below) -- and pick the multiple from a target WIDTH, rather than assuming
+    // one and hoping. The height is not chosen separately; it is h*scale, so it comes off
+    // the width through the frame's own aspect.
     //
     // 3x was assumed, and it does not fit a laptop. A 512-wide VDM-1 frame asks for a
     // 1536-point window on a panel 1470 points wide, so macOS clamps it -- and a
@@ -146,28 +148,27 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // the next multiple is a long way away.
     SDL_Rect   usable{};
     const bool haveBounds = SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable);
-    const int  requested  = Display::windowScale();  // 0 = auto
+    const int  requested  = Display::windowWidth();  // 0 = auto, else target pixels
 
     int scale;
-    if (requested > 0) {
-        // A fixed multiple the operator asked for, brought down only if it would not fit.
-        scale = requested;
-        if (haveBounds)
-            while (scale > 1 && (w * scale + 2 * kBorder > usable.w ||
-                                 h * scale + 2 * kBorder + kChromeH > usable.h))
-                --scale;
-    } else if (haveBounds) {
-        // AUTO: the largest whole multiple that keeps the window under ~70% of the usable
-        // screen on BOTH axes. Small frames grow a lot, wide frames a little, and both land
-        // near the same size -- which is why a fixed ceiling could not do this job. The
-        // border inset counts toward the window's footprint, so hold it against the target.
-        const int tw = usable.w * kAutoFillPercent / 100;
-        const int th = (usable.h - kChromeH) * kAutoFillPercent / 100;
+    if (haveBounds) {
+        // Grow to a target WIDTH: the pixels the drawing board asked for, or half the usable
+        // screen width by default. The largest whole multiple whose width (inset included)
+        // fits the target wins; small frames grow a lot, wide frames a little, and both land
+        // near the same size -- which is why a fixed ceiling could not do this job.
+        const int targetW = requested > 0 ? requested : usable.w * kDefaultWidthPercent / 100;
         scale = 1;
-        while (w * (scale + 1) + 2 * kBorder <= tw &&
-               h * (scale + 1) + 2 * kBorder <= th) ++scale;
+        while (w * (scale + 1) + 2 * kBorder <= targetW) ++scale;
+        // Then bring it down if that width, or the height it implies, runs off the screen.
+        while (scale > 1 && (w * scale + 2 * kBorder > usable.w ||
+                             h * scale + 2 * kBorder + kChromeH > usable.h))
+            --scale;
+    } else if (requested > 0) {
+        // No screen to measure against, but a width was asked for: honor it as best we can.
+        scale = 1;
+        while (w * (scale + 1) + 2 * kBorder <= requested) ++scale;
     } else {
-        scale = kMaxScale;  // no bounds to fit to: the plain fallback multiple
+        scale = kMaxScale;  // no bounds, no request: the plain fallback multiple
     }
 
     if (!SDL_CreateWindowAndRenderer(title_.c_str(), w * scale + 2 * kBorder,
@@ -196,8 +197,14 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     const int wantW = w * fit + 2 * kBorder, wantH = h * fit + 2 * kBorder;
     if (gotW != wantW || gotH != wantH) SDL_SetWindowSize(window_, wantW, wantH);
 
-    SDL_SetRenderLogicalPresentation(renderer_, w, h,
-                                     SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+    // ASPECT-PRESERVING FROM THE START, so the FIRST drag behaves like every one after it.
+    // The window opens at a whole multiple (chosen above), which under LETTERBOX is exactly
+    // an integer scale -- crisp -- and the kBorder inset is the letterbox band. But because
+    // the window is also locked to that opening aspect (below), a resize stays proportional
+    // and the picture keeps filling it, undistorted, at whatever size. The earlier scheme
+    // opened in INTEGER_SCALE and only switched to letterbox when the first resize event
+    // arrived, so that first drag ran free and then snapped -- this removes the seam.
+    SDL_SetRenderLogicalPresentation(renderer_, w, h, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
     // Ask SDL for layout- and shift-resolved characters (SDL_EVENT_TEXT_INPUT), so a
     // '$' or a capital letter arrives correct without us reimplementing a keymap. The
@@ -207,6 +214,18 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // Everything above is configured, so show it -- unfocused, per the hint set before
     // the window was created.
     SDL_ShowWindow(window_);
+
+    // Lock the window to the aspect it opened at, so every resize -- the first included --
+    // stays proportional: the operator can make the picture any size but not distort it, and
+    // LETTERBOX keeps it filling the window with the kBorder inset scaling along. SDL has no
+    // "user-vs-us" resize flag, and it does not need one now -- the lock does the work, so
+    // there is nothing to detect and switch.
+    int lockW = 0, lockH = 0;
+    SDL_GetWindowSize(window_, &lockW, &lockH);
+    if (lockW > 0 && lockH > 0) {
+        const float aspect = (float)lockW / (float)lockH;
+        SDL_SetWindowAspectRatio(window_, aspect, aspect);
+    }
 
     if (std::getenv("ALTAIRSIM_VIDEO_DEBUG")) {
         int ww = 0, wh = 0, pw = 0, ph = 0, ow = 0, oh = 0;
@@ -229,7 +248,25 @@ bool SdlDisplay::ensureWindow(int w, int h) {
 // has no window yet -- so it is recorded and ensureWindow() picks it up. Retitling a live
 // window matters too: CONFIG LOAD swaps the machine underneath an open one.
 void SdlDisplay::setTitle(const std::string& name) {
-    std::string t = name.empty() ? "AltairSim" : "AltairSim -- " + name;
+    machineName_ = name;
+    applyTitle();
+}
+
+// Running or stopped, in the title bar (host/display.h). Recorded and composed with the
+// machine name; takes effect on a live window at once and is picked up by ensureWindow()
+// on one not yet open.
+void SdlDisplay::setRunning(bool running) {
+    running_ = running;
+    applyTitle();
+}
+
+// Build "AltairSim -- <machine>" and, while the guest is stopped, append the reminder that
+// the picture on screen is frozen -- the window stays open across a stop (closeWindow),
+// so without this a halted machine looks like a hung one. Cached in title_ so an unchanged
+// title is not pushed at SDL every run/stop.
+void SdlDisplay::applyTitle() {
+    std::string t = machineName_.empty() ? "AltairSim" : "AltairSim -- " + machineName_;
+    if (!running_) t += " -- simulator stopped";
     if (t == title_) return;
     title_ = std::move(t);
     if (window_) SDL_SetWindowTitle(window_, title_.c_str());

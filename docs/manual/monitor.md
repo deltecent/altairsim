@@ -49,6 +49,18 @@ as `HELP`.
 > that costs nothing if you did not mean it. A bare `R` that reset the machine would be one
 > you had to set up again. `RESET` pays the letters: `RES`.
 
+## Repeating the last command: `.`
+
+Type `.` on a line by itself and the monitor runs your **last command again**, quietly —
+there is no echo, just the command's own output. It costs one keystroke, and the commands
+you most often want to repeat pick up where they left off: a bare `DISASM` disassembles the
+next screenful, a bare `DUMP` shows the next page, and `STEP` steps again. So you type `DI`
+once and then `.` `.` `.` to walk forward through a routine, or `S` and then `.` to single-step.
+
+Pressing `.` again always repeats that same original command, never the previous `.`, so it
+keeps doing the one thing however many times you press it. A `.` before you have typed
+anything just tells you there is nothing to repeat yet.
+
 ## Reaching the host: `!`
 
 A line that begins with `!` is not a monitor command at all — everything after the `!` is

@@ -538,7 +538,7 @@ std::vector<Property> HostBridgeBoard::properties() {
 
 std::vector<MapEntry> HostBridgeBoard::ioMap() const {
     return {
-        {base_, base_, "r/w", "Host Bridge: OUT = command, IN = status"},
+        {base_, base_, "r/w", "Host Bridge: command / status"},
         {(uint8_t)(base_ + 1), (uint8_t)(base_ + 1), "r/w",
          "Host Bridge: data -- file names, file bytes, directory names"},
     };

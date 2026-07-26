@@ -44,6 +44,7 @@ public:
     void     setPalette(std::span<const Color> colors) override;
     void     pollEvents() override;
     void     setTitle(const std::string& name) override;
+    void     setRunning(bool running) override;
     void     yieldFocus() override;
 
     // The close box, remembered by pollEvents() and handed to the run loop
@@ -72,8 +73,14 @@ private:
     std::vector<uint8_t>     rgba_;      // scratch: indexed -> RGBA for upload
 
     // The title bar. Held rather than pushed straight at SDL, because the run loop names
-    // the machine long before a board draws the first frame and opens the window.
+    // the machine long before a board draws the first frame and opens the window. title_
+    // is the composed string currently on the window (cached so a redundant retitle is
+    // skipped); machineName_ and running_ are the parts it is built from -- see
+    // applyTitle(), which appends " -- simulator stopped" while the guest is halted.
     std::string title_ = "AltairSim";
+    std::string machineName_;
+    bool        running_ = false;
+    void        applyTitle();
 
     bool inited_ = false;
     bool quit_   = false;

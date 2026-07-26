@@ -94,6 +94,7 @@ private:
 
     // ---- Straps ----
     uint8_t port_ = 0x0E;       // control/status port; format is port_|1
+    int     videoWidth_ = 0;    // host window width in px, 0 = auto (~half the screen)
 
     // ---- Change detection (frameChanged) ----
     //

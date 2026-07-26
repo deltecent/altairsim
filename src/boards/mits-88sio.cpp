@@ -528,7 +528,7 @@ std::vector<UnitDef> SioBoard::units() const {
 std::vector<MapEntry> SioBoard::ioMap() const {
     return {
         {(uint32_t)base_, (uint32_t)base_, "read/write",
-         "COM2502 -- status (read) / interrupt enables (write)"},
+         "COM2502 -- status / interrupt enables"},
         {(uint32_t)base_ + 1, (uint32_t)base_ + 1, "read/write", "COM2502 -- data"},
     };
 }

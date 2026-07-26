@@ -33,8 +33,9 @@ SET REG CY=1
 
 `STEP` runs **real bus cycles through the real instruction decode**. It is not an interpreter
 running alongside the machine — it *is* the machine, moved forward by one instruction. It
-prints each instruction as it goes; past thirty-two it runs quietly and tells you where it
-ended up.
+prints one line per instruction — the machine *after* that instruction ran, with the one the
+PC has now reached — so `STEP 3` shows three lines, one for each step. Past thirty-two it runs
+quietly and tells you where it ended up.
 
 ```
 STEP        one instruction
@@ -293,6 +294,7 @@ board has switched another one off, `WHO` is where you find out.
 
 ```
 altairsim> WHO IO FF
+port FF IN:  nobody (an IN here reads FF)
 port FF OUT: nobody (an OUT here goes nowhere)
 
 WHO 2C00          who decodes this address?

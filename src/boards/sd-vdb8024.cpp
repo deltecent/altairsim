@@ -291,6 +291,7 @@ bool Vdb8024Board::blinkOn() const {
 
 void Vdb8024Board::render() {
     const int cw = vdb8024font::kCols, ch = vdb8024font::kRows;
+    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
     Surface* s = g_display->acquire(kCols * cw, kRows * ch, PixelFormat::Indexed8);
     if (!s) return;
 
@@ -502,6 +503,7 @@ std::vector<Property> Vdb8024Board::properties() {
         "the keyboard raises while a byte waits (the SBC-200 CTC vectors it -- video CBIOS "
         "straps vi2)",
         kbIrq_));
+    p.push_back(Display::widthProperty(videoWidth_));
     return p;
 }
 
@@ -510,7 +512,7 @@ std::vector<MapEntry> Vdb8024Board::ioMap() const {
         {(uint32_t)base_, (uint32_t)base_, "read",
          "VDB-8024 -- status (D1 keyboard-ready, D2 display-ready)"},
         {(uint32_t)(base_ + 1), (uint32_t)(base_ + 1), "read/write",
-         "VDB-8024 -- keyboard data (read) / display data (write)"},
+         "VDB-8024 -- keyboard data / display data"},
     };
 }
 

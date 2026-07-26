@@ -183,6 +183,7 @@ bool DazzlerBoard::frameChanged() {
 // ---------------------------------------------------------------------------
 void DazzlerBoard::render() {
     const int side = elementsPerSide();
+    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
     Surface* s = g_display->acquire(side, side, PixelFormat::Indexed8);
     if (!s) return;
 
@@ -262,15 +263,16 @@ std::vector<Property> DazzlerBoard::properties() {
         };
         p.push_back(std::move(x));
     }
+    p.push_back(Display::widthProperty(videoWidth_));
     return p;
 }
 
 std::vector<MapEntry> DazzlerBoard::ioMap() const {
     return {
         {(uint32_t)port_, (uint32_t)port_, "read/write",
-         "Dazzler -- status (read: D7 odd/even, D6 end-of-frame) / control (write: on + base)"},
+         "Dazzler -- status (D7 odd/even, D6 end-of-frame) / control (on + base)"},
         {(uint32_t)(port_ | 1), (uint32_t)(port_ | 1), "write",
-         "Dazzler -- format (write: resolution/size/color)"},
+         "Dazzler -- format (resolution/size/color)"},
     };
 }
 

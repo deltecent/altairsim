@@ -373,6 +373,42 @@ void test_cli() {
           "EXAMINE distinguishes a real FF from an empty slot");
 
     // ---------------------------------------------------------------------
+    // `.` REPEATS THE LAST COMMAND
+    // ---------------------------------------------------------------------
+    // One keystroke, and no echo: it re-runs the exact last line, which is what
+    // makes the continuing verbs (bare DISASM/DUMP, STEP) walk forward under it.
+    SECTION(". repeats the last command, and never itself");
+
+    // An explicit-address command has no cursor to move, so `.` reproduces it
+    // byte-for-byte. That IS the test that `.` re-ran the exact line.
+    std::string d0 = run("D 0");
+    CHECK(run(".") == d0, ". repeats the last command exactly");
+
+    // `.` is never recorded as the last command, so a second `.` still repeats the
+    // ORIGINAL line -- if it recorded itself, exec would recurse on `.` forever.
+    std::string r1 = run(".");
+    std::string r2 = run(".");
+    CHECK(r1 == d0 && r2 == d0, ". repeats the original, not the previous . (and cannot loop)");
+
+    // The point of it: a bare DISASM continues from its own cursor, so `.` walks
+    // forward. Two `.` after a bare DI land on different addresses each time.
+    run("DI 0");                 // seat the disasm cursor
+    std::string di1 = run("DI"); // bare DI continues; this line becomes the one `.` repeats
+    std::string di2 = run(".");  // repeats "DI" -- continues further, so it differs
+    CHECK(di1 != di2, ". re-runs a continuing verb, walking DISASM forward");
+
+    // A `.` before anything has been typed has nothing to repeat, and says so
+    // rather than doing something -- the way a bare `!` reminds you of its form.
+    {
+        Machine  fresh;
+        Monitor  mf(fresh);
+        std::ostringstream o;
+        mf.exec(".", o);
+        CHECK(o.str().find("nothing to repeat") != std::string::npos,
+              "a . with no prior command reports there is nothing to repeat");
+    }
+
+    // ---------------------------------------------------------------------
     // EXAMINE *IS* THE CPU (Patrick, 2026-07-12)
     // ---------------------------------------------------------------------
     // On the panel this is not a side effect, it is what the switch is FOR: it
@@ -479,13 +515,31 @@ void test_cli() {
 
     std::ostringstream st;
     mon2.exec("STEP", st);
-    // STEP traces DDT-style: the machine as it stands, WITH the instruction it is
-    // about to run. So the first line carries P=FF00 and the INR A that lives there.
-    CHECK(st.str().find("P=FF00") != std::string::npos,
-          "so STEP executes AT FF00, not wherever it was");
-    CHECK(st.str().find("INR A") != std::string::npos,
-          "and the trace names the instruction it is about to run");
+    // STEP prints one line, AFTER the instruction runs: the machine as it now stands.
+    // The INR A at FF00 executed, so A is 01 and the PC has moved on to FF01 -- which
+    // together prove it ran AT FF00, not at some other 3C. (It used to also print a
+    // line BEFORE the instruction, so a single step showed two lines and looked like
+    // two ran.)
+    CHECK(st.str().find("A=01") != std::string::npos,
+          "the INR A at FF00 actually ran -- A went 00 -> 01");
+    CHECK(st.str().find("P=FF01") != std::string::npos,
+          "so STEP executed AT FF00, not wherever it was, and the PC moved one on");
     CHECK(c->pc() == 0xFF01, "and one instruction later the PC has moved");
+
+    // A COUNT prints one line per instruction, not one plus a trailing snapshot. Three
+    // NOPs at 0100.. give `S 3` three register lines -- the old code printed four.
+    mon2.exec("DEPOSIT 0100 00 00 00", s2);
+    mon2.exec("EX 0100", s2);
+    {
+        std::ostringstream ss;
+        mon2.exec("S 3", ss);
+        size_t lines = 0;
+        for (size_t p = ss.str().find("P="); p != std::string::npos;
+             p = ss.str().find("P=", p + 1))
+            ++lines;
+        CHECK(lines == 3, "S 3 prints three instruction lines, one per step -- not four");
+        CHECK(c->pc() == 0x0103, "and three NOPs later the PC has advanced by three");
+    }
 
     // EXAMINE NEXT drags the PC with it. The panel's counter IS the cursor -- it
     // has no other, which is why the switch is wired to it in the first place.
@@ -1259,6 +1313,35 @@ void test_achieved_hz() {
                   "...and what landed on disk really is Intel HEX, not just a label");
         }
 
+        // OCTAL is the third, WRITE-ONLY format: a .OCT name picks it, FORMAT=OCTAL
+        // overrides, and the bytes are split-octal addresses + octal 000-377, eight to
+        // a line -- always octal whatever base the console prints in. LOAD never reads
+        // it back; this test only asserts what SAVE writes.
+        mm.bus.memWrite(0x0200, 0x3E);  // 076
+        mm.bus.memWrite(0x0201, 0x41);  // 101
+        const std::string oct = (dir / "img.oct").generic_string();
+        std::ostringstream d3;
+        mon.exec("SAVE " + oct + " 200-201", d3);
+        CHECK(d3.str().find("(octal)") != std::string::npos, "a .OCT name saves octal");
+        {
+            std::ifstream f(oct);
+            std::string hdr, row;
+            std::getline(f, hdr);
+            std::getline(f, row);
+            CHECK(hdr.rfind("; altairsim octal image", 0) == 0,
+                  "...the file opens with the octal header comment");
+            CHECK(row == "002 000  076 101",
+                  "...split-octal address, two spaces, octal bytes -- and it really is octal");
+        }
+        std::ostringstream d4;
+        mon.exec("SAVE " + dat + " 200-201 FORMAT=OCTAL", d4);
+        CHECK(d4.str().find("(octal)") != std::string::npos,
+              "...and FORMAT=OCTAL overrides a name that is not .oct");
+        std::ostringstream d5;
+        mon.exec("SAVE " + dat + " 200-201 FORMAT=DECIMAL", d5);
+        CHECK(d5.str().find("BIN, HEX or OCTAL") != std::string::npos,
+              "...and an unknown FORMAT names all three, octal included");
+
         fs::remove_all(dir, ec);
     }
 
@@ -1578,6 +1661,43 @@ void test_achieved_hz() {
         Display::setFocusPolicy(false);  // a process-wide setting: put it back
     }
 
+    SECTION("a video board's window width is its own, in pixels (per-board, not [display])");
+    {
+        // Patrick went looking for this on the board, and a real Altair has one video-out
+        // cable per board -> its own monitor. So `width` lives on the video board, parsed
+        // through the same Property layer as everything else. The window math is untestable
+        // without a display (host/display_sdl.cpp), but the property round-trip is not.
+        Machine     mv;
+        std::string err;
+        Board*      vdm = mv.add("vdm1", "vdm0", err);
+        CHECK(vdm != nullptr, "a VDM-1 goes in");
+
+        Monitor            monV(mv);
+        std::ostringstream sv;
+
+        monV.exec("SET vdm0 width=1024", sv);
+        sv.str("");
+        monV.exec("SHOW vdm0", sv);
+        CHECK(sv.str().find("width") != std::string::npos, "SHOW names the width knob");
+        CHECK(sv.str().find("1024") != std::string::npos, "and reports the pixels set");
+
+        sv.str("");
+        monV.exec("SET vdm0 width=auto", sv);
+        sv.str("");
+        monV.exec("SHOW vdm0", sv);
+        CHECK(sv.str().find("auto") != std::string::npos, "auto restores the default");
+
+        // Out of range and non-numeric are refused by the same layer, and the message names
+        // the range in pixels -- so a width the window could never honor never reaches it.
+        sv.str("");
+        monV.exec("SET vdm0 width=1", sv);
+        CHECK(sv.str().find("128 to 8192") != std::string::npos,
+              "a too-small width is refused, with the pixel range");
+        sv.str("");
+        monV.exec("SET vdm0 width=nope", sv);
+        CHECK(sv.str().find("128 to 8192") != std::string::npos, "and so is a non-number");
+    }
+
     SECTION("SET BUS UNCLAIMED -- the floating-bus diagnostic, from the CLI (DESIGN.md 4.6.1)");
     {
         // A guest that OUTs to a port no board decodes, then HLTs: OUT FE ; HLT. Each
@@ -1648,6 +1768,84 @@ void test_achieved_hz() {
             CHECK(run(mon, "RUN 0100").find("no board decodes") == std::string::npos,
                   "the default is SILENT");
         }
+    }
+
+    SECTION("WHO IO reports BOTH sides of a port -- IN and OUT decode independently");
+    {
+        // A port is two doors. The 2SIO answers both, so WHO IO must show both -- the
+        // old command probed only OUT and hid the IN side, which read as if a serial
+        // board could be written to but never read from.
+        Machine mio;
+        Monitor mon(mio);
+        std::ostringstream s;
+        mon.exec("BOARDS ADD 8080 cpu0", s);
+        mon.exec("BOARDS ADD memory mem0", s);
+        mon.exec("BOARDS ADD 2sio sio0", s);
+        mon.exec("BOARDS ADD fp fp0", s);
+        auto run = [&](const char* line) {
+            std::ostringstream o;
+            mon.exec(line, o);
+            return o.str();
+        };
+
+        std::string w = run("WHO IO 10");
+        CHECK(w.find("port 10 IN:") != std::string::npos, "WHO IO prints the IN side");
+        CHECK(w.find("port 10 OUT:") != std::string::npos, "and the OUT side");
+        CHECK(w.find("IN:  sio0") != std::string::npos, "the 2SIO answers an IN at 10");
+        CHECK(w.find("OUT: sio0") != std::string::npos, "and an OUT at 10");
+
+        // The whole point of showing both: they can differ. The front panel drives the
+        // sense switches onto IN FF but decodes no OUT there, so one line names it and
+        // the other says nobody. The old OUT-only WHO could never have shown this.
+        std::string ff = run("WHO IO FF");
+        CHECK(ff.find("IN:  fp0") != std::string::npos,
+              "the front panel answers IN FF (sense switches)");
+        CHECK(ff.find("OUT: nobody") != std::string::npos, "but nothing decodes OUT FF");
+
+        // A port nobody touches: both sides say nobody, each in its own words.
+        std::string dead = run("WHO IO 80");
+        CHECK(dead.find("IN:  nobody (an IN here reads FF)") != std::string::npos,
+              "an unclaimed IN reads the floating FF");
+        CHECK(dead.find("OUT: nobody (an OUT here goes nowhere)") != std::string::npos,
+              "and an unclaimed OUT is simply gone");
+    }
+
+    SECTION("SHOW BUS IO -- separate IN and OUT columns, and the port range");
+    {
+        Machine mio;
+        Monitor mon(mio);
+        std::ostringstream s;
+        mon.exec("BOARDS ADD 8080 cpu0", s);
+        mon.exec("BOARDS ADD memory mem0", s);
+        mon.exec("BOARDS ADD 2sio sio0", s);
+        mon.exec("BOARDS ADD fp fp0", s);
+        mon.exec("BOARDS ADD c700 lp0", s);
+        std::ostringstream o;
+        mon.exec("SHOW BUS IO", o);
+        std::string io = o.str();
+
+        // The 2SIO's first channel spans two ports and answers both directions: the row
+        // shows the RANGE, not just the low port, and both columns are lit.
+        CHECK(io.find("10-11") != std::string::npos, "a two-port entry shows its range");
+        CHECK(io.find("10-11     sio0     IN  OUT    6850") != std::string::npos,
+              "the 2SIO answers both IN and OUT across 10-11");
+
+        // The front panel is read-only: IN is named, OUT is a dash. This is the whole
+        // reason the columns are split -- a merged 'read/write' column could not say it.
+        CHECK(io.find("FF        fp0      IN  --") != std::string::npos,
+              "the front panel reads FF (sense switches) but decodes no OUT there");
+
+        // The C700 data port is the mirror case: write-only, so OUT is named and IN is
+        // a dash. Its decode() actually distinguishes the two, unlike the coarse boards.
+        CHECK(io.find("lp0      --  OUT    C700 -- data") != std::string::npos,
+              "the C700 data port is OUT-only");
+
+        // The notes carry FUNCTION, not direction -- the columns carry direction now.
+        // No 'out:' / 'in:' / '(read)' / '(write)' survives in the I/O rows.
+        CHECK(io.find("out:") == std::string::npos && io.find("in:") == std::string::npos,
+              "direction words are stripped from the notes -- the columns say it");
+        CHECK(io.find("(read)") == std::string::npos && io.find("(write)") == std::string::npos,
+              "and so are the parenthesised (read)/(write) markers");
     }
 
     // -----------------------------------------------------------------------

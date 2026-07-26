@@ -509,6 +509,7 @@ Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (defau
 | `port` | int | `0xCC` | `0x0` .. `0xFC` | I/O port -- scroll (OUT) / status (IN). Low two bits are zero |
 | `video` | enum | `normal` | `normal` \| `reverse` | Video polarity (SW1/SW2): normal (light on dark) or reverse |
 | `cursor` | enum | `blink` | `off` \| `blink` \| `steady` | Cursor for a byte with bit 7 set (SW3/SW4): off, blink, or steady |
+| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
 
 
 ## `dazzler`
@@ -520,6 +521,7 @@ Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BA
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0xE` | `0x0` .. `0xFE` | I/O base port -- control/status (BASE) and format (BASE+1). Even; default 0E |
+| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
 
 
 ## `vdb8024`
@@ -536,6 +538,7 @@ SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console f
 | `cursor` | enum | `blink` | `off` \| `blink` \| `steady` | Cursor at the current cell: off, blink, or steady (the board default is a blinking cursor) |
 | `video` | enum | `normal` | `normal` \| `reverse` | Screen video polarity: normal (light on dark) or reverse |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Keyboard-strobe interrupt strap: none = polled (default), or the S-100 VI line the keyboard raises while a byte waits (the SBC-200 CTC vectors it -- video CBIOS straps vi2) *(interrupt strap)* |
+| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
 
 ### Unit `keyboard` — `[board.unit.keyboard]`
 

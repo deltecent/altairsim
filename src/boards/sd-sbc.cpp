@@ -350,10 +350,10 @@ std::vector<MapEntry> SbcBoard::ioMap() const {
          "Z80-CTC channels 0-3 (ch0 = baud gen / interrupt vector, ch1 = keyboard interrupt)"},
         {(uint32_t)base_, (uint32_t)base_, "read/write", "8251 -- receive/transmit data"},
         {(uint32_t)base_ + 1, (uint32_t)base_ + 1, "read/write",
-         "8251 -- status (read) / mode+command (write)"},
+         "8251 -- status / mode+command"},
         {(uint32_t)b + 6, (uint32_t)b + 6, "read/write", "parallel port -- data latch"},
         {(uint32_t)b + 7, (uint32_t)b + 7, "read/write",
-         "parallel handshake; OUT bit 1 switches the onboard PROM out of the map"},
+         "parallel handshake; bit 1 switches the onboard PROM out of the map"},
     };
 }
 

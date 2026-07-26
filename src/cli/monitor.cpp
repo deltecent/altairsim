@@ -1198,7 +1198,10 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // because CONFIG LOAD replaces the machine -- and it can do that with the window
     // still open, showing the machine that has just been thrown away (host/display.h).
     // Null headless, and a no-op on a machine that never opens a window.
-    if (g_display) g_display->setTitle(m_.name);
+    if (g_display) {
+        g_display->setTitle(m_.name);
+        g_display->setRunning(true);  // clears any "simulator stopped" from the last stop
+    }
 
     RunResult r;
     uint64_t lastWritten = con.written();
@@ -1467,7 +1470,10 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // you click it, because it IS a keyboard -- the prompt below would otherwise be
     // printed somewhere the next keystroke will not go (host/display.h). Costs nothing
     // and does nothing on a machine with no window, and on every host but macOS.
-    if (g_display) g_display->yieldFocus();
+    if (g_display) {
+        g_display->yieldFocus();
+        g_display->setRunning(false);  // the guest is stopped; say so on the frozen frame
+    }
 
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
@@ -1790,8 +1796,23 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
         bool any = false;
         for (const auto& b : m_.boards())
             for (const auto& e : b->ioMap()) {
-                std::snprintf(buf, sizeof buf, "  %-8s  %-8s %-5s %s", fmtByte(e.lo).c_str(),
-                              b->id.c_str(), e.what.c_str(), e.note.c_str());
+                // Direction is what the bus actually decodes, not the board's prose:
+                // probe both sides for THIS board and give each its own column. A
+                // board may answer IN without OUT (a sense/status port) or OUT
+                // without IN (a write-only strobe) -- a merged column hid that.
+                auto answers = [&](Cycle t) {
+                    BusCycle c;
+                    c.type = t;
+                    c.addr = (uint16_t)e.lo;
+                    for (auto* r : m_.bus.respondersTo(c))
+                        if (r == b.get()) return true;
+                    return false;
+                };
+                std::string ports = fmtByte((uint8_t)e.lo);
+                if (e.hi != e.lo) ports += "-" + fmtByte((uint8_t)e.hi);
+                std::snprintf(buf, sizeof buf, "  %-8s  %-8s %-3s %-3s    %s", ports.c_str(),
+                              b->id.c_str(), answers(Cycle::IoRead) ? "IN" : "--",
+                              answers(Cycle::IoWrite) ? "OUT" : "--", e.note.c_str());
                 out << buf << "\n";
                 any = true;
             }
@@ -2143,6 +2164,21 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     auto a = tokenize(line);
     if (a.empty()) return true;
 
+    // `.` REPEATS THE LAST COMMAND. Caught here -- after tokenize, before
+    // resolveCommand (which would call it unknown) -- so a single keystroke walks
+    // forward through the continuing verbs: bare DISASM/DUMP resume their cursor and
+    // STEP steps again, so `.` `.` `.` keeps going. It runs quietly, with no echo of
+    // the line it repeats. A `.` is never recorded as lastLine_, so pressing it again
+    // re-runs the ORIGINAL command, not the previous `.` -- and cannot loop.
+    if (a[0] == ".") {
+        if (lastLine_.empty()) {
+            out << ".  -- nothing to repeat yet.\n";
+            return true;  // benign, even in a script: not a failure
+        }
+        return exec(lastLine_, out);
+    }
+    lastLine_ = line;  // a real command -- remember it for the next `.`
+
     // Every command word goes through prefix resolution (cli/commands.cpp), so
     // `D`, `DU`, `DUM` and `DUMP` are the same command and nothing below this line
     // knows that abbreviation exists. From here on `cmd` is a full command name.
@@ -2332,6 +2368,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // built=false again.
         if (anyUnbuilt) out << "  * = not built yet; it will say so.";
         out << "\n  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n"
+               "  . repeats your last command -- e.g. DI to disassemble, then . . . to keep going.\n"
                "  !<command> runs a command in your host shell -- e.g. !vi HELLO.PRN.\n\n"
                "  Numbers: on the wire is HEX (addresses, ports, bytes) -- or OCTAL\n"
                "  under SET CONSOLE base=octal; never on the wire is DECIMAL (counts,\n"
@@ -2938,14 +2975,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (!need(3, "WHO IO <port>")) return true;
             uint32_t p;
             if (!addr(a[2], p, out)) return true;
-            c.type = Cycle::IoWrite;
-            c.addr = (uint16_t)(p & 0xFF);
-            auto who = m_.bus.respondersTo(c);
-            std::snprintf(buf, sizeof buf, "port %s OUT:", fmtByte((uint8_t)(p & 0xFF)).c_str());
-            out << buf;
-            if (who.empty()) out << " nobody (an OUT here goes nowhere)";
-            for (auto* b : who) out << " " << b->id;
-            out << "\n";
+            // A port has two sides: IN and OUT decode independently, and a board may
+            // claim one without the other (a status port that only reads, a strobe
+            // that only writes). Probe both so WHO tells the whole truth.
+            for (Cycle t : {Cycle::IoRead, Cycle::IoWrite}) {
+                c = BusCycle{};
+                c.type = t;
+                c.addr = (uint16_t)(p & 0xFF);
+                auto who = m_.bus.respondersTo(c);
+                std::snprintf(buf, sizeof buf, "port %s %s", fmtByte((uint8_t)(p & 0xFF)).c_str(),
+                              t == Cycle::IoRead ? "IN: " : "OUT:");
+                out << buf;
+                if (who.empty())
+                    out << (t == Cycle::IoRead ? " nobody (an IN here reads FF)"
+                                               : " nobody (an OUT here goes nowhere)");
+                for (auto* b : who) out << " " << b->id;
+                out << "\n";
+            }
             return true;
         }
         uint32_t A;
@@ -3617,7 +3663,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "SAVE") {
-        if (!need(3, "SAVE <file> <range> [FORMAT=BIN|HEX]")) return true;
+        if (!need(3, "SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL]")) return true;
         a[1] = unquote(a[1]);
         a[1] = resolveFrom(startupDir_, a[1]);  // ...the same rule as LOAD, in reverse
         uint32_t lo, hi;
@@ -3632,14 +3678,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // mechanism: LOAD can read the file and see what it IS, and SAVE cannot -- the
         // file does not exist yet. So SAVE has only the name to go on, and a name is a
         // guess. FORMAT= is how you say it outright when the guess would be wrong.
-        bool asHex = a[1].size() > 4 && upper(a[1]).rfind(".HEX") == a[1].size() - 4;
+        //
+        // OCTAL is a THIRD, WRITE-ONLY format: an octal listing for reading, eyeballing
+        // against a MITS manual, or pasting somewhere -- LOAD does not read it back
+        // (there is no octal load path, deliberately). BIN and HEX round-trip; OCTAL
+        // does not, and the confirmation says so by naming the format it wrote.
+        enum class Fmt { Bin, Hex, Oct } fmt = Fmt::Bin;
+        std::string uname = upper(a[1]);
+        if (uname.size() > 4 && uname.rfind(".HEX") == uname.size() - 4) fmt = Fmt::Hex;
+        else if (uname.size() > 4 && uname.rfind(".OCT") == uname.size() - 4) fmt = Fmt::Oct;
         for (size_t i = 3; i < a.size(); ++i) {
             if (upper(a[i]).rfind("FORMAT=", 0) != 0) continue;
             std::string want = upper(a[i]).substr(7);
-            if (want == "HEX") asHex = true;
-            else if (want == "BIN") asHex = false;
+            if (want == "HEX") fmt = Fmt::Hex;
+            else if (want == "BIN") fmt = Fmt::Bin;
+            else if (want == "OCTAL" || want == "OCT") fmt = Fmt::Oct;
             else {
-                out << "FORMAT=" << want << "? It is BIN or HEX.\n";
+                out << "FORMAT=" << want << "? It is BIN, HEX or OCTAL.\n";
                 failed_ = true;
                 return true;
             }
@@ -3651,14 +3706,36 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             failed_ = true;
             return true;
         }
-        if (asHex) {
+        const char* fmtName = "bin";
+        if (fmt == Fmt::Hex) {
             f << saveHex(img);
+            fmtName = "hex";
+        } else if (fmt == Fmt::Oct) {
+            // Always octal, whatever base the console prints in: a .OCT file is an
+            // octal artifact, not a view of one session. Split-octal addresses (hi
+            // byte, lo byte -- the front-panel convention), octal bytes 000-377, eight
+            // to a line so a line that starts on an /8 boundary opens on a round octal
+            // address. The header range is fixed hex so the file is reproducible.
+            char ob[48];
+            std::snprintf(ob, sizeof ob, "; altairsim octal image  %04X-%04X\n",
+                          (unsigned)lo, (unsigned)hi);
+            f << ob;
+            for (uint32_t A = lo; A <= hi;) {
+                std::snprintf(ob, sizeof ob, "%03o %03o ", (unsigned)((A >> 8) & 0xFF),
+                              (unsigned)(A & 0xFF));
+                f << ob;
+                for (int k = 0; k < 8 && A <= hi; ++k, ++A) {
+                    std::snprintf(ob, sizeof ob, " %03o", (unsigned)rd(A));
+                    f << ob;
+                }
+                f << "\n";
+            }
+            fmtName = "octal";
         } else {
             for (auto v : img.flat()) f.put((char)v);
         }
         std::snprintf(buf, sizeof buf, "saved %s-%s to %s (%s)", fmtWord((uint16_t)lo).c_str(),
-                      fmtWord((uint16_t)hi).c_str(), a[1].c_str(),
-                      asHex ? "hex" : "bin");
+                      fmtWord((uint16_t)hi).c_str(), a[1].c_str(), fmtName);
         out << buf << "\n";
         return true;
     }
@@ -3743,28 +3820,30 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         RunResult total;
         for (uint32_t i = 0; i < n; ++i) {
-            // The trace is DDT's: one line per instruction, the machine as it stands
-            // WITH the instruction it is about to run. The final line after the loop
-            // is what that last instruction did.
-            if (echo) showRegs(out);
+            // One line per instruction, printed AFTER it runs: the machine as it now
+            // stands, with the instruction the PC has reached next. This is the same
+            // register-and-mnemonic line HISTORY records. STEP used to print a line
+            // BEFORE each instruction and one more after the last, so a single `S`
+            // showed two lines -- and every step repeated the previous PC, reading as
+            // if two instructions had run. `S 3` now shows three lines, not four.
             RunResult r = m_.debug.run(1);
             total.steps += r.steps;
             total.tStates += r.tStates;
             total.pc = r.pc;
-            if (r.why != StopReason::Steps) {
-                reportStop(r, m_.debug, out);
-                break;
-            }
+            bool stopped = r.why != StopReason::Steps;
+            if (stopped) reportStop(r, m_.debug, out);
+            if (echo) showRegs(out);
+            if (stopped) break;
         }
         flush(out);
+        disasmNext_ = c->pc();
         if (!echo) {
             char b[96];
             std::snprintf(b, sizeof b, "%llu instructions, %llu T-states.",
                           (unsigned long long)total.steps, (unsigned long long)total.tStates);
             out << b << "\n";
+            showRegs(out);
         }
-        disasmNext_ = c->pc();
-        showRegs(out);
         return true;
     }
 

@@ -9,6 +9,10 @@ no fixed abbreviations: the shortest prefix that reaches a command is derived fr
 the table's order, so it is shown here as `D[UMP]` — type the part before the
 bracket. (`?` is the one true alias, for `HELP`.)
 
+**`.` repeats your last command.** It runs quietly, with no echo, so a single
+keystroke walks the continuing verbs forward: `DI` disassembles a screenful, then
+`.` `.` `.` keeps going; the same holds for `DUMP` and `STEP`.
+
 **Numbers:** on the wire is **hex** (addresses, ports, bytes); never on the wire is
 **decimal** (counts, widths, sizes). `0x`/`$`/`h` force hex, `0o`/trailing-`q` force
 octal, `#` forces decimal, and a `K`/`M` suffix is always decimal. `SET CONSOLE
@@ -43,14 +47,14 @@ D 0 WIDTH=8  eight bytes per line
 ```
 STEP [n]
 ```
-One instruction, with REAL bus cycles through the real decode. Prints each
-instruction as it goes; past 32 it runs quietly and reports. `n` is a count,
-so it is decimal.
+One instruction, with REAL bus cycles through the real decode. Prints one line
+per instruction; past 32 it runs quietly and reports. `n` is a count, so it is
+decimal.
 
-A LINE IS THE STATE BEFORE THE INSTRUCTION ON IT RUNS -- the registers as they
-stand, and then what is about to happen to them. So a value you just loaded
-appears on the NEXT line, and the line the monitor leaves you on is where you
-have stopped: that instruction has not run.
+A LINE IS THE STATE AFTER THE INSTRUCTION RAN -- the registers as they now
+stand, and the instruction the PC has reached next. So `S 3` prints three lines,
+one per step, and the last line is where the monitor has left you: the next
+instruction, not yet run.
 
 ```
 S            one instruction
@@ -61,17 +65,18 @@ S 10         ten of them
 
 ```
 altairsim> DEPOSIT 0 3E 05 06 0A 80 76        MVI A,5 / MVI B,0A / ADD B / HLT
+altairsim> EX 0
 altairsim> S 3
-C0Z0M0E0I0 A=00 B=0000 D=0000 H=0000 S=0000 IE=0 P=0000  MVI A,05
 C0Z0M0E0I0 A=05 B=0000 D=0000 H=0000 S=0000 IE=0 P=0002  MVI B,0A
 C0Z0M0E0I0 A=05 B=0A00 D=0000 H=0000 S=0000 IE=0 P=0004  ADD B
 C0Z0M0E1I0 A=0F B=0A00 D=0000 H=0000 S=0000 IE=0 P=0005  HLT
 ```
 
-Three instructions ran; the fourth line is the HLT waiting. A=05 shows up one
-line below the MVI that loaded it. The flags are the 8080's own five, in the
-Altair's lettering -- Carry, Zero, Minus, Even parity, Interdigit carry -- and
-E goes to 1 on the ADD because 0F has an even number of bits set.
+Three instructions ran, three lines. Each shows the result: A=05 lands on the
+line for the MVI that loaded it, and the last line is the HLT waiting, not yet
+run. The flags are the 8080's own five, in the Altair's lettering -- Carry,
+Zero, Minus, Even parity, Interdigit carry -- and E goes to 1 on the ADD
+because 0F has an even number of bits set.
 
 
 ### NEXT — `N[EXT]`
@@ -320,6 +325,7 @@ boards, and they take settings the same way.
 ```
 SET mem0 fill=zero
 SET mem0 phantom=read
+SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)
 SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
 ```
 
@@ -462,20 +468,26 @@ LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called
 ### SAVE — `SA[VE]`
 
 ```
-SAVE <file> <range> [FORMAT=BIN|HEX]
+SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL]
 ```
 Memory to a file, through the bus -- so what you get is what the CPU would
 read, ROM included. The range is what to save; a byte nobody drives reads FF.
 
 THE NAME DECIDES THE FORMAT, and this is the other half of LOAD's rule rather
 than the same one: LOAD can open the file and see what it IS, and SAVE cannot
--- the file does not exist yet. So a name ending .HEX writes Intel HEX and
-anything else writes a flat binary. FORMAT= says it outright when the name
-would guess wrong, and always wins.
+-- the file does not exist yet. So a name ending .HEX writes Intel HEX, one
+ending .OCT writes an octal listing, and anything else writes a flat binary.
+FORMAT= says it outright when the name would guess wrong, and always wins.
+
+OCTAL is a LISTING, not a load format: split-octal addresses and octal bytes,
+the way the MITS manuals and the front panel showed memory, for reading and
+eyeballing. LOAD does not read it back -- BIN and HEX round-trip, OCTAL does
+not.
 
 ```
 SAVE out.hex 0-FFF                Intel HEX, by its name
 SAVE out.bin F800-FFFF            a flat binary, by its name
+SAVE out.oct 100-1FF              an octal listing, by its name
 SAVE out.dat 0-FFF FORMAT=HEX     hex, though it is not called .hex
 ```
 
