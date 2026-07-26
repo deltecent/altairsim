@@ -39,6 +39,17 @@ hb=$root/cpm/hostbridge
 [ -x "$sim" ] || { echo "install-hostbridge-utils: no $sim -- build first." >&2; exit 1; }
 [ $# -ge 1 ] || { echo "usage: $0 <disk-image> [<disk-image> ...]" >&2; exit 1; }
 
+# WHICH MACHINE, WHICH DRIVE, HOW TO BOOT. The default is the 88-DCDD CP/M machine (no
+# machine arg -> `default`), whose bootstrap is `RUN FF00` off the DBL PROM and whose
+# controller is `dsk0`. A caller can retarget any of it -- the Tarbell path sets
+# ALTAIR_BASE=tarbell (its controller carries its own boot PROM, so the boot is `RUN 0`
+# and the drive is `fdc0:drive0`). ALTAIR_BASE builds a scratch machine that is the named
+# built-in with its `startup` stripped, so this script -- not the machine file -- drives
+# the boot, exactly as it does on the default machine.
+base=${ALTAIR_BASE:-}
+mountid=${ALTAIR_MOUNTID:-dsk0:drive0}
+boot=${ALTAIR_BOOT:-RUN FF00}
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -73,14 +84,23 @@ for img in "$@"; do
     i=0; while [ $i -lt 10 ]; do printf '%s' "$CR"; i=$((i+1)); done
   } > "$work/keys"
 
+  # A scratch machine when ALTAIR_BASE names one -- the built-in with its startup stripped,
+  # so `-s` below owns the boot. No arg means the default DCDD machine.
+  macharg=""
+  if [ -n "$base" ]; then
+    printf '[machine]\nname = "hb-install"\nbase = "%s"\nstartup = []\n' "$base" > "$work/machine.toml"
+    macharg="$work/machine.toml"
+  fi
+
   cat > "$work/cmd" <<EOF
 SET CONSOLE UPPER=OFF
 SET hb0 HOSTDIR=$hb
-MOUNT dsk0:drive0 "$work/work.dsk"
-RUN FF00
+MOUNT $mountid "$work/work.dsk"
+$boot
 EOF
 
-  "$sim" -s "$work/cmd" < "$work/keys" > "$work/log" 2>&1 || true
+  # shellcheck disable=SC2086
+  "$sim" $macharg -s "$work/cmd" < "$work/keys" > "$work/log" 2>&1 || true
 
   # DID IT ACTUALLY LAND? Ask the machine, not the script. Boot the image AGAIN, from
   # scratch, and have W write each .COM back out to the host -- then diff those against
@@ -96,10 +116,11 @@ EOF
   cat > "$work/vcmd" <<EOF
 SET CONSOLE UPPER=OFF
 SET hb0 HOSTDIR=$work/out
-MOUNT dsk0:drive0 "$work/work.dsk"
-RUN FF00
+MOUNT $mountid "$work/work.dsk"
+$boot
 EOF
-  "$sim" -s "$work/vcmd" < "$work/vkeys" > "$work/vlog" 2>&1 || true
+  # shellcheck disable=SC2086
+  "$sim" $macharg -s "$work/vcmd" < "$work/vkeys" > "$work/vlog" 2>&1 || true
 
   ok=yes
   for u in R W HDIR; do

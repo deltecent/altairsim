@@ -1,0 +1,20 @@
+# Tarbell single-density boot acceptance fixture: the #1011 controller with the 48K
+# CP/M 2.2 SSSD master in drive 0, mounted READ-ONLY so the test can never dirty the
+# tracked image (the boot only reads; tarbell.exp shasums it to prove it). The shipped
+# example (examples/tarbell/tarbell.toml) mounts it read/write instead.
+
+[machine]
+name = "tarbell-acceptance"
+base = "tarbell"
+
+[[board]]
+type = "tarbell"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/tarbell/CPM22b15-48K-SSSD.DSK"
+  writeprotect = true
+
+[console]
+bsdel = "bs"

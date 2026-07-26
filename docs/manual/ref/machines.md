@@ -37,6 +37,8 @@ what is actually in one.
 | `sbc200` | SD Systems SBC-200 -- a 4 MHz Z80 single-board computer running the MSMONR21 monitor. |
 | `sbc200v` | The SD Systems SBC-200 with a VDB-8024 VIDEO console -- a 4 MHz Z80 single-board |
 | `sol20` | The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS. |
+| `tarbell` | Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 automatically. |
+| `tarbelldd` | Tarbell #2022 double-density floppy machine -- boots CP/M 2.2 automatically. |
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
 | `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |
 | `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |

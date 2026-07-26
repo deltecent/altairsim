@@ -1,0 +1,33 @@
+# Tarbell double-density -- 48K CP/M 2.2 on an 8" mixed-density (SSDD) floppy.
+#
+#     cd examples/tarbell && altairsim tarbelldd.toml
+#     -> 48K CP/M 2.2
+#        A>
+#
+# THIS FILE IS A DELTA. `base = "tarbelldd"` brings the machine -- the 8080, the 88-2SIO
+# console at 0x10, the Tarbell #2022 controller at F8 with its boot PROM, the host bridge
+# at B0, and 64K of RAM strapped honors_phantom = read. All this file adds is the floppy in
+# drive 0. See machines/tarbelldd.toml for the base, or run `BOARDS`.
+#
+# THE DISK IS MIXED DENSITY: track 0 single density (the boot path), tracks 1-76 double.
+# The card probes the 499,456-byte size and lays down both formats. The boot is automatic
+# (`startup = ["RUN 0"]`, inherited) -- see docs/boards/tarbelldd.md.
+#
+# THERE IS NO UNDO ON THIS DISK. It is tracked; `git checkout` restores it in a clone. Drive
+# 0 is read/write -- copy the image or set `readonly = true` before testing writes. R.COM /
+# W.COM / HDIR.COM are installed on it (the host bridge at B0).
+
+[machine]
+name = "tarbelldd-cpm"
+base = "tarbelldd"
+
+[[board]]
+type = "tarbelldd"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "TARBELLDD-CPM22-SSDD-48K.DSK"
+
+[console]
+bsdel = "bs"

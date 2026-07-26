@@ -8,12 +8,12 @@ boards doing the real work; take the boards out and there is nothing left but a 
 the CPU *board* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a board out, put a different one in, and find out what the software does about it.
 
-This chapter says what the twenty-four boards **are** — what the real hardware was, what it is for, and
+This chapter says what the twenty-six boards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every board is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The twenty-five boards
+## The twenty-seven boards
 
 | Type | What it is |
 |---|---|
@@ -33,6 +33,8 @@ be wrong.
 | `mds` | MITS 88-MDS — the 5¼″ minidisk controller |
 | `hdsk` | MITS 88-HDSK — the Datakeeper hard-disk controller |
 | `versafloppy` | SD Systems VersaFloppy I/II — a soft-sector floppy controller. Boots SDOS |
+| `tarbell` | Tarbell #1011 — a single-density floppy controller with its own boot PROM. Boots CP/M by itself |
+| `tarbelldd` | Tarbell #2022 — the double-density twin, mixed-density disks |
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
 | `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. Needs a display |
@@ -393,6 +395,37 @@ nothing for a low-level format to lay down, and the controller says so (a WRITE 
 pretending. This is the honest limitation every soft-sector controller here shares: mount a disk that
 already carries a format and read and write work; ask the board to create a blank one and it tells
 you it can't. For a fresh SDOS disk, copy one that is already formatted.
+
+---
+
+## `tarbell` — Tarbell #1011 single-density floppy
+
+The **Tarbell Electronics #1011** (July 1977) was the S-100 floppy interface that booted CP/M on a
+whole generation of Altair and IMSAI machines. It is a **Western Digital FD1771** soft-sector
+controller — eight ports, default `F8` — and, unlike the VersaFloppy, it carries **its own 32-byte
+boot PROM**. That is the whole experience of this card: you do not type a boot command.
+
+Power on with a disk in drive 0 and the machine boots itself. RESET arms the PROM at address 0000,
+where it shadows the bottom of memory; the PROM reads the first sector off the disk, and the moment
+the loaded code runs, the shadow falls away and CP/M comes up. Run
+`altairsim examples/tarbell/tarbell.toml` and you land at `A>` with no monitor in between. With no
+disk in the drive the PROM has nothing to load and simply halts — put a disk in and reset.
+
+The `bootstrap` switch turns the PROM off, leaving a plain disk controller for a machine that boots
+some other way. Four drives, selected by the software; the disks are 8″ single-density, 128-byte
+sectors, and the card recognises them by size when you mount one.
+
+## `tarbelldd` — Tarbell #2022 double-density floppy
+
+The **#2022** (1979-80) is the #1011's twin with a **Western Digital FD1791**, which reads
+**double-density** as well as single. It boots exactly the same way — the same automatic boot PROM,
+the same `F8` ports — from a **mixed-density** disk: the first track is single density (so the boot
+PROM can read it), and the rest are double density. `altairsim examples/tarbell/tarbelldd.toml` boots
+CP/M 2.2 off one to `A>`.
+
+Everything the `tarbell` card does, this one does; it adds only the second density and a disk format
+that carries more per track. Choose it when your disk is a double-density Tarbell image; choose
+`tarbell` for a single-density one. The card tells the two apart by the size of the image you mount.
 
 ---
 
