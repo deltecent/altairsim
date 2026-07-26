@@ -69,7 +69,7 @@ is no character-time frame, but unlike the C700 there is a real receive path.
 - **The line is raw, 8-bit clean.** No transform chain — that belongs to the console alone
   (DESIGN.md §7.2).
 - **Two connectable lines, `out` and `in`**, like the Sol-PC's printer and keyboard. Where the
-  bytes go is the operator's `CONNECT` (DESIGN.md §7.7): a `file:` to capture a printout, the
+  bytes go is the operator's `CONNECT` (DESIGN.md §7.7): an `out:` file to capture a printout, the
   `console` or a `socket:` for a keyboard, `loopback`, or `null`. Each line round-trips its
   endpoint through a per-unit `connect` property for `CONFIG SAVE`.
 - Does **not** master the bus, and asserts no interrupt.

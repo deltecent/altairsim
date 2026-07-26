@@ -28,7 +28,9 @@ This table is exhaustive. There are no others.
 | `socket:PORT` | **LISTENS** on that TCP port. This is the telnet-in case. |
 | `socket:HOST:PORT` | **CALLS OUT** to that host and that port. |
 | `serial:DEVICE` | a real serial port on this host. |
-| `file:PATH` | a host file, write-only. Captures whatever the board sends. |
+| `in:PATH` | a host file, read-only — a **paper-tape reader**. The file's bytes feed the board. |
+| `out:PATH` | a host file — a **paper-tape punch**. Whatever the board sends is written to it. |
+| `in:PATH,out:PATH` | both at once on one line: a reader and a punch, two files, two positions. |
 | `printer:QUEUE` | a real print queue on this host, write-only. Buffers the bytes into a job and prints it. Present only where the build found a host print system. |
 
 ### `null` is not an error
@@ -127,33 +129,57 @@ flat out, so it will decide your sender is dead and give up before your sender h
 Flat out is the right default for a machine talking to itself. **A machine talking to you wants
 the crystal.** The troubleshooting chapter has the full story.
 
-## Capturing to a file
+## A paper-tape reader and punch: `in:` and `out:`
+
+A serial or parallel line is where a **paper-tape station** lived, and `altairsim` gives you one
+out of two host files. The direction is the keyword, not a flag:
 
 ```
-altairsim> CONNECT lpt0:prn file:printout.txt
+altairsim> CONNECT lpt0:prn out:printout.txt          # a punch: capture what the board sends
+altairsim> CONNECT 4pio0:ja in:reader.tap             # a reader: feed a file to the board
+altairsim> CONNECT 4pio0:ja in:reader.tap,out:punch.tap   # both, on one bidirectional line
 ```
 
-A `file:` endpoint is a **write-only** sink: whatever the board sends is written to the host
-file, byte for byte. It is what the [88-C700 printer](boards.md) captures its output to — but it
-is not printer-specific, so any line can go to one, which is a simple way to record what a
-program sends.
+`in:` is a **reader** — a byte *source*. It reads the file from the start, hands the bytes to the
+board one at a time, and when the file runs out the line simply goes **quiet**: no error, no
+end-of-file byte, exactly as a reader with no more tape sits idle. A file that is not there is a
+clean refusal at `CONNECT`, with the path named.
 
-The file is opened fresh each time you connect (it truncates), and the capture is **8-bit clean**:
-the bytes on the wire are the bytes in the file, control codes and all. Nothing reformats them — if
-you want a printout as tidy host text, that is an editor's job, not the board's. A relative path
-follows the usual rule: relative to the file when it is written in a machine configuration,
-relative to your shell when you type it.
+`out:` is a **punch** — a byte *sink*. Whatever the board sends is written to the file. It does
+**not** truncate: it overwrites forward from the start and extends past the old end, so a short run
+into a longer old file leaves the old tail behind — the same as spooling fresh tape over a reel
+that still had some on it. An absent file is created.
+
+`in:` and `out:` are **separate files with separate positions**, so the combined form is two
+independent heads on one line — reading the tape cannot disturb what the punch has written, and
+vice versa. Both are **8-bit clean**: the bytes on the wire are the bytes in the file, control
+codes and all. Nothing reformats them. A relative path follows the usual rule: relative to the file
+when it is written in a machine configuration, relative to your shell when you type it.
+
+### The 88-HSR — a reader with a speed
+
+A real paper-tape reader has a rate, and a program that times its input cares. Pace an `in:` reader
+with `?cps=N` (characters per second) or `?baud=N` (a line rate at 10 bits per character):
+
+```
+altairsim> CONNECT 4pio0:ja in:tape.tap?cps=300       # the 88-HSR high-speed reader
+altairsim> CONNECT 4pio0:ja in:tape.tap?cps=30        # the slow reader
+```
+
+`in:tape.tap?cps=300` **is** the MITS 88-HSR. Give exactly one of `cps` or `baud`, and a positive
+rate. With neither, the reader runs flat out — the generic default. The punch takes no options; it
+writes at the line's own speed.
 
 ## Printing to a real printer
 
 Where your build was made with host printing, a line can go to a real print queue instead of a
-file:
+host file:
 
 ```
 altairsim> CONNECT lpt0:prn printer:linewriter
 ```
 
-`printer:` is a **write-only** sink like `file:`, and just as un-printer-specific — any line can
+`printer:` is a **write-only** sink like `out:`, and just as un-printer-specific — any line can
 use it, not only the [88-C700](boards.md). The difference is what happens to the bytes: they are
 held in a buffer and then handed to the host print system as one **job**.
 
@@ -183,7 +209,7 @@ one-time step in your operating system's printer setup, outside `altairsim`. If 
 contains spaces, quote the whole endpoint as shown above. Connect to `printer:` with no name and
 `altairsim` lists the queues it can see.
 
-Like `file:`, a printer line is **8-bit clean** — the bytes the program sent are the bytes the
+Like `out:`, a printer line is **8-bit clean** — the bytes the program sent are the bytes the
 printer gets.
 
 ## A `CONNECT` it does not understand is an error

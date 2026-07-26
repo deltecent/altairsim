@@ -96,7 +96,7 @@ honors_phantom = "all"         # a jumper: another board pulls PHANTOM*, do I sw
   mount = "roms/my-monitor.hex" # a bare path is still a host file. Yours wins.
 ```
 
-The `builtin:` prefix follows the same scheme idiom the design already uses for `connect` (`socket:`, `serial:`, `file:`, `console`) — so it needs no new grammar, and `CONFIG SAVE` round-trips the string `builtin:dbl` rather than a wad of bytes.
+The `builtin:` prefix follows the same scheme idiom the design already uses for `connect` (`socket:`, `serial:`, `in:`/`out:`, `console`) — so it needs no new grammar, and `CONFIG SAVE` round-trips the string `builtin:dbl` rather than a wad of bytes.
 
 **Every built-in ROM must have a provenance row in `docs/roms.md`** — what it is, where the dump came from, its exact size, and its CRC32. This is `DESIGN.md` §0.1 applied to binaries: *an embedded blob with no source is a second-hand fact*, and a ROM that silently differs from the real part is the single most expensive bug this project could ship, because every piece of software above it would be debugged against the wrong ground truth. A unit test verifies each CRC at build time, so a corrupted embed fails the build instead of failing a user.
 

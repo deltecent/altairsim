@@ -256,7 +256,7 @@ printer. Unit `prn`, default port `02` — the MITS default, with Control/Status
 at `03`.
 
 There is no printer in the box, so **`CONNECT` its `prn` line wherever you want the output**: a
-file (`CONNECT lpt0:prn file:printout.txt`), the `console` to watch it print live, a `socket:`, or
+file (`CONNECT lpt0:prn out:printout.txt`), the `console` to watch it print live, a `socket:`, or
 a real `serial:` printer. The capture is byte-for-byte — the bytes the program sent, control codes
 and all, not a reformatted page.
 
@@ -280,7 +280,7 @@ buffer fills. **LINE FEED** and **CLEAR** are commands too. So the capture is th
 the codes decoded to their glyphs, one text line per printed line — not a byte stream, because on
 this board the line breaks are commands, not data.
 
-`CONNECT` its `prn` line wherever a line can go — a `file:`, the `console`, a `socket:`, a real
+`CONNECT` its `prn` line wherever a line can go — an `out:` file, the `console`, a `socket:`, a real
 `printer:` queue. The **`lineprinter-lpc`** machine has one fitted at `02`. It is polled, like the
 C700; the real card's interrupt is not modeled.
 
@@ -290,8 +290,8 @@ C700; the real card's interrupt is not modeled.
 
 An **8-bit parallel port**, in and out — the simplest way to move a byte that is not a serial
 character. It has **two lines you `CONNECT` independently**: `out` (an output device — a printer, a
-socket) and `in` (an input device — a keyboard, another socket), so one board can drive a printer to
-a `file:` *and* read a keyboard off the `console` at once, because the two directions are two
+socket) and `in` (an input device — a keyboard, another socket), so one board can punch to an
+`out:` file *and* read a keyboard off the `console` at once, because the two directions are two
 separate connections. Default ports `04`/`05`. It is **polled**: a byte moves when a driver polls the
 status port for it.
 
