@@ -168,9 +168,9 @@ std::vector<UnitDef> PioBoard::units() const {
 std::vector<MapEntry> PioBoard::ioMap() const {
     return {
         {(uint32_t)base_, (uint32_t)base_, "read/write",
-         "PIO -- status: DI0 out-ready, DI1 in-full (read) / control: interrupt enable (write)"},
+         "PIO -- status: DI0 out-ready, DI1 in-full / control: interrupt enable"},
         {(uint32_t)base_ + 1, (uint32_t)base_ + 1, "read/write",
-         "PIO -- data: input latch (read) / to the output device (write)"},
+         "PIO -- data: input latch / to the output device"},
     };
 }
 

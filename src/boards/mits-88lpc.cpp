@@ -192,7 +192,7 @@ std::vector<UnitDef> LpcBoard::units() const {
 std::vector<MapEntry> LpcBoard::ioMap() const {
     return {
         {(uint32_t)base_, (uint32_t)base_, "read/write",
-         "LPC -- status (read) / control: PRINT + LINE FEED + CLEAR + interrupt enable (write)"},
+         "LPC -- status / control: PRINT + LINE FEED + CLEAR + interrupt enable"},
         {(uint32_t)base_ + 1, (uint32_t)base_ + 1, "write", "LPC -- data (a 6-bit char to the printer)"},
     };
 }

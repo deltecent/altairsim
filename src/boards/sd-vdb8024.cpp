@@ -510,7 +510,7 @@ std::vector<MapEntry> Vdb8024Board::ioMap() const {
         {(uint32_t)base_, (uint32_t)base_, "read",
          "VDB-8024 -- status (D1 keyboard-ready, D2 display-ready)"},
         {(uint32_t)(base_ + 1), (uint32_t)(base_ + 1), "read/write",
-         "VDB-8024 -- keyboard data (read) / display data (write)"},
+         "VDB-8024 -- keyboard data / display data"},
     };
 }
 

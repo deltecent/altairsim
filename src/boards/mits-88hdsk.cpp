@@ -25,14 +25,14 @@ bool HdskBoard::decodes(const BusCycle& c) const {
 std::vector<MapEntry> HdskBoard::ioMap() const {
     uint8_t b = (uint8_t)port_;
     return {
-        {(uint32_t)(b + 0), (uint32_t)(b + 0), "CREADY", "in: controller ready (bit7)"},
-        {(uint32_t)(b + 1), (uint32_t)(b + 1), "CSTAT", "in: error/status flags; reading resets CREADY"},
-        {(uint32_t)(b + 2), (uint32_t)(b + 2), "ACSTA", "in: command acknowledge (bit7)"},
-        {(uint32_t)(b + 3), (uint32_t)(b + 3), "ACMD", "out: command HIGH byte (initiates); in: reset ack"},
-        {(uint32_t)(b + 4), (uint32_t)(b + 4), "CDSTA", "in: read data ready (bit7)"},
-        {(uint32_t)(b + 5), (uint32_t)(b + 5), "CDATA", "in: read-buffer / status data"},
-        {(uint32_t)(b + 6), (uint32_t)(b + 6), "ADSTA", "in: ADATA writable (bit7)"},
-        {(uint32_t)(b + 7), (uint32_t)(b + 7), "ADATA", "out: command LOW byte / write-buffer data"},
+        {(uint32_t)(b + 0), (uint32_t)(b + 0), "CREADY", "controller ready (bit7)"},
+        {(uint32_t)(b + 1), (uint32_t)(b + 1), "CSTAT", "error/status flags; reading resets CREADY"},
+        {(uint32_t)(b + 2), (uint32_t)(b + 2), "ACSTA", "command acknowledge (bit7)"},
+        {(uint32_t)(b + 3), (uint32_t)(b + 3), "ACMD", "command HIGH byte (initiates) / reset ack"},
+        {(uint32_t)(b + 4), (uint32_t)(b + 4), "CDSTA", "read data ready (bit7)"},
+        {(uint32_t)(b + 5), (uint32_t)(b + 5), "CDATA", "read-buffer / status data"},
+        {(uint32_t)(b + 6), (uint32_t)(b + 6), "ADSTA", "ADATA writable (bit7)"},
+        {(uint32_t)(b + 7), (uint32_t)(b + 7), "ADATA", "command LOW byte / write-buffer data"},
     };
 }
 

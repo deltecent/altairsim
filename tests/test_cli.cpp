@@ -1704,6 +1704,84 @@ void test_achieved_hz() {
         }
     }
 
+    SECTION("WHO IO reports BOTH sides of a port -- IN and OUT decode independently");
+    {
+        // A port is two doors. The 2SIO answers both, so WHO IO must show both -- the
+        // old command probed only OUT and hid the IN side, which read as if a serial
+        // board could be written to but never read from.
+        Machine mio;
+        Monitor mon(mio);
+        std::ostringstream s;
+        mon.exec("BOARDS ADD 8080 cpu0", s);
+        mon.exec("BOARDS ADD memory mem0", s);
+        mon.exec("BOARDS ADD 2sio sio0", s);
+        mon.exec("BOARDS ADD fp fp0", s);
+        auto run = [&](const char* line) {
+            std::ostringstream o;
+            mon.exec(line, o);
+            return o.str();
+        };
+
+        std::string w = run("WHO IO 10");
+        CHECK(w.find("port 10 IN:") != std::string::npos, "WHO IO prints the IN side");
+        CHECK(w.find("port 10 OUT:") != std::string::npos, "and the OUT side");
+        CHECK(w.find("IN:  sio0") != std::string::npos, "the 2SIO answers an IN at 10");
+        CHECK(w.find("OUT: sio0") != std::string::npos, "and an OUT at 10");
+
+        // The whole point of showing both: they can differ. The front panel drives the
+        // sense switches onto IN FF but decodes no OUT there, so one line names it and
+        // the other says nobody. The old OUT-only WHO could never have shown this.
+        std::string ff = run("WHO IO FF");
+        CHECK(ff.find("IN:  fp0") != std::string::npos,
+              "the front panel answers IN FF (sense switches)");
+        CHECK(ff.find("OUT: nobody") != std::string::npos, "but nothing decodes OUT FF");
+
+        // A port nobody touches: both sides say nobody, each in its own words.
+        std::string dead = run("WHO IO 80");
+        CHECK(dead.find("IN:  nobody (an IN here reads FF)") != std::string::npos,
+              "an unclaimed IN reads the floating FF");
+        CHECK(dead.find("OUT: nobody (an OUT here goes nowhere)") != std::string::npos,
+              "and an unclaimed OUT is simply gone");
+    }
+
+    SECTION("SHOW BUS IO -- separate IN and OUT columns, and the port range");
+    {
+        Machine mio;
+        Monitor mon(mio);
+        std::ostringstream s;
+        mon.exec("BOARDS ADD 8080 cpu0", s);
+        mon.exec("BOARDS ADD memory mem0", s);
+        mon.exec("BOARDS ADD 2sio sio0", s);
+        mon.exec("BOARDS ADD fp fp0", s);
+        mon.exec("BOARDS ADD c700 lp0", s);
+        std::ostringstream o;
+        mon.exec("SHOW BUS IO", o);
+        std::string io = o.str();
+
+        // The 2SIO's first channel spans two ports and answers both directions: the row
+        // shows the RANGE, not just the low port, and both columns are lit.
+        CHECK(io.find("10-11") != std::string::npos, "a two-port entry shows its range");
+        CHECK(io.find("10-11     sio0     IN  OUT    6850") != std::string::npos,
+              "the 2SIO answers both IN and OUT across 10-11");
+
+        // The front panel is read-only: IN is named, OUT is a dash. This is the whole
+        // reason the columns are split -- a merged 'read/write' column could not say it.
+        CHECK(io.find("FF        fp0      IN  --") != std::string::npos,
+              "the front panel reads FF (sense switches) but decodes no OUT there");
+
+        // The C700 data port is the mirror case: write-only, so OUT is named and IN is
+        // a dash. Its decode() actually distinguishes the two, unlike the coarse boards.
+        CHECK(io.find("lp0      --  OUT    C700 -- data") != std::string::npos,
+              "the C700 data port is OUT-only");
+
+        // The notes carry FUNCTION, not direction -- the columns carry direction now.
+        // No 'out:' / 'in:' / '(read)' / '(write)' survives in the I/O rows.
+        CHECK(io.find("out:") == std::string::npos && io.find("in:") == std::string::npos,
+              "direction words are stripped from the notes -- the columns say it");
+        CHECK(io.find("(read)") == std::string::npos && io.find("(write)") == std::string::npos,
+              "and so are the parenthesised (read)/(write) markers");
+    }
+
     // -----------------------------------------------------------------------
     // The `!` shell escape. The monitor's OWN behaviour is what a unit test can
     // reach: the parse (a leading `!`, after any whitespace, is recognised and

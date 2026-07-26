@@ -338,7 +338,7 @@ std::vector<MapEntry> TarbellBoard::ioMap() const {
         {(uint32_t)port_ + 1, (uint32_t)port_ + 1, "track",          "FD177x"},
         {(uint32_t)port_ + 2, (uint32_t)port_ + 2, "sector",         "FD177x"},
         {(uint32_t)port_ + 3, (uint32_t)port_ + 3, "data",           "FD177x (wait-state synced)"},
-        {(uint32_t)port_ + 4, (uint32_t)port_ + 4, "control/wait",   "out: drive select   in: DRQ/INTRQ (bit7)"},
+        {(uint32_t)port_ + 4, (uint32_t)port_ + 4, "control/wait",   "drive select / DRQ/INTRQ (bit7)"},
     };
 }
 

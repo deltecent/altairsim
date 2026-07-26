@@ -329,7 +329,7 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
 std::vector<MapEntry> AcrBoard::ioMap() const {
     return {
         {(uint32_t)base_, (uint32_t)base_, "read/write",
-         "88-SIO B UART -- status (read) / interrupt enables (write)"},
+         "88-SIO B UART -- status / interrupt enables"},
         {(uint32_t)base_ + 1, (uint32_t)base_ + 1, "read/write",
          "88-SIO B UART -- data, via the modem, to the cassette"},
     };

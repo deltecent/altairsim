@@ -219,9 +219,9 @@ std::vector<Property> D7aBoard::properties() {
 std::vector<MapEntry> D7aBoard::ioMap() const {
     return {
         {(uint32_t)base_, (uint32_t)base_, "read/write",
-         "D+7A -- parallel: input byte (read: JS-1 buttons) / output latch (write)"},
+         "D+7A -- parallel: input byte (JS-1 buttons) / output latch"},
         {(uint32_t)(base_ + 1), (uint32_t)(base_ + 7), "read/write",
-         "D+7A -- 7 analog channels: A/D input (read) / D/A output (write), two's-complement"},
+         "D+7A -- 7 analog channels: A/D input / D/A output, two's-complement"},
     };
 }
 

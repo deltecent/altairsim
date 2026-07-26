@@ -294,6 +294,7 @@ board has switched another one off, `WHO` is where you find out.
 
 ```
 altairsim> WHO IO FF
+port FF IN:  nobody (an IN here reads FF)
 port FF OUT: nobody (an OUT here goes nowhere)
 
 WHO 2C00          who decodes this address?

@@ -268,9 +268,9 @@ std::vector<Property> DazzlerBoard::properties() {
 std::vector<MapEntry> DazzlerBoard::ioMap() const {
     return {
         {(uint32_t)port_, (uint32_t)port_, "read/write",
-         "Dazzler -- status (read: D7 odd/even, D6 end-of-frame) / control (write: on + base)"},
+         "Dazzler -- status (D7 odd/even, D6 end-of-frame) / control (on + base)"},
         {(uint32_t)(port_ | 1), (uint32_t)(port_ | 1), "write",
-         "Dazzler -- format (write: resolution/size/color)"},
+         "Dazzler -- format (resolution/size/color)"},
     };
 }
 

@@ -309,7 +309,7 @@ std::vector<MapEntry> VdmBoard::memMap() const {
 
 std::vector<MapEntry> VdmBoard::ioMap() const {
     return {{(uint32_t)port_, (uint32_t)port_, "read/write",
-             "VDM-1 -- status (read: D0 timer, D1 scan-advance) / scroll (write)"}};
+             "VDM-1 -- status (D0 timer, D1 scan-advance) / scroll"}};
 }
 
 } // namespace altair

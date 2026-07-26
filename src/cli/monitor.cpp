@@ -1790,8 +1790,23 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
         bool any = false;
         for (const auto& b : m_.boards())
             for (const auto& e : b->ioMap()) {
-                std::snprintf(buf, sizeof buf, "  %-8s  %-8s %-5s %s", fmtByte(e.lo).c_str(),
-                              b->id.c_str(), e.what.c_str(), e.note.c_str());
+                // Direction is what the bus actually decodes, not the board's prose:
+                // probe both sides for THIS board and give each its own column. A
+                // board may answer IN without OUT (a sense/status port) or OUT
+                // without IN (a write-only strobe) -- a merged column hid that.
+                auto answers = [&](Cycle t) {
+                    BusCycle c;
+                    c.type = t;
+                    c.addr = (uint16_t)e.lo;
+                    for (auto* r : m_.bus.respondersTo(c))
+                        if (r == b.get()) return true;
+                    return false;
+                };
+                std::string ports = fmtByte((uint8_t)e.lo);
+                if (e.hi != e.lo) ports += "-" + fmtByte((uint8_t)e.hi);
+                std::snprintf(buf, sizeof buf, "  %-8s  %-8s %-3s %-3s    %s", ports.c_str(),
+                              b->id.c_str(), answers(Cycle::IoRead) ? "IN" : "--",
+                              answers(Cycle::IoWrite) ? "OUT" : "--", e.note.c_str());
                 out << buf << "\n";
                 any = true;
             }
@@ -2954,14 +2969,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (!need(3, "WHO IO <port>")) return true;
             uint32_t p;
             if (!addr(a[2], p, out)) return true;
-            c.type = Cycle::IoWrite;
-            c.addr = (uint16_t)(p & 0xFF);
-            auto who = m_.bus.respondersTo(c);
-            std::snprintf(buf, sizeof buf, "port %s OUT:", fmtByte((uint8_t)(p & 0xFF)).c_str());
-            out << buf;
-            if (who.empty()) out << " nobody (an OUT here goes nowhere)";
-            for (auto* b : who) out << " " << b->id;
-            out << "\n";
+            // A port has two sides: IN and OUT decode independently, and a board may
+            // claim one without the other (a status port that only reads, a strobe
+            // that only writes). Probe both so WHO tells the whole truth.
+            for (Cycle t : {Cycle::IoRead, Cycle::IoWrite}) {
+                c = BusCycle{};
+                c.type = t;
+                c.addr = (uint16_t)(p & 0xFF);
+                auto who = m_.bus.respondersTo(c);
+                std::snprintf(buf, sizeof buf, "port %s %s", fmtByte((uint8_t)(p & 0xFF)).c_str(),
+                              t == Cycle::IoRead ? "IN: " : "OUT:");
+                out << buf;
+                if (who.empty())
+                    out << (t == Cycle::IoRead ? " nobody (an IN here reads FF)"
+                                               : " nobody (an OUT here goes nowhere)");
+                for (auto* b : who) out << " " << b->id;
+                out << "\n";
+            }
             return true;
         }
         uint32_t A;

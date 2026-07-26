@@ -831,7 +831,7 @@ std::vector<MapEntry> SolBoard::ioMap() const {
     return {
         {b + 0, b + 0, "read",       "Sol serial status (D6 RX-rdy, D7 TX-empty)"},
         {b + 1, b + 1, "read/write", "Sol serial data"},
-        {b + 2, b + 2, "read/write", "Sol status: kbd/parallel/tape (in) / tape motor+baud (out)"},
+        {b + 2, b + 2, "read/write", "Sol status: kbd/parallel/tape / tape motor+baud"},
         {b + 3, b + 3, "read/write", "Sol tape (CUTS) data"},
         {b + 4, b + 4, "read",       "Sol keyboard data"},
         {b + 5, b + 5, "read/write", "Sol parallel (printer) data"},

@@ -190,7 +190,7 @@ std::vector<UnitDef> C700Board::units() const {
 std::vector<MapEntry> C700Board::ioMap() const {
     return {
         {(uint32_t)base_, (uint32_t)base_, "read/write",
-         "C700 -- status (read) / control: PRIME + interrupt enable (write)"},
+         "C700 -- status / control: PRIME + interrupt enable"},
         {(uint32_t)base_ + 1, (uint32_t)base_ + 1, "write", "C700 -- data (to the printer)"},
     };
 }
