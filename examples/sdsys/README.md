@@ -66,7 +66,24 @@ DELTEC ENTERPRISES LLC
 sysgen'd for a 32K system. It is mounted **read/write**, so SDOS can save files; run
 `git checkout` on it to restore the master if you change it.
 
+## A video console instead of a serial terminal
+
+`sbc200v.toml` runs the same machine with the **SD Systems VDB-8024** video board as its console
+instead of the 8251 serial port. It boots the video build of the monitor (**SDMONV21**), which
+prints its `.` prompt straight onto an 80x24 screen -- and with no "press Enter first", because
+the VDB is a parallel-handshake terminal, not a serial line with a baud rate to measure.
+
+```
+cd examples/sdsys
+altairsim sbc200v.toml
+.               <- the monitor prompt, ON THE VIDEO SCREEN
+```
+
+With SDL3 the screen is a window in the board's own character font; window and terminal keystrokes
+both reach the monitor. The command set is identical to the serial machine's. See
+`reference/SD Systems VDB-8024.md` for the board.
+
 ## What is not here yet
 
 The Z80-CTC baud generator, the parallel port, and the SBC-200 memory switch-out are later
-phases. The serial console and the VersaFloppy disk both work today.
+phases. The serial console, the video console, and the VersaFloppy disk all work today.

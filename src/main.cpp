@@ -10,6 +10,7 @@
 #include "boards/cromemco-dazzler.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
+#include "boards/sd-vdb8024.h"
 #include "boards/sd-sbc.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
 #include "host/display_sdl.h"
@@ -221,6 +222,7 @@ int main(int argc, char** argv) {
     PioBoard::setResolver(resolveEndpoint);
     Pio4Board::setResolver(resolveEndpoint);
     SolBoard::setResolver(resolveEndpoint);
+    Vdb8024Board::setResolver(resolveEndpoint);  // its keyboard connects to an endpoint
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board
     // draws into a Display and never learns it is SDL. The shipping binary hands it
@@ -229,6 +231,7 @@ int main(int argc, char** argv) {
     // machine, and created once for the whole session.
     VdmBoard::setDisplay(&g_display);
     DazzlerBoard::setDisplay(&g_display);
+    Vdb8024Board::setDisplay(&g_display);
 
     // The same seam for game controllers (host/joystick.h): a D+7A reads its one or two
     // JS-1 joysticks from here and never learns it is SDL. A real gamepad (or the

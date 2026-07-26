@@ -1,0 +1,81 @@
+# The SD Systems SBC-200 with a VDB-8024 VIDEO console -- a 4 MHz Z80 single-board
+# computer running the SDMONV21 monitor on an 80x24 video display instead of a serial
+# terminal.
+#
+#     altairsim sbc200v
+#     .                          <- the monitor prompt, ON THE VIDEO SCREEN
+#
+# THE CONSOLE IS THE VIDEO BOARD, NOT THE 8251. There were two builds of the SD monitor,
+# differing ONLY in their console driver: MSMONR21 (the `sbc200` machine) polls the 8251
+# USART at 7C/7D, while SDMONV21 -- "SD monitor v2.10 for SBC-100 and VDM Console" --
+# polls the SD Systems VDB-8024 video board at ports 00/01. This machine is the SD build:
+# the `vdb8024` card is the console, and there is no serial port. The monitor's command
+# set is identical to the `sbc200` machine's (reference/SD Systems Monitor.md).
+#
+# NO "PRESS ENTER FIRST." Unlike MSMONR21, SDMONV21 does not auto-baud -- the VDB is a
+# parallel-handshake terminal, not a UART -- so it prints its `.` prompt immediately.
+#
+# WITH SDL3 the screen is a window in the board's character font; headless it runs the
+# same and the video text is what the acceptance test reads back. Keystrokes from the
+# video window OR the host terminal both reach the monitor (they merge in the one
+# Console). See docs/boards/sd-vdb8024.md and reference/SD Systems VDB-8024.md.
+
+[machine]
+name    = "sbc200v"
+startup = ["RUN E000"]        # the authentic reset jam-to-E000 is a later phase
+
+# The video window is this machine's console: it comes to the front when it opens and
+# keeps the keyboard when the guest stops, like a Sol-20.
+[display]
+focus    = true
+keyboard = "console"
+
+# THE CPU. The SBC-200 is a 4 MHz Z80.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE CONSOLE: the SD Systems VDB-8024 video display board at its fixed ports 00 (status)
+# / 01 (keyboard in / display out). Its keyboard unit is wired to the host console, so
+# window and terminal keys both reach SDMONV21.
+[[board]]
+type = "vdb8024"
+id   = "vdb0"
+port = 00
+
+  [board.unit.keyboard]
+  connect = "console"
+
+# MEMORY: the SD monitor EPROM at E000 (SDMONV21, 2K) and the disk BIOS at F000 (DDBIOS,
+# 2K), with RAM filling everything else -- 56K below, and the gaps around the ROMs,
+# including the monitor's FF60-FFFF scratch/stack/register-save area.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"                # 0000-DFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = E000
+  mount = "builtin:sdmonv21"  # 2K -> E000-E7FF (the VDM-console build of the monitor)
+
+  [[board.region]]
+  type = "ram"
+  at   = E800
+  size = "2K"                 # E800-EFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = F000
+  mount = "builtin:ddb200"    # 2K -> F000-F7FF
+
+  [[board.region]]
+  type = "ram"
+  at   = F800
+  size = "2K"                 # F800-FFFF (monitor scratch/stack/registers at FF60-FFFF)

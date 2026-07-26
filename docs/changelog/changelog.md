@@ -8,6 +8,23 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### A video console: the SD Systems VDB-8024
+
+`BOARDS ADD vdb8024` puts an **SD Systems VDB-8024** in the backplane — an **80×24 video terminal
+on one board**, the video-console alternative to the [SBC-100/200](../boards/sd-sbc.md)'s 8251
+serial port. Despite the name it is **not** memory-mapped: to the computer it is two I/O ports (a
+status port and a data port, fixed at `00`/`01`) that behave like a terminal on a wire — read the
+status for a waiting key or a ready display, write a character or a control word, read a typed key
+back. It runs the **SD monitor's video build, `sdmonv21`** (the same monitor as `sbc200`, built to
+talk to this board instead of the 8251), so `altairsim sbc200v` comes up at the monitor's `.`
+prompt **on the video display** with no "press Enter first" — the VDB is not a serial line with a
+speed to measure. Like a Sol-20 the **window is the console** (window and terminal keys reach the
+monitor as one stream), and the glyphs are drawn from the board's own character-generator font —
+transcribed from the manual's Appendix E — with true lower-case descenders. It understands its
+firmware's control codes (CR, LF, backspace, tab, cursor moves, clear/home, and the `ESC` cursor-
+position and erase sequences), wraps a full line, and scrolls at the bottom.
+`examples/sdsys/sbc200v.toml` is the ready-made machine.
+
 ### SDOS boots: the SD Systems VersaFloppy floppy controller
 
 `BOARDS ADD versafloppy` puts an **SD Systems VersaFloppy** in the backplane — the S-100
