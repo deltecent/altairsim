@@ -58,8 +58,8 @@ void test_versafloppy() {
     // ---- THE WAIT-SYNCED READ: a whole sector arrives on IN (67H), no DRQ polling ----
     {
         withRampDisk(77ull * 26 * 256);  // 8" DD-256, 512,512 bytes
-        VersaFloppyBoard b;
         Clock c;
+        VersaFloppyBoard b;
         b.attachClock(&c);
         b.power();
 
@@ -91,8 +91,8 @@ void test_versafloppy() {
     // ---- READ A DIFFERENT SECTOR after a seek ----
     {
         withRampDisk(77ull * 26 * 256);
-        VersaFloppyBoard b;
         Clock c;
+        VersaFloppyBoard b;
         b.attachClock(&c);
         b.power();
         std::string err;
@@ -118,8 +118,8 @@ void test_versafloppy() {
     // ---- THE WAIT-SYNCED WRITE: OUT (67H) a whole sector, then read it back ----
     {
         withRampDisk(77ull * 26 * 256);
-        VersaFloppyBoard b;
         Clock c;
+        VersaFloppyBoard b;
         b.attachClock(&c);
         b.power();
         std::string err;
@@ -148,8 +148,8 @@ void test_versafloppy() {
     // real [[board.drive]] path.)
     {
         withRampDisk(77ull * 26 * 256);
-        VersaFloppyBoard b;
         Clock c;
+        VersaFloppyBoard b;
         b.attachClock(&c);
         b.power();
         std::string err;
@@ -163,8 +163,8 @@ void test_versafloppy() {
     // `p < port_ + 8` truncates F8+8 to 0 in a uint8_t and the board would go deaf. The
     // decode uses the offset instead, so the F8..FF window is live.
     {
-        VersaFloppyBoard b;
         Clock c;
+        VersaFloppyBoard b;
         b.attachClock(&c);
         std::string err;
         CHECK(setProperty(b, "port", "F8", err), "port F8 is a legal base (the property max)");
@@ -179,8 +179,8 @@ void test_versafloppy() {
     // ---- A WRITE-PROTECTED drive refuses the write (S6 PROTECTED), writes nothing ----
     {
         withRampDisk(77ull * 26 * 256);
-        VersaFloppyBoard b;
         Clock c;
+        VersaFloppyBoard b;
         b.attachClock(&c);
         b.power();
         std::string err;
