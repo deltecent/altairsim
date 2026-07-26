@@ -3759,28 +3759,30 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         RunResult total;
         for (uint32_t i = 0; i < n; ++i) {
-            // The trace is DDT's: one line per instruction, the machine as it stands
-            // WITH the instruction it is about to run. The final line after the loop
-            // is what that last instruction did.
-            if (echo) showRegs(out);
+            // One line per instruction, printed AFTER it runs: the machine as it now
+            // stands, with the instruction the PC has reached next. This is the same
+            // register-and-mnemonic line HISTORY records. STEP used to print a line
+            // BEFORE each instruction and one more after the last, so a single `S`
+            // showed two lines -- and every step repeated the previous PC, reading as
+            // if two instructions had run. `S 3` now shows three lines, not four.
             RunResult r = m_.debug.run(1);
             total.steps += r.steps;
             total.tStates += r.tStates;
             total.pc = r.pc;
-            if (r.why != StopReason::Steps) {
-                reportStop(r, m_.debug, out);
-                break;
-            }
+            bool stopped = r.why != StopReason::Steps;
+            if (stopped) reportStop(r, m_.debug, out);
+            if (echo) showRegs(out);
+            if (stopped) break;
         }
         flush(out);
+        disasmNext_ = c->pc();
         if (!echo) {
             char b[96];
             std::snprintf(b, sizeof b, "%llu instructions, %llu T-states.",
                           (unsigned long long)total.steps, (unsigned long long)total.tStates);
             out << b << "\n";
+            showRegs(out);
         }
-        disasmNext_ = c->pc();
-        showRegs(out);
         return true;
     }
 

@@ -515,13 +515,31 @@ void test_cli() {
 
     std::ostringstream st;
     mon2.exec("STEP", st);
-    // STEP traces DDT-style: the machine as it stands, WITH the instruction it is
-    // about to run. So the first line carries P=FF00 and the INR A that lives there.
-    CHECK(st.str().find("P=FF00") != std::string::npos,
-          "so STEP executes AT FF00, not wherever it was");
-    CHECK(st.str().find("INR A") != std::string::npos,
-          "and the trace names the instruction it is about to run");
+    // STEP prints one line, AFTER the instruction runs: the machine as it now stands.
+    // The INR A at FF00 executed, so A is 01 and the PC has moved on to FF01 -- which
+    // together prove it ran AT FF00, not at some other 3C. (It used to also print a
+    // line BEFORE the instruction, so a single step showed two lines and looked like
+    // two ran.)
+    CHECK(st.str().find("A=01") != std::string::npos,
+          "the INR A at FF00 actually ran -- A went 00 -> 01");
+    CHECK(st.str().find("P=FF01") != std::string::npos,
+          "so STEP executed AT FF00, not wherever it was, and the PC moved one on");
     CHECK(c->pc() == 0xFF01, "and one instruction later the PC has moved");
+
+    // A COUNT prints one line per instruction, not one plus a trailing snapshot. Three
+    // NOPs at 0100.. give `S 3` three register lines -- the old code printed four.
+    mon2.exec("DEPOSIT 0100 00 00 00", s2);
+    mon2.exec("EX 0100", s2);
+    {
+        std::ostringstream ss;
+        mon2.exec("S 3", ss);
+        size_t lines = 0;
+        for (size_t p = ss.str().find("P="); p != std::string::npos;
+             p = ss.str().find("P=", p + 1))
+            ++lines;
+        CHECK(lines == 3, "S 3 prints three instruction lines, one per step -- not four");
+        CHECK(c->pc() == 0x0103, "and three NOPs later the PC has advanced by three");
+    }
 
     // EXAMINE NEXT drags the PC with it. The panel's counter IS the cursor -- it
     // has no other, which is why the switch is wired to it in the first place.

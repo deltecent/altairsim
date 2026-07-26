@@ -47,14 +47,14 @@ D 0 WIDTH=8  eight bytes per line
 ```
 STEP [n]
 ```
-One instruction, with REAL bus cycles through the real decode. Prints each
-instruction as it goes; past 32 it runs quietly and reports. `n` is a count,
-so it is decimal.
+One instruction, with REAL bus cycles through the real decode. Prints one line
+per instruction; past 32 it runs quietly and reports. `n` is a count, so it is
+decimal.
 
-A LINE IS THE STATE BEFORE THE INSTRUCTION ON IT RUNS -- the registers as they
-stand, and then what is about to happen to them. So a value you just loaded
-appears on the NEXT line, and the line the monitor leaves you on is where you
-have stopped: that instruction has not run.
+A LINE IS THE STATE AFTER THE INSTRUCTION RAN -- the registers as they now
+stand, and the instruction the PC has reached next. So `S 3` prints three lines,
+one per step, and the last line is where the monitor has left you: the next
+instruction, not yet run.
 
 ```
 S            one instruction
@@ -65,17 +65,18 @@ S 10         ten of them
 
 ```
 altairsim> DEPOSIT 0 3E 05 06 0A 80 76        MVI A,5 / MVI B,0A / ADD B / HLT
+altairsim> EX 0
 altairsim> S 3
-C0Z0M0E0I0 A=00 B=0000 D=0000 H=0000 S=0000 IE=0 P=0000  MVI A,05
 C0Z0M0E0I0 A=05 B=0000 D=0000 H=0000 S=0000 IE=0 P=0002  MVI B,0A
 C0Z0M0E0I0 A=05 B=0A00 D=0000 H=0000 S=0000 IE=0 P=0004  ADD B
 C0Z0M0E1I0 A=0F B=0A00 D=0000 H=0000 S=0000 IE=0 P=0005  HLT
 ```
 
-Three instructions ran; the fourth line is the HLT waiting. A=05 shows up one
-line below the MVI that loaded it. The flags are the 8080's own five, in the
-Altair's lettering -- Carry, Zero, Minus, Even parity, Interdigit carry -- and
-E goes to 1 on the ADD because 0F has an even number of bits set.
+Three instructions ran, three lines. Each shows the result: A=05 lands on the
+line for the MVI that loaded it, and the last line is the HLT waiting, not yet
+run. The flags are the 8080's own five, in the Altair's lettering -- Carry,
+Zero, Minus, Even parity, Interdigit carry -- and E goes to 1 on the ADD
+because 0F has an even number of bits set.
 
 
 ### NEXT — `N[EXT]`
