@@ -8,6 +8,18 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `DISASM` lines up in octal, and undocumented opcodes read the way DDT prints them
+
+`SET CONSOLE base=octal` no longer produces a ragged listing: the disassembly's byte column now
+widens for octal's three-digit bytes, so the mnemonics line up the way they always have in hex.
+And the twelve undocumented 8080 opcodes now disassemble the way real **DDT** and **SID** show
+them — each as a **single byte** marked `??= <byte>`, followed by a bare `*JMP`/`*CALL`/`*NOP`/`*RET`
+naming what the byte would do if it ran. Previously `CB` was decoded as a three-byte `JMP`, which
+invents an address out of whatever two bytes happened to follow; a disassembler cannot know a stray
+byte is code rather than data, so it now advances one byte and re-syncs, exactly as DDT does. (The
+[CPU](../boards/mits-88cpu.md) still *executes* `CB` as a real three-byte `JMP`; only the
+disassembler treats each as one opaque byte.)
+
 ### The Tarbell floppy controllers boot CP/M — by themselves
 
 `altairsim examples/tarbell/tarbell.toml` comes up at a CP/M `A>` prompt with **nothing typed** —

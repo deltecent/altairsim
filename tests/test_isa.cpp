@@ -42,29 +42,35 @@ void test_isa() {
     CHECK(i2.text == "MVI C,EB", "MVI C,EB -- 235 bytes to copy");
     CHECK(i2.len == 2, "two bytes");
 
-    SECTION("the ten undocumented opcodes -- real silicon runs them, so we print them");
+    SECTION("the twelve undocumented opcodes -- DDT's `?\?= <byte>`, one byte, bare mnemonic");
 
-    // A disassembler that prints `???` here is LYING about what the chip does. Code
-    // in the wild hits these. They are marked with a `*` so that a RUN of them --
-    // which nearly always means you are looking at data, or at a Z80 binary -- is
-    // visible at a glance instead of being mistaken for a working program.
+    // Real DDT/SID print `??= <byte>` for a byte outside the published set and step
+    // ONE byte over it -- the following bytes are not its operand. We keep that: the
+    // honest marker plus the BARE mnemonic of what the byte would do if executed
+    // (`*JMP`, `*CALL`), len 1, no address invented. The byte follows the console
+    // base (hex here).
     uint8_t undoc[] = {0x08, 0xCB, 0x00, 0x10, 0xD9, 0xDD, 0x00, 0x20};
     auto up = [&](uint16_t a) -> uint8_t { return a < sizeof undoc ? undoc[a] : 0x00; };
 
     Insn u0 = d->at(0, up);
-    CHECK(u0.text == "*NOP", "08 is a NOP on real silicon, and it is marked");
+    CHECK(u0.text == "?\?= 08  *NOP", "08 is a NOP on real silicon, marked the DDT way");
     CHECK(u0.undocumented, "and flagged");
     CHECK(u0.len == 1, "one byte");
 
     Insn u1 = d->at(1, up);
-    CHECK(u1.text == "*JMP 1000", "CB is a JMP -- three bytes, and it really does jump");
-    CHECK(u1.len == 3, "so a disassembler that called it a 1-byte ??? would desynchronise");
+    CHECK(u1.text == "?\?= CB  *JMP", "CB would jump, but as data it is one byte -- no address read");
+    CHECK(u1.len == 1, "ONE byte, like DDT -- not the 3-byte JMP the CPU would run");
 
     Insn u2 = d->at(4, up);
-    CHECK(u2.text == "*RET", "D9 is a RET");
+    CHECK(u2.text == "?\?= D9  *RET", "D9 is a RET");
+    CHECK(u2.len == 1, "one byte");
+
+    Insn u3 = d->at(5, up);
+    CHECK(u3.text == "?\?= DD  *CALL", "DD is one of the three undocumented CALLs -- bare, one byte");
+    CHECK(u3.len == 1, "one byte -- the two that follow are not its target");
 
     Insn ok = d->at(2, up);
-    CHECK(ok.text == "NOP" && !ok.undocumented, "a documented NOP carries no star");
+    CHECK(ok.text == "NOP" && !ok.undocumented, "a documented NOP carries no marker");
 
     SECTION("the awkward corners of the opcode map");
 
