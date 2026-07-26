@@ -1313,6 +1313,35 @@ void test_achieved_hz() {
                   "...and what landed on disk really is Intel HEX, not just a label");
         }
 
+        // OCTAL is the third, WRITE-ONLY format: a .OCT name picks it, FORMAT=OCTAL
+        // overrides, and the bytes are split-octal addresses + octal 000-377, eight to
+        // a line -- always octal whatever base the console prints in. LOAD never reads
+        // it back; this test only asserts what SAVE writes.
+        mm.bus.memWrite(0x0200, 0x3E);  // 076
+        mm.bus.memWrite(0x0201, 0x41);  // 101
+        const std::string oct = (dir / "img.oct").generic_string();
+        std::ostringstream d3;
+        mon.exec("SAVE " + oct + " 200-201", d3);
+        CHECK(d3.str().find("(octal)") != std::string::npos, "a .OCT name saves octal");
+        {
+            std::ifstream f(oct);
+            std::string hdr, row;
+            std::getline(f, hdr);
+            std::getline(f, row);
+            CHECK(hdr.rfind("; altairsim octal image", 0) == 0,
+                  "...the file opens with the octal header comment");
+            CHECK(row == "002 000  076 101",
+                  "...split-octal address, two spaces, octal bytes -- and it really is octal");
+        }
+        std::ostringstream d4;
+        mon.exec("SAVE " + dat + " 200-201 FORMAT=OCTAL", d4);
+        CHECK(d4.str().find("(octal)") != std::string::npos,
+              "...and FORMAT=OCTAL overrides a name that is not .oct");
+        std::ostringstream d5;
+        mon.exec("SAVE " + dat + " 200-201 FORMAT=DECIMAL", d5);
+        CHECK(d5.str().find("BIN, HEX or OCTAL") != std::string::npos,
+              "...and an unknown FORMAT names all three, octal included");
+
         fs::remove_all(dir, ec);
     }
 

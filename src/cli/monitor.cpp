@@ -3657,7 +3657,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "SAVE") {
-        if (!need(3, "SAVE <file> <range> [FORMAT=BIN|HEX]")) return true;
+        if (!need(3, "SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL]")) return true;
         a[1] = unquote(a[1]);
         a[1] = resolveFrom(startupDir_, a[1]);  // ...the same rule as LOAD, in reverse
         uint32_t lo, hi;
@@ -3672,14 +3672,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // mechanism: LOAD can read the file and see what it IS, and SAVE cannot -- the
         // file does not exist yet. So SAVE has only the name to go on, and a name is a
         // guess. FORMAT= is how you say it outright when the guess would be wrong.
-        bool asHex = a[1].size() > 4 && upper(a[1]).rfind(".HEX") == a[1].size() - 4;
+        //
+        // OCTAL is a THIRD, WRITE-ONLY format: an octal listing for reading, eyeballing
+        // against a MITS manual, or pasting somewhere -- LOAD does not read it back
+        // (there is no octal load path, deliberately). BIN and HEX round-trip; OCTAL
+        // does not, and the confirmation says so by naming the format it wrote.
+        enum class Fmt { Bin, Hex, Oct } fmt = Fmt::Bin;
+        std::string uname = upper(a[1]);
+        if (uname.size() > 4 && uname.rfind(".HEX") == uname.size() - 4) fmt = Fmt::Hex;
+        else if (uname.size() > 4 && uname.rfind(".OCT") == uname.size() - 4) fmt = Fmt::Oct;
         for (size_t i = 3; i < a.size(); ++i) {
             if (upper(a[i]).rfind("FORMAT=", 0) != 0) continue;
             std::string want = upper(a[i]).substr(7);
-            if (want == "HEX") asHex = true;
-            else if (want == "BIN") asHex = false;
+            if (want == "HEX") fmt = Fmt::Hex;
+            else if (want == "BIN") fmt = Fmt::Bin;
+            else if (want == "OCTAL" || want == "OCT") fmt = Fmt::Oct;
             else {
-                out << "FORMAT=" << want << "? It is BIN or HEX.\n";
+                out << "FORMAT=" << want << "? It is BIN, HEX or OCTAL.\n";
                 failed_ = true;
                 return true;
             }
@@ -3691,14 +3700,36 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             failed_ = true;
             return true;
         }
-        if (asHex) {
+        const char* fmtName = "bin";
+        if (fmt == Fmt::Hex) {
             f << saveHex(img);
+            fmtName = "hex";
+        } else if (fmt == Fmt::Oct) {
+            // Always octal, whatever base the console prints in: a .OCT file is an
+            // octal artifact, not a view of one session. Split-octal addresses (hi
+            // byte, lo byte -- the front-panel convention), octal bytes 000-377, eight
+            // to a line so a line that starts on an /8 boundary opens on a round octal
+            // address. The header range is fixed hex so the file is reproducible.
+            char ob[48];
+            std::snprintf(ob, sizeof ob, "; altairsim octal image  %04X-%04X\n",
+                          (unsigned)lo, (unsigned)hi);
+            f << ob;
+            for (uint32_t A = lo; A <= hi;) {
+                std::snprintf(ob, sizeof ob, "%03o %03o ", (unsigned)((A >> 8) & 0xFF),
+                              (unsigned)(A & 0xFF));
+                f << ob;
+                for (int k = 0; k < 8 && A <= hi; ++k, ++A) {
+                    std::snprintf(ob, sizeof ob, " %03o", (unsigned)rd(A));
+                    f << ob;
+                }
+                f << "\n";
+            }
+            fmtName = "octal";
         } else {
             for (auto v : img.flat()) f.put((char)v);
         }
         std::snprintf(buf, sizeof buf, "saved %s-%s to %s (%s)", fmtWord((uint16_t)lo).c_str(),
-                      fmtWord((uint16_t)hi).c_str(), a[1].c_str(),
-                      asHex ? "hex" : "bin");
+                      fmtWord((uint16_t)hi).c_str(), a[1].c_str(), fmtName);
         out << buf << "\n";
         return true;
     }

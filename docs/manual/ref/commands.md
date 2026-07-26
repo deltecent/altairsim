@@ -467,20 +467,26 @@ LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called
 ### SAVE — `SA[VE]`
 
 ```
-SAVE <file> <range> [FORMAT=BIN|HEX]
+SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL]
 ```
 Memory to a file, through the bus -- so what you get is what the CPU would
 read, ROM included. The range is what to save; a byte nobody drives reads FF.
 
 THE NAME DECIDES THE FORMAT, and this is the other half of LOAD's rule rather
 than the same one: LOAD can open the file and see what it IS, and SAVE cannot
--- the file does not exist yet. So a name ending .HEX writes Intel HEX and
-anything else writes a flat binary. FORMAT= says it outright when the name
-would guess wrong, and always wins.
+-- the file does not exist yet. So a name ending .HEX writes Intel HEX, one
+ending .OCT writes an octal listing, and anything else writes a flat binary.
+FORMAT= says it outright when the name would guess wrong, and always wins.
+
+OCTAL is a LISTING, not a load format: split-octal addresses and octal bytes,
+the way the MITS manuals and the front panel showed memory, for reading and
+eyeballing. LOAD does not read it back -- BIN and HEX round-trip, OCTAL does
+not.
 
 ```
 SAVE out.hex 0-FFF                Intel HEX, by its name
 SAVE out.bin F800-FFFF            a flat binary, by its name
+SAVE out.oct 100-1FF              an octal listing, by its name
 SAVE out.dat 0-FFF FORMAT=HEX     hex, though it is not called .hex
 ```
 
