@@ -68,6 +68,13 @@ private:
     SDL_Texture*  texture_  = nullptr;
     int texW_ = 0, texH_ = 0;
 
+    // The bezel, in LOGICAL pixels, folded into the logical presentation size on every side
+    // (ensureWindow). present() draws the picture into a sub-rect inset by this much, and the
+    // letterbox fills the rest black. Because it lives in logical space -- not device pixels --
+    // it stays an even band on all four sides as the aspect-locked window is dragged. See
+    // ensureWindow() for how it is chosen (about kBorder device pixels at the opening size).
+    int border_ = 0;
+
     std::unique_ptr<Surface> surface_;   // the board draws here (indexed)
     std::vector<Color>       palette_;   // index -> Color, set by the board
     std::vector<uint8_t>     rgba_;      // scratch: indexed -> RGBA for upload
