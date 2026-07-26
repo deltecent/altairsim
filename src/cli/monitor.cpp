@@ -2329,9 +2329,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (anyUnbuilt) out << "  * = not built yet; it will say so.";
         out << "\n  HELP <command> for the usage and examples -- e.g. HELP DUMP.\n"
                "  !<command> runs a command in your host shell -- e.g. !vi HELLO.PRN.\n\n"
-               "  Numbers: on the wire is HEX (addresses, ports, bytes), never on the\n"
-               "  wire is DECIMAL (counts, widths, sizes). 0x/$/h force hex, # forces\n"
-               "  decimal, and a K/M suffix is always decimal.\n";
+               "  Numbers: on the wire is HEX (addresses, ports, bytes) -- or OCTAL\n"
+               "  under SET CONSOLE base=octal; never on the wire is DECIMAL (counts,\n"
+               "  widths, sizes). 0x/$/h force hex, 0o/q force octal, # forces decimal,\n"
+               "  and a K/M suffix is always decimal.\n";
 
         // ---- AND THE VERBS THE CARDS BROUGHT WITH THEM ----
         //
