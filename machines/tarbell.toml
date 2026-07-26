@@ -1,0 +1,75 @@
+# Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 automatically.
+#
+#     altairsim tarbell
+#     MOUNT fdc0:drive0 "examples/tarbell/CPM22b15-48K-SSSD.DSK"
+#     RUN 0
+#     -> 48K CP/M 2.2
+#        A>
+#
+# ...or, with the disk already in the drive, `cd examples/tarbell && altairsim tarbell.toml`.
+#
+# THE BOOT IS AUTOMATIC AND NEEDS NO MONITOR. The Tarbell carries its own 32-byte boot
+# PROM (roms/TARBELL-SD), and RESET arms it at 0000 over the S-100 PHANTOM* line. `RUN 0`
+# starts the CPU at 0000 -- in the PROM -- which homes the head, reads track 0 sector 1
+# into 0000, and jumps to 07D (an address with A5 set) so the shadow releases combinationally
+# and the machine drops straight into the cold loader it just read. There is no `C` to type
+# and no baud to detect. See docs/boards/tarbell-sd.md.
+#
+# WITH NO DISK MOUNTED IT HALTS, which is the honest default (an interface shipped with a
+# cable, not with your floppy): the PROM issues its read, the drive reports NOT READY, and
+# the PROM's `JZ` falls through to `HLT`. Mount a disk and RUN 0 again.
+
+[machine]
+name    = "tarbell"
+startup = ["RUN 0"]
+
+# THE CPU. A stock 2 MHz 8080; clock_hz = 0 runs it flat out (the crystal is on the card).
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+# THE CONSOLE. CP/M's CBIOS on the tracked disks talks to an 88-2SIO at port 10 -- the
+# same console the whole Altair CP/M world uses. Channel B is left unconnected.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE TARBELL CONTROLLER at the standard F8 port block, with its boot PROM enabled. Four
+# drives, none mounted -- put a disk in drive 0 (`MOUNT fdc0:drive0 ...`) to boot.
+[[board]]
+type   = "tarbell"
+id     = "fdc0"
+port   = F8
+drives = 4
+
+# THE HOST BRIDGE -- guest <-> host file transfer at port B0 (R/W/HDIR.COM live on the
+# disk). Our own card, not a period one; the same one machines/default.toml carries.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+# 64K OF RAM, and the boot PROM shadows the bottom 32 bytes of it until it phantoms out.
+# `honors_phantom = read` makes the shadow a read-only overlay: writes fall through to the
+# RAM beneath, which is how the bootstrap's sector lands under the PROM.
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"          # real static RAM does not come up zeroed
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                     # 0000-FFFF; the boot PROM overlays 0000-001F until A5 releases it

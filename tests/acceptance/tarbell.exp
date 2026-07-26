@@ -1,0 +1,60 @@
+#!/usr/bin/expect -f
+#
+# THE TARBELL #1011 BOOTS CP/M off its 32-byte boot PROM, with NO monitor and NOTHING
+# typed. The whole point of the single-density card: RESET arms the PROM at 0000, it
+# reads track 0 sector 1 through the FD1771 and jumps into the cold loader (releasing
+# PHANTOM* on the A5-high fetch), and CP/M comes up on its own.
+#
+# IT HAS TO BE AN EXPECT TEST: the boot hands the keyboard to the guest and DIR must be
+# typed at the A> prompt, which a pipe cannot do (it can only assert what the machine
+# says unprompted -- see the [[altairsim-pipe-cannot-type-at-a-guest]] rule).
+#
+# THE DISK MUST NOT MOVE. The fixture mounts it write-protected; shasummed before and
+# after, because the quiet way for this to rot is for `writeprotect` to stop meaning
+# anything.
+#
+# usage: expect -f tarbell.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/tarbell/CPM22b15-48K-SSSD.DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/tarbell.toml
+
+# The PROM boots CP/M automatically -- no monitor, no 'C', no auto-baud.
+expect {
+    -ex "CP/M" {}
+    eof     { puts "FAIL: the machine died before CP/M signed on"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted off the Tarbell PROM (no sign-on)"; exit 1 }
+}
+
+# ...and it reaches the A> prompt.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M signed on but never reached the A> prompt"; exit 1 }
+}
+
+# The directory is readable: DIR returns a known file off the tracked master.
+send "DIR\r"
+expect {
+    -ex "STAT" {}
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not list the disk (no STAT COM)"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the Tarbell #1011 auto-booted CP/M 2.2 off its boot PROM to A>, DIR read the\
+      disk, and the master is byte-identical."
+exit 0

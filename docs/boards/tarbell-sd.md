@@ -1,42 +1,39 @@
 # Tarbell single-density floppy disk controller
 
-# ⛔ NOT BUILT — DEFERRED (Patrick, 2026-07-12)
+**Status:** built (`tarbell`). Boots CP/M 2.2 automatically off its 32-byte boot PROM;
+`tests/test_tarbell.cpp` and `acceptance-tarbell` pin it. The double-density #2022 is its
+sibling — see [`tarbelldd.md`](tarbelldd.md). Run it with `altairsim tarbell` (mount a disk)
+or `examples/tarbell/tarbell.toml`.
 
-> *"Let's remove the Tarbell for now, but retain what was learned about it."*
->
-> **There is no `dcdd`-style board for this card and there never was.** `TarbellBoot` in
-> `tests/test_phantom.cpp` is a **test fixture** — it proved the *bus API* could support the card,
-> not that the card exists. `src/boards/tarbell-sd.{h,cpp}` has never existed. Building it means
-> **both halves from scratch**, not "bolt an FDC onto the existing card."
->
-> **Why it was dropped:** the card's shadow mechanism is **not PHANTOM\***. It is a **July 1977,
-> pre-IEEE-696** design that asserts **STATUS DISABLE\*** and drives the S-100 status lines itself
-> (see below). Modelling that honestly means building S-100 status lines *in order to have something
-> to disable*; modelling it as PHANTOM\* works and is observationally identical, but it is an
-> abstraction we would be carrying under the card's name. Rather than pick between an anachronism and
-> a pile of new bus machinery for one card, it waits. **The 88-DCDD is the disk this project needs,
-> and it is built and booting.**
->
-> **This file is the retained learning, and it is the expensive part.** The spec below is complete
-> and fully sourced from the manual — it is what a rebuild would start from, and it already contains
-> two things that a *reasoned* implementation would have got wrong (`RST*` is a drive line, not the
-> chip's reset; `E52` is the second drive-select bit, not a spare). **Do not delete it to tidy up.**
+> **Deferred, then built (2026-07-26).** This card was scoped in 2026-07 and shelved — the
+> note below is the retained learning, and it is why the build was cheap when it came. The
+> ground it broke (`snoop()`/`wantsSnoop()`/`decodeIsPageUniform()`, and `TarbellBoot` in
+> `tests/test_phantom.cpp`) turned out to be exactly the PROM/PHANTOM\* half of the shipping
+> board, lifted almost verbatim. Two facts a *reasoned* implementation would have got wrong
+> are still worth reading before touching the card: `RST*` is a drive line, not the chip's
+> reset; `E52`/`E31` are the drive-select bits, not spares. **Do not delete the spec below.**
 
-## What it left behind in the bus, and why that stays
+## The one place we departed from the manual — verified against a running disk
 
-The card is dropped; the design it forced is not, because it was **right** and it is **tested**:
+The manual's `SELECT` example loads the drive number **straight** into the U40 latch (drive 0 →
+`OUT FC, 02`). The CBIOS on both tracked disks does **`CMA` first** — the byte sequence
+`2F 87 87 87 87 F6 02 D3 FC` = `CMA; ADD A×4; ORI 02; OUT FC` — so it loads the **complement**:
+drive 0 is `0xF2`, drive 1 `0xE2`, and so on. A model that read D5:D4 as a plain drive number sends
+every access on a single-drive machine to drive 3 and reads NOT READY. `DESIGN.md` §0.1 settles it:
+the disk is the hardware fact, the manual's simplified example is the secondary source, and here the
+secondary source is the one that is wrong. `TarbellBoard::writeControl()` complements; the DD card's
+bitmap latch (`tarbelldd`) does not.
 
-| | Still used by | Verdict |
+## What it broke ground on, and where that lives now
+
+The design this card forced was right and is now load-bearing in the shipping board and beyond:
+
+| | Used by | |
 |---|---|---|
-| **PHANTOM\*** — assert + `honors_phantom = none\|read\|all` | **The memory board**, for an ordinary ROM-shadows-RAM card. All three straps are covered by `tests/test_memory.cpp`. | **Keep.** Never was Tarbell-only. |
-| **`Board::snoop()` / `wantsSnoop()`** | **Nothing that ships.** Only `TarbellBoot`. | **Keep, honestly labelled.** It is *specified and executed*, not speculative — see `board.h`. |
-| **`decodeIsPageUniform()`** | **Nothing that ships.** Only `TarbellBoot` (A5 splits page 0). | Same. |
-| **`startSector`** (§7.3) | **The 88-DCDD**, which sets it to 0 *because* something else sets it to 1. | **Keep.** The off-by-one is only visible as a parameter. |
-
-The last row is the point: half of what this card taught is load-bearing in the **DCDD**, which does
-exist. The DCDD numbers sectors from zero, reads status inverted, and stores 137-byte slots — and
-every one of those facts is only *meaningful* because the Tarbell is the card that does the opposite.
-Keep the contrast.
+| **PHANTOM\*** — assert + `honors_phantom = none\|read\|all` | The **memory board** (any ROM-shadows-RAM card) **and this card's boot PROM**. | `tests/test_memory.cpp`, `tests/test_tarbell.cpp`. |
+| **`Board::snoop()` / `wantsSnoop()`** | **This card**, to latch the A5-high PROM release, plus the front panel. | `tests/test_tarbell.cpp` (retargeted from `test_phantom.cpp`). |
+| **`decodeIsPageUniform()`** | **This card** — A5 splits page 0, so the bus serves it uncached. | Same. |
+| **`startSector`** (§7.3) | The **88-DCDD** (0) and this card (1). | The off-by-one is only visible as a parameter. |
 
 ---
 

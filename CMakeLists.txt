@@ -303,6 +303,9 @@ add_library(altair_core STATIC
   # SD Systems VersaFloppy I/II -- a WD FD177x soft-sector floppy controller. Owns a
   # wd17xx chip and a generic DiskImageDrive adapter (floppy-drive). Boots SDOS.
   src/boards/sd-versafloppy.cpp
+  # Tarbell #1011 (SD) / #2022 (DD) -- one card carrying a WD FD177x floppy controller
+  # AND a 32-byte boot PROM that shadows low RAM over PHANTOM*. See src/boards/tarbell.h.
+  src/boards/tarbell.cpp
   src/boards/floppy-drive.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
@@ -560,6 +563,7 @@ add_executable(altair_tests
   tests/test_lines.cpp
   tests/test_wd17xx.cpp
   tests/test_versafloppy.cpp
+  tests/test_tarbell.cpp
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
   tests/test_mds.cpp
@@ -1087,6 +1091,33 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cpm.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-cpm-sbc PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE TARBELL FLOPPY CONTROLLERS -- single density (#1011) and double density (#2022).
+  #
+  # Each carries its own 32-byte boot PROM, so the boot is AUTOMATIC: RESET arms the PROM at
+  # 0000, it reads track 0 through the FD177x and jumps into the cold loader (releasing
+  # PHANTOM* on the A5-high fetch), and CP/M 2.2 comes up with no monitor and nothing typed.
+  # An expect test because DIR must be typed at the A> prompt (a pipe cannot). The DD case is
+  # the mixed-density proof: an SD track 0 then DD tracks 1-76, which hangs mid-load if the
+  # card ever builds the wrong FD177x part. Both mount the tracked master WRITE-PROTECTED and
+  # shasum it -- the boot only reads.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-tarbell
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbell.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-tarbell PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  add_test(NAME acceptance-tarbelldd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbelldd.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-tarbelldd PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

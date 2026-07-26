@@ -1,0 +1,43 @@
+# Tarbell single-density -- 48K CP/M 2.2 on an 8" SSSD floppy.
+#
+#     cd examples/tarbell && altairsim tarbell.toml
+#     -> 48K CP/M 2.2
+#        A>
+#
+# THE PATH BELOW IS RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot.
+#
+# THIS FILE IS A DELTA. `base = "tarbell"` brings the machine -- the 8080, the 88-2SIO
+# console at 0x10, the Tarbell #1011 controller at F8 with its boot PROM, the host bridge
+# at B0, and 64K of RAM strapped honors_phantom = read. All this file adds is the floppy
+# in drive 0. See machines/tarbell.toml for the base, or run `BOARDS`.
+#
+# THE BOOT IS AUTOMATIC. `startup = ["RUN 0"]` (inherited from the base) starts the CPU in
+# the boot PROM at 0000; it reads the cold loader off track 0 and drops into CP/M. No `C`,
+# no baud detection -- see docs/boards/tarbell-sd.md.
+#
+# THERE IS NO UNDO ON THIS DISK. It is tracked, so in a clone `git checkout` restores it;
+# in the package you were handed there is no such rope. Drive 0 is mounted read/write
+# because that is what a real machine is -- copy the image first, or set `readonly = true`
+# below, before testing writes in anger. R.COM / W.COM / HDIR.COM are installed on it (the
+# host bridge at B0): `HDIR` lists the host, `R FOO` / `W FOO` move a file in and out.
+
+[machine]
+name = "tarbell-cpm"
+base = "tarbell"
+
+# THE FLOPPY -- the bootable 48K CP/M 2.2 SSSD master (8" single-sided single-density,
+# 128-byte sectors, 26 sectors x 77 tracks = 256,256 bytes). The card probes the size.
+[[board]]
+type = "tarbell"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CPM22b15-48K-SSSD.DSK"
+
+# CP/M's line editor wants BS (0x08); a modern terminal's Backspace sends DEL (0x7F). Fold
+# it on the way in -- a property of the TERMINAL, so it lives on the [console].
+[console]
+bsdel = "bs"

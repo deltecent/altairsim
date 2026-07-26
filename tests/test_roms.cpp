@@ -110,6 +110,9 @@ void test_roms() {
         // sdmonv21 is the SD (VDB-8024 video console, ports 00/01) sibling of msmonr21;
         // same E000 window and size, a different console driver -- and a different CRC.
         {"sdmonv21", 0xE000, 0xE7FF, 2048, 0x4B101B4Bu, true},
+        // The Tarbell floppy boot PROM: 32 bytes at 0000, shared by the single- and
+        // double-density cards. Reads track 0 sector 1 into 0000 and jumps into it (07D).
+        {"tarbell-sd", 0x0000, 0x001F, 32, 0x55E3446Du, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

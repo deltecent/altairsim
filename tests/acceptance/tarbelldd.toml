@@ -1,0 +1,20 @@
+# Tarbell double-density boot acceptance fixture: the #2022 controller with the 48K
+# CP/M 2.2 mixed-density (SSDD) master in drive 0, mounted READ-ONLY. Exercises the
+# whole boot path -- the SD track 0 read by the PROM and cold loader, then the DD
+# tracks 1-76 read by the FD1791 through the CBIOS. tarbelldd.exp shasums the image.
+
+[machine]
+name = "tarbelldd-acceptance"
+base = "tarbelldd"
+
+[[board]]
+type = "tarbelldd"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/tarbell/TARBELLDD-CPM22-SSDD-48K.DSK"
+  writeprotect = true
+
+[console]
+bsdel = "bs"

@@ -25,6 +25,8 @@ printed in each property's own base.
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers |
 | [`versafloppy`](#versafloppy) | SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) \| vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS |
+| [`tarbell`](#tarbell) | Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on) |
+| [`tarbelldd`](#tarbelldd) | Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM |
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
 | [`uio`](#uio) | MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout |
 | [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
@@ -279,6 +281,54 @@ SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight
 | `variant` | enum | `vfii` | `vfi` \| `vfii` | Which board: vfi (FD1771, single density) or vfii (FD1791, single and double density). vfii is the default -- it boots SDOS's DD-256 disks |
 | `port` | int | `0x60` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 (60H) |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (one-hot select D0-D3) |
+| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
+
+
+## `tarbell`
+
+Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)
+
+**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+
+### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive (0..3) |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `bootstrap` | bool | `true` | `on` \| `off` | The boot-PROM enable DIP. On (default): the 32-byte PROM shadows 0000 over PHANTOM* at reset and boots the disk. Off: a plain disk controller, no PROM |
+| `port` | int | `0xF8` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 (default F8) |
+| `drives` | int | `4` | `1` .. `4` | Drives on the controller (binary select 0-3) |
+| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
+
+
+## `tarbelldd`
+
+Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM
+
+**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+
+### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive (0..3) |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `bootstrap` | bool | `true` | `on` \| `off` | The boot-PROM enable DIP. On (default): the 32-byte PROM shadows 0000 over PHANTOM* at reset and boots the disk. Off: a plain disk controller, no PROM |
+| `port` | int | `0xF8` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 (default F8) |
+| `drives` | int | `4` | `1` .. `4` | Drives on the controller (binary select 0-3) |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
 
 

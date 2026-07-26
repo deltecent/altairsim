@@ -100,6 +100,7 @@ int main() {
     test_lines();
     test_wd17xx();
     test_versafloppy();
+    test_tarbell();
     test_spindle();
     test_dcdd();
     test_mds();

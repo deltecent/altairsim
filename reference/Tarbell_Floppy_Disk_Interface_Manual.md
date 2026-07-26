@@ -135,6 +135,16 @@ So the software-visible model of `OUT FC`:
 - low bits 001 → issue a fast step-out pulse
 - low bits 010 → latch bits 4-7 (drive-select, control lines)
 
+> **The drive number is loaded COMPLEMENTED — verified against a running disk, not the
+> manual.** The SELECT example above (a bare `RAL`×4) is idealized; the CBIOS on the
+> tracked CP/M images (and the standard Tarbell driver) instead does `CMA` before the
+> shift — the byte sequence `2F 87 87 87 87 F6 02 D3 FC` = `CMA; ADD A×4; ORI 02; OUT FC`.
+> So the latch's D5:D4 hold **~drive**: **drive 0 is written as `0xF2`** (D5:D4 = 11),
+> drive 1 as `0xE2`, drive 2 as `0xD2`, drive 3 as `0xC2`. A model that read D5:D4 as a
+> plain binary drive number would send every access on a single-drive machine to drive 3
+> and read NOT READY. `DESIGN.md` §0.1: the disk is the hardware fact; the manual's
+> simplified example is the secondary source, and it is the one that is wrong here.
+
 ---
 
 ## 3. DIP Switch S1 (7 positions)
@@ -634,3 +644,45 @@ Board timing/hardware wrapped around the 1771:
 8. CRC polynomial x^16+x^12+x^5+1 (only matters if modeling raw track data / format).
 9. 250 kbit/s single density; NOT DMA — everything is programmed I/O through the WAIT
    port.
+
+---
+
+## 12. The Double-Density board (#2022)
+
+The **Tarbell #2022 double-density interface** (1979-80) is the #1011's successor. It keeps the
+same 8-port block (default **F8**), the same 32-byte boot PROM and PHANTOM\*/bootstrap mechanism,
+and the same FD177x register file at F8-FB — a driver written for the single-density card boots on
+it unchanged. It differs in exactly four ways:
+
+- **Controller: WD1791/WD1793** (single *and* double density, FM/MFM) in place of the FD1771.
+  Reading a double-density track needs the FD179x; the FD1771 cannot. (Modelling note: a card that
+  builds the wrong part reads single-density track 0 fine and then hangs on the first
+  double-density track — the failure is silent until deep in the boot.)
+- **`OUT FC` is a plain bitmap latch**, not a function decoder: **D3 = density** (0 = single,
+  1 = double), **D5:D4 = binary drive select**, **D6 = side select**. There is no `CMA` complement
+  here — the density-driver writes the drive number straight.
+- **Port FD** is added: `IN FD` returns **DMA status** (bit 7 = 0 means the DMA transfer is
+  complete), and `OUT FD` loads the **extended-address latch** (A16-A23) for the optional DMA
+  controller. Programmed-I/O drivers ignore both (read returns "complete", write is a harmless
+  store).
+- **Media is mixed density**: **track 0 is single density** (so the shared boot PROM, an FD1771-era
+  32-byte bootstrap, can read it), and **tracks 1-76 are double density**. A tracked 48K CP/M 2.2
+  image is 499,456 bytes = 26×128 (SD track 0) + 76×51×128 (DD tracks 1-76).
+
+The board still drives **PHANTOM\*** (S-100 pin 67 on the IEEE-696 backplane) for its boot PROM,
+and runs at **2 or 4 MHz** with a **250/500 kbit/s** media rate selected by the density bit. The
+DMA option is present on the card but no tracked software drives it.
+
+**Source:** the deramp.com vintage-computer archive's Tarbell double-density materials
+(`deramp.com` → Tarbell floppy). The SD↔DD differences above are cross-checked against the CBIOS on
+the tracked double-density CP/M image.
+
+## 13. Correction to §2.1/§11 — the WAIT port bit that the boot code actually tests
+
+The boot PROM and every tracked driver decide "is there another byte?" from **bit 7 of `IN FC`**,
+and they read it as **DRQ**: the loader does `IN FC; ORA A; JP done` and falls through to read a
+byte only while **bit 7 is *set***, treating **bit 7 clear as end-of-transfer**. So a faithful model
+returns **bit 7 = DRQ** (1 while a byte is waiting, 0 once the command finishes), which is what the
+32-byte PROM in §5 requires to boot at all. The "bit 7 = INTRQ" phrasing in the checklist above is
+the manual's, and it is the one place the manual's summary and its own bootstrap listing disagree —
+the listing (and the running disk) win.

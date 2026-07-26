@@ -1,0 +1,66 @@
+# Tarbell #2022 double-density floppy machine -- boots CP/M 2.2 automatically.
+#
+#     altairsim tarbelldd
+#     MOUNT fdc0:drive0 "examples/tarbell/TARBELLDD-CPM22-SSDD-48K.DSK"
+#     RUN 0
+#     -> 48K CP/M 2.2
+#        A>
+#
+# ...or, with the disk already in the drive, `cd examples/tarbell && altairsim tarbelldd.toml`.
+#
+# THE DOUBLE-DENSITY #2022 is the single-density #1011's twin: the same automatic 32-byte
+# boot PROM at 0000 and the same F8 port block, but a WD FD1791 that can read double-density
+# tracks, a bitmap OUT-FC control latch (density + side + drive), and a port-FD DMA/extended-
+# address register. Its disks are MIXED DENSITY -- track 0 is single density (the boot PROM
+# and cold loader read it exactly as on the SD card), tracks 1-76 double density. See
+# docs/boards/tarbelldd.md.
+#
+# The boot is automatic and the machine halts with no disk mounted -- same as the SD card.
+
+[machine]
+name    = "tarbelldd"
+startup = ["RUN 0"]
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE DOUBLE-DENSITY CONTROLLER at the standard F8 port block, boot PROM enabled.
+[[board]]
+type   = "tarbelldd"
+id     = "fdc0"
+port   = F8
+drives = 4
+
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+# 64K OF RAM with the boot PROM shadowing the bottom 32 bytes over PHANTOM* (honors_phantom
+# = read) -- exactly the SD machine's memory map.
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"

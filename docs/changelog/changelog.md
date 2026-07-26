@@ -8,6 +8,19 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### The Tarbell floppy controllers boot CP/M — by themselves
+
+`altairsim examples/tarbell/tarbell.toml` comes up at a CP/M `A>` prompt with **nothing typed** —
+no monitor, no boot command. The [Tarbell #1011](../boards/tarbell-sd.md) (`tarbell`) carries its
+own **32-byte boot PROM**, so RESET arms it at address 0000, it reads the first sector off the disk
+through its WD FD1771, and the instant the loaded code runs the PROM's shadow of low memory falls
+away (released by a single address line) and CP/M loads itself. The double-density
+[#2022](../boards/tarbelldd.md) (`tarbelldd`) is its twin with a WD FD1791, booting the same way off
+a **mixed-density** disk — single density on track 0 so the shared PROM can read it, double density
+on the rest. Both are proven end to end by acceptance tests that boot the tracked masters to `A>`
+and read the directory. The single-density disk ships with the `HDIR`/`R`/`W` host-bridge utilities
+installed.
+
 ### CP/M 2.2 boots on the SBC-200 — with interrupts and the PROM switch-out
 
 `altairsim examples/sdsys/cpm.toml`, press Enter, type `C`, and **SD Systems CP/M 2.2** comes up to
