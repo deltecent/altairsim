@@ -183,6 +183,7 @@ bool DazzlerBoard::frameChanged() {
 // ---------------------------------------------------------------------------
 void DazzlerBoard::render() {
     const int side = elementsPerSide();
+    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
     Surface* s = g_display->acquire(side, side, PixelFormat::Indexed8);
     if (!s) return;
 
@@ -262,6 +263,7 @@ std::vector<Property> DazzlerBoard::properties() {
         };
         p.push_back(std::move(x));
     }
+    p.push_back(Display::widthProperty(videoWidth_));
     return p;
 }
 

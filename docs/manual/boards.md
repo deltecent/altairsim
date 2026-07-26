@@ -479,6 +479,19 @@ draws 128 glyphs from a real character ROM, not 256.
 Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo that draws on it, and
 **`cuter`**, which runs the period CUTER monitor with its own built-in VDM-1 driver.
 
+### How big the window opens — the `width` property
+
+Every video board — the VDM-1, the Dazzler, the VDB-8024 — carries a **`width`** property that
+sets how wide its window opens, in pixels. `auto` (the default) opens the window about **half the
+screen wide**; a number like `width = 1024` asks for that many pixels. The **height follows the
+board's own aspect** — you set width, height comes with it — and the picture is drawn at a
+whole-number multiple of the board's pixels so a 1970s frame stays a crisp grid rather than a blur
+(the leftover is a thin dark border). A width that would run off the screen is brought down to fit.
+
+`width` lives on the board, not on `[display]`, because on real hardware each board has its own
+video-out and could drive its own monitor. Today the simulator has a single window, so if you fit
+two video boards, the one that draws first opens and sizes it; the usual machine has just one.
+
 ### A stopped machine's window is responsive, but it does not redraw
 
 The window stays live even when the machine is stopped: you can move it, and its close button
@@ -517,8 +530,8 @@ and **64×64 or 128×128** on/off elements, in **16 colors** or 16 greys. Small 
 build runs and simply has nowhere to show the picture. `examples/dazzler/kscope.toml` comes up
 running **Li-Chen Wang's Kaleidoscope**, a four-way-mirrored pattern turning over in the window
 (`ATTN` breaks back to the monitor); the `dazzler` machine is the bare board to build on. Because a
-64×64 frame is tiny, the video window's `[display] scaling` sizes it up to land near a VDM-1's size
-on your screen rather than a sixth of it.
+64×64 frame is tiny, the board's `width` property (above) sizes the window up to land near a VDM-1's
+size on your screen rather than a sixth of it.
 
 ---
 

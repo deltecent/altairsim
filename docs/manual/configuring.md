@@ -386,13 +386,13 @@ focus = true
 
 Same idea as `[console]`, one table down: it describes *the window on your desk in 2026*, not the
 card that draws into it. A VDM-1 has no opinion about window managers, and a machine with two
-video boards still has one operator with one keyboard — so the setting lives here, once, rather
-than on each board.
+video boards still has one operator with one keyboard — so these settings live here, once, rather
+than on each board. (Window *size* is the exception: how big a picture opens is the board's own,
+so `width` is a property of each video board — see [Boards](boards.md).)
 
 | Key | |
 |---|---|
 | `focus` | whether the video window comes to the front and takes keyboard focus when it opens. Default `false` |
-| `scaling` | window size, as a whole-number multiple of the board's pixels: `auto` (default, fills about 70% of the screen) or a fixed number like `4` |
 | `keyboard` | whether a focused window's keystrokes reach the machine's console: `console` (default) or `none` (display-only). See below |
 
 With `focus = false` — the default — the terminal keeps the keyboard. The window opens behind
@@ -403,11 +403,9 @@ With `focus = true` the window comes to the front when it opens and keeps the ke
 guest stops. That is what a **Sol-20** wants, because there the window *is* the console and the
 terminal is the back door.
 
-`scaling` opens the window at a whole-number multiple of the board's own pixels, so a low-res 1970s
-frame stays a crisp grid instead of a blur. `auto` (the default) picks the largest multiple that
-fits about 70% of the screen — so a Dazzler's tiny 64×64 frame and a VDM-1's 512-wide one open at a
-similar size — and a fixed number like `scaling = 4` is honored (brought down only if it would not
-fit the display).
+How *big* the window opens is set per video board, not here — see the `width` property in
+[Boards](boards.md). Each board's video-out could drive its own monitor on a real Altair, so the
+size belongs to the board whose picture it frames.
 
 `keyboard` decides whether a video window is a *keyboard* at all — which is separate from whether it
 has focus. Default `console`: a focused window is a keyboard, and its keys join the terminal's on the

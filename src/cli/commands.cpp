@@ -243,6 +243,7 @@ static const std::vector<CommandDef> kCommands = {
      "boards, and they take settings the same way.\n"
      "  SET mem0 fill=zero\n"
      "  SET mem0 phantom=read\n"
+     "  SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)\n"
      "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal"},
     {"SHOW", true, nullptr,
      "SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|"

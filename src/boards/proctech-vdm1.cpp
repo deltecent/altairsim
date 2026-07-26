@@ -174,6 +174,7 @@ bool VdmBoard::blinkOn() const {
 
 void VdmBoard::render() {
     const int w = kCols * kCellW, h = kRows * kCellH;  // 512 x 208
+    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
     Surface* s = g_display->acquire(w, h, PixelFormat::Indexed8);
     if (!s) return;
 
@@ -300,6 +301,7 @@ std::vector<Property> VdmBoard::properties() {
         };
         p.push_back(std::move(x));
     }
+    p.push_back(Display::widthProperty(videoWidth_));
     return p;
 }
 

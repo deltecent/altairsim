@@ -166,6 +166,7 @@ private:
     // ---- switches (SW/jumpers, reference 6) ----
     bool    reverse_    = false;  // whole-screen video polarity
     uint8_t cursorMode_ = 1;      // 0 = off, 1 = blink (the board default), 2 = steady
+    int     videoWidth_ = 0;      // host window width in px, 0 = auto (~half the screen)
 
     // The keyboard-interrupt strap (E17 -> E13-E16). `none` = polled (the board default);
     // a VI line = the keyboard strobe raises that S-100 vectored-interrupt line while a

@@ -325,6 +325,7 @@ boards, and they take settings the same way.
 ```
 SET mem0 fill=zero
 SET mem0 phantom=read
+SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)
 SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
 ```
 

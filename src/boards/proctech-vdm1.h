@@ -108,6 +108,7 @@ private:
     uint8_t  scroll_ = 0;       // top character row (low 4 bits of the last OUT)
     bool     reverse_ = false;  // SW1/SW2 -- whole-screen video polarity
     uint8_t  cursorMode_ = 1;   // 0 = off, 1 = blink, 2 = steady (SW3/SW4)
+    int      videoWidth_ = 0;   // host window width in px, 0 = auto (~half the screen)
 
     // The status one-shot (D0): high until this Clock deadline passes. A T-state
     // count, so it is deterministic and replay-safe -- derived from emulated time,

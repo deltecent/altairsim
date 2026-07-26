@@ -1661,6 +1661,43 @@ void test_achieved_hz() {
         Display::setFocusPolicy(false);  // a process-wide setting: put it back
     }
 
+    SECTION("a video board's window width is its own, in pixels (per-board, not [display])");
+    {
+        // Patrick went looking for this on the board, and a real Altair has one video-out
+        // cable per board -> its own monitor. So `width` lives on the video board, parsed
+        // through the same Property layer as everything else. The window math is untestable
+        // without a display (host/display_sdl.cpp), but the property round-trip is not.
+        Machine     mv;
+        std::string err;
+        Board*      vdm = mv.add("vdm1", "vdm0", err);
+        CHECK(vdm != nullptr, "a VDM-1 goes in");
+
+        Monitor            monV(mv);
+        std::ostringstream sv;
+
+        monV.exec("SET vdm0 width=1024", sv);
+        sv.str("");
+        monV.exec("SHOW vdm0", sv);
+        CHECK(sv.str().find("width") != std::string::npos, "SHOW names the width knob");
+        CHECK(sv.str().find("1024") != std::string::npos, "and reports the pixels set");
+
+        sv.str("");
+        monV.exec("SET vdm0 width=auto", sv);
+        sv.str("");
+        monV.exec("SHOW vdm0", sv);
+        CHECK(sv.str().find("auto") != std::string::npos, "auto restores the default");
+
+        // Out of range and non-numeric are refused by the same layer, and the message names
+        // the range in pixels -- so a width the window could never honor never reaches it.
+        sv.str("");
+        monV.exec("SET vdm0 width=1", sv);
+        CHECK(sv.str().find("128 to 8192") != std::string::npos,
+              "a too-small width is refused, with the pixel range");
+        sv.str("");
+        monV.exec("SET vdm0 width=nope", sv);
+        CHECK(sv.str().find("128 to 8192") != std::string::npos, "and so is a non-number");
+    }
+
     SECTION("SET BUS UNCLAIMED -- the floating-bus diagnostic, from the CLI (DESIGN.md 4.6.1)");
     {
         // A guest that OUTs to a port no board decodes, then HLTs: OUT FE ; HLT. Each

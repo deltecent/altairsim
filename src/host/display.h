@@ -221,6 +221,18 @@ public:
     // expected to remember it and use it when it does.
     virtual void setTitle(const std::string&) {}
 
+    // RUNNING, OR STOPPED AT THE MONITOR? A windowed host says so in the title bar,
+    // because a stopped guest keeps its last frame on screen (the window is not closed
+    // when the guest stops -- see closeWindow/takeQuitRequest) and a frozen picture with
+    // no word for it reads as a machine that hung. The run loop calls setRunning(true) as
+    // it starts the guest and setRunning(false) when it hands the operator back the
+    // monitor, next to setTitle() and yieldFocus() -- the same run/stop boundaries.
+    //
+    // Composes with setTitle(): the host holds both the machine name and this flag and
+    // rebuilds "AltairSim -- <name> -- simulator stopped" from them. Base does nothing,
+    // so headless builds and tests never notice.
+    virtual void setRunning(bool) {}
+
     // TAKE WHATEVER THE OPERATOR HAS DONE TO THE WINDOW SINCE LAST TIME: keys pressed,
     // the close box clicked. Keystrokes go to the key sink, a close request is
     // remembered for takeQuitRequest(), and the host's own event queue is emptied,
@@ -311,19 +323,26 @@ public:
     static bool focusPolicy() { return focusPolicy_; }
     static void setFocusPolicy(bool on) { focusPolicy_ = on; }
 
-    // ---- HOW BIG THE WINDOW OPENS, as a whole-number multiple of the board's pixels ----
+    // ---- HOW WIDE THE WINDOW OPENS, in pixels; height follows the frame's aspect ----
     //
-    // 0 means AUTO: the back end picks the largest multiple that keeps the window near 70%
-    // of the usable screen, so a 64x64 Dazzler frame and a 512-wide VDM-1 frame open at a
-    // similar size instead of one being a sixth of the other. A positive value is a fixed
-    // multiple the operator asked for (still brought down if it would not fit the display).
+    // 0 means AUTO: the back end opens the window about half the usable screen WIDTH, so a
+    // 64x64 Dazzler frame and a 512-wide VDM-1 frame land near the same size instead of one
+    // being a sixth of the other. A positive value is a target width the board asked for
+    // (still brought down if it would not fit the display).
     //
-    // WHOLE MULTIPLES ONLY, and that is the point of an integer: nearest-neighbor scaling
-    // keeps a 1970s pixel a crisp square, and a fractional scale would blur it. Static and
-    // session-wide for the same reasons focusPolicy_ is -- one operator, one desktop, and
-    // it must answer before any window exists (a machine file sets it in [display]).
-    static int  windowScale() { return scale_; }
-    static void setWindowScale(int s) { scale_ = s; }
+    // The height is not a separate knob -- it comes off the width, because the picture is
+    // presented at a WHOLE-number multiple of the board's own pixels, chosen as the largest
+    // that fits the target width. Whole multiples are the point: nearest-neighbor scaling
+    // keeps a 1970s pixel a crisp square, and a fractional scale would blur it. The leftover
+    // is a thin letterbox (kBorder). See SdlDisplay::ensureWindow().
+    //
+    // This is the sizing MECHANISM, not a user setting: `width` is a per-video-board property
+    // (Display::widthProperty), and the board hands its choice here just before it draws.
+    // Static and session-wide for the same reason focusPolicy_ is -- there is one host window
+    // today, and it must answer before that window exists. (A window per board is future work
+    // -- see TODO.md; that is why width arrives from the drawing board rather than [display].)
+    static int  windowWidth() { return width_; }
+    static void setWindowWidth(int px) { width_ = px; }
 
     // ---- IS THE VIDEO WINDOW A CONSOLE KEYBOARD, OR A DISPLAY-ONLY SURFACE? ----
     //
@@ -351,6 +370,14 @@ public:
     // reason the policy is: this answers even in a build with no video at all, so a
     // machine file that asks for it is not a machine file that fails to load.
     static std::vector<Property> properties();
+
+    // A video board's window-WIDTH knob, bound to the board's own int slot (0 = auto).
+    // Each video board pushes one of these into its own properties() so `SET vdm1 width=`,
+    // `[vdm1] width=` and SHOW/CONFIG SAVE all work with no per-board parsing -- and so the
+    // width lives where the operator looks for it (on the board whose picture it sizes),
+    // not on [display]. The board hands the stored value to setWindowWidth() before it
+    // draws; see windowWidth(). 'auto' opens ~half the screen wide, a number is pixels.
+    static Property widthProperty(int& slot);
 
 protected:
     // A subclass that captures keystrokes calls this to hand them off; a no-op when
@@ -388,8 +415,9 @@ private:
     // header-only for everyone who only draws into it.
     static inline bool focusPolicy_ = false;
 
-    // The session's window-scale preference; see windowScale(). 0 = auto.
-    static inline int scale_ = 0;
+    // The window-width preference the drawing board last handed us; see windowWidth().
+    // Pixels; 0 = auto (~half the screen wide).
+    static inline int width_ = 0;
 
     // Whether the video window's keys go to the console; see keyboardToConsole().
     static inline bool keyboardToConsole_ = true;
@@ -414,37 +442,6 @@ inline std::vector<Property> Display::properties() {
     }
     {
         Property x;
-        x.name = "scaling";
-        x.help = "Window size, as a whole-number multiple of the board's pixels: 'auto' fits "
-                 "about 70% of the screen (default), or a fixed number like 4. The window is "
-                 "never larger than the display, and always a whole multiple so pixels stay crisp";
-        x.kind = Kind::Str;
-        x.get  = [] {
-            return Value::ofStr(scale_ == 0 ? std::string("auto") : std::to_string(scale_));
-        };
-        x.set  = [](const Value& v, std::string& err) {
-            std::string s = v.s();
-            for (char& c : s) c = (char)std::tolower((unsigned char)c);
-            if (s == "auto") { scale_ = 0; return true; }
-            int n = 0;
-            bool any = false;
-            for (char c : s) {
-                if (c < '0' || c > '9') { any = false; break; }
-                n = n * 10 + (c - '0');
-                any = true;
-                if (n > 99) break;
-            }
-            if (!any || n < 1 || n > 32) {
-                err = "scaling must be 'auto' or a whole number from 1 to 32";
-                return false;
-            }
-            scale_ = n;
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
-    {
-        Property x;
         x.name    = "keyboard";
         x.help    = "Where the video window's keystrokes go: 'console' (the window is a "
                     "keyboard, like a Sol-20) or 'none' (display-only, like a Dazzler -- keys "
@@ -459,6 +456,41 @@ inline std::vector<Property> Display::properties() {
         p.push_back(std::move(x));
     }
     return p;
+}
+
+// The `width` property a video board carries -- see the declaration above. The value lives
+// in the board (the `slot` reference), so two video boards each remember their own; the
+// board hands it to Display::setWindowWidth() when it draws.
+inline Property Display::widthProperty(int& slot) {
+    Property x;
+    x.name = "width";
+    x.help = "Video window width in pixels: 'auto' (default) opens about half the screen "
+             "wide, or a number like 1024. The height follows the board's own aspect, and "
+             "the picture is a whole multiple of its pixels so it stays crisp";
+    x.kind = Kind::Str;
+    x.get  = [&slot] {
+        return Value::ofStr(slot == 0 ? std::string("auto") : std::to_string(slot));
+    };
+    x.set  = [&slot](const Value& v, std::string& err) {
+        std::string s = v.s();
+        for (char& c : s) c = (char)std::tolower((unsigned char)c);
+        if (s == "auto") { slot = 0; return true; }
+        int n = 0;
+        bool any = false;
+        for (char c : s) {
+            if (c < '0' || c > '9') { any = false; break; }
+            n = n * 10 + (c - '0');
+            any = true;
+            if (n > 99999) break;
+        }
+        if (!any || n < 128 || n > 8192) {
+            err = "width must be 'auto' or a whole number of pixels from 128 to 8192";
+            return false;
+        }
+        slot = n;
+        return true;
+    };
+    return x;
 }
 
 } // namespace altair

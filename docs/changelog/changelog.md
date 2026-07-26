@@ -8,6 +8,23 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### The video window resizes proportionally and shows when the machine has stopped
+
+A video window now opens locked to its picture's aspect ratio, so dragging any corner — the
+first drag included — resizes it proportionally and the picture fills the new size without
+snapping back on the next redraw. While the machine is halted the title bar reads
+**"simulator stopped"**, and clears again the moment it runs.
+
+### The video window's size is now a per-board `width`, in pixels
+
+How big a video window opens is set with a **`width`** property on the video board itself
+(`SET vdm0 width=1024`, or `width = 1024` in the board's table) rather than the old
+`[display] scaling`. It is a width in **pixels** — `auto`, the default, opens the window about
+**half the screen wide** — and the **height follows the board's own aspect**, so you size one
+axis and the other comes with it. The picture is still drawn at a whole-number multiple of the
+board's pixels, so a 1970s frame stays a crisp grid. `width` lives on the board because on real
+hardware each board has its own video-out; the old `[display] scaling` key is gone.
+
 ### CUTS tapes the simulator writes now load on a real Sol-20
 
 A `.WAV` the Sol records is now built the way a real Sol's cassette modem builds it — a

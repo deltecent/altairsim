@@ -1198,7 +1198,10 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // because CONFIG LOAD replaces the machine -- and it can do that with the window
     // still open, showing the machine that has just been thrown away (host/display.h).
     // Null headless, and a no-op on a machine that never opens a window.
-    if (g_display) g_display->setTitle(m_.name);
+    if (g_display) {
+        g_display->setTitle(m_.name);
+        g_display->setRunning(true);  // clears any "simulator stopped" from the last stop
+    }
 
     RunResult r;
     uint64_t lastWritten = con.written();
@@ -1467,7 +1470,10 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // you click it, because it IS a keyboard -- the prompt below would otherwise be
     // printed somewhere the next keystroke will not go (host/display.h). Costs nothing
     // and does nothing on a machine with no window, and on every host but macOS.
-    if (g_display) g_display->yieldFocus();
+    if (g_display) {
+        g_display->yieldFocus();
+        g_display->setRunning(false);  // the guest is stopped; say so on the frozen frame
+    }
 
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
