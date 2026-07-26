@@ -572,6 +572,10 @@ add_executable(altair_tests
   tests/test_hostbridge.cpp
   tests/test_mcp.cpp)
 target_link_libraries(altair_tests PRIVATE altair_core)
+# A couple of sections mount a real committed disk image (the SDOS video boot in
+# test_vdb8024.cpp); `ctest` runs `unit` from the build tree, so give it the source root
+# to resolve those paths -- the same trick as altair_cputest's ALTAIR_CPU_TEST_DIR.
+target_compile_definitions(altair_tests PRIVATE ALTAIR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME unit COMMAND altair_tests)
 
 # ---------------------------------------------------------------------------

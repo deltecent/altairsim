@@ -64,6 +64,11 @@ public:
     bool    assertsInt() const override;
     uint8_t assertsVi() const override { return 0; }
 
+    // The CTC's keyboard channel can be triggered from OFF this card -- a VDB-8024 video
+    // console pulls an S-100 VI line -- so the card watches the VI wires and re-derives
+    // /INT when they move (the bus calls intChanged() for a watcher). See ch1Triggered().
+    bool    watchesVi() const override { return true; }
+
     // THE ONBOARD PROM SHADOWS RAM while it is switched in -- reads come from the PROM,
     // writes fall through to the RAM under it (which is why the RAM card is
     // honors_phantom = read). The same mechanism as the Turnkey boot PROM.
@@ -137,6 +142,14 @@ private:
         uint8_t ch1Vector() const { return (uint8_t)(vectorBase_ | 0x02); }
     };
     Ctc ctc_;
+
+    // Is the CTC's keyboard channel (ch1) being triggered? On this card ch1 is "the
+    // console keyboard channel": in the serial build the trigger is the 8251's own RxRDY;
+    // in the video build (a VDB-8024 console) the keyboard strobe arrives on an S-100 VI
+    // line -- reference/SD Systems SBC-100 & SBC-200.md 6 straps CTC ch1 <- VI2, and the
+    // VDB pulls that line while a key waits. Either source arms the same mode-2 interrupt,
+    // whose vector (base|2, so 0x82 serial / 0x02 video) we supply on IntAck.
+    bool ch1Triggered() const;
 
     // Which board this is strapped as. The serial section is the same 8251 either way;
     // the memory switch-out is present on both here (harmless on a real SBC-100, which

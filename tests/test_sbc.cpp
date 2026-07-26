@@ -2,10 +2,12 @@
 
 #include "boards/s100-memory.h"
 #include "boards/sd-sbc.h"
+#include "boards/sd-vdb8024.h"
 #include "chips/intel8251.h"
 #include "core/clock.h"
 #include "core/machine.h"
 #include "core/statefile.h"
+#include "host/display_null.h"
 #include "host/stream.h"
 
 #include <memory>
@@ -428,5 +430,73 @@ void test_sbc() {
         CHECK(m.bus.memRead(0xE000) == 0x99, "switched out again");
         m.reset(Reset::Bus);
         CHECK(m.bus.memRead(0xE000) == 0xC3, "a reset switched the onboard PROM back in");
+    }
+
+    SECTION("SBC + VDB-8024 -- the video keyboard interrupt: a VDB key raises CTC vector 0x02");
+    {
+        // THE VIDEO CONSOLE'S KEYBOARD IS INTERRUPT-DRIVEN. The SD video build of SDOS (and
+        // SD CP/M's video console) runs console input under Z80 mode-2 interrupts: the
+        // VDB-8024's keyboard strobe is strapped to S-100 VI2, and the SBC-200's CTC turns
+        // that into the mode-2 vector 0x02 the CBIOS ISR is hung on. Unlike the serial
+        // console (the 0x82 case above), the trigger crosses TWO boards -- the VDB pulls the
+        // VI line, the SBC's CTC vectors it. This pins that whole path without booting: strap
+        // the VDB, latch a key, arm the CTC the way the video CONIO does, and watch /INT rise,
+        // the acknowledge hand back 0x02, and the ISR's IN 01H clear it.
+        Machine     m;
+        NullDisplay disp;
+        Vdb8024Board::setDisplay(&disp);
+        std::string err;
+        m.bus.setVerify(true);  // re-derive pin 73 every cycle -- catch a missing intChanged()
+
+        auto* sbc = dynamic_cast<SbcBoard*>(m.add("sbc", "sbc0", err));
+        CHECK(sbc != nullptr, "the SBC-200 (its CTC) is in the machine");
+
+        auto* vdb = dynamic_cast<Vdb8024Board*>(m.add("vdb8024", "vdb0", err));
+        CHECK(setProperty(*vdb, "interrupt", "vi2", err), "the VDB keyboard straps to VI2");
+        CHECK(vdb->connect("keyboard", "scripted", err), "its keyboard binds to a scripted line");
+        auto* kbd = dynamic_cast<ScriptedStream*>(vdb->unitStream("keyboard"));
+
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region rr;
+        rr.kind = RegionKind::Ram;
+        rr.at   = 0;
+        rr.size = 0x10000;
+        mem->addRegion(rr, err);
+        setProperty(*mem, "fill", "zero", err);
+
+        m.add("z80", "cpu0", err);
+        setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
+        m.power();
+
+        // A key waits at the VDB (it pulls VI2), but the CTC is not armed yet: no interrupt.
+        kbd->feed("D");
+        vdb->pump();  // the keyboard is latched in pump(), never in a bus cycle
+        CHECK((vdb->statusByte() & 0x02) != 0, "the VDB latched the key (status D1)");
+        CHECK(!m.bus.intPending(), "but with CTC ch1 unarmed, VI2 alone raises no interrupt");
+
+        // The video CONIO arming: vector base 0x00 to CTC ch0 (D0=0), then ch1 control word
+        // 0xC7 (counter, interrupt-enable D7, time-constant follows) + the time constant.
+        m.bus.ioWrite(0x78, 0x00);  // CTC ch0: interrupt vector base 0x00
+        m.bus.ioWrite(0x79, 0xC7);  // CTC ch1: counter, interrupt-enable (D7), TC follows
+        m.bus.ioWrite(0x79, 0x01);  // CTC ch1: time constant
+        CHECK(m.bus.intPending(), "ch1 armed and a key waiting on VI2: /INT is asserted");
+        CHECK(m.bus.intAck() == 0x02, "the IntAck hands back vector 0x02 (base 0x00 | ch1<<1)");
+        CHECK(m.bus.ioRead(0x01) == 'D', "the ISR reads the VDB keyboard port (IN 01H)...");
+        CHECK(!m.bus.intPending(), "...which drops the strobe, so VI2 falls and /INT with it");
+
+        // A second key raises it again -- the level re-arms on its own, no EOI needed.
+        kbd->feed("E");
+        vdb->pump();
+        CHECK(m.bus.intPending(), "the next keystroke raises /INT again");
+        CHECK(m.bus.intAck() == 0x02, "...with the same vector");
+        CHECK(m.bus.ioRead(0x01) == 'E', "...and the ISR reads the second byte");
+
+        // Unstrapped (interrupt = none, the board default), the keyboard is POLLED: a key
+        // still shows in status D1, but it pulls no VI line, so it never interrupts.
+        CHECK(setProperty(*vdb, "interrupt", "none", err), "unstrap the keyboard interrupt");
+        kbd->feed("F");
+        vdb->pump();
+        CHECK((vdb->statusByte() & 0x02) != 0, "the key is still there to be polled");
+        CHECK(!m.bus.intPending(), "but polled, the VDB raises no interrupt (SDMONV21's world)");
     }
 }

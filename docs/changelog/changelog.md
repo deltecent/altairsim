@@ -23,6 +23,19 @@ switch-out**: `cpm.toml` is a full **64K** machine whose monitor and DDBIOS live
 and the switch-out are proven end to end — the acceptance test types `DIR` and reads the directory
 back, which only works if every link in that chain does.
 
+### SDOS boots on the video console — with its interrupt keyboard
+
+`altairsim examples/sdsys/sdosv.toml` cold-boots **SDOS on the VDB-8024 video console** instead of
+the serial port. It looks like the serial `sdos.toml`, but it exposes the same lesson CP/M did, one
+board over: the [SDMONV21](../boards/sd-sbc.md) monitor *polls* the video keyboard, so it boots and
+takes the `C` command with no interrupt at all — but SDOS's **video CBIOS runs console input under a
+Z80 mode-2 interrupt**, and until now a booted OS never saw a key on the video console. The
+[VDB-8024](../boards/sd-vdb8024.md) now carries the authentic keyboard-strobe **interrupt strap**
+(`interrupt = vi2`): each keystroke raises S-100 **VI2**, the SBC-200's **Z80-CTC** turns that into
+the mode-2 vector `0x02`, and the CBIOS keyboard ISR reads the byte — the video twin of the serial
+console's `0x82` path. It is proven end to end: a test boots the real SDOS master off the VersaFloppy
+and types a command that can only echo back if that whole VI2 → CTC → ISR chain works.
+
 ### A video console: the SD Systems VDB-8024
 
 `BOARDS ADD vdb8024` puts an **SD Systems VDB-8024** in the backplane — an **80×24 video terminal

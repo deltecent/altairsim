@@ -1,0 +1,45 @@
+# SD Systems SBC-200 + VDB-8024 VIDEO console + VersaFloppy II -- boots SDOS.
+#
+#     cd examples/sdsys
+#     altairsim sdosv.toml
+#     .                      <- the monitor prompt, ON THE VIDEO SCREEN (no Enter needed)
+#     C                      <- cold-boot SDOS from drive A
+#
+#     32K SD-OS Version 1.8B
+#     DELTEC ENTERPRISES LLC
+#
+#     [A]                    <- the SDOS prompt; type at the video window
+#
+# This is the VIDEO twin of sdos.toml. Instead of the 8251 serial console it uses the SD
+# Systems VDB-8024 video board and the SDMONV21 monitor (the "VDM Console" build), so the
+# `.` prompt lands on an 80x24 screen and there is no auto-baud -- see sbc200v.toml.
+#
+# WHY THE KEYBOARD IS INTERRUPT-DRIVEN HERE. The monitor polls the VDB keyboard, but SDOS
+# does not: its video CBIOS runs console input under a Z80 mode-2 interrupt. The VDB's
+# keyboard strobe is strapped to S-100 VI2 (set in the base machine), the SBC-200's Z80-CTC
+# turns that into the mode-2 vector 0x02, and the CBIOS keyboard ISR reads the byte. Boot
+# it and the monitor takes `C` (polled), but once SDOS is up every key you type reaches it
+# through that interrupt -- the CTC on the SBC card is what makes it work.
+#
+# This builds on the sbc200v machine (the 4 MHz Z80, the VDB-8024 console + its VI2 strap,
+# the SDMONV21 monitor at E000, the DDBIOS at F000, and the SBC-200's CTC) and adds the
+# VersaFloppy II with the SDOS master in drive A. The monitor's C/R/W/Z commands drive it.
+
+[machine]
+name = "sdosv"
+base = "sbc200v"
+
+# THE VERSAFLOPPY II -- a WD FD1791 soft-sector floppy controller at the standard 60H
+# port block. The DDBIOS drives it; `C` at the monitor prompt cold-boots SDOS.
+[[board]]
+type    = "versafloppy"
+id      = "vf0"
+variant = "vfii"
+port    = 60
+
+  # Drive A: the bootable SDOS master, the VIDEO build (8" single-sided double-density,
+  # 256-byte sectors, 26 sectors x 77 tracks, sysgen'd for a 32K system). Mounted
+  # read/write; `git checkout` restores the master if you want it pristine.
+  [[board.drive]]
+  unit  = 0
+  mount = "SDOS-18B-SSDDV-256-32K.DSK"

@@ -56,9 +56,17 @@ are invisible. So `Vdb8024Board` models the **host-visible terminal**, not the 5
   glyphs from `sd-vdb8024-font.h`, cursor blink off `Display::hostSeconds()`). It never touches
   SDL; a headless build renders into a `NullDisplay` and a test reads the grid back with
   `screenText()`.
-- **Interrupts / DMA:** none. The host polls; the keyboard→VI strap is a later phase.
+- **Interrupts:** the optional **keyboard-strobe strap** (reference §6: E17→E13-E16). By default
+  the host polls status D1. Strapped to a VI line (`interrupt = vi0..vi7`), the board pulls that
+  S-100 vectored-interrupt line while a key waits — `assertsVi()` returns the strapped bit, and the
+  read of port 01 (the ISR's `IN 01H`) drops it, the implicit end-of-interrupt. The board never
+  makes the **vector**: on the real machine the SBC-200's Z80-CTC does, and here the `sbc` board
+  does the same (`ch1Triggered()` watches VI2, hands back mode-2 vector `0x02` on IntAck). This is
+  what the SD **video CBIOS** needs — the monitor polls, but a booted OS runs the keyboard on the
+  interrupt. **DMA:** none.
 - **`properties()`:** `port` (the base, fixed at 00 in fact), `cursor` (off/blink/steady), `video`
-  (normal/reverse). Unit `keyboard` carries `connect`.
+  (normal/reverse), `interrupt` (the keyboard-strobe VI strap, default `none`). Unit `keyboard`
+  carries `connect`.
 
 ### Reset
 

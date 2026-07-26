@@ -64,10 +64,13 @@ public:
     uint8_t read(const BusCycle& c) override;
     void    write(const BusCycle& c) override;
 
-    // Interrupts are a later phase (the keyboard-strobe -> S-100 vectored-interrupt
-    // strap, reference 6); the host polls status by default and that is all we model.
+    // The board never pulls pin 73 directly -- its optional keyboard interrupt is a
+    // VECTORED one. When strapped (reference 6: E17 -> one of E13-E16 = VI0-VI3), the
+    // keyboard strobe raises an S-100 VI line, which an interrupt controller elsewhere
+    // (the SBC-200's Z80-CTC) turns into a Z80 mode-2 vector. The SD video CBIOS runs
+    // its keyboard on exactly this path; polled is the default (`interrupt = none`).
     bool    assertsInt() const override { return false; }
-    uint8_t assertsVi() const override { return 0; }
+    uint8_t assertsVi() const override;
 
     void reset(Reset) override;
     void power() override;
@@ -163,6 +166,13 @@ private:
     // ---- switches (SW/jumpers, reference 6) ----
     bool    reverse_    = false;  // whole-screen video polarity
     uint8_t cursorMode_ = 1;      // 0 = off, 1 = blink (the board default), 2 = steady
+
+    // The keyboard-interrupt strap (E17 -> E13-E16). `none` = polled (the board default);
+    // a VI line = the keyboard strobe raises that S-100 vectored-interrupt line while a
+    // byte is waiting, for the SBC-200's CTC to vector on. `int` (raw pin 73) is not a
+    // real option on this board -- the keyboard interrupt is vectored -- but viBit() maps
+    // it to nothing, so a stray strap to it simply does not interrupt.
+    IrqJumper kbIrq_ = IrqJumper::None;
 
     // ---- the keyboard holding register + strobe (status D1) ----
     std::unique_ptr<ByteStream> kb_;  // never null -- a NullStream stands in
