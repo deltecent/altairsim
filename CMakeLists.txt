@@ -1070,6 +1070,23 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # SD Systems CP/M 2.2 off the same VersaFloppy II -- but with the SBC-200's INTERRUPTS.
+  #
+  # Where SDOS polls the keyboard, this CP/M's CBIOS takes console input ONLY through a Z80
+  # mode-2 vectored interrupt (the 8251 RxRDY triggering CTC channel 1, vector 0x82) -- so
+  # typing `DIR` and getting the directory back is the whole interrupt path proven end to end.
+  # It also exercises the onboard-PROM switch-out (OUT 7F,3) of the authentic 64K single-board
+  # machine. Same write-protected discipline as acceptance-sdos.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-cpm-sbc
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cpm.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-cpm-sbc PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
   #
   # It used to. armWrite() saw readOnly() and returned without setting writing_, so ENWD --

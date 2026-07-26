@@ -1,0 +1,93 @@
+#!/usr/bin/expect -f
+#
+# SD SYSTEMS CP/M 2.2 BOOTS off a VersaFloppy II -- and its keyboard is INTERRUPT-DRIVEN.
+# This is the thing SDOS does not exercise (sdos.exp) and the reason the SBC-200 grew a
+# Z80-CTC and a mode-2 vectored interrupt: the CP/M CBIOS (CONIO) takes console input ONLY
+# through the keyboard interrupt, so nothing you type reaches CP/M unless that whole path
+# works -- the 8251 RxRDY triggering CTC channel 1, the card claiming the IntAck cycle with
+# vector 0x82, and the ISR at FF82 reading the data port. Typing `DIR` and getting the
+# directory back is that path, end to end.
+#
+# It also exercises the PROM switch-out: this is a full 64K machine whose monitor and DDBIOS
+# live in the SBC's onboard PROM shadowing RAM, and CP/M's cold boot does `OUT 7F,3` to drop
+# the PROM out so it can run from the 64K underneath.
+#
+# IT HAS TO BE AN EXPECT TEST, for the same two reasons as sdos.exp -- the auto-baud needs a
+# start bit in emulated time (only a tty paces to clock_hz), and a pipe cannot type `C`/`DIR`
+# at a guest. And, per ps2-int.exp: DO NOT TYPE INTO A RACE -- wait for each response before
+# sending the next line, or a keystroke is lost and the test "proves" the interrupt failed.
+#
+# THE DISK MUST NOT MOVE. The fixture mounts it write-protected; taken before, checked after.
+#
+# usage: expect -f cpm.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/sdsys/SD-CPM22R4-SSDDR-256-64K.DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/cpm.toml
+
+# The console comes up; nothing prints until we present a CR for the auto-baud.
+expect {
+    -ex "returns to the monitor" {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: the console never came up"; exit 1 }
+}
+
+# THE AUTO-BAUD. Send a CR; the monitor times its start bit and prints its `.` prompt.
+send "\r"
+expect {
+    -ex "." {}
+    eof     { puts "FAIL: died before the monitor prompt"; exit 1 }
+    timeout { puts "FAIL: the monitor never auto-bauded -- no `.` prompt after the CR"; exit 1 }
+}
+
+# COLD-BOOT CP/M from drive A. The DDBIOS reads the boot sector, the cold booter switches
+# the PROM out with OUT 7F, loads CP/M high, and signs on.
+send "C\r"
+expect {
+    -ex "CP/M vers 2.2" {}
+    eof     { puts "FAIL: the machine died booting CP/M"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted off the VersaFloppy (no sign-on)"; exit 1 }
+}
+
+# ...AND IT REACHES ITS PROMPT. `A>` is CP/M live and waiting on drive A.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M signed on but never reached the `A>` prompt"; exit 1 }
+}
+
+# THE INTERRUPT PATH, END TO END. Type DIR. Every keystroke reaches CP/M ONLY through the
+# CTC/8251 mode-2 keyboard interrupt; the directory coming back is proof the whole path
+# works. MOVCPM.COM is on the master.
+send "DIR\r"
+expect {
+    -ex "MOVCPM" {}
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR produced no directory -- the keyboard interrupt did not deliver\
+                     the keystrokes"; exit 1 }
+}
+
+# ...and DIR returned to the prompt.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: DIR listed files but the console did not return to the prompt"; exit 1 }
+    timeout { puts "FAIL: DIR listed files but never came back to `A>`"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: CP/M 2.2 cold-booted off the VersaFloppy II to its A> prompt, DIR ran through the\
+      keyboard interrupt, and the master is byte-identical."
+exit 0

@@ -20,7 +20,7 @@ printed in each property's own base.
 | [`z80`](#z80) | Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core |
 | [`2sio`](#2sio) | MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3 |
 | [`sio`](#sio) | MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits |
-| [`sbc`](#sbc) | SD Systems SBC-100/200: Z80 SBC console. Intel 8251 USART, unit 'tty'; data at 7C, status/command at 7D. RxD->/DSR auto-baud for MSMONR21. variant=sbc100\|sbc200 |
+| [`sbc`](#sbc) | SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Intel 8251 console (unit 'tty', data 7C / status 7D, RxD->/DSR auto-baud for MSMONR21), Z80-CTC (78-7B) whose ch1 raises a mode-2 keyboard interrupt (vector 0x82) off the 8251 RxRDY, and a parallel port (7E/7F) whose OUT 7F bit 1 switches the onboard PROM out. Optional onboard boot PROM via [[board.socket]] (at+mount). variant=sbc100\|sbc200 |
 | [`dcdd`](#dcdd) | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers |
@@ -157,15 +157,22 @@ MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED stat
 
 ## `sbc`
 
-SD Systems SBC-100/200: Z80 SBC console. Intel 8251 USART, unit 'tty'; data at 7C, status/command at 7D. RxD->/DSR auto-baud for MSMONR21. variant=sbc100|sbc200
+SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Intel 8251 console (unit 'tty', data 7C / status 7D, RxD->/DSR auto-baud for MSMONR21), Z80-CTC (78-7B) whose ch1 raises a mode-2 keyboard interrupt (vector 0x82) off the 8251 RxRDY, and a parallel port (7E/7F) whose OUT 7F bit 1 switches the onboard PROM out. Optional onboard boot PROM via [[board.socket]] (at+mount). variant=sbc100|sbc200
 
 **Units:** `tty` (serial)
+
+### `[[board.socket]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `at` | int | any | Where the socket sits in the onboard window (E000 = monitor, F000 = disk BIOS) |
+| `mount` | string | text | What is in the socket: builtin:<name> or a HEX/BIN path. Relative to THIS FILE. |
 
 ### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `variant` | enum | `sbc200` | `sbc100` \| `sbc200` | Which board: sbc100 (2.4576 MHz) or sbc200 (4 MHz). Inert in this phase -- the serial section is the same 8251 on both |
+| `variant` | enum | `sbc200` | `sbc100` \| `sbc200` | Which board: sbc100 (2.4576 MHz) or sbc200 (4 MHz). The console, CTC and PROM behave alike here; the CPU crystal is set on the z80 card |
 | `rxd2dsr` | bool | `true` | `on` \| `off` | RxD strapped to /DSR (the SBC auto-baud jumper). Off = a plain 8251 /DSR |
 | `port` | int | `0x7C` | `0x0` .. `0xFE` | Base I/O address (a card jumper). Data at BASE, status/command at BASE+1. The etch default is 7C |
 

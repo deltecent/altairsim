@@ -1,0 +1,54 @@
+# CP/M 2.2 boot acceptance fixture: the authentic single-board SBC-200 (onboard MSMONR21
+# + DDBIOS PROM over 64K RAM) + a VersaFloppy II with the SD Systems CP/M 2.2 master in
+# drive A, mounted READ-ONLY so the test can never dirty the tracked image (cpm.exp
+# shasums the disk to prove it). The shipped example (examples/sdsys/cpm.toml) mounts it
+# read/write instead -- this is the test's fixture, not the example.
+
+[machine]
+name    = "cpm-acceptance"
+startup = ["RUN E000"]
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:msmonr21"
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+
+[[board]]
+type    = "versafloppy"
+id      = "vf0"
+variant = "vfii"
+port    = 60
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/sdsys/SD-CPM22R4-SSDDR-256-64K.DSK"
+  writeprotect = true
