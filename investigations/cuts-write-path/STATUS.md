@@ -1,8 +1,7 @@
 # STATUS — CUTS write-path (altairsim-written WAVs fail on real hardware)
 
-**RESOLVED 2026-07-25. Fixed on branch `fix/cuts-write-waveform` and validated against the
-genuine dub on every measurable axis; a simulator-produced tape now awaits final confirmation
-on Mike's real Sol-20.**
+**CLOSED 2026-07-26. Fixed, validated against the genuine dub on every measurable axis, and
+CONFIRMED on Mike's real Sol-20: the simulator-produced `TRK80-H` WAV loaded on the hardware.**
 
 ## What it turned out to be — TWO independent failure modes
 
@@ -42,8 +41,9 @@ real Sol's exact symptom on the old output `F` (reads the header, then fails). T
 simulator-produced tape matches `Z` on all gates: 0% off-grid crossings, 36% peak, 3rd/5th
 harmonic content, energy round-trip, and the hardware-faithful decode — all EXACT.
 
-## Remaining step
+## Outcome
 
-Hand Mike the simulator-produced `TRK80` WAV (+ `Z` as control). On ✅ the doc caveat about
-written WAVs is fully retired. If — against the model — it still fails, `hwmodel.py`'s decoder
-is the oracle: diff the exact bit it misreads on the candidate vs `Z`.
+Mike loaded the simulator-produced `TRK80-H` WAV on his real Sol-20 on 2026-07-26 and it read
+clean, confirming the fix on hardware. The model held: `hwmodel.py`'s transition-timing decoder
+predicted the pass, and the tape matched the genuine dub `Z` on every gate. This investigation
+is closed and the write-path is shipping.

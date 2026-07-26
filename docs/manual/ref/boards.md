@@ -399,6 +399,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
+| `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
