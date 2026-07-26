@@ -41,10 +41,32 @@ search, I/O port access, breakpoints and single-step, and hex arithmetic. A few 
 Type `.` to abort a command back to the prompt. The full command set is in
 `reference/SD Systems Monitor.md`.
 
+## Booting SDOS
+
+`sdos.toml` adds a **VersaFloppy II** floppy controller with a bootable SDOS master disk in
+drive A. From the monitor prompt, `C` cold-boots the OS:
+
+```
+cd examples/sdsys
+altairsim sdos.toml
+(press Enter)   ->   .
+C               ->   cold-boot SDOS from drive A
+```
+
+```
+32K SD-OS Version 1.8B
+DELTEC ENTERPRISES LLC
+
+[A]
+```
+
+`[A]` is the SDOS prompt. The monitor's other disk commands work too: `R`/`W` read and write
+128/256-byte sectors, `Z` formats a diskette. The disk is `SDOS-18B-SSDDR-256-32K-MASTER.DSK`
+-- an 8" single-sided, double-density, 256-byte-sector image (26 sectors x 77 tracks),
+sysgen'd for a 32K system. It is mounted **read/write**, so SDOS can save files; run
+`git checkout` on it to restore the master if you change it.
+
 ## What is not here yet
 
-This example is the **serial console** of the SBC-200. The Z80-CTC baud generator, the
-parallel port, the SBC-200 memory switch-out, and a real **VersaFloppy** controller driven
-by the DDBIOS (so the monitor's `C`/`R`/`W` disk commands boot SDOS or CP/M) are later
-phases. For now the machine boots to the monitor prompt; the disk BIOS is present in EPROM
-at F000 but has no controller to talk to.
+The Z80-CTC baud generator, the parallel port, and the SBC-200 memory switch-out are later
+phases. The serial console and the VersaFloppy disk both work today.

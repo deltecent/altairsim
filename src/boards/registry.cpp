@@ -21,6 +21,7 @@
 #include "boards/proctech-vdm1.h"
 #include "boards/s100-memory.h"
 #include "boards/sd-sbc.h"
+#include "boards/sd-versafloppy.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-88sio.h"
 
@@ -49,6 +50,7 @@ std::vector<BoardType> boardTypes() {
         {"dcdd", "MITS 88-DCDD: 8\" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits"},
         {"mds", "MITS 88-MDS: 5.25\" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s"},
         {"hdsk", "MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers"},
+        {"versafloppy", "SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) | vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS"},
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter"},
         {"uio", "MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout"},
         {"c700", "MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file"},
@@ -76,6 +78,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "dcdd") return std::make_unique<DcddBoard>();
     if (type == "mds") return std::make_unique<MdsBoard>();
     if (type == "hdsk") return std::make_unique<HdskBoard>();
+    if (type == "versafloppy") return std::make_unique<VersaFloppyBoard>();
     if (type == "acr") return std::make_unique<AcrBoard>();
     if (type == "uio") return std::make_unique<UioBoard>();
     if (type == "c700") return std::make_unique<C700Board>();

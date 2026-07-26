@@ -4,7 +4,7 @@
 
 namespace altair {
 
-void Wd1771::serialize(StateWriter& w) const {
+void Wd17xx::serialize(StateWriter& w) const {
     w.u8(command_);
     w.u8(status_);
     w.u8(track_);
@@ -36,7 +36,7 @@ void Wd1771::serialize(StateWriter& w) const {
     w.u32((uint32_t)raCursor_);
 }
 
-void Wd1771::deserialize(StateReader& r) {
+void Wd17xx::deserialize(StateReader& r) {
     command_ = r.u8();
     status_  = r.u8();
     track_   = r.u8();
@@ -136,23 +136,22 @@ uint16_t crc16(const uint8_t* p, size_t n) {
 // one of them is a guess, and none of them is a magic constant in a header.
 // ---------------------------------------------------------------------------
 
-uint64_t Wd1771::msTStates(const Clock& clk, int ms) const {
+uint64_t Wd17xx::msTStates(const Clock& clk, int ms) const {
     return (uint64_t)(clk.hz() * (long long)ms / 1000);
 }
 
-// Table 1, STEPPING RATES. The FD1771's own crystal picks the column -- NOT the CPU's,
+// Table 1, STEPPING RATES. The FDC's own crystal picks the column -- NOT the CPU's,
 // which is why fdcClockHz is a strap and not clk.hz(). At 2 MHz (the Tarbell, which
-// halves a 4 MHz can) the rates are 6/6/10/20 ms; at 1 MHz they are 12/12/20/40.
+// halves a 4 MHz can) the FD1771's rates are 6/6/10/20 ms; at 1 MHz they double.
 //
-// THE 00 AND 01 ROWS ARE BOTH 6 ms. That is not a typo in this table and it is not a
-// typo in the data sheet -- the FD1771 really does give you the same rate for two
-// different codes. The WD1770 does not (6/12/20/30), and copying that chip's table
-// into this one is the single most likely way to end up with a controller that seeks
-// at the wrong speed while looking entirely correct. See wd17xx.h.
-uint64_t Wd1771::stepTStates(const Clock& clk) const {
-    static const int k2MHz[4] = {6, 6, 10, 20};
-    static const int k1MHz[4] = {12, 12, 20, 40};
-    const int* tbl = (fdcClockHz >= 2000000) ? k2MHz : k1MHz;
+// THE TABLE ITSELF IS THE PART'S, not the base's -- stepRatesMs() is a per-chip hook,
+// because the FD1771 and the FD1791 disagree (the 1771's 00/01 rows are BOTH 6 ms,
+// which is not a typo; the 179x's top rate is faster). And NEITHER is the WD1770's
+// 6/12/20/30 -- a different chip whose table copied in here seeks at the wrong speed
+// while looking entirely correct. See wd17xx.h.
+uint64_t Wd17xx::stepTStates(const Clock& clk) const {
+    // The rate table is the PART's (see stepRatesMs) -- the 1771 and the 179x disagree.
+    const int* tbl = stepRatesMs(fdcClockHz >= 2000000);
     return msTStates(clk, tbl[command_ & 0x03]);
 }
 
@@ -160,7 +159,7 @@ uint64_t Wd1771::stepTStates(const Clock& clk) const {
 // at a 2 MHz CPU is 64 T-states between DRQs. THIS is what makes Lost Data reachable:
 // a guest that takes longer than 64 T-states to service a DRQ really does lose the
 // byte, on the bench and here.
-uint64_t Wd1771::byteTStates(const Clock& clk) const {
+uint64_t Wd17xx::byteTStates(const Clock& clk) const {
     uint64_t t = clk.tStatesPer(dataRateBits / 8);
     return t ? t : 1;  // never zero: a zero-length deadline is an infinite loop
 }
@@ -170,19 +169,19 @@ uint64_t Wd1771::byteTStates(const Clock& clk) const {
 // option is real (it is what a mini-floppy runs at), and a chip that switched its step
 // table to the 1 MHz column while leaving the settle at 10 ms would be half converted,
 // which is worse than being uniformly wrong.
-uint64_t Wd1771::headSettleTStates(const Clock& clk) const {
+uint64_t Wd17xx::headSettleTStates(const Clock& clk) const {
     return msTStates(clk, fdcClockHz >= 2000000 ? 10 : 20);
 }
 
 // HLD, pin 28. Remember WHEN, because HLT is 10 ms after it -- see headEngaged().
-void Wd1771::loadHead(bool on, const Clock& clk) {
+void Wd17xx::loadHead(bool on, const Clock& clk) {
     if (on && !headLoaded_) hldAt_ = clk.now();
     headLoaded_ = on;
 }
 
 // S5, and it is the AND of two pins. The head is not engaged the instant the chip asks
 // for it; the drive takes 10 ms to get it there, and HLT is what says it arrived.
-bool Wd1771::headEngaged(const Clock& clk) const {
+bool Wd17xx::headEngaged(const Clock& clk) const {
     return headLoaded_ && clk.now() >= hldAt_ + headSettleTStates(clk);
 }
 
@@ -190,7 +189,7 @@ bool Wd1771::headEngaged(const Clock& clk) const {
 // RESET
 // ---------------------------------------------------------------------------
 
-void Wd1771::powerOn(const Clock& clk) {
+void Wd17xx::powerOn(const Clock& clk) {
     command_ = 0;
     status_  = 0;
     track_   = 0;
@@ -231,7 +230,7 @@ void Wd1771::powerOn(const Clock& clk) {
 // So this does not call powerOn(). Zeroing SR and DR here would be inventing an effect the
 // pin does not have, and it would hide the bug class where a driver reasonably expects
 // them to survive a front-panel RESET.
-void Wd1771::masterReset(const Clock& clk) {
+void Wd17xx::masterReset(const Clock& clk) {
     status_ = 0;
     ctx_    = Ctx::TypeI;
     phase_  = Phase::Idle;
@@ -258,7 +257,7 @@ void Wd1771::masterReset(const Clock& clk) {
 // Reading status resets INTRQ. So does loading the command register -- and NOTHING
 // ELSE does, which is the whole reason a driver that only ever polls DRQ leaves the
 // interrupt line stuck.
-uint8_t Wd1771::readStatus(const Clock& clk) {
+uint8_t Wd17xx::readStatus(const Clock& clk) {
     poll(clk);
     intrq_ = false;
 
@@ -282,7 +281,7 @@ uint8_t Wd1771::readStatus(const Clock& clk) {
     return s;
 }
 
-uint8_t Wd1771::readData(const Clock& clk) {
+uint8_t Wd17xx::readData(const Clock& clk) {
     poll(clk);
 
     // DRQ IS CLEARED BY *SERVICING* IT, AND A WRITE IS NOT SERVICED BY A READ.
@@ -298,7 +297,7 @@ uint8_t Wd1771::readData(const Clock& clk) {
     return data_;
 }
 
-void Wd1771::writeData(uint8_t v, const Clock& clk) {
+void Wd17xx::writeData(uint8_t v, const Clock& clk) {
     poll(clk);
     data_ = v;
     if (phase_ == Phase::WriteWait || phase_ == Phase::Write) {
@@ -311,7 +310,7 @@ void Wd1771::writeData(uint8_t v, const Clock& clk) {
     }
 }
 
-void Wd1771::writeCommand(uint8_t v, const Clock& clk) {
+void Wd17xx::writeCommand(uint8_t v, const Clock& clk) {
     poll(clk);
     intrq_ = false;  // loading the command register resets INTRQ
     startCommand(v, clk);
@@ -321,7 +320,7 @@ void Wd1771::writeCommand(uint8_t v, const Clock& clk) {
 // STARTING A COMMAND
 // ---------------------------------------------------------------------------
 
-void Wd1771::startCommand(uint8_t cmd, const Clock& clk) {
+void Wd17xx::startCommand(uint8_t cmd, const Clock& clk) {
     const uint8_t op = (uint8_t)(cmd >> 4);
 
     // Force Interrupt is the one command that may be loaded while BUSY, and it is the
@@ -372,7 +371,7 @@ void Wd1771::startCommand(uint8_t cmd, const Clock& clk) {
 // These run REGARDLESS OF READY -- "The Seek or Step commands are performed regardless
 // of the state of the READY input." A drive with no disk in it still steps; that is how
 // a Restore can home a head before anyone has inserted anything.
-void Wd1771::startTypeI(uint8_t cmd, const Clock& clk) {
+void Wd17xx::startTypeI(uint8_t cmd, const Clock& clk) {
     ctx_ = Ctx::TypeI;
     const uint8_t op = (uint8_t)(cmd >> 4);
 
@@ -444,7 +443,7 @@ void Wd1771::startTypeI(uint8_t cmd, const Clock& clk) {
 }
 
 // ---- TYPE II: Read Sector, Write Sector ------------------------------------
-void Wd1771::startTypeII(const Clock& clk) {
+void Wd17xx::startTypeII(const Clock& clk) {
     // "Whenever a Read or Write command is received the FD1771 samples the READY input.
     // If this input is logic low the command is not executed and an interrupt is
     // generated." Not an error bit -- the command simply does not happen. S7 reports it.
@@ -466,7 +465,7 @@ void Wd1771::startTypeII(const Clock& clk) {
 }
 
 // ---- TYPE III: Read Address, Read Track, Write Track -----------------------
-void Wd1771::startTypeIII(const Clock& clk) {
+void Wd17xx::startTypeIII(const Clock& clk) {
     if (!ready()) {
         finish(clk);
         return;
@@ -492,7 +491,7 @@ void Wd1771::startTypeIII(const Clock& clk) {
 // Where it hands off to is NOT a parameter: afterHeadSettle() asks ctx_, which the
 // command already set. Passing a "next phase" as well would be a second, redundant
 // source of truth for what the chip is doing -- and the two would eventually disagree.
-void Wd1771::headLoadThen(bool wanted, const Clock& clk) {
+void Wd17xx::headLoadThen(bool wanted, const Clock& clk) {
     if (wanted) {
         loadHead(true, clk);
         phase_ = Phase::HeadSettle;
@@ -510,7 +509,7 @@ void Wd1771::headLoadThen(bool wanted, const Clock& clk) {
 
 // Where the 10 ms lands. The command register is still holding the command, so this can
 // simply ask it again rather than carrying a "what was I doing" flag around.
-void Wd1771::afterHeadSettle(const Clock& clk) {
+void Wd17xx::afterHeadSettle(const Clock& clk) {
     switch (ctx_) {
         case Ctx::TypeI:
             doVerify(clk);
@@ -526,9 +525,9 @@ void Wd1771::afterHeadSettle(const Clock& clk) {
             //
             //     1 TRACK   2 ZEROS   3 SECTOR   4 SECTOR LENGTH   5 CRC 1   6 CRC 2
             //
-            // Byte 2 is a hard zero on this chip: the 1771 is single-sided and has no
-            // side-select pin, so the byte the 179x uses for a side number has nothing to
-            // put in it. That is a fact about the silicon, not a placeholder.
+            // Byte 2 is the SIDE number, which the PART decides: a hard zero on the 1771
+            // (no side-select pin), the board-selected head on the 179x. readAddressSide()
+            // is the hook -- see wd17xx.h. That is a fact about the silicon, not a placeholder.
             if (!drive_ || drive_->sectorCount() == 0) {
                 status_ |= kNotFound;  // S4 is ID NOT FOUND in this column
                 finish(clk);
@@ -539,7 +538,7 @@ void Wd1771::afterHeadSettle(const Clock& clk) {
             drive_->sectorIdAt(raCursor_ % n, id);
             raCursor_ = (raCursor_ + 1) % n;
 
-            uint8_t f[5] = {0xFE, (uint8_t)id.track, 0x00, (uint8_t)id.sector,
+            uint8_t f[5] = {0xFE, (uint8_t)id.track, readAddressSide(), (uint8_t)id.sector,
                             (uint8_t)id.lengthCode};
             const uint16_t crc = crc16(f, sizeof f);
 
@@ -625,7 +624,7 @@ void Wd1771::afterHeadSettle(const Clock& clk) {
 // not against where the head physically is. Those are different questions, and this one
 // is the one that catches a drive that missed a step.
 // ---------------------------------------------------------------------------
-void Wd1771::doVerify(const Clock& clk) {
+void Wd17xx::doVerify(const Clock& clk) {
     if (!drive_) {
         status_ |= kSeekError;
         finish(clk);
@@ -673,7 +672,7 @@ void Wd1771::doVerify(const Clock& clk) {
 
 // "The FD1771 must find an ID field with a track number, sector number, and CRC within
 // two revolutions of the disk; otherwise, the Record Not Found status bit is set."
-bool Wd1771::findSector(FloppyDrive::SectorId& out) {
+bool Wd17xx::findSector(FloppyDrive::SectorId& out) {
     if (!drive_) return false;
     const int n = drive_->sectorCount();
     for (int i = 0; i < n; ++i) {
@@ -691,7 +690,7 @@ bool Wd1771::findSector(FloppyDrive::SectorId& out) {
     return false;
 }
 
-void Wd1771::beginTypeII(const Clock& clk) {
+void Wd17xx::beginTypeII(const Clock& clk) {
     FloppyDrive::SectorId id{};
     // A zero-length data field is not a sector -- it is a drive describing an ID field it
     // cannot back with any bytes, and there is nothing to stream either way. Same bit as
@@ -726,10 +725,11 @@ void Wd1771::beginTypeII(const Clock& clk) {
     // "the Data Address Mark is then written on the disk as determined by the a1a0 field
     // OF THE COMMAND." The mark we write is the one the GUEST ASKED FOR -- not the one
     // that happens to be on the disk already, which is what findSector() handed back.
-    // Miss this and `Write Sector` with a1a0=11 (how a CP/M-era utility marks a sector
-    // deleted) silently writes a normal record -- and worse, a plain write over an
-    // already-deleted sector would PRESERVE the deleted mark it was meant to clear.
-    id_.deleted = (command_ & 0x03) == 0x03;
+    // Miss this and `Write Sector` with a deleted-mark command (how a CP/M-era utility
+    // marks a sector deleted) silently writes a normal record -- and worse, a plain write
+    // over an already-deleted sector would PRESERVE the mark it was meant to clear.
+    // WHICH command bits mean "deleted" is the part's (a1a0 on the 1771, a0 on the 179x).
+    id_.deleted = cmdWritesDeletedMark(command_);
 
     // The first DRQ is special: "the FD1771 COUNTS OFF 11 BYTES from the CRC field and the
     // Write Gate output is made active IF the DRQ is serviced. If DRQ has not been
@@ -753,7 +753,7 @@ void Wd1771::beginTypeII(const Clock& clk) {
     due_   = clk.now() + 11 * byteTStates(clk);
 }
 
-void Wd1771::commitSector(const Clock& clk) {
+void Wd17xx::commitSector(const Clock& clk) {
     // WF, pin 33: "When WG=1 and WF goes low, the current Write command is terminated and
     // the Write Fault status bit is set." The drive's own electronics saying the write did
     // not happen -- which is a different thing from the medium refusing it, and it is the
@@ -771,7 +771,7 @@ void Wd1771::commitSector(const Clock& clk) {
         FloppyDrive::SectorId next{};
         if (findSector(next)) {
             id_         = next;
-            id_.deleted = (command_ & 0x03) == 0x03;
+            id_.deleted = cmdWritesDeletedMark(command_);
             buf_.clear();
             buf_.reserve((size_t)next.size);
             phase_ = Phase::WriteWait;
@@ -787,7 +787,7 @@ void Wd1771::commitSector(const Clock& clk) {
     finish(clk);
 }
 
-void Wd1771::commitTrack(const Clock& clk) {
+void Wd17xx::commitTrack(const Clock& clk) {
     if (!drive_->writeTrackImage(buf_)) status_ |= kWriteFault;
     finish(clk);
 }
@@ -795,7 +795,7 @@ void Wd1771::commitTrack(const Clock& clk) {
 // ---------------------------------------------------------------------------
 // FORCE INTERRUPT -- the whole of Table 6's footnote, in one function.
 // ---------------------------------------------------------------------------
-void Wd1771::forceInterrupt(uint8_t cmd, const Clock& clk) {
+void Wd17xx::forceInterrupt(uint8_t cmd, const Clock& clk) {
     const bool wasBusy = (phase_ != Phase::Idle);
 
     command_ = cmd;
@@ -847,19 +847,19 @@ void Wd1771::forceInterrupt(uint8_t cmd, const Clock& clk) {
 }
 
 // ---------------------------------------------------------------------------
-void Wd1771::stepOnce() {
+void Wd17xx::stepOnce() {
     if (!drive_) return;
     drive_->step(dirIn_);
 }
 
-void Wd1771::finish(const Clock& clk) {
+void Wd17xx::finish(const Clock& clk) {
     phase_ = Phase::Idle;
     due_   = 0;
     intrq_ = true;  // "an interrupt is generated at the completion of the command"
     (void)clk;
 }
 
-std::vector<std::string> Wd1771::drainLog() {
+std::vector<std::string> Wd17xx::drainLog() {
     std::vector<std::string> out;
     out.swap(log_);
     return out;
@@ -869,7 +869,7 @@ std::vector<std::string> Wd1771::drainLog() {
 // THE STATE MACHINE
 // ---------------------------------------------------------------------------
 
-void Wd1771::poll(const Clock& clk) {
+void Wd17xx::poll(const Clock& clk) {
     // ---- The armed Force Interrupt conditions, which are EDGES on pins ----
     const bool nowReady = ready();
     const bool nowIndex = drive_ && drive_->index();
@@ -889,7 +889,15 @@ void Wd1771::poll(const Clock& clk) {
     // A `while`, not an `if`: one call to poll() may have to cross several deadlines at
     // once (a card that was not polled for a millisecond has a whole seek to catch up
     // on), and each phase sets the next due_ before it returns.
-    while (phase_ != Phase::Idle && clk.now() >= due_) {
+    //
+    // WAIT-SYNCED (PRDY): a wait-synced card has no way to advance emulated time between
+    // register accesses, so `waitSynced_` treats every deadline as already due -- the whole
+    // command runs to completion on the access that would have stalled on PRDY. The three
+    // transfer phases each guard with `if (waitSynced_ && drq_) return;`: when a byte is
+    // pending FOR or FROM the guest, poll() stops and waits for readData()/writeData() to
+    // service it, so exactly one byte moves per access and Lost Data never fires (the
+    // wait-state hardware is precisely what makes it unreachable). See setWaitSynced().
+    while (phase_ != Phase::Idle && (waitSynced_ || clk.now() >= due_)) {
         switch (phase_) {
             case Phase::Settle: {
                 stepOnce();
@@ -948,6 +956,11 @@ void Wd1771::poll(const Clock& clk) {
                 break;
 
             case Phase::Read: {
+                // WAIT-SYNCED: a byte is already sitting in the DR for the guest -- do not
+                // deliver the next one and do not call it lost; the CPU is stalled on PRDY
+                // reading this one. readData() will clear DRQ and the next poll advances.
+                if (waitSynced_ && drq_) return;
+
                 // The byte the guest was supposed to have taken is still sitting in the DR
                 // with DRQ up. It is now too late: the next one is here, and the old one is
                 // gone. THAT IS LOST DATA, and it is why byteTStates() has to be real.
@@ -979,11 +992,10 @@ void Wd1771::poll(const Clock& clk) {
                 // not theirs to look at.
                 if (ctx_ == Ctx::Read) {
                     // "the type of Data Address Mark encountered in the data field is
-                    // recorded in the Status Register (Bits 5 and 6)." TWO bits, because
-                    // this chip has four data address marks -- exactly the a1a0 field the
-                    // Write command writes, and the biggest single difference from a 179x.
-                    // FB (a normal record) is 00. F8 (deleted) is 11.
-                    if (id_.deleted) status_ |= (kRecType6 | kRecType5);
+                    // recorded in the Status Register." How MANY bits is the part's biggest
+                    // difference: the 1771 has four marks (S6|S5), the 179x two (S5 alone).
+                    // deletedRecordBits() is the hook -- see wd17xx.h.
+                    if (id_.deleted) status_ |= deletedRecordBits();
 
                     // "If there is a CRC error at the end of the data field, the CRC error
                     // status bit is set, and the command is terminated (EVEN IF IT IS A
@@ -1027,6 +1039,11 @@ void Wd1771::poll(const Clock& clk) {
             }
 
             case Phase::WriteWait: {
+                // WAIT-SYNCED: the first DRQ is up and the guest has not written its byte
+                // yet -- it is stalled on PRDY doing exactly that. Wait for writeData();
+                // do not treat this as the fatal missed-first-DRQ below.
+                if (waitSynced_ && drq_) return;
+
                 if (drq_) {
                     // The first DRQ went unserviced. The command dies here and NOTHING is
                     // written -- see beginTypeII(). This is the one place a missed DRQ is
@@ -1047,6 +1064,10 @@ void Wd1771::poll(const Clock& clk) {
             }
 
             case Phase::Write: {
+                // WAIT-SYNCED: a byte is requested and the guest has not written it -- it
+                // is stalled on PRDY. Wait for writeData(); no zero-fill, no Lost Data.
+                if (waitSynced_ && drq_) return;
+
                 if (drq_) {
                     // "If the DRQ is not serviced in time for continuous writing the Lost
                     // Data status bit is set AND A BYTE OF ZEROS IS WRITTEN ON THE DISK.
@@ -1073,8 +1094,14 @@ void Wd1771::poll(const Clock& clk) {
     }
 }
 
-uint64_t Wd1771::nextEdge(const Clock& clk) const {
+uint64_t Wd17xx::nextEdge(const Clock& clk) const {
     if (phase_ == Phase::Idle) return 0;
+    // WAIT-SYNCED: nothing happens with nobody touching the chip -- the CPU is stalled ON
+    // the chip (PRDY), and every phase resolves on the next register access. So there is no
+    // autonomous edge to wake for, and arming one would only spin: a mid-transfer DRQ stays
+    // up until the guest reads it, and a timer for it would fire, find DRQ still up, do
+    // nothing, and re-arm forever. A polling card (the default) has real byte deadlines.
+    if (waitSynced_) return 0;
     // STRICTLY IN THE FUTURE, always. A deadline already past is one poll() has yet to
     // run, not one to wake up for -- and arming a timer for now() would fire inside the
     // drain loop that is running us, and arm it again, and never stop. (Mc6850::nextEdge

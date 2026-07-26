@@ -1,0 +1,72 @@
+#!/usr/bin/expect -f
+#
+# SDOS BOOTS off a VersaFloppy II. The whole point of the board: the SBC-200's DDBIOS drives
+# a WD FD1791 soft-sector controller and cold-boots SD Systems' SDOS from an 8" double-density
+# 256-byte disk.
+#
+# IT HAS TO BE AN EXPECT TEST, for two reasons that both need a real pty:
+#
+#   - THE AUTO-BAUD. The SBC-200 straps the 8251's RxD to /DSR; MSMONR21 times the start bit of
+#     the first CR to set the baud, and prints NOTHING until it sees one. A pipe cannot present
+#     a start bit in emulated time -- only a tty paces to clock_hz -- so the monitor never
+#     wakes. (See docs and the [[altairsim-pipe-cannot-type-at-a-guest]] rule.)
+#   - TYPING `C`. The boot is a command typed at the monitor prompt, and a piped run cannot type
+#     at a guest -- it can only assert what the machine says unprompted.
+#
+# THE DISK MUST NOT MOVE. The fixture mounts it write-protected; taken before, checked after,
+# because the quiet way for this to rot is for `writeprotect` to stop meaning anything.
+#
+# usage: expect -f sdos.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/sdsys/SDOS-18B-SSDDR-256-32K-MASTER.DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/sdos.toml
+
+# The console comes up; nothing prints until we present a CR for the auto-baud.
+expect {
+    -ex "returns to the monitor" {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: the console never came up"; exit 1 }
+}
+
+# THE AUTO-BAUD. Send a CR; the monitor times its start bit and prints its `.` prompt.
+send "\r"
+expect {
+    -ex "." {}
+    eof     { puts "FAIL: died before the monitor prompt"; exit 1 }
+    timeout { puts "FAIL: the monitor never auto-bauded -- no `.` prompt after the CR"; exit 1 }
+}
+
+# COLD-BOOT SDOS from drive A. The DDBIOS reads the boot sector, identifies the DD-256 format,
+# loads the resident, and jumps to it.
+send "C\r"
+expect {
+    -ex "SD-OS" {}
+    eof     { puts "FAIL: the machine died booting SDOS"; exit 1 }
+    timeout { puts "FAIL: SDOS never booted off the VersaFloppy (no sign-on)"; exit 1 }
+}
+
+# ...AND IT REACHES ITS PROMPT. `[A]` is SDOS live and waiting on drive A.
+expect {
+    -ex "\[A]" {}
+    eof     { puts "FAIL: SDOS signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: SDOS signed on but never reached the `\[A]` prompt"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: SDOS cold-booted off the VersaFloppy II to its \[A] prompt, and the master is\
+      byte-identical."
+exit 0

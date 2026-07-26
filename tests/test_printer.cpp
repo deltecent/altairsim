@@ -89,9 +89,10 @@ void test_printer() {
     SECTION("printer: a form feed closes the page, including the 0x0C, and never a blank");
     {
         // idle=0 (never) isolates the form-feed boundary from the timer.
-        FakeSink sink;
+        FakeSink  sink;
+        FakeClock clk;
         {
-            PrinterStream ps("printer:lw?onff&idle=0", {0, true, kBig}, sink.fn(), FakeClock{}.fn());
+            PrinterStream ps("printer:lw?onff&idle=0", {0, true, kBig}, sink.fn(), clk.fn());
             std::string   two = "PAGE1";
             two += (char)0x0C;
             two += "PAGE2";
@@ -107,9 +108,10 @@ void test_printer() {
 
     SECTION("printer: a trailing form feed leaves no blank job behind");
     {
-        FakeSink sink;
+        FakeSink  sink;
+        FakeClock clk;
         {
-            PrinterStream ps("printer:lw?onff&idle=0", {0, true, kBig}, sink.fn(), FakeClock{}.fn());
+            PrinterStream ps("printer:lw?onff&idle=0", {0, true, kBig}, sink.fn(), clk.fn());
             std::string   rpt = "RPT";
             rpt += (char)0x0C;  // form feed is the very last byte
             put(ps, rpt);
@@ -120,9 +122,10 @@ void test_printer() {
 
     SECTION("printer: the max ceiling closes a job and the remainder is flushed at teardown");
     {
-        FakeSink sink;
+        FakeSink  sink;
+        FakeClock clk;
         {
-            PrinterStream ps("printer:lw?max=4&idle=0", {0, false, 4}, sink.fn(), FakeClock{}.fn());
+            PrinterStream ps("printer:lw?max=4&idle=0", {0, false, 4}, sink.fn(), clk.fn());
             put(ps, "ABCDEFG");
             CHECK(sink.jobs.size() == 1, "the byte ceiling closed a job at 4 bytes");
             if (!sink.jobs.empty()) CHECK(sink.jobs[0] == vec("ABCD"), "the job is the first max bytes");

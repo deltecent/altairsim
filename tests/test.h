@@ -54,6 +54,7 @@ void test_88sio();
 void test_sbc();
 void test_lines();
 void test_wd17xx();
+void test_versafloppy();
 void test_spindle();
 void test_dcdd();
 void test_mds();

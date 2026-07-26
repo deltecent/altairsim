@@ -8,6 +8,31 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### SDOS boots: the SD Systems VersaFloppy floppy controller
+
+`BOARDS ADD versafloppy` puts an **SD Systems VersaFloppy** in the backplane — the S-100
+soft-sector floppy controller built around a Western Digital FD177x. It is **one board for both
+generations**: `variant=vfii` (the default) is the double-density **FD1791** VersaFloppy II, and
+`variant=vfi` the single-density **FD1771** VersaFloppy I. With the SBC-200's DDBIOS at `F000`, the
+monitor's `C` command **cold-boots SDOS** — `altairsim examples/sdsys/sdos.toml`, press Enter,
+type `C`, and *32K SD-OS Version 1.8B* comes up to its `[A]` prompt off an 8″ double-density
+256-byte disk. `R`/`W`/`Z` read, write and format. The controller stalls the CPU on the S-100
+PRDY line the way the real card did (no DRQ polling — the sector transfer is a bare `IN`/`OUT`
+loop), and its 63H control latch is negative-true, both as the DDBIOS driver requires. The WD chip
+is now a proper family (`Wd1771`/`Wd1791` parts sharing one register model), ready for the Tarbell
+controllers to reuse.
+
+### A single-board Z80 console: the SD Systems SBC-100/200
+
+`BOARDS ADD sbc` puts an **SD Systems SBC-100/200** in the backplane — the serial console of a Z80
+single-board computer, built around an **Intel 8251 USART** (unit `tty`, data at `7C`,
+status/command at `7D`) rather than the 6850 the MITS boards use. `variant=sbc200` (the default) or
+`sbc100`. Its trick is **auto-baud**: `altairsim sbc200` comes up in the **SD monitor (MSMONR21)**
+waiting for you to press Return, times that one character, and sets its own speed to match — so any
+common terminal rate just works, and nothing happens until that first Return. It is the console the
+[VersaFloppy](#sdos-boots-the-sd-systems-versafloppy-floppy-controller) boots SDOS through. The
+parallel ports, timer and interrupts of the real card are a later phase; the console is here now.
+
 ### A second printer card: the 88-LPC line-printer controller
 
 `BOARDS ADD lpc` puts a **MITS 88-LPC** in the backplane — the controller for the 88-LP line
@@ -21,6 +46,16 @@ because unlike the C700's transparent byte pipe, the LPC's line breaks are *comm
 `CONNECT` it anywhere a line can go (a `file:`, the `console`, a `socket:`, a `printer:` queue).
 The `machines/lineprinter-lpc.toml` machine has one wired at 02. Polled, like the C700 (the
 hardware interrupt is not modeled).
+
+### Serial and cassette on one card: the 88-UIO
+
+`BOARDS ADD uio` puts a **MITS 88-UIO** in the backplane — the Universal I/O board, a 6850 serial
+port and an 88-ACR cassette on a single card. It comes up as the two boards it replaces: a serial
+console (unit `serial`, default `10`) and a cassette deck (unit `tape`, default `06`), at the
+standard addresses, so software that expects a 2SIO console and an ACR tape finds both. Over two
+separate boards it adds **motor control** and the **SW-1 modulation switch** — MITS 300-baud or
+Kansas City — since the UIO was sold to talk to either. The tape half brings the same
+`WIND`/`REWIND`/`EXTRACT` verbs and position counter the 88-ACR does.
 
 ### `HISTORY` remembers the processor — and the bus view names names
 

@@ -174,11 +174,32 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-// One FD1771.
+// THE FD177x FAMILY -- the base, and the parts.
+//
+// `Wd17xx` is the whole register file and state machine, which every part in the
+// family shares byte-for-byte (that is what "the family shares a register file and a
+// command set" means, and it is why it lives in ONE class and not three copies). The
+// PARTS -- Wd1771, Wd1791 -- are the leaves, and each supplies only the handful of
+// behaviors that genuinely differ between the silicon:
+//
+//   - the STEP-RATE table (Table 1 is not the same on the 1771 and the 1791);
+//   - the READ ADDRESS side byte (the 1771 has no side pin and hard-zeros it; the
+//     179x carries the head/side number the board selected);
+//   - the RECORD TYPE (the 1771 has FOUR data address marks and reports two status
+//     bits; the 179x has TWO and reports one);
+//   - which DATA ADDRESS MARK a Write command writes (the a1a0 field on the 1771; a
+//     single a0 bit on the 179x).
+//
+// So the base is abstract: it cannot answer those four questions itself, and it must
+// not guess. A board constructs the PART it has on it (Wd1771 for a VersaFloppy I or a
+// Tarbell SD card; Wd1791 for a VersaFloppy II or a Tarbell DD card), and the base
+// runs the command set through the part's answers. New part, new leaf -- next to these,
+// never inside one, exactly as the file-level note above lays out.
 // ---------------------------------------------------------------------------
-class Wd1771 {
+class Wd17xx {
 public:
-    explicit Wd1771(std::string name) : name_(std::move(name)) {}
+    explicit Wd17xx(std::string name) : name_(std::move(name)) {}
+    virtual ~Wd17xx() = default;
 
     const std::string& name() const { return name_; }
 
@@ -264,8 +285,36 @@ public:
     // is what the Tarbell manual quotes ("the standard speed of 250,000 bits per
     // second") and what an 8" drive turning at 360 RPM produces. It is a strap and not
     // a constant because a 5.25" drive runs at half of it, and the same chip drives
-    // both.
+    // both. A double-density card doubles it -- the board writes it when it decodes its
+    // density bit.
     long long dataRateBits = 250000;
+
+    // ---- WAIT-STATE (PRDY) SYNCHRONIZATION -- a board strap ----
+    //
+    // Some cards do not let the guest poll DRQ at all: the DRQ line drives a wait-state
+    // generator that stalls the CPU (S-100 PRDY) until the byte -- or the whole command
+    // -- is ready. The VersaFloppy is one (reference/SD Systems VersaFloppy.md 4): its
+    // sector-transfer loop is a bare `IN A,(67H)` with NO software DRQ polling, and a
+    // status read after a command blocks until the FDC is done.
+    //
+    // This simulator cannot inject wait states -- the clock does not advance inside a bus
+    // cycle. So a wait-synced card sets this, and then EVERY register access resolves all
+    // pending TIME-BASED progress first: poll() treats every deadline as already due and
+    // runs the state machine forward, stopping only where it genuinely needs the guest --
+    // the next byte of a transfer, which the data register serves on demand. A status read
+    // therefore returns the finished result and a data read the next byte, each exactly as
+    // if the CPU had waited on PRDY. It is FAITHFUL, not a shortcut: a wait-stalled CPU
+    // cannot observe seek time, byte timing, or reach Lost Data -- so the collapsed command
+    // time is invisible, and Lost Data (which the wait-state hardware exists to prevent) is
+    // correctly unreachable. Off by default: a DRQ-polling card leaves it alone and gets the
+    // byte-timed model above, Lost Data and all.
+    void setWaitSynced(bool on) { waitSynced_ = on; }
+    bool waitSynced() const { return waitSynced_; }
+
+    // The SIDE the board's drive-select latch has chosen (the 179x has a side-select
+    // input pin; the 1771 does not). The board writes it; only a part that has the pin
+    // reports it (Read Address byte 2). Kept here because it is a chip input, not state.
+    void setSide(int s) { side_ = s; }
 
     // ADVANCE THE STATE MACHINE. Public because the CARD must be able to call it: a
     // seek takes 20 ms per track and the guest is not touching a register while it
@@ -291,7 +340,30 @@ public:
     void serialize(StateWriter& w) const;
     void deserialize(StateReader& r);
 
-private:
+protected:
+    // ---- THE FOUR THINGS A PART ANSWERS FOR ITSELF (see the class note) ----
+    //
+    // The base runs the whole command set; these are the only places it has to ask the
+    // specific chip what it does. Pure, because the base genuinely does not know and must
+    // not guess -- a default here would silently be "the 1771", which is the bug the
+    // family split exists to prevent.
+
+    // Table 1, the step-rate column for this part, four rates in ms indexed by r1r0.
+    // `twoMHz` selects by the FDC's own crystal (fdcClockHz), never the CPU's.
+    virtual const int* stepRatesMs(bool twoMHz) const = 0;
+
+    // Read Address byte 2: the side/head number the board selected, or a hard 0 on a
+    // part with no side-select pin (the 1771).
+    virtual uint8_t readAddressSide() const = 0;
+
+    // The status bit(s) a READ sets when the data field carries a Deleted Data Mark:
+    // S6|S5 on the 1771 (four marks, two bits), S5 alone on the 179x (two marks, one).
+    virtual uint8_t deletedRecordBits() const = 0;
+
+    // Does this Write Sector command's data-address-mark field select a DELETED mark?
+    // The 1771 reads a two-bit a1a0 field (11 = F8); the 179x reads a single a0 bit.
+    virtual bool cmdWritesDeletedMark(uint8_t cmd) const = 0;
+
     // ---- THE STATUS REGISTER IS SIX DIFFERENT REGISTERS (Table 6) ----
     //
     // "Status varies according to the type of command executed." Not according to the
@@ -393,6 +465,12 @@ private:
     bool intrq_ = false;
     bool drq_   = false;
 
+    // Board straps (see setWaitSynced/setSide). Not part of the register file: a strap
+    // set by the CARD, so they do not travel in serialize() -- the owning card re-applies
+    // them after a restore, just as it does the format straps.
+    bool waitSynced_ = false;
+    int  side_       = 0;
+
     // Where the state machine is going next, and when.
     uint64_t due_ = 0;
 
@@ -454,6 +532,65 @@ private:
     int raCursor_ = 0;
 
     std::vector<std::string> log_;
+};
+
+// ---------------------------------------------------------------------------
+// FD1771 -- single density (FM), the first of the family. Four data address marks;
+// no side-select pin. This is the VersaFloppy I's chip, and the Tarbell SD card's.
+// ---------------------------------------------------------------------------
+class Wd1771 : public Wd17xx {
+public:
+    explicit Wd1771(std::string name) : Wd17xx(std::move(name)) {}
+
+protected:
+    // Table 1: 6/6/10/20 ms at 2 MHz, doubled at 1 MHz. NOT the WD1770's 6/12/20/30 --
+    // see the file-level note; that is a different chip and copying its table seeks at
+    // the wrong speed while looking correct.
+    const int* stepRatesMs(bool twoMHz) const override {
+        static const int k2[4] = {6, 6, 10, 20};
+        static const int k1[4] = {12, 12, 20, 40};
+        return twoMHz ? k2 : k1;
+    }
+
+    // No side-select pin: Read Address byte 2 is a hard zero (see the ID-field note in
+    // afterHeadSettle). The 1771 is single-sided as far as the silicon is concerned.
+    uint8_t readAddressSide() const override { return 0; }
+
+    // FOUR data address marks, so the record type is TWO bits: FB (normal) = 00,
+    // F8 (deleted) = 11. This is the deepest difference from a 179x.
+    uint8_t deletedRecordBits() const override { return kRecType6 | kRecType5; }
+
+    // a1a0 = 11 selects the Deleted Data Mark (Table 4).
+    bool cmdWritesDeletedMark(uint8_t cmd) const override { return (cmd & 0x03) == 0x03; }
+};
+
+// ---------------------------------------------------------------------------
+// FD1791 -- single AND double density (FM/MFM). Two data address marks; a side-select
+// pin. This is the VersaFloppy II's chip, and the Tarbell DD card's. The register file
+// and command set are the 1771's; only the four hooks below differ.
+// ---------------------------------------------------------------------------
+class Wd1791 : public Wd17xx {
+public:
+    explicit Wd1791(std::string name) : Wd17xx(std::move(name)) {}
+
+protected:
+    // The 179x step-rate column (Table 1, 179x data sheet): 3/6/10/15 ms at 2 MHz,
+    // doubled at 1 MHz. Faster at the top of the range than the 1771's 6/6/10/20.
+    const int* stepRatesMs(bool twoMHz) const override {
+        static const int k2[4] = {3, 6, 10, 15};
+        static const int k1[4] = {6, 12, 20, 30};
+        return twoMHz ? k2 : k1;
+    }
+
+    // The 179x has a side-select input; Read Address byte 2 carries the head number the
+    // board selected (setSide()).
+    uint8_t readAddressSide() const override { return (uint8_t)side_; }
+
+    // TWO data address marks: the record type is ONE bit, S5 (F8 deleted = 1).
+    uint8_t deletedRecordBits() const override { return kRecType5; }
+
+    // A single a0 bit selects the Deleted Data Mark on a Write.
+    bool cmdWritesDeletedMark(uint8_t cmd) const override { return (cmd & 0x01) != 0; }
 };
 
 } // namespace altair
