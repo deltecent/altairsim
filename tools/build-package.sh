@@ -332,8 +332,15 @@ while IFS='|' read -r dest src; do
   mkdir -p "$pkg/$(dirname "$dest")"
   cp -R "$root/$src" "$pkg/$dest"
 
-  # The assembler listings, the vendor ReadMes, and OUR OWN per-directory README.md are all
-  # repository artifacts, and none of them belong in the zip.
+  # Does this example's product arrive as an IMAGE -- a disk or a tape? The answer decides
+  # both of the rules below, so ask it once, before anything is stripped.
+  image=no
+  if ls "$pkg/$dest"/*.dsk "$pkg/$dest"/*.DSK "$pkg/$dest"/*.tap "$pkg/$dest"/*.TAP 2>/dev/null | head -1 | grep -q .; then
+    image=yes
+  fi
+
+  # The vendor ReadMes, OUR OWN per-directory README.md, and the scripts that BUILD media are
+  # all repository artifacts, and none of them belong in the zip.
   #
   # The README.md especially. It is the SOURCE -- written for someone standing in the tree, it
   # talks about .gitignore and about which files are "not in this repository", and it is raw
@@ -344,11 +351,28 @@ while IFS='|' read -r dest src; do
   # ...and the same rule takes out SOURCE, which is the other thing that is not product:
   # examples/sol ships a tape, not the ENTER script the tape was derived from nor the script
   # that derives it. Both stay in the repository (docs/sources.md has the provenance).
-  rm -f "$pkg/$dest"/*.ASM "$pkg/$dest"/*.PRN "$pkg/$dest"/README.md "$pkg/$dest"/-ReadMe.pdf \
+  rm -f "$pkg/$dest"/README.md "$pkg/$dest"/-ReadMe.pdf \
         "$pkg/$dest"/*.ENT "$pkg/$dest"/make-*.sh 2>/dev/null || true
 
-  # Did any actual MEDIA come with it?
-  if ! ls "$pkg/$dest"/*.dsk "$pkg/$dest"/*.DSK "$pkg/$dest"/*.tap "$pkg/$dest"/*.TAP 2>/dev/null | head -1 | grep -q .; then
+  # The assembler files are the CONDITIONAL half, and the condition is what the example's
+  # product IS. Beside a disk or a tape, a .ASM and its .PRN listing are how that image was
+  # made -- provenance, exactly like the .ENT and the make-*.sh above, and they stay in the
+  # repository. In an example that ships no image they ARE the product: examples/debugger
+  # hands you HELLO.ASM to read and HELLO.PRN for `SYMBOLS LOAD HELLO.PRN` to open, which is
+  # the first command of its walkthrough, so a zip that stripped them would ship an example
+  # whose own README fails on line one.
+  if [ "$image" = yes ]; then
+    rm -f "$pkg/$dest"/*.ASM "$pkg/$dest"/*.PRN 2>/dev/null || true
+  fi
+
+  # Did any actual MEDIA come with it? An image, or -- for an example whose product is a
+  # PROGRAM rather than a disk -- the Intel HEX the machine loads. This is a presence check,
+  # not a completeness one: it catches a directory that arrived carrying nothing, and it
+  # cannot notice that one image of two went missing. What notices that is the acceptance
+  # suite, which boots every shipped example WITH its media (tests/acceptance/examples.cmake,
+  # plus trek80.exp and diskbasic.exp) and goes red the moment a file it mounts is absent.
+  if [ "$image" = no ] &&
+     ! ls "$pkg/$dest"/*.hex "$pkg/$dest"/*.HEX 2>/dev/null | head -1 | grep -q .; then
     echo "  !! $dest has a machine file and NO MEDIA" >&2
     missing="$missing $dest"
   fi

@@ -25,8 +25,8 @@
 #   3. THE TESTS, and read what they actually do rather than what you would like them to.
 #      tests/acceptance/docs-manual.cmake greps the chapters for anything pointing outside
 #      the package (src/, ctest, a bare header) and checks every chapter is in ORDER.
-#      tests/acceptance/examples.cmake copies examples/basic and examples/cpm to a scratch
-#      directory with no repository in sight and boots them there.
+#      tests/acceptance/examples.cmake copies the examples to a scratch directory with no
+#      repository in sight and boots them there.
 #
 #      WHAT NOTHING DOES is assemble this package and run the manual's own commands against
 #      it. tools/build-package.sh is run by no workflow and no test -- only by hand. So a
@@ -48,12 +48,19 @@
 # it ("cpm22b23-56k.dsk", no directory at all) and paths inside a machine file resolve
 # against THAT FILE. Keep the .toml and its image together and the folder boots wherever
 # it is copied to -- which is the whole point of the rule.
+#
+# AND NOT EVERY EXAMPLE'S MEDIA IS AN IMAGE. examples/debugger's is a 46-byte program: a
+# .HEX to LOAD and the .PRN listing that SYMBOLS LOAD reads, which is the first line of its
+# own walkthrough. So build-package.sh strips a .ASM/.PRN pair only from an example that
+# ships a disk or a tape -- there it is how the image was made, and it stays in the tree.
+# Where there is no image, the listing IS the product and it ships.
 # ---------------------------------------------------------------------------
 
 DIR  examples/cpm        <=  examples/cpm
 DIR  examples/basic      <=  examples/basic
 DIR  examples/sol        <=  examples/sol
 DIR  examples/diskbasic  <=  examples/diskbasic
+DIR  examples/debugger   <=  examples/debugger
 
 # ---------------------------------------------------------------------------
 # FILES -- <package path>  <=  <path in this repo>
