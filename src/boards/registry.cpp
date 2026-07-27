@@ -17,6 +17,7 @@
 #include "boards/mits-frontpanel.h"
 #include "boards/mits-turnkey.h"
 #include "boards/mits-z80cpu.h"
+#include "boards/pmmi-mm103.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/s100-memory.h"
@@ -78,6 +79,7 @@ std::vector<BoardType> boardTypes() {
         {"turnkey", "MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]]"},
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
+        {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
     };
 }
 
@@ -109,6 +111,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "turnkey") return std::make_unique<TurnkeyBoard>();
     if (type == "virtc") return std::make_unique<VirtcBoard>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
+    if (type == "pmmi") return std::make_unique<PmmiBoard>();
     return nullptr;
 }
 

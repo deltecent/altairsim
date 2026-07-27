@@ -1,0 +1,19 @@
+# PMMI MM-103 modem, layered onto the default machine.
+#
+# The default machine already carries a CPU, RAM and a console SIO; this adds the
+# modem at its factory base (0xC0). A modem is NEVER a console, so nothing here
+# connects it to one -- attach a phone line at runtime with, e.g.,
+#
+#   CONNECT pmmi0 line out:capture.tap
+#   CONNECT pmmi0 line in:script.tap,out:capture.tap
+#
+# (A bare `in:` to a missing file would fail the load, so no connect is set here.)
+
+[machine]
+name = "pmmi"
+base = "default"
+
+[[board]]
+type = "pmmi"
+id   = "pmmi0"
+port = C0

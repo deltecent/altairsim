@@ -6,6 +6,7 @@
 #include "boards/mits-88sio.h"
 #include "boards/mits-88uio.h"
 #include "boards/mits-turnkey.h"
+#include "boards/pmmi-mm103.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/proctech-sol.h"
@@ -223,6 +224,7 @@ int main(int argc, char** argv) {
     Pio4Board::setResolver(resolveEndpoint);
     SolBoard::setResolver(resolveEndpoint);
     Vdb8024Board::setResolver(resolveEndpoint);  // its keyboard connects to an endpoint
+    PmmiBoard::setResolver(resolveEndpoint);     // the modem's phone line is an endpoint
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board
     // draws into a Display and never learns it is SDL. The shipping binary hands it

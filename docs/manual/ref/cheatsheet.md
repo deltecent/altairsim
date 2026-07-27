@@ -108,6 +108,7 @@ Type the part before the bracket.
 | `turnkey` | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
 | `virtc` | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | `hostbridge` | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
+| `pmmi` | PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub |
 
 ## Machines
 
@@ -128,6 +129,7 @@ Type the part before the bracket.
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
+| `pmmi` | PMMI MM-103 modem, layered onto the default machine. |
 | `ps2` | The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap. |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
 | `rombasic` | MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM. |

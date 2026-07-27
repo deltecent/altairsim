@@ -42,6 +42,7 @@ printed in each property's own base.
 | [`turnkey`](#turnkey) | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
+| [`pmmi`](#pmmi) | PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub |
 
 
 ## `memory`
@@ -706,4 +707,22 @@ Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a perio
 | `hostdir` | string |  | text | The sandbox root. Guest names resolve here and CANNOT escape it. Empty = the shell's working directory |
 | `hostdir_root` | string | — | — | LIVE: the sandbox root as RESOLVED -- the actual directory the guest is fenced into. Read-only; `hostdir` is what was written. **(read-only — not a key you may set)** |
 | `readonly` | bool | `false` | `on` \| `off` | Refuse OPEN_WRITE and DELETE -- the guest may read the host, not change it |
+
+
+## `pmmi`
+
+PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub
+
+**Units:** `line` (serial)
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0xC0` | `0x0` .. `0xFC` | Base address -- the 6-position DIP. Four ports at BASE..BASE+3; MUST be on a 4-port boundary. Default C0 (North Star alternative E0) |
+| `connect` | string | `null` | text | The endpoint on the phone line (CONNECT sets this). in:/out: a file, ... |
+| `frame` | string | — | — | Live UART frame (read-only), e.g. 8N1. Set by OUT BA+0 bits 2-6 **(read-only — not a key you may set)** |
+| `baud` | int | — | — | Live line rate (read-only), 250000/(16*N) from the OUT BA+2 divisor **(read-only — not a key you may set)** |
+| `uart` | string | — | — | Live UART status (read-only). CAPITALS = asserted: TBMT DAV **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live modem lines (read-only). CAPITALS = asserted: SH RI DTR CTS AP (CTS/AP are the fixed stub until the handshake lands) **(read-only — not a key you may set)** |
 
