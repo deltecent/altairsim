@@ -95,13 +95,17 @@ private:
 // not have -- the very thing DESIGN.md 7.1 forbids. A real recorder does drop
 // data, and we do not model that. It is in the board's .md, under Limitations.
 //
-// ---- AND IT IS IN EXACTLY ONE MODE AT A TIME, BECAUSE A RECORDER IS ----------
+// ---- AND IT IS IN EXACTLY ONE MODE AT A TIME, BECAUSE THE TAPE IS ------------
 //
 // PLAY or RECORD. Not both. This is not a simplification, it is the machine: the
 // 88-ACR has NO MOTOR CONTROL -- there is no register for it, the guest cannot
-// reach the transport, and the operator worked the buttons with their finger. A
-// recorder in PLAY is not recording, and one in RECORD is not handing you back what
-// used to be on the tape.
+// reach the transport, and the operator worked the controls with their finger. One
+// head, one transport, one direction of signal flow: a deck that is recording is
+// not handing you back what used to be on the tape.
+//
+// NOT because "one button is down at a time" -- on a real recorder you hold PLAY
+// and RECORD together, and RECORD alone does nothing. That is one action selecting
+// one mode, and the mode is what excludes.
 //
 // AND WITHOUT IT, RECORDING SILENTLY CORRUPTS THE TAPE. There is ONE head and so
 // ONE position (see pos_ above -- read and write share it, as they must). The UART

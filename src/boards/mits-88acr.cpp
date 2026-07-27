@@ -99,8 +99,10 @@ std::vector<Property> AcrBoard::properties() {
 // It is also the thing standing between a recording and a corrupted tape. See
 // host/tape.h: one head means one position, the UART reads EAGERLY, and a tape that
 // could be read and written at once would have its first byte eaten before the guest
-// ever ran. PLAY and RECORD are exclusive here because they are exclusive on a
-// recorder.
+// ever ran. PLAY and RECORD are exclusive here because the DIRECTION is exclusive --
+// one head, one transport, one way at a time. NOT because a deck has one button down:
+// on a real one you hold PLAY and RECORD together, and RECORD alone does nothing. The
+// buttons select a mode; it is the mode that excludes.
 std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
     if (!isTape(unit)) return {};
 
