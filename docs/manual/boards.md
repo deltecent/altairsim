@@ -695,14 +695,33 @@ a bootstrap into.
 The eight switches on the left of the address bank, `SA8`–`SA15`. **`IN FFH` reads them.** They are
 **read-only**: an `OUT FF` is not this board's business and goes nowhere at all.
 
+`SA15` is the **top** bit of the byte the program reads and `SA8` is the bottom, so the switches
+line up left to right the way they sit on the panel:
+
+```
+switch   SA15  SA14  SA13  SA12  SA11  SA10   SA9   SA8
+bit         7     6     5     4     3     2     1     0
+value    0x80  0x40  0x20  0x10  0x08  0x04  0x02  0x01
+```
+
+That is what makes a period boot procedure followable. "Raise A15 and A11" is `0x80` plus `0x08`
+— or, written so it looks like the panel, `0b10001000`.
+
 **They are not decoration.** Period bootstraps read the sense switches to decide **what to boot
 from** — which device, at which port, at which speed. That is why every tape machine in this package
 sets one:
 
 ```
 sense = 0x80        # basic4k: load from the 88-SIO at port 00
+sense = 0b10000000  #          the same eight switches, drawn
 sense = 0x8E        # ps2:     the 2SIO, and interrupts off
+sense = 0b10001110  #          again, one digit per switch
 ```
+
+Binary is nothing special to this board — `0b` works anywhere a number does, at the prompt and in
+a machine file alike, and the monitor chapter's number rule has the whole list of prefixes. It is
+just that eight switches would rather be eight digits than two hex ones. Whichever way you write
+it, `SHOW fp` reads the byte back in hex.
 
 Get it wrong and the loader sits there reading a device that is not there. It will not tell you.
 It has no way to.
