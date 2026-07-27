@@ -26,7 +26,7 @@ A **Bell 103** originate/answer modem on an S-100 card, with an on-board pulse d
 | **Manual** — PMMI *MM-103 Modem and Communications Adapter Owner's Manual*, © 1982, 32 pp. Good OCR text layer for §7 (register spec), §9 (interrupts) and §10 (the MC6860 reprint); §8's listings and the figures OCR poorly and must be read as page images. | `reference/pmmi-mm-103-modem-and-comm-adapter.pdf` (untracked, 20 MB — see `docs/sources.md`); fetched from s100computers.com |
 | **§8's ten worked programs** — period software written for real silicon, the only cross-check on the prose since **no schematic was ever shipped** | §8 of the same manual |
 
-**No other simulator's source is used or needed** (`DESIGN.md` §0.1). There is exactly one prior PMMI emulation — `s100_pmmi.c` in SIMH's AltairZ80, contributed by Patrick in 2020 — and it is deliberately *not* a source here; §0.1's reasoning does not turn on authorship. Its companion `pmmi.sim` config (`set pmmi enable`, `attach pmmi connect=<serial|host:port>`) is worth recording as a **command-vocabulary ancestor of `CONNECT`** and nothing more: a config file is not a register source.
+**No other simulator's source is used or needed** (`DESIGN.md` §0.1) — including where a prior emulation of this card exists and is Patrick's own, since §0.1's reasoning does not turn on authorship. Everything below is from the manual.
 
 `MXO-PM22.ASM`, the MEX overlay the earlier draft of this file cited for corroborating equates, **is not present on this machine** and could not be found re-hosted. If a copy surfaces it is worth having; nothing here depends on it.
 
@@ -158,6 +158,8 @@ The 40/60 duty cycle is exactly the break/make ratio for pulse-dialing a telepho
 
 Hardware-timed, software-counted. The relay is driven directly by **SH** (`OUT BA+0` bit 0): 1 = off-hook/loop closed = "make"; 0 = on-hook/loop open = "break". **DTR must be off during dialing.**
 
+> **This section describes the hardware and the guest software, not a simulator feature.** The card models SH as the relay it is; it does not decode these pulses into digits. See *How it would be simulated*.
+
 1. `OUT BA+3, 0` — clear the 6860 (DTR off).
 2. `OUT BA+2, 250` — 10 pps (or 125 for 20 pps).
 3. `OUT BA+0, 1` — go off-hook (SH = 1).
@@ -195,11 +197,11 @@ Four maskable sources: TBMT, DAV, Ring-OR-Dial-Tone, Timer Pulses. Gated by `OUT
 ## How it would be simulated
 
 - The phone line is a **`ByteStream`**. `CONNECT pmmi socket:host:port` places a call; `CONNECT pmmi serial:/dev/cu.usbserial-X` drives a real modem; a **listening** socket lets the board *be* called (incoming connection → ring detect → answer-on-ring).
-- Dialed digits are decoded from the make/break pulses and surfaced as an event. Optionally a `dialmap` property maps a dialed number to a host:port, so a guest dialing `5551234` reaches a BBS you nominate.
+- **SH is a relay pin, and only a relay pin.** It goes on- and off-hook, and going on-hook hangs up. The make/break pulses a guest's dialer program produces are *not* decoded into digits, and no property maps a dialed number onto a host and port — **placing the call is `CONNECT`'s job.** Reading a number out of the hook relay and steering it at an IP address would be a behavior this card never had; the MM-103 did not know what it was dialing either. A period dialer program still runs, still pulses the hook, and still works in the only sense the hardware ever offered.
 - Timer pulses and all 6860 timing come from the **`EventQueue`**, in T-states.
-- Properties: `port`, `interrupt` (`int` | `vi0..vi7`), `answer` (auto-answer), `dialmap`, `carrier_delay`, `self_test`.
+- Properties: `port`, `interrupt` (`int` | `vi0..vi7`), `answer` (auto-answer), `carrier_delay`, `self_test`.
 
-Your `pmmi.sim` for AltairZ80 already does exactly this — `attach pmmi connect=67.164.159.109:4667`. The `connect=` syntax is the direct ancestor of this design's `CONNECT` verb.
+Note that this puts the far end's address on the **host** side, where the operator sets it, rather than behind a dial tone the guest has to produce.
 
 ## Quirks reproduced
 
@@ -235,4 +237,5 @@ Your `pmmi.sim` for AltairZ80 already does exactly this — `attach pmmi connect
 
 - No modulation is simulated; the "phone line" is a byte stream, so the Bell 103 frequencies are documentation, not signal processing.
 - Dial-tone detection is synthetic (asserted when a `ByteStream` endpoint is available).
+- **Dialed digits are not decoded.** The hook relay follows SH faithfully, but nothing counts the pulses and no number selects a far end — you attach one with `CONNECT`. This is a deliberate limit, not a gap waiting to be filled: decoding a phone number and resolving it to a host would be an invented feature.
 - Self-test / loopback should be honored, since diagnostics software uses it.
