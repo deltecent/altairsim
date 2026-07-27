@@ -123,12 +123,11 @@ Names are case-blind. The rules are the ones in the disks chapter, and they are 
 altairsim> SET acr0:tape mode=record
 ```
 
-Play and record are **mutually exclusive**, and not because it was easier to write that way.
-It is **one head and one transport**: a deck that is recording is not handing you back what is
-already on the tape, because the signal is going the other way down the same wire. On a real
-recorder you do press PLAY and RECORD *together* — RECORD alone does nothing — but that is two
-buttons selecting **one mode**, and the mode is record. So `mode` is one setting with two
-values, and there is no third.
+**`play` loads from the file; `record` saves to it.** Which way the bytes are going is the
+whole of the setting.
+
+The two are **mutually exclusive** — one tape, one head, one direction at a time — so `mode`
+is one setting with two values, and there is no third.
 
 ### Where the head is — the tape counter
 
