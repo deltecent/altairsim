@@ -3111,6 +3111,17 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         std::string err;
         if (!b->mount(u.name, unquote(a[2]), readOnly, err)) {
             out << b->id << ": " << err << "\n";
+            // A MISSING file is the one mount failure the operator can fix from here: add
+            // CREATE and we make a blank one and mount it (a hard-sector disk then FORMATs,
+            // a cassette records onto it). Only say so when the file is actually absent and
+            // they did not already ask -- a geometry or permission error is a different
+            // problem and CREATE would not touch it.
+            if (!create) {
+                std::error_code ec;
+                if (!std::filesystem::exists(b->resolvePath(unquote(a[2])), ec))
+                    out << b->id << ": to make a blank one, add CREATE: MOUNT " << a[1] << " "
+                        << a[2] << " CREATE\n";
+            }
             failed_ = true;
         } else {
             if (created)
