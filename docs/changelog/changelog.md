@@ -8,6 +8,15 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `altairsim rombasic` — MITS Extended ROM BASIC 16K
+
+A new built-in machine boots **ALTAIR ROM BASIC 4.1** straight out of ROM: the interpreter
+lives in eight 2K PROMs at `C000`–`FFFF` and runs in place, so it uses no RAM to hold itself
+and leaves the full **48K** below it (`0000`–`BFFF`) free for your program. Just run
+`altairsim rombasic`, answer `MEMORY SIZE?` and `LINEPRINTER?` (`C`), and you are at the `OK`
+prompt on the 88-2SIO console — no tape to load. The ROM ships as the new `builtin:rombasic`;
+its last 2K is the disk bootloader, still reachable with `RUN FF00`.
+
 ### Blank hard-sector disks can be created and formatted from inside the simulator
 
 A hard-sector controller — the 88-DCDD (including the 8 MB FDC+ image) and the 88-MDS

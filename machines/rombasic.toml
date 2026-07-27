@@ -1,0 +1,88 @@
+# MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM.
+#
+#     altairsim rombasic
+#     -> MEMORY SIZE?
+#
+# This is the ROM-resident build of MITS Extended BASIC: the interpreter lives in
+# eight 2K PROMs at C000-FFFF and executes in place, so it uses no RAM to hold
+# itself. That leaves 48K of RAM (0000-BFFF) for the program and variables -- the
+# arithmetic the ReadMe spells out ("Extended BASIC in ROM leaves only 48K of RAM").
+#
+# The disk bootloader is baked into the last PROM: `RUN FF00` boots Altair DOS / CP/M
+# instead of starting BASIC (you would need a 48K-or-smaller CP/M, per the ReadMe).
+#
+# Every number here comes from roms/ROMBASIC/ (see "ROM BASIC ReadMe.pdf").
+
+[machine]
+name    = "rombasic"
+
+# BASIC has no RAM bootstrap to load: it cold-starts by executing at C000, which the
+# operator's recipe describes as "examine 140000 octal (C000 hex) ... depress RUN".
+startup = ["RUN C000"]
+
+# The front panel, whose sense switches BASIC reads at startup (port FF) to learn which
+# terminal card it is talking to. The ReadMe's table gives the high byte A15-A8:
+#
+#     0000 0000  -> 0x00  2SIO with 2 stop bits   <-- this machine
+#     0001 0000  -> 0x10  2SIO with 1 stop bit
+#     0010 0000  -> 0x20  88-SIO (not rev 0)
+#
+# 0x00 selects the 88-2SIO console configured below.
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0        # flat out (the default); `SET cpu0 clock_hz=2000000` for the real 2 MHz
+
+# THE CONSOLE -- an 88-2SIO at 0x10, the card the sense switch above selects. As with
+# basic8k, the word format is not a strap: BASIC programs the 6850 itself, so no
+# data_bits/parity/stop_bits belong here. Channel B is the second line, unconnected.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE CASSETTE -- an 88-ACR at 006, for Extended BASIC's CSAVE/CLOAD. Same port as
+# basic8k; no tape is mounted (a tape is not hardware -- `MOUNT acr0:tape mytape.tap`).
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  # 48K of RAM, 0000-BFFF, up to the ROM. This is the whole reason the "16K" build
+  # feels smaller than the tape BASICs: the interpreter is above this, in ROM.
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"
+
+  # THE WHOLE 16K ROM, C000-FFFF. The image self-declares C000 (loadRomRegion errors
+  # if it did not match `at`), and the last 2K holds the disk bootloader BASIC reaches
+  # via `RUN FF00`, so the region must span all the way to FFFF.
+  [[board.region]]
+  type  = "rom"
+  at    = C000
+  mount = "builtin:rombasic"
+
+# THE TERMINAL. Extended BASIC, like the tape BASICs, sets bit 7 of the last character
+# of a message; an unfiltered terminal would print "MEMORY SIZ?". The eighth bit is the
+# Teletype's parity position and is the terminal's to ignore (DESIGN.md 7.2).
+[console]
+strip7out = true

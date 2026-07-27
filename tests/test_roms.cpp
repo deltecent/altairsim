@@ -113,6 +113,10 @@ void test_roms() {
         // The Tarbell floppy boot PROM: 32 bytes at 0000, shared by the single- and
         // double-density cards. Reads track 0 sector 1 into 0000 and jumps into it (07D).
         {"tarbell-sd", 0x0000, 0x001F, 32, 0x55E3446Du, true},
+        // MITS Extended ROM BASIC 16K: the whole interpreter in eight 2K PROMs at
+        // C000-FFFF, executed in place (no RAM copy). A complete, contiguous 16K part;
+        // its last 2K is the disk bootloader reached via RUN FF00. machines/rombasic.toml.
+        {"rombasic", 0xC000, 0xFFFF, 16384, 0x643FE88Bu, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;
