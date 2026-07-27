@@ -512,7 +512,12 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "bank";
-        x.help = "The live bank";
+        // The 0..15 below is the widest any scheme goes, NOT what this board will take:
+        // set() refuses anything at or above banks_, which bank_type decides. Say so, or
+        // the reference's Legal column offers a reader fifteen banks a `none` board has not
+        // got and the error is the first they hear of it.
+        x.help = "The live bank. 0 .. banks-1, and `banks` follows bank_type -- a board "
+                 "with one bank takes only 0";
         x.kind = Kind::Int;
         x.min = 0;
         x.max = 15;
@@ -543,7 +548,12 @@ std::vector<Property> MemoryBoard::properties() {
     {
         Property x;
         x.name = "seed";
-        x.help = "Seed for fill=random. Goes in the snapshot, or replay is dead.";
+        // WHAT THE SEED IS ACTUALLY FOR. This used to say "Goes in the snapshot, or replay
+        // is dead", which was wrong twice: there is no replay, and the seed is not in the
+        // snapshot -- serialize() writes the STORE, the bytes themselves, so a RESTORE does
+        // not need to re-derive them. What the seed buys is a repeatable POWER.
+        x.help = "Seed for fill=random. The same seed fills RAM the same way at every "
+                 "POWER, so a run is repeatable; change it for a different junk pattern";
         x.kind = Kind::Int;
         x.get = [this] { return Value::ofInt((long long)seed_); };
         x.set = [this](const Value& v, std::string&) {

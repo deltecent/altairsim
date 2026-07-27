@@ -29,8 +29,8 @@ printed in each property's own base.
 | [`tarbelldd`](#tarbelldd) | Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM |
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
 | [`uio`](#uio) | MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout |
-| [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
-| [`lpc`](#lpc) | MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file |
+| [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file, a socket, or a real printer queue |
+| [`lpc`](#lpc) | MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file, a socket, or a real printer queue |
 | [`pio`](#pio) | MITS 88-PIO: 8-bit parallel port, units 'out'/'in'. Two ports at BASE+0..1 (default 04). CONNECT a printer, a keyboard, a socket |
 | [`4pio`](#4pio) | MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BASE (default 20). Software-set direction; CONNECT each section |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
@@ -38,7 +38,7 @@ printed in each property's own base.
 | [`vdb8024`](#vdb8024) | SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display |
 | [`d7a`](#d7a) | Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host |
 | [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT). Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
-| [`fp`](#fp) | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
+| [`fp`](#fp) | Altair front panel: the address switches, SA0..SA15. The top eight double as the SENSE switches, which IN 0FFH reads -- the panel answers no OUT |
 | [`turnkey`](#turnkey) | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
@@ -65,9 +65,9 @@ RAM/ROM board: a list of regions, PHANTOM*, and five banking schemes
 | `phantom` | enum | `all` | `none` \| `read` \| `all` | What I ASSERT over my rom regions: none \| read \| all |
 | `bank_type` | enum | `none` | `none` \| `eram` \| `vram` \| `cram` \| `hram` \| `b810` | none\|eram\|vram\|cram\|hram\|b810 -- five real cards, no two alike |
 | `banks` | int | — | — | how many banks this board has. The board decides: it follows bank_type **(read-only — not a key you may set)** |
-| `bank` | int | `0` | `0` .. `15` | The live bank |
+| `bank` | int | `0` | `0` .. `15` | The live bank. 0 .. banks-1, and `banks` follows bank_type -- a board with one bank takes only 0 |
 | `fill` | enum | `random` | `zero` \| `random` | RAM contents at power-on: zero \| random (real RAM is not zeroed) |
-| `seed` | int | `1` | any | Seed for fill=random. Goes in the snapshot, or replay is dead. |
+| `seed` | int | `1` | any | Seed for fill=random. The same seed fills RAM the same way at every POWER, so a run is repeatable; change it for a different junk pattern |
 | `pages` | string | — | — | the composite page map -- which pages this board answers for. Derived from the regions you declared **(read-only — not a key you may set)** |
 
 
@@ -147,7 +147,7 @@ MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED stat
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x0` | `0x0` .. `0xFE` | Base address -- MUST BE EVEN. Control at BASE, data at BASE+1 |
-| `rev` | enum | `1` | `0` \| `1` | Board revision. 1 = the errata mod done at the factory (see the .md) |
+| `rev` | enum | `1` | `0` \| `1` | Board revision. 1 = the factory errata mod: ready is bit 7 (out) and bit 0 (in), both inverted. 0 = as shipped, which also reports them true-sense on bits 5 and 1 |
 | `baud` | int | `9600` | `50` .. `25000` | Line rate. A JUMPER on the real card -- software cannot change it |
 | `data_bits` | int | `8` | `5` .. `8` | Data bits per character. The NDB1/NDB2 pads |
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits. The NSB pad: GND = 1, +V = 2 |
@@ -345,7 +345,7 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x6` | `0x0` .. `0xFE` | Base address -- MUST BE EVEN. Control at BASE, data at BASE+1 |
-| `rev` | enum | `1` | `0` \| `1` | Board revision. 1 = the errata mod done at the factory (see the .md) |
+| `rev` | enum | `1` | `0` \| `1` | Board revision. 1 = the factory errata mod: ready is bit 7 (out) and bit 0 (in), both inverted. 0 = as shipped, which also reports them true-sense on bits 5 and 1 |
 | `baud` | int | `300` | `50` .. `25000` | Line rate. A JUMPER on the real card -- software cannot change it |
 | `data_bits` | int | `8` | `5` .. `8` | Data bits per character. The NDB1/NDB2 pads |
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits. The NSB pad: GND = 1, +V = 2 |
@@ -357,7 +357,7 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
+| `mode` | enum | `play` | `play` \| `record` | Which way the bytes go: play loads from the file, record saves to it |
 | `format` | enum | `auto` | `auto` \| `raw` \| `fsk300` | How to read the mounted file: auto \| raw \| fsk300 |
 | `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
@@ -381,7 +381,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x6` | `0x0` .. `0xFE` | Base address -- MUST BE EVEN. Control at BASE, data at BASE+1 |
-| `rev` | enum | `1` | `0` \| `1` | Board revision. 1 = the errata mod done at the factory (see the .md) |
+| `rev` | enum | `1` | `0` \| `1` | Board revision. 1 = the factory errata mod: ready is bit 7 (out) and bit 0 (in), both inverted. 0 = as shipped, which also reports them true-sense on bits 5 and 1 |
 | `baud` | int | `300` | `50` .. `25000` | Line rate. A JUMPER on the real card -- software cannot change it |
 | `data_bits` | int | `8` | `5` .. `8` | Data bits per character. The NDB1/NDB2 pads |
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits. The NSB pad: GND = 1, +V = 2 |
@@ -396,7 +396,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
+| `mode` | enum | `play` | `play` \| `record` | Which way the bytes go: play loads from the file, record saves to it |
 | `format` | enum | `auto` | `auto` \| `raw` \| `fsk300` | How to read the mounted file: auto \| raw \| fsk300 |
 | `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
@@ -422,7 +422,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 
 ## `c700`
 
-MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file
+MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file, a socket, or a real printer queue
 
 **Units:** `prn` (serial)
 
@@ -436,7 +436,7 @@ MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+
 
 ## `lpc`
 
-MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file
+MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file, a socket, or a real printer queue
 
 **Units:** `prn` (serial)
 
@@ -600,7 +600,7 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
+| `mode` | enum | `play` | `play` \| `record` | Which way the bytes go: play loads from the file, record saves to it |
 | `format` | enum | `auto` | `auto` \| `raw` \| `cuts1200` \| `kcs300` | How to read the mounted file: auto \| raw \| cuts1200 \| kcs300 |
 | `leader` | int | `3` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `2` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
@@ -617,7 +617,7 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `mode` | enum | `play` | `play` \| `record` | The button that is down on the recorder: play \| record |
+| `mode` | enum | `play` | `play` \| `record` | Which way the bytes go: play loads from the file, record saves to it |
 | `format` | enum | `auto` | `auto` \| `raw` \| `cuts1200` \| `kcs300` | How to read the mounted file: auto \| raw \| cuts1200 \| kcs300 |
 | `leader` | int | `3` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
 | `trailer` | int | `2` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
@@ -633,14 +633,13 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 
 ## `fp`
 
-Altair front panel: the SENSE switches at port FF (read-only), and the lamps
+Altair front panel: the address switches, SA0..SA15. The top eight double as the SENSE switches, which IN 0FFH reads -- the panel answers no OUT
 
 ### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `sense` | int | `0x0` | `0x0` .. `0xFF` | The SENSE switches, SA8..SA15 -- what IN 0FFH reads |
-| `data` | int | `0x0` | `0x0` .. `0xFF` | The DATA switches, SA0..SA7. Not readable by the guest -- see the .md |
 
 
 ## `turnkey`

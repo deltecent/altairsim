@@ -152,9 +152,10 @@ public:
     void deserialize(StateReader& r) override;
 
 private:
-    // ONE ROW OF SIXTEEN. SA0..SA15. The low eight are the DATA switches the panel
-    // deposits with; the high eight are the sense switches. Model the row once and
-    // they cannot drift apart, which is the situation on the actual sheet metal.
+    // ONE ROW OF SIXTEEN ADDRESS SWITCHES, SA0..SA15 -- there is no separate data bank
+    // on the panel. The low eight are the byte DEPOSIT writes; the high eight are also
+    // the sense switches. Model the row once and they cannot drift apart, which is the
+    // situation on the actual sheet metal.
     uint16_t sw_ = 0x0000;
 
     // The lamp latch. Written ONLY in snoop(), which is the clocked half of the

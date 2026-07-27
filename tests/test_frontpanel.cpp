@@ -86,9 +86,17 @@ void test_frontpanel() {
         // THE SWITCHES ARE THE TOP HALF OF ONE ROW OF SIXTEEN. Not a separate
         // register -- SA8..SA15 -- which is why setting one does not disturb the
         // other and why there is only one place either can be wrong.
-        setProperty(*r.fp, "data", "3C", err);
+        r.fp->setSwitches((uint16_t)((r.fp->switches() & 0xFF00) | 0x3C));
         CHECK(r.fp->switches() == 0x5A3C, "sense is the HIGH byte of the switch row");
-        CHECK(r.m.bus.ioRead(0xFF) == 0x5A, "...and the DATA switches are not on the port");
+        CHECK(r.m.bus.ioRead(0xFF) == 0x5A, "...and the low half is not on the port");
+        CHECK(setProperty(*r.fp, "sense", "77", err), "SET fp0 SENSE again");
+        CHECK(r.fp->switches() == 0x773C, "...and it moved only the top eight");
+        CHECK(setProperty(*r.fp, "sense", "5A", err), "put it back for what follows");
+
+        // ONE KNOB, AND ONLY ONE. The low half is not a property: nothing in the machine
+        // reads it, and there is no panel to flip it on. What this board owes an operator
+        // is a way to say what IN 0FFH returns.
+        CHECK(!setProperty(*r.fp, "data", "3C", err), "there is no `data` property");
 
         // ---- OUT 0FFH IS NOT OURS. The buffer enable is gated with sINP; there is
         // no sOUT anywhere near it (schematic 880-106). The byte is discarded by the

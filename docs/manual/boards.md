@@ -686,7 +686,7 @@ supply**, since none is in the package. Its cassette deck comes up empty.
 
 ## `fp` — the front panel
 
-The switches and the lamps. The panel is **a board**, because on a real Altair it was one — it
+The sense switches. The panel is **a board**, because on a real Altair it was one — it
 plugged into the bus like everything else, and a machine without it is a machine you cannot toggle
 a bootstrap into.
 

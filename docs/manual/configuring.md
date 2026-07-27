@@ -505,7 +505,7 @@ name    = "tiny"
 startup = ["RUN 0"]
 
 [[board]]
-type = "fp"                # the front panel: sense switches and lamps
+type = "fp"                # the front panel: the sense switches at port FF
 id   = "fp0"
 sense = 0x00
 
