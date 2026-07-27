@@ -124,8 +124,11 @@ altairsim> SET acr0:tape mode=record
 ```
 
 Play and record are **mutually exclusive**, and not because it was easier to write that way.
-It is **one head and one physical button**. You cannot press PLAY and RECORD at the same time
-on a cassette recorder, so you cannot do it here.
+It is **one head and one transport**: a deck that is recording is not handing you back what is
+already on the tape, because the signal is going the other way down the same wire. On a real
+recorder you do press PLAY and RECORD *together* — RECORD alone does nothing — but that is two
+buttons selecting **one mode**, and the mode is record. So `mode` is one setting with two
+values, and there is no third.
 
 ### Where the head is — the tape counter
 
