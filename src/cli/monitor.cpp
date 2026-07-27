@@ -2670,33 +2670,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 showBoards(out, tmp);
                 return true;
             }
+            // The live machine, in exactly the shape `SHOW MACHINE <name>` prints a
+            // built-in -- minus the blurb, which a running machine has no equivalent of.
+            // The board table carries the CPU and its ISA in the UNITS column, and the
+            // clock and sense switches remain the CPU and front-panel boards' properties
+            // (DESIGN.md 3, 8): `SHOW cpu0` and `SHOW fp0` are where those live.
             out << "name      " << m_.name << "\n";
             out << "startup   " << (m_.startup.empty() ? "(none)" : "") << "\n";
             for (const auto& s : m_.startup) out << "            " << s << "\n";
-
-            // NEITHER THE CLOCK NOR THE SENSE SWITCHES ARE PRINTED HERE, and there is
-            // no machine-level copy of either to print. The crystal is on the CPU card
-            // and the switches are on the front panel (DESIGN.md 3, 8), so both are
-            // those cards' properties: `SHOW cpu0` and `SHOW fp0` are where they live.
-            // A backplane with no CPU in it has no clock rate at all, and one with no
-            // panel in it has no switches -- which are not missing values. They are the
-            // truth about the machine.
-            std::vector<Board*> cpus = m_.masters();
-            if (cpus.empty()) {
-                out << "cpu       (none -- the monitor is the bus master, and that is a\n"
-                       "            real machine: DEPOSIT and DUMP run real bus cycles)\n";
-            } else {
-                for (Board* c : cpus) {
-                    std::string isa = "?";
-                    if (auto* card = dynamic_cast<CpuCard*>(c))
-                        if (CpuCore* core = card->activeCore()) isa = core->isa();
-                    std::snprintf(buf, sizeof buf, "cpu       %s (%s)  -- SHOW %s for its clock",
-                                  c->id.c_str(), isa.c_str(), c->id.c_str());
-                    out << buf << "\n";
-                }
-                if (cpus.size() > 1)
-                    out << "          TWO BUS MASTERS. That is contention, not a feature.\n";
-            }
+            out << "\n";
+            showBoards(out, m_);
             return true;
         }
         Board* b = board(a[1], out);
