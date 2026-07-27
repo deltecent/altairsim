@@ -41,7 +41,7 @@ Type the part before the bracket.
 | `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` | `HISTORY [BUS\|CPU] [n]` |
-| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP]` |
+| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP] [CREATE]` |
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
 | `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |

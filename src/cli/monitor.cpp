@@ -17,6 +17,7 @@
 #include "host/console.h"
 #include "host/display.h"
 #include "host/endpoint.h"
+#include "host/media.h"  // writeHostFile -- MOUNT ... CREATE makes an empty file
 #include "isa/isa.h"
 
 #include <algorithm>
@@ -3044,11 +3045,20 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // the disk READ/WRITE while the operator believed they had protected it. Refuse.
         bool                                             readOnly    = false;
         bool                                             extract     = false;
+        bool                                             create      = false;
         std::string                                      extractBase;  // "" -> beside the WAV
         std::vector<std::pair<std::string, std::string>> opts;  // key=value, applied post-mount
         for (size_t i = 3; i < a.size(); ++i) {
             if (is(a[i], "WP") || is(a[i], "RO")) {
                 readOnly = true;
+                continue;
+            }
+            // CREATE makes the file first if it is not there, then mounts it -- so a fresh
+            // hard-sector disk (mount empty, then FORMAT) or a blank cassette starts entirely
+            // inside the simulator. It only ensures the file EXISTS; the board mounts it as
+            // normal. Without CREATE a missing file is still a "no such file" (a typo is a typo).
+            if (is(a[i], "CREATE")) {
+                create = true;
                 continue;
             }
             // EXTRACT is not a property -- it writes files after the mount (below), so it is
@@ -3073,11 +3083,29 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 opts.emplace_back(std::move(key), std::move(val));
                 continue;
             }
-            out << "MOUNT: '" << a[i] << "': options are WP (RO), extract[=<base>], or key=value "
-                << "(e.g. counter=off, stop=2:05). usage: MOUNT <id>:<unit> <file> [WP] "
-                << "[extract[=<base>]] [key=value ...]\n";
+            out << "MOUNT: '" << a[i] << "': options are WP (RO), CREATE, extract[=<base>], or "
+                << "key=value (e.g. counter=off, stop=2:05). usage: MOUNT <id>:<unit> <file> "
+                << "[WP] [CREATE] [extract[=<base>]] [key=value ...]\n";
             failed_ = true;
             return true;
+        }
+
+        // CREATE, before the mount: make a zero-length file at the SAME place the board will
+        // open it (resolvePath -- identity for a typed path, config-relative inside a machine
+        // file), so mount() then finds it. Never clobber a file that is already there.
+        bool created = false;
+        if (create) {
+            std::string rp = b->resolvePath(unquote(a[2]));
+            std::error_code ec;
+            if (!std::filesystem::exists(rp, ec)) {
+                std::string cerr;
+                if (!writeHostFile(rp, {}, cerr)) {
+                    out << b->id << ": " << cerr << "\n";
+                    failed_ = true;
+                    return true;
+                }
+                created = true;
+            }
         }
 
         std::string err;
@@ -3085,6 +3113,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
         } else {
+            if (created)
+                out << b->id << ":" << u.name << ": created "
+                    << resolveFrom(startupDir_, unquote(a[2])) << " (empty)\n";
             // The trailing key=value options are applied as unit properties now the tape is
             // in -- so `counter=off`/`stop=2:05` at MOUNT and SET later are the one mechanism.
             // A unit with no such property (a disk, a ROM) says so rather than ignoring it.

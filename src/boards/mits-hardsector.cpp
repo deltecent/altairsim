@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 namespace altair {
@@ -125,13 +126,15 @@ void HardSectorFdc::syncSector(const Position& pos) {
     readPos_   = 0;
     std::memset(buf_, 0, sizeof buf_);
 
+    // A slot that is not in the image reads as the ZEROED buffer -- and that is not an error
+    // to report. It is an UNFORMATTED sector: a hard-sector disk carries no geometry, a blank
+    // or short image is simply one the guest has not formatted yet, and the guest rejects the
+    // zeros itself (the sync byte is 0x00, not the 0xFF a real slot carries -- see DBL.ASM).
+    // Saying "read failed" here would fire once per sector as a blank disk turns under the
+    // head, which is noise, not news. (locate() out of range -- a track/sector the geometry
+    // does not have at all -- is a different thing, but the guest sees the same rejection.)
     size_t n = sizeof buf_;
-    if (!d->img->readSector(d->track, 0, pos.sector, buf_, &n)) {
-        char m[128];
-        std::snprintf(m, sizeof m, "%s: read failed at track %d sector %d", id.c_str(), d->track,
-                      pos.sector);
-        say(m);
-    }
+    (void)d->img->readSector(d->track, 0, pos.sector, buf_, &n);
 }
 
 uint8_t HardSectorFdc::read(const BusCycle& c) {
@@ -460,10 +463,30 @@ void HardSectorFdc::deserialize(StateReader& r) {
     wTrack_   = (int)(int32_t)r.u32();
 }
 
+// The largest format, by bytes -- the controller's whole reach (see the header).
+const HsFormat& HardSectorFdc::maxFormat() const {
+    const std::vector<HsFormat>& f = formats();
+    const HsFormat*              big = &f.front();
+    for (const auto& x : f)
+        if (x.bytes > big->bytes) big = &x;
+    return *big;
+}
+
 // ---------------------------------------------------------------------------
 // The probe. THE BOARD DOES THIS, not DiskImage (DESIGN.md 7.3).
+//
+// A hard-sector image carries no geometry -- it is fixed 137-byte slots addressed
+// linearly, and its size is just how many the guest has written. So the probe is not a
+// GATE: a size that matches a known format gets that format (so SHOW can name it and the
+// XMODEM pad is tolerated), and a size that matches NOTHING -- 0 bytes, an odd count, a
+// disk a person is about to FORMAT -- is not an error. It is an UNFORMATTED disk, mounted
+// at the controller's full reach (maxFormat) and grown as the guest formats it. Reading a
+// slot that is not there fails, and the controller's sync/checksum rejects it, exactly as
+// unformatted media does. `media = <fmt>` still forces a specific geometry (and so a
+// specific blank size), which is the way to make, say, a blank 8" rather than an 8 MB.
 // ---------------------------------------------------------------------------
 bool HardSectorFdc::probe(Drive& d, std::string& err) {
+    (void)err;
     uint64_t got = d.img->size();
 
     const HsFormat* hit = nullptr;
@@ -480,27 +503,27 @@ bool HardSectorFdc::probe(Drive& d, std::string& err) {
         if (sizeMatches(got, f.bytes)) { hit = &f; break; }
     }
 
-    if (!hit) {
-        std::string sizes;
-        for (const auto& f : formats()) {
-            if (!sizes.empty()) sizes += ", ";
-            sizes += std::string(f.name) + "=" + std::to_string(f.bytes);
-        }
-        err = std::to_string(got) + " bytes matches no " + type() + " format (" + sizes +
-              "). Set `media` to force one.";
-        return false;
-    }
+    // No match is a BLANK/UNFORMATTED disk, not an error: mount it at the controller's
+    // whole reach and let the guest's FORMAT program define it. (A `media = <fmt>` that
+    // named a format this card does not have was already refused by the schema, so a
+    // non-empty `forced` here always matched above.)
+    const HsFormat& use = hit ? *hit : maxFormat();
 
-    d.fmt = *hit;
-    d.img->init(hit->tracks, 1, /*interleaved=*/false);
-    d.img->initFormat(0, hit->tracks - 1, 0, 0, Density::SD, hit->sectors, kHsSectorBytes,
+    d.fmt = use;
+    d.img->init(use.tracks, 1, /*interleaved=*/false);
+    d.img->initFormat(0, use.tracks - 1, 0, 0, Density::SD, use.sectors, kHsSectorBytes,
                       /*startSector=*/0);  // ZERO. The Tarbell's is one.
+
+    // EXTEND ON WRITE, always, for hard-sector: a matched disk never grows (its writes stay
+    // in bounds and the step-clamp stops at its last track), and a blank one grows as it is
+    // formatted, capped at geometryBytes_ = this format's reach. See host/disk.h.
+    d.img->setExtendsOnWrite(true);
 
     // The RPM is the CARD's -- 360 for an 8" Pertec, 300 for a 5.25" minidisk (88-MDS manual
     // p4: "Rotational Speed -- 300 rpm (200 ms/rev.)") -- and the sector count is the
     // MEDIUM's. Getting this wrong is silent: the disk still reads, it just turns at a speed
     // no such drive ever turned at.
-    d.spindle.configure(rpm(), hit->sectors);
+    d.spindle.configure(rpm(), use.sectors);
     return true;
 }
 
@@ -703,6 +726,14 @@ std::vector<Property> HardSectorFdc::subUnitProperties(const std::string& table)
         for (const auto& f : formats()) x.choices.push_back(f.name);
         p.push_back(std::move(x));
     }
+    {
+        Property x;
+        x.name = "create";
+        x.help = "Make the disk file (empty) if it is not there, then mount it -- a fresh "
+                 "disk to FORMAT. Pair with `media` to pick its geometry";
+        x.kind = Kind::Bool;
+        p.push_back(std::move(x));
+    }
     return p;
 }
 
@@ -714,7 +745,8 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
 
     int         unit = -1;
     std::string path, media;
-    bool        ro = false;
+    bool        ro     = false;
+    bool        create = false;
 
     // loadSubUnit() has already refused a key we did not declare, a `media` that is not in
     // formats() and a `unit` outside 0..drives-1. What is left is construction.
@@ -723,6 +755,7 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
         else if (k == "mount") path = v;
         else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
         else if (k == "media") media = v;
+        else if (k == "create") create = (v == "true" || v == "1" || v == "yes" || v == "on");
     }
 
     // ...but WHETHER A KEY IS REQUIRED is the board's, and stays here: a drive table with no
@@ -734,6 +767,18 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
 
     drive_[(size_t)unit].forced = media;
     if (path.empty()) return true;
+
+    // `create = true`: make the file (empty) if it is not there, at the SAME place mount()
+    // will open it (resolvePath -- here, relative to the machine file). mount() then treats
+    // an empty image as an unformatted disk. Never clobber a file that already exists.
+    if (create) {
+        std::string     rp = resolvePath(path);
+        std::error_code ec;
+        if (!std::filesystem::exists(rp, ec)) {
+            std::string cerr;
+            if (!writeHostFile(rp, {}, cerr)) { err = cerr + pathNote(path); return false; }
+        }
+    }
     return mount("drive" + std::to_string(unit), path, ro, err);
 }
 

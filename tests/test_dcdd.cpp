@@ -21,6 +21,7 @@
 
 #include "boards/mits-88dcdd.h"
 #include "core/clock.h"
+#include "host/disk.h"
 #include "host/media.h"
 #include "test.h"
 
@@ -282,10 +283,15 @@ void test_dcdd() {
         CHECK(true, "  not care what crystal the CPU has.");
     }
 
-    SECTION("88-DCDD -- the probe, and the XMODEM pad that rejects both real 8-inch disks");
+    SECTION("88-DCDD -- ANY size mounts: a known one by its format, the rest UNFORMATTED");
     {
+        // A hard-sector image carries no geometry -- it is fixed 137-byte slots addressed
+        // linearly. So the probe is not a gate: a recognized size names a format (and the
+        // XMODEM pad is tolerated), and an UNrecognized size -- 0 bytes, an odd count, a disk
+        // a person is about to FORMAT -- mounts as an unformatted disk at the controller's
+        // reach, not an error. The guest's FORMAT program grows it into shape.
         std::string err;
-        auto probes = [&](uint64_t bytes) {
+        auto mounts = [&](uint64_t bytes) {
             Clock     c;
             DcddBoard b;
             b.attachClock(&c);
@@ -293,20 +299,72 @@ void test_dcdd() {
             return b.mount("drive0", "a.dsk", false, err);
         };
 
-        CHECK(probes(337568), "77 x 32 x 137 = 337,568 is an 8-inch disk");
-        CHECK(probes(337664), "AND SO IS 337,664 -- the XMODEM pad. Both real 8-inch images in");
-        CHECK(true, "  the tree are this size, and `size == 337568` REJECTS BOTH OF THEM.");
-        CHECK(probes(337568 + 127), "the tolerance is the whole 128-byte block...");
-        CHECK(!probes(337568 + 128), "...and not one byte more -- 128 over is a DIFFERENT disk");
+        CHECK(mounts(337568), "77 x 32 x 137 = 337,568 is a recognized 8-inch disk");
+        CHECK(mounts(337664), "AND SO IS 337,664 -- the XMODEM pad. Both real 8-inch images in");
+        CHECK(true, "  the tree are this size, and `size == 337568` would REJECT BOTH.");
+        CHECK(mounts(337568 + 127), "the tolerance is the whole 128-byte block...");
+        CHECK(mounts(337568 + 128), "...and 128 over is simply UNFORMATTED now -- it still mounts");
 
-        CHECK(probes(8978432), "2048 x 32 x 137 = 8,978,432 is the FDC+ 8 MB drive");
-        CHECK(!probes(123456), "and a size that is no format at all is an error, not a guess");
+        CHECK(mounts(8978432), "2048 x 32 x 137 = 8,978,432 is the FDC+ 8 MB drive");
+        CHECK(mounts(123456), "a size that is no format at all mounts as a blank disk to FORMAT");
+        CHECK(mounts(0), "and a ZERO-byte file is the blankest disk of all -- mount and FORMAT it");
 
-        // THE MINIDISK IS NOT A MEDIUM OF THIS CARD, and this is the tripwire that keeps it
-        // from coming back. It used to probe here -- one row in dcddFormats() -- and a card
-        // that accepted it turned the platter at 360 RPM instead of 300 and clocked bytes at
-        // twice the real rate. A 5.25" minidisk goes in an 88-MDS (tests/test_mds.cpp).
-        CHECK(!probes(76720), "76,720 is a MINIDISK, and it is NOT an 8-inch controller's disk");
+        // The minidisk is still not a MEDIUM of this card -- it is a different controller,
+        // 300 RPM not 360 (tests/test_mds.cpp). But a 76,720-byte file is no longer refused
+        // here: it mounts UNFORMATTED (this card cannot read it as a minidisk, and does not
+        // pretend to). Mounting anything is the operator's call, as on the real hardware.
+        CHECK(mounts(76720), "a minidisk-sized image mounts as an unformatted 8-inch disk");
+    }
+
+    SECTION("DiskImage -- extend-on-write grows a hard-sector image, capped at the reach");
+    {
+        // The mechanism under the blank disk: a growable image extends its backing file as
+        // sectors are written, up to geometryBytes_, and never past it. A read of a slot not
+        // yet written fails (the controller then rejects it) -- which is what unformatted
+        // media does. Soft-sector (extend off) refuses to grow at all.
+        auto freshImage = [](bool grow) {
+            // A tiny 2-track x 2-sector x 137 = 548-byte geometry, backed by an EMPTY medium.
+            auto img = std::make_unique<DiskImage>(
+                std::make_unique<MemoryMedia>("blank", std::vector<uint8_t>{}));
+            img->init(2, 1, false);
+            img->initFormat(0, 1, 0, 0, Density::SD, 2, 137, /*startSector=*/0);
+            img->setExtendsOnWrite(grow);
+            return img;
+        };
+
+        std::vector<uint8_t> sec((size_t)137, 0xAB), back((size_t)137, 0);
+        size_t               n;
+
+        {
+            auto img = freshImage(/*grow=*/true);
+            CHECK(img->geometryBytes() == 548, "geometry is 2 x 2 x 137 = 548 bytes -- the reach");
+            CHECK(img->size() == 0, "the backing file starts EMPTY -- an unformatted disk");
+
+            n = 137;
+            CHECK(!img->readSector(0, 0, 0, back.data(), &n),
+                  "a read of an unwritten slot FAILS -- there is nothing there yet");
+
+            n = 137;
+            CHECK(img->writeSector(1, 0, 1, sec.data(), &n),
+                  "the LAST slot (track 1, sector 1) writes -- the file grows to reach it");
+            CHECK(img->size() == 548, "and the file grew to hold it -- 548 bytes now");
+
+            n = 137;
+            CHECK(img->readSector(1, 0, 1, back.data(), &n) && back[0] == 0xAB,
+                  "and it reads back what was written");
+
+            n = 137;
+            CHECK(!img->writeSector(2, 0, 0, sec.data(), &n),
+                  "track 2 is OFF THE REACH -- locate() has no such slot, so the write fails");
+            CHECK(img->size() == 548, "and nothing grew past the geometry");
+        }
+        {
+            auto img = freshImage(/*grow=*/false);  // soft-sector semantics
+            n = 137;
+            CHECK(!img->writeSector(1, 0, 1, sec.data(), &n),
+                  "with extend OFF, a write past the current (empty) file is REFUSED -- a short");
+            CHECK(img->size() == 0, "  soft-sector image is truncated, not grown");
+        }
     }
 
     SECTION("88-DCDD -- sectors are numbered FROM ZERO (the Tarbell's are not)");

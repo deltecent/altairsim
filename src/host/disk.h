@@ -102,6 +102,22 @@ public:
     int  heads() const { return heads_; }
     bool interleaved() const { return interleaved_; }
 
+    // EXTEND-ON-WRITE -- a HARD-SECTOR concession, off by default (DESIGN.md 7.3).
+    //
+    // A hard-sector image carries no geometry: it is fixed 137-byte slots addressed
+    // linearly, and its size is simply how many the guest has written. So a blank or
+    // short image is not a truncated disk, it is an UNFORMATTED one -- the guest's own
+    // FORMAT program fills it in, and until it does a read of an absent slot fails and
+    // the controller's sync/checksum rejects it (which is correct).
+    //
+    // With this on, writeSector() lets the backing file GROW as sectors are written,
+    // still capped at geometryBytes_ (the controller's whole reach -- set by the board
+    // from its largest format). SOFT-SECTOR leaves this OFF: there a short image really
+    // is truncated, and growing it would manufacture the missing tracks out of zeroes
+    // rather than say so (see writeSector).
+    void setExtendsOnWrite(bool g) { extendsOnWrite_ = g; }
+    bool extendsOnWrite() const { return extendsOnWrite_; }
+
     // What is on this track? False if the board never formatted it -- which is an
     // error, not an empty track: the controller asked for a track the medium it
     // itself described does not have.
@@ -137,8 +153,9 @@ private:
     std::unique_ptr<MediaFile> media_;
     int               tracks_        = 0;
     int               heads_         = 0;
-    bool              interleaved_   = false;
-    uint64_t          geometryBytes_ = 0;
+    bool              interleaved_    = false;
+    bool              extendsOnWrite_ = false;  // hard-sector: grow the file as it formats
+    uint64_t          geometryBytes_  = 0;
     std::vector<Slot> slots_;  // one per (track, head), in IMAGE order
 };
 

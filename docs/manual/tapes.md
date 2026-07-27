@@ -338,9 +338,14 @@ altairsim> SET acr0:tape mode play      (...and the WAV is written here)
 **This records over a WAV you already mounted; it does not make one.** The format and the
 sample rate to re-modulate into are the ones the decode found at mount time, so they have to
 have come from somewhere — and the only place they come from is a real recording that was
-already in the file. There is no blank tape: `MOUNT` needs a file that exists, and a file
-that is not a WAV is not made into one by naming it `.WAV`. To record fresh audio, start
-from a WAV you have and record over it.
+already in the file. There is no blank *audio* tape: a file that is not a WAV is not made into
+one by naming it `.WAV`. To record fresh audio, start from a WAV you have and record over it.
+
+**A blank *byte* tape, though, you can make — with `MOUNT … CREATE`.** `MOUNT acr0:tape
+save.tap CREATE` writes an empty file and mounts it, and the guest can then record a program
+onto it (a `CSAVE` from BASIC, say). That is a byte tape, not audio — which is exactly what
+you want for saving and re-loading a program. Without `CREATE`, `MOUNT` needs a file that
+already exists, so a mistyped name is caught as a mistake rather than turned into a blank tape.
 
 **A file called `.WAV` that is not one mounts as a byte tape, quietly.** The magic decides,
 so an empty file — or anything else that is not RIFF/WAVE — falls through to `raw`, and

@@ -55,11 +55,12 @@ public:
     // A sector is a unit; half of one is not a smaller sector, it is a bad disk.
     virtual bool readAt(uint64_t off, uint8_t* buf, size_t n) = 0;
 
-    // MAY EXTEND THE MEDIUM. Recording past the end of a tape is a real thing a
-    // real cassette does. A DISK never does it -- not because this forbids it, but
-    // because DiskImage bounds every access against the declared geometry first,
-    // so a write can never reach the XMODEM pad at the end of a .DSK, let alone
-    // past it. (See disk.h.)
+    // MAY EXTEND THE MEDIUM. Recording past the end of a tape is a real thing a real
+    // cassette does. A SOFT-SECTOR disk never does it -- DiskImage bounds every access
+    // against the declared geometry first, so a write can never reach the XMODEM pad at
+    // the end of a .DSK, let alone past it. A HARD-SECTOR disk is the one exception: it
+    // carries no geometry, so a blank or short image FORMATS by growing, and DiskImage
+    // lets it (extendsOnWrite) up to the controller's reach. (See disk.h.)
     virtual bool writeAt(uint64_t off, const uint8_t* buf, size_t n) = 0;
 
     // Push the dirty bytes at the host. Called on UNMOUNT and on shutdown; a board
@@ -148,8 +149,9 @@ bool writeHostFile(const std::string& path, const std::vector<uint8_t>& data, st
 //
 // THE FILE MUST EXIST. `MOUNT dcdd0:drive0 cmp22.dsk` with the name spelt wrong is
 // a typo, and creating an empty file for it would turn a typo into a disk that
-// formats clean and boots to nothing. Making blank media is a separate verb, and
-// it is not this one.
+// formats clean and boots to nothing. Making blank media is a separate verb --
+// `MOUNT ... CREATE` (monitor) / `create = true` (TOML), which writes an empty file
+// with writeHostFile() and then mounts it -- and it is deliberately not this one.
 // ---------------------------------------------------------------------------
 class HostFile : public MediaFile {
 public:

@@ -82,10 +82,13 @@ void realMotor(MdsBoard& b) {
 } // namespace
 
 void test_mds() {
-    SECTION("88-MDS -- the probe: 76,720, and the XMODEM pad that every real image has");
+    SECTION("88-MDS -- ANY size mounts: 76,720 by its format, the rest UNFORMATTED");
     {
+        // Same rule as the 8-inch card: a hard-sector image has no geometry, so a recognized
+        // size names the format (XMODEM pad tolerated) and any other size -- 0 bytes, an odd
+        // count, a foreign image -- mounts as an unformatted disk to FORMAT, not an error.
         std::string err;
-        auto probes = [&](uint64_t bytes) {
+        auto mounts = [&](uint64_t bytes) {
             Clock    c;
             MdsBoard b;
             b.attachClock(&c);
@@ -93,14 +96,15 @@ void test_mds() {
             return b.mount("drive0", "a.dsk", false, err);
         };
 
-        CHECK(probes(76720), "35 x 16 x 137 = 76,720 -- 35 tracks, 16 sectors, a 137-byte slot");
-        CHECK(probes(76800), "AND SO IS 76,800: all four real images are this size.");
+        CHECK(mounts(76720), "35 x 16 x 137 = 76,720 -- 35 tracks, 16 sectors, a 137-byte slot");
+        CHECK(mounts(76800), "AND SO IS 76,800: all four real images are this size.");
         CHECK(true, "  76,720 is NOT a multiple of 128 (it is 599.375 blocks), so XMODEM padded");
-        CHECK(true, "  it up -- and this format needs sizeMatches() quite as much as the 8-inch.");
-        CHECK(!probes(76720 + 128), "...but 128 over is a different disk, not a pad");
+        CHECK(true, "  it up -- and this format needs sizeMatches() to be recognized as one.");
+        CHECK(mounts(76720 + 128), "...but 128 over just mounts UNFORMATTED now -- not refused");
 
-        CHECK(!probes(337568), "an 8-inch floppy does NOT go in a minidisk drive");
-        CHECK(!probes(8978432), "and neither does an 8 MB FDC+ image");
+        CHECK(mounts(0), "a ZERO-byte file mounts as a blank minidisk to FORMAT");
+        CHECK(mounts(337568), "an 8-inch-sized image mounts UNFORMATTED (this card cannot read it)");
+        CHECK(mounts(8978432), "and so does an 8 MB image -- mounting anything is the operator's call");
     }
 
     SECTION("88-MDS -- 300 RPM, not 360. The 8-inch card's number was silently inherited");

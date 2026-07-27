@@ -164,12 +164,16 @@ HISTORY BUS 100  the last hundred cycles
 ### MOUNT — `M[OUNT]`
 
 ```
-MOUNT <id>[:<u>] <file> [WP]
+MOUNT <id>[:<u>] <file> [WP] [CREATE]
 ```
 Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
 WP write-protects it: the guest may read it and may not write it.
 RO is accepted and means the same -- it is the word for a ROM, which is
 read-only because of what it is.
+
+CREATE makes the file first if it is not there (empty), then mounts it -- a
+fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing
+file is a 'no such file', because a mistyped name is a mistake, not a new disk.
 
 A NAME IS CASE-BLIND, and you may leave off what carries no information: the
 trailing index when only one such board is in the machine, and the unit when the
@@ -179,6 +183,7 @@ and it will tell you so.
 ```
 MOUNT dsk0:drive0 disks/cpm.dsk
 MOUNT dsk0:drive1 disks/master.dsk WP
+MOUNT dsk0:drive1 new.dsk CREATE    a blank disk to FORMAT from the guest
 MOUNT mem0:rom0 roms/monitor.bin
 MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
 ```

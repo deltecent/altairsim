@@ -86,10 +86,17 @@ bool DiskImage::writeSector(int t, int h, int s, const uint8_t* buf, size_t* n) 
     if (!locate(t, h, s, off, len)) return false;
     if (!n || *n < len) return false;  // a partial sector is a corrupt one
 
-    // A DISK NEVER GROWS. writeAt() would happily extend the medium -- a tape needs
-    // that -- but a floppy whose image is SHORT is a truncated image, and appending
-    // to it would manufacture the missing tracks out of zeroes rather than say so.
-    if (off + len > media_->size()) return false;
+    // A SOFT-SECTOR DISK NEVER GROWS. writeAt() would happily extend the medium -- a
+    // tape needs that -- but a floppy whose image is SHORT is a truncated image, and
+    // appending to it would manufacture the missing tracks out of zeroes rather than
+    // say so.
+    //
+    // A HARD-SECTOR disk is the exception (extendsOnWrite_): its image carries no
+    // geometry, so a short image is UNFORMATTED, not truncated, and the guest's FORMAT
+    // program grows it one slot at a time. The write still cannot escape the
+    // controller's reach -- locate() already bounded `off` against geometryBytes_ (the
+    // largest format the board declared), so the file can never exceed it.
+    if (off + len > media_->size() && !extendsOnWrite_) return false;
 
     if (!media_->writeAt(off, buf, len)) return false;
     *n = len;
