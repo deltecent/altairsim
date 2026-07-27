@@ -8,12 +8,12 @@ boards doing the real work; take the boards out and there is nothing left but a 
 the CPU *board* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a board out, put a different one in, and find out what the software does about it.
 
-This chapter says what the twenty-six boards **are** — what the real hardware was, what it is for, and
+This chapter says what the boards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every board is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The twenty-seven boards
+## The boards
 
 | Type | What it is |
 |---|---|
@@ -77,7 +77,7 @@ Sixty-four kilobytes was not enough for very long, and the industry's answer was
 several cards' worth of RAM at the same addresses, with a port that says which one is live. Nobody
 agreed on how.
 
-`altairsim` implements five of the real schemes — **ExpandoRAM**, **Vector Graphic**, **Cromemco**,
+`altairsim` implements several of the real schemes — **ExpandoRAM**, **Vector Graphic**, **Cromemco**,
 **North Star Horizon**, and **AB Digital B810** — and **no two are alike**. Different ports,
 different bit meanings, different numbers of banks. That is not a failure of the simulator to
 generalise; it is the actual history, and software written for one will not drive another.

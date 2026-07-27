@@ -3,7 +3,7 @@
 A simulator of the **MITS Altair 8800** and the **S-100 bus**.
 
 This is the manual for the program you have. It describes `altairsim` itself, the machines
-built into it, and the four worked examples that ship beside it. Media beyond those four is
+built into it, and the worked examples that ship beside it. Media beyond those is
 a separate thing, and the next chapter says where it will come from.
 
 ## Getting started
@@ -11,7 +11,7 @@ a separate thing, and the next chapter says where it will come from.
 | | |
 |---|---|
 | [What altairsim is](introduction.md) | What it does, and what it does not do. |
-| [What is in the package](package.md) | The binary, the built-in machines, five examples that boot — and where the rest is. |
+| [What is in the package](package.md) | The binary, the built-in machines, the examples that boot — and where the rest is. |
 | [Running it](running.md) | Unzip and go. |
 | [**Quick start**](quick-start.md) | **CP/M in one command.** Get out with `^E`, back in with `RUN`, out with `QUIT`. |
 
@@ -39,7 +39,7 @@ a separate thing, and the next chapter says where it will come from.
 | [Tapes](tapes.md) | The cassette interface, and loading BASIC the way MITS meant you to. |
 | [Serial, sockets and telnet](serial.md) | Wiring a board to your terminal, a TCP port, or a real UART. |
 | [Moving files in and out](file-transfer.md) | `HDIR`, `R` and `W` at the CP/M prompt. |
-| [Worked examples](examples.md) | Two complete sessions, start to finish. |
+| [Worked examples](examples.md) | Complete sessions, start to finish. |
 | [Driving it from an AI assistant](mcp.md) | The MCP server. |
 
 ## When it goes wrong

@@ -36,10 +36,11 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
   8080PRE, CPUTEST and the full 8080EXM exerciser all pass — every one of the exerciser's CRC
   groups. Flags, carries, the undocumented behaviours, the lot. The Z80 clears the same bar,
   against ZEXDOC and ZEXALL.
-- **Fourteen board types**, all but one modelled from its own manual: two CPU boards (an 8080 and
-  a Z80), RAM/ROM, two serial boards, a cassette interface, two floppy controllers, a line-printer
-  controller, a video display, the Sol-PC's integrated I/O, a vectored-interrupt/real-time-clock
-  board, the front panel, and one board of our own for moving files in and out.
+- **A board for most of the machine**, all but one modelled from its own manual: CPU boards (an
+  8080 and a Z80), RAM/ROM, serial boards, cassette interfaces, floppy controllers, a line-printer
+  controller, video displays, the Sol-PC's integrated I/O, a vectored-interrupt/real-time-clock
+  board, the front panel, and one board of our own for moving files in and out. The boards
+  chapter has the whole list.
 - **A monitor** — the prompt you get when the machine is not running — with breakpoints (plain
   or conditional), single-stepping, disassembly, memory examine and deposit, a bus-cycle trace
   and a history ring, and a view of the bus itself: who decodes what, who is pulling which
@@ -75,9 +76,9 @@ This section is here because a manual that only lists strengths is an advertisem
 
 ## What is in the box
 
-You have the `altairsim` program, this manual, and four worked examples with their media —
+You have the `altairsim` program, this manual, and worked examples with their media —
 CP/M on a floppy, BASIC on a cassette, a Sol-20 with a game on tape, and Disk BASIC on a
-floppy. Sixteen more machines
+floppy. More machines
 are built into the program itself. It boots something the moment you unzip it; the next
 chapter says what, and where further disks and tapes will come from.
 

@@ -1,6 +1,6 @@
 # Worked examples
 
-Two complete sessions. **Every transcript below was captured from the program**, not typed out
+Complete sessions. **Every transcript below was captured from the program**, not typed out
 from memory — if it says the machine printed something, the machine printed it.
 
 ---

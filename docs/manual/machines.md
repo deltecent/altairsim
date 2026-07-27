@@ -299,4 +299,4 @@ fi
 ## Which chapter next
 
 The **configuring** chapter is the machine file itself: every table, every key, and the four
-things a `[[board]]` entry can mean. The **boards** chapter is what the fourteen boards *are*.
+things a `[[board]]` entry can mean. The **boards** chapter is what the boards *are*.
