@@ -32,6 +32,7 @@ what is actually in one.
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
+| `pmmi` | PMMI MM-103 modem, layered onto the default machine. |
 | `ps2` | The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap. |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
 | `rombasic` | MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM. |

@@ -8,6 +8,19 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `pmmi` — the PMMI MM-103 telephone modem
+
+The first S-100 modem board joins the catalogue: a **Bell 103 modem on one card**, unit `line`,
+four ports from a four-port boundary (default `C0`). It carries the card's real quirk — **read and
+write at the same port are different registers**, and the three control registers are write-only —
+and moves characters over its serial line to whatever you `CONNECT` it to. For now that is a byte
+source and sink: `CONNECT pmmi0:line in:incoming.tap,out:outgoing.tap` transmits and receives
+through a pair of files. It does **not** dial (placing a call is `CONNECT`'s job, not a decoded
+phone number), its modem status is a fixed "connected and ready" value rather than a real handshake,
+and it raises no interrupts — the dialer, the answer/originate handshake and interrupts are still to
+come. `SHOW pmmi0` shows the live frame, baud, UART flags and modem lines. The **`pmmi`** machine is
+`default` with one fitted.
+
 ### `altairsim rombasic` — MITS Extended ROM BASIC 16K
 
 A new built-in machine boots **ALTAIR ROM BASIC 4.1** straight out of ROM: the interpreter

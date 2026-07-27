@@ -1,10 +1,10 @@
 # PMMI MM-103 — Modem and Communications Adapter
 
-**Status:** **deferred** out of the implementation roadmap — the 88-2SIO already exercises every interface this board would (console, host serial, sockets, interrupts), and the PMMI adds a modem's *semantics*, not new simulator plumbing.
+**Status:** **partially implemented** (`pmmi`, board type registered). The **file transmit/receive milestone is built**: the full four-port decode, the write-only control-register shadows, the UART data path onto a `ByteStream`, and the software-programmed frame (`OUT BA+0`) and baud divisor (`OUT BA+2`). `CONNECT pmmi0:line in:…,out:…` moves real bytes. See `machines/pmmi.toml` and `tests/test_pmmi.cpp`.
 
-**But it is kept fully specified here and hand-traced against the board API**, because it is the hardest board in the catalog to express and therefore the **best available test of whether that API is right**. If the design can express the PMMI on paper with no special cases, it can express almost anything you build later.
+**Deferred to later milestones:** the modem handshake (`IN BA+2` returns a fixed "connected/clear-to-send/off-hook" constant — see *Limitations* below), interrupts (the enable bit and mask staging are shadowed but inert), self-test, socket ring/answer, and the pulse dialer. **There is no dialer by design** — SH is a shadowed relay bit and nothing decodes pulses; placing a call is `CONNECT`'s job (see *How it would be simulated*).
 
-Also: this register map was expensive to recover. Do not lose it.
+**This register map was expensive to recover, and is kept fully specified here** — it is the hardest board in the catalog to express, and the reference below is the authority the implementation is built against. Do not lose it.
 
 ## The real hardware
 

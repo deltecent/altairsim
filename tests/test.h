@@ -64,6 +64,7 @@ void test_88acr();
 void test_88uio();
 void test_c700();
 void test_papertape();
+void test_pmmi();
 void test_lpc();
 void test_printer();
 void test_pio();

@@ -25,6 +25,7 @@ be wrong.
 | `sbc` | SD Systems SBC-100/200 — a Z80 single-board computer's serial console |
 | `acr` | MITS 88-ACR — the cassette interface |
 | `uio` | MITS 88-UIO — a serial port and a cassette, on one card |
+| `pmmi` | PMMI MM-103 — a Bell 103 telephone modem on one card |
 | `c700` | MITS 88-C700 — the line-printer controller. Capture to a file |
 | `lpc` | MITS 88-LPC — the other line-printer controller, line-buffered |
 | `pio` | MITS 88-PIO — an 8-bit parallel port, in and out |
@@ -773,6 +774,37 @@ The PROM sockets are a list, like a memory card's regions:
 at    = FC00        # socket L1 — the hard-disk loader
 mount = "builtin:hdbl"
 ```
+
+---
+
+## `pmmi` — PMMI MM-103 modem
+
+A **Bell 103 telephone modem on one S-100 card** — the first S-100 modem approved for direct
+connection to the phone line. In a real machine it dialed, answered, and carried a serial link over
+the line at up to 600 baud. Here it is the card's **transmit and receive path**: unit `line`, four
+ports from a base that must sit on a four-port boundary (default `C0`; the DIP switch on the real
+card set it, and PMMI's own North Star software used `E0`).
+
+Its four ports are the card's quirk: **read and write at the same address are different registers.**
+Writing `BASE+0` sets the character format (data bits, parity, stop bits) and the modem-control bits;
+*reading* it gives you UART status. `BASE+1` is transmit on a write, receive on a read. `BASE+2`
+writes the baud-rate divisor and reads modem status; `BASE+3` writes the modem chip's control word
+and, read, returns nothing the card drives. The three control registers are **write-only** — the
+program keeps its own copy of what it wrote, exactly as it had to on the hardware.
+
+There is no telephone network in the box, so **`CONNECT` its `line` to a byte source and sink**: the
+straightforward test is a pair of paper-tape-style files — `CONNECT pmmi0:line
+in:incoming.tap,out:outgoing.tap` — where what the guest sends lands in one file and what it receives
+is read from the other. The bytes are verbatim; the Bell 103 tones are not simulated, because the
+line here is a byte stream, not audio.
+
+**What it does *not* do yet, on purpose.** It does not dial: the make-and-break of the hook relay a
+period dialer program produces is not decoded into a phone number, and no number picks a far end —
+**placing the call is `CONNECT`'s job**, and reading a number out of the hook would be a behaviour
+this card never had. Modem status (dial tone, ringing, carrier, clear-to-send) reads a fixed
+"connected and ready" value rather than following a real handshake, and the card raises no
+interrupts. `SHOW pmmi0` reports the live frame, baud, UART flags and modem lines alongside the
+base address. The **`pmmi`** machine is `default` with one of these fitted at `C0`.
 
 ---
 
