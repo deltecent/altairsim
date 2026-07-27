@@ -460,9 +460,11 @@ scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 
 ## 5. The release sequence
 
-Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — the three workers `scp` their archives to the coordinator, which alone talks to GitHub.
+Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — the three workers `scp` their archives to the coordinator, which alone talks to GitHub. **Steps 1–4 are pre-build prep and may be done ahead of build day** — bump, changelog, wait for CI's PDFs, tag, wait for `cpu-exerciser-release.yml`, open the draft — leaving only steps 5–6 (build, then checksum/publish) for when the machines are lined up.
 
-**1. Bump the version.** `project(altairsim VERSION X.Y.Z …)` in `CMakeLists.txt` is the only place it lives; everything else derives from it or from `git describe`.
+**1. Bump the version, and write the changelog section.** `project(altairsim VERSION X.Y.Z …)` in `CMakeLists.txt` is the only place the number lives; everything else derives from it or from `git describe`. In the same commit, add the release's section to `docs/changelog/changelog.md`.
+
+> **The changelog is curated, not accumulated.** Each released section is a short *narrative* of a handful of themed entries in the voice of the sections already there (0.3.0 is six) — **not** a verbatim promotion of the running `Unreleased` block, which is a detailed working scratch that also carries entries already shipped in an earlier release. Write the new `X.Y.Z` section fresh from `git log --merges <prevtag>..HEAD` (the authoritative "what actually landed since the last tag"), group it into themes, and **trim anything already shipped** — do not just rename `## Unreleased` to `## X.Y.Z`. Confirm a candidate entry is genuinely new with `git merge-base --is-ancestor <feature-sha> <prevtag>` (an *ancestor* of the previous tag already shipped); do not trust `git log --grep`, which matches later mentions too.
 
 **2. Merge, then wait for the PDFs.** `docs.yml` rebuilds all three PDFs on master — the manual, the **changelog** (`docs/changelog/`), and the developer guide — and commits the ones that changed as *"Rebuild the PDFs for `<sha>`"*. **Tag that commit**, not the merge — otherwise the tagged tree carries a stale manual, or no changelog at all. The manual is handed to `build-package.sh` with `--pdf`; the changelog needs no flag — the script copies `docs/altairsim-changelog.pdf` straight from the tagged tree (it is a committed artifact, same as the manual, and it must not go through the token-substitution loop).
 
