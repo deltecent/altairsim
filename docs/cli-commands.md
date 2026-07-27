@@ -285,7 +285,8 @@ altairsim> CONSOLE
 console  (the host keyboard and screen -- not a tty)
 
   property         value            legal
-  attn             0x5              1..31
+  attn             0x5              0x1..0x1F
+  base             hex              hex|octal
   upper            false            true|false
   strip7in         false            true|false
   strip7out        false            true|false

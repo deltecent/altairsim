@@ -132,7 +132,7 @@ the resolved one is the fence:
 ```
 altairsim> SHOW hb0
   property         value            legal
-  port             0xB0             0..254
+  port             0xB0             0x0..0xFE
   hostdir          xfer
   hostdir_root     /home/you/altair/disks/cpm22/xfer (read-only)
   readonly         false            true|false

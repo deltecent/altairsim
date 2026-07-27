@@ -281,7 +281,7 @@ altairsim> SHOW lamp0
 lamp0  (lamp)
 
   property         value            legal
-  port             0xFF             0..255
+  port             0xFF             0x0..0xFF
   lamps            0x55             (read-only)
 ```
 

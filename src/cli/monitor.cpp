@@ -636,8 +636,13 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
         if (p.kind == Kind::Enum) {
             for (const auto& c : p.choices) legal += (legal.empty() ? "" : "|") + c;
         } else if (p.kind == Kind::Int && !(p.min == 0 && p.max == 0)) {
-            std::snprintf(buf, sizeof buf, "%lld..%lld", p.min, p.max);
-            legal = buf;
+            // RADIX-AWARE, for the reason showSchema() gives above -- and here the reason
+            // is sharper, because the VALUE is in the next column along. Printed decimal,
+            // this row read `port  0xFC  0..252`: two bases side by side in one line, and
+            // typing the number the column showed was then refused by an error in a THIRD
+            // spelling (`port must be 0x0..0xFC`). Value::text() is what the value column
+            // and the error message both use, so all three now agree.
+            legal = Value::ofInt(p.min).text(p.radix) + ".." + Value::ofInt(p.max).text(p.radix);
         } else if (p.kind == Kind::Bool) {
             legal = "true|false";
         }
