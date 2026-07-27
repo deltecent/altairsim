@@ -22,8 +22,9 @@ inherit second-hand mistakes, and the value of this project rests on the hardwar
 being *right*, not on matching someone else's. If a spec is missing, ask Patrick; he sources
 the manual. Do not guess, do not reconstruct from memory.
 
-Authorized web sources: **deramp.com** and **altairclone.com** (Mike Douglas). These carry
-period artifacts and test programs written for real silicon — not somebody's emulator.
+Authorized web sources: **deramp.com** and **altairclone.com** (Mike Douglas), and
+**s100computers.com** (John Monahan's S-100 hardware-manual archive). These carry period
+artifacts and test programs written for real silicon — not somebody's emulator.
 
 ## The manifest
 
@@ -71,6 +72,7 @@ period artifacts and test programs written for real silicon — not somebody's e
 | `SDOS.pdf` | SD Systems *SDOS User's Guide* (Disk Operating System), 104 pp, **real text layer**. Fetched 2026-07-25 from deramp.com (`.../sd_systems/SDOS/SDOS.pdf`). | `reference/SD Systems SDOS.md`. SDOS is a **CP/M work-alike** — the page-zero contract (warm boot `0000`, `CALL 5` system-call vector, FCB `005C`, DMA buffer `0080`), the BDOS-numbered system-call table (0–27 as CP/M plus SD extensions 128/129/151), the resident-in-top-7 KB memory map, and the cold-boot flow. Something SDOS software runs *on*, not something the simulator emulates. The disk geometry/BIOS linkage is shared with the VersaFloppy reference (both from **DDB200.ASM**). |
 | `SDS_Monitor.pdf` | SD Systems *SD Monitor Instructional Publication*, SD #7140011, Rev B, March/April 1981, 18 pp. **No text layer — read as page images.** Fetched 2026-07-25 from deramp.com (`.../sd_systems/Manuals/SDS_Monitor.pdf`). | `reference/SD Systems Monitor.md`. The SBC-100/200 boot/debug PROM monitor (v2.10) at `E000h`: the `.` prompt, the full command set (memory `D/E/F/M/L/T/V`, port `I/O/P`, program-control `B/G/S/X/H`, disk `C/R/W/Z/Q` with the format-type codes), the Z80 register-save map at `FFE6`–`FFFFh`, and the 3-byte-`JMP` breakpoint model. The console-port constants and the SD-vs-MS build difference come from the two ROM sources **SDMONV21.Z80** ("SD monitor", console `01`/`00`) and **MSMONR21.Z80** ("MS monitor", 8251 at `7C`/`7D` with auto-baud); the manual prints neither the port addresses nor a version banner. |
 | `SD Systems Editor Assembler Linker.pdf` | SD Systems *Editor / Assembler / Linker Operations Manual* (Text Editor V1.0, `ZASM` "Z80 Global Assembler" V3.3, `LINK` V3.1), © 1978 with a 1979 addendum, 60 pp, **real text layer**. Local copies under `~/…/sd-systems/TOOLS/` and `.../SDOS/`; on deramp.com (`.../sd_systems/Manuals/SD%20Systems%20Editor%20Assembler%20Linker.pdf`). Companions `SD Systems Z80 Assembler.pdf` / `SD Systems Z80 Linker.pdf`. | `reference/SD Systems Editor Assembler Linker.md`. Not hardware — the **toolchain that built the SD ROMs**: the `ZASM` two-pass invocation/options, the Z80 assembly it accepts (radix suffixes `H`/`Q`/`B`/`D`, the expression hierarchy and `.AND.`/`.SHR.`-style operators, and the pseudo-ops `DEFB`/`DEFW`/`DEFS`/`DEFM`, `EQU`/`DEFL`, `ORG`, `IF`/`ENDIF`, `INCLUDE`, `PSECT REL`/`ABS`, and the single `GLOBAL` that serves as both `PUBLIC` and `EXTRN`), the relocatable `.OBJ` module model, and `LINK`'s `/A=hhhh` origin + Intel-`.HEX` output — i.e. how `SDMONV21.Z80` / `MSMONR21.Z80` / `DDB200.ASM` become the `builtin:` ROM images (`docs/roms.md`). |
+| `pmmi-mm-103-modem-and-comm-adapter.pdf` | PMMI *MM-103 Modem and Communications Adapter Owner's Manual*, © 1982 PMMI Communications, Falls Church VA (warranty effective 1-Mar-1979), 32 pp / ~31 printed pages, 20 MB. **Has a good OCR text layer** for §7 (the register spec), §9 (interrupts) and §10 (the MC6860 reprint) — the whole load-bearing part; the §8 program listings and the figure pages OCR poorly. Fetched 2026-07-27 from s100computers.com (`.../Hardware%20Manuals/PMMI/`). **Over `WebFetch`'s 10 MB limit** — stream it with `curl -sL "<url>" \| pdftotext -q -f <first> -l <last> - -`. | `reference/PMMI MM-103 Modem and Comm Adapter.md`, `docs/boards/pmmi-mm103.md`, and (planned) a `pmmi` board. A **Bell 103 originate/answer modem on one S-100 card** — MC6860L modem chip, an unnamed 1602-family UART, rate generator, pulse dialer, dial-tone and ring detectors, maskable interrupts. Authoritative for: the four-address block in which **`IN` and `OUT` are different registers** (6-position DIP on A2–A7, **OPEN/OFF = 1**, default **`C0`**, North Star **`E0`** because North Star DOS uses `C0` for memory protect), all six register bit layouts (**Figure 7.0**), the `250,000/(N×16)` baud formula and the `250,000/(N×100)` **40%-high/60%-low** timer pulses off the *same* divisor, `IN BA+3` as a **side-effect strobe** that loads the interrupt mask **and destroys the baud divisor**, the pulse-dial and count-the-rings auto-answer procedures, 6860 handshake timing (51 ms SH/RI hold, 2 s billing delay, 17 s timeout, 150/450/750 ms originate handshake), the four non-queueing interrupt sources with **no vector** (factory jumper E9–E10 → floating `0xFF` → `RST 7`), and the **INTA / pin-96 field modification** (cut pin 96, jumper U12 pin 5 → P3 pin 13, then supply INTA in software via Aux Out 3). **⚠ ITS OVERBAR CONVENTION IS STATED BACKWARDS** and **its two dialer programs dial opposite phases of the timer bit** — see the traps below. **There is no schematic** (none was ever shipped), so §8's ten worked programs are the only cross-check on the prose. **The E-pad ↔ VI-level mapping is never stated.** |
 | `SDS_VDB8024.pdf` | SD Systems *VDB-8024 Video Display Board* manual. **Scanned image, no text layer** — read as page images (rendered with `pdftoppm`). Fetched 2026-07-25 from deramp.com (`.../sd_systems/Manuals/SDS_VDB8024.pdf`); **no local copy** in the archive (only the onboard-firmware sources `VDB16.Z80` and `VDB.ASM`). | `reference/SD Systems VDB-8024.md`, and (planned) a `vdb8024` board. An **intelligent terminal on a board** (onboard Z80 + SMC CRT 5027 + PROM), **not memory-mapped** — the S-100 host sees only **two I/O ports**: status `IN 00H` (**D1** keyboard-ready, **D2** display-ready, active-high) and `IN`/`OUT 01H` (keyboard/display data). Authoritative for the host-visible terminal: 80×24 format, the `OUT 01H` control-word/enhancement set, cursor `ESC = Y X`, and the CGEN/cursor/interrupt jumpers. **⚠ Control-code semantics are firmware-dependent** — the shipped Section III set differs from the archived `VDB16.Z80`/`VDB.ASM` firmwares (which add CR/clear/home/insert-delete), so an emulation must pin the firmware it reproduces. The port map + D1 polarity are corroborated by the **SDMONV21** monitor's own `IN 00H` / `AND 02H` / `IN 01H` console routine — i.e. ports 00/01 are this board, the "VDM Console" that build targets. |
 
 ## `disks/` — the CP/M images, and the listings that came with them
@@ -229,6 +231,27 @@ and it is wrong in the most seductive way: it is real software that really ran.
 controllers are register-compatible *by design*, so wrong-card code runs. That compatibility is real
 (DBL, the 8″ boot PROM, boots a minidisk perfectly well — `docs/roms.md`), which is exactly what makes
 it dangerous: **the thing that works is not evidence that the model is right.**
+
+**A MANUAL CAN STATE ITS OWN NOTATION BACKWARDS.** The PMMI MM-103 manual marks its active-low
+bits with overbars in Figure 7.0 — and then explains the notation inside out: *"A bar over the
+bit description indicates that the bit is to be set to a 1 to activate the function."* Its own
+worked example gives it away, because the bit it picks (DTR, OUT 3 bit 6) carries **no** bar and
+does activate at 1. Every barred bit's own subsection says it activates at **0**. Believing the
+sentence instead of the bars produces a card whose Self Test, Transmit Break, Break Release and
+Space Disconnect are all inverted — and one that still passes a naive send-and-receive test,
+because none of those four bits is on the data path. **The bars are the spec; the sentence is a
+typo.** And the bars only exist as pixels: overbars do not survive OCR, so this is another case
+where the table had to be read as a page image (see the FD1771 note above).
+
+**TWO PERIOD PROGRAMS CAN CONTRADICT EACH OTHER.** `DESIGN.md` §0.1 ranks artifacts above prose,
+which is right, but artifacts do not automatically agree. The MM-103 manual ships two pulse
+dialers: §8.3 holds the line on-hook while the timer bit is **high**, and §8.6 holds it on-hook
+while the timer bit is **low**. They cannot both be right. The tiebreaker was not seniority but
+**arithmetic plus the physical requirement**: §7.3.3.1 and §7.4.4.8 both state the bit is 40%
+high / 60% low, and telephone pulse dialing needs the *break* to be the 60% interval — so §8.6 is
+the working dialer and §8.3 emits a 40% break. §8.3's own prose asserts the high phase is "60
+percent", which is what a reader copying the demo would have believed. **When two artifacts
+disagree, find the third thing that can be derived.**
 
 **Check for a text layer before spending an hour on a scan:** `pdftotext file.pdf - | wc -c`.
 Several of these are pure page images and yield nothing. When that happens, the Read tool
