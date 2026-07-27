@@ -95,11 +95,16 @@ SET sio0:a baud=9600      a baud rate -> nine thousand six hundred
 ```
 
 You can always force the issue: `0x`, `$` and a trailing `h` force hex; `0o` and a trailing `q`
-force octal; a leading `#` forces decimal; and a `K` or `M` suffix is **always** decimal (`48K`
-is 49,152 — so `0x10K` is a contradiction and is rejected rather than guessed at).
+force octal; `0b` forces binary — which is what you want for the front panel's sense switches,
+where eight switches would rather be eight digits; a leading `#` forces decimal; and a `K` or `M`
+suffix is **always** decimal (`48K` is 49,152 — so `0x10K` is a contradiction and is rejected
+rather than guessed at).
 
 This rule is the same everywhere — in the monitor, in a machine file, and in every board's
 settings. There is no second convention to learn.
+
+What is not negotiable is the **classes** — which side of the line a number falls on. The base
+the wire class is *printed* in is yours, and the next section is how.
 
 ### Reading and writing in octal
 
