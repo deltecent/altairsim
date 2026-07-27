@@ -47,7 +47,9 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
   interrupt line, and where two boards are fighting.
 - **Real I/O.** A serial board can be wired to your terminal, to a TCP socket (so you can
   telnet into the guest), or to an actual serial port on your machine, with the modem
-  control lines wired through.
+  control lines wired through. A line-printer board can be wired to a **real print queue**,
+  where your build found a print system, so a listing from 1977 comes out of the printer on
+  your desk.
 - **File transfer** between the host and CP/M, sandboxed. A board in the machine does the
   moving; the things you actually *type* — `HDIR`, `R` and `W` — are ordinary CP/M programs
   that live on a disk and run at the `A>` prompt, like `PIP` or `STAT`.
@@ -68,8 +70,8 @@ This section is here because a manual that only lists strengths is an advertisem
   not. **There is still no audio output** — nothing is ever sent to a speaker. Cassette `.WAV`
   files are read and written as *files*, which is a different thing, and the tapes chapter
   covers it.
-- **Not every S-100 board is here.** The ones that are, are in the boards chapter. A Tarbell
-  disk controller and a PMMI modem are designed but not built.
+- **Not every S-100 board is here.** The ones that are, are in the boards chapter. A PMMI
+  modem is designed but not built.
 - **Timing is honest, but it is not a circuit simulation.** Instructions cost the right
   number of T-states and a cassette takes the right number of them to load. Propagation
   delays and analogue behaviour are not modelled, and no software from the period could tell.
