@@ -23,9 +23,9 @@ observe one thing about it. That is why this board is 250 lines.
 ### There is no motor control. None.
 
 Not "we didn't model it" — **the card does not have it.** There is no transport register, no
-motor bit, and nothing the guest can write that reaches the recorder. **The operator pressed
-PLAY or RECORD with their finger.** Everything odd about this card downstream of here follows
-from that one fact.
+motor bit, and nothing the guest can write that reaches the recorder. **The operator worked the
+transport with their finger.** Everything odd about this card downstream of here follows from
+that one fact.
 
 ## Sources
 
@@ -87,7 +87,7 @@ What the ACR overrides is only what the modem and the cassette actually change:
 | **`connect` is gone** | There is no connector. The UART's serial pins are soldered to the modem. `CONNECT` is refused *with the reason*. |
 | **the transform chain is gone** | Below. |
 | **`WIND` / `REWIND`** | The card brings its own verbs (`Board::commands()`). |
-| **`mode`** | The buttons on the recorder. |
+| **`mode`** | Which way the bytes go, and the card cannot reach it. |
 
 ### No `upper`, no `crlf`, no `bsdel` — and that is not tidiness
 
@@ -99,11 +99,17 @@ the knob. (The board reads the filter's *own* property names to decide what to d
 transform added to the chain next year cannot arrive on a cassette because somebody forgot this
 file.)
 
-### `mode = play | record` — the buttons, and the bug they prevent
+### `mode = play | record` — which way the bytes go, and the bug it prevents
 
 A **unit** property, not a board one, because it is not on the card. It is not on the card in
 the simulator because **it is not on the card in reality**: no motor control, no transport
-register, and the operator worked the buttons.
+register, and the operator worked the controls.
+
+**`play` loads from the file; `record` saves to it** — the direction is the whole of the
+setting, and it is also why the two exclude each other. It is deliberately **not** described as
+"the button that is down": on a real deck RECORD alone does nothing, you hold PLAY and RECORD
+together. That is one action selecting one mode, and naming a button would get the hardware
+wrong in a string the manual prints.
 
 It is also the difference between a working card and one that silently corrupts every recording:
 
@@ -114,8 +120,9 @@ It is also the difference between a working card and one that silently corrupts 
 > the guest ever ran**, the head sat at 1, and every recording began at byte **one**.
 
 **No load test would ever have found it.** Playback works perfectly while this is broken; only a
-recording is wrong, and only in its first byte. Making PLAY and RECORD exclusive — which is what
-a recorder *is* — makes the corruption **unrepresentable** rather than merely unlikely.
+recording is wrong, and only in its first byte. Making PLAY and RECORD exclusive — one head, one
+transport, one direction of signal flow — makes the corruption **unrepresentable** rather than
+merely unlikely.
 `tests/test_88acr.cpp` §4 and `tests/test_media.cpp` pin it. The `test_media.cpp` case used to
 assert the **opposite** (`CHECK(bs.writable())` on a readable stream); that is how the bug got
 in.
