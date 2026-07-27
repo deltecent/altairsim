@@ -132,11 +132,15 @@ static const std::vector<CommandDef> kCommands = {
      "  HISTORY 100      the last hundred instructions\n"
      "  HISTORY BUS      the last 16 bus cycles\n"
      "  HISTORY BUS 100  the last hundred cycles"},
-    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP]",
+    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP] [CREATE]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
      "WP write-protects it: the guest may read it and may not write it.\n"
      "RO is accepted and means the same -- it is the word for a ROM, which is\n"
      "read-only because of what it is.\n"
+     "\n"
+     "CREATE makes the file first if it is not there (empty), then mounts it -- a\n"
+     "fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing\n"
+     "file is a 'no such file', because a mistyped name is a mistake, not a new disk.\n"
      "\n"
      "A NAME IS CASE-BLIND, and you may leave off what carries no information: the\n"
      "trailing index when only one such board is in the machine, and the unit when the\n"
@@ -144,6 +148,7 @@ static const std::vector<CommandDef> kCommands = {
      "and it will tell you so.\n"
      "  MOUNT dsk0:drive0 disks/cpm.dsk\n"
      "  MOUNT dsk0:drive1 disks/master.dsk WP\n"
+     "  MOUNT dsk0:drive1 new.dsk CREATE    a blank disk to FORMAT from the guest\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
      "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape\n"
      "\n"

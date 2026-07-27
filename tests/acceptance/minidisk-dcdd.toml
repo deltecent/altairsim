@@ -9,10 +9,13 @@
 # was a row in the 88-DCDD's format table -- and the machine turned the platter at 360 RPM
 # instead of 300 and clocked a byte every 32 us instead of 64, and nothing ever said a word.
 #
-# Now it refuses at MOUNT: 76,800 bytes matches no format an 88-DCDD knows, and the card says
-# so instead of guessing. ctest runs this with WILL_FAIL. If it ever starts booting again, the
-# minidisk has crept back into the 8" controller and acceptance-minidisk is no longer testing
-# the 88-MDS at all.
+# A hard-sector controller carries no geometry and MOUNTS a file of any size, so the 88-DCDD
+# now takes this image rather than refusing it -- and reads it at ITS geometry: 32 sectors to
+# a track, not the minidisk's 16. Track 0 sector 0 is at offset 0 either way, so MDBL loads
+# the boot sector; but the moment the loader steps off track 0 the offsets diverge, it reads
+# garbage, and CP/M never comes up. ctest runs this with WILL_FAIL. If it ever starts booting
+# again, the minidisk has crept back into the 8" controller and acceptance-minidisk is no
+# longer testing the 88-MDS at all.
 #
 # ---------------------------------------------------------------------------------------
 # THE CONTROL I TRIED FIRST, AND WHY IT WAS WRONG -- keep this, it is the interesting half.

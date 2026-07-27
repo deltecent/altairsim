@@ -1044,9 +1044,15 @@ if(EXPECT_EXECUTABLE)
   # ...AND THE NEGATIVE CONTROL, which is the only reason to believe the test above.
   #
   # The SAME script against the SAME disk in an 88-DCDD -- which is what this tree actually
-  # did for months -- must FAIL. It now refuses at MOUNT: 76,800 bytes matches no format an
-  # 8" controller knows. If this ever starts booting, the minidisk has crept back into the
-  # wrong card and acceptance-minidisk has stopped testing the 88-MDS.
+  # did for months -- must FAIL. The DCDD now MOUNTS the minidisk image (a hard-sector
+  # controller takes a file of any size), but reads it at its OWN geometry -- 32 sectors to a
+  # track, not 16 -- so past track 0 every sector offset is wrong and CP/M never boots. If
+  # this ever starts booting, the minidisk has crept back into the wrong card and
+  # acceptance-minidisk has stopped testing the 88-MDS.
+  #
+  # The third argument is a SHORT timeout: the control cannot boot, so it can only conclude by
+  # NOT seeing the banner, and 20 s is long past when a real boot would have printed it. That
+  # keeps the negative control off the fast suite's critical path (it used to hang the full 60).
   #
   # (My FIRST control swapped the PROM instead -- DBL for MDBL -- and IT BOOTED, because the
   # two controllers are register-compatible and Mike's own loader says DBL loads it. The
@@ -1054,7 +1060,7 @@ if(EXPECT_EXECUTABLE)
   add_test(NAME acceptance-minidisk-control
            COMMAND ${EXPECT_EXECUTABLE}
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/minidisk.exp
-                   $<TARGET_FILE:altairsim> tests/acceptance/minidisk-dcdd.toml)
+                   $<TARGET_FILE:altairsim> tests/acceptance/minidisk-dcdd.toml 20)
   set_tests_properties(acceptance-minidisk-control PROPERTIES
                        LABELS acceptance TIMEOUT 60 WILL_FAIL TRUE
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

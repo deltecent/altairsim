@@ -163,6 +163,13 @@ protected:
     // Which media this card can even take. The probe picks among these and nothing else.
     virtual const std::vector<HsFormat>& formats() const = 0;
 
+    // The largest of formats(), by bytes -- the controller's WHOLE REACH. A blank or
+    // odd-sized image carries no geometry (hard-sector is fixed 137-byte slots addressed
+    // linearly), so it is mounted UNFORMATTED at this reach and the guest's FORMAT program
+    // fills it in; the head-step clamp (d.fmt.tracks - 1) then bounds how far the file can
+    // grow. DCDD -> fdc8mb (2048 tracks); MDS -> minidisk (its one format).
+    const HsFormat& maxFormat() const;
+
     virtual int      maxDrives()  const = 0;  // 16 on the daisy chain (DCDD) / 4 (MDS)
     virtual uint8_t  selectMask() const = 0;  // 0x0F (DCDD) / 0x03 (MDS -- only two bits)
     virtual int      rpm()        const = 0;  // 360 (8") / 300 (minidisk)

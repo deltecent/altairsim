@@ -8,6 +8,19 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Blank hard-sector disks can be created and formatted from inside the simulator
+
+A hard-sector controller — the 88-DCDD (including the 8 MB FDC+ image) and the 88-MDS
+minidisk — now **mounts a file of any size** and lets the guest's own FORMAT program define
+the disk by writing it: the image carries no geometry, so it grows one sector at a time as
+FORMAT runs, up to the controller's maximum reach. A brand-new disk starts with **`MOUNT …
+CREATE`** (or `create = true` in a machine file), which writes an empty file and mounts it;
+run your period FORMAT utility and you have a fresh, formatted disk without ever leaving the
+program. The same `CREATE` flag makes a blank byte tape for the ACR/Sol cassette deck. An
+unformatted or partially-written disk reads back exactly as real hardware does — the guest's
+own sync-byte and checksum checks reject the sectors that were never written. (Soft-sector
+FORMAT is not yet supported.)
+
 ### The video window resizes proportionally and shows when the machine has stopped
 
 A video window now opens locked to its picture's aspect ratio, so dragging any corner — the

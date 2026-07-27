@@ -49,14 +49,24 @@
 # usage: expect -f minidisk.exp <altairsim> [machine]
 #
 # The `machine` argument is how the NEGATIVE CONTROL reuses this script: run it against
-# tests/acceptance/minidisk-dbl.toml -- the same machine with the 8" PROM in the socket -- and
-# every expect below must TIME OUT. ctest asserts exactly that with WILL_FAIL.
+# tests/acceptance/minidisk-dcdd.toml -- the same machine with an 88-DCDD in the slot the
+# 88-MDS belongs in -- and every expect below must TIME OUT. ctest asserts exactly that with
+# WILL_FAIL. The DCDD now MOUNTS the minidisk image (a hard-sector controller takes any size)
+# but reads it at its OWN geometry, so past track 0 the sector offsets diverge and CP/M never
+# comes up. The control passes a short third arg (the timeout) so this verdict is reached fast.
 #
 set timeout 60
 log_user 0
 
 set machine "disks/mits-88mds/cpm22/cpm22-mini.toml"
 if {[llength $argv] > 1} { set machine [lindex $argv 1] }
+
+# A THIRD ARGUMENT SHORTENS THE WAIT, and only the NEGATIVE CONTROL passes one. The control
+# does not boot (a minidisk in an 8" controller reads at the wrong geometry), so it can only
+# ever conclude by NOT seeing the banner -- and a shorter timeout reaches that verdict sooner
+# without changing it. The real boot still gets the full 60 s. (Concluding "no banner" early
+# is only ever safe for the side that expects no banner; never shorten the positive run.)
+if {[llength $argv] > 2} { set timeout [lindex $argv 2] }
 
 spawn [lindex $argv 0] $machine
 
