@@ -1,5 +1,4 @@
-# The machine Altair 4K BASIC was sold to run on: a cassette in the ACR, a Teletype
-# on the SIO.
+# The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR.
 #
 # This is `4k` -- the bare 1975 machine -- with the two I/O cards that made it useful,
 # and it exists to run ONE artifact end to end: `examples/basic/4K BASIC Ver 3-1.tap`, loaded

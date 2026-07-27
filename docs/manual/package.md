@@ -7,7 +7,7 @@ altairsim-changelog.pdf  what changed in this release, and the ones before it.
 USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
-examples/                five machines that boot, media included.
+examples/                machines that boot, media included.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
@@ -35,7 +35,7 @@ interface. Ignore it if that is not how you work — nothing else depends on it.
 
 ## The machines are in the program
 
-You do not need any files to get a running machine. Sixteen machine descriptions are
+You do not need any files to get a running machine. The machine descriptions are
 compiled into the binary, and naming one boots it:
 
 ```
@@ -47,31 +47,31 @@ $ altairsim sol20                 a Processor Technology Sol-20, running SOLOS
 A built-in is an ordinary machine file that happens to live inside the executable — the same
 TOML format you would write yourself.
 
-**Six of them carry their software in ROM and need nothing else at all**: `altmon`, `sol20`,
-`cuter`, `vdm1`, `amon` and `acuter` come up running, with nothing fetched and nothing
+**Several of them carry their software in ROM and need nothing else at all**: `altmon`,
+`amon`, `acuter`, `cuter`, `sol20`, `vdm1`, `rombasic` and the two SD Systems machines
+`sbc200` and `sbc200v` among them, coming up running with nothing fetched and nothing
 mounted.
 
-The rest carry at most a **boot PROM**, which is not the same thing. `default` and `minidisk`
-hold the PROM that *would* boot a disk, and their drives are empty — the PROM runs, finds no
-disk, and waits. They want media, and the next section is about where that comes from.
+The rest carry at most a **boot PROM**, which is not the same thing. `default`, `cdbl`,
+`minidisk`, `turnkey` and the two Tarbell machines hold the PROM that *would* boot a disk,
+and their drives are empty — the PROM runs, finds no disk, and that is as far as it gets.
+They want media, and the next section is about where that comes from.
 
 `CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
 edit — which is the usual way to start one of your own.
 
-## Five examples, media included
+## The examples, media included
 
-`examples/` holds five complete machines. **Each is a folder with the media in it**, so every
-one of them comes up the moment you unzip the archive — nothing to fetch, nothing to mount:
+`examples/` holds complete machines. **Each is a folder with the media in it**, so every
+one of them comes up the moment you unzip the archive — nothing to fetch, nothing to mount.
 
-```
-examples/cpm        CP/M 2.2 on an 8" floppy. This is the quick start.
-examples/basic      {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
-examples/sol        A Sol-20 with {{NAME_SOL}} in the cassette deck.
-examples/diskbasic  {{NAME_DISKBASIC}} on an 8" floppy.
-examples/debugger   A 46-byte program and a guided tour of the symbolic debugger.
-```
+**Every folder carries its own README**, in Markdown and as a PDF beside it, and that README
+is the description of that example: what the machine is, what is in the drive or the deck,
+what to type, and what it should print back. So the list of examples is not written down in
+this manual — look in `examples/`, and read the README of whichever one you want.
 
 ```
+$ ls examples/
 $ altairsim {{MACHINE_CPM}}
 ```
 
@@ -85,14 +85,15 @@ somebody.
 to **your shell**, because you are the one who can see your own directory. The machines chapter
 covers both halves.)
 
-The examples chapter walks through all four, and `examples/sol` ships Processor Technology's
-own manual for the game alongside the tape.
+The examples chapter walks through some of them at length. Where an example carries period
+documentation of its own — a game's own printed manual, say — that travels in the folder too,
+and its README says so.
 
 ## What is *not* in the package: everything else to run
 
-**Those four are the whole of the shipped media.** The other built-ins that want a disk or a
-tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an empty
-drive:
+**What is in `examples/` is the whole of the shipped media.** The other built-ins that want a
+disk or a tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an
+empty drive:
 
 ```
 $ altairsim -x "SHOW MOUNTS" basic4k
@@ -104,8 +105,8 @@ altairsim> SHOW MOUNTS
 ```
 
 You supply the media and `MOUNT` it. The disks and tapes chapters describe how — and where
-those chapters name an image that is not one of the four above, they are showing you the
-shape of the command, not a file you already have.
+those chapters name an image that is not in `examples/`, they are showing you the shape of
+the command, not a file you already have.
 
 > **Where the rest will come from.** A separate **`altairsim-packages`** repository is planned
 > to hold the wider collection of disks, tapes and machine files, packaged the same way — each
@@ -114,7 +115,7 @@ shape of the command, not a file you already have.
 
 The bulk of the media is kept out of the program's own archive on purpose: an image is large,
 most of the good ones are not ours to redistribute, and the simulator's version and the
-software's have no reason to move together. The four that ship are the ones that make the
+software's have no reason to move together. The ones that ship are the ones that make the
 manual's first chapters true.
 
 ## What is *not* in the package: the source

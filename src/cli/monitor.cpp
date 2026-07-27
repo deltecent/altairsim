@@ -1902,7 +1902,13 @@ void Monitor::showRoms(std::ostream& out) {
         out << buf << "\n";
     }
     if (builtinRoms().empty()) out << "(none compiled in)\n";
-    out << "\nUse as: mount = \"builtin:<name>\".  Where each came from: docs/roms.md\n";
+    // WHERE IT CAME FROM is the DESCRIPTION column, which names the author, and the CRC32,
+    // which identifies the image exactly. The line used to send the reader to docs/roms.md
+    // -- a file in the source tree that is not in the release package, so for anyone holding
+    // a package it was a pointer to nothing. Say where it is, and say it is not in here.
+    out << "\nUse as: mount = \"builtin:<name>\".  The description names who wrote each one,\n"
+           "and the CRC32 says exactly which image this is; full provenance is in the\n"
+           "project's source tree, not in the package.\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -2688,7 +2694,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "SET") {
-        if (!need(3, "SET <id> <key>=<value>")) return true;
+        if (!need(3, "SET <id>[:<unit>]|CONSOLE|DISPLAY|REG|BUS <key>=<value>")) return true;
         if (is(a[1], "BUS")) {
             size_t eq = a[2].find('=');
             std::string v = eq == std::string::npos ? "" : upper(a[2].substr(eq + 1));
@@ -3008,7 +3014,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- MOUNT ----------------
     if (cmd == "MOUNT") {
-        if (!need(3, "MOUNT <id>:<unit> <file> [WP] [key=value ...]")) return true;
+        if (!need(3,
+                  "MOUNT <id>:<unit> <file> [WP] [CREATE] [extract[=<base>]] [key=value ...]"))
+            return true;
         Board* b;
         UnitDef u;
         if (!subunit(a[1], b, u, UnitUse::Mount, out)) return true;

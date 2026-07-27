@@ -394,7 +394,13 @@ std::vector<Property> SioBoard::properties() {
     {
         Property x;
         x.name    = "rev";
-        x.help    = "Board revision. 1 = the errata mod done at the factory (see the .md)";
+        // A HELP STRING MAY NOT POINT AT THE SOURCE TREE. This one used to end "(see the
+        // .md)" -- docs/boards/mits-88sio.md, which is not in a release package, so for
+        // anyone holding one it was a pointer to nothing. Say the difference instead: it
+        // fits, and it is the only thing a reader wanted from that file anyway.
+        x.help    = "Board revision. 1 = the factory errata mod: ready is bit 7 (out) and "
+                    "bit 0 (in), both inverted. 0 = as shipped, which also reports them "
+                    "true-sense on bits 5 and 1";
         x.kind    = Kind::Enum;
         x.choices = {"0", "1"};
         x.get     = [this] { return Value::ofStr(rev_ == SioRev::Rev1 ? "1" : "0"); };

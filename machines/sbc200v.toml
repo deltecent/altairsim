@@ -1,6 +1,7 @@
-# The SD Systems SBC-200 with a VDB-8024 VIDEO console -- a 4 MHz Z80 single-board
-# computer running the SDMONV21 monitor on an 80x24 video display instead of a serial
-# terminal.
+# The SD Systems SBC-200 with a VDB-8024 VIDEO console: SDMONV21 on an 80x24 screen.
+#
+# A 4 MHz Z80 single-board computer running the SDMONV21 monitor on a video display
+# instead of a serial terminal.
 #
 #     altairsim sbc200v
 #     .                          <- the monitor prompt, ON THE VIDEO SCREEN

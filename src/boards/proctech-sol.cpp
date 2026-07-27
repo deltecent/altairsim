@@ -511,7 +511,9 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
         std::vector<Property> p;
         Property              x;
         x.name    = "mode";
-        x.help    = "The button that is down on the recorder: play | record";
+        // Worded like the ACR's, and for the reason given there: a real deck records with
+        // PLAY and RECORD held together, so "the button that is down" is not a button.
+        x.help    = "Which way the bytes go: play loads from the file, record saves to it";
         x.kind    = Kind::Enum;
         x.choices = {"play", "record"};
         x.get     = [d] {

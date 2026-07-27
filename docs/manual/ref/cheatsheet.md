@@ -41,11 +41,11 @@ Type the part before the bracket.
 | `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` | `HISTORY [BUS\|CPU] [n]` |
-| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP] [CREATE]` |
+| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
 | `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
-| `SE[T]` | `SET <id>\|CONSOLE\|DISPLAY <k>=<v>` |
+| `SE[T]` | `SET <id>[:<u>]\|CONSOLE\|DISPLAY\|REG\|BUS <k>=<v>` |
 | `SH[OW]` | `SHOW <id>\|BOARDS\|BOARD <type>\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|VERSION` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
@@ -95,8 +95,8 @@ Type the part before the bracket.
 | `tarbelldd` | Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM |
 | `acr` | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
 | `uio` | MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout |
-| `c700` | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file |
-| `lpc` | MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file |
+| `c700` | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file, a socket, or a real printer queue |
+| `lpc` | MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file, a socket, or a real printer queue |
 | `pio` | MITS 88-PIO: 8-bit parallel port, units 'out'/'in'. Two ports at BASE+0..1 (default 04). CONNECT a printer, a keyboard, a socket |
 | `4pio` | MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BASE (default 20). Software-set direction; CONNECT each section |
 | `vdm1` | Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). Needs a Display |
@@ -104,7 +104,7 @@ Type the part before the bracket.
 | `vdb8024` | SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display |
 | `d7a` | Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host |
 | `sol` | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT). Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
-| `fp` | Altair front panel: the SENSE switches at port FF (read-only), and the lamps |
+| `fp` | Altair front panel: the address switches, SA0..SA15. The top eight double as the SENSE switches, which IN 0FFH reads -- the panel answers no OUT |
 | `turnkey` | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
 | `virtc` | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | `hostbridge` | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
@@ -117,8 +117,8 @@ Type the part before the bracket.
 | `acuter` | ACUTER at F000 -- CUTER on a plain Altair, with a terminal instead of a VDM. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |
 | `amon` | AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor. |
-| `basic4k` | The machine Altair 4K BASIC was sold to run on: a cassette in the ACR, a Teletype |
-| `basic8k` | The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal |
+| `basic4k` | The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR. |
+| `basic8k` | The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR. |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
 | `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
 | `d7a` | A Cromemco Dazzler + D+7A + JS-1 joysticks -- the S-100 game console of 1976. |
@@ -126,16 +126,16 @@ Type the part before the bracket.
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
 | `lineprinter-lpc` | The `default` machine with an 88-LPC line printer at port 02, captured to a file. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
-| `minidisk` | The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk. |
+| `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
-| `ps2` | The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same |
+| `ps2` | The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap. |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
 | `rombasic` | MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM. |
 | `sbc200` | SD Systems SBC-200 -- a 4 MHz Z80 single-board computer running the MSMONR21 monitor. |
-| `sbc200v` | The SD Systems SBC-200 with a VDB-8024 VIDEO console -- a 4 MHz Z80 single-board |
+| `sbc200v` | The SD Systems SBC-200 with a VDB-8024 VIDEO console: SDMONV21 on an 80x24 screen. |
 | `sol20` | The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS. |
-| `tarbell` | Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 automatically. |
-| `tarbelldd` | Tarbell #2022 double-density floppy machine -- boots CP/M 2.2 automatically. |
+| `tarbell` | Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 the moment a disk is in it. |
+| `tarbelldd` | Tarbell #2022 double-density floppy machine -- boots CP/M 2.2 the moment a disk is in it. |
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
 | `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |
 | `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |

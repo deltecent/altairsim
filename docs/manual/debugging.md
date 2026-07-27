@@ -4,8 +4,8 @@ This is the chapter the simulator exists for.
 
 Running old software is the easy half. The hard half is being able to see what a machine is
 actually *doing* — which board answered, what went out on the bus, why the interrupt never
-arrived — and that is what the commands in this chapter are for. Roughly fifteen of the
-monitor's forty commands are here.
+arrived — and that is what the commands in this chapter are for. Not every monitor command
+is here — these are the ones you reach for when something has gone wrong.
 
 ## Where the processor is — `REGS`
 

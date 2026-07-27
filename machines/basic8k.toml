@@ -1,5 +1,7 @@
-# The machine Altair 8K BASIC was sold to run on: a cassette in the ACR, and a terminal
-# on the 88-2SIO -- which is the difference between this file and `basic4k`.
+# The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR.
+#
+# The 2SIO is the difference between this file and `basic4k`, which drives a Teletype off
+# an 88-SIO instead.
 #
 #   altairsim basic8k
 #   MOUNT acr0:tape "tapes/8KBasic32/8K BASIC Ver 3-2.tap"

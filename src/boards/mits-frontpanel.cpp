@@ -65,32 +65,17 @@ std::vector<Property> FrontPanelBoard::properties() {
         };
         p.push_back(std::move(x));
     }
-    {
-        // THE OTHER HALF OF THE SAME ROW. SA0..SA7 are the DATA switches, and the
-        // guest cannot read them -- no port is wired to them (schematic 880-106:
-        // that bank goes to the bus only for DEPOSIT and for the low byte of
-        // EXAMINE's JMP). So why is it here at all?
-        //
-        // Because it is A SWITCH ON THE PANEL, and this card is the panel. The
-        // monitor's DEPOSIT and EXAMINE take their operand from the command line
-        // instead of from these (docs/cli-commands.md, and that is the right call
-        // for a terminal) -- but a graphical panel has to put the toggle somewhere,
-        // and the somewhere is here, next to the eight switches it shares a row
-        // with. Splitting them across two owners is how they would drift.
-        Property x;
-        x.name  = "data";
-        x.help  = "The DATA switches, SA0..SA7. Not readable by the guest -- see the .md";
-        x.kind  = Kind::Int;
-        x.radix = 16;
-        x.min   = 0;
-        x.max   = 0xFF;
-        x.get   = [this] { return Value::ofInt((uint8_t)(sw_ & 0xFF)); };
-        x.set   = [this](const Value& v, std::string&) {
-            sw_ = (uint16_t)((sw_ & 0xFF00) | (uint8_t)v.i());
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
+    // AND NOTHING ELSE. There used to be a second property, `data`, for the low half of
+    // the switch row -- SA0..SA7, the byte DEPOSIT writes on a real panel. It was there
+    // for a graphical panel to bind a toggle to, and no such panel exists. Nothing in the
+    // machine reads it: no port is wired to those switches (schematic 880-106), and the
+    // monitor's DEPOSIT takes its byte from the command line. So it was a knob that
+    // changed nothing, sitting in the reference next to one that changes everything.
+    //
+    // There is no front panel to reach out and flip, so what this board owes an operator
+    // is one thing: a way to say what IN 0FFH returns. That is `sense`, and that is all.
+    // (The low half of sw_ stays -- it is the same physical row, it travels in the
+    // snapshot, and a panel that ever wants it will find it here.)
     return p;
 }
 

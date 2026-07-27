@@ -8,12 +8,12 @@ boards doing the real work; take the boards out and there is nothing left but a 
 the CPU *board* and the sense switches are a property of the *front panel*. Not pedantry: it is what
 lets you pull a board out, put a different one in, and find out what the software does about it.
 
-This chapter says what the twenty-six boards **are** — what the real hardware was, what it is for, and
+This chapter says what the boards **are** — what the real hardware was, what it is for, and
 what will bite you. **It does not list their parameters.** Every key of every board is in the board
 reference at the back of this manual, printed from the program's own tables, which is why it cannot
 be wrong.
 
-## The twenty-seven boards
+## The boards
 
 | Type | What it is |
 |---|---|
@@ -77,7 +77,7 @@ Sixty-four kilobytes was not enough for very long, and the industry's answer was
 several cards' worth of RAM at the same addresses, with a port that says which one is live. Nobody
 agreed on how.
 
-`altairsim` implements five of the real schemes — **ExpandoRAM**, **Vector Graphic**, **Cromemco**,
+`altairsim` implements several of the real schemes — **ExpandoRAM**, **Vector Graphic**, **Cromemco**,
 **North Star Horizon**, and **AB Digital B810** — and **no two are alike**. Different ports,
 different bit meanings, different numbers of banks. That is not a failure of the simulator to
 generalise; it is the actual history, and software written for one will not drive another.
@@ -214,7 +214,8 @@ happens until that first Return, which surprises people: it is not hung, it is l
 
 The `sbc200` machine boots the **SD monitor**. Give the machine the **DDBIOS** disk BIOS in a PROM
 socket and a `versafloppy` controller beside it, and the monitor's `C` command boots **SDOS** — see
-the VersaFloppy below, and `examples/sdsys`. `variant` picks the generation (`sbc200` or `sbc100`).
+the VersaFloppy below, and the SD Systems example in `examples/`. `variant` picks the generation
+(`sbc200` or `sbc100`).
 The parallel ports, timer and interrupts of the real card are a later phase; the console is here now.
 
 ---
@@ -225,8 +226,13 @@ The **cassette interface**: an 88-SIO channel B with an FSK modem on the end of 
 bus becomes an audible tone on a tape and back again. Unit `tape`, default port `06`, and it runs at
 300 baud because that is what an audio cassette could carry.
 
-It brings its own verb — **`REWIND`** — because a tape has a position and a disk does not, and
-pretending otherwise would help nobody.
+It brings verbs of its own — **`WIND`**, **`REWIND`** and **`EXTRACT`**. The first two are there
+because a tape has a **position** and a disk does not, and pretending otherwise would help nobody:
+`WIND` puts the head at a time on the tape (`mm:ss`, or `START` / `END`), so a tape holding several
+programs one after another is reachable, `REWIND` is the common case of `WIND START`, and `SHOW`
+reads the counter back the same way. **`EXTRACT`** is a different job — it demodulates a mounted
+`.WAV` and writes each program it finds out as its own `.TAP` file, so an audio recording becomes
+something you can mount directly.
 
 This is the board that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
 toggle in by hand, and eight minutes of listening to a cassette. **The tapes chapter is the one to
@@ -256,9 +262,11 @@ printer. Unit `prn`, default port `02` — the MITS default, with Control/Status
 at `03`.
 
 There is no printer in the box, so **`CONNECT` its `prn` line wherever you want the output**: a
-file (`CONNECT lpt0:prn out:printout.txt`), the `console` to watch it print live, a `socket:`, or
-a real `serial:` printer. The capture is byte-for-byte — the bytes the program sent, control codes
-and all, not a reformatted page.
+file (`CONNECT lpt0:prn out:printout.txt`), the `console` to watch it print live, a `socket:`, a
+real `serial:` printer, or a **real print queue on your host** (`CONNECT lpt0:prn
+printer:linewriter`) — that last one where your build found a print system, and the serial chapter
+has the job-submission options. The capture is byte-for-byte — the bytes the program sent, control
+codes and all, not a reformatted page.
 
 It is **polled**: write a character to the data port (`03`), then poll the status port (`02`, bit 0
 ACKNOWLEDGE, set = ready) before the next. The real card's single-level interrupt is not modeled.
@@ -364,10 +372,9 @@ from a floppy. It is an outboard controller with a **command/handshake protocol*
 **256-byte page buffers**, so unlike the floppy cards it **moves whole sectors for you** rather than
 shifting bits in real time. Eight ports, default `A0`–`A7`.
 
-The **HDBL** boot PROM at `FC00` reads the disk's descriptor page and brings the system up.
-`examples/hdsk` is the ready-made machine: run it and you land at `A>` on a multi-megabyte CP/M 2.2
-platter. It is **read/write** — CP/M saves to it — and the image travels in the package, so there is
-nothing to fetch first.
+The **HDBL** boot PROM at `FC00` reads the disk's descriptor page and brings the system up. There
+is a ready-made machine for it in `examples/`, image and all: run it and you land at `A>` on a
+multi-megabyte CP/M 2.2 platter, **read/write**, with CP/M saving to it. Its README says how.
 
 ---
 
@@ -383,9 +390,9 @@ ports, default `60`) and the driver family are the same. Neither carries a boot 
 BIOS lives on a separate PROM, which on the SBC-100/200 is the onboard socket.
 
 Fit a `vfii`, mount an 8″ double-density disk, and with the SBC-200's **DDBIOS** the monitor's disk
-commands come alive: **`C`** cold-boots SDOS, **`R`** and **`W`** read and write sectors. Run
-`altairsim examples/sdsys/sdos.toml`, press Return for the auto-baud, type `C`, and *32K SD-OS*
-comes up to its `[A]` prompt off the disk in the package.
+commands come alive: **`C`** cold-boots SDOS, **`R`** and **`W`** read and write sectors. The SD
+Systems example in `examples/` is that machine with the disk already in it: press Return for the
+auto-baud, type `C`, and *32K SD-OS* comes up to its `[A]` prompt.
 
 ### What it will not do
 
@@ -407,9 +414,9 @@ boot PROM**. That is the whole experience of this card: you do not type a boot c
 
 Power on with a disk in drive 0 and the machine boots itself. RESET arms the PROM at address 0000,
 where it shadows the bottom of memory; the PROM reads the first sector off the disk, and the moment
-the loaded code runs, the shadow falls away and CP/M comes up. Run
-`altairsim examples/tarbell/tarbell.toml` and you land at `A>` with no monitor in between. With no
-disk in the drive the PROM has nothing to load and simply halts — put a disk in and reset.
+the loaded code runs, the shadow falls away and CP/M comes up. There is a Tarbell example in
+`examples/` with a disk in the drive: run it and you land at `A>` with no monitor in between. With
+no disk in the drive the PROM has nothing to load and simply halts — put a disk in and reset.
 
 The `bootstrap` switch turns the PROM off, leaving a plain disk controller for a machine that boots
 some other way. Four drives, selected by the software; the disks are 8″ single-density, 128-byte
@@ -420,8 +427,8 @@ sectors, and the card recognises them by size when you mount one.
 The **#2022** (1979-80) is the #1011's twin with a **Western Digital FD1791**, which reads
 **double-density** as well as single. It boots exactly the same way — the same automatic boot PROM,
 the same `F8` ports — from a **mixed-density** disk: the first track is single density (so the boot
-PROM can read it), and the rest are double density. `altairsim examples/tarbell/tarbelldd.toml` boots
-CP/M 2.2 off one to `A>`.
+PROM can read it), and the rest are double density. The same Tarbell example folder carries a
+double-density machine that boots CP/M 2.2 off one to `A>`.
 
 Everything the `tarbell` card does, this one does; it adds only the second density and a disk format
 that carries more per track. Choose it when your disk is a double-density Tarbell image; choose
@@ -527,7 +534,7 @@ and **64×64 or 128×128** on/off elements, in **16 colors** or 16 greys. Small 
 1976, and it was in color.
 
 **It needs a display**, and like the VDM-1 it draws into it: an SDL3 build opens a window, a headless
-build runs and simply has nowhere to show the picture. `examples/dazzler/kscope.toml` comes up
+build runs and simply has nowhere to show the picture. The Dazzler example in `examples/` comes up
 running **Li-Chen Wang's Kaleidoscope**, a four-way-mirrored pattern turning over in the window
 (`ATTN` breaks back to the monitor); the `dazzler` machine is the bare board to build on. Because a
 64×64 frame is tiny, the board's `width` property (above) sizes the window up to land near a VDM-1's
@@ -620,11 +627,13 @@ terminal, the VDB-8024 gives it *the terminal itself*: a whole intelligent displ
 all, plugged straight into the backplane.
 
 **Despite the name, it is not memory-mapped.** Nothing of its screen lives in the machine's
-address space. To the computer it is simply **two I/O ports** — a status port and a data port
-(fixed at `00` and `01`) — that behave like a terminal on a wire: the program reads the status to
+address space. To the computer it is simply **two I/O ports** — a status port and a data port,
+at `00` and `01` — that behave like a terminal on a wire: the program reads the status to
 see whether a key is waiting or the display is ready, writes a character or a control code to the
 data port, and reads a typed key back from it. The screen, its memory and its own processor all
-sit behind that pair of ports, invisible, exactly as they were on the real card.
+sit behind that pair of ports, invisible, exactly as they were on the real card. The real card's
+pair was wired at `00`, not jumpered; the board here still carries a `port` so you can move it,
+the same liberty the `sol` takes below.
 
 It runs the **SD monitor's video build, `sdmonv21`**, which is the same monitor as the serial
 `sbc200` machine (same commands, same `.` prompt) built to talk to this board instead of the 8251.
@@ -635,8 +644,8 @@ the prompt is on the screen the moment the machine starts:
 altairsim sbc200v
 ```
 
-comes up at the monitor's `.` prompt **on the video display**, and `examples/sdsys/sbc200v.toml`
-is the same thing you can read and change.
+comes up at the monitor's `.` prompt **on the video display**, and the SD Systems example in
+`examples/` carries the same machine as a file you can read and change.
 
 **It needs a display**, like the VDM-1: built with SDL3 it opens a real window in the board's own
 character font; built without, it runs headless and the text simply has nowhere to show. And like
@@ -679,7 +688,7 @@ supply**, since none is in the package. Its cassette deck comes up empty.
 
 ## `fp` — the front panel
 
-The switches and the lamps. The panel is **a board**, because on a real Altair it was one — it
+The sense switches. The panel is **a board**, because on a real Altair it was one — it
 plugged into the bus like everything else, and a machine without it is a machine you cannot toggle
 a bootstrap into.
 
@@ -688,14 +697,33 @@ a bootstrap into.
 The eight switches on the left of the address bank, `SA8`–`SA15`. **`IN FFH` reads them.** They are
 **read-only**: an `OUT FF` is not this board's business and goes nowhere at all.
 
+`SA15` is the **top** bit of the byte the program reads and `SA8` is the bottom, so the switches
+line up left to right the way they sit on the panel:
+
+```
+switch   SA15  SA14  SA13  SA12  SA11  SA10   SA9   SA8
+bit         7     6     5     4     3     2     1     0
+value    0x80  0x40  0x20  0x10  0x08  0x04  0x02  0x01
+```
+
+That is what makes a period boot procedure followable. "Raise A15 and A11" is `0x80` plus `0x08`
+— or, written so it looks like the panel, `0b10001000`.
+
 **They are not decoration.** Period bootstraps read the sense switches to decide **what to boot
 from** — which device, at which port, at which speed. That is why every tape machine in this package
 sets one:
 
 ```
 sense = 0x80        # basic4k: load from the 88-SIO at port 00
+sense = 0b10000000  #          the same eight switches, drawn
 sense = 0x8E        # ps2:     the 2SIO, and interrupts off
+sense = 0b10001110  #          again, one digit per switch
 ```
+
+Binary is nothing special to this board — `0b` works anywhere a number does, at the prompt and in
+a machine file alike, and the monitor chapter's number rule has the whole list of prefixes. It is
+just that eight switches would rather be eight digits than two hex ones. Whichever way you write
+it, `SHOW fp` reads the byte back in hex.
 
 Get it wrong and the loader sits there reading a device that is not there. It will not tell you.
 It has no way to.
@@ -711,8 +739,8 @@ The 8800b "turnkey" system had **no front panel**. One board — the Systems Tur
 did the panel's job and more: it carried the boot PROM, the terminal serial port, the sense
 switches, and a circuit that booted the machine the moment you switched it on. This board is
 that card, so a `turnkey` machine has **no `fp` and no separate `2sio`** — all three live here.
-`altairsim turnkey` is the machine; `examples/turnkey` boots CP/M on it off a floppy and off a
-hard disk.
+`altairsim turnkey` is the bare machine; the turnkey example in `examples/` boots CP/M on it
+off a floppy and off a hard disk.
 
 ### It boots itself
 

@@ -1,7 +1,16 @@
 # MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM.
 #
 #     altairsim rombasic
-#     -> MEMORY SIZE?
+#     MEMORY SIZE? <Enter>       <- all of it
+#     LINEPRINTER? C             <- "C" for the console; it will not start until you answer
+#     -> ALTAIR ROM BASIC VER  4.1
+#        48101 BYTES FREE
+#        OK
+#
+# BOTH QUESTIONS ARE THE ROM'S, and the second one is the one that strands people: it is
+# not a yes/no. It wants a letter naming the printer -- `C` is the console -- and ANYTHING
+# ELSE RE-ASKS, silently and forever. The recipe here used to stop at MEMORY SIZE?, which
+# is exactly as far as you get without knowing that.
 #
 # This is the ROM-resident build of MITS Extended BASIC: the interpreter lives in
 # eight 2K PROMs at C000-FFFF and executes in place, so it uses no RAM to hold

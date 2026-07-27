@@ -34,7 +34,7 @@ startup = ["RUN F800"]
 # panel above `startup` and `startup` becomes a property of the panel -- which is
 # exactly what happened here first, and the loader said so:
 #
-#     [[board]] fp0: fp0 has no property 'startup'. Known: sense data
+#     [[board]] fp0: fp0 has no property 'startup'. Known: sense
 #
 # The board's own reflection caught it (DESIGN.md 5). It could not have been a silent
 # misconfiguration, because there is no place for an unknown key to go.

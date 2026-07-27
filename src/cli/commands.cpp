@@ -122,8 +122,10 @@ static const std::vector<CommandDef> kCommands = {
      "\n"
      "HISTORY BUS is the other recorder -- the raw BUS CYCLES, no registers and no\n"
      "mnemonics: T-STATE, TYPE (MR/MW a memory read/write, IN/OUT a port, INTA an\n"
-     "interrupt ack), ADDR (or the I/O port) and DATA, with a DMA transfer's cycles\n"
-     "in there too. HISTORY CPU names the default out loud.\n"
+     "interrupt ack), ADDR (or the I/O port), DATA, and then the two that make it a\n"
+     "BUS trace rather than a CPU one -- who DROVE the cycle and who ANSWERED it, so\n"
+     "a DMA transfer's cycles are in there and say whose they were. HISTORY CPU names\n"
+     "the default out loud.\n"
      "\n"
      "Each recorder is a FIXED ring of its last 8192: it overwrites its own oldest and\n"
      "never grows, so it costs the same whether the machine ran for a second or a\n"
@@ -132,7 +134,7 @@ static const std::vector<CommandDef> kCommands = {
      "  HISTORY 100      the last hundred instructions\n"
      "  HISTORY BUS      the last 16 bus cycles\n"
      "  HISTORY BUS 100  the last hundred cycles"},
-    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP] [CREATE]",
+    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
      "WP write-protects it: the guest may read it and may not write it.\n"
      "RO is accepted and means the same -- it is the word for a ROM, which is\n"
@@ -141,6 +143,15 @@ static const std::vector<CommandDef> kCommands = {
      "CREATE makes the file first if it is not there (empty), then mounts it -- a\n"
      "fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing\n"
      "file is a 'no such file', because a mistyped name is a mistake, not a new disk.\n"
+     "\n"
+     "A TRAILING k=v SETS A UNIT PROPERTY, applied the moment the medium is in --\n"
+     "the same properties SHOW <id> lists and SET <id>:<unit> writes, said at the one\n"
+     "moment you were going to say them anyway. A unit with no such property says so\n"
+     "rather than ignoring you.\n"
+     "\n"
+     "EXTRACT is not a property and runs after the mount: it splits a cassette WAV\n"
+     "into one .TAP per program on it, exactly as the EXTRACT verb does.\n"
+     "extract=<base> names those files instead of taking the default.\n"
      "\n"
      "A NAME IS CASE-BLIND, and you may leave off what carries no information: the\n"
      "trailing index when only one such board is in the machine, and the unit when the\n"
@@ -151,6 +162,8 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT dsk0:drive1 new.dsk CREATE    a blank disk to FORMAT from the guest\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
      "  MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape\n"
+     "  MOUNT ACR new.wav CREATE mode=record   a blank tape, in and recording\n"
+     "  MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files\n"
      "\n"
      "SHOW MOUNTS is the other half of this command: every socket in the machine,\n"
      "what is in it, and which are still empty. UNMOUNT takes it back out. A path is\n"
@@ -197,7 +210,8 @@ static const std::vector<CommandDef> kCommands = {
      "Interactive DEPOSIT. The prompt shows an address and the byte that is there;\n"
      "type a new value and Enter writes it and drops to the next byte, bare Enter\n"
      "leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus\n"
-     "writes, so it says so if no board decodes the address; ROM burns instead (10.2).\n"
+     "writes, so it says so if no board decodes the address; ROM burns instead, the\n"
+     "way LOAD ... ROM does -- behind the bus, into the chip that answers there.\n"
      "Look at four bytes, change the second, and look again:\n"
      "  altairsim> DUMP 100-103 WIDTH=4\n"
      "  0100  C3 00 01 76  ...v\n"
@@ -239,17 +253,26 @@ static const std::vector<CommandDef> kCommands = {
      "  CONFIG LOAD machines/mine.toml      ...and this is how you get it back"},
 
     // ---- everything else, ranked by how often you type it ----
-    {"SET", true, nullptr, "SET <id>|CONSOLE|DISPLAY <k>=<v>",  // SE (beats SEARCH)
+    {"SET", true, nullptr, "SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>",  // SE (beats SEARCH)
      "SHOW <id> lists every property, its value, and whether it can be set while\n"
      "the machine runs. A property's base is its own: a port is hex, a baud rate\n"
      "is decimal.\n"
      "\n"
+     "A UNIT HAS PROPERTIES OF ITS OWN, and <id>:<unit> is how you reach them: the\n"
+     "tape in the recorder rather than the recorder, the disk in the drive rather\n"
+     "than the controller. SHOW <id> prints both tables, the board's and each unit's.\n"
+     "\n"
      "CONSOLE and DISPLAY are the HOST's terminal and video window rather than\n"
-     "boards, and they take settings the same way.\n"
+     "boards, and they take settings the same way. REG is a CPU register (see REGS),\n"
+     "and BUS is the backplane's own diagnostics rather than anything plugged into it.\n"
      "  SET mem0 fill=zero\n"
      "  SET mem0 phantom=read\n"
+     "  SET acr0:tape mode=record   the tape in the recorder, not the recorder\n"
      "  SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)\n"
-     "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal"},
+     "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal\n"
+     "  SET REG A=3F             a register in the CPU that is in the socket\n"
+     "  SET BUS UNCLAIMED=WARN   warn on a cycle no board answered\n"
+     "                           (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)"},
     {"SHOW", true, nullptr,
      "SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|"
      "ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION",

@@ -95,11 +95,16 @@ SET sio0:a baud=9600      a baud rate -> nine thousand six hundred
 ```
 
 You can always force the issue: `0x`, `$` and a trailing `h` force hex; `0o` and a trailing `q`
-force octal; a leading `#` forces decimal; and a `K` or `M` suffix is **always** decimal (`48K`
-is 49,152 — so `0x10K` is a contradiction and is rejected rather than guessed at).
+force octal; `0b` forces binary — which is what you want for the front panel's sense switches,
+where eight switches would rather be eight digits; a leading `#` forces decimal; and a `K` or `M`
+suffix is **always** decimal (`48K` is 49,152 — so `0x10K` is a contradiction and is rejected
+rather than guessed at).
 
 This rule is the same everywhere — in the monitor, in a machine file, and in every board's
 settings. There is no second convention to learn.
+
+What is not negotiable is the **classes** — which side of the line a number falls on. The base
+the wire class is *printed* in is yours, and the next section is how.
 
 ### Reading and writing in octal
 
@@ -148,14 +153,15 @@ the machine will not guess which one you meant; it will tell you so and stop.
 
 ```
 altairsim> BOARDS
-  ID    TYPE    I/O       UNITS                       MEMORY
-  ----  ------  --------  --------------------------  ------------------------------
-  fp0   fp      FF        -                           -
-  cpu0  8080    -         1 cpu: 8080                 -
-  sio0  2sio    10,12     2 serial: a*, b             -
-  dsk0  dcdd    08,09,0A  4 disk: drive0(empty), ...  -
-  mem0  memory  -         1 rom: rom0                 0000-DFFF  ram  56K
-                                                      FF00-FFFF  rom  dbl  phantom:all
+  ID    TYPE        I/O       UNITS                       MEMORY
+  ----  ----------  --------  --------------------------  ------------------------------
+  fp0   fp          FF        -                           -
+  cpu0  8080        -         1 cpu: 8080                 -
+  sio0  2sio        10,12     2 serial: a*, b             -
+  dsk0  dcdd        08,09,0A  4 disk: drive0(empty), ...  -
+  hb0   hostbridge  B0,B1     -                           -
+  mem0  memory      -         1 rom: rom0                 0000-DFFF  ram  56K
+                                                          FF00-FFFF  rom  dbl  phantom:all
 
   * holds the console
 ```

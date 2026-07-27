@@ -123,9 +123,11 @@ Names are case-blind. The rules are the ones in the disks chapter, and they are 
 altairsim> SET acr0:tape mode=record
 ```
 
-Play and record are **mutually exclusive**, and not because it was easier to write that way.
-It is **one head and one physical button**. You cannot press PLAY and RECORD at the same time
-on a cassette recorder, so you cannot do it here.
+**`play` loads from the file; `record` saves to it.** Which way the bytes are going is the
+whole of the setting.
+
+The two are **mutually exclusive** — one tape, one head, one direction at a time — so `mode`
+is one setting with two values, and there is no third.
 
 ### Where the head is — the tape counter
 
@@ -242,12 +244,13 @@ Most surviving Altair and Sol cassettes are not files of bytes. They are **audio
 put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one,
 on either board.
 
-**There is one in the package.** `examples/sol/TRK80.WAV` is a CUTS cassette carrying *Star
-Trek*, and the machine beside it is set up to read it, so this is a line you can actually
-type:
+**There are several in the package**, in the Sol-20 example under `examples/`, each with a
+machine file beside it set up to read it — its README lists them. `TRK80.WAV` is a CUTS
+cassette carrying *Star Trek*, so this is a line you can actually type:
 
 ```
 altairsim> MOUNT sol0:tape1 TRK80.WAV
+sol0:tape1: mounted TRK80.WAV
 TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
 ```
 
@@ -323,6 +326,14 @@ not read it badly; it reads **nothing**.
 
 Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
 produced. So the board says what the tape is instead, and you go find a machine that reads it.
+
+**The frequencies in that message are a measurement, and a measurement can be out by an
+octave** — which is why the refusal above says 2393/1204 for a tape this chapter calls
+1200/600. All the demodulator has to go on is where the signal crosses zero, and a crossing
+interval is either a whole cycle or half of one depending on the *shape* of the wave; nothing
+in the signal says which. So the message quotes whichever of the two readings is nearer the
+tones the card asking was built for. Read it as *"not mine, and here is roughly what is
+there"*, not as the tape's specification.
 
 ### Recording back out to a `.WAV`
 
@@ -409,8 +420,11 @@ Each tape unit has a `format` property. `auto` is the default and is almost alwa
 
 ```
 altairsim> SET acr0:tape format=raw
-altairsim> SHOW acr0:tape
+altairsim> SHOW acr0
 ```
+
+(`SET` addresses the unit; `SHOW` addresses the **board**, and lists every unit on it with
+its properties underneath. There is no `SHOW <id>:<unit>`.)
 
 | Value | What it does |
 |---|---|

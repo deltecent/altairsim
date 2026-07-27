@@ -70,10 +70,16 @@ If you name **nothing at all**, and the working directory contains a file called
 
 ```
 $ altairsim
+altairsim: no machine named -- using ./altairsim.toml (`-m default` for the built-in).
 AltairSim 0.1.0-37-gcc64cca -- 8080, full speed.
-machine: ./altairsim.toml
+machine: bench.  HELP for commands.
 altairsim>
 ```
+
+**The first line is the announcement**, and it is printed before anything else so you cannot
+miss it. The `machine:` line after it names the machine *the file* declares — `bench` here,
+not the file it came out of — so the two lines together say both halves: where it came from,
+and what it turned out to be.
 
 This is the **only** file the simulator finds rather than is given, and it only happens when
 the command line names nothing whatsoever. Name a built-in, a file, or `-n`, and `./altairsim.toml`
@@ -94,10 +100,10 @@ only so that it is always there.
 $ altairsim --list
 ```
 
-names them. They are `default`, `4k`, `altmon`, `amon`, `acuter`, `basic4k`, `basic8k`, `cdbl`,
-`ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20` and `z80`; the machine
-reference at the back of this manual says what each one is. From the `altairsim>` prompt the
-same list is `SHOW MACHINES`.
+names them, one to a line, each with a sentence saying what it is — and it is the live list,
+so it cannot be short of a machine the way a list typed into a chapter can. The machine
+reference at the back of this manual is that same table. From the `altairsim>` prompt the
+list is `SHOW MACHINES`.
 
 To see what is in one — its backplane and its startup — name it:
 
@@ -299,4 +305,4 @@ fi
 ## Which chapter next
 
 The **configuring** chapter is the machine file itself: every table, every key, and the four
-things a `[[board]]` entry can mean. The **boards** chapter is what the fourteen boards *are*.
+things a `[[board]]` entry can mean. The **boards** chapter is what the boards *are*.

@@ -32,6 +32,7 @@ This table is exhaustive. There are no others.
 | `out:PATH` | a host file — a **paper-tape punch**. Whatever the board sends is written to it. |
 | `in:PATH,out:PATH` | both at once on one line: a reader and a punch, two files, two positions. |
 | `printer:QUEUE` | a real print queue on this host, write-only. Buffers the bytes into a job and prints it. Present only where the build found a host print system. |
+| `scripted` | a terminal with a caller in place of a human. No tty need exist. It is what the MCP tools and the test suite type into; you are unlikely to type it yourself. |
 
 ### `null` is not an error
 
@@ -228,7 +229,8 @@ The console is **your keyboard**, and there is one of it.
 
 ```
 altairsim> CONNECT sio1:a console
-console: taken from sio0:a
+console taken from sio0:a
+sio1:a: connected to console
 ```
 
 Connecting a second unit to `console` **steals it, and says who it took it from.** It is not
@@ -252,6 +254,11 @@ explaining it.
 **The `[console]` settings are the only thing in the simulator that alters a byte. Every
 serial LINE is 8-bit clean. There is no knob anywhere on any board that masks a bit.**
 
+They belong to the console, so they stop where the console does. Send a board's console unit
+down a `socket:` or a real `serial:` port and the far end gets the bytes as the guest wrote
+them — see *Where the transforms stop*, below, because it is the same rule and it surprises
+people.
+
 | Setting | Does |
 |---|---|
 | `upper` | folds what you type to upper case |
@@ -262,6 +269,7 @@ serial LINE is 8-bit clean. There is no knob anywhere on any board that masks a 
 | `bell` | rings the terminal bell on `^G` |
 | `bsdel` | folds backspace and delete together: `off` (default), `bs` (send BS for both), or `del` (send DEL for both) |
 | `attn` | which control character is ATTN (default `^E`) |
+| `base` | `hex` or `octal` — the base the **monitor** prints numbers in. Not a transform: it changes nothing about a byte crossing the console, only how a number is spelled back to you. The monitor chapter has it. |
 
 Set them with `CONSOLE k=v`. (`SET CONSOLE k=v` is the same thing said longer.)
 
@@ -299,6 +307,41 @@ printing mechanism does not decode it. It printed `E` and threw the eighth bit o
 Nothing was masked. Something on the far end did not look. **`strip7out` is the terminal not
 looking.** It is a property of the thing you are sitting at, and it belongs on the thing you
 are sitting at.
+
+### Where the transforms stop
+
+Follow that argument one step further and it tells you something the first time it happens is
+alarming. If `strip7out` is your terminal not looking at bit 7, then the moment your terminal
+is **not** the thing on the far end, there is nothing there to do the not-looking:
+
+```
+altairsim> CONSOLE strip7out=on
+altairsim> CONNECT sio0:a socket:2323
+sio0:a: connected to socket:2323
+```
+
+Telnet in, and `MEMORY SIZ?` is back — garbage character and all, exactly as though you had
+never set `strip7out`. The same is true of `upper`, `crlf`, `echo`, `bell` and `bsdel`, and it
+is true of a `serial:` port as well as a socket.
+
+**Nothing has been undone.** The console settings are still on and still doing their job; the
+byte simply no longer goes through the console. It goes 2SIO → socket → your telnet client,
+and every hop on that path is 8-bit clean — which is the rule at the top of this section, not
+an exception to it. A transform that *did* travel down the cable would be a filter on a line,
+and the previous two sections are about why that is the one thing this simulator will not do.
+
+So set the equivalent where it now belongs — on the terminal that is actually displaying the
+text. Every terminal emulator and telnet client has these, under its own names: strip parity or
+7-bit display for `strip7out`, local echo for `echo`, newline or CR/LF handling for `crlf`.
+That is not a workaround; it is the same fix in the same place, one machine further out.
+
+ATTN is the other half of the same fact: it is intercepted at **your keyboard**, before any
+board is offered the byte, and it is never looked for on a socket or a serial line. A `05`
+arriving down a cable is a byte of somebody's protocol, and scanning a modem line for a key
+that exists only on the operator's terminal would corrupt data rather than help.
+
+What *does* travel is the board's own line coding — baud, data bits, parity, stop bits — because
+that belongs to the board and not to you. That is the section after next.
 
 ### Why not just strap the board to 7 bits
 

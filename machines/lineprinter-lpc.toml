@@ -20,7 +20,7 @@
 # 64-char subset, the Okidata glyph chart is not in the LPC manual.)
 #
 # The file lands in the directory you ran altairsim from (the usual path rule -- see
-# docs/manual/config.md). It is the printed page: decoded characters, one text line per
+# docs/config.md). It is the printed page: decoded characters, one text line per
 # printed line. LINE FEED advances the paper (a blank line); CLEAR discards a pending
 # line.
 

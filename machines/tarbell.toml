@@ -1,4 +1,4 @@
-# Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 automatically.
+# Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 the moment a disk is in it.
 #
 #     altairsim tarbell
 #     MOUNT fdc0:drive0 "examples/tarbell/CPM22b15-48K-SSSD.DSK"

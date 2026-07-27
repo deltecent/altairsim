@@ -24,7 +24,7 @@ load.
 
 ```
 mine.toml: unknown [machine] key 'widget'
-mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle
+mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle achieved_hz
 ```
 
 This is not pedantry. **A configuration that looks like it set something and did not is worse
@@ -211,7 +211,7 @@ cannot, and it does not try. It routes the key to the board and the board accept
 rejects it by name:
 
 ```
-mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle
+mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle achieved_hz
 ```
 
 **The full key list for every board is the board reference at the back of this manual.** The
@@ -302,10 +302,16 @@ id = "dsk0"
 | `mount` | the image file |
 | `readonly` | refuse every write at the controller, so the host file cannot change. For a disk you mean to read — see the disks chapter. `writeprotect` is the same key under the name the rest of the program uses; write either |
 | `media` | force a format instead of probing the image |
+| `create` | make the file, empty, if it is not there — then mount it. `MOUNT … CREATE`, written down |
 
 `media` is the escape hatch. The controller normally works out the format from the image, and
 normally it is right; when it is not — a headerless image, an unusual geometry — you say so.
-The disks chapter covers the formats.
+It is also what says how big a **blank** disk is, since a blank one matches no format at all.
+The disks chapter covers the formats, and `create`.
+
+Without `create`, a `mount` naming a file that is not there is an **error and the machine does
+not load** — the same rule as everywhere else here, that a thing which looks like it worked
+and did not is the worst outcome available.
 
 ## Numbers: one rule, and it is not negotiable
 
@@ -340,11 +346,41 @@ If you want to be explicit — and in your own files, be explicit — say so:
 |---|---|
 | `0x10`, `$10`, `10h` | **hex**, whatever the key |
 | `0o20`, `20q` | **octal**, whatever the key |
+| `0b10000` | **binary**, whatever the key |
 | `#16` | **decimal**, whatever the key |
 | `56K`, `1M` | always **decimal**. A suffix implies a count |
 
 The board reference prints every default **in its own base**, so there is never a question about
 which one a given key is.
+
+### Octal, if you prefer it
+
+The rule above is about **classes** — which side of the line a number falls on. It is not about
+which base you *type*, and every marker in that table works in a machine file. So you can write a
+machine the way its own documentation wrote it:
+
+```toml
+port  = 0o20              # the 2SIO, as a MITS manual would have printed it
+sense = 0b10001110        # eight switches, eight digits
+```
+
+That is how you write the file. How the **monitor** reads and prints back at you is a separate
+setting, and it is a key in the machine file too — so a machine can start in octal and stay
+there:
+
+```toml
+[console]
+base = octal
+```
+
+Now a bare number the 8080 can see is octal both ways: `EXAMINE 100` means address `0o100`, and
+addresses, ports and data bytes come back in **split octal**, each byte its own `000`–`377`
+group, the way the front-panel lamps are grouped. Counts and baud rates are unaffected — they
+were never in that class. `[console]` is the section after next, and the monitor chapter shows
+what a session in octal looks like.
+
+Board settings keep their own base regardless: `SHOW` prints a port as `0x20` whichever way you
+wrote it, because a property's base belongs to the property.
 
 ## `[console]` — your terminal, which is not a board
 
@@ -376,6 +412,12 @@ Altair never knew anything about it.
 | `echo` | echo typed characters locally |
 | `bell` | let the guest ring your terminal's bell |
 | `bsdel` | `off` \| `bs` \| `del` — what your Backspace key sends |
+
+Because they are the terminal's, they reach as far as the terminal does and no further: send a
+board's console unit somewhere else — `CONNECT sio0:a socket:2323`, or out a real serial port —
+and the far end gets the bytes exactly as the guest wrote them, all eight bits. The settings are
+not undone; the byte just no longer passes through the console, and every line in the machine is
+8-bit clean. The serial chapter has the full story, and what to set instead.
 
 ## `[display]` — your video window, which is not a board either
 
@@ -469,7 +511,7 @@ name    = "tiny"
 startup = ["RUN 0"]
 
 [[board]]
-type = "fp"                # the front panel: sense switches and lamps
+type = "fp"                # the front panel: the sense switches at port FF
 id   = "fp0"
 sense = 0x00
 

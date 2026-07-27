@@ -107,7 +107,11 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
     std::vector<Property> p;
     Property x;
     x.name    = "mode";
-    x.help    = "The button that is down on the recorder: play | record";
+    // NOT "the button that is down". On a real deck RECORD alone does nothing -- you hold
+    // PLAY and RECORD together -- so naming a button gets the hardware wrong in a string
+    // the manual prints. What the setting actually says is the DIRECTION, which is also the
+    // reason the two exclude each other: one head, one transport, one way at a time.
+    x.help    = "Which way the bytes go: play loads from the file, record saves to it";
     x.kind    = Kind::Enum;
     x.choices = {"play", "record"};
     x.get     = [this] {

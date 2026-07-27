@@ -186,7 +186,12 @@ Two details worth stealing:
 
 - **`radix = 16`**, because a port is a thing the processor can see. On the wire → hex; never
   on the wire → decimal. Get this wrong and `port = 10` in a machine file quietly means ten
-  instead of sixteen.
+  instead of sixteen. **It declares the class, not a display preference** — the one `radix`
+  both reads bare digits and prints them, an operator can force any base of their own
+  (`0x`, `0o`, `0b`, `#`) whatever you chose, and `SET CONSOLE base=octal` does not reach it:
+  that switches how the *monitor* prints addresses and bytes, while `SHOW` prints every
+  property in its own radix. So pick it by which side of the wire the number lives on, and
+  never because one base reads better.
 - **`lamps` has no setter**, and that absence *is* the signal. `SHOW` prints `(read-only)`,
   `CONFIG SAVE` leaves it out of the file, and the manual's reference marks it. A setter that
   merely *refused* would stop a `SET` and fool all three at once — which is a mistake that was

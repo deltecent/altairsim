@@ -1,7 +1,13 @@
 # Worked examples
 
-Two complete sessions. **Every transcript below was captured from the program**, not typed out
+Complete sessions. **Every transcript below was captured from the program**, not typed out
 from memory — if it says the machine printed something, the machine printed it.
+
+These are a few of the machines in `examples/`, gone through at length because each one teaches
+something about how the machine works rather than merely how to start it. **They are not the
+whole of what is there.** Every folder under `examples/` carries its own README — as Markdown
+and as a PDF beside it — saying what that machine is and what to type, so the place to see what
+you have is the directory itself, not a list in here.
 
 ---
 
@@ -23,22 +29,42 @@ A>
 
 ### What is on the disk
 
+Ask the obvious way and the answer is alarming:
+
 ```
 A>DIR
-A: L80      COM : LADDER   COM : ED       COM : ASM      COM
-A: DUMP     COM : XSUB     COM : PCGET    COM : LS       COM
-A: SUBMIT   COM : LOAD     COM : SURVEY   COM : VIEW     COM
-A: LADDER   DAT : LUNAR    BAS : M80      COM : MAC      COM
-A: MBASIC   COM : PIP      COM : STAT     COM : DDT      COM
-A: MOVCPM8  COM : NSWP     COM : SYSGEN   COM : ACOPY    COM
-A: OTHELLO  COM : STARTRK  BAS : TICTAK   BAS : WM       COM
-A: WM       HLP : CRC      COM : PCPUT    COM : AFORMAT  COM
-A: STARINS  BAS : IOBYTE   TXT
+A: L80      COM
+
 A>
 ```
 
-A macro assembler, a linker, Microsoft BASIC, `DDT`, `PIP`, a text editor, and Star Trek. It
-is a working 1977 development system.
+**One file, on a disk with 18K free.** The arithmetic does not work, and it is not supposed to:
+almost everything on this disk is marked `$SYS`, and `$SYS` is precisely the attribute that
+hides a file from `DIR`. It is how a period system disk kept its utilities out of the way of
+your own filenames. `STAT` sees through it:
+
+```
+A>STAT *.*
+
+ Recs  Bytes  Ext Acc
+   31     4k    1 R/W A:ACOPY.COM
+   23     4k    1 R/W A:AFORMAT.COM
+   64     8k    1 R/W A:ASM.COM
+   17     4k    1 R/W A:CRC.COM
+   38     6k    1 R/W A:DDT.COM
+   ...            ...  (thirty-eight lines in all)
+  190    24k    2 R/W A:MBASIC.COM
+   58     8k    1 R/W A:PIP.COM
+  149    20k    2 R/W A:STARTRK.BAS
+   83    12k    1 R/W A:WM.COM
+Bytes Remaining On A: 18k
+
+A>
+```
+
+Thirty-eight files: a macro assembler, a linker, Microsoft BASIC, `DDT`, `PIP`, a text editor,
+a disk formatter, and Star Trek. It is a working 1977 development system, and `STAT *.*` is how
+you look at it.
 
 ### Out, and back in
 
@@ -292,6 +318,7 @@ That is the whole trick. Past it, it is BASIC, and the tapes chapter has the lon
 
 ## Where to go next
 
+- **The examples this chapter did not walk through** — `examples/`, and the README in each folder.
 - **Move a file between CP/M and your own machine** — the file-transfer chapter (`R`, `W`, `HDIR`).
 - **Telnet into the guest, or wire it to a real serial port** — the serial chapter.
 - **Look at the bus while it runs** — the debugging chapter.
