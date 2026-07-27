@@ -63,17 +63,15 @@ edit — which is the usual way to start one of your own.
 ## The examples, media included
 
 `examples/` holds complete machines. **Each is a folder with the media in it**, so every
-one of them comes up the moment you unzip the archive — nothing to fetch, nothing to mount:
+one of them comes up the moment you unzip the archive — nothing to fetch, nothing to mount.
+
+**Every folder carries its own README**, in Markdown and as a PDF beside it, and that README
+is the description of that example: what the machine is, what is in the drive or the deck,
+what to type, and what it should print back. So the list of examples is not written down in
+this manual — look in `examples/`, and read the README of whichever one you want.
 
 ```
-examples/cpm        CP/M 2.2 on an 8" floppy. This is the quick start.
-examples/basic      {{NAME_BASIC}} on a cassette, with the bootstrap you toggle in.
-examples/sol        A Sol-20 with {{NAME_SOL}} in the cassette deck.
-examples/diskbasic  {{NAME_DISKBASIC}} on an 8" floppy.
-examples/debugger   A 46-byte program and a guided tour of the symbolic debugger.
-```
-
-```
+$ ls examples/
 $ altairsim {{MACHINE_CPM}}
 ```
 
@@ -87,14 +85,15 @@ somebody.
 to **your shell**, because you are the one who can see your own directory. The machines chapter
 covers both halves.)
 
-The examples chapter walks through them, and `examples/sol` ships Processor Technology's
-own manual for the game alongside the tape.
+The examples chapter walks through some of them at length. Where an example carries period
+documentation of its own — a game's own printed manual, say — that travels in the folder too,
+and its README says so.
 
 ## What is *not* in the package: everything else to run
 
-**Those are the whole of the shipped media.** The other built-ins that want a disk or a
-tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an empty
-drive:
+**What is in `examples/` is the whole of the shipped media.** The other built-ins that want a
+disk or a tape — `basic8k`, `ps2`, `minidisk` and the rest — start up perfectly well, with an
+empty drive:
 
 ```
 $ altairsim -x "SHOW MOUNTS" basic4k
@@ -106,8 +105,8 @@ altairsim> SHOW MOUNTS
 ```
 
 You supply the media and `MOUNT` it. The disks and tapes chapters describe how — and where
-those chapters name an image that is not one of those above, they are showing you the
-shape of the command, not a file you already have.
+those chapters name an image that is not in `examples/`, they are showing you the shape of
+the command, not a file you already have.
 
 > **Where the rest will come from.** A separate **`altairsim-packages`** repository is planned
 > to hold the wider collection of disks, tapes and machine files, packaged the same way — each

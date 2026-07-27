@@ -214,7 +214,8 @@ happens until that first Return, which surprises people: it is not hung, it is l
 
 The `sbc200` machine boots the **SD monitor**. Give the machine the **DDBIOS** disk BIOS in a PROM
 socket and a `versafloppy` controller beside it, and the monitor's `C` command boots **SDOS** — see
-the VersaFloppy below, and `examples/sdsys`. `variant` picks the generation (`sbc200` or `sbc100`).
+the VersaFloppy below, and the SD Systems example in `examples/`. `variant` picks the generation
+(`sbc200` or `sbc100`).
 The parallel ports, timer and interrupts of the real card are a later phase; the console is here now.
 
 ---
@@ -371,10 +372,9 @@ from a floppy. It is an outboard controller with a **command/handshake protocol*
 **256-byte page buffers**, so unlike the floppy cards it **moves whole sectors for you** rather than
 shifting bits in real time. Eight ports, default `A0`–`A7`.
 
-The **HDBL** boot PROM at `FC00` reads the disk's descriptor page and brings the system up.
-`examples/hdsk` is the ready-made machine: run it and you land at `A>` on a multi-megabyte CP/M 2.2
-platter. It is **read/write** — CP/M saves to it — and the image travels in the package, so there is
-nothing to fetch first.
+The **HDBL** boot PROM at `FC00` reads the disk's descriptor page and brings the system up. There
+is a ready-made machine for it in `examples/`, image and all: run it and you land at `A>` on a
+multi-megabyte CP/M 2.2 platter, **read/write**, with CP/M saving to it. Its README says how.
 
 ---
 
@@ -390,9 +390,9 @@ ports, default `60`) and the driver family are the same. Neither carries a boot 
 BIOS lives on a separate PROM, which on the SBC-100/200 is the onboard socket.
 
 Fit a `vfii`, mount an 8″ double-density disk, and with the SBC-200's **DDBIOS** the monitor's disk
-commands come alive: **`C`** cold-boots SDOS, **`R`** and **`W`** read and write sectors. Run
-`altairsim examples/sdsys/sdos.toml`, press Return for the auto-baud, type `C`, and *32K SD-OS*
-comes up to its `[A]` prompt off the disk in the package.
+commands come alive: **`C`** cold-boots SDOS, **`R`** and **`W`** read and write sectors. The SD
+Systems example in `examples/` is that machine with the disk already in it: press Return for the
+auto-baud, type `C`, and *32K SD-OS* comes up to its `[A]` prompt.
 
 ### What it will not do
 
@@ -414,9 +414,9 @@ boot PROM**. That is the whole experience of this card: you do not type a boot c
 
 Power on with a disk in drive 0 and the machine boots itself. RESET arms the PROM at address 0000,
 where it shadows the bottom of memory; the PROM reads the first sector off the disk, and the moment
-the loaded code runs, the shadow falls away and CP/M comes up. Run
-`altairsim examples/tarbell/tarbell.toml` and you land at `A>` with no monitor in between. With no
-disk in the drive the PROM has nothing to load and simply halts — put a disk in and reset.
+the loaded code runs, the shadow falls away and CP/M comes up. There is a Tarbell example in
+`examples/` with a disk in the drive: run it and you land at `A>` with no monitor in between. With
+no disk in the drive the PROM has nothing to load and simply halts — put a disk in and reset.
 
 The `bootstrap` switch turns the PROM off, leaving a plain disk controller for a machine that boots
 some other way. Four drives, selected by the software; the disks are 8″ single-density, 128-byte
@@ -427,8 +427,8 @@ sectors, and the card recognises them by size when you mount one.
 The **#2022** (1979-80) is the #1011's twin with a **Western Digital FD1791**, which reads
 **double-density** as well as single. It boots exactly the same way — the same automatic boot PROM,
 the same `F8` ports — from a **mixed-density** disk: the first track is single density (so the boot
-PROM can read it), and the rest are double density. `altairsim examples/tarbell/tarbelldd.toml` boots
-CP/M 2.2 off one to `A>`.
+PROM can read it), and the rest are double density. The same Tarbell example folder carries a
+double-density machine that boots CP/M 2.2 off one to `A>`.
 
 Everything the `tarbell` card does, this one does; it adds only the second density and a disk format
 that carries more per track. Choose it when your disk is a double-density Tarbell image; choose
@@ -534,7 +534,7 @@ and **64×64 or 128×128** on/off elements, in **16 colors** or 16 greys. Small 
 1976, and it was in color.
 
 **It needs a display**, and like the VDM-1 it draws into it: an SDL3 build opens a window, a headless
-build runs and simply has nowhere to show the picture. `examples/dazzler/kscope.toml` comes up
+build runs and simply has nowhere to show the picture. The Dazzler example in `examples/` comes up
 running **Li-Chen Wang's Kaleidoscope**, a four-way-mirrored pattern turning over in the window
 (`ATTN` breaks back to the monitor); the `dazzler` machine is the bare board to build on. Because a
 64×64 frame is tiny, the board's `width` property (above) sizes the window up to land near a VDM-1's
@@ -627,11 +627,13 @@ terminal, the VDB-8024 gives it *the terminal itself*: a whole intelligent displ
 all, plugged straight into the backplane.
 
 **Despite the name, it is not memory-mapped.** Nothing of its screen lives in the machine's
-address space. To the computer it is simply **two I/O ports** — a status port and a data port
-(fixed at `00` and `01`) — that behave like a terminal on a wire: the program reads the status to
+address space. To the computer it is simply **two I/O ports** — a status port and a data port,
+at `00` and `01` — that behave like a terminal on a wire: the program reads the status to
 see whether a key is waiting or the display is ready, writes a character or a control code to the
 data port, and reads a typed key back from it. The screen, its memory and its own processor all
-sit behind that pair of ports, invisible, exactly as they were on the real card.
+sit behind that pair of ports, invisible, exactly as they were on the real card. The real card's
+pair was wired at `00`, not jumpered; the board here still carries a `port` so you can move it,
+the same liberty the `sol` takes below.
 
 It runs the **SD monitor's video build, `sdmonv21`**, which is the same monitor as the serial
 `sbc200` machine (same commands, same `.` prompt) built to talk to this board instead of the 8251.
@@ -642,8 +644,8 @@ the prompt is on the screen the moment the machine starts:
 altairsim sbc200v
 ```
 
-comes up at the monitor's `.` prompt **on the video display**, and `examples/sdsys/sbc200v.toml`
-is the same thing you can read and change.
+comes up at the monitor's `.` prompt **on the video display**, and the SD Systems example in
+`examples/` carries the same machine as a file you can read and change.
 
 **It needs a display**, like the VDM-1: built with SDL3 it opens a real window in the board's own
 character font; built without, it runs headless and the text simply has nowhere to show. And like
@@ -737,8 +739,8 @@ The 8800b "turnkey" system had **no front panel**. One board — the Systems Tur
 did the panel's job and more: it carried the boot PROM, the terminal serial port, the sense
 switches, and a circuit that booted the machine the moment you switched it on. This board is
 that card, so a `turnkey` machine has **no `fp` and no separate `2sio`** — all three live here.
-`altairsim turnkey` is the machine; `examples/turnkey` boots CP/M on it off a floppy and off a
-hard disk.
+`altairsim turnkey` is the bare machine; the turnkey example in `examples/` boots CP/M on it
+off a floppy and off a hard disk.
 
 ### It boots itself
 

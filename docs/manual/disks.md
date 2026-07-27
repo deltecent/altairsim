@@ -33,15 +33,27 @@ Drives are units on the board: `drive0`, `drive1`, and so on up to the board's l
 ## Putting a disk in — `MOUNT`
 
 ```
-MOUNT <id>[:<unit>] <file> [RO]
+MOUNT <id>[:<unit>] <file> [WP] [CREATE]
 ```
 
 ```
-altairsim> MOUNT dsk0:drive1 my-scratch.dsk
+altairsim> MOUNT dsk0:drive1 games.dsk
 ```
 
 That is a floppy going into drive 1 of the controller called `dsk0`. The socket was empty
 before; it isn't now.
+
+**The file has to be there already.** A name that does not exist is not a new disk, it is a
+typo, and you are told so rather than handed a disk you did not mean to make:
+
+```
+altairsim> MOUNT dsk0:drive1 my-scratch.dsk
+dsk0: 'my-scratch.dsk': no such file
+dsk0: to make a blank one, add CREATE: MOUNT dsk0:drive1 my-scratch.dsk CREATE
+```
+
+`CREATE` is how you make one on purpose, and "Making a scratch disk" below is what to do
+with it once you have.
 
 `WP` **write-protects the disk**, and it does what a real diskette's write-protect notch did: the
 guest may read the disk, and a write is refused at the controller and never reaches the file on
@@ -118,11 +130,13 @@ id = "dsk0"                    # no `type`: the controller is already there
   unit  = 0
   mount = "cpm22b23-56k.dsk"   # relative to THIS FILE
   # readonly = true            # refuse every write; your file cannot change
+  # create   = true            # make it blank if it isn't there -- CREATE, in a file
+  # media    = "8in"           # what a blank one is; see "The geometry is probed" below
 ```
 
 `writeprotect = true` says the same thing, and is there because everything *else* here calls
-it write-protect — `SHOW MOUNTS` prints `WP`, `MOUNT` takes `RO`, and on the real diskette it
-was a notch. `readonly` is the spelling a machine file is saved with.
+it write-protect — `MOUNT` takes `WP`, `SHOW MOUNTS` prints `(write-protected)`, and on the
+real diskette it was a notch. `readonly` is the spelling a machine file is saved with.
 
 The two forms do the same thing. The difference is only *when*: one is the drive as the
 machine ships, the other is you, at the prompt, changing your mind.
@@ -146,13 +160,45 @@ count** and works it out:
 A file of 337,568 bytes is an 8″ floppy. There is nothing else it could be. This is why the
 quick start never mentions a format: there was nothing to mention.
 
-**Only the 8″ floppy ships.** The disk in `examples/cpm` is the 337,568-byte one, and it is the
-only image in the package — a `minidisk` or an `fdc8mb` image is one **you supply**. The `mds`
-board and the 8 MB medium are both here and both work; what is not here is a disk to put in
-them.
+The `8in` and `fdc8mb` rows belong to the `dcdd`; `minidisk` is the `mds`'s one format, and
+the probe only ever chooses among the formats the board it is on can take.
 
-When the size genuinely cannot decide — a truncated image, a format you are inventing — a
-`media` key on the drive forces the answer.
+**The size in that column is the disk, and the file you have may be slightly bigger.** Almost
+every image in circulation was moved by XMODEM at some point, which pads to a 128-byte block
+— the CP/M disk in this package is 337,664 bytes rather than 337,568, and the minidisk images
+you will find are 76,800 rather than 76,720. The probe allows that padding, so those are 8″
+floppies and minidisks like any other. Do not go looking for the exact number on your own
+disk; it is the format's size, not a checksum.
+
+**Only 8″ floppies ship.** Every disk image in the package is one — a `minidisk` or an
+`fdc8mb` image is one **you supply**. The `mds` board and the 8 MB medium are both here and
+both work; what is not here is a disk to put in them.
+
+### And a file that matches nothing at all
+
+A blank disk is a file of no size, and a size of zero is not in the table. It mounts anyway,
+because refusing it would leave you no way to make a disk:
+
+**A file whose size matches no row is mounted UNFORMATTED, at the widest format the board
+can reach** — `fdc8mb` on a `dcdd`, `minidisk` on an `mds` — and the guest's own formatter
+fills it in. The file **grows as it is written**, out to as far as the head can step. That is
+what makes `CREATE` and a period FORMAT program add up to a disk.
+
+So the thing to know about a blank one is that it starts out as big as the controller goes.
+If you want a blank 8″ floppy rather than a blank 8 MB disk — because you are about to format
+it with something that expects 77 tracks — say so with `media`:
+
+```toml
+  [[board.drive]]
+  unit   = 1
+  mount  = "scratch.dsk"
+  create = true
+  media  = "8in"        # not "as far as a dcdd can step"
+```
+
+`media` is a machine-file key on the drive, not something you can set at the prompt. It also
+settles a truncated image, or a format you are inventing, where the byte count genuinely
+cannot decide.
 
 ## Why an 8 MB disk works at all
 
@@ -271,18 +317,45 @@ directory; that is what the copy is for.
 
 ## Making a scratch disk
 
-Two ways, and they arrive at the same place.
+It is two steps, not two ways, and the second one is the guest's — which is exactly how it
+was in 1976. **`CREATE` gets you the blank medium; a formatter makes it a disk.**
 
-**From the monitor.** Mount a filename that does not exist yet:
+**Step one, from the monitor.** `CREATE` makes the file and puts it in the drive:
 
 ```
-altairsim> MOUNT dsk0:drive1 my-scratch.dsk
+altairsim> MOUNT dsk0:drive1 my-scratch.dsk CREATE
+dsk0:drive1: created my-scratch.dsk (empty)
+dsk0:drive1: mounted my-scratch.dsk
 ```
 
-**From inside CP/M.** Boot, and format it the way the period did — the CP/M disk in the
-package carries a formatter, and formatting an image is formatting a disk. This is the more
-faithful route and it is the one that produces a disk the guest is certain to be happy with,
-because the guest made it.
+Nought bytes, and mounted — an unformatted disk, which is a thing you can hold in your hand
+and a thing CP/M will refuse to read. That is the correct state for a disk nobody has
+formatted yet.
+
+**Step two, from inside CP/M.** Boot, and format it the way the period did. The CP/M disk in
+this package carries **`AFORMAT`**, Eberhard's Altair Disk Format Utility, and formatting an
+image is formatting a disk:
+
+```
+A>AFORMAT B:
+
+Put disk in B
+Ready (Y/N)?Y
+Formatting an 8" Disk............................................................................
+```
+
+The dots are tracks. When they stop, the file on your host has grown from nothing to a
+formatted 8″ floppy, and `B:` is a disk CP/M will `DIR`, `PIP` to, and put files on.
+
+> **`DIR` on the CP/M disk in this package shows one file, and the disk is nearly full.**
+> Almost everything on it is marked `$SYS`, which is precisely the attribute that hides a
+> file from `DIR` — `STAT *.*` is the command that lists them, and it is a long list.
+> `AFORMAT` is one of the hidden ones, and so is `DDT`.
+
+And if what you want is a blank **8″ floppy** rather than a blank disk as wide as the
+controller can step, say `media = "8in"` on the drive — see "The geometry is probed" above.
+`AFORMAT` will format either, but a period program that assumes 77 tracks is happier with
+the 77-track one.
 
 Either way, remember which chapter you are in: get back to `A>` before you go looking at the
 file.

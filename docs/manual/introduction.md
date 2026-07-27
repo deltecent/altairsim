@@ -78,10 +78,9 @@ This section is here because a manual that only lists strengths is an advertisem
 
 ## What is in the box
 
-You have the `altairsim` program, this manual, and worked examples with their media —
-CP/M on a floppy, BASIC on a cassette, a Sol-20 with a game on tape, and Disk BASIC on a
-floppy. More machines
-are built into the program itself. It boots something the moment you unzip it; the next
-chapter says what, and where further disks and tapes will come from.
+You have the `altairsim` program, this manual, and a folder of worked examples with their
+media — complete machines that boot, each with a README of its own saying what it is. More
+machines are built into the program itself. It boots something the moment you unzip it; the
+next chapter says what, and where further disks and tapes will come from.
 
 There is no installer, no configuration, and nothing to set up. Unzip it and run it.

@@ -153,14 +153,15 @@ the machine will not guess which one you meant; it will tell you so and stop.
 
 ```
 altairsim> BOARDS
-  ID    TYPE    I/O       UNITS                       MEMORY
-  ----  ------  --------  --------------------------  ------------------------------
-  fp0   fp      FF        -                           -
-  cpu0  8080    -         1 cpu: 8080                 -
-  sio0  2sio    10,12     2 serial: a*, b             -
-  dsk0  dcdd    08,09,0A  4 disk: drive0(empty), ...  -
-  mem0  memory  -         1 rom: rom0                 0000-DFFF  ram  56K
-                                                      FF00-FFFF  rom  dbl  phantom:all
+  ID    TYPE        I/O       UNITS                       MEMORY
+  ----  ----------  --------  --------------------------  ------------------------------
+  fp0   fp          FF        -                           -
+  cpu0  8080        -         1 cpu: 8080                 -
+  sio0  2sio        10,12     2 serial: a*, b             -
+  dsk0  dcdd        08,09,0A  4 disk: drive0(empty), ...  -
+  hb0   hostbridge  B0,B1     -                           -
+  mem0  memory      -         1 rom: rom0                 0000-DFFF  ram  56K
+                                                          FF00-FFFF  rom  dbl  phantom:all
 
   * holds the console
 ```

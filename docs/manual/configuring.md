@@ -24,7 +24,7 @@ load.
 
 ```
 mine.toml: unknown [machine] key 'widget'
-mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle
+mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle achieved_hz
 ```
 
 This is not pedantry. **A configuration that looks like it set something and did not is worse
@@ -211,7 +211,7 @@ cannot, and it does not try. It routes the key to the board and the board accept
 rejects it by name:
 
 ```
-mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle
+mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle achieved_hz
 ```
 
 **The full key list for every board is the board reference at the back of this manual.** The
@@ -302,10 +302,16 @@ id = "dsk0"
 | `mount` | the image file |
 | `readonly` | refuse every write at the controller, so the host file cannot change. For a disk you mean to read — see the disks chapter. `writeprotect` is the same key under the name the rest of the program uses; write either |
 | `media` | force a format instead of probing the image |
+| `create` | make the file, empty, if it is not there — then mount it. `MOUNT … CREATE`, written down |
 
 `media` is the escape hatch. The controller normally works out the format from the image, and
 normally it is right; when it is not — a headerless image, an unusual geometry — you say so.
-The disks chapter covers the formats.
+It is also what says how big a **blank** disk is, since a blank one matches no format at all.
+The disks chapter covers the formats, and `create`.
+
+Without `create`, a `mount` naming a file that is not there is an **error and the machine does
+not load** — the same rule as everywhere else here, that a thing which looks like it worked
+and did not is the worst outcome available.
 
 ## Numbers: one rule, and it is not negotiable
 
