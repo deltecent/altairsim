@@ -407,6 +407,12 @@ Altair never knew anything about it.
 | `bell` | let the guest ring your terminal's bell |
 | `bsdel` | `off` \| `bs` \| `del` — what your Backspace key sends |
 
+Because they are the terminal's, they reach as far as the terminal does and no further: send a
+board's console unit somewhere else — `CONNECT sio0:a socket:2323`, or out a real serial port —
+and the far end gets the bytes exactly as the guest wrote them, all eight bits. The settings are
+not undone; the byte just no longer passes through the console, and every line in the machine is
+8-bit clean. The serial chapter has the full story, and what to set instead.
+
 ## `[display]` — your video window, which is not a board either
 
 ```toml
