@@ -41,11 +41,11 @@ Type the part before the bracket.
 | `N[EXT]` | `NEXT` |
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` | `HISTORY [BUS\|CPU] [n]` |
-| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP] [CREATE]` |
+| `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
 | `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port>] [TRACE ON\|OFF]` |
 | `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
-| `SE[T]` | `SET <id>\|CONSOLE\|DISPLAY <k>=<v>` |
+| `SE[T]` | `SET <id>[:<u>]\|CONSOLE\|DISPLAY\|REG\|BUS <k>=<v>` |
 | `SH[OW]` | `SHOW <id>\|BOARDS\|BOARD <type>\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|VERSION` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |

@@ -146,8 +146,10 @@ earlier lines read in the new core's terms.
 
 HISTORY BUS is the other recorder -- the raw BUS CYCLES, no registers and no
 mnemonics: T-STATE, TYPE (MR/MW a memory read/write, IN/OUT a port, INTA an
-interrupt ack), ADDR (or the I/O port) and DATA, with a DMA transfer's cycles
-in there too. HISTORY CPU names the default out loud.
+interrupt ack), ADDR (or the I/O port), DATA, and then the two that make it a
+BUS trace rather than a CPU one -- who DROVE the cycle and who ANSWERED it, so
+a DMA transfer's cycles are in there and say whose they were. HISTORY CPU names
+the default out loud.
 
 Each recorder is a FIXED ring of its last 8192: it overwrites its own oldest and
 never grows, so it costs the same whether the machine ran for a second or a
@@ -164,7 +166,7 @@ HISTORY BUS 100  the last hundred cycles
 ### MOUNT — `M[OUNT]`
 
 ```
-MOUNT <id>[:<u>] <file> [WP] [CREATE]
+MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]
 ```
 Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
 WP write-protects it: the guest may read it and may not write it.
@@ -174,6 +176,15 @@ read-only because of what it is.
 CREATE makes the file first if it is not there (empty), then mounts it -- a
 fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing
 file is a 'no such file', because a mistyped name is a mistake, not a new disk.
+
+A TRAILING k=v SETS A UNIT PROPERTY, applied the moment the medium is in --
+the same properties SHOW <id> lists and SET <id>:<unit> writes, said at the one
+moment you were going to say them anyway. A unit with no such property says so
+rather than ignoring you.
+
+EXTRACT is not a property and runs after the mount: it splits a cassette WAV
+into one .TAP per program on it, exactly as the EXTRACT verb does.
+extract=<base> names those files instead of taking the default.
 
 A NAME IS CASE-BLIND, and you may leave off what carries no information: the
 trailing index when only one such board is in the machine, and the unit when the
@@ -186,6 +197,8 @@ MOUNT dsk0:drive1 disks/master.dsk WP
 MOUNT dsk0:drive1 new.dsk CREATE    a blank disk to FORMAT from the guest
 MOUNT mem0:rom0 roms/monitor.bin
 MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
+MOUNT ACR new.wav CREATE mode=record   a blank tape, in and recording
+MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files
 ```
 
 
@@ -257,7 +270,8 @@ EDIT <addr> [ROM]
 Interactive DEPOSIT. The prompt shows an address and the byte that is there;
 type a new value and Enter writes it and drops to the next byte, bare Enter
 leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus
-writes, so it says so if no board decodes the address; ROM burns instead (10.2).
+writes, so it says so if no board decodes the address; ROM burns instead, the
+way LOAD ... ROM does -- behind the bus, into the chip that answers there.
 Look at four bytes, change the second, and look again:
 
 ```
@@ -318,20 +332,29 @@ CONFIG LOAD machines/mine.toml      ...and this is how you get it back
 ### SET — `SE[T]`
 
 ```
-SET <id>|CONSOLE|DISPLAY <k>=<v>
+SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>
 ```
 SHOW <id> lists every property, its value, and whether it can be set while
 the machine runs. A property's base is its own: a port is hex, a baud rate
 is decimal.
 
+A UNIT HAS PROPERTIES OF ITS OWN, and <id>:<unit> is how you reach them: the
+tape in the recorder rather than the recorder, the disk in the drive rather
+than the controller. SHOW <id> prints both tables, the board's and each unit's.
+
 CONSOLE and DISPLAY are the HOST's terminal and video window rather than
-boards, and they take settings the same way.
+boards, and they take settings the same way. REG is a CPU register (see REGS),
+and BUS is the backplane's own diagnostics rather than anything plugged into it.
 
 ```
 SET mem0 fill=zero
 SET mem0 phantom=read
+SET acr0:tape mode=record   the tape in the recorder, not the recorder
 SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)
 SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
+SET REG A=3F             a register in the CPU that is in the socket
+SET BUS UNCLAIMED=WARN   warn on a cycle no board answered
+                         (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)
 ```
 
 
