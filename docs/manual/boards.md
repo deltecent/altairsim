@@ -225,8 +225,13 @@ The **cassette interface**: an 88-SIO channel B with an FSK modem on the end of 
 bus becomes an audible tone on a tape and back again. Unit `tape`, default port `06`, and it runs at
 300 baud because that is what an audio cassette could carry.
 
-It brings its own verb — **`REWIND`** — because a tape has a position and a disk does not, and
-pretending otherwise would help nobody.
+It brings verbs of its own — **`WIND`**, **`REWIND`** and **`EXTRACT`**. The first two are there
+because a tape has a **position** and a disk does not, and pretending otherwise would help nobody:
+`WIND` puts the head at a time on the tape (`mm:ss`, or `START` / `END`), so a tape holding several
+programs one after another is reachable, `REWIND` is the common case of `WIND START`, and `SHOW`
+reads the counter back the same way. **`EXTRACT`** is a different job — it demodulates a mounted
+`.WAV` and writes each program it finds out as its own `.TAP` file, so an audio recording becomes
+something you can mount directly.
 
 This is the board that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
 toggle in by hand, and eight minutes of listening to a cassette. **The tapes chapter is the one to
@@ -256,9 +261,11 @@ printer. Unit `prn`, default port `02` — the MITS default, with Control/Status
 at `03`.
 
 There is no printer in the box, so **`CONNECT` its `prn` line wherever you want the output**: a
-file (`CONNECT lpt0:prn out:printout.txt`), the `console` to watch it print live, a `socket:`, or
-a real `serial:` printer. The capture is byte-for-byte — the bytes the program sent, control codes
-and all, not a reformatted page.
+file (`CONNECT lpt0:prn out:printout.txt`), the `console` to watch it print live, a `socket:`, a
+real `serial:` printer, or a **real print queue on your host** (`CONNECT lpt0:prn
+printer:linewriter`) — that last one where your build found a print system, and the serial chapter
+has the job-submission options. The capture is byte-for-byte — the bytes the program sent, control
+codes and all, not a reformatted page.
 
 It is **polled**: write a character to the data port (`03`), then poll the status port (`02`, bit 0
 ACKNOWLEDGE, set = ready) before the next. The real card's single-level interrupt is not modeled.
