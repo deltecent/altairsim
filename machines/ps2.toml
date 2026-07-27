@@ -1,5 +1,7 @@
-# The machine MITS Programming System II ran on. It is `basic8k`'s CARDS -- same 2SIO, same
-# ACR, same sense switches plus one -- but NOT basic8k's bootstrap.
+# The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap.
+#
+# It is `basic8k`'s CARDS -- same 2SIO, same ACR, same sense switches plus one -- and a
+# different loader, which is the whole of the difference and the trap below.
 #
 #   altairsim ps2
 #   MOUNT acr0:tape "tapes/MitsPS2/PS2-MON.TAP"

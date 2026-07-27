@@ -1,4 +1,8 @@
-# The Altair Minidisk: an 88-MDS at 08, the MDBL boot PROM, and CP/M 2.2b on a 5.25" disk.
+# The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk.
+#
+# THE BLURB SAYS "YOU SUPPLY" BECAUSE THE DRIVES ARE EMPTY, and "THE DRIVES ARE EMPTY
+# HERE" below is why they have to be. It used to promise CP/M 2.2b on a disk -- which is
+# what the config on the next line mounts, and not what `altairsim minidisk` gives you.
 #
 #     altairsim disks/mits-88mds/cpm22/cpm22-mini.toml
 #     -> 56K CP/M 2.2b v2.3

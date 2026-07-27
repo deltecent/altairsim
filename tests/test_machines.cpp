@@ -44,6 +44,20 @@ void test_machines() {
         CHECK(b.size > 0, "a built-in has bytes");
         CHECK(std::string(b.blurb).size() > 0, "and a blurb for --list");
 
+        // AND THE BLURB IS A WHOLE SENTENCE, because it is ONE LINE and there is no
+        // second one. cmake/embed_machines.cmake takes the FIRST comment line of the
+        // .toml and nothing after it, so a description written across two lines does
+        // not wrap in `--list` -- it is cut, and the half nobody sees is the half that
+        // said what the machine is. Four of them were: `--list` and the manual's table
+        // of built-ins printed "... a cassette in the ACR, a Teletype", "... same 2SIO,
+        // same" and two more like them, for as long as it took to read the table.
+        //
+        // A cut sentence has no full stop at the end of it. That is the whole test, and
+        // it is cheap enough to run on every built-in forever.
+        std::string blurb = b.blurb;
+        CHECK(!blurb.empty() && blurb.back() == '.',
+              "...and the blurb ENDS -- one line, one sentence, no second line to wrap to");
+
         Machine mm;
         std::string e;
         bool ok = loadMachine(b, mm, e);

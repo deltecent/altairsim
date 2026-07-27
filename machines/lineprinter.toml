@@ -12,7 +12,7 @@
 #
 # The file lands in the directory you ran altairsim from (a path TYPED, or one in a
 # machine loaded from a directory, follows the usual rule -- see
-# docs/manual/config.md). It is a byte-for-byte capture: the bytes the guest sends
+# docs/config.md). It is a byte-for-byte capture: the bytes the guest sends
 # are the bytes in the file, control codes and all. It is not reformatted into a
 # printed page.
 

@@ -94,10 +94,10 @@ only so that it is always there.
 $ altairsim --list
 ```
 
-names them. They are `default`, `4k`, `altmon`, `amon`, `acuter`, `basic4k`, `basic8k`, `cdbl`,
-`ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20` and `z80`; the machine
-reference at the back of this manual says what each one is. From the `altairsim>` prompt the
-same list is `SHOW MACHINES`.
+names them, one to a line, each with a sentence saying what it is — and it is the live list,
+so it cannot be short of a machine the way a list typed into a chapter can. The machine
+reference at the back of this manual is that same table. From the `altairsim>` prompt the
+list is `SHOW MACHINES`.
 
 To see what is in one — its backplane and its startup — name it:
 
