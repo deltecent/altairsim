@@ -48,7 +48,7 @@ rem CMake is the one hard prerequisite. Name it plainly and say where to get it.
 where cmake >nul 2>&1
 if errorlevel 1 (
     echo build.bat: CMake is required and was not found on your PATH. 1>&2
-    echo   Install it with:  winget install Kitware.CMake   ^(or from https://cmake.org/download/^) 1>&2
+    echo   Install it from https://cmake.org/download/ 1>&2
     echo   then open a NEW terminal so the PATH change takes effect. 1>&2
     exit /b 1
 )
