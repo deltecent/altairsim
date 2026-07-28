@@ -39,6 +39,16 @@ std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> reb
     std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> base,
     std::function<std::string(const std::string&)>                              rebase);
 
+// Grammar primitives (DESIGN.md 7.7), exported so a board's property setter can
+// VALIDATE an operator's `PORT` or `HOST:PORT` string without re-learning the
+// grammar -- the PMMI's `dial`/`answer` settings call these. A board must not parse
+// endpoint strings itself; this keeps the grammar in the one place that owns it.
+// parsePort: "2323" -> 2323 (false on empty, non-numeric, 0, or > 65535).
+// parseHostPort: "bbs.example:23" -> host + port (false + err on a missing/empty
+// half or a bad port); the split is the same rfind(':') socket:HOST:PORT uses.
+bool parsePort(const std::string& s, uint16_t& out);
+bool parseHostPort(const std::string& spec, std::string& host, uint16_t& port, std::string& err);
+
 // Returns null and sets `err` on anything it does not understand. It never
 // guesses: `CONNECT sio:a consle` is an error with the list of what it could
 // have meant, not a silent NullStream that leaves you wondering why the terminal
