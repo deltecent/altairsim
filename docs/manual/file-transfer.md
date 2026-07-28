@@ -39,8 +39,18 @@ them*, below, is how you fix that.
 
 ```
 A>HDIR
+    1792  07/14/26  R.COM
+     640  07/14/26  HDIR.COM
+   <DIR>  07/20/26  SRC/
+
+3 files.
 A>HDIR *.ASM
 ```
+
+`HDIR` lists one file per line — size, date and name — much as `ls -l` or `DIR` would. The
+size is a byte count, or `<DIR>` for a directory (which also keeps its trailing `/`, the one
+mark that says whether `R` can read it). The list is sorted, and the count at the end is the
+host directory's, which can run to far more than a CP/M disk holds.
 
 **`HDIR` always prints the TRUE host names** — the real ones, with their real case and their
 real length, not the 8.3 names CP/M is going to see them as. That is the point of it. When

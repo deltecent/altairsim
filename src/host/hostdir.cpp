@@ -1,6 +1,8 @@
 #include "host/hostdir.h"
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <system_error>
@@ -386,7 +388,18 @@ bool RealHostDir::remove(const std::string& name, HbFail& err) {
     return true;
 }
 
-bool RealHostDir::list(const std::string& glob, std::vector<std::string>& out, HbFail& err) {
+// fs::file_time_type -> std::time_t. std::chrono::clock_cast (C++20) is not carried by
+// every standard library we build on, so use the portable delta trick: shift the file
+// time by the difference between the two clocks' "now", then to_time_t. Precise enough
+// for a directory listing that shows only MM/DD/YY.
+static std::time_t toTimeT(fs::file_time_type ftime) {
+    using namespace std::chrono;
+    auto sys = time_point_cast<system_clock::duration>(ftime - fs::file_time_type::clock::now() +
+                                                       system_clock::now());
+    return system_clock::to_time_t(sys);
+}
+
+bool RealHostDir::listLong(const std::string& glob, std::vector<HostEntry>& out, HbFail& err) {
     std::error_code ec;
 
     fs::path rootp = root_.empty() ? fs::current_path(ec) : fs::path(root_);
@@ -456,10 +469,34 @@ bool RealHostDir::list(const std::string& glob, std::vector<std::string>& out, H
         // I/O error instead of an obvious "that is a folder".
         if (isDir) full += "/";
 
-        out.push_back(full);
+        HostEntry e;
+        e.name  = full;
+        e.isDir = isDir;
+        // A directory shows "<DIR>" rather than a byte count -- and fs::file_size on one
+        // is not even defined -- so only a file's size is taken. Both get an mtime, so a
+        // directory's line carries a real date and not the epoch.
+        if (isFile) {
+            uint64_t sz = fs::file_size(it->path(), ec2);
+            if (!ec2) e.size = sz;
+        }
+        fs::file_time_type ft = fs::last_write_time(it->path(), ec2);
+        if (!ec2) e.mtime = toTimeT(ft);
+        out.push_back(std::move(e));
     }
 
-    std::sort(out.begin(), out.end());
+    std::sort(out.begin(), out.end(),
+              [](const HostEntry& a, const HostEntry& b) { return a.name < b.name; });
+    return true;
+}
+
+// list() is just listLong() with the metadata dropped -- ONE walk, ONE sort, so the two
+// can never disagree about what is in the directory or in what order.
+bool RealHostDir::list(const std::string& glob, std::vector<std::string>& out, HbFail& err) {
+    std::vector<HostEntry> entries;
+    if (!listLong(glob, entries, err)) return false;
+    out.clear();
+    out.reserve(entries.size());
+    for (auto& e : entries) out.push_back(std::move(e.name));
     return true;
 }
 
@@ -515,6 +552,22 @@ bool MemHostDir::list(const std::string& glob, std::vector<std::string>& out, Hb
         if (hostGlobMatch(glob, name)) out.push_back(name);
     }
     std::sort(out.begin(), out.end());  // std::map is already sorted; say so anyway
+    return true;
+}
+
+bool MemHostDir::listLong(const std::string& glob, std::vector<HostEntry>& out, HbFail&) {
+    out.clear();
+    for (const auto& [name, bytes] : files_) {
+        if (!hostGlobMatch(glob, name)) continue;
+        HostEntry e;
+        e.name  = name;
+        e.size  = bytes.size();
+        e.mtime = 0;      // a memory directory has no clock; HDIR's tests rely on this
+        e.isDir = false;  // and it is flat, so there are never any
+        out.push_back(std::move(e));
+    }
+    std::sort(out.begin(), out.end(),
+              [](const HostEntry& a, const HostEntry& b) { return a.name < b.name; });
     return true;
 }
 

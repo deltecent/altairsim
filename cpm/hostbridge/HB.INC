@@ -74,6 +74,10 @@ CDIRN   EQU     5               ; next name; HEOF when the list runs out
 CDELET  EQU     6               ; then the name
 CERROR  EQU     7               ; -> code byte, then a NUL-terminated message
 CRESET  EQU     8               ; abort everything, clear the error latch
+CDIRL   EQU     9               ; like CDIRF, but each entry streams THREE fields:
+                                ; name<0> size<0> date<0>. Size is "<DIR>" for a
+                                ; directory else a decimal byte count; date is
+                                ; MM/DD/YY. Walk it with CDIRN, same as CDIRF.
 
 ;---- Error codes (the first byte CERROR hands back) --------------------
 ;

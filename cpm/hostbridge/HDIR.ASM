@@ -44,8 +44,9 @@ PRSTR   EQU     9               ; DE = string, '$'-terminated
 
 HNMAX   EQU     64              ; a host name may be a PATH, so it is not 8.3
 IDMAX   EQU     32              ; room for the card's signature
-COLS    EQU     4               ; names per line
-COLW    EQU     18              ; and how wide a column is
+SZMAX   EQU     20              ; a host size in decimal (a uint64 is <= 20 digits)
+DTMAX   EQU     12              ; room for a date field ("MM/DD/YY" and then some)
+SIZEW   EQU     8               ; the size column, right-justified to this width
 CR      EQU     0DH
 LF      EQU     0AH
 
@@ -57,8 +58,8 @@ HEOF    EQU     08H             ; the listing has run out
 HERR    EQU     10H             ; the last operation failed
 
 CIDENT  EQU     0
-CDIRF   EQU     4
-CDIRN   EQU     5
+CDIRL   EQU     9               ; start the LONG listing: name<0> size<0> date<0>
+CDIRN   EQU     5               ; then each next entry; HEOF when it runs out
 CERROR  EQU     7
 CRESET  EQU     8
 
@@ -78,10 +79,8 @@ START:  LXI     SP,STACK
 
         LXI     H,0             ; a 16-bit tally: a host directory is not a
         SHLD    COUNT           ; CP/M one and can easily hold 300 files
-        XRA     A
-        STA     COL
 
-        MVI     A,CDIRF
+        MVI     A,CDIRL         ; the LONG listing -- each entry is three fields
         OUT     HBCMD
         LXI     H,PAT
         CALL    SENDZ           ; the NUL is what commits it
@@ -97,11 +96,19 @@ DIR1:   IN      HBCMD
                                 ; here on the FIRST pass, which is why "no
                                 ; matches" needs no special case either
 
+; Each entry streams THREE NUL-terminated fields, in this order: the name, its
+; size ("<DIR>" for a directory, else a decimal byte count) and its date.
         LXI     H,NAME
         MVI     B,HNMAX
         CALL    RECVZ
+        LXI     H,SIZE
+        MVI     B,SZMAX
+        CALL    RECVZ
+        LXI     H,DATE
+        MVI     B,DTMAX
+        CALL    RECVZ
 
-        CALL    SHOW            ; print it, in its column
+        CALL    SHOW            ; one line: <size>  <date>  <name>
 
         LHLD    COUNT
         INX     H
@@ -112,11 +119,7 @@ DIR1:   IN      HBCMD
         JMP     DIR1
 
 ;---- and the tally ----------------------------------------------------
-DIRE:   LDA     COL
-        ORA     A
-        CNZ     CRLF            ; finish a part-used line before the summary
-
-        LHLD    COUNT
+DIRE:   LHLD    COUNT
         MOV     A,H
         ORA     L
         JZ      DIRNON
@@ -138,64 +141,61 @@ DIRBAD: CALL    REPERR
         JMP     0
 
 ;-----------------------------------------------------------------------
-; SHOW -- print the name at NAME, in columns.
+; SHOW -- print one entry as a line:  <size>  <date>  <name>
 ;
-; A DIRECTORY COMES BACK WITH A TRAILING '/', and we leave it on: that one
-; character is the entire difference between "you can R this" and "you
-; cannot", and hiding it to make the listing tidy would be hiding the only
-; thing the user needs to know.
+;       1792  07/14/26  R.COM
+;      <DIR>  07/20/26  SRC/
 ;
-; A name too long for its column gets a line of its own rather than being
-; truncated -- for the same reason. A listing that lies about a name is
-; worse than a listing that is ragged.
+; The size is right-justified in an 8-wide field so the numbers line up; the
+; date is the card's own MM/DD/YY, already 8 characters; the name comes last,
+; where a long one can run to any length without pushing anything out of true.
+;
+; A DIRECTORY COMES BACK WITH A TRAILING '/' on the name (and "<DIR>" for its
+; size), and we leave both on: that is the entire difference between "you can R
+; this" and "you cannot", and hiding it to tidy the listing would be hiding the
+; one thing the user needs to know.
 ;-----------------------------------------------------------------------
-SHOW:   LXI     H,NAME
-        CALL    STRLEN          ; B = how long it is
-        MOV     A,B
-        CPI     COLW
-        JC      SH1             ; it fits
-
-; Too long for a column. Break the line we are on, give it one to itself,
-; and start the next name at column zero.
-        LDA     COL
-        ORA     A
-        CNZ     CRLF
-        LXI     H,NAME
+SHOW:   LXI     H,SIZE          ; the size, right-justified into the column
+        MVI     C,SIZEW
+        CALL    RJUST
+        CALL    SPC2            ; two spaces between the columns
+        LXI     H,DATE          ; the date -- already MM/DD/YY
         CALL    PSTR
-        CALL    CRLF
-        XRA     A
-        STA     COL
-        RET
-
-SH1:    LXI     H,NAME
+        CALL    SPC2
+        LXI     H,NAME          ; and the name, at its real length
         CALL    PSTR
+        JMP     CRLF            ; tail call: end the line
 
-; Pad out to the column width -- unless this is the last column on the
-; line, where trailing spaces would be nothing but trailing spaces.
-        LDA     COL
-        INR     A
-        STA     COL
-        CPI     COLS
-        JZ      SH3             ; that filled the line
-
-        LXI     H,NAME
-        CALL    STRLEN          ; B = the length
-        MVI     A,COLW
-        SUB     B               ; A = how many spaces are owed
+;-----------------------------------------------------------------------
+; RJUST -- print the NUL-terminated string at HL right-justified in a field
+;          C characters wide: emit (C - length) leading spaces, then the
+;          string. A string as wide as the field, or wider, prints unpadded.
+;-----------------------------------------------------------------------
+RJUST:  PUSH    H
+        CALL    STRLEN          ; B = length (and STRLEN walked HL to the NUL)
+        POP     H
+        MOV     A,C
+        SUB     B               ; A = spaces owed
+        JC      RJ2             ; wider than the field: no padding
+        JZ      RJ2
         MOV     B,A
-SH2:    MOV     A,B
-        ORA     A
-        RZ
-        MVI     A,' '
+RJ1:    MVI     A,' '
         PUSH    B
-        CALL    PUTCH
+        PUSH    H
+        CALL    PUTCH           ; BDOS eats every register, so save B and H
+        POP     H
         POP     B
         DCR     B
-        JMP     SH2
+        JNZ     RJ1
+RJ2:    JMP     PSTR            ; tail call: the string itself
 
-SH3:    XRA     A
-        STA     COL
-        JMP     CRLF            ; tail call
+;-----------------------------------------------------------------------
+; SPC2 -- two spaces, the gap between columns.
+;-----------------------------------------------------------------------
+SPC2:   MVI     A,' '
+        CALL    PUTCH
+        MVI     A,' '
+        JMP     PUTCH           ; tail call
 
 ;-----------------------------------------------------------------------
 ; STRLEN -- B = the length of the NUL-terminated string at HL.
@@ -437,9 +437,10 @@ PAT:    DS      HNMAX+1         ; the pattern, as typed. Empty = everything.
 NAME:   DS      HNMAX+1         ; the name the card just handed us. +1: RECVZ's
                                 ; truncate path writes its NUL one past the
                                 ; count it was given.
+SIZE:   DS      SZMAX+1         ; its size, as decimal text (or "<DIR>")
+DATE:   DS      DTMAX+1         ; its date, MM/DD/YY
 IDBUF:  DS      IDMAX+1
 COUNT:  DS      2               ; how many names we have printed
-COL:    DS      1               ; which column the next one goes in
 NUMBUF: DS      6
 NUMEND: DS      1               ; PRDEC builds backwards from here
 
