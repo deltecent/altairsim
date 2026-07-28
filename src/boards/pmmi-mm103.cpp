@@ -2,8 +2,10 @@
 
 #include "core/statefile.h"
 #include "host/endpoint.h"
+#include "host/modemline.h"
 #include "host/stream.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -40,9 +42,14 @@ Clock& deadCard() {
 // machine. See docs/boards/pmmi-mm103.md.
 constexpr uint8_t kModemStatusReady = 0x43;
 
-// The bits we decode back out of that byte for the SHOW `lines` string.
-constexpr uint8_t kMsCts = 0x04;  // active low: 0 = clear to send
-constexpr uint8_t kMsAp  = 0x10;  // active low: 0 = off-hook
+// IN BA+2 modem-status bits (reference §5). Bits 0,1,2,4 are ACTIVE LOW (a 0 means the
+// named thing is present/asserted); bits 3,5,6,7 are active high.
+constexpr uint8_t kMsDialTone = 0x01;  // active low: 0 = dial tone present
+constexpr uint8_t kMsRinging  = 0x02;  // active low: 0 = ringing (toggles between bursts)
+constexpr uint8_t kMsCts      = 0x04;  // active low: 0 = clear to send
+constexpr uint8_t kMsAp       = 0x10;  // active low: 0 = off-hook (Answer Phone)
+constexpr uint8_t kMsMode     = 0x40;  // active high: 1 = originate, 0 = answer
+constexpr uint8_t kMsTimer    = 0x80;  // active high: the rate-derived 40/60 timer pulse
 
 // OUT BA+0 modem-control shadow bits (reference §4).
 constexpr uint8_t kSh = 0x01;  // Switch Hook -- 1 = off-hook / originate
@@ -52,6 +59,26 @@ constexpr uint8_t kRi = 0x02;  // Ring Indicator -- 1 = answer mode
 constexpr uint8_t kDtr = 0x40;  // 1 = modem enabled
 constexpr uint8_t kSt  = 0x10;  // Self Test -- bit 4, ACTIVE LOW (0 = testing)
 
+// ---------------------------------------------------------------------------
+// THE HANDSHAKE TIMING (reference §3.2.6, §7, §10.2/§10.3). All in milliseconds; the
+// state machine turns them into T-states through the Clock, so REPLAY stays
+// deterministic and a faster/slower clock keeps the SAME emulated timing.
+//
+// Answer-mode CTS is billing (§3.2.6: 2 s inhibit after the phone goes off-hook to
+// answer) PLUS the §10.2 echo-suppressor delay (CTS 450 ms after carrier). Originate
+// has no billing delay -- §10.3's 750 ms is measured from receipt of carrier.
+constexpr long long kBillingMs       = 2000;  // §3.2.6 incoming-answer inhibit
+constexpr long long kAnswerCtsMs     = kBillingMs + 450;  // §10.2
+constexpr long long kOriginateCtsMs  = 750;   // §10.3
+constexpr long long kApResetMs       = 1500;  // §7.4.4.5 AP resets ~1.5 s after CTS lost
+constexpr long long kHsTimeoutMs     = 17000; // §7.3.1.1/§10.2 no-handshake hangup
+
+// US ring cadence: 2 s on, 4 s off. The Ringing bit holds 0 across the 'on' burst and
+// reads 1 during the silence, so a guest counting transitions advances one per burst
+// (§7.4.4.2). Exact seconds don't matter to the guest -- the TRANSITION does.
+constexpr long long kRingOnMs  = 2000;
+constexpr long long kRingOffMs = 4000;
+
 } // namespace
 
 void PmmiBoard::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
@@ -60,6 +87,13 @@ PmmiBoard::PmmiBoard() {
     // -> NullStream. There is no null pointer in the stream path, ever: a card with
     // nothing plugged into it has a DEAD line, not a dangling one.
     u_.disconnect();
+}
+
+// A deadline is a lambda holding `this`. A card pulled from a running machine
+// (BOARDS REMOVE) must not leave one on the books to fire into freed memory -- the
+// same use-after-free the 2SIO guards in its destructor.
+PmmiBoard::~PmmiBoard() {
+    if (clock_) clock_->cancel(wake_);
 }
 
 // ---------------------------------------------------------------------------
@@ -97,14 +131,20 @@ void PmmiBoard::write(const BusCycle& c) {
         out2_ = c.data;
         programRate(c.data);
         break;
-    case 3:  // OUT BA+3 -- 6860 modem control. Shadowed; the ST bit drives self-test.
-        out3_ = c.data;
-        updateSelfTest();
+    case 3: {  // OUT BA+3 -- 6860 modem control. Shadowed; ST drives self-test, DTR the modem.
+        uint8_t prev = out3_;
+        out3_        = c.data;
+        updateSelfTest();      // ST may pocket/unpocket the phone line first...
+        decodeControl3(prev);  // ...then DTR edges dial / arm / hang up the modem.
         break;
-    default: // OUT BA+0 -- UART format / SH,RI / interrupt enable (enable bit inert).
-        out0_ = c.data;
+    }
+    default: {  // OUT BA+0 -- UART format / SH,RI / interrupt enable (enable bit inert).
+        uint8_t prev = out0_;
+        out0_        = c.data;
         programFrame(c.data);
+        decodeControl0(prev);  // SH/RI edges originate / answer.
         break;
+    }
     }
 }
 
@@ -129,8 +169,55 @@ uint8_t PmmiBoard::uartStatus() const {
     return s;
 }
 
-// IN BA+2 -- modem status. Fixed this milestone (see kModemStatusReady).
-uint8_t PmmiBoard::modemStatus() const { return kModemStatusReady; }
+// IN BA+2 -- modem status, computed LIVE from the phone line and the handshake clock.
+//
+// This reads only: the ModemLine's levels, the latched bits, and the timestamps
+// refreshModem() armed. It arms nothing itself -- a status read must never have a side
+// effect on emulated time. When the line is NOT our ModemLine (a CONNECTed test endpoint,
+// or self-test's loopback), the handshake is meaningless and we hand back the same fixed
+// "ready" constant the file-transfer milestone always did (fork 6).
+uint8_t PmmiBoard::modemStatus() const {
+    if (!modemActive()) return kModemStatusReady;
+
+    const Clock& clk = clock_ ? *clock_ : deadCard();
+    uint64_t     now = clk.now();
+    uint8_t      s   = 0;
+
+    // bit 0 Dial Tone (active low, 0 = present). Board-synthesized: the guest goes
+    // off-hook (SH) to originate and polls this BEFORE dialing, while DTR is still off
+    // (§8.2), so it cannot come from the ModemLine's off-hook flag -- it comes from the
+    // SH relay bit plus "no call up yet". (Dialed digits are not decoded; the far end is
+    // host config.)
+    bool dialTone = canDial() && (out0_ & kSh) && !modem_->carrier() && !modem_->connecting();
+    if (!dialTone) s |= kMsDialTone;
+
+    // bit 1 Ringing (active low, 0 = ringing). Integrated over the burst: 0 across the
+    // 'on' half, 1 in the silence -- the guest counts rings by counting transitions.
+    if (!(modem_->ringing() && ringBurstOn(now))) s |= kMsRinging;
+
+    // bit 2 CTS (active low, 0 = clear to send). Clear only after the handshake delay
+    // following carrier -- until then the guest must WAIT (the delay is armed on the
+    // carrier edge in refreshModem).
+    bool cts = ctsClearAt_ != 0 && now >= ctsClearAt_ && modem_->carrier();
+    if (!cts) s |= kMsCts;
+
+    // bit 3 Rx Break (active high): not modeled -- 0.
+
+    // bit 4 Answer Phone (active low, 0 = off-hook). Latched: set on (SH|RI)&DTR, held
+    // across the guest's post-CTS SH/RI reset, cleared ~1.5 s after carrier is lost.
+    if (!apLow_) s |= kMsAp;
+
+    // bit 5 Digital FO (active high, diagnostics): 0.
+
+    // bit 6 Mode (active high, 1 = originate): the active path.
+    if (modeOriginate_) s |= kMsMode;
+
+    // bit 7 Timer Pulses (active high): the rate-generator's 40/60 square wave. A guest
+    // dialer times SH pulses and the 51 ms hold against it, so it must actually toggle.
+    if (timerPulseHigh(now)) s |= kMsTimer;
+
+    return s;
+}
 
 // ---------------------------------------------------------------------------
 // OUT BA+0 / OUT BA+2 -- the software-programmable frame and baud rate.
@@ -190,6 +277,229 @@ void PmmiBoard::updateSelfTest() {
 }
 
 // ---------------------------------------------------------------------------
+// THE MODEM -- the board as the phone line's policy (Phase 2).
+//
+// dial=/answer= install a ModemLine; the guest's SH/RI/DTR drive it; IN BA+2 is
+// computed from its levels plus the handshake state machine below. The ModemLine holds
+// no socket when idle, so "idle = no sockets" is literally true: the listener binds only
+// when the guest raises DTR to enable the modem (the confirmed design choice), and every
+// socket drops on DTR-drop / hangup.
+// ---------------------------------------------------------------------------
+
+// Is the live line our ModemLine? A CONNECTed endpoint replaces it (modem_ is cleared
+// then, so no dangle), and self-test pockets it behind a loopback plug -- in both cases
+// the modem semantics are inert and modemStatus() reverts to the fixed stub.
+bool PmmiBoard::modemActive() const {
+    return modem_ != nullptr && !selfTestEngaged() &&
+           static_cast<ByteStream*>(modem_) == &const_cast<PmmiBoard*>(this)->lineStream();
+}
+
+// Build (or rebuild) the ModemLine from the current dial/answer config and install it as
+// the line -- or tear it back down to a NullStream when neither is configured (so the
+// state=="null" contract and the fixed-stub fallback both hold). A rebuild starts idle:
+// config is declarative and applied before the machine runs, so there is no live call to
+// preserve. attachStream() routes it through the self-test pocketing exactly as CONNECT
+// does.
+void PmmiBoard::syncModem() {
+    if (canDial() || canAnswer()) {
+        auto ml = std::make_unique<ModemLine>(dialHost_, dialPort_, answerPort_);
+        modem_  = ml.get();
+        attachStream(std::move(ml));
+    } else if (modem_) {
+        modem_ = nullptr;
+        attachStream(std::make_unique<NullStream>());
+    }
+    resetModemState();
+    refreshModem();
+}
+
+// AP goes -- and STAYS -- low on (SH|RI) & DTR (§7.4.4.5). The latch is the point: a
+// correct guest resets SH/RI 51 ms after CTS (so automatic disconnect still works), and
+// AP must hold the line off-hook across that reset. Only DTR-drop or a lost-carrier
+// timeout clears it (in decodeControl3 / refreshModem).
+void PmmiBoard::latchAp() {
+    if ((out0_ & (kSh | kRi)) && (out3_ & kDtr)) apLow_ = true;
+}
+
+// SH/RI edges (OUT BA+0). Answering is the load-bearing one: RI 0->1 while the line
+// rings picks up the call. Origination normally waits for DTR (decodeControl3), but if
+// DTR is already up we dial on the SH edge too, so either write order works.
+void PmmiBoard::decodeControl0(uint8_t prev) {
+    if (modemActive()) {
+        std::string e;
+        bool riRose = (out0_ & kRi) && !(prev & kRi);
+        bool shRose = (out0_ & kSh) && !(prev & kSh);
+
+        if (riRose && modem_->ringing()) {  // ANSWER the ringing line (§7.4.4.2)
+            modem_->answer();
+            modeOriginate_ = false;
+        }
+        // ORIGINATE, if the modem is already enabled and this SH edge is not an answer.
+        if (shRose && (out3_ & kDtr) && canDial() && !(out0_ & kRi) &&
+            !modem_->ringing() && !modem_->connecting() && !modem_->carrier()) {
+            modem_->dial(e);
+            modeOriginate_ = true;
+        }
+        latchAp();
+    }
+    refreshModem();
+}
+
+// DTR edge (OUT BA+3). DTR IS the modem enable and the disconnect control (§7.3.4.7):
+//  - 0->1 arms auto-answer (the only thing that opens a socket on an idle modem) and, if
+//    the guest is already off-hook to originate, places the call.
+//  - 1->0 is the authoritative on-hook: drop the call AND the listener, back to no
+//    sockets. (SH going to 0 is NOT a hangup here -- a correct guest clears it after CTS
+//    and pulses it while dialing; DTR is the wire that hangs up.)
+void PmmiBoard::decodeControl3(uint8_t prev) {
+    if (modemActive()) {
+        std::string e;
+        bool dtrRose = (out3_ & kDtr) && !(prev & kDtr);
+        bool dtrFell = !(out3_ & kDtr) && (prev & kDtr);
+
+        if (dtrRose) {
+            if (canAnswer()) modem_->armAnswer(e);  // bind the listener (idempotent)
+            if ((out0_ & kSh) && canDial() && !modem_->ringing() &&
+                !modem_->connecting() && !modem_->carrier()) {
+                modem_->dial(e);  // originate now that the modem is enabled
+                modeOriginate_ = true;
+            }
+        }
+        if (dtrFell) {  // ON-HOOK. Everything drops.
+            modem_->hangup();
+            apLow_       = false;
+            ctsClearAt_  = 0;
+            apResetAt_   = 0;
+            hsTimeoutAt_ = 0;
+        }
+        latchAp();
+    }
+    refreshModem();
+}
+
+// THE HANDSHAKE / RING STATE MACHINE. Polls the ModemLine, advances the latched bits on
+// their Clock deadlines, and re-arms the single earliest one -- cancel-before-rearm, the
+// 2SIO's discipline (there is never more than one PMMI timer on the books). The status
+// BITS are computed live in modemStatus(); this owns the edges and the deadlines.
+void PmmiBoard::refreshModem() {
+    if (!clock_) return;
+    if (!modemActive()) {  // no line to service: make sure no stale deadline survives
+        clock_->cancel(wake_);
+        wake_ = Clock::kNone;
+        return;
+    }
+
+    uint64_t now = clock_->now();
+    uint64_t tps = clock_->tStatesPer(1000);  // T-states per millisecond
+
+    // CARRIER edge. Rising: the far end answered -> arm CTS clear (billing+450 answer,
+    // 750 originate) and cancel the no-handshake timeout. Falling: CTS is no longer
+    // clear, and AP begins its ~1.5 s reset.
+    bool car = modem_->carrier();
+    if (car && !carrierPrev_) {
+        long long ms = modeOriginate_ ? kOriginateCtsMs : kAnswerCtsMs;
+        ctsClearAt_  = now + (uint64_t)ms * tps;
+        hsTimeoutAt_ = 0;
+    } else if (!car && carrierPrev_) {
+        ctsClearAt_ = 0;
+        if (apLow_) apResetAt_ = now + (uint64_t)kApResetMs * tps;
+    }
+    carrierPrev_ = car;
+
+    // RING start edge: mark the burst-phase origin so the Ringing bit toggles from here.
+    bool rng = modem_->ringing();
+    if (rng && !ringingPrev_) ringStart_ = now;
+    ringingPrev_ = rng;
+
+    // Deadlines that have come due.
+    if (apResetAt_ != 0 && now >= apResetAt_) {
+        apLow_     = false;
+        apResetAt_ = 0;
+    }
+    if (hsTimeoutAt_ != 0 && now >= hsTimeoutAt_) {  // 17 s, handshake never completed
+        modem_->hangup();
+        apLow_       = false;
+        hsTimeoutAt_ = 0;
+        ctsClearAt_  = 0;
+    }
+
+    // Off-hook for data but no carrier yet: arm the 17 s no-handshake hangup (the failure
+    // path -- the far end never answered). Cleared the moment carrier appears, above.
+    if (apLow_ && !car && ctsClearAt_ == 0) {
+        if (hsTimeoutAt_ == 0) hsTimeoutAt_ = now + (uint64_t)kHsTimeoutMs * tps;
+    } else if (car) {
+        hsTimeoutAt_ = 0;
+    }
+
+    // Re-arm the earliest FUTURE deadline. A past CTS-clear needs no timer -- the bit is
+    // already clear when read.
+    clock_->cancel(wake_);
+    wake_ = Clock::kNone;
+    uint64_t next = 0;
+    auto     consider = [&](uint64_t t) {
+        if (t > now && (next == 0 || t < next)) next = t;
+    };
+    consider(ctsClearAt_);
+    consider(apResetAt_);
+    consider(hsTimeoutAt_);
+    if (rng) consider(nextRingEdge(now));
+    if (next) wake_ = clock_->at(next, [this] { refreshModem(); });
+}
+
+// Back to on-hook / idle: the state a fresh line and a restored machine both start from.
+// Does NOT touch the ModemLine's sockets (syncModem/deserialize handle that) or the
+// wake_ handle (refreshModem re-arms).
+void PmmiBoard::resetModemState() {
+    apLow_         = false;
+    modeOriginate_ = true;
+    ctsClearAt_    = 0;
+    ringStart_     = 0;
+    apResetAt_     = 0;
+    hsTimeoutAt_   = 0;
+    carrierPrev_   = false;
+    ringingPrev_   = false;
+}
+
+// Inside a ring burst's 'on' half? The cadence origin is ringStart_; the bit is 0
+// (ringing) for the first kRingOnMs of each kRingOnMs+kRingOffMs cycle.
+bool PmmiBoard::ringBurstOn(uint64_t now) const {
+    const Clock& clk    = clock_ ? *clock_ : deadCard();
+    uint64_t     tps    = clk.tStatesPer(1000);
+    uint64_t     on     = (uint64_t)kRingOnMs * tps;
+    uint64_t     period = (uint64_t)(kRingOnMs + kRingOffMs) * tps;
+    if (period == 0) return true;
+    uint64_t phase = (now - ringStart_) % period;
+    return phase < on;
+}
+
+// Absolute T-state of the next ring-burst edge -- the transition a ring-counting guest
+// (or, later, a ring interrupt) watches for.
+uint64_t PmmiBoard::nextRingEdge(uint64_t now) const {
+    const Clock& clk    = clock_ ? *clock_ : deadCard();
+    uint64_t     tps    = clk.tStatesPer(1000);
+    uint64_t     on     = (uint64_t)kRingOnMs * tps;
+    uint64_t     period = (uint64_t)(kRingOnMs + kRingOffMs) * tps;
+    if (period == 0) return 0;
+    uint64_t elapsed = now - ringStart_;
+    uint64_t base    = ringStart_ + (elapsed / period) * period;
+    uint64_t phase   = elapsed % period;
+    return phase < on ? base + on : base + period;
+}
+
+// IN BA+2 bit 7 -- the rate generator's timer pulse: 250,000/(N*100) Hz at 40% high /
+// 60% low, where N is the OUT BA+2 divisor (§6). N=0 means the divider is not loaded, so
+// the bit is quiet.
+bool PmmiBoard::timerPulseHigh(uint64_t now) const {
+    if (out2_ == 0) return false;
+    const Clock& clk     = clock_ ? *clock_ : deadCard();
+    long long    timerHz = 250000 / ((long long)out2_ * 100);
+    if (timerHz <= 0) return false;
+    uint64_t period = clk.tStatesPer(timerHz);  // T-states per timer cycle
+    if (period == 0) return false;
+    return (now % period) < period * 40 / 100;  // high for the first 40%
+}
+
+// ---------------------------------------------------------------------------
 // Lifecycle.
 // ---------------------------------------------------------------------------
 
@@ -205,12 +515,28 @@ void PmmiBoard::reset(Reset) {
     // DTR is now clear, so any self-test loopback tears down here and the pocketed
     // phone line comes back onto the pins -- the shadow and the live wire stay in step.
     updateSelfTest();
+
+    // DTR is clear, so the modem is disabled: hang up and go idle, dropping any call and
+    // listener. The state machine restarts on-hook, in step with the cleared shadows.
+    if (modem_) modem_->hangup();
+    resetModemState();
+    refreshModem();
 }
 
 void PmmiBoard::power() { reset(Reset::PowerOn); }
 
-// THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1).
-void PmmiBoard::pump() { u_.pump(); }
+// THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1). Pump the line, then let
+// the state machine see any ring / carrier the pump just brought in.
+void PmmiBoard::pump() {
+    u_.pump();
+    refreshModem();
+}
+
+// A jumper moved or the line was reconfigured (dial/answer rebuilt it): re-aim the timer.
+void PmmiBoard::configChanged() {
+    decodeChanged();  // `port` may have moved the card in the I/O space
+    refreshModem();
+}
 
 void PmmiBoard::serialize(StateWriter& w) const {
     Board::serialize(w);
@@ -232,6 +558,16 @@ void PmmiBoard::deserialize(StateReader& r) {
     // already-connected machine, so u_.stream() here is the real line -- the one this
     // pockets. (savedLine_ is a synthesized plug and never travels.)
     updateSelfTest();
+
+    // A LIVE CALL CANNOT BE RESTORED (a socket handle is not serializable -- DESIGN.md 13).
+    // The ModemLine was rebuilt idle from the TOML dial/answer config; drop any call the
+    // running machine had and come back ON-HOOK, even though the restored SH/DTR shadows
+    // say off-hook. This is the honest analogue of pulling the line during a save: the
+    // guest polls AP high, no CTS, and redials -- mirroring how self-test is re-derived
+    // from the restored control latch rather than travelling as live state.
+    if (modem_) modem_->hangup();
+    resetModemState();
+    refreshModem();
 }
 
 // ---------------------------------------------------------------------------
@@ -256,12 +592,14 @@ std::string PmmiBoard::uartString() const {
 std::string PmmiBoard::linesString() const {
     uint8_t     ms = modemStatus();
     std::string s;
-    s += (out0_ & kSh) ? "SH " : "sh ";     // switch hook -- off-hook / originate
-    s += (out0_ & kRi) ? "RI " : "ri ";     // ring indicator -- answer mode
-    s += (out3_ & kDtr) ? "DTR " : "dtr ";  // data terminal ready -- modem enabled
-    s += selfTestEngaged() ? "ST " : "st "; // 6860 self-test -- the line looped on itself
-    s += (ms & kMsCts) ? "cts " : "CTS ";   // active low: 0 = clear to send
-    s += (ms & kMsAp) ? "ap" : "AP";        // active low: 0 = off-hook
+    s += (out0_ & kSh) ? "SH " : "sh ";          // switch hook -- off-hook / originate
+    s += (out0_ & kRi) ? "RI " : "ri ";          // ring indicator -- answer mode
+    s += (out3_ & kDtr) ? "DTR " : "dtr ";       // data terminal ready -- modem enabled
+    s += selfTestEngaged() ? "ST " : "st ";      // 6860 self-test -- the line looped on itself
+    s += (ms & kMsDialTone) ? "dt " : "DT ";     // active low: 0 = dial tone present
+    s += (ms & kMsRinging) ? "ring " : "RING ";  // active low: 0 = ringing
+    s += (ms & kMsCts) ? "cts " : "CTS ";        // active low: 0 = clear to send
+    s += (ms & kMsAp) ? "ap" : "AP";             // active low: 0 = off-hook
     return s;
 }
 
@@ -306,6 +644,64 @@ std::vector<Property> PmmiBoard::properties() {
         x.set  = [this](const Value& v, std::string& err) { return connect("line", v.s(), err); };
         p.push_back(std::move(x));
     }
+    // ---- THE MODEM'S TWO KNOBS. dial=/answer= turn the line into a ModemLine and pick
+    // the far end / the answer port; the guest's SH/RI/DTR then drive it. `dial` and
+    // `answer` name the intent, so they take a bare `host:port` / `port` -- validated
+    // through the grammar primitives (host/endpoint.h), which a board must not re-learn. ----
+    {
+        Property x;
+        x.name = "dial";
+        x.help = "Originate target host:port (empty = cannot dial). SH off-hook + DTR "
+                 "dials it; the guest's pulse digits are not decoded";
+        x.kind = Kind::Str;
+        x.get  = [this] {
+            return Value::ofStr(canDial() ? dialHost_ + ":" + std::to_string(dialPort_) : "");
+        };
+        x.set  = [this](const Value& v, std::string& err) {
+            std::string s = v.s();
+            if (s.empty()) {
+                dialHost_.clear();
+                dialPort_ = 0;
+                syncModem();
+                return true;
+            }
+            std::string host;
+            uint16_t    port = 0;
+            if (!parseHostPort(s, host, port, err)) return false;
+            dialHost_ = host;
+            dialPort_ = port;
+            syncModem();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "answer";
+        x.help = "Auto-answer TCP port (empty/0 = will not answer). DTR arms the listener; "
+                 "an inbound call RINGS until the guest answers with RI";
+        x.kind = Kind::Str;
+        x.get  = [this] {
+            return Value::ofStr(canAnswer() ? std::to_string(answerPort_) : "");
+        };
+        x.set  = [this](const Value& v, std::string& err) {
+            std::string s = v.s();
+            if (s.empty() || s == "0") {
+                answerPort_ = 0;
+                syncModem();
+                return true;
+            }
+            uint16_t port = 0;
+            if (!parsePort(s, port)) {
+                err = "answer needs a TCP port 1..65535";
+                return false;
+            }
+            answerPort_ = port;
+            syncModem();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
     // ---- READ-ONLY STATUS. A property with no setter is a PIN, not a jumper: SHOW
     // renders it `(read-only)`. This is the whole of `SHOW <id>`'s status view. ----
     {
@@ -337,8 +733,8 @@ std::vector<Property> PmmiBoard::properties() {
     {
         Property x;
         x.name = "lines";
-        x.help = "Live modem lines (read-only). CAPITALS = asserted: SH RI DTR CTS AP "
-                 "(CTS/AP are the fixed stub until the handshake lands)";
+        x.help = "Live modem lines (read-only). CAPITALS = asserted: SH RI DTR ST DT RING "
+                 "CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine)";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(linesString()); };
         p.push_back(std::move(x));
@@ -372,6 +768,13 @@ bool PmmiBoard::connect(const std::string& unit, const std::string& ep, std::str
         err = "pmmi has no unit '" + unit + "' -- it has one, and it is called 'line'";
         return false;
     }
+    // The modem advertises its own line as "modem:...", and CONFIG SAVE emits that through
+    // the `connect` property. The dial=/answer= properties are what actually build the
+    // ModemLine, so this spec is a NO-OP -- recognizing it keeps CONFIG SAVE round-tripping
+    // without asking the resolver to parse a grammar it must never know (DESIGN.md 7.7),
+    // and it does so regardless of whether `connect` is reloaded before or after dial/answer.
+    if (ep.rfind("modem:", 0) == 0) return true;
+
     if (!g_resolver) {
         err = "no endpoint resolver installed";
         return false;
@@ -389,7 +792,12 @@ bool PmmiBoard::connect(const std::string& unit, const std::string& ep, std::str
         for (const std::string& p : paths) err += pathNote(p);
         return false;
     }
+    // A resolved endpoint REPLACES the modem: the phone line and a CONNECTed test line are
+    // mutually-exclusive uses of the one serial unit (fork 3/6). Drop the modem_ pointer
+    // so it can never dangle, and modemStatus() reverts to the fixed stub.
+    modem_ = nullptr;
     attachStream(std::move(s));
+    refreshModem();  // tears down any outstanding handshake deadline
     return true;
 }
 
@@ -398,7 +806,9 @@ bool PmmiBoard::disconnect(const std::string& unit, std::string& err) {
         err = "pmmi has no unit '" + unit + "' -- it has one, and it is called 'line'";
         return false;
     }
+    modem_ = nullptr;
     attachStream(std::make_unique<NullStream>());
+    refreshModem();
     return true;
 }
 

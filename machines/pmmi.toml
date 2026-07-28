@@ -8,6 +8,16 @@
 #   CONNECT pmmi0 line in:script.tap,out:capture.tap
 #
 # (A bare `in:` to a missing file would fail the load, so no connect is set here.)
+#
+# THE SOFTWARE-CONTROLLED MODEM. Set `dial` and/or `answer` and the line becomes a
+# ModemLine the guest drives over TCP -- SH+DTR originates the call to `dial`, DTR arms
+# auto-answer on `answer` (an inbound connection rings until the guest answers), and IN
+# BA+2 runs the real handshake. For example:
+#
+#   dial   = "bbs.example.com:23"   # SH off-hook + DTR dials this far end
+#   answer = "2323"                 # DTR arms auto-answer on TCP port 2323
+#
+# Left unset here, so the line stays a plain (dead) NullStream until you CONNECT one.
 
 [machine]
 name = "pmmi"
