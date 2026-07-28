@@ -418,6 +418,51 @@ void test_pmmi() {
         CHECK(err.find("line") != std::string::npos, "the error names the real one");
     }
 
+    SECTION("PMMI MM-103 -- a plain CONNECTed line reads the fixed 'ready' status (0x43)");
+    {
+        // No dial/answer, so the line is a NON-modem endpoint. Its status is folded from
+        // the stream's pins (host/stream.h), and a scripted/file line asserts them all --
+        // which comes out as the SAME 0x43 the fixed stub always returned: off-hook, clear
+        // to send, originate, no dial tone, not ringing. So the file-transfer path is
+        // unchanged by the passthrough.
+        Rig g;
+        CHECK(g.modem() == 0x43, "a plain endpoint reads off-hook + clear-to-send (0x43)");
+    }
+
+    SECTION("PMMI MM-103 -- a real serial line: DTR reaches the pin, its status comes back");
+    {
+        // A loopback plug on the connector solders DTR->DCD/DSR and RTS->CTS, so it stands
+        // in for a real serial cable with zero hardware: what the card DRIVES on DTR/RTS is
+        // exactly what it READS back on the modem-status port. (CONNECT loopback binds it
+        // through the very path an operator's `CONNECT pmmi:line serial:...` uses.)
+        Rig         g;
+        std::string err;
+        CHECK(g.pmmi->connect("line", "loopback", err), "connect the line to a loopback plug");
+        CHECK((g.modem() & kMsAp) != 0, "DTR is low at power-on, so DCD/AP reads on-hook");
+
+        // Raise DTR (ST high = no self-test). It reaches the port's DTR pin, and the plug
+        // returns it as DCD -- so the guest sees the line come off-hook.
+        g.modemctl(0x7F);  // DTR on, ST inactive
+        CHECK((g.modem() & kMsAp) == 0, "raising DTR drives the pin; DCD returns as off-hook");
+
+        // RTS does NOT follow DTR by default, so the looped-back CTS stays de-asserted.
+        CHECK((g.modem() & kMsCts) != 0, "with rtsdtr off, RTS stays low so CTS is not clear");
+
+        // Turn on the strap: now RTS mirrors DTR, the plug loops it to CTS, and the guest
+        // reads clear-to-send.
+        CHECK(setProperty(*g.pmmi, "rtsdtr", "on", err), "the rtsdtr strap is settable");
+        CHECK((g.modem() & kMsCts) == 0, "with rtsdtr on, RTS follows DTR so CTS comes back clear");
+
+        // A loopback plug has nothing to ring with -- the Ringing bit stays de-asserted.
+        CHECK((g.modem() & kMsRinging) != 0, "a serial line with no RI reads not-ringing");
+
+        // Drop DTR: the pin drops, RTS drops with it (even with the strap on), and both DCD
+        // and CTS fall away -- the whole control surface tracks the guest's register.
+        g.modemctl(0x00);  // DTR low
+        CHECK((g.modem() & kMsAp) != 0, "dropping DTR drops the pin; DCD returns as on-hook");
+        CHECK((g.modem() & kMsCts) != 0, "and RTS drops with DTR, so CTS is no longer clear");
+    }
+
     // ---- THE MODEM (Phase 2): dial=/answer=, the register decode, the handshake. -------
 
     SECTION("PMMI MM-103 -- dial/answer round-trip and the line becomes a ModemLine");
