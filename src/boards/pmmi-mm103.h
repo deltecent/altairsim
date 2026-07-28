@@ -127,6 +127,18 @@ private:
     uint8_t uartStatus() const;   // IN BA+0
     uint8_t modemStatus() const;  // IN BA+2 -- computed from the phone line + handshake clock
 
+    // IN BA+2 when the line is a plain CONNECTed endpoint (a real serial port, a socket,
+    // a file) rather than our ModemLine: fold the stream's live pins (host/stream.h
+    // LineStatus) straight into the modem-status bits. CTS->CTS, RI->Ringing, DCD->AP;
+    // Mode and the rate timer stay board-generated. This is the "modem signals are
+    // uniform" pattern the 6850 uses -- the board reads the pins it has.
+    uint8_t passthroughStatus() const;
+
+    // Drive the card's control pins (DTR, and optionally RTS) onto a CONNECTed stream via
+    // ByteStream::setControl. A no-op unless the line is a plain endpoint -- the ModemLine
+    // owns its own dial/answer/hangup, and self-test's loopback is a data plug only.
+    void pushControl();
+
     // ---- THE PHONE LINE, AND THE MODEM AS ITS POLICY (Phase 2). ---------------------
     //
     // dial=/answer= build a ModemLine (host/modemline.h) and install it as the line;
@@ -198,6 +210,11 @@ private:
     std::string dialHost_;
     uint16_t    dialPort_   = 0;
     uint16_t    answerPort_ = 0;
+
+    // A strap, not a snapshot bit: when set, the DTR output ALSO drives RTS on a CONNECTed
+    // serial port (some cables want RTS asserted to pass data). Default off -- RTS stays
+    // low. Travels as config through the `rtsdtr` property, exactly like dial=/answer=.
+    bool rtsMirrorsDtr_ = false;
 
     // The installed ModemLine, or nullptr when the line is a NullStream / a CONNECTed
     // endpoint. NON-OWNING: the UART owns the stream (or savedLine_ pockets it during

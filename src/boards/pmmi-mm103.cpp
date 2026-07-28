@@ -135,7 +135,8 @@ void PmmiBoard::write(const BusCycle& c) {
         uint8_t prev = out3_;
         out3_        = c.data;
         updateSelfTest();      // ST may pocket/unpocket the phone line first...
-        decodeControl3(prev);  // ...then DTR edges dial / arm / hang up the modem.
+        decodeControl3(prev);  // ...then DTR edges dial / arm / hang up the modem...
+        pushControl();         // ...or, on a plain serial line, DTR reaches the real pin.
         break;
     }
     default: {  // OUT BA+0 -- UART format / SH,RI / interrupt enable (enable bit inert).
@@ -173,11 +174,17 @@ uint8_t PmmiBoard::uartStatus() const {
 //
 // This reads only: the ModemLine's levels, the latched bits, and the timestamps
 // refreshModem() armed. It arms nothing itself -- a status read must never have a side
-// effect on emulated time. When the line is NOT our ModemLine (a CONNECTed test endpoint,
-// or self-test's loopback), the handshake is meaningless and we hand back the same fixed
-// "ready" constant the file-transfer milestone always did (fork 6).
+// effect on emulated time.
+//
+// Three lines can be on the connector, and each answers differently:
+//   - self-test's loopback plug -- a DATA loopback only on this card (updateSelfTest), so
+//     modem status stays the fixed "ready" stub while TX returns on RX;
+//   - our ModemLine -- the full Bell-103 handshake computed below;
+//   - a plain CONNECTed endpoint (a real serial port, a socket, a file) -- fold its live
+//     pins straight in (passthroughStatus).
 uint8_t PmmiBoard::modemStatus() const {
-    if (!modemActive()) return kModemStatusReady;
+    if (selfTestEngaged()) return kModemStatusReady;
+    if (!modemActive()) return passthroughStatus();
 
     const Clock& clk = clock_ ? *clock_ : deadCard();
     uint64_t     now = clk.now();
@@ -217,6 +224,52 @@ uint8_t PmmiBoard::modemStatus() const {
     if (timerPulseHigh(now)) s |= kMsTimer;
 
     return s;
+}
+
+// IN BA+2 for a plain CONNECTed endpoint -- a real serial port, a socket, a file. The
+// modem control lines are UNIFORM across every card (host/stream.h): a real port drives
+// real pins, a file asserts them all, and the board just reads what it has. So a
+// `serial:/dev/tty...` line hands the guest live CTS/DCD/RI, exactly as the 6850 reads
+// carrier/cts off the same LineStatus. A file or NullStream asserts carrier/cts/dsr and
+// clears ring by default, so this yields the SAME 0x43 the fixed stub always did (with the
+// rate timer quiet, out2_ == 0) -- no change for the file-transfer path.
+uint8_t PmmiBoard::passthroughStatus() const {
+    const Clock& clk = clock_ ? *clock_ : deadCard();
+    // status() is a const read of the far-end pins; lineStream() is non-const only because
+    // it can hand back a mutable line, so cast as modemActive() does for the same reason.
+    LineStatus ls = const_cast<PmmiBoard*>(this)->lineStream().status();
+    uint8_t    s  = 0;
+
+    // bit 0 Dial Tone (active low, 0 = present): a bare wire has no dial tone -- absent.
+    s |= kMsDialTone;
+    // bit 1 Ringing (active low, 0 = ringing): the far end's RI pin.
+    if (!ls.ring) s |= kMsRinging;
+    // bit 2 CTS (active low, 0 = clear to send): the far end's CTS pin.
+    if (!ls.cts) s |= kMsCts;
+    // bit 3 Rx Break (active high): not modeled -- 0.
+    // bit 4 Answer Phone (active low, 0 = off-hook): DCD is the "connected" indicator.
+    if (!ls.carrier) s |= kMsAp;
+    // bit 5 Digital FO (active high, diagnostics): 0.
+    // bit 6 Mode (active high, 1 = originate): board-synthesized from the SH/RI shadow --
+    // the guest straps RI for answer, leaves it clear for originate.
+    if (!(out0_ & kRi)) s |= kMsMode;
+    // bit 7 Timer Pulses (active high): the local rate-generator square wave, unchanged.
+    if (timerPulseHigh(clk.now())) s |= kMsTimer;
+
+    return s;
+}
+
+// Drive the card's control pins onto a plain CONNECTed stream (host/stream.h setControl).
+// DTR always follows OUT BA+3 bit 6; RTS mirrors DTR only when the `rtsdtr` strap is set
+// (some cables need RTS asserted to pass data). A no-op on the ModemLine (it owns its own
+// dial/answer/hangup) and during self-test (the loopback plug is a data path only).
+void PmmiBoard::pushControl() {
+    if (modemActive() || selfTestEngaged()) return;
+    bool        dtr = (out3_ & kDtr) != 0;
+    LineControl c;
+    c.dtr = dtr;
+    c.rts = rtsMirrorsDtr_ && dtr;
+    lineStream().setControl(c);
 }
 
 // ---------------------------------------------------------------------------
@@ -521,6 +574,7 @@ void PmmiBoard::reset(Reset) {
     if (modem_) modem_->hangup();
     resetModemState();
     refreshModem();
+    pushControl();  // and a plain serial line sees DTR drop, in step with the cleared shadow
 }
 
 void PmmiBoard::power() { reset(Reset::PowerOn); }
@@ -702,6 +756,23 @@ std::vector<Property> PmmiBoard::properties() {
         };
         p.push_back(std::move(x));
     }
+    // A strap for a real serial line: the PMMI drives DTR (OUT BA+3) onto the port's DTR
+    // pin, and -- with this on -- RTS too, following DTR. Default off (RTS stays low). It
+    // has no effect on a ModemLine (dial=/answer=), whose disconnect control is DTR alone.
+    {
+        Property x;
+        x.name = "rtsdtr";
+        x.help = "Mirror DTR onto RTS on a CONNECTed serial port (for cables that need RTS "
+                 "asserted to pass data). Default off";
+        x.kind = Kind::Bool;
+        x.get  = [this] { return Value::ofBool(rtsMirrorsDtr_); };
+        x.set  = [this](const Value& v, std::string&) {
+            rtsMirrorsDtr_ = v.b();
+            pushControl();  // re-drive the pins so RTS follows the new strap immediately
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
     // ---- READ-ONLY STATUS. A property with no setter is a PIN, not a jumper: SHOW
     // renders it `(read-only)`. This is the whole of `SHOW <id>`'s status view. ----
     {
@@ -798,6 +869,7 @@ bool PmmiBoard::connect(const std::string& unit, const std::string& ep, std::str
     modem_ = nullptr;
     attachStream(std::move(s));
     refreshModem();  // tears down any outstanding handshake deadline
+    pushControl();   // a fresh serial line starts in step with the current DTR shadow
     return true;
 }
 
