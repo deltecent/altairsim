@@ -7,12 +7,16 @@
 #include "core/machine.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
+#include "platform/socket.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 
 using namespace altair;
 
@@ -61,6 +65,67 @@ std::string prop(Board& b, const std::string& name) {
 constexpr uint8_t kTbmt = 0x01;  // bit 0: transmit buffer empty
 constexpr uint8_t kDav  = 0x02;  // bit 1: received char available
 constexpr uint8_t kTeoc = 0x04;  // bit 2: transmitter serializer done
+
+// IN BA+2 modem-status bits (reference §5). Bits 0,1,2,4 ACTIVE LOW (0 = asserted).
+constexpr uint8_t kMsDialTone = 0x01;  // 0 = dial tone present
+constexpr uint8_t kMsRinging  = 0x02;  // 0 = ringing (toggles between bursts)
+constexpr uint8_t kMsCts      = 0x04;  // 0 = clear to send
+constexpr uint8_t kMsAp       = 0x10;  // 0 = off-hook (Answer Phone)
+constexpr uint8_t kMsMode     = 0x40;  // 1 = originate
+
+// The board's ring cadence (US 2 s on / 4 s off). Mirrors pmmi-mm103.cpp's kRingOn/OffMs;
+// the test only needs to cross a burst boundary, not the exact seconds.
+constexpr long long kRingOnMs  = 2000;
+constexpr long long kRingOffMs = 4000;
+
+// A machine with a PMMI whose one line is a ModemLine, built from dial=/answer= just as a
+// machine file would. The guest drives it through the four ports; the test plays the far
+// end over real loopback TCP.
+struct ModemRig {
+    Machine    m;
+    PmmiBoard* pmmi = nullptr;
+
+    ModemRig(const std::string& dial, const std::string& answer) {
+        std::string err;
+        m.bus.setVerify(true);
+        m.add("memory", "mem0", err);
+        pmmi = dynamic_cast<PmmiBoard*>(m.add("pmmi", "pmmi0", err));
+        if (!dial.empty()) setProperty(*pmmi, "dial", dial, err);
+        if (!answer.empty()) setProperty(*pmmi, "answer", answer, err);
+        m.add("8080", "cpu0", err);
+        m.power();
+    }
+
+    uint8_t modem() { return m.bus.ioRead(0xC2); }         // IN  BA+2 -- modem status
+    uint8_t status() { return m.bus.ioRead(0xC0); }        // IN  BA+0 -- UART status
+    uint8_t recv() { return m.bus.ioRead(0xC1); }          // IN  BA+1 -- receive data
+    void    control(uint8_t b) { m.bus.ioWrite(0xC0, b); } // OUT BA+0 -- format / SH,RI
+    void    send(uint8_t b) { m.bus.ioWrite(0xC1, b); }    // OUT BA+1 -- transmit data
+    void    rate(uint8_t b) { m.bus.ioWrite(0xC2, b); }    // OUT BA+2 -- rate divisor
+    void    modemctl(uint8_t b) { m.bus.ioWrite(0xC3, b); }// OUT BA+3 -- 6860 modem control
+
+    void pump() { m.pump(); }
+    // Advance EMULATED time by `ms` -- the handshake delays live on the Clock, in T-states.
+    void advanceMs(long long ms) { m.clock.advance(ms * m.clock.tStatesPer(1000)); }
+};
+
+// A free port, the OS's way: bind 0, read what it picked, drop it (test_modemline's trick).
+uint16_t freePort() {
+    std::string err;
+    if (auto l = platform::listenTcp(0, err)) return l->port();
+    return 0;
+}
+
+// Poll `done` for up to ~2 s of real time, one `step` per pass -- the socket handshakes
+// happen on the kernel's clock, not ours (test_modemline::waitFor).
+template <class Step, class Pred>
+bool waitFor(Step step, Pred done) {
+    for (int i = 0; i < 200 && !done(); ++i) {
+        step();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return done();
+}
 
 } // namespace
 
@@ -351,5 +416,215 @@ void test_pmmi() {
 
         CHECK(!g.pmmi->connect("tty", "null", err), "and there is no unit but 'line'");
         CHECK(err.find("line") != std::string::npos, "the error names the real one");
+    }
+
+    // ---- THE MODEM (Phase 2): dial=/answer=, the register decode, the handshake. -------
+
+    SECTION("PMMI MM-103 -- dial/answer round-trip and the line becomes a ModemLine");
+    {
+        ModemRig    g("bbs.example:23", "2323");
+        CHECK(prop(*g.pmmi, "dial") == "bbs.example:23", "dial round-trips host:port");
+        CHECK(prop(*g.pmmi, "answer") == "2323", "answer round-trips the port");
+        CHECK(prop(*g.pmmi, "connect").rfind("modem:", 0) == 0,
+              "the line advertises itself as a modem endpoint");
+        CHECK(g.pmmi->units()[0].state.rfind("modem:", 0) == 0, "and so does the unit state");
+
+        std::string err;
+        CHECK(!setProperty(*g.pmmi, "dial", "bbs.example", err), "a dial= with no port is refused");
+        CHECK(!setProperty(*g.pmmi, "answer", "70000", err), "an out-of-range answer port is refused");
+    }
+
+    SECTION("PMMI MM-103 -- with neither dial nor answer the line stays a dead NullStream");
+    {
+        ModemRig g("", "");
+        CHECK(g.pmmi->units()[0].state == "null", "no modem configured -> the line is null");
+        CHECK(g.modem() == 0x43, "and modem status is the fixed 'ready' stub (fork 6)");
+    }
+
+    SECTION("PMMI MM-103 -- idle holds no sockets: the answer port refuses until DTR");
+    {
+        uint16_t port = freePort();
+        CHECK(port != 0, "got a free port to answer on");
+        ModemRig    g("", std::to_string(port));
+        std::string err;
+
+        // DTR is low, so armAnswer() has never run: nothing is bound on the port.
+        auto refused = platform::connectTcp("127.0.0.1", port, err);
+        if (refused) {
+            bool closed = waitFor([&] { refused->poll(); g.pump(); },
+                                  [&] { return refused->closed(); });
+            CHECK(closed, "idle modem (DTR low): the answer port refuses -- no listener");
+        } else {
+            CHECK(true, "the answer port refused synchronously (also correct)");
+        }
+
+        // Raise DTR -> the listener binds, and now a caller RINGS instead of bouncing.
+        g.modemctl(0x7F);  // DTR on, ST inactive
+        auto caller = platform::connectTcp("127.0.0.1", port, err);
+        bool rang   = waitFor([&] { if (caller) caller->poll(); g.pump(); },
+                              [&] { return (g.modem() & kMsRinging) == 0; });
+        CHECK(rang, "DTR armed the listener -> the inbound call rings (bit 1 = 0)");
+    }
+
+    SECTION("PMMI MM-103 -- the Ringing bit toggles across bursts, so a guest counts rings");
+    {
+        uint16_t port = freePort();
+        ModemRig    g("", std::to_string(port));
+        std::string err;
+        g.modemctl(0x7F);  // DTR -> arm the listener
+
+        auto caller = platform::connectTcp("127.0.0.1", port, err);
+        bool rang   = waitFor([&] { if (caller) caller->poll(); g.pump(); },
+                              [&] { return (g.modem() & kMsRinging) == 0; });
+        CHECK(rang, "the call rings: bit 1 reads 0 in the burst");
+
+        g.advanceMs(kRingOnMs + 200);  // into the silence between bursts
+        CHECK((g.modem() & kMsRinging) != 0, "between bursts bit 1 reads 1 -- a transition");
+
+        g.advanceMs(kRingOffMs);  // into the next burst
+        CHECK((g.modem() & kMsRinging) == 0, "next burst: bit 1 reads 0 again (the guest counts it)");
+    }
+
+    SECTION("PMMI MM-103 -- answering: AP low at once, CTS only after billing + 450 ms (§8/§10.2)");
+    {
+        uint16_t port = freePort();
+        ModemRig    g("", std::to_string(port));
+        std::string err;
+        g.modemctl(0x7F);  // DTR -> arm
+
+        auto caller = platform::connectTcp("127.0.0.1", port, err);
+        bool rang   = waitFor([&] { if (caller) caller->poll(); g.pump(); },
+                              [&] { return (g.modem() & kMsRinging) == 0; });
+        CHECK(rang, "the line rings");
+
+        g.control(0x5E);  // RI set (answer mode) + 8N2 -> answer()
+        CHECK((g.modem() & kMsAp) == 0, "AP (bit 4) low immediately: the phone is off-hook");
+        CHECK((g.modem() & kMsMode) == 0, "Mode (bit 6) = 0: answer mode");
+
+        // Let carrier come up (the caller is already connected) and arm the CTS delay.
+        bool up = waitFor([&] { if (caller) caller->poll(); g.pump(); },
+                          [&] { return (g.modem() & kMsCts) != 0 && (g.modem() & kMsAp) == 0; });
+        CHECK(up, "carrier is up but CTS is not clear yet");
+
+        g.advanceMs(450);  // past the echo-suppressor but not the 2 s billing delay
+        g.pump();
+        CHECK((g.modem() & kMsCts) != 0, "CTS still NOT clear -- the 2 s billing delay holds");
+
+        g.advanceMs(kRingOffMs);  // well past billing + 450 ms in total
+        g.pump();
+        CHECK((g.modem() & kMsCts) == 0, "CTS (bit 2) clear after billing + 450 ms");
+    }
+
+    SECTION("PMMI MM-103 -- originating: dial tone, then CTS 750 ms after carrier (§10.3)");
+    {
+        std::string err;
+        auto        bbs = platform::listenTcp(0, err);  // the far end we dial
+        CHECK(bbs != nullptr, ("a listener to dial into: " + err).c_str());
+        uint16_t port = bbs ? bbs->port() : 0;
+
+        ModemRig g("127.0.0.1:" + std::to_string(port), "");
+
+        // Off-hook to originate, DTR still off: the dial-tone phase (§8.2). Digits undecoded.
+        g.control(0x01);  // SH = 1
+        CHECK((g.modem() & kMsDialTone) == 0, "dial tone present (bit 0 = 0) while off-hook");
+
+        // Enable the modem to originate: DTR on with SH still set -> place the call.
+        g.control(0x5D);   // SH still set + 8N2
+        g.modemctl(0x7F);  // DTR on -> dial()
+
+        std::unique_ptr<platform::TcpConn> server;
+        bool up = waitFor([&] { g.pump(); if (!server) server = bbs->accept();
+                                if (server) server->poll(); },
+                          [&] { return server && server->established(); });
+        CHECK(up, "the far end answered the dial");
+        for (int i = 0; i < 5; ++i) g.pump();  // let the modem see carrier and arm the CTS delay
+
+        CHECK((g.modem() & kMsDialTone) != 0, "dial tone gone once the call is up (bit 0 = 1)");
+        g.advanceMs(700);
+        g.pump();
+        CHECK((g.modem() & kMsCts) != 0, "CTS not clear before 750 ms");
+        g.advanceMs(100);
+        g.pump();
+        CHECK((g.modem() & kMsCts) == 0, "CTS (bit 2) clear 750 ms after carrier");
+        CHECK((g.modem() & kMsMode) != 0, "Mode (bit 6) = 1: originate");
+    }
+
+    SECTION("PMMI MM-103 -- end to end: ring, answer, bytes cross both ways over TCP");
+    {
+        uint16_t port = freePort();
+        ModemRig    g("", std::to_string(port));
+        std::string err;
+        g.modemctl(0x7F);  // DTR -> arm
+
+        auto caller = platform::connectTcp("127.0.0.1", port, err);
+        bool rang   = waitFor([&] { if (caller) caller->poll(); g.pump(); },
+                              [&] { return (g.modem() & kMsRinging) == 0; });
+        CHECK(rang, "the caller rings");
+        g.control(0x5E);  // answer, 8N2
+
+        // Caller -> guest. The bytes held during the ring arrive once we answer.
+        if (caller) {
+            const uint8_t hi[] = {'H', 'i'};
+            caller->write(hi, sizeof hi);
+        }
+        bool got = waitFor([&] { if (caller) caller->poll(); g.pump();
+                                 g.m.clock.advance(3000); },  // a receive char time
+                           [&] { return (g.status() & kDav) != 0; });
+        CHECK(got, "a byte reaches the guest's receiver");
+        CHECK(g.recv() == 'H', "and it is the first byte the caller sent");
+
+        // Guest -> caller. writeData() puts the byte on the line at once; pump flushes it.
+        g.send('O');
+        g.send('K');
+        std::string back;
+        waitFor([&] { g.pump();
+                      if (caller) { caller->poll(); uint8_t b[8];
+                                    back.append((const char*)b, caller->read(b, sizeof b)); } },
+                [&] { return back.size() >= 2; });
+        CHECK(back == "OK", ("the guest's bytes reach the caller (got '" + back + "')").c_str());
+    }
+
+    SECTION("PMMI MM-103 -- a live call cannot be restored: it comes back on-hook, and redials");
+    {
+        std::string err;
+        auto        bbs = platform::listenTcp(0, err);  // the far end, up across the snapshot
+        CHECK(bbs != nullptr, "a listener to dial into");
+        uint16_t          port = bbs ? bbs->port() : 0;
+        const std::string snap = "pmmi_modem.tmp";
+        std::remove(snap.c_str());
+
+        ModemRig g("127.0.0.1:" + std::to_string(port), "");
+        g.control(0x5D);   // SH off-hook + 8N2
+        g.modemctl(0x7F);  // DTR on -> originate
+
+        std::unique_ptr<platform::TcpConn> server;
+        bool up = waitFor([&] { g.pump(); if (!server) server = bbs->accept();
+                                if (server) server->poll(); },
+                          [&] { return server && server->established(); });
+        CHECK(up, "the call is up");
+        for (int i = 0; i < 5; ++i) g.pump();
+        CHECK((g.modem() & kMsAp) == 0, "mid-call: AP (bit 4) low, off-hook");
+
+        CHECK(g.m.snapshot(snap, err), "snapshot the machine mid-call");
+        CHECK(g.m.restore(snap, err), "restore it");
+        std::remove(snap.c_str());
+
+        CHECK((g.modem() & kMsAp) != 0, "restored ON-HOOK: AP (bit 4) high -- the live call did not travel");
+        CHECK((g.modem() & kMsCts) != 0, "...and no CTS: there is no call");
+
+        // The guest redials: DTR/SH edges place a fresh call, which the far end accepts anew.
+        g.modemctl(0x00);  // DTR low
+        g.control(0x00);   // SH low
+        g.control(0x5D);   // SH high again + 8N2
+        g.modemctl(0x7F);  // DTR high -> dial() again
+        std::unique_ptr<platform::TcpConn> server2;
+        bool up2 = waitFor([&] { g.pump(); if (!server2) server2 = bbs->accept();
+                                 if (server2) server2->poll(); },
+                           [&] { return server2 && server2->established(); });
+        CHECK(up2, "redial establishes a brand-new call");
+        for (int i = 0; i < 5; ++i) g.pump();
+        g.advanceMs(760);
+        g.pump();
+        CHECK((g.modem() & kMsCts) == 0, "and it handshakes: CTS clears again 750 ms after carrier");
     }
 }

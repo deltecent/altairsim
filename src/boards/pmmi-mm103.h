@@ -40,7 +40,9 @@
 
 #include "chips/uart1602.h"  // the 1602-family UART -- A CHIP IS NOT A CARD (DESIGN.md 7.8)
 #include "core/board.h"
+#include "core/clock.h"      // Clock::Handle -- the handshake state machine runs on deadlines
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -48,9 +50,12 @@
 
 namespace altair {
 
+class ModemLine;  // host/modemline.h -- the phone line this board's registers drive (Phase 2)
+
 class PmmiBoard : public Board {
 public:
     PmmiBoard();
+    ~PmmiBoard() override;  // cancels the outstanding handshake/ring deadline (2SIO pattern)
 
     std::string type() const override { return "pmmi"; }
 
@@ -81,6 +86,10 @@ public:
     bool connect(const std::string& unit, const std::string& endpoint,
                  std::string& err) override;
     bool disconnect(const std::string& unit, std::string& err) override;
+
+    // A jumper moved (base address) or the line was reconfigured (dial/answer): re-aim
+    // the handshake timer, exactly as the 2SIO re-arms its character deadline.
+    void configChanged() override;
 
     // The monitor resolves an endpoint string to a stream; the BOARD is not allowed
     // to know what a socket is (DESIGN.md 7.7).
@@ -116,7 +125,43 @@ private:
 
     // The two status ports, assembled from chip pins and the shadowed registers.
     uint8_t uartStatus() const;   // IN BA+0
-    uint8_t modemStatus() const;  // IN BA+2 -- fixed this milestone
+    uint8_t modemStatus() const;  // IN BA+2 -- computed from the phone line + handshake clock
+
+    // ---- THE PHONE LINE, AND THE MODEM AS ITS POLICY (Phase 2). ---------------------
+    //
+    // dial=/answer= build a ModemLine (host/modemline.h) and install it as the line;
+    // the guest's SH/RI/DTR writes then drive its dial()/armAnswer()/answer()/hangup(),
+    // and IN BA+2 is computed from its ringing/carrier levels plus a Clock-driven
+    // handshake state machine. When neither is configured the line stays a NullStream and
+    // the modem status falls back to the fixed kModemStatusReady stub (fork 6).
+
+    // Build (or rebuild) the ModemLine from the current dial/answer config and install it,
+    // or -- if neither is configured -- tear it back down to a NullStream. Called by the
+    // dial/answer setters.
+    void syncModem();
+    // Is the live line our ModemLine (and not pocketed by self-test)? A CONNECTed endpoint
+    // replaces it, at which point modem semantics go inert (fork 6, and modem_ is cleared
+    // so it can never dangle).
+    bool modemActive() const;
+    bool canDial() const { return !dialHost_.empty() && dialPort_ != 0; }
+    bool canAnswer() const { return answerPort_ != 0; }
+
+    // Decode SH/RI (OUT BA+0) and DTR (OUT BA+3) edges onto the ModemLine. `prev` is the
+    // shadow value before this write, for edge detection.
+    void decodeControl0(uint8_t prev);  // SH/RI: originate / answer
+    void decodeControl3(uint8_t prev);  // DTR:   enable (arm + originate) / disconnect
+    void latchAp();                     // AP goes -- and STAYS -- low on (SH|RI)&DTR
+
+    // The handshake/ring state machine. Polls the ModemLine, advances the latched bits on
+    // their Clock deadlines, and re-arms the earliest one (cancel-before-rearm, 2SIO-style).
+    // Called from write(), pump(), configChanged() and deserialize(); never from a const
+    // read -- modemStatus() computes the bits live from now() and the timestamps below.
+    void     refreshModem();
+    void     resetModemState();       // back to on-hook/idle: the restore + rebuild state
+    bool     ringBurstOn(uint64_t now) const;   // inside a ring burst's 'on' half
+    uint64_t nextRingEdge(uint64_t now) const;  // absolute T-state of the next burst edge
+    bool     timerPulseHigh(uint64_t now) const;  // IN BA+2 bit 7, 40/60 duty at 250k/(N*100)
+
 
     // OUT BA+0: push the frame bits (2-6) into the UART straps and reprogram the line.
     void programFrame(uint8_t control);
@@ -146,6 +191,33 @@ private:
     // pins; nullptr when not looped. Runtime state only -- a synthesized plug is not a
     // host handle and does not travel (re-derived from out3_ on restore). ----
     std::unique_ptr<ByteStream> savedLine_;
+
+    // ---- THE MODEM (Phase 2). ----
+    // Config, from the dial=/answer= properties. This TRAVELS as config (re-applied from
+    // TOML), never in the snapshot; empty host or zero port means "cannot dial/answer".
+    std::string dialHost_;
+    uint16_t    dialPort_   = 0;
+    uint16_t    answerPort_ = 0;
+
+    // The installed ModemLine, or nullptr when the line is a NullStream / a CONNECTed
+    // endpoint. NON-OWNING: the UART owns the stream (or savedLine_ pockets it during
+    // self-test). Cleared whenever a non-modem endpoint replaces the line, so it can
+    // never dangle.
+    ModemLine* modem_ = nullptr;
+
+    // The live handshake, all in ABSOLUTE T-states (Clock::now()); 0 = not armed. A live
+    // call cannot be snapshotted (a socket handle is not serializable), so none of this
+    // travels -- deserialize() rebuilds it on-hook and the guest redials.
+    bool     apLow_        = false;  // Answer Phone LATCHED off-hook (survives SH/RI reset)
+    bool     modeOriginate_ = true;  // IN BA+2 bit 6: last path (dial = originate = 1)
+    uint64_t ctsClearAt_   = 0;      // when CTS goes clear (0) after carrier -- 450/750 ms
+    uint64_t ringStart_    = 0;      // origin of the current ring's burst phase
+    uint64_t apResetAt_    = 0;      // AP auto-reset ~1.5 s after CTS is lost
+    uint64_t hsTimeoutAt_  = 0;      // 17 s no-handshake hangup (the failure path)
+    bool     carrierPrev_  = false;  // edge detect: carrier rising -> arm the CTS delay
+    bool     ringingPrev_  = false;  // edge detect: ring start -> mark the burst origin
+
+    Clock::Handle wake_ = Clock::kNone;  // the single outstanding deadline; cancel-before-rearm
 };
 
 } // namespace altair
