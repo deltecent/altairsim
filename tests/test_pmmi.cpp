@@ -157,6 +157,119 @@ void test_pmmi() {
         CHECK(g.recv() == 'i', "and it is the next byte, in order");
     }
 
+    // ---- 6860 SELF TEST (OUT BA+3 bit 4, ST). Loopback lives on the card. --------
+    // The period §8.8 diagnostic writes 0x40 (DTR on, ST=0) and reads its own
+    // transmission back. 0x7F is DTR on with ST high (not testing).
+
+    SECTION("PMMI MM-103 -- self-test (ST+DTR) loops a transmitted byte back to receive");
+    {
+        Rig g;
+        g.modemctl(0x40);  // DTR on (bit 6), ST asserted (bit 4 = 0) -> loopback engaged
+        g.send('X');
+        CHECK((g.status() & kDav) != 0, "the transmitted byte comes back -- DAV set");
+        CHECK(g.recv() == 'X', "and it is the very byte just sent");
+    }
+
+    SECTION("PMMI MM-103 -- while looped, transmit does NOT reach the real line");
+    {
+        Rig g;
+        g.modemctl(0x40);  // engage self-test
+        g.send('X');
+        (void)g.status();  // poll the loopback back in
+        CHECK(g.recv() == 'X', "the guest still sees its own byte");
+        CHECK(g.line->out().find('X') == std::string::npos,
+              "but the real phone line never saw it -- it stayed on the loopback");
+    }
+
+    SECTION("PMMI MM-103 -- the real line is pocketed intact and restored when ST clears");
+    {
+        Rig g;
+        g.modemctl(0x40);        // engage; the scripted line is pocketed
+        g.line->feed("R");       // a byte arriving on the REAL line while looped
+        g.m.clock.advance(50000);
+        CHECK((g.status() & kDav) == 0, "the guest cannot see it while looped -- it reads the loopback");
+
+        g.modemctl(0x7F);        // ST high: self-test off -> the real line comes back
+        g.m.clock.advance(50000);
+        CHECK((g.status() & kDav) != 0, "with the line restored, its buffered byte now arrives");
+        CHECK(g.recv() == 'R', "and it is the byte fed to the real line during the test");
+    }
+
+    SECTION("PMMI MM-103 -- clearing ST puts transmit back on the real line");
+    {
+        Rig g;
+        g.modemctl(0x40);  // engage
+        g.send('A');       // loops back, never reaches the line
+        g.modemctl(0x7F);  // disengage
+        g.send('Y');
+        CHECK(g.line->out().find('Y') != std::string::npos, "'Y' reached the real line");
+        CHECK(g.line->out().find('A') == std::string::npos, "'A' never did -- it was looped");
+    }
+
+    SECTION("PMMI MM-103 -- reset tears down an active self-test loopback");
+    {
+        Rig g;
+        g.modemctl(0x40);  // engage
+        g.send('X');
+        (void)g.status();
+        CHECK(g.recv() == 'X', "looped before the reset");
+
+        g.pmmi->reset(Reset::Bus);  // clears out3_ -> DTR gone -> loopback torn down
+        g.send('Y');
+        CHECK(g.line->out().find('Y') != std::string::npos,
+              "after reset the real line is back on the pins and takes the byte");
+    }
+
+    SECTION("PMMI MM-103 -- CONNECT during self-test replaces the pocketed line, not the plug");
+    {
+        Rig         g;
+        std::string err;
+        g.modemctl(0x40);  // engage; the original scripted line is pocketed
+        CHECK(g.pmmi->connect("line", "scripted", err), "connect a fresh line mid-self-test");
+
+        g.send('X');       // still loops -- the plug is untouched
+        (void)g.status();
+        CHECK(g.recv() == 'X', "self-test still loops after the reconnect");
+
+        // unitStream hands back the REAL (pocketed) line, and it is the NEW one.
+        auto* nline = dynamic_cast<ScriptedStream*>(g.pmmi->unitStream("line"));
+        CHECK(nline != nullptr, "the reported line is a real endpoint, not the loopback plug");
+
+        g.modemctl(0x7F);  // disengage -> the newly-connected line goes onto the pins
+        g.send('Y');
+        CHECK(nline->out().find('Y') != std::string::npos,
+              "the line restored is the one CONNECTed during the test");
+    }
+
+    SECTION("PMMI MM-103 -- self-test survives a snapshot round trip");
+    {
+        Rig               g;
+        std::string       err;
+        const std::string snap = "pmmi_selftest.tmp";
+        std::remove(snap.c_str());
+
+        g.modemctl(0x40);  // engage
+        CHECK(g.m.snapshot(snap, err), "snapshot the looped machine");
+        CHECK(g.m.restore(snap, err), "restore it");
+        std::remove(snap.c_str());
+
+        g.send('X');
+        CHECK((g.status() & kDav) != 0, "loopback re-derived from the restored control latch");
+        CHECK(g.recv() == 'X', "a transmitted byte still returns on receive");
+    }
+
+    SECTION("PMMI MM-103 -- the 'lines' string shows the self-test state");
+    {
+        Rig g;
+        g.modemctl(0x40);
+        CHECK(prop(*g.pmmi, "lines").find("ST ") != std::string::npos,
+              "self-test asserted renders capital ST");
+        g.modemctl(0x7F);
+        std::string s = prop(*g.pmmi, "lines");
+        CHECK(s.find("st ") != std::string::npos, "self-test off renders lower-case st");
+        CHECK(s.find("ST ") == std::string::npos, "and not the asserted form");
+    }
+
     SECTION("PMMI MM-103 -- OUT BA+0 programs the UART frame, OUT BA+2 the baud");
     {
         Rig g;

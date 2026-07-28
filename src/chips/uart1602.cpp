@@ -97,6 +97,17 @@ void Uart1602::connect(std::unique_ptr<ByteStream> s) {
 
 void Uart1602::disconnect() { connect(std::make_unique<NullStream>()); }
 
+// Take the current wire off the pins and put a new one on, handing the old one back.
+// The chip does not care which is which -- it brings the new line up to the straps
+// (programLine) exactly as connect() would. The DEADLINES are untouched: a reroute does
+// not empty the receiver or reset TBMT, so a swap mid-character keeps its timing.
+std::unique_ptr<ByteStream> Uart1602::swapStream(std::unique_ptr<ByteStream> s) {
+    std::unique_ptr<ByteStream> prev = std::move(stream_);
+    stream_                          = std::move(s);
+    programLine();
+    return prev;
+}
+
 // ---------------------------------------------------------------------------
 // The registers
 // ---------------------------------------------------------------------------

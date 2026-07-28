@@ -98,6 +98,15 @@ public:
     // ---- THE LINE ----
     void        connect(std::unique_ptr<ByteStream> s);
     void        disconnect();
+
+    // SWAP THE LINE. Install s, hand back the wire that was there. This is connector
+    // plumbing -- a sibling to connect()/disconnect() -- NOT a loopback feature: the
+    // chip installs whatever wire it is handed and never learns what is on the far end
+    // of it. A CARD reroutes its own line with it (the PMMI's 6860 self-test patches in
+    // a bench loopback plug and pockets the phone line, then restores it when the guest
+    // clears ST). programLine() runs exactly as connect() does. See PmmiBoard.
+    std::unique_ptr<ByteStream> swapStream(std::unique_ptr<ByteStream> s);
+
     ByteStream& stream() { return *stream_; }
     std::string endpoint() const { return stream_->describe(); }
 
