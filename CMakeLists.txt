@@ -183,11 +183,13 @@ configure_file("${CMAKE_SOURCE_DIR}/cmake/version.h.in"
 # ---------------------------------------------------------------------------
 if(WIN32)
   set(PLATFORM_SOURCES
+    src/platform/win32/localtime_win32.cpp
     src/platform/win32/serial_win32.cpp
     src/platform/win32/socket_win32.cpp
     src/platform/win32/terminal_win32.cpp)
 else()
   set(PLATFORM_SOURCES
+    src/platform/posix/localtime_posix.cpp
     src/platform/posix/serial_posix.cpp
     src/platform/posix/socket_posix.cpp
     src/platform/posix/terminal_posix.cpp)

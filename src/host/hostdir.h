@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 #include <map>
 #include <string>
 #include <vector>
@@ -54,6 +55,18 @@ struct HbFail {
 
 // A one-word fallback for each code, for when there is no host errno to quote.
 const char* hbErrorText(HbError e);
+
+// One directory entry, with the metadata HDIR's long listing shows. `name` is what
+// list() would hand back -- the same dir prefix and trailing '/' -- so a HostEntry can
+// still be fed straight to read(). For a directory `size` is meaningless and `isDir`
+// is set, so HDIR shows "<DIR>" rather than a byte count. `mtime` is host wall-clock
+// seconds (the card, not the host layer, decides how to render it).
+struct HostEntry {
+    std::string name;
+    uint64_t    size  = 0;
+    std::time_t mtime = 0;
+    bool        isDir = false;
+};
 
 // A GUEST NAME IS A RELATIVE PATH, AND BOTH SEPARATORS WORK EVERYWHERE.
 //
@@ -113,6 +126,11 @@ public:
     // HDIR can show it and R's wildcard loop can skip it.
     virtual bool list(const std::string& glob, std::vector<std::string>& out, HbFail& err) = 0;
 
+    // The same walk as list(), but each entry carries its size, mtime and is-a-directory
+    // flag -- what HDIR's long ("ls -l") listing shows. Same glob rules, same name form,
+    // same sort order; list() is a thin projection of this onto just the names.
+    virtual bool listLong(const std::string& glob, std::vector<HostEntry>& out, HbFail& err) = 0;
+
     // What SHOW prints. The root as the operator wrote it, not as canonicalized.
     virtual std::string root() const = 0;
 };
@@ -133,6 +151,7 @@ public:
     bool write(const std::string& name, const std::vector<uint8_t>& bytes, HbFail& err) override;
     bool remove(const std::string& name, HbFail& err) override;
     bool list(const std::string& glob, std::vector<std::string>& out, HbFail& err) override;
+    bool listLong(const std::string& glob, std::vector<HostEntry>& out, HbFail& err) override;
     std::string root() const override { return root_; }
 
 private:
@@ -188,6 +207,7 @@ public:
     bool write(const std::string& name, const std::vector<uint8_t>& bytes, HbFail& err) override;
     bool remove(const std::string& name, HbFail& err) override;
     bool list(const std::string& glob, std::vector<std::string>& out, HbFail& err) override;
+    bool listLong(const std::string& glob, std::vector<HostEntry>& out, HbFail& err) override;
     std::string root() const override { return "(memory)"; }
 
     // What the test set up, and what the guest left behind.

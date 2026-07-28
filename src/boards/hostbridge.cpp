@@ -1,8 +1,12 @@
 #include "boards/hostbridge.h"
 
 #include "core/statefile.h"
+#include "platform/localtime.h"
 
+#include <cstdio>
+#include <ctime>
 #include <filesystem>
+#include <string>
 #include <system_error>
 #include <utility>
 
@@ -53,7 +57,7 @@ uint8_t HostBridgeBoard::status() const {
     // for the two streams that can. A file's is byte position; a directory's is name
     // position -- an exhausted enumerator, not an exhausted name.
     if (mode_ == Mode::Reading && pos_ >= out_.size()) s |= EOFF;
-    if (mode_ == Mode::DirList && idx_ >= names_.size()) s |= EOFF;
+    if (mode_ == Mode::DirList && idx_ >= entries_.size()) s |= EOFF;
 
     if (err_.code != HbError::None) s |= ERR;
     return s;
@@ -156,8 +160,8 @@ void HostBridgeBoard::command(uint8_t c) {
     // So the listing is cleared by DIR_FIRST (which rebuilds it) and by RESET, and by
     // nothing else. `dirOpen_` is what DIR_NEXT tests, because `mode_` has by then been
     // legitimately moved on to Reading by the transfer in between.
-    if (cmd == Cmd::DirFirst || cmd == Cmd::Reset) {
-        names_.clear();
+    if (cmd == Cmd::DirFirst || cmd == Cmd::DirLong || cmd == Cmd::Reset) {
+        entries_.clear();
         idx_     = 0;
         dirOpen_ = false;
     }
@@ -170,6 +174,7 @@ void HostBridgeBoard::command(uint8_t c) {
     case Cmd::OpenWrite:
     case Cmd::Close:
     case Cmd::DirFirst:
+    case Cmd::DirLong:
     case Cmd::DirNext:
     case Cmd::Delete:
     case Cmd::Reset:
@@ -188,11 +193,14 @@ void HostBridgeBoard::command(uint8_t c) {
     case Cmd::OpenRead:
     case Cmd::Delete:
     case Cmd::DirFirst:
-        // All three want a NUL-terminated string next. DIR_FIRST's may be empty --
-        // that is a glob meaning "everything" -- but the NUL is still required, so
-        // the guest never has to know which commands take a name and which do not.
+    case Cmd::DirLong:
+        // All want a NUL-terminated string next. A DIR_FIRST/DIR_LONG glob may be empty
+        // -- that means "everything" -- but the NUL is still required, so the guest never
+        // has to know which commands take a name and which do not. DIR_LONG differs from
+        // DIR_FIRST only in what each entry streams back, decided by dirLong_.
         pending_ = cmd;
         mode_    = Mode::WantName;
+        dirLong_ = (cmd == Cmd::DirLong);
         break;
 
     case Cmd::OpenWrite:
@@ -294,9 +302,13 @@ void HostBridgeBoard::nameComplete() {
         break;
     }
 
-    case Cmd::DirFirst: {
+    case Cmd::DirFirst:
+    case Cmd::DirLong: {
         HbFail f;
-        if (!dir().list(name, names_, f)) {  // an empty `name` is a glob meaning everything
+        // Both forms build the SAME list -- one walk, size and mtime and all. DIR_FIRST
+        // simply does not stream the extra fields (dirLong_ is false), so R.COM sees the
+        // name-only protocol it always did. An empty `name` is a glob meaning everything.
+        if (!dir().listLong(name, entries_, f)) {
             fail(f);
             return;
         }
@@ -320,7 +332,17 @@ void HostBridgeBoard::emit(const std::string& s) {
     mode_ = Mode::TextOut;
 }
 
-// Put names_[idx_] on the data port -- or, if the enumerator has run out, put
+// std::time_t -> "MM/DD/YY". The thread-safe, per-OS localtime lives in the platform
+// layer (DESIGN.md 2.1); here we just lay the fields out. Two-digit year, as CP/M-era
+// directory listings did.
+static std::string formatMmDdYy(std::time_t t) {
+    altair::platform::CalendarTime c = altair::platform::localCalendar(t);
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%02d/%02d/%02d", c.month, c.day, c.year % 100);
+    return buf;
+}
+
+// Put entries_[idx_] on the data port -- or, if the enumerator has run out, put
 // nothing there and let status() raise EOF.
 //
 // Both DIR_FIRST and DIR_NEXT end here, which is what makes "no matches at all" and
@@ -328,10 +350,33 @@ void HostBridgeBoard::emit(const std::string& s) {
 // utility therefore needs exactly one loop and no special case for an empty
 // directory -- which is the difference between HDIR being ten lines of 8080 and
 // twenty.
+//
+// DIR_FIRST streams just the name. DIR_LONG (dirLong_) streams three NUL-terminated
+// fields -- name, size and date -- so HDIR can print an "ls -l" line. Size is "<DIR>"
+// for a directory (a byte count would be meaningless) else the decimal length; date is
+// MM/DD/YY of the host mtime.
 void HostBridgeBoard::presentName() {
-    if (idx_ < names_.size()) emit(names_[idx_]);
-    else clearStreams();
-    mode_ = Mode::DirList;  // emit()/clearStreams() had no way to know; we do
+    if (idx_ >= entries_.size()) {
+        clearStreams();
+        mode_ = Mode::DirList;  // clearStreams() had no way to know; we do
+        return;
+    }
+
+    const HostEntry& e = entries_[idx_];
+    if (!dirLong_) {
+        emit(e.name);
+    } else {
+        out_.clear();
+        auto pushField = [&](const std::string& s) {
+            for (char ch : s) out_.push_back((uint8_t)ch);
+            out_.push_back(0);  // each field is NUL-terminated, just like a lone name
+        };
+        pushField(e.name);
+        pushField(e.isDir ? std::string("<DIR>") : std::to_string(e.size));
+        pushField(formatMmDdYy(e.mtime));
+        pos_ = 0;
+    }
+    mode_ = Mode::DirList;  // emit() set TextOut; either way this stream is a listing
 }
 
 void HostBridgeBoard::clearStreams() {
@@ -409,9 +454,10 @@ void HostBridgeBoard::reset(Reset) {
     // ever lived, dropping it IS the whole job -- there is no partial file on the host
     // to clean up, because one was never created.
     clearStreams();
-    names_.clear();
+    entries_.clear();
     idx_     = 0;
     dirOpen_ = false;
+    dirLong_ = false;
     err_     = {};
 
     // `hostdir`, `port` and `readonly` survive. They are CONFIGURATION -- jumpers and
@@ -430,10 +476,16 @@ void HostBridgeBoard::serialize(StateWriter& w) const {
     w.u32((uint32_t)pos_);
     w.blob(in_);
     w.str(writeName_);
-    w.u32((uint32_t)names_.size());
-    for (const auto& n : names_) w.str(n);
+    w.u32((uint32_t)entries_.size());
+    for (const auto& e : entries_) {
+        w.str(e.name);
+        w.u64(e.size);
+        w.u64((uint64_t)e.mtime);
+        w.boolean(e.isDir);
+    }
     w.u32((uint32_t)idx_);
     w.boolean(dirOpen_);
+    w.boolean(dirLong_);
 }
 
 void HostBridgeBoard::deserialize(StateReader& r) {
@@ -447,12 +499,21 @@ void HostBridgeBoard::deserialize(StateReader& r) {
     in_         = r.blob();
     writeName_  = r.str();
     uint32_t n  = r.u32();
-    names_.clear();
-    for (uint32_t i = 0; i < n; ++i) names_.push_back(r.str());
+    entries_.clear();
+    entries_.reserve(n);
+    for (uint32_t i = 0; i < n; ++i) {
+        HostEntry e;
+        e.name  = r.str();
+        e.size  = r.u64();
+        e.mtime = (std::time_t)r.u64();
+        e.isDir = r.boolean();
+        entries_.push_back(std::move(e));
+    }
     idx_        = (size_t)r.u32();
     dirOpen_    = r.boolean();
+    dirLong_    = r.boolean();
     // dir_ is a host handle rebuilt lazily from the (unchanged) sandbox config; the
-    // enumerator's names_ travel, so DIR_NEXT resumes where it was.
+    // enumerator's entries_ travel, so DIR_NEXT resumes where it was.
 }
 
 // ---------------------------------------------------------------------------

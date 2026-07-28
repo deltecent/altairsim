@@ -3,7 +3,7 @@
 `R.COM`, `W.COM` and `HDIR.COM` — how a file gets into and out of a running CP/M guest.
 
 ```
-HDIR [pattern]                  what is on the host
+HDIR [pattern]                  what is on the host, ls -l style: size, date, name
 R  <hostfile> [cpmfile]         host -> CP/M      R *.ASM     R SRC/FOO.ASM
 W  <cpmfile> [hostfile] [B|T]   CP/M -> host      W *.HEX     W FOO.TXT T
 ```

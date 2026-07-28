@@ -102,6 +102,7 @@ public:
         Delete    = 0x06,
         Error     = 0x07,
         Reset     = 0x08,
+        DirLong   = 0x09, // like DirFirst, but each entry streams name\0 size\0 date\0
     };
 
     // The signature IDENT hands back. A guest that does not see this is not talking
@@ -134,7 +135,7 @@ private:
 
     void nameComplete();              // the NUL landed; do the thing
     void emit(const std::string& s);  // hand `s` + NUL to the guest as a TextOut
-    void presentName();               // names_[idx_] onto the data port, or EOF
+    void presentName();               // entries_[idx_] onto the data port, or EOF
     void clearStreams();              // the "a command abandons the stream" rule
     void fail(const HbFail& f);       // latch an error and stop whatever was going on
 
@@ -196,11 +197,16 @@ private:
 
     // THE DIRECTORY ENUMERATOR, which is NOT a stream and outlives one. DIR_FIRST
     // builds it, DIR_NEXT walks it, and an OPEN_READ in between -- which is exactly
-    // what `R *.ASM` does on every iteration -- leaves it alone. Only DIR_FIRST and
-    // RESET clear it. See the long note in command().
-    std::vector<std::string> names_;
-    size_t                   idx_     = 0;
-    bool                     dirOpen_ = false;  // what DIR_NEXT tests, since mode_ has moved on
+    // what `R *.ASM` does on every iteration -- leaves it alone. Only DIR_FIRST,
+    // DIR_LONG and RESET clear it. See the long note in command().
+    //
+    // Entries carry size/mtime whichever command built the list -- DIR_FIRST just does
+    // not stream them. `dirLong_` records which command is walking, so presentName()
+    // knows whether to hand out one field (a name) or three (name, size, date).
+    std::vector<HostEntry> entries_;
+    size_t                 idx_     = 0;
+    bool                   dirOpen_ = false;  // what DIR_NEXT tests, since mode_ has moved on
+    bool                   dirLong_ = false;  // DIR_LONG built the list, so stream the long form
 };
 
 } // namespace altair

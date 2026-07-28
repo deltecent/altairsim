@@ -62,6 +62,9 @@ Bits 5–7 read zero on purpose: an `IN` from an undecoded port floats the bus a
 | `0x06` | `DELETE` | Then the name |
 | `0x07` | `ERROR` | BA+1 yields the code byte, **then a NUL-terminated message** |
 | `0x08` | `RESET` | Abort, discard any uncommitted write, clear the error latch |
+| `0x09` | `DIR_LONG` | Like `DIR_FIRST`, but each entry streams **three** NUL-terminated fields — `name`, `size`, `date`. Walk it with `DIR_NEXT`. |
+
+`DIR_LONG` is what `HDIR` uses for its `ls -l`-style listing. `size` is a decimal byte count, or the literal `<DIR>` for a directory; `date` is the host mtime as `MM/DD/YY`. It builds and walks the very same enumerator as `DIR_FIRST` (so `DIR_NEXT` advances either, and `DIR_FIRST` and `RESET` clear either) — the only difference is how many fields each entry hands back. `DIR_FIRST` still streams a bare name, so a guest built against the older, name-only protocol is unaffected.
 
 Error codes — these are on the wire, so they are published and will not be renumbered:
 
@@ -73,7 +76,7 @@ Error codes — these are on the wire, so they are published and will not be ren
 
 You can walk away from a half-finished transfer at any point, for any reason, and the next command simply works. That single invariant deletes the entire family of caveats AltairZ80's device carries — *"the calling program must request all bytes of the result, otherwise the pseudo device is left in an undefined state"* — and with it the reason its utilities open by sending a reset **128 times in a row**. Ours send it once.
 
-The one thing a command does **not** abandon is the **directory enumerator**. That is not an exception — a listing is not a stream — and it is what lets `R *.ASM` do a whole `OPEN_READ` and transfer *between* two `DIR_NEXT`s without losing its place. `DIR_FIRST` and `RESET` are the only things that disturb it.
+The one thing a command does **not** abandon is the **directory enumerator**. That is not an exception — a listing is not a stream — and it is what lets `R *.ASM` do a whole `OPEN_READ` and transfer *between* two `DIR_NEXT`s without losing its place. `DIR_FIRST`, `DIR_LONG` and `RESET` are the only things that disturb it.
 
 ## Buffering, and an honest deviation
 

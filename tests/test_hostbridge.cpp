@@ -455,6 +455,58 @@ void test_hostbridge() {
         CHECK((r.status() & HostBridgeBoard::EOFF) != 0, "and C.COM is not in it");
     }
 
+    SECTION("hostbridge: DIR_LONG streams name, size and date -- HDIR's long listing");
+    {
+        Rig r;
+        r.dir->put("A.ASM", bytes("abc"));            // 3 bytes
+        r.dir->put("HELLO.COM", bytes("0123456789")); // 10 bytes
+
+        // A MemHostDir has no clock, so mtime is 0 -- but localCalendar() renders that in
+        // the HOST's zone, which is not the same date everywhere. So assert the date's
+        // SHAPE (NN/NN/NN), not its value; the exact rendering is exercised by the
+        // in-machine acceptance test against a real directory.
+        auto dateShaped = [](const std::string& d) {
+            if (d.size() != 8 || d[2] != '/' || d[5] != '/') return false;
+            for (int i : {0, 1, 3, 4, 6, 7})
+                if (d[i] < '0' || d[i] > '9') return false;
+            return true;
+        };
+
+        // DIR_LONG opens the listing exactly like DIR_FIRST -- a glob (may be empty),
+        // NUL-terminated -- but each entry now streams THREE fields: name, size, date.
+        r.cmd(Cmd::DirLong);
+        r.name("");
+        CHECK(r.text() == "A.ASM", "the first name (sorted)");
+        CHECK(r.text() == "3", "...then its size, decimal bytes");
+        CHECK(dateShaped(r.text()), "...then a MM/DD/YY date field");
+
+        r.cmd(Cmd::DirNext);
+        CHECK(r.text() == "HELLO.COM", "the second name");
+        CHECK(r.text() == "10", "...its size");
+        CHECK(dateShaped(r.text()), "...its date");
+
+        r.cmd(Cmd::DirNext);
+        CHECK((r.status() & HostBridgeBoard::EOFF) != 0, "EOF when the list runs out");
+
+        // Filtered, just like DIR_FIRST.
+        r.cmd(Cmd::DirLong);
+        r.name("*.ASM");
+        CHECK(r.text() == "A.ASM", "the glob filters the long form too");
+        CHECK(r.text() == "3", "...with its size");
+        CHECK(dateShaped(r.text()), "...and date");
+        r.cmd(Cmd::DirNext);
+        CHECK((r.status() & HostBridgeBoard::EOFF) != 0, "and HELLO.COM is not in it");
+
+        // AND DIR_FIRST IS UNTOUCHED: it still speaks the name-only protocol R.COM needs.
+        r.cmd(Cmd::DirFirst);
+        r.name("");
+        CHECK(r.text() == "A.ASM", "DIR_FIRST still streams just the name");
+        r.cmd(Cmd::DirNext);
+        CHECK(r.text() == "HELLO.COM", "...one field per entry, no size or date");
+        r.cmd(Cmd::DirNext);
+        CHECK((r.status() & HostBridgeBoard::EOFF) != 0, "...and EOF");
+    }
+
     SECTION("hostbridge: THE ENUMERATOR SURVIVES A TRANSFER -- this is what `R *.ASM` is");
     {
         // The enumerator is NOT a stream, and the "a command abandons the stream" rule
