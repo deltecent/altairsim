@@ -222,6 +222,42 @@ void test_dazzler() {
         CHECK(g.px(0, 0) == 0, "with the card off, the screen is black");
     }
 
+    SECTION("Dazzler -- SHOW reports the live mode as read-only status");
+    {
+        Rig g;
+        auto prop = [&](const char* name) -> Property {
+            for (auto& p : g.daz->properties())
+                if (p.name == name) return p;
+            return Property{};
+        };
+        auto val = [&](const char* name) -> std::string {
+            Property p = prop(name);
+            return p.get ? p.get().text(p.radix) : std::string("<missing>");
+        };
+
+        // Fresh power-on: the card is off and the format byte is 0 -> 32x32, grey, 512 B.
+        CHECK(val("video") == "off", "the card comes up not displaying");
+        CHECK(val("resolution") == "32x32", "format 0 is a 32x32 picture");
+        CHECK(val("color") == "grey", "format D4 clear is black-and-white");
+        CHECK(val("size") == "512B (1 quad)", "format D5 clear is a 512-byte framebuffer");
+
+        // These are STATUS, not straps: no setter, so SHOW prints "(read-only)" and CONFIG
+        // SAVE skips them (config/toml.cpp). The two real straps DO have setters.
+        CHECK(!prop("video").set, "video is read-only");
+        CHECK(!prop("resolution").set, "resolution is read-only");
+        CHECK(!prop("base").set, "base is read-only");
+        CHECK((bool)prop("port").set, "port, a real strap, is settable");
+
+        // Program a live mode: on at 0x2000, X4 + 2 KB + color -> a 128x128 color picture.
+        g.fmt(0x70);   // D6 X4, D5 2K, D4 color
+        g.on(0x2000);
+        CHECK(val("video") == "on", "control D7 shows as on");
+        CHECK(val("resolution") == "128x128", "X4 + 2 KB is a 128x128 picture");
+        CHECK(val("color") == "color", "format D4 set is color");
+        CHECK(val("size") == "2KB (4 quads)", "format D5 set is a 2 KB framebuffer");
+        CHECK(val("base") == "0x2000", "base reports the framebuffer address in hex");
+    }
+
     SECTION("Dazzler -- the port strap is validated to a buildable block");
     {
         Rig g;
