@@ -68,9 +68,21 @@ needs no environment at all.
 ## Testing
 
 ```sh
-ctest --test-dir build -LE slow     # after every edit  (~30 tests, under a minute)
-ctest --test-dir build              # before a commit   (~33 tests, ~4 minutes)
+./build/altair_tests <names>        # local loop: the suites for the subsystem you touched
+                                    #   e.g. ./build/altair_tests pmmi modemline lines
+                                    #   ./build/altair_tests --list  to see the names
+ctest --test-dir build -LE slow     # optional full local run  (~30 tests, under a minute)
+ctest --test-dir build              # optional; adds the slow CPU gate  (~4 minutes)
 ```
+
+**Local cadence: run the unit suites for what you changed, then commit — CI runs the full
+suite.** `altair_tests <names>` runs only the named suites (no args = the full suite,
+exactly as `ctest` invokes it); a mistyped name is a hard error, not an empty pass. There is
+no required full local run before a commit: CI runs `-LE slow` on three platforms on every
+push and is the backstop. Selection rests on *your* judgment of what a change touches, so
+the impacted-test list can be wrong — that is what CI catches. Run the full local `ctest`
+yourself when you want the answer before pushing (a wide or cross-cutting change), or for
+release-ish work where the slow CPU gate matters.
 
 **Match the pass line, not the absence of errors** — read `100% tests passed out of N`. A
 `cd` that leaves the build directory can make `ctest` not run at all, which looks identical
