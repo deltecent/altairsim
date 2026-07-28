@@ -50,6 +50,7 @@ constexpr uint8_t kRi = 0x02;  // Ring Indicator -- 1 = answer mode
 
 // OUT BA+3 modem-control shadow bits (reference §4). DTR is unbarred: active high.
 constexpr uint8_t kDtr = 0x40;  // 1 = modem enabled
+constexpr uint8_t kSt  = 0x10;  // Self Test -- bit 4, ACTIVE LOW (0 = testing)
 
 } // namespace
 
@@ -96,8 +97,9 @@ void PmmiBoard::write(const BusCycle& c) {
         out2_ = c.data;
         programRate(c.data);
         break;
-    case 3:  // OUT BA+3 -- 6860 modem control. Shadowed; nothing acts on it yet.
+    case 3:  // OUT BA+3 -- 6860 modem control. Shadowed; the ST bit drives self-test.
         out3_ = c.data;
+        updateSelfTest();
         break;
     default: // OUT BA+0 -- UART format / SH,RI / interrupt enable (enable bit inert).
         out0_ = c.data;
@@ -157,6 +159,37 @@ void PmmiBoard::programRate(uint8_t divisor) {
 }
 
 // ---------------------------------------------------------------------------
+// SELF TEST -- the 6860 loopback (OUT BA+3 bit 4, ST). See the header.
+// ---------------------------------------------------------------------------
+
+// PLUG A LINE INTO THE CONNECTOR. While looped, the live wire on the UART is the
+// internal loopback plug and the real line is pocketed -- so a fresh operator line
+// replaces the POCKETED one, not the plug, and reappears on the pins when ST clears.
+void PmmiBoard::attachStream(std::unique_ptr<ByteStream> s) {
+    if (selfTestEngaged())
+        savedLine_ = std::move(s);
+    else
+        u_.connect(std::move(s));
+}
+
+// Reconcile the loopback with the shadow. On real hardware ST is active low and only
+// means anything with the modem enabled, so the loopback is engaged iff DTR is set and
+// ST is asserted. Entering, we pocket the phone line and drop a LoopbackStream on the
+// UART's pins (host/stream.h): the guest's TX returns on its RX. The LoopbackStream also
+// loops the modem control pins, but that is INERT here -- the PMMI reads a fixed modem
+// status stub (modemStatus) and never consults the stream's pins, so self-test on this
+// board is a data loopback only. Leaving, we put the phone line back and discard the
+// plug. Idempotent: a no-op if already there.
+void PmmiBoard::updateSelfTest() {
+    bool want = (out3_ & kDtr) && !(out3_ & kSt);
+    if (want == selfTestEngaged()) return;
+    if (want)
+        savedLine_ = u_.swapStream(std::make_unique<LoopbackStream>());
+    else
+        u_.swapStream(std::move(savedLine_));  // plug returned and dropped; savedLine_ -> null
+}
+
+// ---------------------------------------------------------------------------
 // Lifecycle.
 // ---------------------------------------------------------------------------
 
@@ -168,6 +201,10 @@ void PmmiBoard::reset(Reset) {
     // CONNECTED (masterReset is careful about that) -- a warm reset does not unplug the
     // line.
     out0_ = out2_ = out3_ = 0;
+
+    // DTR is now clear, so any self-test loopback tears down here and the pocketed
+    // phone line comes back onto the pins -- the shadow and the live wire stay in step.
+    updateSelfTest();
 }
 
 void PmmiBoard::power() { reset(Reset::PowerOn); }
@@ -189,6 +226,12 @@ void PmmiBoard::deserialize(StateReader& r) {
     out0_ = r.u8();
     out2_ = r.u8();
     out3_ = r.u8();
+
+    // Re-derive the loopback from the restored control latch, exactly as the 6860 would
+    // come out of restore in the self-test state its ST bit says. RESTORE runs on the
+    // already-connected machine, so u_.stream() here is the real line -- the one this
+    // pockets. (savedLine_ is a synthesized plug and never travels.)
+    updateSelfTest();
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +259,7 @@ std::string PmmiBoard::linesString() const {
     s += (out0_ & kSh) ? "SH " : "sh ";     // switch hook -- off-hook / originate
     s += (out0_ & kRi) ? "RI " : "ri ";     // ring indicator -- answer mode
     s += (out3_ & kDtr) ? "DTR " : "dtr ";  // data terminal ready -- modem enabled
+    s += selfTestEngaged() ? "ST " : "st "; // 6860 self-test -- the line looped on itself
     s += (ms & kMsCts) ? "cts " : "CTS ";   // active low: 0 = clear to send
     s += (ms & kMsAp) ? "ap" : "AP";        // active low: 0 = off-hook
     return s;
@@ -255,7 +299,8 @@ std::vector<Property> PmmiBoard::properties() {
         x.name = "connect";
         x.help = "The endpoint on the phone line (CONNECT sets this). in:/out: a file, ...";
         x.kind = Kind::Str;
-        x.get  = [this] { return Value::ofStr(u_.endpoint()); };
+        // Report the REAL line even mid-self-test (lineStream), never the internal plug.
+        x.get  = [this] { return Value::ofStr(lineStream().describe()); };
         // Route through connect() so a declarative `[pmmi0.unit.line] connect = "out:x"`
         // rebases its PATH the same way the CONNECT command does -- one path, one rule.
         x.set  = [this](const Value& v, std::string& err) { return connect("line", v.s(), err); };
@@ -301,9 +346,12 @@ std::vector<Property> PmmiBoard::properties() {
     return p;
 }
 
-// One serial unit -- the phone line. The unit exists because CONNECT names one.
+// One serial unit -- the phone line. The unit exists because CONNECT names one. The
+// state is the REAL line's, so a transient self-test loopback does not rewrite what
+// SHOW and CONFIG SAVE report the operator connected.
 std::vector<UnitDef> PmmiBoard::units() const {
-    return {{"line", UnitKind::Serial, u_.endpoint()}};
+    std::string ep = savedLine_ ? savedLine_->describe() : u_.endpoint();
+    return {{"line", UnitKind::Serial, ep}};
 }
 
 std::vector<MapEntry> PmmiBoard::ioMap() const {

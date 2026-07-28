@@ -2,7 +2,9 @@
 
 **Status:** **partially implemented** (`pmmi`, board type registered). The **file transmit/receive milestone is built**: the full four-port decode, the write-only control-register shadows, the UART data path onto a `ByteStream`, and the software-programmed frame (`OUT BA+0`) and baud divisor (`OUT BA+2`). `CONNECT pmmi0:line in:…,out:…` moves real bytes. See `machines/pmmi.toml` and `tests/test_pmmi.cpp`.
 
-**Deferred to later milestones:** the modem handshake (`IN BA+2` returns a fixed "connected/clear-to-send/off-hook" constant — see *Limitations* below), interrupts (the enable bit and mask staging are shadowed but inert), self-test, socket ring/answer, and the pulse dialer. **There is no dialer by design** — SH is a shadowed relay bit and nothing decodes pulses; placing a call is `CONNECT`'s job (see *How it would be simulated*).
+The **6860 Self Test is also built**: writing `OUT BA+3` with the modem enabled (DTR) and ST asserted (bit 4 = 0) loops the UART's line back on itself, so a transmitted character returns on receive — the card's model of the 6860 demodulator retuning to its own modulator. See *Limitations* for what it does and does not do.
+
+**Deferred to later milestones:** the modem handshake (`IN BA+2` returns a fixed "connected/clear-to-send/off-hook" constant — see *Limitations* below), interrupts (the enable bit and mask staging are shadowed but inert), socket ring/answer, and the pulse dialer. **There is no dialer by design** — SH is a shadowed relay bit and nothing decodes pulses; placing a call is `CONNECT`'s job (see *How it would be simulated*).
 
 **This register map was expensive to recover, and is kept fully specified here** — it is the hardest board in the catalog to express, and the reference below is the authority the implementation is built against. Do not lose it.
 
@@ -199,7 +201,7 @@ Four maskable sources: TBMT, DAV, Ring-OR-Dial-Tone, Timer Pulses. Gated by `OUT
 - The phone line is a **`ByteStream`**. `CONNECT pmmi socket:host:port` places a call; `CONNECT pmmi serial:/dev/cu.usbserial-X` drives a real modem; a **listening** socket lets the board *be* called (incoming connection → ring detect → answer-on-ring).
 - **SH is a relay pin, and only a relay pin.** It goes on- and off-hook, and going on-hook hangs up. The make/break pulses a guest's dialer program produces are *not* decoded into digits, and no property maps a dialed number onto a host and port — **placing the call is `CONNECT`'s job.** Reading a number out of the hook relay and steering it at an IP address would be a behavior this card never had; the MM-103 did not know what it was dialing either. A period dialer program still runs, still pulses the hook, and still works in the only sense the hardware ever offered.
 - Timer pulses and all 6860 timing come from the **`EventQueue`**, in T-states.
-- Properties: `port`, `interrupt` (`int` | `vi0..vi7`), `answer` (auto-answer), `carrier_delay`, `self_test`.
+- Properties: `port`, `interrupt` (`int` | `vi0..vi7`), `answer` (auto-answer), `carrier_delay`. **Self-test is *not* a property** — it is guest-controlled by `OUT BA+3` bit 4, not an operator jumper, so it is surfaced read-only in the `lines` status string (capital `ST` when looped) rather than as a setter.
 
 Note that this puts the far end's address on the **host** side, where the operator sets it, rather than behind a dial tone the guest has to produce.
 
@@ -238,4 +240,4 @@ Note that this puts the far end's address on the **host** side, where the operat
 - No modulation is simulated; the "phone line" is a byte stream, so the Bell 103 frequencies are documentation, not signal processing.
 - Dial-tone detection is synthetic (asserted when a `ByteStream` endpoint is available).
 - **Dialed digits are not decoded.** The hook relay follows SH faithfully, but nothing counts the pulses and no number selects a far end — you attach one with `CONNECT`. This is a deliberate limit, not a gap waiting to be filled: decoding a phone number and resolving it to a host would be an invented feature.
-- Self-test / loopback should be honored, since diagnostics software uses it.
+- **Self-test / loopback is honored** on the data path. `OUT BA+3` with DTR set (bit 6) and ST asserted (bit 4 = 0) patches a loopback plug onto the UART — transmitted characters return on receive, and the modem control pins loop too (RTS→CTS, DTR→DCD/DSR), exactly as a bench loopback plug does. The real phone line is pocketed while looped and restored, intact, when ST clears (or on reset). The loopback is transient runtime state; it is re-derived from the restored control latch after a `RESTORE`. Two documented bounds are **not** enforced, matching the "model the effect, not the fiction" split: the manual requires **answer mode** and a **disconnected line** for a meaningful self-test, and neither is checked; and the **MODE status bit** (`IN BA+2` bit 6, which the manual says "changes state when ST is applied") is **not** flipped — `IN BA+2` stays the fixed constant until the full handshake milestone lands.
