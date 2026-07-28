@@ -1,0 +1,57 @@
+# A machine for the PMMI MM-103 terminal walkthrough.
+#
+#     cd examples/pmmi && altairsim pmmiterm.toml
+#     -> the altairsim> monitor prompt
+#
+# An 8080, 32K of RAM, an 88-2SIO for the console, and a PMMI MM-103 modem at its
+# factory base (0xC0). PMMITERM.HEX is a bare-metal terminal: it bridges the 2SIO
+# console and the PMMI, and steals four control keys for the modem (^D DTR, ^S Self
+# Test, ^I status, ^C quit). The README beside this file is the walkthrough.
+#
+# The modem's phone line is left a plain (dead) NullStream -- `dial`/`answer` are unset,
+# so nothing on the host is touched. That is deliberate: the terminal demonstrates the
+# 6860 Self Test loopback, which needs no far end. Turn on DTR (^D) and Self Test (^S)
+# and the PMMI loops your keystrokes back to itself, so the terminal echoes with no
+# phone line attached at all.
+
+[machine]
+name = "pmmi-terminal"
+
+# The processor. clock_hz = 0 is flat out (the default) -- the terminal is a tight poll
+# loop, so this keeps it responsive.
+[[board]]
+type = "8080"
+id   = "cpu0"
+
+# The console: an 88-2SIO at port 10, channel A wired to your terminal.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+
+# The modem: a PMMI MM-103 at its factory base 0xC0 (four ports, 0xC0..0xC3). Its one
+# unit `line` stays disconnected -- Self Test loops the UART on itself, so the terminal
+# echoes without a far end. To place real calls over TCP, set `dial`/`answer` here (see
+# ../../machines/pmmi.toml) and the guest's DTR/SH drive the handshake.
+[[board]]
+type = "pmmi"
+id   = "pmmi0"
+port = C0
+
+# 32K of RAM, 0000-7FFF, zero-filled. PMMITERM.HEX loads at 0100.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "zero"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "32K"
