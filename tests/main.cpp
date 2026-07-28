@@ -100,6 +100,7 @@ int main() {
     test_88sio();
     test_sbc();
     test_lines();
+    test_modemline();
     test_wd17xx();
     test_versafloppy();
     test_tarbell();

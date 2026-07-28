@@ -242,6 +242,11 @@ add_library(altair_core STATIC
   src/host/endpoint.cpp
   src/host/hostserial.cpp
   src/host/tcp.cpp
+  # `ModemLine` -- a software-controlled phone line: an inbound connection is a RING
+  # held silent until the guest answers, an outbound dial happens on off-hook, and an
+  # idle modem holds no sockets. The PMMI MM-103 (Phase 2) drives it; unlike tcp.cpp's
+  # auto-answer server it never picks up on its own.
+  src/host/modemline.cpp
   # `file:PATH` -- a host file as a write-only sink: a printout, or a capture of a
   # line. A SINK, so it is trivial next to hostserial/tcp (no pump, no read path).
   src/host/file.cpp
@@ -564,6 +569,7 @@ add_executable(altair_tests
   tests/test_sol.cpp
   tests/test_tapemount.cpp
   tests/test_lines.cpp
+  tests/test_modemline.cpp
   tests/test_wd17xx.cpp
   tests/test_versafloppy.cpp
   tests/test_tarbell.cpp

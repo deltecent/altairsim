@@ -21,11 +21,12 @@
 #include <vector>
 
 namespace altair {
-namespace {
 
 // THE ONE PLACE THAT KNOWS THE GRAMMAR (DESIGN.md 7.7). No board may parse an
 // endpoint string, which is why `CONNECT sio0:a serial:/dev/tty.usbserial-AL009KFH`
-// needed not one line of code in the 2SIO.
+// needed not one line of code in the 2SIO. These two are declared in endpoint.h so a
+// board's property setter can VALIDATE a `host:port` string with the grammar's owner,
+// still without the board learning the grammar (the PMMI's dial/answer settings).
 
 bool parsePort(const std::string& s, uint16_t& out) {
     if (s.empty()) return false;
@@ -36,7 +37,23 @@ bool parsePort(const std::string& s, uint16_t& out) {
     return true;
 }
 
-} // namespace
+// The `socket:HOST:PORT` split, extracted so it has one home. rfind(':') on purpose:
+// a bare host that happens to contain no colon is not a case we need, and a numeric
+// IPv4 host never does. Empty host or a bad port is an error, not a silent default.
+bool parseHostPort(const std::string& spec, std::string& host, uint16_t& port,
+                   std::string& err) {
+    size_t c = spec.rfind(':');
+    if (c == std::string::npos) {
+        err = "expected HOST:PORT, got '" + spec + "'";
+        return false;
+    }
+    host = spec.substr(0, c);
+    if (host.empty() || !parsePort(spec.substr(c + 1), port)) {
+        err = "expected HOST:PORT, got '" + spec + "'";
+        return false;
+    }
+    return true;
+}
 
 std::string endpointHelp(bool all) {
     std::string s = "console | null | loopback | scripted | socket:PORT | "
