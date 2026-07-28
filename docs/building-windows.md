@@ -51,7 +51,7 @@ box installs everything needed:
 
 Install **git** too if you don't have it — the installer offers "Git for Windows"
 as an individual component, or get it from <https://git-scm.com/download/win>.
-Optionally install the **GitHub CLI** (`winget install GitHub.cli`) for `gh`.
+Optionally install the **GitHub CLI** (`gh`) from <https://cli.github.com/> for `gh` operations.
 
 | Need | Minimum | Comes from |
 |---|---|---|
@@ -66,18 +66,16 @@ above works, but a machine set up by clicking is not reproducible and the next p
 tell what you did. This route uses only what a fresh Windows already has, and every step is a
 command. **Run these in a normal Windows PowerShell** unless a step says otherwise.
 
-**First, what a clean Windows 10 actually ships with — and does not:**
+**First, what a clean Windows 10 actually ships with:**
 
 ```powershell
 [System.Environment]::OSVersion.Version                       # 10.0.19045.0
 (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').DisplayVersion   # 22H2
 Get-Command curl.exe, tar.exe -ErrorAction SilentlyContinue   # BOTH present, in System32
-Get-Command winget            -ErrorAction SilentlyContinue   # may be ABSENT on a fresh image
 ```
 
-`curl.exe` and `tar.exe` have shipped in `System32` since Windows 10 1803, so they are there.
-**`winget` is not guaranteed** — on this clean 22H2 image it was absent — so do **not** build the
-setup around `winget install`. `curl.exe` is the dependable fetcher.
+`curl.exe` and `tar.exe` have shipped in `System32` since Windows 10 1803, so they are there —
+`curl.exe` is the dependable fetcher.
 
 **The MSVC Build Tools — install elevated, unattended.** The installer writes under Program
 Files, so it needs administrator rights: open **Windows PowerShell as administrator** for this
@@ -126,7 +124,7 @@ cmake --version    # 3.31.x-msvc...
 ninja --version    # 1.12.x
 ```
 
-**Git for Windows — also scriptable, no `winget`.** This lands `git` *and* Git Bash (the latter
+**Git for Windows — also scriptable.** This lands `git` *and* Git Bash (the latter
 is needed later for `tools/build-package.sh`). Fetch the current 64-bit installer straight from
 the project's releases and install it silently (run this elevated too):
 
