@@ -525,6 +525,11 @@ Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BA
 |---|---|---|---|---|
 | `port` | int | `0xE` | `0x0` .. `0xFE` | I/O base port -- control/status (BASE) and format (BASE+1). Even; default 0E |
 | `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
+| `video` | string | — | — | LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Read-only **(read-only — not a key you may set)** |
+| `resolution` | string | — | — | LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 size): 32x32, 64x64 or 128x128. Read-only **(read-only — not a key you may set)** |
+| `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Read-only **(read-only — not a key you may set)** |
+| `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Read-only **(read-only — not a key you may set)** |
+| `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only **(read-only — not a key you may set)** |
 
 
 ## `vdb8024`

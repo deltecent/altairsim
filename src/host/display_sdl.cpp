@@ -209,18 +209,6 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     const int wantW = logW * fit, wantH = logH * fit;
     if (gotW != wantW || gotH != wantH) SDL_SetWindowSize(window_, wantW, wantH);
 
-    // ASPECT-PRESERVING FROM THE START, so the FIRST drag behaves like every one after it.
-    // The logical frame is the picture PLUS the bezel -- (w+2*border_) x (h+2*border_) -- and
-    // the window opens at exactly `scale` times that, so LETTERBOX shows no bars of its own at
-    // the opening size; the black band you see is the bezel, drawn as an inset in present().
-    // Because the window is locked to this same aspect (below), a resize stays proportional and
-    // the picture-plus-bezel keeps filling it, undistorted and even on all four sides, at any
-    // size. The earlier scheme presented just the picture (w x h): its aspect did not match the
-    // bezel-padded window, so LETTERBOX ate the border on the long axis. Presenting the padded
-    // frame is what keeps the left and right bezel.
-    SDL_SetRenderLogicalPresentation(renderer_, logW, logH,
-                                     SDL_LOGICAL_PRESENTATION_LETTERBOX);
-
     // Ask SDL for layout- and shift-resolved characters (SDL_EVENT_TEXT_INPUT), so a
     // '$' or a capital letter arrives correct without us reimplementing a keymap. The
     // control keys and Ctrl-combinations still come through SDL_EVENT_KEY_DOWN.
@@ -230,17 +218,12 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // the window was created.
     SDL_ShowWindow(window_);
 
-    // Lock the window to the aspect it opened at, so every resize -- the first included --
-    // stays proportional: the operator can make the picture any size but not distort it, and
-    // LETTERBOX keeps it filling the window with the kBorder inset scaling along. SDL has no
-    // "user-vs-us" resize flag, and it does not need one now -- the lock does the work, so
-    // there is nothing to detect and switch.
-    int lockW = 0, lockH = 0;
-    SDL_GetWindowSize(window_, &lockW, &lockH);
-    if (lockW > 0 && lockH > 0) {
-        const float aspect = (float)lockW / (float)lockH;
-        SDL_SetWindowAspectRatio(window_, aspect, aspect);
-    }
+    // Fit the logical presentation, the bezel and the aspect lock to this first frame. The
+    // SAME call re-fits them when a board later changes resolution (applyPresentation, called
+    // from acquire()) -- so the picture-plus-bezel keeps filling the window, even on all four
+    // sides, at the opening size and after every mode switch. Done here, with the window shown
+    // and sized, so the render output size it reads is the real one.
+    applyPresentation(w, h);
 
     if (std::getenv("ALTAIRSIM_VIDEO_DEBUG")) {
         int ww = 0, wh = 0, pw = 0, ph = 0, ow = 0, oh = 0;
@@ -255,6 +238,49 @@ bool SdlDisplay::ensureWindow(int w, int h) {
                      logW, logH, ww, wh, pw, ph, ow, oh, r.x, r.y, r.w, r.h);
     }
     return true;
+}
+
+// FIT THE LOGICAL PRESENTATION TO A FRAME OF w x h, in the window as it stands now. Called
+// once from ensureWindow() and again from acquire() every time a board changes resolution --
+// which is the whole fix for the Dazzler. Without re-running it, the presentation stays frozen
+// at the first frame's size (ensureWindow short-circuits on later frames), and present() then
+// draws a larger picture, anchored at the top-left inset, off the bottom-right of the stale
+// logical frame: SDL clips it, so only the top-left region shows and the bezel survives only on
+// the top and left. Re-fitting here makes the picture fill the window whole with an even bezel.
+//
+// The WINDOW is not resized: the operator's size stands, and the new resolution is just
+// rescaled into it (LETTERBOX, nearest-neighbor). A Dazzler flips modes rapidly, so a window
+// that jumped size each time would be worse than a fractional-but-crisp rescale.
+void SdlDisplay::applyPresentation(int w, int h) {
+    if (!renderer_ || !window_ || w <= 0 || h <= 0) return;
+
+    // The bezel is worth about kBorder DEVICE pixels at the picture's current on-screen scale,
+    // so it stays a thin hairline whatever resolution the board is in. Derive that scale from
+    // how many whole picture-pixels fit the window's render output (falls back to 1 if the
+    // output size is not readable yet, giving the kBorder default).
+    int ow = 0, oh = 0;
+    SDL_GetCurrentRenderOutputSize(renderer_, &ow, &oh);
+    const int scale = std::max(1, std::min(ow / w, oh / h));
+    border_ = std::max(1, (int)std::lround((double)kBorder / scale));
+
+    const int logW = w + 2 * border_, logH = h + 2 * border_;
+
+    // The picture PLUS its bezel is the logical frame; LETTERBOX scales that whole frame to the
+    // window uniformly, keeping the bezel present() insets even on all four sides.
+    SDL_SetRenderLogicalPresentation(renderer_, logW, logH,
+                                     SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
+    // Lock the window to the padded frame's aspect so a resize stays proportional -- but only
+    // when the ratio actually moved. For the Dazzler's square modes it is always 1:1, and
+    // re-asserting an unchanged ratio would nudge a window the operator has sized.
+    const float aspect = (float)logW / (float)logH;
+    if (aspect != aspect_) {
+        SDL_SetWindowAspectRatio(window_, aspect, aspect);
+        aspect_ = aspect;
+    }
+
+    picW_ = w;
+    picH_ = h;
 }
 
 // Name the window after the machine, not after the board that draws into it
@@ -320,6 +346,13 @@ Surface* SdlDisplay::acquire(int w, int h, PixelFormat fmt) {
         texH_ = h;
         rgba_.assign((size_t)w * (size_t)h * 4, 0);
     }
+
+    // A board that changed its frame resolution (a Dazzler switching video mode) needs the
+    // logical presentation re-fit to the new size, or present() clips the larger picture to
+    // the old, smaller logical frame. ensureWindow() did this for the first frame and then
+    // short-circuits, so it falls to here. No-op in the steady state (picW_/picH_ unchanged).
+    if (w != picW_ || h != picH_) applyPresentation(w, h);
+
     return surface_.get();
 }
 

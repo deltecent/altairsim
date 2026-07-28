@@ -63,10 +63,24 @@ public:
 private:
     bool ensureWindow(int w, int h);  // lazy: no SDL work until the first frame
 
+    // Fit the logical presentation (and the bezel, and the aspect lock) to a frame of
+    // w x h in the CURRENT window. Called once when the window is built, and again
+    // whenever a board changes its frame resolution (a Dazzler switching video mode) --
+    // without it the presentation stays frozen at the first frame's size and a larger
+    // picture is clipped to the top-left (see ensureWindow / the header note on picW_).
+    void applyPresentation(int w, int h);
+
     SDL_Window*   window_   = nullptr;
     SDL_Renderer* renderer_ = nullptr;
     SDL_Texture*  texture_  = nullptr;
     int texW_ = 0, texH_ = 0;
+
+    // The frame dimensions the logical presentation is currently fit to. The window is
+    // built lazily on the first frame and ensureWindow() then short-circuits, so a
+    // resolution change afterwards (the Dazzler's 32/64/128 modes) would otherwise never
+    // re-fit the presentation. acquire() compares the incoming w,h against these and
+    // calls applyPresentation() when they move; 0,0 until the first frame.
+    int picW_ = 0, picH_ = 0;
 
     // The bezel, in LOGICAL pixels, folded into the logical presentation size on every side
     // (ensureWindow). present() draws the picture into a sub-rect inset by this much, and the
@@ -74,6 +88,12 @@ private:
     // it stays an even band on all four sides as the aspect-locked window is dragged. See
     // ensureWindow() for how it is chosen (about kBorder device pixels at the opening size).
     int border_ = 0;
+
+    // The padded-frame aspect the window is currently locked to (logW/logH). Stored so a
+    // resolution change re-locks only when the ratio actually moves -- for the Dazzler's
+    // square modes it is always 1:1, and re-asserting an unchanged ratio would nudge a
+    // window the operator has sized. 0 until the first applyPresentation().
+    float aspect_ = 0.0f;
 
     std::unique_ptr<Surface> surface_;   // the board draws here (indexed)
     std::vector<Color>       palette_;   // index -> Color, set by the board
