@@ -153,9 +153,13 @@ void test_modemline() {
 
             // Fill the pipe: the far end never reads, so the kernel send buffer fills
             // and then our tx_ does, and writable() (CTS) must go false rather than
-            // drop a byte.
-            std::vector<uint8_t> chunk(1024, 'x');
-            for (int i = 0; i < 600 && m.writable(); ++i) {
+            // drop a byte. The loop STOPS the instant tx_ backs up past kTxCap -- which
+            // is one chunk after the kernel buffer fills, whatever its size -- so the
+            // 32 MB ceiling is never actually reached. It has to be that generous
+            // because a Linux loopback autotunes its buffers to several MB (a fixed
+            // ~600 KB fills a macOS pipe but sails straight through a CI Linux one).
+            std::vector<uint8_t> chunk(64 * 1024, 'x');
+            for (int i = 0; i < 512 && m.writable(); ++i) {
                 m.write(chunk.data(), chunk.size());
                 m.pump();
             }
