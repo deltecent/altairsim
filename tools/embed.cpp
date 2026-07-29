@@ -35,6 +35,9 @@ namespace fs = std::filesystem;
 #ifdef _WIN32
 #define popen  _popen
 #define pclose _pclose
+#define DEVNULL "NUL"
+#else
+#define DEVNULL "/dev/null"
 #endif
 
 // --- helpers ---------------------------------------------------------------
@@ -284,10 +287,10 @@ static int genVersion(const fs::path& templ, const fs::path& out, const fs::path
 
     // Only trust git inside a real work tree.
     if (fs::exists(".git")) {
-        std::string describe = runCapture("git describe --tags --always 2>/dev/null");
+        std::string describe = runCapture("git describe --tags --always 2>" DEVNULL);
         if (!describe.empty()) {
             commit = describe;
-            std::string status = runCapture("git status --porcelain --untracked-files=no 2>/dev/null");
+            std::string status = runCapture("git status --porcelain --untracked-files=no 2>" DEVNULL);
             if (!status.empty()) dirty = "1";
         }
     }

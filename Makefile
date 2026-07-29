@@ -32,6 +32,23 @@ else
   EXE     :=
 endif
 
+# --- portable shell commands ------------------------------------------------
+# On Windows the recipes run under cmd.exe (a plain MinGW install ships no sh),
+# which has no `mkdir -p`, no `rm`, and wants backslashes. These helpers paper
+# over that so the same recipes work from a bare Windows command prompt and from
+# a POSIX shell. Call as $(call mkdir_p,dir) / $(call rm_rf,path) / $(call run,exe).
+ifeq ($(WIN32),1)
+  mkdir_p = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
+  rm_rf   = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
+  rm_f    = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
+  run     = $(subst /,\,$1)
+else
+  mkdir_p = mkdir -p $1
+  rm_rf   = rm -rf $1
+  rm_f    = rm -f $1
+  run     = $1
+endif
+
 # --- toolchain --------------------------------------------------------------
 CXX      ?= g++
 CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra
@@ -48,10 +65,13 @@ ifneq ($(WIN32),1)
 endif
 
 # --- optional SDL3 (video boards get a real window) -------------------------
-# pkg-config first (Linux); sdl3-config as a fallback (some macOS installs).
-# Force with NO_SDL=1, or drive a hand-rolled install with
-#   make SDL=1 SDL_CFLAGS=... SDL_LIBS=...
+# Auto-detect is POSIX-only -- it shells out to pkg-config/sdl3-config, which a
+# bare Windows cmd cannot run. On Windows the build is headless unless you point
+# it at an SDL3 by hand:  make SDL=1 SDL_CFLAGS=-IC:/SDL3/include SDL_LIBS="-LC:/SDL3/lib -lSDL3"
+# Elsewhere: pkg-config first (Linux), sdl3-config next, Homebrew keg last (this
+# Mac has no pkg-config). Force headless anywhere with NO_SDL=1.
 ifndef NO_SDL
+ifneq ($(WIN32),1)
   ifneq (,$(shell pkg-config --exists sdl3 2>/dev/null && echo 1))
     SDL        := 1
     SDL_CFLAGS ?= $(shell pkg-config --cflags sdl3)
@@ -61,8 +81,6 @@ ifndef NO_SDL
     SDL_CFLAGS ?= $(shell sdl3-config --cflags)
     SDL_LIBS   ?= $(shell sdl3-config --libs)
   else ifeq ($(UNAME_S),Darwin)
-    # This Mac has no pkg-config (CMake finds SDL3 via its CONFIG package); fall
-    # back to the Homebrew keg so the convenience build still gets a window.
     SDL3_PREFIX := $(shell brew --prefix sdl3 2>/dev/null)
     ifneq (,$(wildcard $(SDL3_PREFIX)/include/SDL3/SDL.h))
       SDL        := 1
@@ -70,6 +88,7 @@ ifndef NO_SDL
       SDL_LIBS   ?= -L$(SDL3_PREFIX)/lib -lSDL3
     endif
   endif
+endif
 endif
 
 ifeq ($(SDL),1)
@@ -161,16 +180,16 @@ $(BIN): $(OBJS)
 $(OBJS): | $(GEN)
 
 $(OBJDIR)/%.cpp.o: %.cpp
-	@mkdir -p $(dir $@)
+	@$(call mkdir_p,$(patsubst %/,%,$(dir $@)))
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(OBJDIR)/%.mm.o: %.mm
-	@mkdir -p $(dir $@)
+	@$(call mkdir_p,$(patsubst %/,%,$(dir $@)))
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # --- code generation (tools/embed.cpp; the CMake-free codegen) --------------
 $(EMBED): tools/embed.cpp
-	@mkdir -p $(dir $@)
+	@$(call mkdir_p,$(patsubst %/,%,$(dir $@)))
 	$(CXX) -std=c++20 -O2 -o $@ $<
 
 # Regenerated every build (FORCE): embed rewrites only when the output actually
@@ -180,16 +199,16 @@ $(EMBED): tools/embed.cpp
 # header's commit/dirty flags track the live tree, exactly as CMake re-stamps
 # them at configure time.
 $(GENDIR)/roms_generated.cpp: $(EMBED) FORCE
-	@mkdir -p $(GENDIR)
-	@$(EMBED) roms roms $@
+	@$(call mkdir_p,$(GENDIR))
+	@$(call run,$(EMBED)) roms roms $@
 
 $(GENDIR)/machines_generated.cpp: $(EMBED) FORCE
-	@mkdir -p $(GENDIR)
-	@$(EMBED) machines machines $@
+	@$(call mkdir_p,$(GENDIR))
+	@$(call run,$(EMBED)) machines machines $@
 
 $(GENDIR)/version_generated.h: $(EMBED) cmake/version.h.in CMakeLists.txt FORCE
-	@mkdir -p $(GENDIR)
-	@$(EMBED) version cmake/version.h.in $@ CMakeLists.txt
+	@$(call mkdir_p,$(GENDIR))
+	@$(call run,$(EMBED)) version cmake/version.h.in $@ CMakeLists.txt
 
 FORCE:
 
@@ -203,7 +222,8 @@ check-gen: $(GEN_CPP)
 	  && echo "machines_generated.cpp: IDENTICAL"
 
 clean:
-	rm -rf $(BINDIR) $(BIN)
+	@$(call rm_rf,$(BINDIR))
+	@$(call rm_f,$(BIN))
 
 help:
 	@echo "targets: all (default), clean, check-gen, help"
