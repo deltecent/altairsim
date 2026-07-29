@@ -607,12 +607,19 @@ void test_pmmi() {
         CHECK(rang, "the caller rings");
         g.control(0x5E);  // answer, 8N2
 
-        // Caller -> guest. The bytes held during the ring arrive once we answer.
-        if (caller) {
-            const uint8_t hi[] = {'H', 'i'};
-            caller->write(hi, sizeof hi);
-        }
-        bool got = waitFor([&] { if (caller) caller->poll(); g.pump();
+        // Caller -> guest, once we answer. The caller's non-blocking connect can still
+        // be completing here: its POLLOUT-writable edge lags the guest's accept by a
+        // scheduling quantum on some kernels (macOS loopback especially), so `rang`
+        // going true does NOT mean caller->established() yet. A write into a still-
+        // connecting socket sends nothing (backpressure, not an error), so poll the
+        // caller every pass and (re)send from `sent` until the whole "Hi" is on the
+        // wire -- writing once up front and trusting it would drop the bytes and hang.
+        const uint8_t hi[]  = {'H', 'i'};
+        size_t        sent  = 0;
+        bool got = waitFor([&] { if (caller) { caller->poll();
+                                     if (caller->established() && sent < sizeof hi)
+                                         sent += caller->write(hi + sent, sizeof hi - sent); }
+                                 g.pump();
                                  g.m.clock.advance(3000); },  // a receive char time
                            [&] { return (g.status() & kDav) != 0; });
         CHECK(got, "a byte reaches the guest's receiver");
