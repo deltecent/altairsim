@@ -533,9 +533,13 @@ build-make\altairsim.exe --list
 The binary and all intermediates land in **`build-make\`** — deliberately not in
 `build\`, which is the CMake build's, so the two never collide.
 
-- **Toolchain:** any MinGW-w64 with a C++20 `g++` and `mingw32-make`. A standalone
-  install works fine — e.g. **WinLibs** (winlibs.com): unzip, put its `bin` on PATH,
-  done. No MSYS2 required.
+- **Toolchain:** **MinGW-w64 with GCC 11 or newer** (verified with GCC 16.1.0) and
+  `mingw32-make`. A standalone install works fine — e.g. **WinLibs** (winlibs.com):
+  unzip, put its `bin` on PATH, done. No MSYS2 required. **Classic MinGW.org and
+  GCC 9/10 will not build this** — their C++20 support is incomplete (GCC 9 does not
+  even accept `-std=c++20`), so grab a modern MinGW-w64 instead. The Makefile checks
+  the compiler's version up front and stops with a clear message if it is too old,
+  rather than failing later in a confusing way.
 - **OS is detected from the `%OS%` environment variable** (`Windows_NT`), so it
   needs no `uname` and works from a bare `cmd`. Recipes use `cmd` builtins (guarded
   `mkdir`, `del`/`rmdir`) — no `sh`. It links `-lws2_32 -lwinmm` → `altairsim.exe`.
