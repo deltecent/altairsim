@@ -226,6 +226,24 @@ ctest --test-dir build -C Release -LE slow --output-on-failure
   `mode` in a shell); set `ALTAIR_SERIAL_A`/`_B` to two ports joined by a
   null-modem cable.
 
+  **It has to be a full-handshake null modem, not a 3-wire one.** `serial-hw`
+  drives the modem-control pins, so they must cross — and one end's **DTR has to
+  fan out to both DSR and DCD** on the other (DE-9 DTE pins, both ends):
+
+  | A end | | B end |
+  |---|---|---|
+  | TxD (3) | → | RxD (2) |
+  | RxD (2) | ← | TxD (3) |
+  | RTS (7) | → | CTS (8) |
+  | CTS (8) | ← | RTS (7) |
+  | DTR (4) | → | DSR (6) **and** DCD (1) |
+  | DSR (6) **and** DCD (1) | ← | DTR (4) |
+  | GND (5) | ↔ | GND (5) |
+
+  A 3-wire cable, or one that loops DTR/DSR/DCD back locally instead of crossing
+  them, carries the bytes but fails every pin check — the usual cause of a
+  `serial-hw` that *fails* rather than skips.
+
 Everything that registers passes. If a new win32 problem crashes the `unit`
 aggregate with `0xC0000409`, §6 shows how to isolate it.
 
