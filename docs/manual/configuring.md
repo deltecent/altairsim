@@ -5,6 +5,28 @@ and what to do once the power is on. That is all it does, and there is nothing e
 
 This chapter is the normative description of the format.
 
+## What TOML is (and why this file is one)
+
+The machine file is written in **TOML** — *Tom's Obvious, Minimal Language*, a
+configuration format Tom Preston-Werner published in 2013 and settled at version 1.0 in
+2021. We picked it the way you pick a good wrench: it is honest, it fits the hand, and it
+never pretends to have done something it didn't. A file you write by hand and read back a
+year later without a manual — that is the whole job, and TOML keeps the one promise the
+rest of this chapter also makes: it means exactly what it says, or it refuses to load.
+
+You need only a handful of rules to read every example below:
+
+- **`key = value`** — one setting per line: `clock_hz = 2000000`.
+- **Quotes are for text.** A string is quoted (`name = "cpm22"`); a number or a
+  true/false is bare (`size = 256`, `idle = true`).
+- **`[table]` appears once** — `[machine]` is the machine, `[console]` is your terminal.
+- **`[[table]]` — doubled brackets — repeats.** Each `[[board]]` starts another board.
+- **A nested `[board.unit.x]` belongs to the block above it**, by name — the indentation
+  in these examples is only for the eye.
+- **`#` starts a comment** to the end of the line.
+
+That is the whole of the syntax. Everything below is which keys go where.
+
 ## The one thing to know first
 
 **Anything you can type, a config can do — and nothing more.** A machine file has no special
