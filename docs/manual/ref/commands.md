@@ -20,25 +20,77 @@ base=octal` makes the wire class read and print in **split octal** (each byte it
 `000`–`377` group, an address as two of them) — the MITS front-panel convention;
 `base=hex` is the default. Either way both spellings stay typeable.
 
-## The commands
+The commands are **grouped by what they do**, and within a group they are in
+**alphabetical order**. The abbreviation beside each name is still derived from the
+master table's priority order, not from this listing, so it is what you type
+regardless of where the command sits here.
 
+## Running the machine
 
-### DUMP — `D[UMP]`
-
-```
-DUMP [<addr>|<range>] [WIDTH=16]
-```
-Hex and ASCII. A bare address runs to the END OF ITS PAGE, and a bare DUMP
-continues from there -- so the rows and the columns both stay page-aligned
-however you first landed. WIDTH is a count, so it is decimal.
+### NEXT — `N[EXT]`
 
 ```
-D 100        0100-01FF, a whole page
-D 0001       0001-00FF: stops on the boundary, last line full
-D            the next page
-D FF00-FF0F  an explicit range means exactly what it says
-D 100/20     0100-011F (LEN is part of the address expression: hex)
-D 0 WIDTH=8  eight bytes per line
+NEXT
+```
+STEP that does not descend. A CALL or RST runs to completion and stops at the
+return address instead of stepping into it; anything else is a plain single
+step. It is a temporary breakpoint at the return plus a RUN, so the callee is
+LIVE -- it can use the console, and ^E (ATTN) or ^C stops it.
+
+```
+N            over the CALL/RST at PC (else single-step)
+```
+
+
+### POWER — `P[OWER]`
+
+```
+POWER
+```
+Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on
+real hardware it does not.
+
+
+### RESET — `RES[ET]`
+
+```
+RESET [CPU]
+```
+A reset does NOT clear memory. Only removing power does that -- see POWER.
+RESET CPU is a debugging convenience, NOT a real signal: no wire on the
+backplane resets the processor and nothing else.
+
+
+### RUN — `R[UN]`
+
+```
+RUN [addr]
+```
+Start the machine. `RUN <addr>` is EXAMINE + RUN -- it loads the PC first,
+exactly as you would on the panel.
+
+If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,
+including ^C, which a CP/M program is entitled to read. The way back is ATTN
+(^E), which the host takes before the guest is ever offered the byte, so the
+guest cannot disable it. ATTN STOPS the machine -- nothing executes while this
+prompt is up -- but it does not DISTURB it: ATTN is not RESET and not POWER, so
+every register, every byte and every disk survives, and a bare RUN resumes at the
+exact instruction. Stopped is not lost, and the debugger is at its most useful
+here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.
+
+IT RUNS FLAT OUT unless the CPU board has a crystal. `clock_hz` defaults to 0,
+so a cassette that took a real Altair 110 seconds comes off in about one. `SET
+cpu0 clock_hz=2000000` buys back the 2 MHz machine AND its 110 seconds. What
+the guest sees is identical either way -- the tape still costs the same
+T-states -- so the crystal buys period FEEL, not period behaviour.
+
+With no console connected there is no keyboard to hand over, and nothing to
+pace against: it simply runs, ^C stops it. Either way it stops on a breakpoint
+or on a HLT nothing can wake, and it ALWAYS says which.
+
+```
+RUN F800     boot the monitor PROM
+RUN          carry on from wherever the PC is
 ```
 
 
@@ -79,187 +131,81 @@ Zero, Minus, Even parity, Interdigit carry -- and E goes to 1 on the ADD
 because 0F has an even number of bits set.
 
 
-### NEXT — `N[EXT]`
+### TYPE — `TY[PE]`
 
 ```
-NEXT
+TYPE "text"
 ```
-STEP that does not descend. A CALL or RST runs to completion and stops at the
-return address instead of stepping into it; anything else is a plain single
-step. It is a temporary breakpoint at the return plus a RUN, so the callee is
-LIVE -- it can use the console, and ^E (ATTN) or ^C stops it.
+Put characters in the console's input buffer as if they were typed at the
+guest -- the same keystrokes the VDM window or a terminal would send. The
+guest reads them when it next looks at the keyboard, so they are TYPE-AHEAD:
+they wait in the buffer and are not forced on a program that is not reading.
 
-```
-N            over the CALL/RST at PC (else single-step)
-```
+Escapes: \r carriage return, \n line feed, \t tab, \\ backslash, \" quote.
+ENTER sends a carriage return, so a command line for the guest ends in \r.
 
-
-### RUN — `R[UN]`
-
-```
-RUN [addr]
-```
-Start the machine. `RUN <addr>` is EXAMINE + RUN -- it loads the PC first,
-exactly as you would on the panel.
-
-If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,
-including ^C, which a CP/M program is entitled to read. The way back is ATTN
-(^E), which the host takes before the guest is ever offered the byte, so the
-guest cannot disable it. ATTN STOPS the machine -- nothing executes while this
-prompt is up -- but it does not DISTURB it: ATTN is not RESET and not POWER, so
-every register, every byte and every disk survives, and a bare RUN resumes at the
-exact instruction. Stopped is not lost, and the debugger is at its most useful
-here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.
-
-IT RUNS FLAT OUT unless the CPU board has a crystal. `clock_hz` defaults to 0,
-so a cassette that took a real Altair 110 seconds comes off in about one. `SET
-cpu0 clock_hz=2000000` buys back the 2 MHz machine AND its 110 seconds. What
-the guest sees is identical either way -- the tape still costs the same
-T-states -- so the crystal buys period FEEL, not period behaviour.
-
-With no console connected there is no keyboard to hand over, and nothing to
-pace against: it simply runs, ^C stops it. Either way it stops on a breakpoint
-or on a HLT nothing can wake, and it ALWAYS says which.
+This is how a machine file starts a program the monitor cannot reach. `startup`
+runs MONITOR commands; `XE TRK80` is input to SOLOS, a program INSIDE the machine.
+Put TYPE before the RUN that starts the guest and the guest reads it at its first
+prompt -- in a TOML the backslash doubles (\\r), because the config parser keeps
+one for the command:
 
 ```
-RUN F800     boot the monitor PROM
-RUN          carry on from wherever the PC is
+startup = ["MOUNT sol0:tape1 \"TRK80.WAV\"", "TYPE \"XE TRK80\\r\"", "RUN C000"]
+TYPE "XE TRK80\r"        type it now, at a running guest
 ```
 
 
-### HISTORY — `H[ISTORY]`
+A program that clears its keyboard as it starts drops keystrokes sent before it
+is ready; TYPE cannot help there, no more than a fast typist could.
+
+## Examining and changing memory
+
+### COMPARE — `COM[PARE]`
 
 ```
-HISTORY [BUS|CPU] [n]
+COMPARE <range> <addr>
 ```
-The last n INSTRUCTIONS the machine ran, oldest first -- a flight recorder that
-is always running while the machine runs, so it already holds the run-up to a
-breakpoint or a crash when you ask. Each line is exactly what STEP prints: the
-registers and flags as the machine stood, and the decoded mnemonic it was about
-to run. n is a count, so it is decimal; bare HISTORY shows the last 16.
-
-The mnemonic is decoded from the bytes that ACTUALLY ran at that address, not
-from what the address holds by the time you look -- so code that rewrote itself
-(a DDT breakpoint going back, an overlay) reads truthfully. The line reflects
-the CPU that is in the socket now: on the twin-core card, switching cores makes
-earlier lines read in the new core's terms.
-
-HISTORY BUS is the other recorder -- the raw BUS CYCLES, no registers and no
-mnemonics: T-STATE, TYPE (MR/MW a memory read/write, IN/OUT a port, INTA an
-interrupt ack), ADDR (or the I/O port), DATA, and then the two that make it a
-BUS trace rather than a CPU one -- who DROVE the cycle and who ANSWERED it, so
-a DMA transfer's cycles are in there and say whose they were. HISTORY CPU names
-the default out loud.
-
-Each recorder is a FIXED ring of its last 8192: it overwrites its own oldest and
-never grows, so it costs the same whether the machine ran for a second or a
-week. Ask for more than 8192 and you get the 8192 it holds.
+Byte for byte, a <range> against the SAME LENGTH starting at <addr> -- memory to
+memory, both in the machine's address space. Every mismatch prints both
+addresses and their bytes; then a total. It changes nothing and runs no cycle.
 
 ```
-HISTORY          the last 16 instructions
-HISTORY 100      the last hundred instructions
-HISTORY BUS      the last 16 bus cycles
-HISTORY BUS 100  the last hundred cycles
+COMPARE 0-FF 200        page 0 against page 2
+COMPARE FF00-FFFF E000  the boot PROM against a copy up at E000
 ```
 
 
-### MOUNT — `M[OUNT]`
+### DEPOSIT — `DE[POSIT]`
 
 ```
-MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]
+DEPOSIT <addr> <bytes...>
 ```
-Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
-WP write-protects it: the guest may read it and may not write it.
-RO is accepted and means the same -- it is the word for a ROM, which is
-read-only because of what it is.
-
-CREATE makes the file first if it is not there (empty), then mounts it -- a
-fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing
-file is a 'no such file', because a mistyped name is a mistake, not a new disk.
-
-A TRAILING k=v SETS A UNIT PROPERTY, applied the moment the medium is in --
-the same properties SHOW <id> lists and SET <id>:<unit> writes, said at the one
-moment you were going to say them anyway. A unit with no such property says so
-rather than ignoring you.
-
-EXTRACT is not a property and runs after the mount: it splits a cassette WAV
-into one .TAP per program on it, exactly as the EXTRACT verb does.
-extract=<base> names those files instead of taking the default.
-
-A NAME IS CASE-BLIND, and you may leave off what carries no information: the
-trailing index when only one such board is in the machine, and the unit when the
-board has only one you could mount into. Anything genuinely plural you must say,
-and it will tell you so.
+The front-panel switch. Runs a REAL bus write, so if no board decodes the
+address the byte is simply gone -- and DEPOSIT says so rather than lying.
 
 ```
-MOUNT dsk0:drive0 disks/cpm.dsk
-MOUNT dsk0:drive1 disks/master.dsk WP
-MOUNT dsk0:drive1 new.dsk CREATE    a blank disk to FORMAT from the guest
-MOUNT mem0:rom0 roms/monitor.bin
-MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
-MOUNT ACR new.wav CREATE mode=record   a blank tape, in and recording
-MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files
+DE 100 C3 00 F8
 ```
 
 
-SHOW MOUNTS is the other half of this command: every socket in the machine,
-what is in it, and which are still empty. UNMOUNT takes it back out. A path is
-resolved as SHOW PATHS describes -- what you TYPE is relative to your shell.
-
-
-### BREAK — `B[REAK]`
+### DUMP — `D[UMP]`
 
 ```
-BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]
+DUMP [<addr>|<range>] [WIDTH=16]
 ```
-Bare BREAK lists them. Only the first kind is about the CPU at all -- the
-other two watch BUS CYCLES, so they catch a DMA transfer too, and they work
-unchanged on any processor.
-
-```
-BREAK FF13       stop when PC gets there
-BREAK 2C00-2CFF  ...anywhere in a range
-BREAK MEM W 100  stop when anything WRITES 0100
-BREAK IO R 10    stop on an IN from port 10
-```
-
-
-A plain address breakpoint may carry a CONDITION -- IF <expr> over the
-registers -- and stops only when it holds. A bare word that names a register IS
-that register, so a literal is written with a leading zero (0A is ten, A is the
-accumulator). == != < > <= >= compare; && || combine; & | mask.
-
-The names are the ACTIVE CPU's own -- exactly the set REGS shows, every register
-and flag in it. On an 8080 that is A, BC/DE/HL, SP, PC and CY/Z/S/P/AC; a Z80
-adds IX, IY, the alternate bank and its own flags. A name the running CPU does
-not have is an error, so IF IX==0 waits for a Z80 to be the one in the socket.
+Hex and ASCII. A bare address runs to the END OF ITS PAGE, and a bare DUMP
+continues from there -- so the rows and the columns both stay page-aligned
+however you first landed. WIDTH is a count, so it is decimal.
 
 ```
-BREAK 100 IF A==0
-BREAK 100 IF HL==8000 && Z==1
-BREAK 100 IF (A&0F)==0
-BREAK 100 IF IX==8000     Z80 -- IX is not an 8080 register
+D 100        0100-01FF, a whole page
+D 0001       0001-00FF: stops on the boundary, last line full
+D            the next page
+D FF00-FF0F  an explicit range means exactly what it says
+D 100/20     0100-011F (LEN is part of the address expression: hex)
+D 0 WIDTH=8  eight bytes per line
 ```
-
-
-TRACE ON|OFF makes it a TRACEPOINT: instead of stopping, it turns TRACE on or
-off and the machine RUNS ON. Two of them trace a REGION and nothing else --
-which is how you trace one subroutine out of a program that would otherwise
-bury you. Unlike IF, this works on the MEM and IO kinds too, because it reads
-no registers. TRACE ON at an address traces the instruction AT it; TRACE OFF
-does not -- the region is [on, off).
-
-```
-BREAK 2C00 TRACE ON        start tracing when PC gets to 2C00
-BREAK 2C40 TRACE OFF       ...and stop again at 2C40
-BREAK MEM W 2000 TRACE ON  start when anything writes 2000 (that write is
-                           the first line -- a trace shows its own reason)
-BREAK 200 IF HL==8000 TRACE ON    conditional, and still does not stop
-```
-
-Where the trace GOES is TRACE's business, not the tracepoint's: set it up with
-TRACE ON <file> MASK=..., then TRACE OFF to arm it without emitting. An
-unconfigured tracepoint traces to the console.
 
 
 ### EDIT — `E[DIT]`
@@ -287,114 +233,6 @@ altairsim> DUMP 100-103 WIDTH=4
 ```
 
 
-### CONFIG — `C[ONFIG]`
-
-```
-CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>
-```
-THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually
-running -- which boards, in what order, every property SET can write, what each
-unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It
-is the same format you would write by hand, and the same one a built-in is
-written in, so a saved machine is a first-class machine: LOAD it back, or name
-it on the command line, and you get exactly what you saved.
-
-IT DOES NOT SAVE STATE, and that is not a gap to be filled: a machine file
-describes hardware, and none of this is hardware. NOT saved --
-
-```
-RAM             what you DEPOSITed is gone. LOAD/SAVE <file> <range> is for
-                memory, and it is a separate file for a reason.
-the registers   PC included, so a LOADed machine has not started.
-breakpoints     nor tracepoints, nor where TRACE was pointed.
-CONSOLE         attn and the transforms are the HOST's terminal, not a board
-                in the backplane. They survive CONFIG LOAD untouched.
-```
-
-A SAVE IS A READ: it asks every property for its value and writes to nothing.
-
-LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the boards you had
-are out of the backplane, the new ones are in, and it is powered up and running
-its startup list -- a file whose startup says RUN comes up running. Naming that
-same file on the command line does the identical thing; there is one road.
-
-AND IT IS ALL OR NOTHING. The machine is built off to one side first, so a file
-that will not load -- a key that does not parse, a disk image that is not there
--- leaves you exactly where you were. What you do not get back is the machine
-you REPLACED: there is no undo but the file you saved it to.
-
-```
-CONFIG SAVE machines/mine.toml
-CONFIG LOAD machines/mine.toml      ...and this is how you get it back
-```
-
-
-### SET — `SE[T]`
-
-```
-SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>
-```
-SHOW <id> lists every property, its value, and whether it can be set while
-the machine runs. A property's base is its own: a port is hex, a baud rate
-is decimal.
-
-A UNIT HAS PROPERTIES OF ITS OWN, and <id>:<unit> is how you reach them: the
-tape in the recorder rather than the recorder, the disk in the drive rather
-than the controller. SHOW <id> prints both tables, the board's and each unit's.
-
-CONSOLE and DISPLAY are the HOST's terminal and video window rather than
-boards, and they take settings the same way. REG is a CPU register (see REGS),
-and BUS is the backplane's own diagnostics rather than anything plugged into it.
-
-```
-SET mem0 fill=zero
-SET mem0 phantom=read
-SET acr0:tape mode=record   the tape in the recorder, not the recorder
-SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)
-SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
-SET REG A=3F             a register in the CPU that is in the socket
-SET BUS UNCLAIMED=WARN   warn on a cycle no board answered
-                         (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)
-```
-
-
-### SHOW — `SH[OW]`
-
-```
-SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION
-```
-
-```
-SHOW mem0        regions and properties
-SHOW BOARDS      the board types you can add
-SHOW BOARD sol   one type's description and properties
-SHOW MACHINES    the built-in machines you can boot
-SHOW MACHINE     the current machine (add a name for a built-in's detail)
-SHOW BUS MAP     who decodes what, and what floats
-SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins
-SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
-SHOW PATHS       what a path resolves against -- and there is more than one answer
-SHOW CONSOLE     which unit holds the keyboard, and its transforms
-SHOW DISPLAY     the host video window, and whether it takes the keyboard
-SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS
-SHOW ROMS        the ROM images built into this binary, and where each came from
-SHOW VERSION     which build this is, and the commit it was built from
-```
-
-
-### DEPOSIT — `DE[POSIT]`
-
-```
-DEPOSIT <addr> <bytes...>
-```
-The front-panel switch. Runs a REAL bus write, so if no board decodes the
-address the byte is simply gone -- and DEPOSIT says so rather than lying.
-
-```
-DE 100 C3 00 F8
-```
-
-
 ### EXAMINE — `EX[AMINE]`
 
 ```
@@ -410,6 +248,17 @@ EX           and the next byte, and the next
 ```
 
 
+### FILL — `F[ILL]`
+
+```
+FILL <range> <byte>
+```
+
+```
+FILL 0-3FF 00
+```
+
+
 ### IN — `I[N]`
 
 ```
@@ -421,18 +270,6 @@ WHO IO <port>. Reports whether anybody actually answered.
 
 ```
 I 10         port 10 -> FF   (nobody answered -- the bus floated it)
-```
-
-
-### OUT — `O[UT]`
-
-```
-OUT <port> <byte>
-```
-Runs a REAL OUT cycle. Says so if no board decodes the port.
-
-```
-O 10 41
 ```
 
 
@@ -493,6 +330,55 @@ LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called
 ```
 
 
+### MOVE — `MOV[E]`
+
+```
+MOVE <range> <dest> [ROM]
+```
+Copy a range of memory to <dest>. It reads the WHOLE range before it writes, so
+source and dest may overlap either way without a block eating its own tail. The
+writes are real bus cycles; ROM burns instead, the way EDIT and DEPOSIT do.
+
+```
+MOVE 100-1FF 200    page 1 up to page 2
+MOVE 0-FFF 1000     the first 4K, up by 4K
+```
+
+
+### OUT — `O[UT]`
+
+```
+OUT <port> <byte>
+```
+Runs a REAL OUT cycle. Says so if no board decodes the port.
+
+```
+O 10 41
+```
+
+
+### REGS — `RE[GS]`
+
+```
+REGS | SET REG <r>=<v>
+```
+The flags are registers too, so SET REG CY=1 works. A register value is on
+the wire, so it is HEX.
+
+What it shows is the ACTIVE CPU's own set: an 8080 prints A, the pairs, SP, PC
+and its flags; a Z80 prints those plus IX, IY, I and IM, and keeps the alternate
+bank (AF' BC' DE' HL'), R and the register halves reachable by name though they
+are off the line. SET REG takes any name REGS knows -- and only those, so SET
+REG IX=0 needs a Z80. BREAK ... IF reads the very same names.
+
+```
+REGS
+SET REG A=3F
+SET REG PC=FF00
+SET REG IX=8000   Z80 only
+```
+
+
 ### SAVE — `SA[VE]`
 
 ```
@@ -520,17 +406,6 @@ SAVE out.dat 0-FFF FORMAT=HEX     hex, though it is not called .hex
 ```
 
 
-### FILL — `F[ILL]`
-
-```
-FILL <range> <byte>
-```
-
-```
-FILL 0-3FF 00
-```
-
-
 ### SEARCH — `SEA[RCH]`
 
 ```
@@ -542,104 +417,61 @@ SEA 0-FFFF C3
 SEA 0-FFFF "CP/M"
 ```
 
+## Debugging and tracing
 
-### COMPARE — `COM[PARE]`
-
-```
-COMPARE <range> <addr>
-```
-Byte for byte, a <range> against the SAME LENGTH starting at <addr> -- memory to
-memory, both in the machine's address space. Every mismatch prints both
-addresses and their bytes; then a total. It changes nothing and runs no cycle.
+### BREAK — `B[REAK]`
 
 ```
-COMPARE 0-FF 200        page 0 against page 2
-COMPARE FF00-FFFF E000  the boot PROM against a copy up at E000
+BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]
 ```
-
-
-### MOVE — `MOV[E]`
-
-```
-MOVE <range> <dest> [ROM]
-```
-Copy a range of memory to <dest>. It reads the WHOLE range before it writes, so
-source and dest may overlap either way without a block eating its own tail. The
-writes are real bus cycles; ROM burns instead, the way EDIT and DEPOSIT do.
+Bare BREAK lists them. Only the first kind is about the CPU at all -- the
+other two watch BUS CYCLES, so they catch a DMA transfer too, and they work
+unchanged on any processor.
 
 ```
-MOVE 100-1FF 200    page 1 up to page 2
-MOVE 0-FFF 1000     the first 4K, up by 4K
+BREAK FF13       stop when PC gets there
+BREAK 2C00-2CFF  ...anywhere in a range
+BREAK MEM W 100  stop when anything WRITES 0100
+BREAK IO R 10    stop on an IN from port 10
 ```
 
 
-### WHO — `W[HO]`
+A plain address breakpoint may carry a CONDITION -- IF <expr> over the
+registers -- and stops only when it holds. A bare word that names a register IS
+that register, so a literal is written with a leading zero (0A is ten, A is the
+accumulator). == != < > <= >= compare; && || combine; & | mask.
+
+The names are the ACTIVE CPU's own -- exactly the set REGS shows, every register
+and flag in it. On an 8080 that is A, BC/DE/HL, SP, PC and CY/Z/S/P/AC; a Z80
+adds IX, IY, the alternate bank and its own flags. A name the running CPU does
+not have is an error, so IF IX==0 waits for a Z80 to be the one in the socket.
 
 ```
-WHO <addr> | WHO IO <port>
-```
-Who WOULD answer -- it looks without running a cycle, so nothing is consumed
-and no board is poked. Reports contention, and reports PHANTOM*.
-
-```
-WHO FF00
-WHO IO 10
-```
-
-
-### BOARDS — `BO[ARDS]`
-
-```
-BOARDS [LIST]|ADD <type> <id> [k=v...]|REMOVE <id>
-```
-The backplane: what is in it, what each board answers to, and what is in its
-sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a
-ROM range says which image is in it -- an empty socket decodes nothing, so it
-is not in the memory column at all; it is in UNITS, marked (empty).
-
-```
-BOARDS                   the backplane
-BOARD                    the same thing: a prefix of BOARDS
-BOARDS ADD memory mem0   fit one -- SHOW BOARDS lists the types
-BOARDS REMOVE mem0       pull one out
+BREAK 100 IF A==0
+BREAK 100 IF HL==8000 && Z==1
+BREAK 100 IF (A&0F)==0
+BREAK 100 IF IX==8000     Z80 -- IX is not an 8080 register
 ```
 
 
-### REGS — `RE[GS]`
+TRACE ON|OFF makes it a TRACEPOINT: instead of stopping, it turns TRACE on or
+off and the machine RUNS ON. Two of them trace a REGION and nothing else --
+which is how you trace one subroutine out of a program that would otherwise
+bury you. Unlike IF, this works on the MEM and IO kinds too, because it reads
+no registers. TRACE ON at an address traces the instruction AT it; TRACE OFF
+does not -- the region is [on, off).
 
 ```
-REGS | SET REG <r>=<v>
-```
-The flags are registers too, so SET REG CY=1 works. A register value is on
-the wire, so it is HEX.
-
-What it shows is the ACTIVE CPU's own set: an 8080 prints A, the pairs, SP, PC
-and its flags; a Z80 prints those plus IX, IY, I and IM, and keeps the alternate
-bank (AF' BC' DE' HL'), R and the register halves reachable by name though they
-are off the line. SET REG takes any name REGS knows -- and only those, so SET
-REG IX=0 needs a Z80. BREAK ... IF reads the very same names.
-
-```
-REGS
-SET REG A=3F
-SET REG PC=FF00
-SET REG IX=8000   Z80 only
+BREAK 2C00 TRACE ON        start tracing when PC gets to 2C00
+BREAK 2C40 TRACE OFF       ...and stop again at 2C40
+BREAK MEM W 2000 TRACE ON  start when anything writes 2000 (that write is
+                           the first line -- a trace shows its own reason)
+BREAK 200 IF HL==8000 TRACE ON    conditional, and still does not stop
 ```
 
-
-### REGION — `REGI[ON]`
-
-```
-REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]
-```
-A region is a POPULATED part of a board. What is not covered by one is an
-empty socket: it decodes nothing and floats to FF. `at` is an address, so it
-is hex; `size` is a size, so it is decimal, and K/M work.
-
-```
-REGI ADD mem0 type=ram at=0 size=48K
-REGI ADD mem0 type=rom at=FF00 mount=builtin:dbl
-```
+Where the trace GOES is TRACE's business, not the tracepoint's: set it up with
+TRACE ON <file> MASK=..., then TRACE OFF to arm it without emitting. An
+unconfigured tracepoint traces to the console.
 
 
 ### DISASM — `DI[SASM]`
@@ -662,6 +494,55 @@ DI FF00 40   forty of them instead
 DI           carry on from there
 DI 0-2F      exactly that range
 DI FF00 CPU=z80    decode as Z80 when nothing in the machine can say
+```
+
+
+### HISTORY — `H[ISTORY]`
+
+```
+HISTORY [BUS|CPU] [n]
+```
+The last n INSTRUCTIONS the machine ran, oldest first -- a flight recorder that
+is always running while the machine runs, so it already holds the run-up to a
+breakpoint or a crash when you ask. Each line is exactly what STEP prints: the
+registers and flags as the machine stood, and the decoded mnemonic it was about
+to run. n is a count, so it is decimal; bare HISTORY shows the last 16.
+
+The mnemonic is decoded from the bytes that ACTUALLY ran at that address, not
+from what the address holds by the time you look -- so code that rewrote itself
+(a DDT breakpoint going back, an overlay) reads truthfully. The line reflects
+the CPU that is in the socket now: on the twin-core card, switching cores makes
+earlier lines read in the new core's terms.
+
+HISTORY BUS is the other recorder -- the raw BUS CYCLES, no registers and no
+mnemonics: T-STATE, TYPE (MR/MW a memory read/write, IN/OUT a port, INTA an
+interrupt ack), ADDR (or the I/O port), DATA, and then the two that make it a
+BUS trace rather than a CPU one -- who DROVE the cycle and who ANSWERED it, so
+a DMA transfer's cycles are in there and say whose they were. HISTORY CPU names
+the default out loud.
+
+Each recorder is a FIXED ring of its last 8192: it overwrites its own oldest and
+never grows, so it costs the same whether the machine ran for a second or a
+week. Ask for more than 8192 and you get the 8192 it holds.
+
+```
+HISTORY          the last 16 instructions
+HISTORY 100      the last hundred instructions
+HISTORY BUS      the last 16 bus cycles
+HISTORY BUS 100  the last hundred cycles
+```
+
+
+### NOBREAK — `NO[BREAK]`
+
+```
+NOBREAK [id]
+```
+Bare NOBREAK clears them all. An id is not on the wire, so it is decimal.
+
+```
+NOBREAK 2
+NOBREAK
 ```
 
 
@@ -696,73 +577,108 @@ SYMBOLS CLEAR
 ```
 
 
-### UNMOUNT — `U[NMOUNT]`
+### TRACE — `T[RACE]`
 
 ```
-UNMOUNT <id>:<u>
+TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]
 ```
-The socket is then EMPTY -- those pages float to FF, exactly as a card with
-no chip in it does.
+Log every BUS CYCLE while the machine runs -- to the console, or to a file.
+A cycle, not an instruction: MR/MW are memory, IN/OUT are I/O, INTA is an
+interrupt acknowledge, and a granted DMA master's cycles are tagged [DMA].
+This watches the same stream every board sees, so it is not a CPU feature and
+works unchanged on any processor.
+
+MASK keeps only the cycles you name (no MASK keeps all): IN, OUT, IRQ, DMA,
+CONTENTION. A cycle is kept if it is any of them -- MASK=DMA is every cycle a
+master drove, whatever its type.
 
 ```
-U dsk0:drive0
-```
-
-
-### DISCONNECT — `DISC[ONNECT]`
-
-```
-DISCONNECT <id>:<u>
-```
-The line then goes nowhere. NOT an error: an unconnected 6850 sits there with
-TDRE set forever, and a program that writes to it works fine and talks to
-nobody -- which is exactly what the card does with no cable in it.
-
-```
-DISC sio0:b
+TRACE ON                    every cycle, to the console
+TRACE ON run.log            ...to a file
+TRACE ON MASK=IN,OUT        just the port traffic
+TRACE OFF
 ```
 
 
-### CONSOLE — `CONS[OLE]`
+TRACE OFF stops the tracing but REMEMBERS where it was going -- a later TRACE
+ON, or a tracepoint, resumes to the same file and mask. That is what lets you
+aim a tracepoint at a file: TRACE ON run.log MASK=DMA, then TRACE OFF to arm
+it without emitting, then BREAK <addr> TRACE ON. See BREAK.
+
+
+### WHO — `W[HO]`
 
 ```
-CONSOLE [<k>=<v>...]
+WHO <addr> | WHO IO <port>
 ```
-The host's terminal -- your keyboard and screen -- and the knobs that shape
-how bytes cross it. Bare CONSOLE prints those settings (and which board unit
-is wired to the terminal); CONSOLE k=v changes one. It is pure shorthand:
-CONSOLE alone does what SHOW CONSOLE does, and CONSOLE k=v does what SET
-CONSOLE k=v does -- the same two commands, spelled short.
-
-The keys k, and the value v each takes:
+Who WOULD answer -- it looks without running a cycle, so nothing is consumed
+and no board is poked. Reports contention, and reports PHANTOM*.
 
 ```
-attn       a control byte 01-1F (HEX): the key that returns to the monitor
-base       hex | octal -- the operator's number base for what it PRINTS
-upper      on|off: fold typed input to uppercase (much period software insists)
-strip7in   on|off: mask the high bit on input
-strip7out  on|off: mask the high bit on output (MITS BASIC's end-of-message)
-crlf       on|off: add LF after every CR the guest prints -- usually WRONG
-echo       on|off: local echo, for half-duplex hardware
-bell       on|off: pass 07 through to the host bell
-bsdel      off | bs (fold DEL->BS) | del (fold BS->DEL)
+WHO FF00
+WHO IO 10
 ```
 
-These are the TERMINAL's, not a board's; a board's own line coding (baud,
-data_bits) is SHOW sio0. SHOW CONSOLE lists these with their current values.
+## Configuring the machine
 
-ATTN is the key that takes the keyboard BACK from a running guest. The host
-intercepts it before the guest is ever offered the byte, so the guest cannot
-disable it -- and that is why it must not be a key the guest needs.
+### BOARDS — `BO[ARDS]`
 
 ```
-CONSOLE            the settings, and which board unit is wired to the terminal
-CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)
-CONSOLE upper=on strip7out=on   two at once, the classic MITS BASIC pair
+BOARDS [LIST]|ADD <type> <id> [k=v...]|REMOVE <id>
+```
+The backplane: what is in it, what each board answers to, and what is in its
+sockets. A bare BOARDS lists them. RAM and ROM are named separately, and a
+ROM range says which image is in it -- an empty socket decodes nothing, so it
+is not in the memory column at all; it is in UNITS, marked (empty).
+
+```
+BOARDS                   the backplane
+BOARD                    the same thing: a prefix of BOARDS
+BOARDS ADD memory mem0   fit one -- SHOW BOARDS lists the types
+BOARDS REMOVE mem0       pull one out
 ```
 
-This command does NOT choose which board is the console -- CONNECT does that
-(CONNECT <id>:<unit> console); bare CONSOLE only reports the one now wired.
+
+### CONFIG — `C[ONFIG]`
+
+```
+CONFIG LOAD <f.toml> | CONFIG SAVE <f.toml>
+```
+THE MACHINE, NOT WHAT IT IS DOING. SAVE writes the hardware you are actually
+running -- which boards, in what order, every property SET can write, what each
+unit is CONNECTed to, what is MOUNTed in each socket, and the startup list. It
+is the same format you would write by hand, and the same one a built-in is
+written in, so a saved machine is a first-class machine: LOAD it back, or name
+it on the command line, and you get exactly what you saved.
+
+IT DOES NOT SAVE STATE, and that is not a gap to be filled: a machine file
+describes hardware, and none of this is hardware. NOT saved --
+
+```
+RAM             what you DEPOSITed is gone. LOAD/SAVE <file> <range> is for
+                memory, and it is a separate file for a reason.
+the registers   PC included, so a LOADed machine has not started.
+breakpoints     nor tracepoints, nor where TRACE was pointed.
+CONSOLE         attn and the transforms are the HOST's terminal, not a board
+                in the backplane. They survive CONFIG LOAD untouched.
+```
+
+A SAVE IS A READ: it asks every property for its value and writes to nothing.
+
+LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the boards you had
+are out of the backplane, the new ones are in, and it is powered up and running
+its startup list -- a file whose startup says RUN comes up running. Naming that
+same file on the command line does the identical thing; there is one road.
+
+AND IT IS ALL OR NOTHING. The machine is built off to one side first, so a file
+that will not load -- a key that does not parse, a disk image that is not there
+-- leaves you exactly where you were. What you do not get back is the machine
+you REPLACED: there is no undo but the file you saved it to.
+
+```
+CONFIG SAVE machines/mine.toml
+CONFIG LOAD machines/mine.toml      ...and this is how you get it back
+```
 
 
 ### CONNECT — `CONN[ECT]`
@@ -822,94 +738,118 @@ CONN lpt0:prn printer:linewriter                  print to a real host queue
 DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it.
 
 
-### RESET — `RES[ET]`
+### CONSOLE — `CONS[OLE]`
 
 ```
-RESET [CPU]
+CONSOLE [<k>=<v>...]
 ```
-A reset does NOT clear memory. Only removing power does that -- see POWER.
-RESET CPU is a debugging convenience, NOT a real signal: no wire on the
-backplane resets the processor and nothing else.
+The host's terminal -- your keyboard and screen -- and the knobs that shape
+how bytes cross it. Bare CONSOLE prints those settings (and which board unit
+is wired to the terminal); CONSOLE k=v changes one. It is pure shorthand:
+CONSOLE alone does what SHOW CONSOLE does, and CONSOLE k=v does what SET
+CONSOLE k=v does -- the same two commands, spelled short.
 
-
-### POWER — `P[OWER]`
-
-```
-POWER
-```
-Power cycle. THE ONLY THING THAT LOSES RAM -- a RESET does not, because on
-real hardware it does not.
-
-
-### TRACE — `T[RACE]`
+The keys k, and the value v each takes:
 
 ```
-TRACE ON|OFF [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]
-```
-Log every BUS CYCLE while the machine runs -- to the console, or to a file.
-A cycle, not an instruction: MR/MW are memory, IN/OUT are I/O, INTA is an
-interrupt acknowledge, and a granted DMA master's cycles are tagged [DMA].
-This watches the same stream every board sees, so it is not a CPU feature and
-works unchanged on any processor.
-
-MASK keeps only the cycles you name (no MASK keeps all): IN, OUT, IRQ, DMA,
-CONTENTION. A cycle is kept if it is any of them -- MASK=DMA is every cycle a
-master drove, whatever its type.
-
-```
-TRACE ON                    every cycle, to the console
-TRACE ON run.log            ...to a file
-TRACE ON MASK=IN,OUT        just the port traffic
-TRACE OFF
+attn       a control byte 01-1F (HEX): the key that returns to the monitor
+base       hex | octal -- the operator's number base for what it PRINTS
+upper      on|off: fold typed input to uppercase (much period software insists)
+strip7in   on|off: mask the high bit on input
+strip7out  on|off: mask the high bit on output (MITS BASIC's end-of-message)
+crlf       on|off: add LF after every CR the guest prints -- usually WRONG
+echo       on|off: local echo, for half-duplex hardware
+bell       on|off: pass 07 through to the host bell
+bsdel      off | bs (fold DEL->BS) | del (fold BS->DEL)
 ```
 
+These are the TERMINAL's, not a board's; a board's own line coding (baud,
+data_bits) is SHOW sio0. SHOW CONSOLE lists these with their current values.
 
-TRACE OFF stops the tracing but REMEMBERS where it was going -- a later TRACE
-ON, or a tracepoint, resumes to the same file and mask. That is what lets you
-aim a tracepoint at a file: TRACE ON run.log MASK=DMA, then TRACE OFF to arm
-it without emitting, then BREAK <addr> TRACE ON. See BREAK.
-
-
-### TYPE — `TY[PE]`
+ATTN is the key that takes the keyboard BACK from a running guest. The host
+intercepts it before the guest is ever offered the byte, so the guest cannot
+disable it -- and that is why it must not be a key the guest needs.
 
 ```
-TYPE "text"
+CONSOLE            the settings, and which board unit is wired to the terminal
+CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)
+CONSOLE upper=on strip7out=on   two at once, the classic MITS BASIC pair
 ```
-Put characters in the console's input buffer as if they were typed at the
-guest -- the same keystrokes the VDM window or a terminal would send. The
-guest reads them when it next looks at the keyboard, so they are TYPE-AHEAD:
-they wait in the buffer and are not forced on a program that is not reading.
 
-Escapes: \r carriage return, \n line feed, \t tab, \\ backslash, \" quote.
-ENTER sends a carriage return, so a command line for the guest ends in \r.
+This command does NOT choose which board is the console -- CONNECT does that
+(CONNECT <id>:<unit> console); bare CONSOLE only reports the one now wired.
 
-This is how a machine file starts a program the monitor cannot reach. `startup`
-runs MONITOR commands; `XE TRK80` is input to SOLOS, a program INSIDE the machine.
-Put TYPE before the RUN that starts the guest and the guest reads it at its first
-prompt -- in a TOML the backslash doubles (\\r), because the config parser keeps
-one for the command:
+
+### DISCONNECT — `DISC[ONNECT]`
 
 ```
-startup = ["MOUNT sol0:tape1 \"TRK80.WAV\"", "TYPE \"XE TRK80\\r\"", "RUN C000"]
-TYPE "XE TRK80\r"        type it now, at a running guest
+DISCONNECT <id>:<u>
+```
+The line then goes nowhere. NOT an error: an unconnected 6850 sits there with
+TDRE set forever, and a program that writes to it works fine and talks to
+nobody -- which is exactly what the card does with no cable in it.
+
+```
+DISC sio0:b
 ```
 
 
-A program that clears its keyboard as it starts drops keystrokes sent before it
-is ready; TYPE cannot help there, no more than a fast typist could.
-
-
-### SNAPSHOT — `SN[APSHOT]`
+### MOUNT — `M[OUNT]`
 
 ```
-SNAPSHOT <file>
+MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]
 ```
-Write the machine's STATE to a file: the CPU, the clock, and every board's
-registers, RAM and latches. NOT its configuration -- a snapshot is state, the
-way a machine file is configuration. RESTORE reads it back.
+Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
+WP write-protects it: the guest may read it and may not write it.
+RO is accepted and means the same -- it is the word for a ROM, which is
+read-only because of what it is.
+
+CREATE makes the file first if it is not there (empty), then mounts it -- a
+fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing
+file is a 'no such file', because a mistyped name is a mistake, not a new disk.
+
+A TRAILING k=v SETS A UNIT PROPERTY, applied the moment the medium is in --
+the same properties SHOW <id> lists and SET <id>:<unit> writes, said at the one
+moment you were going to say them anyway. A unit with no such property says so
+rather than ignoring you.
+
+EXTRACT is not a property and runs after the mount: it splits a cassette WAV
+into one .TAP per program on it, exactly as the EXTRACT verb does.
+extract=<base> names those files instead of taking the default.
+
+A NAME IS CASE-BLIND, and you may leave off what carries no information: the
+trailing index when only one such board is in the machine, and the unit when the
+board has only one you could mount into. Anything genuinely plural you must say,
+and it will tell you so.
 
 ```
-SNAPSHOT before-boot.snap
+MOUNT dsk0:drive0 disks/cpm.dsk
+MOUNT dsk0:drive1 disks/master.dsk WP
+MOUNT dsk0:drive1 new.dsk CREATE    a blank disk to FORMAT from the guest
+MOUNT mem0:rom0 roms/monitor.bin
+MOUNT ACR tape.bin      the one cassette, its one tape: acr0:tape
+MOUNT ACR new.wav CREATE mode=record   a blank tape, in and recording
+MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files
+```
+
+
+SHOW MOUNTS is the other half of this command: every socket in the machine,
+what is in it, and which are still empty. UNMOUNT takes it back out. A path is
+resolved as SHOW PATHS describes -- what you TYPE is relative to your shell.
+
+
+### REGION — `REGI[ON]`
+
+```
+REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]
+```
+A region is a POPULATED part of a board. What is not covered by one is an
+empty socket: it decodes nothing and floats to FF. `at` is an address, so it
+is hex; `size` is a size, so it is decimal, and K/M work.
+
+```
+REGI ADD mem0 type=ram at=0 size=48K
+REGI ADD mem0 type=rom at=FF00 mount=builtin:dbl
 ```
 
 
@@ -928,18 +868,86 @@ RESTORE before-boot.snap
 ```
 
 
-### NOBREAK — `NO[BREAK]`
+### SET — `SE[T]`
 
 ```
-NOBREAK [id]
+SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>
 ```
-Bare NOBREAK clears them all. An id is not on the wire, so it is decimal.
+SHOW <id> lists every property, its value, and whether it can be set while
+the machine runs. A property's base is its own: a port is hex, a baud rate
+is decimal.
+
+A UNIT HAS PROPERTIES OF ITS OWN, and <id>:<unit> is how you reach them: the
+tape in the recorder rather than the recorder, the disk in the drive rather
+than the controller. SHOW <id> prints both tables, the board's and each unit's.
+
+CONSOLE and DISPLAY are the HOST's terminal and video window rather than
+boards, and they take settings the same way. REG is a CPU register (see REGS),
+and BUS is the backplane's own diagnostics rather than anything plugged into it.
 
 ```
-NOBREAK 2
-NOBREAK
+SET mem0 fill=zero
+SET mem0 phantom=read
+SET acr0:tape mode=record   the tape in the recorder, not the recorder
+SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)
+SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
+SET REG A=3F             a register in the CPU that is in the socket
+SET BUS UNCLAIMED=WARN   warn on a cycle no board answered
+                         (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)
 ```
 
+
+### SHOW — `SH[OW]`
+
+```
+SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION
+```
+
+```
+SHOW mem0        regions and properties
+SHOW BOARDS      the board types you can add
+SHOW BOARD sol   one type's description and properties
+SHOW MACHINES    the built-in machines you can boot
+SHOW MACHINE     the current machine (add a name for a built-in's detail)
+SHOW BUS MAP     who decodes what, and what floats
+SHOW BUS IRQ     VI0-VI7: who is strapped where, who is pulling, who wins
+SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
+SHOW PATHS       what a path resolves against -- and there is more than one answer
+SHOW CONSOLE     which unit holds the keyboard, and its transforms
+SHOW DISPLAY     the host video window, and whether it takes the keyboard
+SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS
+SHOW ROMS        the ROM images built into this binary, and where each came from
+SHOW VERSION     which build this is, and the commit it was built from
+```
+
+
+### SNAPSHOT — `SN[APSHOT]`
+
+```
+SNAPSHOT <file>
+```
+Write the machine's STATE to a file: the CPU, the clock, and every board's
+registers, RAM and latches. NOT its configuration -- a snapshot is state, the
+way a machine file is configuration. RESTORE reads it back.
+
+```
+SNAPSHOT before-boot.snap
+```
+
+
+### UNMOUNT — `U[NMOUNT]`
+
+```
+UNMOUNT <id>:<u>
+```
+The socket is then EMPTY -- those pages float to FF, exactly as a card with
+no chip in it does.
+
+```
+U dsk0:drive0
+```
+
+## Getting help and leaving
 
 ### HELP — `HE[LP]`
 

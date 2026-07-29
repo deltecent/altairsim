@@ -32,7 +32,9 @@
 #include "core/value.h"
 #include "host/endpoint.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -164,6 +166,72 @@ void schemaTable(std::ostream& o, std::vector<Property>& props) {
     o << "\n";  // a heading may follow immediately, and pandoc wants the blank line
 }
 
+// A generator that cannot categorise something must STOP, not paper over it. The two
+// groupings below are the one place a board's or a command's section lives, and the
+// contract this whole file keeps is that adding one and forgetting its docs turns the
+// build red -- so an unlisted name is a hard error here, not a silent "Other".
+[[noreturn]] void die(const std::string& what) {
+    std::cerr << "gen-reference: " << what << "\n";
+    std::exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// Grouping the catalogue for the reader.
+//
+// registry.cpp lists boards in the order they were BUILT, and commands.cpp lists commands
+// in PREFIX-RESOLUTION priority order -- neither is the order a reader wants to browse, and
+// neither may be reordered to suit the manual (the first is nobody's job to alphabetise;
+// the second IS the abbreviation algorithm, cli/commands.h). So the manual groups them by
+// function and sorts by name WITHIN each group here, as a presentation over the real tables
+// -- the abbreviations still come from commands()'s true order via abbreviation().
+// ---------------------------------------------------------------------------
+
+// A board's functional group. Every board type must name one (see die()).
+const char* boardCategory(const std::string& n) {
+    if (n == "8080" || n == "z80") return "CPU";
+    if (n == "memory") return "Memory";
+    if (n == "dcdd" || n == "mds" || n == "hdsk" || n == "versafloppy" ||
+        n == "tarbell" || n == "tarbelldd") return "Disk";
+    if (n == "2sio" || n == "sio" || n == "sbc" || n == "pmmi" ||
+        n == "turnkey" || n == "usio") return "Serial";
+    if (n == "acr" || n == "uio") return "Tape";
+    if (n == "pio" || n == "4pio" || n == "d7a" || n == "c700" || n == "lpc")
+        return "Parallel and printer";
+    if (n == "vdm1" || n == "dazzler" || n == "vdb8024") return "Video";
+    if (n == "sol") return "Systems";  // a whole machine's I/O on one card -- more will come
+    if (n == "fp" || n == "virtc" || n == "hostbridge") return "Other";
+    return nullptr;
+}
+
+// The order the board groups print in.
+const std::vector<std::string> kBoardOrder = {
+    "CPU", "Memory", "Disk", "Serial", "Tape",
+    "Parallel and printer", "Video", "Systems", "Other",
+};
+
+// A monitor command's functional group. Every built command must name one (see die()).
+const char* commandGroup(const std::string& n) {
+    if (n == "RUN" || n == "STEP" || n == "NEXT" || n == "RESET" || n == "POWER" ||
+        n == "TYPE") return "Running the machine";
+    if (n == "DUMP" || n == "EXAMINE" || n == "DEPOSIT" || n == "EDIT" || n == "FILL" ||
+        n == "MOVE" || n == "SEARCH" || n == "COMPARE" || n == "LOAD" || n == "SAVE" ||
+        n == "IN" || n == "OUT" || n == "REGS") return "Examining and changing memory";
+    if (n == "BREAK" || n == "NOBREAK" || n == "TRACE" || n == "HISTORY" ||
+        n == "DISASM" || n == "SYMBOLS" || n == "WHO") return "Debugging and tracing";
+    if (n == "BOARDS" || n == "REGION" || n == "SET" || n == "SHOW" || n == "CONFIG" ||
+        n == "CONSOLE" || n == "MOUNT" || n == "UNMOUNT" || n == "CONNECT" ||
+        n == "DISCONNECT" || n == "SNAPSHOT" || n == "RESTORE")
+        return "Configuring the machine";
+    if (n == "HELP" || n == "QUIT") return "Getting help and leaving";
+    return nullptr;
+}
+
+// The order the command groups print in.
+const std::vector<std::string> kCommandOrder = {
+    "Running the machine", "Examining and changing memory", "Debugging and tracing",
+    "Configuring the machine", "Getting help and leaving",
+};
+
 // ---------------------------------------------------------------------------
 // ref/boards.md
 // ---------------------------------------------------------------------------
@@ -177,51 +245,83 @@ void boards(const std::string& dir) {
          "that could disagree with the program.\n\n"
          "Numbers follow the one rule: **on the wire → hex, never on the wire → decimal.**\n"
          "A port is hex; a baud rate and a drive count are decimal. The defaults below are\n"
-         "printed in each property's own base.\n\n";
+         "printed in each property's own base.\n\n"
+         "The catalogue is **grouped by function** — CPU, memory, disk, serial, and so on —\n"
+         "and within a group the boards are in **alphabetical order**.\n\n";
 
-    o << "| Type | What it is |\n|---|---|\n";
-    for (const auto& t : boardTypes())
-        o << "| [`" << t.name << "`](#" << t.name << ") | " << cell(t.description) << " |\n";
-    o << "\n";
-
-    for (const auto& t : boardTypes()) {
-        auto b = makeBoard(t.name);
-        if (!b) continue;
-        o << "\n## `" << t.name << "`\n\n" << t.description << "\n\n";
-
-        auto units = b->units();
-        if (!units.empty()) {
-            o << "**Units:** ";
-            for (size_t i = 0; i < units.size(); i++) {
-                if (i) o << ", ";
-                o << "`" << units[i].name << "` (" << unitKindName(units[i].kind) << ")";
-            }
-            o << "\n\n";
+    // Bucket the registry by group, keeping group order (kBoardOrder) and sorting each
+    // group by name. An unlisted board is a hard error -- boardCategory() returns null and
+    // this stops, rather than dropping a board out of the manual silently.
+    std::vector<BoardType> types = boardTypes();
+    auto byName = [](const BoardType& a, const BoardType& b) { return a.name < b.name; };
+    auto inGroup = [&](const std::string& g) {
+        std::vector<BoardType> v;
+        for (const auto& t : types) {
+            const char* c = boardCategory(t.name);
+            if (!c) die("board '" + t.name + "' has no category -- add it to boardCategory()");
+            if (g == c) v.push_back(t);
         }
+        std::sort(v.begin(), v.end(), byName);
+        return v;
+    };
 
-        // A card that owns a LIST -- drives on a controller, regions on a memory card --
-        // documents that list's keys, not merely that it takes one. `readonly` on a drive
-        // was real and worked and appeared in NO reference; that was the whole of bug #9.
-        for (const auto& s : b->subUnitTables()) {
-            auto sp = b->subUnitProperties(s);
-            o << "### `[[board." << s << "]]` — a list you may add\n\n";
-            if (sp.empty())
-                o << "*This card takes a `[[board." << s << "]]` list.*\n\n";
-            else
-                schemaTable(o, sp);
-        }
-
-        auto props = b->properties();
-        o << "### Board properties\n\n";
-        propTable(o, props);
-
-        for (const auto& u : units) {
-            auto up = b->unitProperties(u.name);
-            if (up.empty()) continue;
-            o << "\n### Unit `" << u.name << "` — `[board.unit." << u.name << "]`\n\n";
-            propTable(o, up);
-        }
+    // The index, one small table per group.
+    for (const auto& g : kBoardOrder) {
+        auto group = inGroup(g);
+        if (group.empty()) continue;
+        o << "**" << g << "**\n\n| Type | What it is |\n|---|---|\n";
+        for (const auto& t : group)
+            o << "| [`" << t.name << "`](#" << t.name << ") | " << cell(t.description) << " |\n";
         o << "\n";
+    }
+
+    // The detail, same grouping and order. A group is an `##` section; each board an `###`
+    // under it, so its anchor stays `#<name>` (the index links to it) and its own tables
+    // nest one level deeper.
+    for (const auto& g : kBoardOrder) {
+        auto group = inGroup(g);
+        if (group.empty()) continue;
+        o << "\n## " << g << "\n";
+
+        for (const auto& t : group) {
+            auto b = makeBoard(t.name);
+            if (!b) continue;
+            o << "\n### `" << t.name << "`\n\n" << t.description << "\n\n";
+
+            auto units = b->units();
+            if (!units.empty()) {
+                o << "**Units:** ";
+                for (size_t i = 0; i < units.size(); i++) {
+                    if (i) o << ", ";
+                    o << "`" << units[i].name << "` (" << unitKindName(units[i].kind) << ")";
+                }
+                o << "\n\n";
+            }
+
+            // A card that owns a LIST -- drives on a controller, regions on a memory card --
+            // documents that list's keys, not merely that it takes one. `readonly` on a
+            // drive was real and worked and appeared in NO reference; that was bug #9.
+            for (const auto& s : b->subUnitTables()) {
+                auto sp = b->subUnitProperties(s);
+                o << "#### `[[board." << s << "]]` — a list you may add\n\n";
+                if (sp.empty())
+                    o << "*This card takes a `[[board." << s << "]]` list.*\n\n";
+                else
+                    schemaTable(o, sp);
+            }
+
+            auto props = b->properties();
+            o << "#### Board properties\n\n";
+            propTable(o, props);
+
+            for (const auto& u : units) {
+                auto up = b->unitProperties(u.name);
+                if (up.empty()) continue;
+                o << "\n#### Unit `" << u.name << "` — `[board.unit." << u.name << "]`\n\n";
+                propTable(o, up);
+            }
+            o << "\n";
+        }
     }
 }
 
@@ -280,7 +380,11 @@ void commandsDoc(const std::string& dir) {
          "octal, `#` forces decimal, and a `K`/`M` suffix is always decimal. `SET CONSOLE\n"
          "base=octal` makes the wire class read and print in **split octal** (each byte its own\n"
          "`000`–`377` group, an address as two of them) — the MITS front-panel convention;\n"
-         "`base=hex` is the default. Either way both spellings stay typeable.\n\n";
+         "`base=hex` is the default. Either way both spellings stay typeable.\n\n"
+         "The commands are **grouped by what they do**, and within a group they are in\n"
+         "**alphabetical order**. The abbreviation beside each name is still derived from the\n"
+         "master table's priority order, not from this listing, so it is what you type\n"
+         "regardless of where the command sits here.\n\n";
 
     // The reserved ones, up front. They RESOLVE but do not run -- which is the honest
     // answer to "what does it not do yet", and it comes straight off the `built` flag
@@ -299,13 +403,31 @@ void commandsDoc(const std::string& dir) {
         o << "\n";
     }
 
-    o << "## The commands\n\n";
-    for (const auto& c : commands()) {
-        if (!c.built) continue;
-        o << "\n### " << c.name << " — `" << abbreviation(c) << "`\n\n";
-        o << "```\n" << c.usage << "\n```\n";
-        detailBlock(o, c.detail);
-        o << "\n";
+    // Every built command names a group; an unlisted one is a hard error (see die()), so a
+    // new command cannot slip into the manual uncategorised.
+    for (const auto& c : commands())
+        if (c.built && !commandGroup(c.name))
+            die("command '" + std::string(c.name) + "' has no group -- add it to commandGroup()");
+
+    // Grouped, and alphabetical within each group. Each group is an `##` section; each
+    // command an `###` under it, so the abbreviation heading nests correctly.
+    for (const auto& g : kCommandOrder) {
+        std::vector<const CommandDef*> inGroup;
+        for (const auto& c : commands())
+            if (c.built && g == commandGroup(c.name)) inGroup.push_back(&c);
+        std::sort(inGroup.begin(), inGroup.end(),
+                  [](const CommandDef* a, const CommandDef* b) {
+                      return std::string(a->name) < b->name;
+                  });
+        if (inGroup.empty()) continue;
+
+        o << "## " << g << "\n";
+        for (const auto* c : inGroup) {
+            o << "\n### " << c->name << " — `" << abbreviation(*c) << "`\n\n";
+            o << "```\n" << c->usage << "\n```\n";
+            detailBlock(o, c->detail);
+            o << "\n";
+        }
     }
 }
 
