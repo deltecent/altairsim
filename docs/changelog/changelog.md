@@ -243,19 +243,6 @@ built-in machines you can boot, the same list `--list` prints) and **`SHOW MACHI
 reaches the printed reference instead of a literal token. The reserved `RECORD`, `REPLAY` and
 `STOP` commands were **dropped** — not deferred — so their abbreviations are free again and the
 command list no longer carries a `*` legend for entries that do not exist.
-### CUTS tapes the simulator writes now load on a real Sol-20
-
-A `.WAV` the Sol records is now built the way a real Sol's cassette modem builds it — a
-flip-flop dividing a master clock into a square on a fixed grid, rounded by an RC filter, at a
-genuine dub's recording level — instead of a free-running oscillator at full volume. The old
-output round-tripped perfectly *here* but a real Sol read the header and then failed: its
-decoder times the tone's transitions, and the old modulation smeared those crossings off the
-clock grid and recorded them twice as hot as a real cassette. Two new deck properties expose
-the fix — **`level`** (recording level, percent of full scale, default 36) and **`rc`** (the
-Sol's edge-rounding corner in Hz, default 4000); the 88-ACR gains `level` too. Both defaults
-are measured off the one genuine dub in the package, and the simulator's output now matches
-that dub's level, crossing timing, and waveform curvature. Reading real dubs, and the shipped example tapes, were
-never affected.
 
 ### Printing to a real printer: the `printer:` endpoint
 
