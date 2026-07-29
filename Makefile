@@ -109,7 +109,12 @@ endif
 
 # --- platform link libraries ------------------------------------------------
 ifeq ($(WIN32),1)
-  LDLIBS += -lws2_32 -lwinmm
+  LDLIBS  += -lws2_32 -lwinmm
+  # Statically link the MinGW runtime (libstdc++, libgcc, libwinpthread) so the
+  # produced altairsim.exe runs on any Windows without the toolchain's bin/ on
+  # PATH -- otherwise it fails to launch off a machine that has no MinGW. Override
+  # with `make LDFLAGS=` if you deliberately want the DLL-linked build.
+  LDFLAGS ?= -static
 endif
 ifeq ($(SDL),1)
   ifeq ($(UNAME_S),Darwin)
@@ -173,7 +178,7 @@ OBJS := $(patsubst %,$(OBJDIR)/%.o,$(SRCS) $(GEN_CPP) $(MM_SRCS))
 all: $(BIN)
 
 $(BIN): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) $(LDLIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@
 
 # Every object waits on the three generated files (version_generated.h is
 # included widely); order-only so touching them does not force a full rebuild.
