@@ -262,7 +262,8 @@ The operator *describes* an abstract interface with straps rather than picking a
 is status/control, which port is data, which status bit means receive-data-ready and which means
 transmit-data-empty, and whether each is active-low. Control-port writes are accepted and ignored
 — there is no chip to program. To make common cards turnkey it ships **built-in profiles** in one
-table (`usioBuiltins()` — `tuart`, `imsai-sio2`), each just a bundle of those straps and trivial
+table (`usioBuiltins()` — `tuart`, `imsai-sio2`, `compupro-if2`, `compupro-ss1`), each just a
+bundle of those straps and trivial
 to extend: add one struct and its name becomes a `profile` choice and appears in the generated
 docs. USIO is **polled, with no interrupts** — a deliberate first phase, because without a working
 control/interrupt-enable register a strapped TX-empty interrupt would storm (TDRE is asserted at

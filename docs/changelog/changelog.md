@@ -15,9 +15,10 @@ specific UART, you describe the interface by **strap**: where the status/control
 sit, which status bit means **receive-data-ready** and which means **transmit-empty**, and the
 polarity of each. It talks only to `ByteStream` and the shared `CONNECT` endpoint grammar, so
 `file:`, `socket:`, `serial:`, `null`, `loopback` and `in:`/`out:` all work with no board-specific
-code. Built-in **profiles** bundle the straps for common cards — the first two are the **Cromemco
-TU-ART** and the **IMSAI SIO-2**, transcribed from the manuals (added under `reference/`) — and a
-profile's name becomes a value of the `profile` property, so `SET usio0 profile=…` picks one. A
+code. Built-in **profiles** bundle the straps for common cards — the **Cromemco TU-ART**, the **IMSAI
+SIO-2**, and the CompuPro **Interfacer II** and **System Support 1** serial channels, transcribed
+from the manuals (added under `reference/`) — and a profile's name becomes a value of the `profile`
+property, so `SET usio0 profile=…` picks one. A
 `baud` strap programs a connected **real serial port** (always 8N1); it is inert on other endpoints
 and does not pace the emulated line. Polled only — interrupts are a documented later phase. The new
 Developer Guide **serial-I/O** chapter walks the board/chip → `ByteStream` → `resolveEndpoint`

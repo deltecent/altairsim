@@ -197,13 +197,17 @@ void test_usio() {
         // The built-in table is the one place profiles live; both ship.
         const auto& bi = usioBuiltins();
         CHECK(bi.size() >= 2, "at least the two built-ins ship");
-        bool tuart = false, imsai = false;
+        bool tuart = false, imsai = false, if2 = false, ss1 = false;
         for (auto& e : bi) {
             if (e.name == "tuart") tuart = true;
             if (e.name == "imsai-sio2") imsai = true;
+            if (e.name == "compupro-if2") if2 = true;
+            if (e.name == "compupro-ss1") ss1 = true;
         }
         CHECK(tuart, "Cromemco TU-ART is a built-in");
         CHECK(imsai, "IMSAI SIO-2 is a built-in");
+        CHECK(if2, "CompuPro Interfacer II is a built-in");
+        CHECK(ss1, "CompuPro System Support 1 is a built-in");
 
         Rig g;
         g.set("profile", "tuart");
@@ -217,6 +221,29 @@ void test_usio() {
         CHECK(g.get("status_port") == 0x03, "imsai: status at BASE+3");
         CHECK(g.get("rdr_bit") == 1, "imsai: RxRDY is bit 1");
         CHECK(g.get("tdre_bit") == 0, "imsai: TxRDY is bit 0");
+
+        // CompuPro Interfacer II (1602/1863): data at BASE+0, status at BASE+1, TBMT=bit0,
+        // DAV=bit1, active high.
+        g.set("profile", "compupro-if2");
+        CHECK(g.get("data_port") == 0x00, "if2: data at BASE+0");
+        CHECK(g.get("status_port") == 0x01, "if2: status at BASE+1");
+        CHECK(g.get("rdr_bit") == 1, "if2: DAV is bit 1");
+        CHECK(g.get("tdre_bit") == 0, "if2: TBMT is bit 0");
+
+        // CompuPro System Support 1 (2651): same strap shape, default base 5C/5D.
+        g.set("profile", "compupro-ss1");
+        CHECK(g.get("data_port") == 0x5C, "ss1: data at 5C");
+        CHECK(g.get("status_port") == 0x5D, "ss1: status at 5D");
+        CHECK(g.get("rdr_bit") == 1, "ss1: RxRDY is bit 1");
+        CHECK(g.get("tdre_bit") == 0, "ss1: TxRDY is bit 0");
+
+        // A byte round-trips through the strapped ports of a CompuPro profile.
+        g.line->feed("Q");
+        CHECK((g.status() & 0x02) != 0, "ss1: RDR (bit 1) asserts when a byte waits");
+        CHECK(g.data() == 'Q', "ss1: the data port yields the received byte");
+        CHECK((g.status() & 0x01) != 0, "ss1: TDRE (bit 0) is set on an idle line");
+        g.out(g.straps().dataPort, 'Z');
+        CHECK(g.line->out() == "Z", "ss1: a data-port write reaches the line");
 
         // An explicit strap AFTER the profile wins -- the profile only presets.
         g.set("status_port", "50");
