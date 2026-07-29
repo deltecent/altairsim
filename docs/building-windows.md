@@ -504,3 +504,43 @@ as a build dependency and scans `tests/` too — an OS macro or header outside
 `src/platform/` **fails the build**. OS-specific code goes in `src/platform/win32/`;
 everything else stays platform-agnostic. (This is why the MSVC `strncasecmp` fix in
 `tests/cputest.cpp` is a macro-free `<cctype>` helper rather than an `#ifdef`.)
+
+---
+
+## 9. The MinGW + `make` convenience build (NOT for releases)
+
+There is a plain `Makefile` at the repository root that builds the `altairsim`
+binary with nothing but `make` and a C++20 `g++` — the SIMH way, from an ordinary
+Windows command prompt, no CMake and no Developer shell. It exists for people who
+build that way; **it is a convenience, not the supported build.**
+
+> **MSVC + CMake is the only supported Windows toolchain, and the only one a
+> release is ever built with** (`DISTRIBUTION.md`). The Makefile builds the binary
+> and nothing else — no tests, no reference-doc generation, no packaging. Use §2
+> for anything you intend to ship.
+
+```bat
+mingw32-make
+altairsim.exe --version
+altairsim.exe --list
+```
+
+- **OS is detected from the `%OS%` environment variable** (`Windows_NT`), so it
+  needs no `uname` and works from a bare `cmd`. It links `-lws2_32 -lwinmm` and
+  produces `altairsim.exe`.
+- **It builds headless by default on Windows** (null display). SDL3 is not
+  auto-detected here — pkg-config is rarely present under MinGW. For a windowed
+  build, point it at your SDL3 by hand:
+  ```bat
+  mingw32-make SDL=1 SDL_CFLAGS=-IC:\SDL3\include SDL_LIBS="-LC:\SDL3\lib -lSDL3"
+  ```
+- **`mingw32-make help`** prints what it detected (OS, SDL, CUPS) and the switches
+  (`NO_SDL=1`, `CXX=...`, `CXXFLAGS=...`).
+
+**How it stays CMake-free.** CMake generates three source files at build time
+(the embedded ROMs, the embedded machines and a version header). The Makefile
+reproduces them **byte-for-byte** with a tiny bootstrap generator, `tools/embed.cpp`,
+that it compiles first and then runs — the SIMH `sim_BuildROMs.c` pattern. On a
+machine that also has a CMake `build/`, `make check-gen` proves the two match.
+
+The same `Makefile` builds on Linux and macOS; see `docs/building-linux.md` §7.
