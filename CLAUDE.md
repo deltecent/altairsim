@@ -64,6 +64,11 @@ needs no environment at all.
   a local pandoc is a different pandoc, and a different pandoc is a different document.
 - **Never give hardware a behavior it never had** to fix a software symptom. Check the host,
   the filter and the monitor layers first.
+- **`<!-- @claude ... -->` in a Markdown file is a review comment for you.** The annotated file
+  is usually a *copy kept outside the repo* that shares the master's basename; match it to the
+  repo file of that name (ask when the name is ambiguous) and revise the **master** to address
+  each note. Never leave a marker in a `docs/manual/` chapter — its raw text is grep-checked.
+  Full convention: `docs/devguide/doc-review-comments.md`.
 
 ## Testing
 
