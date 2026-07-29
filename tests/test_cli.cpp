@@ -1372,8 +1372,44 @@ void test_achieved_hz() {
               "...and FORMAT=OCTAL overrides a name that is not .oct");
         std::ostringstream d5;
         mon.exec("SAVE " + dat + " 200-201 FORMAT=DECIMAL", d5);
-        CHECK(d5.str().find("BIN, HEX or OCTAL") != std::string::npos,
-              "...and an unknown FORMAT names all three, octal included");
+        CHECK(d5.str().find("BIN, HEX, OCTAL or PRN") != std::string::npos,
+              "...and an unknown FORMAT names all four, PRN included");
+
+        // PRN is the fourth, WRITE-ONLY format (issue #176): a .PRN or .LST name picks
+        // it, FORMAT=PRN overrides, and the file is the DISASM listing -- address,
+        // object bytes, mnemonic -- written for reading, not loading. The bytes at 0200
+        // are 3E 41, which is MVI A,41; the listing must decode them as such.
+        const std::string prnf = (dir / "img.prn").generic_string();
+        std::ostringstream d6;
+        mon.exec("SAVE " + prnf + " 200-201", d6);
+        CHECK(d6.str().find("(listing)") != std::string::npos, "a .PRN name saves a listing");
+        {
+            std::ifstream f(prnf);
+            std::string hdr, row;
+            std::getline(f, hdr);
+            std::getline(f, row);
+            CHECK(hdr.rfind("; altairsim disassembly", 0) == 0,
+                  "...the file opens with the disassembly header comment");
+            CHECK(row.rfind("0200", 0) == 0 && row.find("3E 41") != std::string::npos &&
+                      row.find("MVI A,41") != std::string::npos,
+                  "...and the listing decodes 3E 41 at 0200 as MVI A,41");
+        }
+        std::ostringstream d7;
+        mon.exec("SAVE " + dat + " 200-201 FORMAT=PRN", d7);
+        CHECK(d7.str().find("(listing)") != std::string::npos,
+              "...and FORMAT=PRN overrides a name that is not .prn/.lst");
+
+        // A listing needs a decoder, so a machine with no CPU refuses it BEFORE it
+        // truncates the file -- and it names the formats that would have worked.
+        Machine noCpu;
+        Monitor mc(noCpu);
+        std::ostringstream ne;
+        mc.exec("BOARDS ADD memory mem0", ne);
+        mc.exec("REGION ADD mem0 type=ram at=0 size=1K", ne);
+        std::ostringstream d8;
+        mc.exec("SAVE " + dat + " 0-1 FORMAT=PRN", d8);
+        CHECK(d8.str().find("no CPU") != std::string::npos,
+              "a .PRN with no CPU to disassemble is refused, not written empty");
 
         fs::remove_all(dir, ec);
     }
