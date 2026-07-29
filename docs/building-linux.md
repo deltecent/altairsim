@@ -265,3 +265,30 @@ directory is stale, **not** that the pull broke anything.
 suspecting the code.** `rm -rf build && cmake -S . -B build && cmake --build
 build` is the one-line answer, and it distinguishes the two cases: if a clean
 build works, the tree was fine and the cache was stale.
+
+---
+
+## 7. The plain `make` convenience build (NOT the supported build)
+
+There is a `Makefile` at the repository root that builds the `altairsim` binary
+with nothing but `make` and a C++20 compiler — no CMake. It exists so the SIMH
+crowd ("just `make` and `gcc`") can build this too, and it is the *same* file that
+builds under MinGW on Windows.
+
+> **CMake is authoritative.** The Makefile builds only the binary — not the test
+> suite, the generated reference docs, the `platform_lint` guard, or any release
+> packaging. For anything beyond a quick local binary, use §2.
+
+```bash
+make               # auto-detects SDL3 (pkg-config) and CUPS (cups-config)
+make NO_SDL=1      # force a headless build
+make CXX=clang++   # pick a compiler
+make help          # show what was detected and the switches
+./altairsim --list
+```
+
+It reproduces CMake's three generated sources (embedded ROMs, embedded machines,
+version header) **byte-for-byte** via a bootstrap generator it compiles first,
+`tools/embed.cpp` — the SIMH `sim_BuildROMs.c` pattern, so it needs neither CMake
+nor a POSIX shell. Where a CMake `build/` also exists, `make check-gen` diffs the
+two to prove they match. See `docs/building-windows.md` §9 for the MinGW notes.
