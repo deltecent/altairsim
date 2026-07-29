@@ -5,11 +5,9 @@ cmake-build-*/
 _deps/
 CMakeUserPresets.json
 
-# The plain-Makefile convenience build (docs/building-*.md): its objects and the
-# binary it drops in the repo root. The binary has no suffix on *nix, .exe on Windows.
+# The plain-Makefile convenience build (docs/building-*.md): objects, generated
+# sources and the binary all live here (kept out of build/, which is CMake's).
 build-make/
-/altairsim
-/altairsim.exe
 
 # Editors / IDEs
 .vscode/

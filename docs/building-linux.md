@@ -284,8 +284,11 @@ make               # auto-detects SDL3 (pkg-config) and CUPS (cups-config)
 make NO_SDL=1      # force a headless build
 make CXX=clang++   # pick a compiler
 make help          # show what was detected and the switches
-./altairsim --list
+./build-make/altairsim --list
 ```
+
+The binary and all intermediates land in **`build-make/`** — kept out of `build/`,
+which is the CMake build's, so the two never collide.
 
 It reproduces CMake's three generated sources (embedded ROMs, embedded machines,
 version header) **byte-for-byte** via a bootstrap generator it compiles first,

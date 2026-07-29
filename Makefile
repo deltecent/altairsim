@@ -8,11 +8,14 @@
 # who build that way ("just make + gcc from the Windows command prompt") can
 # build this too.
 #
-#   make                 build ./altairsim (auto-detects SDL3 and CUPS)
+#   make                 build build-make/altairsim (auto-detects SDL3 and CUPS)
 #   make NO_SDL=1        force a headless build even if SDL3 is installed
 #   make CXX=clang++     pick a compiler
 #   make -j              parallel build
-#   make clean           remove build-make/ and the binary
+#   make clean           remove build-make/ (objects, generated sources, binary)
+#
+# The binary and all intermediates land in build-make/ -- deliberately NOT in
+# build/, which belongs to the CMake build, so the two never collide.
 #
 # THIS IS NOT THE SUPPORTED RELEASE BUILD. CMake is authoritative and MSVC is
 # the only supported Windows toolchain for releases (see DISTRIBUTION.md); this
@@ -56,7 +59,7 @@ BINDIR   := build-make
 OBJDIR   := $(BINDIR)/obj
 GENDIR   := $(BINDIR)/generated
 EMBED    := $(BINDIR)/embed$(EXE)
-BIN      := altairsim$(EXE)
+BIN      := $(BINDIR)/altairsim$(EXE)
 
 CPPFLAGS += -Isrc -I$(GENDIR)
 
@@ -228,7 +231,6 @@ check-gen: $(GEN_CPP)
 
 clean:
 	@$(call rm_rf,$(BINDIR))
-	@$(call rm_f,$(BIN))
 
 help:
 	@echo "targets: all (default), clean, check-gen, help"
