@@ -71,7 +71,28 @@ send "RUN\r"
 # reader while it is still processing RUN races it, and the keystrokes go to the wrong
 # reader -- which is exactly how this script "proved" the editor never loads when in fact
 # it loads perfectly well. A human waits to see the console come back; so does this.
+#
+# The "[console -- ^E ...]" banner is NECESSARY but not SUFFICIENT: the monitor prints it
+# BEFORE it puts the terminal in raw mode and starts pumping stdin to the guest (see
+# enterRaw() right after the banner in the RUN path). EDT typed in that gap -- on the
+# banner -- is rarely swallowed, which is exactly the ~1-in-30 "editor never loaded" flake.
+# So do not key the payload off the banner. Wait for the banner, then prove the GUEST is
+# reading again by round-tripping a bare CR to the PS2 monitor's "  ?" prompt. Only a byte
+# the guest echoes back tells us stdin is flowing all the way through; a human does the same
+# thing when they tap RETURN to see the prompt wake up before typing the real command.
 expect -ex "console"
+set resumed 0
+for {set tries 0} {$tries < 20} {incr tries} {
+    send "\r"
+    set timeout 3
+    expect {
+        -ex "  ?" { set resumed 1 }
+        timeout   {}
+    }
+    set timeout 45
+    if {$resumed} break
+}
+if {!$resumed} { puts "\n### FAIL: guest never resumed its console poll after RUN"; exit 1 }
 
 # ReadMe step 8: "Load the editor, type: EDT<cr> ... When loaded, the editor's prompt '*'
 # is displayed." The monitor now reads 1,920 bytes off the ACR.
