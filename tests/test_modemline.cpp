@@ -70,7 +70,13 @@ void test_modemline() {
         auto caller = platform::connectTcp("127.0.0.1", port, err);
         CHECK(caller != nullptr, ("the caller connects: " + err).c_str());
 
-        waitFor([&] { if (caller) caller->poll(); m.pump(); }, [&] { return m.ringing(); });
+        // Wait for the caller to be ESTABLISHED as well as ringing: its non-blocking
+        // connect can still be completing when the listener accepts (POLLOUT lags the
+        // accept on some kernels), and a write into a still-connecting socket sends
+        // nothing. Gating on established() here is what makes the held-bytes write below
+        // actually land in the kernel buffer instead of vanishing.
+        waitFor([&] { if (caller) caller->poll(); m.pump(); },
+                [&] { return m.ringing() && caller && caller->established(); });
         CHECK(m.ringing(), "the caller connected -> the line RINGS");
         CHECK(!m.carrier(), "...but carrier stays DOWN until we answer");
         CHECK(m.status().ring, "...and RI is asserted (the level; the board times the bursts)");
