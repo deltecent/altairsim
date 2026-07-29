@@ -101,7 +101,7 @@ killall -9 cc1plus cmake make
 of free RAM, build **serially**: just `cmake --build build --target altairsim`
 with **no `-j` at all**. It is slower in wall-clock but it will not fall over,
 and for a build this size the difference is minutes, not hours. The serial build
-is exactly how this port was verified on `bart` (section 5).
+is exactly how this port was verified on `bart` (section 6).
 
 Only if the box genuinely has the memory headroom, cap jobs to roughly one per
 1.5–2 GB of RAM rather than turning `-j` fully loose:
@@ -152,7 +152,39 @@ libstdc++, and `-x "help" default` confirms a machine actually initializes.
 
 ---
 
-## 5. How this Linux build was tested
+## 5. Running the tests
+
+The tests run through `ctest` against the `build/` directory:
+
+```bash
+ctest --test-dir build -LE slow     # unit + acceptance (~30 s)
+ctest --test-dir build              # ...plus the full 8080 exerciser
+ctest --test-dir build -L hw        # modem control, against a real null-modem cable
+```
+
+`-LE slow` is the everyday run; it excludes only the multi-billion-instruction
+8080/Z80 exercisers (drop it to include them). Match the pass line —
+`100% tests passed` — not merely the absence of the word "error".
+
+The `-L hw` leg is opt-in and touches real hardware. `serial-hw` drives modem
+control lines over a physical null-modem cable between two serial ports, which
+it finds through the `ALTAIR_SERIAL_A` / `ALTAIR_SERIAL_B` environment variables.
+List the serial ports on your machine and point the test at two that are cabled
+together:
+
+```bash
+ls /dev/ttyUSB* /dev/ttyACM*        # USB FTDI/CDC adapters show up here
+ALTAIR_SERIAL_A=/dev/ttyUSB0 ALTAIR_SERIAL_B=/dev/ttyUSB1 ctest --test-dir build -L hw
+```
+
+**If those variables are unset, `serial-hw` exits 77 and `ctest` reports it
+`Skipped`.** That is the expected result on any machine without the cable — not
+a failure. The test skips loudly on purpose: a hardware test that quietly
+"passed" with no hardware attached would be a green tick that means nothing.
+
+---
+
+## 6. How this Linux build was tested
 
 The build was developed on macOS and validated on a real Linux box over SSH.
 The exact procedure, so it can be reproduced:
@@ -205,7 +237,7 @@ To reproduce on any Linux host, do the same: get a C++20 toolchain + CMake ≥
 
 ---
 
-## 6. Rebuilding after a `git pull`
+## 7. Rebuilding after a `git pull`
 
 **The commands are the same as for a fresh clone.** There is no separate
 procedure, and no need to delete `build/`:
@@ -268,7 +300,7 @@ build works, the tree was fine and the cache was stale.
 
 ---
 
-## 7. The plain `make` convenience build (NOT the supported build)
+## 8. The plain `make` convenience build (NOT the supported build)
 
 There is a `Makefile` at the repository root that builds the `altairsim` binary
 with nothing but `make` and a C++20 compiler — no CMake. It exists so the SIMH

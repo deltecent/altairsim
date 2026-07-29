@@ -212,12 +212,19 @@ ctest --test-dir build -C Release -LE slow --output-on-failure
   does not fail the build.
 - **The `-L hw` leg** (`serial-hw`, `socket-hw`, `terminal-hw`) touches the real
   world. `socket-hw` always runs; `serial-hw` self-skips without real ports
-  (`ALTAIR_SERIAL_A/B`) and `terminal-hw` self-skips without a console. Run it
-  explicitly — all three are described in §5:
+  (`ALTAIR_SERIAL_A/B`) and `terminal-hw` self-skips without a console. A
+  `Skipped` result for either when the hardware or console is absent is
+  **expected — it does not fail the build.** `serial-hw` exits 77 (reported as
+  `Skipped`) rather than passing silently, so absent hardware never reads as a
+  false green. Run it explicitly to exercise the ports — all three are described
+  in §5:
   ```powershell
   $env:ALTAIR_SERIAL_A="COM4"; $env:ALTAIR_SERIAL_B="COM10"   # serial-hw only
   ctest --test-dir build -C Release -L hw --output-on-failure
   ```
+  Find your COM port numbers in **Device Manager → Ports (COM & LPT)** (or run
+  `mode` in a shell); set `ALTAIR_SERIAL_A`/`_B` to two ports joined by a
+  null-modem cable.
 
 Everything that registers passes. If a new win32 problem crashes the `unit`
 aggregate with `0xC0000409`, §6 shows how to isolate it.
@@ -562,4 +569,4 @@ reproduces them **byte-for-byte** with a tiny bootstrap generator, `tools/embed.
 that it compiles first and then runs — the SIMH `sim_BuildROMs.c` pattern. On a
 machine that also has a CMake `build/`, `make check-gen` proves the two match.
 
-The same `Makefile` builds on Linux and macOS; see `docs/building-linux.md` §7.
+The same `Makefile` builds on Linux and macOS; see `docs/building-linux.md` §8.
