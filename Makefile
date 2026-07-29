@@ -55,6 +55,23 @@ endif
 # --- toolchain --------------------------------------------------------------
 CXX      ?= g++
 CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra
+
+# Fail fast on a too-old compiler. This codebase needs real C++20 (GCC 11+, the
+# same floor as the CMake build -- docs/building-linux.md). GCC 9/10 stumble in
+# confusing ways: 9 rejects `-std=c++20` outright (it only knows `c++2a`), and a
+# classic MinGW.org toolchain then hides `_popen` from tools/embed.cpp under
+# strict-ANSI. One clear message beats that cascade. `-dumpversion` gives the
+# major on both g++ and clang++ and works from a bare Windows cmd via $(shell).
+# Skipped for clean/help so those still work on an old toolchain; a non-numeric
+# or empty result (unknown compiler) passes rather than blocking.
+ifeq (,$(filter clean help,$(MAKECMDGOALS)))
+  CXX_MAJOR := $(firstword $(subst ., ,$(shell $(CXX) -dumpversion)))
+  ifneq (,$(CXX_MAJOR))
+    ifeq (,$(filter-out 0 1 2 3 4 5 6 7 8 9 10,$(CXX_MAJOR)))
+      $(error altairsim needs a C++20 compiler (GCC 11+). Detected $(CXX) $(CXX_MAJOR).x, which is too old -- its C++20 support is incomplete. Install a modern MinGW-w64 (WinLibs, winlibs.com) and put its bin on PATH. See docs/building-windows.md section 9)
+    endif
+  endif
+endif
 BINDIR   := build-make
 OBJDIR   := $(BINDIR)/obj
 GENDIR   := $(BINDIR)/generated
