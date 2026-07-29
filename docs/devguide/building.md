@@ -161,6 +161,30 @@ the cable:
 ALTAIR_SERIAL_A=/dev/ttyUSB0 ALTAIR_SERIAL_B=/dev/ttyUSB1 ctest --test-dir build -L hw
 ```
 
+**The cable is not just any null-modem cable.** `serial-hw` drives the modem-control
+lines, so the pins have to actually cross — and it needs the *full-handshake* wiring in
+which **one end's DTR fans out to both DSR and DCD** on the other. A 3-wire cable
+(TxD/RxD/GND) carries the bytes but leaves every control pin dead; a partial null-modem
+that loops DTR/DSR/DCD back locally instead of crossing them looks identical to the eye
+and fails the same checks. That is the usual cause of a `serial-hw` that fails rather than
+skips — the byte check passes and the pin checks do not.
+
+Wire it as (a DE-9 DTE pinout in parentheses, both ends):
+
+| A end | | B end |
+|---|---|---|
+| TxD (3) | → | RxD (2) |
+| RxD (2) | ← | TxD (3) |
+| RTS (7) | → | CTS (8) |
+| CTS (8) | ← | RTS (7) |
+| DTR (4) | → | DSR (6) **and** DCD (1) |
+| DSR (6) **and** DCD (1) | ← | DTR (4) |
+| GND (5) | ↔ | GND (5) |
+
+So B raising DTR is a *carrier appearing* at A — to a 6850 strapped `dcd=wired`,
+indistinguishable from a modem, which is the whole point of the test. The wiring is
+restated at the top of `tests/serialtest.cpp`.
+
 ## The documentation is part of the build
 
 Two documents come out of this tree:

@@ -177,6 +177,24 @@ ls /dev/ttyUSB* /dev/ttyACM*        # USB FTDI/CDC adapters show up here
 ALTAIR_SERIAL_A=/dev/ttyUSB0 ALTAIR_SERIAL_B=/dev/ttyUSB1 ctest --test-dir build -L hw
 ```
 
+**The cable must be a full-handshake null modem, not a 3-wire one.** The test drives
+the modem-control pins, so they have to cross — and it needs one end's **DTR to fan out
+to both DSR and DCD** on the other (DE-9 DTE pins, both ends):
+
+| A end | | B end |
+|---|---|---|
+| TxD (3) | → | RxD (2) |
+| RxD (2) | ← | TxD (3) |
+| RTS (7) | → | CTS (8) |
+| CTS (8) | ← | RTS (7) |
+| DTR (4) | → | DSR (6) **and** DCD (1) |
+| DSR (6) **and** DCD (1) | ← | DTR (4) |
+| GND (5) | ↔ | GND (5) |
+
+A 3-wire cable, or a null-modem that loops DTR/DSR/DCD back locally instead of crossing
+them, carries the bytes but fails every pin check — that is the usual cause of a
+`serial-hw` that *fails* rather than skips.
+
 **If those variables are unset, `serial-hw` exits 77 and `ctest` reports it
 `Skipped`.** That is the expected result on any machine without the cable — not
 a failure. The test skips loudly on purpose: a hardware test that quietly
