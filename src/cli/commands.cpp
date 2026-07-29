@@ -548,6 +548,10 @@ static const std::vector<CommandDef> kCommands = {
      "              one). The bytes buffer into a JOB, submitted after a few idle seconds\n"
      "              (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling\n"
      "              (?max=N). 8-bit clean -- a printer control language is not text.\n"
+     "  <endpoint>|FILE   a TAP: append |FILE to ANY endpoint above to also log the line,\n"
+     "              both directions, to a hex FILE -- a poor man's protocol analyzer. The\n"
+     "              guest cannot tell it is there. ?fmt=dump|cols|jsonl picks the layout,\n"
+     "              ?ts=elapsed|wall|none the timestamps, ?pins=off drops the modem edges.\n"
      "\n"
      "Exactly ONE unit may hold the console; connecting a second STEALS it and says\n"
      "who from. Two boards reading one keyboard would each get half the characters.\n"
@@ -562,6 +566,7 @@ static const std::vector<CommandDef> kCommands = {
      "  CONN 4pio0:ja in:TAPE.TAP?cps=300                 a paper-tape reader (88-HSR)\n"
      "  CONN 4pio0:jb out:TAPE.PUN                         a paper-tape punch\n"
      "  CONN lpt0:prn printer:linewriter                  print to a real host queue\n"
+     "  CONN sio0:b socket:2323|bbs.hex?fmt=cols          telnet in, and TAP it to a log\n"
      "DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it."},
     // RESET sits with POWER, which is the other command that throws state away, and
     // BELOW REGS -- which is what costs it `R` and `RE` and leaves it `RES`. It has to

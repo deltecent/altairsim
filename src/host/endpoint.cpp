@@ -5,6 +5,7 @@
 #include "host/file.h"
 #include "host/hostserial.h"
 #include "host/tcp.h"
+#include "host/tee_stream.h"
 #include "platform/serial.h"
 #include "platform/socket.h"
 
@@ -69,11 +70,31 @@ std::string endpointHelp(bool all) {
     const bool havePrinter = false;
 #endif
     if (all || havePrinter) s += " | printer:QUEUE";
+    // Any endpoint can be TAPPED: append `|FILE` to log the line to a hex file (a
+    // poor man's protocol analyzer; host/tee_stream.h). Advertised last so it reads as
+    // a suffix on all of the above, not a peer of them.
+    s += " | <endpoint>|FILE";
     return s;
 }
 
 std::string rebaseEndpointPaths(const std::string&                                    spec,
                                 const std::function<std::string(const std::string&)>& rebase) {
+    // A capture tap (ENDPOINT|FILE) carries a path on BOTH sides: the inner endpoint may
+    // be an in:/out: file, and the log FILE itself is a path. Split on the `|` first,
+    // rebase each independently, and rejoin -- otherwise a machine-file relative
+    // `in:tape.tap|../logs/cap.hex` resolves its log against the shell cwd.
+    if (size_t bar = spec.find('|'); bar != std::string::npos) {
+        std::string inner = spec.substr(0, bar);
+        std::string file  = spec.substr(bar + 1);
+        std::string path = file, opts;
+        if (size_t q = file.find('?'); q != std::string::npos) {
+            path = file.substr(0, q);
+            opts = file.substr(q);  // keeps the leading '?'
+        }
+        if (!path.empty()) path = rebase(path);
+        return rebaseEndpointPaths(inner, rebase) + "|" + path + opts;
+    }
+
     // Only in:/out: name a path; everything else is returned byte-for-byte.
     if (spec.rfind("in:", 0) != 0 && spec.rfind("out:", 0) != 0) return spec;
 
@@ -120,6 +141,107 @@ std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> reb
 }
 
 std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string& err) {
+    // ---- ENDPOINT|FILE -- a transparent HEX TAP on the line (host/tee_stream.h) ----
+    //
+    // Checked FIRST, before the prefix dispatch: a `|` appears nowhere else in the
+    // grammar, so its mere presence means "capture", and `socket:23|cap.hex` must not be
+    // handed to the socket: branch. Split on the FIRST `|`: the left is any endpoint
+    // (recursed here, options and all), the right is the log path plus the tee's own
+    // `?key=value&...`. The board never learns any of this -- it gets a ByteStream.
+    if (size_t bar = spec.find('|'); bar != std::string::npos) {
+        std::string inner = spec.substr(0, bar);
+        std::string file  = spec.substr(bar + 1);
+        if (inner.empty()) {
+            err = "capture needs ENDPOINT|FILE (an endpoint before '|'), "
+                  "e.g. socket:2323|cap.hex";
+            return nullptr;
+        }
+
+        std::string path = file, query;
+        if (size_t q = file.find('?'); q != std::string::npos) {
+            path  = file.substr(0, q);
+            query = file.substr(q + 1);
+        }
+        if (path.empty()) {
+            err = "capture needs a log file after '|', e.g. socket:2323|cap.hex";
+            return nullptr;
+        }
+
+        // The tee's options ride the same `?key[=value][&key...]` grammar as in:/printer:,
+        // and every value goes through the one parseValue -- no second convention.
+        TeeStream::Params params;
+        for (size_t start = 0; start <= query.size();) {
+            size_t      amp = query.find('&', start);
+            std::string tok =
+                query.substr(start, amp == std::string::npos ? std::string::npos : amp - start);
+            if (!tok.empty()) {
+                size_t      eq  = tok.find('=');
+                std::string key = tok.substr(0, eq);
+                std::string val = eq == std::string::npos ? "true" : tok.substr(eq + 1);
+
+                Value       v;
+                std::string perr;
+                if (key == "fmt") {
+                    if (val == "dump") params.fmt = TeeStream::Fmt::Dump;
+                    else if (val == "cols") params.fmt = TeeStream::Fmt::Cols;
+                    else if (val == "jsonl") params.fmt = TeeStream::Fmt::Jsonl;
+                    else {
+                        err = "capture: fmt is dump, cols or jsonl (got '" + val + "')";
+                        return nullptr;
+                    }
+                } else if (key == "width") {
+                    if (!parseValue(val, Kind::Int, v, perr) || v.i() < 1 || v.i() > 256) {
+                        err = "capture: width wants 1..256 bytes per row: " + perr;
+                        return nullptr;
+                    }
+                    params.width = (int)v.i();
+                } else if (key == "gap") {
+                    if (!parseValue(val, Kind::Int, v, perr) || v.i() < 0) {
+                        err = "capture: gap wants milliseconds >= 0 (0 = never): " + perr;
+                        return nullptr;
+                    }
+                    params.gapNs = (uint64_t)v.i() * 1'000'000ull;
+                } else if (key == "ts") {
+                    if (val == "elapsed") params.ts = TeeStream::Ts::Elapsed;
+                    else if (val == "wall") params.ts = TeeStream::Ts::Wall;
+                    else if (val == "none") params.ts = TeeStream::Ts::None;
+                    else {
+                        err = "capture: ts is elapsed, wall or none (got '" + val + "')";
+                        return nullptr;
+                    }
+                } else if (key == "pins") {
+                    if (!parseValue(val, Kind::Bool, v, perr)) {
+                        err = "capture: pins wants a boolean: " + perr;
+                        return nullptr;
+                    }
+                    params.pins = v.b();
+                } else {
+                    err = "capture: unknown option '" + key +
+                          "'. Options are fmt, width, gap, ts, pins -- the log file comes "
+                          "before '?'";
+                    return nullptr;
+                }
+            }
+            if (amp == std::string::npos) break;
+            start = amp + 1;
+        }
+
+        // Recurse for the wrapped line; its error (a bad inner spec) is the operator's.
+        auto innerStream = resolveEndpoint(inner, err);
+        if (!innerStream) return nullptr;
+
+        // The resolver opens the log so it can REFUSE cleanly here (a bad path is a
+        // failed CONNECT, not a half-built tap). Truncate: a capture is a fresh trace.
+        std::ofstream log(path, std::ios::out | std::ios::trunc);
+        if (!log) {
+            err = "cannot open '" + path + "' for capture";
+            return nullptr;
+        }
+
+        // describe() echoes `inner|file`, so SHOW / CONFIG SAVE round-trip the tap.
+        return std::make_unique<TeeStream>(std::move(innerStream), file, params, std::move(log));
+    }
+
     if (spec == "console") return std::make_unique<ConsoleRef>();
     if (spec == "null") return std::make_unique<NullStream>();
     if (spec == "loopback") return std::make_unique<LoopbackStream>();

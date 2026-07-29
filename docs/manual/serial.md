@@ -34,6 +34,10 @@ This table is exhaustive. There are no others.
 | `printer:QUEUE` | a real print queue on this host, write-only. Buffers the bytes into a job and prints it. Present only where the build found a host print system. |
 | `scripted` | a terminal with a caller in place of a human. No tty need exist. It is what the MCP tools and the test suite type into; you are unlikely to type it yourself. |
 
+Any of these can be **tapped**: append `|FILE` to log the line to a hex file as it runs. That
+is a modifier on an endpoint, not an endpoint of its own — see *Tapping a line to a log file*,
+below.
+
 ### `null` is not an error
 
 An unconnected unit is `null`, and **that is a legitimate state, not a fault.** A 6850 with
@@ -212,6 +216,59 @@ contains spaces, quote the whole endpoint as shown above. Connect to `printer:` 
 
 Like `out:`, a printer line is **8-bit clean** — the bytes the program sent are the bytes the
 printer gets.
+
+## Tapping a line to a log file (a poor man's protocol analyzer)
+
+When you are trying to work out what a guest and the far end are actually saying to each other,
+you want to *see the bytes*. Append **`|FILE`** to any endpoint and `altairsim` writes every
+byte that crosses the line — both directions — to a text file as it runs, in hex and ASCII, with
+timestamps. The guest cannot tell the tap is there, and it never changes a byte, so it is safe on
+a binary transfer as well as on a terminal.
+
+```
+altairsim> CONNECT sio0:b socket:2323|bbs.hex
+```
+
+Telnet in, drive the guest, and `bbs.hex` fills with the conversation:
+
+```
+# altairsim capture  socket:2323  2026-07-29 14:03:11  fmt=dump
++0.001000  TX 0000  41 54 5A 0D                                       ATZ.
++0.048213  RX 0000  0D 0A 4F 4B 0D 0A                                 ..OK..
++9.100000  [DCD^]
++45.30000  [DTR_]
+```
+
+`TX` is what the guest sent, `RX` what came back; the offset counts bytes within a burst, and the
+right-hand column is the ASCII (a `.` for anything unprintable). Lines in `[...]` are **modem
+control-line** edges — carrier, DTR, RTS and the rest — logged as they change, with `^` for a
+rising edge and `_` for a falling one, so you can see the far end pick up and hang up.
+
+The file is truncated each time you connect: a capture is a fresh trace, not an append. The whole
+tap is remembered — `SHOW` prints it and `CONFIG SAVE` writes it back — so a machine file can carry
+a line that is permanently traced.
+
+### Three layouts, and a few knobs
+
+The tap's options ride the same `?key=value` grammar the other endpoints use, after the file name:
+
+```
+altairsim> CONNECT sio0:b socket:2323|bbs.hex?fmt=cols
+altairsim> CONNECT sio0:b in:reader.tap?cps=300|trace.log?fmt=jsonl
+```
+
+- **`fmt=dump`** (the default) is the layout above: one hex row per line, strictly in time order —
+  the easy one to read, and the easy one to `grep`.
+- **`fmt=cols`** puts what the guest sent on the **left** and what it received on the **right**, so a
+  request and its reply read down the page like a transcript.
+- **`fmt=jsonl`** writes one JSON record per transfer — for feeding another program, diffing two
+  runs, or importing into a spreadsheet.
+
+The rest, all optional: `ts=elapsed` (the default — seconds since the first byte), `ts=wall` (the
+host clock), or `ts=none`; `width=N` bytes per hex row (default 16); `gap=MS` for how long a quiet
+line waits before a partial row is flushed (default 200 ms); and `pins=off` to leave the modem
+control-line edges out. Note that the second example taps a **paced paper-tape reader** — the tap
+composes with any endpoint, options and all.
 
 ## A `CONNECT` it does not understand is an error
 

@@ -257,6 +257,10 @@ add_library(altair_core STATIC
   # decide where one job ends but nothing about CUPS -- the platform submit backend is
   # linked separately and only when found (the printer feature block below).
   src/host/printer_stream.cpp
+  # `ENDPOINT|FILE` -- a transparent hex TAP on any line (host/tee_stream.h). A
+  # decorator ByteStream: it copies bytes past in both directions and forwards the rest,
+  # observe-only and 8-bit clean, so it is exempt from the "one FilterStream" rule.
+  src/host/tee_stream.cpp
   src/host/media.cpp
   src/host/disk.cpp
   src/host/tape.cpp
@@ -564,6 +568,7 @@ add_executable(altair_tests
   tests/test_usio.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
+  tests/test_tee.cpp
   tests/test_pio.cpp
   tests/test_vdb8024.cpp
   tests/test_4pio.cpp
