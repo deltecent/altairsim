@@ -526,9 +526,12 @@ and boots, and its embedded ROMs/machines came out byte-identical to the CMake b
 
 ```bat
 mingw32-make
-altairsim.exe --version
-altairsim.exe --list
+build-make\altairsim.exe --version
+build-make\altairsim.exe --list
 ```
+
+The binary and all intermediates land in **`build-make\`** — deliberately not in
+`build\`, which is the CMake build's, so the two never collide.
 
 - **Toolchain:** any MinGW-w64 with a C++20 `g++` and `mingw32-make`. A standalone
   install works fine — e.g. **WinLibs** (winlibs.com): unzip, put its `bin` on PATH,
