@@ -46,6 +46,26 @@ const std::vector<UsioBuiltin>& usioBuiltins() {
         {"imsai-sio2", "IMSAI SIO-2 ch A (Intel 8251): data/status at BASE+2/BASE+3, "
                        "RDR=bit1 TDRE=bit0, both active high",
          UsioProfile{/*status*/ 0x03, /*data*/ 0x02, /*rdr*/ 1, /*tdre*/ 0, false, false}},
+
+        // CompuPro Interfacer II (1602/1863 UART): data at BASE+0, status at BASE+1.
+        // The status register reads TBMT (transmitter buffer empty) in bit 0 and DAV
+        // (data available) in bit 1, both active high. Baud and framing are hardware
+        // straps on the real board; the control-port write is discarded here as on any
+        // profile. Conventional base here is 0x00/0x01 (the manual's worked example).
+        {"compupro-if2", "CompuPro Interfacer II (1602/1863 UART): data/status at "
+                         "BASE+0/BASE+1, RDR=bit1 TDRE=bit0, both active high",
+         UsioProfile{/*status*/ 0x01, /*data*/ 0x00, /*rdr*/ 1, /*tdre*/ 0, false, false}},
+
+        // CompuPro System Support 1 (Signetics 2651 USART): the 2651 is a four-port chip
+        // (data/status/mode/command); USIO models only the data+status pair, so its mode
+        // and command ports fall to unclaimed I/O -- harmless for a polled console, since
+        // those are init-only writes. Status reads TxRDY in bit 0 and RxRDY in bit 1,
+        // both active high -- the same logical shape as the Interfacer II. Default base is
+        // SS-1's documented standard block, data at 0x5C and status at 0x5D.
+        {"compupro-ss1", "CompuPro System Support 1 (2651 USART): data/status at "
+                         "BASE+0/BASE+1 (default 5C/5D), RDR=bit1 TDRE=bit0, both active "
+                         "high; the 2651 mode/command ports are not modeled",
+         UsioProfile{/*status*/ 0x5D, /*data*/ 0x5C, /*rdr*/ 1, /*tdre*/ 0, false, false}},
     };
     return kBuiltins;
 }

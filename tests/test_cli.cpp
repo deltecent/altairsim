@@ -742,8 +742,12 @@ void test_cli() {
         monP.exec("SHOW BOARD usio", o);
         const std::string s = o.str();
         // The enum's choices, including every built-in profile name.
+        // The enum header plus each built-in name -- the list can word-wrap across lines,
+        // so assert the members individually rather than one contiguous string.
         CHECK(s.find("values: custom | tuart | imsai-sio2") != std::string::npos,
               "the profile enum lists custom plus each built-in as its legal values");
+        CHECK(s.find("compupro-if2") != std::string::npos, "compupro-if2 is a listed profile");
+        CHECK(s.find("compupro-ss1") != std::string::npos, "compupro-ss1 is a listed profile");
         // A bounded int prints its range in the property's own radix...
         CHECK(s.find("values: 0x0 .. 0xFF") != std::string::npos,
               "a port's range is shown in hex, the radix it is written in");
