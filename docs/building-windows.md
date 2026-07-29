@@ -519,20 +519,32 @@ build that way; **it is a convenience, not the supported build.**
 > and nothing else — no tests, no reference-doc generation, no packaging. Use §2
 > for anything you intend to ship.
 
+**Verified on 2026-07-28** — Windows 10 22H2, a standalone **WinLibs MinGW-w64
+GCC 16.1.0 (UCRT)** on `PATH`, from a plain `cmd` (no MSYS2, no Developer shell):
+`mingw32-make` produced a self-contained `altairsim.exe` that lists all 27 machines
+and boots, and its embedded ROMs/machines came out byte-identical to the CMake build.
+
 ```bat
 mingw32-make
 altairsim.exe --version
 altairsim.exe --list
 ```
 
+- **Toolchain:** any MinGW-w64 with a C++20 `g++` and `mingw32-make`. A standalone
+  install works fine — e.g. **WinLibs** (winlibs.com): unzip, put its `bin` on PATH,
+  done. No MSYS2 required.
 - **OS is detected from the `%OS%` environment variable** (`Windows_NT`), so it
-  needs no `uname` and works from a bare `cmd`. It links `-lws2_32 -lwinmm` and
-  produces `altairsim.exe`.
+  needs no `uname` and works from a bare `cmd`. Recipes use `cmd` builtins (guarded
+  `mkdir`, `del`/`rmdir`) — no `sh`. It links `-lws2_32 -lwinmm` → `altairsim.exe`.
+- **The exe is self-contained.** The Windows build links `-static`, so the MinGW
+  runtime (`libstdc++`, `libgcc`, `libwinpthread`) is baked in and `altairsim.exe`
+  runs on any Windows without the toolchain's `bin` on PATH. (Want the DLL-linked
+  build instead? `mingw32-make LDFLAGS=`.)
 - **It builds headless by default on Windows** (null display). SDL3 is not
   auto-detected here — pkg-config is rarely present under MinGW. For a windowed
   build, point it at your SDL3 by hand:
   ```bat
-  mingw32-make SDL=1 SDL_CFLAGS=-IC:\SDL3\include SDL_LIBS="-LC:\SDL3\lib -lSDL3"
+  mingw32-make SDL=1 SDL_CFLAGS=-IC:/SDL3/include SDL_LIBS="-LC:/SDL3/lib -lSDL3"
   ```
 - **`mingw32-make help`** prints what it detected (OS, SDL, CUPS) and the switches
   (`NO_SDL=1`, `CXX=...`, `CXXFLAGS=...`).
