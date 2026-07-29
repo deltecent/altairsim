@@ -3748,18 +3748,44 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // against a MITS manual, or pasting somewhere -- LOAD does not read it back
         // (there is no octal load path, deliberately). BIN and HEX round-trip; OCTAL
         // does not, and the confirmation says so by naming the format it wrote.
-        enum class Fmt { Bin, Hex, Oct } fmt = Fmt::Bin;
+        //
+        // PRN is a FOURTH, likewise write-only: the DISASM listing -- address, object
+        // bytes, mnemonic and any labels you have SYMBOLS-loaded -- written to a file
+        // instead of the screen, for reading and marking up when reverse-engineering
+        // code (issue #176). It is a listing, not source: it does not re-assemble, and
+        // like OCTAL there is no load path back.
+        enum class Fmt { Bin, Hex, Oct, Prn } fmt = Fmt::Bin;
         std::string uname = upper(a[1]);
-        if (uname.size() > 4 && uname.rfind(".HEX") == uname.size() - 4) fmt = Fmt::Hex;
-        else if (uname.size() > 4 && uname.rfind(".OCT") == uname.size() - 4) fmt = Fmt::Oct;
+        auto endsWith = [&](std::string ext) {
+            return uname.size() > ext.size() && uname.rfind(ext) == uname.size() - ext.size();
+        };
+        if (endsWith(".HEX")) fmt = Fmt::Hex;
+        else if (endsWith(".OCT")) fmt = Fmt::Oct;
+        else if (endsWith(".PRN") || endsWith(".LST")) fmt = Fmt::Prn;
         for (size_t i = 3; i < a.size(); ++i) {
             if (upper(a[i]).rfind("FORMAT=", 0) != 0) continue;
             std::string want = upper(a[i]).substr(7);
             if (want == "HEX") fmt = Fmt::Hex;
             else if (want == "BIN") fmt = Fmt::Bin;
             else if (want == "OCTAL" || want == "OCT") fmt = Fmt::Oct;
+            else if (want == "PRN" || want == "LST" || want == "LISTING") fmt = Fmt::Prn;
             else {
-                out << "FORMAT=" << want << "? It is BIN, HEX or OCTAL.\n";
+                out << "FORMAT=" << want << "? It is BIN, HEX, OCTAL or PRN.\n";
+                failed_ = true;
+                return true;
+            }
+        }
+
+        // PRN needs to decode, so it needs an instruction set -- resolved the same way
+        // DISASM resolves it (the active core's ISA). No CPU, no decoder, no listing:
+        // say so before we truncate a file we cannot fill.
+        const Disassembler* prnDis = nullptr;
+        if (fmt == Fmt::Prn) {
+            std::string want = m_.isa();
+            if (!want.empty()) prnDis = disassemblerFor(want);
+            if (!prnDis) {
+                out << "no CPU in this machine, so I cannot disassemble a .PRN listing.\n"
+                       "Use HEX or OCTAL for a data view, or add a CPU.\n";
                 failed_ = true;
                 return true;
             }
@@ -3796,6 +3822,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 f << "\n";
             }
             fmtName = "octal";
+        } else if (fmt == Fmt::Prn) {
+            // The DISASM listing, to a file instead of the screen. disasmLine writes
+            // exactly what DISASM prints -- address, object bytes, mnemonic, and any
+            // SYMBOLS labels heading their own line -- and follows the console base,
+            // so a session in octal writes an octal listing. We disassemble forward
+            // from lo, one instruction at a time, until we reach hi; the last
+            // instruction may read a byte or two past hi (its own operand), exactly
+            // as DISASM does on screen.
+            char hb[48];
+            std::snprintf(hb, sizeof hb, "; altairsim disassembly  %04X-%04X\n",
+                          (unsigned)lo, (unsigned)hi);
+            f << hb;
+            for (uint32_t at = lo; at <= hi;) {
+                at += disasmLine(at, *prnDis, f);
+                if (at > 0xFFFF) break;  // ran off the top of memory; do not wrap silently
+            }
+            fmtName = "listing";
         } else {
             for (auto v : img.flat()) f.put((char)v);
         }

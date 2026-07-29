@@ -52,7 +52,7 @@ Type the part before the bracket.
 | `I[N]` | `IN <port>` |
 | `O[UT]` | `OUT <port> <byte>` |
 | `L[OAD]` | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX] [ROM]` |
-| `SA[VE]` | `SAVE <file> <range> [FORMAT=BIN\|HEX\|OCTAL]` |
+| `SA[VE]` | `SAVE <file> <range> [FORMAT=BIN\|HEX\|OCTAL\|PRN]` |
 | `F[ILL]` | `FILL <range> <byte>` |
 | `SEA[RCH]` | `SEARCH <range> <bytes...>\|"str"` |
 | `COM[PARE]` | `COMPARE <range> <addr>` |
