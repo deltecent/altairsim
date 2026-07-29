@@ -730,6 +730,35 @@ void test_cli() {
           "and the chip goes back into the SAME socket it came out of");
 
     // -----------------------------------------------------------------------
+    // SHOW BOARD <type> lists a property's LEGAL VALUES under its help, the same
+    // facts the generated ref/boards.md prints -- so an operator can read the choices
+    // (e.g. a USIO built-in profile) straight off the type card, not just its prose.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW BOARD lists a property's legal values under its help");
+    {
+        Machine mp;
+        Monitor monP(mp);
+        std::ostringstream o;
+        monP.exec("SHOW BOARD usio", o);
+        const std::string s = o.str();
+        // The enum's choices, including every built-in profile name.
+        CHECK(s.find("values: custom | tuart | imsai-sio2") != std::string::npos,
+              "the profile enum lists custom plus each built-in as its legal values");
+        // A bounded int prints its range in the property's own radix...
+        CHECK(s.find("values: 0x0 .. 0xFF") != std::string::npos,
+              "a port's range is shown in hex, the radix it is written in");
+        // ...a bit field in decimal, and a bool as on|off.
+        CHECK(s.find("values: 0 .. 7") != std::string::npos, "a bit field's range is 0 .. 7");
+        CHECK(s.find("values: on | off") != std::string::npos, "a bool is on | off");
+        // A free-form endpoint string constrains nothing, so it gets NO values line:
+        // `connect` is the last property, so nothing after it may advertise values.
+        const size_t cAt = s.find("\n  connect ");
+        CHECK(cAt != std::string::npos, "the connect property is listed");
+        CHECK(s.find("values:", cAt) == std::string::npos,
+              "a free-form string property advertises no values line of its own");
+    }
+
+    // -----------------------------------------------------------------------
     // A VERB EXISTS ONLY WHILE THE CARD THAT BRINGS IT IS IN A SLOT (core/board.h).
     //
     // This is the whole claim of board-injected commands, and it is why REWIND is not

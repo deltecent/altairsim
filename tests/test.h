@@ -50,6 +50,7 @@ void test_debug();
 void test_ddt();
 void test_dma();
 void test_sio2();
+void test_usio();
 void test_88sio();
 void test_sbc();
 void test_lines();

@@ -25,6 +25,7 @@
 #include "boards/sd-vdb8024.h"
 #include "boards/sd-versafloppy.h"
 #include "boards/tarbell.h"
+#include "boards/usio.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-88sio.h"
 
@@ -80,6 +81,7 @@ std::vector<BoardType> boardTypes() {
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
+        {"usio", "Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
     };
 }
 
@@ -112,6 +114,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "virtc") return std::make_unique<VirtcBoard>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
+    if (type == "usio") return std::make_unique<UsioBoard>();
     return nullptr;
 }
 

@@ -238,8 +238,8 @@ $ cmake --build build -j
 ```
 
 The card is now in the catalogue. `SHOW BOARDS` lists every type with its description;
-name one to see its settings and their help text -- and nobody wrote a line of code to put
-it there:
+name one to see its settings, their help text and their legal values -- and nobody wrote a
+line of code to put it there:
 
 ```
 altairsim> SHOW BOARDS
@@ -258,6 +258,7 @@ altairsim> SHOW BOARD lamp
   PROPERTY  HELP
   --------  ------------------------------------------------------------------
   port      the port this card latches. Write-only -- an IN here is not ours
+            values: 0x0 .. 0xFF
   lamps     what the guest last wrote -- the eight LEDs
 ```
 
