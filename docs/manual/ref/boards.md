@@ -43,6 +43,7 @@ printed in each property's own base.
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
 | [`pmmi`](#pmmi) | PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub |
+| [`usio`](#usio) | Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) \| imsai-sio2. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out: |
 
 
 ## `memory`
@@ -733,4 +734,25 @@ PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0.
 | `baud` | int | — | — | Live line rate (read-only), 250000/(16*N) from the OUT BA+2 divisor **(read-only — not a key you may set)** |
 | `uart` | string | — | — | Live UART status (read-only). CAPITALS = asserted: TBMT DAV **(read-only — not a key you may set)** |
 | `lines` | string | — | — | Live modem lines (read-only). CAPITALS = asserted: SH RI DTR ST DT RING CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine) **(read-only — not a key you may set)** |
+
+
+## `usio`
+
+Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:
+
+**Units:** `serial` (serial)
+
+### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `profile` | enum | `custom` | `custom` \| `tuart` \| `imsai-sio2` | Built-in card to preset the straps from: custom, or a named board. Selecting one sets status_port/data_port/bits/polarity (still overridable) |
+| `status_port` | int | `0x0` | `0x0` .. `0xFF` | Status(read)/control(write) port. Control writes are discarded |
+| `data_port` | int | `0x1` | `0x0` .. `0xFF` | Data port: receive(read)/transmit(write) |
+| `rdr_bit` | int | `0` | `0` .. `7` | Status bit (0-7) that signals receive data ready |
+| `tdre_bit` | int | `1` | `0` .. `7` | Status bit (0-7) that signals transmit data empty |
+| `rdr_active_low` | bool | `false` | `on` \| `off` | Invert the receive-data-ready bit (asserted reads 0) |
+| `tdre_active_low` | bool | `false` | `on` \| `off` | Invert the transmit-data-empty bit (asserted reads 0) |
+| `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
+| `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 

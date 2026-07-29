@@ -356,6 +356,7 @@ add_library(altair_core STATIC
   # The Processor Technology Sol-PC's integrated I/O as one composite card (serial,
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/pmmi-mm103.cpp
+  src/boards/usio.cpp
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/mits-turnkey.cpp
@@ -560,6 +561,7 @@ add_executable(altair_tests
   tests/test_c700.cpp
   tests/test_papertape.cpp
   tests/test_pmmi.cpp
+  tests/test_usio.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_pio.cpp

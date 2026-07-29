@@ -11,6 +11,7 @@
 #include "boards/mits-88uio.h"
 #include "boards/mits-turnkey.h"
 #include "boards/pmmi-mm103.h"
+#include "boards/usio.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-sbc.h"
@@ -70,6 +71,7 @@ const struct {
     {"ddt", test_ddt},
     {"dma", test_dma},
     {"sio2", test_sio2},
+    {"usio", test_usio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},
     {"lines", test_lines},
@@ -136,6 +138,7 @@ int main(int argc, char** argv) {
     altair::SolBoard::setResolver(altair::resolveEndpoint);
     altair::Vdb8024Board::setResolver(altair::resolveEndpoint);
     altair::PmmiBoard::setResolver(altair::resolveEndpoint);
+    altair::UsioBoard::setResolver(altair::resolveEndpoint);
 
     // A graphics board draws into an injected Display; headless tests give it a
     // NullDisplay, so a VDM-1 renders into memory and a test reads the pixels back

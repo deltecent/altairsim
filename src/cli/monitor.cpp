@@ -198,6 +198,26 @@ static std::vector<std::string> wrapText(const std::string& s, size_t width) {
     return lines;
 }
 
+// What a property will ACCEPT, in plain terminal form -- the same facts the generated
+// reference prints via gen-reference.cpp's legal(), so SHOW BOARD and ref/boards.md agree
+// on a property's legal values. Empty when the kind imposes no listable set (free Int/Str),
+// so the caller prints nothing rather than a bare "values:". Rendered in the property's own
+// radix, matching how its default prints.
+static std::string legalValues(const Property& p) {
+    if (p.kind == Kind::Bool) return "on | off";
+    if (p.kind == Kind::Enum) {
+        std::string o;
+        for (size_t i = 0; i < p.choices.size(); ++i) {
+            if (i) o += " | ";
+            o += p.choices[i];
+        }
+        return o;
+    }
+    if (p.kind == Kind::Int && p.min != p.max)  // min==max means unbounded (value.h)
+        return Value::ofInt(p.min).text(p.radix) + " .. " + Value::ofInt(p.max).text(p.radix);
+    return "";
+}
+
 // Something the machine sees: an address, a port, a byte. HEX, or OCTAL when the
 // operator has set that -- either way the WIRE base, never decimal.
 bool Monitor::addr(const std::string& t, uint32_t& out, std::ostream& err) {
@@ -2606,6 +2626,13 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     out << buf << "\n";
                     for (size_t i = 1; i < help.size(); ++i)
                         out << std::string(helpCol, ' ') << help[i] << "\n";
+                    // The legal values, aligned under the help, for properties that list
+                    // them (enum choices, on|off, a bounded range). Wrapped like the help
+                    // so a long choice set does not overrun the terminal.
+                    auto legal = legalValues(p);
+                    if (!legal.empty())
+                        for (const auto& line : wrapText("values: " + legal, width - helpCol))
+                            out << std::string(helpCol, ' ') << line << "\n";
                 }
                 return true;
             }
