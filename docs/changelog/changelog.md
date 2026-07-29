@@ -8,6 +8,25 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `usio` — a serial board you describe instead of one we picked
+
+`BOARDS ADD usio` puts a **universal serial card** in the backplane — instead of emulating one
+specific UART, you describe the interface by **strap**: where the status/control and data ports
+sit, which status bit means **receive-data-ready** and which means **transmit-empty**, and the
+polarity of each. It talks only to `ByteStream` and the shared `CONNECT` endpoint grammar, so
+`file:`, `socket:`, `serial:`, `null`, `loopback` and `in:`/`out:` all work with no board-specific
+code. Built-in **profiles** bundle the straps for common cards — the first two are the **Cromemco
+TU-ART** and the **IMSAI SIO-2**, transcribed from the manuals (added under `reference/`) — and a
+profile's name becomes a value of the `profile` property, so `SET usio0 profile=…` picks one. A
+`baud` strap programs a connected **real serial port** (always 8N1); it is inert on other endpoints
+and does not pace the emulated line. Polled only — interrupts are a documented later phase. The new
+Developer Guide **serial-I/O** chapter walks the board/chip → `ByteStream` → `resolveEndpoint`
+layering behind it.
+
+`SHOW BOARD <type>` now also lists a property's **legal values** under its help — enum choices,
+`on`/`off`, bounded ranges — so the built-in profiles are discoverable straight off the type card.
+This applies to every board, not just `usio`.
+
 ### `pmmi` — the PMMI MM-103 telephone modem
 
 The first S-100 modem board joins the catalogue: a **Bell 103 modem on one card**, unit `line`,
@@ -224,19 +243,6 @@ built-in machines you can boot, the same list `--list` prints) and **`SHOW MACHI
 reaches the printed reference instead of a literal token. The reserved `RECORD`, `REPLAY` and
 `STOP` commands were **dropped** — not deferred — so their abbreviations are free again and the
 command list no longer carries a `*` legend for entries that do not exist.
-### CUTS tapes the simulator writes now load on a real Sol-20
-
-A `.WAV` the Sol records is now built the way a real Sol's cassette modem builds it — a
-flip-flop dividing a master clock into a square on a fixed grid, rounded by an RC filter, at a
-genuine dub's recording level — instead of a free-running oscillator at full volume. The old
-output round-tripped perfectly *here* but a real Sol read the header and then failed: its
-decoder times the tone's transitions, and the old modulation smeared those crossings off the
-clock grid and recorded them twice as hot as a real cassette. Two new deck properties expose
-the fix — **`level`** (recording level, percent of full scale, default 36) and **`rc`** (the
-Sol's edge-rounding corner in Hz, default 4000); the 88-ACR gains `level` too. Both defaults
-are measured off the one genuine dub in the package, and the simulator's output now matches
-that dub's level, crossing timing, and waveform curvature. Reading real dubs, and the shipped example tapes, were
-never affected.
 
 ### Printing to a real printer: the `printer:` endpoint
 
