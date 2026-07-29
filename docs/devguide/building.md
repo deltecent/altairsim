@@ -44,7 +44,7 @@ cache absolute paths, though, so **rename the checkout or switch compilers and y
 silent wrong answer. If a build breaks — or a test that used to pass fails — immediately after
 a pull, suspect a stale `build/` before suspecting the code: a `rm -rf build` and a clean
 reconfigure is the first thing to rule out, because a half-rebuilt object can walk an
-already-fixed bug back in. `docs/building-linux.md` §6 has the details.
+already-fixed bug back in. `docs/building-linux.md` §7 has the details.
 
 ## The optional video backend (SDL3)
 
@@ -147,7 +147,19 @@ The hardware tests (`-L hw`) run against an actual null-modem cable between two 
 ports, because a claim about a cable deserves a cable. They are opt-in, pointed at your ports
 with `ALTAIR_SERIAL_A` / `ALTAIR_SERIAL_B`, and they **skip loudly** when the hardware is
 absent — a hardware test that quietly passes with no hardware is a green tick that means
-nothing.
+nothing. Unset, `serial-hw` exits 77 and ctest reports it `Skipped`; that is the expected
+result on any machine without the cable, not a failure.
+
+The two device paths are per-machine — list yours, then point the test at two ports joined by
+the cable:
+
+```sh
+# macOS:   ls /dev/cu.usbserial-* /dev/tty.usbserial-*
+# Linux:   ls /dev/ttyUSB* /dev/ttyACM*
+# Windows: Device Manager -> Ports (COM & LPT), or run  mode
+
+ALTAIR_SERIAL_A=/dev/ttyUSB0 ALTAIR_SERIAL_B=/dev/ttyUSB1 ctest --test-dir build -L hw
+```
 
 ## The documentation is part of the build
 
