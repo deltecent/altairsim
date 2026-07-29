@@ -112,6 +112,32 @@ Two helpers exist so a board can *use* the grammar without *reimplementing* it:
 - **`parsePort` / `parseHostPort`** let a board validate a `HOST:PORT` string (the PMMI's
   `dial`/`answer` settings do this) using the same split the resolver uses.
 
+### The capture tap is a decorator ByteStream
+
+`ENDPOINT|FILE` taps a line to a hex log — a poor man's protocol analyzer. It is worth studying
+because it shows how far a `ByteStream` decorator gets you with **zero** board or monitor changes.
+
+`TeeStream` (`src/host/tee_stream.h`) wraps an inner stream, copies every byte past in both
+directions to a log file, and forwards everything else — `readable`/`writable`, the modem pins, the
+line rate, `pump`, `pacesItself` — verbatim. It is the same shape as `FilterStream`
+(`src/host/filter.h`), with one difference that matters:
+
+> A **filter mutates bytes**, so there is exactly one of them and it lives on the console (a
+> `strip7out` on a binary transfer corrupts it silently). A **tee never touches a byte** — it
+> observes and forwards — so it is 8-bit clean by construction, and the "one filter, on the
+> console" rule does not apply. You may tap *any* line: a socket, a real serial port, a tape.
+
+The grammar is a single character. `resolveEndpoint` checks for a **`|`** *before* the prefix
+dispatch (so `socket:23|cap.hex` is not mistaken for a socket spec), splits on the first one,
+recurses on the left for the wrapped stream, and parses the right as `FILE[?opts]`. Because the
+inner is resolved by the same function, the tap composes with everything — `in:tape.tap?cps=300|trace.log`
+taps a paced paper-tape reader. `describe()` returns `inner->describe() + "|" + fileSpec`, so the
+whole tap round-trips through `SHOW` and `CONFIG SAVE`, and the `|` re-triggers the branch on reload.
+Two consequences fall out of the grammar living in one place: `rebaseEndpointPaths` had to learn to
+split on `|` and rebase **both** sides (a machine-file relative log path is config-relative like any
+other), and the timestamps come from an **injectable host wall clock** (the printer/tape pattern),
+never the emulated `Clock` — a trace whose timestamps freeze at a monitor prompt is a trace of nothing.
+
 ### Installing the resolver — in both mains
 
 The grammar travels to a board as a function it is handed, never as knowledge it holds:

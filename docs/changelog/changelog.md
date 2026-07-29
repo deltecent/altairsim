@@ -8,6 +8,20 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `CONNECT … |FILE` — tap a serial line to a hex log
+
+Append **`|FILE`** to any endpoint and the line is also written to a text file — both
+directions, in hex and ASCII, with timestamps — a poor man's serial protocol analyzer.
+`CONNECT sio0:b socket:2323|bbs.hex` telnets a guest in and captures the whole
+conversation; the guest cannot tell the tap is there, and it never alters a byte (8-bit
+clean, unlike the console's filters). Three layouts pick how it reads: **`?fmt=dump`** (the
+default — one chronological hex row per line, greppable), **`?fmt=cols`** (guest-sent on the
+left, received on the right, so a request/response reads down the page), and **`?fmt=jsonl`**
+(one JSON record per transfer, for diffing and scripting). `?ts=elapsed|wall|none` chooses
+the timestamp style, `?width=N` the bytes per row, `?gap=MS` when an idle burst flushes, and
+`?pins=off` drops the modem control-line edges (DTR/RTS/DCD/CTS/RI/break) that are logged
+inline by default. The whole tap round-trips through `SHOW` and `CONFIG SAVE`.
+
 ### `usio` — a serial board you describe instead of one we picked
 
 `BOARDS ADD usio` puts a **universal serial card** in the backplane — instead of emulating one

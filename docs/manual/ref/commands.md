@@ -693,7 +693,7 @@ the guest cannot see it: the 6850 clocks bytes the same way whether the wire end
 at your terminal, a telnet session, a real RS-232 port, or nothing at all. No board
 in the machine knows what any of these words mean.
 
-Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH | printer:QUEUE
+Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH | printer:QUEUE | <endpoint>|FILE
 
 ```
 console     the host's terminal -- the keyboard and screen you are typing at
@@ -715,6 +715,10 @@ printer:    QUEUE -- a real print queue on this host (only where the build found
             one). The bytes buffer into a JOB, submitted after a few idle seconds
             (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling
             (?max=N). 8-bit clean -- a printer control language is not text.
+<endpoint>|FILE   a TAP: append |FILE to ANY endpoint above to also log the line,
+            both directions, to a hex FILE -- a poor man's protocol analyzer. The
+            guest cannot tell it is there. ?fmt=dump|cols|jsonl picks the layout,
+            ?ts=elapsed|wall|none the timestamps, ?pins=off drops the modem edges.
 ```
 
 
@@ -733,6 +737,7 @@ CONN lpt0:prn out:printout.txt                    capture a printer to a file
 CONN 4pio0:ja in:TAPE.TAP?cps=300                 a paper-tape reader (88-HSR)
 CONN 4pio0:jb out:TAPE.PUN                         a paper-tape punch
 CONN lpt0:prn printer:linewriter                  print to a real host queue
+CONN sio0:b socket:2323|bbs.hex?fmt=cols          telnet in, and TAP it to a log
 ```
 
 DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it.

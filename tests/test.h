@@ -69,6 +69,7 @@ void test_papertape();
 void test_pmmi();
 void test_lpc();
 void test_printer();
+void test_tee();
 void test_pio();
 void test_4pio();
 void test_vdm1();
