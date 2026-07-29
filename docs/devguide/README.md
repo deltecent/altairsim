@@ -14,6 +14,7 @@ board without the source in front of you.
 | [Building it](building.md) | Build, test, and the doc targets. |
 | [Theory of operation](theory.md) | The bus, boards, memory, I/O, interrupts and reset. |
 | [Writing a board](adding-a-board.md) | A card at port FFh, end to end — and it compiles. |
+| [Review comments](doc-review-comments.md) | Leaving `@claude` notes on a document and having them applied to the master. |
 
 ## Where the rest of it lives
 
