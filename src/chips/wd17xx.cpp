@@ -581,7 +581,7 @@ void Wd17xx::afterHeadSettle(const Clock& clk) {
         }
 
         case Ctx::WriteTrack: {
-            const int n = drive_ ? drive_->trackImageBytes() : 0;
+            const int n = drive_ ? drive_->trackImageBytes(dataRateBits) : 0;
             if (n <= 0) {
                 // ...but the WRITE TRACK column DOES have a bit for it, and it is exactly
                 // the right one: the drive could not take the write. S5, WRITE FAULT.
@@ -788,7 +788,7 @@ void Wd17xx::commitSector(const Clock& clk) {
 }
 
 void Wd17xx::commitTrack(const Clock& clk) {
-    if (!drive_->writeTrackImage(buf_)) status_ |= kWriteFault;
+    if (!drive_->writeTrackImage(buf_, dataRateBits)) status_ |= kWriteFault;
     finish(clk);
 }
 

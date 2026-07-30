@@ -115,14 +115,10 @@ protected:
     virtual void    writeControl(uint8_t v);         // SD: function decoder; DD: bitmap latch
     virtual uint8_t readExtra(uint8_t off) const { (void)off; return 0xFF; }    // DD: port FD in
     virtual void    writeExtra(uint8_t off, uint8_t v) { (void)off; (void)v; }  // DD: port FD out
-    // Probe an image's byte count into a geometry. SD: 256,256; DD: 499,456.
+    // Probe an image's byte count into a geometry. SD: 256,256; DD: a 499,456 / 256,256 / blank
+    // superset (the DD controller reads SD media too).
     virtual bool    describeGeometry(uint64_t bytes, int& tracks, int& heads, bool& interleaved,
                                      std::vector<FmtRange>& ranges, std::string& err) const;
-    // The card's FORMAT budget in raw track bytes, granted to each drive on mount. Nonzero =
-    // "this card can be formatted" AND the wait-synced Write Track byte budget (floppy-drive.h).
-    // SD is one 8" SD revolution (~5208). The DD card's rate-doubled / mixed-density budget is
-    // DEFERRED, so it returns 0 -- Write Track keeps faulting with WRITE FAULT, unchanged.
-    virtual int     formatTrackBytes() const;
 
     void   applySelection();   // point the chip at drive_[sel_], set side + data rate
     void   refresh();          // advance the chip, re-drive the wires, re-arm the wake
@@ -150,7 +146,9 @@ protected:
 
 // The double-density #2022: a WD1791/93, a bitmap OUT-FC latch (density + side +
 // drive), a port-FD DMA-busy/extended-address register, and mixed-density media
-// (single-density track 0, double-density tracks 1-76).
+// (single-density track 0, double-density tracks 1-76). It also READS plain SD media
+// (256,256) and FORMATS a blank into a mixed image track-by-track, each track's density
+// taken from the OUT-FC density bit -- see describeGeometry.
 class TarbellDdBoard : public TarbellBoard {
 public:
     // The base constructor already ran buildChip() -- but virtual dispatch during base
@@ -170,9 +168,6 @@ protected:
     void    writeExtra(uint8_t off, uint8_t v) override;
     bool    describeGeometry(uint64_t bytes, int& tracks, int& heads, bool& interleaved,
                              std::vector<FmtRange>& ranges, std::string& err) const override;
-    // DD blank format is DEFERRED (a rate-doubled budget + a mixed-density fresh disk needs a
-    // size/format argument to CREATE). Return 0 so Write Track keeps faulting, as it does today.
-    int     formatTrackBytes() const override { return 0; }
 
 private:
     uint8_t extAddr_ = 0;   // the A16-A23 extended-address latch (a no-op store in our PIO model)

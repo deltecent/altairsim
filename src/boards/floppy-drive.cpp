@@ -86,14 +86,22 @@ bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n)
 // FORMAT -- the Write Track command (host/disk.h "geometry in real time").
 // ---------------------------------------------------------------------------
 
+// The raw bytes one revolution holds at data rate `rate`: bytes/s = rate/8, and an 8" drive
+// turns at 360 RPM = 6 rev/s, so one revolution is rate/8/6 = rate/48 bytes. 250,000 -> 5208
+// (8" SD), 500,000 -> 10416 (8" DD). Derived, never a magic constant: the chip hands us the
+// rate it is configured at, and the geometry follows from it.
+static int revolutionBytes(long long rate) { return (int)(rate / 48); }
+
 // The raw one-revolution byte budget, or 0 (WRITE FAULT) if this drive is empty or the card
-// never granted it a capacity. The chip stalls the wait-synced Write Track until exactly this
+// does not implement formatting. The chip stalls the wait-synced Write Track until exactly this
 // many bytes have arrived, so a nonzero value is BOTH "yes, you may format" and "here is the
 // length" -- FORMAT.COM pads its structured track out to it with gap bytes (see the ENDTRK
-// loop in pd2/FORMAT.ASM). See setTrackCapacity (floppy-drive.h) and Risk 1 in the plan: too
-// large hangs the command, too small truncates the last sectors.
-int DiskImageDrive::trackImageBytes() const {
-    return (img_ && trackCap_ > 0) ? trackCap_ : 0;
+// loop in pd2/FORMAT.ASM). The budget is the CHIP's data rate expressed as a revolution length,
+// so an SD track (250k) and a DD track (500k) get the right budget from the same card. See
+// setFormatting (floppy-drive.h) and Risk 1 in the plan: too large hangs the command, too small
+// truncates the last sectors.
+int DiskImageDrive::trackImageBytes(long long rate) const {
+    return (img_ && canFormat_) ? revolutionBytes(rate) : 0;
 }
 
 // Parse the raw track the guest streamed into `in` and (re)establish the addressed track's
@@ -102,7 +110,7 @@ int DiskImageDrive::trackImageBytes() const {
 // data bytes, then 0xF7). 0xF7 is the CRC-generate byte and can never appear as literal track
 // data, so accumulate-until-0xF7 is unambiguous; 0xE5 fill is ordinary data. See the format FSM
 // in docs/devguide/soft-sector-floppy.md, modelled on simh.mdsk/.../wd_17xx.c.
-bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in) {
+bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, long long rate) {
     if (!img_) return false;
 
     // Each parsed data field, as an (offset, length) window into `in` -- we copy nothing, and
@@ -149,13 +157,14 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in) {
     if (fields.empty()) return false;  // nothing legible -> WRITE FAULT (the chip sets S5)
 
     // The track's geometry, derived from the stream: sector count from what we found, sector
-    // size and startSector from the first sector. Density is SINGLE for this cut -- the SD-only
-    // Tarbell is the only card that formats; when double density lands, take it from the chip
-    // (Wd17xx::dataRateBits), the single source of truth, not a drive-side strap. setTrackFormat
-    // re-runs rebuild(), so the following tracks' offsets and the growth cap follow (ascending-
-    // order invariant, disk.h).
+    // size and startSector from the first sector. Density comes from the CHIP's data rate, the
+    // single source of truth (Wd17xx::dataRateBits, handed in as `rate`): an 8" DD track streams
+    // at 500 kbit/s, everything slower is single density. This is what lets one DD card format a
+    // mixed disk -- SD track 0, DD tracks 1-76 -- from the guest's per-track OUT-FC density bit.
+    // setTrackFormat re-runs rebuild(), so the following tracks' offsets and the growth cap follow
+    // (ascending-order invariant, disk.h).
     TrackFormat tf;
-    tf.density     = Density::SD;
+    tf.density     = rate >= 500000 ? Density::DD : Density::SD;
     tf.sectors     = (int)fields.size();
     tf.sectorSize  = sectorSize;
     tf.startSector = startSector;

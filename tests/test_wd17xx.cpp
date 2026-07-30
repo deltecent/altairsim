@@ -110,9 +110,14 @@ struct FakeDrive : FloppyDrive {
         return true;
     }
 
-    int  trackImageBytes() const override { return trackCap; }
-    bool writeTrackImage(const std::vector<uint8_t>& in) override {
+    // The chip hands its configured data rate to both format virtuals. The fake ignores the
+    // rate for the budget (a test sets trackCap directly) but records it so a test can prove the
+    // chip passed its own dataRateBits through (the DD-density path in DiskImageDrive).
+    long long lastRate = 0;
+    int  trackImageBytes(long long) const override { return trackCap; }
+    bool writeTrackImage(const std::vector<uint8_t>& in, long long rate) override {
         lastTrack = in;
+        lastRate  = rate;
         return true;
     }
 };
@@ -928,5 +933,51 @@ void test_wd17xx() {
         const uint8_t st = f.readStatus(clk);
         CHECK((st & 0x20) != 0, "a deleted mark sets S5 on the 179x");
         CHECK((st & 0x40) == 0, "...and NOT S6 -- the 179x has only two data address marks");
+    }
+
+    // ---- WRITE TRACK on the 179x, at the DOUBLE-density rate: the chip hands its own data rate
+    //      to the drive's format virtuals (symmetry with the 1771 test above) ----
+    //
+    // The DD Tarbell drives the 1791 at 500 kbit/s for a double-density track; the chip must pass
+    // that rate through to trackImageBytes()/writeTrackImage() so the drive derives the right
+    // budget and records DD. Here the fake takes the whole revolution and reports the rate back.
+    {
+        Clock clk;
+        FakeDrive d;
+        Wd1791    f("fdc");
+        f.attach(&d);
+        f.powerOn(clk);
+        f.setWaitSynced(true);
+        f.dataRateBits = 500000;  // the DD card's density bit -> 500 kbit/s
+
+        // A minimal MFM DD track: index mark, then two 128-byte sectors wrapped in ID/data marks.
+        std::vector<uint8_t> stream;
+        auto put = [&](uint8_t b, int n) { for (int i = 0; i < n; ++i) stream.push_back(b); };
+        put(0x4E, 40); put(0x00, 6); stream.push_back(0xFC);
+        for (int s = 1; s <= 2; ++s) {
+            put(0x4E, 20); put(0x00, 6);
+            stream.push_back(0xFE);
+            stream.push_back(0x00);   // track
+            stream.push_back(0x00);   // side
+            stream.push_back((uint8_t)s);
+            stream.push_back(0x00);   // length code N=0 -> 128
+            stream.push_back(0xF7);
+            put(0x4E, 11); put(0x00, 6);
+            stream.push_back(0xFB);
+            put(0xE5, 128);
+            stream.push_back(0xF7);
+        }
+        d.trackCap = (int)stream.size();
+
+        f.writeCommand(0xF4, clk);  // Write Track
+        size_t k = 0;
+        for (int guard = 0; guard < 200000 && f.busy(); ++guard) {
+            f.poll(clk);
+            if (f.drq() && k < stream.size()) f.writeData(stream[k++], clk);
+        }
+
+        CHECK((f.readStatus(clk) & 0x20) == 0, "the 179x takes the DD track: no WRITE FAULT");
+        CHECK(d.lastTrack == stream, "...and writeTrackImage got the whole revolution");
+        CHECK(d.lastRate == 500000, "...and the chip handed the drive its 500 kbit/s DD rate");
     }
 }

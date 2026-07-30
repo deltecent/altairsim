@@ -168,9 +168,18 @@ public:
     // answer is to say so (Write Track sets WRITE FAULT, which is the bit the hardware
     // would set) rather than to hand a formatter 5,208 invented bytes that round-trip
     // into a disk nothing can read.
-    virtual int  trackImageBytes() const { return 0; }  // 0: no bit-level image here
+    //
+    // WRITE TRACK IS THE ONE PLACE GEOMETRY IS ESTABLISHED, so the DATA RATE the chip is
+    // configured at (dataRateBits, the DDEN pin) is handed to BOTH format virtuals: the
+    // revolution byte budget and the recorded density differ per track (an 8" SD track is
+    // ~5208 bytes / single density; a DD track ~10416 / double), and the chip is the single
+    // source of truth for which. The drive stores no rate of its own -- it derives both from
+    // the value passed in. (readTrackImage does NOT format, so it takes no rate.)
+    virtual int  trackImageBytes(long long dataRateBits) const { (void)dataRateBits; return 0; }
     virtual bool readTrackImage(std::vector<uint8_t>& out) { (void)out; return false; }
-    virtual bool writeTrackImage(const std::vector<uint8_t>& in) { (void)in; return false; }
+    virtual bool writeTrackImage(const std::vector<uint8_t>& in, long long dataRateBits) {
+        (void)in; (void)dataRateBits; return false;
+    }
 };
 
 // ---------------------------------------------------------------------------
