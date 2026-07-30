@@ -20,6 +20,11 @@ cd examples/ai-mcp
 claude mcp add altairsim -- altairsim cpm-ai.toml --mcp     # Claude Code; see DRIVING-WITH-AI.md for other clients
 ```
 
+This is the `claude` command line, which runs the server here in this folder, so the relative
+`cpm-ai.toml` and the host bridge both resolve to it. (The Claude Desktop app starts the server in
+your home directory instead — there, use an absolute path; `DRIVING-WITH-AI.md` covers it, along
+with running several machines at once.)
+
 Then start your assistant in this directory and give it the whole job in one sentence:
 
 > *Using altairsim, assemble and run HELLO.ASM. It should print HELLO, WORLD — if it doesn't,

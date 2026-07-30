@@ -82,18 +82,52 @@ naming the command and its arguments:
   "mcpServers": {
     "altairsim": {
       "command": "altairsim",
-      "args": ["cpm-ai.toml", "--mcp"],
+      "args": ["/absolute/path/to/examples/ai-mcp/cpm-ai.toml", "--mcp"],
       "cwd": "/absolute/path/to/examples/ai-mcp"
     }
   }
 }
 ```
 
-`cwd` is the sandbox — set it to the working directory you want, since a desktop client is not
-launched from a shell sitting in one. On macOS, Claude Desktop's config is
+**Use absolute paths here.** The Desktop app currently launches a server in your **home
+directory**, not the project (a known Claude Code bug), so a relative machine path won't be found
+and the host-bridge sandbox won't land where you expect. Give the machine an absolute path, set
+`cwd` to the folder you want as the sandbox, and — if files still don't resolve — pin it from
+inside with `monitor {command: "SET hb0 HOSTDIR=/abs/path"}`. On macOS, Claude Desktop's config is
 `~/Library/Application Support/Claude/claude_desktop_config.json`; **restart the app** after
 editing it. Other clients differ in *where* the config lives, but the `mcpServers` block is the
 same shape.
+
+## Several machines, and several projects
+
+Nothing above is one-machine or one-project — the same mechanism scales three ways.
+
+**The server name is a label, not the machine.** In `claude mcp add `**`altairsim`**` -- …`, the
+first word names the *server*; register as many as you like under different names and an assistant
+sees them all at once, each pointed at its own machine:
+
+```
+claude mcp add altair-cpm   -- altairsim cpm-ai.toml --mcp
+claude mcp add altair-basic -- altairsim basic4k     --mcp
+```
+
+(Names are letters, digits, `-` and `_`.)
+
+**Scope keeps projects apart.** The default **local** scope files the server under the directory
+you ran `claude mcp add` in, so it shows up only when you start `claude` there — register altairsim
+once per project, in that project's folder, and they never collide. **`--scope project`** instead
+writes a `.mcp.json` into the folder, so the server travels with it (commit or copy the folder and
+it comes too) — the right choice for a self-contained machine directory like `examples/ai-mcp/`.
+**`--scope user`** makes one entry for every project, which suits a fixed machine that needs no
+project files (a built-in like `altmon`).
+
+**The working directory is where your files are.** altairsim's host-bridge sandbox — and any
+relative `<machine>` path — resolve against the *server's* working directory. From the **`claude`
+CLI** that is the directory you started `claude` in, which is why registering and running from the
+machine's own folder just works, and why relative paths in a committed `.mcp.json` stay portable
+(use `${CLAUDE_PROJECT_DIR}` in the paths to be robust even when `claude` is started from a
+subfolder). The **Desktop app** is the exception noted above — it starts the server in your home
+directory — so there, use absolute paths.
 
 ## The tools
 
