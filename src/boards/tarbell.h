@@ -118,6 +118,11 @@ protected:
     // Probe an image's byte count into a geometry. SD: 256,256; DD: 499,456.
     virtual bool    describeGeometry(uint64_t bytes, int& tracks, int& heads, bool& interleaved,
                                      std::vector<FmtRange>& ranges, std::string& err) const;
+    // The card's FORMAT budget in raw track bytes, granted to each drive on mount. Nonzero =
+    // "this card can be formatted" AND the wait-synced Write Track byte budget (floppy-drive.h).
+    // SD is one 8" SD revolution (~5208). The DD card's rate-doubled / mixed-density budget is
+    // DEFERRED, so it returns 0 -- Write Track keeps faulting with WRITE FAULT, unchanged.
+    virtual int     formatTrackBytes() const;
 
     void   applySelection();   // point the chip at drive_[sel_], set side + data rate
     void   refresh();          // advance the chip, re-drive the wires, re-arm the wake
@@ -165,6 +170,9 @@ protected:
     void    writeExtra(uint8_t off, uint8_t v) override;
     bool    describeGeometry(uint64_t bytes, int& tracks, int& heads, bool& interleaved,
                              std::vector<FmtRange>& ranges, std::string& err) const override;
+    // DD blank format is DEFERRED (a rate-doubled budget + a mixed-density fresh disk needs a
+    // size/format argument to CREATE). Return 0 so Write Track keeps faulting, as it does today.
+    int     formatTrackBytes() const override { return 0; }
 
 private:
     uint8_t extAddr_ = 0;   // the A16-A23 extended-address latch (a no-op store in our PIO model)

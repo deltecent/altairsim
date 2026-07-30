@@ -88,6 +88,43 @@ std::vector<uint8_t> pollRead(TarbellBoard& b) {
     return got;
 }
 
+// Stream a raw track the way FORMAT.ASM does: poll the WAIT port (FC) for DRQ, write a byte
+// (FB), repeat -- and once the structured stream runs out, keep padding with gap 0xFFs until
+// the controller signals INTRQ (bit7 clear). That is exactly the ENDTRK loop: the guest does
+// not know the revolution length, it just fills until the wait-synced command completes. The
+// caller must have issued the Write Track command (0xF4) first.
+void pollWrite(TarbellBoard& b, const std::vector<uint8_t>& stream) {
+    size_t k = 0;
+    for (int guard = 0; guard < 20000; ++guard) {
+        if ((in(b, CTL) & 0x80) == 0) break;  // INTRQ: the track is done
+        out(b, DAT, k < stream.size() ? stream[k++] : 0xFF);
+    }
+}
+
+// A well-formed IBM-3740 SSSD track image: 26 sectors of 128 0xE5 bytes, each wrapped in an
+// ID field (0xFE track 0 sector N=0 -> 128) and a data field (0xFB ... 0xF7), with gaps. Only
+// the marks, the header and the 0xF7 terminators matter to the format parser; the gaps are the
+// slack pollWrite would otherwise have to invent. `trackNum` goes in the (ignored) ID header.
+std::vector<uint8_t> sssdTrack(int trackNum) {
+    std::vector<uint8_t> s;
+    auto put = [&](uint8_t b, int n) { for (int i = 0; i < n; ++i) s.push_back(b); };
+    put(0xFF, 40); put(0x00, 6); s.push_back(0xFC);   // pre-index gap + index mark
+    for (int sec = 1; sec <= 26; ++sec) {
+        put(0xFF, 26); put(0x00, 6);
+        s.push_back(0xFE);                            // ID address mark
+        s.push_back((uint8_t)trackNum);               // track (ignored: head position wins)
+        s.push_back(0x00);                            // side
+        s.push_back((uint8_t)sec);                    // sector
+        s.push_back(0x00);                            // length code N=0 -> 128 bytes
+        s.push_back(0xF7);                            // ID CRC
+        put(0xFF, 11); put(0x00, 6);
+        s.push_back(0xFB);                            // data address mark
+        put(0xE5, 128);                               // the 128 payload bytes
+        s.push_back(0xF7);                            // data CRC
+    }
+    return s;  // ~3900 bytes of structure; pollWrite pads the rest of the ~5208-byte revolution
+}
+
 } // namespace
 
 void test_tarbell() {
@@ -205,11 +242,93 @@ void test_tarbell() {
         std::string err;
         CHECK(b.mount("drive0", "sd.dsk", false, err), "the 256,256-byte SD image mounts");
 
-        withRampDisk(499456);  // the DD size -- NOT a single-density disk
+        withRampDisk(499456);  // OVERSIZED for SD -- larger than one revolution per track
         err.clear();
         CHECK(!b.mount("drive1", "dd.dsk", false, err),
-              "a double-density-sized image is refused by the SD card");
+              "an oversized image is refused by the SD card");
         CHECK(err.find("single-density") != std::string::npos, "...with a reason that says why");
+    }
+
+    // ---- A BLANK / SHORT IMAGE MOUNTS (unformatted), and RNFs every sector until FORMAT ----
+    //
+    // MOUNT ... CREATE makes a 0-byte file. On a soft-sector card that used to hard-fail the
+    // probe; now anything smaller than the full disk mounts with EMPTY per-track geometry --
+    // READY and steppable, but every access is Record Not Found until Write Track lays a track
+    // down. (Oversized is still an error; that is the block above.)
+    {
+        withRampDisk(0);  // a 0-byte CREATE'd blank
+        Clock c;
+        TarbellBoard b;
+        b.attachClock(&c);
+        b.power();
+
+        std::string err;
+        CHECK(b.mount("drive0", "blank.dsk", false, err), "a 0-byte blank image mounts");
+
+        // Every sector RNFs: no bytes transfer and status shows Record Not Found (S4).
+        out(b, TRK, 0);
+        out(b, SECR, 1);
+        out(b, CMD, 0x88);  // Read Sector
+        CHECK(pollRead(b).empty(), "an unformatted track transfers nothing");
+        CHECK((in(b, CMD) & 0x10) != 0, "...and reads Record Not Found (S4)");
+
+        // A short-but-nonzero image mounts the same way.
+        withRampDisk(1024);
+        err.clear();
+        CHECK(b.mount("drive1", "short.dsk", false, err), "a short (1 KB) image mounts unformatted");
+    }
+
+    // ---- THE GUEST FORMATS A BLANK DISK: Write Track fills it, and it GROWS ----
+    //
+    // The whole point of the feature. A 0-byte disk, formatted track by track through the real
+    // FC WAIT / FB data ports (the FORMAT.ASM discipline), grows to a usable 256,256-byte SSSD
+    // disk of 0xE5 -- the emulated controller doing the format, exactly as real hardware does.
+    {
+        // A 0-byte MemoryMedia we keep a handle on, so we can watch the host file grow.
+        MemoryMedia* media = nullptr;
+        setMediaResolver([&](const std::string& path, bool ro, std::string&) {
+            auto m = std::make_unique<MemoryMedia>(path, std::vector<uint8_t>{}, ro);
+            media  = m.get();
+            return m;
+        });
+
+        Clock c;
+        TarbellBoard b;
+        b.attachClock(&c);
+        b.power();
+
+        std::string err;
+        CHECK(b.mount("drive0", "blank.dsk", false, err), "the blank mounts (0 bytes)");
+        CHECK(media && media->size() == 0, "...and starts empty");
+
+        // Format track 0: seek there, issue Write Track, stream the raw track + gap padding.
+        out(b, DAT, 0);
+        out(b, CMD, 0x18);   // Seek to track 0 (head load)
+        out(b, CMD, 0xF4);   // Write Track
+        pollWrite(b, sssdTrack(0));
+        CHECK((in(b, CMD) & 0x20) == 0, "the format took: no WRITE FAULT (S5)");
+        CHECK(media->size() == 26u * 128, "track 0 formatted: the file grew to one track (3328)");
+
+        // Read sector 1 of the freshly formatted track: 128 bytes of 0xE5, clean status.
+        out(b, TRK, 0);
+        out(b, SECR, 1);
+        out(b, CMD, 0x88);   // Read Sector
+        std::vector<uint8_t> got = pollRead(b);
+        CHECK(got.size() == 128, "the formatted sector reads back a full 128-byte sector");
+        bool allE5 = got.size() == 128;
+        for (uint8_t v : got) if (v != 0xE5) allE5 = false;
+        CHECK(allE5, "...and it is the 0xE5 fill the formatter wrote");
+        CHECK((in(b, CMD) & 0x1C) == 0, "...with no RNF/CRC/Lost-Data error");
+
+        // Format the remaining 76 tracks the same way. The file grows one track per format.
+        for (int t = 1; t <= 76; ++t) {
+            out(b, DAT, (uint8_t)t);
+            out(b, CMD, 0x18);   // Seek to track t
+            out(b, CMD, 0xF4);   // Write Track
+            pollWrite(b, sssdTrack(t));
+        }
+        CHECK(media->size() == 77u * 26 * 128,
+              "all 77 tracks formatted: the file is a full 256,256-byte SSSD disk");
     }
 
     // ---- THE DOUBLE-DENSITY CARD: bitmap select, mixed geometry, port FD ----

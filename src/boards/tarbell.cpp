@@ -13,6 +13,13 @@
 
 namespace altair {
 
+// The raw bytes one revolution of an 8" single-density track holds: 250,000 bits/s FM at
+// 360 RPM (166.67 ms/rev) is 250000/8 * 0.16667 = ~5208 bytes. This is the wait-synced Write
+// Track budget (floppy-drive.h) and the length FORMAT.COM pads its ~4882 structured bytes out
+// to. Must be >= what any Tarbell format program streams before its trailing gap. See
+// reference/Tarbell_Floppy_Disk_Interface_Manual.md ("250,000 bits per second").
+static constexpr int kSdTrackBytes = 5208;
+
 // An unclocked card is a chip with no crystal: it cannot time a seek, so it reads
 // dead rather than dereferencing a null Clock. (Same idiom as the VersaFloppy.)
 static Clock& deadCard() {
@@ -259,17 +266,36 @@ void TarbellBoard::loadProm() {
 // ---------------------------------------------------------------------------
 bool TarbellBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads, bool& interleaved,
                                     std::vector<FmtRange>& ranges, std::string& err) const {
-    if (sizeMatches(bytes, 77ull * 26 * 128)) {  // 256,256 -- 8" SD, 77 x 26 x 128
+    const uint64_t full = 77ull * 26 * 128;  // 256,256 -- 8" SD, 77 x 26 x 128
+    if (sizeMatches(bytes, full)) {
         tracks = 77;
         heads  = 1;
         interleaved = false;
         ranges = {{0, 76, 0, 0, Density::SD, 26, 128, 1}};  // soft-sector: sectors from 1
         return true;
     }
-    err = std::to_string(bytes) + " bytes is not a Tarbell single-density disk (expected " +
-          std::to_string(77ull * 26 * 128) + " = 77 x 26 x 128 SD).";
+    // BLANK / SHORT -> an UNFORMATTED disk, not an error (matches SIMH tarbell_attach's rule:
+    // anything that is not the recognized size is SSSD). Mount it at the SD track count with
+    // EMPTY per-track geometry (no ranges): the drive is READY and steppable, but every access
+    // RNFs until the guest's FORMAT writes a track (Write Track -> setTrackFormat). This is
+    // what makes MOUNT ... CREATE (a 0-byte file) formattable. Empty-pending is preferred over
+    // fabricating SD slots, since Write Track is the sole source of geometry (DESIGN.md 7.3).
+    if (bytes < full) {
+        tracks = 77;
+        heads  = 1;
+        interleaved = false;
+        ranges.clear();
+        return true;
+    }
+    // Oversized/garbage is still an error -- a real SD disk is never larger than one revolution
+    // per track, and growing past that would manufacture tracks the controller cannot reach.
+    err = std::to_string(bytes) + " bytes is too large for a Tarbell single-density disk (" +
+          std::to_string(full) + " = 77 x 26 x 128 SD).";
     return false;
 }
+
+// The SD card formats at one 8" SD revolution. (The DD override returns 0 -- deferred.)
+int TarbellBoard::formatTrackBytes() const { return kSdTrackBytes; }
 
 // ---------------------------------------------------------------------------
 // Properties
@@ -405,11 +431,21 @@ bool TarbellBoard::mount(const std::string& unit, const std::string& path, bool 
 
     const bool forcedRo = img->readOnlyForced();
 
+    // EXTEND ON WRITE, always (mirror mits-hardsector.cpp). A recognized full disk never
+    // grows -- its writes stay within the declared geometry -- but a blank/short one grows
+    // as the guest's FORMAT streams each track (Write Track -> setTrackFormat), capped at the
+    // dynamic geometryBytes_ (host/disk.h). The soft-sector "a short image is truncated" rule
+    // is deliberately reversed here: Write Track is the source of geometry (DESIGN.md 7.3).
+    img->setExtendsOnWrite(true);
+
     Drive& d = drive_[(size_t)i];
     d.img  = std::move(img);
     d.path = path;
     d.drv.mount(d.img.get(), ro);
     d.drv.setHeadTrack(0);
+    // Grant the drive the card's format budget (0 on the DD card, deferred). Nonzero = "this
+    // card formats" (Write Track fills exactly this many bytes; see floppy-drive.h).
+    d.drv.setTrackCapacity(formatTrackBytes());
     if (sel_ == i) applySelection();  // re-point the chip at the new medium
 
     if (forcedRo) {

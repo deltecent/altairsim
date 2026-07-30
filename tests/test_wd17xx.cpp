@@ -30,6 +30,12 @@ struct FakeDrive : FloppyDrive {
     bool atIndex = false;
     int  steps   = 0;      // how many STEP pulses we were given, for the timing tests
 
+    // FORMAT (Write Track). trackCap = the raw one-revolution budget (0 = cannot format, the
+    // base contract -> WRITE FAULT). writeTrackImage captures the whole streamed track so a
+    // test can prove the chip's collect/commit path ran and honored the budget.
+    int                  trackCap = 0;
+    std::vector<uint8_t> lastTrack;
+
     std::map<int, std::vector<Sec>> track;  // by PHYSICAL track, in rotational order
 
     // Lay down `n` sectors of `size` bytes on physical track `t`, with the ID field
@@ -101,6 +107,12 @@ struct FakeDrive : FloppyDrive {
         // command's a1a0 field, and a drive that ignored it would make the chip's a1a0
         // decode unobservable -- which is how it stayed broken.
         s->id.deleted = id.deleted;
+        return true;
+    }
+
+    int  trackImageBytes() const override { return trackCap; }
+    bool writeTrackImage(const std::vector<uint8_t>& in) override {
+        lastTrack = in;
         return true;
     }
 };
@@ -814,6 +826,57 @@ void test_wd17xx() {
 
         CHECK((f.readStatus(clk) & 0x20) != 0, "write track on a sector-image drive sets S5 WRITE FAULT");
         CHECK(!f.drainLog().empty(), "...and says why, out loud");
+    }
+
+    // ---- WRITE TRACK on a drive that CAN format: collect the whole track, commit, no fault ----
+    //
+    // The moment the drive returns a positive trackImageBytes(), the WRITE-FAULT short-circuit
+    // resolves itself: the chip enters the write phase, accumulates every guest byte, and hands
+    // the whole revolution to writeTrackImage(). This is the collect/commit path a soft-sector
+    // FORMAT drives; the geometry-deriving parse lives in DiskImageDrive and is tested there.
+    // Wait-synced, because both Tarbell boards are (one byte per data-port write, no byte clock).
+    {
+        Clock clk;
+        FakeDrive d;
+        Wd1771    f("fdc");
+        f.attach(&d);
+        f.powerOn(clk);
+        f.setWaitSynced(true);
+
+        // A hand-built SSSD track: pre-index gap + index mark, then two 128-byte sectors each
+        // wrapped in the IBM 3740 ID/data address marks, then a trailing gap. trackCap is set
+        // to the stream's exact length so no padding is needed to reach the budget.
+        std::vector<uint8_t> stream;
+        auto put = [&](uint8_t b, int n) { for (int i = 0; i < n; ++i) stream.push_back(b); };
+        put(0xFF, 40); put(0x00, 6); stream.push_back(0xFC);   // pre-index gap + index mark
+        for (int s = 1; s <= 2; ++s) {
+            put(0xFF, 26); put(0x00, 6);                        // post-index / pre-id gap
+            stream.push_back(0xFE);                             // ID address mark
+            stream.push_back(0x00);                             // track
+            stream.push_back(0x00);                             // side
+            stream.push_back((uint8_t)s);                       // sector
+            stream.push_back(0x00);                             // length code N=0 -> 128
+            stream.push_back(0xF7);                             // ID CRC
+            put(0xFF, 11); put(0x00, 6);                        // pre-data gap
+            stream.push_back(0xFB);                             // data address mark
+            put(0xE5, 128);                                     // the sector's 128 data bytes
+            stream.push_back(0xF7);                             // data CRC
+        }
+        put(0xFF, 20);                                          // end-of-track gap
+        d.trackCap = (int)stream.size();
+
+        f.writeCommand(0xF4, clk);  // Write Track
+        size_t k = 0;
+        for (int guard = 0; guard < 200000 && f.busy(); ++guard) {
+            f.poll(clk);
+            if (f.drq() && k < stream.size()) f.writeData(stream[k++], clk);
+        }
+
+        CHECK((f.readStatus(clk) & 0x20) == 0, "a formattable drive takes the track: no WRITE FAULT");
+        CHECK(k == stream.size(), "the wait-synced command consumed exactly trackImageBytes() bytes");
+        CHECK(d.lastTrack.size() == stream.size(), "...and writeTrackImage got the whole revolution");
+        CHECK(d.lastTrack == stream, "...byte for byte, gaps and address marks and all");
+        CHECK(f.drainLog().empty(), "no complaint -- the drive accepted the format");
     }
 
     // ---- THE FD1791 -- the same register file, four things different (wd17xx.h) ----

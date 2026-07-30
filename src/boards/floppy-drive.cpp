@@ -82,4 +82,93 @@ bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n)
     return img_->writeSector(head_, side_, id.sector, buf, &len);
 }
 
+// ---------------------------------------------------------------------------
+// FORMAT -- the Write Track command (host/disk.h "geometry in real time").
+// ---------------------------------------------------------------------------
+
+// The raw one-revolution byte budget, or 0 (WRITE FAULT) if this drive is empty or the card
+// never granted it a capacity. The chip stalls the wait-synced Write Track until exactly this
+// many bytes have arrived, so a nonzero value is BOTH "yes, you may format" and "here is the
+// length" -- FORMAT.COM pads its structured track out to it with gap bytes (see the ENDTRK
+// loop in pd2/FORMAT.ASM). See setTrackCapacity (floppy-drive.h) and Risk 1 in the plan: too
+// large hangs the command, too small truncates the last sectors.
+int DiskImageDrive::trackImageBytes() const {
+    return (img_ && trackCap_ > 0) ? trackCap_ : 0;
+}
+
+// Parse the raw track the guest streamed into `in` and (re)establish the addressed track's
+// geometry as we fill it. The stream is IBM 3740: gap bytes, an index mark (0xFC), then per
+// sector an ID field (0xFE track side sector N, then 0xF7) and a data field (0xFB, `sectorSize`
+// data bytes, then 0xF7). 0xF7 is the CRC-generate byte and can never appear as literal track
+// data, so accumulate-until-0xF7 is unambiguous; 0xE5 fill is ordinary data. See the format FSM
+// in docs/devguide/soft-sector-floppy.md, modelled on simh.mdsk/.../wd_17xx.c.
+bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in) {
+    if (!img_) return false;
+
+    // Each parsed data field, as an (offset, length) window into `in` -- we copy nothing, and
+    // write straight from the buffer the chip already collected. The per-sector number and size
+    // are only meaningful for the FIRST sector (a track is uniform), so they are captured once
+    // as locals rather than stored per sector.
+    struct Field { size_t off, len; };
+    std::vector<Field> fields;
+    int startSector = 0;
+    int sectorSize  = 0;
+
+    const size_t n = in.size();
+    size_t       i = 0;
+    while (i < n) {
+        if (in[i] != 0xFE) { ++i; continue; }  // gap / index mark -- scan to the next ID field
+        ++i;                                    // consume the 0xFE ID address mark
+        if (i + 4 > n) break;                   // a truncated header ends the track
+
+        // ID field: track, side, sector, length code N. We TRUST THE HEAD POSITION for the
+        // physical track (sectorIdAt synthesizes track = head_), so the recorded track/side
+        // are not used; the sector number and N are. sectorSize = 128 << N (IBM 3740).
+        const int sec  = in[i + 2];
+        const int lenN = in[i + 3] & 0x03;
+        i += 4;
+
+        // Skip the ID CRC (0xF7) and the gap up to the data address mark. Bail to the outer
+        // scan if the next ID field arrives first -- an ID with no data field is not a sector.
+        while (i < n && in[i] != 0xFB && in[i] != 0xFE) ++i;
+        if (i >= n || in[i] != 0xFB) continue;
+        ++i;  // consume the 0xFB data address mark
+
+        // The data field is EXACTLY the bytes the software streamed, up to the 0xF7 CRC-generate
+        // terminator (which can never be literal data). We reference it in place -- no fabricated
+        // or padded fill: the sector gets what the formatter wrote (0xE5 for CP/M, but that is
+        // the guest's choice). A data field shorter than the recorded sectorSize is malformed and
+        // writeSector rejects it below -> WRITE FAULT, which is honest.
+        const size_t off = i;
+        while (i < n && in[i] != 0xF7) ++i;
+        if (fields.empty()) { startSector = sec; sectorSize = 128 << lenN; }
+        fields.push_back({off, i - off});
+        if (i < n) ++i;  // consume the 0xF7
+    }
+
+    if (fields.empty()) return false;  // nothing legible -> WRITE FAULT (the chip sets S5)
+
+    // The track's geometry, derived from the stream: sector count from what we found, sector
+    // size and startSector from the first sector. Density is SINGLE for this cut -- the SD-only
+    // Tarbell is the only card that formats; when double density lands, take it from the chip
+    // (Wd17xx::dataRateBits), the single source of truth, not a drive-side strap. setTrackFormat
+    // re-runs rebuild(), so the following tracks' offsets and the growth cap follow (ascending-
+    // order invariant, disk.h).
+    TrackFormat tf;
+    tf.density     = Density::SD;
+    tf.sectors     = (int)fields.size();
+    tf.sectorSize  = sectorSize;
+    tf.startSector = startSector;
+    img_->setTrackFormat(head_, side_, tf);
+
+    // Write each sector's fill by a SEQUENTIAL counter from startSector, ignoring the header's
+    // possibly-skewed sector number, so the fill stays contiguous and the file grows in order.
+    for (size_t s = 0; s < fields.size(); ++s) {
+        size_t len = fields[s].len;
+        if (!img_->writeSector(head_, side_, startSector + (int)s, in.data() + fields[s].off, &len))
+            return false;  // a write that will not land -> WRITE FAULT
+    }
+    return true;
+}
+
 } // namespace altair
