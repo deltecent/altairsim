@@ -37,9 +37,10 @@ the chip/drive split is spelled out there at length. The essentials for a board 
 - **No drive select, no side select, no motor.** The chip talks to ONE `FloppyDrive`; the
   card's select latch points it with `attach()`. Side is a card latch too (`setSide`).
 - **`dataRateBits` is the `DDEN` pin.** 250 kbit/s is 8″ single density; a double-density card
-  writes 500 kbit/s when it decodes its density bit. The chip uses it for byte timing; the
-  board sets it from its control-port density bit. This is the **single source of truth for
-  density** — do not duplicate it onto the drive.
+  writes 500 kbit/s when it decodes its density bit. The chip uses it for byte timing **and hands
+  it to the drive's `Write Track` calls**, which derive the revolution byte budget and the
+  recorded per-track density from it. The board sets it from its control-port density bit. This is
+  the **single source of truth for density** — do not duplicate it onto the drive.
 - **Wait-synced vs DRQ-polling.** A card whose data port stalls the CPU on a wait-state
   generator (PRDY) sets `setWaitSynced(true)`; then every command completes on the register
   access that would have stalled, one byte per access, and Lost Data is correctly unreachable.
@@ -70,10 +71,13 @@ size, count and density can vary track to track, and none of it is in the `.DSK`
 > and writes never do; they *validate* against what a track records.
 
 The chip side is already done (`Wd17xx`, no per-board work): on `Write Track` the chip asks the
-drive for `trackImageBytes()`, and if it is positive it enters the write phase, accumulates
-every guest byte into an internal buffer, and hands the whole revolution to
-`drive->writeTrackImage(buf)` at the end. When `trackImageBytes()` is `0` it sets **WRITE FAULT
-(S5)** instead — the honest answer for an empty drive or a controller that does not format.
+drive for `trackImageBytes(dataRateBits)`, and if it is positive it enters the write phase,
+accumulates every guest byte into an internal buffer, and hands the whole revolution to
+`drive->writeTrackImage(buf, dataRateBits)` at the end. Both calls carry the chip's own configured
+data rate — the chip is the single source of truth for density, and the drive keeps no copy: it
+derives the revolution byte budget and the recorded density from the rate passed in. When
+`trackImageBytes(rate)` is `0` the chip sets **WRITE FAULT (S5)** instead — the honest answer for
+an empty drive or a controller that does not format.
 
 `DiskImageDrive::writeTrackImage` (in `floppy-drive.cpp`) is the format FSM, run over the whole
 collected buffer:
@@ -88,7 +92,7 @@ Per sector: `sectorSize = 128 << N`, capture the first sector number as `startSe
 literal track data, so accumulate-until-`0xF7` is unambiguous (the `0xE5` fill and the `0xDD`
 density signature are ordinary data, not special). Then:
 
-1. Derive `TrackFormat{density = <chip density>, sectors, sectorSize, startSector}` and call
+1. Derive `TrackFormat{density = (rate ≥ 500 kbit/s ? DD : SD), sectors, sectorSize, startSector}` and call
    `img->setTrackFormat(head, side, tf)`. That marks the slot valid and re-runs `rebuild()`, so
    the following tracks' offsets — and the growth cap — follow.
 2. Write each sector's payload by a **sequential 1..N counter** from `startSector`, ignoring the
@@ -125,17 +129,22 @@ Density is one value with three faces, and they must agree:
 | The board I/O bit | e.g. Tarbell DD `OUT FC` bit 3 (`reference/Tarbell_Floppy_Disk_Interface_Manual.md`: "D3 = density") |
 | The recorded per-track density | `TrackFormat.density`, written by `Write Track` |
 
-Reads and writes **validate** the controller's current density against the addressed track's
-recorded density and return **Record Not Found (S4)** on a mismatch (or an unformatted /
-out-of-range track) — never WRITE FAULT. The **format path is never density-gated**: it
-*records* density. The guest-side proof of the board bit driving the chip is `pd2/DFORMAT.ASM`
-(`ORI 8` / `OUT FC` before a DD format); cross-reference the WD `WD177X-00` datasheet's `DDEN`
-description.
+The board sets `dataRateBits` from its control-port bit; the chip hands that same rate to the
+drive's `Write Track` calls; the drive **records** the density it implies into `TrackFormat`. So a
+double-density card formats a mixed disk — SD track 0, DD tracks 1-76 — from the guest's per-track
+`OUT FC` density bit, and it also *reads* plain single-density media. The guest-side proof of the
+board bit driving the chip is `pd2/DFORMAT.ASM` (`ORI 8` / `OUT FC` before a DD format);
+cross-reference the WD `WD177X-00` datasheet's `DDEN` description.
 
-> **Read-side density gate: implemented as of the double-density cut, not the single-density
-> one.** On an SD-only card `dataRateBits` is always 250 kHz, so the gate is a no-op and reads
-> validate through `locate()` alone (unformatted / out-of-range → RNF). It becomes live when a
-> card carries both densities.
+Reads and writes **validate geometry** — the addressed track's recorded sector layout via
+`locate()` — and return **Record Not Found (S4)** on an unformatted / out-of-range track, never
+WRITE FAULT. The **format path records density; it is never density-gated.**
+
+> **Read-side density gate: still deferred.** Reads validate the *geometry* a track records, not
+> its density: a track formatted DD but read with the controller strapped SD still reads back its
+> bytes. Real software never does this (DFORMAT sets the density bit for the whole DD pass, the
+> boot path reads track 0 SD), so the gate buys nothing yet. When a workload needs it, compare
+> `dataRateBits` against `TrackFormat.density` in the read path and RNF on a mismatch.
 
 ## Mount vs. format — where geometry starts
 
@@ -151,21 +160,28 @@ disk is usable immediately with no FORMAT:
   not a recognized size is single density.*
 - Oversized / garbage is still an error — a real track is never larger than one revolution.
 
-## The `trackImageBytes()` budget — the load-bearing number
+A dual-density controller's probe is a **superset**, not a single-size gate: the Tarbell #2022
+recognizes its mixed disk (499,456), a plain SD disk (256,256, read as all single density), and a
+blank (unformatted, formattable) — because the DD controller genuinely reads SD media too.
+
+## The `trackImageBytes(rate)` budget — the load-bearing number
 
 Under wait-synced operation there is no index-pulse timeout: `Write Track` completes **exactly**
-when the collected buffer reaches `trackImageBytes()`. So that value **is** the per-track raw
+when the collected buffer reaches `trackImageBytes(rate)`. So that value **is** the per-track raw
 byte budget, and it is the one number most likely to bite:
 
 - **Too large → the command hangs**, waiting for bytes the guest will never send.
 - **Too small → the last sectors truncate**, because the command commits before the guest has
   streamed them.
 
-It must be `≥` everything the format program streams before its trailing gap. The 8″
-single-density value is **5208** bytes (250 kbit/s FM at 360 RPM, one 166.67 ms revolution);
-`pd2/FORMAT.ASM` streams ~4882 structured bytes then pads with `0xFF` (its `ENDTRK` loop) until
-the controller signals INTRQ — which is exactly when the buffer hits the budget. Validate this
-number against the format program's gap tables, not by "it booted."
+It is derived from the chip's data rate — one revolution is `rate / 48` bytes (`rate/8` bytes per
+second ÷ 6 rev/s at 360 RPM): **5208** at 250 kbit/s (8″ SD) and **10416** at 500 kbit/s (8″ DD).
+It must be `≥` everything the format program streams before its trailing gap. `pd2/FORMAT.ASM`
+streams ~4882 structured SD bytes then pads with `0xFF` (its `ENDTRK` loop) until the controller
+signals INTRQ — which is exactly when the buffer hits the budget; `pd2/DFORMAT.ASM` streams-until-
+INTRQ the same way for each DD track (~10114 structured bytes, comfortably under 10416). Because
+the rate is the chip's, the DD card gets 5208 for SD track 0 and 10416 for the DD tracks from one
+mechanism. Validate this number against the format program's gap tables, not by "it booted."
 
 ## The flat-`.DSK` limitation
 
@@ -182,18 +198,16 @@ container that carries its own sector map would fix this — and is explicitly n
   `memmove` the following data by the size delta before `setTrackFormat`, so a partial /
   out-of-order / cross-density reformat stays correct. Not needed for blank format or a
   whole-disk ascending reformat.
-- **Double-density / mixed-density blank format** — the DD card's rate-doubled
-  `trackImageBytes()` and a blank fallback for the DD probe, plus a size/format argument to
-  `CREATE` (or first-format-defines-it) to choose SD vs DD for a fresh disk. The FSM and the
-  density plumbing are already density-agnostic.
-- **A real-CP/M FORMAT.COM acceptance test.** The multi-drive period formatter (`pd2/FORMAT.COM`)
-  is assembled for the **double-density** interface's bitmap drive-select and formats a
-  *non-boot* drive; the single-density `#1011`'s function-decoder select cannot be driven by it,
-  and the SD-only formatters (`FORMAT91`, the CP/M 1.4 `FORMAT`) only ever format drive A — the
-  boot disk. So an end-to-end CP/M format test belongs with the DD cut, which is where that
-  software actually runs. The single-density mechanism is covered end-to-end at the board level
-  in `tests/test_tarbell.cpp` (the real `FC`/`FB` port discipline, all 77 tracks, the file
-  growing to 256,256 bytes, and the `0xE5` fill reading back).
+- **Read-side density gate** (above): reads validate geometry, not density. Deferred until a
+  workload needs it.
+- **A real-CP/M FORMAT/DFORMAT acceptance test.** *Both* densities are now covered end-to-end at
+  the **board level** in `tests/test_tarbell.cpp` — the real `FC`/`FB` port discipline, all 77
+  tracks, the file growing (256,256 SSSD on the #1011; **499,456 mixed** on the #2022, SD track 0
+  then 76 DD tracks driven by the per-track `OUT FC` density bit), and the `0xE5` fill reading
+  back at the right per-track geometry. A guest-driven `DFORMAT.COM` run on the tracked DD master
+  is feasible (it ships on `examples/tarbell/TARBELLDD-CPM22-SSDD-48K.DSK`) but the 9600-baud
+  console makes the interactive prompt automation slow and stale-buffer-prone, so the guaranteed
+  proof stays the board test.
 
 ## Adding another soft-sector controller — the checklist
 
@@ -204,9 +218,9 @@ container that carries its own sector map would fix this — and is explicitly n
    for an SD-only card).
 3. **Size-probe with a blank fallback** in `describeGeometry`: recognized sizes → their format;
    anything smaller → empty per-track geometry (unformatted); oversized → error.
-4. **`setExtendsOnWrite(true)`** on the image at mount, and grant the drive its format budget
-   (`setTrackCapacity(bytesPerRevolution)`) — leave it `0` on a card that does not format, and
-   `Write Track` keeps faulting. (Density is not passed: it is the chip's, and the format path
-   records it from there.)
+4. **`setExtendsOnWrite(true)`** on the image at mount, and enable formatting on the drive
+   (`setFormatting(true)`) — leave it off (the default) on a card that does not format, and
+   `Write Track` keeps faulting. Neither the byte budget nor the density is passed here: both are
+   the chip's, derived per call from the data rate it hands the drive.
 5. **Reuse `DiskImageDrive`'s format path** unchanged — the parse, the sequential fill and the
    `setTrackFormat`/`rebuild` are controller-agnostic.

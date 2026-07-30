@@ -13,13 +13,6 @@
 
 namespace altair {
 
-// The raw bytes one revolution of an 8" single-density track holds: 250,000 bits/s FM at
-// 360 RPM (166.67 ms/rev) is 250000/8 * 0.16667 = ~5208 bytes. This is the wait-synced Write
-// Track budget (floppy-drive.h) and the length FORMAT.COM pads its ~4882 structured bytes out
-// to. Must be >= what any Tarbell format program streams before its trailing gap. See
-// reference/Tarbell_Floppy_Disk_Interface_Manual.md ("250,000 bits per second").
-static constexpr int kSdTrackBytes = 5208;
-
 // An unclocked card is a chip with no crystal: it cannot time a seek, so it reads
 // dead rather than dereferencing a null Clock. (Same idiom as the VersaFloppy.)
 static Clock& deadCard() {
@@ -294,9 +287,6 @@ bool TarbellBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads, boo
     return false;
 }
 
-// The SD card formats at one 8" SD revolution. (The DD override returns 0 -- deferred.)
-int TarbellBoard::formatTrackBytes() const { return kSdTrackBytes; }
-
 // ---------------------------------------------------------------------------
 // Properties
 // ---------------------------------------------------------------------------
@@ -443,9 +433,10 @@ bool TarbellBoard::mount(const std::string& unit, const std::string& path, bool 
     d.path = path;
     d.drv.mount(d.img.get(), ro);
     d.drv.setHeadTrack(0);
-    // Grant the drive the card's format budget (0 on the DD card, deferred). Nonzero = "this
-    // card formats" (Write Track fills exactly this many bytes; see floppy-drive.h).
-    d.drv.setTrackCapacity(formatTrackBytes());
+    // Both Tarbell generations format. The per-track byte budget and recorded density come from
+    // the chip's data rate at Write Track time (floppy-drive.h), not from the card here -- so a
+    // DD card formats SD track 0 and DD tracks 1-76 off the guest's per-track OUT-FC density bit.
+    d.drv.setFormatting(true);
     if (sel_ == i) applySelection();  // re-point the chip at the new medium
 
     if (forcedRo) {
@@ -633,14 +624,22 @@ void TarbellDdBoard::writeExtra(uint8_t off, uint8_t v) {
     if (off == 5) extAddr_ = v;
 }
 
-// The DD disk: track 0 is single density (the FD179x powers up density-clear and the
-// IBM 3740 index convention keeps track 0 SD), tracks 1-76 double density. Two
-// initFormat ranges, both single-sided.
+// The DD controller reads BOTH densities, so its probe is a SUPERSET, not a single-size gate:
+//
+//   - 499,456 -> the mixed DD disk: track 0 single density (the FD179x powers up density-clear
+//     and the IBM 3740 index convention keeps track 0 SD), tracks 1-76 double density.
+//   - 256,256 -> a plain SD disk (an existing SSSD image, or PD disk 2): all 77 tracks single
+//     density. Checked before the blank fallback so the exact SD size is recognized, not blanked.
+//   - anything smaller and unrecognized -> an UNFORMATTED blank (no ranges): MOUNT ... CREATE
+//     (a 0-byte file) is formattable, and mixed density arrives track-by-track as the guest's
+//     DFORMAT streams each track (Write Track -> setTrackFormat, density from the OUT-FC bit).
+//   - larger than the mixed disk -> an error: a real DD disk is never bigger.
 bool TarbellDdBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads, bool& interleaved,
                                       std::vector<FmtRange>& ranges, std::string& err) const {
     const uint64_t sd0 = 26ull * 128;             // track 0: 26 x 128       = 3,328
     const uint64_t dd  = 76ull * 51ull * 128;     // tracks 1-76: 51 x 128   = 496,128
-    if (sizeMatches(bytes, sd0 + dd)) {           // 499,456
+    const uint64_t sd  = 77ull * 26 * 128;        // all-SD:     77 x 26 x 128 = 256,256
+    if (sizeMatches(bytes, sd0 + dd)) {           // 499,456 -- the mixed DD disk
         tracks = 77;
         heads  = 1;
         interleaved = false;
@@ -648,7 +647,21 @@ bool TarbellDdBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads, b
                   {1, 76, 0, 0, Density::DD, 51, 128, 1}};
         return true;
     }
-    err = std::to_string(bytes) + " bytes is not a Tarbell double-density disk (expected " +
+    if (sizeMatches(bytes, sd)) {                  // 256,256 -- a plain single-density disk
+        tracks = 77;
+        heads  = 1;
+        interleaved = false;
+        ranges = {{0, 76, 0, 0, Density::SD, 26, 128, 1}};
+        return true;
+    }
+    if (bytes < sd0 + dd) {                        // blank / short -> unformatted, formattable
+        tracks = 77;
+        heads  = 1;
+        interleaved = false;
+        ranges.clear();
+        return true;
+    }
+    err = std::to_string(bytes) + " bytes is too large for a Tarbell double-density disk (" +
           std::to_string(sd0 + dd) + " = SD track 0 + 76 x 51 x 128 DD).";
     return false;
 }

@@ -125,6 +125,35 @@ std::vector<uint8_t> sssdTrack(int trackNum) {
     return s;  // ~3900 bytes of structure; pollWrite pads the rest of the ~5208-byte revolution
 }
 
+// A well-formed DD track image the way DFORMAT lays one down: 51 sectors of 128 0xE5 bytes,
+// MFM gap byte 0x4E, 3x 0xF5 (the A1 sync bytes) before each address mark, no index mark, per
+// sector `FE trk 00 sec 00 F7 ... FB (128xE5) F7`. Sector numbers are sequential (skew is
+// irrelevant -- the image has no IDs; Write Track writes the data fields in order). The format
+// parser fall through the 0xF5/0x4E gap bytes and terminates data fields at 0xF7, so it is
+// density- and size-agnostic. `trackNum` goes in the (ignored) ID header.
+std::vector<uint8_t> ddTrack(int trackNum) {
+    std::vector<uint8_t> s;
+    auto put = [&](uint8_t b, int n) { for (int i = 0; i < n; ++i) s.push_back(b); };
+    put(0x4E, 40);                                    // pre-index / lead-in gap (no index mark)
+    for (int sec = 1; sec <= 51; ++sec) {
+        put(0x4E, 12); put(0x00, 8); put(0xF5, 3);    // gap + sync field + A1 marks
+        s.push_back(0xFE);                            // ID address mark
+        s.push_back((uint8_t)trackNum);               // track (ignored: head position wins)
+        s.push_back(0x00);                            // side
+        s.push_back((uint8_t)sec);                    // sector
+        s.push_back(0x00);                            // length code N=0 -> 128 bytes
+        s.push_back(0xF7);                            // ID CRC
+        put(0x4E, 12); put(0x00, 8); put(0xF5, 3);    // gap + sync + A1 marks
+        s.push_back(0xFB);                            // data address mark
+        put(0xE5, 128);                               // the 128 payload bytes
+        s.push_back(0xF7);                            // data CRC
+    }
+    // ~9300 bytes of structure (51 sectors x ~182), which MUST stay under the ~10416-byte DD
+    // revolution budget so all 51 sectors stream before the wait-synced command completes;
+    // pollWrite pads the remainder with gap 0xFFs.
+    return s;
+}
+
 } // namespace
 
 void test_tarbell() {
@@ -331,6 +360,75 @@ void test_tarbell() {
               "all 77 tracks formatted: the file is a full 256,256-byte SSSD disk");
     }
 
+    // ---- THE DD CARD FORMATS A BLANK INTO A MIXED-DENSITY DISK (what DFORMAT does) ----
+    //
+    // The payoff for the double-density card. A 0-byte blank, formatted through the real ports:
+    // track 0 SINGLE density (OUT-FC density bit clear -> chip at 250k) and tracks 1-76 DOUBLE
+    // density (OUT-FC density bit set -> chip at 500k). Each track's recorded density comes from
+    // the chip's data rate at Write Track time, so the file grows into a valid 499,456-byte mixed
+    // image (SD track 0 = 3328, +6528 per DD track) and reads back 0xE5 at the right geometry.
+    {
+        MemoryMedia* media = nullptr;
+        setMediaResolver([&](const std::string& path, bool ro, std::string&) {
+            auto m = std::make_unique<MemoryMedia>(path, std::vector<uint8_t>{}, ro);
+            media  = m.get();
+            return m;
+        });
+
+        Clock c;
+        TarbellDdBoard b;
+        b.attachClock(&c);
+        b.power();
+
+        std::string err;
+        CHECK(b.mount("drive0", "blank.dsk", false, err), "the blank mounts on the DD card (0 bytes)");
+        CHECK(media && media->size() == 0, "...and starts empty");
+
+        // Track 0: SINGLE density. OUT-FC = 0x00 (density bit clear, drive 0, side 0) -> 250k.
+        out(b, CTL, 0x00);
+        out(b, DAT, 0);
+        out(b, CMD, 0x18);   // Seek to track 0
+        out(b, CMD, 0xF4);   // Write Track
+        pollWrite(b, sssdTrack(0));
+        CHECK((in(b, CMD) & 0x20) == 0, "track 0 formats: no WRITE FAULT (S5)");
+        CHECK(media->size() == 26u * 128, "track 0 (SD) grew the file to 3328");
+
+        // Tracks 1-76: DOUBLE density. OUT-FC = 0x08 (density bit set) -> 500k, 51 sectors each.
+        out(b, CTL, 0x08);
+        for (int t = 1; t <= 76; ++t) {
+            out(b, DAT, (uint8_t)t);
+            out(b, CMD, 0x18);   // Seek to track t
+            out(b, CMD, 0xF4);   // Write Track
+            pollWrite(b, ddTrack(t));
+        }
+        CHECK(media->size() == 26u * 128 + 76u * 51 * 128,
+              "all 77 tracks formatted: a full 499,456-byte mixed-density disk");
+
+        // Read back: track 0 is an SD 128-byte sector of 0xE5, track 1 a DD one, both clean.
+        // The head is on track 76 after the format loop, so seek it home first.
+        out(b, CTL, 0x00);   // density SD, drive 0
+        out(b, DAT, 0);
+        out(b, CMD, 0x18);   // Seek to track 0
+        out(b, SECR, 1);
+        out(b, CMD, 0x88);   // Read Sector
+        std::vector<uint8_t> t0 = pollRead(b);
+        bool t0e5 = t0.size() == 128;
+        for (uint8_t v : t0) if (v != 0xE5) t0e5 = false;
+        CHECK(t0e5, "SD track 0 sector 1 reads back 128 bytes of 0xE5");
+        CHECK((in(b, CMD) & 0x1C) == 0, "...with no RNF/CRC/Lost-Data error");
+
+        out(b, CTL, 0x08);   // density DD, drive 0
+        out(b, DAT, 1);
+        out(b, CMD, 0x18);   // Seek to track 1 (DD)
+        out(b, SECR, 51);    // the last DD sector -- proves all 51 landed
+        out(b, CMD, 0x88);   // Read Sector
+        std::vector<uint8_t> t1 = pollRead(b);
+        bool t1e5 = t1.size() == 128;
+        for (uint8_t v : t1) if (v != 0xE5) t1e5 = false;
+        CHECK(t1e5, "DD track 1 sector 51 reads back 128 bytes of 0xE5");
+        CHECK((in(b, CMD) & 0x1C) == 0, "...with no RNF/CRC/Lost-Data error");
+    }
+
     // ---- THE DOUBLE-DENSITY CARD: bitmap select, mixed geometry, port FD ----
     {
         Clock c;
@@ -392,7 +490,9 @@ void test_tarbell() {
         CHECK(t1ok, "all 51 DD sectors of track 1 read exactly 128 bytes and complete");
     }
 
-    // The DD card refuses a single-density-sized image (the mirror of the SD probe).
+    // The DD card READS a single-density-sized image too -- the DD controller is a superset,
+    // not a single-size gate (existing SSSD disks, PD disk 2). A 256,256 image mounts as all
+    // single density and track 0 sector 1 reads back clean.
     {
         Clock c;
         TarbellDdBoard b;
@@ -400,8 +500,29 @@ void test_tarbell() {
         b.power();
         withRampDisk(77ull * 26 * 128);  // 256,256 -- the SD size
         std::string err;
-        CHECK(!b.mount("drive0", "sd.dsk", false, err),
-              "a single-density-sized image is refused by the DD card");
+        CHECK(b.mount("drive0", "sd.dsk", false, err),
+              "a single-density-sized image is ACCEPTED by the DD card (it reads SD media)");
+
+        out(b, CTL, 0x00);  // density SD, drive 0, side 0
+        out(b, TRK, 0);
+        out(b, SECR, 1);
+        out(b, CMD, 0x88);  // Read Sector
+        std::vector<uint8_t> got = pollRead(b);
+        CHECK(got.size() == 128, "track 0 sector 1 reads a full 128-byte SD sector");
+        CHECK(got[0] == 0 && (in(b, CMD) & 0x1C) == 0, "...clean, and it is sector 1's data");
+    }
+
+    // The DD card refuses an OVERSIZED image (larger than the mixed DD disk -- a real one never is).
+    {
+        Clock c;
+        TarbellDdBoard b;
+        b.attachClock(&c);
+        b.power();
+        withRampDisk(499456 + 128);  // one sector past the mixed disk
+        std::string err;
+        CHECK(!b.mount("drive0", "big.dsk", false, err),
+              "an oversized image is refused by the DD card");
+        CHECK(err.find("too large") != std::string::npos, "...with a reason that says why");
     }
 
     // ---- THE BOOT PROM / PHANTOM* CONTRACT (the real 32-byte TARPROM) ----

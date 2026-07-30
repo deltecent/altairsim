@@ -50,16 +50,15 @@ public:
     void setSide(int s) { side_ = s; }
     int  side() const { return side_; }
 
-    // FORMAT CAPABILITY -- the raw one-revolution track byte budget. ZERO (the default) means
-    // this drive CANNOT be formatted: Write Track faults with WRITE FAULT, the wd17xx.h base
-    // contract, which is what a raw .DSK on a card that does not implement formatting must do
-    // (the VersaFloppy, today). A card that DOES format (the Tarbell) sets it on mount to its
-    // bit rate's revolution length (8" SD is ~5208 bytes) -- the budget the wait-synced Write
-    // Track fills, and the length FORMAT.COM pads out to. It is the CARD's, because the byte
-    // budget is a property of the controller's density. Density itself is NOT strapped here:
-    // it is the chip's (Wd17xx::dataRateBits), and writeTrackImage records it from there. See
-    // docs/devguide/soft-sector-floppy.md.
-    void setTrackCapacity(int bytes) { trackCap_ = bytes; }
+    // FORMAT CAPABILITY -- a pure yes/no, NOT a byte budget or a density. FALSE (the default)
+    // means this drive CANNOT be formatted: Write Track faults with WRITE FAULT, the wd17xx.h
+    // base contract, which is what a raw .DSK on a card that does not implement formatting must
+    // do (the VersaFloppy, today). A card that DOES format (either Tarbell generation) sets it
+    // true on mount. Nothing about the RATE lives here: the revolution byte budget and the
+    // recorded density are both derived per call from the data rate the chip hands in
+    // (trackImageBytes/writeTrackImage), keeping the chip (Wd17xx::dataRateBits) the single
+    // source of truth. See docs/devguide/soft-sector-floppy.md.
+    void setFormatting(bool on) { canFormat_ = on; }
 
     // Head position -- runtime state the board serializes and restores (the disk itself is
     // host-backed and does not travel).
@@ -80,12 +79,13 @@ public:
     bool readData(const SectorId& id, uint8_t* buf, size_t* n) override;
     bool writeData(const SectorId& id, const uint8_t* buf, size_t n) override;
 
-    // ---- FORMAT: the Write Track command lands here (see setTrackCapacity) ----
-    // trackImageBytes() is 0 (WRITE FAULT) unless a disk is loaded AND the card gave this
-    // drive a nonzero capacity; writeTrackImage() parses the raw track the guest streamed
-    // and (re)establishes the addressed track's geometry as it fills it. floppy-drive.cpp.
-    int  trackImageBytes() const override;
-    bool writeTrackImage(const std::vector<uint8_t>& in) override;
+    // ---- FORMAT: the Write Track command lands here (see setFormatting) ----
+    // trackImageBytes(rate) is 0 (WRITE FAULT) unless a disk is loaded AND the card enabled
+    // formatting; otherwise it is one revolution at `rate`. writeTrackImage(in, rate) parses the
+    // raw track the guest streamed and (re)establishes the addressed track's geometry as it fills
+    // it, recording the density `rate` implies. floppy-drive.cpp.
+    int  trackImageBytes(long long rate) const override;
+    bool writeTrackImage(const std::vector<uint8_t>& in, long long rate) override;
 
 private:
     // The chip searches ID fields by (track, sector). We hand it the current track's
@@ -98,9 +98,10 @@ private:
     int        side_ = 0;        // the selected side / DiskImage head index
     bool       wp_   = false;    // the drive's write-protect notch (board-forced)
 
-    // FORMAT strap (setTrackCapacity): the raw track byte budget, 0 = cannot format (WRITE
-    // FAULT). Set by the CARD, not serialized (a strap, re-applied on mount).
-    int trackCap_ = 0;
+    // FORMAT strap (setFormatting): can this card format at all? false = cannot (WRITE FAULT).
+    // Set by the CARD, not serialized (a strap, re-applied on mount). The byte budget and the
+    // recorded density are NOT here -- they come from the chip's data rate, passed per call.
+    bool canFormat_ = false;
 };
 
 } // namespace altair
