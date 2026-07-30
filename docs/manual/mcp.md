@@ -100,6 +100,15 @@ shell to inherit one from):
 The `<machine>` is a built-in name or a machine file, exactly as on the command line. If
 `altairsim` is not on your `PATH`, give its full path as the command.
 
+You are not limited to one. Register several machines under different names (`altair-cpm`,
+`altair-basic`) and an assistant sees them all at once; `claude mcp add`'s *scope* decides whether
+a server is tied to the one project directory you added it from (the default), travels with a
+folder as a `.mcp.json` (`--scope project`), or is available everywhere (`--scope user`). One thing
+to know for file exchange: the host-bridge sandbox is the server's working directory. The `claude`
+command line sets that to wherever you started it, so a relative machine path and the sandbox line
+up with the folder you are in; the desktop app currently starts the server in your home directory
+instead, so there give the machine an absolute path.
+
 `DRIVING-WITH-AI.md`, in this package, is the briefing written for the assistant itself — drop it
 in a working directory and the assistant has the recipes for booting, building and debugging over
 these tools. The `examples/ai-mcp/` folder is a ready-made such directory, with a walkthrough that
