@@ -98,23 +98,50 @@ public:
     void initFormat(int trackLo, int trackHi, int headLo, int headHi, Density d, int sectors,
                     int sectorSize, int startSector);
 
+    // GEOMETRY IN REAL TIME -- one track's format, established or changed at RUNTIME.
+    //
+    // A soft-sector controller's FORMAT (the WD177x Write Track command) is the ONLY thing
+    // that establishes a track's geometry, and it does so one track at a time as the guest
+    // streams it -- density from the controller, sector size and count and startSector from
+    // the stream (boards/floppy-drive.cpp). So this is initFormat for exactly one (t,h): set
+    // the slot's format, mark it valid (or not -- sectors==0 clears it), and re-run rebuild()
+    // so the following tracks' offsets and the growth cap follow. It is safe to call after
+    // init()/initFormat and after mount.
+    //
+    // CORRECTNESS RESTS ON THE ASCENDING-TRACK-ORDER INVARIANT. FORMAT writes tracks 0->N in
+    // order, so when a track is (re)formatted to a LARGER geometry the tracks after it have
+    // either not been written yet or are about to be overwritten -- rebuild() moving their
+    // offsets clobbers nothing valid. An out-of-order or cross-density reformat of an already
+    // populated disk would need the tail shifted first; that is a deferred, separate feature.
+    void setTrackFormat(int t, int h, const TrackFormat& fmt);
+
     int  tracks() const { return tracks_; }
     int  heads() const { return heads_; }
     bool interleaved() const { return interleaved_; }
 
-    // EXTEND-ON-WRITE -- a HARD-SECTOR concession, off by default (DESIGN.md 7.3).
+    // EXTEND-ON-WRITE -- an UNFORMATTED-MEDIA concession, off by default (DESIGN.md 7.3).
     //
-    // A hard-sector image carries no geometry: it is fixed 137-byte slots addressed
-    // linearly, and its size is simply how many the guest has written. So a blank or
-    // short image is not a truncated disk, it is an UNFORMATTED one -- the guest's own
-    // FORMAT program fills it in, and until it does a read of an absent slot fails and
-    // the controller's sync/checksum rejects it (which is correct).
+    // A blank or short image is not a truncated disk, it is an UNFORMATTED one -- the
+    // guest's own FORMAT program fills it in, and until it does a read of an absent slot
+    // fails and the controller's sync/checksum (or, on a soft-sector card, an unformatted
+    // track) rejects it, which is correct.
     //
-    // With this on, writeSector() lets the backing file GROW as sectors are written,
-    // still capped at geometryBytes_ (the controller's whole reach -- set by the board
-    // from its largest format). SOFT-SECTOR leaves this OFF: there a short image really
-    // is truncated, and growing it would manufacture the missing tracks out of zeroes
-    // rather than say so (see writeSector).
+    // With this on, writeSector() lets the backing file GROW as sectors are written, still
+    // capped at geometryBytes_ (the controller's whole reach). Two cards turn it on for two
+    // shapes of the same idea:
+    //
+    //   - HARD-SECTOR (88-DCDD/88-MDS): the image carries no geometry at all -- fixed
+    //     137-byte slots addressed linearly -- and geometryBytes_ is the board's largest
+    //     format, FIXED at mount. FORMAT grows the file one slot at a time up to it.
+    //
+    //   - SOFT-SECTOR (Tarbell): the geometry arrives one track at a time from the Write
+    //     Track command (setTrackFormat), so geometryBytes_ is DYNAMIC -- it grows as each
+    //     track is formatted, and the cap rises with it under the ascending-order invariant.
+    //     A recognized full disk never grows (its writes stay in bounds); a blank one grows
+    //     as it formats.
+    //
+    // A card that neither pre-declares its whole geometry nor formats leaves this OFF, and a
+    // short image there really is a truncated one.
     void setExtendsOnWrite(bool g) { extendsOnWrite_ = g; }
     bool extendsOnWrite() const { return extendsOnWrite_; }
 
@@ -140,6 +167,15 @@ public:
     const std::string& describe() const { return media_->describe(); }
 
 private:
+    // The slot's index in IMAGE order -- the one place the interleave mapping lives, so
+    // initFormat/setTrackFormat/trackFormat/locate all agree. Interleaved stores T0H0, T0H1,
+    // T1H0...; otherwise all of head 0 then all of head 1. No bounds check: every caller does
+    // its own (initFormat continues, the others return false).
+    size_t slotIndex(int t, int h) const {
+        return interleaved_ ? (size_t)t * (size_t)heads_ + (size_t)h
+                            : (size_t)h * (size_t)tracks_ + (size_t)t;
+    }
+
     // Where the sector IS, and how big. The whole of the CHS arithmetic, in one
     // place, so no board ever does it again.
     bool locate(int t, int h, int s, uint64_t& off, size_t& len) const;

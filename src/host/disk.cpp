@@ -16,16 +16,26 @@ void DiskImage::initFormat(int trackLo, int trackHi, int headLo, int headHi, Den
         if (t < 0 || t >= tracks_) continue;
         for (int h = headLo; h <= headHi; ++h) {
             if (h < 0 || h >= heads_) continue;
-            // The IMAGE order, not the geometric one. Interleaved means the image
-            // stores T0H0, T0H1, T1H0...; otherwise it is all of head 0 followed by
-            // all of head 1. That is a property of the tool that WROTE the file, and
-            // it varies -- which is why it is a parameter of init() and not a rule.
-            size_t i = interleaved_ ? (size_t)t * (size_t)heads_ + (size_t)h
-                                    : (size_t)h * (size_t)tracks_ + (size_t)t;
+            // The IMAGE order, not the geometric one -- a property of the tool that WROTE
+            // the file, which is why it is a parameter of init() and not a rule (slotIndex).
+            size_t i = slotIndex(t, h);
             slots_[i].fmt   = TrackFormat{d, sectors, sectorSize, startSector};
             slots_[i].valid = sectors > 0 && sectorSize > 0;
         }
     }
+    rebuild();
+}
+
+// One track's geometry, at runtime. The same slot-index arithmetic as initFormat, for a
+// single (t,h): the WD177x Write Track command lands here once per track as a soft-sector
+// FORMAT streams. rebuild() re-runs so the following tracks' offsets and geometryBytes_
+// (the growth cap) follow -- correct under the ascending-track-order invariant (see disk.h).
+void DiskImage::setTrackFormat(int t, int h, const TrackFormat& fmt) {
+    if (t < 0 || t >= tracks_ || h < 0 || h >= heads_) return;
+    size_t i = slotIndex(t, h);
+    if (i >= slots_.size()) return;
+    slots_[i].fmt   = fmt;
+    slots_[i].valid = fmt.sectors > 0 && fmt.sectorSize > 0;
     rebuild();
 }
 
@@ -43,8 +53,7 @@ void DiskImage::rebuild() {
 
 bool DiskImage::trackFormat(int t, int h, TrackFormat& out) const {
     if (t < 0 || t >= tracks_ || h < 0 || h >= heads_) return false;
-    size_t i = interleaved_ ? (size_t)t * (size_t)heads_ + (size_t)h
-                            : (size_t)h * (size_t)tracks_ + (size_t)t;
+    size_t i = slotIndex(t, h);
     if (i >= slots_.size() || !slots_[i].valid) return false;
     out = slots_[i].fmt;
     return true;
@@ -52,8 +61,7 @@ bool DiskImage::trackFormat(int t, int h, TrackFormat& out) const {
 
 bool DiskImage::locate(int t, int h, int s, uint64_t& off, size_t& len) const {
     if (t < 0 || t >= tracks_ || h < 0 || h >= heads_) return false;
-    size_t i = interleaved_ ? (size_t)t * (size_t)heads_ + (size_t)h
-                            : (size_t)h * (size_t)tracks_ + (size_t)t;
+    size_t i = slotIndex(t, h);
     if (i >= slots_.size() || !slots_[i].valid) return false;
 
     const TrackFormat& f = slots_[i].fmt;

@@ -586,9 +586,9 @@ void Wd17xx::afterHeadSettle(const Clock& clk) {
                 // ...but the WRITE TRACK column DOES have a bit for it, and it is exactly
                 // the right one: the drive could not take the write. S5, WRITE FAULT.
                 status_ |= kWriteFault;
-                log_.push_back(name_ + ": write track: this drive cannot be formatted (a "
-                                       "raw sector image has nowhere to put the gaps and "
-                                       "address marks a format writes)");
+                log_.push_back(name_ + ": write track: this drive does not accept a format "
+                                       "(no track-image capacity -- either it is empty or the "
+                                       "controller does not implement soft-sector formatting)");
                 finish(clk);
                 return;
             }
