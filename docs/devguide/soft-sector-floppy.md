@@ -174,14 +174,21 @@ byte budget, and it is the one number most likely to bite:
 - **Too small → the last sectors truncate**, because the command commits before the guest has
   streamed them.
 
-It is derived from the chip's data rate — one revolution is `rate / 48` bytes (`rate/8` bytes per
-second ÷ 6 rev/s at 360 RPM): **5208** at 250 kbit/s (8″ SD) and **10416** at 500 kbit/s (8″ DD).
-It must be `≥` everything the format program streams before its trailing gap. `pd2/FORMAT.ASM`
-streams ~4882 structured SD bytes then pads with `0xFF` (its `ENDTRK` loop) until the controller
-signals INTRQ — which is exactly when the buffer hits the budget; `pd2/DFORMAT.ASM` streams-until-
-INTRQ the same way for each DD track (~10114 structured bytes, comfortably under 10416). Because
-the rate is the chip's, the DD card gets 5208 for SD track 0 and 10416 for the DD tracks from one
-mechanism. Validate this number against the format program's gap tables, not by "it booted."
+It is derived from the chip's data rate **and the drive's rotation speed** — one revolution is
+`rate / (8 × rev/s)` bytes (`rate/8` bytes per second ÷ the revolutions per second). An 8″ drive
+turns at 360 RPM = 6 rev/s: **5208** at 250 kbit/s (8″ SD) and **10416** at 500 kbit/s (8″ DD). A
+5.25″ mini turns at **300 RPM = 5 rev/s**, a longer revolution — `rate / 40`: **6250** (5.25″ SD)
+and **12500** (5.25″ DD). The RPM is a physical property of the drive, so the card sets it per
+mounted drive from the diskette's size (`DiskImageDrive::setRevsPerSecond`, default 6 — a card
+that never sets it, like the Tarbell, is unchanged); the chip stays the single source of the rate.
+
+The budget must be `≥` everything the format program streams before its trailing gap.
+`pd2/FORMAT.ASM` streams ~4882 structured SD bytes then pads with `0xFF` (its `ENDTRK` loop) until
+the controller signals INTRQ — which is exactly when the buffer hits the budget; `pd2/DFORMAT.ASM`
+streams-until-INTRQ the same way for each DD track (~10114 structured bytes, comfortably under
+10416). Because the rate is the chip's, the DD card gets 5208 for SD track 0 and 10416 for the DD
+tracks from one mechanism, and the VersaFloppy's 5.25″ formats get 6250/12500 from the same one.
+Validate this number against the format program's gap tables, not by "it booted."
 
 ## The flat-`.DSK` limitation
 
@@ -224,3 +231,24 @@ container that carries its own sector map would fix this — and is explicitly n
    the chip's, derived per call from the data rate it hands the drive.
 5. **Reuse `DiskImageDrive`'s format path** unchanged — the parse, the sequential fill and the
    `setTrackFormat`/`rebuild` are controller-agnostic.
+6. **Set the drive's RPM** (`setRevsPerSecond`) at mount if it holds anything other than 8″
+   media — the budget denominator. Skip it for an 8″-only card (the default 6 is correct).
+
+### Two worked examples
+
+- **Tarbell #1011/#2022** (`src/boards/tarbell.cpp`) was the first: an SD card and a DD card
+  sharing `describeGeometry`, the DD one probing a *superset* of sizes (mixed, plain-SD, blank).
+  All 8″, so it never touches the RPM knob.
+- **SD Systems VersaFloppy** (`src/boards/sd-versafloppy.cpp`) was the second, and exercised the
+  parts the Tarbell did not: **all ten** SD Systems formats — five geometries × single/double
+  sided — including **256-byte** double-density sectors (the length code flows straight through
+  the parser) and **5.25″** media (step 6, `setRevsPerSecond(5)`). Two lessons it added:
+    - **The size collision.** `8sd-ds` (f1) and `8dd256` (fC) are both 512,512 bytes. The probe
+      resolves it by *order* — the format table lists `8dd256` first, so an unforced probe of
+      512,512 lands on the SDOS master; `media=8sd-ds` forces the other. When two formats share a
+      byte count, list the default first and require `media=` for the other.
+    - **Double-sided blank-grow rides the ascending-order invariant.** A blank double-sided disk
+      grows only if the guest formats **all of side 0, then side 1** — the non-interleaved slot
+      layout puts side 1's tracks after all of side 0's, and `setExtendsOnWrite` grows the file in
+      slot order. A card whose format program interleaved the sides would need the shift-tail
+      resize (deferred). The SD Systems `Z` format writes side 0 then side 1, so it is safe.

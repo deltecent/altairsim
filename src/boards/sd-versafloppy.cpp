@@ -21,11 +21,19 @@ static Clock& deadCard() {
 Clock& VersaFloppyBoard::clk() const { return clock_ ? *clock_ : deadCard(); }
 
 // ---------------------------------------------------------------------------
-// THE MEDIA THIS CARD KNOWS -- single-sided, from the DDBIOS density tables. Only
-// single-sided formats for now, and deliberately: their image sizes are all distinct, so a
-// size probe is unambiguous. The double-sided variants double the size and collide (an 8"
-// SS-DD-256 and an 8" DS-SD-128 are both 512,512 bytes), so they need side-aware probing
-// and are a follow-up. `media` forces a format when a disk's size is genuinely ambiguous.
+// THE MEDIA THIS CARD KNOWS -- all ten SD Systems formats, the `Z`-command format codes 0-7,C,D
+// (reference/SD Systems Monitor.md §3.4), cross-checked against the DDBIOS density tables
+// (reference/SD Systems VersaFloppy.md §6). Five physical geometries x single/double sided; all
+// IBM 3740 soft-sector, sectors numbering from 1.
+//
+// ONE SIZE COLLIDES: 8" SS-DD-256 (fC) and 8" DS-SD-128 (f1) are both 512,512 bytes. So `8dd256`
+// is listed BEFORE `8sd-ds` and the size probe below takes the first hit -- 512,512 auto-probes
+// as fC, the SDOS master; `media=8sd-ds` forces the FM double-sided reading. Every other size is
+// distinct, so an unforced probe is unambiguous.
+//
+// RPM: the 8" formats spin at 360 RPM (6 rev/s), the 5.25" minis at 300 RPM (5 rev/s). This is
+// the Write Track byte-budget denominator (DiskImageDrive::setRevsPerSecond); it is a property of
+// the physical drive size, so it is set per mounted drive, not read from a control bit.
 // ---------------------------------------------------------------------------
 struct VfFormat {
     const char* name;
@@ -34,16 +42,22 @@ struct VfFormat {
     int         sectors;
     int         sectorSize;
     Density     density;
-    uint64_t    bytes;  // tracks * heads * sectors * sectorSize
+    int         revsPerSec;  // 6 = 360 RPM (8"), 5 = 300 RPM (5.25")
+    uint64_t    bytes;       // tracks * heads * sectors * sectorSize
 };
 
 static const std::vector<VfFormat>& vfFormats() {
     static const std::vector<VfFormat> f = {
-        {"8sd",    77, 1, 26, 128, Density::SD, 77ull * 26 * 128},   // 8" SD  256,256
-        {"8dd",    77, 1, 50, 128, Density::DD, 77ull * 50 * 128},   // 8" DD  492,800
-        {"8dd256", 77, 1, 26, 256, Density::DD, 77ull * 26 * 256},   // 8" DD-256  512,512  (SDOS master)
-        {"5sd",    35, 1, 18, 128, Density::SD, 35ull * 18 * 128},   // 5" SD   80,640
-        {"5dd",    35, 1, 29, 128, Density::DD, 35ull * 29 * 128},   // 5" DD  129,920
+        {"8sd",       77, 1, 26, 128, Density::SD, 6, 77ull * 1 * 26 * 128},  // f0  8" SS-SD  256,256
+        {"8dd",       77, 1, 50, 128, Density::DD, 6, 77ull * 1 * 50 * 128},  // f4  8" SS-DD  492,800
+        {"8dd256",    77, 1, 26, 256, Density::DD, 6, 77ull * 1 * 26 * 256},  // fC  8" SS-DD-256  512,512 (SDOS master; before 8sd-ds)
+        {"8sd-ds",    77, 2, 26, 128, Density::SD, 6, 77ull * 2 * 26 * 128},  // f1  8" DS-SD  512,512
+        {"8dd-ds",    77, 2, 50, 128, Density::DD, 6, 77ull * 2 * 50 * 128},  // f5  8" DS-DD  985,600
+        {"8dd256-ds", 77, 2, 26, 256, Density::DD, 6, 77ull * 2 * 26 * 256},  // fD  8" DS-DD-256  1,025,024
+        {"5sd",       35, 1, 18, 128, Density::SD, 5, 35ull * 1 * 18 * 128},  // f2  5" SS-SD   80,640
+        {"5sd-ds",    35, 2, 18, 128, Density::SD, 5, 35ull * 2 * 18 * 128},  // f3  5" DS-SD  161,280
+        {"5dd",       35, 1, 29, 128, Density::DD, 5, 35ull * 1 * 29 * 128},  // f6  5" SS-DD  129,920
+        {"5dd-ds",    35, 2, 29, 128, Density::DD, 5, 35ull * 2 * 29 * 128},  // f7  5" DS-DD  259,840
     };
     return f;
 }
@@ -339,26 +353,54 @@ static int driveIndex(const std::string& unit, int count) {
     return (i >= 0 && i < count) ? i : -1;
 }
 
-// Probe the mounted image's size against the format table (or a forced `media`). The board
-// probes, not DiskImage (DESIGN.md 7.3): the same byte count means different geometries on
-// different controllers.
+static const VfFormat* findFormat(const std::string& name) {
+    for (const auto& f : vfFormats())
+        if (name == f.name) return &f;
+    return nullptr;
+}
+
+// Probe the mounted image's size against the format table (or a forced `media`), and report via
+// `layFormat` whether the image is fully recorded (lay its per-track geometry down) or a blank /
+// short one (use the shape, but leave the tracks unformatted so the guest's FORMAT writes them --
+// Write Track -> setTrackFormat). The board probes, not DiskImage (DESIGN.md 7.3): the same byte
+// count means different geometries on different controllers.
+//
+//   - forced `media=NAME`: the name IS the geometry. Matching size -> recorded; short -> a blank
+//     of that shape (the MOUNT ... CREATE case); larger -> too big for that format (error).
+//   - no `media`: match by size (8dd256 before 8sd-ds resolves the 512,512 collision). A blank /
+//     short image with no `media` cannot be shaped -> "specify media=NAME"; an unrecognized
+//     larger size -> error.
 static const VfFormat* probe(uint64_t got, const std::string& forced, const std::string& who,
-                             std::string& err) {
-    const VfFormat* hit = nullptr;
+                             bool& layFormat, std::string& err) {
+    if (!forced.empty()) {
+        const VfFormat* f = findFormat(forced);
+        if (!f) { err = "unknown media `" + forced + "`"; return nullptr; }  // schema-validated
+        if (sizeMatches(got, f->bytes)) { layFormat = true;  return f; }  // pad tolerance
+        if (got < f->bytes)             { layFormat = false; return f; }  // blank / short -> format it
+        err = std::to_string(got) + " bytes is too large for media=" + forced + " (" +
+              std::to_string(f->bytes) + ").";
+        return nullptr;
+    }
+
+    for (const auto& f : vfFormats())
+        if (sizeMatches(got, f.bytes)) { layFormat = true; return &f; }  // first hit wins (collision)
+
+    uint64_t smallest = UINT64_MAX;
+    for (const auto& f : vfFormats()) smallest = f.bytes < smallest ? f.bytes : smallest;
+    if (got < smallest) {
+        err = std::to_string(got) + " bytes: too small to identify a " + who +
+              " format -- set `media=NAME` to format a blank.";
+        return nullptr;
+    }
+
+    std::string sizes;
     for (const auto& f : vfFormats()) {
-        if (!forced.empty()) { if (forced == f.name) hit = &f; continue; }
-        if (sizeMatches(got, f.bytes)) { hit = &f; break; }  // sizeMatches: XMODEM pad tolerance
+        if (!sizes.empty()) sizes += ", ";
+        sizes += std::string(f.name) + "=" + std::to_string(f.bytes);
     }
-    if (!hit) {
-        std::string sizes;
-        for (const auto& f : vfFormats()) {
-            if (!sizes.empty()) sizes += ", ";
-            sizes += std::string(f.name) + "=" + std::to_string(f.bytes);
-        }
-        err = std::to_string(got) + " bytes matches no " + who + " format (" + sizes +
-              "). Set `media` to force one.";
-    }
-    return hit;
+    err = std::to_string(got) + " bytes matches no " + who + " format (" + sizes +
+          "). Set `media` to force one.";
+    return nullptr;
 }
 
 bool VersaFloppyBoard::mount(const std::string& unit, const std::string& path, bool ro,
@@ -376,12 +418,21 @@ bool VersaFloppyBoard::mount(const std::string& unit, const std::string& path, b
     if (!media) { err += pathNote(path); return false; }
 
     auto img = std::make_unique<DiskImage>(std::move(media));
-    const VfFormat* fmt = probe(img->size(), drive_[(size_t)i].forced, type(), err);
+    bool layFormat = false;
+    const VfFormat* fmt = probe(img->size(), drive_[(size_t)i].forced, type(), layFormat, err);
     if (!fmt) return false;  // a failed probe leaves the old disk in place
 
     img->init(fmt->tracks, fmt->heads, /*interleaved=*/false);
-    img->initFormat(0, fmt->tracks - 1, 0, fmt->heads - 1, fmt->density, fmt->sectors,
-                    fmt->sectorSize, /*startSector=*/1);  // soft-sector: sectors number from 1
+    if (layFormat)  // a recognized full disk; a blank stays unformatted until Write Track fills it
+        img->initFormat(0, fmt->tracks - 1, 0, fmt->heads - 1, fmt->density, fmt->sectors,
+                        fmt->sectorSize, /*startSector=*/1);  // soft-sector: sectors number from 1
+
+    // EXTEND ON WRITE, always (mirror the Tarbell). A recognized full disk never grows -- its
+    // writes stay within the declared geometry -- but a blank/short one grows as the guest's
+    // FORMAT streams each track (Write Track -> setTrackFormat), capped at the dynamic
+    // geometryBytes_. init(...) laid the slot order out from the named media, so a double-sided
+    // blank grows in ascending order (all of side 0, then side 1) as required (host/disk.h).
+    img->setExtendsOnWrite(true);
 
     const bool forcedRo = img->readOnlyForced();
 
@@ -391,6 +442,15 @@ bool VersaFloppyBoard::mount(const std::string& unit, const std::string& path, b
     d.roSaid = false;
     d.drv.mount(d.img.get(), ro);
     d.drv.setHeadTrack(0);
+    // Both VersaFloppy generations format via Write Track (VF-I the four FM codes, VF-II all ten).
+    // The recorded density and the per-track byte budget come from the chip's data rate and the
+    // drive's RPM at Write Track time, not from the card here -- so the guest's `Z` command, which
+    // sets the density bit (D6 -> dataRateBits) per format code, drives the geometry.
+    d.drv.setFormatting(true);
+    // The drive's rotation speed is fixed by its physical size (8" = 360 RPM, 5.25" = 300 RPM):
+    // the Write Track budget denominator. Set from the named/probed media -- a diskette's RPM is
+    // a property of the drive, not a control bit, so mount time is where it is known.
+    d.drv.setRevsPerSecond(fmt->revsPerSec);
     if (sel_ == i) selectFromControl();  // re-point the chip at the new medium
 
     if (forcedRo) {

@@ -60,6 +60,14 @@ public:
     // source of truth. See docs/devguide/soft-sector-floppy.md.
     void setFormatting(bool on) { canFormat_ = on; }
 
+    // DRIVE ROTATION SPEED, in revolutions per second -- the DENOMINATOR of the Write Track byte
+    // budget (trackImageBytes). An 8" drive spins at 360 RPM = 6 rev/s (the default, so a card
+    // that never sets it -- the Tarbell -- is byte-for-byte unchanged); a 5.25" mini spins at
+    // 300 RPM = 5 rev/s, a longer revolution that holds more bytes, so its last sectors are not
+    // truncated. The card sets it per mounted drive from the diskette's physical size (a drive's
+    // RPM is fixed by its size, not by a control bit). See revolutionBytes (floppy-drive.cpp).
+    void setRevsPerSecond(int rps) { revsPerSec_ = rps > 0 ? rps : 6; }
+
     // Head position -- runtime state the board serializes and restores (the disk itself is
     // host-backed and does not travel).
     int  headTrackRaw() const { return head_; }
@@ -102,6 +110,10 @@ private:
     // Set by the CARD, not serialized (a strap, re-applied on mount). The byte budget and the
     // recorded density are NOT here -- they come from the chip's data rate, passed per call.
     bool canFormat_ = false;
+
+    // ROTATION SPEED (setRevsPerSecond): the Write Track budget's denominator. 6 = 360 RPM (8"),
+    // 5 = 300 RPM (5.25" mini). A strap set by the CARD per mounted drive, not serialized.
+    int revsPerSec_ = 6;
 };
 
 } // namespace altair

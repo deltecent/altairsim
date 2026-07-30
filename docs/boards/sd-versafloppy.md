@@ -1,6 +1,7 @@
 # SD Systems VersaFloppy I & II
 
-**Status:** done (VF-II boots SDOS; VF-I selectable via `variant`)
+**Status:** done (VF-II boots SDOS; VF-I selectable via `variant`; formats all ten SD Systems
+formats via Write Track)
 
 ## The real hardware
 
@@ -64,15 +65,53 @@ adapters (`src/boards/floppy-drive.{h,cpp}`), each a `FloppyDrive` over a mounte
 
 - **Decode:** IoRead/IoWrite of `port`..`port+7`. 64–67H go straight to the chip's register
   file; 63H is the board's own latch; 60H resets the chip (VF-II).
-- **Media:** soft-sector, so `sectorSize` from the format, `startSector = 1`. Formats are
-  single-sided (their sizes are distinct, so a size probe is unambiguous): 8″ SD 26×77×128,
-  8″ DD 50×77×128, **8″ DD-256 26×77×256** (the SDOS master), 5″ SD 18×35×128, 5″ DD 29×35×128.
-  Double-sided variants collide by size and are a follow-up; `media` forces a format.
+- **Media:** soft-sector, so `sectorSize` from the format, `startSector = 1`. All **ten**
+  SD Systems formats — the `Z`-command codes 0–7, C, D (`reference/SD Systems Monitor.md` §3.4),
+  five physical geometries × single/double sided (see the table below). An image's size selects
+  its format on mount, or `media=NAME` forces one.
 - **Interrupts:** the chip's INTRQ, gated by the `interrupt` jumper (and VF-I's D7). The
   standard software polls, so this is rarely used.
 - **DMA:** none — an S-100 slave.
 - **Properties:** `variant` (`vfi`/`vfii`), `port` (60H), `drives`, `interrupt`; `[[board.drive]]`
   for `unit`/`mount`/`writeprotect`/`media`.
+
+### Media formats
+
+Sectors number from 1; data fill `0xE5`. `media` names are the `Z`-command format codes.
+
+| Code | `media` | Density | Sec/trk | B/sec | Tracks | Sides | Image bytes |
+|---|---|---|---|---|---|---|---|
+| 0 | `8sd`       | FM  | 26 | 128 | 77 | 1 | 256,256 |
+| 1 | `8sd-ds`    | FM  | 26 | 128 | 77 | 2 | 512,512 ⚠ |
+| 2 | `5sd`       | FM  | 18 | 128 | 35 | 1 | 80,640 |
+| 3 | `5sd-ds`    | FM  | 18 | 128 | 35 | 2 | 161,280 |
+| 4 | `8dd`       | MFM | 50 | 128 | 77 | 1 | 492,800 |
+| 5 | `8dd-ds`    | MFM | 50 | 128 | 77 | 2 | 985,600 |
+| 6 | `5dd`       | MFM | 29 | 128 | 35 | 1 | 129,920 |
+| 7 | `5dd-ds`    | MFM | 29 | 128 | 35 | 2 | 259,840 |
+| C | `8dd256`    | MFM | 26 | 256 | 77 | 1 | 512,512 ⚠ |
+| D | `8dd256-ds` | MFM | 26 | 256 | 77 | 2 | 1,025,024 |
+
+⚠ **`8sd-ds` (f1) and `8dd256` (fC) are both 512,512 bytes** — the only size collision. An
+unforced probe of 512,512 picks **`8dd256`** (the SDOS master); `media=8sd-ds` forces the FM
+double-sided reading. The VF-I (`vfi`, FD1771) supports the four FM codes (0–3); the VF-II
+(`vfii`, FD1791) all ten.
+
+### Formatting a blank / reformatting
+
+The `Z` command formats a diskette by streaming a whole track image through the FD177x **Write
+Track** command; the emulated controller lays each track's geometry down as it arrives
+(`DiskImage::setTrackFormat`), and the recorded density comes from the chip's data rate at that
+moment (the D6 density bit). A **blank** disk — `MOUNT drive0 blank.dsk CREATE media=NAME` — mounts
+unformatted (every read is Record Not Found) and **grows** into a valid image as the guest formats
+it, one track at a time, capped at the named format's size. A full disk **reformats** in place at
+the same size. Double-sided formats grow side 0 fully, then side 1 (the ascending-slot-order
+requirement of `host/disk.h`).
+
+The per-track byte budget is one disk revolution at the chip's data rate: **`rate / (8 × rev/s)`**,
+with 8″ drives at 360 RPM (6 rev/s) and 5.25″ minis at 300 RPM (5 rev/s) — so 5208/10416 bytes for
+8″ SD/DD and 6250/12500 for 5.25″ SD/DD. The drive's RPM is set per mount from the diskette's size
+(`DiskImageDrive::setRevsPerSecond`); it is a physical property of the drive, not a control bit.
 
 ### Reset
 
@@ -91,13 +130,14 @@ adapters (`src/boards/floppy-drive.{h,cpp}`), each a `FloppyDrive` over a mounte
 
 ## Limitations and deliberate departures
 
-- **Single-sided formats only** for now — the double-sided geometries double the image size and
-  collide with single-sided ones (an 8″ SS-DD-256 and an 8″ DS-SD-128 are both 512,512 bytes),
-  so they need side-aware probing. The SDOS master is single-sided.
-- **No bit-level track image**, so `Read Track`/`Write Track` (formatting) sets WRITE FAULT — a
-  raw `.DSK` has no gaps or address marks to write. `Z` (format) therefore cannot create a disk
-  from nothing; it is honest about it (the chip says so). This is the same stance as every other
-  soft-sector controller here.
+- **Write Track parses the streamed track, it does not model a bit-level image.** The controller
+  reconstructs each track's geometry from the address marks and length code the guest streams
+  (density from the chip's data rate), then stores sector payloads in the raw `.DSK` — the gaps,
+  sync fields, and CRCs are consumed and discarded, exactly as they never appear in the image on
+  read. This is enough to format every SD Systems geometry and read it back; it is not a
+  flux-level model, and `Read Track` returns nothing.
+- **`Read Address`/`Read Track` are not the format path.** Formatting is `Write Track`;
+  `Read Track` has no bit image to return.
 - **The collapsed command time is invisible** under wait-synchronization — a seek does not spend
   its 20 ms/track in emulated time, because a PRDY-stalled CPU cannot observe it. Correct for
   this card; a DRQ-polling card (a future Tarbell) would use the chip's byte-timed path instead.
@@ -108,7 +148,10 @@ adapters (`src/boards/floppy-drive.{h,cpp}`), each a `FloppyDrive` over a mounte
   DD-256 master to its `[A]` prompt, on a pty (the SBC auto-bauds and the boot is a typed `C`).
   The disk is mounted write-protected and shasummed — the boot only reads.
 - **`test_versafloppy`** pins the wait-synced read and write (a whole sector on `IN`/`OUT (67H)`),
-  the negative-true select, a seek landing on the right sector, and write-protect refusal.
+  the negative-true select, a seek landing on the right sector, and write-protect refusal — and
+  **formats a blank in each of the ten formats** through the real ports, confirming the file grows
+  to the exact image size and reads back `0xE5` (including the last sector of the last track and,
+  for double-sided disks, a head-1 sector), a reformat-in-place, and the 512,512 collision default.
 - **`test_wd17xx`** covers both parts — the FD1771 in full, and the FD1791's step rate, side
   byte, and one-bit record type.
 

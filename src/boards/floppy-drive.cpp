@@ -86,11 +86,14 @@ bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n)
 // FORMAT -- the Write Track command (host/disk.h "geometry in real time").
 // ---------------------------------------------------------------------------
 
-// The raw bytes one revolution holds at data rate `rate`: bytes/s = rate/8, and an 8" drive
-// turns at 360 RPM = 6 rev/s, so one revolution is rate/8/6 = rate/48 bytes. 250,000 -> 5208
-// (8" SD), 500,000 -> 10416 (8" DD). Derived, never a magic constant: the chip hands us the
-// rate it is configured at, and the geometry follows from it.
-static int revolutionBytes(long long rate) { return (int)(rate / 48); }
+// The raw bytes one revolution holds at data rate `rate`: bytes/s = rate/8, and the drive turns
+// at `rps` rev/s, so one revolution is rate/8/rps bytes. An 8" drive spins at 360 RPM = 6 rev/s:
+// 250,000 -> 5208 (8" SD), 500,000 -> 10416 (8" DD). A 5.25" mini spins at 300 RPM = 5 rev/s, a
+// longer revolution: 250,000 -> 6250 (5" SD), 500,000 -> 12500 (5" DD). Derived, never a magic
+// constant: the chip hands us the rate it is configured at, and the card hands us the drive's RPM
+// (setRevsPerSecond), and the geometry follows. The default rps 6 keeps the Tarbell, which never
+// sets it, byte-for-byte identical.
+static int revolutionBytes(long long rate, int rps) { return (int)(rate / (8 * rps)); }
 
 // The raw one-revolution byte budget, or 0 (WRITE FAULT) if this drive is empty or the card
 // does not implement formatting. The chip stalls the wait-synced Write Track until exactly this
@@ -101,7 +104,7 @@ static int revolutionBytes(long long rate) { return (int)(rate / 48); }
 // setFormatting (floppy-drive.h) and Risk 1 in the plan: too large hangs the command, too small
 // truncates the last sectors.
 int DiskImageDrive::trackImageBytes(long long rate) const {
-    return (img_ && canFormat_) ? revolutionBytes(rate) : 0;
+    return (img_ && canFormat_) ? revolutionBytes(rate, revsPerSec_) : 0;
 }
 
 // Parse the raw track the guest streamed into `in` and (re)establish the addressed track's

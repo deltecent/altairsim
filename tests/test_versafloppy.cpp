@@ -50,6 +50,113 @@ constexpr uint8_t TRK  = P + 5; // 65H track
 constexpr uint8_t SECR = P + 6; // 66H sector
 constexpr uint8_t DAT  = P + 7; // 67H data
 
+// Drive the 63H control latch for drive 0. The latch is NEGATIVE-TRUE (DDB200.ASM's `CPL`
+// before `OUT`), so write() inverts on the way in -- we hand it the complement. D0 = drive-0
+// one-hot select, D4 = side, D6 = density (VF-II).
+void control(VersaFloppyBoard& b, bool dd, int side) {
+    uint8_t c = 0x01;             // drive 0 (one-hot D0)
+    if (side) c |= 0x10;          // D4 side select
+    if (dd)   c |= 0x40;          // D6 double density -> chip data rate 500k
+    out(b, SEL, (uint8_t)~c);
+}
+
+void seekTo(VersaFloppyBoard& b, int track) {
+    out(b, DAT, (uint8_t)track);  // seek target in the data register
+    out(b, CMD, 0x18);            // Seek, no verify
+}
+
+// A well-formed IBM-3740 track image the way the DDBIOS FMATE lays one down, parameterized over
+// FM/MFM and sector geometry. Only the marks (0xFE ID, 0xFB data), the header, and the 0xF7
+// CRC-generate terminators matter to the format parser (floppy-drive.cpp); the gaps are the
+// slack pollWriteVf would otherwise pad. `trackNum` goes in the (ignored) ID header -- the head
+// position wins. The structure MUST stay under one revolution (trackImageBytes) so every sector
+// streams before the wait-synced command completes; pollWriteVf pads the remainder with gap.
+std::vector<uint8_t> mkTrack(int trackNum, Density d, int sectors, int sectorSize) {
+    std::vector<uint8_t> s;
+    auto put = [&](uint8_t b, int n) { for (int i = 0; i < n; ++i) s.push_back(b); };
+    const uint8_t N = (uint8_t)(sectorSize == 256 ? 1 : sectorSize == 512 ? 2 : 0);  // 128<<N
+    if (d == Density::SD) {                                  // FM
+        put(0xFF, 40); put(0x00, 6); s.push_back(0xFC);     // pre-index gap + index mark
+        for (int sec = 1; sec <= sectors; ++sec) {
+            put(0xFF, 26); put(0x00, 6);
+            s.push_back(0xFE);                              // ID address mark
+            s.push_back((uint8_t)trackNum);                 // track (ignored)
+            s.push_back(0x00);                              // side
+            s.push_back((uint8_t)sec);                      // sector
+            s.push_back(N);                                 // length code
+            s.push_back(0xF7);                              // ID CRC
+            put(0xFF, 11); put(0x00, 6);
+            s.push_back(0xFB);                              // data address mark
+            put(0xE5, sectorSize);                          // payload
+            s.push_back(0xF7);                              // data CRC
+        }
+    } else {                                                // MFM
+        put(0x4E, 40);                                      // lead-in gap (no index mark)
+        for (int sec = 1; sec <= sectors; ++sec) {
+            put(0x4E, 12); put(0x00, 8); put(0xF5, 3);      // gap + sync + A1 marks
+            s.push_back(0xFE);
+            s.push_back((uint8_t)trackNum);
+            s.push_back(0x00);
+            s.push_back((uint8_t)sec);
+            s.push_back(N);
+            s.push_back(0xF7);
+            put(0x4E, 12); put(0x00, 8); put(0xF5, 3);
+            s.push_back(0xFB);
+            put(0xE5, sectorSize);
+            s.push_back(0xF7);
+        }
+    }
+    return s;
+}
+
+// Stream a raw track through the wait-synced Write Track: write a byte (67H), then read the FDC
+// status (64H) -- BUSY clear means the whole revolution was consumed and the track committed.
+// Once the structured stream runs out, pad with gap 0xFFs until BUSY drops (the DDBIOS ENDTRK
+// discipline: the guest does not know the revolution length, it fills until the command ends).
+// The caller must have issued Write Track (0xF4) first. The guard bounds the largest budget
+// (5.25" DD = 12500 bytes) so a stuck command cannot hang the test.
+void pollWriteVf(VersaFloppyBoard& b, const std::vector<uint8_t>& stream) {
+    size_t k = 0;
+    for (int guard = 0; guard < 30000; ++guard) {
+        if ((in(b, CMD) & 0x01) == 0) break;  // BUSY (S0) clear: the track is done
+        out(b, DAT, k < stream.size() ? stream[k++] : 0xFF);
+    }
+}
+
+// Format every track of a blank through the real ports, exactly as the guest's `Z` command does:
+// for each side, set the control latch (density + side), then per track seek + Write Track +
+// stream. Side 0 is formatted fully before side 1, so a double-sided blank grows in ascending
+// slot order (host/disk.h). Returns false if any track faulted (S5 WRITE FAULT).
+bool formatBlank(VersaFloppyBoard& b, bool dd, int tracks, int heads, int sectors, int sectorSize) {
+    for (int side = 0; side < heads; ++side) {
+        control(b, dd, side);
+        for (int t = 0; t < tracks; ++t) {
+            seekTo(b, t);
+            out(b, CMD, 0xF4);  // Write Track
+            pollWriteVf(b, mkTrack(t, dd ? Density::DD : Density::SD, sectors, sectorSize));
+            if (in(b, CMD) & 0x20) return false;  // S5 WRITE FAULT
+        }
+    }
+    return true;
+}
+
+// Read one sector back: seek (the head is left on the last track after a format loop), address
+// the sector, Read Sector, and pull `sectorSize` bytes off the wait-synced data port.
+std::vector<uint8_t> readSectorVf(VersaFloppyBoard& b, int track, int sector, int sectorSize) {
+    seekTo(b, track);
+    out(b, SECR, (uint8_t)sector);
+    out(b, CMD, 0x88);  // Read Sector
+    std::vector<uint8_t> got;
+    for (int i = 0; i < sectorSize; ++i) got.push_back(in(b, DAT));
+    return got;
+}
+
+bool allE5(const std::vector<uint8_t>& v, int sectorSize) {
+    if ((int)v.size() != sectorSize) return false;
+    for (uint8_t x : v) if (x != 0xE5) return false;
+    return true;
+}
+
 } // namespace
 
 void test_versafloppy() {
@@ -190,5 +297,141 @@ void test_versafloppy() {
         out(b, SECR, 2);
         out(b, CMD, 0xA8);
         CHECK((in(b, CMD) & 0x40) != 0, "a write to a read-only disk sets S6 PROTECTED");
+    }
+
+    // ---- FORMAT A BLANK, EVERY ONE OF THE TEN SD-SYSTEMS FORMAT CODES ----
+    //
+    // The heart of the feature. For each `Z`-command format (SD Systems Monitor §3.4), mount a
+    // 0-byte blank with media=NAME, format every track (both sides for a double-sided one) through
+    // the real ports -- the DDBIOS FMATE discipline: control latch, seek, Write Track, stream --
+    // and confirm the host file grew to the exact image size and reads back 0xE5 at representative
+    // sectors, including the LAST sector of the LAST track (proves the RPM-aware revolution budget
+    // held every sector) and, for double-sided disks, a head-1 sector (proves the ascending-order
+    // blank-grow). The synthetic track (mkTrack) and the streaming (pollWriteVf) are the guest;
+    // the emulated controller does the format, exactly as real hardware does.
+    {
+        struct Code {
+            const char* media;
+            bool        dd;
+            int         tracks, heads, sectors, sectorSize;
+        };
+        // Ordered as the format codes 0..7,C,D. 8dd256 (fC) shares its 512,512 size with 8sd-ds
+        // (f1); both are covered, and the collision itself is the next section.
+        const std::vector<Code> codes = {
+            {"8sd",       false, 77, 1, 26, 128},  // f0  8" SS-SD   256,256
+            {"8sd-ds",    false, 77, 2, 26, 128},  // f1  8" DS-SD   512,512
+            {"5sd",       false, 35, 1, 18, 128},  // f2  5" SS-SD    80,640
+            {"5sd-ds",    false, 35, 2, 18, 128},  // f3  5" DS-SD   161,280
+            {"8dd",       true,  77, 1, 50, 128},  // f4  8" SS-DD   492,800
+            {"8dd-ds",    true,  77, 2, 50, 128},  // f5  8" DS-DD   985,600
+            {"5dd",       true,  35, 1, 29, 128},  // f6  5" SS-DD   129,920
+            {"5dd-ds",    true,  35, 2, 29, 128},  // f7  5" DS-DD   259,840
+            {"8dd256",    true,  77, 1, 26, 256},  // fC  8" SS-DD-256  512,512 (SDOS master)
+            {"8dd256-ds", true,  77, 2, 26, 256},  // fD  8" DS-DD-256  1,025,024
+        };
+
+        for (const Code& fc : codes) {
+            MemoryMedia* media = nullptr;
+            setMediaResolver([&](const std::string& path, bool ro, std::string&) {
+                auto m = std::make_unique<MemoryMedia>(path, std::vector<uint8_t>{}, ro);
+                media  = m.get();
+                return m;
+            });
+
+            Clock c;
+            VersaFloppyBoard b;
+            b.attachClock(&c);
+            b.power();
+
+            std::string err;
+            const std::string tag = std::string("media=") + fc.media + ": ";
+            std::string       buf;  // outlives each CHECK's full-expression; reused per message
+            auto msg = [&](const char* s) -> const char* { buf = tag + s; return buf.c_str(); };
+
+            KeyValues kv = {{"unit", "0"}, {"media", fc.media}, {"mount", "blank.dsk"}};
+            CHECK(b.loadSubUnit("drive", kv, err), msg("the blank mounts"));
+            CHECK(media && media->size() == 0, msg("...and starts empty (0 bytes)"));
+
+            const bool ok = formatBlank(b, fc.dd, fc.tracks, fc.heads, fc.sectors, fc.sectorSize);
+            CHECK(ok, msg("every track formats, no WRITE FAULT"));
+
+            const uint64_t want =
+                (uint64_t)fc.tracks * fc.heads * fc.sectors * fc.sectorSize;
+            CHECK(media->size() == want, msg("the file grew to the exact image size"));
+
+            // Read back side 0, the LAST sector of the LAST track -- the revolution budget had to
+            // hold all of them. Set the control latch to this format's density, side 0, first.
+            control(b, fc.dd, 0);
+            std::vector<uint8_t> last =
+                readSectorVf(b, fc.tracks - 1, fc.sectors, fc.sectorSize);
+            CHECK(allE5(last, fc.sectorSize), msg("last sector of last track reads back 0xE5"));
+            CHECK((in(b, CMD) & 0x1C) == 0, msg("...with no RNF/CRC/Lost-Data error"));
+
+            // Double-sided: a head-1 sector must read back too (the side-1 slots grew in order).
+            if (fc.heads == 2) {
+                control(b, fc.dd, 1);  // D4 side select -> side B
+                std::vector<uint8_t> h1 =
+                    readSectorVf(b, fc.tracks - 1, fc.sectors, fc.sectorSize);
+                CHECK(allE5(h1, fc.sectorSize), msg("a head-1 sector reads back 0xE5"));
+                CHECK((in(b, CMD) & 0x1C) == 0, msg("...head-1 read is clean"));
+            }
+        }
+    }
+
+    // ---- REFORMAT A TRACK IN PLACE on an already-sized disk ----
+    // Not a blank-grow: a full disk reformatted track-by-track keeps the same size, and the fill
+    // the guest streams (0xE5) replaces whatever was there. Mount a recognized 8" SD image, verify
+    // it is the ramp, reformat one track, and read back 0xE5.
+    {
+        withRampDisk(77ull * 26 * 128);  // 8" SS-SD, probes as 8sd (formatted)
+        Clock c;
+        VersaFloppyBoard b;
+        b.attachClock(&c);
+        b.power();
+        std::string err;
+        CHECK(b.mount("drive0", "ramp.dsk", false, err), "the SD image mounts formatted");
+
+        control(b, /*dd=*/false, /*side=*/0);
+        std::vector<uint8_t> before = readSectorVf(b, 5, 1, 128);
+        CHECK(before.size() == 128 && before[0] != 0xE5, "track 5 starts as the ramp, not 0xE5");
+
+        seekTo(b, 5);
+        out(b, CMD, 0xF4);  // Write Track
+        pollWriteVf(b, mkTrack(5, Density::SD, 26, 128));
+        CHECK((in(b, CMD) & 0x20) == 0, "the reformat took: no WRITE FAULT");
+
+        std::vector<uint8_t> after = readSectorVf(b, 5, 1, 128);
+        CHECK(allE5(after, 128), "the reformatted track reads back 0xE5");
+    }
+
+    // ---- THE 512,512 COLLISION: fC by default, f1 only when forced ----
+    // 8" SS-DD-256 (fC) and 8" DS-SD-128 (f1) are both 512,512 bytes. An unforced probe must land
+    // on fC (the SDOS master, single-sided); media=8sd-ds forces the double-sided f1. The tell is
+    // the head count: fC has one side, so a read of side B is Record Not Found; f1 has two.
+    {
+        withRampDisk(512512);
+        Clock c;
+        VersaFloppyBoard b;
+        b.attachClock(&c);
+        b.power();
+        std::string err;
+
+        // Unforced -> fC (single-sided). A side-B read finds no track: RNF (S4).
+        CHECK(b.mount("drive0", "ramp.dsk", false, err), "512,512 with no media mounts");
+        control(b, /*dd=*/true, /*side=*/1);  // side B
+        out(b, TRK, 0);
+        out(b, SECR, 1);
+        out(b, CMD, 0x88);  // Read Sector on side B
+        CHECK((in(b, CMD) & 0x10) != 0, "auto-probe chose fC (one side): side B is Record Not Found");
+
+        // Forced f1 (media=8sd-ds, double-sided). Side B now reads back.
+        KeyValues kv = {{"unit", "1"}, {"media", "8sd-ds"}, {"mount", "ramp.dsk"}};
+        CHECK(b.loadSubUnit("drive", kv, err), "media=8sd-ds forces the f1 geometry");
+        out(b, SEL, (uint8_t)~0x12);  // drive 1 (D1) + side B (D4)
+        out(b, TRK, 0);
+        out(b, SECR, 1);
+        out(b, CMD, 0x88);  // Read Sector on side B of drive 1
+        for (int i = 0; i < 128; ++i) in(b, DAT);
+        CHECK((in(b, CMD) & 0x10) == 0, "media=8sd-ds (f1, two sides): side B reads, no RNF");
     }
 }
