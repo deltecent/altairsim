@@ -1,12 +1,21 @@
-# Using altairsim over MCP
+# Driving altairsim with an AI
 
-How to drive the **altairsim** MITS Altair 8800 simulator through its built-in MCP server for
-"Using altairsim, do …" tasks: boot a machine, type at its console, read what it prints, build
-a CP/M program, and talk to a program over a real serial port — all through typed tools.
+How to let an **AI assistant** drive the **altairsim** MITS Altair 8800 simulator through its
+built-in MCP server — so you can say *"using altairsim, do …"* and it does it, instead of you
+cutting and pasting between a chat window and a terminal. It can boot a machine, type at its
+console, read what it prints, build a CP/M program, single-step and debug one, and talk to a
+program over a real serial port — all through typed tools.
+
+This works with **any MCP-capable assistant**. The examples below use **Claude** as the concrete
+client, but the server speaks the open Model Context Protocol and the same steps apply elsewhere.
 
 Every recipe below was **verified end to end** against the CP/M machine that ships in this
 package (`{{MACHINE_CPM}}`): the assemble-and-extract build and the serial attach both run
 green. Point at the `altairsim` you were given.
+
+**New to this?** The `examples/ai-mcp/` folder is a ready-made working directory: register the
+server there (below) and ask your assistant to build and fix the little program waiting in it —
+a complete, guided round trip through everything this document describes.
 
 ## Starting the server
 
@@ -36,6 +45,55 @@ p = subprocess.Popen(["altairsim", "{{MACHINE_CPM}}", "--mcp"],
 `cwd` matters: the host-bridge sandbox (`hb0`) defaults to the directory you launch from, so
 launch from the directory holding the files you want to move in and out — or aim it elsewhere
 with `monitor {command: "SET hb0 HOSTDIR=/path"}`.
+
+## Register the server with your assistant
+
+Starting the server by hand is only for a quick look. To have the **assistant** drive it, you
+register `altairsim --mcp` as an MCP server with your client **once**, and from then on you just
+talk to the assistant. A client needs two things: the command to run, and to know it speaks over
+stdio — both of which `altairsim --mcp` satisfies.
+
+**Register it from the directory you want as the sandbox** — the host bridge (`R`/`W`) and any
+relative paths resolve against wherever the server is launched, so launch it where your files
+are. If `altairsim` is not on your `PATH`, use its full path in place of `altairsim` below.
+
+**Claude Code (the CLI).** One command, with the machine you want it to drive after the `--`
+(everything after `--` is the command the client will run):
+
+```
+cd examples/ai-mcp
+claude mcp add altairsim -- altairsim cpm-ai.toml --mcp
+claude mcp list                       # confirm it is registered and reachable
+```
+
+Then start `claude` in that directory and give it the job in plain language:
+
+> *Using altairsim, boot CP/M and show me what is on the disk.*
+
+`claude mcp add` defaults to **local** scope (this project, just you). Add `--scope project` to
+write a shareable `.mcp.json` into the directory instead — commit that and anyone who opens the
+folder gets the same server. `claude mcp get altairsim` shows how a given one is configured.
+
+**Claude Desktop, or any other MCP client.** These read a JSON config. Add an `mcpServers` entry
+naming the command and its arguments:
+
+```json
+{
+  "mcpServers": {
+    "altairsim": {
+      "command": "altairsim",
+      "args": ["cpm-ai.toml", "--mcp"],
+      "cwd": "/absolute/path/to/examples/ai-mcp"
+    }
+  }
+}
+```
+
+`cwd` is the sandbox — set it to the working directory you want, since a desktop client is not
+launched from a shell sitting in one. On macOS, Claude Desktop's config is
+`~/Library/Application Support/Claude/claude_desktop_config.json`; **restart the app** after
+editing it. Other clients differ in *where* the config lives, but the `mcpServers` block is the
+same shape.
 
 ## The tools
 
@@ -108,6 +166,32 @@ write in anger. This is a **track-buffered** BIOS: it holds the current track in
 commits it when CP/M changes track or warm-boots. Getting back to a live `A>` prompt is a warm
 boot, so end every session at `A>` before you unmount or snapshot, or the last write is lost.
 
+## Investigate a program you did not write
+
+Building is half of it; the other half is taking a binary apart to see how it works — a monitor
+loader, a period utility, a game — which is what the machine is really for. The whole debugger is
+reachable over MCP, most of it through the `monitor` tool:
+
+- **`monitor {command: "DISASM <addr> <count>"}`** — disassemble live memory. The address is
+  hex (`0x100`); the count is a number of instructions.
+- **`monitor {command: "SYMBOLS LOAD prog.PRN"}`** — teach it the names from an assembler
+  listing, and `DISASM` then reads `JZ DONE` and `CALL BDOS` instead of bare addresses.
+- **`monitor {command: "BREAK <addr>"}`** (or `BREAK <addr> IF <expr>`) — stop when execution
+  reaches a point, conditionally on a register or memory value. A breakpoint set at a program's
+  load address trips the moment CP/M's loader jumps into it, before its first instruction.
+- **`monitor {command: "EXAMINE <addr>"}`** then **`monitor {command: "STEP <n>"}`** — jam the
+  PC and single-step, watching each instruction and the registers after it.
+- **`regs`** for the CPU state at any moment, **`mem_dump`** for memory (including code the
+  program modified as it ran), **`HISTORY`**/`TRACE` for what led up to a stop.
+
+The pattern for "explain what this does": load or run the code far enough to have it in memory,
+`BREAK` where you want to start looking, `DISASM` the region, then `STEP` through the interesting
+part reading the registers — the same way you would at a front panel, but with the assistant
+doing the bookkeeping. The `examples/ai-mcp/` walkthrough does exactly this to find a planted bug:
+it breaks at the load address, disassembles the loop, and single-steps until a register shows the
+wrong value — then fixes the source and reassembles. The full command set is in the User Manual's
+**Debugging** chapter (`altairsim-manual.pdf`).
+
 ## Attaching a serial port to a card
 
 A serial channel `CONNECT`s to an endpoint: `console | null | loopback | serial:/dev/tty… |
@@ -143,6 +227,18 @@ Ports (base `B`): `B+0` ch-A control(write)/status(read), `B+1` ch-A data; `B+2`
   divide+word-select. 8N1 = **`0x15`** (÷16, RTS asserted, no interrupts); 8N2 = `0x11`. To
   drop RTS without disturbing framing, write `0x55`. Master reset does **not** clear the other
   control bits; a bus RESET does **not** touch the 6850 (it has no reset pin).
+
+## Toward a real machine
+
+The reason the serial attach matters: the endpoint a channel `CONNECT`s to is the only thing that
+changes between the simulator and the metal. Build and debug a program on the simulated machine —
+where you can single-step it and dump its memory — and when it works, `CONNECT` the same channel
+to `serial:/dev/cu.…` (a USB-to-serial cable to a real 8800, an 8800c, or any period machine) and
+send the identical bytes at real hardware. The guest program does not know the difference; only
+the endpoint moved. That makes the simulator a bench for the real machine: prove it here, then run
+it there, and when they disagree you have a known-good side to compare against.
+
+(On macOS use the `/dev/cu.*` name, not `/dev/tty.*` — `cu` does not block waiting for carrier.)
 
 ## Gotchas
 

@@ -1,0 +1,52 @@
+# A CP/M Altair for an AI assistant to build and debug a program on -- over MCP.
+#
+#     cd examples/ai-mcp
+#     altairsim cpm-ai.toml            # a human, at the A> prompt
+#     altairsim cpm-ai.toml --mcp      # an assistant, driving it with tools
+#
+# This is the machine the README's walkthrough runs on. The disk beside it is Mike
+# Douglas's track-buffered CP/M 2.2b (the same image examples/cpm boots), with ONE
+# extra file dropped on: HELLO.ASM, a tiny program that has a deliberate bug. The job
+# is to find and fix that bug entirely over MCP -- assemble it, run it, watch it print
+# the wrong thing, single-step it under DDT, correct the source, and reassemble.
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h). The disk is lying in this
+# directory, so this file names it and no directory at all -- which is what lets the
+# folder be copied anywhere and still boot. Register the server from THIS directory so
+# the host bridge (`R`/`W`) can reach the source you edit; see the README.
+#
+# THERE IS NO UNDO ON THIS DISK. It is tracked, so in a clone `git checkout` puts it
+# back -- but the assistant will `ASM`/`LOAD` onto it and overwrite HELLO.ASM when it
+# fixes the bug, which is the exercise. Copy the folder first if you want the planted
+# bug back without a checkout.
+#
+# THIS FILE IS A DELTA. `base = "default"` brings the whole CP/M Altair -- front panel,
+# 8080, 88-2SIO console at 0x10, 88-DCDD at 0x08, 56K of RAM, DBL boot PROM at FF00.
+# All this file adds is the floppy in drive 0. See examples/cpm/cpm22-buffered.toml for
+# the memory arithmetic behind the 56K image; it is the same disk.
+
+[machine]
+name = "cpm-ai"
+base = "default"
+
+# THE BOOT PROM IS THE BOOT COMMAND. `RUN FF00` is EXAMINE FF00 / RUN on a real disk
+# Altair. A human launching this file boots straight to A>. Under --mcp the startup is
+# NOT run -- the assistant boots it itself with `run {from: 0xFF00}`, so nothing blocks
+# before it has control.
+startup = ["RUN FF00"]
+
+# THE BACKSPACE KEY. A modern terminal's Backspace sends DEL (0x7F); CP/M's line editor
+# wants BS (0x08). `bsdel = bs` folds DEL -> BS on the way in so Backspace erases at the
+# A> prompt. It is a property of the TERMINAL, so it lives on the [console].
+[console]
+bsdel = "bs"
+
+# THE DISK. `id` with NO `type` means "the card already in this machine" -- the base's
+# 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a second
+# controller. This copy carries the extra HELLO.ASM; otherwise it is examples/cpm's disk.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm22b23-56k.dsk"

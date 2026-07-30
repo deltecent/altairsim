@@ -1,6 +1,6 @@
 # THE PACKAGE -- what we hand people, and the ONLY thing the User Manual may name.
 #
-# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, `USING-ALTAIRSIM.md`, and
+# A user gets a zip: the `altairsim` binary, `altairsim-manual.pdf`, `DRIVING-WITH-AI.md`, and
 # the examples/ tree -- each example a self-contained folder holding a machine file and the
 # media it mounts. The DIR table below is the list of them, and this sentence deliberately
 # does not repeat it: naming them twice in one file is how the previous wording ("some disks
@@ -10,10 +10,10 @@
 # docs/boards/. So the manual may not reference any of it, and every path it prints must be
 # a path that exists INSIDE THE ZIP.
 #
-# TWO documents ship, not one. The manual (a PDF) is for the human. USING-ALTAIRSIM.md is for
+# TWO documents ship, not one. The manual (a PDF) is for the human. DRIVING-WITH-AI.md is for
 # an AI assistant driving the machine over MCP -- it is dropped, verbatim, into a working
-# directory so a user can start Claude there and say "Using altairsim, do ...". It is a FILE
-# below (token-expanded on the way in, exactly like the manual), NOT a chapter of the manual.
+# directory so a user can start an assistant there and say "Using altairsim, do ...". It is a
+# FILE below (token-expanded on the way in, exactly like the manual), NOT a chapter of the manual.
 #
 # This file is how that is enforced rather than merely intended. It is the single source
 # of truth for three things that would otherwise drift apart:
@@ -61,16 +61,17 @@ DIR  examples/basic      <=  examples/basic
 DIR  examples/sol        <=  examples/sol
 DIR  examples/diskbasic  <=  examples/diskbasic
 DIR  examples/debugger   <=  examples/debugger
+DIR  examples/ai-mcp     <=  examples/ai-mcp
 
 # ---------------------------------------------------------------------------
 # FILES -- <package path>  <=  <path in this repo>
 #
 # A single file copied to the zip, TOKEN-EXPANDED on the way in (the {{MACHINE_CPM}} in
-# USING-ALTAIRSIM.md becomes the real package path, same as in the manual). Use this for a
+# DRIVING-WITH-AI.md becomes the real package path, same as in the manual). Use this for a
 # loose top-level file; use DIR for a self-contained example folder.
 # ---------------------------------------------------------------------------
 
-FILE  USING-ALTAIRSIM.md   <=  docs/USING-ALTAIRSIM.md
+FILE  DRIVING-WITH-AI.md   <=  docs/DRIVING-WITH-AI.md
 FILE  LICENSE              <=  LICENSE
 FILE  LICENSE-SDL3         <=  LICENSE-SDL3
 

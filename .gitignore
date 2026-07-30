@@ -159,6 +159,11 @@ examples/**
 !examples/printing/PRINT.HEX
 !examples/pmmi/PMMITERM.ASM
 !examples/pmmi/PMMITERM.HEX
+# examples/ai-mcp ships the CP/M disk (with HELLO.ASM baked on for an assistant to build over
+# MCP); HELLO.ASM is here too as the pristine planted bug -- kept to rebuild the disk, stripped
+# from the package like every other .ASM beside an image (tools/build-package.sh).
+!examples/ai-mcp/cpm22b23-56k.dsk
+!examples/ai-mcp/HELLO.ASM
 
 # Scanned manuals and datasheets. Same reasoning as the disk images, and then
 # some: they are enormous (the 88-DCDD manual alone is 52 MB) and they are not

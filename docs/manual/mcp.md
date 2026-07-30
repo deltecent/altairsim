@@ -74,4 +74,33 @@ their answers are authoritative in a way a printed list could never be.
 ## Configuring an assistant to use it
 
 MCP clients differ, but they all want the same two things: a command to run, and the fact
-that it speaks over stdio. The command is `altairsim --mcp`, and it does.
+that it speaks over stdio. The command is `altairsim <machine> --mcp`, and it does. Register it
+**once** and from then on you talk to the assistant, not to the server.
+
+**Claude Code (the command line)** takes it as one command — everything after `--` is what it
+will run, and it is best run from the directory you want the machine's files to resolve against:
+
+```
+claude mcp add altairsim -- altairsim <machine> --mcp
+claude mcp list                       # confirm it registered and is reachable
+```
+
+**Claude Desktop, or any client that reads a JSON config**, wants an `mcpServers` entry naming
+the command and its arguments (a `cwd` sets the working directory, since a desktop app has no
+shell to inherit one from):
+
+```json
+{
+  "mcpServers": {
+    "altairsim": { "command": "altairsim", "args": ["<machine>", "--mcp"] }
+  }
+}
+```
+
+The `<machine>` is a built-in name or a machine file, exactly as on the command line. If
+`altairsim` is not on your `PATH`, give its full path as the command.
+
+`DRIVING-WITH-AI.md`, in this package, is the briefing written for the assistant itself — drop it
+in a working directory and the assistant has the recipes for booting, building and debugging over
+these tools. The `examples/ai-mcp/` folder is a ready-made such directory, with a walkthrough that
+has an assistant find and fix a bug entirely over MCP.

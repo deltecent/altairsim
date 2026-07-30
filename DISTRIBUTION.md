@@ -43,7 +43,7 @@ It is the right choice for two reasons. The download is half the size for everyo
 altairsim[.exe]                       the program
 altairsim-manual.pdf                  the User Manual
 altairsim-changelog.pdf               the release history (docs/changelog/, built by CI)
-USING-ALTAIRSIM.md                    the briefing for an AI assistant driving it over MCP
+DRIVING-WITH-AI.md                    the briefing for an AI assistant driving it over MCP
 LICENSE                               ours (MIT)
 examples/cpm/                         CP/M 2.2 on an 8" floppy
 examples/basic/                       4K BASIC on a cassette
