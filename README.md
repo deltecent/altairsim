@@ -148,6 +148,16 @@ ctest --test-dir build              # ...plus 8080EXM, the full exerciser
 ctest --test-dir build -L hw        # modem control, against a real null-modem cable
 ```
 
+**`-L hw` is opt-in and needs actual hardware.** Point it at two serial ports with a
+null-modem cable between them via `ALTAIR_SERIAL_A` / `ALTAIR_SERIAL_B`; with the env-vars
+unset it skips loudly (exit 77, reported `Skipped`) rather than passing on nothing. The
+`serial-hw` case drives the modem-control pins, so the cable must be a *full* null modem —
+DTR on each end crossed to **both** DSR and DCD on the other, not a three-wire
+TxD/RxD/GND lash-up. On macOS, name the **`/dev/cu.*`** device, not `/dev/tty.*`: `cu`
+opens for outbound use without waiting on carrier, which is what a loopback that drives its
+own DTR/RTS wants. `docs/building-linux.md` and `docs/building-windows.md` carry the
+per-platform detail (finding your ports, the full pinout).
+
 The acceptance tests are not unit tests: they boot period software on the whole machine through the real CLI, and several ship with a **negative control** — the same script against a machine that should *fail*, marked `WILL_FAIL`. If a control ever passes, the test it guards was passing for the wrong reason and is worthless. That is the only reason to believe any of them.
 
 The disk-image tests run on a fresh clone: the 88-MDS and 8″ 88-DCDD images they need are **tracked**. What is *not* tracked is the 8 MB image, which only `acceptance-hostbridge`'s by-hand `build` mode wants — see `CMakeLists.txt` and `tools/fetch-disk-images.sh`. Provenance for both tracked sets is in `disks/mits-88dcdd/cpm22/buffered/README.md` and `disks/mits-88mds/cpm22/README.md`.

@@ -5,8 +5,15 @@
 // but "does RTS on this card actually raise CTS on that one" is a question about a
 // CABLE, and the only honest way to answer it is to put a volt down one and look.
 //
-//   ALTAIR_SERIAL_A=/dev/tty.usbserial-AL009KFH \
-//   ALTAIR_SERIAL_B=/dev/tty.usbserial-AB0NW409 ctest -L hw
+//   ALTAIR_SERIAL_A=/dev/cu.usbserial-AL009KFH \
+//   ALTAIR_SERIAL_B=/dev/cu.usbserial-AB0NW409 ctest -L hw
+//
+// On macOS, name the /dev/cu.* device, not /dev/tty.*. The cu ("call-up") node
+// takes the port for outbound use without waiting on carrier, which is what this
+// test wants -- it drives DTR/RTS itself and reads the pins back. The tty node is
+// the inbound side (it waits for DCD before open() returns). Both happen to work
+// here because we open with O_NONBLOCK and set CLOCAL (see serial_posix.cpp), but
+// cu is the right idiom and the one to reach for.
 //
 // Unset, it SKIPS, and says so, and exits 77 so that CTEST SAYS SO TOO (see the
 // SKIP_RETURN_CODE property in CMakeLists.txt). A hardware test that quietly passes
@@ -95,8 +102,9 @@ int main() {
         std::printf(
             "SKIPPED: no serial hardware.\n"
             "  This test needs TWO serial ports with a null modem between them:\n"
-            "    ALTAIR_SERIAL_A=/dev/tty.usbserial-XXXX \\\n"
-            "    ALTAIR_SERIAL_B=/dev/tty.usbserial-YYYY ctest -L hw\n");
+            "    ALTAIR_SERIAL_A=/dev/cu.usbserial-XXXX \\\n"
+            "    ALTAIR_SERIAL_B=/dev/cu.usbserial-YYYY ctest -L hw\n"
+            "  On macOS name the /dev/cu.* device, not /dev/tty.*.\n");
         return kSkip;
     }
 
