@@ -289,7 +289,7 @@ SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
 | `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
-| `media` | enum | `8sd` \| `8dd` \| `8dd256` \| `5sd` \| `5dd` | Force the format instead of probing the image's size |
+| `media` | enum | `8sd` \| `8dd` \| `8dd256` \| `8sd-ds` \| `8dd-ds` \| `8dd256-ds` \| `5sd` \| `5sd-ds` \| `5dd` \| `5dd-ds` | Force the format instead of probing the image's size |
 
 #### Board properties
 
