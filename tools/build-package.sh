@@ -5,7 +5,7 @@
 #   altairsim                the program
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
 #   altairsim-changelog.pdf  what changed, per release (docs/changelog/, built by docs.yml)
-#   USING-ALTAIRSIM.md       the same machines, written for an AI assistant driving them over MCP
+#   DRIVING-WITH-AI.md       the same machines, written for an AI assistant driving them over MCP
 #   LICENSE                  ours (MIT)
 #   LICENSE-SDL3             SDL3's, because SDL3 is linked STATICALLY INTO the program
 #   examples/cpm/            \
@@ -272,7 +272,7 @@ cp "$changelog" "$pkg/"
 
 # ---------------------------------------------------------------------------
 # The loose FILES, from the FILE table -- TOKEN-EXPANDED on the way in, exactly like the
-# manual's chapters. USING-ALTAIRSIM.md writes {{MACHINE_CPM}} rather than a literal path, so
+# manual's chapters. DRIVING-WITH-AI.md writes {{MACHINE_CPM}} rather than a literal path, so
 # the path a user reads is the path that is actually in the zip, and it cannot drift from the
 # DIR table above. The substitution is the same sed loop as tools/build-docs.sh's expand().
 # ---------------------------------------------------------------------------

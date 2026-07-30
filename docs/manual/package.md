@@ -4,7 +4,7 @@
 altairsim                the program. One file, nothing to install.
 altairsim-manual.pdf     this.
 altairsim-changelog.pdf  what changed in this release, and the ones before it.
-USING-ALTAIRSIM.md       for an AI assistant driving the machine; see below.
+DRIVING-WITH-AI.md       for an AI assistant driving the machine; see below.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
 examples/                machines that boot, media included.
@@ -26,7 +26,7 @@ that library's licence, and it is in the package because its code is in the prog
 The **Developer Guide** is not in here — it is a separate download from the same release page
 this came from, and you want it only if you intend to build a board of your own.
 
-### `USING-ALTAIRSIM.md`
+### `DRIVING-WITH-AI.md`
 
 This one is not for you, exactly. It is a briefing document for an **AI assistant**: drop it in
 a working directory, start an assistant there, and say *"using altairsim, boot CP/M and show me

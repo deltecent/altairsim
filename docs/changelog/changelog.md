@@ -8,6 +8,19 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Driving altairsim with an AI — now with the missing step
+
+The briefing that ships for an AI assistant is renamed **`DRIVING-WITH-AI.md`** (from
+`USING-ALTAIRSIM.md`) and works with any MCP-capable assistant, not just one. It gains the step
+that was actually missing: **how to register the server** so the assistant drives it hands-free —
+the one-line `claude mcp add altairsim -- altairsim <machine> --mcp` for Claude Code, and the
+`mcpServers` JSON block for Claude Desktop and other clients — plus sections on investigating a
+program you did not write (disassemble, break, single-step over MCP) and on moving from the
+simulator to a real machine by pointing the same serial channel at `serial:/dev/cu.*`. A new
+example, **`examples/ai-mcp/`**, is a ready-made working directory: a tiny CP/M program with a
+planted bug, and a walkthrough where the assistant assembles it, sees the wrong output,
+single-steps the loop to find the fault, fixes the source, and reassembles — entirely over MCP.
+
 ### `CONNECT … |FILE` — tap a serial line to a hex log
 
 Append **`|FILE`** to any endpoint and the line is also written to a text file — both
@@ -567,7 +580,7 @@ longer an asterisk on the release.
 | Linux x86_64 | `altairsim-0.3.0-linux-x86_64.tar.gz` |
 | Windows x86_64 | `altairsim-0.3.0-windows-x86_64.zip` |
 
-Each holds the program, this changelog, the **User Manual**, `USING-ALTAIRSIM.md`, both
+Each holds the program, this changelog, the **User Manual**, `DRIVING-WITH-AI.md`, both
 licences, and `examples/` — four machines that boot, media included. Unzip it and run it;
 nothing needs fetching first.
 
