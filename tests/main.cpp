@@ -81,6 +81,7 @@ const struct {
     {"wd17xx", test_wd17xx},
     {"versafloppy", test_versafloppy},
     {"tarbell", test_tarbell},
+    {"cromemco_fdc", test_cromemco_fdc},
     {"spindle", test_spindle},
     {"dcdd", test_dcdd},
     {"mds", test_mds},

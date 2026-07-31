@@ -592,6 +592,7 @@ add_executable(altair_tests
   tests/test_wd17xx.cpp
   tests/test_versafloppy.cpp
   tests/test_tarbell.cpp
+  tests/test_cromemco-fdc.cpp
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
   tests/test_mds.cpp
