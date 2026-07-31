@@ -1,0 +1,54 @@
+# CDOS 2.58 off a Cromemco 16FDC -- Cromemco's CP/M-1.4 work-alike, booting from an
+# 8" double-sided, mixed-density diskette.
+#
+# The 16FDC carries a WD FD1793 floppy controller, a TMS 5501 UART (the console), and the
+# RDOS 2.52 boot PROM. `bootstrap = true` arms the PROM at C000; the machine's startup runs
+# it, and RDOS reads the boot track, loads the CDOS cold loader, and jumps into CDOS.COM.
+#
+# TWO THINGS ARE AUTHENTIC, NOT KNOBS:
+#   - clock_hz = 4000000. A real Cromemco runs at 4 MHz, and RDOS's double-density read loop
+#     needs it: at 2 MHz a 500 kbit/s byte arrives faster than the loop can take it and the
+#     FD1793 reports Lost Data. This is the machine the software was written for.
+#   - The console trains its baud off your first RETURN. CDOS prints its banner unprompted,
+#     then waits -- press RETURN once and the `A.` prompt appears. (An emulated line has no
+#     bit-level timing to measure over a pipe, so this example wants a real terminal.)
+
+[machine]
+name    = "cdos"
+startup = ["RUN C000"]
+
+# Z80 at the real Cromemco 4 MHz.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# The 16FDC: RDOS 2.52 PROM at C000-CFFF (bootstrap on -> auto-boots drive A), an FD1793,
+# and its onboard TMS 5501 wired as the console ('tty').
+[[board]]
+type      = "16fdc"
+id        = "fdc0"
+bootstrap = true
+drives    = 4
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CDOS258-8IN-DSDD.DSK"
+
+# 64K of RAM -- a full Cromemco. The RDOS PROM shadows its C000 window on READS only, so RAM
+# is inhibited there during the boot but a write falls through; that lets CDOS relocate into
+# the RAM beneath the PROM and keep running once the PROM switches itself out (OUT 40H).
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"

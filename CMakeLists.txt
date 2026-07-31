@@ -1113,6 +1113,27 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # CDOS 2.58 off a Cromemco 16FDC -- Cromemco's CP/M work-alike, booted from an 8" mixed-
+  # density diskette. This boots the SHIPPED example (examples/cdos/cdos.toml) so the file a
+  # user is handed is the file under test, then types DIR and reads the whole directory back
+  # off the platter through the WD FD1793 -- which a machine that merely booted a resident
+  # image could not do.
+  #
+  # It is an EXPECT test because CDOS auto-bauds off the first CR (nothing but the banner prints
+  # until a start bit arrives in emulated time -- a pipe cannot) and because the proof is a
+  # command typed at the prompt. The image is mounted read/write in the example, so cdos.exp
+  # shasums it before and after: the boot and DIR only read, and the master must come out
+  # byte-identical (the same discipline as acceptance-sdos, without a separate fixture toml).
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-cdos
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cdos.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-cdos PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # SD Systems CP/M 2.2 off the same VersaFloppy II -- but with the SBC-200's INTERRUPTS.
   #
   # Where SDOS polls the keyboard, this CP/M's CBIOS takes console input ONLY through a Z80
