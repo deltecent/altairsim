@@ -53,6 +53,11 @@ enum class PinStrap {
     Wired,   // the pin reaches the connector: believe what is on the other end
 };
 
+// The `dcd=ground|wired` / `cts=ground|wired` pin-strap property, written once. Any
+// chip that carries a modem input pin with a card-side strap gets the same two
+// choices and the same spelling -- the 6850 and the TMS 5501 both do.
+Property pinStrapProperty(std::string name, std::string help, PinStrap& s);
+
 // ---------------------------------------------------------------------------
 // One 6850. The 2SIO card has two, and they share NOTHING -- separate baud jumpers,
 // separate endpoints, separate interrupt straps. Modeling them as one object

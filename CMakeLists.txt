@@ -282,6 +282,11 @@ add_library(altair_core STATIC
   # The chips. A chip is not a card: it is modeled from its DATA SHEET, it knows
   # nothing about S-100, and it is shared by every card that has one soldered to it.
   src/chips/mc6850.cpp
+  # The TMS 5501 -- TI's NMOS I/O controller (UART + five timers + an eight-source
+  # interrupt controller). Phase 1 models the UART half only; the Cromemco 4FDC/16FDC/
+  # 64FDC each carry one as a console channel, and the TU-ART carries two. See
+  # src/chips/tms5501.h.
+  src/chips/tms5501.cpp
   src/chips/sio2port.cpp
   src/chips/uart1602.cpp
   # The Intel 8251 USART -- the console chip of the SD Systems SBC-100/200, and the
@@ -558,6 +563,7 @@ add_executable(altair_tests
   tests/test_ddt.cpp
   tests/test_dma.cpp
   tests/test_sio2.cpp
+  tests/test_tms5501.cpp
   tests/test_88sio.cpp
   tests/test_sbc.cpp
   tests/test_88acr.cpp

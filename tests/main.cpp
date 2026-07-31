@@ -71,6 +71,7 @@ const struct {
     {"ddt", test_ddt},
     {"dma", test_dma},
     {"sio2", test_sio2},
+    {"tms5501", test_tms5501},
     {"usio", test_usio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},
