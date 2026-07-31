@@ -1,5 +1,7 @@
 #include "boards/registry.h"
 
+#include "boards/cromemco-16fdc.h"
+#include "boards/cromemco-64fdc.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/hostbridge.h"
@@ -57,6 +59,8 @@ std::vector<BoardType> boardTypes() {
         {"versafloppy", "SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) | vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS"},
         {"tarbell", "Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)"},
         {"tarbelldd", "Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM"},
+        {"16fdc", "Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 drives. Disk registers at 30-34, a TMS 5501 console UART at 00-09 (unit 'tty'), and a 4K RDOS 2.52 boot PROM at C000 (OUT 40H banks it out, RESET restores it). Boots CDOS"},
+        {"64fdc", "Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501 + 4K RDOS PROM, carrying RDOS 3.12. Boots CDOS"},
         {"acr", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter"},
         {"uio", "MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout"},
         // "CONNECT it to a file" was true when a file was the only place printing could go.
@@ -98,6 +102,8 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "versafloppy") return std::make_unique<VersaFloppyBoard>();
     if (type == "tarbell") return std::make_unique<TarbellBoard>();
     if (type == "tarbelldd") return std::make_unique<TarbellDdBoard>();
+    if (type == "16fdc") return std::make_unique<Fdc16Board>();
+    if (type == "64fdc") return std::make_unique<Fdc64Board>();
     if (type == "acr") return std::make_unique<AcrBoard>();
     if (type == "uio") return std::make_unique<UioBoard>();
     if (type == "c700") return std::make_unique<C700Board>();

@@ -322,6 +322,10 @@ add_library(altair_core STATIC
   # Tarbell #1011 (SD) / #2022 (DD) -- one card carrying a WD FD177x floppy controller
   # AND a 32-byte boot PROM that shadows low RAM over PHANTOM*. See src/boards/tarbell.h.
   src/boards/tarbell.cpp
+  # Cromemco 4FDC/16FDC/64FDC family -- one card carrying a WD FD177x floppy controller, a
+  # TMS 5501 console UART, and an RDOS boot PROM at C000. A base (CromemcoFdcBoard) plus the
+  # 16FDC/64FDC leaves (header-only); boots CDOS. See src/boards/cromemco-fdc.h.
+  src/boards/cromemco-fdc.cpp
   src/boards/floppy-drive.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;

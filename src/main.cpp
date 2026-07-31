@@ -8,6 +8,7 @@
 #include "boards/mits-turnkey.h"
 #include "boards/pmmi-mm103.h"
 #include "boards/usio.h"
+#include "boards/cromemco-16fdc.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/proctech-sol.h"
@@ -227,6 +228,7 @@ int main(int argc, char** argv) {
     Vdb8024Board::setResolver(resolveEndpoint);  // its keyboard connects to an endpoint
     PmmiBoard::setResolver(resolveEndpoint);     // the modem's phone line is an endpoint
     UsioBoard::setResolver(resolveEndpoint);     // the universal serial board's one line
+    CromemcoFdcBoard::setResolver(resolveEndpoint);  // the FDC family's TMS 5501 console (16/64FDC)
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board
     // draws into a Display and never learns it is SDL. The shipping binary hands it
