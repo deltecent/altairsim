@@ -406,6 +406,9 @@ protected:
         Read,        // streaming a data field (or an ID field, or a track) out to the guest
         WriteWait,   // Write: the FIRST DRQ. If the guest misses it, the command dies.
         Write,       // ...and the rest of them, where a miss writes a zero and carries on
+        ReadDrain,   // the LAST byte is in the DR; hold a byte-time so the guest takes it
+                     // before INTRQ (on silicon INTRQ trails the final DRQ, past the CRC).
+                     // Appended LAST on purpose: phase_ serializes as its ordinal.
     };
 
     // What to do when the byte stream in `buf_` runs out. Read Sector, Read Address and

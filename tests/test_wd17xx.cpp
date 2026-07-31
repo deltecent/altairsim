@@ -125,10 +125,14 @@ struct FakeDrive : FloppyDrive {
 // Spin the clock until the chip goes idle, calling `svc` after every poll -- which is
 // what a card's deadline handler does, and is where a driver services DRQ.
 //
-// The trailing svc() is not a nicety: the LAST byte of a read lands in the data register
-// in the very poll that also drops BUSY (the chip is done; the byte is still there to be
-// collected). A loop that only services while busy would drop it every time and every
-// read would come up one byte short.
+// Service ONLY while BUSY, and no trailing call: that is the whole point of the test. The
+// chip presents the last byte with DRQ up and then stays BUSY for one more byte-time
+// (Phase::ReadDrain) before it raises INTRQ and drops BUSY -- exactly as the real part
+// holds INTRQ off until past the data CRC. So a plain service-while-busy loop DOES take
+// the last byte, in the poll before completion. It used to end with an extra svc() here
+// to paper over a chip that raced INTRQ against the final DRQ; that crutch hid the bug
+// that broke the Cromemco boot (an INTRQ-before-DRQ read loop, one byte short every read).
+// If a read ever comes up short again, the chip regressed -- do not add the crutch back.
 template <class F>
 uint64_t spin(Wd17xx& f, Clock& clk, F svc, uint64_t limit = 60000000) {
     const uint64_t t0 = clk.now();
@@ -137,7 +141,6 @@ uint64_t spin(Wd17xx& f, Clock& clk, F svc, uint64_t limit = 60000000) {
         f.poll(clk);
         svc(f);
     }
-    svc(f);
     return clk.now() - t0;
 }
 
