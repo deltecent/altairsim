@@ -65,6 +65,12 @@ public:
     uint8_t read(const BusCycle& c) override;
     void    write(const BusCycle& c) override;
 
+    // The RDOS boot PROM SHADOWS RAM while armed (the Tarbell idiom): it pulls PHANTOM*
+    // over its C000 window on reads, so a 64K RAM card underneath is inhibited there and
+    // the two do not contend. Writes fall through to the RAM (asserted on reads only), so
+    // CDOS's relocation lands under the shadow and survives the OUT-40H bank-out.
+    bool    assertsPhantom(const BusCycle& c) const override;
+
     // Phase 1 raises no interrupt: the 5501's interrupt controller is inert and no disk
     // interrupt is wired to the backplane yet (see the class note). One place to make real.
     bool    assertsInt() const override { return false; }

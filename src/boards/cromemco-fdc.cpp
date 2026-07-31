@@ -115,6 +115,16 @@ bool CromemcoFdcBoard::decodes(const BusCycle& c) const {
     return false;
 }
 
+// PHANTOM* over the C000 ROM window, reads only (the Tarbell pattern). While the PROM is
+// armed it shadows a RAM card underneath so the two never contend; a 64K machine needs this
+// because RAM reaches C000-FFFF where the 4K/8K ROM lives. Writes are NOT shadowed (the
+// honoring RAM keeps them), so CDOS relocates itself into the RAM under the ROM and the image
+// is intact the moment OUT 40H banks the ROM out. Same window as inRomWindow(), so a bank-out
+// (armed_ = false) or `bootstrap = off` drops the shadow in lockstep with the decode.
+bool CromemcoFdcBoard::assertsPhantom(const BusCycle& c) const {
+    return c.type == Cycle::MemRead && inRomWindow(c.addr);
+}
+
 uint8_t CromemcoFdcBoard::read(const BusCycle& c) {
     if (c.type == Cycle::MemRead) return rom_[c.addr - kRomBase];  // only reached in-window
 

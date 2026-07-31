@@ -85,6 +85,12 @@ uint8_t readMem(CromemcoFdcBoard& b, uint16_t addr) {
     c.addr = addr;
     return b.read(c);
 }
+bool phantomsMem(CromemcoFdcBoard& b, uint16_t addr, Cycle type = Cycle::MemRead) {
+    BusCycle c;
+    c.type = type;
+    c.addr = addr;
+    return b.assertsPhantom(c);
+}
 
 // A ramp disk resolver: byte i holds (i + i/128) & 0xFF, so each 128-byte block gets its
 // own linear stamp and adjacent sectors never look alike. Same fixture as test_tarbell.
@@ -479,10 +485,22 @@ void test_cromemco_fdc() {
         CHECK(readMem(b, 0xC000) == flat[0], "C000 reads the PROM's first byte");
         CHECK(readMem(b, 0xCFFF) == flat[0x0FFF], "CFFF reads the PROM's last byte");
 
+        // PHANTOM*: the armed PROM shadows a RAM card underneath over the C000 window, on
+        // READS ONLY -- so a 64K machine (RAM at C000-FFFF) does not contend, yet a write
+        // still falls through to the RAM beneath (CDOS relocates into it and it survives the
+        // bank-out). Same window as the decode; nothing outside it is shadowed.
+        CHECK(phantomsMem(b, 0xC000) && phantomsMem(b, 0xCFFF),
+              "the armed PROM pulls PHANTOM* over its C000-CFFF read window");
+        CHECK(!phantomsMem(b, 0xBFFF) && !phantomsMem(b, 0xD000),
+              "...and only there -- BFFF and D000 are not shadowed");
+        CHECK(!phantomsMem(b, 0xC000, Cycle::MemWrite),
+              "writes are NOT shadowed -- the RAM under the ROM keeps them");
+
         // OUT 40H (any byte) banks the ROM out until RESET.
         out(b, BANK, 0x00);
         CHECK(!b.romArmed(), "OUT 40H disarms the ROM");
         CHECK(!decodesMem(b, 0xC000), "...so the C000 window no longer decodes (RAM shows through)");
+        CHECK(!phantomsMem(b, 0xC000), "...and the shadow drops with it -- RAM is exposed at C000");
 
         // RESET* (the front-panel button) re-arms it -- how you boot the machine again.
         b.reset(Reset::Bus);
