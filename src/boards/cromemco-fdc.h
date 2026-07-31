@@ -36,8 +36,10 @@
 // PHASE 1 IS A POLLED BOOT. The TMS 5501's five timers and eight-source interrupt
 // controller are inert (chips/tms5501.h), so assertsInt() is false and no disk interrupt
 // reaches the backplane; a polled RDOS/CDOS console boot needs none of it. The disk-side
-// interrupt routing (RS7/DRQ/RTC through the 5501) and the port-04 PerSci aux register are
-// a later effort -- said out loud, not overlooked.
+// interrupt routing (RS7/DRQ/RTC through the 5501) is a later effort -- said out loud, not
+// overlooked. The port-04 aux register IS modeled (side-select + seek status -- readAux/
+// writeAux), because RDOS's boot-sector read polls it; only the PerSci mechanical bits
+// (eject / fast-seek) are no-ops, an emulated drive having no such mechanism to drive.
 
 #include "boards/floppy-drive.h"
 #include "chips/tms5501.h"
@@ -148,6 +150,13 @@ protected:
     virtual uint8_t readPort34();          // DRQ / ¬BOOT / EOJ, with the Auto-Wait collapse
     virtual void    writePort34(uint8_t v);// AUTO WAIT / DENSITY / MOTOR / MAXI / drive select
 
+    // Port 04: the auxiliary disk register (the TMS 5501's parallel pins, wired to disk). The
+    // 16/64 layout lives here; the 4FDC (dual eject, no side-select) overrides both.
+    virtual uint8_t readAux();             // seek-in-progress / sense switches 5-8
+    virtual void    writeAux(uint8_t v);   // ¬SIDE SELECT + PerSci mechanical controls
+
+    void   clockAttached() override;  // hand every drive the machine Clock (index() angular model)
+    void   wireClocks();       // (re)point each drive's angular model at clock_
     void   applySelection();   // point the chip at drive_[sel_], set side + data rate
     void   refresh();          // advance both chips, re-drive the wires, re-arm the wake
     uint64_t nextEdge() const; // the next autonomous edge of either chip
@@ -160,10 +169,11 @@ protected:
 
     int       drives_   = 4;      // A-D
     int       sel_      = 0;      // one-hot DS4-DS1 -> a drive index; boot runs against 0
-    int       side_     = 0;      // the selected side (port-04 side-select is deferred)
+    int       side_     = 0;      // the selected side (driven by port-04 D1 ¬SIDE SELECT)
     bool      maxi_     = true;   // MAXI: true = 8", false = 5.25" (port-34 D4)
     long long dataRate_ = 250000; // the media bit rate (MAXI x DDEN -- see writePort34)
     uint8_t   control_  = 0;      // the port-34 OUT latch (Auto-Wait arm is D7)
+    uint8_t   aux_      = 0xFF;   // the port-04 OUT latch (active-low; idle high = no-op)
 
     // ---- the console UART half (embedded directly, like the SBC's 8251) ----
     Tms5501 uart_{"tms0"};

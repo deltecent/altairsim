@@ -69,6 +69,15 @@ void CromemcoFdcBoard::buildFdc() {
 
 // Point the chip at the selected drive and re-apply side and media data rate. The
 // drive-select latch (port-34 D3-D0) hands us a straight drive index (writePort34).
+// The card goes into the backplane and is handed the machine Clock -- pass it down to every
+// drive's angular model, so index() (the RDOS boot's Force-Interrupt-on-index) has a time
+// base. Called again after a mount or a `drives` resize, since those touch the drive vector.
+void CromemcoFdcBoard::clockAttached() { wireClocks(); }
+
+void CromemcoFdcBoard::wireClocks() {
+    for (Drive& d : drive_) d.drv.setClock(clock_);
+}
+
 void CromemcoFdcBoard::applySelection() {
     FloppyDrive* fd = nullptr;
     if (sel_ >= 0 && sel_ < (int)drive_.size()) {
@@ -118,7 +127,7 @@ uint8_t CromemcoFdcBoard::read(const BusCycle& c) {
         case 0x01: v = uart_.readData(k);     break;
         case 0x02: v = 0xFF;                  break;  // IN 02 not assigned
         case 0x03: v = uart_.readIntAddr();   break;  // inert (0xFF)
-        case 0x04: v = uart_.readParallel();  break;  // parallel in / aux disk status (inert)
+        case 0x04: v = readAux();             break;  // aux disk status (seek / sense switches)
         // ---- FD1793 (30-33) + Cromemco disk flags (34) ----
         case 0x30: v = chip_->readStatus(k);    break;
         case 0x31: v = chip_->readTrackReg();   break;
@@ -143,7 +152,7 @@ void CromemcoFdcBoard::write(const BusCycle& c) {
         case 0x01: uart_.writeData(v, k);    break;
         case 0x02: uart_.writeCommand(v, k); break;
         case 0x03: uart_.writeMask(v);       break;  // inert
-        case 0x04: uart_.writeParallel(v);   break;  // parallel out / aux disk command (inert)
+        case 0x04: writeAux(v);              break;  // aux disk command (side-select + PerSci)
         case 0x05: case 0x06: case 0x07:
         case 0x08: case 0x09: uart_.writeTimer(p - 0x05, v); break;  // inert
         // ---- FD1793 (30-33) + Cromemco disk control (34) ----
@@ -176,15 +185,41 @@ void CromemcoFdcBoard::write(const BusCycle& c) {
 // 34 latch's D7), this read is the CPU-stall path -- flip the chip wait-synced for the
 // length of the read so the in-flight command resolves to its next DRQ (or completion),
 // exactly as a CPU stalled on the wait-state generator would see. Port 33 stays DRQ-polled.
+// Port 04 IN -- Auxiliary Disk Status (reference §5). Two fields RDOS reads at boot:
+//   * D6 SEEK IN PROGRESS -- 0 on an instant-seek emulated drive (the head is always already
+//     where the WD chip stepped it), so RDOS's seek-complete poll (CD9D: IN 04 / AND 40)
+//     falls straight through instead of spinning forever on a stuck-high bit.
+//   * D3-D0 sense switches 5-8 (0 = ON), left in their all-OFF reset state so RDOS's boot-drive
+//     select (C067: IN 04 / CPL / AND 03 -> drive index) resolves to drive 0.
+// D7 (DRQ/RTC jumper) and D5-D4 are unassigned here. This is the 16FDC/64FDC layout; the 4FDC
+// (dual eject, no side/switch nibble) overrides when its leaf lands.
+uint8_t CromemcoFdcBoard::readAux() {
+    // D6 = 0 seek complete; D3 = 0 selects RDOS's FIXED console baud (skip the terminal auto-
+    // baud training at C24B: IN 04 / AND 08 / JR Z). Auto-baud measures the bit period of an
+    // incoming RETURN, and an emulated console has no bit-level line to measure -- it runs at
+    // one known rate -- so the fixed-baud strap is the honest, deterministic default (no
+    // "press RETURN four times" dance). D2-D0 = 1: sense switches 7-8 OFF -> boot drive 0
+    // (C067: IN 04 / CPL / AND 03).
+    return 0x07;
+}
+
+// Port 04 OUT -- Auxiliary Disk Command (reference §5), all bits active-low. The only bit that
+// moves emulated data is D1 ¬SIDE SELECT (0 = side 1, 1 = side 0); the PerSci mechanical bits
+// (D6 ¬EJECT, D5 ¬DRIVE SELECT OVERRIDE, D4 ¬FAST SEEK, D3 ¬RESTORE, D2 ¬CONTROL OUT) are
+// no-ops on an emulated drive -- RDOS still homes the head with a WD Restore command on port 30,
+// not this register. Latch the byte and re-point the chip at the selected side.
+void CromemcoFdcBoard::writeAux(uint8_t v) {
+    aux_  = v;
+    side_ = (v & 0x02) ? 0 : 1;  // D1: 0 -> side 1, 1 -> side 0 (active-low)
+    applySelection();
+}
+
 uint8_t CromemcoFdcBoard::readPort34() {
     Clock&     k        = clk();
-    const bool autoWait = (control_ & 0x80) != 0;
-    if (autoWait) chip_->setWaitSynced(true);
     chip_->poll(k);
     uint8_t v = (uint8_t)((chip_->drq() ? 0x80 : 0x00) |
                           (bootstrap_ ? 0x00 : 0x40) |
                           (chip_->intrq() ? 0x01 : 0x00));
-    if (autoWait) chip_->setWaitSynced(false);
     return v;
 }
 
@@ -193,6 +228,15 @@ void CromemcoFdcBoard::writePort34(uint8_t v) {
     control_ = v;
     maxi_ = (v & 0x10) != 0;             // D4: MAXI -> 8" (true) / 5.25" (false)
     const bool dden = (v & 0x40) != 0;   // D6: double density
+
+    // AUTO WAIT (D7) arms the CPU-stall transfer, and it stays armed for the WHOLE record --
+    // RDOS's read idiom is `IN 34 / INI` per byte (CE5D), where the IN 34 is the wait-state
+    // that holds the CPU until DRQ and the INI then takes the byte the stall produced. So the
+    // wait-sync must cover the port-33 read too, not just the port-34 poll: chip poll() then
+    // parks on each pending DRQ (Read phase early-return) and readData() consumes it, one byte
+    // per IN 34. Toggling it off between the two accesses (the old per-IN-34 flip) made the INI
+    // poll see it clear, mis-fire Lost Data, and hand back the next byte -- an FD1793 Err-B 06.
+    chip_->setWaitSynced((v & 0x80) != 0);
 
     // DATA RATE IS MAXI x DDEN, NOT DDEN ALONE (reference §1, the RCLK table keyed on
     // MAXI/DDEN): ONLY 8" double density is 500 kbit/s; 8" SD, 5.25" SD and 5.25" DD are
@@ -393,6 +437,7 @@ std::vector<Property> CromemcoFdcBoard::properties() {
                 }
             drives_ = n;
             drive_.resize((size_t)n);
+            wireClocks();      // new drives need the angular clock too
             applySelection();  // the vector may have moved -- re-attach
             return true;
         };
@@ -406,7 +451,9 @@ std::vector<MapEntry> CromemcoFdcBoard::ioMap() const {
         {0x00, 0x00, "read/write", "TMS 5501 -- status / baud"},
         {0x01, 0x01, "read/write", "TMS 5501 -- receive / transmit"},
         {0x02, 0x02, "write",      "TMS 5501 -- command"},
-        {0x03, 0x09, "write",      "TMS 5501 -- interrupt mask / timers 1-5 (inert in Phase 1)"},
+        {0x03, 0x03, "write",      "TMS 5501 -- interrupt mask (inert in Phase 1)"},
+        {0x04, 0x04, "read/write", "disk aux -- side-select + PerSci control (OUT) / seek status + sense switches (IN)"},
+        {0x05, 0x09, "write",      "TMS 5501 -- timers 1-5 (inert in Phase 1)"},
         {0x30, 0x30, "read/write", "FD1793 -- status / command"},
         {0x31, 0x31, "read/write", "FD1793 -- track"},
         {0x32, 0x32, "read/write", "FD1793 -- sector"},
@@ -526,6 +573,7 @@ bool CromemcoFdcBoard::mount(const std::string& unit, const std::string& path, b
     d.drv.setHeadTrack(0);
     d.drv.setFormatting(true);        // both densities format via Write Track
     d.drv.setRevsPerSecond(revsPerSec);  // 8" = 6 rev/s, 5.25" = 5 -- the Write-Track budget
+    d.drv.setClock(clock_);           // the new medium spins -> hand it the angular clock
     if (sel_ == i) applySelection();  // re-point the chip at the new medium
 
     if (forcedRo) {

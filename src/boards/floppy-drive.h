@@ -36,6 +36,7 @@
 namespace altair {
 
 class DiskImage;
+class Clock;
 
 class DiskImageDrive : public FloppyDrive {
 public:
@@ -68,6 +69,13 @@ public:
     // RPM is fixed by its size, not by a control bit). See revolutionBytes (floppy-drive.cpp).
     void setRevsPerSecond(int rps) { revsPerSec_ = rps > 0 ? rps : 6; }
 
+    // ANGULAR MODEL, OPT-IN. index() below needs a time source to know where the index hole
+    // is right now; a card that wants a live IP pin (the Cromemco RDOS boot polls Force-
+    // Interrupt-on-index) hands the drive the machine Clock. A card that never sets it -- the
+    // VersaFloppy, the Tarbell -- keeps index() == false, byte-for-byte the prior behavior,
+    // because a drive with no clock genuinely cannot know how far it has turned. Non-owning.
+    void setClock(const Clock* c) { clk_ = c; }
+
     // Head position -- runtime state the board serializes and restores (the disk itself is
     // host-backed and does not travel).
     int  headTrackRaw() const { return head_; }
@@ -77,7 +85,7 @@ public:
     bool ready() const override;
     bool writeProtected() const override;
     bool trackZero() const override { return head_ == 0; }
-    bool index() const override { return false; }  // no angular model; nothing here polls it
+    bool index() const override;  // the index hole under the sensor now (angular, needs a clock)
     int  headTrack() const override { return head_; }
 
     void step(bool inward) override;
@@ -114,6 +122,10 @@ private:
     // ROTATION SPEED (setRevsPerSecond): the Write Track budget's denominator. 6 = 360 RPM (8"),
     // 5 = 300 RPM (5.25" mini). A strap set by the CARD per mounted drive, not serialized.
     int revsPerSec_ = 6;
+
+    // ANGULAR MODEL time source (setClock), non-owning. nullptr = no rotation modeled, so
+    // index() reads false -- the default for every card that does not opt in.
+    const Clock* clk_ = nullptr;
 };
 
 } // namespace altair
