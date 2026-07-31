@@ -1,0 +1,97 @@
+#!/usr/bin/expect -f
+#
+# CDOS 2.58 BOOTS off a Cromemco 16FDC, and then it READS THE DISK. The 16FDC's RDOS 2.52 PROM
+# loads Cromemco's CP/M work-alike from an 8" double-sided, mixed-density diskette; DIR then
+# walks the directory back off the platter through the WD FD1793.
+#
+# NO CARRIAGE RETURN IS NEEDED TO BOOT. The 16FDC is strapped for its fixed-300-baud "modem"
+# console (RDOS's switch 5 -- readAux returns D3=0, so RDOS skips the terminal auto-baud that
+# would otherwise want a RETURN to train the bit period). That is deliberate: it is deterministic
+# and the prompt comes up on its own. And because the console's `rate` defaults to `full`, the
+# 300-baud strap costs nothing -- the line is not paced, so output runs as fast as the guest
+# prints it. (Set `rate = "real"` on the tty to feel the authentic 300 baud.)
+#
+# IT IS STILL AN EXPECT TEST, for one reason that needs a real pty: the proof of a live disk is
+# a command TYPED at the prompt and the directory read back. A piped run can only assert what the
+# machine says unprompted (and piped stdin derails RDOS's ESC-to-abort window besides -- see the
+# [[altairsim-pipe-cannot-type-at-a-guest]] rule).
+#
+# This boots the SHIPPED example (examples/cdos/cdos.toml) so the file a user is handed is the
+# file under test. The image is mounted read/write there, so the test SHASUMS it before and
+# after: booting and DIR only read, and the tracked master must come out byte-identical.
+#
+# usage: expect -f cdos.exp <altairsim>   (run from the repo root)
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/cdos/CDOS258-8IN-DSDD.DSK"
+
+# TYPE LIKE A PERSON, one character at a time. CDOS polls its console between keystrokes; a
+# whole command shoved in at once loses its leading characters right after a prompt (the first
+# few arrive before the poll loop is looking). A short gap is a human's pace and the receiver
+# keeps up.
+proc slowtype {s} { foreach ch [split $s ""] { send -- $ch; after 60 } }
+
+# Leave no orphan behind: expect exiting does not reap the child holding the pty.
+proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]}; exit $code }
+
+set before [exec shasum $dsk]
+
+spawn $exe examples/cdos/cdos.toml
+
+# CDOS loads and prints its sign-on with no input at all.
+expect {
+    -ex "CDOS version 02.58" {}
+    eof     { bail 1 "FAIL: the machine died before CDOS signed on" }
+    timeout { bail 1 "FAIL: CDOS never booted off the 16FDC (no sign-on)" }
+}
+expect {
+    -ex "Copyright (C) 1977, 1983 Cromemco, Inc." {}
+    eof     { bail 1 "FAIL: the sign-on was cut short" }
+    timeout { bail 1 "FAIL: the CDOS banner never completed" }
+}
+
+# THE PROMPT COMES UP ON ITS OWN -- no RETURN. Sync to it before typing so the first character
+# of DIR is not lost to the sign-on still draining.
+expect {
+    -ex "A." {}
+    eof     { bail 1 "FAIL: died before the CDOS prompt" }
+    timeout { bail 1 "FAIL: CDOS never reached its `A.` prompt" }
+}
+
+# A REAL DIRECTORY READ. DIR walks the disk's directory and prints every entry; the summary
+# line is the proof the whole listing came back off the platter, not a banner that faked a boot.
+slowtype "DIR\r"
+expect {
+    -ex "XMODEM" {}
+    eof     { bail 1 "FAIL: the machine died listing the directory" }
+    timeout { bail 1 "FAIL: DIR did not read the directory off the disk" }
+}
+expect {
+    -ex "18 Files" {}
+    eof     { bail 1 "FAIL: the directory listing was cut short" }
+    timeout { bail 1 "FAIL: DIR never finished -- no file-count summary" }
+}
+
+# SYNC TO THE RETURNING PROMPT. CDOS reprints `A.` once DIR finishes -- confirming it walked
+# the whole directory and handed control back, not that it wedged mid-listing.
+expect {
+    -ex "A." {}
+    eof     { bail 1 "FAIL: DIR listed but the prompt never came back" }
+    timeout { bail 1 "FAIL: DIR listed but CDOS never returned to the prompt" }
+}
+
+# The boot and DIR only read the disk; the tracked master must come out byte-identical.
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. Booting and DIR should only read the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    bail 1 ""
+}
+
+puts "OK: CDOS 2.58 booted off the 16FDC to its A. prompt, DIR read the whole directory off the\
+      disk, and the master is byte-identical."
+bail 0 ""

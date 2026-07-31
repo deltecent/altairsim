@@ -1,8 +1,25 @@
 #include "boards/floppy-drive.h"
 
+#include "core/clock.h"
 #include "host/disk.h"
 
 namespace altair {
+
+// IP (pin 35) -- the index hole under the sensor RIGHT NOW. A pulse, not a level: true for a
+// sliver of each revolution and false the rest. It is a question about ROTATION, so it needs
+// a clock and a spin rate; a drive handed neither (the default) cannot answer and reads false,
+// exactly as before this model existed. With a disk loaded and a clock injected, the disk is
+// turning at revsPerSec_ -- period = hz / revsPerSec_ T-states -- and the hole passes the
+// sensor once per turn. The pulse is a small fraction of the revolution (a real 8"/5.25" IP is
+// ~1-4 ms of a ~166/200 ms turn); ~1/32 of a revolution gives one clean rising edge per turn,
+// which is all the two consumers -- Type I status bit S1 and Force-Interrupt-on-index -- need.
+bool DiskImageDrive::index() const {
+    if (!clk_ || !img_) return false;             // no clock or no disk -> not spinning
+    const long long rps    = revsPerSec_ > 0 ? revsPerSec_ : 6;
+    const uint64_t  period = (uint64_t)(clk_->hz() / rps);  // T-states per revolution
+    if (period == 0) return false;
+    return (clk_->now() % period) < (period / 32);  // the hole is under the sensor
+}
 
 // THE HEAD IS THE ONLY THING THAT MOVES, and a step outward at track 0 goes nowhere -- the
 // head is against its stop and the real drive just buzzes. The upper bound is the image's

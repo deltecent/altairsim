@@ -583,8 +583,9 @@ uint64_t Mc6850::nextEdge(const Clock& clk) const {
     return best;
 }
 
-// The pin strap, once, for both pins that have one. `SET sio0:a dcd=wired`.
-static Property pinStrapProperty(std::string name, std::string help, PinStrap& s) {
+// The pin strap, once, for both pins that have one. `SET sio0:a dcd=wired`. Declared
+// in mc6850.h so the TMS 5501 (and any future serial chip) shares the one spelling.
+Property pinStrapProperty(std::string name, std::string help, PinStrap& s) {
     Property x;
     x.name    = std::move(name);
     x.help    = std::move(help);

@@ -1,5 +1,6 @@
 # Build
 build/
+build-asan/
 out/
 cmake-build-*/
 _deps/
@@ -121,6 +122,7 @@ examples/**
 !examples/**/
 !examples/**/*.toml
 !examples/**/README.md
+!examples/cdos/CDOS258-8IN-DSDD.DSK
 !examples/cpm/cpm22b23-56k.dsk
 !examples/hdsk/HDCPM22v16-48K.DSK
 !examples/diskbasic/Disk BASIC 4.1.dsk

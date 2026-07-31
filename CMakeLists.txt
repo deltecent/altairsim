@@ -282,6 +282,11 @@ add_library(altair_core STATIC
   # The chips. A chip is not a card: it is modeled from its DATA SHEET, it knows
   # nothing about S-100, and it is shared by every card that has one soldered to it.
   src/chips/mc6850.cpp
+  # The TMS 5501 -- TI's NMOS I/O controller (UART + five timers + an eight-source
+  # interrupt controller). Phase 1 models the UART half only; the Cromemco 4FDC/16FDC/
+  # 64FDC each carry one as a console channel, and the TU-ART carries two. See
+  # src/chips/tms5501.h.
+  src/chips/tms5501.cpp
   src/chips/sio2port.cpp
   src/chips/uart1602.cpp
   # The Intel 8251 USART -- the console chip of the SD Systems SBC-100/200, and the
@@ -317,6 +322,10 @@ add_library(altair_core STATIC
   # Tarbell #1011 (SD) / #2022 (DD) -- one card carrying a WD FD177x floppy controller
   # AND a 32-byte boot PROM that shadows low RAM over PHANTOM*. See src/boards/tarbell.h.
   src/boards/tarbell.cpp
+  # Cromemco 4FDC/16FDC/64FDC family -- one card carrying a WD FD177x floppy controller, a
+  # TMS 5501 console UART, and an RDOS boot PROM at C000. A base (CromemcoFdcBoard) plus the
+  # 16FDC/64FDC leaves (header-only); boots CDOS. See src/boards/cromemco-fdc.h.
+  src/boards/cromemco-fdc.cpp
   src/boards/floppy-drive.cpp
   # The 88-ACR derives from the 88-SIO, because the card IS an 88-SIO B with a modem
   # mated to it -- see mits-88acr.h. It must be listed after it for no reason at all;
@@ -558,6 +567,7 @@ add_executable(altair_tests
   tests/test_ddt.cpp
   tests/test_dma.cpp
   tests/test_sio2.cpp
+  tests/test_tms5501.cpp
   tests/test_88sio.cpp
   tests/test_sbc.cpp
   tests/test_88acr.cpp
@@ -582,6 +592,7 @@ add_executable(altair_tests
   tests/test_wd17xx.cpp
   tests/test_versafloppy.cpp
   tests/test_tarbell.cpp
+  tests/test_cromemco-fdc.cpp
   tests/test_spindle.cpp
   tests/test_dcdd.cpp
   tests/test_mds.cpp
@@ -1099,6 +1110,29 @@ if(EXPECT_EXECUTABLE)
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-sdos PROPERTIES
                        LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # CDOS 2.58 off a Cromemco 16FDC -- Cromemco's CP/M work-alike, booted from an 8" mixed-
+  # density diskette. This boots the SHIPPED example (examples/cdos/cdos.toml) so the file a
+  # user is handed is the file under test, then types DIR and reads the whole directory back
+  # off the platter through the WD FD1793 -- which a machine that merely booted a resident
+  # image could not do.
+  #
+  # It is an EXPECT test because the proof is a command TYPED at the prompt -- a piped run can
+  # only assert what the machine says unprompted. No RETURN is needed to boot: the 16FDC is
+  # strapped for its fixed-300-baud modem console (RDOS switch 5, no auto-baud), so the prompt
+  # comes up on its own, and the console's rate=full default means that strap costs no speed.
+  # The image is mounted read/write in the example, so cdos.exp shasums it before and after: the
+  # boot and DIR only read, and the master must come out byte-identical (the same discipline as
+  # acceptance-sdos, without a separate fixture toml).
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-cdos
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cdos.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-cdos PROPERTIES
+                       LABELS acceptance TIMEOUT 60
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
