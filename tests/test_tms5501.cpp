@@ -174,19 +174,61 @@ void test_tms5501() {
         CHECK((g.chip.readStatus(g.clk) & 0x40) == 0, "and never has anything to say");
     }
 
-    SECTION("TMS 5501 -- irq() is always false in Phase 1");
+    SECTION("TMS 5501 -- interval Timer 1 fires and surfaces on the interrupt-address register");
     {
-        // The interrupt controller and the five timers are inert stubs. A byte on the
-        // line, a timer written, a mask set -- none of it raises the INT pin, on
-        // purpose (see the class note). This is the one function the interrupt PR
-        // makes real.
+        // RDOS 3.12's disk-read timeout guard arms Timer 1, unmasks it, and polls IN 03
+        // for 0xC7. Prove that path end to end. One count = 64 us of wall time; at the
+        // rig's 2 MHz that is 128 T-states, so a load of 10 fires after 1280.
         Rig g;
-        g.chip.writeMask(0xFF);
-        g.chip.writeTimer(0, 0x01);
-        g.tty->feed("!");
-        (void)g.chip.readStatus(g.clk);
-        CHECK(!g.chip.irq(g.clk), "no timer, no receive interrupt -- INT stays low");
-        CHECK(g.chip.readIntAddr() == 0xFF, "and the interrupt-address register reads 'none pending'");
+        g.chip.writeMask(0x01);            // enable Timer 1 (mask bit 0)
+        g.chip.writeTimer(0, 10, g.clk);   // arm Timer 1 = 10 counts
+
+        CHECK(g.chip.readIntAddr(g.clk) == 0xFF, "still counting -- IN 03 reads 'none pending'");
+        CHECK(!g.chip.irq(g.clk), "and INT stays low while it counts");
+
+        g.clk.advance(10 * 128);           // reach the deadline
+        CHECK((g.chip.readStatus(g.clk) & 0x20) != 0, "status IPG (D5) rises when it fires");
+        CHECK(g.chip.irq(g.clk), "INT goes high on an unmasked, expired timer");
+        CHECK(g.chip.readIntAddr(g.clk) == 0xC7, "Timer 1 encodes as RST 0 (0xC7)");
+        CHECK(g.chip.readIntAddr(g.clk) == 0xFF, "the read cleared the latch -- one-shot, gone");
+        CHECK(!g.chip.irq(g.clk), "and INT drops with it");
+    }
+
+    SECTION("TMS 5501 -- the mask gates the register, a zero load fires at once, RES disarms");
+    {
+        Rig g;
+        // An expired-but-MASKED timer must not appear; unmasking exposes it.
+        g.chip.writeTimer(0, 1, g.clk);    // Timer 1, one 128-T-state count
+        g.chip.writeMask(0x00);            // masked off
+        g.clk.advance(128);
+        CHECK(g.chip.readIntAddr(g.clk) == 0xFF, "expired but masked -- IN 03 shows nothing");
+        CHECK(!g.chip.irq(g.clk), "a masked source never raises INT");
+        g.chip.writeMask(0x01);
+        CHECK(g.chip.readIntAddr(g.clk) == 0xC7, "unmasking exposes the still-pending Timer 1");
+
+        // A zero load times out immediately (datasheet); Timer 2 -> mask bit 1 -> RST 1.
+        g.chip.writeTimer(1, 0x00, g.clk);
+        g.chip.writeMask(0x02);
+        CHECK(g.chip.readIntAddr(g.clk) == 0xCF, "a zero-load timer fires at once (Timer 2 = 0xCF)");
+
+        // RES clears an armed timer before it can fire.
+        g.chip.writeTimer(2, 5, g.clk);    // Timer 3 -> mask bit 3 -> RST 3
+        g.chip.writeMask(0x08);
+        g.chip.writeCommand(0x01, g.clk);  // RES strobe
+        g.clk.advance(5 * 128);
+        CHECK(g.chip.readIntAddr(g.clk) == 0xFF, "RES disarmed the timer before it fired");
+    }
+
+    SECTION("TMS 5501 -- HBD octuples the timer rate");
+    {
+        Rig g;
+        g.chip.writeCommand(0x10, g.clk);  // HBD (command D4): timers 8x faster
+        g.chip.writeMask(0x01);
+        g.chip.writeTimer(0, 8, g.clk);    // 8 counts x 8 us = 64 us = 128 T-states @ 2 MHz
+        g.clk.advance(127);
+        CHECK(g.chip.readIntAddr(g.clk) == 0xFF, "one T-state short of the deadline");
+        g.clk.advance(1);
+        CHECK(g.chip.readIntAddr(g.clk) == 0xC7, "with HBD, 8 counts fire in one 64 us tick-worth");
     }
 
     SECTION("TMS 5501 -- snapshot round-trip carries the live state");

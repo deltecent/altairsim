@@ -136,7 +136,7 @@ uint8_t CromemcoFdcBoard::read(const BusCycle& c) {
         case 0x00: v = uart_.readStatus(k);   break;
         case 0x01: v = uart_.readData(k);     break;
         case 0x02: v = 0xFF;                  break;  // IN 02 not assigned
-        case 0x03: v = uart_.readIntAddr();   break;  // inert (0xFF)
+        case 0x03: v = uart_.readIntAddr(k);  break;  // interrupt-address: RST of top source
         case 0x04: v = readAux();             break;  // aux disk status (seek / sense switches)
         // ---- FD1793 (30-33) + Cromemco disk flags (34) ----
         case 0x30: v = chip_->readStatus(k);    break;
@@ -161,10 +161,10 @@ void CromemcoFdcBoard::write(const BusCycle& c) {
         case 0x00: uart_.writeBaud(v);       break;
         case 0x01: uart_.writeData(v, k);    break;
         case 0x02: uart_.writeCommand(v, k); break;
-        case 0x03: uart_.writeMask(v);       break;  // inert
+        case 0x03: uart_.writeMask(v);       break;  // interrupt mask (1 = source enabled)
         case 0x04: writeAux(v);              break;  // aux disk command (side-select + PerSci)
         case 0x05: case 0x06: case 0x07:
-        case 0x08: case 0x09: uart_.writeTimer(p - 0x05, v); break;  // inert
+        case 0x08: case 0x09: uart_.writeTimer(p - 0x05, v, k); break;  // arm interval timer
         // ---- FD1793 (30-33) + Cromemco disk control (34) ----
         case 0x30: chip_->writeCommand(v, k);  break;
         case 0x31: chip_->writeTrackReg(v);    break;
@@ -497,9 +497,9 @@ std::vector<MapEntry> CromemcoFdcBoard::ioMap() const {
         {0x00, 0x00, "read/write", "TMS 5501 -- status / baud"},
         {0x01, 0x01, "read/write", "TMS 5501 -- receive / transmit"},
         {0x02, 0x02, "write",      "TMS 5501 -- command"},
-        {0x03, 0x03, "write",      "TMS 5501 -- interrupt mask (inert in Phase 1)"},
+        {0x03, 0x03, "read/write", "TMS 5501 -- interrupt address (IN) / interrupt mask (OUT)"},
         {0x04, 0x04, "read/write", "disk aux -- side-select + PerSci control (OUT) / seek status + sense switches (IN)"},
-        {0x05, 0x09, "write",      "TMS 5501 -- timers 1-5 (inert in Phase 1)"},
+        {0x05, 0x09, "write",      "TMS 5501 -- interval timers 1-5"},
         {0x30, 0x30, "read/write", "FD1793 -- status / command"},
         {0x31, 0x31, "read/write", "FD1793 -- track"},
         {0x32, 0x32, "read/write", "FD1793 -- sector"},

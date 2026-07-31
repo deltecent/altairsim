@@ -13,20 +13,25 @@
 // It knows nothing about S-100. It has a clock, some pins, and a ByteStream.
 //
 // ---------------------------------------------------------------------------
-// PHASE 1 IS SERIAL ONLY, AND SAID OUT LOUD.
+// WHAT IS MODELED, AND WHAT IS DEFERRED.
 //
-// A polled RDOS/CDOS console boot needs the UART half and nothing else: status
-// (TBE/RDA), the one-hot baud register, the data registers, and a command register
-// whose RES bit actually resets the chip. So that half is modeled to the letter.
+// A polled RDOS/CDOS console boot needs the UART half: status (TBE/RDA), the one-hot
+// baud register, the data registers, and a command register whose RES bit actually
+// resets the chip. That half is modeled to the letter.
 //
-// The other two-thirds of the 5501 -- the five interval timers and the eight-source
-// priority interrupt controller (the interrupt-address register at port 03, the mask,
-// the RS7/DRQ/RTC routing) -- are present as INERT STUBS: the ports exist and answer,
-// but no timer ever counts, no interrupt is ever raised (irq() is always false), and
-// the board's assertsInt() returns false. This is a deliberate, documented deferral
-// (see the plan and DESIGN.md 0.1), not an oversight -- an interrupt-driven CDOS BIOS
-// is a later effort, and inventing timer/interrupt behavior no test exercises would be
-// exactly the kind of guess the design forbids.
+// The FIVE INTERVAL TIMERS and the POLLED interrupt-address register (port 03 IN) are
+// also real: each timer is a one-shot down-counter whose 64 us/count tick is WALL time
+// (the chip's own oscillator, not CPU cycles), and IN 03 encodes the highest-priority
+// pending, unmasked source as an RST opcode -- which is exactly what RDOS 3.12's disk-
+// read timeout guard arms Timer 1 and polls for (0xC7). See tms5501.cpp.
+//
+// What is STILL DEFERRED is interrupt DELIVERY, not the timers: the chip's INT pin is
+// modeled (irq()), but the FDC board does not route it to the S-100 bus (its
+// assertsInt() returns false), and the non-timer interrupt sources (RDA/TBE serial,
+// the SENS/disk inputs, the RS7/DRQ/RTC routing) are not yet wired to latch. An
+// interrupt-DRIVEN CDOS BIOS is a later effort; RDOS/CDOS reach the timers by polling,
+// so that is what is built. Inventing the rest -- behavior no guest here exercises --
+// is exactly the guess the design forbids (DESIGN.md 0.1).
 // ---------------------------------------------------------------------------
 
 #include "core/board.h"     // IrqJumper, irqJumperProperty, Property, PinStrap-free
@@ -69,13 +74,20 @@ public:
     void    writeData(uint8_t v, const Clock& clk);
     void    writeCommand(uint8_t v, const Clock& clk);
 
-    // ---- INERT STUBS (Phase 1). Present so the port block decodes, but nothing
-    // behind them counts or interrupts. See the class note. ----
-    uint8_t readIntAddr() const { return 0xFF; }        // "no source pending"
-    void    writeMask(uint8_t v) { mask_ = v; }          // stored, does nothing
+    // ---- THE INTERVAL TIMERS AND THE POLLED INTERRUPT-ADDRESS REGISTER (real) ----
+    //
+    // IN 03 returns the RST opcode of the highest-priority pending, unmasked source
+    // (0xC7 = Timer 1, highest ... 0xFF = none / Timer 5, lowest); reading it clears
+    // that source's request latch. writeMask enables sources (1 = enabled). writeTimer
+    // arms a one-shot interval timer. See tms5501.cpp for the priority/vector map.
+    uint8_t readIntAddr(const Clock& clk);               // RST vector of the top source
+    void    writeMask(uint8_t v) { mask_ = v; }          // OUT 03: 1 = enable that source
+    void    writeTimer(int idx, uint8_t v, const Clock& clk);  // OUT 05-09: arm timer idx
+
+    // ---- STILL-INERT STUBS (Phase 1). The parallel port has nothing strapped to it,
+    // and the interrupt controller's non-timer sources are not wired to latch. ----
     uint8_t readParallel() const { return 0xFF; }        // no parallel input strapped
     void    writeParallel(uint8_t v) { parallelOut_ = v; }
-    void    writeTimer(int idx, uint8_t v);              // stored, never armed
 
     // POWER-ON-CLEAR. The 5501 has a RESET* pin (unlike the 6850), but at power-on
     // we just come up in a known-good state at once so the card is usable the instant
@@ -88,10 +100,10 @@ public:
     // does. Same body as the command register's RES bit.
     void reset(const Clock& clk) { resetAction(clk); }
 
-    // The chip's INT pin. ALWAYS FALSE in Phase 1 -- no timer counts and no receive/
-    // transmit interrupt is wired yet. Kept so the board's assertsInt() has one place
-    // to ask, and so the interrupt PR has one function to make real.
-    bool irq(const Clock& clk) const { (void)clk; return false; }
+    // The chip's INT pin: high while any UNMASKED source is pending. Only the interval
+    // timers feed it in Phase 1, and the FDC board does not route it to the S-100 bus
+    // (its assertsInt() returns false) -- RDOS/CDOS reach the timers by polling IN 03.
+    bool irq(const Clock& clk) const;
 
     // The card's straps for the modem input pins the 5501 has. (It has more pins than
     // a 6850, but a console channel wires only these; the rest are inert in Phase 1.)
@@ -131,8 +143,10 @@ public:
     void poll(const Clock& clk);
 
     // The next moment this chip's pins could move with nobody touching it. Zero means
-    // never. In Phase 1 there is no interrupt, so this only ever reports the receive/
-    // transmit pacing deadlines a poll would resolve anyway -- returns 0.
+    // never. A timer firing raises INT, but nothing external consumes it here (the FDC
+    // board's assertsInt() is false; the guest polls IN 03), so there is no self-driven
+    // edge a scheduled wake must catch -- returns 0. (The receive/transmit pacing
+    // deadlines a poll would resolve anyway are not edges either.)
     uint64_t nextEdge(const Clock& clk) const { (void)clk; return 0; }
 
     // SNAPSHOT/RESTORE (DESIGN.md 13). The owning card calls these. The live chip
@@ -165,6 +179,11 @@ private:
     // baud strap or the command byte's INE/HBD (those are separate from the RES strobe).
     void resetAction(const Clock& clk);
 
+    // The eight interrupt sources currently pending (before masking), in the 5501's
+    // mask/priority bit order (bit 0 = Timer 1, highest). Only the interval timers latch
+    // in Phase 1; the non-timer bits stay 0. Both irq() and IN 03 read this.
+    uint8_t pendingSources(const Clock& clk) const;
+
     std::string name_;
 
     // THE LINE, RAW. No transform chain -- that belongs to the console (DESIGN.md 7.2).
@@ -182,9 +201,15 @@ private:
     bool      hbd_         = false;  // command register D4: octuple the rate
 
     uint8_t command_    = 0;   // last command byte (INE/HBD/RS7 survive; RES/BRK are strobes)
-    uint8_t mask_       = 0;   // interrupt mask (inert)
+    uint8_t mask_       = 0;   // interrupt mask (OUT 03): 1 = source enabled
     uint8_t parallelOut_= 0;   // parallel output latch (inert)
-    uint8_t timer_[5]   = {};  // timer load values (inert -- never counted)
+
+    // The five interval timers as one-shot deadlines in the Clock's T-state domain. The
+    // 64 us/count tick is WALL time (the chip's own oscillator, not CPU cycles), so a
+    // timer measures the same real interval whatever the emulated CPU speed. Armed by
+    // writeTimer; pending once now() reaches the deadline; disarmed when IN 03 reports it.
+    uint64_t timerFireAt_[5] = {};
+    bool     timerArmed_[5]  = {};
 
     uint8_t rxData_  = 0;
     uint64_t rxCount_ = 0;

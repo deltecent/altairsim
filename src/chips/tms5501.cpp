@@ -35,6 +35,18 @@ constexpr uint8_t kTb5 = 0x20;  // D5: test bit (keep low)
 // If several bits are set the HIGHEST rate wins; if none, the channel is disabled.
 // (reference/Cromemco TU-ART.md 4.)
 constexpr long long kBaudRates[7] = {110, 150, 300, 1200, 2400, 4800, 9600};  // D0..D6
+
+// Interrupt-mask / interrupt-address bit order, highest priority first, per
+// reference/Cromemco TU-ART.md 7: [T5/PI7 | T4 | TBE | RDA | T3 | SENS | T2 | T1] from
+// D7..D0. So bit 0 (=Timer 1) is the highest priority and vectors to RST 0 (0xC7); bit i
+// vectors to RST i (0xC7 + 8*i). The five interval timers land on these bits:
+constexpr int kTimerBit[5] = {0, 1, 3, 6, 7};  // Timer 1..5 -> mask/priority bit
+
+// The 5501's interval timers tick at 64 us/count (reference chip clock ~2 MHz, /128);
+// the command register's HBD (D4) octuples that to 8 us. Expressed as a rate so the
+// deadline is derived in WALL time via Clock::tStatesPer -- independent of CPU speed.
+constexpr long long kTimerTickHz    = 15625;   // 1 / 64 us
+constexpr long long kTimerTickHzHbd = 125000;  // 1 / 8 us  (HBD)
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -140,10 +152,10 @@ uint8_t Tms5501::readStatus(const Clock& clk) {
     if (rdrf_)     s |= kRda;
     if (tbe(clk))  s |= kTbe;
     if (ovrn_)     s |= kOre;
-    // kIpg / kSbd / kFbd / kFme stay 0 in Phase 1: no interrupt controller, and a
-    // ByteStream delivers a whole byte or none -- there is no partial-frame state and
-    // no line noise to report.
-    (void)kIpg; (void)kSbd; (void)kFbd; (void)kFme;
+    if (pendingSources(clk) & mask_) s |= kIpg;  // INT pending: an unmasked timer fired
+    // kSbd / kFbd / kFme stay 0: a ByteStream delivers a whole byte or none -- there is
+    // no partial-frame state and no line noise to report (DESIGN.md 0.1).
+    (void)kSbd; (void)kFbd; (void)kFme;
     return s;
 }
 
@@ -195,8 +207,47 @@ void Tms5501::writeCommand(uint8_t v, const Clock& clk) {
     if (v & kRes) resetAction(clk);
 }
 
-void Tms5501::writeTimer(int idx, uint8_t v) {
-    if (idx >= 0 && idx < 5) timer_[idx] = v;  // stored; never armed in Phase 1
+// OUT 05-09: arm interval timer `idx` (0 = Timer 1). One-shot: it fires `v` counts from
+// now, one count = 64 us of WALL time (8 us with HBD) -- the chip's own oscillator, so
+// the interval is the same real duration whatever the CPU speed. v == 0 fires at once
+// (datasheet: a zero load times out immediately). Re-arming restarts the count.
+void Tms5501::writeTimer(int idx, uint8_t v, const Clock& clk) {
+    if (idx < 0 || idx >= 5) return;
+    long long tickHz  = hbd_ ? kTimerTickHzHbd : kTimerTickHz;
+    timerFireAt_[idx] = clk.now() + (uint64_t)v * clk.tStatesPer(tickHz);
+    timerArmed_[idx]  = true;
+}
+
+// The eight interrupt sources currently pending, before masking, in the priority bit
+// order (bit 0 = Timer 1). Only the interval timers latch in Phase 1: a timer is pending
+// once armed and now() has reached its deadline. The non-timer bits (RDA/TBE serial,
+// SENS/disk) stay 0 -- those sources are not wired to the interrupt controller yet.
+uint8_t Tms5501::pendingSources(const Clock& clk) const {
+    uint8_t p = 0;
+    for (int i = 0; i < 5; ++i)
+        if (timerArmed_[i] && clk.now() >= timerFireAt_[i]) p |= (uint8_t)(1u << kTimerBit[i]);
+    return p;
+}
+
+// IN 03: the interrupt-address register. Returns the RST opcode of the highest-priority
+// source that is both pending and unmasked (bit 0 = Timer 1 = 0xC7, highest; bit 7 =
+// 0xFF, lowest), or 0xFF when none is pending. Reading it clears that source's request
+// latch -- for a one-shot interval timer, that disarms it. RDOS 3.12's disk-read timeout
+// guard arms Timer 1, unmasks it (OUT 03 = 01), and polls here for 0xC7.
+uint8_t Tms5501::readIntAddr(const Clock& clk) {
+    uint8_t active = (uint8_t)(pendingSources(clk) & mask_);
+    if (active == 0) return 0xFF;                 // no unmasked source pending
+    int bit = 0;
+    while (!(active & (1u << bit))) ++bit;         // lowest set bit = highest priority
+    for (int i = 0; i < 5; ++i)                    // clear the reported source's latch
+        if (kTimerBit[i] == bit) timerArmed_[i] = false;
+    return (uint8_t)(0xC7 + 8 * bit);              // C7,CF,D7,DF,E7,EF,F7,FF
+}
+
+// The INT pin: any unmasked source pending. Only the interval timers feed it in Phase 1,
+// and the FDC board does not route it to the bus (assertsInt() is false).
+bool Tms5501::irq(const Clock& clk) const {
+    return (pendingSources(clk) & mask_) != 0;
 }
 
 // RES / RESET* / power-on: receiver to search mode, TX to mark, RDA/ORE cleared,
@@ -208,7 +259,7 @@ void Tms5501::resetAction(const Clock& clk) {
     rxData_   = 0;
     txFreeAt_ = clk.now();
     rxNextAt_ = clk.now();
-    for (auto& t : timer_) t = 0;
+    for (bool& a : timerArmed_) a = false;  // one-shot timers cleared; latches drop
 
     ctsPin_ = ctsNow();
     txRoom_ = stream_->writable();
@@ -239,7 +290,8 @@ void Tms5501::serialize(StateWriter& w) const {
     w.u8(command_);
     w.u8(mask_);
     w.u8(parallelOut_);
-    for (uint8_t t : timer_) w.u8(t);
+    for (uint64_t t : timerFireAt_) w.u64(t);
+    for (bool a : timerArmed_)      w.boolean(a);
     w.u8(rxData_);
     w.u64(rxCount_);
     w.boolean(rdrf_);
@@ -258,7 +310,8 @@ void Tms5501::deserialize(StateReader& r) {
     command_     = r.u8();
     mask_        = r.u8();
     parallelOut_ = r.u8();
-    for (auto& t : timer_) t = r.u8();
+    for (auto& t : timerFireAt_) t = r.u64();
+    for (auto& a : timerArmed_)  a = r.boolean();
     rxData_      = r.u8();
     rxCount_     = r.u64();
     rdrf_        = r.boolean();

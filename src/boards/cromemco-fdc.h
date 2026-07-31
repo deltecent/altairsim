@@ -33,13 +33,15 @@
 // is a thin follow-up on the same base -- which is why buildFdc()/romBytes()/hasBankSelect()
 // /describeGeometry() are virtual even though the two shipping leaves do not touch them.
 //
-// PHASE 1 IS A POLLED BOOT. The TMS 5501's five timers and eight-source interrupt
-// controller are inert (chips/tms5501.h), so assertsInt() is false and no disk interrupt
-// reaches the backplane; a polled RDOS/CDOS console boot needs none of it. The disk-side
-// interrupt routing (RS7/DRQ/RTC through the 5501) is a later effort -- said out loud, not
-// overlooked. The port-04 aux register IS modeled (side-select + seek status -- readAux/
-// writeAux), because RDOS's boot-sector read polls it; only the PerSci mechanical bits
-// (eject / fast-seek) are no-ops, an emulated drive having no such mechanism to drive.
+// PHASE 1 IS A POLLED BOOT. The TMS 5501's five interval timers and its POLLED
+// interrupt-address register ARE modeled (chips/tms5501.h) -- RDOS 3.12's disk-read
+// timeout guard arms Timer 1 and polls IN 03 for it. What is deferred is interrupt
+// DELIVERY: assertsInt() stays false, so the 5501's INT pin never reaches the backplane,
+// and the disk-side interrupt routing (RS7/DRQ/RTC through the 5501) is a later effort --
+// said out loud, not overlooked. A polled RDOS/CDOS console boot needs no CPU interrupt.
+// The port-04 aux register IS modeled (side-select + seek status -- readAux/writeAux),
+// because RDOS's boot-sector read polls it; only the PerSci mechanical bits (eject /
+// fast-seek) are no-ops, an emulated drive having no such mechanism to drive.
 
 #include "boards/floppy-drive.h"
 #include "chips/tms5501.h"
