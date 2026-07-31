@@ -15,9 +15,7 @@ The machine is a full 4 MHz Cromemco: a Z80, 64K of RAM, and one 16FDC with the 
 in drive A. There is nothing else to configure — `bootstrap = true` arms the boot PROM and
 the machine comes up loading CDOS.
 
-## Booting it — you press RETURN once
-
-Watch for two steps:
+## Booting it
 
 ```
 Preparing to boot, ESC to abort
@@ -29,10 +27,10 @@ Copyright (C) 1977, 1983 Cromemco, Inc.
 A.
 ```
 
-CDOS prints its banner on its own, then **waits for you to press RETURN**. It uses that first
-carriage return to measure your terminal's speed (the 16FDC's TMS 5501 UART auto-bauds off
-it), and only then shows the `A.` prompt. If the banner is up and nothing else is happening,
-press RETURN — that is the machine asking, not a hang.
+CDOS loads and comes straight up to its `A.` prompt — **no keypress needed**. This machine's
+16FDC is strapped for its fixed 300-baud *modem* console (the board's switch 5): that setting
+tells RDOS to skip the terminal auto-baud, which on real hardware wanted a RETURN to measure
+your terminal's speed. Here the prompt just appears.
 
 The `A.` prompt is CDOS waiting on drive A, the same idea as CP/M's `A>`. Try:
 
@@ -64,6 +62,22 @@ running code in the RAM underneath.
   track 0 is single density (so the boot PROM, which only knows single density, can read it)
   and whose remaining tracks are double density. The 16FDC recognises the format from the
   image — you do not tell it.
+
+## Console speed
+
+By default the console runs at **full speed** — output appears as fast as CDOS prints it,
+regardless of the 300-baud modem strap. If you want the authentic feel of a 300-baud modem
+console (deliberate, and slow — a `DIR` takes many seconds), set the rate on the tty:
+
+```toml
+[board.unit.tty]
+connect = "console"
+rate    = "real"    # pace the line in wall-clock time at the programmed baud
+```
+
+`rate = "full"` (the default) never paces the emulated line; `rate = "real"` does. Either way a
+real serial *port* on the other end still clocks its own wire — `rate` governs only the
+emulated console's internal timing.
 
 ## A word about the disk
 

@@ -1119,18 +1119,20 @@ if(EXPECT_EXECUTABLE)
   # off the platter through the WD FD1793 -- which a machine that merely booted a resident
   # image could not do.
   #
-  # It is an EXPECT test because CDOS auto-bauds off the first CR (nothing but the banner prints
-  # until a start bit arrives in emulated time -- a pipe cannot) and because the proof is a
-  # command typed at the prompt. The image is mounted read/write in the example, so cdos.exp
-  # shasums it before and after: the boot and DIR only read, and the master must come out
-  # byte-identical (the same discipline as acceptance-sdos, without a separate fixture toml).
+  # It is an EXPECT test because the proof is a command TYPED at the prompt -- a piped run can
+  # only assert what the machine says unprompted. No RETURN is needed to boot: the 16FDC is
+  # strapped for its fixed-300-baud modem console (RDOS switch 5, no auto-baud), so the prompt
+  # comes up on its own, and the console's rate=full default means that strap costs no speed.
+  # The image is mounted read/write in the example, so cdos.exp shasums it before and after: the
+  # boot and DIR only read, and the master must come out byte-identical (the same discipline as
+  # acceptance-sdos, without a separate fixture toml).
   # ---------------------------------------------------------------------------
   add_test(NAME acceptance-cdos
            COMMAND ${EXPECT_EXECUTABLE}
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cdos.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-cdos PROPERTIES
-                       LABELS acceptance TIMEOUT 90
+                       LABELS acceptance TIMEOUT 60
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------

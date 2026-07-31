@@ -5,13 +5,15 @@
 # RDOS 2.52 boot PROM. `bootstrap = true` arms the PROM at C000; the machine's startup runs
 # it, and RDOS reads the boot track, loads the CDOS cold loader, and jumps into CDOS.COM.
 #
-# TWO THINGS ARE AUTHENTIC, NOT KNOBS:
-#   - clock_hz = 4000000. A real Cromemco runs at 4 MHz, and RDOS's double-density read loop
-#     needs it: at 2 MHz a 500 kbit/s byte arrives faster than the loop can take it and the
-#     FD1793 reports Lost Data. This is the machine the software was written for.
-#   - The console trains its baud off your first RETURN. CDOS prints its banner unprompted,
-#     then waits -- press RETURN once and the `A.` prompt appears. (An emulated line has no
-#     bit-level timing to measure over a pipe, so this example wants a real terminal.)
+# clock_hz = 4000000 IS AUTHENTIC, NOT A KNOB. A real Cromemco runs at 4 MHz, and RDOS's
+# double-density read loop needs it: at 2 MHz a 500 kbit/s byte arrives faster than the loop
+# can take it and the FD1793 reports Lost Data. This is the machine the software was written for.
+#
+# THE CONSOLE COMES UP ON ITS OWN -- no RETURN to press. The 16FDC is strapped for its fixed
+# 300-baud "modem" console (RDOS's switch 5), which skips the terminal auto-baud that would
+# otherwise want a RETURN to train the bit period. Because the tty's `rate` defaults to `full`,
+# that 300-baud strap costs nothing here -- the line is not paced, so the console runs as fast
+# as the guest prints. Set `rate = "real"` on the tty to feel the authentic 300 baud.
 
 [machine]
 name    = "cdos"
@@ -33,7 +35,7 @@ drives    = 4
 
   [board.unit.tty]
   connect = "console"
-  baud    = 9600
+  # rate  = "real"   # uncomment for the authentic (slow) 300-baud modem-console timing
 
   [[board.drive]]
   unit  = 0

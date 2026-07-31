@@ -51,6 +51,7 @@ constexpr long long kTimerTickHzHbd = 125000;  // 1 / 8 us  (HBD)
 
 // ---------------------------------------------------------------------------
 uint64_t Tms5501::charTStates(const Clock& clk) const {
+    if (!paceReal_) return 0;  // rate=full: the line does not pace -- TBE/RDA come back at once
     if (baud_ <= 0) return 0;
     return (uint64_t)(clk.hz() * (long long)bitsPerChar() / baud_);
 }
@@ -340,6 +341,27 @@ std::vector<Property> Tms5501::properties(const EndpointResolver& resolve) {
             baudBase_ = v.i();
             baud_     = baudBase_ * (hbd_ ? 8 : 1);
             programLine();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        // How fast the emulated console line runs -- the same full|real policy the tape decks
+        // carry (mits-88acr, proctech-sol). full (default): the line does not pace, so the
+        // console keeps up with the guest whatever baud it programmed; a 16FDC strapped for
+        // fixed 300-baud modem mode (its switch 5) is then no slower than a fast terminal.
+        // real: pace in wall time at the programmed baud, for the authentic feel. Either way a
+        // real serial ENDPOINT still clocks its own wire -- this governs only the internal pacing.
+        Property x;
+        x.name    = "rate";
+        x.help    = "Console speed: full (as fast as the guest reads) | real (wall-clock baud)";
+        x.kind    = Kind::Str;
+        x.choices = {"full", "real"};
+        x.get     = [this] { return Value::ofStr(paceReal_ ? "real" : "full"); };
+        x.set     = [this](const Value& v, std::string& err) {
+            if (v.s() == "full")      paceReal_ = false;
+            else if (v.s() == "real") paceReal_ = true;
+            else { err = "rate must be \"full\" or \"real\""; return false; }
             return true;
         };
         p.push_back(std::move(x));

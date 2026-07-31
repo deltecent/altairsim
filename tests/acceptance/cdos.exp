@@ -4,14 +4,17 @@
 # loads Cromemco's CP/M work-alike from an 8" double-sided, mixed-density diskette; DIR then
 # walks the directory back off the platter through the WD FD1793.
 #
-# IT HAS TO BE AN EXPECT TEST, for two reasons that both need a real pty:
+# NO CARRIAGE RETURN IS NEEDED TO BOOT. The 16FDC is strapped for its fixed-300-baud "modem"
+# console (RDOS's switch 5 -- readAux returns D3=0, so RDOS skips the terminal auto-baud that
+# would otherwise want a RETURN to train the bit period). That is deliberate: it is deterministic
+# and the prompt comes up on its own. And because the console's `rate` defaults to `full`, the
+# 300-baud strap costs nothing -- the line is not paced, so output runs as fast as the guest
+# prints it. (Set `rate = "real"` on the tty to feel the authentic 300 baud.)
 #
-#   - THE AUTO-BAUD. CDOS prints its banner, then trains the 16FDC's TMS 5501 console off the
-#     start bit of the first CR -- and shows nothing more until it sees one. A pipe cannot
-#     present a start bit in emulated time (only a tty paces to clock_hz), so the `A.` prompt
-#     never appears. (See docs and the [[altairsim-pipe-cannot-type-at-a-guest]] rule.)
-#   - TYPING `DIR`. The proof of a live disk is a command typed at the prompt and the directory
-#     read back; a piped run can only assert what the machine says unprompted.
+# IT IS STILL AN EXPECT TEST, for one reason that needs a real pty: the proof of a live disk is
+# a command TYPED at the prompt and the directory read back. A piped run can only assert what the
+# machine says unprompted (and piped stdin derails RDOS's ESC-to-abort window besides -- see the
+# [[altairsim-pipe-cannot-type-at-a-guest]] rule).
 #
 # This boots the SHIPPED example (examples/cdos/cdos.toml) so the file a user is handed is the
 # file under test. The image is mounted read/write there, so the test SHASUMS it before and
@@ -27,9 +30,12 @@ set dsk "examples/cdos/CDOS258-8IN-DSDD.DSK"
 
 # TYPE LIKE A PERSON, one character at a time. CDOS polls its console between keystrokes; a
 # whole command shoved in at once loses its leading characters right after a prompt (the first
-# few arrive before the poll loop is looking). An 80 ms gap is a human's pace and the receiver
-# keeps up -- the same reason the auto-baud wants a real pty, taken one step further.
-proc slowtype {s} { foreach ch [split $s ""] { send -- $ch; after 80 } }
+# few arrive before the poll loop is looking). A short gap is a human's pace and the receiver
+# keeps up.
+proc slowtype {s} { foreach ch [split $s ""] { send -- $ch; after 60 } }
+
+# Leave no orphan behind: expect exiting does not reap the child holding the pty.
+proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]}; exit $code }
 
 set before [exec shasum $dsk]
 
@@ -38,62 +44,54 @@ spawn $exe examples/cdos/cdos.toml
 # CDOS loads and prints its sign-on with no input at all.
 expect {
     -ex "CDOS version 02.58" {}
-    eof     { puts "FAIL: the machine died before CDOS signed on"; exit 1 }
-    timeout { puts "FAIL: CDOS never booted off the 16FDC (no sign-on)"; exit 1 }
+    eof     { bail 1 "FAIL: the machine died before CDOS signed on" }
+    timeout { bail 1 "FAIL: CDOS never booted off the 16FDC (no sign-on)" }
 }
 expect {
     -ex "Copyright (C) 1977, 1983 Cromemco, Inc." {}
-    eof     { puts "FAIL: the sign-on was cut short"; exit 1 }
-    timeout { puts "FAIL: the CDOS banner never completed"; exit 1 }
+    eof     { bail 1 "FAIL: the sign-on was cut short" }
+    timeout { bail 1 "FAIL: the CDOS banner never completed" }
 }
 
-# THE AUTO-BAUD. The banner is up and CDOS is waiting; give it the CR it trains on, and the
-# `A.` prompt appears. (The sleep lets the banner drain first, so the CR is what trains the
-# baud, not a byte lost mid-print -- the same handshake the README documents.)
-sleep 1
-send "\r"
+# THE PROMPT COMES UP ON ITS OWN -- no RETURN. Sync to it before typing so the first character
+# of DIR is not lost to the sign-on still draining.
 expect {
     -ex "A." {}
-    eof     { puts "FAIL: died before the CDOS prompt"; exit 1 }
-    timeout { puts "FAIL: CDOS never auto-bauded -- no `A.` prompt after the CR"; exit 1 }
+    eof     { bail 1 "FAIL: died before the CDOS prompt" }
+    timeout { bail 1 "FAIL: CDOS never reached its `A.` prompt" }
 }
 
 # A REAL DIRECTORY READ. DIR walks the disk's directory and prints every entry; the summary
 # line is the proof the whole listing came back off the platter, not a banner that faked a boot.
-# (The settle sleep lets the trained baud take before we type -- see the .exp header.)
-sleep 1
 slowtype "DIR\r"
 expect {
     -ex "XMODEM" {}
-    eof     { puts "FAIL: the machine died listing the directory"; exit 1 }
-    timeout { puts "FAIL: DIR did not read the directory off the disk"; exit 1 }
+    eof     { bail 1 "FAIL: the machine died listing the directory" }
+    timeout { bail 1 "FAIL: DIR did not read the directory off the disk" }
 }
 expect {
     -ex "18 Files" {}
-    eof     { puts "FAIL: the directory listing was cut short"; exit 1 }
-    timeout { puts "FAIL: DIR never finished -- no file-count summary"; exit 1 }
+    eof     { bail 1 "FAIL: the directory listing was cut short" }
+    timeout { bail 1 "FAIL: DIR never finished -- no file-count summary" }
 }
 
 # SYNC TO THE RETURNING PROMPT. CDOS reprints `A.` once DIR finishes -- confirming it walked
 # the whole directory and handed control back, not that it wedged mid-listing.
 expect {
     -ex "A." {}
-    eof     { puts "FAIL: DIR listed but the prompt never came back"; exit 1 }
-    timeout { puts "FAIL: DIR listed but CDOS never returned to the prompt"; exit 1 }
+    eof     { bail 1 "FAIL: DIR listed but the prompt never came back" }
+    timeout { bail 1 "FAIL: DIR listed but CDOS never returned to the prompt" }
 }
 
-# The boot and DIR only read the disk; the tracked master must come out byte-identical. (STAT
-# reads the disk's own label sector too and is a fine thing to try by hand -- see the README --
-# but its extra ~20 s of rotation-paced disk I/O buys no coverage a full DIR has not, so the
-# CI test stops here.)
+# The boot and DIR only read the disk; the tracked master must come out byte-identical.
 set after [exec shasum $dsk]
 if {$before ne $after} {
     puts "FAIL: THE IMAGE CHANGED. Booting and DIR should only read the master:"
     puts "  before: $before"
     puts "  after:  $after"
-    exit 1
+    bail 1 ""
 }
 
 puts "OK: CDOS 2.58 booted off the 16FDC to its A. prompt, DIR read the whole directory off the\
       disk, and the master is byte-identical."
-exit 0
+bail 0 ""

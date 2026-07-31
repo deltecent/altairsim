@@ -3,6 +3,7 @@
 #include "chips/tms5501.h"
 #include "core/clock.h"
 #include "core/statefile.h"
+#include "core/value.h"
 #include "host/stream.h"
 
 #include <memory>
@@ -35,9 +36,18 @@ struct Rig {
     }
 
     // A character time at the rig's frame: 1 start + 8 data + 1 stop = 10 bits at
-    // 9600 baud, 2 MHz. The receiver and transmitter are both paced by it.
+    // 9600 baud, 2 MHz. The receiver and transmitter are both paced by it -- but ONLY
+    // once the line is in rate=real (see pace()); the default rate=full does not pace.
     uint64_t charT() const { return (uint64_t)(2000000 * 10 / 9600); }  // 2083
     void lineTime() { clk.advance(charT() + 1); }
+
+    // Put the line in rate=real, through the very property a machine file sets, so the
+    // deadline arithmetic (charT) actually applies. The default is rate=full (instant).
+    void pace() {
+        std::string err;
+        for (auto& p : chip.properties({}))
+            if (p.name == "rate") { p.set(Value::ofStr("real"), err); return; }
+    }
 };
 
 } // namespace
@@ -60,12 +70,30 @@ void test_tms5501() {
         CHECK((g.chip.readStatus(g.clk) & 0x40) == 0, "reading the data clears RDA");
     }
 
+    SECTION("TMS 5501 -- rate=full (the default) does not pace the line");
+    {
+        // The default console runs at FULL speed: the line does not pace, so TBE comes
+        // back the instant the byte is handed over and a queued receive byte is ready at
+        // once. This is why a 300-baud modem strap costs no speed unless rate=real is set.
+        Rig g;
+        g.chip.writeData('X', g.clk);
+        CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "TBE set again immediately -- no pacing");
+        CHECK(g.tty->out() == "X", "and the byte went out the line");
+
+        g.tty->feed("HI");
+        (void)g.chip.readStatus(g.clk);
+        CHECK(g.chip.readData(g.clk) == 'H', "the first character arrives");
+        CHECK((g.chip.readStatus(g.clk) & 0x40) != 0, "the second is ready at once, un-paced");
+        CHECK(g.chip.readData(g.clk) == 'I', "...and it is the byte that was sent");
+    }
+
     SECTION("TMS 5501 -- TBE is a DEADLINE, not a flag");
     {
         // The character occupies the line for its whole character time; TBE is false
         // until it has finished leaving. Same mechanism the 6850's TDRE is built on,
-        // and the same reason a guest can time the line by watching it.
+        // and the same reason a guest can time the line by watching it. rate=real.
         Rig g;
+        g.pace();
         CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "TBE set before we send");
 
         g.chip.writeData('X', g.clk);
@@ -82,6 +110,7 @@ void test_tms5501() {
     SECTION("TMS 5501 -- the receiver is PACED: a second byte waits its character time");
     {
         Rig g;
+        g.pace();
         g.tty->feed("HI");
 
         (void)g.chip.readStatus(g.clk);

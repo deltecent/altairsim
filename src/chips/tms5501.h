@@ -200,6 +200,12 @@ private:
     int       stopBits_    = 1;      // baud register D7: 1 => one stop bit, 0 => two
     bool      hbd_         = false;  // command register D4: octuple the rate
 
+    // RATE POLICY -- a config strap (the `rate` property), NOT guest state, so it does not
+    // travel in a snapshot (like dcdStrap/ctsStrap). false = "full": the line does not pace,
+    // charTStates() is 0, and the console runs as fast as the guest reads whatever baud it
+    // programmed. true = "real": pace TBE/RDA in wall time at the programmed baud.
+    bool      paceReal_    = false;
+
     uint8_t command_    = 0;   // last command byte (INE/HBD/RS7 survive; RES/BRK are strobes)
     uint8_t mask_       = 0;   // interrupt mask (OUT 03): 1 = source enabled
     uint8_t parallelOut_= 0;   // parallel output latch (inert)
