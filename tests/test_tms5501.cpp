@@ -183,12 +183,12 @@ void test_tms5501() {
         // is 'E'|0x80, the last byte of MITS BASIC's "MEMORY SIZE?" -- inbound it is
         // just as often the payload of an XMODEM block.
         Rig g;
-        g.tty->feed(std::string(1, (char)0xC5));
+        g.tty->feed(std::string(1, '\xC5'));
         (void)g.chip.readStatus(g.clk);
         CHECK(g.chip.readData(g.clk) == 0xC5, "0xC5 reaches the guest with bit 7 intact");
 
         g.chip.writeData((uint8_t)0xC5, g.clk);
-        CHECK(g.tty->out() == std::string(1, (char)0xC5), "...and outbound too");
+        CHECK(g.tty->out() == std::string(1, '\xC5'), "...and outbound too");
     }
 
     SECTION("TMS 5501 -- an unconnected line is not an error");

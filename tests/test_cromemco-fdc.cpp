@@ -217,8 +217,8 @@ void test_cromemco_fdc() {
 
     // ---- THE ONE-HOT DRIVE SELECT (OUT 34 D3-D0), by the numbers ----
     {
-        ProbeBoard b;
-        Clock c;
+        Clock c;  // Clock BEFORE the board: the board's dtor cancels its wake on the Clock,
+        ProbeBoard b;  // so the Clock must outlive it (Windows UAF otherwise -- see the memory)
         b.attachClock(&c);
         b.power();
 
@@ -241,8 +241,8 @@ void test_cromemco_fdc() {
     // The diagnostic centrepiece. ONLY 8" double density is 500 kbit/s; 8" SD, 5.25" SD and
     // 5.25" DD are all 250 kbit/s. A naive "D6 -> 500k" mis-clocks every 5.25" DD disk.
     {
-        ProbeBoard b;
-        Clock c;
+        Clock c;  // Clock BEFORE the board: the board's dtor cancels its wake on the Clock,
+        ProbeBoard b;  // so the Clock must outlive it (Windows UAF otherwise -- see the memory)
         b.attachClock(&c);
         b.power();
 
@@ -626,11 +626,13 @@ void test_cromemco_fdc() {
 
     // ---- A REAL BUS: the ROM answers C000 alongside 48K of RAM, then banks out ----
     {
+        // Clock BEFORE the Bus: the Bus owns and deletes the board, whose dtor cancels its
+        // wake on the Clock -- so the Clock must outlive the Bus (Windows UAF otherwise).
+        Clock c;
         Bus bus;
         bus.setVerify(true);  // re-derive every decode the slow way
         auto* fdc = new Fdc16Board();
         fdc->id = "fdc";
-        Clock c;
         fdc->attachClock(&c);
         auto* mem = ram48k("mem0");
         bus.attach(fdc);
