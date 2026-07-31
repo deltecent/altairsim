@@ -117,6 +117,14 @@ void test_roms() {
         // C000-FFFF, executed in place (no RAM copy). A complete, contiguous 16K part;
         // its last 2K is the disk bootloader reached via RUN FF00. machines/rombasic.toml.
         {"rombasic", 0xC000, 0xFFFF, 16384, 0x643FE88Bu, true},
+        // Cromemco RDOS boot/monitor PROMs (the 16FDC/64FDC floppy controllers). RDOS 2.52
+        // is the 16FDC part (Joe's ROM): its rdos0252.hex spans C000-D000 (4097 bytes) --
+        // 4K of 2732 at C000-CFFF plus one trailing assembler pad byte at D000, one past the
+        // EPROM, which the board's 4K ROM window never maps. RDOS 3.12 is the 64FDC's 8K
+        // successor at C000-DFFF -- grew past the 16FDC's 4K into the second half. Both are
+        // .hex (absolute addresses); docs/roms.md carries the provenance and both listings.
+        {"rdos252", 0xC000, 0xD000, 4097, 0xA006878Eu, true},
+        {"rdos312", 0xC000, 0xDFFF, 8192, 0x59EBD5ECu, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

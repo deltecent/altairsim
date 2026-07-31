@@ -39,7 +39,7 @@ what differs across the three boards.
 | Board crystal | not captured here (2 MHz-class, per FD1771 norms) | **8.000 MHz** onboard crystal | **8.000 MHz** onboard crystal |
 | Data separator | none documented (single-density only) | Phase-Locked Loop (PLL), free-running RCLK table keyed on MAXI/DDEN | Phase-Locked Loop (PLL), identical free-running RCLK table |
 | Write precompensation | not documented | not documented (not needed at FM-only / 16FDC era per manual) | **Yes** — PAL (74946) delays WD on 8″ double density inside track 43 |
-| Boot/monitor ROM | **1K** (2708-class) at `C000`–`C3FFH` | **4K** at `C000`–`CFFFH` | **4K** (32K memory-card address footprint, decode `8000`–`FFFFH`, but ROM answers only `C000`–`CFFFH`) |
+| Boot/monitor ROM | **1K** (2708-class) at `C000`–`C3FFH` | **4K** at `C000`–`CFFFH` (RDOS 2.52) | **8K** at `C000`–`DFFFH` (RDOS 3.12) — 32K memory-card address footprint (decode `8000`–`FFFFH`), the ROM answering `C000`–`DFFF`. *(The manuals describe a 4K `C000`–`CFFF` window; the shipping RDOS 3.12 image and its `rdos0312.lst` listing `ORG 0C000H` run through `DFFF`, so the part grew into the second 4K — see `docs/roms.md`.)* |
 | ROM disable | no port-40 bank select (`40` not assigned) | `OUT 40H` (any byte) disables ROM if jumpered for RES; RESET re-enables | `OUT 40H` (any byte) disables ROM if jumper location 2 set; RESET re-enables |
 | Boot/monitor select | SW3 (`BOOT`/`MON`), readable at port 34 D6 | Switches 1–4 (RDOS defeat / disable-after-boot / boot-or-mon / inhibit-init), readable via port 04 D3–D0 (switches 5–8 only) | **Jumpers**, not switches, for RDOS-defeat/disable-after-boot/boot-mon/inhibit-init (jumper locations 1–4); switches 1–5 instead set baud rate + boot **drive** + self-test |
 | Real-Time-Clock interrupt | not documented | **Yes** — 512 ms jumper option onto XI7 (mutually exclusive with the DRQ jumper) | not documented in this manual |
@@ -227,7 +227,7 @@ the three boards; only port 34, when Auto Wait is armed, does.
 
 | | 4FDC | 16FDC | 64FDC |
 |---|---|---|---|
-| ROM size/address | 1K, `C000`–`C3FFH` (2708-class) | 4K, `C000`–`CFFFH` | 4K, `C000`–`CFFFH` (board's memory-card address footprint is `8000`–`FFFFH`, but only the `C000`–`CFFF` sub-range is populated) |
+| ROM size/address | 1K, `C000`–`C3FFH` (2708-class) | 4K, `C000`–`CFFFH` (RDOS 2.52) | 8K, `C000`–`DFFFH` (RDOS 3.12) — memory-card address footprint is `8000`–`FFFFH`; the manuals describe a 4K `C000`–`CFFF` window, but the RDOS 3.12 image + `rdos0312.lst` (`ORG 0C000H`) run to `DFFF`, so the emulation decodes 8K (see `docs/roms.md`) |
 | Boot select | SW3 = BOOT/MON, readable at port 34 D6 | switch/jumper set, readable at port 34 D6 (¬BOOT) | jumper location 3 = BOOT/MON, readable at port 34 D6 (¬BOOT) |
 | ROM disable | not supported (no bank-select port) | `OUT 40H` (any byte) permanently deselects the ROM if jumpered for RES; cleared only by hardware RESET | identical mechanism, gated by jumper location 2 |
 | Auto-boot on power-up | via SW3/monitor switch | via switch/jumper set (RDOS defeat / disable-after-boot / boot-or-mon / inhibit-init) | via jumper locations 1–4 (same four functions, **jumpers not switches** — 64FDC's front-panel switches are repurposed for baud + boot-drive + self-test instead, see §1) |
@@ -308,8 +308,9 @@ mount time rather than board-fixed (16FDC RDOS-II p.13 "LIST ALL DISKS LOGGED IN
 - **Port 04's bit meaning is board-specific** — do not share one bit table across all three;
   4FDC has dual eject lines and no side-select/override; 16FDC has eject + override + side-
   select; 64FDC drops eject/fast-seek/restore and keeps only override/control-out/side-select.
-- **Boot PROM size and disable path differ:** 4FDC 1K no-disable; 16FDC/64FDC 4K with an
-  `OUT 40H` bank-select disable (jumper-gated, RESET-restored).
+- **Boot PROM size and disable path differ:** 4FDC 1K no-disable; 16FDC 4K (RDOS 2.52) and
+  64FDC 8K (RDOS 3.12, `C000`–`DFFF`), both with an `OUT 40H` bank-select disable (jumper-gated,
+  RESET-restored).
 - **RTC and Mode-2-interrupt jumpers are 16FDC-specific** in the manuals read; do not assume
   the 64FDC has them without further evidence — its theory-of-operation chapter has no such
   section, and its front-panel switches are reassigned to baud-rate/boot-drive/self-test

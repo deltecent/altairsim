@@ -135,7 +135,7 @@ protected:
     // ---- the axes the leaves answer for themselves (see the class note) ----
     virtual void        buildFdc();                       // 16/64: FD1793. 4FDC (later): FD1771
     virtual bool        hasBankSelect() const { return true; }   // OUT 40H banks the ROM out
-    virtual int         romBytes() const { return 4096; }        // 16/64: 4K at C000-CFFF
+    virtual int         romBytes() const { return 4096; }        // 16FDC: 4K at C000-CFFF (64FDC overrides -> 8K)
     virtual std::string romName() const = 0;                     // which RDOS ROM
     // Probe an image's byte count into a geometry + the drive's RPM. 16/64: the mixed 8"
     // CDOS disk, a plain SD disk, or a formattable blank. 4FDC (later): single density only.
