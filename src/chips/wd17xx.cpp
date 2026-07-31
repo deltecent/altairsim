@@ -1002,7 +1002,8 @@ void Wd17xx::poll(const Clock& clk) {
                     // MULTIPLE RECORD COMMAND)."
                     if (!id_.dataCrcOk) {
                         status_ |= kCrcError;
-                        finish(clk);
+                        phase_ = Phase::ReadDrain;  // deliver the last byte, THEN INTRQ
+                        due_  += byteTStates(clk);
                         break;
                     }
                 }
@@ -1034,6 +1035,29 @@ void Wd17xx::poll(const Clock& clk) {
                     // status it never sees on hardware.
                     status_ |= kNotFound;
                 }
+
+                // ---- INTRQ TRAILS THE FINAL DRQ; IT DOES NOT RACE IT ----
+                //
+                // The last data byte is in the DR with DRQ up. On the real part the
+                // command's INTRQ comes only AFTER the data CRC -- roughly two byte-times
+                // past that last DRQ -- so a driver always gets a window in which the byte
+                // is here and "done" is not yet asserted. Finish in THIS poll instead and
+                // DRQ and INTRQ come up together; a driver whose read loop polls INTRQ
+                // *before* it services DRQ (the Cromemco boot: IN 34 / JR C,done / INI)
+                // sees "done", quits, and never takes the last byte -- every read lands one
+                // byte short. Hold one byte-time in ReadDrain so the guest takes it first.
+                phase_ = Phase::ReadDrain;
+                due_  += byteTStates(clk);
+                break;
+            }
+
+            case Phase::ReadDrain: {
+                // The final byte has been sitting in the DR for a byte-time. If the guest
+                // is wait-synced it may still be stalled on PRDY taking it -- hold exactly
+                // as Phase::Read does -- then raise INTRQ. A timed guest that never came
+                // back for it simply meets INTRQ now (its DRQ was already up a byte-time,
+                // which is the miss the real chip would report; nothing new is lost here).
+                if (waitSynced_ && drq_) return;
                 finish(clk);
                 break;
             }
