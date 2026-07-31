@@ -213,12 +213,24 @@ uint8_t CromemcoFdcBoard::readAux() {
     return 0x07;
 }
 
-// Port 04 OUT -- Auxiliary Disk Command (reference §5), all bits active-low. The only bit that
-// moves emulated data is D1 ¬SIDE SELECT (0 = side 1, 1 = side 0); the PerSci mechanical bits
-// (D6 ¬EJECT, D5 ¬DRIVE SELECT OVERRIDE, D4 ¬FAST SEEK, D3 ¬RESTORE, D2 ¬CONTROL OUT) are
-// no-ops on an emulated drive -- RDOS still homes the head with a WD Restore command on port 30,
-// not this register. Latch the byte and re-point the chip at the selected side.
+// Port 04 OUT -- Auxiliary Disk Command (reference §5), all bits active-low. Two bits move
+// emulated state: D1 ¬SIDE SELECT (0 = side 1, 1 = side 0), and -- on the 4FDC/16FDC -- D3
+// ¬RESTORE, which forces the selected drive to track 0 (auxRestoreHomesHead). The RDOS PROM
+// homes the head with a WD Restore command on port 30, but CDOS.COM's disk driver homes on disk
+// SELECTION through this line instead (CDOS manual: "Disk selection also restores the disk drive
+// head to home, track 0") and issues no WD Restore of its own -- so without D3 its first
+// directory read finds the head where the cold loader left it (track 2) and faults Record Not
+// Found. The remaining PerSci mechanical bits (D6 ¬EJECT, D5 ¬DRIVE SELECT OVERRIDE, D4 ¬FAST
+// SEEK, D2 ¬CONTROL OUT) have no emulated effect. Latch the byte and re-point the chip at the
+// selected side.
 void CromemcoFdcBoard::writeAux(uint8_t v) {
+    // D3 ¬RESTORE asserted (active-low, 0) homes the selected drive's head -- a drive-mechanics
+    // restore that bypasses the 1793, so the chip's track register is untouched (CDOS loads it to
+    // 0 with the OUT 31 that follows). Instant, like every seek here: readAux's SEEK IN PROGRESS
+    // stays 0, so a driver that polls for completion falls straight through.
+    if (auxRestoreHomesHead() && !(v & 0x08) && !drive_.empty())
+        drive_[(size_t)sel_].drv.setHeadTrack(0);
+
     aux_  = v;
     side_ = (v & 0x02) ? 0 : 1;  // D1: 0 -> side 1, 1 -> side 0 (active-low)
     applySelection();

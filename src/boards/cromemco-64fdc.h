@@ -23,6 +23,11 @@ public:
 protected:
     int         romBytes() const override { return 8192; }   // RDOS 3.12 is 8K: C000-DFFF
     std::string romName() const override { return "rdos312"; }
+
+    // The 64FDC drops port 04's ¬RESTORE line (reference §5: "not assigned" -- eject/fast-seek/
+    // restore go away with the simpler PerSci 299B). Its drivers home the head with the 1793's
+    // own Restore command, not this register.
+    bool        auxRestoreHomesHead() const override { return false; }
 };
 
 } // namespace altair

@@ -46,7 +46,13 @@ constexpr uint8_t FD_TRK = 0x31;  // FD1793 track
 constexpr uint8_t FD_SEC = 0x32;  // FD1793 sector
 constexpr uint8_t FD_DAT = 0x33;  // FD1793 data (NEVER wait-synced -- reference §6)
 constexpr uint8_t FD_FLG = 0x34;  // disk flags (in) / control (out)
+constexpr uint8_t AUX    = 0x04;  // auxiliary disk command (out) / status (in) -- reference §5
 constexpr uint8_t BANK   = 0x40;  // OUT 40H banks the RDOS ROM out until RESET
+
+// Port-04 OUT bits (reference §5, all active-low). D3 ¬RESTORE forces the selected drive to
+// track 0 on the 4FDC/16FDC (not the 64FDC); D1 ¬SIDE SELECT (1 = side 0). 0xF7 = D3 low
+// (restore asserted) with D1 high (side 0).
+constexpr uint8_t AUX_RESTORE = 0xF7;  // D3=0 -> home selected drive
 
 // Port-34 OUT control bits (reference §4).
 constexpr uint8_t AUTOWAIT = 0x80;  // D7: Auto Wait -- the CPU-stall (wait-sync) path
@@ -337,6 +343,71 @@ void test_cromemco_fdc() {
         out(b, FD_SEC, 1);
         out(b, FD_CMD, 0x88);
         CHECK(pollRead(b, ctl).size() == 512, "track 1 sector 1 is a 512-byte DD sector");
+    }
+
+    // ---- PORT-04 ¬RESTORE HOMES THE HEAD (the CDOS warm-boot path) ----
+    // CDOS.COM homes the head through port 04 D3 on disk selection, not a WD Restore: after the
+    // cold loader leaves the head at track 2, CDOS reloads the track register to 0 (no seek) and
+    // reads the directory. Without D3 that read faults Record Not Found -- the head is still at
+    // track 2, so no ID field matches the register; with it, the head is home and the read finds
+    // its record. This is exactly what the CDOS acceptance boot exercises (reference §5, and the
+    // CDOS manual: "Disk selection also restores the disk drive head to home, track 0").
+    {
+        withRampDisk(26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512);  // 1,256,704
+        Clock c;
+        Fdc16Board b;
+        b.attachClock(&c);
+        b.power();
+        std::string err;
+        CHECK(b.mount("drive0", "cdos.dsk", false, err), "the mixed CDOS image mounts");
+
+        const uint8_t ctlSd = MAXI | MOTOR | 0x01;         // 8" SD, motor, drive 0
+        const uint8_t ctlDd = MAXI | DDEN | MOTOR | 0x01;  // 8" DD, motor, drive 0
+
+        // Leave the head at track 2, exactly as the cold loader does when it loads CDOS.COM.
+        seekTo(b, c, ctlDd, 2);
+
+        // Reload the track register to 0 with no seek (CDOS's warm-boot read) and read track 0
+        // sector 1: the head is still at track 2, so it is Record Not Found and no bytes return.
+        out(b, FD_TRK, 0);
+        out(b, FD_SEC, 1);
+        out(b, FD_CMD, 0x88);
+        CHECK(pollRead(b, ctlSd).empty(), "head at track 2, register 0 -> the track-0 read finds nothing");
+        CHECK((in(b, FD_CMD) & 0x10) != 0, "...and the status is Record Not Found");
+
+        // Assert port-04 ¬RESTORE (D3 low): the selected drive homes to track 0.
+        out(b, AUX, AUX_RESTORE);
+
+        // The same read now finds its record -- a full 128-byte SD sector, no RNF.
+        out(b, FD_TRK, 0);
+        out(b, FD_SEC, 1);
+        out(b, FD_CMD, 0x88);
+        CHECK(pollRead(b, ctlSd).size() == 128, "after ¬RESTORE the head is home, so track 0 sector 1 reads");
+        CHECK((in(b, FD_CMD) & 0x10) == 0, "no Record Not Found once the head is home");
+    }
+
+    // ---- THE 64FDC DROPS ¬RESTORE (reference §5: D3 not assigned) ----
+    // Its simpler PerSci 299B has no restore line; drivers home with the 1793's own Restore
+    // command instead. So port 04 D3 moves no head, and the same warm-boot sequence still faults.
+    {
+        withRampDisk(26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512);
+        Clock c;
+        Fdc64Board b;
+        b.attachClock(&c);
+        b.power();
+        std::string err;
+        CHECK(b.mount("drive0", "cdos.dsk", false, err), "the mixed CDOS image mounts on the 64FDC");
+
+        const uint8_t ctlSd = MAXI | MOTOR | 0x01;
+        const uint8_t ctlDd = MAXI | DDEN | MOTOR | 0x01;
+
+        seekTo(b, c, ctlDd, 2);
+        out(b, AUX, AUX_RESTORE);  // no effect on the 64FDC -- D3 is unassigned
+        out(b, FD_TRK, 0);
+        out(b, FD_SEC, 1);
+        out(b, FD_CMD, 0x88);
+        CHECK(pollRead(b, ctlSd).empty(), "64FDC: port-04 D3 is unassigned, so the head stays at track 2");
+        CHECK((in(b, FD_CMD) & 0x10) != 0, "...and the track-0 read is Record Not Found");
     }
 
     // ---- ONE-HOT SELECT, BEHAVIORALLY: only the drive with a disk reads ----

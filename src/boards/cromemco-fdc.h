@@ -161,6 +161,15 @@ protected:
     virtual uint8_t readAux();             // seek-in-progress / sense switches 5-8
     virtual void    writeAux(uint8_t v);   // ¬SIDE SELECT + PerSci mechanical controls
 
+    // Port 04 D3 ¬RESTORE forces the SELECTED drive to track 0 -- a drive-mechanics line the
+    // 4FDC and 16FDC carry (reference §5), and the one CDOS.COM's disk driver uses to home the
+    // head on disk selection (the CDOS manual: "Disk selection also restores the disk drive head
+    // to home, track 0"). CDOS issues no WD Restore of its own, so without this its first
+    // directory read finds the head wherever the cold loader left it (track 2) and faults Record
+    // Not Found. The 64FDC drops the bit (reference §5: "not assigned"), so it overrides this to
+    // false and relies on the 1793's own Restore command instead.
+    virtual bool    auxRestoreHomesHead() const { return true; }
+
     void   clockAttached() override;  // hand every drive the machine Clock (index() angular model)
     void   wireClocks();       // (re)point each drive's angular model at clock_
     void   applySelection();   // point the chip at drive_[sel_], set side + data rate
