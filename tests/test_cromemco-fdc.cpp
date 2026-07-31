@@ -14,11 +14,11 @@
 // only proved to be REACHABLE through the board's ports 00/01 -- the card wiring, not
 // the chip.
 //
-// PHASE 1 HAS NO SIDE SELECT (the port-04 side register is deferred, so side_ is fixed
-// at 0). Everything the bus can reach is side 0. The two-sided mixed CDOS disk -- whose
-// SD boot track lives on side 1 -- is therefore an ACCEPTANCE-level round-trip with the
-// real media (task 5), not a Phase-1 unit test; what a unit test can pin is the PROBE
-// that lays out all three ranges, and the side-0 DD read/format path, both below.
+// SIDE SELECT is the port-04 D1 register; with no OUT 04 the drive stays on side 0, which
+// is where these unit tests read. On a real CDOS disk side 0 of cylinder 0 is the SD boot
+// track (128-byte sectors, IBM 3740) and side 1 is DD -- the full two-sided boot is an
+// ACCEPTANCE-level round-trip with the real media (task 5); what a unit test pins is the
+// PROBE that lays out all three ranges, and the side-0 SD read + DD format path, both below.
 
 #include "boards/cromemco-16fdc.h"
 #include "boards/cromemco-64fdc.h"
@@ -253,21 +253,24 @@ void test_cromemco_fdc() {
     {
         ProbeBoard b;
 
-        // 1,256,704 bytes: a DD track 0 side 0, an SD boot side 1, DD everywhere else.
-        auto cdos = b.probe(16ull * 512 + 26ull * 128 + 76ull * 2 * 16 * 512);
+        // 1,256,704 bytes: an SD boot track 0 side 0 (IBM 3740, so RDOS can read it with no
+        // density known), a DD side 1 of cylinder 0, DD everywhere else -- confirmed against the
+        // real CDOS 2.58 image (reference/Cromemco CDOS.md 3.1).
+        auto cdos = b.probe(26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512);
         CHECK(cdos.ok, "the 1,256,704-byte mixed CDOS image is recognized");
         CHECK(cdos.tracks == 77 && cdos.heads == 2, "77 tracks, double-sided");
         CHECK(cdos.rev == 6, "8\" / 360 RPM -> 6 rev/s");
-        CHECK(cdos.ranges.size() == 3, "three format ranges: DD t0h0, SD t0h1, DD the rest");
+        CHECK(cdos.interleaved, "image slot order is cylinder-major, head-minor (T0H0,T0H1,T1H0...)");
+        CHECK(cdos.ranges.size() == 3, "three format ranges: SD t0h0, DD t0h1, DD the rest");
         if (cdos.ranges.size() == 3) {
             const auto& r0 = cdos.ranges[0];
             CHECK(r0.trackLo == 0 && r0.trackHi == 0 && r0.headLo == 0 && r0.headHi == 0 &&
-                  r0.density == Density::DD && r0.sectors == 16 && r0.sectorSize == 512,
-                  "range 0: track 0 side 0 is DD 16x512");
+                  r0.density == Density::SD && r0.sectors == 26 && r0.sectorSize == 128,
+                  "range 0: track 0 side 0 is the SD boot track, 26x128");
             const auto& r1 = cdos.ranges[1];
             CHECK(r1.trackLo == 0 && r1.trackHi == 0 && r1.headLo == 1 && r1.headHi == 1 &&
-                  r1.density == Density::SD && r1.sectors == 26 && r1.sectorSize == 128,
-                  "range 1: track 0 side 1 is the SD boot track, 26x128");
+                  r1.density == Density::DD && r1.sectors == 16 && r1.sectorSize == 512,
+                  "range 1: track 0 side 1 is DD 16x512");
             const auto& r2 = cdos.ranges[2];
             CHECK(r2.trackLo == 1 && r2.trackHi == 76 && r2.headLo == 0 && r2.headHi == 1 &&
                   r2.density == Density::DD && r2.sectors == 16 && r2.sectorSize == 512,
@@ -297,7 +300,7 @@ void test_cromemco_fdc() {
 
     // ---- READING THE MIXED DISK (side 0, the DD ranges the bus can reach) ----
     {
-        withRampDisk(16ull * 512 + 26ull * 128 + 76ull * 2 * 16 * 512);  // 1,256,704
+        withRampDisk(26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512);  // 1,256,704
         Clock c;
         Fdc16Board b;
         b.attachClock(&c);
@@ -306,18 +309,21 @@ void test_cromemco_fdc() {
         std::string err;
         CHECK(b.mount("drive0", "cdos.dsk", false, err), "the mixed CDOS image mounts");
 
-        const uint8_t ctl = MAXI | DDEN | MOTOR | 0x01;  // 8" DD, motor, drive 0
+        // Track 0 side 0 is the SD boot track (26x128), so read it single density (no DDEN).
+        const uint8_t ctlSd = MAXI | MOTOR | 0x01;  // 8" SD, motor, drive 0
 
-        // Track 0 side 0 is DD 16x512. Read sector 1 and the last sector (16).
+        // Read sector 1 and the last sector (26) of the SD boot track.
         out(b, FD_TRK, 0);
         out(b, FD_SEC, 1);
         out(b, FD_CMD, 0x88);  // Read Sector
-        CHECK(pollRead(b, ctl).size() == 512, "track 0 sector 1 is a 512-byte DD sector");
+        CHECK(pollRead(b, ctlSd).size() == 128, "track 0 sector 1 is a 128-byte SD sector");
 
-        out(b, FD_SEC, 16);
+        out(b, FD_SEC, 26);
         out(b, FD_CMD, 0x88);
-        CHECK(pollRead(b, ctl).size() == 512, "sector 16 reads too -- all 16 DD sectors are there");
+        CHECK(pollRead(b, ctlSd).size() == 128, "sector 26 reads too -- all 26 SD sectors are there");
         CHECK((in(b, FD_CMD) & 0x1C) == 0, "clean status: no RNF/CRC/Lost-Data error");
+
+        const uint8_t ctl = MAXI | DDEN | MOTOR | 0x01;  // 8" DD, motor, drive 0
 
         // Seek to track 1 (still DD 16x512 on side 0) and read its sector 1.
         seekTo(b, c, ctl, 1);
@@ -329,7 +335,7 @@ void test_cromemco_fdc() {
 
     // ---- ONE-HOT SELECT, BEHAVIORALLY: only the drive with a disk reads ----
     {
-        withRampDisk(16ull * 512 + 26ull * 128 + 76ull * 2 * 16 * 512);
+        withRampDisk(26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512);
         Clock c;
         Fdc16Board b;
         b.attachClock(&c);
@@ -339,20 +345,20 @@ void test_cromemco_fdc() {
 
         // Select drive 1 (empty): NOT READY, nothing transfers. The drive must be latched
         // BEFORE the command -- OUT 34 selects, THEN Read Sector runs against that drive.
-        uint8_t ctl1 = MAXI | DDEN | MOTOR | 0x02;  // DS2 -> drive 1
+        uint8_t ctl1 = MAXI | MOTOR | 0x02;  // DS2 -> drive 1 (SD, the boot track's density)
         out(b, FD_FLG, (uint8_t)(AUTOWAIT | ctl1));
         out(b, FD_TRK, 0);
         out(b, FD_SEC, 1);
         out(b, FD_CMD, 0x88);
         CHECK(pollRead(b, ctl1).empty(), "the empty selected drive 1 transfers nothing");
 
-        // Reselect drive 0 (DS1): its disk is found again.
-        uint8_t ctl0 = MAXI | DDEN | MOTOR | 0x01;  // DS1 -> drive 0
+        // Reselect drive 0 (DS1): its SD boot track (track 0 side 0, 128-byte sectors) is found.
+        uint8_t ctl0 = MAXI | MOTOR | 0x01;  // DS1 -> drive 0
         out(b, FD_FLG, (uint8_t)(AUTOWAIT | ctl0));
         out(b, FD_TRK, 0);
         out(b, FD_SEC, 1);
         out(b, FD_CMD, 0x88);
-        CHECK(pollRead(b, ctl0).size() == 512, "reselecting drive 0 finds its disk");
+        CHECK(pollRead(b, ctl0).size() == 128, "reselecting drive 0 finds its disk");
     }
 
     // ---- THE BLANK FORMATS, SIDE 0, AND THE FILE GROWS (the Write-Track path) ----

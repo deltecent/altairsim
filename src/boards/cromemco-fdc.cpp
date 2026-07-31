@@ -217,9 +217,23 @@ void CromemcoFdcBoard::writeAux(uint8_t v) {
 uint8_t CromemcoFdcBoard::readPort34() {
     Clock&     k        = clk();
     chip_->poll(k);
-    uint8_t v = (uint8_t)((chip_->drq() ? 0x80 : 0x00) |
-                          (bootstrap_ ? 0x00 : 0x40) |
-                          (chip_->intrq() ? 0x01 : 0x00));
+    // Port 34 IN (16FDC/64FDC): D7 DRQ, D6 ¬BOOT, D5 SELECT REQUEST, D4 ¬INHIBIT INIT,
+    // D3 MOTOR ON, D2 MOTOR TIMEOUT, D1 AUTOWAIT TIMEOUT, D0 EOJ (reference §4).
+    //   * D5 SELECT REQUEST -- the glue asserts this when the selected drive is ready to be
+    //     addressed; CDOS's disk driver spins its select handshake until it reads high (0726:
+    //     IN 34 / AND 20 / JR NZ, and 0762: IN 34 / CPL / AND 20 / RET Z). On an instant-select
+    //     emulated drive the request is always granted, so it reads high whenever a drive is up.
+    //   * D3 MOTOR ON -- echoes the port-34 OUT MOTOR ON latch (D5), so a driver that turns the
+    //     motor on and waits to see it running falls straight through.
+    //   * D4 ¬INHIBIT INIT high = INIT not jumper-inhibited; D2/D1 timeout guards never fire on
+    //     an emulated drive (motors never spin down, transfers never abnormally stall) -> 0.
+    const bool selected = !drive_.empty() && drive_[(size_t)sel_].drv.loaded();
+    uint8_t v = (uint8_t)((chip_->drq()          ? 0x80 : 0x00) |
+                          (bootstrap_            ? 0x00 : 0x40) |
+                          (selected              ? 0x20 : 0x00) |
+                          (0x10)                                 |
+                          ((control_ & 0x20)     ? 0x08 : 0x00) |
+                          (chip_->intrq()        ? 0x01 : 0x00));
     return v;
 }
 
@@ -348,19 +362,29 @@ void CromemcoFdcBoard::loadRom() {
 bool CromemcoFdcBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads,
                                         bool& interleaved, int& revsPerSec,
                                         std::vector<FmtRange>& ranges, std::string& err) const {
-    // 8" mixed-density CDOS 2.58 (the showcase, the DD path Joe's failures point at): a DD
-    // track 0 side 0, an SD boot side (track 0 side 1, the side RDOS reads first), then DD
-    // everywhere else. 77 tracks, double-sided, 8"/360 RPM.
-    const uint64_t t0    = 16ull * 512 + 26ull * 128;       // 11,520
+    // 8" mixed-density CDOS (the showcase, the DD path Joe's failures point at). Cromemco's
+    // INIT always lays track 0 / cylinder 0 / SIDE 0 single-density 128-byte (IBM 3740), so a
+    // 16FDC/4FDC RDOS can read the boot sector with no density known yet; side 1 of cylinder 0
+    // and every other track are the disk's declared density (DD 16 x 512 here). The two sides of
+    // cylinder 0 differ -- SD side 0, DD side 1 -- which is why the split is per-SIDE. Confirmed
+    // against the real RDOS.516 image: RDOS's first read is track 0 side 0 sector 1 as 128 bytes
+    // (reference/Cromemco CDOS.md 3.1). 77 tracks, double-sided, 8"/360 RPM.
+    const uint64_t t0    = 26ull * 128 + 16ull * 512;       // 11,520 (SD side 0 + DD side 1)
     const uint64_t cdos8 = t0 + 76ull * 2 * 16 * 512;       // 1,256,704
     if (sizeMatches(bytes, cdos8)) {
         tracks      = 77;
         heads       = 2;
-        interleaved = false;
+        // IMAGE SLOT ORDER, not sector skew: a Cromemco 8" image is laid out cylinder-major,
+        // head-minor -- T0H0, T0H1, T1H0, T1H1, ... -- so cyl 0's SD side 0 and DD side 1 are
+        // adjacent, then both DD sides of cyl 1, and so on. That is exactly what `interleaved`
+        // selects in DiskImage::slotIndex (T0H0,T0H1,T1H0...). With it false the reader looks
+        // for side 1 after ALL of side 0, lands on the wrong cylinder, and the CDOS cold loader
+        // reads garbage where CDOS.COM should be.
+        interleaved = true;
         revsPerSec  = 6;  // 8" / 360 RPM
-        ranges = {{0, 0, 0, 0, Density::DD, 16, 512, 1},
-                  {0, 0, 1, 1, Density::SD, 26, 128, 1},
-                  {1, 76, 0, 1, Density::DD, 16, 512, 1}};
+        ranges = {{0, 0, 0, 0, Density::SD, 26, 128, 1},   // cyl 0 side 0: the SD boot side
+                  {0, 0, 1, 1, Density::DD, 16, 512, 1},   // cyl 0 side 1: the disk's own DD
+                  {1, 76, 0, 1, Density::DD, 16, 512, 1}}; // the rest: DD both sides
         return true;
     }
 
