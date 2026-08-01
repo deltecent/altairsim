@@ -185,6 +185,29 @@ So B raising DTR is a *carrier appearing* at A — to a 6850 strapped `dcd=wired
 indistinguishable from a modem, which is the whole point of the test. The wiring is
 restated at the top of `tests/serialtest.cpp`.
 
+## Catching lifetime bugs: `-DSANITIZE=on`
+
+Twice now the `unit` suite has SEGFAULTed on **Windows CI only**, green on Mac and Linux, and
+both times the cause was a use-after-scope the macOS allocator silently tolerated — a board/chip
+test whose `Clock` was declared *after* the board, so the Clock died first and the board's
+destructor cancelled its wake event on freed memory. No compiler warning fires for it.
+
+`-DSANITIZE=on` is the local oracle. It threads AddressSanitizer + UndefinedBehaviorSanitizer
+(just ASan on MSVC) through the whole binary, so the crash names its own `file:line` instead of
+you guessing from a block-buffered stack trace. Configure it in its **own build directory** — an
+instrumented binary is slower and is not what you ship:
+
+```sh
+cmake -S . -B build-asan -DSANITIZE=on
+cmake --build build-asan --target altair_tests
+ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1 ./build-asan/altair_tests
+```
+
+It is off by default and not in CI — CI catches the Windows crash by running on Windows, and this
+is the tool you reach for once it does. Run it before merging anything that changes board or chip
+object lifetimes. **The rule it enforces:** in a board/chip test, declare `Clock c;` *before* the
+board it drives (`tests/test_dcdd.cpp` is the precedent).
+
 ## The documentation is part of the build
 
 Two documents come out of this tree:
