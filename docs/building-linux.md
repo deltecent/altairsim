@@ -37,6 +37,37 @@ sudo apt-get update && sudo apt-get install -y build-essential cmake git
 3.22, which already satisfies the `>= 3.20` requirement. On Fedora/RHEL the
 equivalent is `sudo dnf install gcc-c++ cmake git make`.
 
+### A packageable build (static SDL3 + real video) needs more
+
+The line above is right for the ordinary **headless** build, which is what CI's
+Linux leg builds. A build that packages the windowed binary — static SDL3 with a
+real video backend — pulls in a pile of X11/Wayland development headers, and the
+full acceptance suite wants `expect`:
+
+```bash
+sudo apt-get install -y build-essential cmake git ninja-build pkg-config expect \
+  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
+  libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev wayland-protocols \
+  libdecor-0-dev libasound2-dev libpulse-dev
+```
+
+Two of these bite:
+
+- **`libxtst-dev` is a hard requirement.** SDL3 3.4.12 treats XTEST as a mandatory
+  X11 dependency; without the header the SDL3 configure fails outright
+  (`Couldn't find dependency package for XTEST`). `-DSDL_X11_XTEST=OFF` "fixes" it
+  by disabling part of the backend the build exists to prove — install the header
+  instead.
+- **Native Wayland will not build on Ubuntu 22.04.** Its `wayland-protocols` is
+  1.25, too old for SDL3 3.4.12's Wayland backend, which SDL treats as optional and
+  silently skips. So a package built on 22.04 is **X11-only** — fine for shipping,
+  since it runs through XWayland on Wayland desktops, but the build host's distro
+  decides whether native Wayland is even an option.
+
+`expect` is not a packaging dependency, but eighteen interactive acceptance tests
+are gated on it (`find_program(EXPECT_EXECUTABLE expect)`) and silently unregister
+without it, so install it for a representative test run.
+
 > **No root?** You can drop a prebuilt CMake into your home directory instead of
 > using the package manager:
 > ```bash
