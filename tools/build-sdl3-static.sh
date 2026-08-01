@@ -3,6 +3,7 @@
 # Build a STATIC SDL3 for packaging, into a fixed prefix. Run ONCE per build machine.
 #
 #   usage: tools/build-sdl3-static.sh [prefix]        default: ~/opt/sdl3-static
+#   env:   SDL3_BUILD_JOBS=N   cap the parallel build to N jobs (default: all cores)
 #
 # WHY THIS EXISTS. A distributed package must run on a machine that has never had SDL3
 # installed. Linking the system SDL3 does not achieve that: on macOS a Homebrew build
@@ -59,7 +60,21 @@ for t in cmake curl tar; do
 done
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+
+# KEEP THE EVIDENCE ON FAILURE. A bare `trap 'rm -rf "$work"' EXIT` wiped the temp build
+# tree -- including the CMakeError.log the failure message tells you to read -- before anyone
+# could open it, leaving a build machine only the script's own `tail -20`. So clean up on
+# SUCCESS and, on any failure below, set `keep_work` first: the tree survives with the full
+# logs, and the path is printed. (The failure handlers do the setting; see each `|| { ... }`.)
+keep_work=
+cleanup() {
+    if [ -n "$keep_work" ]; then
+        echo "build-sdl3-static: build tree kept for inspection: $work" >&2
+    else
+        rm -rf "$work"
+    fi
+}
+trap cleanup EXIT
 
 tarball="SDL3-$SDL3_VERSION.tar.gz"
 url="https://github.com/libsdl-org/SDL/releases/download/release-$SDL3_VERSION/$tarball"
@@ -77,14 +92,22 @@ if [ "$(uname -s)" = "Darwin" ]; then
     args="$args -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET"
 fi
 
+# HONOUR A JOB COUNT for the heaviest compile in a release run. A bare `--parallel` spawns
+# one job per core, and on a small box (2 cores, ~3 GB) SDL3 is exactly where that OOMs. Set
+# SDL3_BUILD_JOBS to cap it (e.g. `SDL3_BUILD_JOBS=2`); unset leaves `--parallel`'s default --
+# all cores -- unchanged, so nothing changes for the machines that were already fine.
+jobs_arg="--parallel"
+[ -n "${SDL3_BUILD_JOBS:-}" ] && jobs_arg="--parallel ${SDL3_BUILD_JOBS}"
+
 echo "build-sdl3-static: building (this takes a few minutes)"
 # shellcheck disable=SC2086
 cmake -S "$src" -B "$work/b" $args > "$work/configure.log" 2>&1 || {
-    echo "build-sdl3-static: configure failed:" >&2; tail -20 "$work/configure.log" >&2; exit 1; }
-cmake --build "$work/b" --parallel > "$work/build.log" 2>&1 || {
-    echo "build-sdl3-static: build failed:" >&2; tail -20 "$work/build.log" >&2; exit 1; }
+    echo "build-sdl3-static: configure failed:" >&2; tail -20 "$work/configure.log" >&2; keep_work=1; exit 1; }
+# shellcheck disable=SC2086
+cmake --build "$work/b" $jobs_arg > "$work/build.log" 2>&1 || {
+    echo "build-sdl3-static: build failed:" >&2; tail -20 "$work/build.log" >&2; keep_work=1; exit 1; }
 cmake --install "$work/b" > "$work/install.log" 2>&1 || {
-    echo "build-sdl3-static: install failed:" >&2; tail -20 "$work/install.log" >&2; exit 1; }
+    echo "build-sdl3-static: install failed:" >&2; tail -20 "$work/install.log" >&2; keep_work=1; exit 1; }
 
 # A static library must actually be what landed. If SDL ever changes its option names,
 # this is where we find out -- rather than three steps later, when a package that was
