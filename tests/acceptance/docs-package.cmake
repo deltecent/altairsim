@@ -21,6 +21,12 @@
 #
 # Expects: -DSRC=<source dir>
 
+# This runs as a standalone `cmake -P` script, so it carries no policies from the project's
+# CMakeLists. Without this line CMP0057 is unset and the `name IN_LIST ship` test below is an
+# ERROR under OLD behaviour -- which is why this passed on one runner's CMake and failed the
+# others. Match the project's floor (top-level CMakeLists) so IN_LIST is the operator it reads as.
+cmake_minimum_required(VERSION 3.20)
+
 set(map "${SRC}/docs/package.map")
 set(chapter "${SRC}/docs/manual/package.md")
 
