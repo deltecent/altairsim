@@ -36,14 +36,21 @@ private:
 void put(const std::string& s) { platform::writeOutput((const uint8_t*)s.data(), s.size()); }
 
 // Repaint from the prompt: \r, prompt, line, clear to EOL, then park the cursor.
-void redraw(const std::string& prompt, const std::string& buf, size_t cur) {
+// Output goes through the editor's writer so a test can capture it.
+void redraw(const std::function<void(const std::string&)>& out, const std::string& prompt,
+            const std::string& buf, size_t cur) {
     std::string s = "\r" + prompt + buf + "\x1b[K";
     size_t back = buf.size() - cur;
     if (back) s += "\x1b[" + std::to_string(back) + "D";
-    put(s);
+    out(s);
 }
 
 } // namespace
+
+// The transports default to the platform layer; the unit test swaps them for scripted
+// byte sources and a capturing sink (lineedit.h).
+LineEditor::LineEditor()
+    : readByte_(&platform::readInputBlocking), wait_(&platform::waitForInput), write_(&put) {}
 
 bool LineEditor::interactive() { return platform::stdinIsTty() && platform::stdoutIsTty(); }
 
@@ -62,12 +69,32 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         return (bool)std::getline(in, line);
     }
 
+    return loop(prompt, line);
+}
+
+bool LineEditor::loop(const std::string& prompt, std::string& line) {
     std::string buf;
     size_t cur = 0;
     size_t hpos = history_.size();  // one past the end == the line being typed
     std::string held;               // what was typed before we went browsing history
+    bool tabArmed = false;          // a Tab that made no progress arms the NEXT Tab to list
 
-    redraw(prompt, buf, cur);
+    // Move the cursor a word at a time -- the Ctrl-W scan (spaces, then non-spaces) but
+    // moving instead of erasing. Bound to Alt-b/Alt-f and Ctrl-Left/Ctrl-Right below.
+    auto wordLeft = [&] {
+        size_t e = cur;
+        while (e > 0 && buf[e - 1] == ' ') --e;
+        while (e > 0 && buf[e - 1] != ' ') --e;
+        cur = e;
+    };
+    auto wordRight = [&] {
+        size_t e = cur;
+        while (e < buf.size() && buf[e] == ' ') ++e;
+        while (e < buf.size() && buf[e] != ' ') ++e;
+        cur = e;
+    };
+
+    redraw(write_, prompt, buf, cur);
 
     // How long the FIRST-byte wait naps before it looks up and does idle work. Short
     // enough that the video window feels live under the mouse; long enough that the wait
@@ -81,9 +108,9 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         // OUTER wait does this; the escape-sequence reads below stay blocking, because
         // once ESC has arrived the rest of the sequence is microseconds behind it.
         for (;;) {
-            platform::InputWait w = platform::waitForInput(kIdleMs);
+            platform::InputWait w = wait_(kIdleMs);
             if (w == platform::InputWait::Ended) {  // EOF on the tty
-                put("\n");
+                write_("\n");
                 return false;
             }
             if (w == platform::InputWait::Timeout) {
@@ -93,11 +120,16 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
             break;  // Ready
         }
 
-        int c = platform::readInputBlocking();
+        int c = readByte_();
         if (c < 0) {  // EOF on the tty
-            put("\n");
+            write_("\n");
             return false;
         }
+
+        // Two Tabs in a ROW list the candidates; any other key in between disarms that,
+        // so this is cleared every keystroke and re-armed only by a Tab that stalls.
+        bool wasTab = tabArmed;
+        tabArmed = false;
 
         // ---- THE WHOLE POINT: BOTH of these are backspace. ----
         // BS (0x08, what a "backspace" key may send) and DEL (0x7F, what it may
@@ -106,13 +138,13 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
             if (cur > 0) {
                 buf.erase(cur - 1, 1);
                 --cur;
-                redraw(prompt, buf, cur);
+                redraw(write_, prompt, buf, cur);
             }
             continue;
         }
 
         if (c == '\r' || c == '\n') {
-            put("\n");
+            write_("\n");
             line = buf;
             if (!buf.empty() && (history_.empty() || history_.back() != buf))
                 history_.push_back(buf);
@@ -130,7 +162,7 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         // opposite answers, and this is the one where ^C is a way out.
         if (c == 0x04) {  // Ctrl-D -- EOF, but only on an empty line
             if (buf.empty()) {
-                put("\n");
+                write_("\n");
                 return false;
             }
             continue;
@@ -138,7 +170,7 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
         if (c == 0x15) {  // Ctrl-U
             buf.clear();
             cur = 0;
-            redraw(prompt, buf, cur);
+            redraw(write_, prompt, buf, cur);
             continue;
         }
         if (c == 0x17) {  // Ctrl-W -- erase the word behind the cursor
@@ -147,40 +179,111 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
             while (e > 0 && buf[e - 1] != ' ') --e;
             buf.erase(e, cur - e);
             cur = e;
-            redraw(prompt, buf, cur);
+            redraw(write_, prompt, buf, cur);
             continue;
         }
-        if (c == 0x01) { cur = 0; redraw(prompt, buf, cur); continue; }              // Ctrl-A
-        if (c == 0x05) { cur = buf.size(); redraw(prompt, buf, cur); continue; }     // Ctrl-E
+        if (c == 0x01) { cur = 0; redraw(write_, prompt, buf, cur); continue; }              // Ctrl-A
+        if (c == 0x05) { cur = buf.size(); redraw(write_, prompt, buf, cur); continue; }     // Ctrl-E
+        if (c == 0x0B) { buf.erase(cur); redraw(write_, prompt, buf, cur); continue; }       // Ctrl-K
 
-        if (c == 0x1B) {  // ESC [ ... -- arrows
-            int a = platform::readInputBlocking(), b = platform::readInputBlocking();
-            if (a != '[') continue;
-            if (b == 'D' && cur > 0) { --cur; redraw(prompt, buf, cur); }
-            else if (b == 'C' && cur < buf.size()) { ++cur; redraw(prompt, buf, cur); }
-            else if (b == 'A' && hpos > 0) {          // up
-                if (hpos == history_.size()) held = buf;
-                buf = history_[--hpos];
-                cur = buf.size();
-                redraw(prompt, buf, cur);
-            } else if (b == 'B' && hpos < history_.size()) {  // down
-                ++hpos;
-                buf = (hpos == history_.size()) ? held : history_[hpos];
-                cur = buf.size();
-                redraw(prompt, buf, cur);
-            } else if (b == '3') {  // ESC[3~ -- the Delete key, forward-delete
-                if (platform::readInputBlocking() == '~' && cur < buf.size()) {
-                    buf.erase(cur, 1);
-                    redraw(prompt, buf, cur);
-                }
+        if (c == '\t') {  // Tab -- completion. The monitor parses the line and hands back
+            // the candidates for the word at the cursor; the editor only edits.
+            Completions comp = completer_ ? completer_(buf.substr(0, cur)) : Completions{};
+            if (comp.matches.empty()) continue;  // nothing to offer -- leave the line be
+
+            // Replace the fragment [replaceFrom, cur) with some text, cursor to its end.
+            auto replaceWith = [&](const std::string& text) {
+                buf.erase(comp.replaceFrom, cur - comp.replaceFrom);
+                buf.insert(comp.replaceFrom, text);
+                cur = comp.replaceFrom + text.size();
+                redraw(write_, prompt, buf, cur);
+            };
+
+            if (comp.matches.size() == 1) {  // the whole word, plus its trailing space/`=`
+                replaceWith(comp.matches[0] + comp.suffix);
+                continue;
             }
+
+            // Many candidates: fill in as far as they agree (their common prefix). If that
+            // adds nothing, the first Tab just arms; a second Tab lists them.
+            std::string lcp = comp.matches[0];
+            for (const std::string& m : comp.matches) {
+                size_t k = 0;
+                while (k < lcp.size() && k < m.size() && lcp[k] == m[k]) ++k;
+                lcp.resize(k);
+            }
+            if (lcp.size() > cur - comp.replaceFrom) {
+                replaceWith(lcp);
+            } else if (wasTab) {
+                std::string list;
+                for (size_t i = 0; i < comp.matches.size(); i++)
+                    list += (i ? "  " : "") + comp.matches[i];
+                write_("\n" + list + "\n");
+                redraw(write_, prompt, buf, cur);
+            } else {
+                tabArmed = true;  // a second Tab will list them
+            }
+            continue;
+        }
+
+        if (c == 0x1B) {  // an escape sequence: arrows, history, Home/End, word-motion, Delete
+            int a = readByte_();
+
+            // ESC <letter> is Alt-<letter>. Only word-motion is bound.
+            if (a == 'b') { wordLeft();  redraw(write_, prompt, buf, cur); continue; }
+            if (a == 'f') { wordRight(); redraw(write_, prompt, buf, cur); continue; }
+
+            // The rest arrive as CSI (ESC [ ...) or SS3 (ESC O ...) -- terminals differ on
+            // which they send for the cursor and editing keys. Anything else, we drop.
+            if (a != '[' && a != 'O') continue;
+
+            // A CSI may carry parameter bytes (digits and ';') before its final letter;
+            // SS3 does not. `1;5`/`1;3` on an arrow is the Ctrl/Alt modifier.
+            std::string params;
+            int fin = readByte_();
+            if (a == '[')
+                while ((fin >= '0' && fin <= '9') || fin == ';') { params += (char)fin; fin = readByte_(); }
+
+            switch (fin) {
+            case 'D':  // Left, or Ctrl/Alt-Left -> word-left
+                if (params == "1;5" || params == "1;3") wordLeft();
+                else if (cur > 0) --cur;
+                break;
+            case 'C':  // Right, or Ctrl/Alt-Right -> word-right
+                if (params == "1;5" || params == "1;3") wordRight();
+                else if (cur < buf.size()) ++cur;
+                break;
+            case 'A':  // history up
+                if (hpos > 0) {
+                    if (hpos == history_.size()) held = buf;
+                    buf = history_[--hpos];
+                    cur = buf.size();
+                }
+                break;
+            case 'B':  // history down
+                if (hpos < history_.size()) {
+                    ++hpos;
+                    buf = (hpos == history_.size()) ? held : history_[hpos];
+                    cur = buf.size();
+                }
+                break;
+            case 'H': cur = 0; break;            // Home  (ESC[H / ESC O H)
+            case 'F': cur = buf.size(); break;   // End   (ESC[F / ESC O F)
+            case '~':                            // ESC[<n>~ keypad-style Home/End/Delete
+                if (params == "1" || params == "7") cur = 0;
+                else if (params == "4" || params == "8") cur = buf.size();
+                else if (params == "3" && cur < buf.size()) buf.erase(cur, 1);  // Delete
+                break;
+            default: break;  // an escape we do not decode -- leave the line unchanged
+            }
+            redraw(write_, prompt, buf, cur);
             continue;
         }
 
         if (c >= 0x20 && c < 0x7F) {  // printable
             buf.insert(buf.begin() + (long)cur, (char)c);
             ++cur;
-            redraw(prompt, buf, cur);
+            redraw(write_, prompt, buf, cur);
         }
         // Anything else -- a stray control byte -- is DROPPED, not inserted. That
         // is how ^H got into the line in the first place.

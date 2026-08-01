@@ -19,6 +19,7 @@ namespace altair {
 
 class Display;      // host/display.h -- the run loop only asks it a question
 class LineEditor;   // cli/lineedit.h -- an interactive command reads follow-up lines through it
+struct Completions; // cli/lineedit.h -- what complete() hands the editor for Tab
 
 class Monitor {
 public:
@@ -29,6 +30,14 @@ public:
 
     // Read-eval-print. `echo` prints each command first, for -c scripts.
     int repl(std::istream& in, std::ostream& out, bool interactive);
+
+    // Tab completion (DESIGN.md 10.4). Given the command line up to the cursor, return the
+    // candidates for the word being typed -- command names, then a board id, then that
+    // board's property names, then a property's legal values -- all off the same
+    // reflection SET reads, so there is no table to keep in step. READS ONLY: it must
+    // never emit an error or trip `failed_`, so it resolves boards with a quiet local
+    // scan rather than board(). The editor owns none of this grammar (cli/lineedit.h).
+    Completions complete(const std::string& lineToCursor);
 
     bool failed() const { return failed_; }
     int exitCode() const { return failed_ ? 1 : 0; }

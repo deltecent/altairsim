@@ -10,6 +10,7 @@
 #include "boards/registry.h"
 #include "boards/s100-memory.h"
 #include "cli/commands.h"
+#include "cli/lineedit.h"
 #include "cli/monitor.h"
 #include "config/toml.h"
 #include "core/machine.h"
@@ -2098,5 +2099,59 @@ void test_achieved_hz() {
         mon.exec("EDIT 0100", noinput);
         CHECK(noinput.str().find("interactive or piped session") != std::string::npos,
               "EDIT with no input stream points you at DEPOSIT");
+    }
+
+    // -----------------------------------------------------------------
+    // Tab completion (cli/monitor.cpp Monitor::complete). A pure read over the same
+    // reflection SET uses -- no editor, no pty.
+    // -----------------------------------------------------------------
+    SECTION("Tab completion walks command -> board -> property -> value");
+    {
+        Machine cm;
+        Monitor cmon(cm);
+        std::ostringstream csink;
+        cmon.exec("BOARDS ADD 8080 cpu0", csink);
+        cmon.exec("BOARDS ADD memory mem0", csink);
+
+        auto has = [](const Completions& c, const std::string& want) {
+            for (const std::string& m : c.matches)
+                if (m == want) return true;
+            return false;
+        };
+
+        // Word 0: command names. The empty line offers everything; a fragment narrows it,
+        // and the span to replace starts at column 0 with a trailing space on completion.
+        Completions c0 = cmon.complete("");
+        CHECK(has(c0, "SET") && has(c0, "DUMP"), "an empty line offers the command names");
+        Completions cS = cmon.complete("SE");
+        CHECK(has(cS, "SET"), "'SE' narrows to SET");
+        CHECK(cS.replaceFrom == 0 && cS.suffix == " ", "word 0 replaces from the start, suffix is a space");
+
+        // SET word 1: board ids plus the pseudo-targets.
+        Completions ct = cmon.complete("SET ");
+        CHECK(has(ct, "mem0") && has(ct, "cpu0"), "SET offers the board ids in the machine");
+        CHECK(has(ct, "CONSOLE") && has(ct, "DISPLAY"), "and CONSOLE / DISPLAY");
+        CHECK(cmon.complete("SET me").replaceFrom == 4, "the target fragment replaces from just after 'SET '");
+
+        // SET word 2, no '=': property NAMES, suffix '=' so the value types straight on.
+        Completions ck = cmon.complete("SET mem0 ");
+        CHECK(has(ck, "fill"), "a board's property names come from its own reflection");
+        CHECK(ck.suffix == "=", "a property name completes with an '=' ready for the value");
+
+        // SET word 2, past '=': the property's legal enum values, replacing only after '='.
+        Completions cv = cmon.complete("SET mem0 fill=");
+        CHECK(has(cv, "zero") && has(cv, "random"), "fill's choices are its Kind::Enum values");
+        CHECK(cv.suffix == " ", "a chosen value completes with a trailing space");
+        Completions cvz = cmon.complete("SET mem0 fill=z");
+        CHECK(has(cvz, "zero") && !has(cvz, "random"), "and the value fragment narrows them");
+        CHECK(cvz.replaceFrom == std::string("SET mem0 fill=").size(),
+              "only the run after '=' is replaced");
+
+        // CONSOLE resolves to the host console's own schema, not a board's.
+        CHECK(has(cmon.complete("SET CONSOLE base="), "octal"),
+              "SET CONSOLE base= offers the console's enum values");
+
+        // A command with no completion grammar wired is simply inert -- no matches, no throw.
+        CHECK(cmon.complete("DUMP ").matches.empty(), "DUMP takes no completion, so Tab is inert there");
     }
 }

@@ -49,6 +49,51 @@ as `HELP`.
 > that costs nothing if you did not mean it. A bare `R` that reset the machine would be one
 > you had to set up again. `RESET` pays the letters: `RES`.
 
+## Editing the command line
+
+The prompt is a real line editor. The key labelled Backspace erases the character behind the
+cursor whichever byte your terminal sends for it, the arrows move within the line, and the
+editor keeps a **history for this session** — the up-arrow walks back through the lines you
+have typed and the down-arrow returns toward the one you were in the middle of.
+
+### Completing with `Tab`
+
+`Tab` finishes whatever you are partway through typing, and it reads the candidates off the
+machine in front of you — so a board you plug in is completable straight away, with nothing to
+keep up to date:
+
+- at the start of a line, a **command** — `SH`⇥ → `SHOW`;
+- after `SET`, a **board id** (or `CONSOLE`, `DISPLAY`) — `SET me`⇥ → `SET mem0`;
+- after a board, one of **its property names**, with the `=` put on ready for the value —
+  `SET mem0 fi`⇥ → `SET mem0 fill=`;
+- after the `=`, one of that property's **legal values** — `SET mem0 fill=`⇥ offers `zero`
+  and `random`.
+
+When more than one candidate fits, `Tab` fills in as far as they all agree and stops; press it
+again and it lists them. When nothing fits, it does nothing.
+
+### The keys
+
+| Key | Does |
+|---|---|
+| `←` `→` | move one character |
+| `Ctrl-A` / `Home` | to the start of the line |
+| `Ctrl-E` / `End` | to the end of the line |
+| `Alt-B` / `Ctrl-←` | back one word |
+| `Alt-F` / `Ctrl-→` | forward one word |
+| `Backspace` | erase the character before the cursor |
+| `Delete` | erase the character under the cursor |
+| `Ctrl-W` | erase the word before the cursor |
+| `Ctrl-K` | erase from the cursor to the end of the line |
+| `Ctrl-U` | erase the whole line |
+| `↑` `↓` | walk back and forth through this session's history |
+| `Tab` | complete the word at the cursor |
+| `Ctrl-D` | on an empty line, leave — the same as `QUIT` |
+
+> **`Ctrl-E` here is end-of-line, not ATTN.** At the prompt you are typing to the *editor*, so
+> `Ctrl-E` jumps to the end of the line. Once a **running** guest holds the console, that same
+> `Ctrl-E` is **ATTN** and takes the keyboard back (below). Same key, two places, two jobs.
+
 ## Repeating the last command: `.`
 
 Type `.` on a line by itself and the monitor runs your **last command again**, quietly —

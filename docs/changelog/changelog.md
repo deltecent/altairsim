@@ -8,6 +8,16 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Tab completion, and a fuller line editor at the prompt
+
+`Tab` now completes what you are typing at the monitor prompt — a command, then a board id,
+then that board's property names, then a property's legal values (`SET mem0 fill=` then `Tab`
+offers `zero` and `random`). It reads the candidates off the machine itself, so a board you
+plug in is completable straight away with no list to maintain; a second `Tab` lists the
+choices when more than one fits. The line editor also grew the keys it was missing: **`Home`
+and `End`** (and their `Ctrl-A`/`Ctrl-E` equivalents), **word motion** with `Alt-B`/`Alt-F`
+or `Ctrl-Left`/`Ctrl-Right`, and **`Ctrl-K`** to kill to the end of the line.
+
 ### Driving altairsim with an AI — now with the missing step
 
 The briefing that ships for an AI assistant is renamed **`DRIVING-WITH-AI.md`** (from
