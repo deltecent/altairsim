@@ -307,6 +307,9 @@ add_library(altair_core STATIC
   src/host/tee_stream.cpp
   src/host/media.cpp
   src/host/disk.cpp
+  # ImageDisk (.IMD) -> raw sibling .DSK, at the MOUNT layer. Pure (bytes in, bytes out),
+  # so DiskImage stays raw-only and the container never reaches it (src/host/imd.h).
+  src/host/imd.cpp
   src/host/tape.cpp
   # The cassette modem and the container it arrives in. Neither knows what a board is:
   # a modulation is four numbers and a flag (host/tapemodem.h), so the 88-ACR and the
@@ -594,6 +597,7 @@ add_executable(altair_tests
   tests/test_hex.cpp
   tests/test_symbols.cpp
   tests/test_media.cpp
+  tests/test_imd.cpp
   tests/test_tapecodec.cpp
   tests/test_roms.cpp
   tests/test_phantom.cpp

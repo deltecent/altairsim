@@ -243,7 +243,9 @@ public:
     // extensibility; it is a hook that will never be pulled" -- and that is why
     // readSector() is not virtual. The test here is RULED OUT, not merely absent:
     //
-    //   - IMD/TD0 were ruled out. "I will never support IMD files." Hook deleted.
+    //   - IMD needs no hook HERE. It is supported now (Patrick, 2026-08-01), but by
+    //     converting to a raw sibling `.DSK` at the MOUNT layer (src/host/imd.cpp), so
+    //     the in-image sector-map hook is still deleted and readSector() stays non-virtual.
     //   - The Tarbell is DEFERRED, which is a different word. The card exists, the
     //     hardware does this, the behaviour is fully sourced from its manual, and both
     //     hooks are EXECUTED by a test that fails if you break them.
@@ -826,6 +828,26 @@ public:
                                               // never applied, so explaining it would mislead.
         return "\n  ('" + p + "' is relative to the machine file that wrote it, in " +
                configDir_ + "/)";
+    }
+
+    // HOW THIS CONTROLLER LAYS A DOUBLE-SIDED DISK OUT IN A RAW IMAGE -- cylinder-major
+    // (heads interleaved: T0H0,T0H1,T1H0...) or head-major (all of head 0, then head 1).
+    //
+    // A raw `.DSK` carries no geometry, so the head order is whatever the controller that
+    // reads it back decides from the file size (its probe/describeGeometry). The only
+    // caller is the IMD->raw converter (host/imd.cpp), which runs at MOUNT with the target
+    // board already in hand: it asks THIS, for the exact byte count it is about to emit, so
+    // the raw file it writes matches what this board will re-probe. A single-sided disk
+    // never asks (DiskImage::slotIndex is identical at one head).
+    //
+    // The default is cylinder-major, the usual CHS-linear order and what an IMD's own track
+    // records already are. A disk board that lays disks head-major, or whose interleave flag
+    // varies by format, OVERRIDES this -- delegating to its own probe so the two cannot
+    // drift. `bytes` is that raw image size; the answer must match the flag the board will
+    // pass to DiskImage::init() when it later mounts a file of that size.
+    virtual bool disksInterleaved(uint64_t bytes) const {
+        (void)bytes;
+        return true;
     }
 
     // "MY DECODE JUST CHANGED." Tell the backplane so it can re-derive the wiring.

@@ -445,6 +445,20 @@ bool CromemcoFdcBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads,
     return false;
 }
 
+// The interleave flag describeGeometry would pick for `bytes` -- the single source of
+// truth, so the IMD converter emits heads the way mount() will read them. A size this
+// board rejects never gets here (the mount that follows would fail anyway); fall back to
+// the base default there rather than invent an answer.
+bool CromemcoFdcBoard::disksInterleaved(uint64_t bytes) const {
+    int tracks = 0, heads = 0, revsPerSec = 0;
+    bool interleaved = true;
+    std::vector<FmtRange> ranges;
+    std::string err;
+    if (describeGeometry(bytes, tracks, heads, interleaved, revsPerSec, ranges, err))
+        return interleaved;
+    return Board::disksInterleaved(bytes);
+}
+
 // ---------------------------------------------------------------------------
 // Reflection
 // ---------------------------------------------------------------------------

@@ -101,6 +101,11 @@ public:
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;
 
+    // The head order a converted IMD must use to mount here: the CDOS 8" disk is
+    // cylinder-major/head-minor (interleaved), so delegate to describeGeometry -- the one
+    // place that decides the flag -- rather than restate its size table (host/imd.h).
+    bool disksInterleaved(uint64_t bytes) const override;
+
     std::vector<std::string> subUnitTables() const override { return {"drive"}; }
     std::vector<Property>    subUnitProperties(const std::string& table) const override;
     std::vector<SubUnit>     subUnits() const override;

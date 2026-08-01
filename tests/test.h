@@ -26,6 +26,7 @@ void test_save_is_a_read();
 void test_hex();
 void test_symbols();
 void test_media();
+void test_imd();
 void test_tapecodec();
 void test_tapemount();
 void test_roms();

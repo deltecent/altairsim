@@ -64,6 +64,11 @@ public:
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;
 
+    // The VersaFloppy lays every disk head-major (mount() always passes interleaved=false),
+    // so a converted IMD must be emitted the same way (host/imd.h). This is a constant here,
+    // not a probe result, because the flag does not vary by format on this controller.
+    bool disksInterleaved(uint64_t) const override { return false; }
+
     std::vector<std::string> subUnitTables() const override { return {"drive"}; }
     std::vector<Property>    subUnitProperties(const std::string& table) const override;
     std::vector<SubUnit>     subUnits() const override;
