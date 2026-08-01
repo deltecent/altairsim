@@ -423,8 +423,8 @@ private:
     static inline bool keyboardToConsole_ = true;
 };
 
-// The `display` settings object -- one property today, and the same shape as the
-// console's so a second one costs nothing.
+// The `display` settings object -- two properties today (`focus` and `keyboard`), the same
+// shape as the console's so another one costs nothing.
 inline std::vector<Property> Display::properties() {
     std::vector<Property> p;
     {
