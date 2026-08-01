@@ -24,7 +24,11 @@ base = "sol20"
 #   2. TYPE queues `XE TRK80` and a carriage return at the console -- type-ahead SOLOS
 #      reads at its first prompt. The backslash DOUBLES in a TOML (`\\r`): the config
 #      parser keeps one for the command.
-#   3. RUN C000 cold-starts SOLOS, which signs on, reads the queued `XE TRK80`, and loads.
+#   3. SET vdm0 cursor=steady throws the VDM-1's SW3/SW4 to a non-blinking cursor. TREK80
+#      draws its display with reverse-video cells (bit 7 set), and bit 7 is ALSO the cursor
+#      bit -- in the card's default blink mode every one of those cells flashes on the ~1 Hz
+#      oscillator, so the whole screen strobes. Steady is how the game was meant to be seen.
+#   4. RUN C000 cold-starts SOLOS, which signs on, reads the queued `XE TRK80`, and loads.
 #
 # TRK80.WAV goes through the modem -- real tones, decoded the way the hardware did -- and
 # takes about a minute of emulated time at the clock below, which is the minute a real
@@ -41,6 +45,7 @@ base = "sol20"
 startup = [
   "MOUNT sol0:tape1 \"TRK80.WAV\"",
   "TYPE \"XE TRK80\\r\"",
+  "SET vdm0 cursor=steady",
   "RUN C000",
 ]
 
