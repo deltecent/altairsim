@@ -615,6 +615,7 @@ add_executable(altair_tests
   tests/test_88sio.cpp
   tests/test_sbc.cpp
   tests/test_88acr.cpp
+  tests/test_tapecounter.cpp
   tests/test_88uio.cpp
   tests/test_c700.cpp
   tests/test_papertape.cpp

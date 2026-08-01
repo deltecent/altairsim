@@ -2,6 +2,7 @@
 
 #include "cli/commands.h"
 #include "cli/lineedit.h"
+#include "cli/tape_counter_line.h"
 
 #include "boards/s100-memory.h"
 #include "boards/registry.h"
@@ -1235,16 +1236,12 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     int      quiet       = 0;
 
     // A LIVE TAPE COUNTER, painted a few times a second while a deck loads in wall time.
-    // `statusShown` is whether our \r-status line is currently on the terminal (so we can
-    // wipe it when the load ends or the guest starts talking); `seenWritten` remembers how
-    // much the guest had written to the console at the previous paint, so we can tell a
-    // free terminal from one the guest is using. `statusLabel` is the text last painted:
-    // the sampler fires ~4x/sec but the counter only reads a new second once a second, so
-    // we skip the write when it has not changed rather than flush the same line four times.
-    // See the paint site in the sample block.
-    bool        statusShown = false;
-    uint64_t    seenWritten = con.written();
-    std::string statusLabel;
+    // `counter` is the little state machine that decides what to do with our \r-status
+    // line each window (tape_counter_line.h); `seenWritten` remembers how much the guest
+    // had written to the console at the previous paint, so we can tell a free terminal
+    // from one the guest is using. See the paint site in the sample block.
+    TapeCounterLine counter;
+    uint64_t        seenWritten = con.written();
 
     // WHEN THE GUEST LAST DID ANYTHING BUT WAIT. Default-constructed means "it is doing
     // something" -- and it has to persist in doing nothing before we believe it (see the
@@ -1456,19 +1453,16 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
                     if (!label.empty()) break;
                 }
                 const bool consoleQuiet = (con.written() == seenWritten);
-                if (!label.empty() && consoleQuiet) {
-                    if (label != statusLabel || !statusShown) {   // only when it actually changed
-                        out << '\r' << label << "\x1b[K" << std::flush;  // repaint over our line
-                        statusLabel = label;
-                        statusShown = true;
-                    }
-                } else if (statusShown && consoleQuiet) {
-                    out << "\r\x1b[K" << std::flush;  // load done: take our line back cleanly
-                    statusShown = false;
-                    statusLabel.clear();
-                } else if (statusShown) {
-                    statusShown = false;  // the guest is talking now -- never wipe over it
-                    statusLabel.clear();
+                switch (counter.update(label, consoleQuiet)) {
+                    case TapeCounterLine::Act::Paint:
+                        out << '\r' << counter.label << "\x1b[K" << std::flush;
+                        break;
+                    case TapeCounterLine::Act::WipeClean:
+                        out << "\r\x1b[K" << std::flush;
+                        break;
+                    case TapeCounterLine::Act::Abandon:  // the guest owns the line now
+                    case TapeCounterLine::Act::None:
+                        break;
                 }
                 seenWritten = con.written();
             }
@@ -1477,7 +1471,7 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
 
     // A live counter still on the terminal when the run stops (ATTN mid-load) must not be
     // left for the prompt to print on top of.
-    if (statusShown) out << "\r\x1b[K" << std::flush;
+    if (counter.shown) out << "\r\x1b[K" << std::flush;
 
     // The tail: capture the final partial window so SHOW reflects what the machine was
     // doing when you stopped it -- and so a run shorter than one window (a CPU test, a
