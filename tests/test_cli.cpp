@@ -808,7 +808,13 @@ void test_cli() {
         monsub.exec("SHOW PATHS", osub);
         CHECK(osub.str().find("built in to the binary") == std::string::npos,
               "a machine file in a subdir is not built in either");
-        CHECK(osub.str().find("examples/sol") != std::string::npos,
+        // SHOW PATHS renders the resolved absolute path with NATIVE separators, so on Windows
+        // the row reads `...\examples\sol`. Normalise to forward slashes before matching -- the
+        // claim is that the directory is shown, not which slash the host spells it with.
+        std::string osubNorm = osub.str();
+        for (char& ch : osubNorm)
+            if (ch == '\\') ch = '/';
+        CHECK(osubNorm.find("examples/sol") != std::string::npos,
               "...and its directory is shown, resolved absolute");
     }
 
