@@ -16,7 +16,27 @@ offers `zero` and `random`). It reads the candidates off the machine itself, so 
 plug in is completable straight away with no list to maintain; a second `Tab` lists the
 choices when more than one fits. The line editor also grew the keys it was missing: **`Home`
 and `End`** (and their `Ctrl-A`/`Ctrl-E` equivalents), **word motion** with `Alt-B`/`Alt-F`
-or `Ctrl-Left`/`Ctrl-Right`, and **`Ctrl-K`** to kill to the end of the line.
+or `Ctrl-Left`/`Ctrl-Right`, and **`Ctrl-K`** to kill to the end of the line. And the
+**history now survives a restart**: it is saved to a hidden `.altairsim_history` in the
+directory you launched from — per project, not per user, so there is no home directory to
+depend on (Windows has none). Depth is the `history` console property (default `50`; `0`
+turns the file off), settable in TOML as `[console] history=N` or at the prompt with
+`SET CONSOLE history=N`. Only an interactive session writes it — a script, a pipe, or `--mcp`
+never touches the file.
+
+### Cromemco CDOS boots — the 16FDC and 64FDC floppy controllers
+
+`BOARDS ADD 16fdc` (or `64fdc`) puts a **Cromemco disk controller** in the backplane — the
+S-100 card that ran Cromemco's own machines. It is three things on one board: a **WD FD1793**
+floppy controller, a **TMS 5501** UART wired as the console, and the **RDOS boot PROM** (2.52
+on the 16FDC, 3.12 on the 64FDC) at `C000`. With `bootstrap` on, RESET runs the PROM, which
+reads the boot track and loads **CDOS** — Cromemco's CP/M-1.4 work-alike. `altairsim examples/cdos`
+comes up at the CDOS `A.` prompt off an 8″ double-sided, mixed-density diskette with **nothing
+typed**: the card is strapped for its fixed 300-baud "modem" console, so it skips the terminal
+auto-baud that would otherwise want a Return. The Z80 runs at the real Cromemco **4 MHz** — not
+a knob but a requirement, since RDOS's double-density read loop must keep up with a 500 kbit/s
+byte or the FD1793 reports Lost Data. It is proven end to end by an acceptance test that boots
+the tracked master to `A.` and lists the directory.
 
 ### Driving altairsim with an AI — now with the missing step
 
@@ -30,6 +50,26 @@ simulator to a real machine by pointing the same serial channel at `serial:/dev/
 example, **`examples/ai-mcp/`**, is a ready-made working directory: a tiny CP/M program with a
 planted bug, and a walkthrough where the assistant assembles it, sees the wrong output,
 single-steps the loop to find the fault, fixes the source, and reassembles — entirely over MCP.
+
+### Blank soft-sector floppies can be formatted from inside the guest
+
+The Tarbell and SD Systems VersaFloppy controllers now honour the WD177x **Write Track**
+command, so a fresh disk can be `FORMAT`ted by the operating system running on it — no
+pre-built image required. On the single-density **Tarbell #1011** (`tarbell`), CP/M's `FORMAT`
+lays down a bootable SSSD disk; the double-density **#2022** (`tarbelldd`) `DFORMAT`s a
+mixed-density CP/M disk (single density on track 0, double on the rest) and still reads plain
+single-density media. The **VersaFloppy** (`versafloppy`) formats all **ten** SD Systems disk
+geometries under SDOS. Together with the blank hard-sector disks added earlier, a blank
+diskette is now something the guest can bring to life on its own.
+
+### `SAVE` can write a disassembly or octal listing
+
+`SAVE <file> <range>` grew a `FORMAT=` that is no longer just `BIN` or `HEX`: **`FORMAT=PRN`**
+writes the range as a **disassembly listing** — the same text `DISASM` prints to the screen,
+labels and symbolic operands included when symbols are loaded — and `FORMAT=OCTAL` writes an
+octal one. The flavour also follows the file's own extension, so `SAVE out.prn 100-1FF` writes
+a listing and `SAVE out.oct 100-1FF` writes octal without a `FORMAT=` at all. It captures a
+listing to read, diff, or feed a toolchain, straight from the monitor.
 
 ### `CONNECT … |FILE` — tap a serial line to a hex log
 
