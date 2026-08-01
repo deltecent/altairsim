@@ -4232,6 +4232,20 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             c->setPc((uint16_t)at);
         }
 
+        // Under MCP the server is single-threaded and there is no keyboard to press ATTN,
+        // so entering the unbounded run loop would wedge the connection forever (this is
+        // also the RUN inside a CONFIG LOAD startup). Park the PC and return; the client
+        // advances with the non-blocking `run` tool (mcp/server.cpp).
+        if (mcpMode_) {
+            char b[64];
+            std::snprintf(b, sizeof b, "%04X", (unsigned)c->pc());
+            out << "PC set to " << b
+                << "; not entering the run loop under MCP -- advance with the run tool.\n";
+            disasmNext_ = c->pc();
+            showRegs(out);
+            return true;
+        }
+
         runMachine(out);
 
         flush(out);

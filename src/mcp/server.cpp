@@ -193,7 +193,9 @@ Json toolList() {
         p["command"] = strSchema("A monitor command line");
         list.push(tool("monitor",
                        "Run one monitor command and return its text. The escape hatch: anything "
-                       "the CLI can do, in one call.",
+                       "the CLI can do, in one call. RUN does NOT block here -- it sets PC and "
+                       "returns, so `CONFIG LOAD <bootable.toml>` is safe (its startup runs up "
+                       "to the boot RUN, which parks); advance the guest with the `run` tool.",
                        p, {"command"}));
     }
     return list;
@@ -784,6 +786,8 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
     if (name == "monitor") {
         std::ostringstream os;
         Monitor mon(m);
+        mon.setMcpMode(true);  // RUN parks instead of blocking -- a bare RUN (or the RUN a
+                               // CONFIG LOAD startup ends in) would otherwise wedge the server.
         mon.exec(args.at("command").str(), os);
         return textResult(os.str().empty() ? "(ok)" : os.str(), mon.failed());
     }

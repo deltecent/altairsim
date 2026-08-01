@@ -26,7 +26,10 @@ altairsim <machine> --mcp        # <machine>: a built-in name, or a path to a .t
 It speaks line-delimited **JSON-RPC 2.0 on stdio**. Send `initialize`, then `tools/call`.
 A machine named on the command line is loaded (disks mounted, boards fitted) but **its
 `startup` is NOT run** — under `--mcp` you boot it yourself with the `run` tool, so nothing
-blocks before you have control.
+blocks before you have control. Switching machines mid-session with `CONFIG LOAD` is safe the
+same way: its `startup` runs up to the boot `RUN`, which under `--mcp` **parks** the PC rather
+than entering the run loop — so `CONFIG LOAD anymachine.toml` never wedges the server. Advance
+it with `run {from: …}` afterward.
 
 `altairsim --list` shows the built-in machines. The CP/M example this guide is written
 against is the machine file `{{MACHINE_CPM}}`.
