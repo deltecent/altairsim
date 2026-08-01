@@ -31,6 +31,7 @@ void test_tapemount();
 void test_roms();
 void test_phantom();
 void test_cli();
+void test_tapecounter();
 void test_idle_judgement();
 void test_should_pace();
 void test_achieved_hz();
