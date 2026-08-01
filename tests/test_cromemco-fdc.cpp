@@ -297,6 +297,52 @@ void test_cromemco_fdc() {
               sd.ranges[0].sectors == 26 && sd.ranges[0].sectorSize == 128,
               "one range: all tracks SD 26x128");
 
+        // 5.25" mixed-density DSDD CDOS: 40 cyl, 2 heads, 300 RPM. cyl0/side0 SD 18x128 boot,
+        // everything else DD 10x512 (the minifloppy's DD track, NOT the 8"'s 16x512). Confirmed
+        // against 082DISK.IMD (406,784). Head order is cylinder-major like the 8" disk.
+        auto dsdd = b.probe(18ull * 128 + 10ull * 512 + 39ull * 2 * 10 * 512);  // 406,784
+        CHECK(dsdd.ok, "the 406,784-byte 5.25\" DSDD image is recognized");
+        CHECK(dsdd.tracks == 40 && dsdd.heads == 2, "40 tracks, double-sided");
+        CHECK(dsdd.rev == 5, "5.25\" / 300 RPM -> 5 rev/s");
+        CHECK(dsdd.interleaved, "image slot order is cylinder-major, head-minor");
+        CHECK(dsdd.ranges.size() == 3, "three format ranges: SD t0h0, DD t0h1, DD the rest");
+        if (dsdd.ranges.size() == 3) {
+            const auto& r0 = dsdd.ranges[0];
+            CHECK(r0.trackLo == 0 && r0.trackHi == 0 && r0.headLo == 0 && r0.headHi == 0 &&
+                  r0.density == Density::SD && r0.sectors == 18 && r0.sectorSize == 128,
+                  "range 0: track 0 side 0 is the SD boot track, 18x128");
+            const auto& r1 = dsdd.ranges[1];
+            CHECK(r1.trackLo == 0 && r1.trackHi == 0 && r1.headLo == 1 && r1.headHi == 1 &&
+                  r1.density == Density::DD && r1.sectors == 10 && r1.sectorSize == 512,
+                  "range 1: track 0 side 1 is DD 10x512");
+            const auto& r2 = dsdd.ranges[2];
+            CHECK(r2.trackLo == 1 && r2.trackHi == 39 && r2.headLo == 0 && r2.headHi == 1 &&
+                  r2.density == Density::DD && r2.sectors == 10 && r2.sectorSize == 512,
+                  "range 2: tracks 1-39 both sides are DD 10x512");
+        }
+
+        // The 17-sector-boot variant (052C0253, 406,656): the SD boot count falls out of the
+        // size, so the same branch handles it with a 17-sector range 0.
+        auto dsdd17 = b.probe(17ull * 128 + 10ull * 512 + 39ull * 2 * 10 * 512);  // 406,656
+        CHECK(dsdd17.ok && dsdd17.tracks == 40 && dsdd17.heads == 2 && dsdd17.rev == 5,
+              "the 406,656-byte 5.25\" DSDD (17-sector boot) is recognized");
+        CHECK(dsdd17.ranges.size() == 3 && dsdd17.ranges[0].sectors == 17 &&
+              dsdd17.ranges[0].density == Density::SD && dsdd17.ranges[0].sectorSize == 128,
+              "range 0 boot track is 17x128, derived from the size");
+
+        // 5.25" plain single-density: 40 cyl, one side, all SD 18x128. One head, so moot order.
+        auto ss = b.probe(40ull * 18 * 128);  // 92,160
+        CHECK(ss.ok, "the 92,160-byte 5.25\" SSSD image is recognized");
+        CHECK(ss.tracks == 40 && ss.heads == 1 && ss.rev == 5, "40 tracks, single-sided, 5 rev/s");
+        CHECK(ss.ranges.size() == 1 && ss.ranges[0].trackLo == 0 && ss.ranges[0].trackHi == 39 &&
+              ss.ranges[0].density == Density::SD && ss.ranges[0].sectors == 18 &&
+              ss.ranges[0].sectorSize == 128, "one range: all 40 tracks SD 18x128");
+
+        // A short SSSD dump (one sector lost, 92,032) stays in the blank fallback -- not claimed.
+        auto ssShort = b.probe(40ull * 18 * 128 - 128);  // 92,032
+        CHECK(ssShort.ok && ssShort.ranges.empty() && ssShort.heads == 2,
+              "a short 5.25\" SSSD dump falls through to the blank fallback (best-effort)");
+
         // A blank / short image mounts UNFORMATTED (77 tracks, 2 heads, no ranges) -- not an
         // error, so MOUNT ... CREATE gives a formattable disk.
         auto blank = b.probe(0);
