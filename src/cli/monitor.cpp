@@ -3139,6 +3139,17 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         std::string err;
         if (!b->mount(u.name, unquote(a[2]), readOnly, err)) {
+            // A CREATE whose mount is then refused must NOT leave its zero-byte file behind:
+            // the operator asked to mount a disk, not to litter one. Unlink exactly the file
+            // WE made this call (`created`), never one that was already on disk. It also keeps
+            // a retry honest -- without it the second attempt measures the empty file the first
+            // left and fails identically, so the refusal describes a turd of our own making
+            // rather than the real problem. (Same shape as the SHOW PATHS empty-vs-absent bug:
+            // a file we made and a file the operator already had are different answers.)
+            if (created) {
+                std::error_code rmec;
+                std::filesystem::remove(b->resolvePath(unquote(a[2])), rmec);
+            }
             out << b->id << ": " << err << "\n";
             // A MISSING file is the one mount failure the operator can fix from here: add
             // CREATE and we make a blank one and mount it (a hard-sector disk then FORMATs,
