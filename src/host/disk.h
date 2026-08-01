@@ -77,16 +77,19 @@ inline bool sizeMatches(uint64_t got, uint64_t exact) {
 //
 //   - read-only was never a different IMAGE. It is a medium that says no.
 //   - an in-memory disk was never a different image either. It is a MemoryMedia.
-//   - and IMD/TD0 ARE NEVER COMING (Patrick, 2026-07-12): raw disk images are the only
-//     kind this program will ever read, and an IMD file that has to be used here is one
-//     that gets converted to raw BEFOREHAND, outside it.
+//   - and IMD/TD0 ARE STILL NEVER READ HERE: a raw sector-linear image is the only kind
+//     THIS CLASS reads. An IMD that has to be used is converted to a raw sibling `.DSK`
+//     FIRST -- at the MOUNT layer (src/cli/monitor.cpp + src/host/imd.cpp), not inside
+//     the image -- and only the `.DSK` is ever wrapped here. (The convert used to happen
+//     entirely outside the program; Patrick, 2026-08-01, moved it in-line at MOUNT, which
+//     is the same bargain the WAV codec strikes: decode above MediaFile, so what DiskImage
+//     sees is unchanged. TD0 is still nowhere.)
 //
-// That last one is what removes the last reason for readSector()/writeSector() to be
-// virtual -- they were virtual FOR a container format that carries its own per-track
-// sector map, and there is not going to be one. So the image is sector-linear,
-// always, and this class is the whole of it. A virtual left in place for a
-// possibility the owner has ruled out is not extensibility; it is a hook that will
-// never be pulled, and the next reader has to work out why it is there.
+// So the image is sector-linear, ALWAYS, and this class is the whole of it -- which is
+// what keeps readSector()/writeSector() non-virtual. They were virtual FOR a container
+// format that carries its own per-track sector map, and DiskImage never gets one: the
+// container is unpacked before it, so a virtual here would be a hook that is never pulled,
+// and the next reader would have to work out why it is there.
 // ---------------------------------------------------------------------------
 class DiskImage {
 public:

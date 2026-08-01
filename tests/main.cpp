@@ -42,6 +42,7 @@ const struct {
     {"hex", test_hex},
     {"symbols", test_symbols},
     {"media", test_media},
+    {"imd", test_imd},
     {"tapecodec", test_tapecodec},
     {"roms", test_roms},
     {"clock", test_clock},

@@ -8,6 +8,18 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `MOUNT` reads ImageDisk (`.IMD`) files
+
+`MOUNT <id>:<unit> disk.imd` now Just Works: an ImageDisk container is converted to a raw
+`disk.dsk` written next to it, and that is mounted — so the disk boards, which read only raw
+sector-linear images, need no changes. The conversion de-interleaves each track into sector-ID
+order, expands the format's compressed runs, and fills any unavailable sector with the CP/M
+blank byte; it narrates what it built (the IMD's own description line and the emitted geometry)
+so you can check it against the disk you expected. For a double-sided disk the head order is
+taken from the controller you are mounting on, not guessed. An existing `disk.dsk` is never
+overwritten — remove it, or mount it directly. (A single-sided CP/M disk round-trips
+byte-for-byte.)
+
 ### Tab completion, and a fuller line editor at the prompt
 
 `Tab` now completes what you are typing at the monitor prompt — a command, then a board id,

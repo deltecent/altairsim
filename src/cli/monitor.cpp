@@ -18,6 +18,7 @@
 #include "host/console.h"
 #include "host/display.h"
 #include "host/endpoint.h"
+#include "host/imd.h"    // convertImdToRaw -- MOUNT foo.imd converts to a raw sibling .dsk
 #include "host/media.h"  // writeHostFile -- MOUNT ... CREATE makes an empty file
 #include "isa/isa.h"
 
@@ -3226,12 +3227,91 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
 
+        // WHAT WE MOUNT. Normally the file as typed; for an ImageDisk (`.IMD`) it is the raw
+        // sibling `.DSK` the block below writes, so everything downstream -- mount(), the
+        // narration, CONFIG SAVE -- sees a plain raw image and never the container.
+        std::string mountPath = unquote(a[2]);
+
+        // ---- IMD -> raw sibling .DSK -----------------------------------------------------
+        //
+        // An ImageDisk is a CONTAINER (a per-track sector map, compression, per-sector types)
+        // that DiskImage deliberately does not read (host/disk.h). So it is converted to raw
+        // HERE, above the image: slurp the `.IMD`, convert, write `foo.dsk` beside it, and
+        // mount THAT. The target board `b` is already resolved (subunit, above), so the
+        // converter asks IT which head order a double-sided disk needs (host/imd.h) -- the
+        // controller is the authority, not a guess.
+        {
+            std::string up = upper(mountPath);
+            if (up.size() >= 4 && up.compare(up.size() - 4, 4, ".IMD") == 0) {
+                std::string sibling = mountPath.substr(0, mountPath.size() - 4) + ".dsk";
+                std::string imdPath = b->resolvePath(mountPath);
+                std::string dskPath = b->resolvePath(sibling);
+
+                // Never clobber a `.dsk` already there -- the same ethic as CREATE. If they
+                // want it rebuilt they remove it first; if they want the existing one they
+                // mount it directly.
+                std::error_code ec;
+                if (std::filesystem::exists(dskPath, ec)) {
+                    out << b->id << ": " << resolveFrom(startupDir_, sibling)
+                        << " already exists; remove it or MOUNT it directly\n";
+                    failed_ = true;
+                    return true;
+                }
+
+                std::string ierr;
+                auto media = openMedia(imdPath, /*readOnly=*/true, ierr);
+                if (!media) {
+                    out << b->id << ": " << ierr << b->pathNote(mountPath) << "\n";
+                    failed_ = true;
+                    return true;
+                }
+                std::vector<uint8_t> imd((size_t)media->size());
+                if (!imd.empty() && !media->readAt(0, imd.data(), imd.size())) {
+                    out << b->id << ": " << resolveFrom(startupDir_, mountPath) << ": read error\n";
+                    failed_ = true;
+                    return true;
+                }
+
+                ImdInfo              info;
+                std::vector<uint8_t> rawimg;
+                if (!convertImdToRaw(imd, rawimg, info, ierr,
+                                     [&](uint64_t bytes) { return b->disksInterleaved(bytes); })) {
+                    out << b->id << ": " << resolveFrom(startupDir_, mountPath) << ": " << ierr
+                        << "\n";
+                    failed_ = true;
+                    return true;
+                }
+                if (!writeHostFile(dskPath, rawimg, ierr)) {
+                    out << b->id << ": " << ierr << "\n";
+                    failed_ = true;
+                    return true;
+                }
+
+                // Narrate how the raw file was built, before the mount line: what it came from,
+                // the IMD's own description, the emitted geometry, and the total. This is the
+                // "how the .dsk was created" report -- the operator can sanity-check it against
+                // the disk they expect.
+                out << b->id << ": converted " << resolveFrom(startupDir_, mountPath) << " -> "
+                    << resolveFrom(startupDir_, sibling) << "\n";
+                if (!info.description.empty())
+                    out << b->id << ":   IMD: " << info.description << "\n";
+                for (const auto& tl : info.tracks)
+                    out << b->id << ":   " << tl << "\n";
+                out << b->id << ":   " << info.rawBytes << " bytes";
+                if (info.heads > 1)
+                    out << (info.interleaved ? ", heads interleaved" : ", heads sequential");
+                out << "\n";
+
+                mountPath = sibling;  // mount and record the raw .dsk from here on
+            }
+        }
+
         // CREATE, before the mount: make a zero-length file at the SAME place the board will
         // open it (resolvePath -- identity for a typed path, config-relative inside a machine
         // file), so mount() then finds it. Never clobber a file that is already there.
         bool created = false;
         if (create) {
-            std::string rp = b->resolvePath(unquote(a[2]));
+            std::string rp = b->resolvePath(mountPath);
             std::error_code ec;
             if (!std::filesystem::exists(rp, ec)) {
                 std::string cerr;
@@ -3245,7 +3325,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
 
         std::string err;
-        if (!b->mount(u.name, unquote(a[2]), readOnly, err)) {
+        if (!b->mount(u.name, mountPath, readOnly, err)) {
             // A CREATE whose mount is then refused must NOT leave its zero-byte file behind:
             // the operator asked to mount a disk, not to litter one. Unlink exactly the file
             // WE made this call (`created`), never one that was already on disk. It also keeps
@@ -3255,7 +3335,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // a file we made and a file the operator already had are different answers.)
             if (created) {
                 std::error_code rmec;
-                std::filesystem::remove(b->resolvePath(unquote(a[2])), rmec);
+                std::filesystem::remove(b->resolvePath(mountPath), rmec);
             }
             out << b->id << ": " << err << "\n";
             // A MISSING file is the one mount failure the operator can fix from here: add
@@ -3265,7 +3345,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // problem and CREATE would not touch it.
             if (!create) {
                 std::error_code ec;
-                if (!std::filesystem::exists(b->resolvePath(unquote(a[2])), ec))
+                if (!std::filesystem::exists(b->resolvePath(mountPath), ec))
                     out << b->id << ": to make a blank one, add CREATE: MOUNT " << a[1] << " "
                         << a[2] << " CREATE\n";
             }
@@ -3273,7 +3353,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         } else {
             if (created)
                 out << b->id << ":" << u.name << ": created "
-                    << resolveFrom(startupDir_, unquote(a[2])) << " (empty)\n";
+                    << resolveFrom(startupDir_, mountPath) << " (empty)\n";
             // The trailing key=value options are applied as unit properties now the tape is
             // in -- so `counter=off`/`stop=2:05` at MOUNT and SET later are the one mechanism.
             // A unit with no such property (a disk, a ROM) says so rather than ignoring it.
@@ -3293,7 +3373,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             //
             // The rule, everywhere: NARRATION SAYS WHERE. CONFIGURATION SAYS WHAT YOU WROTE.
             out << b->id << ":" << u.name << ": mounted "
-                << resolveFrom(startupDir_, unquote(a[2]))
+                << resolveFrom(startupDir_, mountPath)
                 << (readOnly ? std::string(" (") + protectedWord(u.kind) + ")" : "") << "\n";
 
             // ...and, if asked, split the just-mounted WAV into per-program .TAP files. This
