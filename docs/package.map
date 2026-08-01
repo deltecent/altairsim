@@ -25,16 +25,20 @@
 #   3. THE TESTS, and read what they actually do rather than what you would like them to.
 #      tests/acceptance/docs-manual.cmake greps the chapters for anything pointing outside
 #      the package (src/, ctest, a bare header) and checks every chapter is in ORDER.
-#      tests/acceptance/examples.cmake copies the examples to a scratch directory with no
-#      repository in sight and boots them there.
+#      tests/acceptance/docs-package.cmake reads THIS file and docs/manual/package.md and
+#      fails unless they name the same set -- every FILE/DIR here appears in the manual, and
+#      nothing in the manual's manifest is missing here. tests/acceptance/examples.cmake
+#      copies the examples to a scratch directory with no repository in sight and boots them.
 #
 #      WHAT NOTHING DOES is assemble this package and run the manual's own commands against
-#      it. tools/build-package.sh is run by no workflow and no test -- only by hand. So a
-#      chapter can tell you to type something that does not work in the zip and the suite
-#      stays green, which is not a hypothetical: the manual promised "CP/M in one command"
-#      while the published archive carried no media at all. This comment claimed a
-#      manual.cmake that has never existed, and a claimed test is worse than a missing one --
-#      it is the missing test plus the belief that you have it.
+#      it. docs-package.cmake compares the two manifests as TEXT -- the cheap half -- but
+#      tools/build-package.sh is run by no workflow and no test, only by hand, so nobody types
+#      the manual's commands at the actual zip. A chapter can still tell you to type something
+#      that does not work in the package and the suite stays green, which is not a
+#      hypothetical: the manual promised "CP/M in one command" while the published archive
+#      carried no media at all. (An earlier version of this comment claimed a manual.cmake
+#      that never existed, and a claimed test is worse than a missing one -- it is the missing
+#      test plus the belief that you have it.)
 #
 # THE PACKAGE LAYOUT MIRRORS THE REPOSITORY'S examples/ TREE, and that is the point of that
 # tree (2026-07-19): the shipped set has ONE home, the tests boot it there, and assembling
