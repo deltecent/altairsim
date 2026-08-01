@@ -422,15 +422,47 @@ bool CromemcoFdcBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads,
         return true;
     }
 
+    // 5.25" mixed-density DSDD CDOS: 40 cylinders, 2 heads, 300 RPM (5 rev/s). Like the 8"
+    // disk, cyl 0 / side 0 is laid SD 128-byte so RDOS can read the boot sector with no
+    // density known; side 1 of cylinder 0 and every other track are DD -- but the minifloppy's
+    // DD track is 10 x 512, not the 8"'s 16 x 512. The SD boot track is normally 18 sectors,
+    // 17 on some dumps (082 vs 052); it is the ONLY thing that varies, and its count falls
+    // straight out of the size, so both variants share this branch. Confirmed against the real
+    // IMDs (082DISK 406,784 / 18-sector; 052C0253 406,656 / 17-sector).
+    const uint64_t dd525 = 79ull * 10 * 512;               // 404,480 -- every side but cyl0/head0
+    if (bytes > dd525 && bytes <= dd525 + 26ull * 128) {   // one SD boot track's worth above it
+        const int nBoot = (int)((bytes - dd525) / 128);    // floor: discards any XMODEM pad (<128)
+        tracks      = 40;
+        heads       = 2;
+        interleaved = true;    // cylinder-major, head-minor -- same order as the 8" disk
+        revsPerSec  = 5;       // 5.25" / 300 RPM
+        ranges = {{0, 0, 0, 0, Density::SD, nBoot, 128, 1},  // cyl 0 side 0: the SD boot track
+                  {0, 0, 1, 1, Density::DD, 10, 512, 1},     // cyl 0 side 1: the disk's own DD
+                  {1, 39, 0, 1, Density::DD, 10, 512, 1}};   // the rest: DD both sides
+        return true;
+    }
+
+    // 5.25" plain single-density: 40 cylinders, one side, all FM 18 x 128 (92,160 bytes), 300
+    // RPM. One head, so head order is moot. The short 019/051 dumps (a sector or two lost to a
+    // bad track) fall below this and stay in the blank fallback -- best-effort by design.
+    const uint64_t ss525 = 40ull * 18 * 128;               // 92,160
+    if (sizeMatches(bytes, ss525)) {
+        tracks      = 40;
+        heads       = 1;
+        interleaved = false;
+        revsPerSec  = 5;
+        ranges = {{0, 39, 0, 0, Density::SD, 18, 128, 1}};
+        return true;
+    }
+
     // BLANK / SHORT -> an UNFORMATTED disk, not an error (the Tarbell rule): mount it at the
     // 8" track count with EMPTY geometry. The drive is READY and steppable, but every access
     // RNFs until the guest's DFORMAT streams a track (Write Track -> setTrackFormat, density
     // from the OUT-34 DD bit). This is what makes MOUNT ... CREATE (a 0-byte file) formattable.
     //
-    // The 5.25" mixed/DSDD CDOS geometries (and the swapped-sides 8" variant) land here as a
-    // forced media= choice once their exact per-track split is confirmed against the real
-    // images -- a task-5 follow-up. For now the 8" showcase + a plain SD disk + a formattable
-    // blank prove the mixed-density Write-Track path; the rest is added with the media in hand.
+    // The 5.25" DSDD and SSSD CDOS geometries are recognized above (added with the real images
+    // in hand). The swapped-sides 8" variant still lands here as a formattable blank until its
+    // per-track split is confirmed against a real image.
     if (bytes < cdos8) {
         tracks      = 77;
         heads       = 2;
