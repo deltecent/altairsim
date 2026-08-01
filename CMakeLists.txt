@@ -890,6 +890,16 @@ add_test(NAME acceptance-cwdconfig
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
 set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
 
+# The per-directory command-history file is written only for a human at a terminal; a
+# script (-x/-s), a pipe, or --mcp must leave the directory untouched. This proves that
+# negative -- the whole of the guarantee (see the file's own header for the pty/pipe trap).
+add_test(NAME acceptance-history
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/history.cmake)
+set_tests_properties(acceptance-history PROPERTIES LABELS acceptance TIMEOUT 60)
+
 # ---------------------------------------------------------------------------
 # SNAPSHOT / RESTORE through the real monitor -- the command wiring (DESIGN.md 13).
 # The state round-trip is proved at the unit level (tests/test_snapshot.cpp); this

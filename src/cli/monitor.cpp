@@ -4672,6 +4672,45 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
         ~Lend() { m.in_ = nullptr; m.ed_ = nullptr; }
     } lend{*this};
 
+    // PER-DIRECTORY COMMAND HISTORY. altairsim is run across many projects, so history
+    // is per-cwd -- a hidden .altairsim_history in the directory you launched from, not
+    // a per-user file (and there is no ~ on Windows to key one off anyway). Only a real
+    // interactive terminal reads or writes it: -x/-s pass interactive==false, --mcp
+    // returns before ever reaching repl, and a pipe (altairsim < script) is interactive
+    // here but not a tty, so LineEditor::interactive() -- stdinIsTty() && stdoutIsTty()
+    // -- is false. The process never chdir's, so current_path() is the launch cwd.
+    // `SET CONSOLE history=0` turns the file off; a missing file just starts empty.
+    std::filesystem::path histPath;
+    if (interactive && LineEditor::interactive()) {
+        std::error_code ec;
+        std::filesystem::path cwd = std::filesystem::current_path(ec);  // no-throw overload
+        if (!ec) {
+            histPath = cwd / ".altairsim_history";
+            int depth = Console::instance().historyDepth();
+            if (depth > 0) {
+                std::ifstream f(histPath);  // missing/unreadable -> falsy -> start empty
+                if (f) ed.loadHistory(f, (size_t)depth);
+            }
+        }
+    }
+
+    // Write history back on EVERY exit -- a break, Ctrl-D/EOF, QUIT, or an exception --
+    // so a session that ends any way still leaves its trail. The depth is re-read here
+    // to honor a SET CONSOLE history=... made mid-session; 0 (off) or an unwritable
+    // directory is a silent no-op, never a crash. `histPath` empty is the single "off"
+    // signal -- it is set only on the interactive-tty path above.
+    struct SaveHistory {
+        const LineEditor&            ed;
+        const std::filesystem::path& path;
+        ~SaveHistory() {
+            if (path.empty()) return;
+            int depth = Console::instance().historyDepth();
+            if (depth <= 0) return;
+            std::ofstream f(path, std::ios::trunc);  // cannot open -> falsy -> no-op
+            if (f) ed.saveHistory(f, (size_t)depth);
+        }
+    } saveHistory{ed, histPath};
+
     while (!quit_) {
         if (interactive) {
             // The editor decides for itself whether stdin is really a terminal --

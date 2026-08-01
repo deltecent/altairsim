@@ -21,6 +21,7 @@
 
 #include <functional>
 #include <istream>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -68,6 +69,15 @@ public:
     void setCompleter(Completer fn) { completer_ = std::move(fn); }
 
     const std::vector<std::string>& history() const { return history_; }
+
+    // Seed history from a prior session and write it back. The editor never opens a
+    // file -- the caller (Monitor::repl) hands it a stream, so a unit test uses a
+    // stringstream and disk stays out of it. `cap` bounds how many lines are kept: on
+    // load the oldest past it are dropped, on save only the newest `cap` are written.
+    // loadHistory applies the same consecutive-dedup and skip-blank rules as the Enter
+    // path in loop(), so a hand-edited file cannot smuggle in shapes typing never makes.
+    void loadHistory(std::istream& in, size_t cap);
+    void saveHistory(std::ostream& out, size_t cap) const;
 
 private:
     // The interactive editor, lifted out of read() so it can be driven without a real

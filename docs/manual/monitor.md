@@ -53,8 +53,16 @@ as `HELP`.
 
 The prompt is a real line editor. The key labelled Backspace erases the character behind the
 cursor whichever byte your terminal sends for it, the arrows move within the line, and the
-editor keeps a **history for this session** — the up-arrow walks back through the lines you
-have typed and the down-arrow returns toward the one you were in the middle of.
+editor keeps a **command history** — the up-arrow walks back through the lines you have typed
+and the down-arrow returns toward the one you were in the middle of.
+
+The history is **saved between sessions, per directory**. When you leave, the last commands
+you typed are written to a hidden `.altairsim_history` in the directory you launched from, so
+the next time you start the simulator *there* they are waiting on the up-arrow. Each project
+directory keeps its own list; the file is written only when you are typing at a real terminal,
+so a script, a pipe, or an automated run never leaves one behind. How many lines it keeps is
+the `history` setting on the console — `SET CONSOLE history=200` to keep more, and
+`SET CONSOLE history=0` to turn the file off entirely. It defaults to 50.
 
 ### Completing with `Tab`
 
@@ -86,7 +94,7 @@ again and it lists them. When nothing fits, it does nothing.
 | `Ctrl-W` | erase the word before the cursor |
 | `Ctrl-K` | erase from the cursor to the end of the line |
 | `Ctrl-U` | erase the whole line |
-| `↑` `↓` | walk back and forth through this session's history |
+| `↑` `↓` | walk back and forth through the command history |
 | `Tab` | complete the word at the cursor |
 | `Ctrl-D` | on an empty line, leave — the same as `QUIT` |
 

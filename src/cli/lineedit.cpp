@@ -72,6 +72,25 @@ bool LineEditor::read(const std::string& prompt, std::string& line, std::istream
     return loop(prompt, line);
 }
 
+void LineEditor::loadHistory(std::istream& in, size_t cap) {
+    std::string ln;
+    while (std::getline(in, ln)) {
+        // A file written on one OS and read on another can carry a trailing CR; a
+        // command never ends in one, so shed it before it becomes part of the entry.
+        if (!ln.empty() && ln.back() == '\r') ln.pop_back();
+        if (ln.empty()) continue;                                    // skip blanks
+        if (!history_.empty() && history_.back() == ln) continue;    // same dedup as Enter (below)
+        history_.push_back(ln);
+    }
+    if (cap && history_.size() > cap)
+        history_.erase(history_.begin(), history_.end() - (long)cap);  // keep the newest
+}
+
+void LineEditor::saveHistory(std::ostream& out, size_t cap) const {
+    size_t start = (cap && history_.size() > cap) ? history_.size() - cap : 0;
+    for (size_t i = start; i < history_.size(); ++i) out << history_[i] << '\n';
+}
+
 bool LineEditor::loop(const std::string& prompt, std::string& line) {
     std::string buf;
     size_t cur = 0;
