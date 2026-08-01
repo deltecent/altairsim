@@ -167,6 +167,11 @@ public:
     // its display format and its default parse base; explicit markers always win.
     NumBase base() const { return base_; }
 
+    // How many command lines the monitor persists to .altairsim_history in the launch
+    // directory. 0 turns the file off. The property lives on the terminal because that
+    // is what the line editor belongs to; the file I/O is the monitor's (repl).
+    int historyDepth() const { return historyDepth_; }
+
     // Is there a human out there at all? False under `-s script.cmd`, under a
     // pipe, and in the test suite -- and CONSOLE mode has to behave differently
     // when the answer is no, or a scripted run would spin forever waiting for
@@ -266,6 +271,7 @@ private:
 
     uint8_t  attn_     = 0x05;  // Ctrl-E
     NumBase  base_     = NumBase::Hex;  // hex is the modern default; octal is opt-in
+    int      historyDepth_ = 50;  // command lines kept in .altairsim_history; 0 = off
     bool     raw_      = false;
     // Is stdin OURS? enterRaw() takes it (and makes it non-blocking); until then the
     // monitor owns it, and reading it would steal a command or block the simulator.

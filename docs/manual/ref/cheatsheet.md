@@ -14,7 +14,7 @@
 
 ## Editing the command line
 
-`Tab` completes what you are typing — a command, then a board id, then its property names, then a property's values (`SET mem0 fill=` then `Tab`); a second `Tab` lists the choices. `Up`/`Down` walk this session's history.
+`Tab` completes what you are typing — a command, then a board id, then its property names, then a property's values (`SET mem0 fill=` then `Tab`); a second `Tab` lists the choices. `Up`/`Down` walk the command history, saved per directory in `.altairsim_history`.
 
 | Key | Does |
 |---|---|

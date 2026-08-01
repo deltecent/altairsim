@@ -265,6 +265,30 @@ std::vector<Property> Console::properties() {
         p.push_back(std::move(x));
     }
 
+    // COMMAND-LINE HISTORY DEPTH. altairsim keeps a per-directory history file
+    // (.altairsim_history, in the directory you launched from) so a project's command
+    // trail is there when you come back to it -- the file lives beside the work, not in
+    // a home directory there is no ~ for on Windows. This is how many lines it keeps;
+    // 0 turns the file off. The monitor (repl) does the reading and writing -- this is
+    // only the knob, and it rides here beside `attn`/`base` because history belongs to
+    // the operator's terminal. (min < max: min==max would mean UNBOUNDED, value.h.)
+    {
+        Property x;
+        x.name    = "history";
+        x.help    = "Command lines saved in .altairsim_history in the launch directory; 0 = off";
+        x.kind    = Kind::Int;
+        x.radix   = 10;
+        x.min     = 0;
+        x.max     = 10000;
+        x.unit    = "lines";
+        x.get     = [this] { return Value::ofInt(historyDepth_); };
+        x.set     = [this](const Value& v, std::string&) {
+            historyDepth_ = (int)v.i();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+
     // THE TRANSFORM CHAIN -- upper, strip7in, strip7out, crlf, echo, bell, bsdel.
     //
     // They are properties of the TERMINAL, which is what this class is, and they are

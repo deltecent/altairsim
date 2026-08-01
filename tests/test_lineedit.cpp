@@ -8,6 +8,7 @@
 #include "cli/lineedit.h"
 #include "test.h"
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -143,4 +144,44 @@ void test_lineedit() {
     auto e = LineEditorTest::drive(V{CTRL_D});
     CHECK(!e.ret, "Ctrl-D on empty returns false (EOF)");
     CHECK(L(b("ab") + V{CTRL_D} + ENTER) == "ab", "but Ctrl-D on a non-empty line is ignored");
+
+    // The persistence seam: loadHistory/saveHistory take streams, never files, so these
+    // drive them with stringstreams -- the same disk-free shape the byte transports use.
+    using VS = std::vector<std::string>;
+
+    SECTION("history file -- round-trips through streams and recalls");
+    {
+        LineEditor ed;
+        std::istringstream in("run\nreset\ndir\n");
+        ed.loadHistory(in, 50);
+        CHECK(ed.history() == VS({"run", "reset", "dir"}), "loadHistory seeds the vector oldest-first");
+        std::ostringstream out;
+        ed.saveHistory(out, 50);
+        CHECK(out.str() == "run\nreset\ndir\n", "saveHistory writes each entry on its own line");
+        CHECK(L(UP + ENTER, ed.history()) == "dir", "the newest saved line is what Up recalls first");
+    }
+
+    SECTION("history file -- load skips blanks and adjacent dupes, sheds a trailing CR");
+    {
+        LineEditor ed;
+        std::istringstream in("run\r\nrun\r\n\r\nreset\r\n");  // CRLF file, an adjacent dupe, a blank
+        ed.loadHistory(in, 50);
+        CHECK(ed.history() == VS({"run", "reset"}),
+              "adjacent duplicates collapse, blank lines drop, and the CR is shed");
+    }
+
+    SECTION("history file -- the cap keeps the newest and drops the oldest");
+    {
+        LineEditor ed;
+        std::ostringstream feed;
+        for (int i = 0; i < 60; ++i) feed << "cmd" << i << "\n";
+        std::istringstream in(feed.str());
+        ed.loadHistory(in, 50);
+        CHECK(ed.history().size() == 50, "load trims to the cap");
+        CHECK(ed.history().front() == "cmd10", "the oldest ten are the ones dropped");
+        CHECK(ed.history().back() == "cmd59", "the newest survives");
+        std::ostringstream out;
+        ed.saveHistory(out, 3);  // a tighter cap on save
+        CHECK(out.str() == "cmd57\ncmd58\ncmd59\n", "saveHistory honors a smaller cap, newest kept");
+    }
 }

@@ -491,6 +491,7 @@ static const std::vector<CommandDef> kCommands = {
      "The keys k, and the value v each takes:\n"
      "  attn       a control byte 01-1F (HEX): the key that returns to the monitor\n"
      "  base       hex | octal -- the operator's number base for what it PRINTS\n"
+     "  history    lines saved in .altairsim_history in the launch dir (default 50; 0 = off)\n"
      "  upper      on|off: fold typed input to uppercase (much period software insists)\n"
      "  strip7in   on|off: mask the high bit on input\n"
      "  strip7out  on|off: mask the high bit on output (MITS BASIC's end-of-message)\n"

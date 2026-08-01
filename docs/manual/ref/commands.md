@@ -761,6 +761,7 @@ The keys k, and the value v each takes:
 ```
 attn       a control byte 01-1F (HEX): the key that returns to the monitor
 base       hex | octal -- the operator's number base for what it PRINTS
+history    lines saved in .altairsim_history in the launch dir (default 50; 0 = off)
 upper      on|off: fold typed input to uppercase (much period software insists)
 strip7in   on|off: mask the high bit on input
 strip7out  on|off: mask the high bit on output (MITS BASIC's end-of-message)

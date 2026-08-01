@@ -224,6 +224,8 @@ At the monitor that is `SET CONSOLE UPPER=ON`, and `SHOW CONSOLE` prints it. **I
 [console]
 attn = 05                  # HEX. The key that drops from CONSOLE back to the monitor.
                            #   The guest NEVER SEES this byte, so it cannot disable it.
+history = 100              # command lines kept in .altairsim_history (per launch dir).
+                           #   Default 50; 0 turns the file off.
 ```
 
 `rows`, `cols`, `pace`, `ansi`, `tabs` and `log` are specified in DESIGN.md §7.2 but **not built yet**.
