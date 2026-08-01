@@ -422,7 +422,11 @@ bool VersaFloppyBoard::mount(const std::string& unit, const std::string& path, b
     const VfFormat* fmt = probe(img->size(), drive_[(size_t)i].forced, type(), layFormat, err);
     if (!fmt) return false;  // a failed probe leaves the old disk in place
 
-    img->init(fmt->tracks, fmt->heads, /*interleaved=*/false);
+    // CYLINDER-MAJOR (head-minor): T0H0, T0H1, T1H0, ... -- both sides of a cylinder adjacent.
+    // That is how vf.z80 dumps these disks over XMODEM and how the DDBIOS FMAT records them, so
+    // it is the layout DiskImage must present. The DDBIOS format writes side 0 then side 1 of a
+    // cylinder before stepping (DDB200.ASM NXTRK); see the blank-grow note below.
+    img->init(fmt->tracks, fmt->heads, /*interleaved=*/true);
     if (layFormat)  // a recognized full disk; a blank stays unformatted until Write Track fills it
         img->initFormat(0, fmt->tracks - 1, 0, fmt->heads - 1, fmt->density, fmt->sectors,
                         fmt->sectorSize, /*startSector=*/1);  // soft-sector: sectors number from 1
@@ -430,8 +434,9 @@ bool VersaFloppyBoard::mount(const std::string& unit, const std::string& path, b
     // EXTEND ON WRITE, always (mirror the Tarbell). A recognized full disk never grows -- its
     // writes stay within the declared geometry -- but a blank/short one grows as the guest's
     // FORMAT streams each track (Write Track -> setTrackFormat), capped at the dynamic
-    // geometryBytes_. init(...) laid the slot order out from the named media, so a double-sided
-    // blank grows in ascending order (all of side 0, then side 1) as required (host/disk.h).
+    // geometryBytes_. The DDBIOS format lays cylinders in order and, on a double-sided disk, both
+    // sides of a cylinder before the next -- which is exactly ascending image-slot order under the
+    // cylinder-major init above, so a double-sided blank still grows contiguously (host/disk.h).
     img->setExtendsOnWrite(true);
 
     const bool forcedRo = img->readOnlyForced();

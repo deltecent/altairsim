@@ -111,11 +111,15 @@ public:
     // so the following tracks' offsets and the growth cap follow. It is safe to call after
     // init()/initFormat and after mount.
     //
-    // CORRECTNESS RESTS ON THE ASCENDING-TRACK-ORDER INVARIANT. FORMAT writes tracks 0->N in
-    // order, so when a track is (re)formatted to a LARGER geometry the tracks after it have
-    // either not been written yet or are about to be overwritten -- rebuild() moving their
-    // offsets clobbers nothing valid. An out-of-order or cross-density reformat of an already
-    // populated disk would need the tail shifted first; that is a deferred, separate feature.
+    // CORRECTNESS RESTS ON THE ASCENDING-SLOT-ORDER INVARIANT. FORMAT writes slots 0->N in IMAGE
+    // order (slotIndex), so when a track is (re)formatted to a LARGER geometry the slots after it
+    // have either not been written yet or are about to be overwritten -- rebuild() moving their
+    // offsets clobbers nothing valid. This is why the format program's write order must agree with
+    // the image layout: a head-major image wants all of side 0 then side 1, an interleaved
+    // (cylinder-major) image wants both sides of a cylinder before the next -- and a real
+    // controller's FORMAT does whichever its dumped images use (the VersaFloppy, cylinder-major).
+    // An out-of-order or cross-density reformat of an already populated disk would need the tail
+    // shifted first; that is a deferred, separate feature.
     void setTrackFormat(int t, int h, const TrackFormat& fmt);
 
     int  tracks() const { return tracks_; }

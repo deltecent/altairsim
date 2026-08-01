@@ -124,15 +124,17 @@ void pollWriteVf(VersaFloppyBoard& b, const std::vector<uint8_t>& stream) {
 }
 
 // Format every track of a blank through the real ports, exactly as the guest's `Z` command does:
-// for each side, set the control latch (density + side), then per track seek + Write Track +
-// stream. Side 0 is formatted fully before side 1, so a double-sided blank grows in ascending
-// slot order (host/disk.h). Returns false if any track faulted (S5 WRITE FAULT).
+// step to a cylinder, then format each side of it (set the control latch for density + side,
+// Write Track, stream) before stepping to the next. This is the DDBIOS FMAT discipline -- both
+// sides of a cylinder are recorded before NXTRK advances the track (DDB200.ASM). CYLINDER-MAJOR,
+// which is ascending image-slot order under the board's interleaved layout, so a double-sided
+// blank grows contiguously (host/disk.h). Returns false if any track faulted (S5 WRITE FAULT).
 bool formatBlank(VersaFloppyBoard& b, bool dd, int tracks, int heads, int sectors, int sectorSize) {
-    for (int side = 0; side < heads; ++side) {
-        control(b, dd, side);
-        for (int t = 0; t < tracks; ++t) {
-            seekTo(b, t);
-            out(b, CMD, 0xF4);  // Write Track
+    for (int t = 0; t < tracks; ++t) {
+        for (int side = 0; side < heads; ++side) {
+            control(b, dd, side);   // select the drive + this side + density
+            seekTo(b, t);           // both sides share the cylinder; re-seek is a no-op after side 0
+            out(b, CMD, 0xF4);      // Write Track
             pollWriteVf(b, mkTrack(t, dd ? Density::DD : Density::SD, sectors, sectorSize));
             if (in(b, CMD) & 0x20) return false;  // S5 WRITE FAULT
         }
@@ -306,7 +308,7 @@ void test_versafloppy() {
     // the real ports -- the DDBIOS FMATE discipline: control latch, seek, Write Track, stream --
     // and confirm the host file grew to the exact image size and reads back 0xE5 at representative
     // sectors, including the LAST sector of the LAST track (proves the RPM-aware revolution budget
-    // held every sector) and, for double-sided disks, a head-1 sector (proves the ascending-order
+    // held every sector) and, for double-sided disks, a head-1 sector (proves the cylinder-major
     // blank-grow). The synthetic track (mkTrack) and the streaming (pollWriteVf) are the guest;
     // the emulated controller does the format, exactly as real hardware does.
     {
@@ -367,7 +369,7 @@ void test_versafloppy() {
             CHECK(allE5(last, fc.sectorSize), msg("last sector of last track reads back 0xE5"));
             CHECK((in(b, CMD) & 0x1C) == 0, msg("...with no RNF/CRC/Lost-Data error"));
 
-            // Double-sided: a head-1 sector must read back too (the side-1 slots grew in order).
+            // Double-sided: a head-1 sector must read back too (its interleaved slot grew in order).
             if (fc.heads == 2) {
                 control(b, fc.dd, 1);  // D4 side select -> side B
                 std::vector<uint8_t> h1 =

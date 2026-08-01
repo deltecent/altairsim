@@ -247,8 +247,10 @@ container that carries its own sector map would fix this — and is explicitly n
       resolves it by *order* — the format table lists `8dd256` first, so an unforced probe of
       512,512 lands on the SDOS master; `media=8sd-ds` forces the other. When two formats share a
       byte count, list the default first and require `media=` for the other.
-    - **Double-sided blank-grow rides the ascending-order invariant.** A blank double-sided disk
-      grows only if the guest formats **all of side 0, then side 1** — the non-interleaved slot
-      layout puts side 1's tracks after all of side 0's, and `setExtendsOnWrite` grows the file in
-      slot order. A card whose format program interleaved the sides would need the shift-tail
-      resize (deferred). The SD Systems `Z` format writes side 0 then side 1, so it is safe.
+    - **Double-sided blank-grow rides the ascending-slot-order invariant.** A blank double-sided
+      disk grows contiguously only if the guest's format order matches the image's slot layout, so
+      `setExtendsOnWrite` never has to fill a gap. The VersaFloppy lays disks **cylinder-major**
+      (interleaved: `T0H0, T0H1, T1H0, …`, per the vf.z80 dumps), and the DDBIOS `FMAT` records
+      **both sides of a cylinder before stepping** (`DDB200.ASM` `NXTRK`) — the two agree, so it is
+      safe. A card whose format program wrote all of one side before the other under this same
+      layout would leave gaps and need the shift-tail resize (still deferred).
