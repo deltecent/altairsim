@@ -109,4 +109,45 @@ void test_mcp() {
         CHECK(dump.at("output").str().find("3E 03 D3 10") != std::string::npos,
               "the DUMP command's output is ALTMON's own initialization bytes");
     }
+
+    SECTION("MCP: a RUN via the monitor tool parks instead of wedging the server");
+    {
+        // A bare RUN -- or the RUN a CONFIG LOAD startup ends in -- would enter the
+        // unbounded run loop, and the single-threaded server has no keyboard to press
+        // ATTN, so the whole connection would hang forever. Under MCP, RUN must set PC
+        // and return. We plant an unconditional JMP-to-self at 0 so the run is genuinely
+        // infinite: WITHOUT the fix this test never returns (a hang, not a failed CHECK).
+        const BuiltinMachine* altmon = nullptr;
+        for (const auto& b : builtinMachines())
+            if (std::string(b.name) == "altmon") altmon = &b;
+        CHECK(altmon != nullptr, "the altmon built-in is compiled in");
+        if (!altmon) return;
+
+        Machine m;
+        std::string err;
+        CHECK(loadMachine(*altmon, m, err), "altmon loads");
+
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const char* method, const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id << R"(,"method":")" << method
+              << R"(","params":)" << params << "}\n";
+        };
+        req("initialize", "{}");
+        req("tools/call", R"({"name":"mem_deposit","arguments":{"addr":0,"bytes":"C3 00 00"}})");
+        req("tools/call", R"({"name":"monitor","arguments":{"command":"RUN 0"}})");
+        // The server is still alive afterwards -- a later call gets a reply, which it
+        // could not if RUN had wedged the read-eval loop.
+        req("tools/call", R"({"name":"regs","arguments":{}})");
+
+        auto rep = runScript(m, s.str());  // returns at all == the fix works
+
+        const std::string run = rep[3].at("result").at("content").items().at(0).at("text").str();
+        CHECK(run.find("PC set to 0000") != std::string::npos,
+              "RUN under MCP parks the PC instead of entering the run loop");
+        CHECK(run.find("run tool") != std::string::npos,
+              "and it points the client at the non-blocking run tool");
+        CHECK(rep.count(4) && rep[4].at("result").has("structuredContent"),
+              "the server answered a later call -- RUN returned, it did not wedge");
+    }
 }

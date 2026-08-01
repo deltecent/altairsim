@@ -42,6 +42,11 @@ public:
     bool failed() const { return failed_; }
     int exitCode() const { return failed_ ? 1 : 0; }
 
+    // MCP mode: the server is single-threaded, so a command that enters the unbounded run
+    // loop would hang the whole connection. When set, RUN sets PC and returns instead of
+    // blocking -- the client advances with the non-blocking `run` tool (mcp/server.h).
+    void setMcpMode(bool b) { mcpMode_ = b; }
+
     // Run a machine's startup list (DESIGN.md 10.0). Anything you can type, a
     // config can do -- so `startup` is not a second language.
     void runStartup(std::ostream& out);
@@ -199,6 +204,7 @@ private:
     Machine& m_;
     bool failed_ = false;
     bool quit_ = false;
+    bool mcpMode_ = false;  // RUN parks instead of blocking -- see setMcpMode()
 
     // WHOSE DIRECTORY THE COMMAND CURRENTLY RUNNING CAME OUT OF -- and "" whenever a
     // human is at the keyboard, which is nearly always (core/paths.h).
