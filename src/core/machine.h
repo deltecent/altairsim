@@ -52,7 +52,20 @@ public:
     // Empty for a built-in, which is right and not a special case: a built-in machine
     // lives in .rodata and is in no directory at all, so every path it names can only
     // be relative to the shell -- which is exactly what "" means everywhere else.
+    //
+    // But empty does NOT mean "built-in": a file NAMED IN THE CWD (`altairsim foo.toml`
+    // from foo.toml's own folder) has an empty dirname too, and its paths correctly
+    // resolve against the shell just the same. So `dir.empty()` cannot tell a built-in
+    // from a cwd-local file -- an empty dirname and no file are different answers that
+    // share one value (the read()==0 shape, issue #25). Whether a file was loaded is
+    // `fromFile`, below; do not infer origin from `dir`.
     std::string dir;
+
+    // TRUE if this machine was loaded from a file, FALSE if it came out of the binary.
+    // The only reliable answer to "is this built in?" -- decided by SPELLING at load
+    // time (looksLikeFile(), config/toml.cpp), never by whether `dir` happens to be
+    // empty. SHOW PATHS uses this, and nothing else should conflate it with `dir`.
+    bool fromFile = false;
 
     Bus bus;
 

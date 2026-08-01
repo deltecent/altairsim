@@ -799,23 +799,35 @@ void Monitor::showPaths(std::ostream& out) {
     row("what you type", ec ? "(unknown)" : cwd.string());
     out << pad << "MOUNT, LOAD, SAVE and -s scripts resolve against this.\n";
 
-    // ABSOLUTE, for the same reason the sandbox is: `cfg` is the question restated. The
-    // machine was named on the command line, so this is as relative as what you typed.
-    std::string mdir = m_.dir;
-    if (!mdir.empty()) {
-        std::error_code e2;
-        auto abs = std::filesystem::absolute(mdir, e2);
-        if (!e2) mdir = abs.lexically_normal().string();
-    }
-
     out << "\n";
-    row("machine file", mdir.empty() ? "(none -- this machine is built in to the binary)"
-                                     : mdir);
-    if (!m_.dir.empty())
+
+    // BUILT-IN vs FILE is `fromFile`, NEVER `m_.dir.empty()`: a machine file named in the
+    // cwd (`altairsim foo.toml` from foo.toml's folder) has an empty dirname, and reading
+    // that as "built in" made this command lie in exactly the folder every example README
+    // tells you to `cd` into (empty dirname != no file, the issue-#25 shape). Fall through
+    // to the sandbox loop either way -- a built-in machine can carry a host bridge too.
+    if (!m_.fromFile) {
+        row("machine file", "(none -- this machine is built in to the binary)");
+    } else {
+        // ABSOLUTE, for the same reason the sandbox is: the machine was named on the command
+        // line, so this is as relative as what you typed. An empty dirname is the cwd -- the
+        // file was named with no directory component -- so resolve it to the cwd we already
+        // have rather than leaving the row blank.
+        std::string mdir = m_.dir;
+        if (mdir.empty()) {
+            mdir = ec ? std::string(".") : cwd.string();
+        } else {
+            std::error_code e2;
+            auto abs = std::filesystem::absolute(mdir, e2);
+            if (!e2) mdir = abs.lexically_normal().string();
+        }
+
+        row("machine file", mdir);
         out << pad << "`mount`, `base` and the MOUNT/LOAD lines in `startup`\n"
             << pad << "resolve against THIS, not the cwd -- so a machine file\n"
             << pad << "names the disks lying beside it and goes on naming them\n"
             << pad << "from wherever you launch it.\n";
+    }
 
     // hostdir is the hostbridge's own property, so it is printed only if the card is in
     // the backplane. A machine with no host bridge has no sandbox to describe -- which is
@@ -3127,6 +3139,17 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         std::string err;
         if (!b->mount(u.name, unquote(a[2]), readOnly, err)) {
+            // A CREATE whose mount is then refused must NOT leave its zero-byte file behind:
+            // the operator asked to mount a disk, not to litter one. Unlink exactly the file
+            // WE made this call (`created`), never one that was already on disk. It also keeps
+            // a retry honest -- without it the second attempt measures the empty file the first
+            // left and fails identically, so the refusal describes a turd of our own making
+            // rather than the real problem. (Same shape as the SHOW PATHS empty-vs-absent bug:
+            // a file we made and a file the operator already had are different answers.)
+            if (created) {
+                std::error_code rmec;
+                std::filesystem::remove(b->resolvePath(unquote(a[2])), rmec);
+            }
             out << b->id << ": " << err << "\n";
             // A MISSING file is the one mount failure the operator can fix from here: add
             // CREATE and we make a blank one and mount it (a hard-sector disk then FORMATs,

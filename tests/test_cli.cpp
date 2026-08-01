@@ -17,6 +17,7 @@
 #include "host/console.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
+#include "host/media.h"
 #include "host/stream.h"
 #include "test.h"
 
@@ -760,6 +761,106 @@ void test_cli() {
         CHECK(cAt != std::string::npos, "the connect property is listed");
         CHECK(s.find("values:", cAt) == std::string::npos,
               "a free-form string property advertises no values line of its own");
+    }
+
+    // -----------------------------------------------------------------------
+    // SHOW PATHS: "built in to the binary" is a claim about ORIGIN -- whether a file
+    // was loaded -- NOT about whether the machine file's dirname is empty. A file NAMED
+    // IN THE CWD (`altairsim foo.toml` from foo.toml's own folder, which is how every
+    // example README starts) has an empty dirname and is still a file; reading empty-dir
+    // as built-in made SHOW PATHS lie precisely there. `fromFile` carries the fact.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW PATHS tells a cwd machine file from a built-in machine");
+    {
+        std::string err;
+        const char* kText = "[machine]\nname = \"t\"\n";
+
+        // Built-in: the source is a scheme, not a file. SHOW PATHS says so.
+        Machine mbi;
+        CHECK(loadTomlText(kText, "builtin:default", mbi, err), "a built-in source loads");
+        CHECK(!mbi.fromFile, "a builtin: source is not a file");
+        Monitor            monbi(mbi);
+        std::ostringstream obi;
+        monbi.exec("SHOW PATHS", obi);
+        CHECK(obi.str().find("built in to the binary") != std::string::npos,
+              "a built-in machine reports it is built in");
+
+        // A file NAMED IN THE CWD -- a bare filename, empty dirname. It is NOT built in.
+        Machine mcwd;
+        CHECK(loadTomlText(kText, "trek80.toml", mcwd, err), "a cwd file source loads");
+        CHECK(mcwd.fromFile, "a bare .toml source is a file");
+        CHECK(mcwd.dir.empty(), "...with an empty dirname -- which is the whole trap");
+        Monitor            moncwd(mcwd);
+        std::ostringstream ocwd;
+        moncwd.exec("SHOW PATHS", ocwd);
+        CHECK(ocwd.str().find("built in to the binary") == std::string::npos,
+              "a machine file in the cwd is NOT reported built in (the bug this fixes)");
+        CHECK(ocwd.str().find("machine file") != std::string::npos,
+              "...it prints a machine file row instead");
+
+        // A file named THROUGH a directory keeps behaving as before: its dir is shown.
+        Machine msub;
+        CHECK(loadTomlText(kText, "examples/sol/trek80.toml", msub, err), "a subdir file loads");
+        CHECK(msub.fromFile, "a path'd .toml is a file");
+        CHECK(msub.dir == "examples/sol", "its dirname is carried through");
+        Monitor            monsub(msub);
+        std::ostringstream osub;
+        monsub.exec("SHOW PATHS", osub);
+        CHECK(osub.str().find("built in to the binary") == std::string::npos,
+              "a machine file in a subdir is not built in either");
+        // SHOW PATHS renders the resolved absolute path with NATIVE separators, so on Windows
+        // the row reads `...\examples\sol`. Normalise to forward slashes before matching -- the
+        // claim is that the directory is shown, not which slash the host spells it with.
+        std::string osubNorm = osub.str();
+        for (char& ch : osubNorm)
+            if (ch == '\\') ch = '/';
+        CHECK(osubNorm.find("examples/sol") != std::string::npos,
+              "...and its directory is shown, resolved absolute");
+    }
+
+    // -----------------------------------------------------------------------
+    // A REFUSED `MOUNT ... CREATE` MUST NOT LEAVE ITS ZERO-BYTE FILE BEHIND.
+    //
+    // CREATE pre-creates the file so the board can open it; a controller with a
+    // fixed geometry (hdsk) then refuses the 0-byte image. The file we made has to
+    // go -- and ONLY the file we made: a file that was already there is the
+    // operator's, and survives a failed mount. (monitor.cpp, the MOUNT handler.)
+    // -----------------------------------------------------------------------
+    SECTION("cli: a refused MOUNT ... CREATE leaves no zero-byte file behind");
+    {
+        // This test touches the real filesystem (CREATE writes a file, we check it is
+        // gone), so it needs the real resolver -- not whatever MemoryMedia stub a board
+        // test ran before us in the same process may have left behind. tests/main.cpp
+        // installs openHostFile by default; make it explicit so ordering cannot break us.
+        setMediaResolver(openHostFile);
+
+        std::filesystem::path tmp =
+            std::filesystem::temp_directory_path() / "altairsim-create-turd.dsk";
+        std::error_code ec;
+        std::filesystem::remove(tmp, ec);
+
+        Machine            m;
+        Monitor            mon(m);
+        std::ostringstream sink;
+        mon.exec("BOARDS ADD hdsk h0", sink);
+
+        // hdsk has a fixed multi-megabyte geometry, so a 0-byte CREATE is refused.
+        std::ostringstream o;
+        mon.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o);
+        CHECK(o.str().find("is not an 88-HDSK platter") != std::string::npos,
+              "hdsk refuses the zero-byte image CREATE made");
+        CHECK(!std::filesystem::exists(tmp, ec),
+              "...and the zero-byte file it created is removed, not left as a turd");
+
+        // BUT ONLY THE FILE WE MADE. Pre-place a file: CREATE sees it exists and
+        // leaves it, the mount still fails on size, and the operator's file must
+        // survive -- we unlink our own litter, never theirs.
+        { std::ofstream(tmp) << "not a disk"; }
+        std::ostringstream o2;
+        mon.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o2);
+        CHECK(std::filesystem::exists(tmp, ec),
+              "a pre-existing file that fails to mount is the operator's -- NOT removed");
+        std::filesystem::remove(tmp, ec);
     }
 
     // -----------------------------------------------------------------------

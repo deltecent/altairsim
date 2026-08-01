@@ -251,7 +251,13 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
     // ...and the OUTERMOST file's directory is the machine's, because `startup` is a
     // list of commands that came out of that file and Monitor::runStartup has to know
     // where they were written to make sense of the paths in them.
-    if (depth == 0) m.dir = dir;
+    if (depth == 0) {
+        m.dir = dir;
+        // Decided by SPELLING, like `dir` itself: a built-in arrives as "builtin:name",
+        // which is not a file. This is the ONLY reliable built-in-vs-file answer -- `dir`
+        // is empty for a cwd-local file too, so SHOW PATHS must read this, not dir.empty().
+        m.fromFile = looksLikeFile(source);
+    }
 
     std::vector<Table> tabs;
     if (!parse(text, tabs, err)) {

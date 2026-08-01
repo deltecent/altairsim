@@ -124,9 +124,10 @@ void Machine::replaceWith(Machine& built) {
     // it is the only thing carrying "where this file was" to runStartup(), and a
     // startup list from the new file with the old file's directory would resolve its
     // paths against the wrong place (paths.h).
-    name    = built.name;
-    dir     = built.dir;
-    startup = built.startup;
+    name     = built.name;
+    dir      = built.dir;
+    fromFile = built.fromFile;
+    startup  = built.startup;
 }
 
 bool Machine::remove(const std::string& id, std::string& err) {

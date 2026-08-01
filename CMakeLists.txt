@@ -969,6 +969,22 @@ add_test(NAME docs-manual
 set_tests_properties(docs-manual PROPERTIES LABELS acceptance TIMEOUT 60)
 
 # ---------------------------------------------------------------------------
+# THE PACKAGE MAP AND THE MANUAL MUST NAME THE SAME PACKAGE.
+#
+# docs-manual (above) is a blacklist: it proves the manual names nothing OUTSIDE the package,
+# but never reads docs/package.map. This is the other half -- the cheap one: a text comparison
+# proving docs/package.map (the producer's manifest) and docs/manual/package.md (the reader's
+# manifest) ship the same set. It caught the manual promising examples/debugger while the map
+# did not. The EXPENSIVE half -- assemble the zip and run the manual's commands against it --
+# still needs build-package.sh under a workflow and is deliberately not here.
+# ---------------------------------------------------------------------------
+add_test(NAME docs-package
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/docs-package.cmake)
+set_tests_properties(docs-package PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
 # The PDFs. NOT part of the build, and it must never become part of it.
 #
 # altairsim's loudest claim is that it builds with a C++20 compiler and CMake and nothing
@@ -1308,6 +1324,20 @@ if(EXPECT_EXECUTABLE)
                    $<TARGET_FILE:altairsim>
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80-wav.toml)
   set_tests_properties(acceptance-trek80-wav PROPERTIES LABELS acceptance TIMEOUT 180)
+
+  # AND THE SHIPPED FILE ITSELF, unmodified -- acceptance-trek80-shipped. The two fixtures
+  # above prove the mechanism and the decoder, but they are flat-out rewrites of the product;
+  # until now nothing booted examples/sol/trek80.toml, the file a user actually runs, with its
+  # real 2.045 MHz clock, its `SET vdm0 cursor=steady` line and its config-relative TRK80.WAV.
+  # This does, through the same driver, so a regression in the shipped machine file -- a broken
+  # `startup`, a moved tape, a wrong clock -- fails here where the fixtures cannot see it. It
+  # stays cheap because the .WAV decodes at full speed regardless of the throttled CPU (~5 s).
+  add_test(NAME acceptance-trek80-shipped
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol/trek80.toml)
+  set_tests_properties(acceptance-trek80-shipped PROPERTIES LABELS acceptance TIMEOUT 180)
 
   # A SECOND GAME, A SECOND TAPE. trek80 proves the mechanism and the decoder on one tape;
   # this proves ATC off its own -- so a game tape cannot ship without something reading it.
