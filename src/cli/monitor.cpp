@@ -457,6 +457,113 @@ std::vector<std::pair<std::string, CommandDef>> Monitor::boardVerbs() const {
     return v;
 }
 
+// ---------------------------------------------------------------------------
+// Tab completion (DESIGN.md 10.4). A pure read over the same reflection SET uses --
+// see the header. The word under the cursor is the run of non-space bytes ending there;
+// the tokens before it decide what its candidates are. Nothing here reports or mutates.
+// ---------------------------------------------------------------------------
+Completions Monitor::complete(const std::string& line) {
+    Completions comp;
+
+    // The fragment under the cursor: back up to the last space (or the line start).
+    size_t wordStart = line.size();
+    while (wordStart > 0 && !std::isspace((unsigned char)line[wordStart - 1])) --wordStart;
+    std::string frag = line.substr(wordStart);
+    comp.replaceFrom = wordStart;
+
+    std::vector<std::string> toks = tokenize(line);
+    bool atNewWord = line.empty() || std::isspace((unsigned char)line.back());
+    size_t wordIdx = atNewWord ? toks.size() : (toks.empty() ? 0 : toks.size() - 1);
+
+    const std::string U = upper(frag);
+    auto keep = [&](const std::string& cand) {
+        if (upper(cand).compare(0, U.size(), U) == 0) comp.matches.push_back(cand);
+    };
+
+    // ---- word 0: a command name (built-ins, then the verbs cards bring) ----
+    if (wordIdx == 0) {
+        for (const CommandDef& c : commands()) keep(c.name);
+        for (const auto& bv : boardVerbs())    keep(bv.second.name);
+        std::sort(comp.matches.begin(), comp.matches.end());
+        comp.matches.erase(std::unique(comp.matches.begin(), comp.matches.end()),
+                           comp.matches.end());
+        comp.suffix = " ";
+        return comp;
+    }
+
+    // Past word 0 is command-specific; only SET is wired for now. Anything else -> no
+    // matches, so Tab is simply inert there.
+    const CommandDef* cmd = toks.empty() ? nullptr : resolveCommand(toks[0]);
+    if (!cmd || std::string(cmd->name) != "SET") return comp;
+
+    // board() reports errors and trips failed_, which completion must never do. This is
+    // its prefix scan with the reporting removed -- a unique hit or nothing.
+    auto resolveQuiet = [&](const std::string& id) -> Board* {
+        if (Board* b = m_.find(id)) return b;
+        std::string want = lowerAscii(id);
+        Board* hit = nullptr;
+        int n = 0;
+        for (const auto& b : m_.boards()) {
+            std::string have = lowerAscii(b->id);
+            if (have.size() <= want.size() || have.compare(0, want.size(), want) != 0) continue;
+            bool allDigits = true;
+            for (size_t i = want.size(); i < have.size(); i++)
+                allDigits = allDigits && have[i] >= '0' && have[i] <= '9';
+            if (allDigits) { hit = b.get(); ++n; }
+        }
+        return n == 1 ? hit : nullptr;
+    };
+
+    // ---- SET word 1: the target -- a board id, or a pseudo-target ----
+    if (wordIdx == 1) {
+        for (const auto& b : m_.boards()) keep(b->id);
+        for (const char* kw : {"CONSOLE", "DISPLAY", "REG", "BUS"}) keep(kw);
+        comp.suffix = " ";
+        return comp;
+    }
+
+    // ---- SET word 2: a property key, or (past `=`) that property's legal value ----
+    if (wordIdx == 2) {
+        const std::string& target = toks[1];
+
+        // Whatever this SET targets, its schema. A unit target (id:unit) is not completed
+        // yet -- an easy follow-up.
+        std::vector<Property> props;
+        if (is(target, "CONSOLE"))
+            props = Console::instance().properties();
+        else if (is(target, "DISPLAY"))
+            props = Display::properties();
+        else if (target.find(':') == std::string::npos) {
+            if (Board* b = resolveQuiet(target)) props = b->properties();
+        }
+
+        size_t eq = frag.find('=');
+        if (eq == std::string::npos) {  // the KEY
+            for (const Property& p : props) keep(p.name);
+            comp.suffix = "=";
+            return comp;
+        }
+
+        // the VALUE -- only the run after `=` is replaced, and only enum props offer one.
+        const std::string Ukey = upper(frag.substr(0, eq));
+        const std::string valFrag = frag.substr(eq + 1);
+        const std::string Uval = upper(valFrag);
+        comp.replaceFrom = wordStart + eq + 1;
+        for (const Property& p : props) {
+            bool match = Ukey == upper(p.name);
+            for (const std::string& a : p.aliases) match = match || Ukey == upper(a);
+            if (!match) continue;
+            for (const std::string& ch : p.choices)
+                if (upper(ch).compare(0, Uval.size(), Uval) == 0) comp.matches.push_back(ch);
+            break;
+        }
+        comp.suffix = " ";
+        return comp;
+    }
+
+    return comp;
+}
+
 bool Monitor::boardCommand(const std::vector<std::string>& a, std::ostream& out) {
     std::string w = upper(a[0]);
 
@@ -4549,6 +4656,10 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
         g_display->pollEvents();
         if (g_display->takeQuitRequest()) g_display->closeWindow();
     });
+
+    // Tab at the prompt completes commands, board ids, property names and their values --
+    // all off the same reflection SET reads (complete(), above).
+    ed.setCompleter([this](const std::string& s) { return complete(s); });
 
     // Lend this input to any interactive command (EDIT) for the life of the loop, and
     // take it back on the way out -- through every exit, including a `break`. Cleared to

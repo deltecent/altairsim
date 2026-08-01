@@ -598,6 +598,7 @@ add_executable(altair_tests
   tests/test_roms.cpp
   tests/test_phantom.cpp
   tests/test_cli.cpp
+  tests/test_lineedit.cpp
   tests/test_boundary.cpp
   tests/test_numbers.cpp
   tests/test_units.cpp

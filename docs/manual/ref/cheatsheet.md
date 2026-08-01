@@ -12,6 +12,17 @@
 | `RUN` | Resume, at the exact instruction it stopped on. |
 | `QUIT` | Leave. (There is no `EXIT`.) |
 
+## Editing the command line
+
+`Tab` completes what you are typing — a command, then a board id, then its property names, then a property's values (`SET mem0 fill=` then `Tab`); a second `Tab` lists the choices. `Up`/`Down` walk this session's history.
+
+| Key | Does |
+|---|---|
+| `Ctrl-A` / `Ctrl-E` (or `Home` / `End`) | start / end of line |
+| `Alt-B` / `Alt-F` (or `Ctrl-Left` / `Ctrl-Right`) | back / forward one word |
+| `Ctrl-W` / `Ctrl-K` / `Ctrl-U` | erase word behind / to end of line / whole line |
+| `Backspace` / `Delete` | erase before / under the cursor |
+
 ## Command line
 
 ```

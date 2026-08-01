@@ -467,6 +467,16 @@ void cheatsheet(const std::string& dir) {
          "| `RUN` | Resume, at the exact instruction it stopped on. |\n"
          "| `QUIT` | Leave. (There is no `EXIT`.) |\n\n";
 
+    o << "## Editing the command line\n\n"
+         "`Tab` completes what you are typing — a command, then a board id, then its property "
+         "names, then a property's values (`SET mem0 fill=` then `Tab`); a second `Tab` lists "
+         "the choices. `Up`/`Down` walk this session's history.\n\n"
+         "| Key | Does |\n|---|---|\n"
+         "| `Ctrl-A` / `Ctrl-E` (or `Home` / `End`) | start / end of line |\n"
+         "| `Alt-B` / `Alt-F` (or `Ctrl-Left` / `Ctrl-Right`) | back / forward one word |\n"
+         "| `Ctrl-W` / `Ctrl-K` / `Ctrl-U` | erase word behind / to end of line / whole line |\n"
+         "| `Backspace` / `Delete` | erase before / under the cursor |\n\n";
+
     o << "## Command line\n\n"
          "```\n"
          "altairsim [options] [machine]\n"

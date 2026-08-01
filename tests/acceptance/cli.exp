@@ -55,6 +55,26 @@ expect {
 }
 expect -ex "altairsim> "
 
+# ---- 3b. TAB COMPLETION and history recall -- both tty-only (DESIGN.md 10.4). ----
+# Neither exists under a pipe: getline sees no Tab and no escape sequences. Tab completes
+# a unique command prefix (BOAR -> BOARDS) and runs it; then the up-arrow recalls that same
+# line. Both are asserted by the command's own output coming back, not by the echoed line --
+# the editor repaints with escape sequences, so matching the OUTPUT is the honest check.
+send "BOAR\t\r"
+expect {
+    -ex "cpu0" { ok "Tab completed BOAR -> BOARDS and the command ran" }
+    timeout    { fail "Tab did not complete the command prefix" }
+}
+expect -ex "altairsim> "
+
+# ESC [ A is the up-arrow. It recalls the last line (BOARDS), and Enter re-runs it.
+send "\033\[A\r"
+expect {
+    -ex "cpu0" { ok "the up-arrow recalled the last command from history" }
+    timeout    { fail "history recall (up-arrow) did not re-run the command" }
+}
+expect -ex "altairsim> "
+
 # ---- 4. FLAT OUT IS THE DEFAULT (Patrick, 2026-07-13). ----
 # The crystal is a property of the CPU card, and with no crystal the run loop does not
 # sleep. This is the line that used to be a lie: `clock_hz = 0` was documented as "runs
