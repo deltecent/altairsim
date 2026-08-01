@@ -1325,6 +1325,20 @@ if(EXPECT_EXECUTABLE)
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80-wav.toml)
   set_tests_properties(acceptance-trek80-wav PROPERTIES LABELS acceptance TIMEOUT 180)
 
+  # AND THE SHIPPED FILE ITSELF, unmodified -- acceptance-trek80-shipped. The two fixtures
+  # above prove the mechanism and the decoder, but they are flat-out rewrites of the product;
+  # until now nothing booted examples/sol/trek80.toml, the file a user actually runs, with its
+  # real 2.045 MHz clock, its `SET vdm0 cursor=steady` line and its config-relative TRK80.WAV.
+  # This does, through the same driver, so a regression in the shipped machine file -- a broken
+  # `startup`, a moved tape, a wrong clock -- fails here where the fixtures cannot see it. It
+  # stays cheap because the .WAV decodes at full speed regardless of the throttled CPU (~5 s).
+  add_test(NAME acceptance-trek80-shipped
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol/trek80.toml)
+  set_tests_properties(acceptance-trek80-shipped PROPERTIES LABELS acceptance TIMEOUT 180)
+
   # A SECOND GAME, A SECOND TAPE. trek80 proves the mechanism and the decoder on one tape;
   # this proves ATC off its own -- so a game tape cannot ship without something reading it.
   add_test(NAME acceptance-atc
