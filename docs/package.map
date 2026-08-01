@@ -76,6 +76,7 @@ DIR  examples/ai-mcp     <=  examples/ai-mcp
 # ---------------------------------------------------------------------------
 
 FILE  DRIVING-WITH-AI.md   <=  docs/DRIVING-WITH-AI.md
+FILE  cheatsheet.md        <=  docs/manual/ref/cheatsheet.md
 FILE  LICENSE              <=  LICENSE
 FILE  LICENSE-SDL3         <=  LICENSE-SDL3
 

@@ -154,6 +154,19 @@ off the board itself, so ask `board_types` what a card can be told rather than g
 `OUT`, `DISASM`, …) and returns its text — the escape hatch for anything without a dedicated
 tool.
 
+## Knowing the commands
+
+You do not have to memorize the monitor. Two ways to get the whole surface:
+
+- **`cheatsheet.md`, shipped beside this file** — the full `altairsim [options]` block, every
+  monitor command with its abbreviation and usage, every board and machine, the `CONNECT`
+  endpoint table, and a machine-file skeleton. It is generated from the program, so it matches
+  the binary you were given. Read it once for the lay of the land.
+- **Ask the running machine.** `monitor {command: "HELP"}` lists every command;
+  `monitor {command: "HELP <cmd>"}` prints one command's abbreviation, usage and detail
+  (`?` is the same as `HELP`). For the MCP/board surface, `tools/list` and `board_types`
+  self-describe.
+
 ## The pattern: an expect loop
 
 One `run` per guest command, matching the prompt each time:
@@ -227,7 +240,8 @@ part reading the registers — the same way you would at a front panel, but with
 doing the bookkeeping. The `examples/ai-mcp/` walkthrough does exactly this to find a planted bug:
 it breaks at the load address, disassembles the loop, and single-steps until a register shows the
 wrong value — then fixes the source and reassembles. The full command set is in the User Manual's
-**Debugging** chapter (`altairsim-manual.pdf`).
+**Debugging** chapter (`altairsim-manual.pdf`), and every command's syntax is in `cheatsheet.md`
+beside this file.
 
 ## Attaching a serial port to a card
 
@@ -310,4 +324,5 @@ CP/M** (warm boot), so the guest keeps it. There is no `BOOT` verb — the DBL b
 
 The **User Manual** (`altairsim-manual.pdf`, shipped beside this file) is the full reference —
 the machines, the boards, the monitor, serial, disks, and the MCP server in depth. This guide
-is the operator's crib for driving it all through MCP.
+is the operator's crib for driving it all through MCP, and **`cheatsheet.md`** (also beside this
+file) is the at-a-glance list of every option and command when you just need the syntax.
