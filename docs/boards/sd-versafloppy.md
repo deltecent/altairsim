@@ -105,8 +105,9 @@ Track** command; the emulated controller lays each track's geometry down as it a
 moment (the D6 density bit). A **blank** disk — `MOUNT drive0 blank.dsk CREATE media=NAME` — mounts
 unformatted (every read is Record Not Found) and **grows** into a valid image as the guest formats
 it, one track at a time, capped at the named format's size. A full disk **reformats** in place at
-the same size. Double-sided formats grow side 0 fully, then side 1 (the ascending-slot-order
-requirement of `host/disk.h`).
+the same size. Double-sided formats record both sides of a cylinder before stepping (the DDBIOS
+`FMAT`), which is ascending image-slot order under the controller's cylinder-major layout — so a
+double-sided blank grows contiguously (the ascending-slot-order requirement of `host/disk.h`).
 
 The per-track byte budget is one disk revolution at the chip's data rate: **`rate / (8 × rev/s)`**,
 with 8″ drives at 360 RPM (6 rev/s) and 5.25″ minis at 300 RPM (5 rev/s) — so 5208/10416 bytes for

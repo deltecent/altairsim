@@ -20,6 +20,15 @@ taken from the controller you are mounting on, not guessed. An existing `disk.ds
 overwritten — remove it, or mount it directly. (A single-sided CP/M disk round-trips
 byte-for-byte.)
 
+### VersaFloppy double-sided disks lay out cylinder-major
+
+The SD Systems VersaFloppy now stores a double-sided image **cylinder-major** — both sides of a
+cylinder adjacent (`T0H0, T0H1, T1H0, …`) — which is how the `vf.z80` dump tool writes these
+disks and how the DDBIOS `FMAT` records them (it formats both sides of a cylinder before stepping
+to the next). Single-sided disks, and the double-sided SDOS master already in the tree, are
+unaffected. This also flows into the `.IMD` conversion above: a double-sided ImageDisk mounted on
+a VersaFloppy is now emitted in the same cylinder-major order the controller reads back.
+
 ### Tab completion, and a fuller line editor at the prompt
 
 `Tab` now completes what you are typing at the monitor prompt — a command, then a board id,

@@ -64,10 +64,11 @@ public:
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;
 
-    // The VersaFloppy lays every disk head-major (mount() always passes interleaved=false),
-    // so a converted IMD must be emitted the same way (host/imd.h). This is a constant here,
-    // not a probe result, because the flag does not vary by format on this controller.
-    bool disksInterleaved(uint64_t) const override { return false; }
+    // No disksInterleaved() override: the VersaFloppy lays disks cylinder-major (head-minor),
+    // which is Board's default, so a converted IMD is emitted that way too (host/imd.h). The
+    // order is fixed by the tool that dumps these disks (vf.z80, cylinder-major over XMODEM) and
+    // matched by the DDBIOS format itself, which writes both sides of a cylinder before stepping
+    // (DDB200.ASM NXTRK) -- see mount().
 
     std::vector<std::string> subUnitTables() const override { return {"drive"}; }
     std::vector<Property>    subUnitProperties(const std::string& table) const override;
