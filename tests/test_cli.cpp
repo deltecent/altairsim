@@ -763,6 +763,55 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
+    // SHOW PATHS: "built in to the binary" is a claim about ORIGIN -- whether a file
+    // was loaded -- NOT about whether the machine file's dirname is empty. A file NAMED
+    // IN THE CWD (`altairsim foo.toml` from foo.toml's own folder, which is how every
+    // example README starts) has an empty dirname and is still a file; reading empty-dir
+    // as built-in made SHOW PATHS lie precisely there. `fromFile` carries the fact.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW PATHS tells a cwd machine file from a built-in machine");
+    {
+        std::string err;
+        const char* kText = "[machine]\nname = \"t\"\n";
+
+        // Built-in: the source is a scheme, not a file. SHOW PATHS says so.
+        Machine mbi;
+        CHECK(loadTomlText(kText, "builtin:default", mbi, err), "a built-in source loads");
+        CHECK(!mbi.fromFile, "a builtin: source is not a file");
+        Monitor            monbi(mbi);
+        std::ostringstream obi;
+        monbi.exec("SHOW PATHS", obi);
+        CHECK(obi.str().find("built in to the binary") != std::string::npos,
+              "a built-in machine reports it is built in");
+
+        // A file NAMED IN THE CWD -- a bare filename, empty dirname. It is NOT built in.
+        Machine mcwd;
+        CHECK(loadTomlText(kText, "trek80.toml", mcwd, err), "a cwd file source loads");
+        CHECK(mcwd.fromFile, "a bare .toml source is a file");
+        CHECK(mcwd.dir.empty(), "...with an empty dirname -- which is the whole trap");
+        Monitor            moncwd(mcwd);
+        std::ostringstream ocwd;
+        moncwd.exec("SHOW PATHS", ocwd);
+        CHECK(ocwd.str().find("built in to the binary") == std::string::npos,
+              "a machine file in the cwd is NOT reported built in (the bug this fixes)");
+        CHECK(ocwd.str().find("machine file") != std::string::npos,
+              "...it prints a machine file row instead");
+
+        // A file named THROUGH a directory keeps behaving as before: its dir is shown.
+        Machine msub;
+        CHECK(loadTomlText(kText, "examples/sol/trek80.toml", msub, err), "a subdir file loads");
+        CHECK(msub.fromFile, "a path'd .toml is a file");
+        CHECK(msub.dir == "examples/sol", "its dirname is carried through");
+        Monitor            monsub(msub);
+        std::ostringstream osub;
+        monsub.exec("SHOW PATHS", osub);
+        CHECK(osub.str().find("built in to the binary") == std::string::npos,
+              "a machine file in a subdir is not built in either");
+        CHECK(osub.str().find("examples/sol") != std::string::npos,
+              "...and its directory is shown, resolved absolute");
+    }
+
+    // -----------------------------------------------------------------------
     // A VERB EXISTS ONLY WHILE THE CARD THAT BRINGS IT IS IN A SLOT (core/board.h).
     //
     // This is the whole claim of board-injected commands, and it is why REWIND is not
