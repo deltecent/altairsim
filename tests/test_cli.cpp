@@ -2389,6 +2389,8 @@ void test_achieved_hz() {
         Completions cb = cmon.complete("BOARDS ");
         CHECK(has(cb, "LIST") && has(cb, "REMOVE"), "BOARDS offers its subcommands");
         CHECK(has(cmon.complete("BOARDS REMOVE "), "disk0"), "BOARDS REMOVE offers the board ids");
+        CHECK(has(cmon.complete("BOARDS ADD "), "2sio") && has(cmon.complete("BOARDS ADD 2"), "2sio"),
+              "BOARDS ADD offers the registry's board type names");
 
         // SHOW: word 1 is a board id OR a sub-command keyword -- both are offered.
         Completions csh = cmon.complete("SHOW ");

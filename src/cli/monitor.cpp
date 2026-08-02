@@ -638,6 +638,13 @@ Completions Monitor::complete(const std::string& line) {
         return comp;
     }
 
+    // ---- BOARDS ADD <type> (word 2) -- the registry's type names, like SHOW BOARDS ----
+    if (name == "BOARDS" && wordIdx == 2 && is(toks[1], "ADD")) {
+        for (const BoardType& t : boardTypes()) keep(t.name);
+        comp.suffix = " ";
+        return comp;
+    }
+
     // ---- BOARDS REMOVE <id> (word 2) ----
     if (name == "BOARDS" && wordIdx == 2 && is(toks[1], "REMOVE")) {
         for (const auto& b : m_.boards()) keep(b->id);

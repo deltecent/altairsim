@@ -85,10 +85,12 @@ offers `zero` and `random`). It reads the candidates off the machine itself, so 
 plug in is completable straight away with no list to maintain; a second `Tab` lists the
 choices when more than one fits. Completion now reaches a board's **units** and the
 **other target-taking commands** too: `SET sio0:` then `Tab` offers that board's ports, and
-`SET sio0:a` completes the unit's own property names and values; `MOUNT`, `UNMOUNT`,
-`CONNECT`, `DISCONNECT` and the board verbs (`REWIND`, …) all complete their board-id or
-`id:unit` argument, filtered to what fits — `MOUNT` offers only mountable units, `CONNECT`
-only serial ones. The line editor also grew the keys it was missing: **`Home`
+`SET sio0:a` completes the unit's own property names and values. Every command that takes a
+target now completes it: `SHOW`, `MOUNT`, `UNMOUNT`, `CONNECT`, `DISCONNECT` and the board
+verbs (`REWIND`, …) all complete a board id or `id:unit` argument, filtered to what fits —
+`MOUNT` offers only mountable units, `CONNECT` only serial ones — while `SHOW` adds its
+keyword arguments (`BUS`, `MOUNTS`, …) and `BOARDS ADD` completes the board *type* names.
+The line editor also grew the keys it was missing: **`Home`
 and `End`** (and their `Ctrl-A`/`Ctrl-E` equivalents), **word motion** with `Alt-B`/`Alt-F`
 or `Ctrl-Left`/`Ctrl-Right`, and **`Ctrl-K`** to kill to the end of the line. And the
 **history now survives a restart**: it is saved to a hidden `.altairsim_history` in the
