@@ -83,7 +83,12 @@ a VersaFloppy is now emitted in the same cylinder-major order the controller rea
 then that board's property names, then a property's legal values (`SET mem0 fill=` then `Tab`
 offers `zero` and `random`). It reads the candidates off the machine itself, so a board you
 plug in is completable straight away with no list to maintain; a second `Tab` lists the
-choices when more than one fits. The line editor also grew the keys it was missing: **`Home`
+choices when more than one fits. Completion now reaches a board's **units** and the
+**other target-taking commands** too: `SET sio0:` then `Tab` offers that board's ports, and
+`SET sio0:a` completes the unit's own property names and values; `MOUNT`, `UNMOUNT`,
+`CONNECT`, `DISCONNECT` and the board verbs (`REWIND`, …) all complete their board-id or
+`id:unit` argument, filtered to what fits — `MOUNT` offers only mountable units, `CONNECT`
+only serial ones. The line editor also grew the keys it was missing: **`Home`
 and `End`** (and their `Ctrl-A`/`Ctrl-E` equivalents), **word motion** with `Alt-B`/`Alt-F`
 or `Ctrl-Left`/`Ctrl-Right`, and **`Ctrl-K`** to kill to the end of the line. And the
 **history now survives a restart**: it is saved to a hidden `.altairsim_history` in the
