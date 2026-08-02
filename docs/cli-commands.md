@@ -41,7 +41,7 @@ The eight that own their prefix, in Patrick's ranking (2026-07-11): **DUMP, STEP
 | `H` | HISTORY | the ring of recent bus cycles — always recording |
 | `M` | MOUNT | |
 | `B` | BREAK | |
-| `E` | EDIT | interactive DEPOSIT — the panel's other write, a byte at a time |
+| `E` | EDIT | interactive DEPOSIT — a byte at a time, or a mnemonic assembled in place |
 | `C` | CONFIG | |
 | `SE` | SET | beats SEARCH — you type it far more often |
 | `SH` | SHOW | |

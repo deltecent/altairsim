@@ -147,6 +147,20 @@ EDIT 100          0100 C3 3E     type 3E, Enter — written, on to 0101
                   0102 2C .      a '.' stops and returns to the monitor
 ```
 
+On a machine with a CPU, `EDIT` will also take an **instruction** where a byte would go and
+assemble it in place — `EDIT` is `DISASM` (below) read the other way. Type `IN 10` and it writes
+`DB 10`; the prompt then drops by the instruction's length, not one byte, so a two-byte instruction
+lands the next prompt two on. Operands are numbers in the console base — an `H` or `Q` suffix on the
+number overrides it — and there are no labels: this is a patch assembler, not a toolchain. A bare
+value is still a plain byte, so byte entry is unchanged. It is the 8080's instruction set; a CPU
+whose encoding is not yet assembled here keeps taking bytes.
+
+```
+EDIT 100          0100 C3 IN 10        assembles DB 10, on to 0102
+                  0102 00 LXI H,FF13   assembles 21 13 FF, on to 0105
+                  0105 76 .            '.' returns to the monitor
+```
+
 ## Disassembling — `DISASM`
 
 `DISASM` **peeks**: it reads memory without running a bus cycle. That matters, and it is not a
