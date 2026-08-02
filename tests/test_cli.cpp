@@ -2305,6 +2305,9 @@ void test_achieved_hz() {
         std::ostringstream csink;
         cmon.exec("BOARDS ADD 8080 cpu0", csink);
         cmon.exec("BOARDS ADD memory mem0", csink);
+        cmon.exec("BOARDS ADD 2sio sio0", csink);   // two serial units 'a' and 'b'
+        cmon.exec("BOARDS ADD dcdd disk0", csink);  // four mountable drives 'drive0..3'
+        cmon.exec("BOARDS ADD acr acr0", csink);    // brings the REWIND/WIND/EXTRACT verbs
 
         auto has = [](const Completions& c, const std::string& want) {
             for (const std::string& m : c.matches)
@@ -2343,6 +2346,49 @@ void test_achieved_hz() {
         // CONSOLE resolves to the host console's own schema, not a board's.
         CHECK(has(cmon.complete("SET CONSOLE base="), "octal"),
               "SET CONSOLE base= offers the console's enum values");
+
+        // SET word 1, a unit target: past the ':' the board's unit NAMES, replacing
+        // only the run after the colon (so the id typed already stays put).
+        Completions cu = cmon.complete("SET sio0:");
+        CHECK(has(cu, "a") && has(cu, "b"), "SET sio0: offers the 2SIO's two serial units");
+        CHECK(cu.replaceFrom == std::string("SET sio0:").size(),
+              "a unit fragment replaces from just after the ':'");
+        CHECK(has(cmon.complete("SET sio0:a"), "a") && !has(cmon.complete("SET sio0:a"), "b"),
+              "and the unit fragment narrows them");
+
+        // SET word 2 on a unit target: the UNIT's own properties (not the board's),
+        // resolved the way the SET executor resolves a unit.
+        Completions cuk = cmon.complete("SET sio0:a ");
+        CHECK(has(cuk, "baud") && has(cuk, "dcd"), "a unit target's word-2 keys are its unitProperties");
+        CHECK(cuk.suffix == "=", "a unit property name completes with an '=' too");
+
+        // SET word 2 value on a unit's enum property.
+        Completions cuv = cmon.complete("SET sio0:a dcd=");
+        CHECK(has(cuv, "ground") && has(cuv, "wired"), "dcd's Kind::Enum choices complete after '='");
+        CHECK(cuv.replaceFrom == std::string("SET sio0:a dcd=").size(),
+              "only the run after '=' is replaced on a unit value");
+
+        // MOUNT: word 1 is a target filtered to MOUNTABLE units. A disk board offers its
+        // drives; a serial-only board offers none past the colon.
+        Completions cm1 = cmon.complete("MOUNT ");
+        CHECK(has(cm1, "disk0") && has(cm1, "sio0"), "MOUNT offers the board ids");
+        CHECK(has(cmon.complete("MOUNT disk0:"), "drive0"), "MOUNT disk0: offers the mountable drives");
+        CHECK(cmon.complete("MOUNT sio0:").matches.empty(),
+              "a serial-only board has no mountable units, so MOUNT sio0: is inert");
+
+        // CONNECT: word 1 is a target filtered to SERIAL units -- the mirror image.
+        CHECK(has(cmon.complete("CONNECT sio0:"), "a"), "CONNECT sio0: offers the serial units");
+        CHECK(cmon.complete("CONNECT disk0:").matches.empty(),
+              "a disk board has no serial units, so CONNECT disk0: is inert");
+
+        // A verb a board brought (the 88-ACR declares REWIND): word 1 completes as an
+        // Any-kind target, so the ACR's id is offered.
+        CHECK(has(cmon.complete("REWIND "), "acr0"), "a board verb completes its word-1 target ids");
+
+        // BOARDS REMOVE is a built-in word-2 id. BOARDS word 1 offers its keywords; REMOVE then ids.
+        Completions cb = cmon.complete("BOARDS ");
+        CHECK(has(cb, "LIST") && has(cb, "REMOVE"), "BOARDS offers its subcommands");
+        CHECK(has(cmon.complete("BOARDS REMOVE "), "disk0"), "BOARDS REMOVE offers the board ids");
 
         // A command with no completion grammar wired is simply inert -- no matches, no throw.
         CHECK(cmon.complete("DUMP ").matches.empty(), "DUMP takes no completion, so Tab is inert there");

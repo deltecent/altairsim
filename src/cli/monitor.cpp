@@ -493,10 +493,19 @@ Completions Monitor::complete(const std::string& line) {
         return comp;
     }
 
-    // Past word 0 is command-specific; only SET is wired for now. Anything else -> no
-    // matches, so Tab is simply inert there.
+    // Past word 0 is command-specific. Resolve the verb the way the dispatcher does --
+    // a built-in (prefixes and all), or one a board brought (boardVerbs). An unknown
+    // word matches nothing, so Tab stays inert there.
+    std::string verbFrag = toks.empty() ? "" : upper(toks[0]);
     const CommandDef* cmd = toks.empty() ? nullptr : resolveCommand(toks[0]);
-    if (!cmd || std::string(cmd->name) != "SET") return comp;
+    std::string name = cmd ? cmd->name : "";
+    bool boardVerb = false;
+    if (!cmd)
+        for (const auto& v : boardVerbs())
+            if (std::string(v.second.name).compare(0, verbFrag.size(), verbFrag) == 0) {
+                boardVerb = true;
+                break;
+            }
 
     // board() reports errors and trips failed_, which completion must never do. This is
     // its prefix scan with the reporting removed -- a unique hit or nothing.
@@ -516,40 +525,46 @@ Completions Monitor::complete(const std::string& line) {
         return n == 1 ? hit : nullptr;
     };
 
-    // ---- SET word 1: the target -- a board id, or a pseudo-target ----
-    if (wordIdx == 1) {
-        for (const auto& b : m_.boards()) keep(b->id);
-        for (const char* kw : {"CONSOLE", "DISPLAY", "REG", "BUS"}) keep(kw);
-        comp.suffix = " ";
-        return comp;
-    }
-
-    // ---- SET word 2: a property key, or (past `=`) that property's legal value ----
-    if (wordIdx == 2) {
-        const std::string& target = toks[1];
-
-        // Whatever this SET targets, its schema. A unit target (id:unit) is not completed
-        // yet -- an easy follow-up.
-        std::vector<Property> props;
-        if (is(target, "CONSOLE"))
-            props = Console::instance().properties();
-        else if (is(target, "DISPLAY"))
-            props = Display::properties();
-        else if (target.find(':') == std::string::npos) {
-            if (Board* b = resolveQuiet(target)) props = b->properties();
+    // A board-id / id:unit fragment -- the shape every target-taking command reads
+    // (SET, MOUNT, CONNECT, a board verb...). With no colon it offers board ids (and,
+    // for SET, the pseudo-targets); past a colon it offers that board's unit NAMES,
+    // filtered to the kind the verb can act on, exactly as subunit() filters them.
+    auto completeTarget = [&](const std::string& f, UnitUse use, bool wantPseudo) {
+        size_t c = f.find(':');
+        if (c == std::string::npos) {
+            for (const auto& b : m_.boards()) keep(b->id);
+            if (wantPseudo)
+                for (const char* kw : {"CONSOLE", "DISPLAY", "REG", "BUS"}) keep(kw);
+            comp.suffix = " ";
+            return;
         }
+        Board* b = resolveQuiet(f.substr(0, c));
+        if (!b) return;  // an unresolved id has no units to offer
+        const std::string unitFrag = upper(f.substr(c + 1));
+        comp.replaceFrom = wordStart + c + 1;
+        for (const auto& u : b->units()) {
+            bool ok = use == UnitUse::Any ||
+                      (use == UnitUse::Mount && isMountable(u.kind)) ||
+                      (use == UnitUse::Connect && u.kind == UnitKind::Serial);
+            if (ok && upper(u.name).compare(0, unitFrag.size(), unitFrag) == 0)
+                comp.matches.push_back(u.name);
+        }
+        comp.suffix = " ";
+    };
 
+    // A property KEY (suffix '=' so the value types straight on), or -- past '=' -- that
+    // property's legal enum values. A board's own props and a unit's props both flow
+    // through here, so the two SET targets stay one copy of the grammar.
+    auto completeProps = [&](const std::vector<Property>& props) {
         size_t eq = frag.find('=');
         if (eq == std::string::npos) {  // the KEY
             for (const Property& p : props) keep(p.name);
             comp.suffix = "=";
-            return comp;
+            return;
         }
-
         // the VALUE -- only the run after `=` is replaced, and only enum props offer one.
         const std::string Ukey = upper(frag.substr(0, eq));
-        const std::string valFrag = frag.substr(eq + 1);
-        const std::string Uval = upper(valFrag);
+        const std::string Uval = upper(frag.substr(eq + 1));
         comp.replaceFrom = wordStart + eq + 1;
         for (const Property& p : props) {
             bool match = Ukey == upper(p.name);
@@ -559,6 +574,63 @@ Completions Monitor::complete(const std::string& line) {
                 if (upper(ch).compare(0, Uval.size(), Uval) == 0) comp.matches.push_back(ch);
             break;
         }
+        comp.suffix = " ";
+    };
+
+    // ---- SET: the target (word 1), then a property key/value (word 2) ----
+    if (name == "SET") {
+        if (wordIdx == 1) {
+            completeTarget(frag, UnitUse::Any, /*wantPseudo=*/true);
+            return comp;
+        }
+        if (wordIdx == 2) {
+            const std::string& target = toks[1];
+            std::vector<Property> props;
+            if (is(target, "CONSOLE")) {
+                props = Console::instance().properties();
+            } else if (is(target, "DISPLAY")) {
+                props = Display::properties();
+            } else {
+                size_t c = target.find(':');
+                if (c == std::string::npos) {
+                    if (Board* b = resolveQuiet(target)) props = b->properties();
+                } else if (Board* b = resolveQuiet(target.substr(0, c))) {
+                    // A unit target: its properties are the unit's, not the board's
+                    // (DESIGN.md 7.2) -- resolved the way the SET executor resolves it.
+                    UnitDef u;
+                    if (b->findUnit(target.substr(c + 1), u)) props = b->unitProperties(u.name);
+                }
+            }
+            completeProps(props);
+            return comp;
+        }
+        return comp;
+    }
+
+    // ---- the other target-taking commands: word 1 is a board id or id:unit ----
+    if (wordIdx == 1) {
+        if (name == "MOUNT" || name == "UNMOUNT") {
+            completeTarget(frag, UnitUse::Mount, /*wantPseudo=*/false);
+        } else if (name == "CONNECT" || name == "DISCONNECT") {
+            completeTarget(frag, UnitUse::Connect, /*wantPseudo=*/false);
+        } else if (name == "NOBREAK") {
+            // NOBREAK takes a bare board id -- no unit, so no colon step.
+            for (const auto& b : m_.boards()) keep(b->id);
+            comp.suffix = " ";
+        } else if (name == "BOARDS") {
+            for (const char* kw : {"LIST", "ADD", "REMOVE"}) keep(kw);
+            comp.suffix = " ";
+        } else if (boardVerb) {
+            // A verb a card brought (REWIND, ...). The verb cannot say which unit kind
+            // it acts on, so offer them all -- boardCommand() checks the kind itself.
+            completeTarget(frag, UnitUse::Any, /*wantPseudo=*/false);
+        }
+        return comp;
+    }
+
+    // ---- BOARDS REMOVE <id> (word 2) ----
+    if (name == "BOARDS" && wordIdx == 2 && is(toks[1], "REMOVE")) {
+        for (const auto& b : m_.boards()) keep(b->id);
         comp.suffix = " ";
         return comp;
     }
