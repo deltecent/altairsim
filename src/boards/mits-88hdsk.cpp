@@ -14,6 +14,14 @@ HdskBoard::HdskBoard() { drive_.resize((size_t)drives_); }
 
 // ---------------------------------------------------------------------------
 // Decode. Eight consecutive ports at the base (default 0xA0).
+//
+// Every port answers BOTH directions, and that is faithful: the host interface is an
+// 88-4PIO (Motorola 6820 PIA), which answers read AND write at each of its register
+// addresses -- the R/W line, not the address decoder, picks direction. The reference bears
+// it out (reference/88-HDSK.md sections 4-5): init WRITES control/DDR to the "status" ports
+// (OUT 160,0 / OUT 160,44 / ...) and the command protocol READS the "command" ports (IN
+// 163 / IN 167) to clear stale handshakes. So SHOW BUS IO showing IN+OUT on all eight is
+// correct -- do NOT narrow this to the per-port functional direction in the ioMap() table.
 // ---------------------------------------------------------------------------
 bool HdskBoard::decodes(const BusCycle& c) const {
     if (!enabled_) return false;

@@ -74,6 +74,13 @@ void test_dazzler() {
         CHECK(!g.daz->decodes(c), "but not the port below");
         c.addr = 0x10;
         CHECK(!g.daz->decodes(c), "nor the port above");
+        // IN: status is readable at BASE, but the format latch (BASE+1) is write-only --
+        // the card answers no read there, so the bus floats it to 0xFF (cf. the 88-C700).
+        c.type = Cycle::IoRead;
+        c.addr = 0x0E;
+        CHECK(g.daz->decodes(c), "IN BASE reads the status port");
+        c.addr = 0x0F;
+        CHECK(!g.daz->decodes(c), "IN BASE+1 does not decode -- format is write-only");
         c.type = Cycle::MemWrite;
         c.addr = 0x2000;
         CHECK(!g.daz->decodes(c), "the framebuffer is RAM -- the Dazzler decodes no memory");
