@@ -1,9 +1,9 @@
 # The Altair as it actually left Albuquerque.
 #
-# A 1975 Altair 8800 shipped with 256 BYTES on the CPU card. The first thing
-# anybody bought was memory, and the machine that made the Altair famous -- the
-# one Altair 4K BASIC was written for, and the one Gates and Allen sold to MITS
-# -- is this one: 4K of RAM at 0000-0FFF and nothing else in the backplane.
+# A 1975 Altair 8800 shipped with 256 BYTES on the CPU card and nothing else in
+# the backplane -- so that is what this machine is: 256 bytes at 0000-00FF, and no
+# ROM. The first thing anybody bought was more memory (the 4K that made the Altair
+# famous is `basic4k`); this is the machine before they did.
 #
 # It is here as the small end of the range. If a bug only shows up when almost
 # nothing is populated -- an unowned page floating to FF, a region map that
@@ -18,7 +18,7 @@
 # and it is doing exactly what the toggle switches did.
 
 [machine]
-name  = "4k"
+name  = "original"
 
 # THE FRONT PANEL, and on this machine of all machines it is not decoration. This is
 # the Altair with no ROM in it -- the one whose header, six lines up, says you
@@ -26,14 +26,14 @@ name  = "4k"
 #
 # (The switches the monitor's DEPOSIT and EXAMINE stand in for are SA0..SA15 on this
 # very card. It is the SENSE half, SA8..SA15, that the guest can read, at port FF --
-# and Altair 4K BASIC is the software that reads them: its loader asks the switches
-# what terminal it is talking to. See docs/boards/mits-frontpanel.md.)
+# and the period bootstrap loaders are the software that reads them: the loader asks
+# the switches what terminal it is talking to. See docs/boards/mits-frontpanel.md.)
 [[board]]
 type  = "fp"
 id    = "fp0"
 sense = 0x00
 
-# An 88-CPU, because of course there was one: a 4K Altair was a complete computer,
+# An 88-CPU, because of course there was one: a bare Altair was a complete computer,
 # not a memory bench. (The bench with no processor in it is `altairsim -n`, and it
 # is a real machine too -- the monitor is the bus master.)
 [[board]]
@@ -45,7 +45,9 @@ clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for th
 type = "memory"
 id   = "mem0"
 
+  # 256 bytes -- what a 1975 Altair had on the CPU card, and all it had. 0000-00FF,
+  # then empty backplane: EXAMINE 0100 floats to FF because no card drives it.
   [[board.region]]
   type = "ram"
   at   = 0000
-  size = "4K"
+  size = 256

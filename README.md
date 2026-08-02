@@ -81,7 +81,7 @@ machines built out of them:
 | `fp` | The front panel — SENSE switches at port `FF`, and the lamps. |
 | `hostbridge` | Guest ↔ host file transfer, sandboxed. **Ours, not a period card** — `R`/`W`/`HDIR`. |
 
-`altairsim --list` names the machines: `default`, `4k` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20`, and `z80`.
+`altairsim --list` names the machines: `default`, `original` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20`, and `z80`.
 
 **Both CPUs are validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 

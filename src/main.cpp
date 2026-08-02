@@ -80,7 +80,7 @@ static void usage(std::ostream& o) {
          "\n"
          "usage: altairsim [options] [machine]\n"
          "\n"
-         "  machine            a built-in name (altairsim 4k), or a config file if it\n"
+         "  machine            a built-in name (altairsim original), or a config file if it\n"
          "                     has a '/' in it or ends in .toml. Omitted: ./altairsim.toml\n"
          "                     if the working directory has one, else `default`.\n"
          "\n"

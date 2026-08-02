@@ -557,8 +557,8 @@ kind of injected service the display uses: a **USB gamepad** where SDL3 is prese
 **keyboard** as a fallback (arrows and a few keys), and nothing at all in a headless build, which
 still runs.
 
-`joystick1`/`joystick2` choose which host device drives each console. The `d7a` machine is the board
-on its own; the Dazzler examples pair it with color graphics and set the video window to be a
+`joystick1`/`joystick2` choose which host device drives each console. The Dazzler examples in
+`examples/` pair the board with color graphics and set the video window to be a
 **display, not a keyboard** (`[display] keyboard = none`), so your keystrokes drive the stick instead
 of landing at a prompt. (The board's designed-but-unbuilt sound output — a JS-1's speaker is a D/A
 the CPU writes a waveform to — is not here yet.)
@@ -804,7 +804,7 @@ period dialer program produces is not decoded into a phone number, and no number
 this card never had. Modem status (dial tone, ringing, carrier, clear-to-send) reads a fixed
 "connected and ready" value rather than following a real handshake, and the card raises no
 interrupts. `SHOW pmmi0` reports the live frame, baud, UART flags and modem lines alongside the
-base address. The **`pmmi`** machine is `default` with one of these fitted at `C0`.
+base address. To try one, add it to `default` — `BOARDS ADD pmmi` fits it at `C0`.
 
 ---
 

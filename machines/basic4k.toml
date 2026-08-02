@@ -1,7 +1,8 @@
 # The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR.
 #
-# This is `4k` -- the bare 1975 machine -- with the two I/O cards that made it useful,
-# and it exists to run ONE artifact end to end: `examples/basic/4K BASIC Ver 3-1.tap`, loaded
+# A 1975 Altair with 4K of RAM and the two I/O cards that made it useful -- an 88-SIO
+# console and an 88-ACR cassette -- and it exists to run ONE artifact end to end: the
+# tape `examples/basic/4K BASIC Ver 3-1.tap`, loaded
 # by the period bootstrap MITS shipped (assembled in `tapes/4KBasic31/LDR4K31.ASM`, and in
 # `examples/basic/LDR4K31.HEX` beside the tape), unmodified, off a real cassette image.
 # That is the 88-ACR's acceptance test, and it is the reason this file is here rather
