@@ -104,5 +104,12 @@ release-ish work where the slow CPU gate matters.
 `cd` that leaves the build directory can make `ctest` not run at all, which looks identical
 to success if you are only checking for the word "error".
 
+**Warnings fail CI (GCC/Clang).** Every CI leg configures with `-DWERROR=on`, which adds
+`-Werror` on GCC and Clang, so a warning on either reds a PR before merge. It is off by default
+locally; reproduce the gate before pushing a code change with
+`cmake -B build -DWERROR=on && cmake --build build -j`. MSVC is **not** gated yet — `/W4` has a
+backlog to clear first (issue #238), so `-DWERROR=on` is a no-op there and its warnings stay
+visible but non-fatal.
+
 The acceptance tests are not smoke tests: each boots real period software on a whole machine
 through the real CLI and reads back what landed on the terminal.

@@ -9,10 +9,25 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
 endif()
 
+# WERROR turns those warnings into build failures. OFF by default -- a casual build, or an
+# unfamiliar toolchain whose newer diagnostics we have not yet chased down, must still compile.
+# CI passes -DWERROR=on on every leg (.github/workflows/ci.yml), so a warning fails the build
+# before merge; run `cmake -B build -DWERROR=on` locally to reproduce that gate before a PR.
+#
+# GCC and Clang only, for now. Both are clean at -Wall -Wextra -Wpedantic. MSVC /W4 is not:
+# it carries a pre-existing backlog (intentional integer narrowing, which the other two do not
+# flag, plus some shadowing) that has to be cleared before /WX can go on without failing every
+# build. That work is issue #238; until it lands, WERROR is a no-op on MSVC -- /W4 warnings
+# stay visible in the log but do not fail the build.
+option(WERROR "Treat compiler warnings as errors on GCC/Clang; CI enforces this (MSVC: see #238)" OFF)
 if(MSVC)
   add_compile_options(/W4 /permissive-)
+  # No /WX yet -- see #238.
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
+  if(WERROR)
+    add_compile_options(-Werror)
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------

@@ -104,8 +104,11 @@ At configure time you may see:
 
 That only disables one optional *test*; it does not affect building the binary.
 Install `expect` if you want that test. The build compiles with
-`-Wall -Wextra -Wpedantic` and may print warnings under GCC, but there is no
-`-Werror`, so warnings never fail the build.
+`-Wall -Wextra -Wpedantic` and may print warnings under GCC. By default warnings
+do not fail the build, but configuring with `-DWERROR=on` promotes them to errors
+(adds `-Werror`) — and **CI builds every leg with `-DWERROR=on`**, so a warning
+fails a PR before it merges. Run `cmake -B build -DWERROR=on` yourself to reproduce
+that gate before opening one.
 
 > **A note on the source, for the record.** GCC's libstdc++ is stricter than
 > macOS's libc++ about transitive includes: `src/util/json.cpp` used

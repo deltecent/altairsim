@@ -181,8 +181,10 @@ This matches exactly what CI does.
 > ```
 > The binary is then `build\altairsim.exe`.
 
-The build compiles with `/W4 /permissive-` and may print warnings, but there is no
-`/WX`, so warnings never fail the build.
+The build compiles with `/W4 /permissive-` and may print warnings; they do not fail the
+build. Unlike the GCC and Clang legs, the MSVC leg is **not** yet promoted to warnings-as-errors
+by `-DWERROR=on` — `/W4` has a pre-existing backlog to clear first (issue #238), so `/WX` is
+deliberately not added here. MSVC warnings stay visible in the log but non-fatal for now.
 
 ---
 
