@@ -62,9 +62,12 @@ right); every lit bit takes the format-nibble color.
 
 ## How it is simulated
 
-- **Decodes** `IoRead`/`IoWrite` at `port` and `port+1`, and nothing else — no memory,
-  no interrupt wire, no `pHOLD`. `read(BASE)` returns the status byte; `read(BASE+1)`
-  floats `0xFF` (format is write-only). `write` latches on/off + base, or the format.
+- **Decodes** a *write* at `port` and `port+1` but a *read* only at `port` — no memory,
+  no interrupt wire, no `pHOLD`. `read(BASE)` returns the status byte; `BASE+1` (format) is
+  write-only, so the card decodes no read there and the **bus** floats it to `0xFF` — the
+  card never impersonates the bus's own float (cf. the 88-C700). `write` latches on/off +
+  base, or the format. `SHOW BUS IO` therefore shows `BASE` as `IN OUT` and `BASE+1` as
+  `-- OUT`.
 - **`pump()`** reads the live 512-byte / 2 KB framebuffer out of main RAM with the
   side-effect-free `Bus::peek()` (no bus cycle, no strobe, no snoop — so a render never
   trips `BREAK MEM R` or a snooping card) and paints it into a `Surface` at the mode's

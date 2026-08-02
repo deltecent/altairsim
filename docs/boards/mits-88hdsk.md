@@ -39,6 +39,13 @@ Eight consecutive ports (default base **`A0h`** = 240 octal), all status in **bi
 | A6 | ADSTA | in | the write port will take a byte |
 | A7 | ADATA | out | command **LOW** byte / write-buffer data |
 
+The **Dir** column is the *functional* direction the driver uses each port — it is not what
+the address decoder gates. The host interface is an 88-4PIO (Motorola 6820 PIA), which
+answers both a read and a write at every one of its eight register addresses; init even
+writes control/DDR to the "in" status ports and the protocol reads the "out" command ports
+to clear handshakes. So `SHOW BUS IO` correctly shows **IN OUT** on all eight — this is
+faithful, not a decode that is too wide.
+
 A command is a 16-bit word: low byte to A7, then high byte to A3 (which starts it). Opcode is
 bits 15:12. The seven commands: **Seek** (0), **Write Sector** (2), **Read Sector** (3),
 **Write Buffer** (4), **Read Buffer** (5), **Read Status** (6), **Set Byte** (8). Read/Write

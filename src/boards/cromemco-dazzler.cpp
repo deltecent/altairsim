@@ -55,18 +55,21 @@ DazzlerBoard::DazzlerBoard() = default;
 // ---------------------------------------------------------------------------
 bool DazzlerBoard::decodes(const BusCycle& c) const {
     if (!enabled_) return false;
-    switch (c.type) {
-        case Cycle::IoRead:
-        case Cycle::IoWrite:
-            return c.port() == port_ || c.port() == (uint8_t)(port_ | 1);
-        default:
-            return false;
-    }
+    uint8_t p = c.port();
+    // BASE+1 is the write-only format latch: it has no read-back path onto the data bus, so
+    // the card answers a WRITE there but not a READ. Claiming IN BASE+1 would make the card
+    // impersonate the bus's own float (see the 88-C700, mits-88c700.cpp) -- and light a
+    // phantom IN column in SHOW BUS IO. The manual lists two output ports and one input port.
+    if (c.type == Cycle::IoWrite) return p == port_ || p == (uint8_t)(port_ | 1);
+    if (c.type == Cycle::IoRead) return p == port_;  // status only
+    return false;
 }
 
 uint8_t DazzlerBoard::read(const BusCycle& c) {
-    if (c.port() == port_) return statusByte();  // IN BASE -- status
-    return 0xFF;                                  // IN BASE+1 -- format is write-only, floats
+    // Only BASE is read: decodes() does not claim BASE+1, so the bus floats it -- no 0xFF is
+    // manufactured here.
+    (void)c;
+    return statusByte();  // IN BASE -- status
 }
 
 void DazzlerBoard::write(const BusCycle& c) {
