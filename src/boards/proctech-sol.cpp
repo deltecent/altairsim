@@ -448,6 +448,21 @@ std::string SolBoard::activityLabel() const {
            tapeCounterText(deckSeconds(d, p), deckTotalSeconds(d));
 }
 
+// BREAK TAPE STOP -- the rising edge of EITHER deck reaching its auto-stop mark. Both
+// decks are sampled every call (an edge on one must not mask an edge on the other), so
+// their wasAtStop levels stay in step; the deck's own edge fires once per load. See
+// AcrBoard::takeAutoStop() for the sticky-level / pre-run-drain reasoning that is the
+// same here, per transport.
+bool SolBoard::takeAutoStop() {
+    bool fired = false;
+    for (Deck* d : {&deck1_, &deck2_}) {
+        bool now  = d->tape && d->mode == TapeStream::Mode::Play && d->tape->atStop();
+        if (now && !d->wasAtStop) fired = true;
+        d->wasAtStop = now;
+    }
+    return fired;
+}
+
 // The two speeds the CUTS UART really runs at. The guest picks between them at
 // OUT 0FAh D5 -- so both are this card's hardware, and choosing by confidence at MOUNT
 // is reading a switch's position, not guessing at a standard.

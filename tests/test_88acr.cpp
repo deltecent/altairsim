@@ -29,9 +29,12 @@
 #include "test.h"
 
 #include "boards/mits-88acr.h"
+#include "boards/s100-memory.h"
 #include "chips/uart1602.h"
 #include "core/clock.h"
+#include "core/debug.h"
 #include "core/machine.h"
+#include "cpu/cpu.h"
 #include "host/media.h"
 #include "host/tape.h"
 #include "host/tapecodec.h"
@@ -749,5 +752,72 @@ void test_88acr() {
             CHECK(rest == "BCDEFGHIJ",
                   "absolute cadence: every byte on its own mark, the lateness never piling up");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. BREAK TAPE STOP -- a DEVICE-EVENT breakpoint. The debugger halts the machine when
+    // the deck reaches its auto-stop mark, so you can stop right after a load lands without
+    // knowing the loader's end address. It is POLLED at the instruction boundary
+    // (core/debug.h), NOT observed on the bus -- there is no bus cycle for "the tape ran
+    // out". This is the first end-to-end proof of the run loop's device-event path.
+    // -----------------------------------------------------------------------
+    SECTION("88-ACR -- BREAK TAPE STOP halts the machine when the tape auto-stops");
+    {
+        // 300 bytes of tape with an auto-stop mark at 0:05 == 150 bytes (300 baud, 10-bit
+        // frames -> a byte is 1/30 s). A tiny 8080 loop reads the data port forever; the
+        // tape advances only as the guest reads it, so the head walks to the mark and parks.
+        // rate defaults to `full`, so the debugger empties it as fast as it steps.
+        std::string big;
+        for (int i = 0; i < 300; ++i) big += char(i & 0xFF);
+        withTape(big);
+
+        Machine     m;
+        std::string err;
+        m.bus.setVerify(true);
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region reg;
+        reg.kind = RegionKind::Ram;
+        reg.at   = 0;
+        reg.size = 0x10000;
+        mem->addRegion(reg, err);
+        setProperty(*mem, "fill", "zero", err);
+        auto* acr = dynamic_cast<AcrBoard*>(m.add("acr", "acr0", err));
+        m.add("8080", "cpu0", err);
+        CpuCore* cpu = m.cpu();
+        m.power();
+
+        CHECK(acr->mount("tape", "t.tap", false, err), "a cassette goes in");
+        CHECK(setUnitProperty(*acr, "tape", "stop", "0:05", err), "an auto-stop mark at 150 bytes");
+
+        // poll: IN 06 ; RRC (status bit0 is DAV, active-LOW, into carry) ; JC poll while no
+        //       data ; IN 07 (read the byte -- this is what advances the tape) ; JMP poll.
+        const uint8_t prog[] = {0xDB, 0x06, 0x0F, 0xDA, 0x00, 0x00, 0xDB, 0x07, 0xC3, 0x00, 0x00};
+        for (uint16_t i = 0; i < sizeof prog; ++i) m.bus.memWrite(i, prog[i]);
+        cpu->setPc(0);
+
+        int bp = m.debug.add(BreakKind::TapeStop, 0, 0);
+        RunResult r = m.debug.run(1000000);   // a cap, so a MISS fails the test instead of hanging
+        CHECK(r.why == StopReason::TapeStop, "the run stops on the tape's auto-stop");
+        CHECK(r.bp == bp, "at the breakpoint we armed");
+        CHECK(acr->tape()->pos() == 150 && acr->tape()->atStop(),
+              "the head is parked exactly at the 150-byte mark");
+        CHECK(m.debug.breakpoints()[0].hits == 1, "the hit is counted once");
+
+        // A SECOND RUN DOES NOT RE-FIRE. The head is still parked at the mark, and atStop()
+        // is a sticky LEVEL -- but the breakpoint is an EDGE, and the debugger drained the
+        // latch at the start of this run. So the guest just spins in the poll and runs out
+        // its step budget: no ghost stop for a tape that was already stopped.
+        RunResult r2 = m.debug.run(50000);
+        CHECK(r2.why == StopReason::Steps, "parked at the mark, it does not fire again");
+        CHECK(m.debug.breakpoints()[0].hits == 1, "and the hit count did not move");
+
+        // REWIND MOVES THE HEAD OFF THE MARK, so the next load reaches it fresh and fires
+        // again -- exactly what you want when you reload a tape to catch it a second time.
+        std::ostringstream o;
+        CHECK(acr->runCommand("REWIND", {"REW", "acr0:tape"}, o, err), "rewind to the top");
+        cpu->setPc(0);
+        RunResult r3 = m.debug.run(1000000);
+        CHECK(r3.why == StopReason::TapeStop, "a fresh load fires the breakpoint again");
+        CHECK(m.debug.breakpoints()[0].hits == 2, "the second stop is counted");
     }
 }

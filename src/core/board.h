@@ -570,6 +570,16 @@ public:
     // repaint must not perturb the machine it is describing.
     virtual std::string activityLabel() const { return {}; }
 
+    // A READ-AND-CLEAR "did this device reach its auto-stop mark since you last asked?"
+    // -- the board half of a BREAK TAPE STOP device-event breakpoint (core/debug.h). The
+    // debugger polls it at the instruction boundary while such a breakpoint is armed, the
+    // same shape as the tape counter above (the run loop asks; the card answers) but it
+    // is NOT const: it latches an edge, so reading it consumes it. Default false, so every
+    // card that is not a cassette deck ignores it and needs no override. When a second
+    // device event lands this generalises to takeDeviceEvent(kind); one boolean is the
+    // deliberate first cut.
+    virtual bool takeAutoStop() { return false; }
+
     // The machine's clock, set when the card goes into the backplane (DESIGN.md
     // 7.5). A card with nothing time-dependent on it never looks at this, and
     // most don't. A UART absolutely does: TDRE is a deadline, not a flag.

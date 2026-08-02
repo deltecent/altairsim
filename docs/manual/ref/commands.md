@@ -424,17 +424,20 @@ SEA 0-FFFF "CP/M"
 ### BREAK — `B[REAK]`
 
 ```
-BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]
+BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port> | TAPE STOP] [TRACE ON|OFF]
 ```
-Bare BREAK lists them. Only the first kind is about the CPU at all -- the
-other two watch BUS CYCLES, so they catch a DMA transfer too, and they work
-unchanged on any processor.
+Bare BREAK lists them. Only the first kind is about the CPU at all -- MEM and IO
+watch BUS CYCLES, so they catch a DMA transfer too and work unchanged on any
+processor; TAPE STOP watches a DEVICE, halting when a cassette deck reaches its
+auto-stop mark -- the way to stop right after a load lands without knowing where
+the loader ends.
 
 ```
 BREAK FF13       stop when PC gets there
 BREAK 2C00-2CFF  ...anywhere in a range
 BREAK MEM W 100  stop when anything WRITES 0100
 BREAK IO R 10    stop on an IN from port 10
+BREAK TAPE STOP  stop when a cassette deck auto-stops after a load
 ```
 
 

@@ -58,7 +58,7 @@ N           the same -- it owns the letter, because you type it constantly
 
 ## Breakpoints — `BREAK`, `NOBREAK`
 
-There are two kinds, and only the first is about the processor at all.
+There are three kinds, and only the first is about the processor at all.
 
 **`BREAK MEM` and `BREAK IO` watch bus cycles, not instructions.** That is a much stronger
 thing, and it is the reason to prefer them. A memory watch will catch a DMA transfer that no
@@ -68,11 +68,18 @@ the machine, because it is watching the backplane rather than the program.
 If you are chasing a byte that keeps getting clobbered, `BREAK MEM W <addr>` will find who is
 doing it, whatever is doing it.
 
+**`BREAK TAPE STOP` watches a device, not the program at all.** It stops the machine the
+moment a cassette deck reaches auto-stop — the instant the tape parks itself after a load has
+finished feeding. That is exactly when you want to look at what landed, and you get there
+without having to know the loader's end address: arm it, run, and the machine halts inside the
+loader the moment the tape stops.
+
 ```
 BREAK FF13            stop when the PC gets there
 BREAK 2C00-2CFF       ...or anywhere in a range
 BREAK MEM W 100       stop when ANYTHING writes to 0100
 BREAK IO  R 10        stop on an IN from port 10
+BREAK TAPE STOP       stop when a cassette deck auto-stops after a load
 BREAK                 list them
 NOBREAK 2             clear one (the id is a count, so decimal)
 NOBREAK               clear them all

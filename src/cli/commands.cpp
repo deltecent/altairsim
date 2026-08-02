@@ -169,14 +169,17 @@ static const std::vector<CommandDef> kCommands = {
      "what is in it, and which are still empty. UNMOUNT takes it back out. A path is\n"
      "resolved as SHOW PATHS describes -- what you TYPE is relative to your shell."},
     {"BREAK", true, nullptr,
-     "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port>] [TRACE ON|OFF]",
-     "Bare BREAK lists them. Only the first kind is about the CPU at all -- the\n"
-     "other two watch BUS CYCLES, so they catch a DMA transfer too, and they work\n"
-     "unchanged on any processor.\n"
+     "BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port> | TAPE STOP] [TRACE ON|OFF]",
+     "Bare BREAK lists them. Only the first kind is about the CPU at all -- MEM and IO\n"
+     "watch BUS CYCLES, so they catch a DMA transfer too and work unchanged on any\n"
+     "processor; TAPE STOP watches a DEVICE, halting when a cassette deck reaches its\n"
+     "auto-stop mark -- the way to stop right after a load lands without knowing where\n"
+     "the loader ends.\n"
      "  BREAK FF13       stop when PC gets there\n"
      "  BREAK 2C00-2CFF  ...anywhere in a range\n"
      "  BREAK MEM W 100  stop when anything WRITES 0100\n"
      "  BREAK IO R 10    stop on an IN from port 10\n"
+     "  BREAK TAPE STOP  stop when a cassette deck auto-stops after a load\n"
      "\n"
      "A plain address breakpoint may carry a CONDITION -- IF <expr> over the\n"
      "registers -- and stops only when it holds. A bare word that names a register IS\n"

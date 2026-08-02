@@ -91,6 +91,14 @@ public:
     // practice, because a full-rate load empties the tape inside one repaint.
     std::string activityLabel() const override;
 
+    // BREAK TAPE STOP: report the rising edge of the cassette reaching its auto-stop mark
+    // (core/board.h). Read-and-clear -- the debugger polls it at the instruction boundary
+    // while such a breakpoint is armed, and the run loop drains it once at the start of a
+    // run so a stop from a PREVIOUS load does not fire the moment this run begins. The
+    // edge, not the level, is what fires: a tape parked at its stop mark across several
+    // RUNs fires once, and a REWIND (which moves the head off the mark) re-arms it.
+    bool takeAutoStop() override;
+
     // For the tests, so they can watch the head move without a filesystem.
     const TapeImage* tape() const { return tape_.get(); }
 
@@ -198,6 +206,11 @@ private:
     // out of 100, and it is the safe default in the one way that matters: a tape that
     // is playing cannot be written over.
     TapeStream::Mode mode_ = TapeStream::Mode::Play;
+
+    // The last auto-stop level takeAutoStop() saw, so it can report the RISING edge. Only
+    // ever touched inside takeAutoStop(); the pre-run drain in the debugger keeps it in
+    // step with reality at the start of every run. See takeAutoStop().
+    bool wasAtStop_ = false;
 };
 
 } // namespace altair
