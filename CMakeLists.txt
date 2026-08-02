@@ -9,10 +9,22 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
 endif()
 
+# WERROR turns those warnings into build failures. OFF by default -- a casual build, or an
+# unfamiliar toolchain whose newer diagnostics we have not yet chased down, must still compile.
+# CI passes -DWERROR=on on every leg (.github/workflows/ci.yml), so a warning fails the build
+# before merge on GCC, Clang and MSVC alike; run `cmake -B build -DWERROR=on` locally to
+# reproduce that gate before opening a PR.
+option(WERROR "Treat compiler warnings as errors (CI enforces this)" OFF)
 if(MSVC)
   add_compile_options(/W4 /permissive-)
+  if(WERROR)
+    add_compile_options(/WX)
+  endif()
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
+  if(WERROR)
+    add_compile_options(-Werror)
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------

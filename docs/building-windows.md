@@ -181,8 +181,10 @@ This matches exactly what CI does.
 > ```
 > The binary is then `build\altairsim.exe`.
 
-The build compiles with `/W4 /permissive-` and may print warnings, but there is no
-`/WX`, so warnings never fail the build.
+The build compiles with `/W4 /permissive-` and may print warnings. By default they do
+not fail the build, but configuring with `-DWERROR=on` promotes them to errors (adds
+`/WX`) — and **CI builds every leg with `-DWERROR=on`**, so a warning fails a PR before
+it merges. Run `cmake -B build -DWERROR=on` yourself to reproduce that gate before opening one.
 
 ---
 

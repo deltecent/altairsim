@@ -178,7 +178,12 @@ jobs:
           # it, which is the whole reason Windows is on Ninja.
           gen=""
           [ "${{ runner.os }}" = "Windows" ] && gen="-G Ninja"
+          # -DWERROR=on makes a warning fail the build on every leg -- this is where the
+          # zero-warnings rule is enforced. It is OFF in CMakeLists.txt by default so a
+          # local or unfamiliar toolchain still builds; each of GCC, Clang and MSVC has its
+          # own warning set, and here all three must be clean at once (issue #222).
           cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DWERROR=on \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
             $gen 2>&1 | tee configure.log

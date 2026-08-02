@@ -46,6 +46,23 @@ a pull, suspect a stale `build/` before suspecting the code: a `rm -rf build` an
 reconfigure is the first thing to rule out, because a half-rebuilt object can walk an
 already-fixed bug back in. `docs/building-linux.md` §7 has the details.
 
+## Warnings as errors before a PR
+
+The build always compiles with `-Wall -Wextra -Wpedantic` (GCC/Clang) or `/W4 /permissive-`
+(MSVC), but by default a warning is just noise and does not fail anything. **CI configures
+every leg with `-DWERROR=on`**, which adds `-Werror`/`/WX` and turns a warning into a build
+failure — so a PR that introduces one on *any* of GCC, Clang or MSVC goes red before it can
+merge. Reproduce that gate locally before you open the PR:
+
+```sh
+cmake -B build -DWERROR=on && cmake --build build -j
+```
+
+It is off by default (`option(WERROR … OFF)` in `CMakeLists.txt`) so a casual build, or one on
+an unfamiliar toolchain whose newer diagnostics have not been chased down yet, still compiles.
+Each compiler has its own warning set, so a clean local Clang build is not proof CI is green —
+that is what the three-platform CI leg exists to catch.
+
 ## The optional video backend (SDL3)
 
 **Still no *required* dependency.** The graphics boards — the [VDM-1](../boards/proctech-vdm1.md),
