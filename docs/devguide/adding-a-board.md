@@ -352,6 +352,76 @@ test is what would say so.
 > answer cycles all day and never hear the RESET line. A card that comes from a machine file
 > goes in through `Machine::add()` and gets both.
 
+## 6. What the lamp skipped — wiring a board that ships
+
+The lamp is complete, tested, and configurable, and everything above is the whole story for a
+card that only latches a byte. A card that talks to the **outside world**, or that a user will
+find in the manual, needs a few connections the lamp never made. None of them is hard; each is
+easy to *forget*, and the forgetting fails in a way that does not point back here.
+
+### A board that talks to an endpoint wires its resolver in two places
+
+A card with a real line — a serial port, a printer, a socket — does not open that line itself.
+It hands a *spec* like `socket:2323` or `file:printout.txt` to a resolver and gets back a
+`ByteStream`. **The endpoint grammar lives in exactly one file, `src/host/endpoint.cpp`
+(`resolveEndpoint`), and a board must not know it** — that separation is what lets `CONNECT`,
+tab completion and the MCP schema all speak the same vocabulary without any card learning what
+a socket is.
+
+A board reaches the resolver through a static `setResolver()` (the 88-C700 and the SIO family
+are the models). The trap is that this is wired at the **composition root**, and there are
+**two** of them:
+
+- `src/main.cpp` — the shipping program.
+- `tests/main.cpp` — the test harness.
+
+> **Wire the resolver in `tests/main.cpp` too, or your board test connects to nothing.** Both
+> files carry the same block of `YourBoard::setResolver(resolveEndpoint)` lines. A board added
+> to only `main.cpp` works in the running program and then every test that `CONNECT`s it gets a
+> null resolver and fails somewhere unhelpful. Copy the line into both.
+
+### Remember the path as written, not as resolved
+
+If your endpoint is a path (`file:`, a disk image), resolve it through the board's
+`resolvePath()` so a relative path means the right thing (relative to the machine file when it
+came from one, relative to the shell when typed — the rule is in the serial-I/O chapter and the
+config docs). But **store the spec as the user wrote it** for `describe()` and round-trip.
+
+> **Where you LOOK is `resolvePath()`; what you REMEMBER is the path as written.** Save the
+> resolved absolute path instead and `CONFIG SAVE` writes *that* back, so the next load rebases
+> an already-absolute path and the one after that rebases again. The hard-sector controller
+> states the rule in a comment at its `openMedia` site; follow it.
+
+### Adding a *new* endpoint scheme touches its help in two spots
+
+If you are not just consuming endpoints but adding one (a new `something:` scheme in
+`endpoint.cpp`), it must appear in **`endpointHelp()`** *and* get a one-line gloss in the
+`CONNECT` command help in `src/cli/commands.cpp`. `test_cli.cpp` asserts that every name
+`endpointHelp()` offers is a word `CONNECT` glosses — a bare `null` or `scripted` tells a user
+nothing, and the gloss is a hand-copy that rotted once (it promised `socket:` "was coming" long
+after it shipped). The test is what keeps the two honest.
+
+### Regenerate the reference, ship a machine, and mind the two unguarded docs
+
+Three loose ends after the board itself compiles:
+
+- **The generated board reference.** After editing `registry.cpp`, `commands.cpp`, or a machine
+  file, regenerate `docs/manual/ref/*.md` — `cmake --build build --target docs-reference` — and
+  commit the result. A ctest byte-diffs the committed files and goes red until you do. **Edit
+  the emitter or the source, never the `.md`.**
+- **A sample machine is a TOML file**, not C++: drop it in `machines/` with `base = "default"`
+  under `[machine]` and a `name`. `cmake/embed_machines.cmake` embeds it on the next build.
+- **Two documents no test guards, so they drift silently.** The prose board chapter
+  (`docs/manual/boards.md`) and the changelog's `Unreleased` section are *not* test-enforced —
+  the manual guard only checks self-containment and `ORDER` membership, nothing checks that the
+  prose lists every registered board. The authoritative list is `registry.cpp`'s `boardTypes()`;
+  the generated `ref/boards.md` is guarded, but the hand-written chapter is not, and it once
+  drifted nine boards behind before anyone noticed.
+
+> **When you add a board, update the prose chapter and add an `Unreleased` changelog line by
+> hand. No build will remind you.** The board also ships with its own `docs/boards/*.md` (from
+> `docs/boards/_TEMPLATE.md`) and a row in `docs/sources.md` for anything it embeds.
+
 ## What to do next
 
 Our card answers a cycle. A more interesting one **asks for something**:
