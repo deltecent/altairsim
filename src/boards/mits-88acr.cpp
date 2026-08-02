@@ -526,7 +526,7 @@ uint64_t AcrBoard::secondsToByte(double secs) const {
 
 std::string AcrBoard::activityLabel() const {
     if (!tape_ || !liveCounter_ || mode_ != TapeStream::Mode::Play) return {};
-    const uint64_t p = tape_->pos(), sz = tape_->size();
+    const uint64_t p = tape_->pos();
     // Nothing to watch before the head has moved, or while it is parked at a stop mark
     // short of the end. But DO report the head sitting AT the end (p == sz): the counter
     // rests on its 100% frame there. That last frame is the whole reason it is not gated
