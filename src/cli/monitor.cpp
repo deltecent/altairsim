@@ -1102,6 +1102,14 @@ void Monitor::showVersion(std::ostream& out) {
         // another road. So enumerate the drivers SDL actually built. SDL_GetVideoDriver(i)
         // reads the static bootstrap table WITHOUT initialising video, so it is safe to call
         // from a SHOW VERSION that starts nothing (unlike SDL_GetCurrentVideoDriver()).
+        // Match a KNOWN windowing driver by name rather than excluding the non-windowing
+        // ones: a denylist of {dummy, offscreen} looked complete on macOS (cocoa/offscreen/
+        // dummy) but Linux also enumerates a non-windowing "evdev" video driver, which a
+        // denylist counts as a real backend and packaging then wrongly accepts. This is the
+        // same positive allowlist tools/build-sdl3-static.sh applies to the .a's bootstrap
+        // symbols; the two must agree on what "can open a window" means.
+        static const char* const kWindowing[] = {
+            "x11", "wayland", "cocoa", "kmsdrm", "windows", "uikit", "android"};
         std::string list;
         bool windowing = false;
         int n = SDL_GetNumVideoDrivers();
@@ -1110,10 +1118,9 @@ void Monitor::showVersion(std::ostream& out) {
             if (!d) continue;
             if (!list.empty()) list += ", ";
             list += d;
-            // "dummy" and "offscreen" render to memory and open no window; anything else
-            // (x11, wayland, cocoa, kmsdrm, windows, ...) is a real windowing backend.
             std::string dn(d);
-            if (dn != "dummy" && dn != "offscreen") windowing = true;
+            for (const char* w : kWindowing)
+                if (dn == w) windowing = true;
         }
         if (windowing)
             row("video", "SDL3 -- windowed (" + list + ")");
