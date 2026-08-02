@@ -27,8 +27,16 @@ with running several machines at once.)
 
 Then start your assistant in this directory and give it the whole job in one sentence:
 
-> *Using altairsim, assemble and run HELLO.ASM. It should print HELLO, WORLD — if it doesn't,
-> find out why and fix it.*
+> *Using the altairsim MCP tools, boot the CP/M machine and assemble and run HELLO.ASM off its
+> disk. It should print HELLO, WORLD — if it doesn't, debug it in the simulator and fix the source.*
+
+Say **"using the altairsim MCP tools"** and **"off its disk"** on purpose. `HELLO.ASM` lives on
+the CP/M disk, reached through the MCP `run`/`monitor` tools — *not* as a host file to open. If you
+just say "fix HELLO.ASM," a fresh assistant is apt to `find` it on your machine and start editing a
+host copy instead of driving the simulator — and when you are running from a checkout of this
+repository (rather than a shipped package) there really is a pristine `HELLO.ASM` sitting loose in
+this folder for it to land on, which is not the file the exercise is about. Point it at the disk and
+that confusion never starts.
 
 The rest of this file is the session that unfolds, so you can follow along or check its work.
 
