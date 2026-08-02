@@ -76,6 +76,11 @@ std::string cell(const std::string& s) {
 // and the default column read in the same base. A port whose default prints as 0x10 must
 // not advertise its range in decimal.
 std::string legal(const Property& p) {
+    if (!p.values.empty()) {   // a hand-written hint (a free-form Str's grammar); escape the pipes for the table
+        std::string o;
+        for (char c : p.values) { if (c == '|') o += "\\|"; else o += c; }
+        return o;
+    }
     if (p.kind == Kind::Bool) return "`on` \\| `off`";
     if (p.kind == Kind::Enum) {
         std::string o;

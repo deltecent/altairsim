@@ -106,6 +106,14 @@ TAPE_BASIC    = examples/basic/4K BASIC Ver 3-1.tap
 LOADER_BASIC  = examples/basic/LDR4K31.HEX
 NAME_BASIC    = Altair 4K BASIC 3.1
 
+# BASIC 1.0 -- the first Altair BASIC (1975), in the same examples/basic folder. A
+# self-contained machine file (no `base`), booted in two moves because its bootstrap
+# (LOAD10) neither stops nor jumps: RUN 1800, then ^E, then RUN 0. Reaches `MEMSIZ?`.
+MACHINE_BASIC1 = examples/basic/basic1.toml
+TAPE_BASIC1    = examples/basic/BASIC Ver 1-0.tap
+LOADER_BASIC1  = examples/basic/LOAD10.HEX
+NAME_BASIC1    = 8080 BASIC VER 1.0
+
 # The Sol-20. Reaches SOLOS's prompt with TREK80 in the cassette deck; the operator types
 # `XE TRK80`, because that is input to SOLOS and no machine file can type at a guest.
 MACHINE_SOL   = examples/sol/trek80.toml

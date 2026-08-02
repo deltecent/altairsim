@@ -32,15 +32,43 @@ void test_tapecounter() {
               "a new second repaints");
     }
 
-    SECTION("tape counter -- a finished load that reaches the end takes its line back");
+    SECTION("tape counter -- the head at the end HOLDS its 100% frame");
     {
         TapeCounterLine c;
-        c.update("tape: 01:46 / 01:47 (99%)", true);   // painted, shown
-        // The head reaches the physical end: the deck stops offering a label. Console
-        // still quiet (a bare-Altair cassette that printed nothing).
-        CHECK(c.update("", true) == Act::WipeClean, "end of tape, quiet console: wipe cleanly");
+        // A flat-out bare-Altair load: the deck offers its final frame straight away (the
+        // load was over before a paint window could catch it climbing), and the console is
+        // quiet. The counter paints that 100% frame and then rests on it -- it does NOT wipe
+        // the moment the head is at the end, because that frame is the "tape is done" cue.
+        const char* done = "tape: 01:47 / 01:47 (100%)";
+        CHECK(c.update(done, true) == Act::Paint, "the finished frame paints on a quiet console");
+        CHECK(c.shown, "the 100% line is up");
+        CHECK(c.update(done, true) == Act::None, "and it rests there, unchanged, however long you look");
+        CHECK(c.update(done, true) == Act::None, "still resting");
+    }
+
+    SECTION("tape counter -- rewind/unmount (the label goes empty) takes the line back");
+    {
+        TapeCounterLine c;
+        c.update("tape: 01:47 / 01:47 (100%)", true);   // painted, resting on the finished frame
+        // The label finally goes empty -- a REWIND back to the top, or an UNMOUNT. That, not
+        // reaching the end, is the boundary that reclaims the line. Console still quiet.
+        CHECK(c.update("", true) == Act::WipeClean, "label gone, quiet console: wipe cleanly");
         CHECK(!c.shown, "the line is gone");
         CHECK(c.update("", true) == Act::None, "and stays gone");
+    }
+
+    SECTION("tape counter -- a held 100% frame still never resurrects over the program");
+    {
+        // The end-of-tape frame lingers (the deck keeps offering it), but the guest that was
+        // loaded now runs and prints. The line must abandon and retire exactly as a parked
+        // mid-load frame does -- otherwise `RUN 0` after a flat-out load would repaint the
+        // tape counter over BASIC's first prompt.
+        TapeCounterLine c;
+        const char* done = "tape: 01:47 / 01:47 (100%)";
+        CHECK(c.update(done, true) == Act::Paint, "the finished frame is up");
+        CHECK(c.update(done, false) == Act::Abandon, "the guest speaks over it: abandon, do not wipe");
+        CHECK(c.update(done, true) == Act::None, "quiet again, frame still offered: stays retired");
+        CHECK(c.update(done, true) == Act::None, "and stays retired however long the guest sits there");
     }
 
     SECTION("tape counter -- issue #165: the counter never resurrects over the program");

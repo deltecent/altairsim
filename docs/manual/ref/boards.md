@@ -568,7 +568,7 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
-| `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
+| `stop` | string | `off` | off \| end \| mm:ss | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
 
 ### `uio`
@@ -607,7 +607,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
 | `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
-| `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
+| `stop` | string | `off` | off \| end \| mm:ss | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
 #### Unit `serial` — `[board.unit.serial]`
 
