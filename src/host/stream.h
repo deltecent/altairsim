@@ -107,6 +107,19 @@ public:
     // one the UART's baud gives it, so this stays false for them.
     virtual bool pacesItself() const { return false; }
 
+    // DOES THIS LINE HAVE AN EMULATED RECEIVE CADENCE? True unless the line clocks its own
+    // wire. A UART with such a line paces RECEIVE at an emulated character-time even at
+    // rate=full, so a paste does not arrive as one instantaneous burst: a keyboard cannot
+    // deliver two typed characters closer than a character-time, and a guest that re-samples
+    // the line between characters -- CDOS's console input routine does -- loses the ones that
+    // bunch up (it reads every byte the UART hands it, but discards those that arrive with no
+    // gap). rate=full drops the gate for SPEED, but the emulated gap costs no wall-clock time
+    // under Clock::free(), so receive stays paced and fast. The default is therefore true; the
+    // one exception is a real serial port (HostSerialStream), which clocks its own wire -- there
+    // an overrun is a genuine event and rate=full's instant receive is the point. This is a
+    // different axis from pacesItself(): a tape paces itself and also opts out of the gate.
+    virtual bool pacedReceive() const { return true; }
+
     virtual void flush() {}
 
     // The far end's pins. A LEVEL, with no memory: the stream says "carrier is

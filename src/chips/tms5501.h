@@ -159,6 +159,7 @@ private:
     // How long one character occupies the line, in T-states. 5501 frame: 1 start bit,
     // 8 data bits (fixed), no parity, 1 or 2 stop bits (baud register D7).
     uint64_t charTStates(const Clock& clk) const;
+    uint64_t rxGapTStates(const Clock& clk) const;
     int      bitsPerChar() const { return 1 + 8 + stopBits_; }
     LineParams params() const;
 

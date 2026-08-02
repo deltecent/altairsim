@@ -28,11 +28,14 @@ log_user 0
 set exe [lindex $argv 0]
 set dsk "examples/cdos/CDOS258-8IN-DSDD.DSK"
 
-# TYPE LIKE A PERSON, one character at a time. CDOS polls its console between keystrokes; a
-# whole command shoved in at once loses its leading characters right after a prompt (the first
-# few arrive before the poll loop is looking). A short gap is a human's pace and the receiver
-# keeps up.
-proc slowtype {s} { foreach ch [split $s ""] { send -- $ch; after 60 } }
+# TYPE IT ALL AT ONCE -- and this is the regression guard. CDOS's console routine samples the
+# line between characters, so a whole command pasted in at once used to lose the ones that
+# arrived with no gap ("DIR" -> "DR"), because rate=full delivered the burst instantaneously
+# and a real 300-baud line never could. The 5501 now paces RECEIVE at the line rate even at
+# rate=full (ByteStream::pacedReceive), so a burst arrives one character-time apart the way the
+# hardware always did, and CDOS keeps every byte. Bursting here is what proves that fix; if the
+# receive pacing regresses, this send loses a character and the DIR below fails.
+proc slowtype {s} { send -- $s }
 
 # Leave no orphan behind: expect exiting does not reap the child holding the pty.
 proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]}; exit $code }

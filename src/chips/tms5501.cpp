@@ -47,6 +47,11 @@ constexpr int kTimerBit[5] = {0, 1, 3, 6, 7};  // Timer 1..5 -> mask/priority bi
 // deadline is derived in WALL time via Clock::tStatesPer -- independent of CPU speed.
 constexpr long long kTimerTickHz    = 15625;   // 1 / 64 us
 constexpr long long kTimerTickHzHbd = 125000;  // 1 / 8 us  (HBD)
+
+// The reference receive cadence at rate=full: ~9600 baud 8N1 (9600 / 10 bits). Short and
+// baud-independent, so a fast programmed rate is unchanged while a slow one (a 300-baud
+// console) is not dragged down to its own character time on receive. See rxGapTStates.
+constexpr long long kFullReceiveHz  = 960;
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -54,6 +59,21 @@ uint64_t Tms5501::charTStates(const Clock& clk) const {
     if (!paceReal_) return 0;  // rate=full: the line does not pace -- TBE/RDA come back at once
     if (baud_ <= 0) return 0;
     return (uint64_t)(clk.hz() * (long long)bitsPerChar() / baud_);
+}
+
+// The gap the RECEIVER holds between two delivered characters. Any line that does not clock
+// its own wire (ByteStream::pacedReceive, true for everything but a real serial port) keeps
+// an emulated receive cadence, so a paste does not arrive as one instantaneous burst -- a
+// guest that re-samples the line between characters (CDOS's console read-ahead does, ~3k
+// T-states after taking a byte) would otherwise find the next byte already sitting in the
+// receiver and lose it. At rate=full the gap is SHORT and baud-independent (kFullReceiveHz),
+// measured in guest T-states so it costs no wall-clock time under Clock::free(): far faster
+// than a 300-baud console yet longer than the read-ahead window. At rate=real it is the
+// authentic programmed-baud character time. Transmit and a real serial port are untouched.
+uint64_t Tms5501::rxGapTStates(const Clock& clk) const {
+    if (paceReal_) return charTStates(clk);       // rate=real: at the programmed baud
+    if (!stream_->pacedReceive()) return 0;       // a real serial port clocks its own wire
+    return clk.tStatesPer(kFullReceiveHz);        // rate=full: a short, fixed receive gap
 }
 
 LineParams Tms5501::params() const {
@@ -134,7 +154,9 @@ void Tms5501::poll(const Clock& clk) {
 
     if (!carrier()) return;             // no carrier: the receiver is dead
     if (rdrf_) return;                  // register still full: the line waits
-    if (clk.now() < rxNextAt_) return;  // the character has not finished arriving
+    // The emulated receive gate, unless the line paces itself: a tape or a ?cps= paper-tape
+    // reader carries its own clock, and gating it too would double-pace it (see Uart1602::poll).
+    if (!stream_->pacesItself() && clk.now() < rxNextAt_) return;
     if (!stream_->readable()) return;
 
     uint8_t b = 0;
@@ -143,7 +165,7 @@ void Tms5501::poll(const Clock& clk) {
     rxData_   = b;
     rdrf_     = true;
     ++rxCount_;
-    rxNextAt_ = clk.now() + charTStates(clk);
+    rxNextAt_ = clk.now() + rxGapTStates(clk);
 }
 
 uint8_t Tms5501::readStatus(const Clock& clk) {

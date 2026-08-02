@@ -92,6 +92,7 @@ public:
     bool readable() const override { return inner_->readable(); }
     bool writable() const override { return inner_->writable(); }
     bool pacesItself() const override { return inner_->pacesItself(); }
+    bool pacedReceive() const override { return inner_->pacedReceive(); }
 
     // flush() pushes the LOG's buffer (so `tail -f` on the capture is live) as well as
     // the inner's -- it is NOT a row boundary (some boards flush every slice).

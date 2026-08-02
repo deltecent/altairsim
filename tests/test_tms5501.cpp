@@ -50,6 +50,13 @@ struct Rig {
     }
 };
 
+// A real serial port: it clocks its own wire, so pacedReceive() is false and the receiver
+// adds no emulated gap even at rate=full. The base ByteStream now defaults pacedReceive() to
+// true, so a plain ScriptedStream is already a paced (console-like) line; this is its inverse.
+struct SerialLike : ScriptedStream {
+    bool pacedReceive() const override { return false; }
+};
+
 } // namespace
 
 void test_tms5501() {
@@ -70,21 +77,85 @@ void test_tms5501() {
         CHECK((g.chip.readStatus(g.clk) & 0x40) == 0, "reading the data clears RDA");
     }
 
-    SECTION("TMS 5501 -- rate=full (the default) does not pace the line");
+    SECTION("TMS 5501 -- rate=full does not pace TRANSMIT, nor RECEIVE on a real serial line");
     {
-        // The default console runs at FULL speed: the line does not pace, so TBE comes
-        // back the instant the byte is handed over and a queued receive byte is ready at
-        // once. This is why a 300-baud modem strap costs no speed unless rate=real is set.
+        // rate=full runs the TRANSMITTER flat out: TBE comes back the instant the byte is
+        // handed over. That is why a 300-baud strap costs no output speed unless rate=real.
         Rig g;
         g.chip.writeData('X', g.clk);
         CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "TBE set again immediately -- no pacing");
         CHECK(g.tty->out() == "X", "and the byte went out the line");
 
+        // RECEIVE is now paced by default (a console line), but a REAL SERIAL PORT clocks its
+        // own wire (pacedReceive() false), so the receiver adds no gap and a second queued byte
+        // is ready at once -- there an overrun is a genuine event and instant receive is right.
+        Clock       clk;
+        Tms5501     chip{"tms0"};
+        auto        s    = std::make_unique<SerialLike>();
+        SerialLike* wire = s.get();
+        chip.connect(std::move(s));
+        chip.powerOn(clk);
+        chip.writeBaud(0xC0);                        // 9600 baud, one stop bit -- rate=full
+
+        wire->feed("HI");
+        (void)chip.readStatus(clk);
+        CHECK(chip.readData(clk) == 'H', "the first character arrives");
+        CHECK((chip.readStatus(clk) & 0x40) != 0, "the second is ready at once, un-paced");
+        CHECK(chip.readData(clk) == 'I', "...and it is the byte that was sent");
+    }
+
+    SECTION("TMS 5501 -- a CONSOLE line paces RECEIVE at rate=full (paste flow-control)");
+    {
+        // rate=full drops the line-rate gate for SPEED, but a console line keeps its RECEIVE
+        // cadence: a keyboard cannot deliver two characters closer than a character-time, and
+        // a paste delivered as one instantaneous burst makes a guest that re-samples the line
+        // between characters (CDOS's console read-ahead) drop the ones that bunch up. So a paced
+        // line (the default) keeps the receive gap even at rate=full. At 9600 baud the fixed
+        // rate=full gap (tStatesPer(960)) equals the programmed character time, so the exact
+        // deadline arithmetic below holds. This is the fix for the 16FDC/64FDC console drop.
+        Rig g;                                        // ScriptedStream: paced by default, rate=full
         g.tty->feed("HI");
         (void)g.chip.readStatus(g.clk);
-        CHECK(g.chip.readData(g.clk) == 'H', "the first character arrives");
-        CHECK((g.chip.readStatus(g.clk) & 0x40) != 0, "the second is ready at once, un-paced");
+        CHECK(g.chip.readData(g.clk) == 'H', "the first character arrives at once");
+
+        CHECK((g.chip.readStatus(g.clk) & 0x40) == 0,
+              "the SECOND is HELD -- a console paces receive even at rate=full");
+        g.clk.advance(g.charT() - 2);
+        CHECK((g.chip.readStatus(g.clk) & 0x40) == 0, "still held one bit-time early");
+        g.clk.advance(2);
+        CHECK((g.chip.readStatus(g.clk) & 0x40) != 0, "and lands when its character time is up");
         CHECK(g.chip.readData(g.clk) == 'I', "...and it is the byte that was sent");
+    }
+
+    SECTION("TMS 5501 -- rate=full receive gap is SHORT and baud-independent (300-baud console)");
+    {
+        // The crux of the fix: the rate=full receive gap does NOT scale with the (often 300-baud)
+        // programmed rate -- if it did, a paste at the CDOS console would crawl. It is a fixed
+        // fast reference cadence (tStatesPer(960), ~9600 baud), long enough to clear the guest's
+        // read-ahead window yet a fraction of a 300-baud character time. So a second burst byte
+        // lands after tStatesPer(960), NOT after the 300-baud char time.
+        Clock           clk;
+        Tms5501         chip{"tms0"};
+        auto            s   = std::make_unique<ScriptedStream>();   // paced by default, rate=full
+        ScriptedStream* tty = s.get();
+        chip.connect(std::move(s));
+        chip.powerOn(clk);
+        chip.writeBaud(0x84);                          // D2 = 300 baud, D7 = one stop bit
+        const uint64_t gap      = clk.tStatesPer(960);            // the fixed rate=full gap
+        const uint64_t char300  = (uint64_t)(clk.hz() * 10 / 300);
+        CHECK(gap < char300, "the fixed gap is far shorter than a 300-baud character time");
+
+        tty->feed("HI");
+        (void)chip.readStatus(clk);
+        CHECK(chip.readData(clk) == 'H', "the first character arrives at once");
+
+        CHECK((chip.readStatus(clk) & 0x40) == 0, "the SECOND is held for the gap");
+        clk.advance(gap - 2);
+        CHECK((chip.readStatus(clk) & 0x40) == 0, "still held just before the short gap elapses");
+        clk.advance(2);
+        CHECK((chip.readStatus(clk) & 0x40) != 0,
+              "and lands after tStatesPer(960) -- NOT the 300-baud character time");
+        CHECK(chip.readData(clk) == 'I', "...and it is the byte that was sent");
     }
 
     SECTION("TMS 5501 -- TBE is a DEADLINE, not a flag");
