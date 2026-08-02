@@ -50,9 +50,9 @@ already-fixed bug back in. `docs/building-linux.md` §7 has the details.
 
 The build always compiles with `-Wall -Wextra -Wpedantic` (GCC/Clang) or `/W4 /permissive-`
 (MSVC), but by default a warning is just noise and does not fail anything. **CI configures
-every leg with `-DWERROR=on`**, which adds `-Werror`/`/WX` and turns a warning into a build
-failure — so a PR that introduces one on *any* of GCC, Clang or MSVC goes red before it can
-merge. Reproduce that gate locally before you open the PR:
+every leg with `-DWERROR=on`**, which on GCC and Clang adds `-Werror` and turns a warning into
+a build failure — so a PR that introduces one on either of those goes red before it can merge.
+Reproduce that gate locally before you open the PR:
 
 ```sh
 cmake -B build -DWERROR=on && cmake --build build -j
@@ -60,8 +60,13 @@ cmake -B build -DWERROR=on && cmake --build build -j
 
 It is off by default (`option(WERROR … OFF)` in `CMakeLists.txt`) so a casual build, or one on
 an unfamiliar toolchain whose newer diagnostics have not been chased down yet, still compiles.
-Each compiler has its own warning set, so a clean local Clang build is not proof CI is green —
-that is what the three-platform CI leg exists to catch.
+GCC and Clang have slightly different warning sets, so a clean local build on one is not proof
+the other is clean — that is what the separate CI legs exist to catch.
+
+**MSVC is not in the gate yet.** `/W4` carries a pre-existing backlog (intentional integer
+narrowing, which GCC/Clang do not flag, plus some variable shadowing) that must be cleared
+before `/WX` can go on. That is tracked in issue #238; until it lands, `-DWERROR=on` is a no-op
+on MSVC and its `/W4` warnings stay visible in the log but non-fatal.
 
 ## The optional video backend (SDL3)
 

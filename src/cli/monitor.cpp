@@ -2323,7 +2323,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         out.flush();
         std::cout.flush();  // our text lands before the child's, not tangled with it
-        std::system(sh.c_str());
+        int rc = std::system(sh.c_str());
+        (void)rc;  // the child's own exit status is the user's business, not ours
         return true;
     }
 
