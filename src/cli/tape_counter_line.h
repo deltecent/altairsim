@@ -18,8 +18,10 @@
 // + a live label -> paint" would repaint the stale `(98%)` right over the `?`, again
 // and again. So once the guest has SPOKEN during a load, that load's counter is done
 // for good -- `retired` latches -- and it re-arms only when the deck stops offering a
-// label (head at the tape end, a stop mark, an unmount, or between files), which is
-// exactly the boundary at which a genuinely new load begins.
+// label: back at the top of the tape (p == 0 after a rewind or a fresh mount), a stop
+// mark, or an unmount -- exactly the boundary at which a genuinely new load begins.
+// (Reaching the END is NOT one of those: the deck keeps offering its final 100% frame
+// there, so the finished readout stays on screen -- see AcrBoard::activityLabel.)
 
 #include <string>
 

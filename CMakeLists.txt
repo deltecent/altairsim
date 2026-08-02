@@ -1044,6 +1044,19 @@ if(EXPECT_EXECUTABLE)
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-cli PROPERTIES LABELS acceptance TIMEOUT 60)
 
+  # Altair BASIC 1.0 booted off a cassette THE TWO-MOVE WAY: RUN the primitive loader, ^E when
+  # the tape is done, RUN what it loaded from 0. ^E only exists on a tty, so this is an expect
+  # test where basic4k.cmake is a piped one -- the 4K loader jumps on its own; the 1.0 one does
+  # not. WORKING_DIRECTORY is the example's own folder, the documented `cd examples/basic` path,
+  # so the tape and bootstrap resolve against the machine file exactly as a user's would.
+  add_test(NAME acceptance-basic1
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/basic1.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-basic1 PROPERTIES
+                       LABELS acceptance TIMEOUT 60
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/examples/basic)
+
   # ...and the PS2 package USED, not merely booted: the ReadMe's steps 5-8, including a
   # CASSETTE CHANGE while the machine is running (^E, MOUNT the editor tape, RUN, EDT).
   # That exercises the monitor's own tape loader -- which is not the bootstrap, it is 2.5K

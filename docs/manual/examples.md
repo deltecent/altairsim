@@ -204,6 +204,44 @@ altairsim> RUN 0
 …and now it takes 110 seconds, because the tape costs the same number of T-states either way.
 **What the guest sees is identical.** The crystal buys period *feel*, not period *behaviour*.
 
+### The one before this one: BASIC 1.0
+
+Beside the 4K is `basic1.toml`, and it boots **"8080 BASIC VER 1.0"** — the oldest Altair BASIC
+there is, the one Bill Gates and Paul Allen wrote in 1975. Same idea, one difference that is worth
+seeing:
+
+```
+$ altairsim {{MACHINE_BASIC1}}
+```
+
+```
+tape: 00:15 / 02:30 (100%)
+
+[console -- ^E returns to the monitor]
+RUN 0
+
+MEMSIZ? 
+WANT SIN-COS-ATN? 
+
+2000 BYTES FREE
+
+8080 BASIC VER 1.0
+
+READY
+```
+
+**It takes two moves, not one.** The 4K's bootstrap jumps into BASIC on its own when the tape
+runs out. BASIC 1.0's does not — it copies the tape into memory from `0000` and loops forever,
+because it has no idea how long the tape is. That is not a shortcoming of the simulator; it is
+what the 1975 operator faced. So you watch the tape load, press **`^E`** when it is done, and type
+**`RUN 0`** to start BASIC by hand — the STOP/RESET/RUN a real operator did at the front panel.
+
+Two small things that look like bugs and are not: the prompt really is `MEMSIZ?` — Microsoft set
+the end-of-message bit on the `Z` rather than spend a byte on a trailing `E` — and at the flat-out
+default the tape loads in an instant, so `tape: 02:30 / 02:30 (100%)` is the counter's *finished*
+frame. `SET acr0:tape rate=real` before you run plays it at the true 300-baud speed and the
+counter climbs through the two and a half minutes it took in 1975.
+
 ---
 
 ## 3. A Sol-20 loading {{NAME_SOL}} off cassette

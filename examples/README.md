@@ -18,7 +18,7 @@ altairsim examples/printing/printer.toml       # an 88-C700 printer, wired to a 
 | | What it is |
 |---|---|
 | [`cpm/`](cpm/) | Mike Douglas's track-buffered **CP/M 2.2b v2.3**, 56K, booted by the DBL PROM from an 8" floppy. `A>` in one command. |
-| [`basic/`](basic/) | **Altair 4K BASIC 3.1** read off a period `.tap` by the bootstrap MITS shipped, unmodified. `MEMORY SIZE?` |
+| [`basic/`](basic/) | **Altair 4K BASIC 3.1** (`basic4k.toml`) read off a period `.tap` by the bootstrap MITS shipped, unmodified: `MEMORY SIZE?`. Beside it, **8080 BASIC VER 1.0** (`basic1.toml`) — the first Altair BASIC, 1975 — booted the raw two-step way its primitive bootstrap forced: `RUN 1800`, `^E`, `RUN 0` → `MEMSIZ?`. |
 | [`uio/`](uio/) | **Altair 8K BASIC 3.2** over a single **88-UIO** — the board that is a 6850 serial port (at 0x10) *and* an 88-ACR cassette (at 0x06) in one. The period bootstrap runs unmodified. `MEMORY SIZE?` |
 | [`sol/`](sol/) | A **Processor Technology Sol-20** running SOLOS 1.3, with the 1977 game **TREK80** on cassette. Type `XE TRK80`. |
 | [`debugger/`](debugger/) | A 46-byte program with its **symbols** and a guided walk through the monitor's debugger: `SYMBOLS LOAD`, symbolic `DISASM`, single-step, break on a label, run. |

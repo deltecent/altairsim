@@ -79,6 +79,14 @@ struct Property {
     int radix = 10;                     // 16 for addresses, so SHOW reads right
     std::string unit;                   // "Hz", "bytes" -- display only
 
+    // A hand-written legal-values HINT, for a kind that has no listable set of its own but
+    // still accepts a small grammar -- the ACR's `stop` (`off | end | <mm:ss>`) is a
+    // Kind::Str, so SHOW and the reference would otherwise leave its legal column blank.
+    // DISPLAY ONLY: it fills that column where the kind cannot; it is NOT validated against
+    // (the setter stays the authority). Written plain (` | `-separated); each consumer
+    // renders it for its medium. Empty for everything with a computable legal set.
+    std::string values;
+
     // OTHER SPELLINGS THAT ARE ACCEPTED, AND NEVER WRITTEN.
     //
     // `name` stays the one true spelling: it is what SHOW prints, what the generated

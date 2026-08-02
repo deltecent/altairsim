@@ -1,0 +1,97 @@
+#!/usr/bin/expect -f
+#
+# ALTAIR BASIC 1.0 BOOTS OFF A CASSETTE -- THE TWO-MOVE WAY, WHICH ONLY A TTY CAN DRIVE.
+#
+# examples/basic/basic1.toml boots "8080 BASIC VER 1.0", the first Altair BASIC. Unlike the
+# 4K next to it, its bootstrap (LOAD10) neither stops nor jumps: it copies the tape into
+# 0000 and loops forever, because it cannot know the tape's length. So the boot is genuinely
+# two moves, exactly as it was in 1975 -- RUN the loader, and when the tape runs out STOP/RESET
+# and RUN what it loaded from 0. That STOP/RESET is ATTN (^E), and ^E only exists on a tty:
+# a pipe fires it the instant the console reads stdin, at the wrong PC. Hence expect.
+#
+# This is the sibling of basic4k.cmake (a piped test -- the 4K loader jumps on its own, so no
+# ^E is needed). If THIS fails, the ACR, the 88-SIO console, or the two-step boot is wrong,
+# not the tape: the tape and the bootstrap are period artifacts run unmodified.
+#
+# usage: expect -f basic1.exp <altairsim>   (WORKING_DIRECTORY = examples/basic)
+
+set timeout 30
+log_user 0
+# No pty echo: the monitor does its own line editing, and a duplicate confuses the matches.
+set stty_init "-echo raw"
+
+set exe [lindex $argv 0]
+
+spawn $exe basic1.toml
+
+# startup runs MOUNT + LOAD + RUN 1800, so the machine comes up already in the loader. At the
+# flat-out default the whole tape is in memory in an instant; the run-loop prints this banner
+# the moment RUN enters, and the loader then spins on a recorder with nothing left to give.
+expect {
+    -ex "^E returns to the monitor" {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: RUN 1800 never entered the run loop"; exit 1 }
+}
+
+# Let the (instant) load settle, then STOP/RESET back to the monitor. The bytes stay put.
+sleep 2
+send "\x05"
+expect {
+    -ex "altairsim>" {}
+    timeout { puts "FAIL: ATTN (^E) did not return to the monitor"; exit 1 }
+}
+
+# Start BASIC from zero -- the second move.
+send "RUN 0\r"
+
+# BASIC 1.0's cold-start dialog. `MEMSIZ?` is spelled exactly that way on purpose: MITS BASIC
+# ends a message by setting bit 7 of the LAST character, and Microsoft set it on the 'Z' of
+# MEMSI-Z rather than spend a byte on a trailing 'E'. `[console] strip7out` (in basic1.toml)
+# is the Teletype ignoring that eighth bit; without it the prompt ends in a garbage byte.
+expect {
+    -ex "MEMSIZ?" {}
+    timeout { puts "FAIL: no MEMSIZ? prompt -- BASIC did not cold-start (loader, console, or strip7out)"; exit 1 }
+}
+send "\r"
+expect {
+    -ex "WANT SIN-COS-ATN?" {}
+    timeout { puts "FAIL: no WANT SIN-COS-ATN? prompt"; exit 1 }
+}
+send "\r"
+
+# The banner proves the image is INTACT: a tape that lost or gained a byte prints garbage or
+# crashes, it does not print its own name. BYTES FREE proves the 8K RAM scan agrees with the
+# machine it actually has (BASIC 1.0 does not fit in 4K -- it loads to 117F).
+expect {
+    -ex "BYTES FREE" {}
+    timeout { puts "FAIL: no 'BYTES FREE' -- the RAM scan / banner never printed"; exit 1 }
+}
+expect {
+    -ex "8080 BASIC VER 1.0" {}
+    timeout { puts "FAIL: no '8080 BASIC VER 1.0' banner -- the image is not intact"; exit 1 }
+}
+expect {
+    -ex "READY" {}
+    timeout { puts "FAIL: BASIC never reached READY"; exit 1 }
+}
+
+# ...and it RUNS. The interpreter that came off the cassette executes what someone types at it.
+send "PRINT 6*7\r"
+expect {
+    -re " 42\[^0-9]" {}
+    timeout { puts "FAIL: PRINT 6*7 did not evaluate to 42"; exit 1 }
+}
+send "10 PRINT \"TAPE OK\"\r"
+expect -ex "READY"
+send "RUN\r"
+expect {
+    -ex "TAPE OK" {}
+    timeout { puts "FAIL: a stored program did not run"; exit 1 }
+}
+
+puts "acceptance-basic1: 8080 BASIC VER 1.0 booted from tape (RUN 1800 / ^E / RUN 0) and ran a program."
+send "\x05"
+expect -ex "altairsim>"
+send "QUIT\r"
+expect eof
+exit 0

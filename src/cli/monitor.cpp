@@ -206,6 +206,7 @@ static std::vector<std::string> wrapText(const std::string& s, size_t width) {
 // so the caller prints nothing rather than a bare "values:". Rendered in the property's own
 // radix, matching how its default prints.
 static std::string legalValues(const Property& p) {
+    if (!p.values.empty()) return p.values;   // a hand-written hint (a free-form Str's grammar)
     if (p.kind == Kind::Bool) return "on | off";
     if (p.kind == Kind::Enum) {
         std::string o;
@@ -742,6 +743,9 @@ void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
             break;
         case Kind::Str: break;
         }
+        // A free-form Str can still advertise a grammar (the ACR's `stop`); showProps does
+        // the same, so the schema view and the value view agree on that column.
+        if (legal.empty() && !p.values.empty()) legal = p.values;
         std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(), kind, legal.c_str());
         out << buf << "\n";
 
@@ -775,6 +779,10 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
         } else if (p.kind == Kind::Bool) {
             legal = "true|false";
         }
+        // A free-form Str with a hand-written grammar (the ACR's `stop`) has no computable
+        // set, so it carries its own hint -- otherwise this column is blank and the reader
+        // has no idea `end` or a mm:ss is even accepted.
+        if (legal.empty() && !p.values.empty()) legal = p.values;
         // No setter -> it is a PIN, not a jumper. Say so in the column that tells you
         // what you may type, because that is the question being asked there.
         if (!p.set) legal = "(read-only)";

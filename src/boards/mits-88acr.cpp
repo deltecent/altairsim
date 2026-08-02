@@ -292,34 +292,42 @@ std::vector<Property> AcrBoard::unitProperties(const std::string& unit) {
 
     // THE AUTO-STOP MARK -- a time at which the tape stops playing, so a multi-program tape
     // can be cued to halt at a boundary rather than running on into the next program. `off`
-    // (or `end`) clears it. It is the operator's STOP button, and it gates playback only:
-    // a recording writes straight through it.
+    // clears it; `end` parks it at the physical end of the tape. It is the operator's STOP
+    // button, and it gates playback only: a recording writes straight through it.
     Property stp;
-    stp.name = "stop";
-    stp.help = "Auto-stop playback at this time: off | end | <mm:ss>";
-    stp.kind = Kind::Str;
+    stp.name   = "stop";
+    stp.help   = "Auto-stop playback at this time: off | end | <mm:ss>";
+    stp.kind   = Kind::Str;
+    stp.values = "off | end | mm:ss";   // Kind::Str has no listable set; hand it one for SHOW
     stp.get  = [this] {
-        if (!tape_ || tape_->stopAt() == TapeImage::kNoStop || tape_->stopAt() >= tape_->size())
+        if (!tape_ || tape_->stopAt() == TapeImage::kNoStop)
             return Value::ofStr(std::string("off"));
+        // A mark at (or past) the last byte is "at the end" -- report it as `end`, the word
+        // that set it, rather than a mm:ss that just happens to equal the tape's length.
+        if (tape_->stopAt() >= tape_->size())
+            return Value::ofStr(std::string("end"));
         return Value::ofStr(tapeTimeMMSS(tapeSeconds(tape_->stopAt())));
     };
     stp.set = [this](const Value& v, std::string& err) {
-        const std::string lo    = lowerAscii(v.s());
-        const bool        clear = (lo == "off" || lo == "none" || lo == "end");
+        const std::string lo  = lowerAscii(v.s());
+        const bool        off = (lo == "off" || lo == "none");
+        const bool        end = (lo == "end");
         if (!tape_) {
-            // No cassette: clearing is a harmless no-op -- and `stop=off` is exactly what
+            // No cassette: `off`/`end` are harmless no-ops -- and `stop=off` is exactly what
             // an empty recorder round-trips through CONFIG SAVE. A real time has no tape to
             // measure against, so it says so rather than storing a number it cannot honor.
-            if (clear) return true;
+            if (off || end) return true;
             err = "there is no cassette in the recorder. MOUNT one first.";
             return false;
         }
-        if (clear) {
+        if (off) {
             tape_->setStop(TapeImage::kNoStop);
+        } else if (end) {
+            tape_->setStop(tape_->size());   // park at the physical end
         } else {
             double secs;
             if (!parseTapeTime(v.s(), secs)) {
-                err = "'" + v.s() + "' is not a stop -- use a time (mm:ss or seconds), or off";
+                err = "'" + v.s() + "' is not a stop -- use a time (mm:ss or seconds), end, or off";
                 return false;
             }
             tape_->setStop(secondsToByte(secs));
@@ -519,8 +527,16 @@ uint64_t AcrBoard::secondsToByte(double secs) const {
 std::string AcrBoard::activityLabel() const {
     if (!tape_ || !liveCounter_ || mode_ != TapeStream::Mode::Play) return {};
     const uint64_t p = tape_->pos(), sz = tape_->size();
-    // Nothing to watch before it starts, once it ends, or while it is parked at a stop mark.
-    if (p == 0 || p >= sz || tape_->atStop()) return {};
+    // Nothing to watch before the head has moved, or while it is parked at a stop mark
+    // short of the end. But DO report the head sitting AT the end (p == sz): the counter
+    // rests on its 100% frame there. That last frame is the whole reason it is not gated
+    // out -- a flat-out load is over before a single 0.25s paint window can catch it
+    // climbing, so 100% is the ONLY frame there is, and leaving it on screen is the
+    // operator's cue that the tape is done (time to STOP/RESET -- ^E -- and run what was
+    // loaded). It cannot resurrect over a prompt: the run loop retires the line for good
+    // the moment the guest speaks over it (cli/tape_counter_line.h), and a genuinely new
+    // load re-arms it by starting from the top (p == 0) or a fresh mount.
+    if (p == 0 || tape_->atStop()) return {};
     return "tape: " + tapeCounterText(tapeSeconds(p), tapeTotalSeconds());
 }
 

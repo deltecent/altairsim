@@ -8,6 +8,25 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### Altair BASIC 1.0 — the first one — as an example
+
+`examples/basic/basic1.toml` boots **"8080 BASIC VER 1.0"**, the original Altair BASIC Bill Gates
+and Paul Allen wrote in 1975, off a period cassette image with the bootstrap MITS shipped, both
+unmodified. It boots the raw two-move way its primitive bootstrap forced and the later 4K/8K
+loaders did away with: `RUN 1800` reads the tape, then — because that loader neither stops nor
+jumps — you press `^E` (the operator's STOP/RESET) and `RUN 0` to start BASIC. It reaches `MEMSIZ?`
+(spelled exactly that way: Microsoft set the end-of-message bit on the `Z` instead of spending a
+byte on a trailing `E`). A pty acceptance test drives the two-step boot end to end.
+
+### The live tape counter holds its finished frame
+
+The `tape: mm:ss / total (nn%)` readout the 88-ACR paints while a cassette loads no longer vanishes
+the instant the head reaches the end — it now rests on its final `(100%)` frame. This matters at
+the flat-out default, where a load is over before a single paint window can catch the counter
+climbing: `tape: 02:30 / 02:30 (100%)` is then the only frame there is, and leaving it on screen is
+how you know the tape is done and it is time to stop and run what loaded. It still cannot repaint
+over a prompt: the run loop retires the line the moment the guest prints over it.
+
 ### `MOUNT` reads ImageDisk (`.IMD`) files
 
 `MOUNT <id>:<unit> disk.imd` now Just Works: an ImageDisk container is converted to a raw

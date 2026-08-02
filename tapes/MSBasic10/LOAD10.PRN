@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="version" content="5de793e3ecafb3886ab9728b0946518c8addebab">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="icon" type="image/x-icon" href="/favicon.ico">
+	<title>deramp.com</title>
+	<link href="/.abba/css/style.css" rel="stylesheet">
+	<!--[if lt IE 9]>
+	<script src="/.abba/js/iefix.js"></script>
+	<![endif]-->
+</head>
+<body>
+
+<header>
+	<nav class="navbar navbar-default">
+		<div class="container">
+			<div class="navbar-header">
+				<a class="navbar-brand" href="/">
+					<span class="icon icon-abba" aria-hidden="true"></span>
+					deramp.com
+				</a>
+			</div>
+		</div>
+	</nav>
+</header>
+<main>
+	<div class="container">
+
+<div class="jumbotron">
+	<h1>
+		Not Found
+		<span class="icon icon-search" aria-hidden="true"></span>
+	</h1>
+	<p>
+		The requested url
+		<b class="url">/downloads/altair/software/papertape_cassette/Cassette%20Loaders/LOAD10.PRN</b>
+		was not found on this server.
+	</p>
+	<button class="btn btn-primary">
+		<span class="icon icon-left" aria-hidden="true"></span>
+		Back
+	</button>
+</div>
+
+	</div>
+</main>
+
+
+<script src="/.abba/js/script.js"></script>
+</body>
+</html>
+

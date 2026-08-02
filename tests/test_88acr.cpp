@@ -449,11 +449,17 @@ void test_88acr() {
         CHECK(r.acr->activityLabel().empty(), "counter off: nothing to paint");
         CHECK(r.prop("position") != "<none>", "...but SHOW still reports the position");
 
-        // Back on, and wound to the very end, there is again nothing to watch.
+        // Back on, and wound to the very end, the counter RESTS on its 100% frame -- it is
+        // not gated out at the end. That final frame is the whole point: a flat-out load is
+        // over before a single paint window can catch the counter climbing, so 100% is the
+        // only readout there is, and leaving it up is the operator's "the tape is done" cue.
         CHECK(setUnitProperty(*r.acr, "tape", "counter", "on", err), "counter=on");
         std::string said;
         r.wind("END", said);
-        CHECK(r.acr->activityLabel().empty(), "at the end there is nothing loading");
+        CHECK(r.acr->activityLabel().find("tape:") == 0,
+              ("at the end the counter holds its final frame: " + r.acr->activityLabel()).c_str());
+        CHECK(r.acr->activityLabel().find("(100%)") != std::string::npos,
+              ("...and that frame reads 100%: " + r.acr->activityLabel()).c_str());
     }
 
     // -----------------------------------------------------------------------
@@ -496,6 +502,15 @@ void test_88acr() {
         CHECK(r.prop("stop") == "off", "the stop reads back off");
         while (r.getByte(b)) ++got;
         CHECK(r.acr->tape()->atEnd(), "cleared: the tape now runs to its physical end");
+
+        // `stop=end` marks the physical end and reads back as `end` -- the word that set it,
+        // not a mm:ss that happens to equal the tape length, and NOT a synonym for `off`.
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "end", err), "SET stop=end");
+        CHECK(r.prop("stop") == "end", ("stop reads back as end: " + r.prop("stop")).c_str());
+        CHECK(r.acr->tape()->stopAt() >= r.acr->tape()->size(),
+              "the mark is at (or past) the last byte");
+        CHECK(setUnitProperty(*r.acr, "tape", "stop", "off", err), "and stop=off clears it again");
+        CHECK(r.prop("stop") == "off", "back to off");
     }
 
     // -----------------------------------------------------------------------

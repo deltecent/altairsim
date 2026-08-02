@@ -1,0 +1,118 @@
+# Altair BASIC 1.0 -- the FIRST one -- off a period cassette.
+#
+#     cd examples/basic && altairsim basic1.toml
+#     -> the tape loads, the machine goes quiet; press ^E, then type: RUN 0
+#     -> MEMSIZ?
+#
+# "8080 BASIC VER 1.0" is the oldest Altair BASIC there is: the interpreter Bill Gates and
+# Paul Allen wrote for the Altair in 1975, read here off a real cassette image by the
+# period bootstrap MITS shipped, both unmodified. This is the whole machine in one file --
+# the bare 1975 Altair, an 88-SIO for the Teletype, an 88-ACR for the recorder -- because
+# it is a machine you build to run one program, and there is no reason to name it anything.
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h), not to wherever you are
+# standing, so this directory can be COPIED somewhere and still boot. You get the binary
+# and this folder; you do not get the repository.
+#
+# WHY THE BOOT IS TWO MOVES, WHERE basic4k.toml IS ONE.
+#
+# BASIC 1.0's bootstrap (LOAD10, in tapes/MSBasic10/LOAD10.ASM) is the primitive one: it
+# copies the tape into memory starting at 0000 and LOOPS FOREVER. It has no idea how long
+# the tape is, so it never stops and never jumps to what it loaded. So the boot is genuinely
+# two moves, exactly as that loader's own listing documents them:
+#
+#     RUN 1800   the loader reads the whole tape into 0000.. (about a second, flat out),
+#                then spins reading a recorder that has nothing left to give.
+#     ^E         ATTN -- the STOP/RESET the 1975 operator did when the tape ran out. It
+#                returns you to the monitor without disturbing what was loaded.
+#     RUN 0      start BASIC from zero.
+#
+# `RUN 1800` is in `startup` below, so the tape starts moving the moment you launch; the ^E
+# and the `RUN 0` are yours to type, because on the real machine they were the operator's to
+# do -- and doing them is the point. The 4K and 8K bootstraps that came later learned to
+# jump on their own (basic4k.toml boots in one `RUN 0` because of it); this one is the raw
+# 1975 article, before that trick existed. "Bill's Epic Adventure, Episode 1."
+#
+# WANT TO WATCH IT LOAD? `SET acr0:tape rate=real` before you RUN plays the tape at the true
+# 300-baud speed the 1975 cassette ran at -- about two and a half minutes -- and the counter
+# below climbs 00:00 -> 02:30 as it goes. BASIC cannot tell the difference. REWIND acr0:tape
+# puts the cassette back at the start; the card has no motor control, so that verb is your
+# finger on the recorder.
+
+[machine]
+name = "basic1"
+
+# The three things a human did in 1975 that are NOT hardware: put the tape in (MOUNT),
+# toggle in the bootstrap (LOAD), and set it running (RUN 1800). The tape is not in the
+# hardware below, deliberately -- which cassette is in the recorder is not a property of the
+# card, and there is no motor control on it to make it one.
+startup = [
+  "MOUNT acr0:tape \"BASIC Ver 1-0.tap\"",
+  "LOAD \"LOAD10.HEX\"",
+  "RUN 1800",
+]
+
+# THE SENSE SWITCHES. BASIC 1.0 predates the sense-switch console selection that 4K/8K
+# BASIC 3.x use -- there is nothing to select here, the console is the one 88-SIO at 0, and
+# LOAD10 reads the ACR directly rather than a switch. So 0x00 is not a choice that matters;
+# it is simply "no switches up".
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0        # flat out (the default). `SET cpu0 clock_hz=2000000` for the real 2 MHz.
+
+# THE CONSOLE -- an 88-SIO at port 0, because that is where BASIC 1.0 looks for it. Not the
+# 2SIO at 0x10 that `default` has: this is the oldest Altair BASIC there is, and it predates
+# that card. Nothing on this card rewrites a byte; the line is 8-bit clean. BASIC's high bit
+# is dealt with at [console] below, because that is where the Teletype is.
+[[board]]
+type    = "sio"
+id      = "sio0"
+port    = 00
+connect = "console"
+
+# THE CASSETTE -- an 88-ACR at 006, which is not a choice: the manual says "wire address
+# select for 006", and the bootstrap agrees (IN 06 / IN 07). It does not collide with the
+# console at 0, and that is the whole reason the console can BE at 0.
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+  # THE TAPE IN THE RECORDER. `counter = "on"` prints the live tape counter on the console as
+  # the tape plays -- `tape: 00:00 / 02:30 (0%)` climbing to 100%. At the flat-out default the
+  # load is over in an instant, so there is nothing to see; slow the tape to its real 300-baud
+  # speed with `SET acr0:tape rate=real` before you RUN and the counter climbs through the load.
+  [board.unit.tape]
+  counter = "on"
+
+# 8K of RAM. BASIC 1.0's interpreter loads to 0000-117F -- about 4.4K -- so it does not fit
+# in a 4K machine at all; the smallest Altair that runs it has a second 4K card in it.
+# `fill = "random"` because real static RAM does not come up zeroed, and BASIC's RAM scan
+# (the MEMSIZ? / BYTES FREE dialog) is exactly the code that must not care.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "8K"
+
+# THE TERMINAL. MITS BASIC ends a message by setting bit 7 of its LAST character: the prompt
+# leaves the interpreter as `MEMSI` + ('Z'|0x80), and a modern terminal prints `MEMSI` then a
+# garbage byte. (Microsoft even set the terminator ON the 'Z' rather than spend a byte on a
+# trailing 'E' -- the prompt really is "MEMSIZ?", not "MEMSIZE?".) It is a string TERMINATOR,
+# not data. The real machine masked nothing: the card sent all eight bits and the TELETYPE
+# ignored the eighth -- on a Model 33 that is the parity position, and the printer never
+# decodes it. That is what `strip7out` on the console is, and it is the only thing in the
+# simulator allowed to alter a byte (DESIGN.md 7.2). The line stays 8-bit clean; the Teletype
+# ignores the eighth bit. Both true, as they were in 1975.
+[console]
+strip7out = true
