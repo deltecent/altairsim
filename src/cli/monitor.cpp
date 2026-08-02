@@ -613,6 +613,16 @@ Completions Monitor::complete(const std::string& line) {
             completeTarget(frag, UnitUse::Mount, /*wantPseudo=*/false);
         } else if (name == "CONNECT" || name == "DISCONNECT") {
             completeTarget(frag, UnitUse::Connect, /*wantPseudo=*/false);
+        } else if (name == "SHOW") {
+            // SHOW <id> inspects a board, but its argument is just as often a keyword
+            // (SHOW BUS, SHOW MOUNTS, ...). Offer both: the board ids and the canonical
+            // sub-command words the SHOW handler dispatches on. No id:unit -- SHOW <id>
+            // already prints a board's unit tables, so there is no colon step.
+            for (const auto& b : m_.boards()) keep(b->id);
+            for (const char* kw : {"BOARD", "BOARDS", "BUS", "CONSOLE", "DISPLAY", "MACHINE",
+                                   "MACHINES", "MOUNTS", "PATHS", "ROMS", "SYMBOLS", "VERSION"})
+                keep(kw);
+            comp.suffix = " ";
         } else if (name == "NOBREAK") {
             // NOBREAK takes a bare board id -- no unit, so no colon step.
             for (const auto& b : m_.boards()) keep(b->id);

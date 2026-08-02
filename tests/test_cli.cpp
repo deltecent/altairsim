@@ -2390,6 +2390,13 @@ void test_achieved_hz() {
         CHECK(has(cb, "LIST") && has(cb, "REMOVE"), "BOARDS offers its subcommands");
         CHECK(has(cmon.complete("BOARDS REMOVE "), "disk0"), "BOARDS REMOVE offers the board ids");
 
+        // SHOW: word 1 is a board id OR a sub-command keyword -- both are offered.
+        Completions csh = cmon.complete("SHOW ");
+        CHECK(has(csh, "sio0") && has(csh, "disk0"), "SHOW offers the board ids");
+        CHECK(has(csh, "BUS") && has(csh, "MOUNTS"), "SHOW offers its sub-command keywords");
+        CHECK(has(cmon.complete("SHOW d"), "disk0") && has(cmon.complete("SHOW d"), "DISPLAY"),
+              "SHOW prefix-matches ids and keywords together");
+
         // A command with no completion grammar wired is simply inert -- no matches, no throw.
         CHECK(cmon.complete("DUMP ").matches.empty(), "DUMP takes no completion, so Tab is inert there");
     }
