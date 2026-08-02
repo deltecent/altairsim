@@ -166,13 +166,24 @@ rm -rf "$out"/altairsim-*-"$target" \
 # machine may not have -- Git Bash on Windows has no `nm` -- and 7 records that `strings` gives
 # a FALSE NEGATIVE here, because SDL_CreateWindow is a symbol and not a literal. SHOW VERSION
 # carries a `video` row for this, so the answer is the same on all four machines.
-if ! "$sim" -n -x 'SHOW VERSION' 2>/dev/null | grep -q '^ *video *SDL3'; then
-  echo "build-package: THIS BINARY IS HEADLESS -- refusing to package it." >&2
+# The row now names the compiled-in video backends and says "windowed (...)" ONLY when a
+# real one (x11/wayland/cocoa/...) is present. A dummy-only SDL3 -- the Linux hole where no
+# X11/Wayland headers were found at configure time -- reports "NO WINDOW BACKEND" instead, so
+# demanding the "windowed (" marker rejects both the headless build AND the dummy-only one.
+if ! "$sim" -n -x 'SHOW VERSION' 2>/dev/null | grep -q '^ *video *SDL3 -- windowed ('; then
+  echo "build-package: THIS BINARY CANNOT OPEN A WINDOW -- refusing to package it." >&2
   echo >&2
   "$sim" -n -x 'SHOW VERSION' 2>&1 | sed 's/^/    /' >&2
   echo >&2
-  echo "A headless build runs the video machines and draws nothing, which is what every" >&2
-  echo "v0.2.0 archive shipped. Configure against a real SDL3 and look for" >&2
+  echo "The video row must read 'SDL3 -- windowed (...)'. Two ways it does not:" >&2
+  echo "  * 'none -- headless'      -- no SDL3 at all, which is what every v0.2.0 archive" >&2
+  echo "                              shipped: the video machines run and draw nothing." >&2
+  echo "  * 'NO WINDOW BACKEND'     -- SDL3 built with only its dummy driver, because no" >&2
+  echo "                              X11/Wayland dev headers were present when it was built." >&2
+  echo "                              Rebuild SDL3 with the video headers installed" >&2
+  echo "                              (tools/build-sdl3-static.sh now catches this too)." >&2
+  echo >&2
+  echo "Configure against a real static SDL3 and look for" >&2
   echo "    -- SDL3 found -- video boards enabled (windowed)" >&2
   echo "    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<static SDL3 prefix>" >&2
   exit 1

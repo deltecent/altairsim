@@ -34,6 +34,12 @@
 #include <sstream>
 #include <thread>
 
+// SHOW VERSION probes the compiled-in video drivers to say whether this build can open a
+// window (see showVersion). SDL3::SDL3 is linked PUBLIC to altair_core when SDL is enabled.
+#ifdef ALTAIRSIM_ENABLE_SDL
+#include <SDL3/SDL.h>
+#endif
+
 namespace altair {
 
 // ---------------------------------------------------------------------------
@@ -1088,7 +1094,32 @@ void Monitor::showVersion(std::ostream& out) {
     // It is a row here rather than a line on --version because 4.2 step 5 checks --version
     // for a BARE "AltairSim X.Y.Z" and a second line there invites a false STOP.
 #ifdef ALTAIRSIM_ENABLE_SDL
-    row("video", "SDL3 -- windowed");
+    {
+        // "SDL3 was compiled in" is NOT the same question as "a window can open", and on
+        // Linux they come apart: an SDL3 built with no X11/Wayland headers present configures
+        // happily with ONLY its dummy driver, and then find_package succeeds, ldd names no
+        // SDL, and a bare "SDL3" row here would lie -- the v0.2.0 headless failure reached by
+        // another road. So enumerate the drivers SDL actually built. SDL_GetVideoDriver(i)
+        // reads the static bootstrap table WITHOUT initialising video, so it is safe to call
+        // from a SHOW VERSION that starts nothing (unlike SDL_GetCurrentVideoDriver()).
+        std::string list;
+        bool windowing = false;
+        int n = SDL_GetNumVideoDrivers();
+        for (int i = 0; i < n; ++i) {
+            const char* d = SDL_GetVideoDriver(i);
+            if (!d) continue;
+            if (!list.empty()) list += ", ";
+            list += d;
+            // "dummy" and "offscreen" render to memory and open no window; anything else
+            // (x11, wayland, cocoa, kmsdrm, windows, ...) is a real windowing backend.
+            std::string dn(d);
+            if (dn != "dummy" && dn != "offscreen") windowing = true;
+        }
+        if (windowing)
+            row("video", "SDL3 -- windowed (" + list + ")");
+        else
+            row("video", "SDL3 -- NO WINDOW BACKEND (dummy only; " + list + ")");
+    }
 #else
     row("video", "none -- headless (null display)");
 #endif

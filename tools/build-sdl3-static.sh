@@ -55,7 +55,7 @@ if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$SDL3_VERSION" ] && [ -f "$prefix/l
     exit 0
 fi
 
-for t in cmake curl tar; do
+for t in cmake curl tar nm; do
     command -v "$t" >/dev/null 2>&1 || { echo "build-sdl3-static: needs $t on PATH" >&2; exit 1; }
 done
 
@@ -123,6 +123,28 @@ if [ -e "$prefix/lib/libSDL3.dylib" ] || [ -e "$prefix/lib/libSDL3.so" ]; then
     exit 1
 fi
 
+# ...and it must contain a REAL VIDEO BACKEND, not just the dummy driver. This is the hole
+# every other check misses: SDL3 configures happily with only its DUMMY driver when no
+# X11/Wayland headers are present, and then libSDL3.a exists, find_package succeeds, ldd
+# names no SDL, and SHOW VERSION says "SDL3" -- on a binary that cannot open a window, which
+# is exactly what v0.2.0 shipped by a different road. A video driver compiles in as a
+# `<NAME>_bootstrap` VideoBootStrap symbol, so `nm` names precisely what was built (the Linux
+# box proved this idiom; `strings` was wrong in both directions). AUDIO drivers end in
+# _bootstrap too, so match the known WINDOWING drivers by name (case-insensitive, and tolerant
+# of Mach-O's leading underscore) rather than "anything that is not dummy".
+boots=$(nm -g "$prefix/lib/libSDL3.a" 2>/dev/null | grep -oE '[A-Za-z0-9_]+_bootstrap' | sort -u)
+if ! printf '%s\n' "$boots" | grep -qiE '(x11|wayland|cocoa|kmsdrm|windows|uikit|android)_bootstrap'; then
+    echo "build-sdl3-static: libSDL3.a has NO windowing video backend -- it opens no window." >&2
+    echo "  The dummy-only build: SDL3 found no X11/Wayland headers at configure time." >&2
+    echo "  Video/bootstrap symbols present:" >&2
+    printf '%s\n' "$boots" | sed 's/^/      /' >&2
+    echo "  Install the video dev headers and rerun this script, e.g. on Debian/Ubuntu:" >&2
+    echo "      sudo apt install libx11-dev libxext-dev libxrandr-dev libxi-dev \\" >&2
+    echo "                       libwayland-dev libxkbcommon-dev libgl1-mesa-dev" >&2
+    keep_work=1
+    exit 1
+fi
+
 echo "$SDL3_VERSION" > "$stamp"
 
 echo
@@ -141,6 +163,9 @@ if [ "$(uname -s)" = "Darwin" ]; then
     echo "The first alone cannot tell a static build from a HEADLESS one -- neither has an"
     echo "SDL line. Use nm, not strings: SDL_CreateWindow is a symbol, not a string literal,"
     echo "so 'strings | grep SDL_CreateWindow' reports 0 on a perfectly good static build."
+    echo
+    echo "And confirm the build can open a WINDOW, not just that SDL linked:"
+    echo "    build/altairsim -n -x 'SHOW VERSION' | grep video   # must say 'windowed (...)'"
 else
     echo "    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$prefix"
     echo
@@ -150,4 +175,7 @@ else
     echo
     echo "The first alone cannot tell a static build from a HEADLESS one. Use nm, not"
     echo "strings: SDL_CreateWindow is a symbol, not a string literal."
+    echo
+    echo "And confirm the build can open a WINDOW, not just that SDL linked:"
+    echo "    build/altairsim -n -x 'SHOW VERSION' | grep video   # must say 'windowed (...)'"
 fi
