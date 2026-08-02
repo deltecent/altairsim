@@ -8,6 +8,7 @@
 #include <cstdlib>
 
 #include <algorithm>
+#include <cmath>   // std::lround -- transitively present on libc++, not on libstdc++
 
 namespace altair {
 
