@@ -4895,7 +4895,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // builds the new machine in a scratch backplane and swaps it in whole
             // (machine.h, replaceWith), so a file that does not parse leaves you
             // exactly where you were and this branch is never reached.
-            if (!loadToml(a[2], m_, err)) {
+            std::vector<std::string> notes;
+            if (!loadToml(a[2], m_, err, &notes)) {
                 out << err << "\n";
                 failed_ = true;
                 return true;
@@ -4908,6 +4909,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // whole claim `CONFIG LOAD mine.toml` makes.
             m_.power();
             out << "loaded " << a[2] << ": " << m_.boards().size() << " board(s)\n";
+            // The author's `#>` notes, before the startup commands run -- an operator reads
+            // "type DIR at the A> prompt" and then watches the prompt appear, in that order.
+            for (const std::string& note : notes) out << note << "\n";
             flush(out);
             runStartup(out);
             return true;

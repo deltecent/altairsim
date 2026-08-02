@@ -66,6 +66,7 @@ const struct {
     {"load_is_atomic", test_load_is_atomic},
     {"clock_survives_load", test_clock_survives_load},
     {"subunit_schema", test_subunit_schema},
+    {"toml_notes", test_toml_notes},
     {"isa", test_isa},
     {"z80_isa", test_z80_isa},
     {"cpu", test_cpu},
