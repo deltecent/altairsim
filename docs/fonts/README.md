@@ -17,11 +17,17 @@ this directory was created to end.
 
 ## What is here, and where it came from
 
-Every file is an **unmodified upstream release file**. Nothing is subsetted. A subset would
-be a quarter of the size, but it would also be a modified font — harder to check against
-its source, and a font missing a glyph fails by printing a blank box rather than by saying
-so. Unmodified files can be verified against upstream by hash, and both licenses below are
-satisfied simply by keeping this notice next to them.
+Nothing here is subsetted. A subset would be a quarter of the size, but it would also be a
+partial font — harder to check against its source, and one that fails a missing glyph by
+printing a blank box rather than by saying so. So every glyph the upstream face has is here.
+
+The DejaVu files are **unmodified upstream release files**, verifiable against upstream by
+hash. The XCharter files are the one exception: they are TrueType **converted** from the
+upstream `.otf` (which is what upstream ships), because the PDF renderer mangles copy-paste
+out of a CFF font — the reason and the reproducible conversion are under **XCharter** below.
+Both are pinned by hash on both ends, and both licenses below are satisfied simply by keeping
+this notice next to them (each grant permits redistribution, and XCharter's permits
+modification outright).
 
 ### XCharter — the body text
 
@@ -30,15 +36,38 @@ been set in (macOS ships Bitstream Charter as `Charter.ttc`); XCharter is the sa
 from a source we are allowed to redistribute, so switching to it changed the look of the
 document by essentially nothing.
 
+The files here are TrueType, and that is deliberate — it is the one exception to the
+"unmodified upstream file" rule above, forced by the renderer. Chrome's `--print-to-pdf`
+embeds a CFF OpenType `.otf` as a **Type 3** font, whose text layer carries no reliable word
+spacing, so text copied out of the PDF comes back with spaces jammed into the middle of words
+(`Using alt airsim, ...` — issue #246). A **TrueType** font embeds as CID TrueType and copies
+clean, which is exactly why DejaVu below — already `.ttf` — was never affected while every
+word of XCharter body text was. XCharter ships no `.ttf` upstream (CTAN has only
+`opentype/` and `type1/`), so these four faces are **converted from the upstream `.otf`** by
+`tools/otf2ttf.py`, a deterministic cu2qu conversion (cubic outlines → quadratic `glyf`, CFF
+dropped, PostScript names kept). The conversion is reproducible: cu2qu is deterministic and
+fontTools copies the source `head` timestamps, so the same fontTools on the same `.otf` yields
+byte-identical output. Both ends are pinned below — verify the `.otf` against upstream, then
+re-run the script and verify the `.ttf`.
+
 - Upstream: <https://ctan.org/pkg/xcharter> — `https://mirrors.ctan.org/fonts/xcharter.zip`
 - Version 1.26 (2024-06-18); zip `sha256:d8e3ab99355a8cae11c2559dfa9a458530ce3d24dd4f4cbd88f0140e8f31a87e`
-- Taken from `xcharter/opentype/` in that archive:
+- Source `.otf`, taken from `xcharter/opentype/` in that archive:
 
 ```
 e5d22b0f417a0a3e22ee2d7ef10d2e8bba1397066ac3de44e3e3b34e6e56c601  XCharter-Roman.otf
 baf595556bbd65749a83b41034c900a8d7f8f5b2a1aa24314319501fdcacce9b  XCharter-Bold.otf
 46100192810480a54dd287e8b3966d5bccf4603ba008d9c8f6bdbe562c6a134b  XCharter-Italic.otf
 255d912eb1d70aac000a27ad3ee6c8082e7dbc004083b1a86526bcff472b50a9  XCharter-BoldItalic.otf
+```
+
+- Converted `.ttf` (`tools/otf2ttf.py`, fontTools 4.60.2), which is what actually ships here:
+
+```
+dd2ea7b8dc8d6e3a4d4c4f51f5cb50eebb34425cbf4761fd050d8eaccc940ec5  XCharter-Roman.ttf
+9719be92ced84335c026d9ae4cb8cc7e2c5b14ab831e5dc119d25d78e5a12ed0  XCharter-Bold.ttf
+c6cfd003014ddc23d4aefed9547a0b101df457b047dab23fed400a5cc0f777a6  XCharter-Italic.ttf
+ae8783d205a409cf03b4c4410020e6c1241f5321fde66c2749155eeb54d3adef  XCharter-BoldItalic.ttf
 ```
 
 ### DejaVu Sans Mono — the code
