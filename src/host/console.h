@@ -99,6 +99,7 @@
 
 #include <chrono>
 #include <deque>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -272,6 +273,16 @@ private:
     uint8_t  attn_     = 0x05;  // Ctrl-E
     NumBase  base_     = NumBase::Hex;  // hex is the modern default; octal is opt-in
     int      historyDepth_ = 50;  // command lines kept in .altairsim_history; 0 = off
+
+    // TEE THE OPERATOR'S SESSION TO A FILE (DESIGN.md 7.2, `log`). Everything that
+    // reaches the screen through writeRaw() -- guest output AND echoed keystrokes --
+    // is copied here when the file is open. It is a transcript of the terminal, not of
+    // the monitor's own REPL, because writeRaw() is the ONE screen-output seam and the
+    // REPL prints past it (std::cout). The path is resolved relative to the process cwd,
+    // which is the shell cwd the operator typed at. Opened for APPEND: a transcript you
+    // meant to keep is not worth truncating on a second SET. Empty path / `off` closes.
+    std::string   logPath_;
+    std::ofstream logFile_;
     bool     raw_      = false;
     // Is stdin OURS? enterRaw() takes it (and makes it non-blocking); until then the
     // monitor owns it, and reading it would steal a command or block the simulator.

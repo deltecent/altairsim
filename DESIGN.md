@@ -849,7 +849,7 @@ Implementations: `ConsoleStream`, `TcpListenStream` (`socket:2323` — accept, o
 
 ### 7.2 `Console` — the host keyboard and screen
 
-**Built, 2026-07-11** (`src/host/console.cpp`, `src/host/filter.cpp`). Implemented: `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell`, `bsdel`, and `attn`. Not yet: `tabs`, `ansi`, `rows`/`cols`, `pace`, `log`.
+**Built, 2026-07-11** (`src/host/console.cpp`, `src/host/filter.cpp`). Implemented: `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell`, `bsdel`, and `attn`; **`log` landed 2026-08-02**. Not yet: `tabs`, `ansi`, `rows`/`cols`, `pace`.
 
 A `ByteStream` like any other, so a board connecting to it needs no special code. But it is the only stream with a human on the far end, so it owns a configurable **transform chain**, applied inbound from the keyboard and outbound to the screen. Properties are declared through the same `Property` layer as boards, so `SET`/`SHOW`/MCP work on it for free.
 
@@ -1208,7 +1208,8 @@ CONSOLE  -- it CONFIGURES the console; it does not start the machine (RUN does).
   line carries XMODEM and a filter on it corrupts a transfer silently. What a card
   has instead is line CODING (baud, data_bits, parity): a frame, never a mask.
   SET sio0:a UPPER=ON is an error today, and says so.
-  TABS, ANSI, ROWS, COLS, PACE and LOG are NOT BUILT -- see 7.2.
+  TABS, ANSI, ROWS, COLS and PACE are NOT BUILT -- see 7.2. LOG tees the session
+  to a host file (SET CONSOLE LOG=path; empty/off closes it).
 
   WHICH UNIT IS THE CONSOLE? The one CONNECTed to it. Exactly one may hold it (there
   is one keyboard); connecting a second STEALS it and says who from. A config file

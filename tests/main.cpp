@@ -54,6 +54,7 @@ const struct {
     {"save_is_a_read", test_save_is_a_read},
     {"phantom", test_phantom},
     {"cli", test_cli},
+    {"console", test_console},
     {"lineedit", test_lineedit},
     {"tapecounter", test_tapecounter},
     {"idle_judgement", test_idle_judgement},

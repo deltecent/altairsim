@@ -214,11 +214,22 @@ size_t Console::write(const uint8_t* buf, size_t n) { return filter_.write(buf, 
 size_t Console::writeRaw(const uint8_t* buf, size_t n) {
     size_t w = platform::writeOutput(buf, n);
     written_ += (uint64_t)w;
+
+    // THE LOG TAP. This is the one seam every screen byte passes through, so the
+    // transcript catches all of it -- guest output and echoed keystrokes alike -- with a
+    // single copy and no per-site plumbing. We tee exactly what went to the screen (`w`
+    // bytes), so a short host write is not over-recorded. No flush per byte: the file is
+    // flushed on flushRaw(), the same beat the screen is.
+    if (logFile_.is_open() && w) logFile_.write(reinterpret_cast<const char*>(buf), (std::streamsize)w);
+
     return w;
 }
 
 void Console::flush() { flushRaw(); }
-void Console::flushRaw() { platform::flushOutput(); }
+void Console::flushRaw() {
+    platform::flushOutput();
+    if (logFile_.is_open()) logFile_.flush();
+}
 
 bool Console::takeAttn() {
     // It does NOT poll. The run loop does that every slice -- which is the whole
@@ -284,6 +295,43 @@ std::vector<Property> Console::properties() {
         x.get     = [this] { return Value::ofInt(historyDepth_); };
         x.set     = [this](const Value& v, std::string&) {
             historyDepth_ = (int)v.i();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+
+    // A TRANSCRIPT OF THE SESSION. `log=<path>` tees everything the operator sees --
+    // guest output and echoed keystrokes both, because writeRaw() is the single screen
+    // seam they all pass through -- to a host file. It is a Str property, so `SET CONSOLE
+    // log=…`, `SHOW CONSOLE`, tab-completion and MCP pick it up with no other wiring.
+    //
+    // Opened for APPEND, on purpose: SET-ing the same log twice in a session should not
+    // erase what you already captured. Empty path or `off` closes it. An open failure is
+    // reported and leaves logging OFF -- a transcript that silently isn't recording is
+    // worse than none. The path is the shell cwd's (the process cwd), like any path typed
+    // at the prompt. This does NOT round-trip through CONFIG SAVE: it is a diagnostic, not
+    // machine hardware, the same as `[console]` is not emitted.
+    {
+        Property x;
+        x.name    = "log";
+        x.help    = "Tee the terminal session (guest output + echoed keys) to a file; empty/off closes it";
+        x.kind    = Kind::Str;
+        x.get     = [this] { return Value::ofStr(logPath_); };
+        x.set     = [this](const Value& v, std::string& err) {
+            const std::string path = v.s();
+            if (path.empty() || path == "off") {
+                logFile_.close();
+                logFile_.clear();  // drop any error state so the handle is reusable
+                logPath_.clear();
+                return true;
+            }
+            std::ofstream f(path, std::ios::out | std::ios::app | std::ios::binary);
+            if (!f) {
+                err = "cannot open log file: " + path;
+                return false;  // leaves the previous log (if any) untouched
+            }
+            logFile_ = std::move(f);
+            logPath_ = path;
             return true;
         };
         p.push_back(std::move(x));
