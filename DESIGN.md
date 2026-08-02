@@ -236,6 +236,7 @@ Two label collisions are real, and both are DDT's own: `S=` on the line is the *
 
 - **`BREAK IO`, `BREAK MEM R|W`, `TRACE`, `HISTORY`** are questions about **bus cycles**, and the bus already broadcasts every cycle to every board (`snoop()`, §4.2.2). The debugger watches that same stream. **CPU-agnostic, and the machinery already exists.**
 - **`BREAK <addr>`** is the only CPU-flavoured one, and it is just *"PC equals X after a step"* — one comparison against a register the reflection layer already exposes.
+- **`BREAK <kind> <action>`** is a third plane: a **device-event** breakpoint, first member `BREAK TAPE STOP` (halt when a cassette deck reaches its auto-stop mark, so a load can be caught without knowing the loader's end address). There is no bus cycle for *"the tape ran out"*, so it is neither a cycle observer nor a PC compare — the run loop **polls** each board's `takeAutoStop()` edge latch at the instruction boundary and stops there, exactly as `SET BUS UNCLAIMED=HALT` samples its latch (§4.6.1). One table (`kDeviceEvents` in `core/debug.h`) drives the parser, `describe()` and the poll together, so a future member (`PRINTER PAGE`, `LINE CARRIER`, `DISK SEEK`) is a single row. It is still CPU-agnostic — the CPU is never asked anything — so it inherits onto any core for free, the same as the other two.
 
 So the debugger lives in `Machine`, drives `cpu->step(bus)`, and asks only generic questions. **An 8085 card inherits the entire debugger for free.**
 

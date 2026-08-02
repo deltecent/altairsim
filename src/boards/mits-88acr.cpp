@@ -540,6 +540,20 @@ std::string AcrBoard::activityLabel() const {
     return "tape: " + tapeCounterText(tapeSeconds(p), tapeTotalSeconds());
 }
 
+// BREAK TAPE STOP -- the rising edge of the deck reaching its auto-stop mark. atStop() is
+// STICKY (the stream refuses to advance past the mark, host/tape.h), so the level alone
+// would fire forever once reached; the edge against wasAtStop_ fires once per load. The
+// debugger drains this once before a run, which syncs wasAtStop_ to reality, so a tape
+// already parked at its mark from an earlier load does not fire the instant a new run
+// starts -- only a FRESH arrival does. A REWIND/WIND moves the head off the mark, so the
+// next drain sees atStop() false, and the load after that fires again.
+bool AcrBoard::takeAutoStop() {
+    bool now  = tape_ && mode_ == TapeStream::Mode::Play && tape_->atStop();
+    bool edge = now && !wasAtStop_;
+    wasAtStop_ = now;
+    return edge;
+}
+
 // One modem, one modulation. This is the list a tape is judged against. Virtual so a
 // descendant (the 88-UIO) can present a switch-selected modulation instead; AcrBoard's
 // own answer is the FSK 2400/1850 its single modem board can hear, and only that.

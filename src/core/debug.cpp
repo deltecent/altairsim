@@ -24,8 +24,15 @@ const char* breakKindName(BreakKind k) {
     case BreakKind::MemWrite: return "mem w";
     case BreakKind::IoRead:   return "io r";
     case BreakKind::IoWrite:  return "io w";
+    case BreakKind::TapeStop: return "tape stop";
     }
     return "?";
+}
+
+const DeviceEvent* deviceEventForKind(BreakKind k) {
+    for (const DeviceEvent& de : kDeviceEvents)
+        if (de.bk == k) return &de;
+    return nullptr;
 }
 
 const char* breakActionName(BreakAction a) {
@@ -38,6 +45,18 @@ const char* breakActionName(BreakAction a) {
 }
 
 std::string Breakpoint::describe() const {
+    // A device-event breakpoint has no address to print -- it is a named hardware event,
+    // not a place on the bus. Render it "<kind> <action>" lowercased from the one table,
+    // so a new member names itself here the moment its row lands (no drift with the parser).
+    if (const DeviceEvent* de = deviceEventForKind(kind)) {
+        std::string s;
+        for (const char* p = de->kind; *p; ++p) s += (char)std::tolower((unsigned char)*p);
+        s += ' ';
+        for (const char* p = de->action; *p; ++p) s += (char)std::tolower((unsigned char)*p);
+        if (action != BreakAction::Stop) s += std::string(" ") + breakActionName(action);
+        return s;
+    }
+
     char buf[80];
     bool io = (kind == BreakKind::IoRead || kind == BreakKind::IoWrite);
     int w = io ? 2 : 4;
@@ -383,6 +402,18 @@ RunResult Debugger::run(uint64_t maxSteps) {
     bool armed = armObserver();
     m_.running = true;
 
+    // DEVICE-EVENT BREAKPOINTS (BREAK TAPE STOP, and its future siblings). Are any armed?
+    // If none are, we never poll the boards for them and a machine without one pays
+    // nothing -- the same spirit as `armed` guarding the cycle observer. If one IS armed,
+    // drain every board's edge latch ONCE here to sync it to the here-and-now, so a device
+    // already sitting at its mark from an earlier load does not fire the instant this run
+    // begins -- only a fresh arrival during THIS run does (core/board.h takeAutoStop).
+    bool watchDeviceEvent = false;
+    for (const Breakpoint& b : bps_)
+        if (b.enabled && deviceEventForKind(b.kind)) { watchDeviceEvent = true; break; }
+    if (watchDeviceEvent)
+        for (const auto& bd : m_.boards()) bd->takeAutoStop();
+
     // Reflected registers for BREAK <addr> IF <expr>. The RegDef list is snapshotted
     // ONCE -- it is stable across a run (its get() closures read live state), so a
     // conditional breakpoint costs no per-step allocation -- and looked up by name,
@@ -470,6 +501,34 @@ RunResult Debugger::run(uint64_t maxSteps) {
             r.port = m_.bus.haltPort();
             r.write = m_.bus.haltWasWrite();
             break;
+        }
+
+        // BREAK TAPE STOP: a cassette deck reached its auto-stop mark since the last
+        // boundary. There is no bus cycle for "the tape ran out", so unlike a MEM/IO
+        // breakpoint we POLL the boards here, at the boundary, exactly as the unclaimed
+        // halt above does. Every board is drained each pass (read-and-clear keeps their
+        // edge latches in step); the event is DECK-NEUTRAL, so any deck reaching its mark
+        // fires a BREAK TAPE STOP. Then act just like the PC path below: count the hit,
+        // flip trace for a tracepoint, stop otherwise.
+        if (watchDeviceEvent) {
+            bool tapeStopped = false;
+            for (const auto& bd : m_.boards())
+                if (bd->takeAutoStop()) tapeStopped = true;
+            if (tapeStopped) {
+                bool stop = false;
+                for (Breakpoint& b : bps_) {
+                    if (!b.enabled || b.kind != BreakKind::TapeStop) continue;
+                    ++b.hits;
+                    if (b.action != BreakAction::Stop) {
+                        traceActive_ = (b.action == BreakAction::TraceOn);
+                        continue;
+                    }
+                    r.why = StopReason::TapeStop;
+                    r.bp = b.id;
+                    stop = true;
+                }
+                if (stop) break;
+            }
         }
 
         // BREAK <addr>: PC equals X after a step. One comparison, and it knows

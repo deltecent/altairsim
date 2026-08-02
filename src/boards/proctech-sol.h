@@ -121,6 +121,11 @@ public:
     // loop paints it and knows nothing about tapes (core/board.h).
     std::string activityLabel() const override;
 
+    // BREAK TAPE STOP: the rising edge of EITHER deck reaching its auto-stop mark
+    // (core/board.h). Read-and-clear, per deck, so two cassettes reaching their marks are
+    // two independent edges. Same contract as AcrBoard::takeAutoStop().
+    bool takeAutoStop() override;
+
     // For the tests, so they can watch a head move without a filesystem. 1 or 2.
     const TapeImage* tape(int deck) const;
 
@@ -203,6 +208,11 @@ private:
         // MOUNT (`counter=off`) or by SET. On-demand SHOW works either way. See
         // activityLabel(), which only ever speaks for the deck whose motor is on.
         bool liveCounter = true;
+
+        // The last auto-stop level takeAutoStop() saw FOR THIS DECK, so it reports the
+        // rising edge and not the sticky level. Per deck, because the two transports
+        // reach their marks independently. See SolBoard::takeAutoStop().
+        bool wasAtStop = false;
     };
 
     // WHAT THIS CARD'S CUTS MODEM CAN HEAR -- two formats, HONESTLY: the UART really

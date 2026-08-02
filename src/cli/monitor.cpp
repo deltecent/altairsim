@@ -2281,6 +2281,18 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
                       r.write ? "OUT to" : "IN from", r.port);
         out << buf << "\n";
         break;
+    case StopReason::TapeStop: {
+        // BREAK TAPE STOP fired: a cassette deck reached its auto-stop mark, so the load
+        // has landed and the head is parked. Name the breakpoint the same way the ordinary
+        // Breakpoint case does -- describe() renders "tape stop" from the one table.
+        std::string what = "tape stop";
+        for (const Breakpoint& b : dbg.breakpoints())
+            if (b.id == r.bp) what = b.describe();
+        std::snprintf(buf, sizeof buf, "breakpoint %d (%s) -- tape auto-stop, stopped at %s",
+                      r.bp, what.c_str(), fmtWord(r.pc).c_str());
+        out << buf << "\n";
+        break;
+    }
     }
 }
 
@@ -4439,6 +4451,38 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             (is(a[end - 1], "ON") || is(a[end - 1], "OFF"))) {
             action = is(a[end - 1], "ON") ? BreakAction::TraceOn : BreakAction::TraceOff;
             end -= 2;
+        }
+
+        // BREAK <kind> <action> -- a DEVICE-EVENT breakpoint (BREAK TAPE STOP, and its
+        // future siblings). It fires when a board reaches a named hardware state, not on a
+        // bus cycle or a PC value, so it is checked here BEFORE the address path -- a
+        // <kind> word that matched must resolve to a member of that kind or error, never
+        // fall through to be read as a symbol. One table (core/debug.h kDeviceEvents)
+        // drives this parser, describe() and the run-loop poll together, so a new member
+        // is a single row and the three cannot drift. A trailing TRACE ON|OFF was already
+        // stripped, so BREAK TAPE STOP TRACE ON arms a tracepoint for free.
+        for (const DeviceEvent& de : kDeviceEvents) {
+            if (!is(a[1], de.kind)) continue;
+            if (end == 3 && is(a[2], de.action)) {
+                // A tracepoint may be the first mention of tracing this session; point the
+                // sink here but leave it off, exactly as the address path does below.
+                if (action == BreakAction::TraceOn && !m_.debug.traceConfigured()) {
+                    m_.debug.traceTo(&out, 0);
+                    m_.debug.traceOff();
+                }
+                int id = m_.debug.add(de.bk, 0, 0, nullptr, action);
+                for (const Breakpoint& b : m_.debug.breakpoints())
+                    if (b.id == id) out << "breakpoint " << id << ": " << b.describe() << "\n";
+                return true;
+            }
+            // The <kind> matched but the rest did not -- list what this kind accepts,
+            // the same "which?" idiom BREAK MEM|IO uses for a bad R|W.
+            out << "which? BREAK " << upper(a[1]);
+            for (const DeviceEvent& e2 : kDeviceEvents)
+                if (is(a[1], e2.kind)) out << " " << e2.action;
+            out << "\n";
+            failed_ = true;
+            return true;
         }
 
         BreakKind kind = BreakKind::Pc;

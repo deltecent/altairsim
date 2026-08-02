@@ -38,6 +38,13 @@ enum class BreakKind {
     MemWrite,
     IoRead,    // an IN from this port
     IoWrite,   // an OUT to this port
+
+    // DEVICE EVENTS. Not a bus fact and not a PC fact -- a board reached a named
+    // hardware state (a cassette hit its auto-stop mark). There is no bus cycle for
+    // "the tape ran out", so these are POLLED at the instruction boundary, the way SET
+    // BUS UNCLAIMED=HALT is (DESIGN.md 4.6.1), never observed on the backplane. See
+    // kDeviceEvents below -- one table drives the whole family.
+    TapeStop,  // a cassette deck reached auto-stop (BREAK TAPE STOP)
 };
 
 const char* breakKindName(BreakKind k);
@@ -99,7 +106,37 @@ enum class StopReason {
                   // user breakpoint -- an internal one-shot the monitor set and cleared.
     Unclaimed,    // SET BUS UNCLAIMED=HALT and the guest reached an I/O port no board
                   // decodes. Stopped at the boundary, like a cycle breakpoint (4.6.1).
+    TapeStop,     // a BREAK TAPE STOP device-event breakpoint fired -- a cassette deck
+                  // reached its auto-stop mark. Polled at the boundary, like Unclaimed.
 };
+
+// A DEVICE-EVENT BREAKPOINT KIND: BREAK <kind> <action>. The first (and, for now, only)
+// member is BREAK TAPE STOP -- stop when a cassette deck reaches its auto-stop mark, so
+// you can halt right after a load lands without knowing the loader's end address. It is
+// polled at the boundary like SET BUS UNCLAIMED=HALT, NOT observed on the bus, because
+// "the tape ran out" is not a bus cycle -- so this is genuinely new machinery, distinct
+// from the MEM/IO cycle kinds.
+//
+// ONE TABLE DRIVES THE WHOLE FAMILY -- the monitor's parser, describe(), the run-loop
+// poll and the help text all read it -- so a new member (PRINTER PAGE, LINE CARRIER,
+// DISK SEEK, ...) is one row and cannot drift between where it is parsed and where it is
+// named, the same discipline endpointHelp() uses for the CONNECT schemes.
+struct DeviceEvent {
+    const char* kind;    // the <kind> word, uppercase for matching: "TAPE"
+    const char* action;  // the <action> word, uppercase for matching: "STOP"
+    BreakKind   bk;      // the BreakKind it arms
+    StopReason  sr;      // ...and why the run stops when it fires
+};
+inline constexpr DeviceEvent kDeviceEvents[] = {
+    {"TAPE", "STOP", BreakKind::TapeStop, StopReason::TapeStop},
+    // {"PRINTER", "PAGE",    BreakKind::..., StopReason::...},   <- future: one row each,
+    // {"LINE",    "CARRIER", BreakKind::..., StopReason::...},      and nothing else moves
+    // {"DISK",    "SEEK",    BreakKind::..., StopReason::...},
+};
+
+// The device-event row for a BreakKind, or nullptr if `k` is a bus/PC kind. Lets
+// describe() and the run loop treat the family generically.
+const DeviceEvent* deviceEventForKind(BreakKind k);
 
 struct RunResult {
     StopReason why = StopReason::Steps;

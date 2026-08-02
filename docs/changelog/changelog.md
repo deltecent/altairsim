@@ -8,6 +8,15 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `BREAK TAPE STOP` — stop right after a cassette load lands
+
+The debugger gained a breakpoint that watches a device rather than the program: `BREAK TAPE STOP`
+halts the machine the moment a cassette deck reaches auto-stop — the instant the tape parks itself
+after a load has finished feeding. It is how you catch what a load left behind without having to
+know the loader's end address: arm it, run, and the machine stops inside the loader as the tape
+stops. It is a third kind of breakpoint, next to the PC-address stops and the `MEM`/`IO` bus-cycle
+watches — and it re-arms on its own, so a rewind and a fresh load fire it again.
+
 ### Altair BASIC 1.0 — the first one — as an example
 
 `examples/basic/basic1.toml` boots **"8080 BASIC VER 1.0"**, the original Altair BASIC Bill Gates
