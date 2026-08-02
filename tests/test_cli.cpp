@@ -871,6 +871,48 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
+    // HELP <cmd> <sub>: extra words narrow the help to that sub-level. The text is
+    // FILTERED from the command's own detail block (commands.cpp), never a second list,
+    // so `HELP SHOW BOARD` shows the BOARD line(s) and drops the unrelated siblings. A
+    // sub-topic that matches nothing falls back to the whole block, today's behaviour.
+    // -----------------------------------------------------------------------
+    SECTION("cli: HELP narrows to the sub-level you asked for");
+    {
+        Machine mh;
+        Monitor monH(mh);
+
+        // Baseline: bare HELP SHOW is the whole menu -- many siblings at once.
+        std::ostringstream all;
+        monH.exec("HELP SHOW", all);
+        CHECK(all.str().find("SHOW BOARD") != std::string::npos, "HELP SHOW lists BOARD");
+        CHECK(all.str().find("SHOW MOUNTS") != std::string::npos, "HELP SHOW lists MOUNTS");
+        CHECK(all.str().find("SHOW PATHS") != std::string::npos, "HELP SHOW lists PATHS");
+
+        // HELP SHOW BOARD keeps only the board lines and drops the siblings.
+        std::ostringstream bd;
+        monH.exec("HELP SHOW BOARD", bd);
+        CHECK(bd.str().find("SHOW BOARD") != std::string::npos,
+              "HELP SHOW BOARD keeps the BOARD line");
+        CHECK(bd.str().find("SHOW MOUNTS") == std::string::npos,
+              "HELP SHOW BOARD drops the MOUNTS sibling");
+        CHECK(bd.str().find("SHOW PATHS") == std::string::npos,
+              "HELP SHOW BOARD drops the PATHS sibling");
+
+        // A third word narrows further: HELP SHOW BUS IRQ is the IRQ line, not MAP.
+        std::ostringstream irq;
+        monH.exec("HELP SHOW BUS IRQ", irq);
+        CHECK(irq.str().find("VI0") != std::string::npos, "HELP SHOW BUS IRQ keeps the IRQ line");
+        CHECK(irq.str().find("who decodes what") == std::string::npos,
+              "HELP SHOW BUS IRQ drops the MAP sibling");
+
+        // A sub-topic that matches nothing falls back to the full block, not an error.
+        std::ostringstream no;
+        monH.exec("HELP SHOW nonsense", no);
+        CHECK(no.str().find("SHOW MOUNTS") != std::string::npos,
+              "an unmatched sub-topic falls back to the whole of SHOW");
+    }
+
+    // -----------------------------------------------------------------------
     // SHOW PATHS: "built in to the binary" is a claim about ORIGIN -- whether a file
     // was loaded -- NOT about whether the machine file's dirname is empty. A file NAMED
     // IN THE CWD (`altairsim foo.toml` from foo.toml's own folder, which is how every
