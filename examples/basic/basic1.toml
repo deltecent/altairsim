@@ -114,5 +114,11 @@ fill = "random"
 # decodes it. That is what `strip7out` on the console is, and it is the only thing in the
 # simulator allowed to alter a byte (DESIGN.md 7.2). The line stays 8-bit clean; the Teletype
 # ignores the eighth bit. Both true, as they were in 1975.
+#
+# `upper = true` folds what you TYPE to uppercase. BASIC 1.0, like the PS2 monitor, only
+# understands upper case -- a Teletype had no lower case to send. Without this you would type
+# the whole session under Caps Lock (or on Shift); with it you just type, and the fold happens
+# on the way in. It touches only your keystrokes, never BASIC's output.
 [console]
 strip7out = true
+upper     = true
