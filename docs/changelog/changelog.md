@@ -8,6 +8,16 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### A machine file can leave the operator a note — `#>`
+
+A comment line in a machine file that begins **`#>`** is a *note*: instead of being discarded like
+an ordinary `#` comment, its text is printed to you when the machine loads — right after the
+`loaded …` line and before the `startup` commands run. It is where a config's author writes the one
+or two sentences you need to actually use it: `#> Type DIR at the A> prompt`, `#> Disk B is blank`.
+Each `#>` line prints as one line, a bare `#>` prints a blank one, and one can trail a setting.
+It sets nothing and `CONFIG SAVE` does not write it back — a saved machine is the backplane, not the
+prose around it.
+
 ### `EDIT` assembles an instruction in place
 
 `EDIT` has taken hex bytes one at a time since it existed. Now, on a machine with a CPU, you can

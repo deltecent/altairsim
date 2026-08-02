@@ -23,7 +23,8 @@ You need only a handful of rules to read every example below:
 - **`[[table]]` — doubled brackets — repeats.** Each `[[board]]` starts another board.
 - **A nested `[board.unit.x]` belongs to the block above it**, by name — the indentation
   in these examples is only for the eye.
-- **`#` starts a comment** to the end of the line.
+- **`#` starts a comment** to the end of the line. A comment that begins **`#>`** is a
+  *note* — the file prints it to you when it loads (see below).
 
 That is the whole of the syntax. Everything below is which keys go where.
 
@@ -52,6 +53,33 @@ mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz id
 This is not pedantry. **A configuration that looks like it set something and did not is worse
 than one that will not load**, because you will spend the afternoon debugging the machine
 instead of the typo. A misconfiguration in this program cannot be silent.
+
+## Notes the operator sees — `#>`
+
+An ordinary `#` comment is for whoever *reads the file*. A comment that begins **`#>`** is for
+whoever *loads it*: its text is printed to you when the machine comes up, right after the
+`loaded …` line and before the `startup` commands run. It is where the file's author leaves the
+one or two sentences you need to actually use the machine.
+
+```toml
+#> Boots CP/M 2.2 from drive A.
+#> Type DIR at the A> prompt, and DIR B: for the blank second disk.
+
+[machine]
+name = "cpm22"
+base = "default"
+startup = ["RUN FF00"]
+```
+
+- **One `#>` line is one printed line.** Write as many as you like, in a row or scattered
+  through the file — they print in the order they appear.
+- **`#>` on its own prints a blank line**, so you can space a note into a short paragraph.
+- **A `#>` can trail a setting**, too: `name = "cpm22"  #> the buffered variant`.
+- It is still a comment. It **sets nothing**, and `CONFIG SAVE` does not write it back — a
+  saved machine is the backplane, not the prose around it. If a note is worth keeping, keep it
+  in the file you wrote by hand.
+
+An ordinary `#` comment, as always, is seen by no one but the reader of the file.
 
 ## The tables
 

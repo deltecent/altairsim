@@ -35,6 +35,14 @@
 # disks/mits-88dcdd/cpm22/buffered/, cited as authoritative by docs/boards/mits-dcdd.md.
 # They are sources rather than product, so they stay there and are not in the package.
 
+# A `#>` note prints to the operator when this file loads (see the manual's machine-file
+# chapter). Everything above is an ordinary `#` comment and is seen only by whoever reads
+# the file; the four lines below are the one thing someone RUNNING it needs to know.
+#> 56K track-buffered CP/M 2.2b, booting off the 8" floppy in drive A.
+#> You land at the A> prompt -- type DIR to see what is on the disk.
+#>
+#> Drives B: through D: are empty. FORMAT one from CP/M, or MOUNT an image onto dsk0.
+
 [machine]
 name = "cpm22-buffered"
 base = "default"

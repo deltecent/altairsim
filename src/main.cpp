@@ -298,10 +298,15 @@ int main(int argc, char** argv) {
         if (discovered)
             std::cerr << "altairsim: no machine named -- using " << kCwdConfig
                       << " (`-m default` for the built-in).\n";
-        if (!loadToml(file, m, err)) {
+        std::vector<std::string> notes;
+        if (!loadToml(file, m, err, &notes)) {
             std::cerr << err << "\n";
             return 2;
         }
+        // The author's `#>` notes, to stdout, once the file is known good. Unlike the
+        // discovery line above -- which is narration and goes to stderr -- these are the
+        // file's own message to whoever runs it, and are meant to be seen.
+        for (const std::string& note : notes) std::cout << note << "\n";
     } else {
         // -n: an empty backplane. Every read floats to FF, because nothing is
         // driving anything. That is not a broken machine, it is an empty one --

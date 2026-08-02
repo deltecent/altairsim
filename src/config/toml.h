@@ -18,16 +18,23 @@
 #include "core/machine.h"
 
 #include <string>
+#include <vector>
 
 namespace altair {
 
-bool loadToml(const std::string& path, Machine& m, std::string& err);
+// `notes`, if given, is filled with the `#>` comment lines from the OUTERMOST file --
+// display-only text the author wrote for the operator to read on load (one entry per
+// `#>` line, in file order). They are never stored on the machine and never written back
+// by CONFIG SAVE; an ordinary `#` comment is discarded as always. A `base` machine's own
+// notes are not collected -- these belong to the file the operator actually loaded.
+bool loadToml(const std::string& path, Machine& m, std::string& err,
+              std::vector<std::string>* notes = nullptr);
 
 // The same parser, over text that never had a path. A BUILT-IN MACHINE IS A TOML
 // FILE THAT LIVES IN .rodata (core/machines.h) -- `source` only names it in
 // errors. One machine language, no second dialect for the things we ship.
 bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
-                  std::string& err);
+                  std::string& err, std::vector<std::string>* notes = nullptr);
 
 bool saveToml(const std::string& path, Machine& m, std::string& err);
 

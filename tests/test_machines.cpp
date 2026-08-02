@@ -5,6 +5,7 @@
 #include "core/machines.h"
 
 #include <string>
+#include <vector>
 
 using namespace altair;
 
@@ -691,4 +692,86 @@ void test_subunit_schema() {
           "...whichever spelling comes first");
     CHECK(err.find("writeprotect") != std::string::npos && err.find("readonly") != std::string::npos,
           "...and it still quotes BOTH of the reader's own words, not the canonical one twice");
+}
+
+// ---------------------------------------------------------------------------
+// `#>` NOTES ARE THE AUTHOR SPEAKING TO THE OPERATOR (config/toml.cpp, stripComment).
+//
+// An ordinary `#` comment is dropped, as it always was. A `#>` comment is captured and
+// handed back so the load command can echo it -- boot instructions, "type DIR at A>",
+// "disk B is blank". It is still a comment: it configures nothing and CONFIG SAVE does
+// not write it back. These pin the capture rules that the display sites depend on.
+// ---------------------------------------------------------------------------
+void test_toml_notes() {
+    SECTION("`#>` comment lines are captured for the operator, ordinary `#` are not");
+
+    const char* kNoted =
+        "# this is an ordinary comment and is DROPPED\n"
+        "#> Boots CP/M 2.2 from drive A.\n"
+        "#> Type DIR at the A> prompt.\n"
+        "#>\n"
+        "#> Disk B is blank and formatted.\n"
+        "[machine]\n"
+        "name = \"noted\"\n"
+        "base = \"default\"\n";
+
+    Machine                  m;
+    std::string              err;
+    std::vector<std::string> notes;
+    CHECK(loadTomlText(kNoted, "noted", m, err, &notes), "a file with `#>` notes loads");
+    CHECK(notes.size() == 4, "...and every `#>` line is captured, in order");
+    CHECK(notes[0] == "Boots CP/M 2.2 from drive A.", "...the single leading space is eaten");
+    CHECK(notes[1] == "Type DIR at the A> prompt.", "...the second line is next, in order");
+    CHECK(notes[2] == "", "...a bare `#>` is a blank line, not a dropped one");
+    CHECK(notes[3] == "Disk B is blank and formatted.", "...and the last line is last");
+
+    // The `#` inside a QUOTED value is not a comment at all, so it is neither stripped
+    // from the value nor mistaken for a note.
+    const char* kHashInPath =
+        "#> a real note\n"
+        "[machine]\n"
+        "name = \"hash\"\n"
+        "base = \"default\"\n"
+        "startup = [\"MOUNT dsk0:disk \\\"a#b.dsk\\\"\"]\n";
+    Machine                  mh;
+    std::string              eh;
+    std::vector<std::string> hnotes;
+    CHECK(loadTomlText(kHashInPath, "hash", mh, eh, &hnotes), "a `#` inside a quoted path loads");
+    CHECK(hnotes.size() == 1 && hnotes[0] == "a real note",
+          "...the `#` in the path is NOT captured as a note");
+    CHECK(mh.startup.size() == 1 && mh.startup[0].find("a#b.dsk") != std::string::npos,
+          "...and the `#` survives IN the value, uncut");
+
+    // A trailing `#> note` after real code keeps the code and still captures the note.
+    const char* kTrailing =
+        "[machine]\n"
+        "name = \"trail\"  #> named after nothing in particular\n"
+        "base = \"default\"\n";
+    Machine                  mt;
+    std::string              et;
+    std::vector<std::string> tnotes;
+    CHECK(loadTomlText(kTrailing, "trail", mt, et, &tnotes), "a trailing `#>` on a key line loads");
+    CHECK(mt.name == "trail", "...the key's value is intact, the comment did not bleed in");
+    CHECK(tnotes.size() == 1 && tnotes[0] == "named after nothing in particular",
+          "...and the trailing note is captured");
+
+    // A `base` machine's OWN notes do not surface: notes belong to the file the operator
+    // loaded, not to everything it inherits. `default` has no `#>` of its own, so a file
+    // that inherits it and adds none of its own comes back with an empty list.
+    Machine                  mb;
+    std::string              eb;
+    std::vector<std::string> bnotes;
+    CHECK(loadTomlText("[machine]\nname = \"quiet\"\nbase = \"default\"\n", "quiet", mb, eb, &bnotes),
+          "a file that inherits and writes no notes of its own loads");
+    CHECK(bnotes.empty(), "...and surfaces no notes, its own or its base's");
+
+    // Notes are display-only: CONFIG SAVE regenerates the machine and writes no `#>`, so
+    // the round trip carries none -- exactly as it carries no ordinary comment.
+    std::string saved = saveTomlText(m);
+    CHECK(saved.find("#>") == std::string::npos, "CONFIG SAVE does not write `#>` notes back");
+    Machine                  reload;
+    std::string              er2;
+    std::vector<std::string> rnotes;
+    CHECK(loadTomlText(saved, "noted (saved)", reload, er2, &rnotes), "...and the saved file reloads");
+    CHECK(rnotes.empty(), "...with no notes, because none were written");
 }

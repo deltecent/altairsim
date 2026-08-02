@@ -50,10 +50,18 @@ struct Table {
 // honoring the BACKSLASH inside them, so an escaped quote does not flip us back out of
 // the string and expose the rest of the line to the '#' test. The backslash itself is
 // KEPT: the value parser below is the one that resolves the escape, not us.
-std::string stripComment(const std::string& line) {
+//
+// ONE comment is louder than the rest: a `#>` comment is a NOTE the file's author wrote
+// for the operator to READ when the machine loads (docs/manual/configuring.md). It is
+// still a comment -- it configures nothing, it round-trips through nothing -- but instead
+// of being dropped on the floor its text is captured into `notes`, in file order, one
+// entry per `#>` line. `#>` alone is a blank line; a single leading space after the `>`
+// is eaten so `#> text` reads as `text`. An ordinary `#` is discarded exactly as before.
+std::string stripComment(const std::string& line, std::vector<std::string>* notes) {
     std::string s;
     bool q = false, esc = false;
-    for (char c : line) {
+    for (size_t i = 0; i < line.size(); ++i) {
+        char c = line[i];
         if (esc) {
             s += c;
             esc = false;
@@ -65,13 +73,22 @@ std::string stripComment(const std::string& line) {
             continue;
         }
         if (c == '"') q = !q;
-        if (c == '#' && !q) break;
+        if (c == '#' && !q) {
+            if (notes && i + 1 < line.size() && line[i + 1] == '>') {
+                std::string note = line.substr(i + 2);
+                if (!note.empty() && note.back() == '\r') note.pop_back();  // a CRLF file
+                if (!note.empty() && note.front() == ' ') note.erase(0, 1);
+                notes->push_back(note);
+            }
+            break;
+        }
         s += c;
     }
     return s;
 }
 
-bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
+bool parse(const std::string& text, std::vector<Table>& out, std::string& err,
+           std::vector<std::string>& notes) {
     std::istringstream in(text);
     std::string line;
     int lineNo = 0;
@@ -81,7 +98,7 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
 
     while (std::getline(in, line)) {
         ++lineNo;
-        std::string s = trim(stripComment(line));
+        std::string s = trim(stripComment(line, &notes));
         if (s.empty()) continue;
 
         if (s.front() == '[') {
@@ -111,7 +128,7 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
             std::string acc = v;
             while (acc.find(']') == std::string::npos && std::getline(in, line)) {
                 ++lineNo;
-                acc += " " + trim(stripComment(line));
+                acc += " " + trim(stripComment(line, &notes));
             }
             size_t lb = acc.find('['), rb = acc.rfind(']');
             std::string body = acc.substr(lb + 1, rb - lb - 1);
@@ -187,7 +204,7 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err) {
 constexpr int kMaxBaseDepth = 8;
 
 bool loadInto(const std::string& text, const std::string& source, Machine& m,
-              std::string& err, int depth);
+              std::string& err, int depth, std::vector<std::string>* notesOut = nullptr);
 
 // `dir` is the directory of the file that WROTE this `base` line -- because a base
 // named as a file is a path like any other, and a path in a machine file is relative
@@ -231,7 +248,7 @@ bool loadBase(const std::string& name, const std::string& dir, Machine& m, std::
 }
 
 bool loadInto(const std::string& text, const std::string& source, Machine& m,
-              std::string& err, int depth) {
+              std::string& err, int depth, std::vector<std::string>* notesOut) {
     const std::string& path = source;
 
     // THE DIRECTORY THIS FILE IS SPEAKING FROM (core/paths.h).
@@ -259,11 +276,16 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
         m.fromFile = looksLikeFile(source);
     }
 
-    std::vector<Table> tabs;
-    if (!parse(text, tabs, err)) {
+    std::vector<Table>       tabs;
+    std::vector<std::string> localNotes;
+    if (!parse(text, tabs, err, localNotes)) {
         err = path + ": " + err;
         return false;
     }
+    // `#>` notes belong to the OUTERMOST file only -- the one the operator loaded. A `base`
+    // recurses through loadInto() at depth+1 with no notes pointer, so its own notes stay
+    // where they were written and do not surface on top of the file that inherited it.
+    if (depth == 0 && notesOut) *notesOut = std::move(localNotes);
 
     // Every card this frame configures is told where this frame is speaking from, and
     // told again -- with "" -- when the frame is done. A board resolves a path only
@@ -637,14 +659,15 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
 // only work at all now: `base` refuses to run once a machine has boards in it, so in the
 // old world CONFIG LOAD of any file with a `base` was dead on arrival.
 bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
-                  std::string& err) {
+                  std::string& err, std::vector<std::string>* notes) {
     Machine built;
-    if (!loadInto(text, source, built, err, /*depth=*/0)) return false;
+    if (!loadInto(text, source, built, err, /*depth=*/0, notes)) return false;
     m.replaceWith(built);
     return true;
 }
 
-bool loadToml(const std::string& path, Machine& m, std::string& err) {
+bool loadToml(const std::string& path, Machine& m, std::string& err,
+              std::vector<std::string>* notes) {
     std::ifstream f(path);
     if (!f) {
         err = "cannot open '" + path + "'";
@@ -652,7 +675,7 @@ bool loadToml(const std::string& path, Machine& m, std::string& err) {
     }
     std::stringstream ss;
     ss << f.rdbuf();
-    return loadTomlText(ss.str(), path, m, err);
+    return loadTomlText(ss.str(), path, m, err, notes);
 }
 
 bool saveToml(const std::string& path, Machine& m, std::string& err) {
