@@ -2452,16 +2452,56 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
                 return true;
             }
+
+            // EXTRA WORDS NARROW THE ANSWER. `HELP SHOW BOARD` asked about one
+            // sub-level, not the whole of SHOW -- so keep only the detail lines that
+            // begin with the words you typed. We do NOT keep a second list to do this:
+            // the detail block is already one line per sub-command (commands.cpp), each
+            // starting `NAME <sub> ...`, so filtering it IS reading the one authoritative
+            // source. A command whose detail is prose matches nothing and falls back to
+            // the whole block -- the same text you get today, never an error.
+            std::string detail   = h->detail ? h->detail : "";
+            bool        narrowed = false;
+            if (h->detail && a.size() > 2 && !fromBoard) {
+                std::string       kept;
+                std::string       block = h->detail;
+                for (size_t start = 0; start <= block.size();) {
+                    size_t      nl   = block.find('\n', start);
+                    std::string line = block.substr(
+                        start, nl == std::string::npos ? std::string::npos : nl - start);
+                    start = (nl == std::string::npos) ? block.size() + 1 : nl + 1;
+
+                    std::vector<std::string> words = tokenize(line);
+                    // A real sub-command line leads with the command's own name.
+                    bool match = !words.empty() && upper(words[0]) == upper(h->name);
+                    for (size_t k = 2; match && k < a.size(); ++k) {
+                        std::string typed = upper(a[k]);
+                        match = (k - 1 < words.size()) &&
+                                upper(words[k - 1]).compare(0, typed.size(), typed) == 0;
+                    }
+                    if (match) {
+                        if (!kept.empty()) kept += "\n";
+                        kept += line;
+                    }
+                }
+                if (!kept.empty()) {
+                    detail   = kept;
+                    narrowed = true;
+                }
+            }
+
             out << "\n  " << (fromBoard ? boardAbbreviation(*h) : abbreviation(*h)) << "\n";
-            out << "  " << h->usage << "\n";
+            // The synopsis lists every sibling, so it only helps at the top level; once
+            // you have narrowed to a sub-level the kept detail line IS the grammar.
+            if (!narrowed) out << "  " << h->usage << "\n";
             if (!h->built)
                 out << "\n  NOT IMPLEMENTED YET -- waiting on " << h->waiting << ".\n"
                     << "  It resolves today so that its abbreviation cannot change under\n"
                     << "  your fingers once it lands.\n";
-            if (h->detail) {
+            if (!detail.empty()) {
                 out << "\n";
                 // Indent every line of the detail block by two, including the examples.
-                std::string d = h->detail;
+                std::string d = detail;
 
                 // `{endpoints}` is the ONE thing a help string may not spell out for
                 // itself. CommandDef::detail is a `const char*` literal -- it cannot
