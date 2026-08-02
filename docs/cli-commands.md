@@ -466,4 +466,4 @@ It also brings history (↑/↓), cursor movement (←/→, Ctrl-A/E), Ctrl-U, C
 
 A pipe, a script, or `--mcp` is not a terminal, and takes a plain `getline` path that never touches terminal state.
 
-**Still to come:** tab completion, driven by `Board::properties()` (DESIGN.md §10.4) — the same reflection layer that already backs SET, SHOW, the TOML loader and the MCP schemas.
+It also brings **tab completion**, driven by `Board::properties()` (DESIGN.md §10.4) — the same reflection layer that already backs SET, SHOW, the TOML loader and the MCP schemas. `Tab` completes a command, then a board id or `id:unit` target, then that board or unit's property names, then a property's legal values; `MOUNT`, `CONNECT` and the board verbs complete their target the same way.
