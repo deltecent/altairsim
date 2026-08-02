@@ -908,13 +908,13 @@ SET BUS UNCLAIMED=WARN   warn on a cycle no board answered
 ### SHOW — `SH[OW]`
 
 ```
-SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION
+SHOW <id>|BOARDS|BOARD <type> [UNITS]|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION
 ```
 
 ```
 SHOW mem0        regions and properties
 SHOW BOARDS      the board types you can add
-SHOW BOARD sol   one type's description and properties
+SHOW BOARD sol   one type's description and properties (add UNITS for just those)
 SHOW MACHINES    the built-in machines you can boot
 SHOW MACHINE     the current machine (add a name for a built-in's detail)
 SHOW BUS MAP     who decodes what, and what floats

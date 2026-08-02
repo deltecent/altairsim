@@ -838,7 +838,7 @@ Everything a machine file can do to a board, you can do by hand.
 |---|---|
 | `BOARDS` | what is in the backplane |
 | `SHOW BOARDS` | the board types you can add |
-| `SHOW BOARD <type>` | one type's description and its settings |
+| `SHOW BOARD <type>` | one type's description and its settings (add `UNITS` for just the units) |
 | `BOARDS ADD <type> <id>` | fit a board |
 | `BOARDS REMOVE <id>` | pull one out |
 | `SHOW <id>` | one installed board's settings, with the legal values |
@@ -861,6 +861,44 @@ altairsim> CONFIG SAVE mine.toml
 ```
 
 writes it out, and it round-trips.
+
+### Looking a board type over before you fit it
+
+`SHOW BOARD <type>` reads the *catalog*. It builds one of that board, describes it, lists
+its settings, and throws it away — nothing is added to the backplane. A disk controller,
+for instance, ends by naming the units it carries:
+
+```
+altairsim> SHOW BOARD dcdd
+  dcdd  MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives...
+  ...
+  This board has units: drive
+  SHOW BOARD dcdd UNITS for their properties.
+```
+
+Add `UNITS` and you get just the units — each under a heading that names its **kind** and,
+after it, the **verb that fills it**:
+
+```
+altairsim> SHOW BOARD sol units
+
+  Unit 'serial'  (serial, CONNECT)
+  connect    The endpoint on the other end of this line (CONNECT sets this)
+  ...
+
+  Unit 'tape1'  (tape, MOUNT)
+  mode       Which way the bytes go: play loads from the file, record saves to it
+  ...
+```
+
+A **serial** unit is an endpoint, so you `CONNECT` it (to `console`, a socket, a real
+port). A **disk**, **rom** or **tape** unit holds an image, so you `MOUNT` a file into it.
+A **cpu** unit is soldered on — neither — and shows only its kind. The heading tells you
+which verb a unit takes without your having to fit the board and find out.
+
+Where a unit is filled from a *machine file* rather than by hand, `UNITS` shows the TOML
+table and its keys instead — `[[board.drive]]` for a disk controller, with its `mount`,
+`readonly` and `media` keys — so the file form is as discoverable as the prompt form.
 
 ## Contention
 

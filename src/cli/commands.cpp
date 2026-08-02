@@ -274,11 +274,11 @@ static const std::vector<CommandDef> kCommands = {
      "  SET BUS UNCLAIMED=WARN   warn on a cycle no board answered\n"
      "                           (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)"},
     {"SHOW", true, nullptr,
-     "SHOW <id>|BOARDS|BOARD <type>|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|"
+     "SHOW <id>|BOARDS|BOARD <type> [UNITS]|MACHINES|MACHINE [<name>]|BUS [MAP|IO|IRQ|CONTENTION]|"
      "ROMS|MOUNTS|PATHS|CONSOLE|DISPLAY|SYMBOLS|VERSION",
      "  SHOW mem0        regions and properties\n"
      "  SHOW BOARDS      the board types you can add\n"
-     "  SHOW BOARD sol   one type's description and properties\n"
+     "  SHOW BOARD sol   one type's description and properties (add UNITS for just those)\n"
      "  SHOW MACHINES    the built-in machines you can boot\n"
      "  SHOW MACHINE     the current machine (add a name for a built-in's detail)\n"
      "  SHOW BUS MAP     who decodes what, and what floats\n"
