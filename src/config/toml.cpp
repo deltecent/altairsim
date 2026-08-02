@@ -193,7 +193,7 @@ bool parse(const std::string& text, std::vector<Table>& out, std::string& err,
 //
 // A config file with no `base` is a COMPLETE MACHINE, exactly as it always was, and
 // that is why the key is explicit rather than assumed. If every file silently
-// inherited the default, then `4k` -- a machine defined by what it does NOT have --
+// inherited the default, then `original` -- a machine defined by what it does NOT have --
 // would have to REMOVE a floppy controller, a 2SIO and 52K of RAM to describe a bare
 // 1975 Altair, and silence would stop meaning "nothing". One line at the top of a file
 // tells you what its backplane starts as; without that line, the file IS the backplane.

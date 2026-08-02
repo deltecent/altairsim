@@ -2,7 +2,7 @@
 #
 # This is the CP/M-era Altair, not a stock 1975 one. A bare Altair 8800 had NO
 # ROM -- you toggled the bootstrap in from the front panel -- and that machine is
-# here too, as `4k`. It carries the period-accuracy job, which frees this one to
+# here too, as `original`. It carries the period-accuracy job, which frees this one to
 # carry a different one: being the machine you actually want when you type
 # `altairsim` and nothing else. On a real disk Altair the boot PROM was there,
 # and a default with an empty FF00 is a machine you have to repair before it is

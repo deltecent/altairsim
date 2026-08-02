@@ -1,6 +1,6 @@
 # An Altair with a monitor in ROM and a terminal on it.
 #
-# THE SMALLEST MACHINE THAT IS ACTUALLY USABLE BY A HUMAN. `4k` has no ROM and no
+# THE SMALLEST MACHINE THAT IS ACTUALLY USABLE BY A HUMAN. `original` has no ROM and no
 # terminal -- you toggle it in, as you did in 1975. `default` is aimed at booting
 # CP/M off a disk that does not exist yet. This one you can just TALK to:
 #

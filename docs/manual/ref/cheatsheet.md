@@ -128,7 +128,6 @@ Type the part before the bracket.
 
 | Machine | What it is |
 |---|---|
-| `4k` | The Altair as it actually left Albuquerque. |
 | `acuter` | ACUTER at F000 -- CUTER on a plain Altair, with a terminal instead of a VDM. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |
 | `amon` | AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor. |
@@ -136,14 +135,13 @@ Type the part before the bracket.
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR. |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
 | `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
-| `d7a` | A Cromemco Dazzler + D+7A + JS-1 joysticks -- the S-100 game console of 1976. |
 | `dazzler` | A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
 | `lineprinter-lpc` | The `default` machine with an 88-LPC line printer at port 02, captured to a file. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02, captured to a file. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
+| `original` | The Altair as it actually left Albuquerque. |
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
-| `pmmi` | PMMI MM-103 modem, layered onto the default machine. |
 | `ps2` | The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap. |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
 | `rombasic` | MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM. |

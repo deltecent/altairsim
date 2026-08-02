@@ -152,17 +152,17 @@ void test_machines() {
     CHECK(m.bus.lastUnclaimed(), "E000 is NOT populated -- nobody drives it");
     CHECK(m.bus.memRead(0xE000) == 0xFF, "so it floats to FF, which is the bus's answer");
 
-    // ---- 4k: the machine BASIC was written for ----
-    const BuiltinMachine* k = findMachine("4k");
-    CHECK(k != nullptr, "the 4K Altair is here too");
+    // ---- original: the bare Altair as it left Albuquerque, 256 bytes ----
+    const BuiltinMachine* k = findMachine("original");
+    CHECK(k != nullptr, "the as-shipped Altair is here too");
     if (!k) return;
 
     Machine m4;
-    CHECK(loadMachine(*k, m4, err), "4k loads");
-    m4.bus.memWrite(0x0FFF, 0x21);
-    CHECK(m4.bus.memRead(0x0FFF) == 0x21, "0FFF is the top of the 4K");
-    (void)m4.bus.memRead(0x1000);
-    CHECK(m4.bus.lastUnclaimed(), "and 1000 is empty backplane -- there is no card there");
+    CHECK(loadMachine(*k, m4, err), "original loads");
+    m4.bus.memWrite(0x00FF, 0x21);
+    CHECK(m4.bus.memRead(0x00FF) == 0x21, "00FF is the top of the 256 bytes");
+    (void)m4.bus.memRead(0x0100);
+    CHECK(m4.bus.lastUnclaimed(), "and 0100 is empty backplane -- there is no card there");
 
     // Case, and the absence of a machine, both answer honestly.
     CHECK(findMachine("DEFAULT") != nullptr, "a machine name is not case-sensitive");
