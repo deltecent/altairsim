@@ -9,6 +9,7 @@
 #include "config/toml.h"
 #include "core/crc32.h"
 #include "core/debug.h"
+#include "core/debuglog.h"
 #include "core/hex.h"
 #include "core/machines.h"
 #include "core/paths.h"
@@ -101,6 +102,15 @@ static std::string upper(std::string s) {
     return s;
 }
 static bool is(const std::string& tok, const char* kw) { return upper(tok) == kw; }
+
+// Point the one global debug sink (SET CONSOLE DEBUG=<sink>). `stderr` and `stdout`
+// are reserved words; anything else is a file path opened for APPEND (a transcript,
+// not a truncate). A bad path leaves the prior sink in place and returns false.
+static bool applyDebugSink(const std::string& v, std::string& err) {
+    if (is(v, "STDERR")) return dbg::setSink(dbg::Sink::Stderr, "", err);
+    if (is(v, "STDOUT")) return dbg::setSink(dbg::Sink::Stdout, "", err);
+    return dbg::setSink(dbg::Sink::File, v, err);
+}
 
 // ---------------------------------------------------------------------------
 // NUMBERS. Settled 2026-07-11 by Patrick.
@@ -587,12 +597,59 @@ Completions Monitor::complete(const std::string& line) {
     if (name == "SET") {
         if (wordIdx == 1) {
             completeTarget(frag, UnitUse::Any, /*wantPseudo=*/true);
+            // Debug channels are SET targets too. A board channel already appears as
+            // its board id; a library channel (`6850`, `socket`) is no board, so it
+            // is only offered here. Dedup keeps the board-id/channel overlap to one.
+            if (frag.find(':') == std::string::npos) {
+                for (dbg::Channel* c : dbg::channels()) keep(c->name());
+                std::sort(comp.matches.begin(), comp.matches.end());
+                comp.matches.erase(std::unique(comp.matches.begin(), comp.matches.end()),
+                                   comp.matches.end());
+            }
             return comp;
         }
         if (wordIdx == 2) {
             const std::string& target = toks[1];
+            const size_t eq = frag.find('=');
+            const bool consoleTarget = is(target, "CONSOLE");
+            // A channel target is a board's (by id) or a library's -- never a unit's,
+            // so a colon rules it out.
+            dbg::Channel* dc = (!consoleTarget && target.find(':') == std::string::npos)
+                                   ? dbg::find(target)
+                                   : nullptr;
+
+            // VALUE side of a facility key. These are NOT Property rows, so they are
+            // completed here and we return before the Property path runs.
+            if (eq != std::string::npos) {
+                const std::string Ukey = upper(frag.substr(0, eq));
+                if (consoleTarget && Ukey == "DEBUG") {  // the global sink
+                    comp.replaceFrom = wordStart + eq + 1;
+                    const std::string Uval = upper(frag.substr(eq + 1));
+                    for (const char* s : {"stderr", "stdout"})
+                        if (upper(s).compare(0, Uval.size(), Uval) == 0) comp.matches.push_back(s);
+                    comp.suffix = " ";
+                    return comp;
+                }
+                if (dc && (Ukey == "DEBUG" || Ukey == "NODEBUG")) {  // the channel's flags
+                    // The value is a comma-separated flag list; complete only the run
+                    // after the last comma, so `DEBUG=sector,se<Tab>` offers seek.
+                    const std::string val = frag.substr(eq + 1);
+                    const size_t comma = val.rfind(',');
+                    const size_t runAt = comma == std::string::npos ? 0 : comma + 1;
+                    const std::string Uval = upper(val.substr(runAt));
+                    comp.replaceFrom = wordStart + eq + 1 + runAt;
+                    std::vector<std::string> opts = dc->flags();
+                    opts.push_back("all");
+                    opts.push_back("none");
+                    for (const std::string& o : opts)
+                        if (upper(o).compare(0, Uval.size(), Uval) == 0) comp.matches.push_back(o);
+                    comp.suffix = " ";
+                    return comp;
+                }
+            }
+
             std::vector<Property> props;
-            if (is(target, "CONSOLE")) {
+            if (consoleTarget) {
                 props = Console::instance().properties();
             } else if (is(target, "DISPLAY")) {
                 props = Display::properties();
@@ -608,6 +665,17 @@ Completions Monitor::complete(const std::string& line) {
                 }
             }
             completeProps(props);
+
+            // The facility's KEYS ride alongside the Property keys (they are not Property
+            // rows): DEBUG on the console is the sink; DEBUG/NODEBUG on a channel are its
+            // flags. Only on the key side -- the value side returned above.
+            if (eq == std::string::npos) {
+                if (consoleTarget) keep("DEBUG");
+                if (dc) {
+                    keep("DEBUG");
+                    keep("NODEBUG");
+                }
+            }
             return comp;
         }
         return comp;
@@ -625,8 +693,9 @@ Completions Monitor::complete(const std::string& line) {
             // sub-command words the SHOW handler dispatches on. No id:unit -- SHOW <id>
             // already prints a board's unit tables, so there is no colon step.
             for (const auto& b : m_.boards()) keep(b->id);
-            for (const char* kw : {"BOARD", "BOARDS", "BUS", "CONSOLE", "DISPLAY", "MACHINE",
-                                   "MACHINES", "MOUNTS", "PATHS", "ROMS", "SYMBOLS", "VERSION"})
+            for (const char* kw : {"BOARD", "BOARDS", "BUS", "CONSOLE", "DEBUG", "DISPLAY",
+                                   "MACHINE", "MACHINES", "MOUNTS", "PATHS", "ROMS", "SYMBOLS",
+                                   "VERSION"})
                 keep(kw);
             comp.suffix = " ";
         } else if (name == "NOBREAK") {
@@ -1818,6 +1887,49 @@ void Monitor::showConsole(std::ostream& out) {
 }
 
 // ---------------------------------------------------------------------------
+// SHOW DEBUG -- the runtime diagnostic facility (core/debuglog.h): the one global
+// sink, and every registered channel with its flags. A flag that is ON is printed
+// in UPPER CASE, so the state reads at a glance and greps cleanly.
+//
+// A channel is a board (named by its id) or an internal library (the 6850, the
+// socket layer). The sink and the enabled flags are the operator's session, not
+// machine config: they do NOT round-trip through CONFIG SAVE.
+// ---------------------------------------------------------------------------
+void Monitor::showDebug(std::ostream& out) {
+    out << "debug  (runtime diagnostics -- the sink and flags do not survive CONFIG SAVE)\n";
+    out << "\n  sink  " << dbg::sinkName()
+        << "   -- SET CONSOLE DEBUG=stderr|stdout|<file>\n";
+
+    auto chans = dbg::channels();
+    if (chans.empty()) {
+        out << "\n  (no channels registered)\n";
+        return;
+    }
+
+    auto pad = [](std::string s, size_t w) {
+        if (s.size() < w) s.append(w - s.size(), ' ');
+        return s;
+    };
+    size_t w = 7;  // "CHANNEL"
+    for (dbg::Channel* c : chans) w = std::max(w, c->name().size());
+
+    out << "\n  " << pad("CHANNEL", w) << "  FLAGS  (an enabled flag is UPPER-CASE)\n";
+    out << "  " << std::string(w, '-') << "  " << std::string(38, '-') << "\n";
+    for (dbg::Channel* c : chans) {
+        out << "  " << pad(c->name(), w) << "  ";
+        const auto& fl = c->flags();
+        if (fl.empty()) out << "(none)";
+        for (size_t i = 0; i < fl.size(); ++i) {
+            if (i) out << ' ';
+            out << (c->on((unsigned)i) ? upper(fl[i]) : fl[i]);
+        }
+        out << "\n";
+    }
+    out << "\n  SET <channel> DEBUG=<flag>[,<flag>]  enables;  NODEBUG=<flag> disables;\n"
+           "  DEBUG=all / DEBUG=none turn every flag on / off.\n";
+}
+
+// ---------------------------------------------------------------------------
 // SHOW BUS IRQ -- the only part of the backplane you cannot otherwise see.
 //
 // Memory and I/O decoding are visible: a wrong one collides, or reads FF, and either
@@ -2834,7 +2946,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "SHOW") {
         if (!need(2, "SHOW <id> | SHOW BOARDS | SHOW BOARD <type> | SHOW MACHINES"
                      " | SHOW MACHINE [<name>] | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS"
-                     " | SHOW MOUNTS | SHOW PATHS | SHOW VERSION"))
+                     " | SHOW MOUNTS | SHOW PATHS | SHOW DEBUG | SHOW VERSION"))
             return true;
         std::string sub = upper(a[1]);
         if (sub == "BUS") {
@@ -2857,6 +2969,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "CONSOLE") {
             showConsole(out);
+            return true;
+        }
+        if (sub == "DEBUG") {
+            showDebug(out);
             return true;
         }
         // BUILD as well as VERSION: half the time the question being asked is "which
@@ -3225,6 +3341,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
 
         if (is(a[1], "CONSOLE")) {
+            // DEBUG on the console is the one global diagnostic SINK, not a console
+            // property -- it lives on the dbg facility (per-channel flags are set on
+            // the channel: SET <board> DEBUG=..., handled below).
+            if (is(k, "DEBUG")) {
+                std::string err;
+                if (!applyDebugSink(v, err)) {
+                    out << err << "\n";
+                    failed_ = true;
+                } else {
+                    out << "debug: sink=" << dbg::sinkName() << "\n";
+                }
+                return true;
+            }
             std::string err;
             if (!setPropertyIn(Console::instance().properties(), "console", k, v,
                                err)) {
@@ -3247,6 +3376,27 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 out << "display: " << k << "=" << v << "\n";
             }
             return true;
+        }
+
+        // SET <channel> DEBUG=/NODEBUG=<flags> -- a diagnostic channel is NOT a board
+        // property: a channel can be a library (`6850`, `socket`) that is no board at
+        // all, and even a board's channel is the facility's, not the board's schema.
+        // So it is handled here, ahead of the board path, for any registered channel.
+        // (`SET CONSOLE DEBUG=` is the sink and was handled above; a unit target has no
+        // channel, hence the no-colon guard.)
+        if ((is(k, "DEBUG") || is(k, "NODEBUG")) && a[1].find(':') == std::string::npos) {
+            if (dbg::Channel* c = dbg::find(a[1])) {
+                const bool on = is(k, "DEBUG");
+                std::string err;
+                if (!(on ? c->enable(v, err) : c->disable(v, err))) {
+                    out << err << "\n";
+                    failed_ = true;
+                } else {
+                    out << c->name() << ": " << (on ? "debug" : "nodebug") << "=" << v << "\n";
+                }
+                return true;
+            }
+            // Not a channel -- fall through so the board path reports "no such board".
         }
 
         // SET <id>:<unit> <k>=<v> -- a unit is a real thing with real settings.
@@ -3376,6 +3526,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
             std::string k = a[i].substr(0, eq), v = a[i].substr(eq + 1);
             std::string err;
+            if (is(k, "DEBUG")) {  // the global sink, as in SET CONSOLE DEBUG= above
+                if (!applyDebugSink(v, err)) {
+                    out << err << "\n";
+                    failed_ = true;
+                    return true;
+                }
+                out << "debug: sink=" << dbg::sinkName() << "\n";
+                continue;
+            }
             if (!setPropertyIn(Console::instance().properties(), "console", k, v, err)) {
                 out << err << "\n";
                 failed_ = true;

@@ -4,6 +4,7 @@
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/debuglog.h"
+#include "core/machine.h"
 
 #include <filesystem>
 #include <fstream>
@@ -162,6 +163,35 @@ void test_debuglog() {
                   "detach does NOT drop it -- a CONFIG LOAD re-attaches the same card");
         }
         CHECK(dbg::find("mds1") == nullptr, "but destroying the card unregisters it");
+    }
+
+    SECTION("the machine's PC provider reads instrPc and honours running");
+
+    {
+        // The SAME provider main() installs: while the machine runs, the current
+        // instruction's PC (Bus::instrPc, published once per instruction by the run
+        // loop); at the monitor prompt -- not running -- nothing, so the column dashes.
+        Machine m;
+        dbg::setPcProvider([&m]() -> std::optional<uint16_t> {
+            if (!m.running) return std::nullopt;
+            return m.bus.instrPc();
+        });
+
+        // At the prompt: running is false, so the provider yields nothing.
+        const std::string atPrompt = capture([&] { dbg::line(ch) << "y\n"; });
+        CHECK(atPrompt.rfind("----  mds0: y", 0) == 0,
+              "stopped at the prompt, the PC column dashes");
+
+        // Running, with a PC published exactly as the run loop publishes it.
+        m.running = true;
+        m.bus.setInstrPc(0x1234);
+        const std::string running = capture([&] { dbg::line(ch) << "y\n"; });
+        CHECK(running.rfind("1234  mds0: y", 0) == 0,
+              "while running, the column is the published instruction PC");
+
+        m.running = false;  // and it dashes again the moment the machine stops
+        const std::string stopped = capture([&] { dbg::line(ch) << "y\n"; });
+        CHECK(stopped.rfind("----  mds0: y", 0) == 0, "stopping returns the column to dashes");
     }
 
     // Leave the global facility as we found it, so other suites see a clean sink and
