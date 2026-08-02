@@ -36,6 +36,11 @@ public:
     bool readable() const override { return !rx_.empty(); }
     bool writable() const override { return tx_.size() < kTxCap; }
 
+    // A real serial port clocks its own wire: the OS delivers bytes at the line's true rate,
+    // so there is no emulated receive gap to add. rate=full's instant receive is the point,
+    // and an overrun here is a genuine hardware event. (Base ByteStream defaults to true.)
+    bool pacedReceive() const override { return false; }
+
     void flush() override;
     void pump() override;
 

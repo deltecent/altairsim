@@ -77,6 +77,7 @@ public:
     size_t write(const uint8_t* buf, size_t n) override;
 
     bool readable() const override { return inner_->readable(); }
+    bool pacedReceive() const override { return inner_->pacedReceive(); }
     bool writable() const override { return inner_->writable(); }
     void flush() override { inner_->flush(); }
     void pump() override { inner_->pump(); }
