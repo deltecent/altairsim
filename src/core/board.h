@@ -71,6 +71,10 @@ enum class UnitKind {
 
 const char* unitKindName(UnitKind k);
 
+// The verb that fills a unit of this kind: MOUNT for an image, CONNECT for an
+// endpoint, and "" for a Cpu core (which is neither -- it is soldered on).
+const char* unitKindVerb(UnitKind k);
+
 struct UnitDef {
     std::string name;  // "drive0", "rom0", "tty" -- the board's own word
     UnitKind kind = UnitKind::Disk;

@@ -26,6 +26,17 @@ const char* unitKindName(UnitKind k) {
     return "?";
 }
 
+const char* unitKindVerb(UnitKind k) {
+    switch (k) {
+    case UnitKind::Disk:
+    case UnitKind::Rom:
+    case UnitKind::Tape:   return "MOUNT";
+    case UnitKind::Serial: return "CONNECT";
+    case UnitKind::Cpu:    return "";
+    }
+    return "";
+}
+
 // SNAPSHOT/RESTORE, base (DESIGN.md 13). The one thing every card has that can
 // move at runtime is enabled_ -- a boot ROM switches itself out after boot, and a
 // snapshot taken afterwards must remember that. The wires (intWire_/viWire_/

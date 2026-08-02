@@ -765,6 +765,112 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
+    // SHOW BOARD <type> (the full view) shows the board's own properties, then -- if it
+    // has units -- a footer NAMING them and pointing at the UNITS view for their settings.
+    // The unit tables themselves live in `SHOW BOARD <type> UNITS`, not stacked here.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW BOARD names a board's units and points at the UNITS view");
+    {
+        Machine mu;
+        Monitor monU(mu);
+        std::ostringstream o;
+        monU.exec("SHOW BOARD acr", o);
+        const std::string s = o.str();
+        // The footer names the unit and directs the reader to the UNITS view...
+        CHECK(s.find("This board has units: tape") != std::string::npos,
+              "the footer names the tape unit");
+        CHECK(s.find("SHOW BOARD acr UNITS for their properties") != std::string::npos,
+              "the footer points at the UNITS view");
+        // ...but the unit's own property table is NOT stacked under the board here.
+        CHECK(s.find("Unit 'tape'  (tape, MOUNT)") == std::string::npos,
+              "the unit table is deferred to the UNITS view");
+        CHECK(s.find("values: full | real") == std::string::npos,
+              "the unit's rate choices are not in the full view");
+
+        // A controller's [[board.drive]] schema is named in the footer too -- the disk you
+        // may declare in a machine file, before any drive exists to SHOW.
+        std::ostringstream od;
+        Machine            md;
+        Monitor            monD(md);
+        monD.exec("SHOW BOARD tarbell", od);
+        const std::string sd = od.str();
+        CHECK(sd.find("This board has units: drive") != std::string::npos,
+              "the footer names the drive sub-unit table");
+        CHECK(sd.find("[[board.drive]]  (in a machine file)") == std::string::npos,
+              "the drive schema itself is deferred to the UNITS view");
+    }
+
+    // -----------------------------------------------------------------------
+    // SHOW BOARD <type> UNITS narrows to just the units: no board description, no
+    // board-level property table, only the unit and sub-unit schemas -- with a full-width
+    // rule setting each heading off so it does not get lost between two tables.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW BOARD <type> UNITS shows only the units");
+    {
+        Machine mu;
+        Monitor monU(mu);
+        std::ostringstream o;
+        monU.exec("SHOW BOARD acr units", o);
+        const std::string s = o.str();
+        // The unit is present, with its motivating property...
+        CHECK(s.find("Unit 'tape'  (tape, MOUNT)") != std::string::npos, "the tape unit is shown");
+        CHECK(s.find("values: full | real") != std::string::npos, "rate's choices are shown");
+        // ...but the board's OWN properties are not: `port` heads the board table only.
+        CHECK(s.find("\n  port ") == std::string::npos,
+              "the board's own properties are omitted in units view");
+        // The unit heading sits on its own line.
+        CHECK(s.find("\n  Unit 'tape'") != std::string::npos, "the unit heading is on its own line");
+
+        // With two stacked entries (a serial unit AND a [[board.drive]] schema), two blank
+        // lines set the second heading off from the table above it.
+        std::ostringstream of;
+        Machine            mf;
+        Monitor            monF(mf);
+        monF.exec("SHOW BOARD 16fdc units", of);
+        CHECK(of.str().find("\n\n\n  [[board.drive]]") != std::string::npos,
+              "two blank lines set a stacked heading off from the table above");
+
+        // The PROPERTY/HELP header prints once, over the first unit, not per-unit -- so a
+        // board with several units reads as one list. sol has five.
+        std::ostringstream os;
+        Machine            ms;
+        Monitor            monS(ms);
+        monS.exec("SHOW BOARD sol units", os);
+        const std::string ss = os.str();
+        CHECK(ss.find("PROPERTY") != std::string::npos, "the header is present");
+        CHECK(ss.find("PROPERTY", ss.find("PROPERTY") + 1) == std::string::npos,
+              "the header is printed only once, not per unit");
+        // A serial unit's heading names its verb: CONNECT, not MOUNT.
+        CHECK(ss.find(", CONNECT)") != std::string::npos,
+              "a serial unit's heading names its verb");
+
+        // A prefix of UNITS works -- `u` is the shortest -- first match wins.
+        std::ostringstream ou;
+        Monitor            monU2(mu);
+        monU2.exec("SHOW BOARD acr u", ou);
+        CHECK(ou.str().find("Unit 'tape'  (tape, MOUNT)") != std::string::npos,
+              "a prefix of UNITS is accepted");
+
+        // A board with no unit properties says so, plainly, rather than printing nothing.
+        std::ostringstream oe;
+        Machine            me;
+        Monitor            monE(me);
+        monE.exec("SHOW BOARD fp units", oe);
+        CHECK(oe.str().find("has no unit properties") != std::string::npos,
+              "an empty units view is explained");
+
+        // An unknown trailing word is a usage error, not a silent full listing.
+        std::ostringstream ob;
+        Machine            mb;
+        Monitor            monB(mb);
+        monB.exec("SHOW BOARD acr wat", ob);
+        CHECK(ob.str().find("SHOW BOARD <type> [units]") != std::string::npos,
+              "a bogus option prints usage");
+        CHECK(ob.str().find("unit 'tape'") == std::string::npos,
+              "a bogus option does not fall through to a listing");
+    }
+
+    // -----------------------------------------------------------------------
     // SHOW PATHS: "built in to the binary" is a claim about ORIGIN -- whether a file
     // was loaded -- NOT about whether the machine file's dirname is empty. A file NAMED
     // IN THE CWD (`altairsim foo.toml` from foo.toml's own folder, which is how every

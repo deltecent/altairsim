@@ -57,7 +57,7 @@ Type the part before the bracket.
 | `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id>[:<u>]\|CONSOLE\|DISPLAY\|REG\|BUS <k>=<v>` |
-| `SH[OW]` | `SHOW <id>\|BOARDS\|BOARD <type>\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|VERSION` |
+| `SH[OW]` | `SHOW <id>\|BOARDS\|BOARD <type> [UNITS]\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|SYMBOLS\|VERSION` |
 | `DE[POSIT]` | `DEPOSIT <addr> <bytes...>` |
 | `EX[AMINE]` | `EXAMINE [<addr>]` |
 | `I[N]` | `IN <port>` |

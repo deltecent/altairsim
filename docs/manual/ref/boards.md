@@ -160,7 +160,7 @@ RAM/ROM board: a list of regions, PHANTOM*, and five banking schemes
 
 Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 drives. Disk registers at 30-34, a TMS 5501 console UART at 00-09 (unit 'tty'), and a 4K RDOS 2.52 boot PROM at C000 (OUT 40H banks it out, RESET restores it). Boots CDOS
 
-**Units:** `tty` (serial), `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `tty` (serial, CONNECT), `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -193,7 +193,7 @@ Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 
 
 Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying an 8K RDOS 3.12 boot PROM at C000-DFFF (OUT 40H banks it out, RESET restores it). Boots CDOS
 
-**Units:** `tty` (serial), `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `tty` (serial, CONNECT), `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -226,7 +226,7 @@ Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying a
 
 MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits
 
-**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -251,7 +251,7 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 
 MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers
 
-**Units:** `drive0` (disk)
+**Units:** `drive0` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -274,7 +274,7 @@ MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. 
 
 MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s
 
-**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -300,7 +300,7 @@ MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 R
 
 Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)
 
-**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -324,7 +324,7 @@ Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at B
 
 Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM
 
-**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -348,7 +348,7 @@ Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0)
 
 SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) | vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS
 
-**Units:** `drive0` (disk), `drive1` (disk), `drive2` (disk), `drive3` (disk)
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
 #### `[[board.drive]]` — a list you may add
 
@@ -375,7 +375,7 @@ SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight
 
 MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 
-**Units:** `a` (serial), `b` (serial)
+**Units:** `a` (serial, CONNECT), `b` (serial, CONNECT)
 
 #### Board properties
 
@@ -410,7 +410,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 
 PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub
 
-**Units:** `line` (serial)
+**Units:** `line` (serial, CONNECT)
 
 #### Board properties
 
@@ -431,7 +431,7 @@ PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0.
 
 SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Intel 8251 console (unit 'tty', data 7C / status 7D, RxD->/DSR auto-baud for MSMONR21), Z80-CTC (78-7B) whose ch1 raises a mode-2 keyboard interrupt (vector 0x82) off the 8251 RxRDY, and a parallel port (7E/7F) whose OUT 7F bit 1 switches the onboard PROM out. Optional onboard boot PROM via [[board.socket]] (at+mount). variant=sbc100|sbc200
 
-**Units:** `tty` (serial)
+**Units:** `tty` (serial, CONNECT)
 
 #### `[[board.socket]]` — a list you may add
 
@@ -461,7 +461,7 @@ SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Int
 
 MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits
 
-**Units:** `tty` (serial)
+**Units:** `tty` (serial, CONNECT)
 
 #### Board properties
 
@@ -482,7 +482,7 @@ MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED stat
 
 MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]]
 
-**Units:** `tty` (serial)
+**Units:** `tty` (serial, CONNECT)
 
 #### `[[board.socket]]` — a list you may add
 
@@ -516,7 +516,7 @@ MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (u
 
 Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:
 
-**Units:** `serial` (serial)
+**Units:** `serial` (serial, CONNECT)
 
 #### Board properties
 
@@ -539,7 +539,7 @@ Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports yo
 
 MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter
 
-**Units:** `tape` (tape)
+**Units:** `tape` (tape, MOUNT)
 
 #### Board properties
 
@@ -575,7 +575,7 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 
 MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout
 
-**Units:** `tape` (tape), `serial` (serial)
+**Units:** `tape` (tape, MOUNT), `serial` (serial, CONNECT)
 
 #### Board properties
 
@@ -627,7 +627,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 
 MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BASE (default 20). Software-set direction; CONNECT each section
 
-**Units:** `ja` (serial), `jb` (serial)
+**Units:** `ja` (serial, CONNECT), `jb` (serial, CONNECT)
 
 #### Board properties
 
@@ -653,7 +653,7 @@ MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BAS
 
 MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file, a socket, or a real printer queue
 
-**Units:** `prn` (serial)
+**Units:** `prn` (serial, CONNECT)
 
 #### Board properties
 
@@ -682,7 +682,7 @@ Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one pa
 
 MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file, a socket, or a real printer queue
 
-**Units:** `prn` (serial)
+**Units:** `prn` (serial, CONNECT)
 
 #### Board properties
 
@@ -696,7 +696,7 @@ MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (
 
 MITS 88-PIO: 8-bit parallel port, units 'out'/'in'. Two ports at BASE+0..1 (default 04). CONNECT a printer, a keyboard, a socket
 
-**Units:** `out` (serial), `in` (serial)
+**Units:** `out` (serial, CONNECT), `in` (serial, CONNECT)
 
 #### Board properties
 
@@ -740,7 +740,7 @@ Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BA
 
 SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display
 
-**Units:** `keyboard` (serial)
+**Units:** `keyboard` (serial, CONNECT)
 
 #### Board properties
 
@@ -780,7 +780,7 @@ Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (defau
 
 Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT). Brings the WIND/REWIND/EXTRACT verbs and a tape counter
 
-**Units:** `serial` (serial), `printer` (serial), `keyboard` (serial), `tape1` (tape), `tape2` (tape)
+**Units:** `serial` (serial, CONNECT), `printer` (serial, CONNECT), `keyboard` (serial, CONNECT), `tape1` (tape, MOUNT), `tape2` (tape, MOUNT)
 
 #### Board properties
 

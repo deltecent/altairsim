@@ -298,7 +298,12 @@ void boards(const std::string& dir) {
                 o << "**Units:** ";
                 for (size_t i = 0; i < units.size(); i++) {
                     if (i) o << ", ";
-                    o << "`" << units[i].name << "` (" << unitKindName(units[i].kind) << ")";
+                    // Name the unit's kind and, after it, the verb that fills it --
+                    // `(serial, CONNECT)` -- matching what `SHOW BOARD <type> UNITS`
+                    // prints. A cpu core takes neither, so it shows only its kind.
+                    o << "`" << units[i].name << "` (" << unitKindName(units[i].kind);
+                    if (const char* v = unitKindVerb(units[i].kind); v && *v) o << ", " << v;
+                    o << ")";
                 }
                 o << "\n\n";
             }

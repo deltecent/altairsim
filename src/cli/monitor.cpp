@@ -2719,43 +2719,144 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     return true;
                 }
 
-                const size_t descCol = 2 + t->name.size() + 2;
-                auto desc = wrapText(t->description, width - descCol);
-                std::snprintf(buf, sizeof buf, "  %s  %s", t->name.c_str(), desc[0].c_str());
-                out << buf << "\n";
-                for (size_t i = 1; i < desc.size(); ++i)
-                    out << std::string(descCol, ' ') << desc[i] << "\n";
+                // An optional trailing UNITS (u) narrows the view to just the unit and
+                // sub-unit tables -- the answer to "what can I SET on acr0:tape" without
+                // the board's own properties or its description in the way.
+                bool unitsOnly = false;
+                if (a.size() >= 4) {
+                    // Any prefix of UNITS matches -- u, un, uni, unit, units -- the way
+                    // every other command word abbreviates (first match wins).
+                    const std::string opt = lowerAscii(a[3]);
+                    if (std::string("units").starts_with(opt))
+                        unitsOnly = true;
+                    else {
+                        out << "SHOW BOARD <type> [units]\n";
+                        return true;
+                    }
+                }
+
+                if (!unitsOnly) {
+                    const size_t descCol = 2 + t->name.size() + 2;
+                    auto desc = wrapText(t->description, width - descCol);
+                    std::snprintf(buf, sizeof buf, "  %s  %s", t->name.c_str(), desc[0].c_str());
+                    out << buf << "\n";
+                    for (size_t i = 1; i < desc.size(); ++i)
+                        out << std::string(descCol, ' ') << desc[i] << "\n";
+                }
 
                 auto b = makeBoard(t->name);
+
+                // One PROPERTY / HELP / values table, self-sizing its name column. The
+                // board's own properties and each unit's print through the same renderer,
+                // so the catalog view of a not-yet-added board matches SHOW <id> of a live
+                // one -- help text and all.
+                // `header` prints the PROPERTY/HELP heading and its rule; the UNITS view
+                // suppresses it after the first unit so the tables read as one list. A
+                // non-zero `fixedWProp` forces the name column width, so a single header can
+                // align over units whose own longest name would size the column differently.
+                auto renderProps = [&](const std::vector<Property>& props, bool header,
+                                       size_t fixedWProp) {
+                    size_t wProp = fixedWProp;
+                    if (wProp == 0) {
+                        wProp = 8;  // "PROPERTY"
+                        for (const auto& p : props) wProp = std::max(wProp, p.name.size());
+                    }
+                    const size_t helpCol = 2 + wProp + 2;
+
+                    out << "\n";
+                    if (header) {
+                        std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wProp, "PROPERTY",
+                                      "HELP");
+                        out << buf << "\n";
+                        out << "  " << std::string(wProp, '-') << "  "
+                            << std::string(width - helpCol, '-') << "\n";
+                    }
+                    for (const auto& p : props) {
+                        auto help = wrapText(p.help, width - helpCol);
+                        std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wProp, p.name.c_str(),
+                                      help[0].c_str());
+                        out << buf << "\n";
+                        for (size_t i = 1; i < help.size(); ++i)
+                            out << std::string(helpCol, ' ') << help[i] << "\n";
+                        // The legal values, aligned under the help, for properties that list
+                        // them (enum choices, on|off, a bounded range). Wrapped like the help
+                        // so a long choice set does not overrun the terminal.
+                        auto legal = legalValues(p);
+                        if (!legal.empty())
+                            for (const auto& line : wrapText("values: " + legal, width - helpCol))
+                                out << std::string(helpCol, ' ') << line << "\n";
+                    }
+                };
+
                 const auto props = b->properties();
-                if (props.empty()) {
-                    out << "\n  (no properties)\n";
+
+                // Collect the units (and sub-unit table schemas) that carry properties --
+                // a unit's properties are the unit's, not the board's (DESIGN.md 7.2). Both
+                // views speak about them: the full view names them in a footer, the UNITS
+                // view prints each one's table. Each entry keeps its heading and its props.
+                struct UnitEntry {
+                    std::string           heading;  // the "unit '...'  (kind)" line
+                    std::string           label;    // the bare name, for the footer list
+                    std::vector<Property> props;
+                };
+                std::vector<UnitEntry> unitEntries;
+                for (const auto& u : b->units()) {
+                    auto up = b->unitProperties(u.name);
+                    if (up.empty()) continue;
+                    // Name the unit's kind and, after it, the verb that fills it --
+                    // "(serial, CONNECT)" -- so the reader knows a serial unit takes
+                    // CONNECT, not MOUNT. A Cpu core takes neither, so it shows only
+                    // its kind.
+                    const std::string verb = unitKindVerb(u.kind);
+                    std::string       heading = "  Unit '" + u.name + "'  ("
+                                        + unitKindName(u.kind);
+                    if (!verb.empty()) heading += ", " + verb;
+                    heading += ")";
+                    unitEntries.push_back({heading, u.name, std::move(up)});
+                }
+                // ...and the sub-unit table schemas (a drive you may declare in a machine
+                // file): the same hidden schema, shown the same way SHOW <id> shows it.
+                for (const auto& tbl : b->subUnitTables()) {
+                    auto sp = b->subUnitProperties(tbl);
+                    if (sp.empty()) continue;
+                    unitEntries.push_back({"  [[board." + tbl + "]]  (in a machine file)",
+                                           tbl, std::move(sp)});
+                }
+
+                if (unitsOnly) {
+                    if (unitEntries.empty()) {
+                        out << "  board '" << t->name << "' has no unit properties.\n";
+                        return true;
+                    }
+                    // Two blank lines between units set each "Unit 'tape2'  (tape)" break
+                    // off from the table above, so it does not get lost. The first heading
+                    // needs only the single blank the others already carry -- no extra at
+                    // the top. The PROPERTY/HELP header prints once, over the first unit;
+                    // one column width, sized across every unit, keeps the rest aligned.
+                    size_t wProp = 8;  // "PROPERTY"
+                    for (const auto& e : unitEntries)
+                        for (const auto& p : e.props) wProp = std::max(wProp, p.name.size());
+                    bool first = true;
+                    for (const auto& e : unitEntries) {
+                        out << (first ? "\n" : "\n\n") << e.heading << "\n";
+                        renderProps(e.props, first, wProp);
+                        first = false;
+                    }
                     return true;
                 }
-                size_t wProp = 8;  // "PROPERTY"
-                for (const auto& p : props) wProp = std::max(wProp, p.name.size());
-                const size_t helpCol = 2 + wProp + 2;
 
-                out << "\n";
-                std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wProp, "PROPERTY", "HELP");
-                out << buf << "\n";
-                out << "  " << std::string(wProp, '-') << "  "
-                    << std::string(width - helpCol, '-') << "\n";
-                for (const auto& p : props) {
-                    auto help = wrapText(p.help, width - helpCol);
-                    std::snprintf(buf, sizeof buf, "  %-*s  %s", (int)wProp, p.name.c_str(),
-                                  help[0].c_str());
-                    out << buf << "\n";
-                    for (size_t i = 1; i < help.size(); ++i)
-                        out << std::string(helpCol, ' ') << help[i] << "\n";
-                    // The legal values, aligned under the help, for properties that list
-                    // them (enum choices, on|off, a bounded range). Wrapped like the help
-                    // so a long choice set does not overrun the terminal.
-                    auto legal = legalValues(p);
-                    if (!legal.empty())
-                        for (const auto& line : wrapText("values: " + legal, width - helpCol))
-                            out << std::string(helpCol, ' ') << line << "\n";
+                // The full view: the board's own properties, then -- if it has units -- a
+                // footer naming them and pointing at the UNITS view for their settings,
+                // rather than stacking every unit table under the board's.
+                if (!props.empty()) renderProps(props, true, 0);
+                if (unitEntries.empty()) {
+                    if (props.empty()) out << "\n  (no properties)\n";
+                    return true;
                 }
+                out << "\n  This board has units: ";
+                for (size_t i = 0; i < unitEntries.size(); ++i)
+                    out << (i ? ", " : "") << unitEntries[i].label;
+                out << "\n  SHOW BOARD " << t->name << " UNITS for their properties.\n";
                 return true;
             }
 
@@ -2776,7 +2877,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 for (size_t i = 1; i < desc.size(); ++i)
                     out << std::string(descCol, ' ') << desc[i] << "\n";
             }
-            out << "\n  SHOW BOARD <type> for a board's properties\n";
+            out << "\n  SHOW BOARD <type> for a board's properties"
+                   " (add UNITS for just the units)\n";
             return true;
         }
         if (sub == "MACHINES") {
