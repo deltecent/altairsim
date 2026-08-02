@@ -216,6 +216,81 @@ write in anger. This is a **track-buffered** BIOS: it holds the current track in
 commits it when CP/M changes track or warm-boots. Getting back to a live `A>` prompt is a warm
 boot, so end every session at `A>` before you unmount or snapshot, or the last write is lost.
 
+## Debugging a behavior: make the machine show you, don't guess
+
+**Read this before you form a single theory.** When a guest misbehaves — a character dropped, a
+byte mistimed, a loop that runs when it shouldn't — **the simulator already knows exactly what
+happened. Get it to tell you before you decide what it is.** The debugger records every
+instruction with its registers and every bus cycle; a breakpoint plus a history dump *shows* you
+the cause. A hypothesis about what the guest "probably" does is almost always wrong, and each
+wrong guess costs a round trip to disprove. One trace replaces a dozen guesses.
+
+**What NOT to do** (each of these wastes hours):
+
+- **Do not speculate a mechanism and then build on it.** "It's probably pacing / a look-ahead /
+  an overrun" is a guess. Confirm it in a trace or throw it away. Do **not** propose a fix for a
+  cause you have not observed.
+- **Do not hand-decode bytes into instructions.** `DISASM` is the authoritative decoder — the
+  same decode the CPU uses. Eyeballing opcodes invents instructions that are not there (and
+  reading a PROM-shadowed region by hand yields garbage that looks like real code).
+- **Do not add `printf`/file logging in the hot path.** It perturbs timing and hides the very
+  timing bug you are chasing (a Heisenbug). The built-in recorder is passive — use it.
+- **Do not fight the console with `expect`/pty prompt-matching.** Drive the monitor over `--mcp`
+  (`monitor {command: …}`): one command in, clean text out, nothing to mis-sync.
+
+**The method that works:**
+
+1. **Reproduce deterministically** — the smallest input that shows the symptom, every time.
+2. **Break on the exact event, not a guessed address.** `BREAK IO R <port>` stops on a port
+   read, `BREAK IO W <port>` / `BREAK MEM R|W <addr>` on I/O or memory, `BREAK <addr>` (or
+   `BREAK <addr> IF <expr>`) on code. An `IO`/`MEM` break needs **no** reverse-engineering to
+   place — you break on the read/write itself.
+3. **Sweep, then read.** From the break, `STEP 500` runs quietly; `HISTORY CPU 500` then dumps
+   every instruction with its registers. Read what actually executed — do not summarize it in
+   your head, read it.
+4. **Follow the one datum.** Track the specific byte in `A`, the register, or the memory write
+   through those instructions: where it is stored (`LD (HL),A`), where control branches, and who
+   called the code (stack pointer depth and the return address). Run a **working** case beside a
+   **failing** one and find the single instruction where they diverge.
+5. **Only then design the fix** — against the confirmed cause, never the theory.
+
+Worked example — the CDOS console dropping a character from a pasted command. `BREAK IO R 1`
+(the TMS 5501 data port), type `DIR`, then `STEP`/`HISTORY` from each read and follow the byte in
+`A`. The trace shows, as fact: every typed byte *is* read from the UART exactly once; which byte
+reaches the command line and which is thrown away; and the exact branch where a kept byte and a
+dropped byte part company — a dropped byte is read, stashed to a scratch address, and never
+dispatched because control returns into the *previous* character's handler. "The console probably
+loses bytes somewhere" was a guess that led nowhere for hours; the `HISTORY` dump answered it in
+minutes. Reach for the trace first.
+
+### Drive it through a persistent `--mcp` session, not a pty
+
+The debugging loop above only works if controlling the machine is *effortless* — one command in,
+its answer out, decide the next. You get that by keeping **one `--mcp` process open** (the minimal
+driver near the top of this guide) and sending one `tools/call` per step: `monitor {command: …}`
+is literally "enter a monitor command, read its text, enter the next," with **no console echo and
+no prompt to match**. `run`, `regs`, `send`, `recv` fill in the rest. That is the loop for
+stepping and tracing.
+
+**Do not reach for `expect` or a raw pty to drive the interactive monitor for this.** A pty echoes
+your keystrokes back *interleaved* with the machine's output, and matching the `altairsim> ` prompt
+races the **stale** prompt already sitting in the buffer — so your captures come back empty or as
+fragments of the next command, and a `RUN` followed by typed input races the monitor against the
+guest over who reads the line. If you catch yourself logging a whole session to a file to grep
+afterward, you have already lost the loop: stop and drive it over `--mcp`.
+
+Two gotchas once you do:
+
+- **`notifications/initialized` gets no reply.** After `initialize`, send it as a JSON-RPC
+  *notification* (no `id`) and do **not** try to read a line back for it — waiting for a response
+  that never comes hangs the driver. Then begin your `tools/call`s.
+- **Confirm the guest is actually at its prompt before you type.** Under `--mcp` a machine's
+  `startup` parks, and some boots idle through a PROM countdown/banner that `run`'s idle heuristic
+  reads as "done." Loop `run` until the guest reaches its interactive prompt — press Enter with
+  `run {input: "\r"}` and watch the prompt echo back — *before* you feed a command, or a boot-time
+  reader swallows your first characters (an early `DIR` typed too soon showed up as the cold loader
+  eating `DIR` while only the tail reached the OS).
+
 ## Investigate a program you did not write
 
 Building is half of it; the other half is taking a binary apart to see how it works — a monitor
