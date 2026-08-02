@@ -1104,9 +1104,9 @@ Two invariants it enforces so no board has to:
 
 ### 7.6 `Log` / `Trace`
 
-**Mostly NOT BUILT.** The design was one structured diagnostic sink with per-board *and* per-category masks (`IN`, `OUT`, `READ`, `WRITE`, `IRQ`, `DMA`, `CONTENTION`), mirroring the `DEBTAB` idea in `mits_dsk.c`, emitting text for the monitor and JSON for MCP from the same call site.
+**The per-source half is built** (`src/core/debuglog.{h,cpp}`, `namespace altair::dbg`, 2026-08-02). The original design was one structured diagnostic sink with per-board *and* per-category masks (`IN`, `OUT`, `READ`, `WRITE`, `IRQ`, `DMA`, `CONTENTION`), mirroring the `DEBTAB` idea in `mits_dsk.c`, emitting text for the monitor and JSON for MCP from the same call site. `dbg` builds the per-source axis of that: a named **`Channel`** for each instrumented source — a board (named by its `id`, created on `Bus::attach` when the board's `debugFlags()` is non-empty), a chip (`mc6850` owns a static `6850` channel), a host layer (the socket code owns `socket`) — each carrying its own flag list, and **one global sink** (`Stderr` default, `Stdout`, or an appended `File`). A channel caches its enabled flags as a `uint32_t`, so an emit site is a single `if (ch.on(SEEK))` when the flag is off and the formatting behind it never runs. `dbg::line()` prefixes each line with the **PC of the driving instruction** — `2C38  dsk0: sector drive=0 track=0 sector=1` — read lazily through a provider `Machine` installs (`Bus::instrPc`, published once per instruction by the run loop), or `----` at the prompt where the machine is not running. The operator drives it from the monitor: `SET CONSOLE DEBUG=<sink>`, `SET <channel> DEBUG=/NODEBUG=<flags>` (additive/subtractive, `all`/`none`, atomic on an unknown flag), `SHOW DEBUG`, and Tab completion for channel names and flag values. None of it survives `CONFIG SAVE` — a diagnostic is a session, not a property of the machine.
 
-**What exists is the category half, and only for the bus trace.** `TraceCat` (`src/core/debug.h`) is `{InCycle, OutCycle, Irq, Dma, Contended}`, driven by `TRACE ... MASK=`. There is no `READ`/`WRITE` memory category, **no per-board mask**, no JSON emitter, and no `Log`/`Trace` class — the rest of the program uses ordinary output. A per-board mask is the piece most likely to be wanted first: with several cards in a backplane, a category mask alone still trips over all of them.
+**What is still not built is the *category* half and the JSON emitter.** `TraceCat` (`src/core/debug.h`) is `{InCycle, OutCycle, Irq, Dma, Contended}`, driven by `TRACE ... MASK=` — a separate bus-trace mechanism with no `READ`/`WRITE` memory category, **no per-board mask**, and no JSON for MCP. Folding the two together — per-board *and* per-category masks from one call site, text for the monitor and JSON for MCP — is the design that was specced; the `dbg` channels are the first half of it, and per-unit channels (`sio0:a`) plus instrumenting the remaining boards are the incremental next step.
 
 ### 7.7 The two consequences worth stating explicitly
 
@@ -1209,7 +1209,9 @@ CONSOLE  -- it CONFIGURES the console; it does not start the machine (RUN does).
   has instead is line CODING (baud, data_bits, parity): a frame, never a mask.
   SET sio0:a UPPER=ON is an error today, and says so.
   TABS, ANSI, ROWS, COLS and PACE are NOT BUILT -- see 7.2. LOG tees the session
-  to a host file (SET CONSOLE LOG=path; empty/off closes it).
+  to a host file (SET CONSOLE LOG=path; empty/off closes it). DEBUG aims the
+  runtime diagnostic sink (SET CONSOLE DEBUG=stderr|stdout|path); the per-source
+  channels are SET <name> DEBUG=<flags> / SHOW DEBUG -- see 7.6.
 
   WHICH UNIT IS THE CONSOLE? The one CONNECTed to it. Exactly one may hold it (there
   is one keyboard); connecting a second STEALS it and says who from. A config file
