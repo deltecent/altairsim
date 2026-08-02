@@ -68,3 +68,11 @@ id = "dsk0"
 #
 # The filename above has SPACES in it, which is authentic and occasionally inconvenient:
 # quote it anywhere you type it, or MOUNT will read `BASIC` as an option and refuse.
+
+# `upper = true` folds what you TYPE to uppercase. Disk Extended BASIC 4.1, like BASIC 1.0
+# (examples/basic/basic1.toml) and the PS2 monitor, only understands upper case -- a Teletype
+# had no lower case to send. Without this you would type the whole session under Caps Lock;
+# with it you just type, and the fold happens on the way in. It touches only your keystrokes,
+# never BASIC's output. The base's console keeps strip7out; this delta only adds the fold.
+[console]
+upper = true
