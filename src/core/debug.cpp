@@ -195,6 +195,7 @@ bool Debugger::armObserver() {
             case BreakKind::IoRead:   match = c.type == Cycle::IoRead;   break;
             case BreakKind::IoWrite:  match = c.type == Cycle::IoWrite;  break;
             case BreakKind::Pc:       break;
+            case BreakKind::TapeStop: break;  // device event, matched in the tape-stop path, not here
             }
             if (!match) continue;
 
