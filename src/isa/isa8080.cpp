@@ -1,7 +1,9 @@
 #include "isa/isa.h"
 
+#include <cassert>
 #include <cctype>
 #include <cstdio>
+#include <unordered_map>
 
 namespace altair {
 namespace {
@@ -176,6 +178,163 @@ public:
 
 const Isa8080 k8080;
 
+// ---------------------------------------------------------------------------
+// The 8080 assembler -- the inverse of the table above, built once by REVERSING
+// kOps. Nothing here is hand-written per opcode: mnemonic->opcode is exactly the
+// opcode->mnemonic table read the other way, so the two can never drift, and the
+// round-trip `assemble(disassemble(b)) == b` over all 256 bytes proves it.
+//
+// The undocumented entries are SKIPPED in the reverse map, so the documented
+// mnemonics stay a bijection: NOP keeps only 00 (not 08/10/...), JMP only C3,
+// RET only C9, CALL only CD. The `??= XX *MNEM` text a disassembler prints for
+// an undocumented byte is not valid input and does not round-trip -- by design.
+// ---------------------------------------------------------------------------
+
+// Uppercase; trim ends; collapse internal whitespace to one space; drop the space
+// on either side of a comma; keep a trailing comma but no trailing space. Applied
+// to BOTH the stored keys and the operator's input so the two always agree -- that
+// symmetry is what lets `MVI C, EB` match the key built from `MVI C,%B`.
+std::string asmNormalize(const std::string& s) {
+    std::string t;
+    for (char c : s) t += (char)std::toupper((unsigned char)c);
+
+    std::string out;
+    bool pendingSpace = false;
+    for (char c : t) {
+        if (c == ' ' || c == '\t') {
+            if (!out.empty()) pendingSpace = true;  // fold runs; never a leading space
+            continue;
+        }
+        if (c == ',') {
+            while (!out.empty() && out.back() == ' ') out.pop_back();  // no space before ','
+            out += ',';
+            pendingSpace = false;  // and none after it
+            continue;
+        }
+        if (pendingSpace) { out += ' '; pendingSpace = false; }
+        out += c;
+    }
+    // A pending space here was trailing whitespace: drop it. A trailing comma stays.
+    return out;
+}
+
+// Parse one operand into a value. Honors `base` (16 or 8) unless the token carries
+// an explicit radix: a trailing H (hex) or Q/O (octal), or a leading 0x (hex). No
+// symbols, no decimal, no sign -- the ISA layer owns no symbol table, and a bare
+// A-F is a hex digit here, not a name. Returns false on empty/garbage/overflow of
+// 16 bits. Self-contained on purpose: this file must not reach into core/value.
+bool asmParseNum(const std::string& tok, int base, unsigned& out) {
+    std::string s = tok;
+    if (s.empty()) return false;
+
+    if (s.size() > 2 && s[0] == '0' && (s[1] == 'X' || s[1] == 'x')) {
+        base = 16;
+        s = s.substr(2);
+    } else {
+        char last = (char)std::toupper((unsigned char)s.back());
+        if (last == 'H') { base = 16; s.pop_back(); }
+        else if (last == 'Q' || last == 'O') { base = 8; s.pop_back(); }
+    }
+    if (s.empty()) return false;
+
+    unsigned long v = 0;
+    for (char c : s) {
+        int d;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else return false;
+        if (d >= base) return false;
+        v = v * base + (unsigned)d;
+        if (v > 0xFFFF) return false;  // no operand is wider than a word
+    }
+    out = (unsigned)v;
+    return true;
+}
+
+class Isa8080Assembler : public Assembler {
+public:
+    Isa8080Assembler() {
+        for (int i = 0; i < 256; ++i) {
+            const Op& op = kOps[i];
+            if (op.undoc) continue;  // keep the documented copy only -- preserve the bijection
+            std::string text = op.text;
+            size_t p = text.find('%');
+            if (p == std::string::npos) {
+                bool ins = exact_.emplace(asmNormalize(text), (uint8_t)i).second;
+                assert(ins && "duplicate exact mnemonic -- kOps is no longer a bijection");
+                (void)ins;
+            } else {
+                bool word = text[p + 1] == 'W';
+                std::string key = asmNormalize(text.substr(0, p));
+                bool ins = prefix_.emplace(key, Enc{(uint8_t)i, word}).second;
+                assert(ins && "duplicate operand mnemonic -- kOps is no longer a bijection");
+                (void)ins;
+            }
+        }
+    }
+
+    const char* name() const override { return "8080"; }
+
+    AsmResult assemble(uint16_t /*addr*/, const std::string& line, int base) const override {
+        std::string n = asmNormalize(line);
+        if (n.empty()) return fail("empty");
+
+        // Exact map first: every no-operand form, including RST 0..RST 7, MOV M,B,
+        // PUSH PSW and XCHG, so a register letter or RST digit is never mistaken for
+        // a number to parse.
+        auto e = exact_.find(n);
+        if (e != exact_.end()) return ok({e->second});
+
+        // Otherwise split at the RIGHTMOST separator of either kind: the prefix is
+        // everything left of it, the operand the token to its right. `LXI SP,0100`
+        // has a comma at 6 and a space at 3 -- 6 wins, so prefix `LXI SP,`, operand
+        // `0100`. A prefix map key already ends in the comma for `MVI C,` forms.
+        size_t sp = n.rfind(' ');
+        size_t cm = n.rfind(',');
+        size_t cut;
+        if (sp == std::string::npos && cm == std::string::npos)
+            return fail("unknown instruction: " + n);
+        if (cm == std::string::npos) cut = sp;
+        else if (sp == std::string::npos) cut = cm;
+        else cut = sp > cm ? sp : cm;
+
+        std::string operand = n.substr(cut + 1);
+        // Keep a splitting comma as part of the prefix key (`MVI C,`); a splitting
+        // space is a separator and is dropped.
+        std::string prefix = n.substr(0, n[cut] == ',' ? cut + 1 : cut);
+        if (operand.empty()) return fail("missing operand");
+
+        auto pr = prefix_.find(asmNormalize(prefix));
+        if (pr == prefix_.end()) return fail("unknown instruction: " + n);
+
+        unsigned v;
+        if (!asmParseNum(operand, base, v)) return fail("bad operand: " + operand);
+
+        const Enc& enc = pr->second;
+        if (enc.word) {
+            if (v > 0xFFFF) return fail("operand too large");
+            return ok({enc.opcode, (uint8_t)(v & 0xFF), (uint8_t)((v >> 8) & 0xFF)});
+        }
+        if (v > 0xFF) return fail("operand too large");
+        return ok({enc.opcode, (uint8_t)v});
+    }
+
+private:
+    struct Enc {
+        uint8_t opcode;
+        bool word;  // %W (2 operand bytes, low first) vs %B (1)
+    };
+
+    static AsmResult ok(std::vector<uint8_t> b) { return {std::move(b), {}}; }
+    static AsmResult fail(std::string e) { return {{}, std::move(e)}; }
+
+    std::unordered_map<std::string, uint8_t> exact_;
+    std::unordered_map<std::string, Enc> prefix_;
+};
+
+const Isa8080Assembler k8080asm;
+
 } // namespace
 
 // Defined in isaZ80.cpp. The registry lives here, in one place; the Z80 decoder
@@ -189,6 +348,15 @@ const Disassembler* disassemblerFor(const std::string& isa) {
     if (k == "z80") return z80Disassembler();
     return nullptr;  // The caller reports it. Disassembling a Z80 as an 8080
                      // produces plausible, WRONG text -- worse than an error.
+}
+
+const Assembler* assemblerFor(const std::string& isa) {
+    std::string k;
+    for (char c : isa) k += (char)std::tolower((unsigned char)c);
+    if (k == "8080") return &k8080asm;
+    // No Z80 assembler yet -- prefixes, (IX+d) and signed JR make it a real
+    // mini-assembler, not a table reverse. EDIT falls back to bytes until it lands.
+    return nullptr;
 }
 
 std::vector<std::string> instructionSets() { return {"8080", "z80"}; }

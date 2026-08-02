@@ -218,17 +218,20 @@ type a new value and Enter writes it and drops to the next byte, bare Enter
 leaves it and drops to the next, and '.' returns to the monitor. Runs REAL bus
 writes, so it says so if no board decodes the address; ROM burns instead, the
 way LOAD ... ROM does -- behind the bus, into the chip that answers there.
-Look at four bytes, change the second, and look again:
+If the machine has a CPU, type an INSTRUCTION where a byte would go and it is
+assembled in place -- the prompt then drops by the instruction's length, not one
+byte. Operands are numbers in the console base (an H or Q suffix overrides); a
+bare value is still a plain byte. Look at four bytes, patch two instructions in,
+and read them back:
 
 ```
-altairsim> DUMP 100-103 WIDTH=4
-0100  C3 00 01 76  ...v
 altairsim> EDIT 100
-0100 C3             bare Enter leaves it, on to 0101
-0101 00 FF          type FF -- writes it, on to 0102
-0102 01 .           '.' returns to the monitor (0102 untouched)
-altairsim> DUMP 100-103 WIDTH=4
-0100  C3 FF 01 76  ...v      the second byte is now FF
+0100 C3 IN 10       assembles DB 10, on to 0102
+0102 00 LXI H,FF13  assembles 21 13 FF, on to 0105
+0105 76 .           '.' returns to the monitor
+altairsim> DISASM 100 2
+0100  DB 10     IN 10
+0102  21 13 FF  LXI H,FF13
 (needs an interactive or piped session -- with none, use DEPOSIT)
 ```
 

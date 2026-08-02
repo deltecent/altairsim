@@ -8,6 +8,16 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `EDIT` assembles an instruction in place
+
+`EDIT` has taken hex bytes one at a time since it existed. Now, on a machine with a CPU, you can
+type an **instruction** where a byte would go and it is assembled on the spot: `EDIT 100`, then
+`IN 10`, writes `DB 10` and drops the prompt to `0102` — the next address falls out of the
+encoding's length, not a fixed one byte. It is the disassembler read the other way, so `DISASM`
+reads back exactly what you typed. Operands are numbers in the console base (a trailing `H` or `Q`
+overrides), and a bare value is still a plain byte, so nothing about the old byte-at-a-time entry
+changed. This is the 8080; a machine whose CPU we do not yet assemble for keeps taking bytes.
+
 ### `BREAK TAPE STOP` — stop right after a cassette load lands
 
 The debugger gained a breakpoint that watches a device rather than the program: `BREAK TAPE STOP`

@@ -3788,6 +3788,43 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             out << "EDIT needs an interactive or piped session -- use DEPOSIT here.\n";
             return true;
         }
+        // If this machine has a CPU we can assemble for, the operator may type a
+        // mnemonic where a byte would go and have the encoding land in place. Null
+        // when there is no CPU (m_.isa() == "") or the ISA has no assembler yet
+        // (Z80): EDIT stays byte-only, exactly as before.
+        const Assembler* asm_ = assemblerFor(m_.isa());
+        // Write one byte through the SAME path DEPOSIT uses -- burn a ROM when
+        // romOverride, else the bus, reporting a discarded byte the same way.
+        // Returns false only on a FATAL ROM-burn failure so the caller stops; a
+        // discarded RAM byte is reported but not fatal. Assembling an instruction
+        // reuses this per byte, so a multi-byte encoding lands like N deposits.
+        auto deposit1 = [&](uint32_t at, uint8_t byte) -> bool {
+            if (romOverride) {
+                std::string why;
+                if (!burn(at, byte, why)) {
+                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)at).c_str(), why.c_str());
+                    out << buf << "\n";
+                    failed_ = true;
+                    return false;  // a ROM you cannot burn will not burn on the next byte either
+                }
+            } else {
+                m_.bus.memWrite((uint16_t)at, byte);
+                // Same silence-is-a-bug rule DEPOSIT keeps: if nobody latched the
+                // byte, SAY SO rather than let it vanish into a gap in the map.
+                if (m_.bus.lastUnclaimed()) {
+                    BusCycle bc;
+                    bc.type = Cycle::MemRead;
+                    bc.addr = (uint16_t)at;
+                    auto rdr = m_.bus.respondersTo(bc);
+                    std::snprintf(buf, sizeof buf, "%s: no board decodes writes here", fmtWord((uint16_t)at).c_str());
+                    out << buf;
+                    if (!rdr.empty())
+                        out << " (" << rdr.front()->id << " answers reads -- it is ROM)";
+                    out << ". byte discarded.\n";
+                }
+            }
+            return true;
+        };
         for (;;) {
             uint8_t v = rd(A);
             std::snprintf(buf, sizeof buf, "%s %s ", fmtWord((uint16_t)A).c_str(), fmtByte(v).c_str());
@@ -3798,38 +3835,38 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (b0 != std::string::npos) tok = resp.substr(b0, resp.find_last_not_of(" \t") - b0 + 1);
             if (tok == ".") break;                                   // done
             if (tok.empty()) { A = (A + 1) & 0xFFFF; continue; }     // leave it, next byte
+
+            // BYTE FIRST: try the whole line as a plain byte exactly as before, so
+            // every input that used to deposit a byte still does -- a bare CC is the
+            // byte 0xCC, not CALL-carry (which always carries an address, so it has a
+            // space and fails this and reaches the assembler below).
             uint32_t nv;
             std::string e;
-            if (!parseNum(tok, nv, octalMode() ? 8 : 16, e) || nv > 0xFF) {
+            if (parseNum(tok, nv, octalMode() ? 8 : 16, e) && nv <= 0xFF) {
+                if (!deposit1(A, (uint8_t)nv)) break;
+                A = (A + 1) & 0xFFFF;
+                continue;
+            }
+
+            // Not a byte. With no assembler for this ISA, that is the old bad-byte
+            // error, unchanged. With one, hand it the line and let the encoding fall
+            // out -- `IN 10` writes DB 10 and the prompt drops two bytes.
+            if (!asm_) {
                 out << (octalMode() ? "?  a byte is 000-377, or '.' to stop\n"
                                     : "?  a byte is 00-FF, or '.' to stop\n");  // stay put, re-prompt
                 continue;
             }
-            if (romOverride) {
-                std::string why;
-                if (!burn(A, (uint8_t)nv, why)) {
-                    std::snprintf(buf, sizeof buf, "%s: %s", fmtWord((uint16_t)A).c_str(), why.c_str());
-                    out << buf << "\n";
-                    failed_ = true;
-                    break;  // a ROM you cannot burn will not burn on the next byte either
-                }
-            } else {
-                m_.bus.memWrite((uint16_t)A, (uint8_t)nv);
-                // Same silence-is-a-bug rule DEPOSIT keeps: if nobody latched the byte,
-                // SAY SO rather than let it vanish into a gap in the memory map.
-                if (m_.bus.lastUnclaimed()) {
-                    BusCycle bc;
-                    bc.type = Cycle::MemRead;
-                    bc.addr = (uint16_t)A;
-                    auto rdr = m_.bus.respondersTo(bc);
-                    std::snprintf(buf, sizeof buf, "%s: no board decodes writes here", fmtWord((uint16_t)A).c_str());
-                    out << buf;
-                    if (!rdr.empty())
-                        out << " (" << rdr.front()->id << " answers reads -- it is ROM)";
-                    out << ". byte discarded.\n";
-                }
+            AsmResult r = asm_->assemble((uint16_t)A, tok, octalMode() ? 8 : 16);
+            if (!r.error.empty()) {
+                out << "?  " << r.error << ", or '.' to stop\n";  // stay put, re-prompt
+                continue;
             }
-            A = (A + 1) & 0xFFFF;
+            bool fatal = false;
+            for (uint8_t byte : r.bytes) {
+                if (!deposit1(A, byte)) { fatal = true; break; }
+                A = (A + 1) & 0xFFFF;
+            }
+            if (fatal) break;
         }
         out << ".\n";
         flush(out);

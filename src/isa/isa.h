@@ -67,6 +67,36 @@ public:
 // as an 8080 produces plausible, wrong text, which is worse than an error.
 const Disassembler* disassemblerFor(const std::string& isa);
 
+// ---------------------------------------------------------------------------
+// The inverse of the disassembler: text in, bytes out. Same layer, same rules --
+// no registers, no bus, no board, no symbol table. EDIT uses it to let the
+// operator type `IN 10` where a byte would go and have the encoding fall out.
+// ---------------------------------------------------------------------------
+
+// One assembled line. On success `bytes` holds the encoding (1..3 for the 8080)
+// and `error` is empty; on failure `bytes` is empty and `error` says why, in a
+// form fit to show the operator ("unknown instruction", "operand too large").
+struct AsmResult {
+    std::vector<uint8_t> bytes;
+    std::string error;
+};
+
+class Assembler {
+public:
+    virtual ~Assembler() = default;
+    virtual const char* name() const = 0;   // "8080" -- the registry key
+    // Assemble one line of text into bytes. `addr` is where the bytes will land;
+    // the 8080 ignores it, but a future Z80 needs it to resolve a relative JR/DJNZ
+    // target. `base` is how a bare operand is spelled -- 16 (hex, the default) or 8
+    // (octal, when the monitor's operator has SET CONSOLE base=octal) -- exactly as
+    // Disassembler::at renders it; an explicit H/Q suffix on the operand overrides.
+    virtual AsmResult assemble(uint16_t addr, const std::string& line, int base = 16) const = 0;
+};
+
+// Null if we do not assemble that instruction set (e.g. "z80" for now, or "" when
+// there is no CPU). The caller reports it and falls back to bytes -- never guesses.
+const Assembler* assemblerFor(const std::string& isa);
+
 // Every instruction set we know, for tab completion and the error message.
 std::vector<std::string> instructionSets();
 

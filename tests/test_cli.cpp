@@ -2249,6 +2249,51 @@ void test_achieved_hz() {
               "EDIT with no input stream points you at DEPOSIT");
     }
 
+    // ---------------------------------------------------------------------
+    // EDIT assembles a mnemonic in place, when the machine has a CPU whose ISA we
+    // assemble for. The encoding falls out, so the prompt drops by the instruction
+    // length -- `IN 10` at 0100 lands the next prompt at 0102. A byte still deposits
+    // a byte first (byte-first rule), and a bad mnemonic re-prompts without moving.
+    // ---------------------------------------------------------------------
+    SECTION("EDIT -- type a mnemonic and it assembles in place, dropping by its length");
+    {
+        Machine me;
+        std::string err;
+        me.add("8080", "cpu0", err);  // an ISA we assemble for -> EDIT accepts mnemonics
+        Monitor mon(me);
+        std::ostringstream setup;
+        mon.exec("BOARDS ADD memory mem0", setup);
+        mon.exec("SET mem0 fill=zero", setup);
+        mon.exec("REGION ADD mem0 type=ram at=0 size=64K", setup);
+
+        std::istringstream in(
+            "EDIT 0100\n"
+            "IN 10\n"          // 0100 <- DB 10, drop to 0102
+            "LXI H,FF13\n"     // 0102 <- 21 13 FF, drop to 0105
+            "C3\n"             // 0105 <- C3 as a BYTE (byte-first), drop to 0106
+            "FOO 1\n"          // not an instruction -> re-prompt, stay on 0106
+            "MVI C,EB\n"       // 0106 <- 0E EB, drop to 0108
+            ".\n"
+            "DISASM 0100 3\n"
+            "DUMP 0100-0107\n"
+            "QUIT\n");
+        std::ostringstream out;
+        mon.repl(in, out, /*interactive=*/false);
+        std::string s = out.str();
+
+        // The DUMP is the proof of the whole address progression at once: a
+        // CONTIGUOUS byte layout only appears if each line dropped by exactly its
+        // encoding length. IN 10 (DB 10) at 0100, LXI H,FF13 (21 13 FF) at 0102 --
+        // the +2 drop -- C3 as a plain byte at 0105 -- byte-first, +1 -- and after
+        // FOO 1 re-prompted in place, MVI C,EB (0E EB) at 0106.
+        CHECK(s.find("DB 10 21 13 FF C3 0E EB") != std::string::npos,
+              "each line dropped by its own length -- the bytes land contiguous 0100..0107");
+        CHECK(s.find("IN 10") != std::string::npos && s.find("LXI H,FF13") != std::string::npos,
+              "and DISASM reads the assembled bytes straight back");
+        CHECK(s.find("unknown command") == std::string::npos,
+              "EDIT consumed every mnemonic line -- none reached the command loop");
+    }
+
     // -----------------------------------------------------------------
     // Tab completion (cli/monitor.cpp Monitor::complete). A pure read over the same
     // reflection SET uses -- no editor, no pty.
