@@ -5,8 +5,7 @@
 // but "does RTS on this card actually raise CTS on that one" is a question about a
 // CABLE, and the only honest way to answer it is to put a volt down one and look.
 //
-//   ALTAIR_SERIAL_A=/dev/cu.usbserial-AL009KFH \
-//   ALTAIR_SERIAL_B=/dev/cu.usbserial-AB0NW409 ctest -L hw
+//   ALTAIR_SERIAL_A=/dev/cu.usbserial-AL009KFH ALTAIR_SERIAL_B=/dev/cu.usbserial-AB0NW409 ctest -L hw
 //
 // On macOS, name the /dev/cu.* device, not /dev/tty.*. The cu ("call-up") node
 // takes the port for outbound use without waiting on carrier, which is what this
