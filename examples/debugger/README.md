@@ -110,6 +110,7 @@ A breakpoint takes a symbol, too. Set one on the subroutine and run:
 
 ```
 altairsim> EXAMINE START
+0100  31  1  00110001
 altairsim> BREAK PUTC
 breakpoint 1: pc     0113
 altairsim> RUN
@@ -125,6 +126,7 @@ send. Clear it and set one on `DONE` instead, and this time let it finish:
 altairsim> NOBREAK 1
 breakpoint 1 cleared.
 altairsim> EXAMINE START
+0100  31  1  00110001
 altairsim> BREAK DONE
 breakpoint 2: pc     0112
 altairsim> RUN
