@@ -10,10 +10,12 @@
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/command.h"
+#include "core/debuglog.h"
 #include "core/paths.h"
 #include "core/value.h"
 
 #include <cstdint>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -512,6 +514,37 @@ public:
     // and tab completion. There is no second schema anywhere.
     virtual std::vector<Property> properties() = 0;
 
+    // ---- Debug channel (core/debuglog.h, DESIGN.md 7.2) ----
+    //
+    // The named diagnostic flags this card offers -- `sector`, `seek`, `serial` --
+    // one string per flag, in bit order. A board with emit sites overrides this; the
+    // default is none, so most cards have no debug channel at all and cost nothing.
+    //
+    // The framework (Bus::attach, via ensureDebugChannel) reads this ONCE, the first
+    // time the card enters a backplane, and gives the card a dbg::Channel named by its
+    // `id` carrying exactly these flags. The card's emit sites then gate on
+    // debugChannel()->on(BIT) -- one AND on the hot path -- and write through
+    // dbg::line(). The bit index of a flag is its position in THIS list, and the
+    // emit site's `enum { SECTOR, SEEK }` must agree with it (that agreement is the
+    // whole contract; there is no lookup by name on the hot path).
+    virtual std::vector<std::string> debugFlags() const { return {}; }
+
+    // This card's diagnostic channel, or null if it declared no debugFlags(). An emit
+    // site does `if (auto* d = debugChannel(); d && d->on(BIT)) dbg::line(*d) << ...`.
+    dbg::Channel* debugChannel() const { return dbg_.get(); }
+
+    // Create the channel the first time the card enters a backplane, if it carries
+    // flags. Idempotent, and deliberately NOT undone by detach: the channel lives as
+    // long as the card (the unique_ptr below), so a CONFIG LOAD -- which detaches a
+    // card from the scratch bus and re-attaches it here -- keeps the operator's
+    // DEBUG= selection. Called by Bus::attach(); `id` is already set by then.
+    void ensureDebugChannel() {
+        if (dbg_) return;
+        std::vector<std::string> f = debugFlags();
+        if (f.empty()) return;
+        dbg_ = std::make_unique<dbg::Channel>(id, std::move(f));
+    }
+
     // The properties of ONE UNIT -- `SET sio2a:a BAUD=9600` (DESIGN.md 7.2, and
     // the 88-2SIO's own doc). A unit is a real thing with real settings: the two
     // halves of a 2SIO have independent baud rates and independent transforms,
@@ -929,6 +962,12 @@ private:
     // ...and onto pHOLD. Latched for the same reason: the run loop reads the wire, it
     // does not poll us for it. Maintained by holdChanged().
     bool holdWire_ = false;
+
+    // This card's diagnostic channel (core/debuglog.h), created on demand by
+    // ensureDebugChannel() when the card carries debugFlags() and enters a backplane.
+    // Null for the many cards that declare no flags. Owned here, so it registers for
+    // exactly the card's lifetime -- destructing it unregisters from the dbg registry.
+    std::unique_ptr<dbg::Channel> dbg_;
 };
 
 // ---------------------------------------------------------------------------

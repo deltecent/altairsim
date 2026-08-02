@@ -194,11 +194,15 @@ void MdsBoard::command(uint8_t v) {
         // will always be selected due to the clearing action on the Step Direction
         // Flip-Flop." The 88-DCDD applies both and nets to zero. Different card, different
         // answer, and this is exactly the kind of difference a shared `if` would have buried.
+        const int was = d->track;
         if (v & 0x02) {  // STEP OUT -- toward track 0. Stops there.
             if (d->track > 0) d->track--;
         } else if (v & 0x01) {  // STEP IN -- toward the spindle
             if (d->track < d->fmt.tracks - 1) d->track++;
         }
+        if (auto* dc = debugChannel(); dc && dc->on(SEEK) && d->track != was)
+            dbg::line(*dc) << "seek drive=" << sel() << " track=" << was
+                           << " -> " << d->track << "\n";
 
         settleAt_ = now() + tFromUs(kStepSettleUs);
         restartTimer();  // "STEP IN also resets the 6.4 second Disk Disable Timer" (p31, p32)

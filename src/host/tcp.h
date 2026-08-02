@@ -73,6 +73,11 @@ private:
     // up on every telnet session the instant it connected, on the commonest card in
     // the machine. A card that never raised DTR is not a card that hung up.
     bool sawDtr_ = false;
+
+    // The last carrier state we announced on the `socket` debug channel, so pump()
+    // traces only the EDGES -- a client answering, the far end hanging up -- and not
+    // the steady state on every time slice. See tcp.cpp.
+    bool wasUp_ = false;
 };
 
 // `socket:2323` -- we LISTEN. One client at a time, which is what a modem is. The

@@ -116,6 +116,13 @@ public:
     std::vector<Property> properties() override;
     std::vector<MapEntry> ioMap() const override;
 
+    // Diagnostic flags (core/debuglog.h, DESIGN.md 7.2). `SET mds0 DEBUG=seek` traces
+    // head steps; `DEBUG=sector` traces each sector the head reaches under the guest's
+    // real-time byte shifting. The bit order here IS the DebugFlag enum below -- the
+    // two must not drift, so they live one after the other.
+    std::vector<std::string> debugFlags() const override { return {"sector", "seek"}; }
+    enum DebugFlag { SECTOR = 0, SEEK = 1 };
+
     std::vector<UnitDef> units() const override;
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;

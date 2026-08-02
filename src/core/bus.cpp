@@ -19,6 +19,10 @@ void Bus::attach(Board* b) {
     if (b->intWire()) ++intCount_;
     if (b->holdWire()) ++holdCount_;  // ...and it may arrive already pulling pHOLD
     viWireChanged(0, b->viWire());  // ...and whatever VI lines it arrived pulling
+    // If the card offers debug flags, give it a diagnostic channel named by its id
+    // (core/debuglog.h). Idempotent and not undone by detach(), so moving the card
+    // between backplanes keeps the operator's DEBUG= selection. `id` is set by now.
+    b->ensureDebugChannel();
     invalidateDecode();  // a card went into a slot: the wiring changed
 }
 

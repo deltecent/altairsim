@@ -47,12 +47,16 @@ void DcddBoard::command(uint8_t v) {
     // first: the pending write belongs to the track we are about to leave.
     if (v & 0x03) {
         flushWrite();
+        const int was = d->track;
         if (v & 0x01) {  // cSTEPI -- in, toward the spindle
             if (d->track < d->fmt.tracks - 1) d->track++;
         }
         if (v & 0x02) {  // cSTEPO -- out, toward track 0. Stops there.
             if (d->track > 0) d->track--;
         }
+        if (auto* dc = debugChannel(); dc && dc->on(SEEK) && d->track != was)
+            dbg::line(*dc) << "seek drive=" << sel() << " track=" << was
+                           << " -> " << d->track << "\n";
         invalidatePosition();
     }
 

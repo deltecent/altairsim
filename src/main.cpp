@@ -24,6 +24,7 @@
 #endif
 #include "cli/monitor.h"
 #include "config/toml.h"
+#include "core/debuglog.h"
 #include "core/machine.h"
 #include "core/machines.h"
 #include "core/version.h"
@@ -273,6 +274,18 @@ int main(int argc, char** argv) {
 
     Machine m;
     std::string err;
+
+    // The debug facility's PC prefix (core/debuglog.h). Every dbg::line() names the
+    // instruction that produced it -- the bus knows the running PC, published once
+    // per instruction by the run loop. We hand dbg a way to read it, but only WHILE
+    // THE GUEST IS RUNNING: at the monitor prompt there is no current instruction, so
+    // the column shows `----` rather than a stale address left over from the last GO.
+    // Installed once here, against the one live machine; the lambda outlives every
+    // CONFIG LOAD because replaceWith() re-fills `m` in place rather than replacing it.
+    dbg::setPcProvider([&m]() -> std::optional<uint16_t> {
+        if (!m.running) return std::nullopt;
+        return m.bus.instrPc();
+    });
 
     if (!builtin.empty()) {
         const BuiltinMachine* b = findMachine(builtin);

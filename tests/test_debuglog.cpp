@@ -1,5 +1,8 @@
 #include "test.h"
 
+#include "boards/mits-88mds.h"
+#include "core/bus.h"
+#include "core/clock.h"
 #include "core/debuglog.h"
 
 #include <filesystem>
@@ -127,6 +130,39 @@ void test_debuglog() {
     CHECK(!dbg::setSink(dbg::Sink::File, bad, err), "SET CONSOLE DEBUG=<bad path> fails");
     CHECK(!err.empty(), "and returns a message");
     CHECK(dbg::sinkName() == "stderr", "the sink stayed at its default");
+
+    SECTION("a board with debugFlags() gets a channel named by its id in the backplane");
+
+    {
+        // Clock BEFORE the board: a board holds a bare Clock* and the Windows sanitizer
+        // catches the reverse order as a lifetime bug (see the memory note).
+        Clock clk;
+        Bus   bus;
+        {
+            // A distinct id -- the local channel `ch` above is also "mds0" and is still
+            // in scope, so the framework's channel must be found under its own name.
+            MdsBoard mds;
+            mds.id = "mds1";
+            mds.attachClock(&clk);
+
+            CHECK(dbg::find("mds1") == nullptr, "no channel before the card is in a slot");
+            bus.attach(&mds);
+
+            dbg::Channel* c = dbg::find("mds1");
+            CHECK(c != nullptr, "attaching the card created its channel, named by id");
+            if (c) {
+                CHECK(c->flags().size() == 2, "carrying both declared flags");
+                CHECK(c->flags().size() == 2 && c->flags()[0] == "sector" &&
+                          c->flags()[1] == "seek",
+                      "in the bit order the card's emit sites assume");
+            }
+
+            bus.detach(&mds);
+            CHECK(dbg::find("mds1") != nullptr,
+                  "detach does NOT drop it -- a CONFIG LOAD re-attaches the same card");
+        }
+        CHECK(dbg::find("mds1") == nullptr, "but destroying the card unregisters it");
+    }
 
     // Leave the global facility as we found it, so other suites see a clean sink and
     // no leftover provider. The local channel unregisters itself as it goes out of scope.
