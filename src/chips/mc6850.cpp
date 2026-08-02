@@ -1,11 +1,29 @@
 #include "chips/mc6850.h"
 
+#include "core/debuglog.h"
 #include "core/statefile.h"
 #include "host/stream.h"
 
+#include <cstdio>
 #include <utility>
 
 namespace altair {
+
+namespace {
+// ONE channel for the whole 6850 library, not one per chip. A machine can hold a
+// dozen 6850s (three 2SIOs is six); a channel each would bury `SHOW DEBUG` and force
+// the operator to name a board id to trace a chip that has none. So `SET 6850
+// DEBUG=serial` lights every 6850 at once, and each line names WHICH chip it came
+// from (name_, e.g. `sio2a`). The bit index here is the DebugFlag enum below.
+dbg::Channel g_ch6850("6850", {"serial"});
+enum { SERIAL = 0 };
+
+std::string hex2(uint8_t b) {
+    char h[4];
+    std::snprintf(h, sizeof h, "%02X", b);
+    return h;
+}
+} // namespace
 
 void Mc6850::serialize(StateWriter& w) const {
     w.u8(control_);
@@ -367,6 +385,9 @@ void Mc6850::poll(const Clock& clk) {
     rdrf_     = true;
     ++rxCount_;  // a byte crossed into the guest -- the run loop's proof this line is not idle
     rxNextAt_ = clk.now() + charTStates(clk);
+
+    if (g_ch6850.on(SERIAL))
+        dbg::line(g_ch6850) << name_ << " rx " << hex2(b) << "\n";
 }
 
 uint8_t Mc6850::readStatus(const Clock& clk) {
@@ -447,6 +468,9 @@ void Mc6850::writeControl(uint8_t v, const Clock& clk) {
 void Mc6850::writeData(uint8_t v, const Clock& clk) {
     stream_->write(&v, 1);
     stream_->flush();
+
+    if (g_ch6850.on(SERIAL))
+        dbg::line(g_ch6850) << name_ << " tx " << hex2(v) << "\n";
 
     // The character is now on the wire, and the transmit register is BUSY until
     // it has had time to get out. This is the line the Mike Douglas BIOS is

@@ -292,6 +292,7 @@ add_library(altair_core STATIC
   src/core/value.cpp
   src/core/expr.cpp
   src/core/debug.cpp
+  src/core/debuglog.cpp
   src/core/spindle.cpp
   src/isa/isa8080.cpp
   src/isa/isaZ80.cpp
@@ -618,6 +619,7 @@ add_executable(altair_tests
   tests/test_phantom.cpp
   tests/test_cli.cpp
   tests/test_console.cpp
+  tests/test_debuglog.cpp
   tests/test_lineedit.cpp
   tests/test_boundary.cpp
   tests/test_numbers.cpp

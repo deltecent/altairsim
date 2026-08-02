@@ -1,6 +1,18 @@
 #include "host/tcp.h"
 
+#include "core/debuglog.h"
+
+#include <ostream>
+
 namespace altair {
+
+namespace {
+// ONE channel for the whole socket layer, like the 6850's: `SET socket DEBUG=connect`
+// traces every TCP session, and each line names the endpoint it belongs to (the spec,
+// e.g. `socket:2323`). Only the carrier EDGES are traced -- answered, hung up.
+dbg::Channel g_chSocket("socket", {"connect"});
+enum { CONNECT = 0 };
+} // namespace
 
 size_t TcpStream::read(uint8_t* buf, size_t n) {
     size_t k = rx_.size() < n ? rx_.size() : n;
@@ -57,6 +69,15 @@ void TcpStream::pump() {
     if (conn_->closed()) {
         conn_.reset();
         tx_.clear();  // ...but nothing more is going OUT down a dead line
+    }
+
+    // Trace the carrier edge, and only the edge (see wasUp_). A client answering the
+    // listener, a dial-out completing its handshake, the far end hanging up.
+    const bool up = conn_ && conn_->established();
+    if (up != wasUp_) {
+        wasUp_ = up;
+        if (g_chSocket.on(CONNECT))
+            dbg::line(g_chSocket) << describe() << (up ? " connect" : " disconnect") << "\n";
     }
 }
 

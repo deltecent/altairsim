@@ -453,6 +453,73 @@ Tracepoints appear in `BREAK`'s listing with the rest, and their `hits` count th
 fired. A tracepoint never hides an ordinary breakpoint at the same address: if both are set, the
 trace flips *and* the machine stops.
 
+## What a board is doing — `SET … DEBUG`, `SHOW DEBUG`
+
+`TRACE` and `HISTORY` watch the *bus* — the cycles, addresses and data every board shares.
+Some parts of the machine can also narrate what they are doing in their *own* terms: a floppy
+controller stepping the heads and reading a sector, a serial chip taking a byte, a socket
+answering a call. That is what the **diagnostic channels** are for. Each instrumented part has
+a named channel with a handful of flags, and you switch on the ones you want to hear about.
+
+`SHOW DEBUG` lists every channel there is, its flags, and where the output is going:
+
+```
+altairsim> SHOW DEBUG
+debug  (runtime diagnostics -- the sink and flags do not survive CONFIG SAVE)
+
+  sink  stderr   -- SET CONSOLE DEBUG=stderr|stdout|<file>
+
+  CHANNEL  FLAGS  (an enabled flag is UPPER-CASE)
+  -------  --------------------------------------
+  dsk0     SECTOR seek
+  6850     serial
+  socket   connect
+
+  SET <channel> DEBUG=<flag>[,<flag>]  enables;  NODEBUG=<flag> disables;
+  DEBUG=all / DEBUG=none turn every flag on / off.
+```
+
+A flag printed in capitals is on. Turn one on with `DEBUG=`, off with `NODEBUG=`; both are
+additive, take a comma-separated list, and understand `all` and `none`:
+
+```
+SET dsk0 DEBUG=sector,seek     narrate both sector reads and head seeks
+SET dsk0 NODEBUG=seek          quiet the seeks, keep the sector reads
+SET dsk0 DEBUG=all             everything this board can say
+SET dsk0 NODEBUG=all           silence it
+```
+
+The name in front of `DEBUG` is the channel. Usually it is a board's id — `dsk0` above — but a
+shared chip or the socket layer has one too (`6850`, `socket`), so the same switch reaches parts
+of the machine that are not boards at all. An unknown flag is refused and *nothing* changes: the
+switch is all-or-nothing, so a typo in a list never leaves half of it applied.
+
+Every line names its channel and is prefixed with **the PC of the instruction that drove it**,
+so a diagnostic line points straight at the code working the board:
+
+```
+2C38  dsk0: sector drive=0 track=0 sector=1
+007F  dsk0: seek drive=0 track=0 -> 1
+```
+
+At the monitor prompt — with the machine stopped — there is no such instruction, and the column
+reads `----`.
+
+**Where the output goes is one setting for the whole facility**, aimed with `SET CONSOLE DEBUG=`:
+
+```
+SET CONSOLE DEBUG=stderr       the default
+SET CONSOLE DEBUG=stdout
+SET CONSOLE DEBUG=trace.log    append to a file
+```
+
+Tab completes all of it — the channel names after `SET`, `DEBUG`/`NODEBUG` after the channel,
+and the flag values (with `all` and `none`) after the `=`.
+
+None of this is saved by `CONFIG SAVE`. A diagnostic is something you switch on to watch a
+problem, not a property of the machine, so a config you write while debugging does not carry the
+noise into every later run.
+
 ## A debugging session
 
 The machine is not booting. Where does it get to?

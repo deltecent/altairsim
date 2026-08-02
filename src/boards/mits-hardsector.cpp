@@ -135,6 +135,12 @@ void HardSectorFdc::syncSector(const Position& pos) {
     // does not have at all -- is a different thing, but the guest sees the same rejection.)
     size_t n = sizeof buf_;
     (void)d->img->readSector(d->track, 0, pos.sector, buf_, &n);
+
+    // The head has reached a new slot (once per sector transition, not per byte). Traced
+    // only when the operator asked -- one AND on the way past otherwise.
+    if (auto* dc = debugChannel(); dc && dc->on(SECTOR))
+        dbg::line(*dc) << "sector drive=" << sel_ << " track=" << d->track
+                       << " sector=" << pos.sector << "\n";
 }
 
 uint8_t HardSectorFdc::read(const BusCycle& c) {

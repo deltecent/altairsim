@@ -55,6 +55,7 @@ const struct {
     {"phantom", test_phantom},
     {"cli", test_cli},
     {"console", test_console},
+    {"debuglog", test_debuglog},
     {"lineedit", test_lineedit},
     {"tapecounter", test_tapecounter},
     {"idle_judgement", test_idle_judgement},

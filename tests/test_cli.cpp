@@ -2327,6 +2327,9 @@ void test_achieved_hz() {
         Completions ct = cmon.complete("SET ");
         CHECK(has(ct, "mem0") && has(ct, "cpu0"), "SET offers the board ids in the machine");
         CHECK(has(ct, "CONSOLE") && has(ct, "DISPLAY"), "and CONSOLE / DISPLAY");
+        // Debug channels are SET targets too: a library channel (6850, socket) is no
+        // board, so it appears only because the completer walks the channel registry.
+        CHECK(has(ct, "6850") && has(ct, "socket"), "SET offers the library debug channels");
         CHECK(cmon.complete("SET me").replaceFrom == 4, "the target fragment replaces from just after 'SET '");
 
         // SET word 2, no '=': property NAMES, suffix '=' so the value types straight on.
@@ -2399,7 +2402,96 @@ void test_achieved_hz() {
         CHECK(has(cmon.complete("SHOW d"), "disk0") && has(cmon.complete("SHOW d"), "DISPLAY"),
               "SHOW prefix-matches ids and keywords together");
 
+        // SHOW keyword set includes DEBUG.
+        CHECK(has(cmon.complete("SHOW "), "DEBUG"), "SHOW offers the DEBUG keyword");
+
+        // -------- DEBUG on a channel: the facility's keys ride with the board's --------
+        // disk0 is a dcdd, a channel carrying `sector`/`seek`. Its word-2 keys are its
+        // own properties PLUS DEBUG/NODEBUG, which are the facility's, not schema rows.
+        Completions cdk = cmon.complete("SET disk0 ");
+        CHECK(has(cdk, "DEBUG") && has(cdk, "NODEBUG"),
+              "a channel board offers DEBUG/NODEBUG alongside its own property keys");
+
+        // DEBUG= value: the channel's flags, plus the all/none wildcards.
+        Completions cdv = cmon.complete("SET disk0 DEBUG=");
+        CHECK(has(cdv, "sector") && has(cdv, "seek") && has(cdv, "all") && has(cdv, "none"),
+              "DEBUG= offers the channel's flags and the all/none wildcards");
+        CHECK(has(cmon.complete("SET disk0 DEBUG=se"), "sector") &&
+                  has(cmon.complete("SET disk0 DEBUG=se"), "seek"),
+              "the fragment 'se' narrows to both matching flags");
+        CHECK(has(cmon.complete("SET disk0 NODEBUG="), "seek"), "NODEBUG= offers the flags too");
+
+        // A comma-separated list: only the run past the last comma is completed/replaced.
+        Completions cdc = cmon.complete("SET disk0 DEBUG=sector,se");
+        CHECK(has(cdc, "seek") && has(cdc, "sector"),
+              "after a comma the run 'se' still matches both flags");
+        CHECK(cdc.replaceFrom == std::string("SET disk0 DEBUG=sector,").size(),
+              "only the run after the last comma is replaced, not the whole value");
+
+        // The console's DEBUG is the SINK, not a channel flag: its key and its values.
+        CHECK(has(cmon.complete("SET CONSOLE "), "DEBUG"),
+              "SET CONSOLE offers DEBUG -- the one global sink");
+        Completions ccs = cmon.complete("SET CONSOLE DEBUG=");
+        CHECK(has(ccs, "stderr") && has(ccs, "stdout"),
+              "SET CONSOLE DEBUG= offers the reserved sink words");
+
         // A command with no completion grammar wired is simply inert -- no matches, no throw.
         CHECK(cmon.complete("DUMP ").matches.empty(), "DUMP takes no completion, so Tab is inert there");
+    }
+
+    // -----------------------------------------------------------------
+    // SET / SHOW DEBUG -- the runtime diagnostic facility (core/debuglog.h) driven
+    // through the monitor. The channels are process-global, so this section leaves the
+    // sink and every flag it touched back at their defaults for the suites that follow.
+    // -----------------------------------------------------------------
+    SECTION("SET / SHOW DEBUG drive the diagnostic facility");
+    {
+        Machine dm;
+        Monitor dmon(dm);
+        std::ostringstream ds;
+        dmon.exec("BOARDS ADD dcdd disk0", ds);  // a channel carrying sector/seek
+        auto run = [&](const std::string& l) {
+            std::ostringstream o;
+            dmon.exec(l, o);
+            return o.str();
+        };
+        const auto npos = std::string::npos;
+
+        // Enabling flags on a channel, and SHOW DEBUG reflecting it: an ON flag prints
+        // in UPPER CASE, so the state reads and greps at a glance.
+        CHECK(run("SET disk0 DEBUG=sector,seek").find("disk0: debug=sector,seek") != npos,
+              "SET <channel> DEBUG= enables its flags and echoes them");
+        CHECK(run("SHOW DEBUG").find("SECTOR SEEK") != npos,
+              "SHOW DEBUG upper-cases the enabled flags");
+
+        // NODEBUG is subtractive -- it removes just the named flag.
+        CHECK(run("SET disk0 NODEBUG=seek").find("disk0: nodebug=seek") != npos,
+              "SET <channel> NODEBUG= disables a flag");
+        CHECK(run("SHOW DEBUG").find("SECTOR seek") != npos,
+              "and SHOW DEBUG shows sector still on, seek back off");
+
+        // An unknown flag is reported and changes nothing (Channel::enable is atomic).
+        CHECK(run("SET disk0 DEBUG=nope").find("nope") != npos,
+              "an unknown flag is named in the error");
+        CHECK(run("SHOW DEBUG").find("SECTOR seek") != npos,
+              "and the mask is unchanged after the rejected flag");
+
+        // A library channel is settable by NAME with no board at all.
+        CHECK(run("SET 6850 DEBUG=serial").find("6850: debug=serial") != npos,
+              "a library channel (the 6850) sets by its name");
+
+        // The one global SINK: SET CONSOLE DEBUG=<sink>.
+        CHECK(run("SET CONSOLE DEBUG=stdout").find("sink=stdout") != npos,
+              "SET CONSOLE DEBUG= points the sink");
+        CHECK(run("SHOW DEBUG").find("sink  stdout") != npos, "SHOW DEBUG names the sink");
+        // A bad path fails and KEEPS the prior sink (dbg::setSink is all-or-nothing).
+        run("SET CONSOLE DEBUG=/no_such_dir_altairsim/x.log");
+        CHECK(run("SHOW DEBUG").find("sink  stdout") != npos,
+              "a bad sink path leaves the prior sink in place");
+
+        // Leave the process-global facility exactly as the other suites expect it.
+        run("SET disk0 NODEBUG=all");
+        run("SET 6850 NODEBUG=all");
+        run("SET CONSOLE DEBUG=stderr");
     }
 }

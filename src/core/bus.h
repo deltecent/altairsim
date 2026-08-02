@@ -262,6 +262,11 @@ public:
     // by the run loop (Debugger::run) BEFORE the instruction's cycles are driven.
     void setInstrPc(uint16_t pc) { instrPc_ = pc; }
 
+    // The address the run loop last published -- read by the debug facility's
+    // PC-prefix provider (dbg::setPcProvider), so every diagnostic line can name
+    // the instruction that produced it.
+    uint16_t instrPc() const { return instrPc_; }
+
     // Re-arm the once-per-(port,direction) de-dup. Called at the start of each
     // operator RUN/GO so an absent port is re-reported on a later run -- otherwise a
     // guest polling an absent UART thousands of times would bury the console.
