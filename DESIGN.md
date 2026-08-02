@@ -40,6 +40,51 @@ The test is simple: **if the sentence would still be true of the C++ object, wri
 
 **§7.8 keeps its name.** "A chip is not a card" is an argument about physical parts and PCBs — exactly where "card" belongs — and it is cited by name from `theory.md`, three chip headers and two board headers. It is not an exception to this rule; it is an instance of it.
 
+### 0.4 Glossary — what category a word names
+
+The words below name *different kinds of thing*, and the confusion this section settles is the
+category error, not the spelling: a **tape** is a mounted medium, not a serial endpoint, even
+though both move bytes and both feel like "a connection." Read it once and the rest of the
+document stops surprising you. The authority for each is the code named in its line — this table
+tracks it, it does not define it.
+
+- **board** (= **card**) — a thing in a slot on the backplane: the C++ `Board` (`src/core/board.h`),
+  the `[[board]]` in a machine file, the row in `BOARDS`. §0.3 governs which of the two synonyms to
+  write. Everything else in this glossary hangs off a board.
+- **unit** — a **named, typed socket on one board** that holds a medium or a connection:
+  `MOUNT dj:drive0`, `CONNECT dj:tty`. **A unit is a NAME, not an index**, and one board can carry
+  several of different kinds — the Tarbell has a boot PROM *and* drives *and* a serial port (§9).
+  `Board::units()` is the list; `SHOW <id>` reads it.
+- **kind** — the *category* of a unit, `enum class UnitKind` (`src/core/board.h`): `Disk`, `Rom`,
+  `Serial`, `Tape`, `Cpu`. The kind decides the verb — `MOUNT` for a `Disk`/`Rom`/`Tape` image,
+  `CONNECT` for a `Serial` endpoint, *nothing* for a `Cpu` (a core is soldered on, §3.0.1) — and it
+  is **checked**: `MOUNT`ing a disk image onto a serial unit is an error with a sentence, not a
+  silent misfile (§9). (`kind` is overloaded on purpose in two unrelated places — `Value::Kind` is
+  the type of a *property*, and `BreakKind` is the type of a *breakpoint* — but on a unit it always
+  means `UnitKind`.)
+- **medium** — the host thing a mountable unit holds: a `DiskImage` (§7.3) or a `TapeImage`
+  (§7.3.1), buffered and written back. Named by a host path in `MOUNT`.
+- **tape** — a **mounted sequential medium** (`UnitKind::Tape`, a `TapeImage`), e.g. a cassette in
+  an 88-ACR. **It is NOT an endpoint.** Bytes flow through it, which is why it reads like a
+  connection, but you `MOUNT` a `.TAP`/`.WAV` file onto the deck's unit; you do not `CONNECT` it to
+  a `resolveEndpoint` scheme. This is the exact confusion the section was written for. (`BREAK TAPE
+  STOP`, §3.0.3, is a *device event* on such a deck — the deck reaching its auto-stop mark.)
+- **endpoint** — the **other end of a `Serial` unit's wire**, resolved by `resolveEndpoint`: `console`,
+  `socket:…`, `serial:/dev/…` or `serial:COM3`, `in:`/`out:` paper tape, `null`, `loopback` (§9,
+  §7.1). You reach one with `CONNECT`. An endpoint is a *destination*, never a medium — that is the
+  tape/endpoint line above, from the other side.
+- **line** — a **serial channel** on a card: its unit plus its *coding* (baud, data_bits, parity —
+  the frame, §10). A line is **8-bit clean** by contract; the character transforms (UPPER, STRIP7,
+  CRLF…) are the **console's**, never the line's (they were on the line once and it was reversed as
+  a corruption bug, §7.2). "Line" also appears in its plain-English senses (a status line, a line of
+  a config file) — the serial-channel sense is the one this glossary claims.
+- **device** — deliberately **not a modeled category**. There is no `Device` class, and there is
+  no "boot device" the monitor knows about (§10.0.3) — that is the whole point of §9. The word is
+  used loosely for "a thing the guest talks to" (a board, or a unit's far end), and in the one
+  formal place it appears — a **device-event** breakpoint, `BREAK <kind> <action>` (§3.0.3) — it
+  means exactly "an event a board raises that is not a bus cycle." When precision matters, prefer
+  board, unit, or endpoint; "device" is the fuzzy word and this line is its only license.
+
 ---
 
 ## 1. Purpose, goals, non-goals
