@@ -70,6 +70,17 @@ needs no environment at all.
   each note. Never leave a marker in a `docs/manual/` chapter — its raw text is grep-checked.
   Full convention: `docs/devguide/doc-review-comments.md`.
 
+## Research economy
+
+- **Before spawning Explore/Plan agents, check the memory index and run one
+  targeted `grep`/`Read`.** This repo carries a lot of durable knowledge already —
+  `DESIGN.md`, `docs/devguide/`, and the maintainer's memory pointers. Fan out
+  agents only when scope is genuinely unknown or spans many unfamiliar subsystems.
+- **After tracing something non-obvious, write it back** — a memory note
+  (`file:line` + conclusion) for working state and gotchas, or `docs/devguide/`
+  when the fact is about how the code is built. That turns a future trace into a
+  one-line recall.
+
 ## Testing
 
 ```sh
