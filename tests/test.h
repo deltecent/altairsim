@@ -33,6 +33,7 @@ void test_roms();
 void test_phantom();
 void test_cli();
 void test_console();
+void test_debuglog();
 void test_lineedit();
 void test_tapecounter();
 void test_idle_judgement();
