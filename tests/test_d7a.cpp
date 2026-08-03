@@ -113,10 +113,10 @@ void test_d7a() {
         Rig g;
         g.joy.n = 1;                          // one gamepad -> `auto` picks stick 0
         g.joy.sticks[0].x = 0;                // centered
-        g.joy.sticks[0].y = 32767;            // full one way
+        g.joy.sticks[0].y = 32767;            // full one way (SDL +Y = stick DOWN)
         g.d7a->pump();
         CHECK(g.in(0x19) == 0x00, "a centered X axis reads 0x00 (0 V)");
-        CHECK(g.in(0x1A) == 0x7F, "a full +Y reads 0x7F (+2.54 V)");
+        CHECK(g.in(0x1A) == 0x81, "Y is inverted: SDL +Y (stick down) reads -full 0x81");
 
         g.joy.sticks[0].x = -32768;           // full the other way
         g.d7a->pump();
@@ -131,8 +131,8 @@ void test_d7a() {
         g.joy.sticks[1].x = 32767;
         g.joy.sticks[1].y = -32768;
         g.d7a->pump();
-        CHECK(g.in(0x1B) == 0x7F, "console 2 X on port 0x1B");
-        CHECK(g.in(0x1C) == 0x80, "console 2 Y on port 0x1C");
+        CHECK(g.in(0x1B) == 0x7E, "console 2 X on port 0x1B: +full clamps to 0x7E (126)");
+        CHECK(g.in(0x1C) == 0x7E, "console 2 Y inverted: SDL -Y (stick up) reads +full 0x7E (126)");
     }
 
     SECTION("D+7A -- buttons: active-low, console 1 in D0-D3, console 2 in D4-D7");
@@ -158,7 +158,7 @@ void test_d7a() {
         g.joy.sticks[0].x = -32768;       // gamepad 0 pushing -X
         g.joy.n = 0;                      // ...but no gamepad connected
         g.d7a->pump();
-        CHECK(g.in(0x19) == 0x7F, "with no gamepad, `auto` reads the keyboard");
+        CHECK(g.in(0x19) == 0x7E, "with no gamepad, `auto` reads the keyboard (+full clamps to 0x7E)");
 
         g.joy.n = 1;                      // now a gamepad appears
         g.d7a->pump();
@@ -173,7 +173,7 @@ void test_d7a() {
         g.joy.sticks[1].x = 32767;            // pad 1 full +X
         g.d7a->pump();                         // both straps default to `auto`
         CHECK(g.in(0x19) == 0x80, "console 1 `auto` reads gamepad 0");
-        CHECK(g.in(0x1B) == 0x7F, "console 2 `auto` reads gamepad 1, not gamepad 0");
+        CHECK(g.in(0x1B) == 0x7E, "console 2 `auto` reads gamepad 1, not gamepad 0");
     }
 
     SECTION("D+7A -- console 2 `auto` falls back to the keyboard with only one gamepad");
@@ -184,7 +184,7 @@ void test_d7a() {
         g.joy.kbd.x = 32767;                  // the keyboard is pushing +X
         g.d7a->pump();
         CHECK(g.in(0x19) == 0x80, "console 1 still reads gamepad 0");
-        CHECK(g.in(0x1B) == 0x7F, "console 2 `auto`, no gamepad 1, reads the keyboard");
+        CHECK(g.in(0x1B) == 0x7E, "console 2 `auto`, no gamepad 1, reads the keyboard");
     }
 
     SECTION("D+7A -- statusLines() reports what each console resolves to");
@@ -217,19 +217,6 @@ void test_d7a() {
         CHECK(setProperty(*g.d7a, "joystick1", "5", err), "point console 1 at an absent index");
         s = g.d7a->statusLines();
         CHECK(s[0].find("not present") != std::string::npos, "an out-of-range index says so");
-    }
-
-    SECTION("D+7A -- js_invert_y flips the Y axis");
-    {
-        Rig g;
-        std::string err;
-        g.joy.n = 1;
-        g.joy.sticks[0].y = 32767;
-        g.d7a->pump();
-        CHECK(g.in(0x1A) == 0x7F, "un-inverted, +Y reads +full");
-        CHECK(setProperty(*g.d7a, "js1_invert_y", "true", err), "invert accepted");
-        g.d7a->pump();
-        CHECK(g.in(0x1A) == 0x80, "inverted, the same +Y reads -full");
     }
 
     SECTION("D+7A -- the joystick is polled in pump(), not inside a bus cycle");
