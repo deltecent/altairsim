@@ -4,8 +4,9 @@
 altairsim                the program. One file, nothing to install.
 altairsim-manual.pdf     this.
 altairsim-changelog.pdf  what changed in this release, and the ones before it.
+altairsim-cheatsheet.pdf every command and option, rendered for reading.
 DRIVING-WITH-AI.md       for an AI assistant driving the machine; see below.
-cheatsheet.md            every command and option, for the AI (and handy for you).
+cheatsheet.md            the same reference as plain text, for the AI to read.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
 examples/                machines that boot, media included.
@@ -34,10 +35,11 @@ a working directory, start an assistant there, and say *"using altairsim, boot C
 what is on the disk."* It tells the assistant how to drive the machine over the program's MCP
 interface. Ignore it if that is not how you work — nothing else depends on it.
 
-`cheatsheet.md` travels beside it: the whole command surface — every option, every monitor
-command, every board and machine — as plain text, generated from this very program so it matches
-the binary you have. It is there for the assistant to read, and it is a handy quick reference for
-you as well.
+The quick reference travels beside it: the whole command surface — every option, every monitor
+command, every board and machine — generated from this very program so it matches the binary you
+have. It ships in two forms of the same content. `altairsim-cheatsheet.pdf` is the one for you —
+open it the way you open this manual. `cheatsheet.md` is the same thing as plain text, there for
+the assistant to read.
 
 ## The machines are in the program
 

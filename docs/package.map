@@ -80,6 +80,12 @@ FILE  cheatsheet.md        <=  docs/manual/ref/cheatsheet.md
 FILE  LICENSE              <=  LICENSE
 FILE  LICENSE-SDL3         <=  LICENSE-SDL3
 
+# The cheatsheet ALSO ships as a rendered PDF, altairsim-cheatsheet.pdf -- the same content a
+# person can open in a file manager. It is NOT a FILE line: like altairsim-manual.pdf and
+# altairsim-changelog.pdf it is a BUILD ARTIFACT, produced by docs.yml from the .md above and
+# copied straight from the tree by build-package.sh (a FILE line would run the token sed over a
+# binary PDF and corrupt it). The .md above stays: it is the AI's plain-text crib.
+
 # LICENSE-SDL3 is SDL3's zlib licence, and it ships because SDL3 is LINKED STATICALLY INTO
 # THE BINARY (DISTRIBUTION.md 3.2) -- the code is in there, so its licence belongs in here.
 # There is no library beside the program to point at; this file is the only notice the
