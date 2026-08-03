@@ -45,3 +45,11 @@ startup = [
   "LOAD \"LDR4K31.HEX\"",
   "RUN 0",
 ]
+
+# `upper = true` folds what you TYPE to uppercase. 4K BASIC 3.1, like BASIC 1.0
+# (basic1.toml) and the PS2 monitor, only understands upper case -- a Teletype had no lower
+# case to send. Without this you would type the whole session under Caps Lock; with it you
+# just type, and the fold happens on the way in. It touches only your keystrokes, never
+# BASIC's output. The base machine's console keeps strip7out; this delta only adds the fold.
+[console]
+upper = true
