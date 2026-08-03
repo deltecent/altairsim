@@ -98,9 +98,10 @@ endforeach()
 # from the repo -- the binary and the two PDFs are produced, per tools/build-package.sh.
 # ---------------------------------------------------------------------------
 set(artifacts
-    "altairsim"                 # the binary, built not copied
-    "altairsim-manual.pdf"      # rendered from docs/manual/ by the doc build
-    "altairsim-changelog.pdf")  # rendered from docs/changelog/ by docs.yml
+    "altairsim"                  # the binary, built not copied
+    "altairsim-manual.pdf"       # rendered from docs/manual/ by the doc build
+    "altairsim-changelog.pdf"    # rendered from docs/changelog/ by docs.yml
+    "altairsim-cheatsheet.pdf")  # rendered from docs/manual/ref/cheatsheet.md by docs.yml
 
 # Split into lines WITHOUT letting CMake's list semantics chop a line on its own semicolons
 # (the manifest's "see below." would otherwise arrive as a phantom line beginning "see"). Park

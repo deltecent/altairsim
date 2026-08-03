@@ -5,7 +5,9 @@
 #   altairsim                the program
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
 #   altairsim-changelog.pdf  what changed, per release (docs/changelog/, built by docs.yml)
+#   altairsim-cheatsheet.pdf the quick reference, rendered (docs/manual/ref/, built by docs.yml)
 #   DRIVING-WITH-AI.md       the same machines, written for an AI assistant driving them over MCP
+#   cheatsheet.md            the quick reference as plain text, for the AI assistant to read
 #   LICENSE                  ours (MIT)
 #   LICENSE-SDL3             SDL3's, because SDL3 is linked STATICALLY INTO the program
 #   examples/cpm/            \
@@ -278,6 +280,21 @@ changelog=$root/docs/altairsim-changelog.pdf
   exit 1
 }
 cp "$changelog" "$pkg/"
+
+# The quick reference, rendered. Like the changelog it is a committed CI artifact (docs.yml
+# builds docs/altairsim-cheatsheet.pdf from docs/manual/ref/cheatsheet.md), so copy it STRAIGHT
+# FROM THE TREE, not through the FILE loop below -- that loop runs expand()'s sed over every
+# file, and sed over a binary PDF corrupts it. The Markdown ships too, through the FILE table,
+# because it is the AI's plain-text crib (DRIVING-WITH-AI.md reads it); this PDF is the same
+# content a person can open in a file manager.
+cheatsheet=$root/docs/altairsim-cheatsheet.pdf
+[ -f "$cheatsheet" ] || {
+  echo "build-package: docs/altairsim-cheatsheet.pdf is missing -- CI (docs.yml) builds it." >&2
+  echo "  It is committed at the tag, so a checkout of vX.Y.Z has it. Are you on the tag, or" >&2
+  echo "  packaging before docs.yml has run on master? See DISTRIBUTION.md 5 step 2." >&2
+  exit 1
+}
+cp "$cheatsheet" "$pkg/"
 
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.
 

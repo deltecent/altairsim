@@ -243,10 +243,56 @@ build_readme() {  # build_readme <src.md relative to root>
   echo "build-docs: $dst"
 }
 
+# ---------------------------------------------------------------------------
+# One loose single-file document, rendered into $out.
+#
+# Like build_readme (single file, no ORDER, no {{TOKENS}}, no --toc, same faces and font
+# check) but with an EXPLICIT title and an $out destination rather than a sibling of the
+# source. The cheatsheet needs this: its source is docs/manual/ref/cheatsheet.md, a GENERATED
+# file that docs-reference.cmake byte-diffs against the binary -- so its PDF may NOT land in
+# ref/ beside it, the way a README's does. It ships from $out (docs/), tracked and rebuilt by
+# docs.yml exactly like the manual and the changelog.
+# ---------------------------------------------------------------------------
+build_single() {  # build_single <src.md relative to root> <output-name> <title>
+  rel=$1; name=$2; title=$3
+  src=$root/$rel
+  [ -f "$src" ] || { echo "build-docs: $rel does not exist." >&2; exit 1; }
+
+  # Drop the FIRST H1 (see build_readme) -- it becomes the title block, not a body heading.
+  # The cheatsheet's leading HTML comment is not a `# ` line, so it survives; the first real
+  # heading (`# Quick reference`) is the one promoted out.
+  awk 'dropped || !/^# /{print; next} {dropped=1}' "$src" > "$work/$name.md"
+
+  stamp="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  date="$(date -u '+%Y-%m-%d')"
+
+  pandoc "$work/$name.md" \
+    --standalone --embed-resources \
+    --from=gfm --to=html5 \
+    --metadata title="$title" \
+    --css "$root/docs/print.css" \
+    --metadata subtitle="$date · $stamp" \
+    -o "$work/$name.html"
+
+  "$chrome" --headless --disable-gpu --no-pdf-header-footer \
+            --print-to-pdf="$work/$name.pdf" "$work/$name.html" 2>/dev/null
+
+  [ -s "$work/$name.pdf" ] || { echo "build-docs: $name.pdf came out empty." >&2; exit 1; }
+
+  check_fonts "$work/$name.pdf" "$name.pdf"
+
+  mv "$work/$name.pdf" "$out/$name.pdf"
+  echo "build-docs: $out/$name.pdf"
+}
+
 mkdir -p "$out"
 build manual    altairsim-manual    "altairsim — User Manual"
 build changelog altairsim-changelog "altairsim — Changelog" notoc
 build devguide  altairsim-devguide  "altairsim — Developer Guide"
+
+# The quick reference, rendered for a human to read. The Markdown still ships too (it is the
+# AI's plain-text crib); this is the same content a file manager can open.
+build_single docs/manual/ref/cheatsheet.md altairsim-cheatsheet "altairsim — Quick Reference"
 
 # The examples' READMEs, each to a sibling PDF. The index first, then one per directory.
 # Glob against $root, not the caller's cwd -- this script may be run from anywhere.
