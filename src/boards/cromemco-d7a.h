@@ -66,6 +66,7 @@ public:
     void deserialize(StateReader& r) override;
 
     std::vector<Property> properties() override;
+    std::vector<std::string> statusLines() const override;
     std::vector<MapEntry> ioMap() const override;
 
     // The host game-controller service, wired once in main.cpp / tests/main.cpp -- an
@@ -87,13 +88,17 @@ private:
 
     // Resolve one console's `joystick*` strap ("none"/"auto"/"keyboard"/<index>) to a
     // stick reading from the injected service. Absent when nothing is behind it.
-    StickState resolveStick(const std::string& spec) const;
+    // `autoIndex` is the gamepad `auto` prefers for THIS console -- 0 for console 1, 1
+    // for console 2 -- so two consoles on `auto` claim two different sticks and a
+    // two-player setup works unconfigured; each falls back to the keyboard.
+    StickState resolveStick(const std::string& spec, int autoIndex) const;
 
     // Apply a console's stick to the A/D input shadows and the parallel-input nibble.
     // `xCh`/`yCh` are analog channel indices (0-based: channel 1 -> 0); `buttonShift`
-    // is 0 for console 1 (bits D0-D3) or 4 for console 2 (bits D4-D7).
+    // is 0 for console 1 (bits D0-D3) or 4 for console 2 (bits D4-D7); `autoIndex` is
+    // the gamepad this console's `auto` prefers (0 or 1).
     void applyConsole(const std::string& spec, int xCh, int yCh, bool invertY,
-                      int buttonShift);
+                      int buttonShift, int autoIndex);
 
     // ---- Straps ----
     uint8_t base_ = 0x18;   // the 8-port block: BASE+0 parallel, BASE+1..7 analog
@@ -101,7 +106,7 @@ private:
     // Which host stick drives each JS-1 console, and its Y-axis orientation. Strings so
     // "none"/"auto"/"keyboard" sit alongside a numeric index (see properties()).
     std::string js1_ = "auto";   // console 1: gamepad 0 if present, else the keyboard
-    std::string js2_ = "none";   // console 2: unwired by default
+    std::string js2_ = "auto";   // console 2: gamepad 1 if present, else the keyboard
     bool js1InvertY_ = false;
     bool js2InvertY_ = false;
 

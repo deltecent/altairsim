@@ -18,6 +18,7 @@
 namespace altair {
 
 class Display;      // host/display.h -- the run loop only asks it a question
+class Joystick;     // host/joystick.h -- the host game controllers, for SHOW JOYSTICKS
 class LineEditor;   // cli/lineedit.h -- an interactive command reads follow-up lines through it
 struct Completions; // cli/lineedit.h -- what complete() hands the editor for Tab
 
@@ -62,6 +63,7 @@ public:
     // Machine (src/main.cpp). Null everywhere it is not set -- a headless build, a
     // test, an -c script -- and the run loop then never asks.
     static void setDisplay(Display* d);
+    static void setJoystick(Joystick* j);
 
 private:
     // ---- NUMBER BASE (Patrick, 2026-07-11; was open finding F3) ----
@@ -194,6 +196,7 @@ private:
     void runMachine(std::ostream& out, bool stepOver = false);
     void showConsole(std::ostream& out);
     void showDisplay(std::ostream& out);
+    void showJoysticks(std::ostream& out);  // the host game controllers (SDL builds)
     void showDebug(std::ostream& out);  // the diagnostic channels, their flags, the sink
     void showRoms(std::ostream& out);
     void showMounts(std::ostream& out);  // every mountable unit, across every board

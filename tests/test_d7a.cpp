@@ -18,15 +18,17 @@ namespace {
 // one backend down -- so the card folds host input into its A/D and parallel latches
 // exactly as it would from a real gamepad, with no SDL and no controller.
 struct StubJoystick : public Joystick {
-    int        n = 0;             // how many physical gamepads to report
-    StickState sticks[4];         // their cached state
-    StickState kbd;               // the keyboard-as-a-stick reading
-    int        polls = 0;         // how many times poll() was called
+    int         n = 0;            // how many physical gamepads to report
+    StickState  sticks[4];        // their cached state
+    std::string names[4];         // their human names, for SHOW/statusLines
+    StickState  kbd;              // the keyboard-as-a-stick reading
+    int         polls = 0;        // how many times poll() was called
 
     void       poll() override { ++polls; }
     int        count() const override { return n; }
     StickState stick(int i) const override { return (i >= 0 && i < 4) ? sticks[i] : StickState{}; }
     StickState keyboardStick() const override { return kbd; }
+    std::string name(int i) const override { return (i >= 0 && i < 4) ? names[i] : std::string{}; }
 };
 
 struct Rig {
@@ -161,6 +163,60 @@ void test_d7a() {
         g.joy.n = 1;                      // now a gamepad appears
         g.d7a->pump();
         CHECK(g.in(0x19) == 0x80, "with a gamepad, `auto` reads it and ignores the keyboard");
+    }
+
+    SECTION("D+7A -- both consoles default to `auto`, and `auto` is per-console");
+    {
+        Rig g;
+        g.joy.n = 2;                          // two gamepads present
+        g.joy.sticks[0].x = -32768;           // pad 0 full -X
+        g.joy.sticks[1].x = 32767;            // pad 1 full +X
+        g.d7a->pump();                         // both straps default to `auto`
+        CHECK(g.in(0x19) == 0x80, "console 1 `auto` reads gamepad 0");
+        CHECK(g.in(0x1B) == 0x7F, "console 2 `auto` reads gamepad 1, not gamepad 0");
+    }
+
+    SECTION("D+7A -- console 2 `auto` falls back to the keyboard with only one gamepad");
+    {
+        Rig g;
+        g.joy.n = 1;                          // one gamepad -> nothing at index 1
+        g.joy.sticks[0].x = -32768;           // pad 0 (console 1's)
+        g.joy.kbd.x = 32767;                  // the keyboard is pushing +X
+        g.d7a->pump();
+        CHECK(g.in(0x19) == 0x80, "console 1 still reads gamepad 0");
+        CHECK(g.in(0x1B) == 0x7F, "console 2 `auto`, no gamepad 1, reads the keyboard");
+    }
+
+    SECTION("D+7A -- statusLines() reports what each console resolves to");
+    {
+        Rig g;
+        std::string err;
+        g.joy.n        = 1;
+        g.joy.names[0] = "Test Pad";
+        // Defaults: console 1 auto -> gamepad 0; console 2 auto -> keyboard (no gamepad 1).
+        auto s = g.d7a->statusLines();
+        CHECK(s.size() == 2, "one line per console");
+        CHECK(s[0].find("console 1") != std::string::npos, "first line is console 1");
+        CHECK(s[0].find("(auto)") != std::string::npos, "console 1 defaults to auto");
+        CHECK(s[0].find("gamepad 0") != std::string::npos, "console 1 resolves to gamepad 0");
+        CHECK(s[0].find("Test Pad") != std::string::npos, "and names the controller");
+        CHECK(s[1].find("(auto)") != std::string::npos, "console 2 also defaults to auto");
+        CHECK(s[1].find("keyboard") != std::string::npos, "console 2 falls back to the keyboard");
+
+        CHECK(setProperty(*g.d7a, "joystick2", "none", err), "unwire console 2");
+        s = g.d7a->statusLines();
+        CHECK(s[1].find("unwired") != std::string::npos, "`none` reads as unwired");
+
+        CHECK(setProperty(*g.d7a, "joystick1", "2", err), "point console 1 at gamepad 2");
+        g.joy.n        = 3;
+        g.joy.names[2] = "Third Pad";
+        s = g.d7a->statusLines();
+        CHECK(s[0].find("gamepad 2") != std::string::npos, "an explicit index resolves to it");
+        CHECK(s[0].find("Third Pad") != std::string::npos, "named too");
+
+        CHECK(setProperty(*g.d7a, "joystick1", "5", err), "point console 1 at an absent index");
+        s = g.d7a->statusLines();
+        CHECK(s[0].find("not present") != std::string::npos, "an out-of-range index says so");
     }
 
     SECTION("D+7A -- js_invert_y flips the Y axis");

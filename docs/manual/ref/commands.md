@@ -929,6 +929,7 @@ SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it
 SHOW PATHS       what a path resolves against -- and there is more than one answer
 SHOW CONSOLE     which unit holds the keyboard, and its transforms
 SHOW DISPLAY     the host video window, and whether it takes the keyboard
+SHOW JOYSTICKS   the host game controllers a D+7A can read (SDL builds)
 SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS
 SHOW ROMS        the ROM images built into this binary, and where each came from
 SHOW VERSION     which build this is, and the commit it was built from

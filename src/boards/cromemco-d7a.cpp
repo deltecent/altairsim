@@ -108,10 +108,12 @@ void D7aBoard::deserialize(StateReader& r) {
 void D7aBoard::pump() {
     if (!g_joystick) return;
     g_joystick->poll();
-    // Console 1: X/Y -> analog channels 1/2 (0x19/0x1A), buttons -> parallel bits D0-D3.
-    applyConsole(js1_, 0, 1, js1InvertY_, 0);
-    // Console 2: X/Y -> analog channels 3/4 (0x1B/0x1C), buttons -> parallel bits D4-D7.
-    applyConsole(js2_, 2, 3, js2InvertY_, 4);
+    // Console 1: X/Y -> analog channels 1/2 (0x19/0x1A), buttons -> parallel bits D0-D3;
+    // `auto` prefers gamepad 0.
+    applyConsole(js1_, 0, 1, js1InvertY_, 0, 0);
+    // Console 2: X/Y -> analog channels 3/4 (0x1B/0x1C), buttons -> parallel bits D4-D7;
+    // `auto` prefers gamepad 1, so two `auto` consoles drive two different sticks.
+    applyConsole(js2_, 2, 3, js2InvertY_, 4, 1);
 }
 
 uint8_t D7aBoard::axis8(int16_t a, bool invert) {
@@ -121,21 +123,22 @@ uint8_t D7aBoard::axis8(int16_t a, bool invert) {
     return (uint8_t)(int8_t)(v >> 8);  // arithmetic shift (C++20): 0->0x00, +->0x7F, -->0x80
 }
 
-StickState D7aBoard::resolveStick(const std::string& spec) const {
+StickState D7aBoard::resolveStick(const std::string& spec, int autoIndex) const {
     if (!g_joystick) return {};
     std::string s = lowerAscii(spec);
     if (s == "none") return {};
     if (s == "keyboard" || s == "kbd") return g_joystick->keyboardStick();
     if (s == "auto")
-        return g_joystick->count() > 0 ? g_joystick->stick(0) : g_joystick->keyboardStick();
+        return g_joystick->count() > autoIndex ? g_joystick->stick(autoIndex)
+                                               : g_joystick->keyboardStick();
     int idx = 0;
     if (parseIndex(s, idx)) return g_joystick->stick(idx);
     return {};
 }
 
 void D7aBoard::applyConsole(const std::string& spec, int xCh, int yCh, bool invertY,
-                            int buttonShift) {
-    StickState s = resolveStick(spec);  // absent -> centered, no buttons
+                            int buttonShift, int autoIndex) {
+    StickState s = resolveStick(spec, autoIndex);  // absent -> centered, no buttons
     analogIn_[xCh] = axis8(s.x, false);
     analogIn_[yCh] = axis8(s.y, invertY);
     // ACTIVE-LOW buttons: a bit reads 1 when the button is RELEASED and 0 when PRESSED
@@ -178,8 +181,8 @@ std::vector<Property> D7aBoard::properties() {
         Property x;
         x.name = name;
         x.help = std::string("Which host controller drives JS-1 console ") + console +
-                 ": 'none', 'auto' (gamepad 0 or the keyboard), 'keyboard', or a device "
-                 "index like 0";
+                 ": 'none', 'auto' (the matching gamepad -- console 1->pad 0, console "
+                 "2->pad 1 -- or the keyboard), 'keyboard', or a device index like 0";
         x.kind = Kind::Str;
         x.get  = [&slot] { return Value::ofStr(slot); };
         x.set  = [&slot](const Value& v, std::string& err) {
@@ -214,6 +217,53 @@ std::vector<Property> D7aBoard::properties() {
         p.push_back(std::move(x));
     }
     return p;
+}
+
+// The live picture for SHOW <id>: what each console's strap actually resolves to right
+// now -- a named gamepad, the keyboard, or nothing -- which the property table (the strap
+// STRING) cannot show. This is why "joystick1 = auto" is not the same question as "is a
+// controller connected"; here we answer the second. Reads the host directly, so it polls
+// first (count()/name() are cached by poll()); safe because SHOW runs on the main thread
+// at a stopped prompt, the same place the display's idle hook pumps SDL.
+std::vector<std::string> D7aBoard::statusLines() const {
+    if (g_joystick) g_joystick->poll();
+
+    // "-> ..." for one console's strap, given the gamepad `auto` prefers for it.
+    auto resolve = [&](const std::string& spec, int autoIndex) -> std::string {
+        if (!g_joystick) return "-> (no joystick service in this build)";
+        std::string s = lowerAscii(spec);
+        // Keyed on count() alone, exactly as resolveStick() decides what to READ, so the
+        // reported source can never disagree with the source actually feeding the A/D.
+        auto gamepad = [&](int i) -> std::string {
+            if (g_joystick->count() > i) {
+                std::string nm = g_joystick->name(i);
+                return "-> gamepad " + std::to_string(i) + (nm.empty() ? "" : "  \"" + nm + "\"");
+            }
+            return "-> gamepad " + std::to_string(i) + "  (not present)";
+        };
+        if (s == "none") return "-> unwired";
+        if (s == "keyboard" || s == "kbd")
+            return g_joystick->keyboardStick().present ? "-> keyboard"
+                                                       : "-> keyboard  (unavailable)";
+        if (s == "auto") {
+            if (g_joystick->count() > autoIndex) return gamepad(autoIndex);
+            return g_joystick->keyboardStick().present
+                       ? "-> keyboard  (no gamepad " + std::to_string(autoIndex) + ")"
+                       : "-> nothing  (no gamepad " + std::to_string(autoIndex) +
+                             ", no keyboard focus)";
+        }
+        int idx = 0;
+        if (parseIndex(s, idx)) return gamepad(idx);
+        return "-> (unrecognized)";
+    };
+
+    auto line = [&](const char* console, const std::string& strap, int autoIndex) {
+        std::string s = "console " + std::string(console) + "  (" + strap + ")";
+        while (s.size() < 24) s += ' ';
+        return s + resolve(strap, autoIndex);
+    };
+
+    return {line("1", js1_, 0), line("2", js2_, 1)};
 }
 
 std::vector<MapEntry> D7aBoard::ioMap() const {

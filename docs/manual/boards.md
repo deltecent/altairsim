@@ -557,8 +557,12 @@ kind of injected service the display uses: a **USB gamepad** where SDL3 is prese
 **keyboard** as a fallback (arrows and a few keys), and nothing at all in a headless build, which
 still runs.
 
-`joystick1`/`joystick2` choose which host device drives each console. The Dazzler examples in
-`examples/` pair the board with color graphics and set the video window to be a
+`joystick1`/`joystick2` choose which host device drives each console. Both default to `auto`,
+which claims a **different** gamepad per console — console 1 takes gamepad 0, console 2 gamepad 1 —
+so two controllers work with no configuration, each falling back to the keyboard when its gamepad
+is absent. `SHOW <id>` shows what each console currently resolves to (a named controller, the
+keyboard, or nothing), and `SHOW JOYSTICKS` lists the controllers your host actually sees. The
+Dazzler examples in `examples/` pair the board with color graphics and set the video window to be a
 **display, not a keyboard** (`[display] keyboard = none`), so your keystrokes drive the stick instead
 of landing at a prompt. (The board's designed-but-unbuilt sound output — a JS-1's speaker is a D/A
 the CPU writes a waveform to — is not here yet.)

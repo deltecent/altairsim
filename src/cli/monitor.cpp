@@ -20,6 +20,7 @@
 #include "host/display.h"
 #include "host/endpoint.h"
 #include "host/imd.h"    // convertImdToRaw -- MOUNT foo.imd converts to a raw sibling .dsk
+#include "host/joystick.h"  // SHOW JOYSTICKS -- the host game controllers
 #include "host/media.h"  // writeHostFile -- MOUNT ... CREATE makes an empty file
 #include "isa/isa.h"
 
@@ -694,8 +695,8 @@ Completions Monitor::complete(const std::string& line) {
             // already prints a board's unit tables, so there is no colon step.
             for (const auto& b : m_.boards()) keep(b->id);
             for (const char* kw : {"BOARD", "BOARDS", "BUS", "CONSOLE", "DEBUG", "DISPLAY",
-                                   "MACHINE", "MACHINES", "MOUNTS", "PATHS", "ROMS", "SYMBOLS",
-                                   "VERSION"})
+                                   "JOYSTICKS", "MACHINE", "MACHINES", "MOUNTS", "PATHS",
+                                   "ROMS", "SYMBOLS", "VERSION"})
                 keep(kw);
             comp.suffix = " ";
         } else if (name == "NOBREAK") {
@@ -848,6 +849,15 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
     }
 
     showProps(b->properties(), out);
+
+    // Live, non-settable facts the schema can't carry (Board::statusLines) -- e.g. which
+    // host controller each D+7A console resolves to right now. Below the property table so
+    // the settable values come first, then the running reality.
+    auto sl = b->statusLines();
+    if (!sl.empty()) {
+        out << "\n";
+        for (const auto& l : sl) out << "  " << l << "\n";
+    }
 
     // A UNIT's properties are the unit's, not the board's (DESIGN.md 7.2). The
     // two 6850s on a 2SIO have independent baud rates and independent transforms
@@ -1449,6 +1459,13 @@ static Display* g_display = nullptr;
 
 void Monitor::setDisplay(Display* d) { g_display = d; }
 
+// The host game-controller service, injected by the composition root -- the SAME object
+// the D+7A reads (main.cpp wires both). Borrowed; null in a headless build/test. SHOW
+// JOYSTICKS asks it what controllers the host sees.
+static Joystick* g_joystick = nullptr;
+
+void Monitor::setJoystick(Joystick* j) { g_joystick = j; }
+
 void Monitor::runMachine(std::ostream& out, bool stepOver) {
     CpuCore* cpu = needCpu(out);
     if (!cpu) return;
@@ -1870,6 +1887,51 @@ void Monitor::showDisplay(std::ostream& out) {
 #endif
     out << ")\n";
     showProps(Display::properties(), out);
+}
+
+// SHOW JOYSTICKS -- the host game controllers a D+7A's JS-1 consoles read from. It answers
+// the question SHOW <d7a> can only half-answer: not "which strap did I set" but "is a
+// controller actually there". SDL-gated exactly like SHOW DISPLAY: a build with no SDL3 has
+// no controller service at all and says so.
+void Monitor::showJoysticks(std::ostream& out) {
+    out << "joysticks  (host game controllers for a D+7A's JS-1 consoles";
+#ifndef ALTAIRSIM_ENABLE_SDL
+    out << " -- none in this build)\n";
+    out << "\n  This binary was built without SDL3, so no USB game controllers are visible.\n"
+           "  A D+7A still runs -- each console reads centered with no buttons pressed.\n";
+    return;
+#else
+    out << ")\n";
+    if (!g_joystick) {
+        out << "\n  (no joystick service wired up)\n";
+        return;
+    }
+    g_joystick->poll();  // main thread, stopped prompt -- refresh the cache before we read it
+
+    int n = g_joystick->count();
+    if (n == 0) {
+        out << "\n  (no game controllers detected -- plug one in, or use the keyboard)\n";
+    } else {
+        char buf[256];
+        out << "\n  index  name\n";
+        for (int i = 0; i < n; ++i) {
+            std::string nm = g_joystick->name(i);
+            std::snprintf(buf, sizeof buf, "    %-5d  %s", i, nm.empty() ? "(unnamed)" : nm.c_str());
+            out << buf << "\n";
+        }
+    }
+
+    // The keyboard-as-a-stick is always an option (a console strapped `keyboard`, or `auto`
+    // falling back). `present` means SDL has a keyboard at all, not that a window holds
+    // focus -- keys only move the stick while a video window is focused (host/joystick.h).
+    out << "\n  keyboard  " << (g_joystick->keyboardStick().present
+                                    ? "usable as a stick (arrows + space/Z/X/C) when a video "
+                                      "window has focus"
+                                    : "unavailable")
+        << "\n";
+    out << "\n  A D+7A maps these onto its JS-1 consoles: SHOW <id> for the live mapping,\n"
+           "  SET <id> joystick1=auto|keyboard|<index> to choose.\n";
+#endif
 }
 
 void Monitor::showConsole(std::ostream& out) {
@@ -2953,7 +3015,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "SHOW") {
         if (!need(2, "SHOW <id> | SHOW BOARDS | SHOW BOARD <type> | SHOW MACHINES"
                      " | SHOW MACHINE [<name>] | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS"
-                     " | SHOW MOUNTS | SHOW PATHS | SHOW DEBUG | SHOW VERSION"))
+                     " | SHOW MOUNTS | SHOW PATHS | SHOW DEBUG | SHOW JOYSTICKS"
+                     " | SHOW VERSION"))
             return true;
         std::string sub = upper(a[1]);
         if (sub == "BUS") {
@@ -2990,6 +3053,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         if (sub == "DISPLAY" || sub == "VIDEO" || sub == "WINDOW") {
             showDisplay(out);
+            return true;
+        }
+        if (sub == "JOYSTICKS" || sub == "JOYSTICK" || sub == "JOY") {
+            showJoysticks(out);
             return true;
         }
         if (sub == "SYMBOLS" || sub == "SYMBOL" || sub == "SYM") {

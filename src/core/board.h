@@ -514,6 +514,13 @@ public:
     // and tab completion. There is no second schema anywhere.
     virtual std::vector<Property> properties() = 0;
 
+    // Live diagnostic lines for SHOW <id> that are NOT settable properties -- runtime
+    // facts about what the card is doing right now, which a schema cannot express (e.g.
+    // which host controller each D+7A console currently resolves to). Empty for most
+    // cards; showBoard() prints these below the property table. Keep it a snapshot: this
+    // is a read for a stopped operator, never a place to change state.
+    virtual std::vector<std::string> statusLines() const { return {}; }
+
     // ---- Debug channel (core/debuglog.h, DESIGN.md 7.2) ----
     //
     // The named diagnostic flags this card offers -- `sector`, `seek`, `serial` --
