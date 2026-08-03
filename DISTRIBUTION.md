@@ -194,8 +194,12 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
 #    Install SDL3 and configure again. DO NOT CONTINUE -- a headless binary is
 #    exactly what v0.2.0 shipped on all three platforms, and it looks fine.
 
-# 3. Build.
-cmake --build build --config Release --parallel
+# 3. Build.  On a RAM-starved VM -- the Windows and Linux guests share the Intel
+#    Mac's memory (§4.5) -- build SINGLE-THREADED: drop --parallel. Uncapped, the
+#    kernel OOM-kills the compiler ("Killed signal terminated program cc1plus" /
+#    Error 2) and the swap-thrash can wedge the guest. --parallel is only safe on
+#    a machine with the RAM for it: the M4 coordinator and the Intel Mac host.
+cmake --build build --config Release --parallel   # NOT --parallel on the VMs (see above)
 
 # 4. Prove the machine before it packages anything.
 ctest --test-dir build -C Release -LE slow
@@ -410,7 +414,7 @@ git fetch --tags; git checkout vX.Y.Z
 cmake -B build -DCMAKE_BUILD_TYPE=Release `
       -DCMAKE_PREFIX_PATH="$env:USERPROFILE\opt\sdl3-static" `
       -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-cmake --build build --config Release --parallel
+cmake --build build --config Release          # single-threaded: RAM-starved VM, no --parallel (§4.2)
 ctest --test-dir build -C Release -LE slow
 .\build\Release\altairsim.exe --version
 ```
@@ -427,7 +431,7 @@ will not configure.
 git clone https://github.com/deltecent/altairsim.git   # first time only; no login, no token
 git fetch --tags && git checkout vX.Y.Z
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static"
-cmake --build build --config Release --parallel
+cmake --build build --config Release          # single-threaded: RAM-starved VM, no --parallel (§4.2)
 ctest --test-dir build -C Release -LE slow
 ./build/altairsim --version
 tools/build-package.sh --pdf docs/altairsim-manual.pdf --target linux-x86_64
