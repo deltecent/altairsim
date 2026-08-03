@@ -81,10 +81,11 @@ public:
     uint8_t parallelOut() const { return parOut_; }
 
 private:
-    // SDL axis (-32768..32767) -> the two's-complement byte an A/D returns. An
-    // arithmetic >>8 maps center 0 -> 0x00, +full -> 0x7F, -full -> 0x80. `invert`
-    // flips the sense first (for a stick whose pot orientation opposes SDL's).
-    static uint8_t axis8(int16_t a, bool invert);
+    // SDL axis (-32768..32767) -> the two's-complement byte an A/D returns, mapped into the
+    // JS-1's USABLE analog window rather than the A/D's full range. Cromemco's own Dazzle-
+    // Doodle source only draws for readings in -64..+63 (reference/JS-1.md 4.1), so an
+    // arithmetic >>9 lands center 0 -> 0x00, +full -> +63 (0x3F), -full -> -64 (0xC0).
+    static uint8_t axis8(int16_t a);
 
     // Resolve one console's `joystick*` strap ("none"/"auto"/"keyboard"/<index>) to a
     // stick reading from the injected service. Absent when nothing is behind it.
@@ -97,18 +98,16 @@ private:
     // `xCh`/`yCh` are analog channel indices (0-based: channel 1 -> 0); `buttonShift`
     // is 0 for console 1 (bits D0-D3) or 4 for console 2 (bits D4-D7); `autoIndex` is
     // the gamepad this console's `auto` prefers (0 or 1).
-    void applyConsole(const std::string& spec, int xCh, int yCh, bool invertY,
+    void applyConsole(const std::string& spec, int xCh, int yCh,
                       int buttonShift, int autoIndex);
 
     // ---- Straps ----
     uint8_t base_ = 0x18;   // the 8-port block: BASE+0 parallel, BASE+1..7 analog
 
-    // Which host stick drives each JS-1 console, and its Y-axis orientation. Strings so
-    // "none"/"auto"/"keyboard" sit alongside a numeric index (see properties()).
+    // Which host stick drives each JS-1 console. Strings so "none"/"auto"/"keyboard"
+    // sit alongside a numeric index (see properties()).
     std::string js1_ = "auto";   // console 1: gamepad 0 if present, else the keyboard
     std::string js2_ = "auto";   // console 2: gamepad 1 if present, else the keyboard
-    bool js1InvertY_ = false;
-    bool js2InvertY_ = false;
 
     // ---- Software-visible state ----
     uint8_t analogIn_[7]  = {};  // channel 1..7 A/D shadow (index 0..6), refreshed in pump()

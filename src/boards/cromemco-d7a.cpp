@@ -110,17 +110,17 @@ void D7aBoard::pump() {
     g_joystick->poll();
     // Console 1: X/Y -> analog channels 1/2 (0x19/0x1A), buttons -> parallel bits D0-D3;
     // `auto` prefers gamepad 0.
-    applyConsole(js1_, 0, 1, js1InvertY_, 0, 0);
+    applyConsole(js1_, 0, 1, 0, 0);
     // Console 2: X/Y -> analog channels 3/4 (0x1B/0x1C), buttons -> parallel bits D4-D7;
     // `auto` prefers gamepad 1, so two `auto` consoles drive two different sticks.
-    applyConsole(js2_, 2, 3, js2InvertY_, 4, 1);
+    applyConsole(js2_, 2, 3, 4, 1);
 }
 
-uint8_t D7aBoard::axis8(int16_t a, bool invert) {
-    int v = invert ? -(int)a : (int)a;
-    if (v > 32767) v = 32767;      // guard -(-32768) after inversion
-    if (v < -32768) v = -32768;
-    return (uint8_t)(int8_t)(v >> 8);  // arithmetic shift (C++20): 0->0x00, +->0x7F, -->0x80
+uint8_t D7aBoard::axis8(int16_t a) {
+    // Arithmetic >>9 (well-defined in C++20): center 0 -> 0x00, +full -> +63 (0x3F),
+    // -full -> -64 (0xC0) -- the JS-1's usable window, not the A/D's full -128..+127.
+    // Cromemco's Dazzle-Doodle source discards anything past that window (see applyConsole).
+    return (uint8_t)(int8_t)((int)a >> 9);
 }
 
 StickState D7aBoard::resolveStick(const std::string& spec, int autoIndex) const {
@@ -136,11 +136,24 @@ StickState D7aBoard::resolveStick(const std::string& spec, int autoIndex) const 
     return {};
 }
 
-void D7aBoard::applyConsole(const std::string& spec, int xCh, int yCh, bool invertY,
+void D7aBoard::applyConsole(const std::string& spec, int xCh, int yCh,
                             int buttonShift, int autoIndex) {
     StickState s = resolveStick(spec, autoIndex);  // absent -> centered, no buttons
-    analogIn_[xCh] = axis8(s.x, false);
-    analogIn_[yCh] = axis8(s.y, invertY);
+    // Cromemco's OWN Dazzle-Doodle source (real 8080 listing, reference/JS-1.md 4.1) range-
+    // checks each axis with `ADI 0x40; JP` and draws only for readings in -64..+63
+    // (0xC0..0x3F); a magnitude of 64 or more on the positive side reads as "voltage out of
+    // range" and is discarded. axis8() (a >>9) already lands full deflection on that window's
+    // edges -- +full -> +63 (0x3F), -full -> -64 (0xC0) -- so X needs no further clamp.
+    int x = (int)(int8_t)axis8(s.x);
+    analogIn_[xCh] = (uint8_t)(int8_t)x;
+    // The period Dazzler games read SDL +Y (stick DOWN) as up, so invert Y: stick up -> a
+    // positive byte, stick down -> negative. Shift to the byte FIRST (so a small rest drift
+    // near center still floors to 0x00), THEN negate the signed byte -- negating the raw axis
+    // first would floor a resting +drift to 0xFF and slide center off zero. Negating -64
+    // (full up) yields +64, one past the window's +63 edge; clamp it so full-up stays in range.
+    int y = -(int)(int8_t)axis8(s.y);
+    if (y > 63) y = 63;
+    analogIn_[yCh] = (uint8_t)(int8_t)y;
     // ACTIVE-LOW buttons: a bit reads 1 when the button is RELEASED and 0 when PRESSED
     // (the JS-1's pulled-up switches). So an idle/absent console reads its nibble all-1s,
     // and a press pulls its bit to 0. Sourced from David Hansel's Arduino Altair 8800
@@ -198,24 +211,6 @@ std::vector<Property> D7aBoard::properties() {
     };
     p.push_back(joyProp("joystick1", "1", js1_));
     p.push_back(joyProp("joystick2", "2", js2_));
-    {
-        Property x;
-        x.name = "js1_invert_y";
-        x.help = "Flip console 1's Y axis (a stick whose pot opposes the host's up=negative)";
-        x.kind = Kind::Bool;
-        x.get  = [this] { return Value::ofBool(js1InvertY_); };
-        x.set  = [this](const Value& v, std::string&) { js1InvertY_ = v.b(); return true; };
-        p.push_back(std::move(x));
-    }
-    {
-        Property x;
-        x.name = "js2_invert_y";
-        x.help = "Flip console 2's Y axis";
-        x.kind = Kind::Bool;
-        x.get  = [this] { return Value::ofBool(js2InvertY_); };
-        x.set  = [this](const Value& v, std::string&) { js2InvertY_ = v.b(); return true; };
-        p.push_back(std::move(x));
-    }
     return p;
 }
 
