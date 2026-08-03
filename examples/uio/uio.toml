@@ -74,5 +74,12 @@ id   = "mem0"
 # "MEMORY SIZE?" leaves BASIC as ...'E'|0x80; an unfiltered terminal prints "MEMORY SIZ?".
 # The Teletype ignored the eighth bit, and that ignoring belongs to the TERMINAL -- the
 # only thing allowed to alter a byte (DESIGN.md 7.2). The line itself stays 8-bit clean.
+#
+# `upper = true` folds what you TYPE to uppercase. 8K BASIC 3.2, like BASIC 1.0
+# (examples/basic/basic1.toml) and the PS2 monitor, only understands upper case -- a Teletype
+# had no lower case to send. Without this you would type the whole session under Caps Lock
+# (or on Shift); with it you just type, and the fold happens on the way in. It touches only
+# your keystrokes, never BASIC's output.
 [console]
 strip7out = true
+upper     = true
