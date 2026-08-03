@@ -257,3 +257,51 @@ than retyped for the same reason the rest of the program has one source of truth
 
 The PDFs need `pandoc` and any Chromium-based browser, and are built by `tools/build-docs.sh`.
 Neither tool is a build dependency, and neither goes anywhere near the simulator.
+
+### Why a wrapped paragraph pastes as several lines (and why we don't "fix" it)
+
+A recurring report (issue #246): copy a paragraph out of one of our PDFs and it pastes as
+several lines instead of one. This is a **reader** behavior, and the investigation is worth
+recording so it is not re-run from scratch.
+
+**There are no hard line breaks in the paragraphs.** In the PDF content stream each wrapped
+line is painted at a new baseline position; there is no newline character anywhere. When a
+paragraph pastes as three lines, the reader is *inventing* those breaks from the vertical gaps
+at copy time. Nothing in the build put them there.
+
+The only thing that tells a reader "the real text of this span is *this exact string*, ignore
+the geometry" is `ActualText`. Hand-built PDFs extracted with poppler make the picture exact:
+
+| PDF | Copies as |
+|---|---|
+| Wrapped paragraph, plain geometry | 2 lines (break invented) |
+| Wrapped paragraph inside a real `<P>` **structure tag** | still 2 lines |
+| Wrapped paragraph with paragraph-spanning **`ActualText`** | **1 line** |
+
+The middle row is the one that closes off the easy fixes: the **structure/accessibility tree
+does not join wrapped lines** — only `ActualText` does. Our PDFs are already tagged
+(`pdfinfo` → `Tagged: yes`), and Chrome emits `ActualText` **only for ligatures** (the `fi`/`fl`
+spans), never for paragraphs. Every mainstream HTML/Markdown→PDF engine (WeasyPrint, Prince,
+wkhtmltopdf, Typst, LaTeX) conveys paragraphs through the structure tree, not through
+paragraph-level `ActualText` — so **swapping the PDF engine changes the producer byline and
+nothing about the copy behavior.** Do not propose one as the fix.
+
+Readers split on this: Word and Acrobat honor the structure tree, so the paragraph comes across
+whole; Preview and Chrome's built-in viewer fall back to pure geometry and invent the breaks.
+Worse, **macOS Sequoia's Preview/PDFKit regressed** — it stamps a paragraph break on *every*
+visual line regardless of the document, surviving even a text-only paste — so it would ignore
+`ActualText` too.
+
+A bespoke `ActualText` post-pass *is* buildable — Chrome already brackets each paragraph in one
+marked-content span — but it is a real tool, not a shell snippet: the paragraph text is emitted
+as subsetted **hex glyph-IDs**, so each glyph has to be reverse-mapped through the font's
+`ToUnicode` CMap, with TJ kerning arrays and nested ligature/italic spans handled, then the
+stream recompressed. For a cosmetic gain that the reader in the original report (Sequoia Preview)
+would not even honor, it has not been worth doing.
+
+The Markdown can't fix it either: wrapping is decided at render time from the column width, and
+there is no "soft wrap that copies as one line" a source file can encode. The only source-side
+lever is keeping the things people copy short enough **not to wrap** — which the commands already
+are (mono, ≤79 columns, in a column sized for 79). The case that wraps is prose. For
+copy-a-command / copy-a-prompt workflows, copy from the **Markdown**, which ships beside every
+PDF and is plain text; the PDF is the read-it version.
