@@ -229,6 +229,7 @@ units, and what it decodes in memory.
 | `SHOW MACHINE` | the whole machine |
 | `SHOW CONSOLE` | which unit holds your keyboard, and how bytes are being transformed |
 | `SHOW DISPLAY` | the video window, and whether it or the terminal has the keyboard |
+| `SHOW JOYSTICKS` | the host game controllers a D+7A can read (needs an SDL3 build) |
 | `SHOW BUS MAP` | who decodes which addresses — and what floats |
 | `SHOW BUS IO` | who decodes which ports |
 | `SHOW BUS IRQ` | who is strapped to which interrupt line, and who is pulling it |

@@ -293,6 +293,7 @@ static const std::vector<CommandDef> kCommands = {
      "  SHOW PATHS       what a path resolves against -- and there is more than one answer\n"
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
      "  SHOW DISPLAY     the host video window, and whether it takes the keyboard\n"
+     "  SHOW JOYSTICKS   the host game controllers a D+7A can read (SDL builds)\n"
      "  SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS\n"
      "  SHOW ROMS        the ROM images built into this binary, and where each came from\n"
      "  SHOW VERSION     which build this is, and the commit it was built from"},

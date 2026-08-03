@@ -245,6 +245,9 @@ int main(int argc, char** argv) {
     // keyboard) in the shipping binary; a NullJoystick headless, so the card runs
     // identically with every stick centered and no buttons.
     D7aBoard::setJoystick(&g_joystick);
+    // ...and the monitor reads the SAME service for SHOW JOYSTICKS (cli/monitor.h), so the
+    // command reports exactly the controllers the card sees.
+    Monitor::setJoystick(&g_joystick);
 
     // 60 frames a second, and no more. A real VDM-1 scanned at the monitor's rate no
     // matter what the 8080 was doing, and nothing on the S-100 side can read a pixel

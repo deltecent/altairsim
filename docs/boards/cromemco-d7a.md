@@ -72,10 +72,17 @@ SW1–SW4 → **D4–D7**.
   full negative → `0x80`. `js1_invert_y` / `js2_invert_y` flip a console's Y sense
   first, for a stick whose pot orientation opposes SDL's up = negative.
 - **Which controller drives which console.** `joystick1` / `joystick2` accept `none`,
-  `auto` (the first gamepad if present, else the keyboard), `keyboard`, or a device
-  index (`0`, `1`, …). Not `CONNECT` — a game controller is an enumerated host device,
-  not a `ByteStream` endpoint, so it is a strap like `port`, set from TOML or `SET`.
+  `auto`, `keyboard`, or a device index (`0`, `1`, …). Both default to `auto`, and `auto`
+  is **per-console**: console 1 prefers gamepad 0, console 2 gamepad 1, each falling back
+  to the keyboard when its gamepad is absent — so two controllers work unconfigured and
+  two `auto` consoles never fight over one stick (`resolveStick(spec, autoIndex)`). Not
+  `CONNECT` — a game controller is an enumerated host device, not a `ByteStream` endpoint,
+  so it is a strap like `port`, set from TOML or `SET`.
 - **`properties()`:** `port`, `joystick1`, `joystick2`, `js1_invert_y`, `js2_invert_y`.
+- **`statusLines()`:** the live resolution for `SHOW <id>` — what each console's strap
+  currently points at (a named gamepad, the keyboard, or nothing). Keyed on `count()`, the
+  same test `resolveStick` uses to pick a source, so the report can't contradict the A/D.
+  The monitor also has `SHOW JOYSTICKS` for the raw host inventory (SDL builds).
 - **No interrupts, no DMA.** A polling driver (the period norm) is complete.
 
 ### Reset
@@ -141,8 +148,9 @@ SW1–SW4 → **D4–D7**.
 - **`tests/test_d7a.cpp`** (headless, with a `StubJoystick`): port decode and the
   8-aligned strap; parallel latch/read; analog D/A round-trip and A/D independence; the
   axis → two's-complement mapping for both consoles (0x19/0x1A and 0x1B/0x1C); button
-  bits in the correct nibbles; `auto` gamepad-else-keyboard resolution; `js_invert_y`;
-  that the host is polled in `pump()` and not in a bus cycle; and a snapshot round-trip.
+  bits in the correct nibbles; per-console `auto` resolution (console 2 takes gamepad 1,
+  falls back to the keyboard) and its `statusLines()` report; `js_invert_y`; that the host
+  is polled in `pump()` and not in a bus cycle; and a snapshot round-trip.
 - **Smoke test:** `altairsim -f machines/d7a.toml` boots; a program that does `IN 19` /
   `IN 18` runs, exercising the real `SdlJoystick` runtime path (SDL gamepad subsystem
   init on first pump, with or without a controller plugged in).

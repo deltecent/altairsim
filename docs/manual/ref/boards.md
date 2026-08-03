@@ -672,8 +672,8 @@ Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one pa
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x18` | `0x0` .. `0xF8` | Base of the 8-port block (A7..A3 jumpers): parallel at BASE, analog at BASE+1..7. A multiple of 8; default 18 |
-| `joystick1` | string | `auto` | text | Which host controller drives JS-1 console 1: 'none', 'auto' (gamepad 0 or the keyboard), 'keyboard', or a device index like 0 |
-| `joystick2` | string | `none` | text | Which host controller drives JS-1 console 2: 'none', 'auto' (gamepad 0 or the keyboard), 'keyboard', or a device index like 0 |
+| `joystick1` | string | `auto` | text | Which host controller drives JS-1 console 1: 'none', 'auto' (the matching gamepad -- console 1->pad 0, console 2->pad 1 -- or the keyboard), 'keyboard', or a device index like 0 |
+| `joystick2` | string | `auto` | text | Which host controller drives JS-1 console 2: 'none', 'auto' (the matching gamepad -- console 1->pad 0, console 2->pad 1 -- or the keyboard), 'keyboard', or a device index like 0 |
 | `js1_invert_y` | bool | `false` | `on` \| `off` | Flip console 1's Y axis (a stick whose pot opposes the host's up=negative) |
 | `js2_invert_y` | bool | `false` | `on` \| `off` | Flip console 2's Y axis |
 
