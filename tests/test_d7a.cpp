@@ -116,11 +116,11 @@ void test_d7a() {
         g.joy.sticks[0].y = 32767;            // full one way (SDL +Y = stick DOWN)
         g.d7a->pump();
         CHECK(g.in(0x19) == 0x00, "a centered X axis reads 0x00 (0 V)");
-        CHECK(g.in(0x1A) == 0x81, "Y is inverted: SDL +Y (stick down) reads -full 0x81");
+        CHECK(g.in(0x1A) == 0xC1, "Y is inverted: SDL +Y (stick down) reads -full 0xC1 (-63)");
 
         g.joy.sticks[0].x = -32768;           // full the other way
         g.d7a->pump();
-        CHECK(g.in(0x19) == 0x80, "a full -X reads 0x80 (-2.56 V)");
+        CHECK(g.in(0x19) == 0xC0, "a full -X reads 0xC0 (-64) -- the low edge of Doodle's window");
     }
 
     SECTION("D+7A -- console 2 lands on analog channels 3/4 (0x1B/0x1C)");
@@ -131,8 +131,8 @@ void test_d7a() {
         g.joy.sticks[1].x = 32767;
         g.joy.sticks[1].y = -32768;
         g.d7a->pump();
-        CHECK(g.in(0x1B) == 0x7E, "console 2 X on port 0x1B: +full clamps to 0x7E (126)");
-        CHECK(g.in(0x1C) == 0x7E, "console 2 Y inverted: SDL -Y (stick up) reads +full 0x7E (126)");
+        CHECK(g.in(0x1B) == 0x3F, "console 2 X on port 0x1B: +full is +63 (0x3F), the window's high edge");
+        CHECK(g.in(0x1C) == 0x3F, "console 2 Y inverted: SDL -Y (stick up) reads +full 0x3F (+63)");
     }
 
     SECTION("D+7A -- buttons: active-low, console 1 in D0-D3, console 2 in D4-D7");
@@ -158,11 +158,11 @@ void test_d7a() {
         g.joy.sticks[0].x = -32768;       // gamepad 0 pushing -X
         g.joy.n = 0;                      // ...but no gamepad connected
         g.d7a->pump();
-        CHECK(g.in(0x19) == 0x7E, "with no gamepad, `auto` reads the keyboard (+full clamps to 0x7E)");
+        CHECK(g.in(0x19) == 0x3F, "with no gamepad, `auto` reads the keyboard (+full is 0x3F)");
 
         g.joy.n = 1;                      // now a gamepad appears
         g.d7a->pump();
-        CHECK(g.in(0x19) == 0x80, "with a gamepad, `auto` reads it and ignores the keyboard");
+        CHECK(g.in(0x19) == 0xC0, "with a gamepad, `auto` reads it and ignores the keyboard");
     }
 
     SECTION("D+7A -- both consoles default to `auto`, and `auto` is per-console");
@@ -172,8 +172,8 @@ void test_d7a() {
         g.joy.sticks[0].x = -32768;           // pad 0 full -X
         g.joy.sticks[1].x = 32767;            // pad 1 full +X
         g.d7a->pump();                         // both straps default to `auto`
-        CHECK(g.in(0x19) == 0x80, "console 1 `auto` reads gamepad 0");
-        CHECK(g.in(0x1B) == 0x7E, "console 2 `auto` reads gamepad 1, not gamepad 0");
+        CHECK(g.in(0x19) == 0xC0, "console 1 `auto` reads gamepad 0");
+        CHECK(g.in(0x1B) == 0x3F, "console 2 `auto` reads gamepad 1, not gamepad 0");
     }
 
     SECTION("D+7A -- console 2 `auto` falls back to the keyboard with only one gamepad");
@@ -183,8 +183,8 @@ void test_d7a() {
         g.joy.sticks[0].x = -32768;           // pad 0 (console 1's)
         g.joy.kbd.x = 32767;                  // the keyboard is pushing +X
         g.d7a->pump();
-        CHECK(g.in(0x19) == 0x80, "console 1 still reads gamepad 0");
-        CHECK(g.in(0x1B) == 0x7E, "console 2 `auto`, no gamepad 1, reads the keyboard");
+        CHECK(g.in(0x19) == 0xC0, "console 1 still reads gamepad 0");
+        CHECK(g.in(0x1B) == 0x3F, "console 2 `auto`, no gamepad 1, reads the keyboard");
     }
 
     SECTION("D+7A -- statusLines() reports what each console resolves to");
@@ -248,7 +248,7 @@ void test_d7a() {
         g.joy.n = 1;
         g.joy.sticks[0].x = -32768;
         g.d7a->pump();        // an A/D shadow + no buttons
-        CHECK(g.in(0x19) == 0x80, "precondition: the A/D shadow is set");
+        CHECK(g.in(0x19) == 0xC0, "precondition: the A/D shadow is set");
 
         StateWriter w;
         g.d7a->serialize(w);
@@ -262,7 +262,7 @@ void test_d7a() {
         b2.deserialize(r);
         CHECK(b2.parallelOut() == 0x3C, "the parallel output latch travels");
         CHECK(b2.analogOut(0) == 0x7F, "a D/A latch travels");
-        CHECK(b2.analogIn(0) == 0x80, "and the A/D input shadow travels");
+        CHECK(b2.analogIn(0) == 0xC0, "and the A/D input shadow travels");
 
         D7aBoard::setJoystick(&g.joy);  // put the rig's stub back for any later use
     }

@@ -117,7 +117,10 @@ void D7aBoard::pump() {
 }
 
 uint8_t D7aBoard::axis8(int16_t a) {
-    return (uint8_t)(int8_t)((int)a >> 8);  // arithmetic shift (C++20): 0->0x00, +->0x7F, -->0x80
+    // Arithmetic >>9 (well-defined in C++20): center 0 -> 0x00, +full -> +63 (0x3F),
+    // -full -> -64 (0xC0) -- the JS-1's usable window, not the A/D's full -128..+127.
+    // Cromemco's Dazzle-Doodle source discards anything past that window (see applyConsole).
+    return (uint8_t)(int8_t)((int)a >> 9);
 }
 
 StickState D7aBoard::resolveStick(const std::string& spec, int autoIndex) const {
@@ -136,19 +139,20 @@ StickState D7aBoard::resolveStick(const std::string& spec, int autoIndex) const 
 void D7aBoard::applyConsole(const std::string& spec, int xCh, int yCh,
                             int buttonShift, int autoIndex) {
     StickState s = resolveStick(spec, autoIndex);  // absent -> centered, no buttons
-    // Positive (X-right, Y-up) full deflection is clamped to +126 (0x7E), not +127. The
-    // real JS-1 pots never quite reach the rail, and the games treat 0x7F as an edge case;
-    // capping at 126 keeps a hair of headroom and matches what the hardware delivers.
+    // Cromemco's OWN Dazzle-Doodle source (real 8080 listing, reference/JS-1.md 4.1) range-
+    // checks each axis with `ADI 0x40; JP` and draws only for readings in -64..+63
+    // (0xC0..0x3F); a magnitude of 64 or more on the positive side reads as "voltage out of
+    // range" and is discarded. axis8() (a >>9) already lands full deflection on that window's
+    // edges -- +full -> +63 (0x3F), -full -> -64 (0xC0) -- so X needs no further clamp.
     int x = (int)(int8_t)axis8(s.x);
-    if (x > 126) x = 126;
     analogIn_[xCh] = (uint8_t)(int8_t)x;
     // The period Dazzler games read SDL +Y (stick DOWN) as up, so invert Y: stick up -> a
     // positive byte, stick down -> negative. Shift to the byte FIRST (so a small rest drift
-    // near center still floors to 0x00), THEN negate the signed byte -- negating the raw
-    // axis first would floor a resting +drift to 0xFF and slide center off zero. Clamp the
-    // -(-128) full-up case to +126 so it can't wrap back to 0x80.
+    // near center still floors to 0x00), THEN negate the signed byte -- negating the raw axis
+    // first would floor a resting +drift to 0xFF and slide center off zero. Negating -64
+    // (full up) yields +64, one past the window's +63 edge; clamp it so full-up stays in range.
     int y = -(int)(int8_t)axis8(s.y);
-    if (y > 126) y = 126;
+    if (y > 63) y = 63;
     analogIn_[yCh] = (uint8_t)(int8_t)y;
     // ACTIVE-LOW buttons: a bit reads 1 when the button is RELEASED and 0 when PRESSED
     // (the JS-1's pulled-up switches). So an idle/absent console reads its nibble all-1s,

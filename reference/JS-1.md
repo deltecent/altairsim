@@ -92,11 +92,47 @@ Settled from three independent sources (Patrick, 2026-07-23), all agreeing:
 
 The [D+7A board](../docs/boards/cromemco-d7a.md) maps a host stick onto these ports:
 a gamepad's left-stick X/Y (SDL range −32768…32767) is arithmetic-shifted to the
-two's-complement byte the A/D returns (`>>8`: center→0x00, extremes→0x80/0x7F), and up
-to four face buttons become the four parallel-input bits. The D/A speaker output is
-captured for the (future) SDL audio path — see the sound-feasibility section of the
-board doc. A JS-1's own oscillator-free design means everything here is a value a guest
-reads back, which is exactly what makes it emulable from a USB controller.
+two's-complement byte the A/D returns (`>>9`: center→0x00, extremes→**+63 (0x3F)** and
+**−64 (0xC0)** — the usable window in §4.1, *not* the A/D's full ±127), and up to four
+face buttons become the four parallel-input bits. Y is **inverted** (SDL +Y is stick
+*down*, which the games read as up). The D/A speaker output is captured for the (future)
+SDL audio path — see the sound-feasibility section of the board doc. A JS-1's own
+oscillator-free design means everything here is a value a guest reads back, which is
+exactly what makes it emulable from a USB controller.
+
+### 4.1 The usable analog window is −64…+63 — from Cromemco's own Doodle source
+
+The Cromemco *Dazzler Games* manual prints the **full 8080 source listing** of the
+**Dazzle-Doodle** program (pp. 5–7; a real Cromemco artifact, not a third-party
+disassembly). Its joystick read is the authoritative statement of what range the games
+actually use, and it is **narrower than the A/D's full ±127**:
+
+```
+IN   031      ; read X-axis A/D   (port 0x19 = console-1 X)
+ADI  100      ; add 0x40 (octal 100 = 64)
+JP   .+range  ; if result is POSITIVE (bit7 clear) the reading is IN RANGE
+MVI  B,000    ; else zero B -> SUPPRESS the screen write ("voltage out of range")
+RAR           ; halve the surviving displacement
+MOV  E,A      ; X displacement -> E
+```
+
+Y is identical (`IN 032` = 0x1A) with an added `CMA` after `RAR` — i.e. **the software
+itself inverts Y**, corroborating §4's inversion. Working the `ADI 0x40; JP` test over
+every byte value, a pixel is written **only** when the raw A/D reading is in:
+
+| Raw A/D byte (signed) | in range? |
+|---|---|
+| `0x00`…`0x3F`  (0 … +63)   | **yes — draws** |
+| `0x40`…`0x7F`  (+64 … +127) | no — suppressed |
+| `0x80`…`0xBF`  (−128 … −65) | no — suppressed |
+| `0xC0`…`0xFF`  (−64 … −1)   | **yes — draws** |
+
+So the JS-1's usable full-scale, as Cromemco's own game software defines it, is
+**−64 … +63 (`0xC0` … `0x3F`)**. `RAR` then halves the survivors into the ±31/32
+displacement a 64×64 Dazzler grid needs. This is why the emulator maps SDL full
+deflection to exactly +63 / −64 (a `>>9`, §4) rather than the A/D rails ±127: a
+fully-deflected host stick must land *inside* this window, or Doodle treats it as
+out-of-range and refuses to draw. See `docs/sources.md` for the *Dazzler Games* manual.
 
 ## 5. Parts (informative)
 

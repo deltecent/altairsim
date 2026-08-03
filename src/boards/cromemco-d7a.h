@@ -81,8 +81,10 @@ public:
     uint8_t parallelOut() const { return parOut_; }
 
 private:
-    // SDL axis (-32768..32767) -> the two's-complement byte an A/D returns. An
-    // arithmetic >>8 maps center 0 -> 0x00, +full -> 0x7F, -full -> 0x80.
+    // SDL axis (-32768..32767) -> the two's-complement byte an A/D returns, mapped into the
+    // JS-1's USABLE analog window rather than the A/D's full range. Cromemco's own Dazzle-
+    // Doodle source only draws for readings in -64..+63 (reference/JS-1.md 4.1), so an
+    // arithmetic >>9 lands center 0 -> 0x00, +full -> +63 (0x3F), -full -> -64 (0xC0).
     static uint8_t axis8(int16_t a);
 
     // Resolve one console's `joystick*` strap ("none"/"auto"/"keyboard"/<index>) to a
