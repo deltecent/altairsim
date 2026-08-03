@@ -517,6 +517,10 @@ void Bus::verifySlot(const BusCycle& in, const Slot& s) const {
 // ---------------------------------------------------------------------------
 
 uint8_t Bus::memRead(uint16_t addr) {
+    // A cycle breakpoint that stops BEFORE the access unwinds the instruction here,
+    // before any board is touched (see setPreAccessVeto / CycleBreakBefore). One
+    // null-function test when no such breakpoint is armed.
+    if (preVeto_ && preVeto_(BusCycle{Cycle::MemRead, addr, 0, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = memRead_[addr >> 8];
 
@@ -534,6 +538,7 @@ uint8_t Bus::memRead(uint16_t addr) {
 }
 
 void Bus::memWrite(uint16_t addr, uint8_t data) {
+    if (preVeto_ && preVeto_(BusCycle{Cycle::MemWrite, addr, data, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = memWrite_[addr >> 8];
 
@@ -550,6 +555,7 @@ void Bus::memWrite(uint16_t addr, uint8_t data) {
 }
 
 uint8_t Bus::ioRead(uint8_t port) {
+    if (preVeto_ && preVeto_(BusCycle{Cycle::IoRead, port, 0, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = ioRead_[port];
 
@@ -567,6 +573,7 @@ uint8_t Bus::ioRead(uint8_t port) {
 }
 
 void Bus::ioWrite(uint8_t port, uint8_t data) {
+    if (preVeto_ && preVeto_(BusCycle{Cycle::IoWrite, port, data, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = ioWrite_[port];
 

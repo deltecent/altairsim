@@ -68,6 +68,12 @@ the machine, because it is watching the backplane rather than the program.
 If you are chasing a byte that keeps getting clobbered, `BREAK MEM W <addr>` will find who is
 doing it, whatever is doing it.
 
+A cycle watch stops *before* the access, with the PC on the instruction that was about to make
+it — nothing executed, no port read, no byte written, every register as it stood. It is the same
+place a plain `BREAK <addr>` stops, so `RUN` or `STEP` runs that instruction fresh. (The one
+exception is a cycle a *DMA* board drove: that has no CPU instruction to hold back, so it stops at
+the instruction boundary after the transfer instead.)
+
 **`BREAK TAPE STOP` watches a device, not the program at all.** It stops the machine the
 moment a cassette deck reaches auto-stop — the instant the tape parks itself after a load has
 finished feeding. That is exactly when you want to look at what landed, and you get there
@@ -92,8 +98,9 @@ distinguishing state in the condition and let the machine run until it holds.
 
 A bare word that names a register *is* that register, so a literal needs a leading zero — `0A`
 is ten, `A` is the accumulator. `==` `!=` `<` `>` `<=` `>=` compare, `&&` `||` combine, `&` `|`
-mask, and parentheses group. Only a plain address breakpoint takes a condition: the `MEM`/`IO`
-watches fire in the middle of a cycle, where a register read has no boundary-consistent answer.
+mask, and parentheses group. Only a plain address breakpoint takes a condition: a `MEM`/`IO` watch
+is a question about the cycle that is happening, not about a register, so there is nothing on it for
+`IF` to test.
 
 ```
 BREAK 100 IF A==0

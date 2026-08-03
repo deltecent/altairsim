@@ -40,6 +40,16 @@ struct BusCycle {
     bool isWrite() const { return type == Cycle::MemWrite || type == Cycle::IoWrite; }
 };
 
+// Thrown out of a cycle function BEFORE the device is touched, to unwind the
+// in-flight instruction when a cycle breakpoint should stop the machine WITH THE
+// PC STILL ON THE INSTRUCTION (see Bus::setPreAccessVeto and the debugger's run
+// loop). It carries nothing: the veto predicate has already recorded which
+// breakpoint fired. This is a deliberate, localized departure from the codebase's
+// no-sentinels idiom -- it is the only way to abandon a bus access from deep inside
+// a core's decode switch without every core learning what a breakpoint is -- and it
+// is confined to the bus<->debugger seam and caught one frame up in Debugger::run.
+struct CycleBreakBefore {};
+
 // NOTE there is deliberately NO `origin` field (Cpu/Monitor/Dma). A real
 // backplane cycle carries no such tag -- which is exactly WHY a front-panel
 // DEPOSIT is indistinguishable from a CPU write, and why a real ROM ignores
@@ -237,6 +247,25 @@ public:
     using Observer = std::function<void(const BusCycle&)>;
     int observe(Observer fn);   // returns a handle
     void unobserve(int handle);
+
+    // ---- The pre-access veto (BREAK IO/MEM stops BEFORE the cycle) ----
+    //
+    // An Observer sees a cycle AFTER the device has driven it -- perfect for
+    // HISTORY and TRACE, which record what happened, and it is where a DMA-driven
+    // cycle breakpoint still stops. But a MEM/IO breakpoint on the CPU wants the
+    // machine to stop with the PC on the instruction and NOTHING executed: no port
+    // read, no byte written. That cannot be a post-access observer -- the access
+    // already happened by then.
+    //
+    // So the debugger installs ONE veto, consulted at the TOP of every cycle,
+    // before any board is asked. If it returns true the cycle function throws
+    // CycleBreakBefore and the instruction unwinds untouched; the debugger catches
+    // it and restores the CPU. Exactly one slot, like the machine's other single
+    // wires -- the debugger is the only caller. A machine with no cycle breakpoint
+    // never installs it and the four cycle paths pay one null-function test.
+    using PreAccessVeto = std::function<bool(const BusCycle&)>;
+    void setPreAccessVeto(PreAccessVeto fn) { preVeto_ = std::move(fn); }
+    void clearPreAccessVeto() { preVeto_ = nullptr; }
 
     // Look without running a cycle -- for DISASM, TRACE and the debugger's
     // display, none of which are allowed to have side effects. Runs the SAME
@@ -439,6 +468,10 @@ private:
 
     std::vector<std::pair<int, Observer>> observers_;
     int nextObserver_ = 1;
+
+    // The pre-access veto -- null unless the debugger has installed one for a run
+    // that carries a cycle breakpoint. See setPreAccessVeto.
+    PreAccessVeto preVeto_;
 };
 
 } // namespace altair

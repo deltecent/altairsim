@@ -144,8 +144,8 @@ void test_debug() {
     int wb = w.m.debug.add(BreakKind::MemWrite, 0x2000, 0x2000);
     RunResult wr = w.m.debug.run(0);
     CHECK(wr.why == StopReason::Breakpoint && wr.bp == wb, "a write to 2000 stops the machine");
-    CHECK(wr.pc == 0x0005, "at the instruction BOUNDARY after the STA -- never mid-instruction");
-    CHECK(w.m.bus.memRead(0x2000) == 0x41, "and the write itself completed. It was not rolled back.");
+    CHECK(wr.pc == 0x0002, "with the PC ON the STA -- stopped BEFORE it, not at the next boundary");
+    CHECK(w.m.bus.memRead(0x2000) == 0x00, "and the write never happened -- the byte is not there yet");
 
     // A READ breakpoint on the same address does NOT fire on that write. The cycle
     // type is part of the match, or every BREAK MEM R would trip on its own store.
@@ -156,13 +156,89 @@ void test_debug() {
     RunResult qr = q.m.debug.run(0);
     CHECK(qr.why == StopReason::Halted, "a read breakpoint ignores a write, and the program HLTs");
 
-    // I/O, and a RANGE.
+    // A register reader over the reflected register set -- the CPU-agnostic seam the
+    // debugger itself uses, so the test never learns what an 8080 is.
+    auto regOf = [](CpuCore* c, const std::string& name) -> uint32_t {
+        for (const RegDef& rd : c->registers())
+            if (rd.name == name) return rd.get();
+        return 0xFFFFFFFF;  // no such register -- an assertion below will fail loudly
+    };
+
+    // I/O, and a RANGE. The break fires BEFORE the IN executes: the PC is on the IN,
+    // the port was never physically read, and A is whatever it was -- not the port byte.
     Rig io;
-    io.load({0xDB, 0x10, 0x76});  // IN 10 ; HLT
+    io.load({0x3E, 0x55,          // MVI A,55  -- a sentinel we can prove survives
+             0xDB, 0x10,          // IN 10
+             0x76});              // HLT
     io.cpu->setPc(0);
     int ib = io.m.debug.add(BreakKind::IoRead, 0x10, 0x1F);
     RunResult ir = io.m.debug.run(0);
     CHECK(ir.why == StopReason::Breakpoint && ir.bp == ib, "an IN from anywhere in 10-1F stops it");
+    CHECK(ir.pc == 0x0002, "with the PC ON the IN -- stopped before it, nothing executed");
+    CHECK(regOf(io.cpu, "A") == 0x55, "and A is the sentinel, NOT the port byte -- the IN never ran");
+    CHECK(io.m.debug.breakpoints()[0].hits == 1, "counted exactly once");
+
+    SECTION("a cycle breakpoint unwinds the WHOLE instruction, not just its own cycle");
+
+    // BREAK MEM R on the OPERAND byte of a 3-byte op. The opcode fetch does not match
+    // (wrong address); the operand read does -- and the machine stops with the PC on
+    // the OPCODE, the whole instruction rolled back, HL never loaded.
+    Rig mid;
+    mid.load({0x21, 0x34, 0x12, 0x76});  // LXI H,1234 ; HLT
+    mid.cpu->setPc(0);
+    mid.m.debug.add(BreakKind::MemRead, 0x0001, 0x0001);
+    RunResult mrr = mid.m.debug.run(0);
+    CHECK(mrr.why == StopReason::Breakpoint, "a read of the operand byte stops the machine");
+    CHECK(mrr.pc == 0x0000, "with the PC on the OPCODE, not the operand -- the instruction unwound");
+    CHECK(regOf(mid.cpu, "H") == 0x00 && regOf(mid.cpu, "L") == 0x00, "and HL was never loaded");
+
+    SECTION("RESUME past a cycle breakpoint -- the one-shot lets you step through it");
+
+    // Sitting ON the instruction means a bare RUN would re-issue the identical cycle
+    // and trap forever. The one-shot lets exactly that instruction through, once, so a
+    // loop that returns to it traps again on the NEXT pass -- and never double-counts.
+    Rig res;
+    res.load({0xDB, 0x10,          // IN 10
+              0xC3, 0x00, 0x00});  // JMP 0
+    res.cpu->setPc(0);
+    res.m.debug.add(BreakKind::IoRead, 0x10, 0x10);
+    RunResult rr = res.m.debug.run(0);
+    CHECK(rr.why == StopReason::Breakpoint && rr.pc == 0x0000, "first: stops before the IN");
+    CHECK(res.m.debug.breakpoints()[0].hits == 1, "one hit so far");
+
+    rr = res.m.debug.run(0);   // resume -- must get PAST the IN this time
+    CHECK(rr.why == StopReason::Breakpoint && rr.pc == 0x0000,
+          "resume runs the IN, loops, and traps on the NEXT pass -- not stuck on this one");
+    CHECK(regOf(res.cpu, "A") == 0xFF, "the IN executed on resume: A took the floating-bus byte");
+    CHECK(res.m.debug.breakpoints()[0].hits == 2, "the resumed cycle was not recounted -- the next pass is hit 2");
+
+    SECTION("an unarmed run (only a PC breakpoint) never touches the cycle path");
+
+    // No cycle breakpoint means no veto is installed, so an IN executes untouched --
+    // proof the machinery is inert unless a MEM/IO breakpoint asked for it.
+    Rig un;
+    un.load({0x3E, 0x55,          // MVI A,55
+             0xDB, 0x10,          // IN 10  -- reads the floating bus, 0xFF
+             0x76});              // HLT
+    un.cpu->setPc(0);
+    un.m.debug.add(BreakKind::Pc, 0x0004, 0x0004);
+    RunResult ur = un.m.debug.run(0);
+    CHECK(ur.why == StopReason::Breakpoint && ur.pc == 0x0004, "it stops at the PC breakpoint");
+    CHECK(regOf(un.cpu, "A") == 0xFF, "and the IN really ran -- no veto interfered with the cycle");
+
+    SECTION("Stop and TraceOn on the SAME cycle: it stops, and the vetoed cycle is not traced");
+
+    Rig trc;
+    trc.load({0xDB, 0x10, 0x76});  // IN 10 ; HLT
+    trc.cpu->setPc(0);
+    std::ostringstream ts;
+    trc.m.debug.traceTo(&ts, 0);  // sink everything...
+    trc.m.debug.traceOff();       // ...but start off; the tracepoint will turn it on
+    trc.m.debug.add(BreakKind::IoRead, 0x10, 0x10, nullptr, BreakAction::TraceOn);
+    int sb = trc.m.debug.add(BreakKind::IoRead, 0x10, 0x10);  // a Stop on the same cycle
+    RunResult trcr = trc.m.debug.run(0);
+    CHECK(trcr.why == StopReason::Breakpoint && trcr.bp == sb, "the Stop wins the report");
+    CHECK(ts.str().empty(), "and the cycle was vetoed before it could be recorded -- nothing traced");
 
     SECTION("a breakpoint is armed only while the machine RUNS");
 

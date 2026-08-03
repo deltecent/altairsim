@@ -152,4 +152,40 @@ void test_bus() {
         CHECK(m.bus.takeUnclaimedHalt(), "HALT arms the boundary stop");
         CHECK(!m.bus.takeUnclaimedHalt(), "take is read-and-clear -- it fires once");
     }
+
+    SECTION("the pre-access veto -- a cycle can be abandoned BEFORE any board is touched");
+
+    // The debugger installs this to stop a cycle breakpoint WITH the PC on the
+    // instruction (nothing read, nothing written). The bus's own contract is narrow:
+    // consult the predicate at the top of a cycle, and if it says so, throw
+    // CycleBreakBefore before driving anyone. Absent or false, it is a complete no-op.
+    {
+        Machine m;
+        std::string err;
+        MemoryBoard* mem = addMem(m, "mem0");
+        mem->addRegion(ram(0, 0x1000), err);
+        setProperty(*mem, "fill", "zero", err);
+        mem->power();
+        m.bus.memWrite(0x0010, 0x5A);  // a byte to prove the read below is real
+
+        // No veto: an ordinary read and write, untouched.
+        CHECK(m.bus.memRead(0x0010) == 0x5A, "with no veto installed, a read returns the byte");
+
+        // A veto that vetoes ONE address: reads elsewhere pass, the armed one throws
+        // and -- the whole point -- leaves memory unchanged because it threw first.
+        m.bus.setPreAccessVeto([](const BusCycle& c) { return c.addr == 0x0010; });
+        CHECK(m.bus.memRead(0x0020) == 0x00, "a cycle the veto ignores runs normally");
+
+        bool threw = false;
+        try {
+            m.bus.memWrite(0x0010, 0xFF);
+        } catch (const CycleBreakBefore&) {
+            threw = true;
+        }
+        CHECK(threw, "a vetoed cycle throws CycleBreakBefore");
+
+        m.bus.clearPreAccessVeto();
+        CHECK(m.bus.memRead(0x0010) == 0x5A,
+              "and it was thrown BEFORE the write landed -- the old byte is still there");
+    }
 }
