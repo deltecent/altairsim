@@ -25,29 +25,33 @@
  * already the Linux end of the old wish list, and its advance width (0.602em) is Menlo's,
  * so pinning it moves almost nothing and guarantees all of it.
  *
- * Provenance -- both are UNMODIFIED upstream release files, so their hashes can be checked
- * against the source and both licenses ("leave this notice intact") are satisfied by
- * carrying the text next to them. See docs/fonts/README.md.
+ * Provenance -- DejaVu is an unmodified upstream release file. XCharter is TrueType
+ * DETERMINISTICALLY CONVERTED from the upstream .otf (it ships no .ttf), because Chrome's
+ * --print-to-pdf embeds a CFF .otf as a Type 3 font whose text layer copies out garbled
+ * (issue #246); TrueType embeds as CID TrueType and copies clean. Both the source .otf and
+ * the converted .ttf hashes are recorded, and both licenses ("leave this notice intact",
+ * conversion permitted) are satisfied by carrying the text next to them. See
+ * docs/fonts/README.md.
  */
 @font-face {
   font-family: "XCharter";
   font-weight: 400; font-style: normal;
-  src: url("fonts/XCharter-Roman.otf") format("opentype");
+  src: url("fonts/XCharter-Roman.ttf") format("truetype");
 }
 @font-face {
   font-family: "XCharter";
   font-weight: 700; font-style: normal;
-  src: url("fonts/XCharter-Bold.otf") format("opentype");
+  src: url("fonts/XCharter-Bold.ttf") format("truetype");
 }
 @font-face {
   font-family: "XCharter";
   font-weight: 400; font-style: italic;
-  src: url("fonts/XCharter-Italic.otf") format("opentype");
+  src: url("fonts/XCharter-Italic.ttf") format("truetype");
 }
 @font-face {
   font-family: "XCharter";
   font-weight: 700; font-style: italic;
-  src: url("fonts/XCharter-BoldItalic.otf") format("opentype");
+  src: url("fonts/XCharter-BoldItalic.ttf") format("truetype");
 }
 @font-face {
   font-family: "DejaVu Sans Mono";
