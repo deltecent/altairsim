@@ -178,41 +178,15 @@ bool Debugger::armObserver() {
             ringHead_ = (ringHead_ + 1) % kHistoryCap;
         }
 
-        // Cycle breakpoints: the CYCLE kinds only. BREAK <addr> is a PC comparison
-        // and lives in the run loop; these watch the stream itself.
+        // Cycle breakpoints for a DMA-DRIVEN cycle. A board's own transfer has no CPU
+        // instruction to unwind, so it cannot pre-break -- it matches here, after the
+        // access, and the run loop stops at the boundary (like it always did). A CPU
+        // cycle does NOT match here: it is handled by the pre-access veto, which stops
+        // the machine BEFORE the access with the PC still on the instruction.
         //
-        // MATCHED BEFORE THE TRACE LINE IS EMITTED, and the order is the feature: a
-        // tracepoint can turn tracing on RIGHT HERE, and the cycle that turned it on
-        // is the one you wanted to see. BREAK MEM W 2000 TRACE ON puts the write to
-        // 2000 at the top of the trace instead of one cycle above it.
-        for (Breakpoint& b : bps_) {
-            if (!b.enabled || b.kind == BreakKind::Pc) continue;
-
-            bool match = false;
-            switch (b.kind) {
-            case BreakKind::MemRead:  match = c.type == Cycle::MemRead;  break;
-            case BreakKind::MemWrite: match = c.type == Cycle::MemWrite; break;
-            case BreakKind::IoRead:   match = c.type == Cycle::IoRead;   break;
-            case BreakKind::IoWrite:  match = c.type == Cycle::IoWrite;  break;
-            case BreakKind::Pc:       break;
-            case BreakKind::TapeStop: break;  // device event, matched in the tape-stop path, not here
-            }
-            if (!match) continue;
-
-            bool io = (b.kind == BreakKind::IoRead || b.kind == BreakKind::IoWrite);
-            uint32_t a = io ? c.port() : c.addr;
-            if (a < b.lo || a > b.hi) continue;
-
-            ++b.hits;
-
-            // A tracepoint acts and the machine runs on -- so it does NOT set
-            // cycleHit_, and a Stop breakpoint on the same cycle still stops.
-            if (b.action != BreakAction::Stop) {
-                traceActive_ = (b.action == BreakAction::TraceOn);
-                continue;
-            }
-            if (!cycleHit_) cycleHit_ = b.id;   // the FIRST one to fire wins the report
-        }
+        // Matched BEFORE the trace line is emitted, so a DMA tracepoint that turns
+        // tracing on puts the cycle that turned it on at the top of the trace.
+        if (inDma_) matchCycleBreak(c);
 
         // TRACE: one line per cycle the mask admits.
         if (tracing() && traceShows(rec)) *traceSink_ << formatCycle(rec, boardHandles_) << "\n";
@@ -321,6 +295,42 @@ void Debugger::disarmObserver() {
         m_.bus.unobserve(observer_);
         observer_ = 0;
     }
+    m_.bus.clearPreAccessVeto();
+}
+
+// Match one cycle against the CYCLE-kind breakpoints, doing the hit-counting and
+// trace bookkeeping in ONE place -- called from the pre-access veto (a CPU cycle)
+// and from the post-access observer (a DMA cycle). Sets cycleHit_ for a Stop; the
+// caller decides what that means (throw-and-unwind vs. stop at the boundary).
+void Debugger::matchCycleBreak(const BusCycle& c) {
+    for (Breakpoint& b : bps_) {
+        if (!b.enabled || b.kind == BreakKind::Pc) continue;
+
+        bool match = false;
+        switch (b.kind) {
+        case BreakKind::MemRead:  match = c.type == Cycle::MemRead;  break;
+        case BreakKind::MemWrite: match = c.type == Cycle::MemWrite; break;
+        case BreakKind::IoRead:   match = c.type == Cycle::IoRead;   break;
+        case BreakKind::IoWrite:  match = c.type == Cycle::IoWrite;  break;
+        case BreakKind::Pc:       break;
+        case BreakKind::TapeStop: break;  // device event, matched in the tape-stop path, not here
+        }
+        if (!match) continue;
+
+        bool io = (b.kind == BreakKind::IoRead || b.kind == BreakKind::IoWrite);
+        uint32_t a = io ? c.port() : c.addr;
+        if (a < b.lo || a > b.hi) continue;
+
+        ++b.hits;
+
+        // A tracepoint acts and the machine runs on -- so it does NOT set
+        // cycleHit_, and a Stop breakpoint on the same cycle still stops.
+        if (b.action != BreakAction::Stop) {
+            traceActive_ = (b.action == BreakAction::TraceOn);
+            continue;
+        }
+        if (!cycleHit_) cycleHit_ = b.id;   // the FIRST one to fire wins the report
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -399,6 +409,14 @@ RunResult Debugger::run(uint64_t maxSteps) {
         return r;
     }
 
+    // ONE-SHOT RESUME (see skipArmed_): a previous run stopped BEFORE a cycle
+    // breakpoint, leaving the PC on the instruction that tripped. If the PC is still
+    // there, keep the one-shot armed so this run steps THROUGH that instruction once
+    // before the veto starts trapping again. If the operator moved the PC in between
+    // (a jump, a register poke), the one-shot is stale -- drop it so it cannot swallow
+    // an unrelated hit at the new address.
+    if (skipArmed_ && cpu->pc() != resumeCyclePc_) skipArmed_ = false;
+
     clearInterrupt();
     bool armed = armObserver();
     m_.running = true;
@@ -414,6 +432,33 @@ RunResult Debugger::run(uint64_t maxSteps) {
         if (b.enabled && deviceEventForKind(b.kind)) { watchDeviceEvent = true; break; }
     if (watchDeviceEvent)
         for (const auto& bd : m_.boards()) bd->takeAutoStop();
+
+    // PRE-ACCESS VETO for the CYCLE breakpoints. Installed only when at least one
+    // MEM/IO breakpoint is enabled, so a machine that carries only PC breakpoints (or
+    // none) never pays for the four cycle paths' null test to become a real call. The
+    // veto fires from inside a CPU cycle, BEFORE any board is touched: it matches the
+    // cycle, and on a Stop it throws CycleBreakBefore so the instruction unwinds with
+    // nothing executed and the PC still on it. A DMA cycle is not "this instruction" --
+    // it has no CPU state to roll back -- so it is left to the post-access observer.
+    bool watchCycle = false;
+    for (const Breakpoint& b : bps_)
+        if (b.enabled && (b.kind == BreakKind::MemRead || b.kind == BreakKind::MemWrite ||
+                          b.kind == BreakKind::IoRead || b.kind == BreakKind::IoWrite)) {
+            watchCycle = true;
+            break;
+        }
+    if (watchCycle)
+        m_.bus.setPreAccessVeto([this](const BusCycle& c) -> bool {
+            if (inDma_) return false;   // a board's transfer, not the CPU's instruction
+            // The resumed instruction runs with the veto inert -- for the WHOLE
+            // instruction, not just its first matching cycle, so an instruction with
+            // several matching cycles (a broad BREAK MEM R over its own fetches) still
+            // steps through instead of re-trapping on cycle two. The run loop clears
+            // skipArmed_ the moment that instruction retires.
+            if (skipArmed_) return false;
+            matchCycleBreak(c);
+            return cycleHit_ != 0;
+        });
 
     // Reflected registers for BREAK <addr> IF <expr>. The RegDef list is snapshotted
     // ONCE -- it is stable across a run (its get() closures read live state), so a
@@ -450,8 +495,10 @@ RunResult Debugger::run(uint64_t maxSteps) {
         // sibling of the bus flight recorder in armObserver(); always on while running.
         // A ring slot's regs vector keeps its capacity across wraps, so a warmed ring
         // records without allocating. Reuses the once-snapshotted `regs` for the getters.
+        // Hoisted out of the block below so the CycleBreakBefore catch can read it
+        // back: it is the pristine register snapshot to restore the CPU from.
+        InsnRec* slot;
         {
-            InsnRec* slot;
             if (insnRing_.size() < kInsnHistoryCap) {
                 insnRing_.emplace_back();
                 slot = &insnRing_.back();
@@ -467,7 +514,36 @@ RunResult Debugger::run(uint64_t maxSteps) {
                 slot->bytes[k] = m_.bus.peek((uint16_t)(slot->pc + k));
         }
 
-        StepResult s = master->step(m_.bus);
+        StepResult s;
+        try {
+            s = master->step(m_.bus);
+        } catch (const CycleBreakBefore&) {
+            // A pre-access cycle breakpoint fired inside this instruction. The bus
+            // threw before touching any board, so no port was read and no byte
+            // written -- but the core had already mutated registers on its way to the
+            // vetoed cycle (PC stepped past the opcode, an operand fetched, and for a
+            // multi-cycle op an EARLIER cycle may have committed). Restore the whole
+            // architectural state from the boundary snapshot: PC back onto the
+            // instruction, every register pristine. Order-independent -- pair/half
+            // aliases restore to the same snapshot value.
+            for (size_t i = 0; i < regs.size(); ++i) regs[i].set(slot->regs[i]);
+
+            r.why = StopReason::Breakpoint;
+            r.bp = cycleHit_;
+
+            // Arm the one-shot so the next RUN/STEP can get PAST this line: restoring
+            // the PC means a bare resume would re-issue the identical cycle and trap
+            // forever. See skipArmed_.
+            skipArmed_ = true;
+            resumeCyclePc_ = cpu->pc();
+            break;
+        }
+
+        // The instruction retired. If we were resuming through a one-shot, that debt
+        // is now paid -- re-arm the veto so the NEXT matching cycle traps normally
+        // (including a later pass over this same instruction in a loop).
+        if (skipArmed_) skipArmed_ = false;
+
         ++r.steps;
         r.tStates += s.tStates;
 
@@ -484,10 +560,11 @@ RunResult Debugger::run(uint64_t maxSteps) {
         // that came due during this instruction is already live before we offer.
         serviceDma();
 
-        // A CYCLE breakpoint fired somewhere inside that instruction. We finish the
-        // instruction and stop at the boundary -- never mid-instruction, because
-        // real hardware cannot do that either, and a half-executed instruction is
-        // a corrupted machine wearing a debugger's clothes.
+        // A cycle breakpoint matched a DMA-DRIVEN cycle during serviceDma() -- set by
+        // the post-access observer, since a board's own transfer has no CPU instruction
+        // to unwind. We stop here at the boundary. (A CPU cycle never reaches this: it
+        // stops earlier, via the pre-access veto's throw, with the PC on the instruction
+        // and nothing executed.)
         if (armed && cycleHit_) {
             r.why = StopReason::Breakpoint;
             r.bp = cycleHit_;

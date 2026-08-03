@@ -268,6 +268,14 @@ private:
     bool armObserver();
     void disarmObserver();
 
+    // Match one bus cycle against the CYCLE-kind breakpoints (MEM/IO, read/write) --
+    // count the hit, flip trace for a tracepoint, and set cycleHit_ for a Stop. Called
+    // from TWO places so the bookkeeping lives once: the pre-access veto (for a CPU
+    // cycle, so the machine stops BEFORE the access) and the post-access observer (for
+    // a DMA-driven cycle, which has no CPU instruction to roll back). PC and device-event
+    // kinds are not its business and are skipped.
+    void matchCycleBreak(const BusCycle& c);
+
     // Grant pHLDA to any board pulling pHOLD (DESIGN.md 4.5), in slot order -- slot
     // order IS the daisy-chain priority, no arbitration register. Drives each granted
     // board's BusMaster while it keeps requesting, charging the stolen T-states to the
@@ -279,12 +287,25 @@ private:
     std::vector<Breakpoint> bps_;
     int nextId_ = 1;
 
-    // Set by the bus observer when a cycle breakpoint matches. The run loop reads
-    // it at the next instruction boundary rather than stopping mid-instruction,
-    // because a real machine cannot stop mid-instruction either -- and half-run
-    // instructions are how a debugger corrupts the state it exists to show you.
+    // Set by matchCycleBreak when a Stop-action cycle breakpoint matches, from either
+    // of its two callers. For a CPU cycle it is set by the PRE-access veto, which then
+    // throws CycleBreakBefore -- the instruction unwinds untouched and the machine stops
+    // with the PC on it, nothing executed. For a DMA-driven cycle it is set by the
+    // POST-access observer and the run loop stops at the next boundary: a board's own
+    // transfer has no CPU instruction to roll back, so pre/post makes no difference there.
     int cycleHit_ = 0;
     int observer_ = 0;
+
+    // ONE-SHOT RESUME past a pre-access cycle breakpoint. Stopping BEFORE the access
+    // restores the PC onto the very instruction that tripped, so a bare RUN/STEP would
+    // re-issue the identical cycle and the veto would fire again, forever -- the operator
+    // could never get past the line. So on such a stop we remember the PC and arm a
+    // one-shot: the next run lets a matching cycle at that SAME PC through exactly once
+    // (no hit counted, no stop), then disarms -- so a later pass over the same instruction
+    // in a loop traps normally. Guarded on the PC so moving the PC between stops (a jump,
+    // a DEPOSIT) never swallows an unrelated hit.
+    bool skipArmed_ = false;
+    uint16_t resumeCyclePc_ = 0;
 
     // One observer folds three jobs into a single call per cycle: record HISTORY,
     // emit a TRACE line, and match cycle breakpoints. This decides whether a cycle

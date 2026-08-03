@@ -8,6 +8,17 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### `BREAK IO` and `BREAK MEM` now stop *before* the instruction runs
+
+A cycle breakpoint used to let the triggering instruction finish and stop at the next boundary, so
+`BREAK IO R 19` on an `IN A,(19)` came back with the PC on the *following* instruction and `A`
+already loaded from the port. Now every `MEM`/`IO` cycle breakpoint stops with the PC sitting **on**
+the instruction that tripped it, having executed nothing: no port read, no byte written, registers
+pristine — the same place a `BREAK <addr>` stops. A bare `RUN` or `STEP` then executes that
+instruction fresh. (A `BREAK MEM W` on a *DMA* transfer still stops at the boundary after the write —
+a board's own transfer has no CPU instruction to unwind.) `SHOW BUS`/`WHO` will not reflect the
+stopped-on cycle, because it never ran.
+
 ### A machine file can leave the operator a note — `#>`
 
 A comment line in a machine file that begins **`#>`** is a *note*: instead of being discarded like
