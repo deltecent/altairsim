@@ -91,6 +91,7 @@ bool Debugger::remove(int id, std::string& err) {
     for (size_t i = 0; i < bps_.size(); ++i) {
         if (bps_[i].id == id) {
             bps_.erase(bps_.begin() + (long)i);
+            if (bps_.empty()) nextId_ = 1;
             return true;
         }
     }
@@ -98,7 +99,7 @@ bool Debugger::remove(int id, std::string& err) {
     return false;
 }
 
-void Debugger::clear() { bps_.clear(); }
+void Debugger::clear() { bps_.clear(); nextId_ = 1; }
 
 // A board -> small handle, for the HISTORY "who" columns. The hot path: a one-entry
 // cache (the same board answered the last cycle), then a short scan of the boards seen
