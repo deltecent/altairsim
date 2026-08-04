@@ -4908,16 +4908,31 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             hi = lo;
         }
 
-        // BREAK <addr> IF <expr>: a condition over the registers. PC breakpoints
-        // only -- a MEM/IO breakpoint fires INSIDE an instruction, where "what is A?"
-        // has no boundary-consistent answer. The rest of the line is the expression;
-        // it is re-tokenized by the parser, so spacing does not matter.
+        // A CONDITION on the breakpoint. Two keywords, and which is legal depends on the
+        // kind:
+        //   IF <expr>    -- a gate on the registers. On a plain BREAK <addr> it is the
+        //                   PC-arrival state; on a MEM/IO breakpoint it is judged at the
+        //                   instruction boundary against the state the instruction BEGAN
+        //                   with (its inputs). Valid on every kind.
+        //   LOADS <expr> -- tests the value an IN just read, judged AFTER the instruction
+        //                   retires -- the one place that value is in a register. Only on
+        //                   BREAK IO R <port>, where a read loads a register.
+        // A MEM/IO condition used to be refused outright: it fires INSIDE an instruction,
+        // where "what is A?" had no boundary-consistent answer. Deferring the judgement to
+        // the boundary (core/debug.h CondWhen) is what makes it answerable. The rest of the
+        // line is the expression; the parser re-tokenizes it, so spacing does not matter.
         std::shared_ptr<const Expr> cond;
-        if (end > argi + 1 && is(a[argi + 1], "IF")) {
-            if (kind != BreakKind::Pc) {
-                out << "IF applies to a plain BREAK <addr>, not to a MEM or IO breakpoint.\n";
-                failed_ = true;
-                return true;
+        CondWhen when = CondWhen::Before;
+        if (end > argi + 1 && (is(a[argi + 1], "IF") || is(a[argi + 1], "LOADS"))) {
+            bool loads = is(a[argi + 1], "LOADS");
+            if (loads) {
+                if (kind != BreakKind::IoRead) {
+                    out << "LOADS applies to BREAK IO R <port> -- it tests the value an "
+                           "IN read.\n";
+                    failed_ = true;
+                    return true;
+                }
+                when = CondWhen::After;
             }
             CpuCore* c = needCpu(out);
             if (!c) return true;
@@ -4928,7 +4943,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 src += a[i];
             }
             if (src.empty()) {
-                out << "usage: BREAK <addr> IF <expr>   e.g. BREAK 100 IF A==0\n";
+                out << "usage: BREAK ... " << (loads ? "LOADS" : "IF")
+                    << " <expr>   e.g. BREAK IO R 10 "
+                    << (loads ? "LOADS A>7F" : "IF A==0") << "\n";
                 failed_ = true;
                 return true;
             }
@@ -4964,7 +4981,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             m_.debug.traceOff();
         }
 
-        int id = m_.debug.add(kind, lo, hi, cond, action);
+        int id = m_.debug.add(kind, lo, hi, cond, action, when);
         for (const Breakpoint& b : m_.debug.breakpoints())
             if (b.id == id) out << "breakpoint " << id << ": " << b.describe() << "\n";
         return true;

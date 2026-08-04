@@ -3,6 +3,7 @@
 #include "core/machine.h"
 #include "cpu/cpu.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cstdio>
@@ -66,7 +67,9 @@ std::string Breakpoint::describe() const {
         std::snprintf(buf, sizeof buf, "%-6s %0*X-%0*X", breakKindName(kind), w, (unsigned)lo,
                       w, (unsigned)hi);
     std::string s = buf;
-    if (cond) s += " if " + cond->text();
+    // IF and LOADS are the same stored Expr; condWhen tells them apart. LOADS reads as
+    // what it tests -- the value the cycle produced -- so it earns its own word here.
+    if (cond) s += (condWhen == CondWhen::After ? " loads " : " if ") + cond->text();
     // Mirrors the order it was typed in: BREAK 100 IF A==3 TRACE ON. Stop is the
     // default and saying so on every ordinary breakpoint would be noise on every
     // line of the listing.
@@ -75,7 +78,7 @@ std::string Breakpoint::describe() const {
 }
 
 int Debugger::add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond,
-                  BreakAction action) {
+                  BreakAction action, CondWhen condWhen) {
     Breakpoint b;
     b.id = nextId_++;
     b.kind = k;
@@ -83,6 +86,7 @@ int Debugger::add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const E
     b.hi = hi;
     b.cond = std::move(cond);
     b.action = action;
+    b.condWhen = condWhen;
     bps_.push_back(b);
     return b.id;
 }
@@ -322,6 +326,19 @@ void Debugger::matchCycleBreak(const BusCycle& c) {
         uint32_t a = io ? c.port() : c.addr;
         if (a < b.lo || a > b.hi) continue;
 
+        // A CONDITIONAL cycle breakpoint (BREAK ... IF|LOADS) cannot be decided here: this
+        // is mid-instruction, where a register read has no boundary-consistent answer, and
+        // LOADS needs the value the cycle is about to produce. Defer it to the instruction
+        // boundary, which evaluates the condition and counts the hit only if it acts. A
+        // DMA-driven cycle has no CPU instruction to defer to and no meaningful CPU
+        // registers, so a conditional breakpoint simply does not apply to it.
+        if (b.cond) {
+            if (!inDma_ &&
+                std::find(pendingCond_.begin(), pendingCond_.end(), b.id) == pendingCond_.end())
+                pendingCond_.push_back(b.id);
+            continue;
+        }
+
         ++b.hits;
 
         // A tracepoint acts and the machine runs on -- so it does NOT set
@@ -515,6 +532,12 @@ RunResult Debugger::run(uint64_t maxSteps) {
                 slot->bytes[k] = m_.bus.peek((uint16_t)(slot->pc + k));
         }
 
+        // A fresh instruction: forget any conditional cycle matches recorded for the last
+        // one. matchCycleBreak fills this from inside step() below (via the pre-access
+        // veto), and the boundary code past step() drains it -- so it only ever holds THIS
+        // instruction's matches.
+        pendingCond_.clear();
+
         StepResult s;
         try {
             s = master->step(m_.bus);
@@ -608,6 +631,59 @@ RunResult Debugger::run(uint64_t maxSteps) {
                 }
                 if (stop) break;
             }
+        }
+
+        // CONDITIONAL cycle breakpoints (BREAK MEM/IO ... IF|LOADS <expr>). Unlike an
+        // unconditional cycle breakpoint -- which stops BEFORE the access, via the veto's
+        // throw -- a conditional one let the instruction RETIRE (matchCycleBreak recorded
+        // it in pendingCond_ rather than vetoing) and is judged HERE, at the boundary, the
+        // one place the registers have a consistent answer. IF judges the inputs: the
+        // snapshot this loop took BEFORE stepping (slot->regs). LOADS judges the outputs:
+        // the live registers, now the read has landed. See Breakpoint::condWhen.
+        if (!pendingCond_.empty()) {
+            // A resolver over the PRE-instruction snapshot, for the IF (Before) gate -- the
+            // same names as resolveReg, but reading the boundary snapshot rather than the
+            // live registers, so "A" is the accumulator as the instruction FOUND it.
+            Expr::Resolver resolveBefore =
+                [&regs, slot](const std::string& name, uint32_t& outv) -> bool {
+                for (size_t i = 0; i < regs.size(); ++i) {
+                    if (regs[i].name.size() != name.size()) continue;
+                    bool eq = true;
+                    for (size_t j = 0; j < name.size(); ++j)
+                        if (std::toupper((unsigned char)regs[i].name[j]) !=
+                            std::toupper((unsigned char)name[j])) {
+                            eq = false;
+                            break;
+                        }
+                    if (eq) {
+                        outv = slot->regs[i];
+                        return true;
+                    }
+                }
+                return false;
+            };
+            bool condStop = false;
+            for (int id : pendingCond_) {
+                for (Breakpoint& b : bps_) {
+                    if (b.id != id || !b.enabled || !b.cond) continue;
+                    const Expr::Resolver& res =
+                        (b.condWhen == CondWhen::After) ? resolveReg : resolveBefore;
+                    if (!b.cond->eval(res)) break;   // condition false -- it did not act
+                    ++b.hits;
+                    // A conditional cycle TRACEPOINT flips trace and runs on, exactly as
+                    // the unconditional one does in matchCycleBreak; only a Stop stops.
+                    if (b.action != BreakAction::Stop) {
+                        traceActive_ = (b.action == BreakAction::TraceOn);
+                        break;
+                    }
+                    r.why = StopReason::Breakpoint;
+                    r.bp = b.id;
+                    condStop = true;
+                    break;
+                }
+                if (condStop) break;
+            }
+            if (condStop) break;
         }
 
         // BREAK <addr>: PC equals X after a step. One comparison, and it knows

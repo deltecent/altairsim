@@ -212,6 +212,64 @@ void test_debug() {
     CHECK(regOf(res.cpu, "A") == 0xFF, "the IN executed on resume: A took the floating-bus byte");
     CHECK(res.m.debug.breakpoints()[0].hits == 2, "the resumed cycle was not recounted -- the next pass is hit 2");
 
+    SECTION("BREAK IO R ... LOADS -- a condition on the byte an IN read, judged AFTER it");
+
+    // LOADS is the whole reason a cycle condition has to wait for the boundary: at the
+    // IO cycle the port has not been read yet, so A does not hold the value to test. The
+    // machine runs the IN, then judges. An unclaimed port floats to 0xFF here, so
+    // `LOADS A==0FF` holds and `LOADS A==00` never does.
+    Rig ld;
+    ld.load({0x3E, 0x55,          // MVI A,55  -- a value the read must overwrite
+             0xDB, 0x10,          // IN 10     -- floating bus -> A becomes FF
+             0x76});              // HLT
+    ld.cpu->setPc(0);
+    int lb = ld.m.debug.add(BreakKind::IoRead, 0x10, 0x10, cond(ld.cpu, "A==0FF"),
+                            BreakAction::Stop, CondWhen::After);
+    RunResult lr = ld.m.debug.run(0);
+    CHECK(lr.why == StopReason::Breakpoint && lr.bp == lb, "it stops -- the IN read FF, matching LOADS");
+    CHECK(lr.pc == 0x0004, "with the PC PAST the IN -- a conditional cycle break stops at the boundary, not before");
+    CHECK(regOf(ld.cpu, "A") == 0xFF, "and A holds what the port delivered -- the IN actually ran");
+    CHECK(ld.m.debug.breakpoints()[0].hits == 1, "counted once, as it acted once");
+    CHECK(ld.m.debug.breakpoints()[0].describe().find("loads A==0FF") != std::string::npos,
+          "describe() calls it LOADS, not IF");
+
+    // The SAME expression under LOADS that never matches: A is FF, not 00, so nothing
+    // stops and the program reaches its HLT. A false cycle condition is not a hit.
+    Rig ldn;
+    ldn.load({0x3E, 0x55, 0xDB, 0x10, 0x76});
+    ldn.cpu->setPc(0);
+    ldn.m.debug.add(BreakKind::IoRead, 0x10, 0x10, cond(ldn.cpu, "A==00"),
+                    BreakAction::Stop, CondWhen::After);
+    RunResult ldnr = ldn.m.debug.run(0);
+    CHECK(ldnr.why == StopReason::Halted, "LOADS A==00 never holds against a 0xFF read -- the machine HLTs");
+    CHECK(ldn.m.debug.breakpoints()[0].hits == 0, "and a condition that never held is not a hit");
+
+    SECTION("BREAK IO R ... IF -- a gate on the INPUTS, judged against the pre-instruction state");
+
+    // IF and LOADS are opposites in time. IF reads the registers as the instruction
+    // BEGAN, so `IF A==55` sees the sentinel the IN is about to overwrite -- and holds --
+    // while `IF A==0FF` sees 0x55, not the FF the read will produce, and does not. This is
+    // exactly the LOADS case inverted, proving the two evaluate at different boundaries.
+    Rig iff;
+    iff.load({0x3E, 0x55, 0xDB, 0x10, 0x76});  // MVI A,55 ; IN 10 ; HLT
+    iff.cpu->setPc(0);
+    int fb = iff.m.debug.add(BreakKind::IoRead, 0x10, 0x10, cond(iff.cpu, "A==55"),
+                             BreakAction::Stop, CondWhen::Before);
+    RunResult ifr = iff.m.debug.run(0);
+    CHECK(ifr.why == StopReason::Breakpoint && ifr.bp == fb, "it stops -- IF saw A==55, the value BEFORE the IN");
+    CHECK(regOf(iff.cpu, "A") == 0xFF, "yet A now reads FF: IF gated on the input, but the IN still ran");
+    CHECK(iff.m.debug.breakpoints()[0].describe().find("if A==55") != std::string::npos,
+          "describe() calls it IF");
+
+    Rig ifn;
+    ifn.load({0x3E, 0x55, 0xDB, 0x10, 0x76});
+    ifn.cpu->setPc(0);
+    ifn.m.debug.add(BreakKind::IoRead, 0x10, 0x10, cond(ifn.cpu, "A==0FF"),
+                    BreakAction::Stop, CondWhen::Before);
+    RunResult ifnr = ifn.m.debug.run(0);
+    CHECK(ifnr.why == StopReason::Halted,
+          "IF A==0FF tests the pre-read A (55), not the FF the IN would load -- so it never stops");
+
     SECTION("an unarmed run (only a PC breakpoint) never touches the cycle path");
 
     // No cycle breakpoint means no veto is installed, so an IN executes untouched --
