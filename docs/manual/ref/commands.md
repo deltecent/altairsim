@@ -427,7 +427,7 @@ SEA 0-FFFF "CP/M"
 ### BREAK — `B[REAK]`
 
 ```
-BREAK [<addr> [IF <expr>] | MEM R|W <addr> | IO R|W <port> | TAPE STOP] [TRACE ON|OFF]
+BREAK [<addr> | MEM R|W <addr> | IO R|W <port> | TAPE STOP] [IF <expr> | LOADS <expr>] [TRACE ON|OFF]
 ```
 Bare BREAK lists them. Only the first kind is about the CPU at all -- MEM and IO
 watch BUS CYCLES, so they catch a DMA transfer too and work unchanged on any
@@ -444,10 +444,20 @@ BREAK TAPE STOP  stop when a cassette deck auto-stops after a load
 ```
 
 
-A plain address breakpoint may carry a CONDITION -- IF <expr> over the
-registers -- and stops only when it holds. A bare word that names a register IS
-that register, so a literal is written with a leading zero (0A is ten, A is the
-accumulator). == != < > <= >= compare; && || combine; & | mask.
+A breakpoint may carry a CONDITION and stop only when it holds. IF <expr> tests
+the registers. A bare word that names a register IS that register, so a literal
+is written with a leading zero (0A is ten, A is the accumulator). == != < > <= >=
+compare; && || combine; & | mask.
+
+IF works on EVERY kind. On a plain BREAK <addr> it is the PC-arrival state. On a
+MEM or IO breakpoint it is judged at the instruction BOUNDARY, against the state
+the instruction began with -- its inputs -- so a conditional cycle breakpoint
+stops just AFTER the access, where an unconditional one stops just before it.
+
+BREAK IO R also takes LOADS <expr>: like IF, but judged AFTER the IN retires, so
+it sees the byte the port just delivered. IF gates on the inputs; LOADS on the
+value read. (The Z80 reads a port into any register, or memory; name the one the
+IN targets. On an 8080 it is always A.)
 
 The names are the ACTIVE CPU's own -- exactly the set REGS shows, every register
 and flag in it. On an 8080 that is A, BC/DE/HL, SP, PC and CY/Z/S/P/AC; a Z80
@@ -458,15 +468,17 @@ not have is an error, so IF IX==0 waits for a Z80 to be the one in the socket.
 BREAK 100 IF A==0
 BREAK 100 IF HL==8000 && Z==1
 BREAK 100 IF (A&0F)==0
-BREAK 100 IF IX==8000     Z80 -- IX is not an 8080 register
+BREAK IO R 10 IF B==5      stop on an IN from 10, but only while B==5
+BREAK IO R 10 LOADS A>7F   ...only when port 10 hands back a byte over 7F
+BREAK 100 IF IX==8000      Z80 -- IX is not an 8080 register
 ```
 
 
 TRACE ON|OFF makes it a TRACEPOINT: instead of stopping, it turns TRACE on or
 off and the machine RUNS ON. Two of them trace a REGION and nothing else --
 which is how you trace one subroutine out of a program that would otherwise
-bury you. Unlike IF, this works on the MEM and IO kinds too, because it reads
-no registers. TRACE ON at an address traces the instruction AT it; TRACE OFF
+bury you. Like IF, it works on the MEM and IO kinds too. TRACE ON at an address
+traces the instruction AT it; TRACE OFF
 does not -- the region is [on, off).
 
 ```
