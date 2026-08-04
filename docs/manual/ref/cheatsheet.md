@@ -53,7 +53,7 @@ Type the part before the bracket.
 | `R[UN]` | `RUN [addr]` |
 | `H[ISTORY]` | `HISTORY [BUS\|CPU] [n]` |
 | `M[OUNT]` | `MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
-| `B[REAK]` | `BREAK [<addr> [IF <expr>] \| MEM R\|W <addr> \| IO R\|W <port> \| TAPE STOP] [TRACE ON\|OFF]` |
+| `B[REAK]` | `BREAK [<addr> \| MEM R\|W <addr> \| IO R\|W <port> \| TAPE STOP] [IF <expr> \| LOADS <expr>] [TRACE ON\|OFF]` |
 | `E[DIT]` | `EDIT <addr> [ROM]` |
 | `C[ONFIG]` | `CONFIG LOAD <f.toml> \| CONFIG SAVE <f.toml>` |
 | `SE[T]` | `SET <id>[:<u>]\|CONSOLE\|DISPLAY\|REG\|BUS <k>=<v>` |

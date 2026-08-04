@@ -64,6 +64,17 @@ enum class BreakAction {
 
 const char* breakActionName(BreakAction a);
 
+// WHEN a CYCLE breakpoint's condition is judged -- because a MEM/IO breakpoint straddles
+// an instruction, and "what is A?" has two honest answers. `Before` is the IF gate: the
+// registers as the instruction BEGAN (its inputs) -- the same pristine state an
+// unconditional cycle stop rolls back to. `After` is the LOADS test: the registers once
+// the instruction RETIRED (its outputs), the one place the value an IN just read is
+// visible. A conditional cycle breakpoint therefore stops AT THE BOUNDARY (after the
+// access), not before it like an unconditional one -- it has to, to have a
+// boundary-consistent register set to judge. Meaningless for a PC breakpoint, whose
+// condition is always the PC-arrival boundary; it stays `Before` there and is ignored.
+enum class CondWhen { Before, After };
+
 struct Breakpoint {
     int id = 0;
     BreakKind kind = BreakKind::Pc;
@@ -82,7 +93,16 @@ struct Breakpoint {
     // it applies to the PC kind only, since the cycle kinds fire mid-instruction
     // where a register read is not a boundary-consistent question. The Expr carries
     // its own source text, so describe() needs no second copy of it.
+    //
+    // On a CYCLE breakpoint (MEM/IO) the same field carries a BREAK ... IF or BREAK IO R
+    // ... LOADS condition; condWhen (below) says which and WHEN it is judged. There it is
+    // NOT restricted to the PC kind: a cycle breakpoint's condition is evaluated at the
+    // instruction boundary, where the registers have a consistent answer -- see CondWhen.
     std::shared_ptr<const Expr> cond;
+
+    // For a CYCLE breakpoint, WHEN `cond` is judged -- see CondWhen. IF sets Before, LOADS
+    // sets After. Null-cond and PC breakpoints leave it Before, where it is ignored.
+    CondWhen condWhen = CondWhen::Before;
 
     std::string describe() const;
 };
@@ -153,7 +173,7 @@ public:
     explicit Debugger(Machine& m) : m_(m) {}
 
     int add(BreakKind k, uint32_t lo, uint32_t hi, std::shared_ptr<const Expr> cond = nullptr,
-            BreakAction action = BreakAction::Stop);
+            BreakAction action = BreakAction::Stop, CondWhen condWhen = CondWhen::Before);
     bool remove(int id, std::string& err);
     void clear();
     const std::vector<Breakpoint>& breakpoints() const { return bps_; }
@@ -306,6 +326,16 @@ private:
     // a DEPOSIT) never swallows an unrelated hit.
     bool skipArmed_ = false;
     uint16_t resumeCyclePc_ = 0;
+
+    // CONDITIONAL cycle breakpoints (BREAK MEM/IO ... IF|LOADS) that matched during the
+    // instruction now running, awaiting judgement at its boundary. matchCycleBreak records
+    // the matching ids here INSTEAD of stopping before the access: a cycle condition cannot
+    // be evaluated mid-instruction (debug.h CondWhen), and LOADS needs the value the cycle
+    // produced. The run loop evaluates them once the instruction retires -- IF against the
+    // pre-instruction snapshot, LOADS against the live registers -- and counts a hit only
+    // for one that acts. Cleared each iteration. Only CPU cycles record here; a DMA cycle
+    // has no CPU registers to judge against, so a conditional breakpoint does not apply.
+    std::vector<int> pendingCond_;
 
     // One observer folds three jobs into a single call per cycle: record HISTORY,
     // emit a TRACE line, and match cycle breakpoints. This decides whether a cycle

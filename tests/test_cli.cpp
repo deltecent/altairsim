@@ -645,7 +645,7 @@ void test_cli() {
         std::ostringstream out;
         monN.exec("BREAK MEM W 2000 TRACE OFF", out);
         CHECK(mn.debug.breakpoints().back().action == BreakAction::TraceOff,
-              "TRACE OFF on a CYCLE breakpoint is allowed -- it reads no registers, unlike IF");
+              "TRACE OFF on a CYCLE breakpoint is allowed -- a plain tracepoint reads no registers");
         CHECK(mn.debug.breakpoints().back().kind == BreakKind::MemWrite, "and the kind survives it");
     }
     {
@@ -672,6 +672,38 @@ void test_cli() {
         std::ostringstream out;
         monN.exec("BREAK TRACE ON", out);
         CHECK(out.str().find("usage") != std::string::npos, "BREAK TRACE ON alone is a usage error");
+    }
+    monN.exec("NOBREAK", sn);
+
+    SECTION("BREAK MEM/IO ... IF|LOADS -- conditions on a cycle breakpoint");
+
+    // IF is no longer refused on a cycle kind: it is judged at the instruction boundary
+    // (core/debug.h CondWhen), so a MEM/IO breakpoint may carry one. It records a Before
+    // condition -- the pre-instruction state, the inputs.
+    {
+        std::ostringstream out;
+        monN.exec("BREAK IO R 10 IF B==5", out);
+        const Breakpoint& b = mn.debug.breakpoints().back();
+        CHECK(b.kind == BreakKind::IoRead && b.cond != nullptr, "IF is accepted on BREAK IO");
+        CHECK(b.condWhen == CondWhen::Before, "and it is a Before condition -- the instruction's inputs");
+        CHECK(out.str().find("io r   10 if B==5") != std::string::npos, "described as an IF");
+    }
+    // LOADS is the After condition, and only on an IO READ -- where an IN loads a register.
+    {
+        std::ostringstream out;
+        monN.exec("BREAK IO R 10 LOADS A>7F", out);
+        const Breakpoint& b = mn.debug.breakpoints().back();
+        CHECK(b.condWhen == CondWhen::After, "LOADS records an After condition -- judged post-read");
+        CHECK(out.str().find("io r   10 loads A>7F") != std::string::npos, "described as LOADS, not IF");
+    }
+    // LOADS on anything but an IO read has no value to test, and is refused with a reason.
+    {
+        std::ostringstream out;
+        size_t before = mn.debug.breakpoints().size();
+        monN.exec("BREAK IO W 10 LOADS A==0", out);
+        CHECK(out.str().find("LOADS applies to BREAK IO R") != std::string::npos,
+              "LOADS on an IO WRITE is refused -- a write loads nothing");
+        CHECK(mn.debug.breakpoints().size() == before, "and no breakpoint was added");
     }
     monN.exec("NOBREAK", sn);
 

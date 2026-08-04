@@ -103,15 +103,42 @@ distinguishing state in the condition and let the machine run until it holds.
 
 A bare word that names a register *is* that register, so a literal needs a leading zero — `0A`
 is ten, `A` is the accumulator. `==` `!=` `<` `>` `<=` `>=` compare, `&&` `||` combine, `&` `|`
-mask, and parentheses group. Only a plain address breakpoint takes a condition: a `MEM`/`IO` watch
-is a question about the cycle that is happening, not about a register, so there is nothing on it for
-`IF` to test.
+mask, and parentheses group.
 
 ```
 BREAK 100 IF A==0
 BREAK 100 IF HL==8000 && Z==1
 BREAK 100 IF (A&0F)==0        only when the low nibble is zero
 ```
+
+**A cycle watch can carry a condition too.** `BREAK MEM W 100 IF <expr>` or `BREAK IO R 10 IF
+<expr>` stops only on the access whose registers satisfy the condition — so you can wait for the
+*one* write to a shared buffer that happens while a particular counter holds, or the read of a
+status port taken with a specific unit selected. The registers `IF` tests here are the ones the
+instruction ran *with* — its inputs, as they stood the moment it began — the same state a
+`BREAK <addr> IF` at that instruction would see.
+
+```
+BREAK MEM W 100 IF B==0      the write to 0100 taken with B already zero
+BREAK IO R 10 IF C==1        the IN from port 10 while unit 1 is selected
+```
+
+**`LOADS` tests what an `IN` read.** An `IF` on a port read sees the registers *before* the
+instruction, so it cannot ask about the byte the `IN` just fetched — that byte is not in any
+register yet. `BREAK IO R <port> LOADS <expr>` is the other half: it judges the condition *after*
+the instruction retires, so the register the `IN` loaded holds its new value. It is how you stop on
+the *content* of a port rather than the fact of a read — the status bit that finally came up, the
+byte that was out of range.
+
+```
+BREAK IO R 10 LOADS A>7F     stop when the IN from port 10 reads a high byte
+BREAK IO R 08 LOADS (A&80)!=0   ...when bit 7 of the status port is finally set
+```
+
+`IF` and `LOADS` are the same expression read at opposite ends of the instruction: `BREAK IO R 10
+IF A==5` is about the `A` that went *in*, `BREAK IO R 10 LOADS A==5` about the `A` that came *out*.
+`LOADS` belongs to a port read — a write and a memory cycle load no register — so it is only
+accepted on `BREAK IO R`.
 
 ## Reading a block of memory — `DUMP`
 
@@ -434,9 +461,8 @@ altairsim> RUN FF00
 `[on, off)` — exactly the half-open range you would write down if someone asked you which
 instructions were in the subroutine.
 
-Because a trace toggle reads no registers, it works on the bus kinds too — where `IF` cannot go.
-And the cycle that triggered it is the *first line* of the trace, not the line above it: a trace
-should show its own reason.
+A trace toggle works on the bus kinds the same way `IF` now does, and the cycle that triggered it
+is the *first line* of the trace, not the line above it: a trace should show its own reason.
 
 ```
 altairsim> BREAK MEM W 2000 TRACE ON    trace onward from whatever writes 2000

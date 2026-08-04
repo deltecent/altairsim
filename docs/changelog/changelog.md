@@ -54,9 +54,12 @@ and filter actually shape a signal, not as a clean oscillator a real deck could 
 
 Cycle breakpoints (`BREAK MEM`/`BREAK IO`) now stop **before** the triggering instruction runs
 instead of after, so a breakpoint on a port read shows you the registers exactly as they were the
-instant the instruction fired — no port read, no byte written, nothing to unwind. `BREAK TAPE
-STOP` adds a third kind of breakpoint, alongside PC and bus-cycle stops, that halts the instant a
-cassette reaches its own auto-stop. `HISTORY` now defaults to a flight recorder of CPU
+instant the instruction fired — no port read, no byte written, nothing to unwind. Cycle
+breakpoints now take a condition as well: `BREAK MEM W 100 IF B==0` or `BREAK IO R 10 IF C==1`
+stops only on the access whose registers hold, and `BREAK IO R 10 LOADS A>7F` tests the byte an
+`IN` actually read rather than the state it read it with. `BREAK TAPE STOP` adds a third kind of
+breakpoint, alongside PC and bus-cycle stops, that halts the instant a cassette reaches its own
+auto-stop. `HISTORY` now defaults to a flight recorder of CPU
 instructions rather than raw bus cycles, and its bus view (`HISTORY BUS`) names which board drove
 and which answered every cycle it logs. `EDIT`, the byte-at-a-time memory editor, now assembles a
 full instruction where a byte would go. Loaded symbols make disassembly and single-stepping read
