@@ -676,6 +676,42 @@ void test_cli() {
     monN.exec("NOBREAK", sn);
 
     // -----------------------------------------------------------------------
+    // Breakpoint IDs restart at 1 once the set goes empty -- via NOBREAK
+    // (clear all) OR removing the last one -- so the numbers do not march off
+    // to the hundreds across a session of add/clear cycles.
+    // -----------------------------------------------------------------------
+    SECTION("NOBREAK resets the id counter when the set becomes empty");
+
+    monN.exec("NOBREAK", sn);
+    {
+        monN.exec("BREAK 0100", sn);
+        monN.exec("BREAK 0200", sn);
+        CHECK(mn.debug.breakpoints().back().id == 2, "the second breakpoint is id 2");
+        monN.exec("NOBREAK", sn);              // clears all -> counter rewinds
+        std::ostringstream out;
+        monN.exec("BREAK 0300", out);
+        CHECK(mn.debug.breakpoints().back().id == 1,
+              "after NOBREAK cleared everything, the next breakpoint is id 1 again");
+    }
+    {
+        // Removing breakpoints one at a time: the reset fires only on the last one.
+        monN.exec("NOBREAK", sn);
+        monN.exec("BREAK 0100", sn);
+        monN.exec("BREAK 0200", sn);
+        int id1 = mn.debug.breakpoints().front().id;
+        int id2 = mn.debug.breakpoints().back().id;
+        monN.exec("NOBREAK " + std::to_string(id2), sn);   // set not yet empty
+        monN.exec("BREAK 0300", sn);
+        CHECK(mn.debug.breakpoints().back().id > id1,
+              "with one breakpoint still live, the counter does NOT rewind");
+        monN.exec("NOBREAK", sn);                          // now empty -> rewind
+        std::ostringstream out;
+        monN.exec("BREAK 0400", out);
+        CHECK(mn.debug.breakpoints().back().id == 1, "emptied by NOBREAK, ids restart at 1");
+    }
+    monN.exec("NOBREAK", sn);
+
+    // -----------------------------------------------------------------------
     // BOARDS names the RAM and the ROM apart, and says WHICH ROM.
     //
     // The old listing printed `mem:0000-DFFF,FF00-FFFF` -- two ranges squashed

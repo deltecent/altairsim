@@ -87,9 +87,14 @@ BREAK MEM W 100       stop when ANYTHING writes to 0100
 BREAK IO  R 10        stop on an IN from port 10
 BREAK TAPE STOP       stop when a cassette deck auto-stops after a load
 BREAK                 list them
-NOBREAK 2             clear one (the id is a count, so decimal)
+NOBREAK 2             clear one (the id is a plain decimal, not a bus address)
 NOBREAK               clear them all
 ```
+
+Breakpoint ids are handed out in order — 1, 2, 3 — and restart at 1 once no
+breakpoints are left, whether you cleared them all with `NOBREAK` or removed the
+last one by id. Removing a breakpoint from the middle does not renumber the rest,
+so an id is not the running count of live breakpoints.
 
 **An address breakpoint can carry a condition.** `BREAK <addr> IF <expr>` stops only when the
 expression is true — the registers, tested the moment the PC reaches the address. It is what you
