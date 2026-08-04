@@ -32,8 +32,12 @@
 #include "platform/terminal.h"
 
 #include <fcntl.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 
@@ -134,6 +138,49 @@ int main() {
             CHECK(eof, "AND IT HAS ENDED -- this is what a scripted CONSOLE leaves on");
 
             restoreTerm();
+        }
+    }
+
+    // ---- KILLED MID-GUEST. A fatal signal restores the tty before it dies. ----
+    // This is the whole reason the signal handlers in terminal_posix.cpp exist: a crash or
+    // a kill while the guest holds the terminal in raw mode must still give ECHO back, and
+    // no C++ destructor runs on the way out of a signal. We prove it on SIGABRT -- the
+    // signal bus.cpp's std::abort() raises, and one we cannot deliver to ourselves in-process
+    // without dying. So: fork a child, have it take a tty into Guest mode (ECHO cleared) and
+    // raise(SIGABRT), and read the same tty back from the parent. ECHO on again is the
+    // handler having run restoreTerm() before letting the abort proceed.
+    {
+        int m2 = -1, s2 = -1;
+        if (openpty(&m2, &s2, nullptr, nullptr, nullptr) != 0) {
+            std::printf("  [SKIP] no second pty for the signal-restore check\n");
+        } else {
+            termios before{};
+            tcgetattr(s2, &before);
+            CHECK((before.c_lflag & ECHO) != 0, "the fresh pty starts with ECHO on");
+
+            pid_t pid = fork();
+            if (pid == 0) {
+                // Child. No core dump to litter the tree, take the tty as a guest would,
+                // then die by the signal an internal panic would raise.
+                struct rlimit noCore {
+                    0, 0
+                };
+                setrlimit(RLIMIT_CORE, &noCore);
+                dup2(s2, STDIN_FILENO);
+                enterTermMode(TermMode::Guest);  // clears ECHO on the tty
+                std::raise(SIGABRT);             // onFatalSignal must restore before dying
+                _exit(0);                        // unreached: the handler re-raises SIGABRT
+            }
+
+            int st = 0;
+            waitpid(pid, &st, 0);
+            termios after{};
+            tcgetattr(s2, &after);
+            CHECK((after.c_lflag & ECHO) != 0,
+                  "a fatal signal mid-guest restored ECHO on the way down");
+
+            close(s2);
+            close(m2);
         }
     }
 

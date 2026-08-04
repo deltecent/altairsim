@@ -43,6 +43,7 @@
 #include <algorithm>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 
 namespace altair::platform {
 namespace {
@@ -57,7 +58,11 @@ bool  g_haveOut   = false;
 
 // See the POSIX file for why this exists at all: a destructor does not run when a
 // signal kills the process, and a simulator that leaves the console with echo off is a
-// simulator you run once. Win32's C runtime gives us the same signals, in name.
+// simulator you run once. Win32's C runtime gives us the same signals, in name -- the
+// termination ones (SIGINT/SIGTERM/SIGBREAK) and the crash/panic ones (SIGABRT from
+// bus.cpp's std::abort(), plus SIGSEGV/SIGFPE; there is no SIGBUS here). The MSVC CRT's
+// delivery of SIGSEGV/SIGABRT through signal() is best-effort, not the airtight POSIX
+// guarantee -- but a console restored on most crashes beats one restored on none.
 extern "C" void onFatalSignal(int sig) {
     restoreTerm();
     std::signal(sig, SIG_DFL);
@@ -71,8 +76,16 @@ void armSignalHandlers() {
     static bool armed = false;
     if (armed) return;
     armed = true;
-    // SIGBREAK is Win32's Ctrl-Break, and it is the closest thing here to SIGHUP.
-    static const int kFatal[] = {SIGINT, SIGTERM, SIGBREAK};
+
+    // A last-resort net for the normal-exit paths a signal handler never sees -- see the
+    // POSIX file. restoreTerm() is idempotent, so running it again after an ordinary
+    // teardown already restored the console is a harmless no-op.
+    std::atexit(restoreTerm);
+
+    // SIGBREAK is Win32's Ctrl-Break, the closest thing here to SIGHUP. SIGABRT/SIGSEGV/
+    // SIGFPE are the crash/panic signals (no SIGBUS in the MSVC CRT); delivery through
+    // signal() is best-effort on Windows, but worth having.
+    static const int kFatal[] = {SIGINT, SIGTERM, SIGBREAK, SIGABRT, SIGSEGV, SIGFPE};
     for (int sig : kFatal) {
         if (std::signal(sig, onFatalSignal) == SIG_IGN) std::signal(sig, SIG_IGN);
     }
