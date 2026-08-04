@@ -68,10 +68,13 @@ bool enterTermMode(TermMode m);
 // Give the terminal back exactly as it was found. Idempotent, and safe to call when
 // nothing was ever taken.
 //
-// IT ALSO RUNS IF WE ARE KILLED. The implementation restores on SIGINT, SIGTERM,
-// SIGHUP and SIGQUIT before letting the signal do its work -- because a simulator that
-// leaves your shell with no echo when it dies is a simulator you run exactly once, and
-// C++ destructors do not run when a signal terminates the process.
+// IT ALSO RUNS IF WE ARE KILLED, OR IF WE CRASH. The implementation restores before
+// letting the signal do its work -- on the termination signals (SIGINT, SIGTERM, SIGHUP,
+// SIGQUIT) and on the crash/panic signals (SIGABRT from an internal std::abort(), plus
+// SIGSEGV/SIGBUS/SIGFPE) -- and via atexit() on any std::exit() path a destructor would
+// miss. Because a simulator that leaves your shell with no echo when it dies is a
+// simulator you run exactly once, and C++ destructors do not run when a signal terminates
+// the process. SIGKILL alone cannot be caught, so it is the one way out beyond reach.
 void restoreTerm();
 
 // ---------------------------------------------------------------------------

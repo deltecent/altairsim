@@ -9,6 +9,7 @@
 
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <fcntl.h>
 #include <poll.h>
 #include <termios.h>
@@ -25,20 +26,27 @@ bool    g_haveFl   = false;  // we changed stdin's flags and owe them back
 // ---------------------------------------------------------------------------
 // RESTORE ON SIGNAL.
 //
-// A C++ destructor does not run when a signal kills the process, and both of the ways
-// out of this program that are not `EXIT` are signals: the operator's Ctrl-C at the
-// monitor prompt (LineEdit mode leaves signals ON, deliberately), and whatever the
-// window manager or the shell sends when a terminal window is closed.
+// A C++ destructor does not run when a signal kills the process, and the ways out of
+// this program that are not `EXIT` are signals:
 //
-// Without this, either one leaves the tty with ECHO off -- you get your shell back and
+//   - the operator's Ctrl-C at the monitor prompt (LineEdit mode leaves signals ON,
+//     deliberately), and whatever the window manager or the shell sends when a terminal
+//     window is closed (SIGINT, SIGHUP, SIGTERM, SIGQUIT); and
+//   - a CRASH or a PANIC while the guest is running -- which is when the terminal is in
+//     Guest raw mode and has the most to lose. bus.cpp calls std::abort() (SIGABRT) on an
+//     internal invariant violation mid-emulation, and any SIGSEGV/SIGBUS/SIGFPE lands the
+//     same way: with ECHO off and no destructor to put it back.
+//
+// Without this, any of them leaves the tty with ECHO off -- you get your shell back and
 // it is silent, and you have to type `stty sane` at a prompt you cannot see. That is
 // not a small annoyance; it is the difference between a tool people keep and one they
-// uninstall.
+// uninstall. (SIGKILL alone cannot be caught, so it is the one case beyond our reach.)
 //
 // tcsetattr(), fcntl() and raise() are all on the POSIX async-signal-safe list, so this
 // handler is doing nothing it is not allowed to do. It restores, puts the signal back
 // to its default behaviour, and re-raises -- so the process still dies exactly as it
-// would have, with the right exit status, and nobody upstream can tell we were here.
+// would have (core dump and all, for a crash), with the right exit status, and nobody
+// upstream can tell we were here.
 // ---------------------------------------------------------------------------
 extern "C" void onFatalSignal(int sig) {
     restoreTerm();
@@ -60,7 +68,19 @@ void armSignalHandlers() {
     static bool armed = false;
     if (armed) return;
     armed = true;
-    static const int kFatal[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT};
+
+    // A last-resort net for the normal-exit paths a signal handler never sees: a
+    // std::exit() somewhere while the guest still holds the tty would slip past both the
+    // RawLine RAII (cli/lineedit.cpp) and Console::leaveRaw(). restoreTerm() is idempotent,
+    // so running it again after an ordinary teardown already did is a harmless no-op.
+    std::atexit(restoreTerm);
+
+    // The termination signals proper (SIGINT/SIGQUIT the operator's ^C, SIGHUP a closed
+    // window, SIGTERM a plain kill) AND the crash/panic signals (SIGABRT from bus.cpp's
+    // std::abort(), plus SIGSEGV/SIGBUS/SIGFPE): every way the process can die without a
+    // destructor running, save SIGKILL, which cannot be caught.
+    static const int kFatal[] = {SIGINT,  SIGTERM, SIGHUP, SIGQUIT,
+                                 SIGABRT, SIGSEGV, SIGBUS, SIGFPE};
     for (int sig : kFatal) {
         if (std::signal(sig, onFatalSignal) == SIG_IGN) std::signal(sig, SIG_IGN);
     }
