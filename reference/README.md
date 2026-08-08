@@ -26,6 +26,16 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | [Processor Technology Sol-20](Sol-20.md) | The Sol-PC integrated machine: the `F8h`–`FFh` onboard I/O map (serial `F8`/`F9`, the shared mixed-polarity status register `FA` + tape motor/baud write, tape `FB`, keyboard `FC`, parallel `FD`, VDM display `FE`, sense `FF`), every status bit and its active-high/low polarity from the SOLOS drivers, the **keyboard's key codes** (Table 7-4 — the eight bit-7 special keys `MODE SELECT`/`CLEAR`/`LOAD`/`HOME CURSOR`/arrows, and the five keys that send no code at all), and the `C000`–`CFFF` ROM/scratch/video memory map. |
 | [SD Systems SBC-100 & SBC-200](SD%20Systems%20SBC-100%20%26%20SBC-200.md) | SD Systems Z80 single-board computers (bus master): the shared `78h`–`7Fh` I/O map (CTC `78`–`7B`, 8251 USART console `7C`/`7D`, parallel `7E`/`7F`), the 8251 status polarity (TxRDY=D0, RxRDY=D1, active-high), the CTC baud tables and the `05h`/`45h` init difference, the parallel handshake (input "ready" = `7F` D1 active-low; **SBC-200 `OUT 7F` D1 switches onboard memory**), the X1/X2/X3 memory-mapping headers, and the reset **auto-start** (4K boundary via X16/X17/X18, released by a **read of port `7F`**) with the monitor PROM at `E000` / disk BIOS at `F000`. Documents both boards with the 2.4576-vs-4 MHz, 8251-vs-8251A, current-loop and memory-switch differences called out. |
 
+## Altair 680 (Motorola 6800)
+
+MITS's *second* machine — a **6800** computer, not an 8080/S-100 system, so its boards are
+**memory mapped** (no `IN`/`OUT`) and generally **active-low**. Grouped here so the 6800 parts
+are not mistaken for S-100 hardware.
+
+| Reference | What it covers |
+|---|---|
+| [Altair 680b KCACR](Altair%20680b%20KCACR.md) | The 680b's Kansas City Standard audio-cassette interface — a **memory-mapped** board (not `IN`/`OUT`): status/control at **`F010`** (61456), read/write data at **`F011`**, read-vs-write of each address being different registers. Documents the **⚠ active-low ("True = Logic 0")** status/control convention (status D0 Read-Data-Available / D7 Transmit-Buffer-Empty; control D0/D1 read/write interrupt enable, D6/D7 remote motor off/on), **software motor control** (store `7F` on / `BF` off; `POKE 61456,127`/`191`), the interrupt model (enable via `FE`/`FD`; `IRQ` vector `FFF8/FFF9` → `0100` from the monitor PROM; any register access or Motor-Off clears the latch), the **SMC COM2017/H** UART (same 1602 family as [com2502](com2502.md), 8N2, 4800 Hz 16× clock), the **Kansas City Standard** modulation (300 baud; mark = 8×2400 Hz, space = 4×1200 Hz; LSB first) and the loader/punch PROM (socket V, **`FD00`**; punch `.J FD74`, load `.J FD00`; Motorola S-records; `C`/`M` error characters). |
+
 ## Serial and UART
 
 | Reference | What it covers |
