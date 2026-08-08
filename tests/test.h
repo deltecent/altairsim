@@ -52,6 +52,7 @@ void test_z80_isa();
 void test_isa6800();
 void test_asm6800();
 void test_cpu();
+void test_cpu6800();
 void test_z80_cpu();
 void test_expr();
 void test_debug();
