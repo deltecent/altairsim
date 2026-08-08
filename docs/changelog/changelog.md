@@ -95,6 +95,18 @@ each joystick console — a named gamepad, the keyboard, or nothing — and a ne
 lists every controller the host can see; two consoles default to two different gamepads
 automatically, so a pair of controllers just works with no configuration at all.
 
+### A terminal in its own window
+
+A serial line can now open its own **built-in terminal window** the simulator draws itself —
+`CONNECT sio0:a terminal`, or `connect = "terminal"` in a machine file — so the machine's console
+and the monitor's command prompt live in separate windows with no telnet client, no external
+emulator, and nothing to install on any platform. It speaks four dialects the way period software
+expects them, `?emulation=` picking one: **VT100/ANSI** (the default, enough of it to run a
+full-screen editor), the dumb CP/M **ADM-3A**, the **VT52**, and the Heath/Zenith **H19** — the
+last three being terminals no modern emulator provides, which was the whole point. `?size=COLSxROWS`
+sets the geometry (80×24 by default). Every serial board gets it for free, and in a headless build
+the endpoint simply refuses cleanly at CONNECT rather than opening a line nobody can see.
+
 ### Save a machine, and pick it back up later
 
 `SNAPSHOT <file>` writes the whole machine's state — every board's registers and RAM, the clock,

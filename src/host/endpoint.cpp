@@ -60,9 +60,10 @@ bool parseHostPort(const std::string& spec, std::string& host, uint16_t& port,
 }
 
 std::string endpointHelp(bool all) {
-    std::string s = "console | null | loopback | scripted | socket:PORT | "
-                    "socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH | "
-                    "terminal[?emulation=vt100&size=80x24]";
+    std::vector<std::string> parts = {
+        "console", "null", "loopback", "scripted", "socket:PORT", "socket:HOST:PORT",
+        "serial:DEVICE", "in:PATH", "out:PATH", "terminal[?emulation=vt100&size=80x24]",
+    };
     // `printer:` only where a host print system was found at build time -- absent, the
     // grammar does not advertise a door it cannot open (docs/printing.md 3.1). The docs
     // generator passes all=true: the committed manual is one document for every platform,
@@ -73,11 +74,30 @@ std::string endpointHelp(bool all) {
 #else
     const bool havePrinter = false;
 #endif
-    if (all || havePrinter) s += " | printer:QUEUE";
+    if (all || havePrinter) parts.emplace_back("printer:QUEUE");
     // Any endpoint can be TAPPED: append `|FILE` to log the line to a hex file (a
     // poor man's protocol analyzer; host/tee_stream.h). Advertised last so it reads as
     // a suffix on all of the above, not a peer of them.
-    s += " | <endpoint>|FILE";
+    parts.emplace_back("<endpoint>|FILE");
+
+    // Wrap the grammar so it does not run off the page -- the full list is one long line
+    // that landed in the CONNECT help, the "no endpoint" error and the generated reference
+    // all at once. The bar stays on the line it ends; a continuation is FLUSH LEFT, not
+    // indented: the reference formatter fences any line that starts with two spaces (a
+    // HELP example), and the live HELP shows this ahead of a two-space-indented gloss, so
+    // an indent here would be read as a code block in one and as a gloss row in the other.
+    const size_t width = 78;
+    std::string  s     = parts[0];
+    size_t       col   = parts[0].size();
+    for (size_t i = 1; i < parts.size(); ++i) {
+        if (col + 3 + parts[i].size() > width) {
+            s += " |\n" + parts[i];
+            col = parts[i].size();
+        } else {
+            s += " | " + parts[i];
+            col += 3 + parts[i].size();
+        }
+    }
     return s;
 }
 
