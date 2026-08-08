@@ -239,6 +239,58 @@ void test_terminal() {
         CHECK(!TerminalStream::hasWindow(), "the test display is not windowed");
     }
 
+    // ---- The host keyboard -> the line (issue #244, Task 4, single-window scope) ----
+    SECTION("terminal stream -- the host keyboard reaches the line, encoded by the dialect");
+    {
+        CHECK(TerminalStream::keyTarget() == nullptr,
+              "with no terminal alive, nothing owns the one host keyboard");
+
+        TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+        CHECK(TerminalStream::keyTarget() == &ts, "a live terminal claims the keyboard");
+
+        uint8_t buf[16];
+        ts.keyAscii('k');
+        size_t n = ts.read(buf, sizeof buf);
+        CHECK(std::string((char*)buf, n) == "k", "an ASCII key reaches the guest unencoded");
+
+        // The point of the symbolic special-key path: each dialect spells an arrow its own
+        // way, which the display's single byte table could never do.
+        ts.keySpecial((int)TerminalEmulator::Key::Up);
+        n = ts.read(buf, sizeof buf);
+        CHECK(std::string((char*)buf, n) == std::string("\x1b[A"),
+              "a VT100 line encodes Up as ESC[A");
+
+        {
+            TerminalStream adm("terminal?emulation=adm3a", 24, 80,
+                               std::make_unique<Adm3aEmulator>());
+            adm.keySpecial((int)TerminalEmulator::Key::Up);
+            n = adm.read(buf, sizeof buf);
+            CHECK(std::string((char*)buf, n) == std::string("\x0b"),
+                  "an ADM-3A line encodes the SAME key as ^K -- the dialect decides");
+        }
+    }
+
+    SECTION("terminal stream -- the newest terminal owns the keyboard (CONFIG LOAD order)");
+    {
+        // CONFIG LOAD builds the replacement line BEFORE tearing the old one down. The old
+        // line's destructor must not strand the new terminal's claim on the keyboard.
+        auto oldLine = std::make_unique<TerminalStream>(
+            "terminal", 24, 80, std::make_unique<Vt100Emulator>());
+        CHECK(TerminalStream::keyTarget() == oldLine.get(), "the first terminal owns it");
+
+        auto newLine = std::make_unique<TerminalStream>(
+            "terminal", 24, 80, std::make_unique<Vt100Emulator>());
+        CHECK(TerminalStream::keyTarget() == newLine.get(), "the replacement claims it");
+
+        oldLine.reset();  // superseded line torn down after the replacement exists
+        CHECK(TerminalStream::keyTarget() == newLine.get(),
+              "destroying the superseded line leaves the replacement in charge");
+
+        newLine.reset();
+        CHECK(TerminalStream::keyTarget() == nullptr,
+              "with every terminal gone the keyboard is free again");
+    }
+
     // ---- The `terminal:` endpoint grammar, through the real resolver ----
     SECTION("terminal endpoint -- the grammar is validated before the window check");
     {

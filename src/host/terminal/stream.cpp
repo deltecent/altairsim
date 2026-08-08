@@ -8,16 +8,23 @@
 
 namespace altair {
 
-Display*            TerminalStream::s_display = nullptr;
-const TerminalFont* TerminalStream::s_font    = nullptr;
+Display*            TerminalStream::s_display   = nullptr;
+const TerminalFont* TerminalStream::s_font      = nullptr;
+TerminalStream*     TerminalStream::s_keyTarget = nullptr;
 
 TerminalStream::TerminalStream(std::string spec, int rows, int cols,
                                std::unique_ptr<TerminalEmulator> emu)
     : spec_(std::move(spec)), screen_(rows, cols), emu_(std::move(emu)) {
     renderer_.setFont(s_font);  // borrowed, session-lifetime; null just paints nothing
+    s_keyTarget = this;         // the newest terminal claims the one host keyboard
 }
 
-TerminalStream::~TerminalStream() = default;
+TerminalStream::~TerminalStream() {
+    // Only relinquish the keyboard if it is still ours: on a CONFIG LOAD the replacement
+    // line is constructed (claiming the target) before the old one is destroyed, so a
+    // blind clear here would strand the new terminal (see [[altairsim-config-load-replaces]]).
+    if (s_keyTarget == this) s_keyTarget = nullptr;
+}
 
 bool TerminalStream::hasWindow() { return s_display && s_display->isWindowed(); }
 

@@ -70,6 +70,13 @@ public:
     // injected display -- resolveEndpoint refuses the endpoint otherwise.
     static bool hasWindow();
 
+    // WHICH terminal line the host keyboard drives. Today there is one host window and one
+    // keyboard (src/main.cpp), so a `terminal:` line claims it on construction -- last one
+    // wins -- and releases it on destruction. The composition root's key sinks route
+    // through here: keystrokes reach this line's emulator instead of the monitor Console.
+    // Per-window routing for two live terminals is the deferred multi-window work (#244).
+    static TerminalStream* keyTarget() { return s_keyTarget; }
+
     // ---- tests: read the grid back without a window ----
     const TerminalScreen& screen() const { return screen_; }
     TerminalScreen&       screen() { return screen_; }
@@ -83,6 +90,7 @@ private:
 
     static Display*            s_display;
     static const TerminalFont* s_font;
+    static TerminalStream*     s_keyTarget;
 };
 
 } // namespace altair
