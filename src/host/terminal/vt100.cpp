@@ -144,7 +144,7 @@ void Vt100Emulator::dispatchCsi(uint8_t final, TerminalScreen& scr) {
 
         case 'n':  // DSR -- device status report
             if (argRaw(0) == 6) {
-                char buf[24];
+                char buf[32];  // two %d ints + ESC[ ;R + NUL -- GCC's worst case is 27
                 std::snprintf(buf, sizeof buf, "\x1b[%d;%dR", row + 1, col + 1);
                 emit(buf);
             } else if (argRaw(0) == 5) {
