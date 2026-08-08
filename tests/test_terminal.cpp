@@ -7,6 +7,7 @@
 #include "host/terminal/screen.h"
 #include "host/terminal/stream.h"
 #include "host/terminal/vt100.h"
+#include "host/terminal/vt52.h"
 
 #include <memory>
 #include <string>
@@ -41,6 +42,23 @@ struct Eng {
 struct Adm {
     TerminalScreen scr{24, 80};
     Adm3aEmulator  emu;
+
+    void feed(const std::string& s) {
+        for (char c : s) emu.feed((uint8_t)c, scr);
+    }
+    std::string reply() {
+        std::string out;
+        uint8_t     b;
+        while (emu.hasReply() && emu.takeReply(&b, 1) == 1) out.push_back((char)b);
+        return out;
+    }
+    char at(int r, int c) { return (char)scr.charAt(r, c); }
+};
+
+// And for the VT52 -- ESC-letter sequences, ESC Y addressing, an ESC Z identity reply.
+struct V52 {
+    TerminalScreen scr{24, 80};
+    Vt52Emulator   emu;
 
     void feed(const std::string& s) {
         for (char c : s) emu.feed((uint8_t)c, scr);
@@ -309,6 +327,69 @@ void test_terminal() {
         // Grammar (the name) is valid; it fails only for the headless window, like vt100.
         CHECK(!resolveEndpoint("terminal?emulation=adm3a", err),
               "adm3a parses, then refuses for want of a window");
+        CHECK(err.find("window") != std::string::npos, "the failure is the window, not the name");
+    }
+
+    // ---- The VT52 dialect: ESC-letter sequences, no CSI ----
+    SECTION("terminal VT52 -- printable text and ESC-letter cursor moves");
+    {
+        V52 g;
+        g.feed("HI");
+        CHECK(g.at(0, 0) == 'H' && g.at(0, 1) == 'I', "text lands at the cursor");
+        g.feed("\r\n");
+        CHECK(g.scr.cursorRow() == 1 && g.scr.cursorCol() == 0, "CR/LF drop to the next line");
+        g.feed("\x1b" "C");  // ESC C -- cursor right
+        CHECK(g.scr.cursorCol() == 1, "ESC C moves right");
+        g.feed("\x1b" "A");  // ESC A -- cursor up
+        CHECK(g.scr.cursorRow() == 0, "ESC A moves up");
+        g.feed("\x1b" "B");  // ESC B -- cursor down
+        CHECK(g.scr.cursorRow() == 1, "ESC B moves down");
+        g.feed("\x1b" "D");  // ESC D -- cursor left
+        CHECK(g.scr.cursorCol() == 0, "ESC D moves left");
+        g.feed("\x1b" "H");  // ESC H -- home
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0, "ESC H homes");
+    }
+
+    SECTION("terminal VT52 -- ESC Y addresses the cursor (0x20 bias)");
+    {
+        V52 g;
+        // ESC Y <row+0x20> <col+0x20>. Row 4, col 9 -> 0x24, 0x29.
+        g.feed("\x1b" "Y\x24\x29");
+        CHECK(g.scr.cursorRow() == 4 && g.scr.cursorCol() == 9,
+              "ESC Y (space+4)(space+9) addresses (4,9)");
+        g.feed("\x1b" "Y  ");  // ESC Y <space><space> -> home
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0, "ESC Y (space)(space) is home");
+    }
+
+    SECTION("terminal VT52 -- ESC J and ESC K erase, ESC Z identifies");
+    {
+        V52 g;
+        g.feed("\x1b" "Y\x20\x20" "ABCDE");   // ABCDE from home
+        g.feed("\x1b" "Y\x20\x22");           // back to (0,2), on 'C'
+        g.feed("\x1b" "K");                    // erase to end of line
+        CHECK(g.at(0, 1) == 'B' && g.at(0, 2) == ' ', "ESC K clears from the cursor to EOL");
+        g.feed("\x1b" "Z");                    // identify
+        CHECK(g.reply() == std::string("\x1b/K"), "ESC Z answers ESC / K (a VT52)");
+    }
+
+    SECTION("terminal VT52 -- arrow keys are ESC-letter, no CSI");
+    {
+        V52 g;
+        g.emu.keySpecial(TerminalEmulator::Key::Up);
+        CHECK(g.reply() == std::string("\x1b" "A"), "Up is ESC A");
+        g.emu.keySpecial(TerminalEmulator::Key::Left);
+        CHECK(g.reply() == std::string("\x1b" "D"), "Left is ESC D");
+        g.emu.keySpecial(TerminalEmulator::Key::Home);
+        CHECK(g.reply() == std::string("\x1b" "H"), "Home is ESC H");
+        g.emu.keyAscii('q');
+        CHECK(g.reply() == std::string("q"), "an ASCII key passes through unencoded");
+    }
+
+    SECTION("terminal endpoint -- vt52 is an accepted emulation name");
+    {
+        std::string err;
+        CHECK(!resolveEndpoint("terminal?emulation=vt52", err),
+              "vt52 parses, then refuses for want of a window");
         CHECK(err.find("window") != std::string::npos, "the failure is the window, not the name");
     }
 }

@@ -3,6 +3,7 @@
 #include "host/terminal/adm3a.h"
 #include "host/terminal/emulator.h"
 #include "host/terminal/vt100.h"
+#include "host/terminal/vt52.h"
 
 #include <cctype>
 
@@ -11,6 +12,7 @@ namespace {
 
 std::unique_ptr<TerminalEmulator> makeVt100() { return std::make_unique<Vt100Emulator>(); }
 std::unique_ptr<TerminalEmulator> makeAdm3a() { return std::make_unique<Adm3aEmulator>(); }
+std::unique_ptr<TerminalEmulator> makeVt52()  { return std::make_unique<Vt52Emulator>(); }
 
 bool ieq(const std::string& a, const char* b) {
     size_t i = 0;
@@ -24,11 +26,13 @@ bool ieq(const std::string& a, const char* b) {
 const std::vector<TerminalEmulation>& terminalEmulations() {
     // vt100 first -- it is the default when a `terminal:` names no emulation. `ansi` is the
     // same engine under the name a lot of period software calls it. adm3a is the archetypal
-    // CP/M terminal (WordStar, Turbo Pascal); vt52 and h19 follow.
+    // CP/M terminal (WordStar, Turbo Pascal); vt52 is the VT100's small predecessor; h19
+    // follows.
     static const std::vector<TerminalEmulation> table = {
         {"vt100", "DEC VT100 / ANSI", &makeVt100},
         {"ansi",  "DEC VT100 / ANSI (alias for vt100)", &makeVt100},
         {"adm3a", "Lear Siegler ADM-3A", &makeAdm3a},
+        {"vt52",  "DEC VT52", &makeVt52},
     };
     return table;
 }
