@@ -4438,6 +4438,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // for BIN, and the difference only showed on a file that did not start at
             // zero. The arithmetic (anchor, and the modulo-64K wrap) is hex.h's.
             if (haveAt) relocateTo(img, at);
+        } else if (forced < 0 && looksLikeSrec(data)) {
+            // A Motorola S-record file carries its own addresses just like Intel HEX,
+            // so it relocates the same way. FORMAT= only spells BIN or HEX, so this is
+            // reached by autodetect alone.
+            if (!loadSrec(data, img, err)) {
+                out << a[1] << ": " << err << "\n";  // names the record. loudly.
+                failed_ = true;
+                return true;
+            }
+            if (haveAt) relocateTo(img, at);
         } else {
             if (!haveAt) {
                 out << a[1] << " is a flat binary and carries no addresses -- it needs AT <addr>\n";

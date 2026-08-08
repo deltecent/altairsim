@@ -21,6 +21,13 @@ bool decodeRom(const BuiltinRom& r, uint32_t at, Image& out, std::string& err) {
         }
         return true;
     }
+    if (r.format == Format::Srec) {
+        if (!loadSrec(bytes, out, err)) {
+            err = std::string("builtin:") + r.name + " (" + r.file + "): " + err;
+            return false;
+        }
+        return true;
+    }
     loadBin(bytes, at, out);
     return true;
 }

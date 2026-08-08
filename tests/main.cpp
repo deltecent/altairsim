@@ -42,6 +42,7 @@ const struct {
     void (*fn)();
 } kTests[] = {
     {"hex", test_hex},
+    {"srec", test_srec},
     {"symbols", test_symbols},
     {"media", test_media},
     {"imd", test_imd},

@@ -164,6 +164,11 @@ bool MemoryBoard::loadRomRegion(size_t idx, std::string& err) {
                 err = r.mount + ": " + err;
                 return false;
             }
+        } else if (looksLikeSrec(raw)) {
+            if (!loadSrec(raw, img, err)) {
+                err = r.mount + ": " + err;
+                return false;
+            }
         } else {
             loadBin(raw, r.at, img);
         }

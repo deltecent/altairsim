@@ -631,6 +631,7 @@ add_executable(altair_tests
   tests/test_snapshot.cpp
   tests/test_memory.cpp
   tests/test_hex.cpp
+  tests/test_srec.cpp
   tests/test_symbols.cpp
   tests/test_media.cpp
   tests/test_imd.cpp

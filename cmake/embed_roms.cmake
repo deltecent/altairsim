@@ -17,7 +17,9 @@ foreach(d ${rom_dirs})
   endif()
 
   file(GLOB imgs "${ROMS_DIR}/${d}/*.HEX" "${ROMS_DIR}/${d}/*.hex"
-                 "${ROMS_DIR}/${d}/*.BIN" "${ROMS_DIR}/${d}/*.bin")
+                 "${ROMS_DIR}/${d}/*.BIN" "${ROMS_DIR}/${d}/*.bin"
+                 "${ROMS_DIR}/${d}/*.S19" "${ROMS_DIR}/${d}/*.s19"
+                 "${ROMS_DIR}/${d}/*.SREC" "${ROMS_DIR}/${d}/*.srec")
   list(LENGTH imgs n)
   if(n EQUAL 0)
     continue()
@@ -31,6 +33,8 @@ foreach(d ${rom_dirs})
   string(TOLOWER "${ext}" ext)
   if(ext STREQUAL ".hex")
     set(fmt "Format::Hex")
+  elseif(ext STREQUAL ".s19" OR ext STREQUAL ".srec")
+    set(fmt "Format::Srec")
   else()
     set(fmt "Format::Bin")
   endif()

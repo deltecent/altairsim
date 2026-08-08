@@ -55,6 +55,18 @@ bool looksLikeHex(std::span<const uint8_t> data);
 // and the whole point of a checksum is to not have that bug.
 bool loadHex(std::span<const uint8_t> text, Image& out, std::string& err);
 
+// True if this looks like a Motorola S-record (leading 'S', a type digit, then
+// hex). The Altair 680b's world is S-record, not Intel HEX -- deramp's MON680
+// and KCACR PROMs ship as .S19 -- so LOAD/MOUNT/builtin autodetect this too.
+bool looksLikeSrec(std::span<const uint8_t> data);
+
+// Motorola S-record loader (S1/S2/S3 data, S9/S8/S7 term -> start; S0/S5/S6
+// informational, skipped). Same contract as loadHex: every record's checksum is
+// verified and a bad one FAILS THE LOAD naming the record. The checksum is the
+// one's-complement of the byte sum from the count field through the last data
+// byte, so count + those bytes + checksum sum to 0xFF.
+bool loadSrec(std::span<const uint8_t> text, Image& out, std::string& err);
+
 // A flat binary has no addresses of its own, so it needs one.
 void loadBin(std::span<const uint8_t> data, uint32_t at, Image& out);
 
@@ -78,5 +90,11 @@ void relocateTo(Image& img, uint32_t at);
 
 // Round-trip is a test case: saveHex then loadHex must reproduce byte-for-byte.
 std::string saveHex(const Image& img, int recLen = 16);
+
+// The S-record counterpart: emit S1 data records (16-bit addresses) plus an S9
+// terminator carrying `start`. Round-trip is a test case, exactly as for hex.
+// 16-bit only -- the 680b is a 16-bit machine, so an address above 0xFFFF is a
+// caller bug rather than a reason to reach for S2/S3 here.
+std::string saveSrec(const Image& img, int recLen = 16);
 
 } // namespace altair

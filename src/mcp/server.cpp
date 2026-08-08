@@ -598,6 +598,10 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             // `at` was accepted and then IGNORED here for a HEX file, silently. It
             // relocates, exactly as it does at the prompt (hex.h).
             if (args.has("at")) relocateTo(img, (uint32_t)args.at("at").integer());
+        } else if (forced < 0 && looksLikeSrec(data)) {
+            // An S-record carries its own addresses like Intel HEX, so `at` relocates.
+            if (!loadSrec(data, img, err)) return textResult(path + ": " + err, true);
+            if (args.has("at")) relocateTo(img, (uint32_t)args.at("at").integer());
         } else {
             if (!args.has("at"))
                 return textResult(path + " is a flat binary and carries no addresses -- pass `at`",

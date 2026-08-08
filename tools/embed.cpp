@@ -135,7 +135,7 @@ static int genRoms(const fs::path& romsDir, const fs::path& out) {
             if (!e.is_regular_file()) continue;
             std::string ext = e.path().extension().string();
             std::string el = toLower(ext);
-            if (el == ".hex" || el == ".bin")
+            if (el == ".hex" || el == ".bin" || el == ".s19" || el == ".srec")
                 imgs.push_back(e.path());
         }
         if (imgs.empty()) continue;
@@ -145,7 +145,9 @@ static int genRoms(const fs::path& romsDir, const fs::path& out) {
         std::string name = toLower(d);
         std::string sym = cIdentifier(name);
         std::string el = toLower(img.extension().string());
-        std::string fmt = (el == ".hex") ? "Format::Hex" : "Format::Bin";
+        std::string fmt = (el == ".hex")                        ? "Format::Hex"
+                          : (el == ".s19" || el == ".srec")      ? "Format::Srec"
+                                                                 : "Format::Bin";
         std::string base = img.filename().string();
 
         std::string bytes = readFile(img);
