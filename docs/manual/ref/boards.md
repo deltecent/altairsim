@@ -67,6 +67,7 @@ and within a group the boards are in **alphabetical order**.
 | Type | What it is |
 |---|---|
 | [`4pio`](#4pio) | MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BASE (default 20). Software-set direction; CONNECT each section |
+| [`680uio`](#680uio) | Altair 680b Universal I/O: a second 6850 ACIA serial port ('serial') and a 6820 PIA parallel port (sections 'p1a/p1b', 'p2a/p2b' with pias=2) in an S9-relocatable window (default base F000: serial F006/F007, PIA F008-F00F), plus fixed switch inputs at F003 and a non-latched output at F010-F013. Memory-mapped, active-high |
 | [`c700`](#c700) | MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Output-only; CONNECT it to a file, a socket, or a real printer queue |
 | [`d7a`](#d7a) | Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host |
 | [`lpc`](#lpc) | MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (default 02). Line-buffered: 6-bit codes + PRINT/LINE FEED/CLEAR. CONNECT it to a file, a socket, or a real printer queue |
@@ -688,6 +689,45 @@ MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BAS
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this section (CONNECT sets this) |
+
+
+### `680uio`
+
+Altair 680b Universal I/O: a second 6850 ACIA serial port ('serial') and a 6820 PIA parallel port (sections 'p1a/p1b', 'p2a/p2b' with pias=2) in an S9-relocatable window (default base F000: serial F006/F007, PIA F008-F00F), plus fixed switch inputs at F003 and a non-latched output at F010-F013. Memory-mapped, active-high
+
+**Units:** `serial` (serial, CONNECT), `p1a` (serial, CONNECT), `p1b` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0xF000` | `0xF000` .. `0xF0F0` | S9 window base (F000 + position*0x10); serial at base+6, PIAs base+8..+F |
+| `pias` | int | `1` | `1` .. `2` | 6820 PIAs populated: 1 (PIA-C only) or 2 (PIA-C + PIA-B) |
+| `sense` | int | `0x0` | `0x0` .. `0xFF` | Switch inputs read at F003 (fixed, read-only tri-state) |
+| `nlout` | bool | `true` | `on` \| `off` | Decode the F010-F013 non-latched output (off = IC A1 removed, KCACR owns F010/F011) |
+
+#### Unit `serial` — `[board.unit.serial]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | int | `9600` | `50` .. `76800` | Line rate. A JUMPER on the real card -- software cannot change it, and there is no free-running setting: the rate paces the line |
+| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
+| `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
+| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+
+#### Unit `p1a` — `[board.unit.p1a]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of this PIA section (CONNECT sets this) |
+
+#### Unit `p1b` — `[board.unit.p1b]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of this PIA section (CONNECT sets this) |
 
 
 ### `c700`

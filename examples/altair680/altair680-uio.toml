@@ -1,0 +1,61 @@
+# The Altair 680b with a Universal I/O board added.
+#
+#     cd examples/altair680
+#     altairsim altair680-uio.toml
+#
+#     .
+#
+# The same MON680 machine as the built-in `altair680`, plus one 88-UIO-style
+# expansion board (`680uio`) -- a SECOND 6850 serial port and a 6820 PIA parallel
+# port, memory-mapped in the S9 window at its default base F000 (serial F006/F007,
+# PIA-C F008-F00B). The onboard console 6850 at F000/F001 is untouched: you still
+# type at the `.` prompt over it. See README.md for how to reach the second port
+# from the monitor, and reference/Altair 680b Universal IO Board.md for the board.
+
+[machine]
+name = "altair680"
+startup = ["RESET", "RUN"]
+
+[[board]]
+type     = "6800"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type   = "680io"
+id     = "io0"
+straps = 0x00
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+# The Universal I/O board. Default S9 window (base F000): the serial ACIA answers
+# at F006/F007 and the 6820 PIA-C at F008-F00B. Its second serial line is wired to
+# a file so a byte the guest transmits from F007 is observable; PIA section p1a is
+# wired the same way. Both paths are relative to THIS file's directory.
+[[board]]
+type = "680uio"
+id   = "uio0"
+base = 0xF000
+
+  [board.unit.serial]
+  connect = "out:uio-serial.log"
+
+  [board.unit.p1a]
+  connect = "out:uio-pia.log"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "1K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:mon680"

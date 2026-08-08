@@ -6,6 +6,7 @@
 #include "boards/mits-88sio.h"
 #include "boards/mits-88uio.h"
 #include "boards/mits-680io.h"
+#include "boards/mits-680uio.h"
 #include "boards/mits-turnkey.h"
 #include "boards/pmmi-mm103.h"
 #include "boards/usio.h"
@@ -223,6 +224,7 @@ int main(int argc, char** argv) {
     Sio2Board::setResolver(resolveEndpoint);
     TurnkeyBoard::setResolver(resolveEndpoint);  // shares Sio2Port's resolver
     Io680Board::setResolver(resolveEndpoint);    // the 680b's onboard 6850 console
+    Uio680Board::setResolver(resolveEndpoint);   // the 680b UI/O's PIA parallel sections
     SioBoard::setResolver(resolveEndpoint);
     SbcBoard::setResolver(resolveEndpoint);
     UioBoard::setResolver(resolveEndpoint);  // serial half; the cassette half refuses CONNECT

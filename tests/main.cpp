@@ -10,6 +10,7 @@
 #include "boards/mits-88sio.h"
 #include "boards/mits-88uio.h"
 #include "boards/mits-680io.h"
+#include "boards/mits-680uio.h"
 #include "boards/mits-turnkey.h"
 #include "boards/cromemco-16fdc.h"
 #include "boards/pmmi-mm103.h"
@@ -81,6 +82,7 @@ const struct {
     {"cpu6800", test_cpu6800},
     {"680board", test_680board},
     {"680io", test_680io},
+    {"680uio", test_680uio},
     {"z80_cpu", test_z80_cpu},
     {"expr", test_expr},
     {"debug", test_debug},
@@ -149,6 +151,7 @@ int main(int argc, char** argv) {
     altair::Sio2Board::setResolver(altair::resolveEndpoint);
     altair::TurnkeyBoard::setResolver(altair::resolveEndpoint);
     altair::Io680Board::setResolver(altair::resolveEndpoint);
+    altair::Uio680Board::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::SbcBoard::setResolver(altair::resolveEndpoint);
     altair::UioBoard::setResolver(altair::resolveEndpoint);
