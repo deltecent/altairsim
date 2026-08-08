@@ -18,6 +18,7 @@ what is actually in one.
 | Machine | What it is |
 |---|---|
 | `acuter` | ACUTER at F000 -- CUTER on a plain Altair, with a terminal instead of a VDM. |
+| `altair680` | The Altair 680b -- MITS's second machine, and a different animal from the 8800. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |
 | `amon` | AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor. |
 | `basic4k` | The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR. |

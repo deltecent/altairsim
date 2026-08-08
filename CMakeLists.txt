@@ -97,7 +97,9 @@ foreach(d ${ROM_DIRS})
   if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/roms/${d}")
     file(GLOB img CONFIGURE_DEPENDS
                   "${CMAKE_SOURCE_DIR}/roms/${d}/*.HEX" "${CMAKE_SOURCE_DIR}/roms/${d}/*.hex"
-                  "${CMAKE_SOURCE_DIR}/roms/${d}/*.BIN" "${CMAKE_SOURCE_DIR}/roms/${d}/*.bin")
+                  "${CMAKE_SOURCE_DIR}/roms/${d}/*.BIN" "${CMAKE_SOURCE_DIR}/roms/${d}/*.bin"
+                  "${CMAKE_SOURCE_DIR}/roms/${d}/*.S19" "${CMAKE_SOURCE_DIR}/roms/${d}/*.s19"
+                  "${CMAKE_SOURCE_DIR}/roms/${d}/*.SREC" "${CMAKE_SOURCE_DIR}/roms/${d}/*.srec")
     list(APPEND ROM_IMAGE_FILES ${img})
     # The SHOW ROMS description is read from roms/<NAME>/DESC, so editing one must
     # re-run the embed -- same as changing the image itself.
@@ -381,6 +383,7 @@ add_library(altair_core STATIC
   # The Altair 680b CPU card -- the 88-CPU's twin one core down (mits-680cpu.h),
   # carrying a Cpu6800. Memory-mapped I/O, so it still decodes nothing.
   src/boards/mits-680cpu.cpp
+  src/boards/mits-680io.cpp
   # The two MITS hard-sector floppy controllers, and the register model they share.
   # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
   # programming model, and the period BOOT.ASM declares the ports and every status/command
@@ -652,6 +655,7 @@ add_executable(altair_tests
   tests/test_cpu.cpp
   tests/test_cpu6800.cpp
   tests/test_680board.cpp
+  tests/test_680io.cpp
   tests/test_z80_cpu.cpp
   tests/test_expr.cpp
   tests/test_debug.cpp
@@ -1177,6 +1181,21 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/eberhard-roms.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-eberhard-typed PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE ALTAIR 680b: MON680 signing on to a terminal and answering. This is the 6800
+  # line's integration oracle -- the disassembler, assembler, core, S-record loader, and
+  # the `680io` memory-mapped console board all have to be right for the monitor to come
+  # up and echo an examine of its own PROM. It TYPES, so it is an expect test for the same
+  # receive-register race the eberhard header records.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-altair680
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/altair680.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-altair680 PROPERTIES
                        LABELS acceptance TIMEOUT 120
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

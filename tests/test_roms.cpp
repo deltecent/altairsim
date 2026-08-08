@@ -125,6 +125,14 @@ void test_roms() {
         // .hex (absolute addresses); docs/roms.md carries the provenance and both listings.
         {"rdos252", 0xC000, 0xD000, 4097, 0xA006878Eu, true},
         {"rdos312", 0xC000, 0xDFFF, 8192, 0x59EBD5ECu, true},
+        // The Altair 680b PROM Monitor, in Motorola S-record form (the .S19 loader, and
+        // the machine it was built for -- machines/altair680.toml). A single 256-byte
+        // PROM at FF00-FFFF: PROM 1, the highest, holding the monitor and the reset and
+        // interrupt vectors (Theory of Operation 3). swimon is the same monitor with SWI
+        // vectored through $0010 for breakpoints -- same window, a different image, a
+        // different CRC. These decode through loadSrec, not loadHex.
+        {"mon680", 0xFF00, 0xFFFF, 256, 0x397E717Fu, true},
+        {"swimon", 0xFF00, 0xFFFF, 256, 0x2ABE348Fu, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

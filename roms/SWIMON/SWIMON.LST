@@ -1,0 +1,246 @@
+0001                                 NAM    PROM MONITOR
+0002                         **
+0003                         ** CUSTOMIZED VERSION TO VECTOR SWI THROUGH $0010. IF THE USER
+0004                         ** WANTS TO USE BREAKPOINTS (SWI), $0010 SHOULD BE SET TO 7E FF EE
+0005                         ** (JUMP $FFEE) TO POINT SWI TO THE ORIGINAL ENTRY POINT (INTRPT).
+0006                         **
+0007                         **ALTAIR 680B PROM MONITOR
+0008                         **ACIA VERSION 1.0
+0009                         **
+0010 0010                    SWIVEC  EQU    $10
+0011 0100                    MIVEC   EQU    $100
+0012 0104                    NMIVEC  EQU    $104
+0013 f002                    STRAPS  EQU    $F002
+0014 0000                    NOTERM  EQU    0
+0015 f000                    ACIACS  EQU    $F000
+0016 f001                    ACIADA  EQU    $F001
+0017                         **
+0018                         **MONITOR STACK AND FLAGS
+0019                         **
+0020 00f1                            ORG    $F1
+0021 00f1                    STACK   RMB    1         BOTTOM OF MONITOR'S STACK
+0022 00f2                    BRKADR  RMB    1         BREAKPOINT ADDRESS FLAG
+0023 00f3                    ECHO    RMB    1         TTY ECHO FLAG
+0024 00f4                    EXTFLG  RMB    1         EXTENDED CHARACTER FLAG
+0025 00f5                    BUFULL  RMB    1         BUFFER FULL FLAG
+0026 00f6                    SAVSTK  RMB    2         TEMP FOR STACK POINTER
+0027 00f8                    TEMP    RMB    1         TEMPORARY STORAGE
+0028 00f9                    BYTECT  RMB    1         BYTE COUNT
+0029 00fa                    XHI     RMB    1         XREG HIGH
+0030 00fb                    XLOW    RMB    1         XREG LOW
+0031 00fc                    SHIFT   RMB    1         BAUDOT SHIFT FLAG
+0032 00fd                    SAVEX   RMB    2         TEMP FOR INDEX RG
+0033 00ff                    BUFFER  RMB    1         BAUDOT CHARACTER FLAG
+0034                         **
+0035                         * START OF PROM
+0036                         **
+0037 ff00                            ORG    $FF00
+0038                         **
+0039                         * INPUT ONE CHAR INTO B-REGISTER
+0040                         * ECHO CHARACTER IF BIT 7 OF ECHO FLAG IS CLEAR
+0041                         **
+0042 ff00 8d 22              INCH    BSR    POLCAT    ACIA STATUS TO A REG
+0043 ff02 24 fc                      BCC    INCH      RECEIVE NOT READY
+0044 ff04 c6 7f                      LDAB   #$7F      MASK FOR PARITY REMOVAL
+0045 ff06 d1 f3                      CMPB   ECHO      CHECK ECHO FLAG
+0046 ff08 f4 f0 01                   ANDB   ACIADA    GET CARACTER
+0047 ff0b 24 74                      BCC    OUTCH     ECHO
+0048 ff0d 39                         RTS              NO ECHO
+0049                         **
+0050                         * THE FOLLOWING NOP LINES LINES UP THE ENTRY
+0051                         * POINTS TO POLCAT IN THE TWO VERSIONS
+0052                         * OF THE MONITOR
+0053                         **
+0054 ff0e 01                         NOP
+0055                         **
+0056                         * INPUT ONE HEX DIGIT INTO B REG
+0057                         * RETURN TO CALLING PROGRAM IF
+0058                         * CHARACTER RECEIVED IS A HEX
+0059                         * DIGIT. IF NOT HEX, GO TO CRLF
+0060                         **
+0061 ff0f 8d ef              INHEX   BSR    INCH      GET A CHARACTER
+0062 ff11 c0 30                      SUBB   #'0
+0063 ff13 2b 3c                      BMI    C1        NOT HEX
+0064 ff15 c1 09                      CMPB   #$9
+0065 ff17 2f 0a                      BLE    IN1HG     NOT HEX
+0066 ff19 c1 11                      CMPB   #$11
+0067 ff1b 2b 34                      BMI    C1        NOT HEX 
+0068 ff1d c1 16                      CMPB   #$16
+0069 ff1f 2e 30                      BGT    C1        NOT HEX
+0070 ff21 c0 07                      SUBB   #7        IT'S A LETTER-GET BCD
+0071 ff23 39                 IN1HG   RTS              RETURN
+0072                         **
+0073                         * POLL FOR CHARACTER
+0074                         * SETS CARRY IF CHARACTER IS IN BUFFER
+0075                         * CLOBBERS B REG
+0076                         **
+0077 ff24 f6 f0 00           POLCAT  LDAB   ACIACS    ACIA STATUS TO B
+0078 ff27 57                         ASRB             ROTATE RDRF BIT INTO CARRY
+0079 ff28 39                         RTS              RETURN
+0080                         **
+0081                         * LOAD PAPER TAPE
+0082                         * LOAD ONLY S1 TYPE RECORDS 
+0083                         * TERMINATE ON S9 OR CHECKSUM ERROR
+0084                         **
+0085 ff29 8d d5              LOAD    BSR    INCH      READ CHARACTER
+0086 ff2b c0 53                      SUBB   #'S
+0087 ff2d 26 fa                      BNE    LOAD      FIRST CHAR NOT (S)
+0088 ff2f 8d cf                      BSR    INCH      READ CHARACTER
+0089 ff31 c1 39                      CMPB   #'9
+0090 ff33 27 1c                      BEQ    C1        S9 END OF FILE
+0091 ff35 c1 31                      CMPB   #'1
+0092 ff37 26 f0                      BNE    LOAD      SECOND CHAR NOT (1)
+0093 ff39 4f                         CLRA             ZERO THE CHECKSUM
+0094 ff3a 8d 17                      BSR    BYTE      READ BYTE
+0095 ff3c c0 02                      SUBB   #2
+0096 ff3e d7 f9                      STAB   BYTECT    BYTE COUNT
+0097 ff40 8d 20                      BSR    BADDR     GET ADDRESS OF BLOCK
+0098 ff42 8d 0f              LOAD11  BSR    BYTE      GET DATA BYTE
+0099 ff44 7a 00 f9                   DEC    BYTECT    DECREMENT BYTE COUNT
+0100 ff47 27 05                      BEQ    LOAD15    DONE WITH THIS BLOCK
+0101 ff49 e7 00                      STAB   0,X       STORE DATA
+0102 ff4b 08                         INX              BUMP POINTER
+0103 ff4c 20 f4                      BRA    LOAD11    GO BACK FOR MORE
+0104 ff4e 4c                 LOAD15  INCA             INCREMENT CHECKSUM
+0105 ff4f 27 d8              LLOAD   BEQ    LOAD      ALL OK - IT'S ZERO
+0106 ff51 20 58              C1      BRA    CRLF      CHECKSUM ERROR - QUIT
+0107                         **
+0108                         * READ BYTE (2 HEX DIGITS)
+0109                         * INTO B REG
+0110                         * A IS USED FOR PAPER TAPE CHECKSUM
+0111                         **
+0112 ff53 8d ba              BYTE    BSR    INHEX     GET FIRST HEX DIG
+0113 ff55 58                         ASLB             SHIFT TO HIGH ORDER 4 BITS
+0114 ff56 58                         ASLB
+0115 ff57 58                         ASLB
+0116 ff58 58                         ASLB
+0117 ff59 1b                         ABA              ADD TO CHEKSUM
+0118 ff5a d7 f8                      STAB   TEMP      STORE DIGIT
+0119 ff5c 8d b1                      BSR    INHEX     GET 2ND HEX DIG
+0120 ff5e 1b                         ABA              ADD TO CHECKSUM
+0121 ff5f db f8                      ADDB   TEMP      COMBINE DIGITS TO GET BYTE
+0122 ff61 39                         RTS              RETURN
+0123                         **
+0124                         * READ 16 BIT ADDRESS INTO X
+0125                         * STORE SAME ADDRESS IN XHI & XLO
+0126                         * CLOBBERS B REG
+0127                         **
+0128 ff62 8d ef              BADDR   BSR    BYTE      GET HIGH ORDER ADDRESS
+0129 ff64 d7 fa                      STAB   XHI       STORE IT
+0130 ff66 8d eb                      BSR    BYTE      GET LOW ORDER ADDRESS
+0131 ff68 d7 fb                      STAB   XLOW      STORE IT
+0132 ff6a de fa                      LDX    XHI       LOAD X WITH ADDRESS BUILT
+0133 ff6c 39                         RTS              RETURN
+0134                         **
+0135                         * PRINT BYTE IN A REG
+0136                         * CLOBBERS B REG
+0137                         **
+0138 ff6d 16                 OUT2H   TAB              COPY BYTE TO B
+0139 ff6e 54                         LSRB             SHIFT TO RIGHT
+0140 ff6f 54                         LSRB
+0141 ff70 54                         LSRB
+0142 ff71 54                         LSRB
+0143 ff72 8d 01                      BSR    OUTHR     OUTPUT FIRST DIGIT
+0144 ff74 16                         TAB              BYTE INTO B AGAIN
+0145 ff75 c4 0f              OUTHR   ANDB   #$F       GET RID OF LEFT DIG
+0146 ff77 cb 30                      ADDB   #$30      GET ASCII
+0147 ff79 c1 39                      CMPB   #$39
+0148 ff7b 23 04                      BLS    OUTCH
+0149 ff7d cb 07                      ADDB   #7        IF IT'S A LETTER ADD 7
+0150 ff7f 01                         NOP              LINE UP OUTCH ENTRY POINTS
+0151 ff80 01                         NOP
+0152 ff81 8c                 OUTCH   FCB     $8C      USE CPX SKIP TRICK
+0153 ff82 c6 20              OUTS    LDAB   #$20      OUTS PRINTS A SPACE
+0154                         **
+0155                         * OUTCH OUTPUTS CHARACTER IN B
+0156                         **
+0157 ff84 37                         PSHB             SAVE CHAR
+0158 ff85 8d 9d              OUTC1   BSR    POLCAT    ACIA STATUS TO B REG
+0159 ff87 57                         ASRB
+0160 ff88 24 fb                      BCC    OUTC1     XMIT NOT READY
+0161 ff8a 33                         PULB             CHAR BACK TO B REG
+0162 ff8b f7 f0 01                   STAB   ACIADA    OUTPUT CHARACTER
+0163 ff8e 39                         RTS
+0164                         **
+0165                         * EXAMINE AND DEPOSIT NEXT
+0166                         * USES CONTENTS OF XHI & XLO AS POINTER
+0167                         **
+0168 ff8f de fa              NCHANG  LDX    XHI       INCREMENT POINTER
+0169 ff91 08                         INX
+0170 ff92 df fa                      STX    XHI
+0171 ff94 96 fa                      LDAA   XHI
+0172 ff96 8d d5                      BSR    OUT2H     PRINT OUT ADDRESS
+0173 ff98 96 fb                      LDAA   XLOW
+0174 ff9a 8d d1                      BSR    OUT2H
+0175 ff9c 8c                         FCB    $8C       USE CPX SKIP TRICK
+0176                         **
+0177                         * EXAMINE & DEPOSIT
+0178                         **
+0179 ff9d 8d c3              CHANGE  BSR    BADDR     BUILD ADDRESS
+0180 ff9f 8d e1                      BSR    OUTS      PRINT SPACE
+0181 ffa1 a6 00                      LDAA   0,X       BYTE INTO A
+0182 ffa3 8d c8                      BSR    OUT2H     PRINT BYTE
+0183 ffa5 8d db                      BSR    OUTS      PRINT SPACE
+0184 ffa7 8d aa                      BSR    BYTE      GET NEW BYTE
+0185 ffa9 e7 00                      STAB   0,X       STORE NEW BYTE
+0186                         **
+0187                         * COMMAND DECODING SECTION
+0188                         **
+0189 ffab 9e f6              CRLF    LDS    SAVSTK
+0190 ffad c6 0d                      LDAB   #$D       CARRIAGE RETURN
+0191 ffaf 8d d0                      BSR    OUTCH
+0192 ffb1 c6 0a                      LDAB   #$A       LINE FEED
+0193 ffb3 8d cc                      BSR    OUTCH
+0194 ffb5 c6 2e                      LDAB   #'.       PROMPT CHARACTER
+0195 ffb7 8d c8                      BSR    OUTCH
+0196 ffb9 bd ff 00                   JSR    INCH      READ CHARACTER
+0197 ffbc 17                         TBA              MAKE A COPY
+0198 ffbd 8d c3                      BSR    OUTS      PRINT SPACE
+0199 ffbf 81 4c                      CMPA   #'L
+0200 ffc1 27 8c                      BEQ    LLOAD     LOAD PAPER TAPE
+0201 ffc3 81 4a                      CMPA   #'J
+0202 ffc5 26 04                      BNE    NOTJ
+0203 ffc7 8d 99                      BSR    BADDR     GET ADDRESS TO JUMP TO
+0204 ffc9 6e 00                      JMP    0,X       JUMP TO IT
+0205 ffcb 81 4d              NOTJ    CMPA   #'M
+0206 ffcd 27 ce                      BEQ    CHANGE    EXAMINE & DEPOSIT
+0207 ffcf 81 4e                      CMPA   #'N
+0208 ffd1 27 bc                      BEQ    NCHANG    E & D NEXT
+0209 ffd3 81 50                      CMPA   #'P
+0210 ffd5 26 d4                      BNE    CRLF
+0211 ffd7 3b                         RTI              PROCEED FROM BREAKPOINT
+0212                         **
+0213                         * RESET ENTRY POINT
+0214                         **
+0215 ffd8 8e 00 f3           RESET   LDS    #ECHO     INITIALIZE STACK POINTER
+0216 ffdb c6 03                      LDAB   #3        INIT ECHO AND BRKADR FLAGS
+0217 ffdd 37                         PSHB
+0218 ffde 37                         PSHB
+0219 ffdf f7 f0 00                   STAB   ACIACS    MASTER RESET ACIA
+0220 ffe2 f6 f0 02                   LDAB   STRAPS    LOOK AT STRAPS
+0221 ffe5 2b 19                      BMI    NOTERM    NO TERM - JUMP TO 0
+0222 ffe7 c4 04                      ANDB   #4        GET # OF STOP BITS
+0223 ffe9 ca d1                      ORAB   #$D1
+0224 ffeb f7 f0 00                   STAB   ACIACS    INIT ACIA PORT
+0225                         **
+0226                         * SOFTWARE INTERRUPT ENTRY POINT
+0227                         **
+0228 ffee 9f f6              INTRPT  STS    SAVSTK    SAVE STACK POINTER
+0229 fff0 9f fa                      STS    XHI       SAVE SP FOR N COMMAND
+0230 fff2 d6 f2                      LDAB   BRKADR    IF BIT 7 OF BRKADR IS SET
+0231 fff4 2b 0a                      BMI    NOTERM    JUMP TO 0
+0232 fff6 20 b3                      BRA    CRLF      GOTO COMMAND DECODER
+0233                         **
+0234                         * NOW COME THE INTERRUPT VECTORS
+0235                         **
+0236 fff8                            ORG    $FFF8
+0237 fff8 01 00                      FDB    MIVEC     MI VECTOR
+0238                         *        FDB    INTRPT    SWI VECTOR
+0239 fffa 00 10                      FDB    SWIVEC    SWI VECTOR (VECTOR THROUGH $0010)
+0240 fffc 01 04                      FDB    NMIVEC    NMI VECTOR
+0241 fffe ff d8                      FDB    RESET     RESET VECTOR
+0242                                 END    
+0243                         
+
+
+Number of errors 0
