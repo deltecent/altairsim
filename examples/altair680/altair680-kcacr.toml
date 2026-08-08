@@ -1,0 +1,70 @@
+# The Altair 680b with a KCACR audio-cassette interface added.
+#
+#     cd examples/altair680
+#     altairsim altair680-kcacr.toml
+#
+#     .J FD00
+#
+# The same MON680 machine as the built-in `altair680`, plus the `680kcacr` cassette
+# board (status/control at F010, data at F011) and its loader/punch PROM at FD00
+# (`builtin:kcacr`). A cassette holding a Motorola S-record program is in the
+# recorder; `.J FD00` runs the loader, which reads the tape into memory and returns
+# to the monitor at the terminating S9 record.
+#
+# The tape here is kcacr-demo.tap -- a tiny S-record that deposits four bytes at
+# 0200 (86 2A 39 00). After `.J FD00` returns to the `.` prompt, `.M 0200` shows the
+# 86 the loader wrote. To load real 680b software instead, MOUNT its cassette in its
+# place (see README.md) -- the loader path is identical.
+#
+# See reference/Altair 680b KCACR.md for the board, and roms/KCACR/ for the PROM.
+
+[machine]
+name = "altair680"
+# Put the cassette in the recorder, then start the machine. The tape path is relative
+# to THIS file's directory. (A tape is MOUNTed with the verb, not a unit property --
+# the same way examples/sol mounts a TRK80 cassette.)
+startup = ["MOUNT kc0:tape \"kcacr-demo.tap\"", "RESET", "RUN"]
+
+[[board]]
+type     = "6800"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type   = "680io"
+id     = "io0"
+straps = 0x00
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+# The KCACR. Its status/control (F010) and data (F011) registers, active-low, with a
+# Kansas City Standard FSK modem underneath. The cassette in the recorder is a byte
+# tape holding the S-record program the FD00 loader reads. Its path is relative to
+# THIS file's directory.
+[[board]]
+type = "680kcacr"
+id   = "kc0"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "1K"
+
+  # The KCACR loader/punch PROM (socket V), one PROM below the monitor. `.J FD00`
+  # loads an S-record tape; `.J FD74` punches memory back out.
+  [[board.region]]
+  type  = "rom"
+  at    = FD00
+  mount = "builtin:kcacr"
+
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:mon680"

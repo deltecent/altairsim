@@ -1,9 +1,18 @@
-# A Universal I/O board on the Altair 680b
+# Expansion boards on the Altair 680b
 
 The built-in `altair680` machine is a Motorola 6800 with just its onboard console — one
-6850 ACIA at `F000/F001`. This example adds the **Universal I/O board** (`680uio`), the
-680b's general-purpose expansion board: a **second 6850 serial port** and a **6820 PIA
-parallel port**, memory-mapped like everything on the 6800.
+6850 ACIA at `F000/F001`. Two examples here add a period expansion board to it:
+
+- **`altair680-uio.toml`** — the **Universal I/O board** (`680uio`): a second serial port
+  and a parallel port.
+- **`altair680-kcacr.toml`** — the **KCACR audio-cassette interface** (`680kcacr`): a
+  cassette you load and save S-record tapes from.
+
+## A Universal I/O board
+
+`altair680-uio.toml` adds the **Universal I/O board** (`680uio`), the 680b's
+general-purpose expansion board: a **second 6850 serial port** and a **6820 PIA parallel
+port**, memory-mapped like everything on the 6800.
 
 ```
 cd examples/altair680
@@ -48,3 +57,38 @@ repository — they are just where this example's output goes.
 
 See `reference/Altair 680b Universal IO Board.md` for the full register model, and the
 built-in `altair680` machine for the base machine this extends.
+
+## A KCACR audio cassette
+
+`altair680-kcacr.toml` adds the **KCACR** (`680kcacr`), the 680b's audio-cassette
+interface: a UART at `F010` (status/control) and `F011` (data), recording **Kansas City
+Standard** FSK, with a loader/punch PROM at `FD00` (`builtin:kcacr`).
+
+```
+cd examples/altair680
+altairsim altair680-kcacr.toml
+```
+
+A cassette (`kcacr-demo.tap`) is already in the recorder — a tiny Motorola S-record tape
+that deposits four bytes (`86 2A 39 00`) at `0200`. From the `.` prompt:
+
+1. `JFD00` — run the loader PROM. It reads the tape's S-records into memory and returns
+   to the monitor at the terminating `S9` record. (On a bad tape it prints one letter and
+   stops: `C` = checksum/non-hex, `M` = memory error.)
+2. `M0200` — examine `0200`. It reads back `86`, the first byte the tape carried.
+
+To **save** memory back to a cassette, `JFD74` and answer the two address prompts with the
+start and end (four hex digits each); the loader writes S-records terminated by `S9`.
+
+### Loading real 680b software
+
+The same `JFD00` path loads any S-record cassette. MITS's **680b Cassette BASIC** and the
+Editor/Assembler are on deramp.com as `.S19` files (and as `.WAV`), under
+`downloads/altair/software/altair_680/`. Save one beside this file, put it in the recorder
+in place of the demo tape (`MOUNT kc0:tape "Cassette BASIC V1.1 R3.2.S19"`), `JFD00` to
+load it, then `J` its start address — the loader does not care whether the tape holds four
+bytes or all of BASIC.
+
+The `680kcacr` reads and writes **Kansas City** modulation only; a plain-MITS 88-ACR tape
+is refused. See `reference/Altair 680b KCACR.md` for the board and `roms/KCACR/` for the
+loader PROM.

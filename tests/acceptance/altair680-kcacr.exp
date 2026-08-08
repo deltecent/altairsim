@@ -1,0 +1,89 @@
+#!/usr/bin/expect -f
+#
+# THE 680b KCACR CASSETTE, LOADED FROM -- `examples/altair680/altair680-kcacr.toml`.
+#
+# The KCACR is the 680b's audio-cassette board: a UART at F010/F011 (active-low), a
+# Kansas City FSK modem, and a loader/punch PROM at FD00 that reads Motorola S-records
+# off the tape. This test proves the whole path end to end on a real machine: MON680
+# up on the onboard ACIA, a cassette in the recorder, `J FD00` loading the tape into
+# memory, and the loaded byte read back with `M`. If the 680kcacr board's decode, its
+# active-low status bit, or the S-record loader is wrong, the deposit never lands.
+#
+# The tape (kcacr-demo.tap) is a leader plus one S1 record that writes 86 2A 39 00 to
+# 0200, then S9. So after `J FD00` returns to the `.` prompt, `M 0200` must show `86`.
+#
+# WHY THIS CANNOT BE A PIPE (the same lesson altair680.exp records). Piped keystrokes
+# clock into the 6850's one-byte receive register while the monitor is still resetting,
+# and the command line arrives mangled. A real terminal waits for the prompt; so do we.
+#
+# TRAPS (each has bitten this suite before):
+#   1. `expect` PATTERNS ARE GLOBS. Every literal here is `-ex`.
+#   2. EVERY `expect` HAS A TIMEOUT ARM, or the test hangs instead of failing.
+#   3. MON680 TAKES NO SPACES: the command is `JFD00`, not `J FD00`.
+#   4. The `.` prompt is a single period, which also appears in the sim's banner
+#      ("machine: altair680."). Consume the `[console` marker FIRST; the next `.` is
+#      the monitor's.
+#
+# usage: expect -f altair680-kcacr.exp <altairsim>   (run from the repo root)
+
+set timeout 30
+log_user 0
+
+set sim [lindex $argv 0]
+
+# The example lives beside the tape it mounts; run it by its path. The startup MOUNT's
+# tape path is rebased to the machine file's own directory, so this works from anywhere.
+spawn $sim examples/altair680/altair680-kcacr.toml
+
+expect {
+    -ex "\[console" {}
+    timeout { puts "### FAIL: the machine never started"; exit 1 }
+}
+
+# Wait for MON680 to ask -- the first `.` after the console marker.
+expect {
+    -ex "." {}
+    timeout { puts "### FAIL: MON680 never printed its '.' prompt"; exit 1 }
+}
+
+# Run the KCACR loader PROM. It reads the cassette's S-records into memory and returns
+# to the monitor at the S9 record. No space after J (trap 3).
+send "JFD00\r"
+
+# ...and it comes back to the prompt when the load is done.
+expect {
+    -ex "." {}
+    timeout { puts "### FAIL: the FD00 loader never returned to the monitor"; exit 1 }
+}
+
+# The byte the S-record deposited at 0200 must be there. MON680's `M` echoes the
+# address, a space, then the byte: ` 86 `.
+send "M0200\r"
+expect {
+    -ex "86" { puts "### altair680-kcacr: the KCACR loaded the tape -- 0200 = 86" }
+    timeout {
+        puts "### FAIL: asked to examine 0200 and never saw 86."
+        puts "###   The KCACR loader did not read the cassette into memory."
+        exit 1
+    }
+}
+
+# A bare CR aborts the deposit MON680 is now waiting for and reprints the prompt.
+send "\r"
+expect {
+    -ex "." {}
+    timeout { puts "### FAIL: MON680 did not return to its prompt"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "### FAIL: ATTN did not return to the monitor"; exit 1 }
+}
+send "QUIT\r"
+expect {
+    eof {}
+    timeout { puts "### FAIL: would not quit"; exit 1 }
+}
+
+puts "### ALL STEPS PASSED"

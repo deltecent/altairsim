@@ -59,6 +59,7 @@ and within a group the boards are in **alphabetical order**.
 
 | Type | What it is |
 |---|---|
+| [`680kcacr`](#680kcacr) | Altair 680b KCACR audio-cassette interface: a 1602-family UART recording Kansas City Standard FSK, memory-mapped at F010 (status/control) and F011 (data), active-LOW. Adds software motor control (control D7=on, D6=off) and interrupt-driven transfer (D0/D1 enables pull the 6800 IRQ). Reuses the 88-ACR tape machinery -- MOUNT a tape, WIND/REWIND it |
 | [`acr`](#acr) | MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
 | [`uio`](#uio) | MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10) and an 88-ACR cassette section (unit 'tape', default 0x06) with motor control and a SW-1 MITS/Kansas-City modulation switch. Defaults reproduce the standard 0x10 + 0x06 layout |
 
@@ -576,6 +577,39 @@ Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports yo
 
 
 ## Tape
+
+### `680kcacr`
+
+Altair 680b KCACR audio-cassette interface: a 1602-family UART recording Kansas City Standard FSK, memory-mapped at F010 (status/control) and F011 (data), active-LOW. Adds software motor control (control D7=on, D6=off) and interrupt-driven transfer (D0/D1 enables pull the 6800 IRQ). Reuses the 88-ACR tape machinery -- MOUNT a tape, WIND/REWIND it
+
+**Units:** `tape` (tape, MOUNT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | int | `300` | `50` .. `25000` | Line rate. A JUMPER on the real card -- software cannot change it |
+| `data_bits` | int | `8` | `5` .. `8` | Data bits per character. The NDB1/NDB2 pads |
+| `stop_bits` | int | `2` | `1` .. `2` | Stop bits. The NSB pad: GND = 1, +V = 2 |
+| `parity` | enum | `none` | `none` \| `odd` \| `even` | The NPB/POE pads: none \| odd \| even |
+| `motor` | enum | — | — | Tape-recorder motor relay (guest-driven: STA F010 7F = on, BF = off) **(read-only — not a key you may set)** |
+
+#### Unit `tape` — `[board.unit.tape]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `mode` | enum | `play` | `play` \| `record` | Which way the bytes go: play loads from the file, record saves to it |
+| `format` | enum | `auto` | `auto` \| `raw` \| `kcs300` | How to read the mounted file: auto \| raw \| fsk300 |
+| `leader` | int | `15` | `0` .. `120` | Seconds of idle tone before recorded data, when writing audio |
+| `trailer` | int | `5` | `0` .. `120` | Seconds of idle tone after recorded data, when writing audio |
+| `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
+| `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
+| `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
+| `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
+| `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
+| `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
+| `stop` | string | `off` | off \| end \| mm:ss | Auto-stop playback at this time: off \| end \| <mm:ss> |
+
 
 ### `acr`
 

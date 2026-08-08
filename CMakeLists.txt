@@ -390,6 +390,9 @@ add_library(altair_core STATIC
   # The 680b Universal I/O expansion board -- a second 6850 serial + a 6820 PIA
   # (chips/mc6820.h), memory-mapped and S9-relocatable.
   src/boards/mits-680uio.cpp
+  # The 680b KCACR audio-cassette interface -- an 88-ACR (AcrBoard) grown a motor and
+  # moved to a memory-mapped, active-low register pair at F010/F011.
+  src/boards/mits-680kcacr.cpp
   # The two MITS hard-sector floppy controllers, and the register model they share.
   # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
   # programming model, and the period BOOT.ASM declares the ports and every status/command
@@ -663,6 +666,7 @@ add_executable(altair_tests
   tests/test_680board.cpp
   tests/test_680io.cpp
   tests/test_680uio.cpp
+  tests/test_680kcacr.cpp
   tests/test_z80_cpu.cpp
   tests/test_expr.cpp
   tests/test_debug.cpp
@@ -1203,6 +1207,24 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/altair680.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-altair680 PROPERTIES
+                       LABELS acceptance TIMEOUT 120
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE 680b KCACR: load a cassette S-record tape through the FD00 loader PROM.
+  #
+  # The companion to acceptance-altair680, one board up: it boots the same MON680, then
+  # runs the KCACR loader (`J FD00`) to read a cassette into memory and reads the byte
+  # back. It exercises the `680kcacr` board's active-low F010/F011 decode, the tape
+  # transport underneath it, and the S-record loader PROM together -- if any is wrong,
+  # the deposit never lands at 0200. It TYPES, so it is an expect test for the same
+  # receive-register race. The tape (examples/altair680/kcacr-demo.tap) is in the tree.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-altair680-kcacr
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/altair680-kcacr.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-altair680-kcacr PROPERTIES
                        LABELS acceptance TIMEOUT 120
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
