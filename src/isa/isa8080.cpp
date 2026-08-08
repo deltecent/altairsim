@@ -337,17 +337,19 @@ const Isa8080Assembler k8080asm;
 
 } // namespace
 
-// Defined in isaZ80.cpp. The registry lives here, in one place; the Z80 decoder
-// is a whole file of its own but registers through this one accessor.
+// Defined in isaZ80.cpp / isa6800.cpp. The registry lives here, in one place; each
+// other decoder is a whole file of its own but registers through this one accessor.
 const Disassembler* z80Disassembler();
+const Disassembler* mc6800Disassembler();
 
 const Disassembler* disassemblerFor(const std::string& isa) {
     std::string k;
     for (char c : isa) k += (char)std::tolower((unsigned char)c);
     if (k == "8080") return &k8080;
     if (k == "z80") return z80Disassembler();
-    return nullptr;  // The caller reports it. Disassembling a Z80 as an 8080
-                     // produces plausible, WRONG text -- worse than an error.
+    if (k == "6800") return mc6800Disassembler();
+    return nullptr;  // The caller reports it. Disassembling a Z80 or a 6800 as an
+                     // 8080 produces plausible, WRONG text -- worse than an error.
 }
 
 const Assembler* assemblerFor(const std::string& isa) {
@@ -359,6 +361,6 @@ const Assembler* assemblerFor(const std::string& isa) {
     return nullptr;
 }
 
-std::vector<std::string> instructionSets() { return {"8080", "z80"}; }
+std::vector<std::string> instructionSets() { return {"8080", "z80", "6800"}; }
 
 } // namespace altair
