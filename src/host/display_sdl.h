@@ -42,6 +42,7 @@ public:
     Surface* acquire(int w, int h, PixelFormat fmt) override;
     void     present(Surface* s) override;
     void     setPalette(std::span<const Color> colors) override;
+    bool     isWindowed() const override { return true; }  // there is a real window
     void     pollEvents() override;
     void     setTitle(const std::string& name) override;
     void     setRunning(bool running) override;

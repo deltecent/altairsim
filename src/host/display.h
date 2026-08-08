@@ -201,6 +201,15 @@ public:
         return std::chrono::duration<double>(now - epoch_).count();
     }
 
+    // IS THERE A REAL WINDOW BEHIND THIS SERVICE? A board never asks -- it draws into a
+    // Surface either way, and a NullDisplay is a full, valid Display (that is the whole
+    // point of the seam). But an ENDPOINT can: a `terminal:` line is only useful if a
+    // person can see it and type at it, so it refuses at CONNECT when the injected display
+    // is headless (a no-SDL build, or a test's NullDisplay) rather than opening a serial
+    // line into the void. The default is false -- only the SDL back end, with a window on
+    // the screen, answers true.
+    virtual bool isWindowed() const { return false; }
+
     // WHAT MACHINE THIS WINDOW BELONGS TO. A windowed host puts it in the title bar; a
     // headless one drops it on the floor.
     //

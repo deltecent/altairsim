@@ -57,6 +57,10 @@ public:
     void clearScreen();            // blank the page, cursor home (does NOT touch curAttr_)
     void eraseToEol();             // blank cursor..end of line
     void eraseToEos();             // blank cursor..end of screen
+    void eraseFromBol();           // blank start of line..cursor (inclusive)
+    void eraseLine();              // blank the whole current line
+    void eraseFromTop();           // blank start of screen..cursor (inclusive)
+    void eraseAll();               // blank the whole page, cursor UNCHANGED
     void place(int row, int col);  // move the cursor, clamped to the page
 
     // ---- reads ----

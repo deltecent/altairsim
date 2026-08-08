@@ -82,6 +82,35 @@ void TerminalScreen::eraseToEos() {
     dirty_ = true;
 }
 
+// The other three quadrants of erase, which the VT100's ED/EL want (ANSI J/K with a
+// parameter of 1 or 2). eraseAll leaves the cursor where it is -- ESC[2J clears the
+// page without homing, unlike the SD terminal's clear-and-home clearScreen().
+void TerminalScreen::eraseFromBol() {
+    for (int c = 0; c <= curCol_ && c < cols_; ++c) {
+        cellRef(curRow_, c) = 0x20;
+        attrRef(curRow_, c) = 0;
+    }
+    dirty_ = true;
+}
+
+void TerminalScreen::eraseLine() {
+    for (int c = 0; c < cols_; ++c) { cellRef(curRow_, c) = 0x20; attrRef(curRow_, c) = 0; }
+    dirty_ = true;
+}
+
+void TerminalScreen::eraseFromTop() {
+    for (int r = 0; r < curRow_; ++r)
+        for (int c = 0; c < cols_; ++c) { cellRef(r, c) = 0x20; attrRef(r, c) = 0; }
+    eraseFromBol();
+    dirty_ = true;
+}
+
+void TerminalScreen::eraseAll() {
+    for (auto& b : cells_) b = 0x20;
+    for (auto& a : attr_) a = 0x00;
+    dirty_ = true;  // the cursor is deliberately left where it is
+}
+
 void TerminalScreen::place(int row, int col) {
     curRow_ = row < 0 ? 0 : (row >= rows_ ? rows_ - 1 : row);
     curCol_ = col < 0 ? 0 : (col >= cols_ ? cols_ - 1 : col);

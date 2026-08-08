@@ -15,6 +15,7 @@
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/sd-sbc.h"
+#include "boards/terminal-font.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
 #include "host/display_sdl.h"
 #include "host/joystick_sdl.h"
@@ -31,6 +32,7 @@
 #include "host/console.h"
 #include "host/endpoint.h"
 #include "host/media.h"
+#include "host/terminal/stream.h"
 #include "mcp/server.h"
 
 #include <algorithm>
@@ -239,6 +241,13 @@ int main(int argc, char** argv) {
     VdmBoard::setDisplay(&g_display);
     DazzlerBoard::setDisplay(&g_display);
     Vdb8024Board::setDisplay(&g_display);
+
+    // The generic built-in terminal (issue #244) draws into the SAME host video service and
+    // paints with the bundled font. A `terminal:` endpoint reads these statics; on a
+    // headless build g_display is a NullDisplay (isWindowed() false), so CONNECT refuses the
+    // endpoint cleanly rather than opening a serial line with nothing behind it.
+    TerminalStream::setDisplay(&g_display);
+    TerminalStream::setFont(&bundledTerminalFont());
 
     // The same seam for game controllers (host/joystick.h): a D+7A reads its one or two
     // JS-1 joysticks from here and never learns it is SDL. A real gamepad (or the
