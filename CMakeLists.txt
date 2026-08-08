@@ -301,6 +301,12 @@ add_library(altair_core STATIC
   src/host/stream.cpp
   src/host/filter.cpp
   src/host/console.cpp
+  # The built-in terminal engine: an attributed grid (TerminalScreen), the painter that
+  # renders it into a Display (TerminalRenderer), and the abstract dialect it drives
+  # (TerminalEmulator, header-only). Lifted from the VDB-8024 board; the shared basis for
+  # the generic terminal endpoint (issue #244). See src/host/terminal/.
+  src/host/terminal/screen.cpp
+  src/host/terminal/renderer.cpp
   src/host/endpoint.cpp
   src/host/hostserial.cpp
   src/host/tcp.cpp

@@ -28,6 +28,11 @@
 //     VdmBoard model, so the board never touches SDL and a headless build tests it
 //     against a NullDisplay.
 //
+// THE TERMINAL ITSELF IS THE SHARED ENGINE (host/terminal/): a TerminalScreen holds the
+// attributed grid, a TerminalRenderer paints it, and the SD Systems VDB v1.6 dialect
+// lives in SdVdb16Emulator below. The generic built-in terminal (issue #244) is the same
+// three pieces with a different emulator and a serial byte stream in place of these ports.
+//
 // THE CONTROL-CODE MAP is the SD Systems VDB v1.6 firmware's (examples/sdsys/VDB16.LST),
 // the firmware sdmonv21's console was written against: CR=0D, LF=0A, BS=08, TAB=09,
 // cursor up=0B / right=0C, clear=1A, home=1E, new-line=1F, and ESC (1B) sequences
@@ -36,6 +41,9 @@
 
 #include "core/board.h"
 #include "host/stream.h"
+#include "host/terminal/emulator.h"
+#include "host/terminal/renderer.h"
+#include "host/terminal/screen.h"
 
 #include <cstdint>
 #include <functional>
@@ -53,6 +61,31 @@ class Display;  // host/display.h -- injected; the board never learns it is SDL
 // legal to repeat at namespace scope, so including this beside a UART board is fine.
 using EndpointResolver =
     std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)>;
+
+// The SD Systems VDB v1.6 firmware's control-code dialect, driving a TerminalScreen.
+// This is the one board-specific half of the terminal; the screen and renderer are the
+// shared engine. See the control-code map in the file header.
+class SdVdb16Emulator : public TerminalEmulator {
+public:
+    void feed(uint8_t b, TerminalScreen& scr) override;
+    void reset() override { parse_ = Parse::Normal; }
+
+    // Snapshot: the parser is two bytes of state (the phase, and the row held between
+    // the two bytes of ESC = row col).
+    uint8_t parseByte() const { return (uint8_t)parse_; }
+    uint8_t pendRow() const { return pendRow_; }
+    void    setParseByte(uint8_t v) { parse_ = (Parse)v; }
+    void    setPendRow(uint8_t v) { pendRow_ = v; }
+
+private:
+    void control(uint8_t b, TerminalScreen& scr);  // a C0 control code (b < 0x20)
+    void escByte(uint8_t b, TerminalScreen& scr);   // the byte after ESC
+
+    // ESC and the cursor-position sequence are multi-byte.
+    enum class Parse : uint8_t { Normal, Esc, PosRow, PosCol, Attr };
+    Parse   parse_   = Parse::Normal;
+    uint8_t pendRow_ = 0;  // row held between the two bytes of ESC = row col
+};
 
 class Vdb8024Board : public Board {
 public:
@@ -105,63 +138,29 @@ public:
 
     // ---- For tests, without a window: the terminal's state read straight out. ----
     uint8_t statusByte() const;
-    std::string screenText() const;                 // 24 lines, '\n'-joined
-    uint8_t charAt(int row, int col) const;         // the glyph code at a cell
-    int cursorRow() const { return curRow_; }
-    int cursorCol() const { return curCol_; }
+    std::string screenText() const { return screen_.screenText(); }  // 24 lines, '\n'-joined
+    uint8_t charAt(int row, int col) const { return screen_.charAt(row, col); }
+    int cursorRow() const { return screen_.cursorRow(); }
+    int cursorCol() const { return screen_.cursorCol(); }
     // Feed one display byte to the terminal state machine directly (what OUT base+1
     // does), so a test can drive the screen without a CPU.
-    void putByte(uint8_t b) { feed(b); }
+    void putByte(uint8_t b) { emu_.feed(b, screen_); }
 
     static constexpr int kCols = 80;
     static constexpr int kRows = 24;
 
 private:
-    // ---- the terminal ----
-    void feed(uint8_t b);          // one display byte through the state machine
-    void control(uint8_t b);       // a C0 control code (b < 0x20)
-    void escByte(uint8_t b);       // the byte after ESC
-    void putGlyph(uint8_t code);   // a printable char at the cursor, advance it
-    void lineFeed();               // cursor down; scroll at the bottom
-    void newline();                // line feed + carriage return
-    void scrollUp();               // shift rows up one, blank the new bottom row
-    void clearScreen();            // blank the page, cursor home
-    void eraseToEol();             // blank cursor..end of line
-    void eraseToEos();             // blank cursor..end of screen
-    void place(int row, int col);  // move the cursor, clamped
-
-    uint8_t& cell(int r, int c) { return cells_[(size_t)r * kCols + c]; }
-    uint8_t  cell(int r, int c) const { return cells_[(size_t)r * kCols + c]; }
-    uint8_t& attr(int r, int c) { return attr_[(size_t)r * kCols + c]; }
-    uint8_t  attr(int r, int c) const { return attr_[(size_t)r * kCols + c]; }
-
     // ---- the keyboard line ----
     void latchKeyboard();  // take one byte off the line, from pump() only
-
-    // ---- rendering ----
-    void render();
-    bool frameChanged() const;
-    bool blinkOn() const;
 
     // Which board this is strapped at. The card is fixed at 00/01 (no host base-address
     // jumper on the real board); the property exists for tests and for symmetry.
     uint8_t base_ = 0x00;
 
-    // The 80x24 page: a glyph code per cell (bit 7 is an attribute flag, masked off for
-    // the glyph) and a parallel attribute plane (kAttr* bits).
-    uint8_t cells_[kCols * kRows];
-    uint8_t attr_[kCols * kRows];
-    static constexpr uint8_t kAttrReverse = 0x01;
-    static constexpr uint8_t kAttrBlink   = 0x02;
-    static constexpr uint8_t kAttrHalf    = 0x04;
-
-    int     curRow_ = 0, curCol_ = 0;
-    uint8_t curAttr_ = 0;  // enhancement applied to chars written now (kAttr* bits)
-
-    // The OUT base+1 parser. ESC and the cursor-position sequence are multi-byte.
-    enum class Parse : uint8_t { Normal, Esc, PosRow, PosCol, Attr };
-    Parse   parse_ = Parse::Normal;
-    uint8_t pendRow_ = 0;  // row held between the two bytes of ESC = row col
+    // ---- the terminal engine (host/terminal/) ----
+    TerminalScreen   screen_{kRows, kCols};
+    SdVdb16Emulator  emu_;
+    TerminalRenderer renderer_;
 
     // ---- switches (SW/jumpers, reference 6) ----
     bool    reverse_    = false;  // whole-screen video polarity
@@ -180,11 +179,6 @@ private:
     uint8_t  kbData_ = 0;
     bool     kbHave_ = false;
     uint64_t kbRx_   = 0;  // keystrokes handed to the guest -- the idle-traffic signal
-
-    // ---- render change-detection (frameChanged), same shape as the VDM-1 ----
-    bool dirty_        = true;   // a fresh screen owes the host one frame
-    bool lastBlinkOn_  = true;
-    bool hasBlinkCell_ = false;  // any cell blinking -> a blink flip changes the picture
 };
 
 } // namespace altair

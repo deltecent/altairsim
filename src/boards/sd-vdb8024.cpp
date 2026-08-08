@@ -4,9 +4,8 @@
 #include "core/statefile.h"
 #include "host/display.h"
 #include "host/endpoint.h"
+#include "host/terminal/font.h"
 
-#include <algorithm>
-#include <cstring>
 #include <vector>
 
 namespace altair {
@@ -20,17 +19,18 @@ Display* g_display = nullptr;
 // string to it and gets back a stream; it never learns what a socket is (DESIGN.md 7.7).
 EndpointResolver g_resolver;
 
-// THE CURSOR BLINK IS NOT ON THE CPU'S CRYSTAL -- it is the terminal's own oscillator,
-// asynchronous to the host and unreadable from the S-100 side, exactly like the VDM-1's
-// (see the long note in proctech-vdm1.cpp). So it is measured in SECONDS OF WALL TIME,
-// taken from the Display, which is the one duration on this card that may be.
-constexpr double kBlinkHalfPeriod = 0.5;  // seconds -- ~1 Hz blink
-
-// The palette an Indexed8 Surface resolves against. Green phosphor reads as "a terminal";
-// index 0 = background (black), 1 = full-intensity foreground, 2 = half intensity.
-constexpr Color kBlack = {0x00, 0x00, 0x00, 0xFF};
-constexpr Color kGreen = {0x33, 0xFF, 0x66, 0xFF};
-constexpr Color kDim   = {0x1A, 0x80, 0x33, 0xFF};
+// The VDB-8024's character generator behind the shared TerminalFont seam -- the
+// authentic CGEN PROM (sd-vdb8024-font.h), 7 dots in an 8-wide cell over a 10-line
+// field. Stateless, so one shared instance serves every board.
+class Vdb8024Font : public TerminalFont {
+public:
+    int     cellCols() const override { return vdb8024font::kCols; }
+    int     cellRows() const override { return vdb8024font::kRows; }
+    uint8_t glyphRow(uint8_t code, int row) const override {
+        return vdb8024font::glyphRow(code, row);
+    }
+};
+const Vdb8024Font g_vdbFont;
 
 } // namespace
 
@@ -38,8 +38,92 @@ void Vdb8024Board::setDisplay(Display* d) { g_display = d; }
 void Vdb8024Board::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
 
 Vdb8024Board::Vdb8024Board() : kb_(std::make_unique<NullStream>()) {
-    for (auto& b : cells_) b = 0x20;  // a fresh page is spaces
-    for (auto& a : attr_) a = 0x00;
+    renderer_.setFont(&g_vdbFont);
+    renderer_.setReverse(reverse_);
+    renderer_.setCursorMode(cursorMode_);
+}
+
+// ---------------------------------------------------------------------------
+// The terminal state machine -- one display byte from OUT base+1 (SD v1.6 dialect).
+// ---------------------------------------------------------------------------
+void SdVdb16Emulator::feed(uint8_t b, TerminalScreen& scr) {
+    switch (parse_) {
+        case Parse::Normal:
+            if (b < 0x20) control(b, scr);
+            else          scr.putGlyph(b & 0x7F);
+            break;
+
+        case Parse::Esc:
+            escByte(b & 0x7F, scr);  // the firmware RES 7 before comparing
+            break;
+
+        case Parse::PosRow: {
+            // ESC = <row+0x20> <col+0x20>. An out-of-range row aborts the sequence and
+            // the next byte is a fresh character (as the v1.6 firmware's RET does).
+            uint8_t v = b & 0x7F;
+            if (v < 0x20 || (v - 0x20) >= scr.rows()) { parse_ = Parse::Normal; break; }
+            pendRow_ = (uint8_t)(v - 0x20);
+            parse_   = Parse::PosCol;
+            break;
+        }
+
+        case Parse::PosCol: {
+            uint8_t v = b & 0x7F;
+            if (v < 0x20 || (v - 0x20) >= scr.cols()) { parse_ = Parse::Normal; break; }
+            scr.place(pendRow_, v - 0x20);
+            parse_ = Parse::Normal;
+            break;
+        }
+
+        case Parse::Attr: {
+            // ESC G n: '0' standard, '2' blink, '4' reverse, '6' reverse+blink. Half
+            // intensity is a separate field (ESC & / '), so '0' leaves it alone.
+            uint8_t v = b & 0x7F;
+            uint8_t a = scr.currentAttr();
+            constexpr uint8_t R = TerminalScreen::kAttrReverse, B = TerminalScreen::kAttrBlink;
+            if      (v == '0') a &= (uint8_t)~(R | B);
+            else if (v == '2') a = (uint8_t)((a & ~R) | B);
+            else if (v == '4') a = (uint8_t)((a & ~B) | R);
+            else if (v == '6') a |= (uint8_t)(R | B);
+            scr.setCurrentAttr(a);
+            parse_ = Parse::Normal;
+            break;
+        }
+    }
+}
+
+void SdVdb16Emulator::control(uint8_t b, TerminalScreen& scr) {
+    switch (b) {
+        case 0x08: scr.backspace(); break;      // backspace -- non-destructive cursor left
+        case 0x09: scr.tab(); break;            // tab to the next multiple of 8
+        case 0x0A: scr.lineFeed(); break;       // line feed
+        case 0x0B: scr.cursorUp(); break;       // cursor up
+        case 0x0C: scr.cursorForward(); break;  // cursor right (forward space) -- wraps
+        case 0x0D: scr.carriageReturn(); break; // carriage return
+        case 0x1A: scr.clearScreen(); break;    // clear screen + home
+        case 0x1B: parse_ = Parse::Esc; break;  // escape lead-in
+        case 0x1E: scr.home(); break;           // home
+        case 0x1F: scr.newline(); break;        // new line (LF + CR)
+        default: break;  // every other C0 code is ignored, as in the firmware
+    }
+}
+
+void SdVdb16Emulator::escByte(uint8_t b, TerminalScreen& scr) {
+    switch (b) {
+        case '=':  parse_ = Parse::PosRow; return;             // position cursor
+        case '*':
+        case ':':  scr.clearScreen(); break;                   // clear screen
+        case 'T':  scr.eraseToEol(); break;                    // erase to end of line
+        case 'Y':  scr.eraseToEos(); break;                    // erase to end of screen
+        case 'G':  parse_ = Parse::Attr; return;               // video attribute
+        case '&':  scr.setCurrentAttr(scr.currentAttr() | TerminalScreen::kAttrHalf); break;
+        case 0x27: scr.setCurrentAttr(scr.currentAttr() & (uint8_t)~TerminalScreen::kAttrHalf);
+                   break;                                       // ' -- full intensity
+        case 'E':
+        case 'R':  break;  // insert/delete line -- no-ops in the v1.6 firmware
+        default:   break;  // unknown escape -- ignored
+    }
+    parse_ = Parse::Normal;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +162,7 @@ uint8_t Vdb8024Board::assertsVi() const {
 
 void Vdb8024Board::write(const BusCycle& c) {
     if (c.type != Cycle::IoWrite) return;
-    if (c.port() == (uint8_t)(base_ + 1)) feed(c.data);  // display data / control word
+    if (c.port() == (uint8_t)(base_ + 1)) emu_.feed(c.data, screen_);  // display / control
     // A write to the status port (base+0) does nothing -- it is read-only.
 }
 
@@ -91,163 +175,25 @@ uint8_t Vdb8024Board::statusByte() const {
 }
 
 // ---------------------------------------------------------------------------
-// The terminal state machine -- one display byte from OUT base+1.
-// ---------------------------------------------------------------------------
-void Vdb8024Board::feed(uint8_t b) {
-    switch (parse_) {
-        case Parse::Normal:
-            if (b < 0x20) control(b);
-            else          putGlyph(b & 0x7F);
-            break;
-
-        case Parse::Esc:
-            escByte(b & 0x7F);  // the firmware RES 7 before comparing
-            break;
-
-        case Parse::PosRow: {
-            // ESC = <row+0x20> <col+0x20>. An out-of-range row aborts the sequence and
-            // the next byte is a fresh character (as the v1.6 firmware's RET does).
-            uint8_t v = b & 0x7F;
-            if (v < 0x20 || (v - 0x20) >= kRows) { parse_ = Parse::Normal; break; }
-            pendRow_ = (uint8_t)(v - 0x20);
-            parse_   = Parse::PosCol;
-            break;
-        }
-
-        case Parse::PosCol: {
-            uint8_t v = b & 0x7F;
-            if (v < 0x20 || (v - 0x20) >= kCols) { parse_ = Parse::Normal; break; }
-            place(pendRow_, v - 0x20);
-            parse_ = Parse::Normal;
-            break;
-        }
-
-        case Parse::Attr: {
-            // ESC G n: '0' standard, '2' blink, '4' reverse, '6' reverse+blink. Half
-            // intensity is a separate field (ESC & / '), so '0' leaves it alone.
-            uint8_t v = b & 0x7F;
-            if      (v == '0') curAttr_ &= (uint8_t)~(kAttrReverse | kAttrBlink);
-            else if (v == '2') curAttr_ = (uint8_t)((curAttr_ & ~kAttrReverse) | kAttrBlink);
-            else if (v == '4') curAttr_ = (uint8_t)((curAttr_ & ~kAttrBlink) | kAttrReverse);
-            else if (v == '6') curAttr_ |= (uint8_t)(kAttrReverse | kAttrBlink);
-            parse_ = Parse::Normal;
-            break;
-        }
-    }
-}
-
-void Vdb8024Board::control(uint8_t b) {
-    switch (b) {
-        case 0x08:  // backspace -- non-destructive cursor left, stops at the left margin
-            if (curCol_ > 0) { --curCol_; dirty_ = true; }
-            break;
-        case 0x09: {  // tab to the next multiple of 8, not past the last column
-            int n = (curCol_ & ~7) + 8;
-            if (n < kCols) { curCol_ = n; dirty_ = true; }
-            break;
-        }
-        case 0x0A: lineFeed(); break;                          // line feed
-        case 0x0B: if (curRow_ > 0) { --curRow_; dirty_ = true; } break;  // cursor up
-        case 0x0C:  // cursor right (forward space) -- wraps to the next line
-            if (++curCol_ >= kCols) newline();
-            dirty_ = true;
-            break;
-        case 0x0D: curCol_ = 0; dirty_ = true; break;          // carriage return
-        case 0x1A: clearScreen(); break;                       // clear screen + home
-        case 0x1B: parse_ = Parse::Esc; break;                 // escape lead-in
-        case 0x1E: curRow_ = 0; curCol_ = 0; dirty_ = true; break;  // home
-        case 0x1F: newline(); break;                           // new line (LF + CR)
-        default: break;  // every other C0 code is ignored, as in the firmware
-    }
-}
-
-void Vdb8024Board::escByte(uint8_t b) {
-    switch (b) {
-        case '=':  parse_ = Parse::PosRow; return;             // position cursor
-        case '*':
-        case ':':  clearScreen(); break;                       // clear screen
-        case 'T':  eraseToEol(); break;                        // erase to end of line
-        case 'Y':  eraseToEos(); break;                        // erase to end of screen
-        case 'G':  parse_ = Parse::Attr; return;               // video attribute
-        case '&':  curAttr_ |= kAttrHalf; break;               // half intensity
-        case 0x27: curAttr_ &= (uint8_t)~kAttrHalf; break;     // ' -- full intensity
-        case 'E':
-        case 'R':  break;  // insert/delete line -- no-ops in the v1.6 firmware
-        default:   break;  // unknown escape -- ignored
-    }
-    parse_ = Parse::Normal;
-}
-
-void Vdb8024Board::putGlyph(uint8_t code) {
-    cell(curRow_, curCol_) = code;
-    attr(curRow_, curCol_) = curAttr_;
-    dirty_ = true;
-    if (++curCol_ >= kCols) newline();  // end of line -> LF + CR (scrolls at the bottom)
-}
-
-void Vdb8024Board::lineFeed() {
-    if (curRow_ < kRows - 1) ++curRow_;
-    else                     scrollUp();
-    dirty_ = true;
-}
-
-void Vdb8024Board::newline() {
-    lineFeed();
-    curCol_ = 0;
-}
-
-void Vdb8024Board::scrollUp() {
-    std::memmove(cells_, cells_ + kCols, (size_t)(kRows - 1) * kCols);
-    std::memmove(attr_,  attr_ + kCols,  (size_t)(kRows - 1) * kCols);
-    for (int c = 0; c < kCols; ++c) { cell(kRows - 1, c) = 0x20; attr(kRows - 1, c) = 0; }
-    dirty_ = true;
-}
-
-void Vdb8024Board::clearScreen() {
-    for (auto& b : cells_) b = 0x20;
-    for (auto& a : attr_) a = 0x00;
-    curRow_ = curCol_ = 0;  // CLEAR homes the cursor (the v1.6 firmware calls HOME)
-    dirty_ = true;
-}
-
-void Vdb8024Board::eraseToEol() {
-    for (int c = curCol_; c < kCols; ++c) { cell(curRow_, c) = 0x20; attr(curRow_, c) = 0; }
-    dirty_ = true;
-}
-
-void Vdb8024Board::eraseToEos() {
-    eraseToEol();
-    for (int r = curRow_ + 1; r < kRows; ++r)
-        for (int c = 0; c < kCols; ++c) { cell(r, c) = 0x20; attr(r, c) = 0; }
-    dirty_ = true;
-}
-
-void Vdb8024Board::place(int row, int col) {
-    curRow_ = std::clamp(row, 0, kRows - 1);
-    curCol_ = std::clamp(col, 0, kCols - 1);
-    dirty_  = true;
-}
-
-// ---------------------------------------------------------------------------
 // Lifecycle.
 // ---------------------------------------------------------------------------
 void Vdb8024Board::power() {
-    clearScreen();
-    curAttr_ = 0;
-    parse_   = Parse::Normal;
+    screen_.clearScreen();
+    screen_.setCurrentAttr(0);
+    emu_.reset();
     kbHave_  = false;
     kbData_  = 0;
     kbRx_    = 0;
-    dirty_   = true;
+    screen_.markDirty();
     intChanged();  // no byte waiting -> the VI line, if strapped, stands down
 }
 
 // S-100 RESET resets the onboard Z80, which re-runs its power-up path (INIT then CLEAR):
 // the page blanks and the cursor homes. The keyboard strobe drops with it.
 void Vdb8024Board::reset(Reset) {
-    clearScreen();
-    curAttr_ = 0;
-    parse_   = Parse::Normal;
+    screen_.clearScreen();
+    screen_.setCurrentAttr(0);
+    emu_.reset();
     kbHave_  = false;
     intChanged();  // the keyboard strobe drops with the reset
 }
@@ -261,9 +207,9 @@ void Vdb8024Board::pump() {
     latchKeyboard();
 
     if (!g_display) return;
-    if (!frameChanged()) return;
+    if (!renderer_.frameChanged(screen_, g_display)) return;
     if (!g_display->wantsFrame()) return;
-    render();
+    renderer_.render(*g_display, screen_, videoWidth_);
 }
 
 void Vdb8024Board::latchKeyboard() {
@@ -277,71 +223,6 @@ void Vdb8024Board::latchKeyboard() {
     intChanged();  // the strobe -- raises status D1 and, if strapped, the VI line
 }
 
-bool Vdb8024Board::frameChanged() const {
-    if (dirty_) return true;
-    // A blinking cursor (always present) or any blinking cell repaints on its own clock.
-    if (g_display && (cursorMode_ == 1 || hasBlinkCell_)) {
-        if (blinkOn() != lastBlinkOn_) return true;
-    }
-    return false;
-}
-
-bool Vdb8024Board::blinkOn() const {
-    if (!g_display) return true;
-    return ((uint64_t)(g_display->hostSeconds() / kBlinkHalfPeriod) & 1) == 0;
-}
-
-void Vdb8024Board::render() {
-    const int cw = vdb8024font::kCols, ch = vdb8024font::kRows;
-    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
-    Surface* s = g_display->acquire(kCols * cw, kRows * ch, PixelFormat::Indexed8);
-    if (!s) return;
-
-    const Color pal[3] = {kBlack, kGreen, kDim};
-    g_display->setPalette(pal);
-    s->clear(0);
-
-    const bool lit = blinkOn();
-    const bool cursorShown = cursorMode_ == 2 || (cursorMode_ == 1 && lit);
-    bool sawBlink = false;
-
-    for (int dr = 0; dr < kRows; ++dr) {
-        for (int c = 0; c < kCols; ++c) {
-            uint8_t code = (uint8_t)(cell(dr, c) & 0x7F);
-            uint8_t a    = attr(dr, c);
-            bool blink   = (a & kAttrBlink) != 0;
-            if (blink) sawBlink = true;
-
-            // Whole-screen polarity (a switch) XORs the per-cell reverse; the cursor
-            // then inverts its own cell on top of that (a block cursor).
-            bool reverse = ((a & kAttrReverse) != 0) ^ reverse_;
-            bool isCursor = (dr == curRow_ && c == curCol_ && cursorShown);
-            if (isCursor) reverse = !reverse;
-
-            bool hideGlyph = blink && !lit;            // a blinking char, dark half-cycle
-            uint8_t fgColor = (a & kAttrHalf) ? 2 : 1;  // dim vs full green
-            uint8_t bgIdx = reverse ? fgColor : 0;
-            uint8_t fgIdx = reverse ? 0 : fgColor;
-
-            const int px = c * cw, py = dr * ch;
-            if (bgIdx != 0)
-                for (int y = 0; y < ch; ++y)
-                    for (int x = 0; x < cw; ++x) s->put(px + x, py + y, bgIdx);
-            if (!hideGlyph)
-                for (int ry = 0; ry < ch; ++ry) {
-                    uint8_t bits = vdb8024font::glyphRow(code, ry);  // bit 7 = leftmost
-                    for (int rx = 0; rx < cw; ++rx)
-                        if (bits & (0x80 >> rx)) s->put(px + rx, py + ry, fgIdx);
-                }
-        }
-    }
-
-    dirty_        = false;
-    lastBlinkOn_  = lit;
-    hasBlinkCell_ = sawBlink;
-    g_display->present(s);
-}
-
 // ---------------------------------------------------------------------------
 // SNAPSHOT / RESTORE. The page, the attribute plane, the cursor, the parser state and
 // the keyboard holding register travel; the switches (port, video polarity, cursor mode)
@@ -349,13 +230,13 @@ void Vdb8024Board::render() {
 // ---------------------------------------------------------------------------
 void Vdb8024Board::serialize(StateWriter& w) const {
     Board::serialize(w);
-    w.raw(cells_, sizeof cells_);
-    w.raw(attr_, sizeof attr_);
-    w.u32((uint32_t)curRow_);
-    w.u32((uint32_t)curCol_);
-    w.u8(curAttr_);
-    w.u8((uint8_t)parse_);
-    w.u8(pendRow_);
+    w.raw(screen_.cellData(), screen_.planeBytes());
+    w.raw(screen_.attrData(), screen_.planeBytes());
+    w.u32((uint32_t)screen_.cursorRow());
+    w.u32((uint32_t)screen_.cursorCol());
+    w.u8(screen_.currentAttr());
+    w.u8(emu_.parseByte());
+    w.u8(emu_.pendRow());
     w.u8(kbData_);
     w.u8(kbHave_ ? 1 : 0);
     w.u64(kbRx_);
@@ -363,17 +244,18 @@ void Vdb8024Board::serialize(StateWriter& w) const {
 
 void Vdb8024Board::deserialize(StateReader& r) {
     Board::deserialize(r);
-    r.raw(cells_, sizeof cells_);
-    r.raw(attr_, sizeof attr_);
-    curRow_  = (int)r.u32();
-    curCol_  = (int)r.u32();
-    curAttr_ = r.u8();
-    parse_   = (Parse)r.u8();
-    pendRow_ = r.u8();
+    r.raw(screen_.cellData(), screen_.planeBytes());
+    r.raw(screen_.attrData(), screen_.planeBytes());
+    int cr = (int)r.u32();
+    int cc = (int)r.u32();
+    screen_.setCursor(cr, cc);
+    screen_.setCurrentAttr(r.u8());
+    emu_.setParseByte(r.u8());
+    emu_.setPendRow(r.u8());
     kbData_  = r.u8();
     kbHave_  = r.u8() != 0;
     kbRx_    = r.u64();
-    dirty_   = true;  // the restored screen owes the host a full redraw
+    screen_.markDirty();  // the restored screen owes the host a full redraw
 }
 
 // ---------------------------------------------------------------------------
@@ -436,24 +318,6 @@ std::vector<Property> Vdb8024Board::unitProperties(const std::string& unit) {
 }
 
 // ---------------------------------------------------------------------------
-// Test hooks.
-// ---------------------------------------------------------------------------
-std::string Vdb8024Board::screenText() const {
-    std::string out;
-    out.reserve((size_t)kRows * (kCols + 1));
-    for (int r = 0; r < kRows; ++r) {
-        for (int c = 0; c < kCols; ++c) out.push_back((char)(cell(r, c) & 0x7F));
-        if (r != kRows - 1) out.push_back('\n');
-    }
-    return out;
-}
-
-uint8_t Vdb8024Board::charAt(int row, int col) const {
-    if (row < 0 || row >= kRows || col < 0 || col >= kCols) return 0x20;
-    return (uint8_t)(cell(row, col) & 0x7F);
-}
-
-// ---------------------------------------------------------------------------
 // Reflection.
 // ---------------------------------------------------------------------------
 std::vector<Property> Vdb8024Board::properties() {
@@ -488,7 +352,8 @@ std::vector<Property> Vdb8024Board::properties() {
         };
         x.set = [this](const Value& v, std::string&) {
             cursorMode_ = (v.s() == "off") ? 0 : (v.s() == "steady") ? 2 : 1;
-            dirty_      = true;
+            renderer_.setCursorMode(cursorMode_);
+            screen_.markDirty();
             return true;
         };
         p.push_back(std::move(x));
@@ -502,7 +367,8 @@ std::vector<Property> Vdb8024Board::properties() {
         x.get     = [this] { return Value::ofStr(reverse_ ? "reverse" : "normal"); };
         x.set     = [this](const Value& v, std::string&) {
             reverse_ = (v.s() == "reverse");
-            dirty_   = true;
+            renderer_.setReverse(reverse_);
+            screen_.markDirty();
             return true;
         };
         p.push_back(std::move(x));
