@@ -713,7 +713,10 @@ the guest cannot see it: the 6850 clocks bytes the same way whether the wire end
 at your terminal, a telnet session, a real RS-232 port, or nothing at all. No board
 in the machine knows what any of these words mean.
 
-Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH | printer:QUEUE | <endpoint>|FILE
+Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT |
+serial:DEVICE | in:PATH | out:PATH | terminal[?emulation=vt100&size=80x24] |
+printer:QUEUE | <endpoint>|FILE
+
 
 ```
 console     the host's terminal -- the keyboard and screen you are typing at
@@ -731,6 +734,10 @@ in:         PATH -- a host file as a READER (a paper-tape reader): its bytes
 out:        PATH -- a host file as a PUNCH: the line's bytes land on disk,
             8-bit clean, from position 0 and never truncating. Combine them
             for a bidirectional line: in:TAPE.TAP,out:TAPE.PUN
+terminal    a windowed terminal the simulator draws itself, no telnet client
+            needed. ?emulation=vt100|adm3a|vt52|h19 picks the dialect (vt100
+            default), ?size=COLSxROWS the geometry (80x24 default). Needs a
+            window, so only in an SDL build -- headless refuses it at CONNECT.
 printer:    QUEUE -- a real print queue on this host (only where the build found
             one). The bytes buffer into a JOB, submitted after a few idle seconds
             (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling
@@ -755,7 +762,8 @@ CONN sio0:b serial:/dev/tty.usbserial-AL009KFH    a real cable, real hardware
 CONN sio0:b serial:COM3                           ...the same, on Windows
 CONN lpt0:prn out:printout.txt                    capture a printer to a file
 CONN 4pio0:ja in:TAPE.TAP?cps=300                 a paper-tape reader (88-HSR)
-CONN 4pio0:jb out:TAPE.PUN                         a paper-tape punch
+CONN 4pio0:jb out:TAPE.PUN                        a paper-tape punch
+CONN sio0:a terminal?emulation=adm3a              a windowed ADM-3A of its own
 CONN lpt0:prn printer:linewriter                  print to a real host queue
 CONN sio0:b socket:2323|bbs.hex?fmt=cols          telnet in, and TAP it to a log
 ```

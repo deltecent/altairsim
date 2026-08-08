@@ -6,6 +6,9 @@
 #include "host/hostserial.h"
 #include "host/tcp.h"
 #include "host/tee_stream.h"
+#include "host/terminal/emulations.h"
+#include "host/terminal/emulator.h"
+#include "host/terminal/stream.h"
 #include "platform/serial.h"
 #include "platform/socket.h"
 
@@ -57,8 +60,10 @@ bool parseHostPort(const std::string& spec, std::string& host, uint16_t& port,
 }
 
 std::string endpointHelp(bool all) {
-    std::string s = "console | null | loopback | scripted | socket:PORT | "
-                    "socket:HOST:PORT | serial:DEVICE | in:PATH | out:PATH";
+    std::vector<std::string> parts = {
+        "console", "null", "loopback", "scripted", "socket:PORT", "socket:HOST:PORT",
+        "serial:DEVICE", "in:PATH", "out:PATH", "terminal[?emulation=vt100&size=80x24]",
+    };
     // `printer:` only where a host print system was found at build time -- absent, the
     // grammar does not advertise a door it cannot open (docs/printing.md 3.1). The docs
     // generator passes all=true: the committed manual is one document for every platform,
@@ -69,11 +74,30 @@ std::string endpointHelp(bool all) {
 #else
     const bool havePrinter = false;
 #endif
-    if (all || havePrinter) s += " | printer:QUEUE";
+    if (all || havePrinter) parts.emplace_back("printer:QUEUE");
     // Any endpoint can be TAPPED: append `|FILE` to log the line to a hex file (a
     // poor man's protocol analyzer; host/tee_stream.h). Advertised last so it reads as
     // a suffix on all of the above, not a peer of them.
-    s += " | <endpoint>|FILE";
+    parts.emplace_back("<endpoint>|FILE");
+
+    // Wrap the grammar so it does not run off the page -- the full list is one long line
+    // that landed in the CONNECT help, the "no endpoint" error and the generated reference
+    // all at once. The bar stays on the line it ends; a continuation is FLUSH LEFT, not
+    // indented: the reference formatter fences any line that starts with two spaces (a
+    // HELP example), and the live HELP shows this ahead of a two-space-indented gloss, so
+    // an indent here would be read as a code block in one and as a gloss row in the other.
+    const size_t width = 78;
+    std::string  s     = parts[0];
+    size_t       col   = parts[0].size();
+    for (size_t i = 1; i < parts.size(); ++i) {
+        if (col + 3 + parts[i].size() > width) {
+            s += " |\n" + parts[i];
+            col = parts[i].size();
+        } else {
+            s += " | " + parts[i];
+            col += 3 + parts[i].size();
+        }
+    }
     return s;
 }
 
@@ -251,6 +275,96 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
     // printed. It is what the MCP server binds the console to (the guest cannot tell
     // it from a person), and what a test types into with no tty in the picture.
     if (spec == "scripted") return std::make_unique<ScriptedStream>();
+
+    // ---- terminal -- a built-in windowed terminal, the simulator's own (issue #244) ----
+    //
+    // `connect = "terminal"` is the whole of the common case: a VT100 in an 80x24 window.
+    // Options ride the same `?key[=value][&...]` grammar the other endpoints use:
+    // `terminal?emulation=vt100&size=80x24`. A leading ':' is accepted so
+    // `terminal:?emulation=...` reads the same as every other scheme. GRAMMAR ERRORS ARE
+    // REPORTED BEFORE the windowed-build check, so a bad emulation or size is caught even
+    // on a headless build -- and a well-formed spec then refuses cleanly there, because a
+    // terminal nobody can see or type at is not a serial line worth opening.
+    if (spec == "terminal" || spec.rfind("terminal:", 0) == 0 ||
+        spec.rfind("terminal?", 0) == 0) {
+        std::string rest = spec.size() > 8 ? spec.substr(8) : "";  // after "terminal"
+        if (!rest.empty() && rest[0] == ':') rest = rest.substr(1);
+        std::string query;
+        if (!rest.empty()) {
+            if (rest[0] != '?') {
+                err = "terminal takes options after '?': terminal?emulation=vt100&size=80x24";
+                return nullptr;
+            }
+            query = rest.substr(1);
+        }
+
+        std::string emuName = "vt100";  // the first table row -- the default dialect
+        int         cols = 80, rows = 24;  // the reporter's default geometry (issue #244)
+
+        auto parseSize = [&](const std::string& v) -> bool {
+            size_t xp = v.find_first_of("xX");
+            if (xp != std::string::npos) {
+                std::string cs = v.substr(0, xp), rs = v.substr(xp + 1);
+                char*         e1 = nullptr;
+                char*         e2 = nullptr;
+                unsigned long c  = std::strtoul(cs.c_str(), &e1, 10);
+                unsigned long r  = std::strtoul(rs.c_str(), &e2, 10);
+                if (!cs.empty() && !rs.empty() && !*e1 && !*e2 && c >= 16 && c <= 255 &&
+                    r >= 2 && r <= 127) {
+                    cols = (int)c;
+                    rows = (int)r;
+                    return true;
+                }
+            }
+            err = "terminal: size is COLSxROWS -- cols 16..255, rows 2..127 (e.g. 80x24), "
+                  "got '" + v + "'";
+            return false;
+        };
+
+        for (size_t start = 0; start <= query.size();) {
+            size_t      amp = query.find('&', start);
+            std::string tok =
+                query.substr(start, amp == std::string::npos ? std::string::npos : amp - start);
+            if (!tok.empty()) {
+                size_t      eq  = tok.find('=');
+                std::string key = tok.substr(0, eq);
+                std::string val = eq == std::string::npos ? "" : tok.substr(eq + 1);
+                if (key == "emulation" || key == "emu") {
+                    if (val.empty()) {
+                        err = "terminal: emulation needs a name (" + terminalEmulationNames() + ")";
+                        return nullptr;
+                    }
+                    emuName = val;
+                } else if (key == "size" || key == "windowsize") {
+                    // `windowsize` is the reporter's spelling; both mean COLSxROWS.
+                    if (!parseSize(val)) return nullptr;
+                } else {
+                    err = "terminal: unknown option '" + key +
+                          "'. Options are emulation, size (alias windowsize)";
+                    return nullptr;
+                }
+            }
+            if (amp == std::string::npos) break;
+            start = amp + 1;
+        }
+
+        // Grammar first: an unknown emulation is the operator's typo, caught everywhere.
+        auto emu = makeTerminalEmulator(emuName);
+        if (!emu) {
+            err = "terminal: no emulation '" + emuName + "'. Try: " + terminalEmulationNames();
+            return nullptr;
+        }
+
+        // Then capability: a terminal is only useful with a window on the screen.
+        if (!TerminalStream::hasWindow()) {
+            err = "terminal: this build has no window (headless / no SDL) -- a terminal has "
+                  "nothing to draw on and no keyboard. Use socket:PORT with an external "
+                  "terminal instead.";
+            return nullptr;
+        }
+
+        return std::make_unique<TerminalStream>(spec, rows, cols, std::move(emu));
+    }
 
     // ---- socket: -- listen on a port, or call out to a host ----
     if (spec.rfind("socket:", 0) == 0) {

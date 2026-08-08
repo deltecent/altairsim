@@ -21,7 +21,8 @@ CP/M (it is warm boot) and CP/M gets it.
 | File | What it is |
 |---|---|
 | `cpm22-buffered.toml` | The machine: `base = "default"` plus the floppy in drive 0. Read it — it explains the memory arithmetic and what `readonly` really does on this controller. |
-| `cpm22b23-56k.dsk` | The bootable system disk, built for a 56K machine. Carries `DDT.COM`, `M80`/`L80`, `MBASIC` and the host-bridge utilities (`R`, `W`, `HDIR`), with 18K free. |
+| `cpm22-terminal.toml` | The same machine and the same disk, but the console is a **built-in VT100 window** the simulator draws itself instead of stdio. The monitor stays in the terminal you launched from; CP/M comes up in its own window. No telnet client, no external emulator. Try `emulation=adm3a` for a period CP/M terminal. |
+| `cpm22b23-56k.dsk` | The bootable system disk, built for a 56K machine. Carries `DDT.COM`, `M80`/`L80`, `MBASIC` and the host-bridge utilities (`R`, `W`, `HDIR`), with 18K free. Shared by both machine files above. |
 
 **There is no undo.** Drive 0 is mounted read/write because that is what a real machine is, and CP/M
 writes to `A:` for anything you create. In a clone `git checkout` puts the image back; in the

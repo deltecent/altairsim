@@ -82,6 +82,7 @@ void test_pio();
 void test_4pio();
 void test_vdm1();
 void test_vdb8024();
+void test_terminal();
 void test_dazzler();
 void test_d7a();
 void test_sol();

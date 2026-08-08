@@ -15,6 +15,7 @@
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/sd-sbc.h"
+#include "boards/terminal-font.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
 #include "host/display_sdl.h"
 #include "host/joystick_sdl.h"
@@ -31,6 +32,8 @@
 #include "host/console.h"
 #include "host/endpoint.h"
 #include "host/media.h"
+#include "host/terminal/emulator.h"
+#include "host/terminal/stream.h"
 #include "mcp/server.h"
 
 #include <algorithm>
@@ -240,6 +243,13 @@ int main(int argc, char** argv) {
     DazzlerBoard::setDisplay(&g_display);
     Vdb8024Board::setDisplay(&g_display);
 
+    // The generic built-in terminal (issue #244) draws into the SAME host video service and
+    // paints with the bundled font. A `terminal:` endpoint reads these statics; on a
+    // headless build g_display is a NullDisplay (isWindowed() false), so CONNECT refuses the
+    // endpoint cleanly rather than opening a serial line with nothing behind it.
+    TerminalStream::setDisplay(&g_display);
+    TerminalStream::setFont(&bundledTerminalFont());
+
     // The same seam for game controllers (host/joystick.h): a D+7A reads its one or two
     // JS-1 joysticks from here and never learns it is SDL. A real gamepad (or the
     // keyboard) in the shipping binary; a NullJoystick headless, so the card runs
@@ -258,11 +268,40 @@ int main(int argc, char** argv) {
     // deterministic and a test wants a frame every time it asks.
     g_display.setFrameLimitHz(60.0);
 
-    // Window keystrokes join the terminal's on the ONE recorded input queue: the
-    // display's key sink (host/display.h) feeds the single Console, and a Sol-20's
-    // keyboard board reads that Console -- so you can type in the VDM window or the
-    // terminal and SOLOS sees one stream (DESIGN.md 7.4). A NullDisplay never fires it.
-    g_display.setKeySink([](const uint8_t* p, size_t n) { Console::instance().inject(p, n); });
+    // Window keystrokes go to whatever owns the one host keyboard. With a built-in terminal
+    // in the machine (issue #244) that is the terminal LINE: keys reach its emulator and flow
+    // to the guest on the same serial line it renders, while the monitor keeps stdio to
+    // itself. With no terminal they feed the single Console, and a Sol-20's keyboard board
+    // reads that Console -- so you type in the VDM window and SOLOS sees one stream (DESIGN.md
+    // 7.4). One window, one keyboard: the newest terminal wins (TerminalStream::keyTarget);
+    // routing two live terminals is the deferred multi-window work. A NullDisplay never fires.
+    g_display.setKeySink([](const uint8_t* p, size_t n) {
+        if (TerminalStream* t = TerminalStream::keyTarget()) {
+            for (size_t i = 0; i < n; ++i) t->keyAscii(p[i]);
+        } else {
+            Console::instance().inject(p, n);
+        }
+    });
+
+    // Arrows and Home carry no ASCII, so the window hands them over symbolically
+    // (host/display.h): a terminal encodes each in its own dialect (VT100 ESC[A, VT52 ESCA,
+    // ADM-3A ^K), which the byte table could not do. With no terminal, inject the table's
+    // guest byte into the Console, exactly as the display would have without this sink.
+    g_display.setSpecialKeySink([](Display::SpecialKey k) {
+        if (TerminalStream* t = TerminalStream::keyTarget()) {
+            switch (k) {
+                case Display::SpecialKey::Up:    t->keySpecial((int)TerminalEmulator::Key::Up);    break;
+                case Display::SpecialKey::Down:  t->keySpecial((int)TerminalEmulator::Key::Down);  break;
+                case Display::SpecialKey::Left:  t->keySpecial((int)TerminalEmulator::Key::Left);  break;
+                case Display::SpecialKey::Right: t->keySpecial((int)TerminalEmulator::Key::Right); break;
+                case Display::SpecialKey::Home:  t->keySpecial((int)TerminalEmulator::Key::Home);  break;
+                case Display::SpecialKey::Count_: break;
+            }
+            return;
+        }
+        uint8_t c = g_display.specialKey(k);
+        if (c) Console::instance().inject(&c, 1);
+    });
 
     // And the other direction, once a slice: the run loop asks the window whether the
     // operator closed it, and stops the guest if so -- the same place ATTN lands you

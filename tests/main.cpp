@@ -17,10 +17,12 @@
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-sbc.h"
 #include "boards/sd-vdb8024.h"
+#include "boards/terminal-font.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/joystick_null.h"
 #include "host/media.h"
+#include "host/terminal/stream.h"
 
 #include <cstdio>
 
@@ -104,6 +106,7 @@ const struct {
     {"4pio", test_4pio},
     {"vdm1", test_vdm1},
     {"vdb8024", test_vdb8024},
+    {"terminal", test_terminal},
     {"dazzler", test_dazzler},
     {"d7a", test_d7a},
     {"sol", test_sol},
@@ -158,6 +161,12 @@ int main(int argc, char** argv) {
     altair::VdmBoard::setDisplay(&g_display);
     altair::DazzlerBoard::setDisplay(&g_display);
     altair::Vdb8024Board::setDisplay(&g_display);
+
+    // The generic terminal endpoint reads these the same way (issue #244). A NullDisplay is
+    // not windowed, so `terminal:` refuses at CONNECT here -- which test_terminal asserts,
+    // while it drives the VT100 engine directly (no window, no endpoint) to read the grid.
+    altair::TerminalStream::setDisplay(&g_display);
+    altair::TerminalStream::setFont(&altair::bundledTerminalFont());
 
     // The game-controller service, injected the same way: a D+7A reads its JS-1 sticks
     // from here. Headless tests give it a NullJoystick (every stick centered, no

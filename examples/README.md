@@ -7,6 +7,7 @@ against the directory you launched from.
 
 ```
 altairsim examples/cpm/cpm22-buffered.toml     # CP/M 2.2b on an 8" floppy
+altairsim examples/cpm/cpm22-terminal.toml     # ...the same, console in a built-in VT100 window
 altairsim examples/basic/basic4k.toml          # Altair 4K BASIC, off a 1975 cassette
 altairsim examples/diskbasic/diskbasic.toml    # Altair Disk Extended BASIC 4.1 on an 8" floppy
 altairsim examples/uio/uio.toml                # Altair 8K BASIC over ONE 88-UIO (serial + cassette)
@@ -23,7 +24,7 @@ altairsim examples/printing/printer.toml       # an 88-C700 printer, wired to a 
 
 | | What it is |
 |---|---|
-| [`cpm/`](cpm/) | Mike Douglas's track-buffered **CP/M 2.2b v2.3**, 56K, booted by the DBL PROM from an 8" floppy. `A>` in one command. |
+| [`cpm/`](cpm/) | Mike Douglas's track-buffered **CP/M 2.2b v2.3**, 56K, booted by the DBL PROM from an 8" floppy. `A>` in one command. `cpm22-terminal.toml` boots the same disk with its console in a **built-in VT100 window** the simulator draws itself — no telnet client, no external emulator. |
 | [`basic/`](basic/) | **Altair 4K BASIC 3.1** (`basic4k.toml`) read off a period `.tap` by the bootstrap MITS shipped, unmodified: `MEMORY SIZE?`. Beside it, **8080 BASIC VER 1.0** (`basic1.toml`) — the first Altair BASIC, 1975 — booted the raw two-step way its primitive bootstrap forced: `RUN 1800`, `^E`, `RUN 0` → `MEMSIZ?`. |
 | [`diskbasic/`](diskbasic/) | **Altair Disk Extended BASIC 4.1** (MITS, 1977) on an 8" floppy behind an 88-DCDD, booted by the DBL PROM. Unlike the cassette BASIC, this one has a filesystem — `SAVE` by name, a directory, `DSKINI`. `MEMORY SIZE?` |
 | [`uio/`](uio/) | **Altair 8K BASIC 3.2** over a single **88-UIO** — the board that is a 6850 serial port (at 0x10) *and* an 88-ACR cassette (at 0x06) in one. The period bootstrap runs unmodified. `MEMORY SIZE?` |

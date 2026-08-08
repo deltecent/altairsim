@@ -1,0 +1,57 @@
+# Altair CP/M 2.2b, with its console in a built-in terminal WINDOW instead of stdio.
+#
+#     cd examples/cpm && altairsim cpm22-terminal.toml
+#     -> a VT100 window opens; the CP/M banner and the A> prompt appear IN IT.
+#        The monitor's altairsim> prompt stays in the terminal you launched from.
+#
+# This is the same machine and the same disk as cpm22-buffered.toml -- only the console
+# CABLE is different. There the 2SIO's channel A is plugged into `console` (your stdio, the
+# same window as the monitor); here it is plugged into `terminal`, a windowed VT100 the
+# simulator draws itself. So the monitor and the guest are two windows, and neither one is
+# fighting the other for the keyboard (issue #244).
+#
+# WHY THIS BEATS `socket:` + telnet. The old way to get the guest its own window was to wire
+# the line to `socket:2323` and point a host telnet client at it -- but telnet mangles 8-bit
+# data (it has no idea 0xFF is a real byte), no modern OS ships a telnet client, and the host
+# emulator speaks xterm, not a period terminal. `terminal` removes the external part: the
+# window is the simulator's, so the emulation is exactly the one you ask for, on every
+# platform, with nothing to install.
+#
+# THE EMULATION IS YOURS TO PICK. `emulation=vt100` here (the default); `adm3a`, `vt52` and
+# `h19` are the other period terminals CP/M full-screen software was written for. `size` is
+# COLSxROWS and defaults to 80x24. Options ride the connect string after `?`, joined by `&`,
+# the same as every other endpoint -- see the manual's serial chapter.
+#
+# SDL ONLY. `terminal` needs a window, so it is available only in a build with SDL and a
+# display. A headless build refuses it cleanly at CONNECT and names why; use `console` (as
+# cpm22-buffered.toml does) or `socket:` there.
+
+#> CP/M 2.2b, with its console in a windowed VT100 -- the window that just opened.
+#> The monitor stays here on stdio: type BOARDS or SHOW MOUNTS, and RUN FF00 to boot.
+#> ATTN (^E) pulls the keyboard back here to the monitor; RUN resumes the guest.
+
+[machine]
+name = "cpm22-terminal"
+base = "default"
+
+# Boot the disk exactly as cpm22-buffered.toml does. The keyboard follows the guest on RUN,
+# so once CP/M is up you type into the VT100 window; ^E returns you here.
+startup = ["RUN FF00"]
+
+# THE CONSOLE CABLE. `id = "sio0"` with no `type` reaches the 2SIO the base already put in
+# the machine at port 0x10, and re-plugs its channel A from `console` into a built-in VT100.
+# Channel B stays as the base left it (unconnected).
+[[board]]
+id = "sio0"
+
+  [board.unit.a]
+  connect = "terminal?emulation=vt100&size=80x24"
+
+# THE DISK, verbatim from cpm22-buffered.toml: the base's 88-DCDD gets the system floppy in
+# drive 0. See that file for the memory arithmetic and what `readonly` really does here.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm22b23-56k.dsk"

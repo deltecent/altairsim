@@ -151,6 +151,14 @@ public:
     uint8_t specialKey(SpecialKey k) const { return special_[(size_t)k]; }
     void    setSpecialKey(SpecialKey k, uint8_t code) { special_[(size_t)k] = code; }
 
+    // A built-in terminal encodes arrows in its OWN dialect (VT100 ESC[A, VT52 ESCA,
+    // ADM-3A ^K), so it needs to learn which key was pressed, not the byte the table above
+    // would pick. When this sink is set it takes precedence over that table (see
+    // emitSpecialKey); the composition root points it at the active terminal line and falls
+    // back to the byte-table Console injection when no terminal is present (src/main.cpp).
+    using SpecialKeySink = std::function<void(SpecialKey)>;
+    void setSpecialKeySink(SpecialKeySink s) { specialKeySink_ = std::move(s); }
+
     // IS THE HOST READY FOR ANOTHER FRAME? A board asks BEFORE it paints, because
     // painting is the expensive half: a VDM-1 frame is 106,496 pixels cleared and
     // 106,496 glyph bits walked, and the run loop pumps every 2000 instructions. Left
@@ -200,6 +208,15 @@ public:
         if (!epochSet_) { epoch_ = now; epochSet_ = true; }
         return std::chrono::duration<double>(now - epoch_).count();
     }
+
+    // IS THERE A REAL WINDOW BEHIND THIS SERVICE? A board never asks -- it draws into a
+    // Surface either way, and a NullDisplay is a full, valid Display (that is the whole
+    // point of the seam). But an ENDPOINT can: a `terminal:` line is only useful if a
+    // person can see it and type at it, so it refuses at CONNECT when the injected display
+    // is headless (a no-SDL build, or a test's NullDisplay) rather than opening a serial
+    // line into the void. The default is false -- only the SDL back end, with a window on
+    // the screen, answers true.
+    virtual bool isWindowed() const { return false; }
 
     // WHAT MACHINE THIS WINDOW BELONGS TO. A windowed host puts it in the title bar; a
     // headless one drops it on the floor.
@@ -391,12 +408,14 @@ protected:
     // which on a Sol would be MODE SELECT, and a key that quietly did that would be
     // worse than a key that does nothing.
     void emitSpecialKey(SpecialKey k) {
+        if (specialKeySink_) { specialKeySink_(k); return; }
         uint8_t c = specialKey(k);
         if (c) emitKeys(&c, 1);
     }
 
 private:
-    KeySink keySink_;
+    KeySink        keySink_;
+    SpecialKeySink specialKeySink_;
 
     // Sol-20 Table 7-4: up 97, down 9A, left 81, right 93, HOME CURSOR 8E.
     uint8_t special_[(size_t)SpecialKey::Count_] = {0x97, 0x9A, 0x81, 0x93, 0x8E};

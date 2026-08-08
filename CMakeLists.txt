@@ -301,6 +301,21 @@ add_library(altair_core STATIC
   src/host/stream.cpp
   src/host/filter.cpp
   src/host/console.cpp
+  # The built-in terminal engine: an attributed grid (TerminalScreen), the painter that
+  # renders it into a Display (TerminalRenderer), and the abstract dialect it drives
+  # (TerminalEmulator, header-only). Lifted from the VDB-8024 board; the shared basis for
+  # the generic terminal endpoint (issue #244). See src/host/terminal/.
+  src/host/terminal/screen.cpp
+  src/host/terminal/renderer.cpp
+  # The generic terminal endpoint (issue #244): the VT100/ANSI dialect, the name->factory
+  # table of emulations, and TerminalStream -- the engine wearing a ByteStream face, so
+  # `connect = "terminal"` gives every serial board a windowed terminal for free.
+  src/host/terminal/vt100.cpp
+  src/host/terminal/adm3a.cpp
+  src/host/terminal/vt52.cpp
+  src/host/terminal/h19.cpp
+  src/host/terminal/emulations.cpp
+  src/host/terminal/stream.cpp
   src/host/endpoint.cpp
   src/host/hostserial.cpp
   src/host/tcp.cpp
@@ -649,6 +664,7 @@ add_executable(altair_tests
   tests/test_tee.cpp
   tests/test_pio.cpp
   tests/test_vdb8024.cpp
+  tests/test_terminal.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
   tests/test_dazzler.cpp

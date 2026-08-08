@@ -31,6 +31,7 @@ This table is exhaustive. There are no others.
 | `in:PATH` | a host file, read-only — a **paper-tape reader**. The file's bytes feed the board. |
 | `out:PATH` | a host file — a **paper-tape punch**. Whatever the board sends is written to it. |
 | `in:PATH,out:PATH` | both at once on one line: a reader and a punch, two files, two positions. |
+| `terminal` | a terminal in a window the simulator draws itself — a built-in VT100 (or ADM-3A, VT52, H19). Present only in a build with a display. See *A terminal in its own window*, below. |
 | `printer:QUEUE` | a real print queue on this host, write-only. Buffers the bytes into a job and prints it. Present only where the build found a host print system. |
 | `scripted` | a terminal with a caller in place of a human. No tty need exist. It is what the MCP tools and the test suite type into; you are unlikely to type it yourself. |
 
@@ -75,6 +76,44 @@ $ telnet localhost 2323
 The guest is now talking to that window. Your first terminal still has the monitor and
 `^E` in it. This is how you give a machine two terminals, and it is how you drive a program
 that wants a console that is not the one you are sitting at.
+
+## A terminal in its own window
+
+The telnet route above works, but it has moving parts you do not own: a telnet client must be
+installed, it must be pointed at the right port, and it mangles any byte it thinks is a telnet
+command — which breaks cursor sequences and file transfers, because to a serial line every
+byte is just data. And a modern host terminal emulates a modern terminal, not the ADM-3A or
+VT52 the 1970s software on the disk was written for.
+
+`terminal` removes all of that. It is a terminal the simulator draws itself, in its own
+window:
+
+```
+altairsim> CONNECT sio0:a terminal
+altairsim> RUN
+```
+
+The guest's console is now that window; the monitor and `^E` stay in the one you launched
+from. There is nothing to install and nothing to connect — the window is up the moment the
+line is, on every platform. Because the terminal is the simulator's, the emulation is exactly
+the one you ask for, and it answers the reports (like `ESC[6n`) a period program expects.
+
+Bare `terminal` is a VT100 in an 80×24 window. Options ride the connect string after a `?`,
+joined by `&`, the same as any other endpoint:
+
+```
+altairsim> CONNECT sio0:a terminal?emulation=adm3a
+altairsim> CONNECT sio0:a terminal?emulation=vt52&size=80x24
+altairsim> CONNECT sio0:a "terminal?emulation=h19&size=132x24"
+```
+
+`emulation` is one of `vt100` (the default; `ansi` is the same engine), `adm3a` (the Lear
+Siegler ADM-3A, the archetypal CP/M terminal), `vt52`, or `h19` (the Heath/Zenith H19, a VT52
+superset with an ANSI mode). `size` is *columns*×*rows* and defaults to `80x24`.
+
+A `terminal` needs a window, so it is available only in a build with a display. Ask for one in
+a build without, and it is refused cleanly at `CONNECT`, with the reason named; use `console`
+or a `socket:` there instead.
 
 ## Calling out
 

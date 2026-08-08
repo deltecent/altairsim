@@ -275,6 +275,11 @@ void test_cli() {
             size_t colon = tok.find(':');
             if (colon != std::string::npos) tok = tok.substr(0, colon + 1);
 
+            // A bracketed grammar (`terminal[?emulation=...]`) is glossed by its NAME, not
+            // its whole option string -- keep what is before the '['.
+            size_t brk = tok.find('[');
+            if (brk != std::string::npos) tok = tok.substr(0, brk);
+
             CHECK(help.find(tok) != std::string::npos,
                   (std::string("CONNECT's help says what '") + tok +
                    "' is -- endpointHelp() offers it, so the prose must gloss it")
