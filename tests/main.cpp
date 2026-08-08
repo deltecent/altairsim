@@ -77,6 +77,7 @@ const struct {
     {"asm6800", test_asm6800},
     {"cpu", test_cpu},
     {"cpu6800", test_cpu6800},
+    {"680board", test_680board},
     {"z80_cpu", test_z80_cpu},
     {"expr", test_expr},
     {"debug", test_debug},

@@ -378,6 +378,9 @@ add_library(altair_core STATIC
   # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
   # CpuZ80 instead of a Cpu8080. Listed after it so the reader sees the pair.
   src/boards/mits-z80cpu.cpp
+  # The Altair 680b CPU card -- the 88-CPU's twin one core down (mits-680cpu.h),
+  # carrying a Cpu6800. Memory-mapped I/O, so it still decodes nothing.
+  src/boards/mits-680cpu.cpp
   # The two MITS hard-sector floppy controllers, and the register model they share.
   # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
   # programming model, and the period BOOT.ASM declares the ports and every status/command
@@ -647,6 +650,7 @@ add_executable(altair_tests
   tests/test_isa6800.cpp
   tests/test_cpu.cpp
   tests/test_cpu6800.cpp
+  tests/test_680board.cpp
   tests/test_z80_cpu.cpp
   tests/test_expr.cpp
   tests/test_debug.cpp
