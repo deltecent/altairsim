@@ -56,6 +56,7 @@ void test_cpu();
 void test_cpu6800();
 void test_680board();
 void test_680io();
+void test_680uio();
 void test_z80_cpu();
 void test_expr();
 void test_debug();

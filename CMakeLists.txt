@@ -364,6 +364,9 @@ add_library(altair_core STATIC
   # The chips. A chip is not a card: it is modeled from its DATA SHEET, it knows
   # nothing about S-100, and it is shared by every card that has one soldered to it.
   src/chips/mc6850.cpp
+  # The 6820/6821 PIA -- Motorola's parallel-interface part. The 88-4PIO models it
+  # inline; this shared register model is what the Altair 680b UI/O reuses.
+  src/chips/mc6820.cpp
   # The TMS 5501 -- TI's NMOS I/O controller (UART + five timers + an eight-source
   # interrupt controller). Phase 1 models the UART half only; the Cromemco 4FDC/16FDC/
   # 64FDC each carry one as a console channel, and the TU-ART carries two. See
@@ -384,6 +387,9 @@ add_library(altair_core STATIC
   # carrying a Cpu6800. Memory-mapped I/O, so it still decodes nothing.
   src/boards/mits-680cpu.cpp
   src/boards/mits-680io.cpp
+  # The 680b Universal I/O expansion board -- a second 6850 serial + a 6820 PIA
+  # (chips/mc6820.h), memory-mapped and S9-relocatable.
+  src/boards/mits-680uio.cpp
   # The two MITS hard-sector floppy controllers, and the register model they share.
   # HardSectorFdc is not a convenience: MITS built the 88-MDS to present the 88-DCDD's
   # programming model, and the period BOOT.ASM declares the ports and every status/command
@@ -656,6 +662,7 @@ add_executable(altair_tests
   tests/test_cpu6800.cpp
   tests/test_680board.cpp
   tests/test_680io.cpp
+  tests/test_680uio.cpp
   tests/test_z80_cpu.cpp
   tests/test_expr.cpp
   tests/test_debug.cpp
