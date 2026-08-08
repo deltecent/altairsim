@@ -74,6 +74,7 @@ const struct {
     {"isa", test_isa},
     {"z80_isa", test_z80_isa},
     {"isa6800", test_isa6800},
+    {"asm6800", test_asm6800},
     {"cpu", test_cpu},
     {"z80_cpu", test_z80_cpu},
     {"expr", test_expr},
