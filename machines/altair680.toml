@@ -1,0 +1,73 @@
+# The Altair 680b -- MITS's second machine, and a different animal from the 8800.
+#
+#     altairsim altair680
+#
+#     .
+#
+# That lone `.` is the 680b PROM Monitor's prompt (MON680, ACIA version 1.0). There is
+# no banner: on reset the monitor master-resets the console ACIA, reads the config
+# straps, programs the ACIA, prints CR/LF and a `.`, and waits for a command. Its whole
+# command set is one letter each:
+#
+#     J addr    jump to addr            M addr    examine/deposit at addr
+#     L         load a paper tape       N         examine/deposit the next byte
+#     P         proceed from a breakpoint (SWI)
+#
+# The tape it loads and dumps is Motorola S-records -- `L` reads S1 data records and
+# stops on S9 (MON680.ASM). This is the machine the .S19 loader was built for.
+#
+# WHY IT IS A 6800 AND NOT AN 8080. The 680b is a Motorola 6800: big-endian, and
+# MEMORY-MAPPED -- there is no IN/OUT port space. The console 6850 answers at ADDRESSES
+# F000/F001, not ports, and the config straps at F002 (Theory of Operation §4). That is
+# what the `680io` board provides; the `6800` CPU board itself decodes nothing.
+#
+# Like every file in here, this is not a set of choices: it is what the ROM requires,
+# and the source it requires it in is roms/MON680/MON680.ASM.
+
+[machine]
+name = "altair680"
+
+# A monitor in ROM runs the moment the machine is switched on (DESIGN.md 10.0). The
+# 6800's restart is its reset vector: POWER ON arms the FFFE/FFFF fetch, and the first
+# instruction RUN executes loads PC from it (-> FFD8, the monitor's RESET entry). No
+# address is given to RUN because the 6800 does not start at 0 -- the vector decides.
+startup = ["RESET", "RUN"]
+
+[[board]]
+type     = "6800"
+id       = "cpu0"
+clock_hz = 0                  # flat out (the default); `SET cpu0 clock_hz=500000` for a real 500 KHz 680b
+
+# The onboard I/O: the console 6850 ACIA at F000/F001 and the config-strap read port at
+# F002. `straps = 0x00` is the faithful default -- bit 7 clear says a terminal is
+# present (so the monitor talks to the ACIA rather than jumping to the front panel), and
+# bit 2 clear selects two stop bits (Operator's Manual §3).
+[[board]]
+type   = "680io"
+id     = "io0"
+straps = 0x00
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  # The 680b's onboard 1K of static RAM, placed at 0000 by the jumpers (Operator's
+  # Manual §2). The monitor keeps its stack and flags at the top of page 0 (ORG $F1)
+  # and expects the IRQ/NMI vectors it uses in RAM at 0100/0104, so page 0 must be RAM.
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "1K"
+
+  # The monitor PROM. The dump is a single 256-byte PROM at FF00-FFFF (PROM 1, the
+  # highest, holds the monitor and the reset/interrupt vectors -- Theory §3). It is an
+  # S-record file, decoded by the same loader the `L` command above uses.
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:mon680"

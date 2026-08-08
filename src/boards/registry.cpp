@@ -17,6 +17,7 @@
 #include "boards/mits-88mds.h"
 #include "boards/mits-88virtc.h"
 #include "boards/mits-680cpu.h"
+#include "boards/mits-680io.h"
 #include "boards/mits-frontpanel.h"
 #include "boards/mits-turnkey.h"
 #include "boards/mits-z80cpu.h"
@@ -52,6 +53,7 @@ std::vector<BoardType> boardTypes() {
         {"8080", "MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus"},
         {"z80", "Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core"},
         {"6800", "Altair 680b CPU board: a Motorola 6800 at 500 KHz. Decodes nothing -- it drives the bus. The 88-CPU's twin, one core down, with memory-mapped I/O"},
+        {"680io", "Altair 680b onboard I/O: a 6850 ACIA console ('tty') at F000/F001 and the config-strap read port at F002. Memory-mapped"},
         {"2sio", "MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3"},
         {"sio", "MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits"},
         {"sbc", "SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Intel 8251 console (unit 'tty', data 7C / status 7D, RxD->/DSR auto-baud for MSMONR21), Z80-CTC (78-7B) whose ch1 raises a mode-2 keyboard interrupt (vector 0x82) off the 8251 RxRDY, and a parallel port (7E/7F) whose OUT 7F bit 1 switches the onboard PROM out. Optional onboard boot PROM via [[board.socket]] (at+mount). variant=sbc100|sbc200"},
@@ -96,6 +98,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "8080") return std::make_unique<Cpu8080Board>();
     if (type == "z80") return std::make_unique<CpuZ80Board>();
     if (type == "6800") return std::make_unique<Cpu6800Board>();
+    if (type == "680io") return std::make_unique<Io680Board>();
     if (type == "2sio") return std::make_unique<Sio2Board>();
     if (type == "sio") return std::make_unique<SioBoard>();
     if (type == "sbc") return std::make_unique<SbcBoard>();

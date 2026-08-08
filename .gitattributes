@@ -55,6 +55,14 @@ roms/MBL/*.ASM binary
 *.BIN binary
 *.hex binary
 *.HEX binary
+# Motorola S-records -- the Altair 680b's ROM format (roms/MON680, roms/SWIMON). A period
+# ROM image like .HEX: fetched byte-for-byte from deramp, CRLF and all. The decoded image
+# is line-ending agnostic, but the artifact is committed verbatim so the checkout matches
+# the dump on every platform. Keep binary so the global eol=lf never rewrites it.
+*.s19 binary
+*.S19 binary
+*.srec binary
+*.SREC binary
 *.keys binary
 *.tap binary
 *.TAP binary

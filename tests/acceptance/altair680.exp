@@ -1,0 +1,86 @@
+#!/usr/bin/expect -f
+#
+# THE ALTAIR 680b PROM MONITOR, TYPED AT -- `altair680`.
+#
+# The 680b is a 6800, memory-mapped, and this is the machine the whole 6800 line was
+# built to reach: MON680 signing on to a real terminal over the onboard 6850 at F000/F001
+# (the `680io` board), then answering a command. It is the integration oracle for the
+# disassembler, the assembler, the core, the S-record loader and the two new boards all
+# at once -- if any of them is wrong, the monitor does not come up or does not answer.
+#
+# WHY THIS CANNOT BE A PIPE (the lesson eberhard-roms.exp paid a red CI leg for). Piped
+# keystrokes are already in the console buffer before the guest is switched on, and they
+# clock into the 6850's ONE-BYTE receive register while the monitor is still resetting.
+# Each byte that arrives before the previous one is read overwrites it, the command line
+# arrives mangled, and whether it does is a race between the host's clock and the guest's.
+# A real terminal fixes it by WAITING: expect types after the prompt, which is the only
+# thing that makes the guest ready for the byte.
+#
+# THE ASSERTION IS AN EXAMINE, not the bare sign-on. MON680's whole sign-on is `.` --
+# almost any wreckage would print a period. So we ask the monitor to EXAMINE the first
+# byte of its own PROM (`M FF00`) and require `8D` back: that byte is the ROM's own first
+# instruction, so getting it proves the image is at FF00 intact AND that the console is on
+# the ACIA the firmware actually talks to -- neither of which loading the config can tell.
+#
+# TRAPS (each has bitten this suite before -- see 2sio-echo.exp / eberhard-roms.exp):
+#   1. `expect` PATTERNS ARE GLOBS. Every literal here is `-ex`.
+#   2. EVERY `expect` HAS A TIMEOUT ARM. A test with no timeout does not fail, it hangs.
+#   3. ATTN IS ^E. ^C belongs to the guest.
+#   4. The `.` prompt is a single period, which also appears in the sim's own banner
+#      ("machine: altair680."). So we consume the `[console` marker FIRST; the next `.`
+#      after that is the monitor's, not the banner's.
+#
+# usage: expect -f altair680.exp <altairsim>
+
+set timeout 30
+log_user 0
+
+set sim [lindex $argv 0]
+
+spawn $sim altair680
+
+# The machine auto-starts (startup = ["RESET", "RUN"]), so we land in the guest.
+expect {
+    -ex "\[console" {}
+    timeout { puts "### FAIL: the machine never started"; exit 1 }
+}
+
+# WAIT FOR THE MONITOR TO ASK. Nothing may be typed until MON680 is at its `.` with an
+# empty receive register. This is the first `.` after the console marker.
+expect {
+    -ex "." {}
+    timeout { puts "### FAIL: MON680 never printed its '.' prompt"; exit 1 }
+}
+
+# Examine the first byte of the monitor PROM. MON680's `M` command (examine/deposit)
+# echoes the address, prints a space, then the byte: ` 8D `.
+send "MFF00\r"
+expect {
+    -ex "8D" { puts "### altair680: MON680 examined its own PROM -- FF00 = 8D" }
+    timeout {
+        puts "### FAIL: asked to examine FF00 and never saw 8D."
+        puts "###   The PROM is not at FF00, or the console is not on the F000 ACIA."
+        exit 1
+    }
+}
+
+# A bare CR aborts the deposit MON680 is now waiting for (a non-hex byte returns it to the
+# command loop) and reprints the prompt -- proof the round trip closed.
+send "\r"
+expect {
+    -ex "." {}
+    timeout { puts "### FAIL: MON680 did not return to its prompt"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "### FAIL: ATTN did not return to the monitor"; exit 1 }
+}
+send "QUIT\r"
+expect {
+    eof {}
+    timeout { puts "### FAIL: would not quit"; exit 1 }
+}
+
+puts "### ALL STEPS PASSED"

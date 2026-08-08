@@ -198,7 +198,7 @@ const char* boardCategory(const std::string& n) {
     if (n == "dcdd" || n == "mds" || n == "hdsk" || n == "versafloppy" ||
         n == "tarbell" || n == "tarbelldd" || n == "16fdc" || n == "64fdc") return "Disk";
     if (n == "2sio" || n == "sio" || n == "sbc" || n == "pmmi" ||
-        n == "turnkey" || n == "usio") return "Serial";
+        n == "turnkey" || n == "usio" || n == "680io") return "Serial";
     if (n == "acr" || n == "uio") return "Tape";
     if (n == "pio" || n == "4pio" || n == "d7a" || n == "c700" || n == "lpc")
         return "Parallel and printer";
