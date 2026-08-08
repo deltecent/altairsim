@@ -143,6 +143,13 @@ port = 10
   connect = "null"
   baud    = 9600
 
+# The modern-terminal Backspace/Delete key sends DEL (0x7F), but the great majority of
+# period software only recognizes BS (0x08) -- so the key does nothing useful (afexer, for
+# one, folds DEL into '_'). Fold DEL->BS here so Backspace just works out of the box. This
+# is a console transform, not a hardware behavior; see src/host/filter.h BsMap.
+[console]
+bsdel = "bs"
+
 # THE FLOPPY CONTROLLER -- an 88-DCDD at 0x08, which is not a choice: the boot PROM
 # above is hard-wired to it (DBL selects drive 0 at port 08 and shifts the first sector
 # in through 0A), and so is every Altair CP/M BIOS ever written.
