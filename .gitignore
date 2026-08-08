@@ -146,6 +146,7 @@ examples/**
 !examples/sol/PACMAN.WAV
 !examples/sol/RAIDERS.WAV
 !examples/sol/ATC Manual.pdf
+!examples/altair680/kcacr-demo.tap
 !examples/debugger/HELLO.ASM
 !examples/debugger/HELLO.PRN
 !examples/debugger/HELLO.HEX

@@ -1,0 +1,255 @@
+                        *******************************************************************
+                        *
+                        *  KCACR.ASM - PROM for the Altair 680 to support the 680-KCACR
+                        *     cassette interface board
+                        *
+                        *  Disassembled by Mike Douglas, July 2022
+                        *
+                        *******************************************************************
+                        
+                        * 680 monitor equates
+                        
+ff62                    BADDR	equ	$FF62		;input address to X
+ff81                    OUTCH	equ	$FF81		;display character from B
+ff82                    OUTS	equ	$FF82		;display a space
+ff68                    XHIB2X	equ	$FF68		;load XHI:B into X
+ffab                    MONITR	equ	$FFAB		;re-enter monitor
+                        
+                        * Cassette equates
+                        
+f010                    SIOSR	equ	$F010		;cassette UART status register
+f011                    SIODR	equ	$F011		;data register
+000d                    CR	equ	$0D
+000a                    LF	equ	$0A
+                        
+                        * Page zero data
+                        
+00f4                    	org	$F4		
+00f4                    endAddr	rmb	2		;end address to write
+00f6                    	rmb	2
+00f8                    temp	rmb	1
+00f9                    rdCount	rmb	1		;byte count in a line when reading
+00fa                    XHI	rmb	1		;XHI:XLO from 680 monitor
+00fb                    XLO	rmb	1
+00fc                    	rmb	1
+00fd                    curAddr	rmb	2		;current write address
+00ff                    wrCount	rmb	1		;byte count in a line when writing
+                        
+                        *----------------------------------------------------------------
+                        *  LOAD entry point is $FD00. Load S-Record data from cassette
+                        *     into memory.
+                        *----------------------------------------------------------------
+fd00                    	org	$FD00
+                        
+fd00 8d 60              load	bsr	casRead		;look for an S record
+fd02 c0 53              	subb	#'S
+fd04 26 fa              	bne	load
+                        
+fd06 8d 5a              	bsr	casRead		;read next to see if S1 or S9
+fd08 c1 39              	cmpb	#'9
+fd0a 27 62              	beq	s9Rec		;S9
+fd0c c1 31              	cmpb	#'1		;S1?
+fd0e 26 f0              	bne	load		;no, ignore
+                        
+fd10 4f                 	clra			;accumulate checksum in A
+fd11 8d 38              	bsr	rdByte		;get the byte count
+fd13 c0 02              	subb	#2		;take out the address bytes
+fd15 d7 f9              	stab	rdCount		;save the read counter
+fd17 8d 40              	bsr	rdWord		;read the address and put in X
+                        
+fd19 8d 30              rdLine	bsr	rdByte		;read a data byte
+fd1b 7a 00 f9           	dec	rdCount		;repeat for all bytes on the line
+fd1e 27 09              	beq	valCsum		;done, go validate the checksum
+                        
+fd20 e7 00              	stab	0,x		;save the byte
+fd22 e1 00              	cmpb	0,x
+fd24 26 09              	bne	memErr		;didn't save properly
+fd26 08                 	inx
+fd27 20 f0              	bra	rdLine
+                        
+                        * valCsum - Validate the checksum. If good, go look for another line
+                        
+fd29 4c                 valCsum	inca			;validate checksum
+fd2a 27 d4              	beq	load		;good - keep going
+                        
+                        * hexErr, memErr - Die in a loop displaying the error code
+                        
+fd2c c6 43              hexErr	ldab	#'C		;indicate hex/checksum error
+fd2e 8c                 	fcb	$8C		;CPX skip trick
+fd2f c6 4d              memErr	ldab	#'M
+                        
+fd31 bd ff 81           dieLoop	jsr	OUTCH		;die here sending error code
+fd34 20 fb              	bra	dieLoop
+                        
+                        * rdNibl - Read an ASCII hex nibble into B in binary
+                        
+fd36 8d 2a              rdNibl	bsr	casRead		;get next character
+fd38 c0 30              	subb	#'0		;convert to binary
+fd3a 2b f0              	bmi	hexErr		;too small
+fd3c c1 09              	cmpb	#9
+fd3e 2f 0a              	ble	rnExit		;valid 0-9
+fd40 c1 11              	cmpb	#'A-'0		;below 'A'?
+fd42 2b e8              	bmi	hexErr		;yes, error
+fd44 c1 16              	cmpb	#'F-'0		;above 'F'?
+fd46 2e e4              	bgt	hexErr		;yes
+fd48 c0 07              	subb	#7		;adjust for A to F
+fd4a 39                 rnExit	rts
+                        
+                        * rdByte - Read an ASCII hex byte into B in binary
+                        
+fd4b 8d e9              rdByte	bsr	rdNibl		;get msn in B
+fd4d 58                 	aslb			;put in MSN
+fd4e 58                 	aslb
+fd4f 58                 	aslb
+fd50 58                 	aslb
+fd51 d7 f8              	stab	temp
+fd53 8d e1              	bsr	rdNibl		;get lsn in B
+fd55 db f8              	addb	temp		;form final byte
+fd57 1b                 	aba			;update checksum
+fd58 39                 	rts
+                        
+                        * rdWord - Read an ASCII hex word into X in binary
+                        
+fd59 8d f0              rdWord	bsr	rdByte		;read MSB into XHI
+fd5b d7 fa              	stab	XHI
+fd5d 8d ec              	bsr	rdByte		;read LSB into B
+fd5f 7e ff 68           	jmp	XHIB2X		;load XBI:B into X
+                        
+                        * casRead - Read a character from the cassette serial port into B
+                        
+fd62 f6 f0 10           casRead	ldab	SIOSR		;wait for new character
+fd65 56                 	rorb
+fd66 25 fa              	bcs	casRead
+                        
+fd68 f6 f0 11           	ldab	SIODR		;load and return char
+fd6b c4 7f              	andb	#$7F
+fd6d 39                 	rts
+                        
+                        * s9Rec - Load complete, exit to the 680 monitor
+                        
+fd6e 20 52              s9Rec	bra	exitMon		;exit to monitor
+                        
+                        *----------------------------------------------------------------
+                        *  SAVE entry point is $FD74. Write a range of memory to the
+                        *     cassette in S-Record format.
+                        *----------------------------------------------------------------
+fd70 0d 0a 53 b1        mS1	fcb	CR,LF,'S,'1+$80
+                        
+fd74 8d 62              save	bsr	getAddr		;get start addr from user
+fd76 df fd              	stx	curAddr
+fd78 8d 5e              	bsr	getAddr		;get end address from user
+fd7a df f4              	stx	endAddr
+fd7c 8d 47              	bsr	wrNulls		;write leader nulls
+                        
+                        * wrLine - Write and S-record line of data
+                        
+fd7e ce fd 6f           wrLine	ldx	#mS1-1		;write “S1”
+fd81 08                 wrS1	inx
+fd82 e6 00              	ldab	0,x
+fd84 8d 6f              	bsr	casWrt
+fd86 2a f9              	bpl	wrS1
+                        
+fd88 96 f5              	ldaa	endAddr+1	;compute end-current
+fd8a 90 fe              	suba	curAddr+1
+fd8c d6 f4              	ldab	endAddr
+fd8e d2 fd              	sbcb	curAddr
+fd90 26 04              	bne	wrFull		;not last 256 bytes
+                        
+fd92 81 0e              	cmpa	#@16		;partial line? (octal vs decimal
+fd94 25 02              	bcs	wrPart		;  16 is original mistake)
+                        
+fd96 86 0d              wrFull	ldaa	#@16-1		;else, write full line (octal vs
+                        				;  decimal 16 is original mistake)
+fd98 97 ff              wrPart	staa	wrCount
+fd9a 8b 04              	adda	#4		;A=length field of the srec
+fd9c 8d 45              	bsr	wrByte
+                        
+fd9e ce 00 fd           	ldx	#curAddr	;write the address bytes
+fda1 8d 2b              	bsr	wrNext
+fda3 8d 29              	bsr	wrNext
+                        
+fda5 de fd              	ldx	curAddr		;X->data to write
+                        
+fda7 8d 25              wrData	bsr	wrNext		;write line of data bytes
+fda9 7a 00 ff           	dec	wrCount
+fdac 2a f9              	bpl	wrData
+                        
+fdae df fd              	stx	curAddr		;save current address
+fdb0 43                 	coma			;compute and write checksum
+fdb1 8d 30              	bsr	wrByte
+                        
+fdb3 09                 	dex			;remove last increment for checksum
+fdb4 9c f4              	cpx	endAddr		;reach end?
+fdb6 26 c6              	bne	wrLine		;no, repeat
+                        
+fdb8 c6 53              	ldab	#'S		;write the S9 record
+fdba 8d 39              	bsr	casWrt
+fdbc c6 39              	ldab	#'9
+fdbe 8d 35              	bsr	casWrt
+fdc0 8d 03              	bsr	wrNulls		;follow with nulss
+                        
+                        * exitMon - Jump back into the 680 monitor
+                        
+fdc2 7e ff ab           exitMon	jmp	MONITR
+                        
+                        * wrNulls - Write 40 nulls (documentation shows 50)
+                        
+fdc5 86 28              wrNulls	ldaa	#@50		;octal 50 is original mistake
+fdc7 5f                 	clrb
+fdc8 8d 2b              nullLp	bsr	casWrt
+fdca 4a                 	deca
+fdcb 26 fb              	bne	nullLp
+fdcd 39                 	rts
+                        
+                        * wrNext - Write the next byte from memory as pointed to by X to the
+                        *   cassette. Checksum is accumlated in A.
+                        
+fdce e6 00              wrNext	ldab	0,x		;B=next byte to write
+fdd0 1b                 	aba			;update checksum in A
+fdd1 36                 	psha
+fdd2 17                 	tba
+fdd3 8d 0e              	bsr	wrByte		;write the byte
+fdd5 32                 	pula
+fdd6 08                 	inx
+fdd7 39                 	rts
+                        
+                        * getAddr - Get an address from the operator
+                        
+fdd8 bd ff 82           getAddr	jsr	OUTS
+fddb c6 3f              	ldab	#'?
+fddd bd ff 81           	jsr	OUTCH
+fde0 7e ff 62           	jmp	BADDR
+                        
+                        * wrByte - Write a byte from A in ASCII hex format to the cassette
+                        
+fde3 16                 wrByte	tab			;work in B
+fde4 54                 	lsrb			;put MSN into LSN
+fde5 54                 	lsrb
+fde6 54                 	lsrb
+fde7 54                 	lsrb
+fde8 8d 01              	bsr	wrNibl		;write MSN
+                        
+fdea 16                 	tab			;LSN back in B
+                        
+                        * wrNibl - Write a nibble from B in ASCII hex format to the cassette
+                        
+fdeb c4 0f              wrNibl	andb	#$0F		;get LSN alone
+fded cb 30              	addb	#'0		;convert 0-F to ASCII
+fdef c1 39              	cmpb	#'9
+fdf1 23 02              	bls	casWrt
+fdf3 cb 07              	addb	#7
+                        
+                        * casWrt - Write byte from B to the cassette UART
+                        
+fdf5 37                 casWrt	pshb
+fdf6 f6 f0 10           wrWait	ldab	SIOSR
+fdf9 2b fb              	bmi	wrWait
+                        
+fdfb 33                 	pulb
+fdfc f7 f0 11           	stab	SIODR
+fdff 39                 	rts
+                        
+                        	end
+
+
+Number of errors 0

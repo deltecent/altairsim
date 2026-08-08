@@ -83,6 +83,7 @@ const struct {
     {"680board", test_680board},
     {"680io", test_680io},
     {"680uio", test_680uio},
+    {"680kcacr", test_680kcacr},
     {"z80_cpu", test_z80_cpu},
     {"expr", test_expr},
     {"debug", test_debug},

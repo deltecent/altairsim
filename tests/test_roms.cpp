@@ -133,6 +133,11 @@ void test_roms() {
         // different CRC. These decode through loadSrec, not loadHex.
         {"mon680", 0xFF00, 0xFFFF, 256, 0x397E717Fu, true},
         {"swimon", 0xFF00, 0xFFFF, 256, 0x2ABE348Fu, true},
+        // The KCACR cassette loader/punch PROM (socket V, FD00-FDFF): loads and dumps
+        // memory over the 680b KCACR in Motorola S-record form, calling the MON680
+        // console routines (so it lives one PROM below the monitor). Also an S19, and
+        // its status/data equates are $F010/$F011 -- the 680kcacr board's registers.
+        {"kcacr", 0xFD00, 0xFDFF, 256, 0xA89ADB57u, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;
