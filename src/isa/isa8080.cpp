@@ -352,10 +352,13 @@ const Disassembler* disassemblerFor(const std::string& isa) {
                      // 8080 produces plausible, WRONG text -- worse than an error.
 }
 
+const Assembler* mc6800Assembler();
+
 const Assembler* assemblerFor(const std::string& isa) {
     std::string k;
     for (char c : isa) k += (char)std::tolower((unsigned char)c);
     if (k == "8080") return &k8080asm;
+    if (k == "6800") return mc6800Assembler();
     // No Z80 assembler yet -- prefixes, (IX+d) and signed JR make it a real
     // mini-assembler, not a table reverse. EDIT falls back to bytes until it lands.
     return nullptr;

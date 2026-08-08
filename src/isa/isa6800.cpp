@@ -1,5 +1,6 @@
 #include "isa/isa.h"
 
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cstdio>
@@ -232,8 +233,197 @@ public:
 
 const Isa6800 k6800;
 
+// ---------------------------------------------------------------------------
+// The 6800 assembler -- the inverse of the table above, built once by REVERSING
+// kOps into (mnemonic -> opcode per mode). Nothing is hand-written per opcode, so
+// the two cannot drift, and the round-trip `assemble(disassemble(b)) == b` over
+// the table proves it (tests/test_isa6800.cpp).
+//
+// THE MODE IS CHOSEN FROM THE OPERAND SYNTAX, not typed. `#` is immediate, `n,X`
+// (or bare `X`) is indexed, a branch mnemonic takes a target we turn into a signed
+// offset, and a bare number is DIRECT when it fits in a page and the mnemonic has
+// a direct form, else EXTENDED -- exactly the value-driven choice the 680b
+// assembler makes at assembly time (Programming Manual 2). CPX/LDS/LDX take a
+// 16-bit immediate, so their `#` form is three bytes with the MS byte first.
+// ---------------------------------------------------------------------------
+
+// Uppercase; trim; collapse internal whitespace to one space; drop the space on
+// either side of a comma. Applied to the operator's input so `LDAA 5 , X` and
+// `LDAA 5,X` are the one thing, and the mnemonic splits off at the first space.
+std::string asm6800Normalize(const std::string& s) {
+    std::string t;
+    for (char c : s) t += (char)std::toupper((unsigned char)c);
+
+    std::string out;
+    bool pendingSpace = false;
+    for (char c : t) {
+        if (c == ' ' || c == '\t') {
+            if (!out.empty()) pendingSpace = true;
+            continue;
+        }
+        if (c == ',') {
+            while (!out.empty() && out.back() == ' ') out.pop_back();
+            out += ',';
+            pendingSpace = false;
+            continue;
+        }
+        if (pendingSpace) { out += ' '; pendingSpace = false; }
+        out += c;
+    }
+    return out;
+}
+
+// Parse one operand into a value. Honors `base` (16 or 8) unless the token carries
+// an explicit radix: a leading `$` or `0x` (hex), a trailing H (hex) or Q/O
+// (octal). No symbols -- the ISA layer owns no symbol table. Returns false on
+// empty/garbage/overflow of 16 bits.
+bool asm6800ParseNum(const std::string& tok, int base, unsigned& out) {
+    std::string s = tok;
+    if (s.empty()) return false;
+
+    if (s[0] == '$') { base = 16; s = s.substr(1); }
+    else if (s.size() > 2 && s[0] == '0' && (s[1] == 'X' || s[1] == 'x')) {
+        base = 16;
+        s = s.substr(2);
+    } else {
+        char last = (char)std::toupper((unsigned char)s.back());
+        if (last == 'H') { base = 16; s.pop_back(); }
+        else if (last == 'Q' || last == 'O') { base = 8; s.pop_back(); }
+    }
+    if (s.empty()) return false;
+
+    unsigned long v = 0;
+    for (char c : s) {
+        int d;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else return false;
+        if (d >= base) return false;
+        v = v * base + (unsigned)d;
+        if (v > 0xFFFF) return false;
+    }
+    out = (unsigned)v;
+    return true;
+}
+
+class Isa6800Assembler : public Assembler {
+public:
+    Isa6800Assembler() {
+        for (int i = 0; i < 256; ++i) {
+            const Op& op = kOps[i];
+            if (op.mode == Mode::Ill) continue;
+            Forms& f = forms_[op.mnem];
+            int m = (int)op.mode;
+            // Each (mnemonic, mode) pair is unique in a correct table; a duplicate
+            // would mean two opcodes claim the same spelling, which the round-trip
+            // test would also catch.
+            assert(f.op[m] < 0 && "duplicate (mnemonic,mode) -- kOps is no longer a bijection");
+            f.op[m] = i;
+        }
+    }
+
+    const char* name() const override { return "6800"; }
+
+    AsmResult assemble(uint16_t addr, const std::string& line, int base) const override {
+        // Split the mnemonic (first whitespace-delimited token) from the operand on
+        // the RAW line, THEN normalize only the operand. Normalizing the whole line
+        // would drop the space before a leading-comma operand (`LDAA ,X`) and glue
+        // the mnemonic to it. The mnemonic is uppercased; the operand is normalized
+        // so `5 , X` and `5,X` are the one thing.
+        size_t b0 = line.find_first_not_of(" \t");
+        if (b0 == std::string::npos) return fail("empty");
+        size_t e0 = line.find_first_of(" \t", b0);
+
+        std::string mnem;
+        for (size_t i = b0; i < (e0 == std::string::npos ? line.size() : e0); ++i)
+            mnem += (char)std::toupper((unsigned char)line[i]);
+
+        std::string operand;
+        if (e0 != std::string::npos) operand = asm6800Normalize(line.substr(e0));
+
+        auto it = forms_.find(mnem);
+        if (it == forms_.end()) return fail("unknown instruction: " + mnem);
+        const Forms& f = it->second;
+
+        // No operand -> inherent, or a diagnosis if this mnemonic needs one.
+        if (operand.empty()) {
+            if (f.op[(int)Mode::Inh] >= 0) return ok({(uint8_t)f.op[(int)Mode::Inh]});
+            return fail(mnem + " needs an operand");
+        }
+
+        // Immediate: #nn, and #nnnn (MS byte first) for CPX/LDS/LDX.
+        if (operand[0] == '#') {
+            std::string num = operand.substr(1);
+            unsigned v;
+            if (!asm6800ParseNum(num, base, v)) return fail("bad operand: " + num);
+            if (f.op[(int)Mode::Imm16] >= 0)
+                return ok({(uint8_t)f.op[(int)Mode::Imm16], (uint8_t)(v >> 8), (uint8_t)(v & 0xFF)});
+            if (f.op[(int)Mode::Imm] >= 0) {
+                if (v > 0xFF) return fail("operand too large for an 8-bit immediate");
+                return ok({(uint8_t)f.op[(int)Mode::Imm], (uint8_t)v});
+            }
+            return fail(mnem + " has no immediate form");
+        }
+
+        // Indexed: n,X (or bare X, or ,X) -> offset added to IX, 0..255.
+        if (operand == "X" || endsWith(operand, ",X")) {
+            if (f.op[(int)Mode::Idx] < 0) return fail(mnem + " has no indexed form");
+            std::string off = operand == "X" ? "0" : operand.substr(0, operand.size() - 2);
+            if (off.empty()) off = "0";
+            unsigned v;
+            if (!asm6800ParseNum(off, base, v)) return fail("bad index offset: " + off);
+            if (v > 0xFF) return fail("index offset is 0..FF");
+            return ok({(uint8_t)f.op[(int)Mode::Idx], (uint8_t)v});
+        }
+
+        // Relative: a branch. The operand is the TARGET address; we store the signed
+        // offset R where D = (PC+2) + R, and refuse a target out of a byte's reach.
+        if (f.op[(int)Mode::Rel] >= 0) {
+            unsigned target;
+            if (!asm6800ParseNum(operand, base, target)) return fail("bad branch target: " + operand);
+            int delta = (int)target - ((int)addr + 2);
+            if (delta < -128 || delta > 127) return fail("branch out of range (-128..+127)");
+            return ok({(uint8_t)f.op[(int)Mode::Rel], (uint8_t)(delta & 0xFF)});
+        }
+
+        // Bare number: DIRECT if it fits a page and there is a direct form, else
+        // EXTENDED. A mnemonic with no direct form (JMP/JSR, the RMW memory ops) is
+        // always extended, even for a low address.
+        unsigned v;
+        if (!asm6800ParseNum(operand, base, v)) return fail("bad operand: " + operand);
+        if (f.op[(int)Mode::Dir] >= 0 && v <= 0xFF)
+            return ok({(uint8_t)f.op[(int)Mode::Dir], (uint8_t)v});
+        if (f.op[(int)Mode::Ext] >= 0)
+            return ok({(uint8_t)f.op[(int)Mode::Ext], (uint8_t)(v >> 8), (uint8_t)(v & 0xFF)});
+        if (f.op[(int)Mode::Dir] >= 0) return fail("operand too large for a direct address");
+        return fail(mnem + " takes no memory operand");
+    }
+
+private:
+    struct Forms {
+        // opcode per Mode (Inh..Rel); -1 if the mnemonic lacks that mode. Filled on
+        // first insert via forms_[mnem], so it must start all-absent -- 0 is a real
+        // opcode, so a value-initialized 0 here would be a silent wrong answer.
+        std::array<int, 7> op = {-1, -1, -1, -1, -1, -1, -1};
+    };
+
+    static bool endsWith(const std::string& s, const char* suf) {
+        std::string t = suf;
+        return s.size() >= t.size() && s.compare(s.size() - t.size(), t.size(), t) == 0;
+    }
+
+    static AsmResult ok(std::vector<uint8_t> b) { return {std::move(b), {}}; }
+    static AsmResult fail(std::string e) { return {{}, std::move(e)}; }
+
+    std::unordered_map<std::string, Forms> forms_;
+};
+
+const Isa6800Assembler k6800asm;
+
 } // namespace
 
 const Disassembler* mc6800Disassembler() { return &k6800; }
+const Assembler*    mc6800Assembler() { return &k6800asm; }
 
 } // namespace altair

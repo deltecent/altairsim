@@ -178,3 +178,115 @@ void test_isa6800() {
     CHECK(decoded == 197, "exactly 197 valid opcodes decode (72 mnemonics)");
     CHECK(illegal == 59, "and 59 are undefined on the 6800");
 }
+
+// ---------------------------------------------------------------------------
+// The assembler -- the inverse the EDIT command drives (monitor.cpp), so an
+// operator can type a 6800 mnemonic where a byte would go and have the encoding
+// fall out. The mode is chosen from the operand syntax, and the round-trip over
+// the whole table proves the assembler and the disassembler agree.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Assemble a line at address `at`, expecting success; return the bytes.
+std::vector<uint8_t> asmOk(const Assembler* a, const std::string& line, uint16_t at = 0, int base = 16) {
+    AsmResult r = a->assemble(at, line, base);
+    return r.error.empty() ? r.bytes : std::vector<uint8_t>{};
+}
+bool bytesAre(const std::vector<uint8_t>& b, std::initializer_list<uint8_t> want) {
+    return std::vector<uint8_t>(want) == b;
+}
+
+} // namespace
+
+void test_asm6800() {
+    SECTION("the 6800 assembler -- text in, bytes out, mode chosen from the operand");
+
+    const Assembler* a = assemblerFor("6800");
+    CHECK(a != nullptr, "we assemble 6800");
+    if (!a) return;
+    CHECK(std::string(a->name()) == "6800", "and it says so");
+    CHECK(assemblerFor("z80") == nullptr, "still no Z80 assembler -- EDIT stays byte-only there");
+
+    SECTION("one line per addressing mode");
+
+    CHECK(bytesAre(asmOk(a, "NOP"), {0x01}), "NOP -- inherent");
+    CHECK(bytesAre(asmOk(a, "RTS"), {0x39}), "RTS");
+    CHECK(bytesAre(asmOk(a, "ASRA"), {0x47}), "ASRA -- accumulator RMW, suffix form");
+    CHECK(bytesAre(asmOk(a, "INCB"), {0x5C}), "INCB");
+    CHECK(bytesAre(asmOk(a, "LDAA #41"), {0x86, 0x41}), "LDAA #41 -- immediate");
+    CHECK(bytesAre(asmOk(a, "LDAA 50"), {0x96, 0x50}), "LDAA 50 -- direct (fits a page)");
+    CHECK(bytesAre(asmOk(a, "LDAA FC00"), {0xB6, 0xFC, 0x00}), "LDAA FC00 -- extended, MS byte first");
+    CHECK(bytesAre(asmOk(a, "LDAA 05,X"), {0xA6, 0x05}), "LDAA 05,X -- indexed");
+    CHECK(bytesAre(asmOk(a, "LDX #FC00"), {0xCE, 0xFC, 0x00}), "LDX #FC00 -- 16-bit immediate, MS first");
+    CHECK(bytesAre(asmOk(a, "CPX #1234"), {0x8C, 0x12, 0x34}), "CPX #1234 -- three bytes");
+
+    SECTION("direct vs extended is chosen by VALUE (Programming Manual 2)");
+
+    CHECK(bytesAre(asmOk(a, "LDAA FF"), {0x96, 0xFF}), "FF fits a page -> direct");
+    CHECK(bytesAre(asmOk(a, "LDAA 100"), {0xB6, 0x01, 0x00}), "100 > FF -> extended");
+    // JMP/JSR have no direct form, so even a low address is extended.
+    CHECK(bytesAre(asmOk(a, "JMP 0050"), {0x7E, 0x00, 0x50}), "JMP has no direct mode -> extended");
+    CHECK(bytesAre(asmOk(a, "JSR FC00"), {0xBD, 0xFC, 0x00}), "JSR extended");
+    CHECK(bytesAre(asmOk(a, "JMP 05,X"), {0x6E, 0x05}), "JMP indexed");
+    // The RMW memory ops have only indexed + extended.
+    CHECK(bytesAre(asmOk(a, "NEG 50"), {0x70, 0x00, 0x50}), "NEG (memory) -> extended, not direct");
+    CHECK(bytesAre(asmOk(a, "NEG 05,X"), {0x60, 0x05}), "NEG 05,X -- indexed");
+
+    SECTION("relative branches -- target in, signed offset out, D = (PC+2) + R");
+
+    // At 0100: BRA 010A -> offset +8.
+    CHECK(bytesAre(asmOk(a, "BRA 010A", 0x0100), {0x20, 0x08}), "forward branch offset");
+    // At 0100: BNE 00FE -> offset -4.
+    CHECK(bytesAre(asmOk(a, "BNE 00FE", 0x0100), {0x26, 0xFC}), "backward branch offset");
+    // Branch to self.
+    CHECK(bytesAre(asmOk(a, "BRA 000C", 0x000C), {0x20, 0xFE}), "branch to self");
+    CHECK(bytesAre(asmOk(a, "BSR 0012", 0x0000), {0x8D, 0x10}), "BSR is relative too");
+    // Out of range: forward past +127.
+    CHECK(!a->assemble(0x0100, "BRA 0200", 16).error.empty(), "a branch out of reach is refused");
+
+    SECTION("indexed corners and errors");
+
+    CHECK(bytesAre(asmOk(a, "LDAA ,X"), {0xA6, 0x00}), ",X means offset 0");
+    CHECK(bytesAre(asmOk(a, "LDAA X"), {0xA6, 0x00}), "bare X means offset 0 too");
+    CHECK(!a->assemble(0, "LDAA #100", 16).error.empty(), "an 8-bit immediate over FF is refused");
+    CHECK(!a->assemble(0, "NOP 5", 16).error.empty(), "NOP takes no operand");
+    CHECK(!a->assemble(0, "FOO 5", 16).error.empty(), "an unknown mnemonic is refused");
+    CHECK(!a->assemble(0, "LDAA", 16).error.empty(), "LDAA with no operand is refused");
+
+    SECTION("octal operands follow the console base");
+
+    CHECK(bytesAre(asmOk(a, "LDAA #101", 0, 8), {0x86, 0x41}), "#101 octal = 41 hex");
+    CHECK(bytesAre(asmOk(a, "LDAA 12H", 0, 8), {0x96, 0x12}), "a trailing H overrides the octal base");
+
+    SECTION("ROUND-TRIP: assemble(disassemble(b)) == b over every valid opcode");
+
+    // For each valid opcode, synthesize an instruction with distinctive operand
+    // bytes, disassemble it, feed the text back to the assembler AT THE SAME
+    // ADDRESS, and require the identical bytes back. This is the proof the two
+    // tables are one table read two ways. (Relative branches must round-trip at
+    // the address they were disassembled at, since the text is an absolute target.)
+    const Disassembler* d = disassemblerFor("6800");
+    int roundtripped = 0;
+    for (int opc = 0; opc < 256; ++opc) {
+        uint8_t buf[] = {(uint8_t)opc, 0x2A, 0x5C};  // operand bytes 2A/5C are arbitrary but fixed
+        uint16_t at = 0x0100;
+        auto peek = [&](uint16_t x) -> uint8_t {
+            uint16_t off = (uint16_t)(x - at);
+            return off < sizeof buf ? buf[off] : 0x01;
+        };
+        Insn in = d->at(at, peek, 16);
+        if (in.undocumented) continue;  // illegal opcodes are not valid input
+
+        AsmResult r = a->assemble(at, in.text, 16);
+        CHECK(r.error.empty(), ("round-trip assembles: " + in.text).c_str());
+        if (!r.error.empty()) continue;
+
+        // The reassembled bytes must match the SAME LENGTH of original bytes.
+        bool same = r.bytes.size() == in.len;
+        for (size_t k = 0; same && k < in.len; ++k) same = r.bytes[k] == buf[k];
+        CHECK(same, ("round-trip bytes match: " + in.text).c_str());
+        if (same) ++roundtripped;
+    }
+    CHECK(roundtripped == 197, "all 197 valid opcodes round-trip byte-for-byte");
+}
