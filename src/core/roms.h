@@ -21,7 +21,7 @@
 
 namespace altair {
 
-enum class Format { Hex, Bin };
+enum class Format { Hex, Bin, Srec };
 
 struct BuiltinRom {
     const char* name;      // "dbl" -- what `mount = "builtin:dbl"` names

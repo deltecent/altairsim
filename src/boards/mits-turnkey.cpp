@@ -187,6 +187,11 @@ void TurnkeyBoard::loadProm() {
                     log_.push_back(id + ": " + sock.mount + ": " + err);
                     continue;
                 }
+            } else if (looksLikeSrec(raw)) {
+                if (!loadSrec(raw, img, err)) {
+                    log_.push_back(id + ": " + sock.mount + ": " + err);
+                    continue;
+                }
             } else {
                 loadBin(raw, sock.at, img);
             }
