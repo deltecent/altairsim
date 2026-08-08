@@ -311,6 +311,7 @@ add_library(altair_core STATIC
   # table of emulations, and TerminalStream -- the engine wearing a ByteStream face, so
   # `connect = "terminal"` gives every serial board a windowed terminal for free.
   src/host/terminal/vt100.cpp
+  src/host/terminal/adm3a.cpp
   src/host/terminal/emulations.cpp
   src/host/terminal/stream.cpp
   src/host/endpoint.cpp

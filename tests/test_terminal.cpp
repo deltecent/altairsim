@@ -3,6 +3,7 @@
 #include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
+#include "host/terminal/adm3a.h"
 #include "host/terminal/screen.h"
 #include "host/terminal/stream.h"
 #include "host/terminal/vt100.h"
@@ -26,6 +27,24 @@ struct Eng {
         for (char c : s) emu.feed((uint8_t)c, scr);
     }
     // Drain the bytes the terminal owes the guest (reports, encoded keys).
+    std::string reply() {
+        std::string out;
+        uint8_t     b;
+        while (emu.hasReply() && emu.takeReply(&b, 1) == 1) out.push_back((char)b);
+        return out;
+    }
+    char at(int r, int c) { return (char)scr.charAt(r, c); }
+};
+
+// The same jig for the ADM-3A dialect -- a dumb terminal, so no reports come back, but the
+// arrow keys DO encode (to ^H/^J/^K/^L), which reply() reads.
+struct Adm {
+    TerminalScreen scr{24, 80};
+    Adm3aEmulator  emu;
+
+    void feed(const std::string& s) {
+        for (char c : s) emu.feed((uint8_t)c, scr);
+    }
     std::string reply() {
         std::string out;
         uint8_t     b;
@@ -221,5 +240,75 @@ void test_terminal() {
               "the leading-colon form parses, then refuses for want of a window");
         CHECK(err.find("window") != std::string::npos,
               "the failure is the window, not the grammar (ansi and 132x24 are valid)");
+    }
+
+    // ---- The ADM-3A dialect: the dumb CP/M terminal ----
+    SECTION("terminal ADM-3A -- printable text and the cursor-move control codes");
+    {
+        Adm g;
+        g.feed("HI");
+        CHECK(g.at(0, 0) == 'H' && g.at(0, 1) == 'I', "text lands at the cursor");
+        CHECK(g.scr.cursorCol() == 2, "and advances it");
+        g.feed("\r");
+        CHECK(g.scr.cursorCol() == 0, "CR homes the column");
+        g.feed("\n");
+        CHECK(g.scr.cursorRow() == 1, "LF drops a line");
+        g.feed("\x0b");  // ^K -- cursor up
+        CHECK(g.scr.cursorRow() == 0, "^K moves the cursor up");
+        g.feed("\x0c");  // ^L -- cursor right
+        CHECK(g.scr.cursorCol() == 1, "^L moves the cursor right");
+        g.feed("\b");    // ^H -- cursor left
+        CHECK(g.scr.cursorCol() == 0, "^H (BS) moves the cursor left");
+    }
+
+    SECTION("terminal ADM-3A -- ESC = loads the cursor with a 0x20 bias");
+    {
+        Adm g;
+        // ESC = <row+0x20> <col+0x20>. Row 4, col 9 -> 0x24, 0x29.
+        g.feed("\x1b=\x24\x29");
+        CHECK(g.scr.cursorRow() == 4 && g.scr.cursorCol() == 9,
+              "ESC = (space+4)(space+9) addresses (4,9)");
+        // Space bias means a literal space is the origin.
+        g.feed("\x1b=  ");  // ESC = <space> <space>
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0, "ESC = (space)(space) is home");
+    }
+
+    SECTION("terminal ADM-3A -- ^Z clears and homes, ^^ homes without clearing");
+    {
+        Adm g;
+        g.feed("\x1b=\x24\x29TEXT");        // put TEXT at (4,9)
+        g.feed("\x1e");                     // ^^ -- home, no clear
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0, "^^ homes the cursor");
+        CHECK(g.at(4, 9) == 'T', "...and leaves the screen intact");
+        g.feed("\x1a");                     // ^Z -- clear + home
+        CHECK(g.at(4, 9) == ' ', "^Z blanks the screen");
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0, "...and homes the cursor");
+    }
+
+    SECTION("terminal ADM-3A -- arrow keys are the vi motion codes, no reports");
+    {
+        Adm g;
+        g.emu.keySpecial(TerminalEmulator::Key::Up);
+        CHECK(g.reply() == std::string("\x0b"), "Up is ^K");
+        g.emu.keySpecial(TerminalEmulator::Key::Down);
+        CHECK(g.reply() == std::string("\x0a"), "Down is ^J");
+        g.emu.keySpecial(TerminalEmulator::Key::Left);
+        CHECK(g.reply() == std::string("\x08"), "Left is ^H");
+        g.emu.keySpecial(TerminalEmulator::Key::Right);
+        CHECK(g.reply() == std::string("\x0c"), "Right is ^L");
+        g.emu.keySpecial(TerminalEmulator::Key::Home);
+        CHECK(g.reply() == std::string("\x1e"), "Home is ^^");
+        // A dumb terminal answers no status query -- ESC[6n is just bytes, not a report.
+        g.feed("\x1b[6n");
+        CHECK(g.reply().empty(), "the ADM-3A never reports its cursor");
+    }
+
+    SECTION("terminal endpoint -- adm3a is an accepted emulation name");
+    {
+        std::string err;
+        // Grammar (the name) is valid; it fails only for the headless window, like vt100.
+        CHECK(!resolveEndpoint("terminal?emulation=adm3a", err),
+              "adm3a parses, then refuses for want of a window");
+        CHECK(err.find("window") != std::string::npos, "the failure is the window, not the name");
     }
 }
