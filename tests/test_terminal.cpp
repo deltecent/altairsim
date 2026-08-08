@@ -4,6 +4,7 @@
 #include "host/endpoint.h"
 #include "host/stream.h"
 #include "host/terminal/adm3a.h"
+#include "host/terminal/h19.h"
 #include "host/terminal/screen.h"
 #include "host/terminal/stream.h"
 #include "host/terminal/vt100.h"
@@ -59,6 +60,23 @@ struct Adm {
 struct V52 {
     TerminalScreen scr{24, 80};
     Vt52Emulator   emu;
+
+    void feed(const std::string& s) {
+        for (char c : s) emu.feed((uint8_t)c, scr);
+    }
+    std::string reply() {
+        std::string out;
+        uint8_t     b;
+        while (emu.hasReply() && emu.takeReply(&b, 1) == 1) out.push_back((char)b);
+        return out;
+    }
+    char at(int r, int c) { return (char)scr.charAt(r, c); }
+};
+
+// And the H19 -- a VT52 superset in Heath mode, with an ANSI (VT100) mode after ESC <.
+struct H19 {
+    TerminalScreen scr{24, 80};
+    H19Emulator    emu;
 
     void feed(const std::string& s) {
         for (char c : s) emu.feed((uint8_t)c, scr);
@@ -390,6 +408,84 @@ void test_terminal() {
         std::string err;
         CHECK(!resolveEndpoint("terminal?emulation=vt52", err),
               "vt52 parses, then refuses for want of a window");
+        CHECK(err.find("window") != std::string::npos, "the failure is the window, not the name");
+    }
+
+    // ---- The H19 dialect: VT52 superset in Heath mode + an ANSI (VT100) mode ----
+    SECTION("terminal H19 -- Heath-mode cursor moves and ESC Y addressing");
+    {
+        H19 g;
+        g.feed("HI");
+        CHECK(g.at(0, 0) == 'H' && g.at(0, 1) == 'I', "text lands at the cursor");
+        g.feed("\x1b" "Y\x24\x29");  // ESC Y row=4 col=9
+        CHECK(g.scr.cursorRow() == 4 && g.scr.cursorCol() == 9, "ESC Y addresses (4,9)");
+        g.feed("\x1b" "A");
+        CHECK(g.scr.cursorRow() == 3, "ESC A moves up");
+        g.feed("\x1b" "H");
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0, "ESC H homes");
+    }
+
+    SECTION("terminal H19 -- the extra Heath escapes: erase, reverse video, save/restore");
+    {
+        H19 g;
+        g.feed("\x1b" "Y\x20\x20" "ABCDE");   // ABCDE from home
+        g.feed("\x1b" "Y\x20\x22");           // (0,2), on 'C'
+        g.feed("\x1b" "o");                    // ESC o -- erase to start of line
+        CHECK(g.at(0, 0) == ' ' && g.at(0, 2) == ' ' && g.at(0, 3) == 'D',
+              "ESC o clears from BOL to the cursor");
+        g.feed("\x1b" "j");                    // save cursor at (0,2)
+        g.feed("\x1b" "Y\x25\x25");           // move away to (5,5)
+        g.feed("\x1b" "k");                    // restore
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 2, "ESC j/k save and restore the cursor");
+        g.feed("\x1b" "pR");                   // reverse on, then a char
+        CHECK((g.scr.attr(0, 2) & TerminalScreen::kAttrReverse) != 0, "ESC p sets reverse video");
+        g.feed("\x1b" "qN");                   // reverse off, then a char
+        CHECK((g.scr.attr(0, 3) & TerminalScreen::kAttrReverse) == 0, "ESC q clears reverse video");
+        g.feed("\x1b" "E");                    // clear display + home
+        CHECK(g.at(0, 3) == ' ' && g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0,
+              "ESC E clears the display and homes");
+    }
+
+    SECTION("terminal H19 -- ESC n reports the cursor as ESC Y r c");
+    {
+        H19 g;
+        g.feed("\x1b" "Y\x2A\x30");  // (10,16)
+        g.feed("\x1b" "n");
+        CHECK(g.reply() == std::string("\x1b" "Y\x2A\x30"),
+              "ESC n answers ESC Y (row+0x20)(col+0x20)");
+    }
+
+    SECTION("terminal H19 -- arrows are ESC-letter in Heath mode");
+    {
+        H19 g;
+        g.emu.keySpecial(TerminalEmulator::Key::Up);
+        CHECK(g.reply() == std::string("\x1b" "A"), "Up is ESC A in Heath mode");
+        g.emu.keySpecial(TerminalEmulator::Key::Right);
+        CHECK(g.reply() == std::string("\x1b" "C"), "Right is ESC C");
+    }
+
+    SECTION("terminal H19 -- ESC < enters ANSI mode; ESC[?2l returns to Heath");
+    {
+        H19 g;
+        g.feed("\x1b<");                 // enter ANSI (VT100) mode
+        g.feed("\x1b[5;10H");            // now a VT100 CSI works
+        CHECK(g.scr.cursorRow() == 4 && g.scr.cursorCol() == 9,
+              "in ANSI mode the H19 honors VT100 CSI cursor addressing");
+        g.emu.keySpecial(TerminalEmulator::Key::Up);
+        CHECK(g.reply() == std::string("\x1b[A"), "and the arrows encode the VT100 way");
+        g.feed("\x1b[6n");               // VT100 DSR is forwarded from the inner engine
+        CHECK(g.reply() == std::string("\x1b[5;10R"), "the VT100 DSR report is forwarded");
+        g.feed("\x1b[?2l");              // DECANM reset -> back to Heath mode
+        g.feed("\x1b" "H");             // a Heath ESC H works again
+        CHECK(g.scr.cursorRow() == 0 && g.scr.cursorCol() == 0,
+              "ESC[?2l drops back to Heath mode, where ESC H homes");
+    }
+
+    SECTION("terminal endpoint -- h19 is an accepted emulation name");
+    {
+        std::string err;
+        CHECK(!resolveEndpoint("terminal?emulation=h19", err),
+              "h19 parses, then refuses for want of a window");
         CHECK(err.find("window") != std::string::npos, "the failure is the window, not the name");
     }
 }

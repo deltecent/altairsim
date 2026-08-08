@@ -14,6 +14,7 @@ void Vt100Emulator::reset() {
     priv_       = false;
     saved_      = false;
     appCursor_  = false;
+    ansi_       = true;
     clearReply();  // a reset drops any report in flight
 }
 
@@ -156,10 +157,12 @@ void Vt100Emulator::dispatchCsi(uint8_t final, TerminalScreen& scr) {
 
         case 'h':  // SM / DECSET
         case 'l':  // RM / DECRST
-            // The one private mode we honor: DECCKM (ESC[?1h/l), which decides whether the
-            // arrow keys send ESC[A or ESC O A. Everything else (autowrap, cursor
-            // visibility) is accepted and ignored.
+            // The private modes we honor: DECCKM (ESC[?1h/l), which decides whether the
+            // arrow keys send ESC[A or ESC O A, and DECANM (ESC[?2h/l), which selects ANSI
+            // vs VT52 mode (the H19 uses the latter to fall back to Heath mode). Everything
+            // else (autowrap, cursor visibility) is accepted and ignored.
             if (priv_ && argRaw(0) == 1) appCursor_ = (final == 'h');
+            if (priv_ && argRaw(0) == 2) ansi_ = (final == 'h');
             break;
 
         default: break;  // DECSTBM 'r' and the rest -- not modeled

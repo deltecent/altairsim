@@ -38,6 +38,12 @@ public:
     // when the guest has set DECCKM (application cursor keys). See keySpecial's body.
     void keySpecial(Key k) override;
 
+    // DECANM (ESC[?2h/l): true in ANSI mode (the default), false once the guest selects
+    // VT52 mode. A standalone VT100 has no VT52 parser, so it just records the request;
+    // the H19 emulator, which drives a VT100 in its ANSI mode, polls this to fall back to
+    // its native Heath (VT52) parser.
+    bool ansiMode() const { return ansi_; }
+
 private:
     void c0(uint8_t b, TerminalScreen& scr);       // a C0 control (b < 0x20)
     void esc(uint8_t b, TerminalScreen& scr);      // the byte after ESC
@@ -73,6 +79,9 @@ private:
 
     // DECCKM: application cursor keys. Off -> arrows are ESC[A; on -> ESC O A (vi, less).
     bool appCursor_ = false;
+
+    // DECANM: ANSI vs VT52 mode. True (ANSI) unless the guest sends ESC[?2l.
+    bool ansi_ = true;
 };
 
 } // namespace altair

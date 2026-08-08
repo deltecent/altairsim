@@ -313,6 +313,7 @@ add_library(altair_core STATIC
   src/host/terminal/vt100.cpp
   src/host/terminal/adm3a.cpp
   src/host/terminal/vt52.cpp
+  src/host/terminal/h19.cpp
   src/host/terminal/emulations.cpp
   src/host/terminal/stream.cpp
   src/host/endpoint.cpp
