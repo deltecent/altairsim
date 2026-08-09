@@ -1,5 +1,7 @@
 # Altair BASIC 1.0 -- the FIRST one -- off a period cassette.
 #
+#   Bill and Paul's Excellent Adventure - Party on, dudes!
+#
 #     cd examples/basic && altairsim basic1.toml
 #     -> the tape loads, the machine goes quiet; press ^E, then type: RUN 0
 #     -> MEMSIZ?
@@ -31,7 +33,7 @@
 # and the `RUN 0` are yours to type, because on the real machine they were the operator's to
 # do -- and doing them is the point. The 4K and 8K bootstraps that came later learned to
 # jump on their own (basic4k.toml boots in one `RUN 0` because of it); this one is the raw
-# 1975 article, before that trick existed. "Bill's Epic Adventure, Episode 1."
+# 1975 article, before that trick existed.
 #
 # WANT TO WATCH IT LOAD? `SET acr0:tape rate=real` before you RUN plays the tape at the true
 # 300-baud speed the 1975 cassette ran at -- about two and a half minutes -- and the counter
