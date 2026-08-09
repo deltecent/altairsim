@@ -115,10 +115,60 @@ concurrent terminals — and for the keyboard contention that already exists bet
 terminal in one machine — and it is the last unbuilt piece of the plan. Until a two-terminal
 machine needs it, one host window drives whichever line claimed it last.
 
+## The `[terminal]` transform chain
+
+`src/host/filter.h` argues at length that the console's fold-the-bytes transforms (`strip7out`,
+`upper`, `bsdel`, …) must **not** live on a serial line: a line also carries XMODEM, and a
+`strip7out` there corrupts binary silently. But that file names one exception in passing — *only
+the console transforms, because only the console has a human on the end of it, and every one of
+these transforms is a fact about a **terminal**.* The built-in terminal is exactly that: a
+terminal with a human on the end. So it carries the same chain, as the `[terminal]` config
+section.
+
+It exists because of a concrete bug (issue #244). An even-parity monitor — the MITS Programming
+System II — computes parity **into bit 7** of every character it prints. A carriage return `0x0D`
+goes out as `0x8D`; a line feed `0x0A` is already even and stays `0x0A`. A `terminal:` line is
+raw 8-bit, so `Vt100Emulator::feed` sees `0x8D`, which is `>= 0x20`, and prints it as a glyph
+instead of homing the cursor — while the `0x0A` still line-feeds. The symptom is "Enter feeds a
+line but never returns." `strip7out` masks bit 7 and both bugs vanish at once.
+
+Design points, all in `src/host/terminal/stream.{h,cpp}`:
+
+- **Modeled on `[display]`, not on a board.** `TerminalStream::Settings` is a `static`, and
+  `TerminalStream::properties()` publishes it through the one `Property` layer — so SET, SHOW,
+  TOML load and tab-completion all pick it up with no new plumbing. Config binding is at
+  `src/config/toml.cpp` (a `[terminal]` branch beside `[console]`/`[display]`), and the monitor
+  SET/SHOW/`showTerminal` sites mirror `display`. Like `[console]`, it does **not** round-trip
+  through `CONFIG SAVE`, and it is accepted on a headless build (the setting is about what the
+  machine wants).
+- **A live-read `static`, global.** One section for the machine, like `[console]`; `SET terminal
+  strip7out=on` reaches the running window because `write()`/`keyAscii()` read the static each
+  time. `BsMap` is reused from `host/filter.h` rather than re-declared.
+- **Outbound folds in `write()`, inbound folds in `keyAscii()` — NOT `read()`.** This is the one
+  non-obvious call. `read()` drains the emulator's reply FIFO, and that FIFO carries the cursor
+  reports the guest asked for (`ESC[6n` → `ESC[r;cR`) as well as encoded keystrokes. Folding in
+  `read()` would mangle a report — an H19 `ESC n` reply can contain a lowercase coordinate byte,
+  which `upper` would corrupt. Keystrokes enter through `keyAscii()`, so that is where `upper`,
+  `strip7in` and `bsdel` belong; reports never pass through it. `test_terminal.cpp` has a guard
+  for exactly this.
+- **`cr = cr | crlf`** is the terminal's one line-ending knob (the console spells the same idea
+  `crlf=on/off`). Default `cr` passes the guest's CR through untouched; `crlf` appends an LF
+  after each CR, applied *after* `strip7out` so it triggers on the real `0x0D`.
+
+## The run banner and a non-stdio console
+
+A related fix rode along. `Monitor::runFrom` announced `(no console connected)` whenever the
+console was not the **stdio** one — so a machine consoled on a `terminal:` window or a `socket:`
+was libelled as having no console at all. The banner loop already computed `anyRemoteLine` (a
+live line that is not the host terminal); it now also captures that line's scheme and prints
+`(console on terminal)` / `(console on socket)`. The honest `(no console connected)` is kept for
+the genuinely bare backplane — the ROM-talking-to-a-disk case — where no serial line is live.
+
 ## Testing
 
 `tests/test_terminal.cpp` drives the engine directly through a `NullDisplay`: feed a dialect's
 escape sequences, assert the grid (`screen()`), and assert `read()` returns the expected reports
 and key encodings. It needs no window, because the display seam is only exercised in `main.cpp`.
-Run it with `./build/altair_tests terminal`; the CONNECT grammar and gloss coverage are in
-`./build/altair_tests cli`.
+The `[terminal]` transforms have their own section there (including the report-not-folded guard).
+Run it with `./build/altair_tests terminal`; the CONNECT grammar, the `[terminal]` SET/SHOW
+surface and the run-banner label are in `./build/altair_tests cli`.

@@ -196,6 +196,7 @@ private:
     void runMachine(std::ostream& out, bool stepOver = false);
     void showConsole(std::ostream& out);
     void showDisplay(std::ostream& out);
+    void showTerminal(std::ostream& out);  // the [terminal] transform chain (issue #244)
     void showJoysticks(std::ostream& out);  // the host game controllers (SDL builds)
     void showDebug(std::ostream& out);  // the diagnostic channels, their flags, the sink
     void showRoms(std::ostream& out);

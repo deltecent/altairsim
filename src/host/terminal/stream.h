@@ -26,6 +26,7 @@
 // then a `terminal:` line renders the guest and answers its reports, and read() carries
 // only those reports.
 
+#include "host/filter.h"  // BsMap -- the terminal reuses the console's rubout mapping
 #include "host/stream.h"
 #include "host/terminal/renderer.h"
 #include "host/terminal/screen.h"
@@ -33,6 +34,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace altair {
 
@@ -61,6 +63,34 @@ public:
     // types with). Encoded by the emulator and enqueued toward the guest.
     void keyAscii(uint8_t b);
     void keySpecial(int key);  // a TerminalEmulator::Key value
+
+    // ---- [terminal] transform chain (issue #244 follow-up) ----------------------
+    // A serial LINE must stay 8-bit clean (host/filter.h): a strip7out on a socket
+    // masks bit 7 of every XMODEM byte, silently. But the built-in terminal is a
+    // terminal with a HUMAN on the end -- the one case that comment names where these
+    // transforms are facts about a terminal. So the console's chain lives here too, as
+    // the `[terminal]` config section, applied by this stream at its own byte seams.
+    //
+    // It exists because an even-parity monitor (PS II) writes parity into bit 7: CR
+    // 0x0D goes out as 0x8D, which is >= 0x20 and prints as a glyph instead of homing
+    // the cursor, so Enter line-feeds without a carriage return. `strip7out` masks it.
+    //
+    // Global (one section, like `[console]`) and a live-read static, so
+    // `SET terminal upper=on` reaches the running window. Inbound folds run in
+    // keyAscii(), NOT read(): read() drains the emulator's reply FIFO, which also
+    // carries the cursor reports (ESC[6n) the guest asked for, and folding those would
+    // corrupt them.
+    struct Settings {
+        bool  upper     = false;  // fold typed keys to uppercase
+        bool  strip7in  = false;  // mask bit 7 on keystrokes
+        bool  strip7out = false;  // mask bit 7 on guest output (the even-parity fix)
+        bool  echo      = false;  // local echo of keystrokes, for half-duplex guests
+        bool  bell      = true;   // pass 0x07 to the emulator
+        BsMap bsdel     = BsMap::Off;
+        enum class Cr { Cr, CrLf } cr = Cr::Cr;  // pass CR through, or add LF after each CR
+    };
+    static Settings&             settings() { return s_settings; }
+    static std::vector<Property> properties();
 
     // ---- composition root: the borrowed host video service and bundled font ----
     static void setDisplay(Display* d) { s_display = d; }
@@ -91,6 +121,7 @@ private:
     static Display*            s_display;
     static const TerminalFont* s_font;
     static TerminalStream*     s_keyTarget;
+    static Settings            s_settings;
 };
 
 } // namespace altair

@@ -55,3 +55,31 @@ id = "dsk0"
   [[board.drive]]
   unit  = 0
   mount = "cpm22b23-56k.dsk"
+
+# THE TERMINAL'S TRANSFORM CHAIN. `[terminal]` is to a `connect = "terminal"` window what
+# `[console]` is to stdio: the handful of fold-the-bytes fixes a real terminal-with-a-human
+# wants. It has to live here and NOT on the serial line, because a line also carries XMODEM
+# and other 8-bit binary, and a strip on the line would corrupt that silently (see the long
+# note in src/host/filter.h). A built-in terminal is the one place these are safe.
+#
+# `bsdel = bs` is the classic CP/M fix and it is ON here: a modern keyboard's Backspace sends
+# DEL (0x7F), and CP/M's line editor only understands BS (0x08), so without this the rubout
+# key appears dead. The rest are OFF because CP/M is 7-bit clean and sends its own CRLFs:
+#
+#   strip7out = true   mask bit 7 of guest output. THE FIX for an even-parity monitor like
+#                      the MITS Programming System II, which computes parity INTO bit 7 -- so
+#                      it sends CR as 0x8D, which a terminal prints as a glyph instead of a
+#                      carriage return, and every line feeds without returning. Not needed
+#                      for CP/M; essential for `ps2`/`ps2int` on a terminal.
+#   strip7in  = true   mask bit 7 of what you type.
+#   upper     = true   fold your keystrokes to uppercase (a lot of period software insists).
+#   cr        = crlf   add an LF after every CR the guest prints. Default `cr` passes CR
+#                      through untouched; use `crlf` only for a guest that emits a bare CR.
+#   echo      = true   local echo, for half-duplex software that does not echo for you.
+#   bell      = false  swallow 0x07 instead of passing it to the terminal.
+#
+# `[terminal]` is global -- one section for the machine, like `[console]` -- and like it does
+# not come back out through CONFIG SAVE. SET terminal <key>=<value> changes it on a running
+# window; SHOW TERMINAL prints the current set.
+[terminal]
+bsdel = "bs"

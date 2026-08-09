@@ -115,6 +115,10 @@ A `terminal` needs a window, so it is available only in a build with a display. 
 a build without, and it is refused cleanly at `CONNECT`, with the reason named; use `console`
 or a `socket:` there instead.
 
+The built-in terminal has the same fold-the-bytes settings the console does — `strip7out`,
+`upper`, a CR/LF option and the rest — under `[terminal]`. They matter for a period monitor
+that sets bit 7; see *The built-in terminal has these too*, later in this chapter.
+
 ## Calling out
 
 ```
@@ -430,6 +434,39 @@ So set the equivalent where it now belongs — on the terminal that is actually 
 text. Every terminal emulator and telnet client has these, under its own names: strip parity or
 7-bit display for `strip7out`, local echo for `echo`, newline or CR/LF handling for `crlf`.
 That is not a workaround; it is the same fix in the same place, one machine further out.
+
+### The built-in terminal has these too — in `[terminal]`
+
+There is one terminal one machine further out that *is* the simulator's: the built-in
+`terminal` window from *A terminal in its own window*, above. It draws the text itself, so it
+is the simulator that must do the not-looking — and it gives you the same knobs the console
+has, under `[terminal]` instead of `[console]`:
+
+| Setting | Does |
+|---|---|
+| `upper` | folds what you type to upper case |
+| `strip7in` | clears bit 7 of every character you type |
+| `strip7out` | clears bit 7 of every character the guest prints |
+| `cr` | `cr` (default, pass the guest's CR through) or `crlf` (add an LF after every CR) |
+| `echo` | echoes your keystrokes locally, for half-duplex software |
+| `bell` | passes `^G` through to the terminal (default on) |
+| `bsdel` | folds backspace and delete together: `off` (default), `bs`, or `del` |
+
+Set them with `SET TERMINAL k=v`, read them back with `SHOW TERMINAL`, or put a `[terminal]`
+block in a machine file. Like `[console]`, it is one section for the machine — the window it
+applies to is whichever `terminal` line is open.
+
+```
+altairsim> CONNECT sio0:a terminal
+altairsim> SET TERMINAL strip7out=on
+```
+
+`strip7out` earns its keep here on an **even-parity monitor** — the MITS Programming System II
+computes parity *into* bit 7 of every character, so it sends a carriage return as `8D`. To a
+console that is masked away; to the raw terminal window `8D` is not `0D`, so it prints as a
+glyph and the cursor never returns to the left — every line feeds without a carriage return.
+`strip7out=on` is the fix, exactly as it is for BASIC's prompt. `cr=crlf` is the neighbouring
+tool, for the rarer guest that sends a bare CR and expects the terminal to supply the LF.
 
 ATTN is the other half of the same fact: it is intercepted at **your keyboard**, before any
 board is offered the byte, and it is never looked for on a socket or a serial line. A `05`
