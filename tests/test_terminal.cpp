@@ -228,6 +228,97 @@ void test_terminal() {
         CHECK(!ts.readable(), "and the report is consumed once");
     }
 
+    // ---- The [terminal] transform chain (issue #244 follow-up) ----
+    SECTION("terminal stream -- the [terminal] transforms fold at the right seams");
+    {
+        // settings() is one static (a global section, like [console]); reset it around the
+        // block so it neither inherits nor leaks state across sections.
+        auto& s = TerminalStream::settings();
+        s = TerminalStream::Settings{};
+
+        // strip7out: an even-parity monitor (PS II) sends CR as 0x8D. Off, it is >= 0x20 and
+        // prints as a glyph, so the column advances; on, bit 7 is masked and the 0x0D homes
+        // the cursor -- exactly the "LF without CR" the reporter hit.
+        {
+            TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+            const uint8_t ab[] = {'A', 'B', 0x8D};
+            ts.write(ab, 3);
+            CHECK(ts.screen().cursorCol() == 3,
+                  "without strip7out an even-parity CR (0x8D) prints as a glyph");
+            s.strip7out = true;
+            ts.write(ab, 3);  // A,B advance from col 3, then 0x8D -> 0x0D homes the column
+            CHECK(ts.screen().cursorCol() == 0, "with strip7out 0x8D becomes a carriage return");
+            s.strip7out = false;
+        }
+
+        // cr = crlf: a guest that emits a bare CR and no LF. Off, CR only homes the column;
+        // on, an LF follows and the row advances.
+        {
+            TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+            const uint8_t cr[] = {'X', 0x0D};
+            ts.write(cr, 2);
+            CHECK(ts.screen().cursorRow() == 0, "cr=cr: a bare CR stays on the same row");
+            s.cr = TerminalStream::Settings::Cr::CrLf;
+            ts.write(cr, 2);
+            CHECK(ts.screen().cursorRow() == 1, "cr=crlf: an LF follows the CR, the row advances");
+            s.cr = TerminalStream::Settings::Cr::Cr;
+        }
+
+        // upper / strip7in / bsdel fold KEYSTROKES, in keyAscii(), on the way to the guest.
+        {
+            TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+            uint8_t buf[8];
+            s.upper = true;
+            ts.keyAscii('a');
+            CHECK(ts.read(buf, sizeof buf) == 1 && buf[0] == 'A', "upper folds a typed key");
+            s.upper = false;
+
+            s.strip7in = true;
+            ts.keyAscii(0xE1);
+            CHECK(ts.read(buf, sizeof buf) == 1 && buf[0] == 0x61, "strip7in masks bit 7 of a key");
+            s.strip7in = false;
+
+            s.bsdel = BsMap::Bs;
+            ts.keyAscii(0x7F);
+            CHECK(ts.read(buf, sizeof buf) == 1 && buf[0] == 0x08, "bsdel=bs folds DEL to BS");
+            s.bsdel = BsMap::Off;
+        }
+
+        // echo: the transformed key is painted locally, for a half-duplex guest that won't.
+        {
+            TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+            s.echo  = true;
+            s.upper = true;
+            ts.keyAscii('z');
+            CHECK(ts.screen().charAt(0, 0) == 'Z', "echo paints the transformed key on the screen");
+            uint8_t buf[8];
+            CHECK(ts.read(buf, sizeof buf) == 1 && buf[0] == 'Z', "and the guest still receives it");
+            s.echo  = false;
+            s.upper = false;
+        }
+
+        // THE guard for folding in keyAscii() and NOT read(): status replies share the reply
+        // FIFO with keystrokes. An H19 ESC n report carries a lowercase coordinate byte here
+        // (col 65 -> 0x20+65 = 0x61 'a'); a fold in read() would corrupt it. read() must not fold.
+        {
+            TerminalStream ts("terminal?emulation=h19", 24, 80, std::make_unique<H19Emulator>());
+            s.upper    = true;
+            s.strip7in = true;
+            const uint8_t addr[] = {0x1b, 'Y', 0x25, 0x61};  // ESC Y row=5 col=65 (byte 'a')
+            ts.write(addr, 4);
+            const uint8_t report[] = {0x1b, 'n'};
+            ts.write(report, 2);
+            uint8_t buf[8];
+            size_t  n = ts.read(buf, sizeof buf);
+            CHECK(std::string((char*)buf, n) == std::string("\x1b" "Y\x25\x61"),
+                  "read() drains a report UNFOLDED -- the lowercase coordinate survives upper=on");
+            s.upper    = false;
+            s.strip7in = false;
+        }
+
+        s = TerminalStream::Settings{};  // leave it as the next section expects
+    }
+
     SECTION("terminal stream -- pump() paints into the injected display");
     {
         // tests/main.cpp injected a NullDisplay and the bundled font, so a pump() renders a

@@ -22,6 +22,7 @@
 #include "host/imd.h"    // convertImdToRaw -- MOUNT foo.imd converts to a raw sibling .dsk
 #include "host/joystick.h"  // SHOW JOYSTICKS -- the host game controllers
 #include "host/media.h"  // writeHostFile -- MOUNT ... CREATE makes an empty file
+#include "host/terminal/stream.h"  // [terminal] transforms + the banner's console label
 #include "isa/isa.h"
 
 #include <algorithm>
@@ -551,7 +552,7 @@ Completions Monitor::complete(const std::string& line) {
         if (c == std::string::npos) {
             for (const auto& b : m_.boards()) keep(b->id);
             if (wantPseudo)
-                for (const char* kw : {"CONSOLE", "DISPLAY", "REG", "BUS"}) keep(kw);
+                for (const char* kw : {"CONSOLE", "DISPLAY", "TERMINAL", "REG", "BUS"}) keep(kw);
             comp.suffix = " ";
             return;
         }
@@ -654,6 +655,8 @@ Completions Monitor::complete(const std::string& line) {
                 props = Console::instance().properties();
             } else if (is(target, "DISPLAY")) {
                 props = Display::properties();
+            } else if (is(target, "TERMINAL")) {
+                props = TerminalStream::properties();
             } else {
                 size_t c = target.find(':');
                 if (c == std::string::npos) {
@@ -696,7 +699,7 @@ Completions Monitor::complete(const std::string& line) {
             for (const auto& b : m_.boards()) keep(b->id);
             for (const char* kw : {"BOARD", "BOARDS", "BUS", "CONSOLE", "DEBUG", "DISPLAY",
                                    "JOYSTICKS", "MACHINE", "MACHINES", "MOUNTS", "PATHS",
-                                   "ROMS", "SYMBOLS", "VERSION"})
+                                   "ROMS", "SYMBOLS", "TERMINAL", "VERSION"})
                 keep(kw);
             comp.suffix = " ";
         } else if (name == "NOBREAK") {
@@ -1487,13 +1490,17 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // real UART PACED AGAINST NOTHING: `clock_hz` was a divisor every board obeyed with no
     // wall-clock behind it, and a 2 MHz machine ran at whatever the host could do. Same root
     // cause as the nap: the run loop asked the CONSOLE a question that belongs to the LINE.
-    bool anyConsole   = false;
-    bool anyRemoteLine = false;
+    bool        anyConsole    = false;
+    bool        anyRemoteLine = false;
+    std::string remoteLabel;  // scheme of the first live non-console line (terminal/socket/serial)
     for (const auto& b : m_.boards())
         for (const auto& u : b->units()) {
             if (u.kind != UnitKind::Serial) continue;
             if (u.state == "console") anyConsole = true;
-            else if (u.state != "null") anyRemoteLine = true;  // socket:/serial:/etc -- a live wire
+            else if (u.state != "null") {  // socket:/serial:/terminal -- a live wire
+                anyRemoteLine = true;
+                if (remoteLabel.empty()) remoteLabel = u.state.substr(0, u.state.find_first_of(":?"));
+            }
         }
 
     Console& con = Console::instance();
@@ -1548,9 +1555,20 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
             // Not an error, and it must not read like one: a machine with nothing
             // connected to a terminal is a machine that runs perfectly well. It is how
             // you run a ROM that talks to a disk, or a CPU test that talks to nobody.
+            //
+            // But a console on a `terminal:` window or a `socket:` is still a console --
+            // it just is not the STDIO one, so anyConsole stays false. Saying "(no
+            // console connected)" there is a lie the reporter of issue #244 hit head-on.
+            // Name the live line instead; keep "(no console connected)" for the truly
+            // bare backplane (the ROM-talking-to-a-disk case above).
             std::string stop = tty ? std::string("^") + attn + " stops it." : "^C stops it.";
-            std::snprintf(buf, sizeof buf, "running from %s.  %s  (no console connected)",
-                          fmtWord(cpu->pc()).c_str(), stop.c_str());
+            if (anyRemoteLine) {
+                std::snprintf(buf, sizeof buf, "running from %s.  %s  (console on %s)",
+                              fmtWord(cpu->pc()).c_str(), stop.c_str(), remoteLabel.c_str());
+            } else {
+                std::snprintf(buf, sizeof buf, "running from %s.  %s  (no console connected)",
+                              fmtWord(cpu->pc()).c_str(), stop.c_str());
+            }
             out << buf << "\n";
         }
         out.flush();
@@ -1887,6 +1905,14 @@ void Monitor::showDisplay(std::ostream& out) {
 #endif
     out << ")\n";
     showProps(Display::properties(), out);
+}
+
+// SHOW TERMINAL -- the transform chain the built-in terminal window applies (issue #244).
+// A settings object like the console's, but it belongs to the `terminal:` endpoint rather
+// than a serial line, so a socket or a real UART stays 8-bit clean (host/terminal/stream.h).
+void Monitor::showTerminal(std::ostream& out) {
+    out << "terminal  (transforms for a `connect = \"terminal\"` window)\n";
+    showProps(TerminalStream::properties(), out);
 }
 
 // SHOW JOYSTICKS -- the host game controllers a D+7A's JS-1 consoles read from. It answers
@@ -3055,6 +3081,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             showDisplay(out);
             return true;
         }
+        if (sub == "TERMINAL") {
+            showTerminal(out);
+            return true;
+        }
         if (sub == "JOYSTICKS" || sub == "JOYSTICK" || sub == "JOY") {
             showJoysticks(out);
             return true;
@@ -3448,6 +3478,20 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
             } else {
                 out << "display: " << k << "=" << v << "\n";
+            }
+            return true;
+        }
+
+        // The built-in terminal's transform chain -- the `[terminal]` section. Like
+        // the console's, but it lives on the `terminal:` endpoint, not the line, so a
+        // real serial line stays 8-bit clean (host/terminal/stream.h).
+        if (is(a[1], "TERMINAL")) {
+            std::string err;
+            if (!setPropertyIn(TerminalStream::properties(), "terminal", k, v, err)) {
+                out << err << "\n";
+                failed_ = true;
+            } else {
+                out << "terminal: " << k << "=" << v << "\n";
             }
             return true;
         }

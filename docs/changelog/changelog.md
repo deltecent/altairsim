@@ -107,6 +107,17 @@ last three being terminals no modern emulator provides, which was the whole poin
 sets the geometry (80×24 by default). Every serial board gets it for free, and in a headless build
 the endpoint simply refuses cleanly at CONNECT rather than opening a line nobody can see.
 
+The built-in terminal now carries the same fold-the-bytes settings the console has, in a
+**`[terminal]`** section (`SET TERMINAL`, `SHOW TERMINAL`, or a block in a machine file):
+`strip7out`, `strip7in`, `upper`, `echo`, `bell`, `bsdel`, and a `cr = cr | crlf` line-ending
+option. They earn their keep on a period **even-parity monitor** — the MITS Programming System II
+computes parity into bit 7, so it sends a carriage return as `8D`, which a raw terminal printed as
+a glyph instead of homing the cursor, feeding every line without a return; `strip7out` masks it,
+exactly as it does for MITS BASIC on the console. And the run banner no longer claims **`(no console
+connected)`** when the console is live on a `terminal:` window or a `socket:` — it now names the
+line (`(console on terminal)`), keeping the old phrase only for a machine with no serial line up at
+all.
+
 ### Save a machine, and pick it back up later
 
 `SNAPSHOT <file>` writes the whole machine's state — every board's registers and RAM, the clock,

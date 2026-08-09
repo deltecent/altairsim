@@ -7,6 +7,7 @@
 #include "core/paths.h"     // ...and a file's relative paths are relative to IT
 #include "host/console.h"
 #include "host/display.h"
+#include "host/terminal/stream.h"
 
 #include <cctype>
 #include <cstdio>
@@ -576,6 +577,21 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
             for (const auto& [k, v] : t.kv) {
                 if (!setPropertyIn(Display::properties(), "display", k, v, err)) {
                     err = path + ": [display]: " + err;
+                    return false;
+                }
+            }
+            continue;
+        }
+
+        // [terminal] -- the built-in terminal's transform chain (issue #244). Like
+        // [console], but it lives on the `connect = "terminal"` endpoint, so a real
+        // serial line stays 8-bit clean (host/terminal/stream.h). Accepted headless for
+        // the same reason as [display]: the setting is about what the machine WANTS, and
+        // a build with no window simply has nothing to apply it to.
+        if (t.name == "terminal") {
+            for (const auto& [k, v] : t.kv) {
+                if (!setPropertyIn(TerminalStream::properties(), "terminal", k, v, err)) {
+                    err = path + ": [terminal]: " + err;
                     return false;
                 }
             }

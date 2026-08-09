@@ -2567,4 +2567,48 @@ void test_achieved_hz() {
         run("SET 6850 NODEBUG=all");
         run("SET CONSOLE DEBUG=stderr");
     }
+
+    // The RUN banner names WHERE the console is (issue #244 follow-up). A machine whose
+    // console lives on a `terminal:`/`socket:` line still HAS a console -- it just is not
+    // the stdio one, so the old banner libelled it as "(no console connected)". We drive a
+    // HLT at the reset vector so RUN prints the banner and returns at once, with the line on
+    // a non-blocking loopback (a socket would block on accept, a terminal needs a window).
+    SECTION("RUN banner -- a live non-stdio line reads as a console, not 'none'");
+    {
+        Machine bm;
+        Monitor bmon(bm);
+        std::ostringstream setup;
+        bmon.exec("BOARDS ADD 8080 cpu0", setup);
+        bmon.exec("BOARDS ADD memory mem0", setup);
+        bmon.exec("SET mem0 fill=zero", setup);
+        bmon.exec("REGION ADD mem0 type=ram at=0 size=64K", setup);
+        bmon.exec("BOARDS ADD 2sio sio0", setup);
+        bmon.exec("POWER ON", setup);
+        bmon.exec("DEPOSIT 0 76", setup);  // HLT at the reset vector: RUN halts immediately
+
+        // A live wire that is not the stdio console: the banner should NAME its scheme.
+        bmon.exec("CONNECT sio0:a loopback", setup);
+        {
+            std::ostringstream out;
+            bmon.exec("EX 0", out);   // park the PC on the HLT
+            bmon.exec("RUN", out);
+            CHECK(out.str().find("(console on loopback)") != std::string::npos,
+                  "a loopback console is named, not called 'no console connected'");
+            CHECK(out.str().find("no console connected") == std::string::npos,
+                  "and the misleading phrase is gone for a live line");
+        }
+
+        // A truly bare backplane -- no live serial line at all -- keeps the honest old
+        // message: this is the ROM-talking-to-a-disk / CPU-test-talking-to-nobody case.
+        bmon.exec("CONNECT sio0:a null", setup);
+        {
+            std::ostringstream out;
+            bmon.exec("EX 0", out);
+            bmon.exec("RUN", out);
+            CHECK(out.str().find("(no console connected)") != std::string::npos,
+                  "with every serial line dark the banner still says so");
+            CHECK(out.str().find("console on") == std::string::npos,
+                  "and it does not invent a console that is not there");
+        }
+    }
 }
