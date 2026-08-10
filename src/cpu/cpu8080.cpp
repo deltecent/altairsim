@@ -9,9 +9,34 @@ namespace altair {
 // ---------------------------------------------------------------------------
 // Fetch and store. Every one of these is a REAL bus cycle.
 // ---------------------------------------------------------------------------
+// THE 8080 GENERATES ITS OWN STATUS WORD. On real silicon the chip drives all eight
+// status lines at the start of every machine cycle (latched at SYNC); the backplane
+// carries them and the front panel displays them. So the CPU -- not the bus -- is the
+// authority on which cycle is an opcode fetch (M1), a stack access (STACK), an input,
+// and so on (Status8080 in core/bus.h). Every bus access below passes the word for the
+// machine cycle it is; the bus carries it verbatim. The named machine-cycle words:
+//   M1 opcode fetch      StM1 | StMemR | StWo   (0xA2)
+//   INTA opcode fetch    StM1 | StInta | StWo   (0x23) -- the first byte of an
+//                                                interrupt-injected instruction is M1
+//   operand/data read    StMemR | StWo          (0x82)
+//   data write           0                      (WO* low)
+//   stack read (POP/RET) StMemR | StStack | StWo(0x86)
+//   stack write (PUSH)   StStack                (0x04)
+//   input (IN)           StInp | StWo           (0x42)
+//   output (OUT)         StOut                  (0x10)
+// Later INTA cycles (operand bytes of an injected instruction) are NOT M1: they go
+// through fetch()'s intAck() with no hint and pick up the StInta|StWo fallback (0x03).
+
+// The M1 opcode fetch -- the ONE cycle that asserts M1. Used only for the instruction
+// byte; operand reads go through fetch() below and must NOT light M1.
+uint8_t Cpu8080::readOp(Bus& bus) {
+    if (intFetch_) return bus.intAck(StM1 | StInta | StWo);  // and the PC does not move
+    return bus.memRead(pc_++, StM1 | StMemR | StWo);
+}
+
 uint8_t Cpu8080::fetch(Bus& bus) {
-    if (intFetch_) return bus.intAck();  // and the PC does not move
-    return bus.memRead(pc_++);
+    if (intFetch_) return bus.intAck();  // operand INTA -- not M1; and the PC does not move
+    return bus.memRead(pc_++, StMemR | StWo);
 }
 
 uint16_t Cpu8080::fetch16(Bus& bus) {
@@ -20,14 +45,31 @@ uint16_t Cpu8080::fetch16(Bus& bus) {
     return (uint16_t)(lo | (hi << 8));  // low byte first: the 8080 stores it that way
 }
 
+// Data (non-stack) memory operands -- LDA/STA/LDAX/STAX/LHLD/SHLD and the M register.
+uint8_t Cpu8080::readMem(Bus& bus, uint16_t addr) {
+    return bus.memRead(addr, StMemR | StWo);
+}
+void Cpu8080::writeMem(Bus& bus, uint16_t addr, uint8_t v) {
+    bus.memWrite(addr, v, 0);  // memory write: WO* low, no other bit set
+}
+
+// Stack cycles carry STACK. Every stack push/pop funnels through here, so CALL, RET,
+// RST, PUSH and POP all light it.
+uint8_t Cpu8080::readStack(Bus& bus, uint16_t addr) {
+    return bus.memRead(addr, StMemR | StStack | StWo);
+}
+void Cpu8080::writeStack(Bus& bus, uint16_t addr, uint8_t v) {
+    bus.memWrite(addr, v, StStack);  // stack write: STACK, WO* low
+}
+
 void Cpu8080::push(Bus& bus, uint16_t v) {
-    bus.memWrite(--sp_, (uint8_t)(v >> 8));
-    bus.memWrite(--sp_, (uint8_t)(v & 0xFF));
+    writeStack(bus, --sp_, (uint8_t)(v >> 8));
+    writeStack(bus, --sp_, (uint8_t)(v & 0xFF));
 }
 
 uint16_t Cpu8080::pop(Bus& bus) {
-    uint8_t lo = bus.memRead(sp_++);
-    uint8_t hi = bus.memRead(sp_++);
+    uint8_t lo = readStack(bus, sp_++);
+    uint8_t hi = readStack(bus, sp_++);
     return (uint16_t)(lo | (hi << 8));
 }
 
@@ -39,7 +81,7 @@ uint8_t Cpu8080::getR(Bus& bus, int i) {
     case 3: return e_;
     case 4: return h_;
     case 5: return l_;
-    case 6: return bus.memRead(hl());  // M -- a memory operand, through the bus
+    case 6: return readMem(bus, hl());  // M -- a memory operand, through the bus
     default: return a_;
     }
 }
@@ -52,7 +94,7 @@ void Cpu8080::setR(Bus& bus, int i, uint8_t v) {
     case 3: e_ = v; break;
     case 4: h_ = v; break;
     case 5: l_ = v; break;
-    case 6: bus.memWrite(hl(), v); break;
+    case 6: writeMem(bus, hl(), v); break;
     default: a_ = v; break;
     }
 }
@@ -355,7 +397,7 @@ StepResult Cpu8080::step(Bus& bus) {
     bool takingInterrupt = intFetch_;
     bool eiWasPending = eiPending_;
 
-    uint8_t op = fetch(bus);
+    uint8_t op = readOp(bus);  // the M1 opcode fetch -- the one cycle that asserts M1
     uint32_t t = 4;
 
     // ---- MOV dst,src -- 01dddsss, with 76 punched out for HLT ----
@@ -399,25 +441,25 @@ StepResult Cpu8080::step(Bus& bus) {
         case 0x21: { uint16_t v = fetch16(bus); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 10; break; }
         case 0x31: sp_ = fetch16(bus); t = 10; break;
 
-        case 0x02: bus.memWrite(bc(), a_); t = 7; break;   // STAX B
-        case 0x12: bus.memWrite(de(), a_); t = 7; break;   // STAX D
-        case 0x0A: a_ = bus.memRead(bc()); t = 7; break;   // LDAX B
-        case 0x1A: a_ = bus.memRead(de()); t = 7; break;   // LDAX D
+        case 0x02: writeMem(bus, bc(), a_); t = 7; break;   // STAX B
+        case 0x12: writeMem(bus, de(), a_); t = 7; break;   // STAX D
+        case 0x0A: a_ = readMem(bus, bc()); t = 7; break;   // LDAX B
+        case 0x1A: a_ = readMem(bus, de()); t = 7; break;   // LDAX D
 
-        case 0x32: { uint16_t a = fetch16(bus); bus.memWrite(a, a_); t = 13; break; }  // STA
-        case 0x3A: { uint16_t a = fetch16(bus); a_ = bus.memRead(a); t = 13; break; }  // LDA
+        case 0x32: { uint16_t a = fetch16(bus); writeMem(bus, a, a_); t = 13; break; }  // STA
+        case 0x3A: { uint16_t a = fetch16(bus); a_ = readMem(bus, a); t = 13; break; }  // LDA
 
         case 0x22: {  // SHLD -- L first, then H. The 8080 is little-endian here too.
             uint16_t a = fetch16(bus);
-            bus.memWrite(a, l_);
-            bus.memWrite((uint16_t)(a + 1), h_);
+            writeMem(bus, a, l_);
+            writeMem(bus, (uint16_t)(a + 1), h_);
             t = 16;
             break;
         }
         case 0x2A: {  // LHLD
             uint16_t a = fetch16(bus);
-            l_ = bus.memRead(a);
-            h_ = bus.memRead((uint16_t)(a + 1));
+            l_ = readMem(bus, a);
+            h_ = readMem(bus, (uint16_t)(a + 1));
             t = 16;
             break;
         }
@@ -548,10 +590,10 @@ StepResult Cpu8080::step(Bus& bus) {
 
         case 0xE3: {  // XTHL -- swap HL with the top of stack. 18 T-states, the
                       // most expensive instruction the 8080 has.
-            uint8_t lo = bus.memRead(sp_);
-            uint8_t hi = bus.memRead((uint16_t)(sp_ + 1));
-            bus.memWrite(sp_, l_);
-            bus.memWrite((uint16_t)(sp_ + 1), h_);
+            uint8_t lo = readStack(bus, sp_);  // XTHL touches the stack -- STACK lit
+            uint8_t hi = readStack(bus, (uint16_t)(sp_ + 1));
+            writeStack(bus, sp_, l_);
+            writeStack(bus, (uint16_t)(sp_ + 1), h_);
             l_ = lo;
             h_ = hi;
             t = 18;
@@ -569,8 +611,8 @@ StepResult Cpu8080::step(Bus& bus) {
         // ---- I/O. Real cycles, real side effects: an IN from a UART's data port
         // CONSUMES the byte, which is why the monitor's WHO exists to look without
         // touching. ----
-        case 0xDB: a_ = bus.ioRead(fetch(bus)); t = 10; break;   // IN
-        case 0xD3: bus.ioWrite(fetch(bus), a_);  t = 10; break;  // OUT
+        case 0xDB: a_ = bus.ioRead(fetch(bus), StInp | StWo); t = 10; break;   // IN
+        case 0xD3: bus.ioWrite(fetch(bus), a_, StOut);        t = 10; break;   // OUT
 
         case 0xF3: ie_ = false; eiPending_ = false; break;  // DI -- immediate
         case 0xFB: eiPending_ = true; break;                // EI -- one instruction later

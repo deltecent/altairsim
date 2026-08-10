@@ -53,6 +53,7 @@ void test_z80_isa();
 void test_isa6800();
 void test_asm6800();
 void test_cpu();
+void test_status();
 void test_cpu6800();
 void test_680board();
 void test_680io();

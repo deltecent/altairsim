@@ -47,8 +47,17 @@ private:
     // ---- fetch/store. EVERYTHING goes through the Bus -- there is no pointer to
     // RAM and no back door, which is why a fetch from an empty socket reads a
     // floating 0xFF and executes as RST 7 with no special case anywhere.
+    // readOp() is the M1 opcode fetch (asserts M1); fetch()/fetch16() read operands
+    // (no M1). readMem/writeMem are data operands; readStack/writeStack assert STACK.
+    // Each passes the machine cycle's 8080 status word to the bus -- the CPU is the
+    // generator of that word (see cpu8080.cpp and Status8080 in core/bus.h).
+    uint8_t readOp(Bus& bus);
     uint8_t fetch(Bus& bus);
     uint16_t fetch16(Bus& bus);
+    uint8_t readMem(Bus& bus, uint16_t addr);
+    void writeMem(Bus& bus, uint16_t addr, uint8_t v);
+    uint8_t readStack(Bus& bus, uint16_t addr);
+    void writeStack(Bus& bus, uint16_t addr, uint8_t v);
     void push(Bus& bus, uint16_t v);
     uint16_t pop(Bus& bus);
 

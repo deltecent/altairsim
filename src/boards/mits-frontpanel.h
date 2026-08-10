@@ -68,17 +68,14 @@
 // a graphical bridge renders the word to LEDs verbatim -- WO* included, drawn RAW off
 // the active-low line (WO lit on read, dark on write), the way the real panel does it.
 //
-// WHAT IS NOT LIT YET, AND WHY -- three status-word bits stay 0 at the source (see
-// Status8080 in bus.h), so they arrive here 0, honestly absent rather than faked:
+// M1 AND STACK ARE NOW LIT -- the CPU asserts them at the cycle origin (Status8080 in
+// bus.h, cpu8080.cpp), and this card forwards c.status unchanged, so they arrived here
+// the day the CPU started sending them, with no edit to this file. M1 lights on every
+// opcode fetch; STACK lights on an 8080 push/pop (a Z80 has no STACK output, so it never
+// does -- see cpuZ80.cpp). One status-word bit is still 0 at the source:
 //
-//   * M1 -- an opcode fetch and an operand read are both Cycle::MemRead in BusCycle;
-//     the 8080's status byte distinguishes them and our cycle does not. Lighting it
-//     needs a Cycle::Fetch or an m1 hint set BY THE CPU at the cycle's origin.
-//   * HLTA, STACK -- halt-ack and stack access are likewise CPU state the bus cycle
-//     discards. The clean fix is the same: enrich BusCycle::status at the origin.
-//
-// Either fix is now purely CPU-side and needs NO change here, precisely because this
-// card forwards c.status instead of deriving it.
+//   * HLTA -- halt acknowledge is a machine-control indicator, not something a memory
+//     cycle carries; the bridge composes it from the CPU's halt flag, not from c.status.
 //
 //   * INTE, PROT, WAIT, HLDA -- NOT the status word (Operator's Manual §3, the
 //     machine-control indicators). These are PINS the panel drives or watches, and

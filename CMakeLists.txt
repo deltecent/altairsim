@@ -663,6 +663,7 @@ add_executable(altair_tests
   tests/test_z80_isa.cpp
   tests/test_isa6800.cpp
   tests/test_cpu.cpp
+  tests/test_status.cpp
   tests/test_cpu6800.cpp
   tests/test_680board.cpp
   tests/test_680io.cpp

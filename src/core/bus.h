@@ -35,17 +35,20 @@ enum class Cycle { MemRead, MemWrite, IoRead, IoWrite, IntAck };
 // read, lights MEMR, M1 and WO together. So neither side inverts: we emit the
 // active-low signal and the panel lights the lamp straight from it.
 //
-// Three bits stay 0 for now -- M1, HLTA, STACK -- because they need CPU knowledge a
-// bus cycle discards today (opcode-fetch vs operand-read, halt ack, SP access). They
-// are "absent rather than wrong": the CPU enriches BusCycle::status at the origin
-// later (a Cycle::Fetch or an m1 hint) with no panel change. See mits-frontpanel.h.
+// M1 and STACK are asserted BY THE CPU: only the processor knows an opcode fetch from
+// an operand read, or a stack machine cycle from any other memory access. It passes the
+// whole word to memRead/memWrite (see Bus's transfer functions and cpu8080.cpp), and
+// settle() ORs the type-derived fallback on -- a subset, so it never clobbers them. HLTA
+// stays 0 here: it is a machine-control indicator the bridge composes from the halt flag,
+// not a bus status bit (see mits-frontpanel.h). NOTE the Z80 has no STACK output, so a
+// Z80 never sets StStack (its push/pop are ordinary memory cycles) -- see cpuZ80.cpp.
 enum Status8080 : uint8_t {
     StInta  = 0x01,  // D0 -- interrupt acknowledge
     StWo    = 0x02,  // D1 -- WO*, ACTIVE LOW: 1=read/input, 0=write/output
-    StStack = 0x04,  // D2 -- stack access        (deferred: CPU-side)
+    StStack = 0x04,  // D2 -- stack access        (CPU-asserted; 8080 only, never Z80)
     StHlta  = 0x08,  // D3 -- halt acknowledge    (deferred: bridge composes from flags)
     StOut   = 0x10,  // D4 -- output (I/O write)
-    StM1    = 0x20,  // D5 -- opcode fetch        (deferred: CPU-side)
+    StM1    = 0x20,  // D5 -- opcode fetch        (CPU-asserted)
     StInp   = 0x40,  // D6 -- input (I/O read)
     StMemR  = 0x80,  // D7 -- memory read
 };
@@ -187,14 +190,24 @@ public:
     //   pass 1: ask every board whether it pulls PHANTOM* -> BusCycle::phantom
     //   pass 2: ask every board whether it decodes; exactly one should answer
     // Carrying a signal, then running a decode. No decisions.
-    uint8_t memRead(uint16_t addr);
-    void memWrite(uint16_t addr, uint8_t data);
-    uint8_t ioRead(uint8_t port);
-    void ioWrite(uint8_t port, uint8_t data);
+    //
+    // `status` is the 8080 STATUS WORD the originating master asserts for this cycle
+    // (Status8080 above). The CPU generates it -- an opcode fetch is M1, a stack
+    // access is STACK, and only the CPU knows which -- and the bus carries it verbatim
+    // (settle() ORs the type-derived FALLBACK on, which is a subset, so a master word
+    // is never corrupted). The default 0 means "no master annotated this cycle": the
+    // monitor's memory pokes, a DMA transfer, the 6800 (which has no such word) all
+    // leave it 0 and fall back to statusFor() -- exactly the behavior before this
+    // existed. 0 is safe as "unset" because a real memory-write's word is also 0x00
+    // and the fallback reproduces it.
+    uint8_t memRead(uint16_t addr, uint8_t status = 0);
+    void memWrite(uint16_t addr, uint8_t data, uint8_t status = 0);
+    uint8_t ioRead(uint8_t port, uint8_t status = 0);
+    void ioWrite(uint8_t port, uint8_t data, uint8_t status = 0);
 
     // An unvectored interrupt acknowledge floats to 0xFF, which the 8080 reads
     // as RST 7. Same floating-bus rule as unmapped memory -- not a special case.
-    uint8_t intAck();
+    uint8_t intAck(uint8_t status = 0);
 
     // ---- pINT (pin 73) -- A WIRE, NOT A POLL ----
     //
@@ -467,10 +480,10 @@ private:
 
     // The exact path. THIS IS THE DEFINITION OF CORRECTNESS; the tables above are
     // a cache OF it, and the verifier checks them AGAINST it.
-    uint8_t memReadExact(uint16_t addr);
-    void memWriteExact(uint16_t addr, uint8_t data);
-    uint8_t ioReadExact(uint8_t port);
-    void ioWriteExact(uint8_t port, uint8_t data);
+    uint8_t memReadExact(uint16_t addr, uint8_t status = 0);
+    void memWriteExact(uint16_t addr, uint8_t data, uint8_t status = 0);
+    uint8_t ioReadExact(uint8_t port, uint8_t status = 0);
+    void ioWriteExact(uint8_t port, uint8_t data, uint8_t status = 0);
 
     bool dirty_ = true;
     bool verify_ = false;

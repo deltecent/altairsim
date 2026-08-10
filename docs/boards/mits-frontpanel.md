@@ -205,24 +205,20 @@ carries no `origin` field, so a monitor DEPOSIT is *already* indistinguishable f
 exactly as it is on the backplane. The switches those commands stand in for (`SA0`–`SA15`) live on
 this card, which is where a graphical panel will find them.
 
-**Some lamps are not lit, and the reason is the bus, not the card.** This is the opposite of the
-88-ACR's "there is no motor control" — that card *has* no motor control. This card **has** these
-lamps; the bus does not yet carry what lights them. Since the status word is now a bus signal the
-card only forwards (see "The graphical panel bridge"), the fix for each is at the *source*, and
-needs **no change here**. There are two groups:
+**M1 and STACK are now lit, and one bit is still absent — the reason is the bus, not the card.**
+This card **has** these lamps and only forwards what the bus carries (see "The graphical panel
+bridge"), so lighting a bit was a change at the *source* with **none here**.
 
-**Three of the eight status-word bits (Operator's Manual §4) stay `0` at the source.** They are real
-8080 status bits, but need CPU knowledge a bus cycle discards today. The clean fix is CPU-side —
-enrich `BusCycle::status` at the cycle's origin — after which they arrive here already lit, because
-`snoop()` forwards the word verbatim:
+**The CPU now generates the whole 8080 status word** (Operator's Manual §4) and asserts it on the
+cycle it originates; the bus carries it verbatim. So **`M1`** lights on every opcode fetch and
+**`STACK`** on an 8080 stack push/pop — both arrived here the moment the CPU began sending them,
+because `snoop()` forwards the word unchanged. `MEMR`, `INP`, `OUT`, `WO̅` and `INTA` are true as
+before. Two notes:
 
-| Bit | Why not |
+| Bit | Status |
 |---|---|
-| **M1** | An opcode fetch and an operand read are both `Cycle::MemRead`; the 8080's status byte tells them apart and our cycle does not. Needs a `Cycle::Fetch` or an `m1` hint set by the CPU. |
-| **HLTA, STACK** | Halt-acknowledge and stack access are likewise CPU state the bus cycle discards. Same fix: enrich `BusCycle::status` at the origin. |
-
-`MEMR`, `INP`, `OUT`, `WO̅` and `INTA` **are** derived from the cycle and are true. The other three
-are **absent rather than wrong**, which is the whole of the policy.
+| **HLTA** | Still `0` at the source. Halt-acknowledge is a machine-control indicator, not something a memory cycle carries; the bridge composes it from the CPU's halt flag, not from `BusCycle::status`. |
+| **STACK on a Z80** | A Z80 has **no** STACK status output, so a Z80 never lights it — its push/pop are ordinary memory cycles. STACK is an 8080-only lamp. |
 
 **The §3 machine-control indicators are a different group entirely — not the status word.** `INTE`,
 `WAIT`, `HLDA`, `PROT` (and `RUN`) are **pins** on the processor and the memory cards, not bus

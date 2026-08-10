@@ -158,10 +158,13 @@ void Bus::reportUnclaimed(const BusCycle& c) {
 // front panel's DATA lamps are eight LEDs soldered to D0..D7 and they do not care
 // which direction the byte was going -- and neither does a TRACE, which is why the
 // observers get the same corrected cycle.
-// The 8080 status word derivable from the cycle TYPE alone -- the part the bus can
-// know without CPU help. WO* is active low: set on reads/inputs, clear on
-// writes/outputs. M1/HLTA/STACK stay 0 (see Status8080 in bus.h): the CPU enriches
-// them at the origin later, and settle() ORs this base on so it never clobbers them.
+// THE FALLBACK status word, derivable from the cycle TYPE alone -- used only when no
+// master annotated the cycle (a monitor memory poke, a DMA transfer, the 6800, which
+// has no 8080 status word). The 8080/Z80 CPU is the real GENERATOR: it asserts the
+// full word (M1, STACK, ...) on the cycle it originates, and this fallback is a subset
+// of that word, so settle()'s OR (below) never corrupts a master-supplied one. WO* is
+// active low: set on reads/inputs, clear on writes/outputs. M1/HLTA/STACK are never in
+// the fallback -- they need CPU knowledge the cycle type discards (see Status8080).
 static uint8_t statusFor(Cycle t) {
     switch (t) {
         case Cycle::MemRead:  return StMemR | StWo;  // 0x82
@@ -175,8 +178,10 @@ static uint8_t statusFor(Cycle t) {
 
 void Bus::settle(BusCycle& c) {
     // Latch the 8080 status word onto the cycle, right where `data` was back-filled,
-    // so snoopers and observers see a complete cycle. OR, not assign: a CPU that set
-    // M1/STACK/HLTA at the origin keeps them (see Status8080 in bus.h).
+    // so snoopers and observers see a complete cycle. OR, not assign: the CPU already
+    // set the full word at the origin (M1/STACK included) and statusFor() is only the
+    // TYPE-derived FALLBACK -- a subset of any master word, so the OR never clobbers
+    // it, and it fills in the whole word for an un-annotated cycle (see Status8080).
     c.status |= statusFor(c.type);
 
     // ONLY the cards that actually watch. Every board still SEES every cycle --
@@ -379,8 +384,9 @@ void Bus::verifyVi() const {
 // broken and we are on our way to printing a paragraph about it.
 // ---------------------------------------------------------------------------
 
-uint8_t Bus::memReadExact(uint16_t addr) {
+uint8_t Bus::memReadExact(uint16_t addr, uint8_t status) {
     BusCycle c{Cycle::MemRead, addr, 0, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     c.phantom = anyAssertsPhantom(c);
 
     Decode d = scan(c);
@@ -396,8 +402,9 @@ uint8_t Bus::memReadExact(uint16_t addr) {
     return v;
 }
 
-void Bus::memWriteExact(uint16_t addr, uint8_t data) {
+void Bus::memWriteExact(uint16_t addr, uint8_t data, uint8_t status) {
     BusCycle c{Cycle::MemWrite, addr, data, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     c.phantom = anyAssertsPhantom(c);
 
     Decode d = scan(c);
@@ -414,8 +421,9 @@ void Bus::memWriteExact(uint16_t addr, uint8_t data) {
     settle(c);
 }
 
-uint8_t Bus::ioReadExact(uint8_t port) {
+uint8_t Bus::ioReadExact(uint8_t port, uint8_t status) {
     BusCycle c{Cycle::IoRead, port, 0, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     Decode d = scan(c);
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
@@ -428,8 +436,9 @@ uint8_t Bus::ioReadExact(uint8_t port) {
     return v;
 }
 
-void Bus::ioWriteExact(uint8_t port, uint8_t data) {
+void Bus::ioWriteExact(uint8_t port, uint8_t data, uint8_t status) {
     BusCycle c{Cycle::IoWrite, port, data, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     Decode d = scan(c);
     if (d.n > 1) reportContention(c, decoders(c));
     unclaimed_ = (d.n == 0);
@@ -536,7 +545,7 @@ void Bus::verifySlot(const BusCycle& in, const Slot& s) const {
 // THE CYCLE. A table lookup, and the board that the table names.
 // ---------------------------------------------------------------------------
 
-uint8_t Bus::memRead(uint16_t addr) {
+uint8_t Bus::memRead(uint16_t addr, uint8_t status) {
     // A cycle breakpoint that stops BEFORE the access unwinds the instruction here,
     // before any board is touched (see setPreAccessVeto / CycleBreakBefore). One
     // null-function test when no such breakpoint is armed.
@@ -545,10 +554,11 @@ uint8_t Bus::memRead(uint16_t addr) {
     const Slot& s = memRead_[addr >> 8];
 
     // A slow page has no cached answer to check -- that is what makes it slow.
-    if (s.slow) return memReadExact(addr);  // contention, or a non-uniform page.
+    if (s.slow) return memReadExact(addr, status);  // contention, or a non-uniform page.
     if (verify_) verifySlot(BusCycle{Cycle::MemRead, addr, 0, false}, s);
 
     BusCycle c{Cycle::MemRead, addr, 0, s.phantom};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     unclaimed_ = (s.who == nullptr);
     responder_ = s.who;
     uint8_t v = s.who ? s.who->read(c) : 0xFF;  // floating bus (DESIGN.md 4.6.1)
@@ -557,15 +567,16 @@ uint8_t Bus::memRead(uint16_t addr) {
     return v;
 }
 
-void Bus::memWrite(uint16_t addr, uint8_t data) {
+void Bus::memWrite(uint16_t addr, uint8_t data, uint8_t status) {
     if (preVeto_ && preVeto_(BusCycle{Cycle::MemWrite, addr, data, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = memWrite_[addr >> 8];
 
-    if (s.slow) { memWriteExact(addr, data); return; }
+    if (s.slow) { memWriteExact(addr, data, status); return; }
     if (verify_) verifySlot(BusCycle{Cycle::MemWrite, addr, data, false}, s);
 
     BusCycle c{Cycle::MemWrite, addr, data, s.phantom};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     unclaimed_ = (s.who == nullptr);
     responder_ = s.who;
     // Nobody latched it. The byte is simply gone -- the write half of the floating
@@ -574,15 +585,16 @@ void Bus::memWrite(uint16_t addr, uint8_t data) {
     settle(c);
 }
 
-uint8_t Bus::ioRead(uint8_t port) {
+uint8_t Bus::ioRead(uint8_t port, uint8_t status) {
     if (preVeto_ && preVeto_(BusCycle{Cycle::IoRead, port, 0, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = ioRead_[port];
 
-    if (s.slow) return ioReadExact(port);
+    if (s.slow) return ioReadExact(port, status);
     if (verify_) verifySlot(BusCycle{Cycle::IoRead, port, 0, false}, s);
 
     BusCycle c{Cycle::IoRead, port, 0, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     unclaimed_ = (s.who == nullptr);
     responder_ = s.who;
     uint8_t v = s.who ? s.who->read(c) : 0xFF;
@@ -592,15 +604,16 @@ uint8_t Bus::ioRead(uint8_t port) {
     return v;
 }
 
-void Bus::ioWrite(uint8_t port, uint8_t data) {
+void Bus::ioWrite(uint8_t port, uint8_t data, uint8_t status) {
     if (preVeto_ && preVeto_(BusCycle{Cycle::IoWrite, port, data, false})) throw CycleBreakBefore{};
     if (dirty_) rebuild();
     const Slot& s = ioWrite_[port];
 
-    if (s.slow) { ioWriteExact(port, data); return; }
+    if (s.slow) { ioWriteExact(port, data, status); return; }
     if (verify_) verifySlot(BusCycle{Cycle::IoWrite, port, data, false}, s);
 
     BusCycle c{Cycle::IoWrite, port, data, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     unclaimed_ = (s.who == nullptr);
     responder_ = s.who;
     if (s.who) s.who->write(c);
@@ -608,8 +621,9 @@ void Bus::ioWrite(uint8_t port, uint8_t data) {
     settle(c);
 }
 
-uint8_t Bus::intAck() {
+uint8_t Bus::intAck(uint8_t status) {
     BusCycle c{Cycle::IntAck, 0, 0, false};
+    c.status = status;  // the master's asserted word; settle() ORs the fallback base on
     auto who = decoders(c);
     unclaimed_ = who.empty();
     contended_ = who.size() > 1;

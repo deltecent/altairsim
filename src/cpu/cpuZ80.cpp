@@ -36,17 +36,27 @@ uint8_t CpuZ80::szx(uint8_t v) const {
 // ---------------------------------------------------------------------------
 // Fetch and store -- every one a real bus cycle.
 // ---------------------------------------------------------------------------
+// THE Z80 ON AN ALTAIR PANEL PRESENTS THE 8080 STATUS WORD -- with one difference that
+// matters here: the Z80 has NO STACK status output. The 8080 flags a stack machine
+// cycle (its STACK line, driven from a push/pop); the Z80 does not, so its stack
+// accesses are ordinary memory cycles and StStack is NEVER asserted on a Z80 (see the
+// user note and Status8080 in core/bus.h). The Z80 DOES have M1, asserted on the
+// opcode fetch and the interrupt-acknowledge cycle. So the only bit this core adds
+// beyond the type-derived fallback is M1; every other cycle carries the plain
+// memory/IO word. The CPU still passes each word explicitly -- it is the generator,
+// the bus only carries -- via the helpers below.
+
 uint8_t CpuZ80::fetchOp(Bus& bus) {
     // R counts M1 cycles: bit 7 is held, bits 0..6 increment. A prefix is its own
     // M1, so DD/CB/ED each bump R -- which is why LD A,R after a prefix reads odd.
     r_ = (uint8_t)((r_ & 0x80) | ((r_ + 1) & 0x7F));
-    if (intFetch_) return bus.intAck();  // and PC does not move
-    return bus.memRead(pc_++);
+    if (intFetch_) return bus.intAck(StM1 | StInta | StWo);  // M1 INTA; PC does not move
+    return bus.memRead(pc_++, StM1 | StMemR | StWo);          // M1 opcode fetch
 }
 
 uint8_t CpuZ80::fetchByte(Bus& bus) {
-    if (intFetch_) return bus.intAck();
-    return bus.memRead(pc_++);
+    if (intFetch_) return bus.intAck();  // operand INTA -- not M1
+    return bus.memRead(pc_++, StMemR | StWo);
 }
 
 uint16_t CpuZ80::fetch16(Bus& bus) {
@@ -55,14 +65,29 @@ uint16_t CpuZ80::fetch16(Bus& bus) {
     return (uint16_t)(lo | (hi << 8));
 }
 
+// Data and stack memory -- both plain memory cycles on a Z80 (StStack is never set).
+uint8_t CpuZ80::readMem(Bus& bus, uint16_t addr) {
+    return bus.memRead(addr, StMemR | StWo);
+}
+void CpuZ80::writeMem(Bus& bus, uint16_t addr, uint8_t v) {
+    bus.memWrite(addr, v, 0);  // memory write: WO* low
+}
+uint8_t CpuZ80::readIo(Bus& bus, uint8_t port) {
+    return bus.ioRead(port, StInp | StWo);
+}
+void CpuZ80::writeIo(Bus& bus, uint8_t port, uint8_t v) {
+    bus.ioWrite(port, v, StOut);
+}
+
+// PUSH/POP are ordinary memory on a Z80 -- no STACK bit, unlike the 8080.
 void CpuZ80::push(Bus& bus, uint16_t v) {
-    bus.memWrite(--sp_, (uint8_t)(v >> 8));
-    bus.memWrite(--sp_, (uint8_t)(v & 0xFF));
+    writeMem(bus, --sp_, (uint8_t)(v >> 8));
+    writeMem(bus, --sp_, (uint8_t)(v & 0xFF));
 }
 
 uint16_t CpuZ80::pop(Bus& bus) {
-    uint8_t lo = bus.memRead(sp_++);
-    uint8_t hi = bus.memRead(sp_++);
+    uint8_t lo = readMem(bus, sp_++);
+    uint8_t hi = readMem(bus, sp_++);
     return (uint16_t)(lo | (hi << 8));
 }
 
@@ -93,7 +118,7 @@ uint16_t CpuZ80::idxAddr(const Ctx& c) {
 }
 
 uint8_t CpuZ80::getR(Bus& bus, int i, const Ctx& c) {
-    if (i == 6) return bus.memRead(idxAddr(c));
+    if (i == 6) return readMem(bus, idxAddr(c));
     // The DD/FD half registers -- IXH/IXL -- appear only when the instruction has
     // NO memory operand (Sean Young 6.1). LD H,(IX+d) keeps H as H.
     if (c.idx != Idx::HL && !c.mem) {
@@ -104,7 +129,7 @@ uint8_t CpuZ80::getR(Bus& bus, int i, const Ctx& c) {
 }
 
 void CpuZ80::setR(Bus& bus, int i, const Ctx& c, uint8_t v) {
-    if (i == 6) { bus.memWrite(idxAddr(c), v); return; }
+    if (i == 6) { writeMem(bus, idxAddr(c), v); return; }
     if (c.idx != Idx::HL && !c.mem) {
         uint16_t& r = idxReg(c);
         if (i == 4) { r = (uint16_t)((r & 0x00FF) | (v << 8)); return; }
@@ -326,19 +351,19 @@ void CpuZ80::bit(uint8_t v, int n, uint8_t x53) {
 
 void CpuZ80::rld(Bus& bus, const Ctx& c) {
     uint16_t a = idxAddr(c);
-    uint8_t m = bus.memRead(a);
+    uint8_t m = readMem(bus, a);
     uint8_t nm = (uint8_t)((m << 4) | (a_ & 0x0F));
     a_ = (uint8_t)((a_ & 0xF0) | (m >> 4));
-    bus.memWrite(a, nm);
+    writeMem(bus, a, nm);
     f_ = (uint8_t)((f_ & FC) | szxp(a_));
     wz_ = (uint16_t)(a + 1);
 }
 void CpuZ80::rrd(Bus& bus, const Ctx& c) {
     uint16_t a = idxAddr(c);
-    uint8_t m = bus.memRead(a);
+    uint8_t m = readMem(bus, a);
     uint8_t nm = (uint8_t)((a_ << 4) | (m >> 4));
     a_ = (uint8_t)((a_ & 0xF0) | (m & 0x0F));
-    bus.memWrite(a, nm);
+    writeMem(bus, a, nm);
     f_ = (uint8_t)((f_ & FC) | szxp(a_));
     wz_ = (uint16_t)(a + 1);
 }
@@ -348,8 +373,8 @@ void CpuZ80::rrd(Bus& bus, const Ctx& c) {
 // Young 4.2; ZEXDOC masks them off, ZEXALL checks them.
 // ---------------------------------------------------------------------------
 void CpuZ80::blockLd(Bus& bus, int dir, bool repeat) {
-    uint8_t v = bus.memRead(hl());
-    bus.memWrite(de(), v);
+    uint8_t v = readMem(bus, hl());
+    writeMem(bus, de(), v);
     setHL((uint16_t)(hl() + dir));
     setDE((uint16_t)(de() + dir));
     uint16_t left = (uint16_t)(bc() - 1);
@@ -368,7 +393,7 @@ void CpuZ80::blockLd(Bus& bus, int dir, bool repeat) {
 }
 
 void CpuZ80::blockCp(Bus& bus, int dir, bool repeat) {
-    uint8_t v = bus.memRead(hl());
+    uint8_t v = readMem(bus, hl());
     uint8_t res = (uint8_t)(a_ - v);
     bool h = (((a_ & 0xF) - (v & 0xF)) & 0x10) != 0;
     setHL((uint16_t)(hl() + dir));
@@ -392,8 +417,8 @@ void CpuZ80::blockCp(Bus& bus, int dir, bool repeat) {
 }
 
 void CpuZ80::blockIn(Bus& bus, int dir, bool repeat) {
-    uint8_t v = bus.ioRead(c_);
-    bus.memWrite(hl(), v);
+    uint8_t v = readIo(bus, c_);
+    writeMem(bus, hl(), v);
     wz_ = (uint16_t)(bc() + dir);
     b_ = (uint8_t)(b_ - 1);
     setHL((uint16_t)(hl() + dir));
@@ -407,9 +432,9 @@ void CpuZ80::blockIn(Bus& bus, int dir, bool repeat) {
 }
 
 void CpuZ80::blockOut(Bus& bus, int dir, bool repeat) {
-    uint8_t v = bus.memRead(hl());
+    uint8_t v = readMem(bus, hl());
     b_ = (uint8_t)(b_ - 1);
-    bus.ioWrite(c_, v);
+    writeIo(bus, c_, v);
     setHL((uint16_t)(hl() + dir));
     wz_ = (uint16_t)(bc() + dir);
     uint8_t f = szx(b_);
@@ -540,10 +565,10 @@ StepResult CpuZ80::step(Bus& bus) {
             wz_ = 0x0038;
             return {13, RunStatus::Ok};
         case 2: {
-            uint8_t vec = bus.intAck();
+            uint8_t vec = bus.intAck(StM1 | StInta | StWo);  // the M1 acknowledge cycle
             uint16_t p = (uint16_t)((i_ << 8) | vec);
-            uint16_t lo = bus.memRead(p);
-            uint16_t hi = bus.memRead((uint16_t)(p + 1));
+            uint16_t lo = readMem(bus, p);                    // vector table -- plain reads
+            uint16_t hi = readMem(bus, (uint16_t)(p + 1));
             push(bus, pc_);
             pc_ = (uint16_t)(lo | (hi << 8));
             wz_ = pc_;
@@ -659,28 +684,28 @@ StepResult CpuZ80::execMain(Bus& bus, uint8_t op, Ctx c) {
     case 0x31: sp_ = fetch16(bus); t = 10; break;
 
     // ---- LD (rp),A / LD A,(rp) ----
-    case 0x02: bus.memWrite(bc(), a_); wz_ = (uint16_t)((a_ << 8) | ((bc() + 1) & 0xFF)); t = 7; break;
-    case 0x12: bus.memWrite(de(), a_); wz_ = (uint16_t)((a_ << 8) | ((de() + 1) & 0xFF)); t = 7; break;
-    case 0x0A: a_ = bus.memRead(bc()); wz_ = (uint16_t)(bc() + 1); t = 7; break;
-    case 0x1A: a_ = bus.memRead(de()); wz_ = (uint16_t)(de() + 1); t = 7; break;
+    case 0x02: writeMem(bus, bc(), a_); wz_ = (uint16_t)((a_ << 8) | ((bc() + 1) & 0xFF)); t = 7; break;
+    case 0x12: writeMem(bus, de(), a_); wz_ = (uint16_t)((a_ << 8) | ((de() + 1) & 0xFF)); t = 7; break;
+    case 0x0A: a_ = readMem(bus, bc()); wz_ = (uint16_t)(bc() + 1); t = 7; break;
+    case 0x1A: a_ = readMem(bus, de()); wz_ = (uint16_t)(de() + 1); t = 7; break;
 
-    case 0x32: { uint16_t a = fetch16(bus); bus.memWrite(a, a_);
+    case 0x32: { uint16_t a = fetch16(bus); writeMem(bus, a, a_);
                  wz_ = (uint16_t)((a_ << 8) | ((a + 1) & 0xFF)); t = 13; break; }  // LD (nn),A
-    case 0x3A: { uint16_t a = fetch16(bus); a_ = bus.memRead(a); wz_ = (uint16_t)(a + 1); t = 13; break; }
+    case 0x3A: { uint16_t a = fetch16(bus); a_ = readMem(bus, a); wz_ = (uint16_t)(a + 1); t = 13; break; }
 
     case 0x22: {  // LD (nn),HL/IX/IY
         uint16_t a = fetch16(bus);
         uint16_t v = hl16(c);
-        bus.memWrite(a, (uint8_t)v);
-        bus.memWrite((uint16_t)(a + 1), (uint8_t)(v >> 8));
+        writeMem(bus, a, (uint8_t)v);
+        writeMem(bus, (uint16_t)(a + 1), (uint8_t)(v >> 8));
         wz_ = (uint16_t)(a + 1);
         t = 16;
         break;
     }
     case 0x2A: {  // LD HL/IX/IY,(nn)
         uint16_t a = fetch16(bus);
-        uint8_t lo = bus.memRead(a);
-        uint8_t hi = bus.memRead((uint16_t)(a + 1));
+        uint8_t lo = readMem(bus, a);
+        uint8_t hi = readMem(bus, (uint16_t)(a + 1));
         setRP(2, c, (uint16_t)(lo | (hi << 8)));
         wz_ = (uint16_t)(a + 1);
         t = 16;
@@ -771,10 +796,10 @@ StepResult CpuZ80::execMain(Bus& bus, uint8_t op, Ctx c) {
     }
     case 0xE3: {  // EX (SP),HL/IX/IY
         uint16_t v = hl16(c);
-        uint8_t lo = bus.memRead(sp_);
-        uint8_t hi = bus.memRead((uint16_t)(sp_ + 1));
-        bus.memWrite(sp_, (uint8_t)v);
-        bus.memWrite((uint16_t)(sp_ + 1), (uint8_t)(v >> 8));
+        uint8_t lo = readMem(bus, sp_);   // EX (SP),HL: plain memory -- Z80 has no STACK
+        uint8_t hi = readMem(bus, (uint16_t)(sp_ + 1));
+        writeMem(bus, sp_, (uint8_t)v);
+        writeMem(bus, (uint16_t)(sp_ + 1), (uint8_t)(v >> 8));
         setRP(2, c, (uint16_t)(lo | (hi << 8)));
         wz_ = (uint16_t)(lo | (hi << 8));
         t = 19;
@@ -844,9 +869,9 @@ StepResult CpuZ80::execMain(Bus& bus, uint8_t op, Ctx c) {
     // ---- I/O ----
     case 0xDB: { uint8_t port = fetchByte(bus);   // IN A,(n)
                  wz_ = (uint16_t)(((a_ << 8) | port) + 1);
-                 a_ = bus.ioRead(port); t = 11; break; }
+                 a_ = readIo(bus, port); t = 11; break; }
     case 0xD3: { uint8_t port = fetchByte(bus);   // OUT (n),A
-                 bus.ioWrite(port, a_);
+                 writeIo(bus, port, a_);
                  wz_ = (uint16_t)((a_ << 8) | ((port + 1) & 0xFF)); t = 11; break; }
 
     case 0xF3: iff1_ = iff2_ = false; eiPending_ = false; break;  // DI
@@ -894,7 +919,7 @@ StepResult CpuZ80::execDDCB(Bus& bus, const Ctx& c) {
     uint8_t op = fetchOp(bus);     // this CB sub-opcode is an M1 too
     int y = (op >> 3) & 7, z = op & 7;
     uint16_t a = idxAddr(cc);      // IX+d, and latches WZ
-    uint8_t v = bus.memRead(a);
+    uint8_t v = readMem(bus, a);
 
     if (op >= 0x40 && op < 0x80) {         // BIT y,(IX+d) -- F5/F3 from the address high byte
         bit(v, y, (uint8_t)(a >> 8));
@@ -905,7 +930,7 @@ StepResult CpuZ80::execDDCB(Bus& bus, const Ctx& c) {
     if (op < 0x40) r = rot(y, v);                       // rotate/shift
     else if (op < 0xC0) r = (uint8_t)(v & ~(1 << y));   // RES
     else r = (uint8_t)(v | (1 << y));                   // SET
-    bus.memWrite(a, r);
+    writeMem(bus, a, r);
     if (z != 6) *reg8(z) = r;    // the undocumented reg-copy
     return {23, RunStatus::Ok};
 }
@@ -923,14 +948,14 @@ StepResult CpuZ80::execED(Bus& bus) {
         int rp = (op >> 4) & 3;
         switch (z) {
         case 0: {  // IN r,(C) -- y==6 reads and only sets flags
-            uint8_t v = bus.ioRead(c_);
+            uint8_t v = readIo(bus, c_);
             wz_ = (uint16_t)(bc() + 1);
             f_ = (uint8_t)((f_ & FC) | szxp(v));
             if (y != 6) *reg8(y) = v;
             return {12, RunStatus::Ok};
         }
         case 1:  // OUT (C),r -- y==6 outputs 0
-            bus.ioWrite(c_, y == 6 ? 0 : *reg8(y));
+            writeIo(bus, c_, y == 6 ? 0 : *reg8(y));
             wz_ = (uint16_t)(bc() + 1);
             return {12, RunStatus::Ok};
         case 2:  // SBC/ADC HL,rp
@@ -940,12 +965,12 @@ StepResult CpuZ80::execED(Bus& bus) {
             uint16_t a = fetch16(bus);
             wz_ = (uint16_t)(a + 1);
             if (op & 8) {
-                uint8_t lo = bus.memRead(a), hi = bus.memRead((uint16_t)(a + 1));
+                uint8_t lo = readMem(bus, a), hi = readMem(bus, (uint16_t)(a + 1));
                 setRP(rp, hl, (uint16_t)(lo | (hi << 8)));
             } else {
                 uint16_t v = getRP(rp, hl);
-                bus.memWrite(a, (uint8_t)v);
-                bus.memWrite((uint16_t)(a + 1), (uint8_t)(v >> 8));
+                writeMem(bus, a, (uint8_t)v);
+                writeMem(bus, (uint16_t)(a + 1), (uint8_t)(v >> 8));
             }
             return {20, RunStatus::Ok};
         }
