@@ -52,10 +52,14 @@ type = "memory"
 id   = "mem0"
 fill = "random"
 
+  # 16K of RAM. The demo tape only needs the first page, but real 680b software --
+  # Cassette BASIC in particular -- loads across low memory well past 1K. The KCACR
+  # loader verifies every byte as it writes, so a tape that reaches unpopulated RAM
+  # aborts with an `M` (memory error); 16K is what MITS shipped for BASIC.
   [[board.region]]
   type = "ram"
   at   = 0000
-  size = "1K"
+  size = "16K"
 
   # The KCACR loader/punch PROM (socket V), one PROM below the monitor. `.J FD00`
   # loads an S-record tape; `.J FD74` punches memory back out.
