@@ -1492,14 +1492,20 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // cause as the nap: the run loop asked the CONSOLE a question that belongs to the LINE.
     bool        anyConsole    = false;
     bool        anyRemoteLine = false;
-    std::string remoteLabel;  // scheme of the first live non-console line (terminal/socket/serial)
+    std::string remoteLabel;  // scheme of the first live console-CAPABLE non-console line
     for (const auto& b : m_.boards())
         for (const auto& u : b->units()) {
             if (u.kind != UnitKind::Serial) continue;
             if (u.state == "console") anyConsole = true;
             else if (u.state != "null") {  // socket:/serial:/terminal -- a live wire
                 anyRemoteLine = true;
-                if (remoteLabel.empty()) remoteLabel = u.state.substr(0, u.state.find_first_of(":?"));
+                // ...but only a line the GUEST talks over can be "the console" the banner
+                // names. The front panel's graphical bridge is a live socket wire too, yet
+                // the guest never does I/O on it -- naming it read "(console on socket)" for
+                // a machine whose console was on a terminal window (#295). It still counts
+                // for anyRemoteLine (pacing): it is a real-time observer either way.
+                if (u.consoleCapable && remoteLabel.empty())
+                    remoteLabel = u.state.substr(0, u.state.find_first_of(":?"));
             }
         }
 
@@ -1561,8 +1567,14 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
             // console connected)" there is a lie the reporter of issue #244 hit head-on.
             // Name the live line instead; keep "(no console connected)" for the truly
             // bare backplane (the ROM-talking-to-a-disk case above).
+            //
+            // Gate on remoteLabel, NOT anyRemoteLine: the front panel's graphical bridge
+            // is a live remote wire (anyRemoteLine) that the guest never talks over, so
+            // it is not console-capable and leaves remoteLabel empty. A machine whose only
+            // live serial connector is that bridge therefore reads "(no console connected)"
+            // -- correct -- instead of naming the panel's socket as a console (#295).
             std::string stop = tty ? std::string("^") + attn + " stops it." : "^C stops it.";
-            if (anyRemoteLine) {
+            if (!remoteLabel.empty()) {
                 std::snprintf(buf, sizeof buf, "running from %s.  %s  (console on %s)",
                               fmtWord(cpu->pc()).c_str(), stop.c_str(), remoteLabel.c_str());
             } else {

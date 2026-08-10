@@ -2611,4 +2611,51 @@ void test_achieved_hz() {
                   "and it does not invent a console that is not there");
         }
     }
+
+    // The front panel's graphical bridge is a CONNECTed serial unit too (endpoint
+    // plumbing), but the guest never does I/O over it -- so the RUN banner must never
+    // name it as "the console" (#295). It used to: a live socket on fp0:gui, scanned
+    // before the console card, was reported as "(console on socket)" for a machine
+    // whose real console was on a terminal window. We stand a live loopback on the
+    // panel and check it is not mistaken for a console.
+    SECTION("RUN banner -- the front-panel bridge is never named as the console (#295)");
+    {
+        Machine bm;
+        Monitor bmon(bm);
+        std::ostringstream setup;
+        bmon.exec("BOARDS ADD 8080 cpu0", setup);
+        bmon.exec("BOARDS ADD memory mem0", setup);
+        bmon.exec("SET mem0 fill=zero", setup);
+        bmon.exec("REGION ADD mem0 type=ram at=0 size=64K", setup);
+        // The front panel goes in BEFORE the console card, mirroring the default
+        // machine's order -- so its gui line is the FIRST live wire the scan meets.
+        bmon.exec("BOARDS ADD fp fp0", setup);
+        bmon.exec("BOARDS ADD 2sio sio0", setup);
+        bmon.exec("POWER ON", setup);
+        bmon.exec("DEPOSIT 0 76", setup);  // HLT at the reset vector
+
+        // A live wire on the panel bridge; the console card left dark.
+        bmon.exec("CONNECT fp0:gui loopback", setup);
+        bmon.exec("CONNECT sio0:a null", setup);
+        {
+            std::ostringstream out;
+            bmon.exec("EX 0", out);
+            bmon.exec("RUN", out);
+            CHECK(out.str().find("(no console connected)") != std::string::npos,
+                  "a live front-panel bridge is not a console -- the backplane is bare");
+            CHECK(out.str().find("console on") == std::string::npos,
+                  "and the panel's socket is never named as one");
+        }
+
+        // Now give the guest a real console. The banner names IT, not the panel line
+        // that the scan still meets first.
+        bmon.exec("CONNECT sio0:a loopback", setup);
+        {
+            std::ostringstream out;
+            bmon.exec("EX 0", out);
+            bmon.exec("RUN", out);
+            CHECK(out.str().find("(console on loopback)") != std::string::npos,
+                  "the real console is named past the earlier front-panel line");
+        }
+    }
 }
