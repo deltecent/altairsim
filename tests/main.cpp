@@ -80,6 +80,7 @@ const struct {
     {"isa6800", test_isa6800},
     {"asm6800", test_asm6800},
     {"cpu", test_cpu},
+    {"status", test_status},
     {"cpu6800", test_cpu6800},
     {"680board", test_680board},
     {"680io", test_680io},

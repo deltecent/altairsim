@@ -67,6 +67,12 @@ private:
     uint8_t fetchOp(Bus& bus);   // an M1 opcode fetch: bumps R, or reads the INTA byte
     uint8_t fetchByte(Bus& bus); // an operand byte: no R bump
     uint16_t fetch16(Bus& bus);
+    // Data/stack/IO cycles. The Z80 asserts M1 only (in fetchOp) and never STACK, so
+    // these all carry the plain memory/IO 8080 status word (see cpuZ80.cpp).
+    uint8_t readMem(Bus& bus, uint16_t addr);
+    void writeMem(Bus& bus, uint16_t addr, uint8_t v);
+    uint8_t readIo(Bus& bus, uint8_t port);
+    void writeIo(Bus& bus, uint8_t port, uint8_t v);
     void push(Bus& bus, uint16_t v);
     uint16_t pop(Bus& bus);
 
