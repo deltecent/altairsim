@@ -157,7 +157,12 @@ std::vector<UnitDef> FrontPanelBoard::units() const {
     // straight back -- the same fixed point every serial card round-trips through
     // (Uart1602::endpoint()). endpoint_ is the operator's raw words, kept for pump()'s
     // redial (Checkpoint ③), and it can diverge from the canonical describe().
-    return {{"gui", UnitKind::Serial, stream_->describe()}};
+    // consoleCapable = false: the guest never does character I/O over the panel bridge,
+    // so the RUN banner must not name it as "the console" -- a machine with its console
+    // on a `terminal:` window used to read "(console on socket)" off this line (#295).
+    UnitDef u{"gui", UnitKind::Serial, stream_->describe()};
+    u.consoleCapable = false;
+    return {u};
 }
 
 bool FrontPanelBoard::connect(const std::string& unit, const std::string& ep,

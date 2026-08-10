@@ -92,6 +92,14 @@ struct UnitDef {
     // that announced it via drainLog() has long since scrolled off the screen.
     bool readOnly       = false;
     bool readOnlyForced = false;
+
+    // Could this serial connector carry the guest console? True by default. The front
+    // panel's graphical bridge is CONNECTed like a serial port (it reuses the endpoint
+    // plumbing) but the guest never does character I/O over it, so it sets this false
+    // and the RUN banner never names it as "the console" (#295). Ignored for non-Serial
+    // kinds. NOT a claim a line IS the console -- only that it is eligible to be one;
+    // the banner still has to pick among the eligible live lines.
+    bool consoleCapable = true;
 };
 
 // Can this kind of unit be MOUNTed (as opposed to CONNECTed)?
