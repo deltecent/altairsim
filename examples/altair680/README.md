@@ -89,6 +89,11 @@ in place of the demo tape (`MOUNT kc0:tape "Cassette BASIC V1.1 R3.2.S19"`), `JF
 load it, then `J` its start address — the loader does not care whether the tape holds four
 bytes or all of BASIC.
 
+This machine has **16K of RAM** for that reason: BASIC loads across low memory far past the
+demo tape's single page. Because the KCACR loader verifies each byte as it writes, a program
+that reaches unpopulated RAM stops with an `M` (memory error) partway through the load — so if
+you trim the `[[board.region]]` RAM size, keep it large enough for whatever you are loading.
+
 The `680kcacr` reads and writes **Kansas City** modulation only; a plain-MITS 88-ACR tape
 is refused. See `reference/Altair 680b KCACR.md` for the board and `roms/KCACR/` for the
 loader PROM.
