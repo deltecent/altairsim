@@ -99,8 +99,10 @@ All three PDFs are from **deramp.com** (authorized — `docs/sources.md`), under
 - **Interrupts:** none. The panel does not drive pin 73. (`STOP` is not an interrupt — it pulls
   `PRDY`, which is a different wire and a different idea.)
 - **Bus master:** no. See "Limitations".
-- **Properties:** `sense` (hex, `SA8..SA15`) and `data` (hex, `SA0..SA7`). Both are halves of one
-  16-bit switch register; setting either leaves the other alone.
+- **Properties:** `sense` (hex, `SA8..SA15`) and `data` (hex, `SA0..SA7`) — both are halves of one
+  16-bit switch register, and setting either leaves the other alone — plus `fps` (default `256`), the
+  cap on how many `L` frames per second the graphical bridge unit puts on the wire. `SET fp0 FPS=<n>`
+  retunes it live; see "The graphical panel bridge" below.
 
 ### Reset
 
@@ -110,6 +112,66 @@ All three PDFs are from **deramp.com** (authorized — `docs/sources.md`), under
 **A toggle is a toggle.** Nothing on a real panel moves a switch except a finger, and neither reset
 is a finger. The asymmetry — power kills the lamps but not the switches — is the hardware's, and it
 is the only thing `power()` has to say.
+
+## The graphical panel bridge (the `gui` unit)
+
+The panel is a card, and a **graphical** front panel is a *view* onto that card (`DESIGN.md` §3) —
+the same relationship a windowed terminal has to a serial board. The view lives in another process,
+**altairsim-fp** (a separate repo: an OpenGL front panel that is a **TCP server**), and this card
+**dials out** to it. Nothing new in the monitor and no CLI flag: the board declares one connectable
+unit and the generic `CONNECT`/`DISCONNECT` machinery does the rest (`DESIGN.md` §7.7).
+
+```
+> CONNECT fp0:gui socket:HOST:PORT      # dial the running bridge
+> DISCONNECT fp0:gui                     # unplug it, and stop redialling
+> SET fp0 FPS=60                         # retune the frame cap live
+```
+
+- **One unit, `gui`, `UnitKind::Serial`.** The board owns the `ByteStream` (a card with nothing
+  plugged in holds a `NullStream`, never a null pointer); the monitor resolves the endpoint string
+  and hands the stream down. `socket:HOST:PORT` is an ordinary built-in endpoint.
+- **The board does its I/O in `pump()`, once per emulated slice — no thread.** That is what keeps
+  the bridge deterministic under RECORD/REPLAY: the panel is touched at a known point in emulated
+  time, like every other board (`DESIGN.md` §7, §7.6).
+- **Persistent reconnect, on the host clock.** The bridge is opened and closed out of band (a human
+  launches or quits a window), so the board never gives up on its own: if the line drops it redials
+  `endpoint_` on a capped exponential backoff (0.25s → 4s), measured on `std::chrono::steady_clock`
+  — **host wall time, not emulated time**, so a flat-out guest and an idle one behave identically and
+  the guest cannot measure any of it. `DISCONNECT fp0:gui` is the one explicit stop. The first
+  failure and each successful (re)connect are logged **once**, never per retry.
+
+### What crosses the wire
+
+The wire is line-based and pinned by altairsim-fp's own **`docs/panel-protocol.md`** (version 1) —
+that repo is the authority for the *format*; this section does not duplicate it. altairsim is the
+authority for the *content*.
+
+- **`L <addr:04x> <data:02x> <status:02x> <flags:02x>`** (this card → bridge). `addr`/`data` are the
+  raw address- and data-bus lamps; `status` is the **8080 status word off the last bus cycle,
+  forwarded verbatim** — the same latched word §4 describes (see "the status word is a bus signal"
+  below), **`WO̅` active-low** (`0` on a write/output, `1` on a read/input). The real Altair panel
+  displays `WO̅` **raw, with no inversion**: the WO LED is **lit on a read and dark on a write**
+  (Operator's Manual §4), and an M1 opcode fetch — a memory read — lights MEMR, M1 and WO together.
+  Neither side inverts. `flags` is `0`: the §3
+  machine-control group (RUN/WAIT/HLDA/…) is not modelled — "absent rather than wrong."
+- **Sent throttled and only when it changed.** Each `1/fps` interval the frame is built and put on
+  the wire *only* if it differs from the last one sent **and** the socket can take it
+  (`writable()` — TCP backpressure). An idle or halted guest costs nothing.
+- **Handshake:** `HELLO altairsim-fp 1` both ways; each side adopts `min(local, remote)`.
+- **`W <sw:04x>` / `S <sense:02x>`** (bridge → this card) drive `setSwitches()` / `setSense()` — the
+  on-screen operator throwing the address/sense switches. A guest `IN 0FFH` then reads the sense byte
+  through the ordinary `read()` path. Unknown or malformed lines are ignored (forward-compat).
+
+### The status word is a bus signal (not a lamp this card invents)
+
+`snoop()` copies `BusCycle::status` (`core/bus.h`, `enum Status8080`) into the latch **verbatim** —
+no `switch` on the cycle type, no lookup table. The status word is the 8080's, latched at SYNC and
+carried on the backplane; the CPU/bus layer is its emitter and this card is a forwarder. The
+authority for what the eight bits *mean* is the **Altair 8800 Operator's Manual §4** (the real
+hardware), Intel 8080 order: MEMR, INP, M1, OUT, HLTA, STACK, `WO̅`, INTA. This is why `busStatus()`
+is named for a bus signal and not "lamp bits": the card forwards the active-low word as-is and the
+bridge lights the lamps straight from it — `WO̅` included, drawn raw (lit on read, dark on write),
+with no inversion on either side.
 
 ## Quirks reproduced
 
@@ -143,17 +205,30 @@ carries no `origin` field, so a monitor DEPOSIT is *already* indistinguishable f
 exactly as it is on the backplane. The switches those commands stand in for (`SA0`–`SA15`) live on
 this card, which is where a graphical panel will find them.
 
-**Six lamps are not lit, and the reason is the bus, not the card.** This is the opposite of the
+**Some lamps are not lit, and the reason is the bus, not the card.** This is the opposite of the
 88-ACR's "there is no motor control" — that card *has* no motor control. This card **has** these
-lamps; the bus does not yet carry what lights them:
+lamps; the bus does not yet carry what lights them. Since the status word is now a bus signal the
+card only forwards (see "The graphical panel bridge"), the fix for each is at the *source*, and
+needs **no change here**. There are two groups:
 
-| Lamp | Why not |
+**Three of the eight status-word bits (Operator's Manual §4) stay `0` at the source.** They are real
+8080 status bits, but need CPU knowledge a bus cycle discards today. The clean fix is CPU-side —
+enrich `BusCycle::status` at the cycle's origin — after which they arrive here already lit, because
+`snoop()` forwards the word verbatim:
+
+| Bit | Why not |
 |---|---|
-| **M1** | An opcode fetch and an operand read are both `Cycle::MemRead`. The 8080's status byte tells them apart and ours does not. Lighting it needs a `Cycle::Fetch` or an `m1` flag set by the CPU — a real change, in the CPU and the bus, and not a lookup table here. |
-| **INTE, WAIT, HLDA, HLTA, PROT** | These are **pins**, on the processor and on the memory cards. They are not bus cycles, and `snoop()` will never see one. `INTE` is the 8080's interrupt-enable flip-flop; `WAIT` and `HLDA` are what the panel does *to* the CPU, not what it watches. |
+| **M1** | An opcode fetch and an operand read are both `Cycle::MemRead`; the 8080's status byte tells them apart and our cycle does not. Needs a `Cycle::Fetch` or an `m1` hint set by the CPU. |
+| **HLTA, STACK** | Halt-acknowledge and stack access are likewise CPU state the bus cycle discards. Same fix: enrich `BusCycle::status` at the origin. |
 
-`MEMR`, `INP`, `OUT`, `WO*` and `INTA` **are** derived from the cycle and are true. The rest are
-**absent rather than wrong**, which is the whole of the policy.
+`MEMR`, `INP`, `OUT`, `WO̅` and `INTA` **are** derived from the cycle and are true. The other three
+are **absent rather than wrong**, which is the whole of the policy.
+
+**The §3 machine-control indicators are a different group entirely — not the status word.** `INTE`,
+`WAIT`, `HLDA`, `PROT` (and `RUN`) are **pins** on the processor and the memory cards, not bus
+cycles, and `snoop()` will never see one. `INTE` is the 8080's interrupt-enable flip-flop; `WAIT` and
+`HLDA` are what the panel does *to* the CPU, not what it watches. These belong to the wire `flags`
+byte, which stays `0`, and are deferred entirely.
 
 **The lamps are honest about being a blur, and so was MITS.** From the Operator's Manual, on the
 indicator LEDs:
@@ -169,7 +244,11 @@ come back merely because "ROM ought to be write-protectable."
 ## Verification
 
 `tests/test_frontpanel.cpp` — the port, the switch row, the unclaimed `OUT`, both resets, the
-lamps, the TOML round-trip, and the refusal of the old `[machine] sense` key.
+lamps, the TOML round-trip, and the refusal of the old `[machine] sense` key. The bridge unit adds
+socket sections that play the **server** role (altairsim dials out): the two `HELLO`s, `L` frames
+tracking a running guest with `WO̅` active-low on the wire (write → `D1=0`, read → `D1=1`), `W`/`S`
+round-tripping to `switches()`/`sense()` and a guest `IN 0FFH`, and a dropped listener re-accepting
+to prove the persistent redial (with the backoff shortened for the test).
 
 **The acceptance test is DBL, and it is not arranged.** The disk boot PROM in `roms/DBL` reads this
 port at `FF22` to configure the console, and its own source says what the bit means

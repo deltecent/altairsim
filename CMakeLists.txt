@@ -467,6 +467,7 @@ add_library(altair_core STATIC
   src/boards/usio.cpp
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
+  src/boards/frontpanel-link.cpp
   src/boards/mits-turnkey.cpp
   src/boards/mits-88virtc.cpp
   # OUR OWN CARD -- the only one in this list that is not a period board, and the

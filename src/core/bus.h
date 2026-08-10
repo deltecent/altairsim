@@ -22,6 +22,34 @@ class Bus;
 
 enum class Cycle { MemRead, MemWrite, IoRead, IoWrite, IntAck };
 
+// THE 8080 STATUS WORD -- a BUS SIGNAL, not a lamp (Intel 8080 / Altair 8800
+// Operator's Manual §4, p.32). The CPU latches these eight lines at SYNC, the S-100
+// backplane carries them, and a front panel merely DISPLAYS them. They cross to the
+// panel bridge verbatim (see boards/frontpanel-link.h) -- the bit order below is the
+// wire contract in altairsim-fp/docs/panel-protocol.md.
+//
+// WO* IS ACTIVE LOW: the bit is 1 during a read/input and 0 during a write/output.
+// That is the SIGNAL, and it crosses verbatim. The real Altair panel displays WO*
+// RAW, with no inversion -- the WO lamp is LIT during a read (and most cycles, since
+// fetches are reads) and DARK during a write. An M1 opcode fetch, being a memory
+// read, lights MEMR, M1 and WO together. So neither side inverts: we emit the
+// active-low signal and the panel lights the lamp straight from it.
+//
+// Three bits stay 0 for now -- M1, HLTA, STACK -- because they need CPU knowledge a
+// bus cycle discards today (opcode-fetch vs operand-read, halt ack, SP access). They
+// are "absent rather than wrong": the CPU enriches BusCycle::status at the origin
+// later (a Cycle::Fetch or an m1 hint) with no panel change. See mits-frontpanel.h.
+enum Status8080 : uint8_t {
+    StInta  = 0x01,  // D0 -- interrupt acknowledge
+    StWo    = 0x02,  // D1 -- WO*, ACTIVE LOW: 1=read/input, 0=write/output
+    StStack = 0x04,  // D2 -- stack access        (deferred: CPU-side)
+    StHlta  = 0x08,  // D3 -- halt acknowledge    (deferred: bridge composes from flags)
+    StOut   = 0x10,  // D4 -- output (I/O write)
+    StM1    = 0x20,  // D5 -- opcode fetch        (deferred: CPU-side)
+    StInp   = 0x40,  // D6 -- input (I/O read)
+    StMemR  = 0x80,  // D7 -- memory read
+};
+
 struct BusCycle {
     Cycle type = Cycle::MemRead;
     uint16_t addr = 0;  // memory address; for I/O the port is addr & 0xFF
@@ -35,6 +63,13 @@ struct BusCycle {
     // A board strapped to honor it takes ITSELF off the bus for this cycle --
     // the bus picks no winner. That is the entire overlay mechanism.
     bool phantom = false;
+
+    // The 8080 status word (Status8080 above) -- the S-100 status lines for this
+    // cycle. LATCHED by Bus::settle() from the cycle type, exactly where `data` is
+    // back-filled, so a snooper/observer sees it valid. A bus master (the CPU) may
+    // set enrichment bits (M1, ...) at the origin; settle() ORs the type-derived
+    // base onto them, so it never clobbers what the origin already knew.
+    uint8_t status = 0;
 
     uint8_t port() const { return (uint8_t)(addr & 0xFF); }
     bool isWrite() const { return type == Cycle::MemWrite || type == Cycle::IoWrite; }
@@ -448,7 +483,9 @@ private:
     // Third pass, once per cycle: show the completed cycle to every board.
     // The bus is not notifying anyone -- the cycle was on the backplane the whole
     // time and they could all see it. This is only where we let them LATCH it.
-    void settle(const BusCycle& c);
+    // Takes c by NON-const ref because this is also where the 8080 status word is
+    // latched onto it (BusCycle::status), alongside the `data` back-fill.
+    void settle(BusCycle& c);
 
     std::vector<Board*> boards_;
     std::vector<std::string> log_;
