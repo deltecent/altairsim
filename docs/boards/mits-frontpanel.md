@@ -121,10 +121,22 @@ the same relationship a windowed terminal has to a serial board. The view lives 
 **dials out** to it. Nothing new in the monitor and no CLI flag: the board declares one connectable
 unit and the generic `CONNECT`/`DISCONNECT` machinery does the rest (`DESIGN.md` §7.7).
 
+**altairsim-fp listens on TCP port 8800 by default**, so the everyday command is
+`CONNECT fp0:gui socket:localhost:8800` (`socket:HOST:PORT` for a panel on another host or port):
+
 ```
-> CONNECT fp0:gui socket:HOST:PORT      # dial the running bridge
-> DISCONNECT fp0:gui                     # unplug it, and stop redialling
-> SET fp0 FPS=60                         # retune the frame cap live
+> CONNECT fp0:gui socket:localhost:8800  # dial the running bridge (8800 is its default port)
+> DISCONNECT fp0:gui                      # unplug it, and stop redialling
+> SET fp0 FPS=60                          # retune the frame cap live
+```
+
+The declarative form is a `connect` property on the board, so a machine file can wire it at load —
+see `examples/frontpanel/fp.toml`:
+
+```toml
+[[board]]
+id      = "fp0"
+connect = "socket:localhost:8800"
 ```
 
 - **One unit, `gui`, `UnitKind::Serial`.** The board owns the `ByteStream` (a card with nothing

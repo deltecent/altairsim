@@ -1,0 +1,43 @@
+# The base Altair, wired to the GRAPHICAL FRONT PANEL -- altairsim-fp.
+#
+#     cd examples/frontpanel && altairsim fp.toml
+#     -> the #> notes below, then the `altairsim>` monitor prompt
+#
+# This is `base = "default"` and nothing else -- the fp/8080/2SIO/88-DCDD/56K/DBL
+# machine you get by typing `altairsim` bare -- with ONE thing added: the front-panel
+# board dials out to altairsim-fp, the separate OpenGL front-panel program, so a window
+# full of lamps and switches mirrors this machine as it runs. There is no disk and no
+# startup: you land at the monitor, exactly as the base machine does, and drive it by
+# hand (MOUNT a disk and RUN FF00, or single-step and watch the lamps move).
+#
+# altairsim-fp IS A SEPARATE PROGRAM IN ITS OWN REPOSITORY. It is not built or shipped
+# here; you run it yourself. It is a TCP server that listens on port 8800, and the fp
+# board is the CLIENT that dials it -- see the `connect` line below and
+# docs/boards/mits-frontpanel.md for the board and the wire protocol.
+
+#> This machine's FRONT PANEL is drawn by a SEPARATE PROGRAM: altairsim-fp, an OpenGL
+#> panel in its own repository -- not part of altairsim and not in this package. Build
+#> and run it yourself; it listens on TCP port 8800, and this machine dials it.
+#>
+#> Launch order does not matter. This machine keeps redialling localhost:8800 on a
+#> backoff, so start altairsim-fp before or after -- the panel connects when it appears
+#> and reconnects if you quit and relaunch it. DISCONNECT fp0:gui stops the dialling.
+#>
+#> You are at the altairsim> monitor prompt. The panel's lamps show the last bus cycle
+#> (address, data, and the 8080 status word -- MEMR, M1, STACK, ...); the on-screen
+#> sense switches feed a guest IN 0FFH. From here it is an ordinary Altair: MOUNT a disk
+#> and RUN FF00, or STEP and watch the lamps. See examples/frontpanel/README.md.
+
+[machine]
+name = "frontpanel"
+base = "default"              # fp0, 8080, 2SIO console at 10, 88-DCDD at 08, 56K, DBL PROM
+
+# THE FRONT-PANEL BOARD is already in the base machine (id `fp0`). Re-open it by `id`
+# with no `type` -- the same delta the other examples use to touch a base board -- and
+# declare where its graphical view lives. `socket:HOST:PORT` dials OUT as a TCP client;
+# 8800 is altairsim-fp's default listening port. The monitor resolves the endpoint to a
+# stream and hands it to the board, exactly as it does a serial card's tty -- so this
+# is the declarative form of `CONNECT fp0:gui socket:localhost:8800`.
+[[board]]
+id      = "fp0"
+connect = "socket:localhost:8800"
