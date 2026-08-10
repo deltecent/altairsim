@@ -7,6 +7,7 @@
 #include "boards/mits-88uio.h"
 #include "boards/mits-680io.h"
 #include "boards/mits-680uio.h"
+#include "boards/mits-frontpanel.h"
 #include "boards/mits-turnkey.h"
 #include "boards/pmmi-mm103.h"
 #include "boards/usio.h"
@@ -237,6 +238,7 @@ int main(int argc, char** argv) {
     PmmiBoard::setResolver(resolveEndpoint);     // the modem's phone line is an endpoint
     UsioBoard::setResolver(resolveEndpoint);     // the universal serial board's one line
     CromemcoFdcBoard::setResolver(resolveEndpoint);  // the FDC family's TMS 5501 console (16/64FDC)
+    FrontPanelBoard::setResolver(resolveEndpoint);   // the fp panel dials OUT to the graphical bridge
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board
     // draws into a Display and never learns it is SDL. The shipping binary hands it

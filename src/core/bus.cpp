@@ -158,7 +158,27 @@ void Bus::reportUnclaimed(const BusCycle& c) {
 // front panel's DATA lamps are eight LEDs soldered to D0..D7 and they do not care
 // which direction the byte was going -- and neither does a TRACE, which is why the
 // observers get the same corrected cycle.
-void Bus::settle(const BusCycle& c) {
+// The 8080 status word derivable from the cycle TYPE alone -- the part the bus can
+// know without CPU help. WO* is active low: set on reads/inputs, clear on
+// writes/outputs. M1/HLTA/STACK stay 0 (see Status8080 in bus.h): the CPU enriches
+// them at the origin later, and settle() ORs this base on so it never clobbers them.
+static uint8_t statusFor(Cycle t) {
+    switch (t) {
+        case Cycle::MemRead:  return StMemR | StWo;  // 0x82
+        case Cycle::MemWrite: return 0;              // WO* = 0 on a write
+        case Cycle::IoRead:   return StInp  | StWo;  // 0x42
+        case Cycle::IoWrite:  return StOut;          // 0x10, WO* = 0
+        case Cycle::IntAck:   return StInta | StWo;  // 0x03 (an input-like cycle)
+    }
+    return 0;
+}
+
+void Bus::settle(BusCycle& c) {
+    // Latch the 8080 status word onto the cycle, right where `data` was back-filled,
+    // so snoopers and observers see a complete cycle. OR, not assign: a CPU that set
+    // M1/STACK/HLTA at the origin keeps them (see Status8080 in bus.h).
+    c.status |= statusFor(c.type);
+
     // ONLY the cards that actually watch. Every board still SEES every cycle --
     // that is what a backplane is -- but a card with nothing wired to the address
     // bus latches nothing, and calling its do-nothing snoop() to discover that,

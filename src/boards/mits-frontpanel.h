@@ -60,23 +60,29 @@
 // card needs no new bus concept to have LEDs: snoop() already hands a board every
 // cycle that crosses the bus, which is precisely what an LED on a bus line sees.
 //
-// WHAT WE DO NOT LIGHT, AND WHY -- because the honest sentence here is the opposite
-// of the 88-ACR's. The ACR has no motor control because THE CARD HAS NONE. This
-// card HAS these lamps; the BUS does not carry what lights them:
+// THE STATUS WORD IS A BUS SIGNAL, AND THIS CARD FORWARDS IT -- it does not invent
+// it. snoop() copies BusCycle::status (core/bus.h) into the latch, verbatim: the same
+// 8080 status word the CPU latched at SYNC and the backplane carried. There is no
+// switch on `c.type` here and no lookup table -- that logic used to live on this card
+// and it was the wrong place for it. The bus is the emitter; the panel is a display;
+// a graphical bridge renders the word to LEDs verbatim -- WO* included, drawn RAW off
+// the active-low line (WO lit on read, dark on write), the way the real panel does it.
 //
-//   * M1 -- the panel has an M1 lamp and we cannot light it. An opcode fetch and an
-//     operand read are both Cycle::MemRead in BusCycle (core/bus.h); the 8080's
-//     status byte distinguishes them and ours does not. Lighting it needs a
-//     Cycle::Fetch or an m1 flag set by the CPU. Not done, not faked.
+// WHAT IS NOT LIT YET, AND WHY -- three status-word bits stay 0 at the source (see
+// Status8080 in bus.h), so they arrive here 0, honestly absent rather than faked:
 //
-//   * INTE, PROT, WAIT, HLDA, HLTA, STACK -- these are PINS, on the processor and
-//     on the memory cards. They are not bus cycles and snoop() will never see them.
-//     INTE is the 8080's interrupt-enable flip-flop; WAIT and HLDA are what the
-//     panel does TO the CPU, not what it watches.
+//   * M1 -- an opcode fetch and an operand read are both Cycle::MemRead in BusCycle;
+//     the 8080's status byte distinguishes them and our cycle does not. Lighting it
+//     needs a Cycle::Fetch or an m1 hint set BY THE CPU at the cycle's origin.
+//   * HLTA, STACK -- halt-ack and stack access are likewise CPU state the bus cycle
+//     discards. The clean fix is the same: enrich BusCycle::status at the origin.
 //
-// So: MEMR, INP, OUT and WO* are derived from the cycle and are true. The rest are
-// absent rather than wrong. When a graphical panel wants them, the fix is on the
-// CPU and the bus, and it will be a real fix -- not a lookup table on this card.
+// Either fix is now purely CPU-side and needs NO change here, precisely because this
+// card forwards c.status instead of deriving it.
+//
+//   * INTE, PROT, WAIT, HLDA -- NOT the status word (Operator's Manual §3, the
+//     machine-control indicators). These are PINS the panel drives or watches, and
+//     they belong to the wire `flags` byte, not `status`. Deferred entirely.
 //
 // AND THE MANUAL'S OWN DISCLAIMER, which is the best argument for not overfitting
 // this: "While running a program, however, LEDs may appear to give erroneous
@@ -84,25 +90,30 @@
 // that went by. At 2 MHz that is a blur, and it was a blur in 1975.
 
 #include "core/board.h"
+#include "boards/frontpanel-link.h"
 
+#include <chrono>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace altair {
 
-// The status lamps we can honestly derive from a bus cycle. See the header note
-// above for the ones that are missing and what it would take to light them.
-enum StatusLamp : uint8_t {
-    LampMemR = 1 << 0,  // the cycle is a memory read
-    LampInp  = 1 << 1,  // ...an input cycle
-    LampOut  = 1 << 2,  // ...an output cycle
-    LampWo   = 1 << 3,  // WO* is ACTIVE LOW on the panel: lit means WRITE.
-    LampInt  = 1 << 4,  // INTA -- the interrupt acknowledge cycle
-};
+// The old StatusLamp enum lived here -- a bespoke bit layout this card synthesized
+// from c.type. It is gone: the status word is now a bus signal (Status8080 in
+// bus.h), latched on BusCycle and forwarded verbatim by snoop(). See the header note.
 
 class FrontPanelBoard : public Board {
 public:
+    // stream_ holds a NullStream from birth -- there is no null pointer in the stream
+    // path, ever (host/stream.h). Both are out of line because ByteStream is only
+    // forward-declared here (board.h), so a unique_ptr<ByteStream> member cannot be
+    // constructed or destroyed until the .cpp sees the full type.
+    FrontPanelBoard();
+    ~FrontPanelBoard() override;
+
     std::string type() const override { return "fp"; }
 
     // Port 0xFF, read, and nothing else. See the decode note above.
@@ -130,6 +141,51 @@ public:
     // ...but the LAMPS go out. There is no light without power.
     void power() override;
 
+    // ---- THE GRAPHICAL PANEL BRIDGE -- one serial-style connector, "gui". --------
+    //
+    // The fp board is a CARD, and a graphical front panel is a VIEW onto it (DESIGN.md
+    // 3, line 104). The view lives in another process -- altairsim-fp, a TCP server --
+    // and this card dials OUT to it: `CONNECT fp0:gui socket:HOST:PORT`. The board
+    // never learns what a socket is; the monitor resolves the endpoint to a ByteStream
+    // and hands it down, exactly as it does for a serial card's tty (DESIGN.md 7.7).
+    // No new monitor code and no CLI flag -- a declared unit is the whole seam.
+    std::vector<UnitDef> units() const override;
+
+    bool connect(const std::string& unit, const std::string& endpoint,
+                 std::string& err) override;
+    bool disconnect(const std::string& unit, std::string& err) override;
+
+    // THE ONE HOST TURN (DESIGN.md 7.1). Speaks the wire protocol to the bridge:
+    // greets on connect, streams `L` status frames (throttled to fps, only when they
+    // change and the socket can take them), reads `W`/`S` switch frames back, and
+    // redials a line that dropped -- on a capped backoff, since the bridge is opened
+    // and closed out of band. No thread: one non-blocking pass per emulated slice.
+    void pump() override;
+
+    // The bridge went away, or answered again -- said ONCE per edge, not per retry. The
+    // base pulls the socket layer's own log (the `socket` debug channel); this adds the
+    // board's. Both reach the operator through the monitor's post-command drain.
+    std::vector<std::string> drainLog() override;
+
+    // The monitor resolves an endpoint string to a stream; the BOARD is not allowed to
+    // know what a socket is (DESIGN.md 7.7). Injected once, in main().
+    using EndpointResolver =
+        std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)>;
+    static void setResolver(EndpointResolver r);
+
+    // The connector, for an operator that owns the endpoint. NON-OWNING: this card owns
+    // the stream (unlike a serial card, where the UART owns it). See Board::unitStream.
+    ByteStream* unitStream(const std::string& unit) override {
+        return unit == "gui" ? stream_.get() : nullptr;
+    }
+
+    // The operator's raw CONNECT spec -- "" when nothing is plugged in. This is the
+    // REDIAL TARGET pump() uses to reopen a bridge that dropped (Checkpoint ③); it is
+    // deliberately NOT what SHOW/CONFIG SAVE render (that is the stream's canonical
+    // describe(), via units()), because the two can differ and only describe() is a
+    // round-trip fixed point.
+    std::string endpoint() const { return endpoint_; }
+
     // ---- The switch row, and the lamps. The graphical panel reads THESE. ----
 
     uint16_t switches() const { return sw_; }
@@ -141,7 +197,12 @@ public:
 
     uint16_t addressLamps() const { return addrLeds_; }
     uint8_t dataLamps() const { return dataLeds_; }
-    uint8_t statusLamps() const { return status_; }
+
+    // The 8080 status word off the last bus cycle (Status8080 in bus.h), forwarded
+    // verbatim -- NOT lamp bits. The graphical bridge renders it to the status LEDs
+    // raw, WO* included (active low: lit on read, dark on write -- no inversion on
+    // either side). Named for what it is: a bus signal.
+    uint8_t busStatus() const { return status_; }
 
     // SNAPSHOT/RESTORE (DESIGN.md 13). The switch row is machine-visible state -- the
     // guest reads the sense switches at port FF, and only a finger moves them, so
@@ -165,6 +226,48 @@ private:
     uint16_t addrLeds_ = 0;
     uint8_t  dataLeds_ = 0;
     uint8_t  status_   = 0;
+
+    // ---- The line to the graphical panel bridge. -------------------------------
+    //
+    // OWNED HERE, not by a chip -- this card has no UART; the panel IS the peripheral.
+    // Never null: a card with nothing plugged in holds a NullStream, not a dangling
+    // pointer (host/stream.h). endpoint_ is the spec CONNECT dialled, kept so pump()
+    // can redial the bridge if it is opened/closed out of band (Checkpoint ③).
+    std::unique_ptr<ByteStream> stream_;
+    std::string                 endpoint_;
+
+    // Panel refresh cap -- L frames per second on the wire. A board property, so
+    // `SET fp0 FPS=<n>` retunes it live (the DESIGN-native seam, no CLI flag). The host
+    // is the scarce resource; a flat-out guest must not become tens of thousands of
+    // frames/sec. Consumed in pump()'s throttle gate.
+    int fps_ = 256;
+
+    // ---- pump() state: handshake, throttle, reconnect. --------------------------
+    //
+    // ALL WALL-CLOCK, NOT EMULATED (std::chrono::steady_clock). The panel is a VIEW; how
+    // often it refreshes and how soon it redials are facts about the host and the human
+    // watching, not about the guest -- so a flat-out guest and an idle one feed the bridge
+    // at the same rate, and RECORD/REPLAY is unaffected because none of this is on the
+    // clock the guest can measure.
+    bool wasUp_ = false;  // carrier last slice -- to catch the connect/drop EDGE, not the level
+
+    // The negotiated protocol version, min(ours, the bridge's). One version exists, so
+    // nothing gates on it yet; stored because the handshake is where a v2 client learns
+    // it is talking to a v1 bridge, and that belongs here, not rediscovered per frame.
+    int wireVer_ = fplink::kProtocolVersion;
+
+    std::string rxLine_;    // inbound bytes, accumulated until '\n' completes one frame
+    std::string lastFrame_; // the last L we PUT on the wire -- the diff gate compares to this
+
+    // The throttle and the backoff. lastSend_ paces L frames to fps_; nextDial_/backoff_
+    // are the redial clock -- min on a fresh or just-dropped line, doubling toward a cap
+    // while dials keep failing, reset to min the moment carrier rises. Set in the ctor.
+    std::chrono::steady_clock::time_point lastSend_{};
+    std::chrono::steady_clock::time_point nextDial_{};
+    std::chrono::milliseconds             backoff_{};
+
+    bool loggedDown_ = false;         // "cannot reach the bridge" -- said once, not per retry
+    std::vector<std::string> log_;    // board-owned lines for drainLog() (connect/drop edges)
 };
 
 } // namespace altair

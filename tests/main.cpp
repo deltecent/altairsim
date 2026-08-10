@@ -8,6 +8,7 @@
 #include "boards/mits-88lpc.h"
 #include "boards/mits-88pio.h"
 #include "boards/mits-88sio.h"
+#include "boards/mits-frontpanel.h"
 #include "boards/mits-88uio.h"
 #include "boards/mits-680io.h"
 #include "boards/mits-680uio.h"
@@ -165,6 +166,7 @@ int main(int argc, char** argv) {
     altair::PmmiBoard::setResolver(altair::resolveEndpoint);
     altair::UsioBoard::setResolver(altair::resolveEndpoint);
     altair::CromemcoFdcBoard::setResolver(altair::resolveEndpoint);
+    altair::FrontPanelBoard::setResolver(altair::resolveEndpoint);
 
     // A graphics board draws into an injected Display; headless tests give it a
     // NullDisplay, so a VDM-1 renders into memory and a test reads the pixels back

@@ -962,11 +962,15 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 
 Altair front panel: the address switches, SA0..SA15. The top eight double as the SENSE switches, which IN 0FFH reads -- the panel answers no OUT
 
+**Units:** `gui` (serial, CONNECT)
+
 #### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `sense` | int | `0x0` | `0x0` .. `0xFF` | The SENSE switches, SA8..SA15 -- what IN 0FFH reads |
+| `fps` | int | `256` | `1` .. `1024` | Panel refresh cap -- L status frames per second sent to the bridge |
+| `connect` | string | `null` | text | The endpoint the graphical panel bridge lives at (CONNECT sets this) |
 
 
 ### `hostbridge`

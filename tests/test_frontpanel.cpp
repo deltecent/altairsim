@@ -1,12 +1,18 @@
 #include "test.h"
 
+#include "boards/frontpanel-link.h"
 #include "boards/mits-88cpu.h"
 #include "boards/mits-frontpanel.h"
 #include "boards/s100-memory.h"
 #include "config/toml.h"
 #include "core/machine.h"
+#include "host/stream.h"
+#include "platform/socket.h"
 
+#include <chrono>
+#include <memory>
 #include <string>
+#include <thread>
 
 using namespace altair;
 
@@ -66,6 +72,53 @@ std::string prop(Board& b, const std::string& name) {
         if (p.name == name) return p.get().text(p.radix);
     return "(no such property)";
 }
+
+// Poll `done` for up to ~2 s of REAL time, running `step` each pass with a short sleep.
+// The TCP handshake, the byte delivery and the reconnect are the KERNEL's to schedule,
+// not ours, and the board's throttle/backoff are on std::chrono::steady_clock -- so a
+// bare iteration-bounded spin can burn its budget in microseconds before any of it has
+// had wall-clock time to happen. Bounding by real time is the honest wait. Same shape as
+// test_lines.cpp. Returns the final state of `done`.
+template <class Step, class Pred>
+bool waitFor(Step step, Pred done) {
+    for (int i = 0; i < 200 && !done(); ++i) {
+        step();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return done();
+}
+
+// THE BRIDGE, played by the test. altairsim dials OUT (socket:HOST:PORT), so here the
+// test is the SERVER: it listens, accepts the board's call, and reads/writes the wire.
+// One client at a time, exactly like the real bridge. accept()/reconnect just work
+// because the listener stays up across a hangup.
+struct FakeBridge {
+    std::unique_ptr<platform::TcpListener> listener;
+    std::unique_ptr<platform::TcpConn>     conn;
+    std::string                            rx;  // everything the board has sent us
+
+    // One server turn: answer a (re)dial, then drain whatever the board wrote.
+    void poll() {
+        if (!conn) conn = listener->accept();
+        if (!conn) return;
+        conn->poll();
+        uint8_t b[512];
+        for (size_t n; (n = conn->read(b, sizeof b)) > 0;) rx.append((const char*)b, n);
+    }
+
+    void send(const std::string& s) {
+        if (conn) conn->write((const uint8_t*)s.data(), s.size());
+    }
+
+    // The far end puts the phone down -- a carrier drop the board must redial through.
+    void hangUp() {
+        if (conn) { conn->close(); conn.reset(); }
+    }
+
+    bool sawFromBoard(const std::string& needle) const {
+        return rx.find(needle) != std::string::npos;
+    }
+};
 
 } // namespace
 
@@ -139,7 +192,7 @@ void test_frontpanel() {
         // ...but there is no light without power.
         CHECK(r.fp->addressLamps() == 0, "POWER puts the address lamps out");
         CHECK(r.fp->dataLamps() == 0, "...and the data lamps");
-        CHECK(r.fp->statusLamps() == 0, "...and the status lamps");
+        CHECK(r.fp->busStatus() == 0, "...and the status word");
     }
 
     {
@@ -154,7 +207,10 @@ void test_frontpanel() {
         r.m.bus.memWrite(0x1234, 0x99);
         CHECK(r.fp->addressLamps() == 0x1234, "a memory WRITE lights the address it went to");
         CHECK(r.fp->dataLamps() == 0x99, "...and the byte that went there");
-        CHECK(r.fp->statusLamps() == LampWo, "...and WO*, which is lit on a write");
+        // WO* is ACTIVE LOW: 0 on a write. So the status word for a memory write is
+        // 0x00 -- no MEMR, and WO* cleared. (The bridge lights the WO LED when it sees
+        // WO* == 0; that inversion is the bridge's job, not ours. See bus.h Status8080.)
+        CHECK(r.fp->busStatus() == 0x00, "...and the status word is 0 -- WO* active low, 0 on a write");
 
         // A READ lights the data lamps too, and THAT is the part that needed a bus
         // fix: BusCycle::data is 0 while a read is in flight (nobody has driven the
@@ -165,17 +221,19 @@ void test_frontpanel() {
         CHECK(v == 0x99, "the byte reads back");
         CHECK(r.fp->addressLamps() == 0x1234, "a memory READ lights the address");
         CHECK(r.fp->dataLamps() == 0x99, "...and the byte that came BACK -- see Bus::settle()");
-        CHECK(r.fp->statusLamps() == LampMemR, "...and MEMR");
+        // A read: MEMR set, and WO* set (active low, 1 on a read). 0x82.
+        CHECK(r.fp->busStatus() == (StMemR | StWo), "...and the status word is MEMR|WO* (0x82)");
 
         // The floating bus is a byte too. It is 0xFF because nothing drove it, and
         // eight LEDs wired to eight pulled-up lines will happily show you that.
         r.m.bus.ioRead(0x42);
         CHECK(r.fp->dataLamps() == 0xFF, "an unclaimed port floats, and the lamps show FF");
-        CHECK(r.fp->statusLamps() == LampInp, "...on an INP cycle");
+        CHECK(r.fp->busStatus() == (StInp | StWo), "...on an INP cycle: INP|WO* (0x42)");
 
         r.m.bus.ioWrite(0x42, 0x07);
         CHECK(r.fp->dataLamps() == 0x07, "an OUT lights the byte");
-        CHECK(r.fp->statusLamps() == (LampOut | LampWo), "...with OUT and WO* together");
+        // An output: OUT set, WO* cleared (0 on a write). 0x10.
+        CHECK(r.fp->busStatus() == StOut, "...with OUT set and WO* clear (0x10)");
     }
 
     {
@@ -234,5 +292,173 @@ void test_frontpanel() {
               "...and the error says where the switches went");
         CHECK(err.find("type  = \"fp\"") != std::string::npos,
               "...and hands you the two lines that replace it");
+    }
+
+    SECTION("the wire codec -- L/HELLO out, W/S/HELLO in (no socket)");
+    {
+        using namespace altair::fplink;
+
+        // ---- Outbound frames are the spec's exact grammar: lowercase, padded. ----
+        CHECK(encodeL(0x1234, 0x99, 0x82, 0x00) == "L 1234 99 82 00\n",
+              "L is `L <addr:04x> <data:02x> <status:02x> <flags:02x>`");
+        CHECK(encodeL(0xffff, 0x0f, 0x00, 0x00) == "L ffff 0f 00 00\n",
+              "...zero-padded and lowercase throughout");
+        CHECK(encodeHello() == "HELLO altairsim-fp 1\n", "HELLO carries our version");
+
+        // ---- THE STATUS BYTE CROSSES VERBATIM. No remap, no inversion. WO* is
+        // active low, so a WRITE puts 00 on the wire and a READ puts 82 -- exactly
+        // what the bus latched. This is the whole cross-repo contract in two lines.
+        CHECK(encodeL(0, 0, 0x00, 0).find(" 00 00\n") != std::string::npos,
+              "a write's status word (WO*=0) crosses as 00");
+        CHECK(encodeL(0, 0, StMemR | StWo, 0) == "L 0000 00 82 00\n",
+              "a read's status word (MEMR|WO*) crosses as 82 -- verbatim");
+
+        // ---- Inbound: HELLO, and version is whatever the bridge said (min() is the
+        // caller's job, not the codec's). ----
+        PanelMsg h = parseLine("HELLO altairsim-fp 1");
+        CHECK(h.kind == PanelMsg::Kind::Hello && h.value == 1, "HELLO parses to its version");
+        CHECK(parseLine("HELLO altairsim-fp 3").value == 3,
+              "...and reports the remote version as-is (negotiation is upstream)");
+        CHECK(parseLine("HELLO something-else 1").kind == PanelMsg::Kind::None,
+              "a HELLO for a different protocol is ignored");
+
+        // ---- Inbound: W (full 16-bit word) and S (sense byte alone). ----
+        PanelMsg w = parseLine("W abcd");
+        CHECK(w.kind == PanelMsg::Kind::Switches && w.value == 0xABCD, "W is the 16-bit switch word");
+        PanelMsg s = parseLine("S 81");
+        CHECK(s.kind == PanelMsg::Kind::Sense && s.value == 0x81, "S is the sense byte");
+
+        // ---- Leniency exactly where the spec grants it, and nowhere else. ----
+        CHECK(parseLine("  W abcd\r").value == 0xABCD, "leading spaces and a trailing CR are tolerated");
+        CHECK(parseLine("W abcd 9999").value == 0xABCD, "trailing fields are ignored (forward-compat)");
+        CHECK(parseLine("X 12").kind == PanelMsg::Kind::None, "an unknown frame type is ignored");
+        CHECK(parseLine("W xyz").kind == PanelMsg::Kind::None, "bad hex is dropped");
+        CHECK(parseLine("W abc").kind == PanelMsg::Kind::None, "a short (wrong-width) field is dropped");
+        CHECK(parseLine("").kind == PanelMsg::Kind::None, "a blank line is nothing");
+    }
+
+    SECTION("the codec formats the board's own bus signals -- WO* active low end to end");
+    {
+        using namespace altair::fplink;
+
+        // The board latches the bus status word; the codec ships it verbatim. Prove
+        // the two agree, which is the point of keeping status ON THE BUS.
+        Rig r;
+
+        r.m.bus.memWrite(0x2000, 0x55);
+        CHECK(encodeL(r.fp->addressLamps(), r.fp->dataLamps(), r.fp->busStatus(), 0)
+                  == "L 2000 55 00 00\n",
+              "a memory write ships status 00 -- WO* active low, 0 on a write");
+
+        uint8_t v = r.m.bus.memRead(0x2000);
+        CHECK(v == 0x55, "the byte reads back");
+        CHECK(encodeL(r.fp->addressLamps(), r.fp->dataLamps(), r.fp->busStatus(), 0)
+                  == "L 2000 55 82 00\n",
+              "a memory read ships status 82 -- MEMR|WO*, verbatim from the bus");
+    }
+
+    // -----------------------------------------------------------------------
+    // OVER A REAL SOCKET. altairsim dials OUT to the bridge; the test IS the bridge,
+    // listening on the loopback interface. This is the one place the suite touches the
+    // OS, because the whole claim -- the panel handshakes, streams lamps, reads switches
+    // and redials -- is a claim about what crosses a socket. Mirrors test_lines.cpp.
+    // -----------------------------------------------------------------------
+    SECTION("socket: -- the panel dials out, greets, and streams the bus verbatim");
+    {
+        using namespace altair::fplink;
+
+        std::string err;
+        FakeBridge  br;
+        br.listener = platform::listenTcp(0, err);
+        CHECK(br.listener != nullptr, ("the bridge listens: " + err).c_str());
+
+        if (br.listener) {
+            Rig r;
+
+            // A memory write BEFORE we connect, so the very first L frame the panel
+            // ships has something recognisable in it (WO* active low -> 00 on a write).
+            r.m.bus.memWrite(0x2000, 0x55);
+
+            std::string spec = "socket:127.0.0.1:" + std::to_string(br.listener->port());
+            CHECK(r.fp->connect("gui", spec, err), ("CONNECT fp0:gui " + spec + ": " + err).c_str());
+
+            // The dial completes, the panel sees carrier, and it GREETS -- HELLO with our
+            // version. The bridge does nothing but listen and read.
+            bool greeted = waitFor([&] { br.poll(); r.fp->pump(); },
+                                   [&] { return br.sawFromBoard("HELLO altairsim-fp 1\n"); });
+            CHECK(greeted, "the panel dials out and greets the bridge");
+
+            // The bridge greets back. min(ours, theirs) is 1 either way; the panel must
+            // simply not choke on it (it is an inbound frame like any other).
+            br.send("HELLO altairsim-fp 1\n");
+
+            // The first lamp frame carries the pre-connect write, VERBATIM off the bus.
+            bool sawWrite = waitFor([&] { br.poll(); r.fp->pump(); },
+                                    [&] { return br.sawFromBoard("L 2000 55 00 00\n"); });
+            CHECK(sawWrite, "a memory write streams as L 2000 55 00 00 -- WO* active low");
+
+            // A read moves the lamps AND the status word (MEMR|WO* -> 82). The diff gate
+            // lets exactly this new frame through; the throttle just paces it.
+            uint8_t got = r.m.bus.memRead(0x2000);
+            CHECK(got == 0x55, "the byte reads back");
+            bool sawRead = waitFor([&] { br.poll(); r.fp->pump(); },
+                                   [&] { return br.sawFromBoard("L 2000 55 82 00\n"); });
+            CHECK(sawRead, "a read streams as L 2000 55 82 00 -- MEMR|WO*, verbatim");
+
+            // ---- Inbound: the bridge flips a switch, the GUEST reads it at port FF. ----
+            br.send("S 81\n");
+            bool sensed = waitFor([&] { br.poll(); r.fp->pump(); },
+                                  [&] { return r.fp->sense() == 0x81; });
+            CHECK(sensed, "S 81 from the bridge lands in the SENSE switches");
+            CHECK(r.m.bus.ioRead(0xFF) == 0x81, "...and a guest IN 0FFH reads exactly that");
+
+            // ...and the full 16-bit switch word, high byte still the sense switches.
+            br.send("W abcd\n");
+            bool switched = waitFor([&] { br.poll(); r.fp->pump(); },
+                                    [&] { return r.fp->switches() == 0xABCD; });
+            CHECK(switched, "W abcd sets the whole switch row");
+            CHECK(r.m.bus.ioRead(0xFF) == 0xAB, "...and the sense byte is its high half");
+        }
+    }
+
+    SECTION("socket: -- the bridge goes away, and the panel redials on its own");
+    {
+        std::string err;
+        FakeBridge  br;
+        br.listener = platform::listenTcp(0, err);
+
+        if (br.listener) {
+            Rig r;
+            std::string spec = "socket:127.0.0.1:" + std::to_string(br.listener->port());
+            CHECK(r.fp->connect("gui", spec, err), "CONNECT fp0:gui");
+
+            bool up1 = waitFor([&] { br.poll(); r.fp->pump(); },
+                               [&] { return br.sawFromBoard("HELLO"); });
+            CHECK(up1, "the first session connects and greets");
+
+            // THE BRIDGE CLOSES ITS WINDOW. Carrier drops; the panel must notice and
+            // redial the SAME endpoint on its own -- the bridge is relaunched out of band,
+            // and only DISCONNECT tells the panel to stay unplugged.
+            br.hangUp();
+            br.rx.clear();  // so the next HELLO is unmistakably from the REDIAL
+
+            bool up2 = waitFor([&] { br.poll(); r.fp->pump(); },
+                               [&] { return br.sawFromBoard("HELLO"); });
+            CHECK(up2, "the panel redialled the dropped bridge, with no operator help");
+
+            // ...and the redialled line WORKS: a switch frame still reaches the guest.
+            br.send("S 42\n");
+            bool sensed = waitFor([&] { br.poll(); r.fp->pump(); },
+                                  [&] { return r.fp->sense() == 0x42; });
+            CHECK(sensed, "the reconnected session carries switches like the first did");
+
+            // DISCONNECT is the explicit stop: after it, a dropped line is NOT redialled.
+            CHECK(r.fp->disconnect("gui", err), "DISCONNECT fp0:gui");
+            br.hangUp();
+            br.rx.clear();
+            bool up3 = waitFor([&] { br.poll(); r.fp->pump(); },
+                               [&] { return br.sawFromBoard("HELLO"); });
+            CHECK(!up3, "a DISCONNECTed panel does not redial -- the operator pulled the plug");
+        }
     }
 }
