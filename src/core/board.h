@@ -577,6 +577,15 @@ public:
     // scheduler happened to deliver a packet.
     virtual void pump() {}
 
+    // THE OPERATOR-VISIBLE RUN STATE, fanned out from the monitor when a RUN session
+    // starts and stops (Machine::setRunning). A board that drives a run/stop control
+    // lamp -- the front panel's WAIT indicator -- watches it here. This is emphatically
+    // NOT the debugger's per-slice `Machine::running` flag, which is true only inside
+    // debug.run() and always false when pump() is called: that one asks "is a time
+    // slice turning right now", this one asks "has the operator started the machine".
+    // Most boards have no such lamp and ignore it.
+    virtual void setRunning(bool running) { (void)running; }
+
     // THE STREAM ON ONE OF THIS CARD'S SERIAL UNITS, or null for a card that has no
     // such line (which is most of them). It is the connector on the back panel: the
     // monitor CONNECTs an endpoint to it, and an operator that OWNS the endpoint -- the

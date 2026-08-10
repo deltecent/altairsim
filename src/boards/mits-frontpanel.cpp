@@ -64,6 +64,9 @@ void FrontPanelBoard::power() {
     addrLeds_ = 0;
     dataLeds_ = 0;
     status_   = 0;
+    // A freshly powered Altair sits stopped, WAIT lit -- the operator has not run it
+    // yet. The monitor clears this the instant a RUN session begins (setRunning).
+    running_  = false;
 }
 
 void FrontPanelBoard::serialize(StateWriter& w) const {
@@ -303,7 +306,11 @@ void FrontPanelBoard::pump() {
     // cost nothing. The bridge repaints at its own rate from the last frame it holds.
     if (now - lastSend_ >= std::chrono::microseconds(1000000 / fps_)) {
         lastSend_ = now;
-        std::string frame = fplink::encodeL(addrLeds_, dataLeds_, status_, 0);
+        // WAIT is the only machine-control flag we model: lit when the operator has
+        // the machine stopped, dark while a RUN session turns (see setRunning). The
+        // rest of the flags group is still 0.
+        uint8_t flags = running_ ? 0 : fplink::FlWait;
+        std::string frame = fplink::encodeL(addrLeds_, dataLeds_, status_, flags);
         if (frame != lastFrame_ && stream_->writable()) {
             stream_->write(reinterpret_cast<const uint8_t*>(frame.data()), frame.size());
             lastFrame_ = std::move(frame);
