@@ -78,6 +78,12 @@ public:
     // socket. Once per time slice, never inside a bus cycle (DESIGN.md 7.7).
     void pump();
 
+    // Tell every board the operator started (true) or stopped (false) the machine,
+    // so a board with a run/stop control lamp -- the front panel's WAIT indicator --
+    // can track it. Set by the monitor around a RUN session. NOT the `running` field
+    // below, which is the per-slice debugger flag; see Board::setRunning.
+    void setRunning(bool r);
+
     // BYTES THE GUEST HAS RECEIVED ACROSS THE WHOLE BACKPLANE, monotonic. The run loop
     // watches its delta to know whether a byte is arriving anywhere -- the one signal that
     // tells a transfer from a prompt, on ANY line and not just the console (Board::rxBytes,
@@ -184,7 +190,10 @@ public:
     // rather than picking one. Same rule as two boards decoding one address.
     std::vector<Board*> masters();
 
-    // True only while the debugger's run loop is turning.
+    // True only while the debugger's run loop is turning. This is a DIFFERENT thing
+    // from setRunning() above: this flag is false whenever pump() runs (pump() is
+    // called between slices, not during one), so it cannot drive a run/stop lamp --
+    // that is exactly why setRunning() exists as a separate operator-level signal.
     //
     // IT DOES NOT GATE PROPERTIES, and this comment used to say it did. There is no
     // "config-time only" property and there is no `runtime` flag -- every property can be

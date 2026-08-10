@@ -58,6 +58,14 @@ void Machine::pump() {
     for (auto& b : boards_) b->pump();
 }
 
+// The operator started or stopped the machine (a RUN session began/ended). Fan it
+// out so a board with a run/stop control lamp -- the front panel's WAIT indicator --
+// can track it. This is NOT the `running` field below (the per-slice debugger flag);
+// see Board::setRunning and the field's own note.
+void Machine::setRunning(bool r) {
+    for (auto& b : boards_) b->setRunning(r);
+}
+
 uint64_t Machine::rxBytes() const {
     uint64_t n = 0;
     for (const auto& b : boards_) n += b->rxBytes();

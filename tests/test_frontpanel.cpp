@@ -4,6 +4,7 @@
 #include "boards/mits-88cpu.h"
 #include "boards/mits-frontpanel.h"
 #include "boards/s100-memory.h"
+#include "cli/monitor.h"
 #include "config/toml.h"
 #include "core/machine.h"
 #include "host/stream.h"
@@ -11,6 +12,7 @@
 
 #include <chrono>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -313,6 +315,14 @@ void test_frontpanel() {
         CHECK(encodeL(0, 0, StMemR | StWo, 0) == "L 0000 00 82 00\n",
               "a read's status word (MEMR|WO*) crosses as 82 -- verbatim");
 
+        // ---- The `flags` byte carries WAIT (bit 2), the one machine-control
+        // indicator altairsim drives. It is SEPARATE from the status word above --
+        // WAIT is a panel pin, not a bus signal -- and matches altairsim-fp's
+        // FlagWait = 1u << 2, which the bridge already renders.
+        CHECK(FlWait == 0x04, "FlWait is bit 2, matching altairsim-fp's FlagWait");
+        CHECK(encodeL(0x2001, 0x55, StMemR | StWo, FlWait) == "L 2001 55 82 04\n",
+              "WAIT lit rides the flags byte as 04, alongside an untouched status word");
+
         // ---- Inbound: HELLO, and version is whatever the bridge said (min() is the
         // caller's job, not the codec's). ----
         PanelMsg h = parseLine("HELLO altairsim-fp 1");
@@ -393,17 +403,19 @@ void test_frontpanel() {
             br.send("HELLO altairsim-fp 1\n");
 
             // The first lamp frame carries the pre-connect write, VERBATIM off the bus.
+            // flags=04: the board has never been RUN (running_ defaults false), so WAIT
+            // is lit -- the machine-control group the run state drives (see setRunning).
             bool sawWrite = waitFor([&] { br.poll(); r.fp->pump(); },
-                                    [&] { return br.sawFromBoard("L 2000 55 00 00\n"); });
-            CHECK(sawWrite, "a memory write streams as L 2000 55 00 00 -- WO* active low");
+                                    [&] { return br.sawFromBoard("L 2000 55 00 04\n"); });
+            CHECK(sawWrite, "a memory write streams as L 2000 55 00 04 -- WO* active low, WAIT lit");
 
             // A read moves the lamps AND the status word (MEMR|WO* -> 82). The diff gate
             // lets exactly this new frame through; the throttle just paces it.
             uint8_t got = r.m.bus.memRead(0x2000);
             CHECK(got == 0x55, "the byte reads back");
             bool sawRead = waitFor([&] { br.poll(); r.fp->pump(); },
-                                   [&] { return br.sawFromBoard("L 2000 55 82 00\n"); });
-            CHECK(sawRead, "a read streams as L 2000 55 82 00 -- MEMR|WO*, verbatim");
+                                   [&] { return br.sawFromBoard("L 2000 55 82 04\n"); });
+            CHECK(sawRead, "a read streams as L 2000 55 82 04 -- MEMR|WO*, WAIT lit, verbatim");
 
             // ---- Inbound: the bridge flips a switch, the GUEST reads it at port FF. ----
             br.send("S 81\n");
@@ -459,6 +471,106 @@ void test_frontpanel() {
             bool up3 = waitFor([&] { br.poll(); r.fp->pump(); },
                                [&] { return br.sawFromBoard("HELLO"); });
             CHECK(!up3, "a DISCONNECTed panel does not redial -- the operator pulled the plug");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // THE WAIT LAMP. It is not a bus signal -- it is the operator's RUN state, fanned
+    // to the board by Machine::setRunning (the monitor calls it around a run). WAIT is
+    // lit when the machine is stopped, dark while it runs. It rides the `flags` byte.
+    // -----------------------------------------------------------------------
+    SECTION("socket: -- WAIT tracks the run state (flags bit 2), driven by setRunning");
+    {
+        std::string err;
+        FakeBridge  br;
+        br.listener = platform::listenTcp(0, err);
+        CHECK(br.listener != nullptr, ("the bridge listens: " + err).c_str());
+
+        if (br.listener) {
+            Rig r;
+            std::string spec = "socket:127.0.0.1:" + std::to_string(br.listener->port());
+            CHECK(r.fp->connect("gui", spec, err), "CONNECT fp0:gui");
+
+            bool up = waitFor([&] { br.poll(); r.fp->pump(); },
+                              [&] { return br.sawFromBoard("HELLO"); });
+            CHECK(up, "the panel connects and greets");
+
+            // The machine starts STOPPED (running_ defaults false, power() confirms it):
+            // WAIT is lit. A write here ships flags=04 -- the run state, not the bus.
+            r.m.bus.memWrite(0x3000, 0x11);
+            bool stopped = waitFor([&] { br.poll(); r.fp->pump(); },
+                                   [&] { return br.sawFromBoard("L 3000 11 00 04\n"); });
+            CHECK(stopped, "a stopped machine ships WAIT lit (flags 04)");
+
+            // The operator RUNs it -- through Machine::setRunning, exactly as the monitor
+            // does, which also proves the fan-out reaches this board. WAIT goes dark.
+            r.m.setRunning(true);
+            r.m.bus.memWrite(0x3000, 0x22);  // a fresh lamp value so the diff gate ships it
+            bool running = waitFor([&] { br.poll(); r.fp->pump(); },
+                                   [&] { return br.sawFromBoard("L 3000 22 00 00\n"); });
+            CHECK(running, "a running machine clears WAIT (flags 00) -- setRunning fanned out");
+
+            // ...and stopping it lights WAIT again. This is a FLAGS-ONLY change (the lamps
+            // do not move), which still flips the frame string, so the diff gate ships it.
+            r.m.setRunning(false);
+            bool again = waitFor([&] { br.poll(); r.fp->pump(); },
+                                 [&] { return br.sawFromBoard("L 3000 22 00 04\n"); });
+            CHECK(again, "stopping re-lights WAIT -- a flags-only change still ships");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // THE BUG THAT STARTED THIS: a discrete command (EXAMINE/STEP/DEPOSIT/NEXT) ran its
+    // bus cycle and snoop() latched the lamps -- but nothing pushed a frame, so the panel
+    // sat frozen. The RUN loop was the only pump() site. Each handler now pumps once. This
+    // test drives the REAL monitor and asserts the frame lands, WITHOUT pumping the board
+    // itself in the poll: if the handler did not pump, no frame ships and the wait fails.
+    // -----------------------------------------------------------------------
+    SECTION("the monitor refreshes the panel after a discrete command (STEP/EXAMINE)");
+    {
+        std::string err;
+        FakeBridge  br;
+        br.listener = platform::listenTcp(0, err);
+        CHECK(br.listener != nullptr, ("the bridge listens: " + err).c_str());
+
+        if (br.listener) {
+            Rig            r;
+            Monitor        mon(r.m);
+            std::ostringstream sink;
+
+            // MVI A,55 at 0x2000 -- one opcode fetch and one operand read to look at.
+            r.load({0x3E, 0x55}, 0x2000);
+
+            std::string spec = "socket:127.0.0.1:" + std::to_string(br.listener->port());
+            CHECK(mon.exec("CONNECT fp0:gui " + spec, sink),
+                  "CONNECT fp0:gui through the monitor");
+
+            bool up = waitFor([&] { br.poll(); r.fp->pump(); },
+                              [&] { return br.sawFromBoard("HELLO"); });
+            CHECK(up, "the panel connects and greets");
+
+            // Let the throttle window (default ~3.9 ms) fully elapse, so the SINGLE pump
+            // each handler does is not dropped as too-soon. A human at the panel is always
+            // slower than this; the test must be too.
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            br.rx.clear();  // so what we match below is unmistakably the command's frame
+
+            // EXAMINE is a bus cycle the CPU drives: PC <- 2000, MEMR the byte (3E),
+            // status 82. The handler's pump() must ship it -- WAIT lit (stopped).
+            mon.exec("EXAMINE 2000", sink);
+            bool sawExamine = waitFor([&] { br.poll(); },  // NB: the poll does NOT pump the board
+                                      [&] { return br.sawFromBoard("L 2000 3e 82 04\n"); });
+            CHECK(sawExamine, "EXAMINE refreshed the panel -- L 2000 3e 82 04 (WAIT lit)");
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            br.rx.clear();
+
+            // STEP runs the one instruction; the last bus cycle is the operand read at
+            // 2001 (data 55, status 82). Again the handler pumps; the poll does not.
+            mon.exec("STEP", sink);
+            bool sawStep = waitFor([&] { br.poll(); },
+                                   [&] { return br.sawFromBoard("L 2001 55 82 04\n"); });
+            CHECK(sawStep, "STEP refreshed the panel -- L 2001 55 82 04 (last cycle, WAIT lit)");
         }
     }
 }

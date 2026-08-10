@@ -23,12 +23,19 @@ namespace altair::fplink {
 // adopt min(local, remote). See parseLine() / PanelMsg::Hello.
 inline constexpr int kProtocolVersion = 1;
 
+// The machine-control `flags` byte (spec §3). Only WAIT is modelled so far: it is
+// driven from the monitor's RUN-session state (Machine::setRunning), NOT the 8080
+// status word -- WAIT/HLDA/INTE/PROT are panel pins, not bus signals. Bit 2 matches
+// altairsim-fp's `FlagWait = 1u << 2` (protocol.h); the bridge already renders it.
+// The rest of the group (RUN/HLDA/...) is still passed as 0.
+inline constexpr uint8_t FlWait = 0x04;
+
 // ---- Outbound: client -> bridge --------------------------------------------
 
 // "L <addr:04x> <data:02x> <status:02x> <flags:02x>\n" -- lowercase hex, zero-padded,
 // fixed width. `status` is the 8080 status word verbatim (WO* active low); `flags` is
-// the bridge-composed run/halt/wait group, which altairsim does not model yet and
-// passes as 0 (the spec's §3 machine-control indicators -- see the plan's Deferred).
+// the bridge-composed run/halt/wait group -- of which altairsim currently drives only
+// WAIT (FlWait, bit 2); the remaining §3 machine-control indicators are passed as 0.
 std::string encodeL(uint16_t addr, uint8_t data, uint8_t status, uint8_t flags);
 
 // "HELLO altairsim-fp <ver>\n" -- sent once on connect.

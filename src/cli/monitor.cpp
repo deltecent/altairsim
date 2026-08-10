@@ -1589,6 +1589,12 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
         g_display->setRunning(true);  // clears any "simulator stopped" from the last stop
     }
 
+    // Tell the boards the machine is now RUNNING -- unconditional, unlike the display
+    // above: the front panel exists (and its WAIT lamp watches this) whether or not a
+    // window is open. This clears WAIT for the duration of the run; the stop path below
+    // restores it. Distinct from Machine::running, which is a per-slice debugger flag.
+    m_.setRunning(true);
+
     RunResult r;
     uint64_t lastWritten = con.written();
     uint64_t lastStarved = con.starved();
@@ -1853,6 +1859,12 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
         g_display->yieldFocus();
         g_display->setRunning(false);  // the guest is stopped; say so on the frozen frame
     }
+
+    // The machine has stopped -- WAIT lights again. Unconditional (the panel has no
+    // window), and followed by a pump() so the WAIT-on frame ships immediately rather
+    // than waiting for the next discrete command to push it.
+    m_.setRunning(false);
+    m_.pump();
 
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it
 
@@ -4125,6 +4137,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (m_.bus.lastUnclaimed()) out << "   (nobody drives this -- the bus floated it)";
         out << "\n";
         flush(out);
+        // EXAMINE ran a real bus cycle (the CPU drove the PC onto the address lines
+        // and MEMR'd the byte), which snoop() latched onto the panel's lamps. Push it:
+        // the RUN loop is the only *other* pump() site, so without this the graphical
+        // front panel would sit frozen after a discrete command.
+        m_.pump();
         return true;
     }
 
@@ -4162,6 +4179,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             ++A;
         }
         flush(out);
+        // Push the last write's bus cycle to the panel (see EXAMINE). The burn/ROM
+        // path drives no bus cycle, so its pump is a diff-gated no-op -- harmless.
+        m_.pump();
         return true;
     }
 
@@ -4755,6 +4775,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (stopped) break;
         }
         flush(out);
+        // Push the last instruction's final bus cycle to the panel (see EXAMINE). One
+        // pump reflects the resting state, not per-instruction -- the lamps show the
+        // last bus cycle, as they did on real hardware.
+        m_.pump();
         disasmNext_ = c->pc();
         if (!echo) {
             char b[96];
@@ -4790,6 +4814,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (r.why != StopReason::Steps) reportStop(r, m_.debug, out);
         }
         flush(out);
+        // Push the resting bus cycle to the panel (see EXAMINE). The CALL/RST branch
+        // already pumped inside runMachine; this extra pump is diff-gated -- harmless.
+        m_.pump();
         disasmNext_ = c->pc();
         showRegs(out);
         return true;
@@ -5394,21 +5421,35 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
     std::string line;
     LineEditor ed;
 
-    // KEEP THE VIDEO WINDOW ALIVE WHILE THE MACHINE IS STOPPED (DESIGN.md 7.4). The run
-    // loop pumps the SDL host once a slice, but a stopped machine sits here in the line
-    // editor's blocking read and pumps nothing -- so the compositor pings the window for
-    // liveness, gets no answer, and the OS offers to Force-Quit us (TODO). The editor runs
-    // this on each idle tick: pollEvents() drains SDL's whole event queue (window liveness,
-    // AND it tosses any gamepad events sharing that one queue -- so servicing the display
-    // covers the joystick without waking the gamepad subsystem on a machine that has none),
-    // and a close box clicked HERE -- unlike one clicked mid-RUN -- means the operator is
-    // done with the window, so it closes for real. Liveness only: no emulated time advances
-    // and nothing on the backplane is touched. A null display (headless, a test) makes this
-    // a no-op.
-    ed.setIdleHook([] {
-        if (!g_display) return;
-        g_display->pollEvents();
-        if (g_display->takeQuitRequest()) g_display->closeWindow();
+    // KEEP THE BACKPLANE'S HOST SIDE ALIVE WHILE THE MACHINE IS STOPPED (DESIGN.md 7.4).
+    // The run loop pumps once a slice, but a stopped machine sits here in the line editor's
+    // blocking read and pumps nothing -- so anything that needs a periodic host turn stalls
+    // until the first RUN. The editor runs this on each idle tick (a 50 ms input timeout):
+    //
+    //  * m_.pump() gives every board its host turn. The front panel dials OUT to
+    //    altairsim-fp on an async socket that takes several turns to connect; without a pump
+    //    at the prompt it never finishes connecting -- so STEP right after launch, and the
+    //    machine's startup state, never reached the panel until a RUN loop pumped in a tight
+    //    loop. Now the dial completes here and the current lamp state (the power-on state, or
+    //    the rest after a STEP) ships the moment the bridge answers. pump() advances NO
+    //    emulated time and cannot steal the operator's keystrokes: the console keyboard is
+    //    drained by con.poll() during a RUN, not inside pump() (see the run loop), so at the
+    //    prompt those keys go to THIS line editor and never enter a buffer a board reads.
+    //    Board chatter (a "panel bridge connected" line) is left for the next command's
+    //    drainBoardLog() -- the idle hook must not write over the line editor's redraw.
+    //
+    //  * pollEvents() drains SDL's whole event queue so the compositor's liveness ping is
+    //    answered and the OS does not offer to Force-Quit us (it also tosses any gamepad
+    //    events sharing that queue). A close box clicked HERE -- unlike one clicked mid-RUN
+    //    -- means the operator is done with the window, so it closes for real. Null display
+    //    (headless, a test) skips only this half; the pump still runs, because the panel is
+    //    a TCP board that needs servicing with or without a local window.
+    ed.setIdleHook([this] {
+        m_.pump();
+        if (g_display) {
+            g_display->pollEvents();
+            if (g_display->takeQuitRequest()) g_display->closeWindow();
+        }
     });
 
     // Tab at the prompt completes commands, board ids, property names and their values --

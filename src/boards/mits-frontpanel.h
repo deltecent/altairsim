@@ -138,6 +138,12 @@ public:
     // ...but the LAMPS go out. There is no light without power.
     void power() override;
 
+    // THE WAIT LAMP. The operator started or stopped the machine; remember it so
+    // pump() can drive the panel's WAIT indicator (lit when stopped, dark while a
+    // RUN session turns). This is the operator-level run state fanned from
+    // Machine::setRunning -- not the debugger's per-slice flag. See runningFlags().
+    void setRunning(bool running) override { running_ = running; }
+
     // ---- THE GRAPHICAL PANEL BRIDGE -- one serial-style connector, "gui". --------
     //
     // The fp board is a CARD, and a graphical front panel is a VIEW onto it (DESIGN.md
@@ -223,6 +229,13 @@ private:
     uint16_t addrLeds_ = 0;
     uint8_t  dataLeds_ = 0;
     uint8_t  status_   = 0;
+
+    // The WAIT lamp, driven from the operator-level run state (setRunning), NOT the
+    // 8080 status word. False = machine stopped = WAIT lit; true = a RUN session is
+    // turning = WAIT dark. Transient SESSION state, deliberately NOT serialized: it
+    // is re-established the moment the monitor next runs or stops, like the debugger's
+    // host-side breakpoints (a fresh machine sits in WAIT -- power() sets false).
+    bool running_ = false;
 
     // ---- The line to the graphical panel bridge. -------------------------------
     //

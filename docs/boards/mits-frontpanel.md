@@ -164,8 +164,12 @@ authority for the *content*.
   below), **`WO̅` active-low** (`0` on a write/output, `1` on a read/input). The real Altair panel
   displays `WO̅` **raw, with no inversion**: the WO LED is **lit on a read and dark on a write**
   (Operator's Manual §4), and an M1 opcode fetch — a memory read — lights MEMR, M1 and WO together.
-  Neither side inverts. `flags` is `0`: the §3
-  machine-control group (RUN/WAIT/HLDA/…) is not modelled — "absent rather than wrong."
+  Neither side inverts. `flags` carries the §3 machine-control group; of it only **`WAIT`**
+  (bit 2, `0x04` — altairsim-fp's `FlagWait = 1u << 2`) is modelled: **lit while the machine is
+  stopped** (at the monitor prompt, after a STEP) and **clear while a RUN session is turning**.
+  It is driven from the operator's run/stop state via `Machine::setRunning()`, not snooped off a
+  bus cycle — `WAIT` is a processor *pin*, not a status bit (see "Limitations" below). The rest
+  of the group (RUN/HLDA/…) stays `0` — "absent rather than wrong."
 - **Sent throttled and only when it changed.** Each `1/fps` interval the frame is built and put on
   the wire *only* if it differs from the last one sent **and** the socket can take it
   (`writable()` — TCP backpressure). An idle or halted guest costs nothing.
@@ -217,6 +221,24 @@ carries no `origin` field, so a monitor DEPOSIT is *already* indistinguishable f
 exactly as it is on the backplane. The switches those commands stand in for (`SA0`–`SA15`) live on
 this card, which is where a graphical panel will find them.
 
+Those commands do, however, **refresh the panel now.** `snoop()` always latched the address/data/
+status lamps off their bus cycles, but the frame only ships from `pump()`, and `pump()` used to run
+in exactly one place — the RUN loop — so a STEP or EXAMINE left the window frozen. Each of
+EXAMINE / DEPOSIT / STEP / NEXT now calls `Machine::pump()` after its bus activity, pushing the
+**final resting** cycle (one frame, not one per instruction). The push is diff-gated, so the
+no-bus-cycle paths (a burn into ROM, a NEXT that ran through `runMachine`) cost nothing.
+
+The monitor also pumps the backplane **while it sits idle at the prompt** (the line editor's
+50 ms idle tick, alongside the SDL window-liveness poll — `Monitor::repl`). The panel dials
+altairsim-fp on an *async* socket that needs several turns to connect; a stopped machine pumps
+nothing on its own, so before this the connection never finished — and the power-on state never
+reached the panel — until the first RUN pumped in a loop. Now the dial completes at the prompt
+and the current lamp state (the power-on `L 0000 00 00 04`, WAIT lit; or the rest after a STEP)
+ships the moment the bridge answers, and a bridge relaunched mid-session redials without a RUN.
+Idle-pumping touches only host endpoints, advances no emulated time, and cannot swallow the
+operator's keystrokes — the console keyboard is drained by `con.poll()` during a RUN, never
+inside `pump()`.
+
 **M1 and STACK are now lit, and one bit is still absent — the reason is the bus, not the card.**
 This card **has** these lamps and only forwards what the bus carries (see "The graphical panel
 bridge"), so lighting a bit was a change at the *source* with **none here**.
@@ -234,9 +256,17 @@ before. Two notes:
 
 **The §3 machine-control indicators are a different group entirely — not the status word.** `INTE`,
 `WAIT`, `HLDA`, `PROT` (and `RUN`) are **pins** on the processor and the memory cards, not bus
-cycles, and `snoop()` will never see one. `INTE` is the 8080's interrupt-enable flip-flop; `WAIT` and
-`HLDA` are what the panel does *to* the CPU, not what it watches. These belong to the wire `flags`
-byte, which stays `0`, and are deferred entirely.
+cycles, and `snoop()` will never see one. They belong to the wire `flags` byte, and are driven — when
+at all — from operator/session state, never from `BusCycle::status`.
+
+Of the group, **`WAIT` is modelled** (bit 2). It is the operator-visible run/stop state: lit while
+the machine is stopped, cleared while a RUN session turns. The monitor brackets a run with
+`Machine::setRunning(true/false)`, which fans out to every board's `Board::setRunning()`; this card
+latches it into `running_` and `pump()` sets `flags = running_ ? 0 : FlWait`. It is *not*
+`Machine::running` (the debugger's per-slice flag, which is false whenever `pump()` runs, so it could
+never drive the lamp) — it is a separate operator-level signal, transient session state that is
+deliberately not serialized into a snapshot. `INTE`, `HLDA`, `PROT` and `RUN` stay `0` and are
+deferred: `INTE` is the 8080's interrupt-enable flip-flop; `HLDA` is a halt-acknowledge pin.
 
 **The lamps are honest about being a blur, and so was MITS.** From the Operator's Manual, on the
 indicator LEDs:
