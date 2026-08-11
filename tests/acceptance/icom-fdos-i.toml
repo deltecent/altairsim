@@ -1,0 +1,34 @@
+# iCOM FDOS-I boot acceptance fixture: the same FD3712 controller and FDOS boot PROM at C000
+# as the FDOS-III fixture, but the ORIGINAL FDOS-I system diskette and the high-RAM board it
+# needs. FDOS-I loads its resident executive into high memory, so the machine carries RAM over
+# C500-FFFF (above the controller's PROM at C000-C3FF and 6810 scratch at C400-C4FF) on top of
+# base `icom`'s 48K. FDOS-I's Executive takes single-letter directives (`L` = list directory),
+# not FDOS-III's word commands. Mounted READ-ONLY; icom-fdos-i.exp shasums the master. The
+# shipped example is examples/icom/fdos-i.toml.
+
+[machine]
+name    = "icom-fdos-i-acceptance"
+base    = "icom"
+startup = ["RUN C000"]
+
+[[board]]
+id  = "fdc0"
+rom = "builtin:icom-fd3712-fdos"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/icom/FDOS-I (2SIO).DSK"
+  writeprotect = true
+
+[[board]]
+type = "memory"
+id   = "mem1"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = C500
+  size = "15104"                    # C500-FFFF
+
+[console]
+bsdel = "bs"

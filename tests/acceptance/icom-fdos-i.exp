@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+#
+# THE iCOM FDOS-I is the ORIGINAL revision of iCOM's disk operating system, booted off the same
+# FDOS boot PROM at C000 as FDOS-III. Unlike the 48K FDOS-III machine, FDOS-I loads its resident
+# Executive into HIGH memory, so the fixture adds RAM over C500-FFFF; with only 48K the boot
+# stalls in a CALL into the unmapped high region. FDOS-I signs on with only the `!` prompt (no
+# banner text) and takes SINGLE-LETTER directives -- `L` lists the directory, not `LIST`.
+#
+# The directive must be typed at the `!` prompt (a pipe cannot -- see
+# [[altairsim-pipe-cannot-type-at-a-guest]]), so this is an expect test. The system diskette is
+# mounted write-protected and shasummed before and after.
+#
+# usage: expect -f icom-fdos-i.exp <altairsim>
+
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/icom/FDOS-I (2SIO).DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/icom-fdos-i.toml
+
+# The PROM boots FDOS-I automatically; the Executive reaches its `!` prompt. Reaching the prompt
+# at all is the high-RAM proof -- with 48K this hangs before printing anything.
+expect {
+    -ex "!"  {}
+    eof     { puts "FAIL: the machine died before FDOS-I reached its prompt"; exit 1 }
+    timeout { puts "FAIL: FDOS-I never reached the ! prompt (needs high RAM above the PROM)"; exit 1 }
+}
+
+# Let the Executive settle on the console before typing (the prompt prints a beat before the
+# input routine starts polling the 2SIO -- typing into that gap drops the first char).
+sleep 1
+
+# L (a single-letter directive) lists the directory; DEMO1.ASM is the sample file on the diskette.
+send "L\r"
+expect {
+    -ex "DEMO1.ASM" {}
+    eof     { puts "FAIL: the machine died running the L directive"; exit 1 }
+    timeout { puts "FAIL: L did not print the directory (no DEMO1.ASM)"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the iCOM controller auto-booted FDOS-I to its ! prompt, the L directive read the\
+      directory (DEMO1.ASM), and the master is byte-identical."
+exit 0
