@@ -1,0 +1,45 @@
+# iCOM FDOS-I -- the original revision of iCOM's disk operating system, single density.
+#
+#     cd examples/icom && altairsim fdos-i.toml
+#     -> !            (the FDOS Executive prompt)
+#        L            list the directory of drive 0
+#
+# Same FD3712 controller and boot PROM as FDOS-III (roms/ICOM-FD3712-FDOS at C000); only the
+# disk and the memory size differ. FDOS is iCOM's own OS, not CP/M. Its Executive prompts with
+# `!` and takes SINGLE-LETTER directives, not words: `L` lists the directory, `A` assembles,
+# `P` prints a file, `N` names one. (FDOS-III's longer `LIST`-style commands are a later
+# revision -- do not type them here.) See reference/EDOS-I Manual.md for the directive set.
+#
+# WHY THE EXTRA MEMORY. Unlike the 48K CP/M and FDOS-III machines, FDOS-I loads its resident
+# executive into HIGH memory and calls it there, so the machine needs RAM above the boot PROM.
+# The base `icom` machine has RAM only to BFFF; this file adds a second RAM board covering
+# C500-FFFF (everything above the controller's PROM at C000-C3FF and 6810 scratch at C400-C4FF),
+# matching the near-full-64K map FDOS-I was built for. With only 48K it stalls in a `CALL`
+# into the unmapped high region.
+#
+# THIS FILE IS A DELTA on `base = "icom"`: FDOS boot PROM, startup at C000, the high-RAM board,
+# and the FDOS-I disk in drive 0.
+
+[machine]
+name    = "icom-fdos-i"
+base    = "icom"
+startup = ["RUN C000"]
+
+[[board]]
+id  = "fdc0"
+rom = "builtin:icom-fd3712-fdos"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "FDOS-I (2SIO).DSK"
+
+# High RAM for the FDOS-I resident: C500-FFFF, just above the controller's PROM/scratch windows.
+[[board]]
+type = "memory"
+id   = "mem1"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = C500
+  size = "15104"                    # C500-FFFF

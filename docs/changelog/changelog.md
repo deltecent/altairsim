@@ -27,8 +27,9 @@ onboard PROM switching itself out), the **VersaFloppy** WD177x controller bootin
 CP/M entirely on their own, no monitor involved, straight off their own boot PROM. The **iCOM
 FD3712/FD3812** 8″ floppy controller — a programmed-I/O command engine rather than a WD177x
 card, with its driver in a boot PROM up in high memory — boots CP/M 2.2 in both single density
-(FD3712) and double density (FD3812), and iCOM's own **FDOS-III** disk operating system, each
-off its own PROM (`altairsim icom`). On the MITS
+(FD3712) and double density (FD3812), and both revisions of iCOM's own **FDOS** disk operating
+system — the original **FDOS-I** and the later **FDOS-III** — each off its own PROM
+(`altairsim icom`). On the MITS
 side, the **88-HDSK** boots CP/M off a hard disk, **88-PIO**/**88-4PIO** add parallel I/O,
 **88-LPC** drives a real line printer, **88-UIO** combines a serial port and a cassette deck on
 one card, and the **8800b Turnkey Module** brings up a front-panel-less Altair with its boot PROM

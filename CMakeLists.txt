@@ -1406,6 +1406,17 @@ if(EXPECT_EXECUTABLE)
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+  # iCOM FDOS-I: the ORIGINAL FDOS revision off the same C000 PROM, but with the high RAM
+  # (C500-FFFF) its resident Executive loads into -- proof the enlarged map boots where 48K
+  # stalls. Single-letter directives (`L` = list), not FDOS-III's word commands.
+  add_test(NAME acceptance-icom-fdos-i
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom-fdos-i.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-icom-fdos-i PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
   # ---------------------------------------------------------------------------
   # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
   #

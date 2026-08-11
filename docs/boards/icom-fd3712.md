@@ -1,8 +1,9 @@
 # iCOM FD3712 / FD3812 — 8″ floppy disk controller
 
 **Status:** done (2026-08-11). Boots CP/M 2.2 single density (FD3712, `CPM22v1.0-3712-48K.DSK`)
-and CP/M 2.23 double density (FD3812, `CPM22-3812-48K.dsk`) to `A>`, and iCOM's own FDOS-III to
-its `!` prompt, each off its own boot PROM. `altairsim icom`; see `examples/icom/`.
+and CP/M 2.23 double density (FD3812, `CPM22-3812-48K.dsk`) to `A>`, and both of iCOM's own FDOS
+revisions — FDOS-III and the original FDOS-I — to their `!` prompt, each off its own boot PROM.
+`altairsim icom`; see `examples/icom/`.
 
 ## The real hardware
 
@@ -136,13 +137,14 @@ tracks) — track 0 is mandatorily single density on real iCOM DD media.
   poll BUSY instead, so none of it is modeled.
 - **CRC is never wrong.** `cRDCRC` and the CRC-error status bit exist, but a faithful image always
   reads back clean, so the error path is structural, not exercised.
-- **FDOS-I is not supported.** The `FDOS-I (2SIO)` disk from deramp is built for a **different
-  memory map**: its loaded executive does a fixed `CALL D000`, i.e. it expects a resident module
-  at `D000` that the 48 K CP/M/FDOS-III machine (main RAM to `BFFF`, PROM at `C000`/`F000`) has
-  nowhere to hold. Forcing it to boot needs an invented RAM region at `D000`, and even then its
-  console input is mangled — a build/hardware mismatch, not a board defect (CP/M SD, CP/M DD, and
-  FDOS-III all take console input correctly through the same board and console). Left out rather
-  than shipped half-working. See the memory note for the trace, if picked up again.
+- **FDOS-I needs more memory than the 48 K machines.** The `FDOS-I (2SIO)` disk from deramp loads
+  its resident executive into **high memory** (it calls into the `D000` region), so unlike the 48 K
+  CP/M and FDOS-III setups it needs RAM above the boot PROM. `examples/icom/fdos-i.toml` supplies it
+  by adding a RAM board over `C500-FFFF` — everything above the controller's PROM (`C000-C3FF`) and
+  6810 scratch (`C400-C4FF`) — matching the near-full-64 K map SIMH boots this disk under. With only
+  48 K it stalls in the `CALL` into the unmapped high region. FDOS-I's Executive also uses a
+  different command language from FDOS-III: **single-letter directives** at the `!` prompt (`L` lists
+  the directory, `A` assembles, `P` prints), not FDOS-III's word commands.
 
 ## Verification
 
