@@ -39,6 +39,7 @@ constexpr uint8_t cWRTBUF71 = 0x31;  // FD3712 strobe form
 constexpr uint8_t cRDBUF   = 0x40;
 constexpr uint8_t cSHIFT   = 0x41;
 constexpr uint8_t cSTATUS  = 0x00;
+constexpr uint8_t cCLEAR   = 0x81;   // "Clear" -- abort; must NOT rewind the write buffer
 
 constexpr int kTracks  = 77;
 constexpr int kSectors = 26;
@@ -215,6 +216,32 @@ void test_icom() {
         seekTo(*b, 0, 40, 3);
         out(*b, C0, cREAD); out(*b, C0, cSTATUS);
         CHECK(read3812(*b, 128) == pat2, "3812 write then read back");
+
+        delete b;
+    }
+
+    SECTION("icom: the Clear command does not rewind the write buffer");
+    {
+        // Real hardware never resets the write "shift register" pointer on a Clear (81); a bug
+        // shared by the FDC+ and AltairZ80 FD3712. Load half a sector, issue a Clear mid-fill,
+        // load the rest, and the buffer must still hold a contiguous 128 bytes.
+        withDisk(kSdBytes);
+        Clock clk;
+        IcomFdBoard* b = makeBoard(clk, 2, "cpm.dsk");
+
+        std::vector<uint8_t> pat(128);
+        for (int k = 0; k < 128; ++k) pat[(size_t)k] = (uint8_t)(0x11 + 3 * k);
+
+        seekTo(*b, 0, 7, 4);
+        write3712(*b, {pat.begin(), pat.begin() + 64});   // first half
+        out(*b, C0, cCLEAR); out(*b, C0, cSTATUS);        // Clear must not rewind writePtr_
+        write3712(*b, {pat.begin() + 64, pat.end()});     // second half continues in place
+        out(*b, C0, cWRITE); out(*b, C0, cSTATUS);
+        CHECK((statusOf(*b) & 0x28) == 0, "write status after Clear: no error");
+
+        seekTo(*b, 0, 7, 4);
+        out(*b, C0, cREAD); out(*b, C0, cSTATUS);
+        CHECK(read3712(*b, 128) == pat, "Clear mid-fill left the write buffer contiguous");
 
         delete b;
     }

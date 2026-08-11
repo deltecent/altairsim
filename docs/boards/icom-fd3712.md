@@ -67,7 +67,7 @@ Two consecutive ports (default base **`C0h`**):
 | `30`/`31` | cWRTBUF | arm write-buffer streaming; `31` (FD3712) also pushes the latched byte immediately |
 | `40` | cRDBUF | select read-buffer mode (next `IN C0` returns buffer, not status) |
 | `41` | cSHIFT | (FD3712) shift to the next read-buffer byte — modeled as a mode-set no-op; see Quirks |
-| `81` | cRESET | reset the controller |
+| `81` | cCLEAR | "Clear": abort and clear the CRC / DDAM status latches. It is **not** a controller reset — the read/write buffers keep their pointers and the track/unit/sector registers are untouched |
 
 The **read sequence** (PROM `readXfr`): `OUT C0=40; IN C0` (byte 0); then for the 3712, N×
 `OUT C0=41; IN C0`; for the 3812, N× back-to-back `IN C0`. The **write sequence** (PROM

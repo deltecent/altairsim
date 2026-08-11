@@ -44,7 +44,7 @@ void IcomFdBoard::outCmd(uint8_t v) {
         case 0x31: pushWrite(lastDataOut_); break;       // cWRTBUF (3712): push the latched C1 byte now
         case 0x40: break;                                // cRDBUF: enable buffer output (no pointer reset)
         case 0x41: break;                                // cSHIFT: same -- IN C0 advances the pointer
-        case 0x81: resetController(); break;             // cRESET
+        case 0x81: doClear(); break;                     // cCLEAR (reference "Clear")
         default:   break;                                // unassigned opcode -- a harmless no-op
     }
     // The write buffer stays armed only across a cWRTBUF (either form); the very next command
@@ -128,6 +128,18 @@ void IcomFdBoard::pushWrite(uint8_t b) {
     if (writePtr_ < kBufBytes) writeBuf_[writePtr_++] = b;
 }
 
+// cCLEAR (command 0x81, reference section 3 "Clear"): halt any operation, clear BUSY, pulse
+// DONE, unload the head, and clear the CRC / deleted-data-mark status latches. It is NOT a
+// controller reset: on real hardware the read/write "shift register" buffers keep their pointers
+// and the track/unit/sector/config registers are untouched, so a partly loaded write buffer
+// survives a Clear (a bug found in the FDC+ and AltairZ80 FD3712 -- do not reset writePtr_ here).
+void IcomFdBoard::doClear() {
+    crcErr_ = false;
+    ddam_   = false;
+}
+
+// A true controller reset: power-on and CPU RESET only (never the Clear command). Buffers,
+// pointers and address registers all return to their power-up state.
 void IcomFdBoard::resetController() {
     lastCmd_  = 0;
     readPtr_  = 0;
