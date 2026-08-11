@@ -232,6 +232,55 @@ const char* commandGroup(const std::string& n) {
     return nullptr;
 }
 
+// A terse "what it does" for the quick-reference table -- the usage line is syntax, not
+// meaning, and the printable sheet wants both. Every built command must have one (see
+// die()): a new command with no summary stops the build rather than printing a blank cell.
+// This is authored prose, the one place the cheatsheet is not a pure projection of a table;
+// the guard below keeps it from silently falling behind the command set.
+const char* commandSummary(const std::string& n) {
+    if (n == "DUMP") return "Show memory as hex and ASCII.";
+    if (n == "STEP") return "Run one instruction (or n), showing the registers after each.";
+    if (n == "NEXT") return "Step one instruction, running any CALL/RST to completion.";
+    if (n == "RUN") return "Start or resume the machine, optionally at an address.";
+    if (n == "HISTORY") return "Replay the recent instruction (or bus-cycle) history.";
+    if (n == "MOUNT") return "Put a disk or tape image into a drive.";
+    if (n == "BREAK") return "Set a breakpoint on an address, memory/I/O access, or tape stop.";
+    if (n == "EDIT") return "Enter bytes into memory interactively from an address.";
+    if (n == "CONFIG") return "Load or save the whole machine as a TOML file.";
+    if (n == "SET") return "Change a property of a board, the console, display, a register, or the bus.";
+    if (n == "SHOW") return "Display the state of a board, the bus, or the machine.";
+    if (n == "DEPOSIT") return "Write bytes into memory at an address.";
+    if (n == "EXAMINE") return "Point the front panel at an address (and show that byte).";
+    if (n == "IN") return "Read a byte from an I/O port.";
+    if (n == "OUT") return "Write a byte to an I/O port.";
+    if (n == "LOAD") return "Load a file into memory (binary or Intel hex).";
+    if (n == "SAVE") return "Write a range of memory out to a file.";
+    if (n == "FILL") return "Fill a range of memory with a byte.";
+    if (n == "SEARCH") return "Find bytes or a string in a range of memory.";
+    if (n == "COMPARE") return "Compare a range of memory against another address.";
+    if (n == "MOVE") return "Copy a range of memory to another address.";
+    if (n == "WHO") return "Say which board answers an address or I/O port.";
+    if (n == "BOARDS") return "List, add, or remove boards on the backplane.";
+    if (n == "REGS") return "Show the CPU registers (SET REG changes one).";
+    if (n == "REGION") return "Add a RAM or ROM region to a memory board.";
+    if (n == "DISASM") return "Disassemble memory into instructions.";
+    if (n == "SYMBOLS") return "Load or clear a symbol table for disassembly.";
+    if (n == "UNMOUNT") return "Take a disk or tape out of a drive.";
+    if (n == "DISCONNECT") return "Unplug the endpoint from a serial unit.";
+    if (n == "CONSOLE") return "Show or set the host console's properties.";
+    if (n == "CONNECT") return "Attach a serial unit to an endpoint (console, socket, file, ...).";
+    if (n == "RESET") return "Reset the machine, keeping RAM (RESET CPU resets just the processor).";
+    if (n == "POWER") return "Power-cycle the machine -- the only thing that clears RAM.";
+    if (n == "TRACE") return "Log every bus cycle while the machine runs.";
+    if (n == "TYPE") return "Feed text to the guest as if typed at its keyboard.";
+    if (n == "SNAPSHOT") return "Save the whole machine state to a file.";
+    if (n == "RESTORE") return "Load machine state back from a snapshot.";
+    if (n == "NOBREAK") return "Remove a breakpoint, or all of them.";
+    if (n == "HELP") return "Show help for a command.";
+    if (n == "QUIT") return "Leave the simulator.";
+    return nullptr;
+}
+
 // The order the command groups print in.
 const std::vector<std::string> kCommandOrder = {
     "Running the machine", "Examining and changing memory", "Debugging and tracing",
@@ -515,16 +564,45 @@ void cheatsheet(const std::string& dir) {
     // The `*` legend only earns its line when a command is actually starred -- off the
     // same `built` flag the table reads, so the two can never disagree.
     if (anyUnbuilt) o << " `*` = resolves, but not built yet.";
-    o << "\n\n| Command | Usage |\n|---|---|\n";
-    for (const auto& c : commands())
-        o << "| `" << abbreviation(c) << "`" << (c.built ? "" : " \\*") << " | `" << cell(c.usage)
-          << "` |\n";
+    // Alphabetical, for browsing -- a copy sorted by name. The abbreviation still comes from
+    // abbreviation(), which reads commands()'s TRUE priority order, so the shortcut shown is
+    // unaffected by this presentation sort (the same split the boards table makes).
+    std::vector<CommandDef> cmds(commands().begin(), commands().end());
+    std::sort(cmds.begin(), cmds.end(),
+              [](const CommandDef& a, const CommandDef& b) {
+                  return std::string(a.name) < std::string(b.name);
+              });
+    o << "\n\n| Command | Does | Usage |\n|---|---|---|\n";
+    for (const auto& c : cmds) {
+        const char* s = commandSummary(c.name);
+        if (!s) die(std::string("command '") + c.name + "' has no summary -- add it to commandSummary()");
+        o << "| `" << abbreviation(c) << "`" << (c.built ? "" : " \\*") << " | " << cell(s)
+          << " | `" << cell(c.usage) << "` |\n";
+    }
     o << "\n";
 
-    o << "## Boards\n\n| Type | What it is |\n|---|---|\n";
-    for (const auto& t : boardTypes())
-        o << "| `" << t.name << "` | " << cell(t.description) << " |\n";
-    o << "\n";
+    // Grouped by function and alphabetised within each group -- the same presentation as
+    // the boards chapter, over the same tables. registry order is build order, which is not
+    // a reader's order, so bucket by boardCategory() (a null category is a hard error there).
+    o << "## Boards\n\n";
+    {
+        std::vector<BoardType> types = boardTypes();
+        for (const auto& g : kBoardOrder) {
+            std::vector<BoardType> group;
+            for (const auto& t : types) {
+                const char* c = boardCategory(t.name);
+                if (!c) die("board '" + t.name + "' has no category -- add it to boardCategory()");
+                if (g == c) group.push_back(t);
+            }
+            if (group.empty()) continue;
+            std::sort(group.begin(), group.end(),
+                      [](const BoardType& a, const BoardType& b) { return a.name < b.name; });
+            o << "**" << g << "**\n\n| Type | What it is |\n|---|---|\n";
+            for (const auto& t : group)
+                o << "| `" << t.name << "` | " << cell(t.description) << " |\n";
+            o << "\n";
+        }
+    }
 
     o << "## Machines\n\n| Machine | What it is |\n|---|---|\n";
     for (const auto& m : builtinMachines())
