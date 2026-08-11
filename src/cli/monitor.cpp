@@ -1872,10 +1872,21 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
         g_display->setRunning(false);  // the guest is stopped; say so on the frozen frame
     }
 
-    // The machine has stopped -- WAIT lights again. Unconditional (the panel has no
-    // window), and followed by a pump() so the WAIT-on frame ships immediately rather
-    // than waiting for the next discrete command to push it.
+    // A real Altair STOPs inside the next instruction's M1 fetch, so its panel sits with
+    // M1|MEMR|WO lit, ADDRESS on PC and DATA on the opcode about to run. We halt one bus
+    // cycle earlier -- cleanly between instructions -- so the lamps still hold the last
+    // executed cycle and M1 is dark. Re-drive that pending fetch here as a real read, so
+    // the bus stays the emitter and snoop() latches it like any other cycle (the same path
+    // EXAMINE relies on). Skip HLT: the CPU is halted, not fetching -- that is HLTA below,
+    // not M1. No-ops on a machine with no fp board.
+    if (cpu && r.why != StopReason::Halted)
+        m_.bus.memRead(cpu->pc(), StM1 | StMemR | StWo);
+
+    // The machine has stopped -- WAIT lights again, and HLTA if the CPU stopped on a HLT.
+    // Unconditional (the panel has no window), and followed by a pump() so the WAIT-on
+    // frame ships immediately rather than waiting for the next discrete command to push it.
     m_.setRunning(false);
+    m_.setHalted(r.why == StopReason::Halted);
     m_.pump();
 
     if (anyConsole) out << "\n";  // the guest was mid-line; do not print on top of it

@@ -84,6 +84,11 @@ public:
     // below, which is the per-slice debugger flag; see Board::setRunning.
     void setRunning(bool r);
 
+    // Tell every board the CPU halted (true) or is not halted (false), so a board with a
+    // halt-acknowledge lamp -- the front panel's HLTA indicator -- can track it. Set by the
+    // monitor when a RUN session ends on a HLT. See Board::setHalted.
+    void setHalted(bool h);
+
     // BYTES THE GUEST HAS RECEIVED ACROSS THE WHOLE BACKPLANE, monotonic. The run loop
     // watches its delta to know whether a byte is arriving anywhere -- the one signal that
     // tells a transfer from a prompt, on ANY line and not just the console (Board::rxBytes,
