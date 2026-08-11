@@ -1,0 +1,30 @@
+# iCOM FD3712 single-density CP/M 2.2 -- boots the moment you start it.
+#
+#     cd examples/icom && altairsim cpm22.toml
+#     -> 48K CP/M 2.2
+#        A>
+#
+# THE PATH BELOW IS RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk image
+# lies in this directory, so this file names it and no directory -- which is what lets the
+# folder be copied elsewhere and still boot.
+#
+# THIS FILE IS A DELTA. `base = "icom"` brings the machine -- 8080, 88-2SIO console at
+# 0x10, front panel, 48K RAM, and the iCOM FD3712 controller with its CP/M boot PROM at
+# F000. On top of that this file drops one single-density disk into drive 0. See
+# machines/icom.toml for the base.
+#
+# THE DISK IS TRACKED, so a clone can `git checkout` it back after a write. In the package
+# there is no such rope -- copy the image before testing writes, or add `readonly = true`.
+
+[machine]
+name = "icom-cpm22"
+base = "icom"
+
+# The FD3712 controller comes from the base; naming its id with no type ADDS the disk
+# rather than replacing the board.
+[[board]]
+id = "fdc0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CPM22v1.0-3712-48K.DSK"

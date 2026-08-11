@@ -36,6 +36,7 @@ be wrong.
 | `versafloppy` | SD Systems VersaFloppy I/II — a soft-sector floppy controller. Boots SDOS |
 | `tarbell` | Tarbell #1011 — a single-density floppy controller with its own boot PROM. Boots CP/M by itself |
 | `tarbelldd` | Tarbell #2022 — the double-density twin, mixed-density disks |
+| `icom` | iCOM FD3712/FD3812 — an 8″ floppy controller with its own boot PROM. Boots CP/M and FDOS |
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
 | `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. Needs a display |
@@ -434,6 +435,31 @@ double-density machine that boots CP/M 2.2 off one to `A>`.
 Everything the `tarbell` card does, this one does; it adds only the second density and a disk format
 that carries more per track. Choose it when your disk is a double-density Tarbell image; choose
 `tarbell` for a single-density one. The card tells the two apart by the size of the image you mount.
+
+---
+
+## `icom` — iCOM FD3712 / FD3812 8″ floppy
+
+An **8″ floppy controller** of a different kind: not a bit-shifting floppy card but a
+**command/handshake** one, like the Datakeeper — it buffers a whole sector and the CPU moves bytes
+through two ports (default `C0`–`C1`), while the operating system's disk driver lives in a **boot
+PROM** up in high memory. One board covers both iCOM generations: the single-density **FD3712** and
+the double-density **FD3812**, whose disk is mixed density (a single-density track 0, then
+double-density tracks). The card tells them apart by the size of the image you mount.
+
+Which system it boots is set by its PROM, chosen with `rom`:
+
+- **`builtin:icom-fd3712-cpm`** (the default) boots **CP/M 2.2** single density from the PROM at
+  `F000`.
+- **`builtin:icom-fd3812-cpm`** boots **CP/M 2.23** double density, also at `F000`.
+- **`builtin:icom-fd3712-fdos`** boots iCOM's own **FDOS** disk operating system from the PROM at
+  `C000` — not CP/M, but iCOM's `!`-prompt executive, with its own `LIST`, `EDIT`, `ASMB` and the
+  rest.
+
+`altairsim icom` is CP/M 2.2 the moment a disk is in it. The `examples/` folder carries ready-made
+machines for all three — single- and double-density CP/M and FDOS-III — image and all: start one and
+you land at the prompt, read/write, with the guest saving to the disk. Read and write of existing
+disks work; like the other controllers here, it will not lay down a **blank** format from nothing.
 
 ---
 

@@ -1,0 +1,70 @@
+# iCOM FD3712 8" floppy machine -- boots CP/M 2.2 off a single-density iCOM disk.
+#
+#     altairsim icom
+#     MOUNT fdc0:drive0 "examples/icom/CPM22v1.0-3712-48K.DSK"
+#     RUN F000
+#     -> 48K CP/M 2.2
+#        A>
+#
+# ...or, with the disk already in the drive, `cd examples/icom && altairsim cpm22.toml`.
+#
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0). The iCOM
+# controller carries a 1K boot PROM at F000 (roms/ICOM-FD3712-CPM). The front panel jumps
+# to F000; the PROM homes the head, reads the cold loader off track 0, and drops into the
+# CP/M CBIOS, which then talks to the 88-2SIO console below. The PROM stays mapped while
+# CP/M runs -- its BIOS calls the PROM's disk primitives. See docs/boards/icom-fd3712.md
+# and reference/iCOM FD3712 & FD3812 Floppy Disk Systems.md.
+#
+# WITH NO DISK MOUNTED the read reports NOT READY and the loader stalls. Mount a disk in
+# drive 0 and RUN F000 again.
+
+[machine]
+name    = "icom"
+startup = ["RUN F000"]
+
+# THE CPU. A stock 2 MHz 8080; clock_hz = 0 runs it flat out (the crystal is on the card).
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+# THE CONSOLE. The iCOM disks' CBIOS talks to an 88-2SIO at port 10 -- the same console the
+# whole Altair CP/M world uses. Channel B is left unconnected.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# THE iCOM CONTROLLER at the standard C0/C1 port block, with its CP/M boot PROM at F000.
+# Two drives, none mounted -- put a disk in drive 0 (`MOUNT fdc0:drive0 ...`) to boot.
+[[board]]
+type   = "icom"
+id     = "fdc0"
+port   = C0
+drives = 2
+rom    = "builtin:icom-fd3712-cpm"
+
+# 48K OF RAM (0000-BFFF). The iCOM PROM+scratch live up at F000, so main memory stops well
+# below it -- these disks were built for a 48K machine.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                    # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"                     # 0000-BFFF

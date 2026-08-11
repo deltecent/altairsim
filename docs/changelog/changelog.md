@@ -8,8 +8,8 @@ as it is now; this document is the record of how it got there.
 
 ## 0.4.0
 
-**0.4.0 is the boards release.** Seventeen new S-100 cards join the backplane — enough that
-three whole new machine families (Cromemco, SD Systems, Tarbell) boot alongside the MITS
+**0.4.0 is the boards release.** Eighteen new S-100 cards join the backplane — enough that
+four whole new machine families (Cromemco, SD Systems, Tarbell, iCOM) boot alongside the MITS
 originals for the first time — disks and cassettes learn to be built and formatted by the guest
 instead of only read, and the debugger, the monitor prompt and the video window all got
 noticeably sharper along the way.
@@ -24,7 +24,11 @@ it. **SD Systems** shows up as a matching trio — the **SBC-100/200** single-bo
 console that auto-bauds to your terminal, and later a full interrupt-driven CP/M boot with the
 onboard PROM switching itself out), the **VersaFloppy** WD177x controller booting SDOS, and the
 **VDB-8024** 80×24 video terminal card. The **Tarbell #1011** and **#2022** floppy controllers boot
-CP/M entirely on their own, no monitor involved, straight off their own boot PROM. On the MITS
+CP/M entirely on their own, no monitor involved, straight off their own boot PROM. The **iCOM
+FD3712/FD3812** 8″ floppy controller — a programmed-I/O command engine rather than a WD177x
+card, with its driver in a boot PROM up in high memory — boots CP/M 2.2 in both single density
+(FD3712) and double density (FD3812), and iCOM's own **FDOS-III** disk operating system, each
+off its own PROM (`altairsim icom`). On the MITS
 side, the **88-HDSK** boots CP/M off a hard disk, **88-PIO**/**88-4PIO** add parallel I/O,
 **88-LPC** drives a real line printer, **88-UIO** combines a serial port and a cassette deck on
 one card, and the **8800b Turnkey Module** brings up a front-panel-less Altair with its boot PROM

@@ -106,6 +106,7 @@ const struct {
     {"dcdd", test_dcdd},
     {"mds", test_mds},
     {"hdsk", test_hdsk},
+    {"icom", test_icom},
     {"88acr", test_88acr},
     {"88uio", test_88uio},
     {"c700", test_c700},

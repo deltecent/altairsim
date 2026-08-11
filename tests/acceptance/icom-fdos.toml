@@ -1,0 +1,23 @@
+# iCOM FDOS-III boot acceptance fixture: the same FD3712 controller, but with iCOM's own
+# FDOS boot PROM at C000 (not the CP/M PROM at F000) and the FDOS-III system diskette in
+# drive 0, mounted READ-ONLY. FDOS is not CP/M -- it prints `!` and its own LIST directive
+# reads the directory through the resident driver, exercising a different boot path than the
+# CP/M fixtures. icom-fdos.exp shasums the master. The shipped example is
+# examples/icom/fdos-iii.toml.
+
+[machine]
+name    = "icom-fdos-acceptance"
+base    = "icom"
+startup = ["RUN C000"]
+
+[[board]]
+id  = "fdc0"
+rom = "builtin:icom-fd3712-fdos"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/icom/FDOS-III (2SIO).DSK"
+  writeprotect = true
+
+[console]
+bsdel = "bs"

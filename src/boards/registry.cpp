@@ -5,6 +5,7 @@
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/hostbridge.h"
+#include "boards/icom-fd3712.h"
 #include "boards/mits-88acr.h"
 #include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
@@ -64,6 +65,7 @@ std::vector<BoardType> boardTypes() {
         {"dcdd", "MITS 88-DCDD: 8\" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits"},
         {"mds", "MITS 88-MDS: 5.25\" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s"},
         {"hdsk", "MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers"},
+        {"icom", "iCOM FD3712/FD3812 8\" floppy: a programmed-I/O command/handshake controller on the S-100 Interface board. Two ports at BASE+0..1 (default C0) plus a boot PROM and 6810 scratch RAM in high memory (rom=builtin:icom-fd3712-cpm | icom-fd3712-fdos | icom-fd3812-cpm). Boots CP/M 2.2 (single and double density) and FDOS. Up to 4 drives"},
         {"versafloppy", "SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) | vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS"},
         {"tarbell", "Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)"},
         {"tarbelldd", "Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM"},
@@ -111,6 +113,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "dcdd") return std::make_unique<DcddBoard>();
     if (type == "mds") return std::make_unique<MdsBoard>();
     if (type == "hdsk") return std::make_unique<HdskBoard>();
+    if (type == "icom") return std::make_unique<IcomFdBoard>();
     if (type == "versafloppy") return std::make_unique<VersaFloppyBoard>();
     if (type == "tarbell") return std::make_unique<TarbellBoard>();
     if (type == "tarbelldd") return std::make_unique<TarbellDdBoard>();
