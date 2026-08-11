@@ -66,6 +66,13 @@ void Machine::setRunning(bool r) {
     for (auto& b : boards_) b->setRunning(r);
 }
 
+// The CPU halted (a HLT executed) or did not. Fan it out so a board with a halt-acknowledge
+// lamp -- the front panel's HLTA indicator -- can track it. Like setRunning, an operator-
+// level machine-control signal, not a bus cycle. See Board::setHalted.
+void Machine::setHalted(bool h) {
+    for (auto& b : boards_) b->setHalted(h);
+}
+
 uint64_t Machine::rxBytes() const {
     uint64_t n = 0;
     for (const auto& b : boards_) n += b->rxBytes();

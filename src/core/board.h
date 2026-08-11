@@ -594,6 +594,14 @@ public:
     // Most boards have no such lamp and ignore it.
     virtual void setRunning(bool running) { (void)running; }
 
+    // THE CPU HALTED (a HLT executed), fanned out from the monitor when a RUN session
+    // ends on a halt (Machine::setHalted). A board that drives a halt-acknowledge lamp --
+    // the front panel's HLTA indicator -- watches it here. Like setRunning this is an
+    // operator-level machine-control signal, NOT a bus cycle: the emulator runs HLT
+    // atomically, so no snooped cycle carries HLTA. Cleared when a RUN starts (setRunning
+    // true). Most boards have no such lamp and ignore it.
+    virtual void setHalted(bool halted) { (void)halted; }
+
     // THE STREAM ON ONE OF THIS CARD'S SERIAL UNITS, or null for a card that has no
     // such line (which is most of them). It is the connector on the back panel: the
     // monitor CONNECTs an endpoint to it, and an operator that OWNS the endpoint -- the

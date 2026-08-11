@@ -142,7 +142,15 @@ public:
     // pump() can drive the panel's WAIT indicator (lit when stopped, dark while a
     // RUN session turns). This is the operator-level run state fanned from
     // Machine::setRunning -- not the debugger's per-slice flag. See runningFlags().
-    void setRunning(bool running) override { running_ = running; }
+    // Any RUN clears the halt latch: HLTA cannot outlive the halt it acknowledged.
+    void setRunning(bool running) override {
+        running_ = running;
+        if (running) halted_ = false;
+    }
+
+    // THE HLTA LAMP. The CPU stopped on a HLT; remember it so pump() can light the panel's
+    // halt-acknowledge indicator. Fanned from Machine::setHalted, cleared by any RUN above.
+    void setHalted(bool halted) override { halted_ = halted; }
 
     // ---- THE GRAPHICAL PANEL BRIDGE -- one serial-style connector, "gui". --------
     //
@@ -236,6 +244,12 @@ private:
     // is re-established the moment the monitor next runs or stops, like the debugger's
     // host-side breakpoints (a fresh machine sits in WAIT -- power() sets false).
     bool running_ = false;
+
+    // The HLTA lamp, driven from the operator-level halt state (setHalted), NOT the 8080
+    // status word -- the emulator runs HLT atomically, so no snooped cycle carries HLTA.
+    // True = the CPU stopped on a HLT = HLTA lit; cleared by any RUN (setRunning true).
+    // Transient SESSION state like running_, deliberately NOT serialized.
+    bool halted_ = false;
 
     // ---- The line to the graphical panel bridge. -------------------------------
     //

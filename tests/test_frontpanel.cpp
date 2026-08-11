@@ -323,6 +323,12 @@ void test_frontpanel() {
         CHECK(encodeL(0x2001, 0x55, StMemR | StWo, FlWait) == "L 2001 55 82 04\n",
               "WAIT lit rides the flags byte as 04, alongside an untouched status word");
 
+        // HLTA (bit 1) is the other machine-control flag altairsim now drives -- the CPU
+        // stopped on a HLT. The bridge already composes its D3 HLTA LED from this bit.
+        CHECK(FlHalted == 0x02, "FlHalted is bit 1, matching altairsim-fp's FlagHalted");
+        CHECK(encodeL(0x2001, 0x76, StMemR | StWo, FlWait | FlHalted) == "L 2001 76 82 06\n",
+              "a HLT stop rides flags 06 -- WAIT and HLTA together");
+
         // ---- Inbound: HELLO, and version is whatever the bridge said (min() is the
         // caller's job, not the codec's). ----
         PanelMsg h = parseLine("HELLO altairsim-fp 1");
@@ -365,6 +371,30 @@ void test_frontpanel() {
         CHECK(encodeL(r.fp->addressLamps(), r.fp->dataLamps(), r.fp->busStatus(), 0)
                   == "L 2000 55 82 00\n",
               "a memory read ships status 82 -- MEMR|WO*, verbatim from the bus");
+    }
+
+    // -----------------------------------------------------------------------
+    // THE M1 LAMP ON STOP. A real Altair halts inside the next instruction's M1 fetch, so
+    // the stopped panel shows M1|MEMR|WO lit, ADDRESS on PC and DATA on the opcode. The
+    // monitor re-drives that pending fetch at the stop path (a real read at PC with the
+    // fetch status word) so snoop() latches it -- this proves the mechanism the monitor
+    // uses lands on the lamps. See monitor.cpp's stop path.
+    // -----------------------------------------------------------------------
+    SECTION("a re-driven M1 fetch latches M1|MEMR|WO, PC and the opcode onto the lamps");
+    {
+        Rig r;
+
+        // Put an opcode where PC will sit, then run an operand read past it so the lamps
+        // hold a NON-M1 cycle -- exactly the stale state a plain stop leaves behind.
+        r.m.bus.memWrite(0x2000, 0x3E);            // MVI A -- the opcode about to run
+        (void)r.m.bus.memRead(0x1000);            // an unrelated read: lamps now show 0x1000/82
+        CHECK(r.fp->busStatus() == (StMemR | StWo), "before: lamps hold a plain read, M1 dark");
+
+        // The stop path's move: a real read at PC carrying the M1 fetch status word.
+        (void)r.m.bus.memRead(0x2000, StM1 | StMemR | StWo);
+        CHECK(r.fp->busStatus()    == (StM1 | StMemR | StWo), "a stopped panel shows the M1 fetch (0xA2)");
+        CHECK(r.fp->addressLamps() == 0x2000,                 "...ADDRESS shows PC");
+        CHECK(r.fp->dataLamps()    == 0x3E,                   "...DATA shows the opcode about to run");
     }
 
     // -----------------------------------------------------------------------
@@ -516,6 +546,47 @@ void test_frontpanel() {
             bool again = waitFor([&] { br.poll(); r.fp->pump(); },
                                  [&] { return br.sawFromBoard("L 3000 22 00 04\n"); });
             CHECK(again, "stopping re-lights WAIT -- a flags-only change still ships");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // THE HLTA LAMP. Also not a bus signal -- the emulator runs HLT atomically, so no
+    // snooped cycle carries HLTA. It is the operator-level halt state fanned by
+    // Machine::setHalted (the monitor calls it at the stop path when the reason is a HLT).
+    // It rides the flags byte at bit 1 (0x02), and any RUN clears it.
+    // -----------------------------------------------------------------------
+    SECTION("socket: -- HLTA tracks the halt state (flags bit 1), driven by setHalted");
+    {
+        std::string err;
+        FakeBridge  br;
+        br.listener = platform::listenTcp(0, err);
+        CHECK(br.listener != nullptr, ("the bridge listens: " + err).c_str());
+
+        if (br.listener) {
+            Rig r;
+            std::string spec = "socket:127.0.0.1:" + std::to_string(br.listener->port());
+            CHECK(r.fp->connect("gui", spec, err), "CONNECT fp0:gui");
+
+            bool up = waitFor([&] { br.poll(); r.fp->pump(); },
+                              [&] { return br.sawFromBoard("HELLO"); });
+            CHECK(up, "the panel connects and greets");
+
+            // The CPU stops on a HLT: setHalted(true) lights HLTA. The machine is also
+            // stopped (WAIT lit), so the flags byte carries both -- 06.
+            r.m.setHalted(true);
+            r.m.bus.memWrite(0x4000, 0x76);  // a fresh lamp value so the diff gate ships it
+            bool halted = waitFor([&] { br.poll(); r.fp->pump(); },
+                                  [&] { return br.sawFromBoard("L 4000 76 00 06\n"); });
+            CHECK(halted, "a HLT stop ships HLTA + WAIT (flags 06) -- setHalted fanned out");
+
+            // The operator RUNs it again -- setRunning(true) clears the halt latch, so a
+            // later stop no longer shows HLTA. WAIT alone (04) returns.
+            r.m.setRunning(true);
+            r.m.setRunning(false);
+            r.m.bus.memWrite(0x4000, 0x77);
+            bool cleared = waitFor([&] { br.poll(); r.fp->pump(); },
+                                   [&] { return br.sawFromBoard("L 4000 77 00 04\n"); });
+            CHECK(cleared, "a RUN clears HLTA -- the next stop is WAIT only (flags 04)");
         }
     }
 
