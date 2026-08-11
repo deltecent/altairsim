@@ -1,0 +1,46 @@
+# Kill the Bit -- the 1975 front-panel game -- wired to altairsim-fp.
+#
+#     cd examples/frontpanel && altairsim killbits.toml
+#     -> the program loads and runs; a lit bit walks across the address lamps
+#
+# "Kill the Bit" (Dean McDaniel, May 1975) is the classic Altair front-panel game: a
+# single bit sweeps the upper eight ADDRESS lamps, and you kill it by flipping the sense
+# switch under it at the instant it passes. Miss, and it splits. It has no console and no
+# disk -- the machine IS the display and the switches are the controller -- so it wants
+# the GRAPHICAL FRONT PANEL, altairsim-fp, exactly like fp.toml. See KILLBITS.ASM for the
+# listing and README.md for how to play.
+#
+# This is the base Altair (`base = "default"` -- fp0/8080/2SIO/88-DCDD/56K/DBL) with three
+# changes: the front-panel board dials altairsim-fp, the CPU runs at the real 2 MHz with
+# the host idle-sleep off, and the program is loaded and started for you.
+
+[machine]
+name = "killbits"
+base = "default"              # fp0, 8080, 2SIO console at 10, 88-DCDD at 08, 56K, DBL PROM
+
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h), not to wherever you are
+# standing, so this directory can be COPIED somewhere and still run. KILLBITS assembles at
+# 0000 (`org 0`), which is RAM in the base machine, so LOAD drops it in and RUN 0 starts it.
+startup = [
+  "LOAD \"KILLBITS.HEX\"",
+  "RUN 0",
+]
+
+# THE FRONT-PANEL BOARD is already in the base machine (id `fp0`). Re-open it by `id` with
+# no `type` and point its graphical view at altairsim-fp, the separate OpenGL panel program
+# that listens on TCP 8800 -- the declarative form of `CONNECT fp0:gui socket:localhost:8800`.
+# `sense = 0x00` starts every switch DOWN, which is how you begin a game (all bits off).
+[[board]]
+id      = "fp0"
+sense   = 0x00
+connect = "socket:localhost:8800"
+
+# THE PROCESSOR, re-opened by `id`. Kill the Bit is a timing game: the bit's sweep speed is
+# the CPU's real speed, so `clock_hz = 2_000_000` runs it at the authentic 2 MHz the 1975
+# machine did -- flat out (the default `clock_hz = 0`) would blur it away. `idle = false`
+# turns off the host idle-sleep: this program never sits at a prompt, it spins forever, so
+# there is nothing to sleep through and the panel updates stay crisp.
+[[board]]
+id       = "cpu0"
+clock_hz = 2_000_000
+idle     = false

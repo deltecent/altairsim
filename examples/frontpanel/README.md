@@ -50,6 +50,27 @@ SET fp0 FPS=60            # cap how many panel updates per second cross the wire
 CONNECT fp0:gui socket:HOST:PORT   # or point it at a different host/port
 ```
 
+## Kill the Bit — a game for the panel
+
+```
+cd examples/frontpanel && altairsim killbits.toml
+```
+
+`killbits.toml` is the same machine with a program in it: **Kill the Bit**, Dean
+McDaniel's 1975 front-panel game. There is no console and no disk — the panel *is* the
+game. A single lit bit sweeps across the upper eight **address** lamps; you kill it by
+flipping the **sense** switch beneath it at the instant it passes. Miss, and the bit
+splits into two. Before you start, put every switch **down**.
+
+Unlike `fp.toml`, this one loads and runs on its own — its `startup` does the `LOAD` and
+`RUN 0` for you — and it pins the CPU to the real **2 MHz** with the host idle-sleep off,
+because the bit's sweep speed *is* the CPU speed and the timing is the game. Start
+altairsim-fp (before or after, order does not matter) and the bit begins to walk.
+
+The program is `KILLBITS.ASM` (listing in `KILLBITS.PRN`, assembled to `KILLBITS.HEX`).
+`Displaying Data on Altair LEDs.pdf` is background on how these front-panel display tricks
+work.
+
 ## More
 
 The board, the sense-switch decode, and the exact wire protocol are documented in
