@@ -168,9 +168,12 @@ public:
 
     // THE ONE HOST TURN (DESIGN.md 7.1). Speaks the wire protocol to the bridge:
     // greets on connect, streams `L` status frames (throttled to fps, only when they
-    // change and the socket can take them), reads `W`/`S` switch frames back, and
-    // redials a line that dropped -- on a capped backoff, since the bridge is opened
-    // and closed out of band. No thread: one non-blocking pass per emulated slice.
+    // change and the socket can take them), and redials a line that dropped -- on a
+    // capped backoff, since the bridge is opened and closed out of band. The link is
+    // OUTPUT ONLY: it drains and parses the bridge's `W`/`S` switch frames to stay in
+    // frame sync but IGNORES them -- a graphical panel is a view and never moves a
+    // switch on this machine (altairsim-fp #7). No thread: one non-blocking pass per
+    // emulated slice.
     void pump() override;
 
     // The bridge went away, or answered again -- said ONCE per edge, not per retry. The

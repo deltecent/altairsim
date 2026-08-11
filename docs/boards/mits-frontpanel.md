@@ -174,9 +174,13 @@ authority for the *content*.
   the wire *only* if it differs from the last one sent **and** the socket can take it
   (`writable()` — TCP backpressure). An idle or halted guest costs nothing.
 - **Handshake:** `HELLO altairsim-fp 1` both ways; each side adopts `min(local, remote)`.
-- **`W <sw:04x>` / `S <sense:02x>`** (bridge → this card) drive `setSwitches()` / `setSense()` — the
-  on-screen operator throwing the address/sense switches. A guest `IN 0FFH` then reads the sense byte
-  through the ordinary `read()` path. Unknown or malformed lines are ignored (forward-compat).
+- **The link is output-only.** The panel bridge is a *view* onto this card, so it never changes any
+  simulator state. `W <sw:04x>` / `S <sense:02x>` frames from the bridge are drained and parsed (to
+  stay in frame sync and tolerate a bridge that still sends them) but **ignored** — a graphical panel
+  cannot throw a switch on this machine. Letting it used to clobber the configured sense switches the
+  instant a freshly-connected bridge, whose switches start at zero, greeted (altairsim-fp #7). The
+  sense switches are set from the machine side — `SET fp0 sense=…`, the `sense` property, TOML — and
+  that is what a guest `IN 0FFH` reads. Unknown or malformed lines are likewise ignored (forward-compat).
 
 ### The status word is a bus signal (not a lamp this card invents)
 

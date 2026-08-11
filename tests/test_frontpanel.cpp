@@ -447,19 +447,24 @@ void test_frontpanel() {
                                    [&] { return br.sawFromBoard("L 2000 55 82 04\n"); });
             CHECK(sawRead, "a read streams as L 2000 55 82 04 -- MEMR|WO*, WAIT lit, verbatim");
 
-            // ---- Inbound: the bridge flips a switch, the GUEST reads it at port FF. ----
+            // ---- Inbound: OUTPUT-ONLY. The link runs altairsim -> bridge; a graphical
+            // panel is a VIEW and cannot move a switch on this machine (altairsim-fp #7).
+            // Seed the switches from the machine side, then let the bridge shout its own
+            // (different) switch word at us -- the board must drain and IGNORE it, so the
+            // sense switches the operator/TOML configured are never clobbered on connect.
+            r.fp->setSwitches(0x8CE1);
             br.send("S 81\n");
-            bool sensed = waitFor([&] { br.poll(); r.fp->pump(); },
-                                  [&] { return r.fp->sense() == 0x81; });
-            CHECK(sensed, "S 81 from the bridge lands in the SENSE switches");
-            CHECK(r.m.bus.ioRead(0xFF) == 0x81, "...and a guest IN 0FFH reads exactly that");
-
-            // ...and the full 16-bit switch word, high byte still the sense switches.
             br.send("W abcd\n");
-            bool switched = waitFor([&] { br.poll(); r.fp->pump(); },
-                                    [&] { return r.fp->switches() == 0xABCD; });
-            CHECK(switched, "W abcd sets the whole switch row");
-            CHECK(r.m.bus.ioRead(0xFF) == 0xAB, "...and the sense byte is its high half");
+            // Cycle enough poll/pump turns that both frames have certainly crossed the
+            // loopback and been drained/parsed by the board; the switches must not budge.
+            for (int i = 0; i < 30; ++i) {
+                br.poll();
+                r.fp->pump();
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            CHECK(r.fp->switches() == 0x8CE1, "the bridge's W/S do NOT move the switch row");
+            CHECK(r.fp->sense() == 0x8C, "...the sense switches keep their configured value");
+            CHECK(r.m.bus.ioRead(0xFF) == 0x8C, "...and a guest IN 0FFH still reads it");
         }
     }
 
@@ -488,11 +493,16 @@ void test_frontpanel() {
                                [&] { return br.sawFromBoard("HELLO"); });
             CHECK(up2, "the panel redialled the dropped bridge, with no operator help");
 
-            // ...and the redialled line WORKS: a switch frame still reaches the guest.
+            // ...and the redialled line is still OUTPUT-ONLY: a switch frame on the fresh
+            // session is drained and ignored just like the first, never touching the sim.
+            r.fp->setSwitches(0x1200);
             br.send("S 42\n");
-            bool sensed = waitFor([&] { br.poll(); r.fp->pump(); },
-                                  [&] { return r.fp->sense() == 0x42; });
-            CHECK(sensed, "the reconnected session carries switches like the first did");
+            for (int i = 0; i < 30; ++i) {
+                br.poll();
+                r.fp->pump();
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            CHECK(r.fp->sense() == 0x12, "the reconnected session still ignores the bridge's switches");
 
             // DISCONNECT is the explicit stop: after it, a dropped line is NOT redialled.
             CHECK(r.fp->disconnect("gui", err), "DISCONNECT fp0:gui");

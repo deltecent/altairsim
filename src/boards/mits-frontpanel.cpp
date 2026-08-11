@@ -282,8 +282,14 @@ void FrontPanelBoard::pump() {
 
     if (!up) return;  // still ringing, or down between redials: nothing to read or send
 
-    // ---- Inbound: W/S switch frames (and the bridge's HELLO). Split on '\n'; a malformed
-    // or unknown line parses to Kind::None and is ignored (forward compatibility).
+    // ---- Inbound: the bridge's HELLO, and nothing that moves a switch. The link is
+    // OUTPUT ONLY -- altairsim streams the panel out; a graphical view never reaches back
+    // into the machine. So W/S switch frames are drained and parsed (to stay in frame sync
+    // and tolerate a bridge that still sends them) but DELIBERATELY NOT applied: adopting
+    // them let a freshly-connected bridge, whose switches start at zero, clobber the sense
+    // switches the machine was configured with (altairsim-fp #7). The sense switches move
+    // only from the machine side -- `SET fp0 sense=...`, the `sense` property, TOML -- which
+    // is what a guest IN 0FFH reads. Split on '\n'; a malformed/unknown line is Kind::None.
     uint8_t buf[256];
     for (size_t n; (n = stream_->read(buf, sizeof buf)) > 0;) {
         for (size_t i = 0; i < n; ++i) {
@@ -291,12 +297,14 @@ void FrontPanelBoard::pump() {
             if (c == '\n') {
                 fplink::PanelMsg m = fplink::parseLine(rxLine_);
                 switch (m.kind) {
-                case fplink::PanelMsg::Kind::Switches: setSwitches(m.value); break;
-                case fplink::PanelMsg::Kind::Sense:    setSense((uint8_t)m.value); break;
                 case fplink::PanelMsg::Kind::Hello:
                     wireVer_ = std::min<int>(fplink::kProtocolVersion, m.value);
                     break;
-                case fplink::PanelMsg::Kind::None: break;  // ignore -- forward compat
+                // W/S never change simulator state -- see the note above. Ignored like an
+                // unknown frame, so the panel bridge cannot move a switch on this machine.
+                case fplink::PanelMsg::Kind::Switches:
+                case fplink::PanelMsg::Kind::Sense:
+                case fplink::PanelMsg::Kind::None: break;
                 }
                 rxLine_.clear();
             } else if (rxLine_.size() < kMaxLine) {

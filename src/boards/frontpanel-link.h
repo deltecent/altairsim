@@ -4,7 +4,10 @@
 //
 // The contract is altairsim-fp/docs/panel-protocol.md (version 1), the authoritative
 // cross-repo spec; this is the altairsim (CLIENT) side of it. altairsim dials out to
-// the bridge, streams `L` lamp frames, and reads `W`/`S` switch frames back. Kept as
+// the bridge and streams `L` lamp frames. The link is OUTPUT ONLY: this codec can still
+// PARSE the bridge's `W`/`S` switch frames (forward-compat, so an old bridge that sends
+// them does not desync the client), but the board no longer ACTS on them -- a graphical
+// panel is a view and never moves a switch on the machine (altairsim-fp #7). Kept as
 // free functions in their own namespace so the test can exercise every frame without
 // opening a socket -- the same headless-core discipline the bridge keeps on its side.
 //
