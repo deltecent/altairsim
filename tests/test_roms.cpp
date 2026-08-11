@@ -138,6 +138,15 @@ void test_roms() {
         // console routines (so it lives one PROM below the monitor). Also an S19, and
         // its status/data equates are $F010/$F011 -- the 680kcacr board's registers.
         {"kcacr", 0xFD00, 0xFDFF, 256, 0xA89ADB57u, true},
+        // The iCOM FD3712/FD3812 8" floppy interface boot PROMs. The FD3712 carries two:
+        // a CP/M 2.2 loader at F000 (JMP F073) and iCOM's own FDOS/EDOS bootstrap +
+        // mini-monitor at C000 (JMP C015). The FD3812 double-density card's Lifeboat CP/M
+        // 2.2 loader also lives at F000 but is 1010 bytes (F000-F3F1), not a full 1K -- put
+        // the wrong one in and the machine hangs the same silent way, so each gets a CRC.
+        // Mike Douglas disassemblies, deramp.com; the icom board maps them via rom=.
+        {"icom-fd3712-cpm",  0xF000, 0xF3FF, 1024, 0x82361A3Bu, true},
+        {"icom-fd3712-fdos", 0xC000, 0xC3FF, 1024, 0x47140DCCu, true},
+        {"icom-fd3812-cpm",  0xF000, 0xF3F1, 1010, 0x7FCFCA76u, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

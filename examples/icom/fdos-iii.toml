@@ -1,0 +1,25 @@
+# iCOM FDOS-III -- the later revision of iCOM's disk operating system, single density.
+#
+#     cd examples/icom && altairsim fdos-iii.toml
+#     -> FDOS-III
+#        .
+#
+# Same FD3712 controller and boot PROM as FDOS-I (roms/ICOM-FD3712-FDOS at C000); only the
+# disk differs. FDOS is iCOM's own OS, not CP/M; its prompt is `.` and it drives the 88-2SIO
+# console at 0x10. See reference/FDOS-III Manual.md.
+#
+# THIS FILE IS A DELTA on `base = "icom"`: FDOS boot PROM, startup at C000, FDOS-III disk in
+# drive 0.
+
+[machine]
+name    = "icom-fdos-iii"
+base    = "icom"
+startup = ["RUN C000"]
+
+[[board]]
+id  = "fdc0"
+rom = "builtin:icom-fd3712-fdos"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "FDOS-III (2SIO).DSK"

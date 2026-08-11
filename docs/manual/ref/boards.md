@@ -38,6 +38,7 @@ and within a group the boards are in **alphabetical order**.
 | [`64fdc`](#64fdc) | Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying an 8K RDOS 3.12 boot PROM at C000-DFFF (OUT 40H banks it out, RESET restores it). Boots CDOS |
 | [`dcdd`](#dcdd) | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers |
+| [`icom`](#icom) | iCOM FD3712/FD3812 8" floppy: a programmed-I/O command/handshake controller on the S-100 Interface board. Two ports at BASE+0..1 (default C0) plus a boot PROM and 6810 scratch RAM in high memory (rom=builtin:icom-fd3712-cpm \| icom-fd3712-fdos \| icom-fd3812-cpm). Boots CP/M 2.2 (single and double density) and FDOS. Up to 4 drives |
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
 | [`tarbell`](#tarbell) | Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on) |
 | [`tarbelldd`](#tarbelldd) | Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM |
@@ -287,6 +288,29 @@ MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. 
 | `port` | int | `0xA0` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 |
 | `drives` | int | `1` | `1` .. `8` | Logical drives (one platter each): slot = unit*2 + platter |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
+
+
+### `icom`
+
+iCOM FD3712/FD3812 8" floppy: a programmed-I/O command/handshake controller on the S-100 Interface board. Two ports at BASE+0..1 (default C0) plus a boot PROM and 6810 scratch RAM in high memory (rom=builtin:icom-fd3712-cpm | icom-fd3712-fdos | icom-fd3812-cpm). Boots CP/M 2.2 (single and double density) and FDOS. Up to 4 drives
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `1` | Which drive (0..3) |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk *(also `writeprotect`)* |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0xC0` | `0x0` .. `0xFE` | Base address. The board decodes two ports: BASE (command/status) and BASE+1 (data) |
+| `rom` | string | `builtin:icom-fd3712-cpm` | text | The boot PROM this interface board carries: builtin:icom-fd3712-cpm (CP/M 2.2, single density, F000), builtin:icom-fd3712-fdos (FDOS, C000), or builtin:icom-fd3812-cpm (CP/M 2.2, double density, F000). The window base and the 6810 scratch RAM follow the image |
+| `drives` | int | `2` | `1` .. `4` | Drives on the controller (unit 0..3, selected by cDRVSEC bits 7:6) |
 
 
 ### `mds`

@@ -1,0 +1,28 @@
+# iCOM FD3812 DOUBLE-DENSITY CP/M 2.2 -- boots the moment you start it.
+#
+#     cd examples/icom && altairsim cpm22-3812.toml
+#     -> 48K CP/M 2.2 (double density)
+#        A>
+#
+# THE FD3812 is the double-density sibling of the FD3712: the same C0/C1 command engine,
+# but track 0 stays single density (128-byte sectors) and tracks 1-76 are double density
+# (256-byte sectors) -- 509,184 bytes total. It boots from its own PROM at F000.
+#
+# THIS FILE IS A DELTA on `base = "icom"`, swapping in the FD3812 boot PROM and dropping
+# the double-density disk into drive 0. Everything else -- 8080, 88-2SIO console, front
+# panel, 48K RAM -- comes from machines/icom.toml.
+#
+# THE DISK IS TRACKED; copy it before testing writes, or add `readonly = true`.
+
+[machine]
+name = "icom-cpm22-3812"
+base = "icom"
+
+# Swap the CP/M FD3712 PROM for the FD3812 double-density boot PROM, and mount the DD disk.
+[[board]]
+id  = "fdc0"
+rom = "builtin:icom-fd3812-cpm"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CPM22-3812-48K.dsk"

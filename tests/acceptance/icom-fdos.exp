@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f
+#
+# THE iCOM FDOS-III boots iCOM's own disk operating system (NOT CP/M) off the FDOS boot
+# PROM at C000. The PROM's bootstrap loads the RAM-resident Executive off the system tracks
+# and runs it; the Executive prints `!` and drives the 88-2SIO console. This exercises a
+# different boot path than the CP/M fixtures -- the FDOS resident driver, not a CP/M CBIOS.
+#
+# LIST must be typed at the `!` prompt (a pipe cannot -- see
+# [[altairsim-pipe-cannot-type-at-a-guest]]), so this is an expect test. The system diskette
+# is mounted write-protected and shasummed before and after.
+#
+# usage: expect -f icom-fdos.exp <altairsim>
+
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/icom/FDOS-III (2SIO).DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/icom-fdos.toml
+
+# The PROM boots FDOS automatically; the Executive signs on and prompts with `!`.
+expect {
+    -ex "FDOS-III" {}
+    eof     { puts "FAIL: the machine died before FDOS signed on"; exit 1 }
+    timeout { puts "FAIL: FDOS-III never booted off the iCOM PROM (no sign-on)"; exit 1 }
+}
+expect {
+    -ex "!"  {}
+    eof     { puts "FAIL: FDOS signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: FDOS signed on but never reached the ! prompt"; exit 1 }
+}
+
+# Let the Executive settle on the console before typing (the prompt prints a beat before the
+# input routine starts polling the 2SIO -- typing into that gap drops the first char).
+sleep 1
+
+# LIST prints the directory; EXEC is the Executive file, always present on a system diskette.
+send "LIST\r"
+expect {
+    -ex "EXEC" {}
+    eof     { puts "FAIL: the machine died running LIST"; exit 1 }
+    timeout { puts "FAIL: LIST did not print the directory (no EXEC)"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the iCOM controller auto-booted FDOS-III to its ! prompt, LIST read the directory\
+      (EXEC), and the master is byte-identical."
+exit 0

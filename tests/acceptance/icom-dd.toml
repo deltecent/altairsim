@@ -1,0 +1,21 @@
+# iCOM FD3812 DOUBLE-DENSITY boot acceptance fixture: the same controller, but with the
+# FD3812 boot PROM at F000 and the 509,184-byte double-density CP/M 2.23 master in drive 0.
+# This is the mixed-density proof -- an SD track 0 then DD tracks 1-76, which hangs mid-load
+# if the read engine ever mishandles the 256-byte sectors. Mounted READ-ONLY; icom.exp
+# shasums it. The shipped example is examples/icom/cpm22-3812.toml.
+
+[machine]
+name = "icom-dd-acceptance"
+base = "icom"
+
+[[board]]
+id  = "fdc0"
+rom = "builtin:icom-fd3812-cpm"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/icom/CPM22-3812-48K.dsk"
+  writeprotect = true
+
+[console]
+bsdel = "bs"

@@ -406,6 +406,11 @@ add_library(altair_core STATIC
   # directly, not HardSectorFdc): it decodes A0h-A7h and serves 256-byte sectors from
   # a linear .DSK through a command/handshake protocol. See src/boards/mits-88hdsk.h.
   src/boards/mits-88hdsk.cpp
+  # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
+  # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
+  # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
+  # See src/boards/icom-fd3712.h.
+  src/boards/icom-fd3712.cpp
   src/boards/mits-2sio.cpp
   src/boards/mits-88sio.cpp
   # SD Systems SBC-100/200 -- the 8251 serial console (Phase 1). Structural twin of
@@ -707,6 +712,7 @@ add_executable(altair_tests
   tests/test_dcdd.cpp
   tests/test_mds.cpp
   tests/test_hdsk.cpp
+  tests/test_icom.cpp
   tests/test_frontpanel.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
@@ -1358,6 +1364,45 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbelldd.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-tarbelldd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE iCOM FD3712/FD3812 boots CP/M off its C0/C1 command engine and boot PROM at F000.
+  # Two runs of one script: the single-density FD3712 (256,256-byte SD master), and the
+  # double-density FD3812 (509,184-byte mixed SD/DD master) -- the DD run hangs mid-load
+  # if the read engine ever mishandles the 256-byte sectors. Both mount the tracked master
+  # WRITE-PROTECTED and shasum it -- the boot only reads.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-icom
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom.toml
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/icom/CPM22v1.0-3712-48K.DSK
+                   STAT)
+  set_tests_properties(acceptance-icom PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  add_test(NAME acceptance-icom-dd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom-dd.toml
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/icom/CPM22-3812-48K.dsk
+                   PIP)
+  set_tests_properties(acceptance-icom-dd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # iCOM FDOS-III: iCOM's own OS off the FDOS boot PROM at C000 -- a different boot path
+  # than the CP/M fixtures (the RAM-resident FDOS Executive, not a CP/M CBIOS).
+  add_test(NAME acceptance-icom-fdos
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom-fdos.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-icom-fdos PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

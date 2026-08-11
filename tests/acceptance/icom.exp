@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+#
+# THE iCOM FD3712/FD3812 BOOTS CP/M off its boot PROM at F000. The front panel jumps to
+# F000 (machines/icom.toml's startup); the PROM reads the cold loader off track 0 through
+# the C0/C1 command engine, drops into CP/M's CBIOS, and the banner comes up on the 88-2SIO
+# console. Nothing is typed to boot -- but DIR must be typed at A>, which a pipe cannot do
+# (see the [[altairsim-pipe-cannot-type-at-a-guest]] rule), so this is an expect test.
+#
+# ONE SCRIPT, BOTH DENSITIES. Called once with the single-density FD3712 fixture and once
+# with the double-density FD3812 fixture; the DD run is the mixed-density proof (SD track 0,
+# 256-byte DD data tracks). The disk is mounted write-protected and shasummed before and
+# after -- the quiet way for this to rot is for `writeprotect` to stop meaning anything.
+#
+# usage: expect -f icom.exp <altairsim> <config> <disk-for-shasum> <known-file>
+
+set timeout 60
+log_user 0
+
+set exe   [lindex $argv 0]
+set cfg   [lindex $argv 1]
+set dsk   [lindex $argv 2]
+set known [lindex $argv 3]
+
+set before [exec shasum $dsk]
+
+spawn $exe $cfg
+
+# The PROM boots CP/M automatically -- no monitor, no 'C', no auto-baud.
+expect {
+    -ex "CP/M" {}
+    eof     { puts "FAIL: the machine died before CP/M signed on"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted off the iCOM PROM (no sign-on)"; exit 1 }
+}
+
+# ...and it reaches the A> prompt.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M signed on but never reached the A> prompt"; exit 1 }
+}
+
+# Let the CBIOS settle on the console before typing (the prompt prints a beat before the
+# input routine starts polling the 2SIO -- typing into that gap drops the first char).
+sleep 1
+
+# The directory is readable: DIR returns a known file off the tracked master.
+send "DIR\r"
+expect {
+    -ex $known {}
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not list the disk (no $known)"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the iCOM controller auto-booted CP/M off its boot PROM to A>, DIR read the disk\
+      ($known), and the master is byte-identical."
+exit 0

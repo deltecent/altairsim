@@ -1,0 +1,19 @@
+# iCOM FD3712 single-density boot acceptance fixture: the controller with its CP/M boot
+# PROM at F000 and the 48K CP/M 2.2 SD master in drive 0, mounted READ-ONLY so the test
+# can never dirty the tracked image (the boot only reads; icom.exp shasums it to prove it).
+# The shipped example (examples/icom/cpm22.toml) mounts it read/write instead.
+
+[machine]
+name = "icom-acceptance"
+base = "icom"
+
+[[board]]
+id = "fdc0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/icom/CPM22v1.0-3712-48K.DSK"
+  writeprotect = true
+
+[console]
+bsdel = "bs"
