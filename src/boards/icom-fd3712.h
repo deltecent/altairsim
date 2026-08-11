@@ -134,8 +134,8 @@ private:
     size_t   writePtr_    = 0;      // next slot a cWRTBUF push fills
     bool     wbufMode_    = false;  // FD3812 streaming: OUT C1 pushes into the write buffer
 
-    bool     crcErr_      = false;  // status bit 3, latched, cleared by cCLRERR/cRESET
-    bool     ddam_        = false;  // status bit 7, latched, cleared by cCLRERR/cRESET
+    bool     crcErr_      = false;  // status bit 3, latched, cleared by cCLRERR / the Clear cmd (81)
+    bool     ddam_        = false;  // status bit 7, latched, cleared by cCLRERR / the Clear cmd (81)
 
     // ---- engine helpers ----
     void    outCmd(uint8_t v);
@@ -145,7 +145,8 @@ private:
     void    doRead();
     void    doWrite();
     void    pushWrite(uint8_t b);
-    void    resetController();
+    void    doClear();          // the Clear command (81): abort + clear status, buffers untouched
+    void    resetController();  // power-on / CPU RESET only -- full controller reset
     DiskImage* currentImg() const;
 
     // ---- ROM/mount helpers ----
