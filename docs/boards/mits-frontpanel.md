@@ -99,10 +99,10 @@ All three PDFs are from **deramp.com** (authorized — `docs/sources.md`), under
 - **Interrupts:** none. The panel does not drive pin 73. (`STOP` is not an interrupt — it pulls
   `PRDY`, which is a different wire and a different idea.)
 - **Bus master:** no. See "Limitations".
-- **Properties:** `sense` (hex, `SA8..SA15`) and `data` (hex, `SA0..SA7`) — both are halves of one
-  16-bit switch register, and setting either leaves the other alone — plus `fps` (default `256`), the
-  cap on how many `L` frames per second the graphical bridge unit puts on the wire. `SET fp0 FPS=<n>`
-  retunes it live; see "The graphical panel bridge" below.
+- **Properties:** `sense` (hex, `SA8..SA15`) — the high half of the one 16-bit switch register, and
+  what `IN 0FFH` reads. Setting it leaves the low half (`SA0..SA7`) alone; that low half has no port
+  wired to it (schematic 880-106) and no property of its own, so nothing but a snapshot restore sets
+  it. `sense` is the whole knob an operator has on this card.
 
 ### Reset
 
@@ -113,85 +113,17 @@ All three PDFs are from **deramp.com** (authorized — `docs/sources.md`), under
 is a finger. The asymmetry — power kills the lamps but not the switches — is the hardware's, and it
 is the only thing `power()` has to say.
 
-## The graphical panel bridge (the `gui` unit)
+### The lamps and the status word
 
-The panel is a card, and a **graphical** front panel is a *view* onto that card (`DESIGN.md` §3) —
-the same relationship a windowed terminal has to a serial board. The view lives in another process,
-**altairsim-fp** (a separate repo: an OpenGL front panel that is a **TCP server**), and this card
-**dials out** to it. Nothing new in the monitor and no CLI flag: the board declares one connectable
-unit and the generic `CONNECT`/`DISCONNECT` machinery does the rest (`DESIGN.md` §7.7).
-
-**altairsim-fp listens on TCP port 8800 by default**, so the everyday command is
-`CONNECT fp0:gui socket:localhost:8800` (`socket:HOST:PORT` for a panel on another host or port):
-
-```
-> CONNECT fp0:gui socket:localhost:8800  # dial the running bridge (8800 is its default port)
-> DISCONNECT fp0:gui                      # unplug it, and stop redialling
-> SET fp0 FPS=60                          # retune the frame cap live
-```
-
-The declarative form is a `connect` property on the board, so a machine file can wire it at load —
-see `examples/frontpanel/fp.toml`:
-
-```toml
-[[board]]
-id      = "fp0"
-connect = "socket:localhost:8800"
-```
-
-- **One unit, `gui`, `UnitKind::Serial`.** The board owns the `ByteStream` (a card with nothing
-  plugged in holds a `NullStream`, never a null pointer); the monitor resolves the endpoint string
-  and hands the stream down. `socket:HOST:PORT` is an ordinary built-in endpoint.
-- **The board does its I/O in `pump()`, once per emulated slice — no thread.** That is what keeps
-  the bridge deterministic under RECORD/REPLAY: the panel is touched at a known point in emulated
-  time, like every other board (`DESIGN.md` §7, §7.6).
-- **Persistent reconnect, on the host clock.** The bridge is opened and closed out of band (a human
-  launches or quits a window), so the board never gives up on its own: if the line drops it redials
-  `endpoint_` on a capped exponential backoff (0.25s → 4s), measured on `std::chrono::steady_clock`
-  — **host wall time, not emulated time**, so a flat-out guest and an idle one behave identically and
-  the guest cannot measure any of it. `DISCONNECT fp0:gui` is the one explicit stop. The first
-  failure and each successful (re)connect are logged **once**, never per retry.
-
-### What crosses the wire
-
-The wire is line-based and pinned by altairsim-fp's own **`docs/panel-protocol.md`** (version 1) —
-that repo is the authority for the *format*; this section does not duplicate it. altairsim is the
-authority for the *content*.
-
-- **`L <addr:04x> <data:02x> <status:02x> <flags:02x>`** (this card → bridge). `addr`/`data` are the
-  raw address- and data-bus lamps; `status` is the **8080 status word off the last bus cycle,
-  forwarded verbatim** — the same latched word §4 describes (see "the status word is a bus signal"
-  below), **`WO̅` active-low** (`0` on a write/output, `1` on a read/input). The real Altair panel
-  displays `WO̅` **raw, with no inversion**: the WO LED is **lit on a read and dark on a write**
-  (Operator's Manual §4), and an M1 opcode fetch — a memory read — lights MEMR, M1 and WO together.
-  Neither side inverts. `flags` carries the §3 machine-control group; of it only **`WAIT`**
-  (bit 2, `0x04` — altairsim-fp's `FlagWait = 1u << 2`) is modelled: **lit while the machine is
-  stopped** (at the monitor prompt, after a STEP) and **clear while a RUN session is turning**.
-  It is driven from the operator's run/stop state via `Machine::setRunning()`, not snooped off a
-  bus cycle — `WAIT` is a processor *pin*, not a status bit (see "Limitations" below). The rest
-  of the group (RUN/HLDA/…) stays `0` — "absent rather than wrong."
-- **Sent throttled and only when it changed.** Each `1/fps` interval the frame is built and put on
-  the wire *only* if it differs from the last one sent **and** the socket can take it
-  (`writable()` — TCP backpressure). An idle or halted guest costs nothing.
-- **Handshake:** `HELLO altairsim-fp 1` both ways; each side adopts `min(local, remote)`.
-- **The link is output-only.** The panel bridge is a *view* onto this card, so it never changes any
-  simulator state. `W <sw:04x>` / `S <sense:02x>` frames from the bridge are drained and parsed (to
-  stay in frame sync and tolerate a bridge that still sends them) but **ignored** — a graphical panel
-  cannot throw a switch on this machine. Letting it used to clobber the configured sense switches the
-  instant a freshly-connected bridge, whose switches start at zero, greeted (altairsim-fp #7). The
-  sense switches are set from the machine side — `SET fp0 sense=…`, the `sense` property, TOML — and
-  that is what a guest `IN 0FFH` reads. Unknown or malformed lines are likewise ignored (forward-compat).
-
-### The status word is a bus signal (not a lamp this card invents)
-
-`snoop()` copies `BusCycle::status` (`core/bus.h`, `enum Status8080`) into the latch **verbatim** —
-no `switch` on the cycle type, no lookup table. The status word is the 8080's, latched at SYNC and
+`snoop()` watches every settled bus cycle and latches the address- and data-bus lamps and the 8080
+**status word** — `BusCycle::status` (`core/bus.h`, `enum Status8080`) copied in **verbatim**, no
+`switch` on the cycle type and no lookup table. The status word is the 8080's, latched at SYNC and
 carried on the backplane; the CPU/bus layer is its emitter and this card is a forwarder. The
 authority for what the eight bits *mean* is the **Altair 8800 Operator's Manual §4** (the real
-hardware), Intel 8080 order: MEMR, INP, M1, OUT, HLTA, STACK, `WO̅`, INTA. This is why `busStatus()`
-is named for a bus signal and not "lamp bits": the card forwards the active-low word as-is and the
-bridge lights the lamps straight from it — `WO̅` included, drawn raw (lit on read, dark on write),
-with no inversion on either side.
+hardware), Intel 8080 order: MEMR, INP, M1, OUT, HLTA, STACK, `WO̅`, INTA — `WO̅` active-low
+(`0` on a write/output, `1` on a read/input), the way the real panel wires it. That is why
+`busStatus()` is named for a bus signal and not "lamp bits": the card forwards the active-low word
+as-is.
 
 ## Quirks reproduced
 
@@ -223,29 +155,11 @@ On real hardware those switches *are* this board: EXAMINE jams a `JMP` into the 
 call for a terminal, and `docs/cli-commands.md` argues it at length. `BusCycle` deliberately
 carries no `origin` field, so a monitor DEPOSIT is *already* indistinguishable from a CPU write,
 exactly as it is on the backplane. The switches those commands stand in for (`SA0`–`SA15`) live on
-this card, which is where a graphical panel will find them.
-
-Those commands do, however, **refresh the panel now.** `snoop()` always latched the address/data/
-status lamps off their bus cycles, but the frame only ships from `pump()`, and `pump()` used to run
-in exactly one place — the RUN loop — so a STEP or EXAMINE left the window frozen. Each of
-EXAMINE / DEPOSIT / STEP / NEXT now calls `Machine::pump()` after its bus activity, pushing the
-**final resting** cycle (one frame, not one per instruction). The push is diff-gated, so the
-no-bus-cycle paths (a burn into ROM, a NEXT that ran through `runMachine`) cost nothing.
-
-The monitor also pumps the backplane **while it sits idle at the prompt** (the line editor's
-50 ms idle tick, alongside the SDL window-liveness poll — `Monitor::repl`). The panel dials
-altairsim-fp on an *async* socket that needs several turns to connect; a stopped machine pumps
-nothing on its own, so before this the connection never finished — and the power-on state never
-reached the panel — until the first RUN pumped in a loop. Now the dial completes at the prompt
-and the current lamp state (the power-on `L 0000 00 00 04`, WAIT lit; or the rest after a STEP)
-ships the moment the bridge answers, and a bridge relaunched mid-session redials without a RUN.
-Idle-pumping touches only host endpoints, advances no emulated time, and cannot swallow the
-operator's keystrokes — the console keyboard is drained by `con.poll()` during a RUN, never
-inside `pump()`.
+this card, which is where they belong.
 
 **M1 and STACK are now lit, and one bit is still absent — the reason is the bus, not the card.**
-This card **has** these lamps and only forwards what the bus carries (see "The graphical panel
-bridge"), so lighting a bit was a change at the *source* with **none here**.
+This card **has** these lamps and only forwards what the bus carries, so lighting a bit was a change
+at the *source* with **none here**.
 
 **The CPU now generates the whole 8080 status word** (Operator's Manual §4) and asserts it on the
 cycle it originates; the bus carries it verbatim. So **`M1`** lights on every opcode fetch and
@@ -255,22 +169,22 @@ before. Two notes:
 
 | Bit | Status |
 |---|---|
-| **HLTA** | Still `0` at the source. Halt-acknowledge is a machine-control indicator, not something a memory cycle carries; the bridge composes it from the CPU's halt flag, not from `BusCycle::status`. |
+| **HLTA** | Still `0` at the source. Halt-acknowledge is a machine-control indicator, not something a memory cycle carries; it is composed from the CPU's halt flag, not from `BusCycle::status`. |
 | **STACK on a Z80** | A Z80 has **no** STACK status output, so a Z80 never lights it — its push/pop are ordinary memory cycles. STACK is an 8080-only lamp. |
 
 **The §3 machine-control indicators are a different group entirely — not the status word.** `INTE`,
 `WAIT`, `HLDA`, `PROT` (and `RUN`) are **pins** on the processor and the memory cards, not bus
-cycles, and `snoop()` will never see one. They belong to the wire `flags` byte, and are driven — when
-at all — from operator/session state, never from `BusCycle::status`.
+cycles, and `snoop()` will never see one. They are machine-control signals, driven — when at all —
+from operator/session state, never from `BusCycle::status`.
 
-Of the group, **`WAIT` is modelled** (bit 2). It is the operator-visible run/stop state: lit while
+Of the group, **`WAIT` is tracked** (bit 2). It is the operator-visible run/stop state: set while
 the machine is stopped, cleared while a RUN session turns. The monitor brackets a run with
 `Machine::setRunning(true/false)`, which fans out to every board's `Board::setRunning()`; this card
-latches it into `running_` and `pump()` sets `flags = running_ ? 0 : FlWait`. It is *not*
-`Machine::running` (the debugger's per-slice flag, which is false whenever `pump()` runs, so it could
-never drive the lamp) — it is a separate operator-level signal, transient session state that is
-deliberately not serialized into a snapshot. `INTE`, `HLDA`, `PROT` and `RUN` stay `0` and are
-deferred: `INTE` is the 8080's interrupt-enable flip-flop; `HLDA` is a halt-acknowledge pin.
+latches it into `running_` (and the halt latch into `halted_` from `setHalted()`). Neither is
+`Machine::running` (the debugger's per-slice flag) — both are separate operator-level signals,
+transient session state deliberately not serialized into a snapshot. `INTE`, `HLDA`, `PROT` and
+`RUN` stay `0` and are deferred: `INTE` is the 8080's interrupt-enable flip-flop; `HLDA` is a
+halt-acknowledge pin.
 
 **The lamps are honest about being a blur, and so was MITS.** From the Operator's Manual, on the
 indicator LEDs:
@@ -285,12 +199,9 @@ come back merely because "ROM ought to be write-protectable."
 
 ## Verification
 
-`tests/test_frontpanel.cpp` — the port, the switch row, the unclaimed `OUT`, both resets, the
-lamps, the TOML round-trip, and the refusal of the old `[machine] sense` key. The bridge unit adds
-socket sections that play the **server** role (altairsim dials out): the two `HELLO`s, `L` frames
-tracking a running guest with `WO̅` active-low on the wire (write → `D1=0`, read → `D1=1`), `W`/`S`
-round-tripping to `switches()`/`sense()` and a guest `IN 0FFH`, and a dropped listener re-accepting
-to prove the persistent redial (with the backoff shortened for the test).
+The switch row's round-trip through a snapshot is checked in `tests/test_snapshot.cpp`
+(`switches()` restored). The port itself, the switch decode, the unclaimed `OUT` and the sense
+byte a guest reads are exercised end-to-end by the DBL acceptance boot below.
 
 **The acceptance test is DBL, and it is not arranged.** The disk boot PROM in `roms/DBL` reads this
 port at `FF22` to configure the console, and its own source says what the bit means
@@ -330,8 +241,7 @@ into RAM at `2C00` and runs there — the EPROM was too slow to execute from. Se
 **What this port used to return: `0xFF`, always.** Before this card existed, `sense` was a byte on
 the `Machine` that nothing put on the bus. No board decoded port `0xFF`, so `IN 0FFH` read the
 floating bus, and DBL's bit-4 test was reading a **wire**, not a switch — it got a 1 every time and
-the machine ran 8N1 by luck. `tests/test_frontpanel.cpp` keeps a tripwire on the floating case, so
-a machine with *no* panel still honestly returns `0xFF`.
+the machine ran 8N1 by luck. A machine with *no* panel still honestly returns `0xFF`.
 
 ## Related
 

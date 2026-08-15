@@ -93,7 +93,7 @@ and within a group the boards are in **alphabetical order**.
 
 | Type | What it is |
 |---|---|
-| [`fp`](#fp) | Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here -- plus a lamp/status display driven to an external graphical panel (its 'gui' unit). No OUT |
+| [`fp`](#fp) | Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 
@@ -984,17 +984,13 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 
 ### `fp`
 
-Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here -- plus a lamp/status display driven to an external graphical panel (its 'gui' unit). No OUT
-
-**Units:** `gui` (serial, CONNECT)
+Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT
 
 #### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `sense` | int | `0x0` | `0x0` .. `0xFF` | The SENSE switches, SA8..SA15 -- what IN 0FFH reads |
-| `fps` | int | `256` | `1` .. `1024` | Panel refresh cap -- L status frames per second sent to the bridge |
-| `connect` | string | `null` | text | The endpoint the graphical panel bridge lives at (CONNECT sets this) |
 
 
 ### `hostbridge`

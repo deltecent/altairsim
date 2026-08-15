@@ -86,11 +86,9 @@ std::vector<BoardType> boardTypes() {
         {"vdb8024", "SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display"},
         {"d7a", "Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host"},
         {"sol", "Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT). Brings the WIND/REWIND/EXTRACT verbs and a tape counter"},
-        // Two roles, and neither is a toggle: the SENSE switches a guest reads at IN 0FFH
-        // are a CONFIGURED byte (SET fp0 sense=, or TOML) -- there is no switch on this board
-        // to flip -- and the lamps are a DISPLAY, driven to an external graphical panel over
-        // the 'gui' unit. The panel answers no OUT.
-        {"fp", "Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here -- plus a lamp/status display driven to an external graphical panel (its 'gui' unit). No OUT"},
+        // Not a toggle: the SENSE switches a guest reads at IN 0FFH are a CONFIGURED byte
+        // (SET fp0 sense=, or TOML) -- there is no switch on this board to flip. No OUT.
+        {"fp", "Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT"},
         {"turnkey", "MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]]"},
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},

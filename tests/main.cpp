@@ -124,7 +124,6 @@ const struct {
     {"d7a", test_d7a},
     {"sol", test_sol},
     {"tapemount", test_tapemount},
-    {"frontpanel", test_frontpanel},
     {"turnkey", test_turnkey},
     {"virtc", test_virtc},
     {"hostdir", test_hostdir},

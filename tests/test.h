@@ -96,7 +96,6 @@ void test_terminal();
 void test_dazzler();
 void test_d7a();
 void test_sol();
-void test_frontpanel();
 void test_turnkey();
 void test_virtc();
 void test_hostdir();

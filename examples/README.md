@@ -20,7 +20,6 @@ altairsim examples/sol/trek80.toml             # a Sol-20 at SOLOS, with TREK80 
 altairsim examples/debugger/debugger.toml      # a bench for learning the symbolic debugger
 altairsim examples/dazzler/kscope.toml         # a Cromemco Dazzler, drawing a kaleidoscope
 altairsim examples/printing/printer.toml       # an 88-C700 printer, wired to a real host printer
-altairsim examples/frontpanel/fp.toml          # the base machine, wired to the graphical front panel
 ```
 
 | | What it is |
@@ -39,7 +38,6 @@ altairsim examples/frontpanel/fp.toml          # the base machine, wired to the 
 | [`dazzler/`](dazzler/) | A **Cromemco Dazzler**, the S-100's first color graphics card, running Li-Chen Wang's **Kaleidoscope**. Comes up drawing a four-way-mirrored pattern in a window; ATTN (Ctrl-E) breaks back to the monitor. |
 | [`pmmi/`](pmmi/) | A **PMMI MM-103 modem** and a small 8080 **terminal** program that bridges the console to the phone line. Four control keys work the modem — `^D` DTR, `^S` the 6860 Self Test loopback, `^I` modem status, `^C` quit. `^D` then `^S` makes the card echo your keystrokes with no phone line attached; set `dial`/`answer` to place a real call over TCP. |
 | [`printing/`](printing/) | An **88-C700 line printer**, and a banner program that prints through it. The README sets up a real printer on your host — a network printer over `socket:`, or a CUPS queue over `printer:` — and a page comes out. Per-OS host setup (macOS, Linux; Windows pending). |
-| [`frontpanel/`](frontpanel/) | The base Altair with its **front panel connected to altairsim-fp** — a *separate* program (its own repo) that draws the panel's lamps and switches in a window and listens on **TCP 8800**. Loads to the `altairsim>` prompt; the window mirrors the running machine, and the on-screen sense switches feed a guest `IN 0FFH`. |
 | [`ai-mcp/`](ai-mcp/) | A working directory for an **AI assistant driving altairsim over MCP**: a CP/M machine and a tiny `HELLO.ASM` with one deliberate bug the assistant assembles, runs, single-steps to find, and fixes — all through the simulator's MCP tools. See `DRIVING-WITH-AI.md`. |
 
 **This tree is the product**, which is the reason it exists as one directory rather than as media

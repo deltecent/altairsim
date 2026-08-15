@@ -713,7 +713,6 @@ add_executable(altair_tests
   tests/test_mds.cpp
   tests/test_hdsk.cpp
   tests/test_icom.cpp
-  tests/test_frontpanel.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp
