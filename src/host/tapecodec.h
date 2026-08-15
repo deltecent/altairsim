@@ -195,6 +195,11 @@ private:
 //   `detected`    out: what it turned out to be ("raw" for a byte tape).
 //   `log`         out: the narration line(s), for the board to hand to drainLog().
 //
+// A file WITH content is decided by its magic (never its extension). An EMPTY file -- what
+// MOUNT ... CREATE makes for a fresh recording -- has no magic, so it resolves by the
+// operator's intent instead: `format=raw` or a plain name gives a raw byte tape; a `.wav`
+// name or an explicit modulation in `format` gives a blank AUDIO tape that records a real WAV.
+//
 // Null with `err` set on refusal -- never a silent empty medium, per media.h.
 // ---------------------------------------------------------------------------
 std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,

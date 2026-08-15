@@ -369,6 +369,73 @@ void test_tapemount() {
     }
 
     // -----------------------------------------------------------------------
+    SECTION("tape mount: a blank CREATEd file records by intent, not by a magic it lacks");
+    // #313 -- MOUNT ... CREATE makes a ZERO-BYTE file, which carries no RIFF magic. Sniffing
+    // it silently made a byte tape, so a recording onto a ".wav" produced a file nothing would
+    // ever play. With no content to decide by, the name (or an explicit `format`) decides: a
+    // `.wav` blank is an AUDIO tape and records a real WAV; anything else is a raw byte tape.
+    auto detectedOf = [](std::vector<Property> props) {
+        for (Property& p : props)
+            if (p.name == "detected") return p.get().s();
+        return std::string();
+    };
+    {
+        // A blank .wav: an audio tape, and its recording round-trips as a real WAV.
+        Slot        slot = withRecordableFile({});
+        AcrRig      r;
+        std::string err;
+        CHECK(r.acr->mount("tape", "NEW.WAV", false, err), "a blank .wav mounts");
+
+        bool told = false;
+        for (const std::string& s : r.acr->drainLog())
+            if (mentions(s, "blank") && mentions(s, "fsk300")) told = true;
+        CHECK(told, "and says it is a blank fsk300 tape -- not silent");
+        CHECK(detectedOf(r.acr->unitProperties("tape")) == "fsk300",
+              "detected reports the modem's format, not raw");
+
+        CHECK(setProp(r.acr->unitProperties("tape"), "mode", Value::ofStr("record")), "RECORD");
+        // A whole program, not a handful of bytes: the blank tape grows to hold it, and a
+        // recording long enough to carry separable tones is what the demodulator reads back.
+        TapeImage& t = *const_cast<TapeImage*>(r.acr->tape());
+        for (uint8_t b : data) CHECK(t.write(b), "the guest records onto the blank tape");
+        CHECK(setProp(r.acr->unitProperties("tape"), "mode", Value::ofStr("play")),
+              "and stop, which writes the file");
+
+        const std::vector<uint8_t> file = (*slot);
+        CHECK(looksLikeWav(file.data(), file.size()),
+              "what landed on the host is a real WAV, not a byte stream");
+
+        // ...and it re-mounts as audio on a card that never saw this test's state.
+        withFile(file);
+        AcrRig again;
+        bool remounted = again.acr->mount("tape", "NEW.WAV", true, err);
+        CHECK(remounted, "the recording re-mounts as an audio tape");
+        std::vector<uint8_t> back = remounted ? readOff(*again.acr->tape()) : std::vector<uint8_t>{};
+        CHECK(back == data, "with the recorded program intact");
+    }
+    {
+        // A blank file that is NOT a .wav is a raw byte tape -- the byte path is untouched.
+        withFile({});
+        AcrRig      r;
+        std::string err;
+        CHECK(r.acr->mount("tape", "NEW.TAP", false, err), "a blank .tap mounts");
+        CHECK(detectedOf(r.acr->unitProperties("tape")) == "raw", "as a raw byte tape");
+    }
+    {
+        // An explicit modulation forces audio even on a name that is not .wav.
+        withFile({});
+        AcrRig      r;
+        std::string err;
+        std::string unused;
+        for (Property& p : r.acr->unitProperties("tape"))
+            if (p.name == "format") p.set(Value::ofStr("fsk300"), unused);
+        CHECK(r.acr->mount("tape", "BLANK.BIN", false, err),
+              "a blank file with format=fsk300 mounts");
+        CHECK(detectedOf(r.acr->unitProperties("tape")) == "fsk300",
+              "as an audio tape, by the operator's explicit format");
+    }
+
+    // -----------------------------------------------------------------------
     SECTION("tape mount: recording through the UART, which syncs on every byte");
     // THE PATH THE GUEST ACTUALLY TAKES, and the one this phase changed. Uart1602
     // flushes its stream after every character, and for a tape that flush is a sync --
