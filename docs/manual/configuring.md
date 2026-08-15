@@ -474,6 +474,7 @@ not undone; the byte just no longer passes through the console, and every line i
 ```toml
 [display]
 focus = true
+crt   = true
 ```
 
 Same idea as `[console]`, one table down: it describes *the window on your desk in 2026*, not the
@@ -486,6 +487,7 @@ so `width` is a property of each video board — see [Boards](boards.md).)
 |---|---|
 | `focus` | whether the video window comes to the front and takes keyboard focus when it opens. Default `false` |
 | `keyboard` | whether a focused window's keystrokes reach the machine's console: `console` (default) or `none` (display-only). See below |
+| `crt` | paint the window like the original monitor — scan lines and the tall 4:3 tube — instead of crisp square pixels. Default `false`. See below |
 
 With `focus = false` — the default — the terminal keeps the keyboard. The window opens behind
 whatever you were doing, and when the guest stops you can type at `altairsim>` immediately. You
@@ -507,6 +509,16 @@ comes to the front, but its keystrokes do **not** reach the console — they dri
 `d7a`, if the machine has one), and only `Ctrl-E` in the window is honored, stopping the guest and
 handing you back the monitor. This is why typing in a Dazzler game window does not land at the CP/M
 prompt.
+
+`crt` changes how the picture is *painted*, not what the machine draws. With `crt = false` — the
+default — you get today's look: the board's pixels as crisp squares, scaled up a whole number of
+times so a 1970s pixel stays a sharp square on a modern panel. Set it to `true` for the period
+monitor instead. The short, wide raster these boards scan — a VDM-1 is 512×208, a VDB is 640×240 —
+was never square: it was stretched to fill a 4:3 tube, and you saw the gap between each scan line.
+`crt = true` reproduces both, stretching the picture to the 4:3 shape and laying a dark line
+between the rows. It is a matter of taste — some prefer the crisp look, some the tube — and you can
+flip it live with `SET DISPLAY crt=on` / `off` while the machine runs; the open window re-fits at
+once. Both looks share one window size, set by the board's `width`.
 
 On a build without SDL3 these keys are still accepted and simply have no window to apply to, so a
 machine file that asks for them stays portable.

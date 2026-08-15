@@ -39,6 +39,26 @@ constexpr int kChromeH = 40;
 // looks intentional, not clipped.
 constexpr int kBorder = 8;  // device pixels per side, at the opening size
 
+// The tube face a CRT-look window is stretched to fill: a classic 4:3 monitor. The period
+// video boards scan a short, wide raster (VDM-1 512x208, a VDB 640x240) onto a 4:3 tube, so
+// the pixels were never square; SET DISPLAY crt=on reproduces that by presenting a taller
+// logical frame (crtDisplayHeight below). Easy to tune here without touching the mechanism.
+constexpr double kCrtAspect = 4.0 / 3.0;
+
+// How dark each scan-line gap is, as an alpha over the picture (0 = invisible, 255 = solid
+// black). A moderate value reads as a raster without swallowing the glyphs; tune with taste.
+constexpr uint8_t kScanlineAlpha = 90;
+
+// The DISPLAY height a w x h frame is painted at: unchanged (h) in the crisp default, or the
+// 4:3 tube height when crt is on -- always a stretch, never a squash, so a frame already taller
+// than 4:3 is left alone. Pushing the extra height into the LOGICAL frame is what lets the one
+// integer-scale + LETTERBOX path present non-square pixels; the scan lines mask the row
+// duplication that nearest-neighbor upscaling would otherwise show as a vertical blur.
+int crtDisplayHeight(int w, int h) {
+    if (!Display::crt()) return h;
+    return std::max(h, (int)std::lround((double)w / kCrtAspect));
+}
+
 }  // namespace
 
 SdlDisplay::~SdlDisplay() {
@@ -157,6 +177,11 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     const bool haveBounds = SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable);
     const int  requested  = Display::windowWidth();  // 0 = auto, else target pixels
 
+    // The height the picture is PAINTED at -- taller than the raster when crt is on (the 4:3
+    // tube stretch), otherwise h. The scale is still chosen from the WIDTH, but the height that
+    // has to fit the screen, and the logical frame below, use this.
+    const int hDisp = crtDisplayHeight(w, h);
+
     int scale;
     if (haveBounds) {
         // Grow to a target WIDTH: the pixels the drawing board asked for, or half the usable
@@ -166,9 +191,10 @@ bool SdlDisplay::ensureWindow(int w, int h) {
         const int targetW = requested > 0 ? requested : usable.w * kDefaultWidthPercent / 100;
         scale = 1;
         while (w * (scale + 1) + 2 * kBorder <= targetW) ++scale;
-        // Then bring it down if that width, or the height it implies, runs off the screen.
+        // Then bring it down if that width, or the (possibly stretched) height it implies, runs
+        // off the screen.
         while (scale > 1 && (w * scale + 2 * kBorder > usable.w ||
-                             h * scale + 2 * kBorder + kChromeH > usable.h))
+                             hDisp * scale + 2 * kBorder + kChromeH > usable.h))
             --scale;
     } else if (requested > 0) {
         // No screen to measure against, but a width was asked for: honor it as best we can.
@@ -183,7 +209,7 @@ bool SdlDisplay::ensureWindow(int w, int h) {
     // all four sides; folded into the logical size below and drawn as an inset in present().
     // At least 1 so there is always a hairline, even at large scales.
     border_ = std::max(1, (int)std::lround((double)kBorder / scale));
-    const int logW = w + 2 * border_, logH = h + 2 * border_;
+    const int logW = w + 2 * border_, logH = hDisp + 2 * border_;
 
     if (!SDL_CreateWindowAndRenderer(title_.c_str(), logW * scale, logH * scale,
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &window_,
@@ -259,12 +285,17 @@ void SdlDisplay::applyPresentation(int w, int h) {
     // so it stays a thin hairline whatever resolution the board is in. Derive that scale from
     // how many whole picture-pixels fit the window's render output (falls back to 1 if the
     // output size is not readable yet, giving the kBorder default).
+    // The painted height -- taller than the raster when crt is on (the 4:3 tube stretch). The
+    // logical frame and the aspect lock are built from it, so LETTERBOX presents non-square
+    // pixels; picW_/picH_ still track the NATIVE w,h for change detection in acquire().
+    const int hDisp = crtDisplayHeight(w, h);
+
     int ow = 0, oh = 0;
     SDL_GetCurrentRenderOutputSize(renderer_, &ow, &oh);
-    const int scale = std::max(1, std::min(ow / w, oh / h));
+    const int scale = std::max(1, std::min(ow / w, oh / hDisp));
     border_ = std::max(1, (int)std::lround((double)kBorder / scale));
 
-    const int logW = w + 2 * border_, logH = h + 2 * border_;
+    const int logW = w + 2 * border_, logH = hDisp + 2 * border_;
 
     // The picture PLUS its bezel is the logical frame; LETTERBOX scales that whole frame to the
     // window uniformly, keeping the bezel present() insets even on all four sides.
@@ -282,6 +313,10 @@ void SdlDisplay::applyPresentation(int w, int h) {
 
     picW_ = w;
     picH_ = h;
+
+    // Remember which look this fit was built for, so present() can notice a live crt=on/off
+    // flip (the property is a session-wide static with no handle on this window) and re-fit.
+    crtFit_ = Display::crt();
 }
 
 // Name the window after the machine, not after the board that draws into it
@@ -375,11 +410,26 @@ void SdlDisplay::pollEvents() {
     // no video board at all and will never open one.
     if (!inited_) return;
 
+    bool repaint = false;  // coalesce a burst of resize/expose events into one redraw below
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_EVENT_QUIT:
             quit_ = true;
+            break;
+
+        // The window needs its picture put back: a resize (the logical presentation rescales,
+        // but nothing repaints the last frame), a drag onto another display, or the compositor
+        // asking for a fresh paint. present() only runs when the GUEST's framebuffer changes, so
+        // without this a resize of a still or paused screen would leave stale or torn content
+        // until the guest next drew. Repainted once after the drain from the texture we still
+        // hold. EXPOSED covers uncover/restore; RESIZED and PIXEL_SIZE_CHANGED cover both the
+        // logical and the device-pixel size moving (a HiDPI move changes the latter alone).
+        case SDL_EVENT_WINDOW_EXPOSED:
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            repaint = true;
             break;
         case SDL_EVENT_TEXT_INPUT:
             // Printable characters, already shift/layout-resolved. The guest is a
@@ -438,10 +488,91 @@ void SdlDisplay::pollEvents() {
             break;
         }
     }
+
+    // pollEvents() runs every run-loop slice AND every stopped-prompt idle tick, whether or not
+    // a frame was drawn -- so it is the one place a host-side change is seen promptly even when
+    // the guest's picture is static (present() is gated on the guest's framebuffer changing). A
+    // crt toggle (SET DISPLAY crt=on/off) re-fits, and re-fit or resize/expose alike then repaint
+    // the last frame from the texture we still hold.
+    if (refitForCrt()) repaint = true;
+    if (repaint) drawLastFrame();
+}
+
+// SET DISPLAY crt=on/off flips a session-wide static (host/display.h) that has no handle on
+// this window, so it cannot re-fit the picture itself. Catch the move here against the look the
+// current fit was built for and re-fit the logical frame + aspect lock. Returns true if it
+// re-fit, so a caller with no fresh frame to draw (pollEvents) knows to repaint the last one.
+// No-op until a texture exists (nothing has been drawn yet) and in the steady state.
+bool SdlDisplay::refitForCrt() {
+    if (!renderer_ || !texture_ || Display::crt() == crtFit_) return false;
+
+    // Pin the window's WIDTH *before* touching the aspect lock. We want the picture to keep its
+    // width and change HEIGHT (turn the tube on -> taller in place, off -> shorter), but setting
+    // a new aspect ratio makes SDL resize the window on its own, and it does that by holding the
+    // HEIGHT and moving the width -- the opposite of what we want. So read the width now, and
+    // restore it below once we know the new aspect. Unlike a Dazzler mode switch (resolution
+    // moves but the aspect barely does, so a resize would be jarring), crt swings the aspect from
+    // a wide raster to a 4:3 tube; without a resize the aspect lock would just letterbox the
+    // taller frame into the old wide window and shrink the picture.
+    int ww = 0, wh = 0;
+    SDL_GetWindowSize(window_, &ww, &wh);
+    const int keepW = ww;
+
+    // Fit the logical frame + aspect lock to the new look (aspect_ becomes logW/logH for it).
+    applyPresentation(picW_, picH_);
+
+    // Restore the width SDL may have moved, and set the height the new aspect implies at that
+    // width. Unconditional: applyPresentation's aspect change may already have resized the window
+    // height-anchored, so keepW is what re-establishes the width-driven size we actually want.
+    const int newH = aspect_ > 0.0f ? (int)std::lround((double)keepW / aspect_) : wh;
+    SDL_SetWindowSize(window_, keepW, newH);
+    return true;
+}
+
+// Paint whatever is in the texture into the window: the bezel-inset sub-rect of the logical
+// frame, the picture stretched to the painted height when crt is on, and the scan lines over it.
+// Split out of present() so a host-side presentation change (refitForCrt) can repaint the LAST
+// frame with no new one in hand -- the board only calls present() when the guest's framebuffer
+// changed, so a crt toggle at a still screen would otherwise not show until the guest redrew.
+void SdlDisplay::drawLastFrame() {
+    if (!renderer_ || !texture_) return;
+
+    SDL_RenderClear(renderer_);
+    // Into the centered sub-rect of the logical frame: the logical size is the picture plus a
+    // border_ margin on every side, so this inset leaves an even bezel that RenderClear (black)
+    // fills. Coordinates are logical; the aspect-locked LETTERBOX scales the whole frame to the
+    // window uniformly, keeping the bezel even at any size. The height is the painted height --
+    // taller than the raster when crt is on -- so the w x h texture drawn into it is the tube
+    // stretch (nearest-neighbor, hence the scan lines below to mask the row duplication).
+    const int       w     = picW_;
+    const int       h     = picH_;
+    const int       hDisp = crtDisplayHeight(w, h);
+    const SDL_FRect dst{ (float)border_, (float)border_, (float)w, (float)hDisp };
+    SDL_RenderTexture(renderer_, texture_, nullptr, &dst);
+
+    // The scan lines: one dark, alpha-blended horizontal line at the bottom edge of each native
+    // raster row's stretched band, so the gaps read as a raster rather than a blur. Only worth
+    // drawing when the picture is actually stretched (hDisp > h); at 1:1 there is no band to gap.
+    if (Display::crt() && hDisp > h) {
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, kScanlineAlpha);
+        for (int i = 0; i < h; ++i) {
+            const float y = (float)border_ + (float)std::lround((double)(i + 1) * hDisp / h) - 1;
+            SDL_RenderLine(renderer_, (float)border_, y, (float)(border_ + w), y);
+        }
+        // Back to opaque black so the next frame's RenderClear paints a solid bezel.
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
+    }
+    SDL_RenderPresent(renderer_);
 }
 
 void SdlDisplay::present(Surface* s) {
     if (!renderer_ || !texture_ || !s) return;
+
+    // A crt toggle since the last frame -- re-fit before drawing so the logical frame matches
+    // the painted height (a stale, shorter frame would clip the stretched picture).
+    refitForCrt();
 
     // Resolve the indexed frame against the palette into RGBA32 (bytes R,G,B,A).
     auto px = s->pixels();
@@ -458,15 +589,7 @@ void SdlDisplay::present(Surface* s) {
     }
 
     SDL_UpdateTexture(texture_, nullptr, rgba_.data(), s->width() * 4);
-    SDL_RenderClear(renderer_);
-    // Into the centered sub-rect of the logical frame: the logical size is the picture plus a
-    // border_ margin on every side, so this inset leaves an even bezel that RenderClear (black)
-    // fills. Coordinates are logical; the aspect-locked LETTERBOX scales the whole frame to the
-    // window uniformly, keeping the bezel even at any size.
-    const SDL_FRect dst{ (float)border_, (float)border_, (float)s->width(),
-                         (float)s->height() };
-    SDL_RenderTexture(renderer_, texture_, nullptr, &dst);
-    SDL_RenderPresent(renderer_);
+    drawLastFrame();
 }
 
 } // namespace altair

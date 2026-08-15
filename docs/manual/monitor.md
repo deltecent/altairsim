@@ -228,7 +228,7 @@ units, and what it decodes in memory.
 | `SHOW <id>` | one board: every setting, its value, and what it will accept |
 | `SHOW MACHINE` | the whole machine |
 | `SHOW CONSOLE` | which unit holds your keyboard, and how bytes are being transformed |
-| `SHOW DISPLAY` | the video window, and whether it or the terminal has the keyboard |
+| `SHOW DISPLAY` | the video window: whether it or the terminal has the keyboard, and whether it wears the CRT look |
 | `SHOW JOYSTICKS` | the host game controllers a D+7A can read (needs an SDL3 build) |
 | `SHOW BUS MAP` | who decodes which addresses — and what floats |
 | `SHOW BUS IO` | who decodes which ports |

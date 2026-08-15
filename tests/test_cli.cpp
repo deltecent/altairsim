@@ -2055,6 +2055,40 @@ void test_achieved_hz() {
         Display::setFocusPolicy(false);  // a process-wide setting: put it back
     }
 
+    SECTION("the CRT look is a display setting, opt-in, and answerable before a window");
+    {
+        // Painting the window like the original tube (scan lines + the 4:3 stretch) is purely
+        // how the HOST presents an existing frame -- no board sees it -- so it lives on the
+        // display alongside focus, and answers even in a build with no video (host/display.h).
+        CHECK(!Display::crt(), "crisp integer scaling is the default");
+
+        Machine mr;
+        Monitor monR(mr);
+        std::ostringstream sr;
+
+        monR.exec("SET DISPLAY crt=on", sr);
+        CHECK(Display::crt(), "SET DISPLAY reaches it");
+
+        sr.str("");
+        monR.exec("SHOW DISPLAY", sr);
+        CHECK(sr.str().find("crt") != std::string::npos, "and SHOW DISPLAY reports it");
+
+        // Refused by the same Property layer as every other setting.
+        sr.str("");
+        monR.exec("SET DISPLAY crt=maybe", sr);
+        CHECK(Display::crt(), "a value that does not parse leaves it alone");
+
+        // A machine file can ask for it at load time, long before the window opens.
+        Display::setCrt(false);
+        Machine mc;
+        std::string err;
+        CHECK(loadTomlText("[display]\ncrt = true\n", "test", mc, err),
+              "a machine file can ask for it");
+        CHECK(Display::crt(), "and it takes effect with no window in sight");
+
+        Display::setCrt(false);  // a process-wide setting: put it back
+    }
+
     SECTION("a video board's window width is its own, in pixels (per-board, not [display])");
     {
         // Patrick went looking for this on the board, and a real Altair has one video-out
