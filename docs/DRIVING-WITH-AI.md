@@ -216,6 +216,30 @@ write in anger. This is a **track-buffered** BIOS: it holds the current track in
 commits it when CP/M changes track or warm-boots. Getting back to a live `A>` prompt is a warm
 boot, so end every session at `A>` before you unmount or snapshot, or the last write is lost.
 
+## From a bare disk image to a booting machine
+
+The recipe above starts from a machine that already has its disk wired in. When all you have
+is a **bare image** — a `.dsk` or a `.imd` off a real machine — and no machine file, three
+things trip up a cold start:
+
+- **`.imd` converts to `.dsk` on MOUNT.** `monitor {command: "MOUNT dsk0:drive0 mydisk.imd"}`
+  converts the ImageDisk to a raw `mydisk.dsk` beside it (asking the controller for geometry)
+  and mounts *that*; a raw `.dsk` mounts as-is. The convert happens **only in the `MOUNT`
+  command** — a TOML `mount = "mydisk.imd"` line does **not** convert. So the from-cold path
+  is: `MOUNT` the `.imd` once to produce the `.dsk`, then reference that `.dsk` in the machine
+  file.
+- **Drive units are `drive0..driveN`, not `0`.** `MOUNT dsk0:0 …` is rejected — a disk
+  controller names its units `drive0`, `drive1`, … (unlike a serial card's `a`/`b`/`tty`).
+  When in doubt, `monitor {command: "SHOW MOUNTS"}` prints every mountable unit spelled out as
+  `id:driveN` with what it holds.
+- **Build the machine file from the skeleton.** The guide always started from an existing
+  machine; to write one from scratch, copy the **"A machine file, in one look"** skeleton in
+  `cheatsheet.md` (beside this file) — it shows a `[[board.drive]]` with `unit`/`mount`. Pick a
+  disk controller with `board_types` (or `monitor {command: "SHOW BOARDS"}`), give it a
+  `[[board.drive]]` pointing at your `.dsk`, and add the boot PROM / `startup` line that
+  controller boots from. The User Manual's **Disks** chapter (`altairsim-manual.pdf`) walks
+  the same ground in depth.
+
 ## Debugging a behavior: make the machine show you, don't guess
 
 **Read this before you form a single theory.** When a guest misbehaves — a character dropped, a
@@ -376,6 +400,9 @@ it there, and when they disagree you have a known-good side to compare against.
   card based at `0x14`, the 6850 control/status port is `0x16` = **22** and its data register is
   the next port, `0x17`. Feeding a program a card base instead aims it two ports high — at
   undecoded I/O that floats to `0xFF`, so it "receives" an endless stream of `0xFF`.
+- **Disk units are `driveN`, and `.imd` converts on MOUNT** — `MOUNT dsk0:0 …` is rejected;
+  the unit is `drive0`. `SHOW MOUNTS` spells them out. A `.imd` becomes a raw `.dsk` on
+  interactive `MOUNT` only, not through a TOML `mount =` line (see the bare-image section).
 - **High bytes in output** — a serial terminal can print any byte; the server escapes
   non-UTF-8 bytes as `\u00XX` so the JSON stays valid. Read `output` as text.
 - **Debug at runtime** — `mem_dump` the (possibly self-modified) code and `regs` mid-run.
