@@ -115,55 +115,21 @@ std::vector<Property> FrontPanelBoard::properties() {
     // (The low half of sw_ stays -- it is the same physical row, it travels in the
     // snapshot, and a panel that ever wants it will find it here.)
     //
-    // ...and now ONE more, because there IS a panel to reach out to: a graphical bridge
-    // on the far end of the `gui` unit. These two -- how fast we feed it, and what it is
-    // plugged into -- are the operator's knobs on that line.
-    {
-        Property x;
-        x.name  = "fps";
-        x.help  = "Panel refresh cap -- L status frames per second sent to the bridge";
-        x.kind  = Kind::Int;
-        x.radix = 10;  // never on the wire: decimal (DESIGN.md 10.0.1)
-        x.min   = 1;
-        x.max   = 1024;
-        x.unit  = "fps";
-        x.get   = [this] { return Value::ofInt(fps_); };
-        x.set   = [this](const Value& v, std::string&) {
-            fps_ = (int)v.i();
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
-    {
-        Property x;
-        x.name = "connect";
-        x.help = "The endpoint the graphical panel bridge lives at (CONNECT sets this)";
-        x.kind = Kind::Str;
-        // describe(), NOT endpoint_ -- see units(). An idle line reads "null", which
-        // resolves straight back, so CONFIG SAVE's output loads as a fixed point.
-        x.get  = [this] { return Value::ofStr(stream_->describe()); };
-        // Route through connect() so a declarative `[fp0.unit.gui] connect = "socket:..."`
-        // rebases its PATH the same way the CONNECT command does -- one path, one rule.
-        x.set  = [this](const Value& v, std::string& err) { return connect("gui", v.s(), err); };
-        p.push_back(std::move(x));
-    }
+    // The `fps` and `connect` machinery for the graphical-panel bridge lives on this card
+    // (see the `gui` seam below), but neither is registered as a property: nothing tunes
+    // or switches the bridge on from the CLI or a machine file. `sense` is the whole knob.
     return p;
 }
 
 // ONE unit, and it is CONNECTed, not mounted: the graphical panel bridge. The card
 // has one connector, so like the 88-SIO there is nothing to disambiguate.
 std::vector<UnitDef> FrontPanelBoard::units() const {
-    // describe(), NOT endpoint_: an idle connector reads "null" (a resolvable endpoint
-    // -> NullStream), so CONFIG SAVE writes `connect = "null"` and CONFIG LOAD reads it
-    // straight back -- the same fixed point every serial card round-trips through
-    // (Uart1602::endpoint()). endpoint_ is the operator's raw words, kept for pump()'s
-    // redial (Checkpoint ③), and it can diverge from the canonical describe().
-    // consoleCapable = false: the guest never does character I/O over the panel bridge,
-    // so the RUN banner must not name it as "the console" -- a machine with its console
-    // on a `terminal:` window used to read "(console on socket)" off this line (#295).
-    UnitDef u{"gui", UnitKind::Serial, stream_->describe()};
-    u.consoleCapable = false;
-    return {u};
+    // No connectable unit. The `gui` connector to a graphical panel bridge exists in the
+    // code (connect()/disconnect()/pump() below), but it is not advertised here: with an
+    // empty list the monitor's CONNECT/DISCONNECT, tab completion, SHOW BOARD, CONFIG SAVE
+    // and the `[board.unit.gui]` TOML table all find nothing to act on. To an operator the
+    // board is the SENSE switches and the lamps -- there is nothing to plug into.
+    return {};
 }
 
 bool FrontPanelBoard::connect(const std::string& unit, const std::string& ep,

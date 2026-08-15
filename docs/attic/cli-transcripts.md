@@ -125,8 +125,8 @@ A0>
 > **Actually fixed 2026-07-12:** the panel is a board (`fp`), it decodes `IN 0FFH`, and
 > `Machine::sense` is **deleted** — the field, the key, the `SHOW` line and the `CONFIG SAVE` line.
 > `[machine] sense` is now a load **error** that hands you the `[[board]]` block replacing it. See
-> `docs/boards/mits-frontpanel.md`, and `tests/test_frontpanel.cpp`, which keeps a tripwire on the
-> floating case so a machine with no panel still honestly returns `0xFF`.
+> `docs/boards/mits-frontpanel.md`. A machine with no panel still honestly returns `0xFF` on the
+> floating bus.
 >
 > The lesson is cheaper to write down than to relearn: **a config key is not a feature.** Nothing
 > here tested that the guest could *read* the switches, and nothing in the plumbing could have.
