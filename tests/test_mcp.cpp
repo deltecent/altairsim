@@ -5,6 +5,7 @@
 #include "mcp/server.h"
 #include "util/json.h"
 
+#include <filesystem>
 #include <map>
 #include <sstream>
 #include <string>
@@ -31,6 +32,23 @@ std::map<int, Json> runScript(Machine& m, const std::string& script) {
         if (Json::parse(line, j, err)) byId[(int)j.at("id").integer()] = j;
     }
     return byId;
+}
+
+// Load the altmon built-in -- a whole machine (8080, 2SIO, memory), no disk fixture --
+// the way every section here does. False and a CHECK if it is not compiled in.
+bool loadAltmon(Machine& m) {
+    const BuiltinMachine* altmon = nullptr;
+    for (const auto& b : builtinMachines())
+        if (std::string(b.name) == "altmon") altmon = &b;
+    CHECK(altmon != nullptr, "the altmon built-in is compiled in");
+    if (!altmon) return false;
+    std::string err;
+    CHECK(loadMachine(*altmon, m, err), "altmon loads");
+    return true;
+}
+
+std::string tmpPath(const char* leaf) {
+    return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
 } // namespace
@@ -149,5 +167,183 @@ void test_mcp() {
               "and it points the client at the non-blocking run tool");
         CHECK(rep.count(4) && rep[4].at("result").has("structuredContent"),
               "the server answered a later call -- RUN returned, it did not wedge");
+    }
+
+    SECTION("MCP: tools/list advertises the structured wrappers");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        auto rep = runScript(m,
+            R"({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}})""\n");
+        std::map<std::string, bool> seen;
+        for (const auto& t : rep[1].at("result").at("tools").items())
+            seen[t.at("name").str()] = true;
+        for (const char* n : {"step", "disasm", "mem_fill", "mem_search", "mem_save",
+                              "breakpoints", "snapshot", "restore", "bus_irq", "bus_trace",
+                              "mount", "connect"})
+            CHECK(seen[n], (std::string("tools/list carries ") + n).c_str());
+    }
+
+    SECTION("MCP: disasm decodes through a non-invasive peek, with no CPU running");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        // ALTMON's own first bytes at F800 (63488): MVI A,03 / OUT 10. Decoded straight
+        // out of ROM before a single instruction executes -- the stateless disassembler.
+        auto rep = runScript(m,
+            R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"disasm","arguments":{"addr":63488,"count":2,"cpu":"8080"}}})""\n");
+        const Json& d = rep[1].at("result").at("structuredContent");
+        const auto& lines = d.at("lines").items();
+        CHECK(lines.size() == 2, "disasm returned two lines");
+        CHECK(lines.at(0).at("addr").integer() == 63488, "first line is at F800");
+        CHECK(lines.at(0).at("text").str() == "MVI A,03", "and decodes MVI A,03");
+        CHECK(lines.at(0).at("len").integer() == 2, "a two-byte instruction");
+        CHECK(lines.at(1).at("addr").integer() == 63490, "the next line follows by its length");
+    }
+
+    SECTION("MCP: step advances the CPU and reports where it rested");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        req(R"({"name":"step","arguments":{"count":3}})");
+        auto rep = runScript(m, s.str());
+        const Json& st = rep[2].at("result").at("structuredContent");
+        CHECK(st.at("steps").integer() == 3, "step ran three instructions");
+        CHECK(st.has("registers") && st.has("pc") && st.has("t_states"),
+              "and reported the register file, pc and T-states");
+        CHECK(st.at("stopped").str() == "steps", "it stopped on the count, not a HLT/breakpoint");
+    }
+
+    SECTION("MCP: mem_fill, mem_search and mem_save round-trip through the bus");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::string hex = tmpPath("altair_mcp_dump.hex");
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"mem_fill","arguments":{"lo":8192,"hi":8207,"byte":171}})");        // AB x16
+        req(R"({"name":"mem_deposit","arguments":{"addr":8200,"bytes":"DE AD BE EF"}})");
+        req(R"({"name":"mem_search","arguments":{"lo":0,"hi":16384,"bytes":"DE AD BE EF"}})");
+        req(R"({"name":"mem_save","arguments":{"path":")" + hex + R"(","lo":8192,"hi":8207}})");
+        req(R"({"name":"mem_fill","arguments":{"lo":8192,"hi":8207,"byte":0}})");           // wipe
+        req(R"({"name":"mem_load","arguments":{"path":")" + hex + R"("}})");                 // reload
+        req(R"({"name":"mem_dump","arguments":{"lo":8200,"hi":8203}})");
+        auto rep = runScript(m, s.str());
+
+        CHECK(rep[1].at("result").at("structuredContent").at("written").integer() == 16,
+              "mem_fill wrote sixteen cells");
+        CHECK(rep[1].at("result").at("structuredContent").at("discarded").integer() == 0,
+              "all sixteen landed (RAM, not ROM)");
+        const Json& srch = rep[3].at("result").at("structuredContent");
+        CHECK(srch.at("count").integer() == 1 && srch.at("matches").items().at(0).integer() == 8200,
+              "mem_search finds the deposited pattern at 8200");
+        CHECK(rep[4].at("result").at("structuredContent").at("format").str() == "HEX",
+              "mem_save chose HEX from the .hex name");
+        const auto& bytes = rep[7].at("result").at("structuredContent").at("bytes").items();
+        CHECK(bytes.size() == 4 && bytes.at(0).integer() == 0xDE && bytes.at(3).integer() == 0xEF,
+              "the saved HEX reloaded byte-for-byte after a wipe");
+        std::filesystem::remove(hex);
+    }
+
+    SECTION("MCP: breakpoints add, list and remove");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"breakpoints","arguments":{"action":"add","kind":"pc","lo":256}})");
+        req(R"({"name":"breakpoints","arguments":{}})");                     // list
+        req(R"({"name":"breakpoints","arguments":{"action":"remove","id":1}})");
+        req(R"({"name":"breakpoints","arguments":{}})");                     // list again
+        auto rep = runScript(m, s.str());
+
+        const Json& added = rep[1].at("result").at("structuredContent");
+        CHECK(added.at("kind").str() == "pc" && added.at("lo").integer() == 256,
+              "add returns the new PC breakpoint at 0100");
+        CHECK(rep[2].at("result").at("structuredContent").at("breakpoints").items().size() == 1,
+              "the list shows one breakpoint");
+        CHECK(rep[4].at("result").at("structuredContent").at("breakpoints").items().empty(),
+              "and none after remove");
+    }
+
+    SECTION("MCP: snapshot then restore round-trips machine state");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::string path = tmpPath("altair_mcp.state");
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"snapshot","arguments":{"path":")" + path + R"("}})");
+        req(R"({"name":"restore","arguments":{"path":")" + path + R"("}})");
+        auto rep = runScript(m, s.str());
+        CHECK(rep[1].at("result").at("structuredContent").at("ok").boolean(), "snapshot wrote");
+        CHECK(rep[2].at("result").at("structuredContent").at("ok").boolean(),
+              "restore read it back into the matching machine");
+        std::filesystem::remove(path);
+    }
+
+    SECTION("MCP: bus_irq and bus_trace are well-formed");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        req(R"({"name":"bus_irq","arguments":{}})");
+        req(R"({"name":"bus_trace","arguments":{"count":8}})");
+        auto rep = runScript(m, s.str());
+
+        const Json& irq = rep[2].at("result").at("structuredContent");
+        CHECK(irq.has("int_pending") && irq.at("vi_lines").items().size() == 8,
+              "bus_irq reports pINT and all eight VI wires");
+        const Json& tr = rep[3].at("result").at("structuredContent");
+        CHECK(!tr.at("cycles").items().empty(), "bus_trace holds cycles from the run");
+        const Json& c0 = tr.at("cycles").items().at(0);
+        CHECK(c0.has("addr") && c0.has("type") && c0.at("master").str() == "cpu",
+              "a cycle carries an address, a type and its master");
+    }
+
+    SECTION("MCP: connect wires a serial unit; mount rejects an unknown board");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        // The 2SIO's second channel is 'b' -- wire it to a loopback endpoint.
+        req(R"({"name":"connect","arguments":{"id":"sio0","unit":"b","endpoint":"loopback"}})");
+        req(R"({"name":"mount","arguments":{"id":"nope","unit":"x","path":"/dev/null"}})");
+        auto rep = runScript(m, s.str());
+        const Json& con = rep[1].at("result").at("structuredContent");
+        CHECK(con.at("id").str() == "sio0" && con.at("endpoint").str() == "loopback",
+              "connect reports the wiring it made");
+        CHECK(rep[2].at("result").has("isError") && rep[2].at("result").at("isError").boolean(),
+              "mount on an unknown board is an error, not a silent no-op");
     }
 }
