@@ -1620,30 +1620,44 @@ machine, was specified here and is **not built**; there is no such flag.) Tools 
 monitor but are **structured** — every result is JSON, no screen-scraping.
 
 The high-value tools are borrowed from the Python prototype's agent API, which is the right
-shape. **The list below is the DESIGN, and about half of it is built.** The nineteen tools that
+shape. **The list below is the DESIGN, and nearly all of it is built.** The thirty-one tools that
 exist today are `run`, `send`, `recv`, `regs`, `monitor`, `reset`, `roms`, `mem_dump`,
-`mem_deposit`, `mem_load`, `board_types`, `board_list`, `board_get`, `board_add`, `board_set`,
-`who`, `bus_map`, `bus_io` and `bus_contention`. Everything else here is unbuilt, and is marked:
+`mem_deposit`, `mem_load`, `mem_save`, `mem_search`, `mem_fill`, `disasm`, `step`, `breakpoints`,
+`snapshot`, `restore`, `bus_trace`, `mount`, `connect`, `board_types`, `board_list`, `board_get`,
+`board_add`, `board_set`, `who`, `bus_map`, `bus_io`, `bus_contention` and `bus_irq`. The two
+still unbuilt are marked:
 
 - `run(max_steps, idle_threshold) -> {reason: halt|breakpoint|idle|max_steps, steps, t_states}`
 - `send(text)` — queue keystrokes to the console unit
 - `recv()` — take what the guest has printed since last time. **This is what shipped instead of
   `expect`:** the pattern-matching and the retry policy belong to the caller, who is a language
   model and is better at both than a fixed matcher would be.
-- *(not built)* `expect(pattern, max_steps, idle_threshold)` — run until the pattern appears
+- *(not built, and won't be)* `expect(pattern, max_steps, idle_threshold)` — run until the
+  pattern appears. Superseded on both ends: `recv` above puts the matching where it belongs, and
+  `run`'s `until` argument already stops the instant a substring appears, which is the useful 90%
+  of `expect` without a fixed matcher baked in.
 - *(not built)* `screen() -> {rows, cols, grid}` — a VT100/ANSI screen emulator, so a test could
   assert on a **screen grid** rather than a byte stream. The one genuinely missing capability
-  here: full-screen guest apps are still asserted against a byte stream.
-- `regs`, `monitor` (run one monitor command and get its text back — the escape hatch that keeps
-  the unbuilt tools from being blocking)
-- *(not built)* `step`, `breakpoints`, `snapshot`, `restore`, `bus_trace`
-- `mem_dump`, `mem_deposit`, `mem_load` — same `rom` qualifier as the monitor, same engine
-- *(not built)* `mem_save`, `mem_search`, `mem_fill`, `disasm`
-- *(not built)* `mount`, `connect`
+  here: full-screen guest apps are still asserted against a byte stream. The engine now exists
+  (`src/host/terminal/`, issue #244); the remaining work is feeding the MCP session's console
+  stream through it.
+- `regs`, `monitor` (run one monitor command and get its text back — the escape hatch, and the
+  way to reach the corners the typed tools don't cover: a conditional `BREAK ... IF`, an octal
+  listing, the trailing `key=value` options on `MOUNT`)
+- `step`, `breakpoints`, `snapshot`, `restore`, `bus_trace` — the debugger, structured. `step`
+  advances N instructions and returns the register file; `breakpoints` lists/adds/removes the
+  same CPU-agnostic breakpoints the monitor sets; `bus_trace` returns the always-on flight
+  recorder's last N cycles; `snapshot`/`restore` drive `Machine::snapshot()`/`restore()`.
+- `mem_dump`, `mem_deposit`, `mem_load`, `mem_save`, `mem_search`, `mem_fill`, `disasm` — the
+  same `rom` qualifier as the monitor, the same engine. `disasm` is the stateless disassembler
+  over a non-invasive peek, so it runs with no CPU and reads a ROM.
+- `mount`, `connect` — a host file into a board's unit, a serial unit onto an endpoint; typed
+  `id`/`unit` rather than the monitor's `id:unit` string.
 - `reset(kind: bus|cpu|power)`, `roms`
 - `board_list`, `board_types`, `board_get(id)`, `board_add`, `board_set(id, key, value)` — **schemas generated from `Board::properties()`**
-- `bus_map()`, `bus_io()`, `bus_contention()`, `who(addr)` — structured, not the ASCII table.
-  *(not built)* `bus_irq()`
+- `bus_map()`, `bus_io()`, `bus_contention()`, `who(addr)`, `bus_irq()` — structured, not the
+  ASCII table. `bus_irq()` is the interrupt bus: pin 73 and who pulls it, the eight VI wires, and
+  which level an 88-VI would acknowledge.
 
 **MCP is a first-class interface, not a wrapper.** The monitor and MCP both sit on one `Machine` API and one `properties()` reflection layer, so they cannot drift. Any board added later is fully drivable from both without touching either.
 

@@ -20,9 +20,10 @@ Enough to operate the machine:
   default and its legal range.**
 - List the boards actually in the machine.
 - Get and set any property on any board.
-- Add a board.
-- Examine and deposit memory.
-- Run the machine, and step it.
+- Add a board; mount a disk or a tape into it; wire a serial line to an endpoint.
+- Examine, deposit, fill, search, save and disassemble memory.
+- Run the machine, step it, set breakpoints, and read the bus flight recorder.
+- Snapshot the whole machine's state and restore it.
 
 The five you will see named are `board_types`, `board_list`, `board_get`, `board_set` and
 `board_add`. The rest follow the monitor's own vocabulary.
@@ -55,6 +56,22 @@ owns (there is no host keyboard behind a pipe), which is what `send`/`run`/`recv
 write. Everything else on the machine — a second serial board wired to a real port, a
 socket — keeps running and is serviced on every `run` slice, so a program shuttling bytes
 between the console and a modem port works exactly as it would at a real terminal.
+
+## Debugging and inspecting
+
+The monitor's debugger is here too, structured. `step` advances a set number of instructions
+and hands back the register file and where the CPU came to rest; `breakpoints` lists, adds and
+removes the same breakpoints `BREAK` sets — and because they are the machine's breakpoints, a
+`run` or a `step` stops when one fires. `disasm` decodes memory through a non-invasive read, so
+it works on a ROM and even with no processor running. `bus_trace` returns the always-on flight
+recorder — the last cycles every board saw, with who drove and who answered — and `bus_irq`
+reports the interrupt lines the way `bus_map` reports the decode. `snapshot` and `restore` save
+the whole machine's state and read it back into a machine built the same way.
+
+None of these block, and none of them need the console: they are questions about the machine,
+answered the same way `SHOW` answers them. When a typed tool does not reach a corner you need —
+a conditional breakpoint, an octal listing — the `monitor` tool runs any monitor command and
+returns its text.
 
 ## The schemas describe themselves
 

@@ -9,6 +9,7 @@
 #include "core/version.h"
 #include "cpu/cpu.h"
 #include "host/stream.h"
+#include "isa/isa.h"
 #include "util/json.h"
 
 #include <chrono>
@@ -198,6 +199,143 @@ Json toolList() {
                        "to the boot RUN, which parks); advance the guest with the `run` tool.",
                        p, {"command"}));
     }
+    {
+        Json p = Json::obj();
+        p["count"] = intSchema("How many instructions to execute (default 1).");
+        list.push(tool("step",
+                       "Execute N instructions through the real decode and real bus cycles, then "
+                       "report where the CPU came to rest. Unlike `run` this types nothing and "
+                       "reads no console output -- it is the debugger's single-step, not the "
+                       "expect loop. Stops early on a HLT or a breakpoint (see `stopped`).",
+                       p, {"count"}));
+    }
+    {
+        Json p = Json::obj();
+        p["addr"]  = intSchema("First address to decode.");
+        p["count"] = intSchema("How many instructions to decode (default 16). Ignored if `hi` "
+                               "is given.");
+        p["hi"]    = intSchema("Optional: decode from `addr` through this address inclusive, "
+                               "instead of a fixed count.");
+        p["cpu"]   = strSchema("Instruction set, e.g. 8080 or z80. Defaults to the machine's "
+                               "active CPU; required if the backplane has no processor.");
+        list.push(tool("disasm",
+                       "Disassemble memory. Reads non-invasively through a peek (no UART byte is "
+                       "consumed, no snoop latch tripped) and decodes with the stateless "
+                       "disassembler -- so it works with no CPU running, and on a ROM.",
+                       p, {"addr"}));
+    }
+    {
+        Json p = Json::obj();
+        p["lo"]   = intSchema("First address.");
+        p["hi"]   = intSchema("Last address (inclusive).");
+        p["byte"] = intSchema("The byte value to write into every cell of the range.");
+        p["rom"]  = boolSchema("Program a ROM: write behind the bus, into whichever chip answers "
+                               "reads there (the PROM burner). Otherwise a write to ROM or an "
+                               "unmapped hole lands nowhere and is counted in `discarded`.");
+        list.push(tool("mem_fill",
+                       "Fill an address range with one byte, written through the bus like a "
+                       "guest would -- so ROM and unmapped holes are reported, not silently "
+                       "dropped. Same rules as mem_deposit.",
+                       p, {"lo", "hi", "byte"}));
+    }
+    {
+        Json p = Json::obj();
+        p["lo"]    = intSchema("First address to search.");
+        p["hi"]    = intSchema("Last address (inclusive).");
+        p["bytes"] = strSchema("The pattern as hex bytes, e.g. \"C3 00 F8\".");
+        p["text"]  = strSchema("The pattern as an ASCII string (an alternative to `bytes`).");
+        list.push(tool("mem_search",
+                       "Find every occurrence of a byte pattern in a memory range, read through "
+                       "the bus. Give the pattern as `bytes` (hex) or `text` (ASCII). Returns "
+                       "the start address of each match.",
+                       p, {"lo", "hi"}));
+    }
+    {
+        Json p = Json::obj();
+        p["path"]   = strSchema("Where to write the file.");
+        p["lo"]     = intSchema("First address to save.");
+        p["hi"]     = intSchema("Last address (inclusive).");
+        p["format"] = strSchema("BIN or HEX. Defaults to the filename (.hex -> HEX, else BIN). "
+                                "HEX is Intel HEX and round-trips through mem_load.");
+        list.push(tool("mem_save",
+                       "Write a memory range to a host file, read through the bus. The mirror of "
+                       "mem_load: a BIN is raw bytes, a HEX is Intel HEX with checksums.",
+                       p, {"path", "lo", "hi"}));
+    }
+    {
+        Json p = Json::obj();
+        p["action"] = strSchema("list (default) | add | remove | clear.");
+        p["kind"]   = strSchema("For add: pc | memread | memwrite | ioread | iowrite.");
+        p["lo"]     = intSchema("For add: the address (a port, for io kinds), or the low end of "
+                                "a range.");
+        p["hi"]     = intSchema("For add: the high end of an address range (defaults to `lo`).");
+        p["id"]     = intSchema("For remove: which breakpoint (from the list).");
+        list.push(tool("breakpoints",
+                       "List, add, remove or clear breakpoints -- the same CPU-agnostic "
+                       "breakpoints the monitor sets, so a Z80 or a DMA transfer trips them too. "
+                       "A run/step stops when one fires. Conditional breakpoints (BREAK ... IF) "
+                       "are not exposed here; reach them through the `monitor` tool.",
+                       p, {}));
+    }
+    {
+        Json p = Json::obj();
+        p["path"] = strSchema("Where to write the snapshot.");
+        list.push(tool("snapshot",
+                       "Write the whole machine's STATE to a file: CPU registers and hidden "
+                       "micro-state, the clock's time, and every board's serialized state. It is "
+                       "state, not topology -- restore it into a machine built from the same "
+                       "config (DESIGN 13.1).",
+                       p, {"path"}));
+    }
+    {
+        Json p = Json::obj();
+        p["path"] = strSchema("The snapshot file to read back.");
+        list.push(tool("restore",
+                       "Restore machine state from a snapshot. Refuses a snapshot whose topology "
+                       "does not match this machine, with the reason.",
+                       p, {"path"}));
+    }
+    list.push(tool("bus_irq",
+                   "The interrupt bus, structured: pin 73 (pINT) and who pulls it, the eight "
+                   "VI wires and which are asserted, CPU INTE, and which level an 88-VI would "
+                   "acknowledge right now (with the RST opcode it jams). The read-only companion "
+                   "to bus_map/bus_io for the interrupt lines.",
+                   Json::obj(), {}));
+    {
+        Json p = Json::obj();
+        p["count"] = intSchema("How many of the most recent cycles to return (default 64).");
+        list.push(tool("bus_trace",
+                       "The bus flight recorder: the last N cycles every board saw -- address, "
+                       "data, who drove and who answered, DMA and contention flags, and the "
+                       "T-state. Always recording WHILE the guest runs, so it holds the run-up to "
+                       "wherever the last run/step stopped; empty before anything has run.",
+                       p, {}));
+    }
+    {
+        Json p = Json::obj();
+        p["id"]             = strSchema("Board id, e.g. dsk.");
+        p["unit"]           = strSchema("Which unit on the board (its drive/socket name).");
+        p["path"]           = strSchema("Host path to the image or file to mount.");
+        p["write_protect"]  = boolSchema("Mount read-only (a write-protect tab / a ROM socket).");
+        p["create"]         = boolSchema("Create an empty file first if it does not exist -- for "
+                                         "a blank disk you are about to FORMAT, or a fresh tape.");
+        list.push(tool("mount",
+                       "Mount a host file into a board's unit (a disk into a drive, a tape into a "
+                       "deck, an image into a ROM socket). The board decides what it can take.",
+                       p, {"id", "unit", "path"}));
+    }
+    {
+        Json p = Json::obj();
+        p["id"]       = strSchema("Board id.");
+        p["unit"]     = strSchema("Which serial unit on the board.");
+        p["endpoint"] = strSchema("The endpoint to wire it to, e.g. loopback, tcp:HOST:PORT, "
+                                  "file:PATH, printer:QUEUE. (The console line is adopted onto a "
+                                  "scripted stream automatically under --mcp.)");
+        list.push(tool("connect",
+                       "Wire a board's serial unit to a host endpoint -- the same schemes CONNECT "
+                       "accepts at the prompt.",
+                       p, {"id", "unit", "endpoint"}));
+    }
     return list;
 }
 
@@ -345,6 +483,82 @@ bool parseBytes(const std::string& s, std::vector<uint8_t>& out) {
         out.push_back((uint8_t)v);
     }
     return !out.empty();
+}
+
+// WHY a step/run came back, as one lowercase word -- the structured twin of the
+// monitor's reportStop() prose (debug.h StopReason). Kept here rather than shared with
+// the run tool's inline strings because those name things the STEP loop cannot see (a
+// prompt is a console fact, not a StopReason) -- this covers exactly what m.debug.run
+// reports.
+const char* stopReasonName(StopReason w) {
+    switch (w) {
+    case StopReason::Steps:        return "steps";
+    case StopReason::Breakpoint:   return "breakpoint";
+    case StopReason::Halted:       return "halt";
+    case StopReason::Attn:         return "attn";
+    case StopReason::InputEnded:   return "input-ended";
+    case StopReason::Interrupted:  return "interrupted";
+    case StopReason::WindowClosed: return "window-closed";
+    case StopReason::NoCpu:        return "no-cpu";
+    case StopReason::StepTarget:   return "step-target";
+    case StopReason::Unclaimed:    return "unclaimed";
+    case StopReason::TapeStop:     return "tape-stop";
+    }
+    return "?";
+}
+
+// A bus cycle's type as a lowercase word, for bus_trace's structured rows. The
+// monitor's cycleName is file-static in bus.cpp and human-spelled ("MEM R"); this is
+// the machine-readable spelling, kept beside its consumer.
+const char* cycleTypeName(Cycle t) {
+    switch (t) {
+    case Cycle::MemRead:  return "memread";
+    case Cycle::MemWrite: return "memwrite";
+    case Cycle::IoRead:   return "ioread";
+    case Cycle::IoWrite:  return "iowrite";
+    case Cycle::IntAck:   return "inta";
+    }
+    return "?";
+}
+
+// The BREAK kinds this tool can arm -- the address/port family only. A device-event
+// kind (TAPE STOP) is not an address and is reached through the monitor tool. Null if
+// `s` is not one we accept.
+bool breakKindFromName(const std::string& s, BreakKind& out) {
+    if (s == "pc")       { out = BreakKind::Pc;       return true; }
+    if (s == "memread")  { out = BreakKind::MemRead;  return true; }
+    if (s == "memwrite") { out = BreakKind::MemWrite; return true; }
+    if (s == "ioread")   { out = BreakKind::IoRead;   return true; }
+    if (s == "iowrite")  { out = BreakKind::IoWrite;  return true; }
+    return false;
+}
+
+// The register file as {name: value}, plus a "H=xxxx " text rendering appended to
+// `text`. Shared by the regs and step tools so the two cannot disagree about the shape.
+Json regsObject(CpuCore* c, std::string& text) {
+    Json regs = Json::obj();
+    char buf[64];
+    for (const RegDef& r : c->registers()) {
+        uint32_t v = r.get();
+        regs[r.name] = Json((long long)v);
+        std::snprintf(buf, sizeof buf, "%s=%X ", r.shown().c_str(), v);
+        text += buf;
+    }
+    return regs;
+}
+
+// One breakpoint as JSON, the shape breakpoints(list) and breakpoints(add) both return.
+Json breakpointJson(const Breakpoint& b) {
+    Json j = Json::obj();
+    j["id"]      = Json((long long)b.id);
+    j["kind"]    = Json(breakKindName(b.kind));
+    j["lo"]      = Json((long long)b.lo);
+    j["hi"]      = Json((long long)b.hi);
+    j["enabled"] = Json(b.enabled);
+    j["action"]  = Json(breakActionName(b.action));
+    j["hits"]    = Json((long long)b.hits);
+    j["describe"] = Json(b.describe());
+    return j;
 }
 
 // The interactive console the four live tools share. Non-owning: the chip owns the
@@ -698,15 +912,8 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         CpuCore* c = m.cpu();
         if (!c) return textResult("no CPU in this machine", true);
         Json d = Json::obj();
-        Json regs = Json::obj();
         std::string text;
-        for (const RegDef& r : c->registers()) {
-            uint32_t v = r.get();
-            regs[r.name] = Json((long long)v);
-            std::snprintf(buf, sizeof buf, "%s=%X ", r.shown().c_str(), v);
-            text += buf;
-        }
-        d["registers"] = regs;
+        d["registers"] = regsObject(c, text);
         d["pc"] = Json((long long)c->pc());
         d["halted"] = Json(c->halted());
         d["interrupts"] = Json(c->interruptsEnabled());
@@ -794,6 +1001,383 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
                                // CONFIG LOAD startup ends in) would otherwise wedge the server.
         mon.exec(args.at("command").str(), os);
         return textResult(os.str().empty() ? "(ok)" : os.str(), mon.failed());
+    }
+
+    if (name == "step") {
+        CpuCore* c = m.cpu();
+        if (!c) return textResult("no CPU in this machine", true);
+        uint64_t n = args.has("count") ? (uint64_t)args.at("count").integer() : 1;
+        if (n == 0) n = 1;
+
+        RunResult r;
+        uint64_t steps = 0, tStates = 0;
+        for (uint64_t i = 0; i < n; ++i) {
+            r = m.debug.run(1);
+            steps += r.steps;
+            tStates += r.tStates;
+            if (r.why != StopReason::Steps) break;  // HLT, breakpoint -- stop early
+        }
+        m.pump();  // reflect the resting bus cycle on the panel, as monitor STEP does
+
+        Json d = Json::obj();
+        std::string text;
+        d["registers"] = regsObject(c, text);
+        d["steps"]    = Json((long long)steps);
+        d["t_states"] = Json((long long)tStates);
+        d["pc"]       = Json((long long)c->pc());
+        d["halted"]   = Json(c->halted());
+        d["stopped"]  = Json(stopReasonName(r.why));
+        text += "[" + std::to_string(steps) + " insn, " + std::to_string(tStates) +
+                " T; stopped: " + stopReasonName(r.why) + "]";
+        return dataResult(d, text);
+    }
+
+    if (name == "disasm") {
+        std::string isa = args.has("cpu") ? args.at("cpu").str() : m.isa();
+        if (isa.empty())
+            return textResult("no CPU in this machine -- pass cpu (e.g. 8080) to say how to "
+                              "decode these bytes.", true);
+        const Disassembler* dis = disassemblerFor(isa);
+        if (!dis) {
+            std::string known;
+            for (const auto& s : instructionSets()) known += " " + s;
+            return textResult("no instruction set '" + isa + "'. Known:" + known, true);
+        }
+        auto peek = [&](uint16_t a) { return m.bus.peek(a); };
+
+        uint32_t at   = (uint32_t)args.at("addr").integer();
+        bool     rng  = args.has("hi");
+        uint32_t hi   = rng ? (uint32_t)args.at("hi").integer() : 0;
+        uint32_t cnt  = args.has("count") ? (uint32_t)args.at("count").integer() : 16;
+
+        Json lines = Json::arr();
+        std::string text;
+        for (uint32_t i = 0; (rng ? at <= hi : i < cnt) && at <= 0xFFFF; ++i) {
+            Insn in = dis->at((uint16_t)at, peek, 16);
+            Json line = Json::obj();
+            line["addr"] = Json((long long)at);
+            Json b = Json::arr();
+            std::string hexbytes;
+            for (int k = 0; k < in.len; ++k) {
+                uint8_t v = peek((uint16_t)(at + (uint32_t)k));
+                b.push(Json((long long)v));
+                std::snprintf(buf, sizeof buf, "%02X ", v);
+                hexbytes += buf;
+            }
+            line["bytes"] = b;
+            line["text"]  = Json(in.text);
+            line["len"]   = Json((long long)in.len);
+            line["undocumented"] = Json(in.undocumented);
+            lines.push(line);
+            std::snprintf(buf, sizeof buf, "%04X  %-9s %s%s\n", at, hexbytes.c_str(),
+                          in.text.c_str(), in.undocumented ? "   ; undocumented" : "");
+            text += buf;
+            at += in.len;
+        }
+        Json d = Json::obj();
+        d["lines"] = lines;
+        return dataResult(d, text);
+    }
+
+    if (name == "mem_fill") {
+        uint32_t lo = (uint32_t)args.at("lo").integer();
+        uint32_t hi = (uint32_t)args.at("hi").integer();
+        uint8_t  v  = (uint8_t)args.at("byte").integer();
+        bool     rom = args.has("rom") && args.at("rom").boolean();
+
+        uint32_t written = 0, discarded = 0;
+        for (uint32_t A = lo; A <= hi && A <= 0xFFFF; ++A) {
+            if (rom) {
+                std::string why;
+                if (!m.burn((uint16_t)A, v, why)) {
+                    std::snprintf(buf, sizeof buf, "%04X: ", A);
+                    return textResult(buf + why, true);
+                }
+            } else {
+                m.bus.memWrite((uint16_t)A, v);
+                if (m.bus.lastUnclaimed()) ++discarded;
+            }
+            ++written;
+        }
+        Json d = Json::obj();
+        d["lo"] = Json((long long)lo);
+        d["hi"] = Json((long long)hi);
+        d["byte"] = Json((long long)v);
+        d["written"] = Json((long long)written);
+        d["discarded"] = Json((long long)discarded);
+        d["rom"] = Json(rom);
+        std::snprintf(buf, sizeof buf, "filled %04X-%04X with %02X", lo, hi, v);
+        std::string text = buf;
+        if (discarded)
+            text += "; " + std::to_string(discarded) +
+                    " cell(s) landed NOWHERE (ROM or unmapped). Pass rom=true to burn a ROM.";
+        return dataResult(d, text);
+    }
+
+    if (name == "mem_search") {
+        uint32_t lo = (uint32_t)args.at("lo").integer();
+        uint32_t hi = (uint32_t)args.at("hi").integer();
+        std::vector<uint8_t> pat;
+        if (args.has("bytes")) {
+            if (!parseBytes(args.at("bytes").str(), pat))
+                return textResult("bytes must be hex, e.g. \"C3 00 F8\"", true);
+        } else if (args.has("text")) {
+            for (char ch : args.at("text").str()) pat.push_back((uint8_t)ch);
+            if (pat.empty()) return textResult("text is empty", true);
+        } else {
+            return textResult("give a pattern: bytes (hex) or text (ASCII)", true);
+        }
+        if (hi > 0xFFFF) hi = 0xFFFF;
+
+        Json matches = Json::arr();
+        std::string text;
+        if (lo + pat.size() - 1 <= hi) {
+            for (uint32_t A = lo; A + (uint32_t)pat.size() - 1 <= hi; ++A) {
+                bool hit = true;
+                for (size_t k = 0; k < pat.size(); ++k)
+                    if (m.bus.peek((uint16_t)(A + k)) != pat[k]) { hit = false; break; }
+                if (hit) {
+                    matches.push(Json((long long)A));
+                    std::snprintf(buf, sizeof buf, "%04X ", A);
+                    text += buf;
+                }
+            }
+        }
+        Json d = Json::obj();
+        d["matches"] = matches;
+        d["count"] = Json((long long)matches.items().size());
+        return dataResult(d, matches.items().empty() ? "no match" : text);
+    }
+
+    if (name == "mem_save") {
+        std::string path = args.at("path").str();
+        uint32_t lo = (uint32_t)args.at("lo").integer();
+        uint32_t hi = (uint32_t)args.at("hi").integer();
+        if (hi > 0xFFFF) hi = 0xFFFF;
+
+        // The name decides, FORMAT overrides -- the same rule the monitor's SAVE uses,
+        // and deliberately not mem_load's (a file that does not exist yet cannot be
+        // sniffed, so a name is all there is to go on).
+        bool asHex = false;
+        std::string uname = path;
+        for (char& ch : uname) ch = (char)std::toupper((unsigned char)ch);
+        if (uname.size() > 4 && uname.rfind(".HEX") == uname.size() - 4) asHex = true;
+        if (args.has("format")) {
+            std::string want = args.at("format").str();
+            for (char& ch : want) ch = (char)std::toupper((unsigned char)ch);
+            if (want == "HEX") asHex = true;
+            else if (want == "BIN") asHex = false;
+            else return textResult("format must be BIN or HEX", true);
+        }
+
+        Image img;
+        for (uint32_t A = lo; A <= hi; ++A) img.bytes[A] = m.bus.peek((uint16_t)A);
+
+        std::ofstream f(path, std::ios::binary);
+        if (!f) return textResult("cannot write '" + path + "'", true);
+        if (asHex) {
+            f << saveHex(img);
+        } else {
+            for (uint32_t A = lo; A <= hi; ++A) f.put((char)m.bus.peek((uint16_t)A));
+        }
+        if (!f) return textResult("write failed on '" + path + "'", true);
+
+        Json d = Json::obj();
+        d["path"] = Json(path);
+        d["lo"] = Json((long long)lo);
+        d["hi"] = Json((long long)hi);
+        d["bytes"] = Json((long long)(hi - lo + 1));
+        d["format"] = Json(asHex ? "HEX" : "BIN");
+        std::snprintf(buf, sizeof buf, "saved %04X-%04X (%u bytes) as %s to %s", lo, hi,
+                      hi - lo + 1, asHex ? "HEX" : "BIN", path.c_str());
+        return dataResult(d, buf);
+    }
+
+    if (name == "breakpoints") {
+        std::string action = args.has("action") ? args.at("action").str() : "list";
+
+        if (action == "list") {
+            Json a = Json::arr();
+            std::string text;
+            for (const Breakpoint& b : m.debug.breakpoints()) {
+                a.push(breakpointJson(b));
+                text += b.describe() + "\n";
+            }
+            Json d = Json::obj();
+            d["breakpoints"] = a;
+            return dataResult(d, a.items().empty() ? "(no breakpoints)" : text);
+        }
+        if (action == "add") {
+            BreakKind kind;
+            if (!args.has("kind") || !breakKindFromName(args.at("kind").str(), kind))
+                return textResult("add needs kind: pc | memread | memwrite | ioread | iowrite",
+                                  true);
+            if (!args.has("lo")) return textResult("add needs lo (the address or port)", true);
+            uint32_t lo = (uint32_t)args.at("lo").integer();
+            uint32_t hi = args.has("hi") ? (uint32_t)args.at("hi").integer() : lo;
+            int id = m.debug.add(kind, lo, hi);
+            for (const Breakpoint& b : m.debug.breakpoints())
+                if (b.id == id) return dataResult(breakpointJson(b), b.describe());
+            return textResult("added", false);
+        }
+        if (action == "remove") {
+            if (!args.has("id")) return textResult("remove needs id (see the list)", true);
+            std::string err;
+            if (!m.debug.remove((int)args.at("id").integer(), err))
+                return textResult(err, true);
+            Json d = Json::obj();
+            d["removed"] = args.at("id");
+            return dataResult(d, "breakpoint " + std::to_string(args.at("id").integer()) +
+                                     " removed");
+        }
+        if (action == "clear") {
+            m.debug.clear();
+            return textResult("all breakpoints cleared");
+        }
+        return textResult("action is list, add, remove or clear", true);
+    }
+
+    if (name == "snapshot") {
+        std::string path = args.at("path").str();
+        std::string err;
+        bool ok = m.snapshot(path, err);
+        if (!ok) return textResult(err, true);
+        Json d = Json::obj();
+        d["path"] = Json(path);
+        d["ok"] = Json(true);
+        return dataResult(d, "snapshot written to " + path);
+    }
+
+    if (name == "restore") {
+        std::string path = args.at("path").str();
+        std::string err;
+        bool ok = m.restore(path, err);
+        if (!ok) return textResult(err, true);
+        Json d = Json::obj();
+        d["path"] = Json(path);
+        d["ok"] = Json(true);
+        return dataResult(d, "machine state restored from " + path);
+    }
+
+    if (name == "bus_irq") {
+        Json d = Json::obj();
+        std::string text;
+
+        if (CpuCore* c = m.cpu()) {
+            d["inte"] = Json(c->interruptsEnabled());
+            text += std::string("INTE ") + (c->interruptsEnabled() ? "on" : "off") + "\n";
+        }
+        d["int_pending"] = Json(m.bus.intPending());
+
+        // pin 73: who is pulling it right now.
+        Json pin73boards = Json::arr();
+        for (const auto& b : m.boards())
+            if (b->enabled() && b->assertsInt()) pin73boards.push(Json(b->id));
+        Json pin73 = Json::obj();
+        pin73["asserted"] = Json(m.bus.intPending());
+        pin73["boards"] = pin73boards;
+        d["pin73"] = pin73;
+        text += m.bus.intPending() ? "pINT ASSERTED" : "pINT idle";
+        for (const auto& id : pin73boards.items()) text += " " + id.str();
+        text += "\n";
+
+        // The eight VI wires.
+        uint8_t lines = m.bus.viLines();
+        Json vi = Json::arr();
+        for (int i = 0; i < 8; ++i) {
+            Json j = Json::obj();
+            j["line"] = Json((long long)i);
+            j["pulling"] = Json((bool)((lines >> i) & 1));
+            vi.push(j);
+        }
+        d["vi_lines"] = vi;
+        d["vi_mask"] = Json((long long)lines);
+
+        // Which level an 88-VI would acknowledge, and the RST opcode it jams.
+        for (const auto& b : m.boards()) {
+            int win = b->enabled() ? b->intWinner() : -1;
+            if (win >= 0) {
+                Json w = Json::obj();
+                w["level"] = Json((long long)win);
+                w["encoder"] = Json(b->id);
+                uint8_t rst = (uint8_t)(0xC7 | ((win & 7) << 3));  // RST n
+                w["vector"] = Json((long long)rst);
+                d["winner"] = w;
+                std::snprintf(buf, sizeof buf, "winner: level %d via %s -> RST %d (%02X)\n",
+                              win, b->id.c_str(), win, rst);
+                text += buf;
+                break;
+            }
+        }
+        return dataResult(d, text);
+    }
+
+    if (name == "bus_trace") {
+        size_t n = args.has("count") ? (size_t)args.at("count").integer() : 64;
+        auto recs = m.debug.history(n);
+        const auto& handles = m.debug.boardHandles();
+
+        Json a = Json::arr();
+        std::string text;
+        for (const auto& r : recs) {
+            Json j = Json::obj();
+            j["t"] = Json((long long)r.t);
+            j["type"] = Json(cycleTypeName(r.type));
+            j["addr"] = Json((long long)r.addr);
+            j["data"] = Json((long long)r.data);
+            j["dma"] = Json(r.dma);
+            j["contended"] = Json(r.contended);
+            j["master"] = Json(r.master < 0 ? std::string("cpu")
+                                            : handles[(size_t)r.master]);
+            if (r.responder < 0) j["responder"] = Json();  // floating bus -- nobody drove
+            else j["responder"] = Json(handles[(size_t)r.responder]);
+            a.push(j);
+            text += Debugger::formatCycle(r, handles) + "\n";
+        }
+        Json d = Json::obj();
+        d["cycles"] = a;
+        d["count"] = Json((long long)a.items().size());
+        return dataResult(d, a.items().empty()
+                                 ? "(no cycles recorded -- run or step the guest first)"
+                                 : text);
+    }
+
+    if (name == "mount") {
+        Board* b = m.find(args.at("id").str());
+        if (!b) return textResult("no board '" + args.at("id").str() + "'", true);
+        std::string unit = args.at("unit").str();
+        std::string path = args.at("path").str();
+        bool wp = args.has("write_protect") && args.at("write_protect").boolean();
+
+        if (args.has("create") && args.at("create").boolean()) {
+            std::ifstream exists(path, std::ios::binary);
+            if (!exists) {
+                std::ofstream mk(path, std::ios::binary);  // touch it empty
+                if (!mk) return textResult("cannot create '" + path + "'", true);
+            }
+        }
+        std::string err;
+        if (!b->mount(unit, path, wp, err)) return textResult(err, true);
+        Json d = Json::obj();
+        d["id"] = Json(b->id);
+        d["unit"] = Json(unit);
+        d["path"] = Json(path);
+        d["write_protect"] = Json(wp);
+        return dataResult(d, b->id + ":" + unit + " <- " + path + (wp ? " (WP)" : ""));
+    }
+
+    if (name == "connect") {
+        Board* b = m.find(args.at("id").str());
+        if (!b) return textResult("no board '" + args.at("id").str() + "'", true);
+        std::string unit = args.at("unit").str();
+        std::string endpoint = args.at("endpoint").str();
+        std::string err;
+        if (!b->connect(unit, endpoint, err)) return textResult(err, true);
+        Json d = Json::obj();
+        d["id"] = Json(b->id);
+        d["unit"] = Json(unit);
+        d["endpoint"] = Json(endpoint);
+        return dataResult(d, b->id + ":" + unit + " <-> " + endpoint);
     }
 
     return textResult("no such tool: " + name, true);
