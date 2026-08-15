@@ -167,7 +167,7 @@ the COORDINATOR   git authenticated for push, and gh authenticated -- it does AL
 
 **On Windows, add Git Bash** — `build-package.sh` is `/bin/sh` and is not being duplicated in PowerShell, because two parsers of `docs/package.map` would drift. Git for Windows supplies it, and the box needs Git to clone this anyway.
 
-### 4.2 The seven steps, on every machine
+### 4.2 The eight steps, on every machine
 
 **For these same steps filled in with each box's real paths, flags and target — the version to
 run at release time, plus a diagram of the whole flow — see §4.5.**
@@ -216,7 +216,15 @@ ctest --test-dir build -C Release -LE slow
 # 6. Package, with the manual handed in rather than rebuilt.
 tools/build-package.sh --pdf <path to the coordinator's manual> --target <target>
 
-# 7. DELIVER the archive. A WORKER never touches GitHub -- it scps its one archive into the
+# 7. Prove the manual is TRUE against the package just built. build-package.sh assembles and
+#    STOPS, and step 4's ctest proved the BINARY, not the archive -- so nothing until now typed
+#    the manual's own commands at the zip. This extracts it somewhere `git rev-parse` fails and
+#    runs the manual's `$ altairsim ...` walkthroughs against it (issue #308).
+tools/verify-package.sh dist/altairsim-X.Y.Z-<target>.<ext>
+#    CHECK: "verify-package: PASS -- N/N manual commands reached their documented prompt"
+#    STOP on any FAIL. Do not deliver a package whose own manual does not work in it.
+
+# 8. DELIVER the archive. A WORKER never touches GitHub -- it scps its one archive into the
 #    coordinator's repo dist/. build-package.sh's cleanup is scoped to its OWN target, so a
 #    sibling platform's already-delivered archive is not wiped (see the script, DISTRIBUTION.md 6):
 scp dist/altairsim-X.Y.Z-<target>.<ext> patrick@dist.altairsim.com:~/src/altairsim/dist/
@@ -285,7 +293,7 @@ credentials — it tags, pushes, and does every `gh` operation. The three worker
 they clone the **public** repo over **anonymous `https://`**, build, and `scp` their one archive
 to the coordinator's repo **`dist/`** (`~/src/altairsim/dist`) — reached at
 **`dist.altairsim.com`**, this box's public name (its LAN address is DHCP-assigned and floats, so
-always use the name, never a raw IP). §4.2 is the same seven steps on all four; only the per-box
+always use the name, never a raw IP). §4.2 is the same eight steps on all four; only the per-box
 specifics differ — the **SDL3 prefix**, the **platform flags**, the **`--target`**, and, for a
 worker, the **`scp` back**. Filled in with the project's real paths (verified 2026-07-21):
 
@@ -354,6 +362,7 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release -LE slow            # CHECK: 100% tests passed
 ./build/altairsim --version                           # CHECK: bare "AltairSim X.Y.Z"
 tools/build-package.sh --pdf docs/altairsim-manual.pdf --target macos-arm64
+tools/verify-package.sh dist/altairsim-X.Y.Z-macos-arm64.tar.gz   # CHECK: verify-package: PASS
 # its archive is now in dist/ beside the workers' deliveries; all four upload in §5 step 6
 ```
 
@@ -376,6 +385,7 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release -LE slow
 ./build/altairsim --version
 tools/build-package.sh --pdf docs/altairsim-manual.pdf --target macos-x86_64
+tools/verify-package.sh dist/altairsim-X.Y.Z-macos-x86_64.tar.gz   # CHECK: verify-package: PASS
 scp dist/altairsim-X.Y.Z-macos-x86_64.tar.gz patrick@dist.altairsim.com:~/src/altairsim/dist/
 ```
 
@@ -386,7 +396,7 @@ scp dist/altairsim-X.Y.Z-macos-x86_64.tar.gz patrick@dist.altairsim.com:~/src/al
 > does not arise, and Linux is unaffected — its `cmake` is in `/usr/bin`, always on `PATH`.
 
 **Box 3 — Windows 10 worker** *(`ssh patrick@192.168.94.27`; VMware guest on the Intel Mac)*. Steps 1–5
-in **PowerShell**; steps 6–7 in **Git Bash**. `MultiThreaded` and `--config Release` are
+in **PowerShell**; steps 6–8 in **Git Bash**. `MultiThreaded` and `--config Release` are
 load-bearing (§4.4); the binary lands in `build\Release\`. `scp.exe` ships in Windows 10 and
 reaches the coordinator over the LAN.
 
@@ -421,6 +431,7 @@ ctest --test-dir build -C Release -LE slow
 ```sh
 # --- Git Bash, from the repo root ---
 tools/build-package.sh --pdf docs/altairsim-manual.pdf --target windows-x86_64
+tools/verify-package.sh dist/altairsim-X.Y.Z-windows-x86_64.zip   # CHECK: verify-package: PASS
 scp dist/altairsim-X.Y.Z-windows-x86_64.zip patrick@dist.altairsim.com:~/src/altairsim/dist/
 ```
 
@@ -435,6 +446,7 @@ cmake --build build --config Release          # single-threaded: RAM-starved VM,
 ctest --test-dir build -C Release -LE slow
 ./build/altairsim --version
 tools/build-package.sh --pdf docs/altairsim-manual.pdf --target linux-x86_64
+tools/verify-package.sh dist/altairsim-X.Y.Z-linux-x86_64.tar.gz   # CHECK: verify-package: PASS
 scp dist/altairsim-X.Y.Z-linux-x86_64.tar.gz patrick@dist.altairsim.com:~/src/altairsim/dist/
 ```
 
