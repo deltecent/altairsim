@@ -264,16 +264,22 @@ Your typing goes the other way, and does work: keystrokes at the terminal reach 
 keyboard port just as the window's would.
 
 ```
-startup> MOUNT sol0:tape1 "TRK80.TAP"
-sol0:tape1: mounted TRK80.TAP
-altairsim> RUN C000
+startup> MOUNT sol0:tape1 "TRK80.WAV"
+sol0:tape1: mounted TRK80.WAV
+TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
+startup> TYPE "XE TRK80\r"
+startup> SET vdm0 cursor=steady
+vdm0: cursor=steady
+startup> RUN C000
 [console -- ^E returns to the monitor]
-XE TRK80
 ```
 
-The `MOUNT` is the machine file's doing — the tape is in the deck before you arrive. `RUN C000`
-cold-starts SOLOS, and `XE TRK80` is yours to type: `startup` runs *monitor* commands, and no
-machine file can type at a guest.
+Every line there is the machine file's `startup`, run before you arrive — you type nothing.
+`MOUNT` puts the tape in the deck; `TYPE "XE TRK80\r"` queues that command at the console,
+where SOLOS's type-ahead reads it at its first prompt; `SET vdm0 cursor=steady` stops the
+game's reverse-video cells strobing; and `RUN C000` cold-starts SOLOS, which signs on, reads
+the queued `XE TRK80`, and loads the game. On a real Sol-20 you would type `XE TRK80` at the
+SOLOS prompt yourself — here `TYPE` is the monitor command that does it for you.
 
 Then wait. **The tape takes about a minute**, because `{{MACHINE_SOL}}` sets the Sol's real
 2.045 MHz and a cassette at 1200 baud takes what a cassette took. That minute is the example
@@ -301,18 +307,20 @@ CFC0  45 4E 54 45 52 20 53 50 ... 54 29 29           ENTER SPEED FACTOR (9(SLOW)
 
 `RUN` resumes, and the answer you type reaches the game.
 
-### The same tape, as audio
+### The same tape, as bytes
 
-`{{TAPE_SOL}}` is a file of bytes. Beside it is `{{WAV_SOL}}` — the *same* program as a
-cassette recording — and the machine reads either:
+`{{WAV_SOL}}` is a cassette recording — real tones, which is why its mount line above counts
+framing errors as it demodulates them. Beside it is `{{TAPE_SOL}}`, the *same* program already
+decoded to bytes; the machine reads either, so you can mount it in place of the WAV:
 
 ```
-altairsim> MOUNT sol0:tape1 TRK80.WAV
-TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
+altairsim> MOUNT sol0:tape1 TRK80.TAP
+sol0:tape1: mounted TRK80.TAP
 ```
 
-Everything above this line is unchanged: SOLOS's tape reader cannot tell, because the
-demodulation happens once, at mount. The tapes chapter has the detail.
+Everything else is unchanged: SOLOS's tape reader cannot tell the two apart, because with the
+WAV the demodulation happens once, at mount — there are no tones left to decode by the time the
+guest reads. The tapes chapter has the detail.
 
 ---
 
