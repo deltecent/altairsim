@@ -1,0 +1,76 @@
+# CDOS 2.58 off a Cromemco 16FDC -- Cromemco's CP/M-1.4 work-alike, booting from an
+# 8" double-sided, mixed-density diskette.
+#
+# The 16FDC carries a WD FD1793 floppy controller, a TMS 5501 UART (the console), and the
+# RDOS 2.52 boot PROM. `bootstrap = true` arms the PROM at C000; the machine's startup runs
+# it, and RDOS reads the boot track, loads the CDOS cold loader, and jumps into CDOS.COM.
+#
+# clock_hz = 4000000 IS AUTHENTIC, NOT A KNOB. A real Cromemco runs at 4 MHz, and RDOS's
+# double-density read loop needs it: at 2 MHz a 500 kbit/s byte arrives faster than the loop
+# can take it and the FD1793 reports Lost Data. This is the machine the software was written for.
+#
+# THE CONSOLE COMES UP ON ITS OWN -- no RETURN to press. The 16FDC is strapped for its fixed
+# 300-baud "modem" console (RDOS's switch 5), which skips the terminal auto-baud that would
+# otherwise want a RETURN to train the bit period. Because the tty's `rate` defaults to `full`,
+# that 300-baud strap costs nothing here -- the line is not paced, so the console runs as fast
+# as the guest prints. Set `rate = "real"` on the tty to feel the authentic 300 baud.
+
+[machine]
+name    = "cdos"
+startup = ["RUN C000"]
+
+# Z80 at the real Cromemco 4 MHz.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# The 16FDC: RDOS 2.52 PROM at C000-CFFF (bootstrap on -> auto-boots drive A), an FD1793,
+# and its onboard TMS 5501 wired as the console ('tty').
+[[board]]
+type      = "16fdc"
+id        = "fdc0"
+bootstrap = true
+drives    = 4
+
+  [board.unit.tty]
+  connect = "console"
+  # rate  = "real"   # uncomment for the authentic (slow) 300-baud modem-console timing
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CDOS258-8IN-DSDD.DSK"
+
+  [[board.drive]]
+  unit  = 1
+  mount = "dazzler_games.dsk"
+
+# 64K of RAM -- a full Cromemco. The RDOS PROM shadows its C000 window on READS only, so RAM
+# is inhibited there during the boot but a write falls through; that lets CDOS relocate into
+# the RAM beneath the PROM and keep running once the PROM switches itself out (OUT 40H).
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+
+# THE DAZZLER -- the picture. Control/status at 0EH, format at 0FH (the defaults). It
+# decodes no memory; its framebuffer is ordinary RAM.
+[[board]]
+type = "dazzler"
+id   = "daz0"
+port = 0x0E
+
+# THE D+7A -- the joysticks. Eight ports from 0x18: buttons at 0x18, analog channels at
+# 0x19..0x1F. Joystick 1 follows the host's first USB gamepad, or the keyboard if none.
+[[board]]
+type      = "d7a"
+id        = "d7a0"
+port      = 0x18
+joystick1 = "auto"
+joystick2 = "none"

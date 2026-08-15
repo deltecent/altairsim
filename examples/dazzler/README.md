@@ -94,6 +94,46 @@ CP/M and auto-runs `ADCTEST`, which displays each stick's X/Y and buttons on the
 The two demo disks are a collection of period Cromemco Dazzler software (graphics demos and
 games); `ADCTEST.COM` was copied onto the C: disk with the hostbridge file-transfer utility.
 
+## A disk of Dazzler games, under CDOS
+
+`games.toml` is a different machine: a **Cromemco 16FDC** booting **CDOS 2.58** — Cromemco's
+CP/M-1.4 work-alike — off an 8″ double-sided, mixed-density diskette, with a whole floppy of
+period Dazzler **games** on the second drive.
+
+```
+cd examples/dazzler
+altairsim games.toml
+      -> CDOS version 02.58
+         A.
+```
+
+The console comes up on its own — no RETURN to press. The 16FDC is strapped for its 300-baud
+"modem" console, which skips the terminal auto-baud; the tty's `rate` defaults to `full`, so the
+line runs as fast as the guest prints (set `rate = "real"` on the tty for the authentic 300 baud).
+CDOS's prompt is a period — `A.`, not `A>`.
+
+Two drives are mounted:
+
+- **A:** `CDOS258-8IN-DSDD.DSK` — the bootable CDOS 2.58 system disk.
+- **B:** `dazzler_games.dsk` — the games: `SPACEWAR`, `DOGFIGHT`, `TANKWAR`, `CHASE`, `GOTCHA`,
+  `4DTICTAC`, `TRACK`, `DOODLE`, `DMATION`, `LIFE`/`XLIFE`, and the CDOS build of `KSCOPE`.
+
+Change to the games drive and run one — several want the joysticks, which the machine provides
+through the same **D+7A** (`joystick1 = "auto"`):
+
+```
+A.B:
+B.SPACEWAR
+```
+
+On an SDL3 build the Dazzler window opens the moment a game turns the card on; **`Ctrl-E`** in the
+window (ATTN) breaks back to the `altairsim>` monitor. As with `cpm.toml`, these are **Z80**
+programs on a **4 MHz** machine — the real Cromemco speed, which CDOS's double-density read loop
+depends on.
+
+Scanned Cromemco manuals for the games ride alongside the disk: **`Dazzler Games.pdf`** (the
+collected game instructions), **`Spacewar.pdf`**, and **`Dogfight.pdf`**.
+
 ## Try it yourself
 
 - **Watch it draw into memory.** Break out (`Ctrl-E`) and `DUMP 0200` — the framebuffer bytes
