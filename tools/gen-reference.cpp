@@ -243,7 +243,7 @@ const char* commandSummary(const std::string& n) {
     if (n == "NEXT") return "Step one instruction, running any CALL/RST to completion.";
     if (n == "RUN") return "Start or resume the machine, optionally at an address.";
     if (n == "HISTORY") return "Replay the recent instruction (or bus-cycle) history.";
-    if (n == "MOUNT") return "Put a disk or tape image into a drive.";
+    if (n == "MOUNT") return "Put a disk or tape image into a drive; a .imd is converted to a raw .dsk beside it.";
     if (n == "BREAK") return "Set a breakpoint on an address, memory/I/O access, or tape stop.";
     if (n == "EDIT") return "Enter bytes into memory interactively from an address.";
     if (n == "CONFIG") return "Load or save the whole machine as a TOML file.";
