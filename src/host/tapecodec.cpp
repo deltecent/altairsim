@@ -193,6 +193,39 @@ std::unique_ptr<MediaFile> openTapeMedia(const std::string& path, bool ro,
         return nullptr;
     }
 
+    // AN EMPTY FILE HAS NO MAGIC TO DECIDE BY. Everything below reads the file's own bytes to
+    // tell a byte tape from a WAV -- but a zero-length file (what MOUNT ... CREATE makes, so a
+    // fresh cassette can be recorded) carries neither, and sniffing it silently yields a byte
+    // tape that then records to an unplayable ".wav" (#313). With no content to consult, honor
+    // the operator's stated intent instead of the magic:
+    //   - `format=raw`  -> a raw byte tape, as asked.
+    //   - an explicit modulation in `format`, or a `.wav` name  -> a blank AUDIO tape, so a
+    //     recording modulates into a real WAV. The format is the named one, else this card's
+    //     primary modem format (`candidates` is never empty; the Enum limits `want` to auto,
+    //     raw, or a candidate, so a match here is the whole space of audio intent).
+    //   - anything else (a `.tap`, no explicit modulation)  -> a raw byte tape.
+    // Narrated either way, never silent. This is NOT the extension overruling the magic: a file
+    // WITH content still falls through to the sniff below, where the magic decides as always.
+    if (raw.empty()) {
+        if (want != "raw") {
+            const TapeFormat* fmt = nullptr;
+            for (const TapeFormat& f : candidates)
+                if (want == f.name) { fmt = &f; break; }
+            // `.wav` is the only intent a blank file's name can carry; an explicit modulation
+            // (found above) forces audio even on a differently-named file.
+            if (!fmt && want == "auto" && stripWavExt(path) != path) fmt = &candidates.front();
+            if (fmt) {
+                detected = fmt->name;
+                log.push_back(path + ": blank " + fmt->name + " tape, ready to record");
+                return std::make_unique<AudioTapeMedia>(std::move(media),
+                                                        std::vector<uint8_t>{}, *fmt, 44100);
+            }
+        }
+        detected = "raw";
+        log.push_back(path + ": blank raw byte tape");
+        return media;
+    }
+
     // THE MAGIC DECIDES, NEVER THE EXTENSION. A .tap someone renamed .wav must not be
     // demodulated, and a .wav someone renamed .tap must be. `raw` forces the byte
     // reading even on a real WAV, which is how you look at a broken tape's container.
