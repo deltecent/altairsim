@@ -102,6 +102,13 @@ void test_hdsk() {
         CHECK(!probes(337568), "an 8-inch floppy is not an HDSK platter");
         CHECK(err.find("88-HDSK platter") != std::string::npos, "and the error says so");
 
+        // A ZERO-byte image (a blank / MOUNT ... CREATE) is refused too, but the message
+        // names the mistake -- a fixed geometry cannot make a blank platter -- rather than
+        // reporting "0 bytes", which is the size of a file about to be deleted.
+        CHECK(!probes(0), "a blank (zero-byte) image is not an HDSK platter either");
+        CHECK(err.find("cannot make a blank platter") != std::string::npos,
+              "and the error names the mistake, not the 0-byte symptom");
+
         setMediaResolver(openHostFile);
     }
 
