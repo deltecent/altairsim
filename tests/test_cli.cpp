@@ -1066,11 +1066,13 @@ void test_cli() {
         std::ostringstream sink;
         mon.exec("BOARDS ADD hdsk h0", sink);
 
-        // hdsk has a fixed multi-megabyte geometry, so a 0-byte CREATE is refused.
+        // hdsk has a fixed multi-megabyte geometry, so a 0-byte CREATE is refused -- and the
+        // refusal names the MISTAKE (you cannot make a blank platter here), not the symptom
+        // "0 bytes", which is just the size of the file CREATE made and we are deleting.
         std::ostringstream o;
         mon.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o);
-        CHECK(o.str().find("is not an 88-HDSK platter") != std::string::npos,
-              "hdsk refuses the zero-byte image CREATE made");
+        CHECK(o.str().find("cannot make a blank platter") != std::string::npos,
+              "hdsk refuses the zero-byte image CREATE made, naming the mistake not the size");
         CHECK(!std::filesystem::exists(tmp, ec),
               "...and the zero-byte file it created is removed, not left as a turd");
 

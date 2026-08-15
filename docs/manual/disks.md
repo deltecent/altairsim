@@ -357,6 +357,20 @@ controller can step, say `media = "8in"` on the drive — see "The geometry is p
 `AFORMAT` will format either, but a period program that assumes 77 tracks is happier with
 the 77-track one.
 
+**`CREATE` only works on a controller that can grow its disk.** The `dcdd` and `mds` mount
+a blank at the widest format they reach and let the guest's formatter fill it in — that give
+is what makes the empty file a disk. A **fixed-geometry** controller has none: the 88-HDSK
+"Datakeeper" hard disk knows exactly how big a platter is and nothing else, so it cannot make
+a blank one for you. `CREATE` there is refused with
+
+```
+h0: 88-HDSK has a fixed geometry and cannot make a blank platter -- supply an existing
+    4988928-byte image (406 cyl x 2 sides x 24 sectors x 256)
+```
+
+and the empty file is removed, not left behind. For that disk you supply a full-size image;
+there is no scratch-disk step.
+
 Either way, remember which chapter you are in: get back to `A>` before you go looking at the
 file.
 

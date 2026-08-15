@@ -393,8 +393,20 @@ bool HdskBoard::mount(const std::string& unit, const std::string& path, bool ro,
     // Probe into a FRESH image so a size mismatch does not half-replace the old disk.
     auto img = std::make_unique<DiskImage>(std::move(media));
     if (!sizeMatches(img->size(), kPlatterBytes)) {
-        err = std::to_string(img->size()) + " bytes is not an 88-HDSK platter (expected " +
-              std::to_string(kPlatterBytes) + " = 406 cyl x 2 sides x 24 sectors x 256)";
+        // A ZERO-byte image is the CREATE/blank case, not a wrong-size disk -- and the
+        // 88-HDSK cannot help with it. The controller pre-declares a fixed geometry and
+        // never extends on write (unlike dcdd/mds, which mount a blank at full reach and
+        // let the guest FORMAT define it). So name the MISTAKE -- you cannot make a blank
+        // platter here -- not the symptom "0 bytes", which is just the size of the file
+        // CREATE made and the monitor is about to delete. A real disk of the wrong size is
+        // never 0 bytes, so this branch is exactly "you asked for a blank one".
+        if (img->size() == 0)
+            err = "88-HDSK has a fixed geometry and cannot make a blank platter -- "
+                  "supply an existing " + std::to_string(kPlatterBytes) +
+                  "-byte image (406 cyl x 2 sides x 24 sectors x 256)";
+        else
+            err = std::to_string(img->size()) + " bytes is not an 88-HDSK platter (expected " +
+                  std::to_string(kPlatterBytes) + " = 406 cyl x 2 sides x 24 sectors x 256)";
         return false;
     }
     // One platter: 406 cylinders, two sides, 24 sectors of 256 bytes, numbered from 0.
