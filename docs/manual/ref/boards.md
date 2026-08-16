@@ -279,7 +279,7 @@ S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byt
 
 | Key | Kind | Legal | Meaning |
 |---|---|---|---|
-| `unit` | int | `0` .. `1` | Which SD socket (0 = drive A:, 1 = drive B:) |
+| `unit` | int | `0` .. `1` | Which SD socket (0 = drive 1 / C:, 1 = drive 2 / D:) |
 | `mount` | string | text | The card (a directory card, or an image) to put in it. Relative to THIS FILE. |
 | `readonly` | bool | `on` \| `off` | Write-protect the card *(also `writeprotect`)* |
 

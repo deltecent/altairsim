@@ -1,16 +1,25 @@
 # S100Computers Dual SD Card Board
 
-Source (fetched 2026-08-16, John Monahan's S-100 archive):
+Sources (John Monahan's S-100 archive, s100computers.com):
 - Board page: [Dual SD card Board.htm](https://www.s100computers.com/My%20System%20Pages/Dual%20SD%20card%20Board/Dual%20SD%20card%20Board.htm)
+- **ESP32 firmware — the definitive authority** for the port protocol, the command set, the
+  byte handshake, and the addressing:
+  [S100_ESP32_Firmware_v1.5 (text).ino](https://www.s100computers.com/My%20System%20Pages/Dual%20SD%20card%20Board/S100_ESP32_Firmware_v1.5%20(text).ino)
+  (by Wayne Warthen & Michael Petry, derived from John Monahan's work; board id 2 = "Dual SD",
+  dated 7-Sep-2025). This is the code the board actually runs; §2–§3 below are distilled from
+  its `loop()` + `runCmd()`.
+- Boot monitor **MASTER Z80 (V6.6)** — the CPU board's ROM monitor that boots CP/M 3 off this
+  board via its `I` command (added V6.52, 12/2025). Source
+  [Master0.z80](https://www.s100computers.com/Software%20Folder/Master/Master0.z80) /
+  [Master1.z80](https://www.s100computers.com/Software%20Folder/Master/Master1.z80)
+  (assembled `MASTER0.HEX`/`MASTER1.HEX`, org F000H, ship in the V6.6 distribution). See §5.
+- Board test driver `SD_CARD.Z80` / `SD_IO.Z80` (John Monahan, V0.5 1/22/2025), the Z80 test
+  program shipped with the board. It agrees with the firmware on the protocol and is a second
+  witness for §2–§3. Obtained from the author's SD_Card distribution; not fetchable from HTML.
 - CP/M 3 hard-disk BIOS: [CPM3 HDISK BIOS Software.htm](https://www.s100computers.com/Software%20Folder/CPM3%20BIOS%20Installation/CPM3%20HDISK%20BIOS%20Software.htm)
-  and the build note [Z80 CP_M 3.0 build_Rev01.pdf](https://www.s100computers.com/Software%20Folder/CPM3%20BIOS%20Installation/Z80%20CP_M%203.0%20build_Rev01.pdf) (page images, no text layer)
-- Boot monitor: [MASTER.Z80 (V4.53)](http://www.s100computers.com/Software%20Folder/CPM3%20BIOS%20Installation/MASTER%20(V4.53).pdf),
-  [Master.htm](http://www.s100computers.com/Software%20Folder/Master/Master.htm)
-- Ready images: [CPM Card Images Store.htm](https://www.s100computers.com/Software%20Folder/CPM%20Card%20Images/CPM%20Card%20Images%20Store.htm)
-- Board test driver: `SD_CARD.Z80` / `SD_IO.Z80` (John Monahan, V0.5 1/22/2025), the Z80 test
-  program shipped with the board. It is the authoritative statement of the 80/81 port protocol,
-  the 33H command lead, the byte handshake, and the SET_TRK_SEC argument order and LBA mapping
-  (§3). Obtained from the author's SD_Card distribution; not fetchable from an HTML page.
+- Ready images: [CPM Card Images Store.htm](https://www.s100computers.com/Software%20Folder/CPM%20Card%20Images/CPM%20Card%20Images%20Store.htm).
+  Boot target: **Image-14** (IDE-CF + Dual SD, non-banked CP/M 3),
+  [(Image-14) …CPM3.imgc](https://www.s100computers.com/Software%20Folder/CPM%20Card%20Images/CF_IMAGES/(Image-14)%20IDE-CF%20+%20Dual%20SD%20Card%20Non-Banked%20CPM3.imgc).
 
 This reference distills what a software emulation of the Dual SD board needs: the two-port
 command protocol, the byte handshake, the 512-byte sector model, the CP/M 3 hard-disk DPB the
@@ -23,19 +32,17 @@ Nothing here is redistributed — this is a text distillation citing the public 
 image or ROM is committed on the strength of it. (Project rule: record the licence, never gate
 on it.)
 
-**⚠ Open items:**
-1. **`SET_TRK_SEC` (84H) byte order and the (track,sector)→LBA formula — RESOLVED from
-   `SD_CARD.Z80`.** `SET_SECTOR` sends the **track byte first, then the sector byte**; the card
-   LBA is **`track*256 + sector`** (the driver's "next sector" step loads `H=track, L=sector`
-   and does a single `INC HL`, so the pair is one big-endian 16-bit number rolling sector into
-   track at 256 — i.e. 256 sectors per track). Byte offset = `LBA * 512`. See §3.
-2. **Blank/unwritten-sector fill.** What a never-written SD sector reads is *not stated*; a real
-   CF/SD returns the erased-flash pattern (typically `0xFF`), **not** `0xE5`. `0xE5` on this
-   board comes only from the FORMAT command explicitly writing it (§2). The directory-card medium
-   uses the erased value for its EOF/gap fill; treat `0xFF` as the working value until confirmed.
-3. **SD-vs-CF boot at MASTER v4.53.** The monitor's `P` boot reads the CF card; the author notes
-   a direct-SD CP/M 3 boot was not yet wired into the (already-full) monitor (§5). The boot path
-   for an SD-only machine is the primary open risk for the machine build.
+**Open items:**
+1. **RESOLVED (firmware).** The command port model, the trailing STATUS byte, the addressing,
+   and the FORMAT semantics are all pinned from `S100_ESP32_Firmware_v1.5.ino` (§2–§3), with
+   `SD_CARD.Z80` as a second witness.
+2. **Blank/unwritten-sector fill.** A never-written *in-range* sector returns whatever the
+   medium holds — a real card returns its erased-flash pattern; the directory-card medium
+   returns `0xFF`. This is distinct from a *failed* read (offset past the card), where the
+   firmware sends 512 `0x00` bytes and STATUS=ERR (§2). `0xE5` is written only by FORMAT.
+3. **RESOLVED (MASTER V6.6).** The `I` command (`SDBOOTCPM` → `SDCPM`, added V6.52) boots CP/M 3
+   directly from the Dual SD board — no CF/IDE board required. The v4.53 "SD boot not wired"
+   note is obsolete. See §5.
 4. **`.imgc` container form.** The store page calls them "sector image" files written with the
    HHD Raw Copy Tool, which strongly implies a plain raw byte-for-byte sector dump; a
    compressed/container form is not ruled out on the page (§7).
@@ -44,15 +51,14 @@ on it.)
 
 ## 1. Board overview
 
-- A modern S-100 board carrying **two microSD sockets** (drives A: and B:), driven by an
+- A modern S-100 board carrying **two microSD sockets** (drives 1/C: and 2/D:), driven by an
   onboard **ESP32-S3** module. "All access to the SD cards is done via a few one byte commands
   sent to the board. These commands are processed by the ESP32 and send/receive sector data to
   the S100 bus over two parallel ports."
 - The S-100 CPU sees only **two 8-bit I/O ports** and a byte-at-a-time handshake — architecturally
   the same shape as the 88-HDSK / iCOM FD3712: a programmed-I/O command engine with a full-sector
   buffer, not a WD177x-style register file.
-- **No boot PROM on the board.** CP/M is loaded by the CPU board's ROM monitor from a boot loader
-  written to the first sectors of the card (§5).
+- **No boot PROM on the board.** CP/M is loaded by the CPU board's ROM monitor (MASTER, §5).
 - Runs **CP/M 3** (banked and non-banked); the SD/CF family also carries CP/M 2.2, MS-DOS, CP/M-68K
   and CP/M-86 images.
 
@@ -62,115 +68,117 @@ Two ports, DIP-selectable to any 8- or 16-bit address. Defaults:
 
 | Port | Default | Read | Write |
 |------|---------|------|-------|
-| STATUS | **80H** | status byte (bit 7 = data ready, bit 0 = write-buffer busy) | command byte |
-| DATA   | **81H** | next data byte from the ESP32 | next data byte to the ESP32 |
+| STATUS | **80H** | status byte (bit 7 = data ready, bit 0 = write-buffer busy) | flush pending read data |
+| DATA   | **81H** | next byte the ESP32 is returning | next byte into the ESP32 (lead, command, or argument) |
 
-Every command is **two bytes: a lead `33H` (a safety sync), then the command code.** For a
-sector read/write the 16-bit sector number (`0-FFFFH`) is also part of the transaction.
+**The port model (pinned from the firmware and both Z80 drivers).** There is **one host→board
+input path**: the `33H` lead byte, the command code, *and* every argument/write byte are all
+written OUT the **DATA port (81H)**. The STATUS port (80H) is a read-only status register; a
+*write* to it merely flushes any pending read byte (the drivers' init housekeeping — "tell the
+ESP32 no data is waiting"). There is no separate "command port". In the firmware this is the
+`loop()` state machine: `33H` → command → the command's payload.
 
-| Command | Code | Meaning |
-|---------|------|---------|
-| `INIT_DRIVE_A`   | **80H** | initialize / mount SD drive A: |
-| `INIT_DRIVE_B`   | **81H** | initialize / mount SD drive B: |
-| `SEL_DRIVE_A`    | **82H** | (re)select already-initialized drive A: |
-| `SEL_DRIVE_B`    | **83H** | (re)select already-initialized drive B: |
-| `SET_TRK_SEC`    | **84H** | set current track + sector on current drive (byte order ⚠ open, §3) |
-| `READ_SECTOR`    | **85H** | read the current 512-byte sector into the data port |
-| `WRITE_SECTOR`   | **86H** | write the current 512-byte sector from the data port |
-| `FORMAT_SECTOR`  | **87H** | **fill the current sector with `E5`** |
-| `RESET_ESP32`    | **88H** | reset the ESP32 controller |
+Both Z80 drivers confirm it — `MASTER.Z80`'s `SD_CMD`/`SD_PUTBYTE` and `SD_CARD.Z80`'s
+`SEND_CMD`/`SEND_DATA` send the `33H` lead and the command code via `OUT (SD_DATA)` = 81H, and
+read status via `IN (SD_STAT)` = 80H.
 
-`FORMAT_SECTOR` writing `0xE5` is a firmware fact (the page: "Format the CURRENT sector with
-E5's") — this is the *board command's* fill, distinct from what an untouched sector reads (§ open
-item 2).
+**Every in-range command returns a trailing STATUS byte** — the firmware runs `SendData(runCmd(cmd))`
+so a STATUS value is pushed back after the command's own output (if any). The driver always
+reads it back (its `GET_DATA`). `RESET` (88H) reboots the ESP32 and returns nothing; an
+out-of-range code is ignored with no reply.
 
-## 3. The byte handshake and addressing (verbatim driver fragments)
+| Command | Code | Host sends after code | Board returns |
+|---------|------|-----------------------|---------------|
+| `INIT_DRIVE_1` C: | **80H** | — | STATUS |
+| `INIT_DRIVE_2` D: | **81H** | — | STATUS |
+| `SEL_DRIVE_1` C:  | **82H** | — | STATUS |
+| `SEL_DRIVE_2` D:  | **83H** | — | STATUS |
+| `SET_TRK_SEC`     | **84H** | Track (byte), Sector (byte) | STATUS |
+| `READ_SECTOR`     | **85H** | — | 512 data bytes, then STATUS |
+| `WRITE_SECTOR`    | **86H** | 512 data bytes | STATUS |
+| `FORMAT_SECTOR`   | **87H** | sector **count** (16-bit, LSB then MSB) | STATUS |
+| `RESET_ESP32`     | **88H** | — | (reboots; nothing) |
+| `FWVER`           | **90H** | — | BoardID, Ver-Major, Ver-Minor, then STATUS |
+| `SETLBA`          | **91H** | LBA (4 bytes, **MS first**) | STATUS |
+| `TYPE`            | **92H** | — | card-type byte, then STATUS |
+| `CAP`             | **93H** | — | sector count (4 bytes, MS first), then STATUS |
+| `CID`             | **94H** | — | 16 bytes, then STATUS |
+| `CSD`             | **95H** | — | 16 bytes, then STATUS |
+| `DISP`            | **96H** | NUL-terminated string | STATUS |
+| `ECHO`            | **97H** | length (MSB,LSB), then that many bytes | those bytes, then STATUS |
 
-`SD_CARD.Z80` is the authoritative statement of the DI7 / write-busy handshake, and the board
-model must reproduce exactly this observable behavior:
+STATUS values: **`STAT_OK = 0x00`**, **`STAT_ERR = 0x1A`**.
+
+**READ error path (firmware).** If the sector read fails (no card, or an offset past the media)
+the firmware still sends **512 bytes of `0x00`** and then STATUS=`0x1A`. A never-written but
+in-range sector is *not* an error — the medium returns its erased fill and STATUS is OK.
+
+**FORMAT (firmware).** `FORMAT_SECTOR` takes a 16-bit sector **count**, then fills each of
+`count` sectors with `0xE5`, **starting at the current sector and advancing it**, and **skips
+sector 0** (it never overwrites the boot sector). The current sector is left advanced past the
+formatted run.
+
+## 3. The byte handshake and addressing
+
+The DI7 / write-busy handshake the board model must reproduce (firmware `GetData`/`SendData`,
+mirrored by the drivers' `GET_DATA`/`SEND_DATA`):
+
+- **Status bit 7 (DI7) high = a byte is waiting to be read.** Reading the DATA port takes it and
+  presents the next. A 512-byte read is 512 iterations; the trailing STATUS byte keeps DI7 high
+  for one more read.
+- **Status bit 0 high = the last written byte has not been consumed yet.** The host waits for it
+  to fall before the next write. (In emulation the engine consumes each written byte at once, so
+  bit 0 reads back 0.)
+
+**Addressing (firmware `getTrkSec`).** `SET_TRK_SEC` reads the **track byte first, then the
+sector byte**, and forms the current sector as:
 
 ```
-; Read one byte: wait for DI7 (bit 7) high, then read the data port.
-GET_DATA:  IN   A,(SD_CARD_STATUS)   ; wait for character (GPIO_3 and GPIO_21)
-           BIT  7,A
-           JR   Z,GET_DATA
-           IN   A,(SD_CARD_DATA)     ; S100 read-enable resets the ready flip-flop
-
-; Send one byte: wait until the previous byte has been consumed (bit 0 low), then write.
-SEND_DATA: IN   A,(SD_CARD_STATUS)   ; wait until any previous character has been read
-           BIT  0,A
-           JR   NZ,SEND_DATA
-           LD   A,C
-           OUT  (SD_CARD_DATA),A
+sector = (Track << 8) + Sector;     // getTrkSec(): track high, sector low
 ```
 
-So: **status bit 7 (DI7) high = a byte is waiting to be read**; reading the data port clears it.
-**Status bit 0 high = the last written byte has not been taken yet**; it must fall before the
-next write. A 512-byte sector transfer is 512 iterations of the matching loop.
-
-**`SET_TRK_SEC` (84H) addressing** — `SD_CARD.Z80`'s `SET_SECTOR` sends the command, then the
-track byte, then the sector byte:
-
-```
-SET_SECTOR: ...                      ; TRACK and SECTOR each entered as one byte (0-FFH)
-            LD   C,CMD$SET$TRK$SEC   ; 84H
-            CALL SEND_CMD            ; 33H lead + 84H
-            LD   A,(CURRENT_TRACK)
-            LD   C,A
-            CALL SEND_DATA           ; track byte FIRST
-            LD   A,(CURRENT_SECTOR)
-            LD   C,A
-            CALL SEND_DATA           ; sector byte SECOND
-```
-
-and its "advance to the next sector" step shows the two bytes are one big-endian LBA:
-
-```
-            LD   A,(CURRENT_SECTOR)
-            LD   L,A                 ; L = sector (low byte)
-            LD   A,(CURRENT_TRACK)
-            LD   H,A                 ; H = track  (high byte)
-            INC  HL                  ; one sector forward: rolls sector->track at 256
-```
-
-So the card **LBA = `track*256 + sector`** (256 sectors per track), and the byte offset is
-`LBA * 512`. The board model reads the two DATA bytes as track (high) then sector (low).
+so the card **LBA = `track*256 + sector`** (256 sectors per track), byte offset `LBA * 512`.
+`SET_TRK_SEC` therefore addresses the first 32 MB; `SETLBA` (91H) sets a full 32-bit LBA,
+**most-significant byte first**. The board model reads the two `SET_TRK_SEC` bytes as track
+(high) then sector (low), and addresses the mounted medium directly by byte offset.
 
 ## 4. Geometry and the CP/M 3 DPB
 
-- **Physical sector: 512 bytes.** Addressed by track + sector; default disk shape assumed by the
-  firmware is `0FFH` (255) tracks × `0FFH` (255) sectors/track.
+- **Physical sector: 512 bytes.** Addressed by LBA (track + sector, or a 32-bit SETLBA).
 - **CP/M 3 hard-disk DPB** (from the HDISK BIOS page): **512 B/physical sector, 61 sectors/track,
   256 tracks, 2048-byte allocation blocks (BLS = 2K), 1024 directory entries, 1 reserved/system
   track.** A 32 KB directory track holds 1024 × 32-byte entries.
   - Working volume size: 256 × 61 × 512 = **7,995,392 bytes (~7.63 MB)** per CP/M 3 drive.
-  - ⚠ Confirm whether "61 sectors/track" is physical 512-byte sectors (making CP/M SPT = 61×4 =
-    244 128-byte records) against a real image size before fixing the geometry-file sector count.
-- **On-card layout (LBA, 512-byte units):** boot loader at track 0 (§5); **directory table at
-  LBA 48 (30H)**; **`CPM3.SYS` from ~LBA 112** onward. (The exact CPM3.SYS LBA and the raw DPB
-  bytes are on the build PDF's page images — reconfirm against a real image in the machine build.)
+- **On-card layout (LBA, 512-byte units):** boot loader at track 0 (§5); directory table and
+  `CPM3.SYS` follow. (Reconfirm the exact LBAs against a real image in the machine build.)
 
 ## 5. Boot path
 
-The board has no boot PROM. Booting is the CPU board's **MASTER Z80 monitor** (ROM at
-F000–FFFF), via its **`P` command**:
+The board has no boot PROM. Booting is the CPU board's **MASTER Z80 monitor** (ROM at F000–FFFF,
+a paged 8K EEPROM: the low 4K `MASTER0` and high 4K `MASTER1` both map to F000–FFFF and are
+switched by `OUT D3H` bit 1; the SD boot loader lives in the **high** page). MASTER **V6.52+**
+adds the **`I` command** — "boot CPM3 from Dual SD card Board. No IDE/CF board required."
 
-> The monitor reads at least **12 contiguous sectors from track 0, sector 1** into RAM at
-> **100H**, then **jumps to 100H** to start CP/M.
+`SDCPM` (the `I` handler, `Master1.z80`):
 
-`WR_BOOT.COM` writes the CP/M 3 boot loader to track 0; the loader pulls `CPMLDR` → `CPM3.SYS`
-→ CCP (the standard CP/M 3 five-stage cold boot).
+1. Read STATUS (80H); `0FFH` ⇒ no board present (the emulated board reads `0x00` idle, so it
+   passes).
+2. `SD_INIT` → `INIT_DRIVE_1` (80H), read STATUS.
+3. Load **12 sectors** (`SEC_COUNT`) starting at **LBA 1** (`CPMLDR.COM`, "always TRK 0 SEC 2,
+   LBA mode") into RAM at **100H** — for each: `SD_SEEK` = `SET_TRK_SEC` with `D`=track,`E`=sector
+   of the incrementing `DE` LBA, then `SD_READBLK` = `READ_SECTOR` (512 data + STATUS).
+4. Check `(100H) == 31H` (a `LD SP,nn`), then `JP 100H` — the standard CP/M 3 five-stage cold
+   boot (`CPMLDR` → `CPM3.SYS` → CCP).
 
-⚠ At **v4.53** the `P` boot targets the **CF** card; the author notes a direct-SD CP/M 3 boot
-was not yet added to the (full) monitor. For an SD-only machine the boot routine that speaks the
-80/81 protocol to the Dual SD board must be obtained or derived — **stop and consult before
-fabricating a loader.**
+`WR_BOOT.COM` writes the loader to track 0 on a real card; a *bootable* volume therefore cannot
+be blank-created — only data volumes can.
 
 ## 6. Notes for the emulation
 
-- Model as a two-port programmed-I/O board (template: `IcomFdBoard`), with a 512-byte sector
-  buffer, current-drive/track/sector state, the DI7/bit-0 handshake of §3, and the eight commands
-  of §2. `FORMAT_SECTOR` writes a 512-byte `0xE5` sector.
+- Model as a faithful port of the ESP32 firmware: two I/O ports, the single input path (§2),
+  the eight core commands plus the report/utility set, the DI7/bit-0 handshake (§3), and a
+  trailing STATUS byte on every in-range command. `FORMAT_SECTOR` fills `count` sectors with
+  `0xE5`, skipping sector 0.
 - The board addresses its mounted medium **directly by byte offset** — `readAt/writeAt(lba*512,…)`
   with `LBA = track*256 + sector` (§3). It does **not** wrap the medium in `DiskImage` (the
   directory-card medium owns its own geometry).
@@ -179,16 +187,15 @@ fabricating a loader.**
 ## 7. Ready-made card images
 
 The **CPM Card Images Store** offers raw sector card images (`.imgc`, "sector image", written to
-media with the HHD Raw Copy Tool v1.10). Relevant to the Dual SD board:
+media with the HHD Raw Copy Tool). Relevant to the Dual SD board:
 
 | Image | Drives | OS | Banking | Media |
 |-------|--------|----|---------|-------|
+| **14** | A:, B: (CF) + C:, D: (SD) | CP/M 3 | non-banked | CF + SD |
 | **16** | A: (SD only) | CP/M 3 | non-banked | 1 GB SD |
 | **18** | A:, B: (SD)  | CP/M 3 | non-banked | 1 GB SD |
-| **14** | A:, B: (CF) + C:, D: (SD) | CP/M 3 | non-banked | CF + SD |
 
-**Image-16** — one non-banked CP/M 3 volume on drive A: — is the cleanest single-volume boot
-target: usable as a single-partition directory card (one backing file spanning the whole card,
-no carving). The image occupies the CP/M volume region (~7.63 MB, §4) of a 1 GB card; the rest is
-unused. System tracks come from `WR_BOOT.COM`, so a *bootable* volume cannot be blank-created —
-only data volumes can (consistent with the directory-card CREATE caveat).
+**Image-14** is the maintainer-supplied boot target for the acceptance test (a non-banked
+CP/M 3 card with SD volumes). Image-16 (one SD volume) is the cleanest single-volume form,
+usable as a single-partition directory card. System tracks come from `WR_BOOT.COM`, so a
+bootable volume cannot be blank-created — only data volumes can.

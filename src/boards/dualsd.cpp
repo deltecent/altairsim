@@ -13,146 +13,271 @@ namespace altair {
 DualSdBoard::DualSdBoard() { drive_.resize((size_t)kDrives); }
 
 // ---------------------------------------------------------------------------
-// The command/handshake engine (reference sections 2-3).
+// The command/handshake engine -- a faithful port of the ESP32 firmware
+// (S100_ESP32_Firmware_v1.5, loop() + runCmd()). See dualsd.h for the port model.
 // ---------------------------------------------------------------------------
 
-// OUT STATUS -- the command port. Every command is two bytes: a 33H lead (a safety
-// sync) then the command code. A byte that arrives without the lead is ignored, which
-// is exactly what the lead is for.
-void DualSdBoard::outCmd(uint8_t v) {
-    if (v == kLead) { armed_ = true; return; }
-    if (!armed_) return;
-    armed_ = false;
-    dispatch(v);
+// One host->board byte (an OUT to the DATA port). It is the 33H lead, a command code, or a
+// command's argument/write byte, depending on where we are in the stream.
+void DualSdBoard::feedInput(uint8_t v) {
+    switch (in_) {
+        case In::Idle:
+            if (v == kLead) in_ = In::Cmd;   // else: unexpected prefix byte, ignored (firmware warns)
+            return;
+
+        case In::Cmd:
+            startCommand(v);
+            return;
+
+        case In::Collect:                    // a fixed count of argument/write bytes
+            if (got_ < kBufMax) inBuf_[got_] = v;
+            ++got_;
+            if (got_ >= need_) completeCollect();
+            return;
+
+        case In::CollectDisp:                // DISP: a NUL-terminated string, discarded
+            if (v == 0x00) reply(kStatOk);   // (else keep swallowing the display text)
+            return;
+
+        case In::CollectEchoLen:             // ECHO: 2-byte length, MSB first
+            if (got_ < 2) inBuf_[got_] = v;
+            ++got_;
+            if (got_ >= 2) {
+                echoLen_ = ((uint32_t)inBuf_[0] << 8) | inBuf_[1];
+                if (echoLen_ > kBufMax) echoLen_ = kBufMax;   // safety cap (firmware bufData is 1024)
+                if (echoLen_ == 0) {
+                    reply(kStatOk);
+                } else {
+                    got_ = 0;
+                    need_ = echoLen_;
+                    in_ = In::CollectEchoData;
+                }
+            }
+            return;
+
+        case In::CollectEchoData:            // ECHO: the payload, echoed straight back
+            if (got_ < kBufMax) inBuf_[got_] = v;
+            ++got_;
+            if (got_ >= need_) {
+                beginReply();
+                for (uint32_t i = 0; i < echoLen_; ++i) queueByte(inBuf_[i]);
+                queueByte(kStatOk);
+                in_ = In::Idle;
+            }
+            return;
+    }
 }
 
-void DualSdBoard::dispatch(uint8_t cmd) {
+// A freshly received command code (firmware runCmd, plus the loop() range check). An
+// in-range command always ends by returning a STATUS byte; RESET reboots and returns nothing;
+// an out-of-range code is ignored with no reply (firmware "Invalid Command", no SendData).
+void DualSdBoard::startCommand(uint8_t cmd) {
+    cmd_ = cmd;
     switch (cmd) {
-        case cInitA: curDrive_ = 0; break;   // initialize/mount + select drive A:
-        case cInitB: curDrive_ = 1; break;   // initialize/mount + select drive B:
-        case cSelA:  curDrive_ = 0; break;   // (re)select an already-initialized drive
-        case cSelB:  curDrive_ = 1; break;
-        case cSetTrkSec:                                   // collect the address bytes (see decodeAddr)
-            phase_   = Phase::CollectAddr;
-            addrPtr_ = 0;
-            break;
-        case cRead:  doRead();  break;
-        case cWrite:                                       // the guest now streams a sector to DATA
-            phase_   = Phase::WriteXfer;
-            xferPtr_ = 0;
-            break;
-        case cFormat: doFormat(); break;
-        case cReset:  resetEngine(); break;
-        default:      break;                               // an unassigned opcode is a harmless no-op
+        case cInit1: reply(doInit(0)); return;
+        case cInit2: reply(doInit(1)); return;
+        case cSel1:  curDrive_ = 0; reply(curMedia() ? kStatOk : kStatErr); return;
+        case cSel2:  curDrive_ = 1; reply(curMedia() ? kStatOk : kStatErr); return;
+
+        case cSetTrkSec: need_ = 2; got_ = 0; in_ = In::Collect; return;   // track, sector
+        case cRead: {
+            beginReply();
+            uint8_t st = doRead();     // queues 512 data bytes
+            queueByte(st);
+            in_ = In::Idle;
+            return;
+        }
+        case cWrite:  need_ = kSectorSize; got_ = 0; in_ = In::Collect; return;  // 512 data bytes
+        case cFormat: need_ = 2; got_ = 0; in_ = In::Collect; return;            // 16-bit count, LSB first
+        case cReset:  resetEngine(); return;                                     // reboots: no status
+
+        case cFwVer:
+            beginReply();
+            queueByte(kBoardId);
+            queueByte(kFwMajor);
+            queueByte(kFwMinor);
+            queueByte(kStatOk);
+            in_ = In::Idle;
+            return;
+
+        case cSetLba: need_ = 4; got_ = 0; in_ = In::Collect; return;   // 32-bit LBA, MS byte first
+
+        case cType:
+            beginReply();
+            queueByte(kCardType);                       // no physical card modeled
+            queueByte(curMedia() ? kStatOk : kStatErr);
+            in_ = In::Idle;
+            return;
+
+        case cCap: {
+            beginReply();
+            uint32_t caps = curMedia() ? (uint32_t)(curMedia()->size() / kSectorSize) : 0;
+            queueByte((uint8_t)(caps >> 24));
+            queueByte((uint8_t)(caps >> 16));
+            queueByte((uint8_t)(caps >> 8));
+            queueByte((uint8_t)caps);
+            queueByte(curMedia() ? kStatOk : kStatErr);
+            in_ = In::Idle;
+            return;
+        }
+
+        case cCid:
+        case cCsd:
+            beginReply();
+            for (int i = 0; i < 16; ++i) queueByte(0x00);   // card identity not modeled
+            queueByte(curMedia() ? kStatOk : kStatErr);
+            in_ = In::Idle;
+            return;
+
+        case cDisp: in_ = In::CollectDisp; return;
+        case cEcho: got_ = 0; in_ = In::CollectEchoLen; return;
+
+        default: in_ = In::Idle; return;   // out-of-range command: no reply (firmware sends none)
     }
 }
 
-// OUT DATA -- a byte a command consumes. What it means depends on the phase the last
-// command left us in: a SET_TRK_SEC address byte, or a WRITE_SECTOR buffer byte.
-void DualSdBoard::outData(uint8_t v) {
-    switch (phase_) {
-        case Phase::CollectAddr:
-            if (addrPtr_ < (int)sizeof addrBuf_) addrBuf_[addrPtr_] = v;
-            ++addrPtr_;
-            if (addrPtr_ >= kAddrBytes) {
-                lba_   = decodeAddr();
-                phase_ = Phase::Idle;
-            }
-            break;
-        case Phase::WriteXfer:
-            if (xferPtr_ < kSectorSize) buf_[xferPtr_++] = v;
-            if (xferPtr_ >= kSectorSize) {
-                doWrite();
-                phase_ = Phase::Idle;
-            }
-            break;
+// A fixed-count Collect just finished; run the command it was gathering bytes for.
+void DualSdBoard::completeCollect() {
+    switch (cmd_) {
+        case cSetTrkSec:
+            // getTrkSec: track byte first (high), sector byte second (low). LBA = track*256 + sector.
+            lba_ = ((uint32_t)inBuf_[0] << 8) | inBuf_[1];
+            reply(kStatOk);
+            return;
+        case cWrite:
+            reply(doWrite());
+            return;
+        case cFormat: {
+            uint32_t count = (uint32_t)inBuf_[0] | ((uint32_t)inBuf_[1] << 8);  // LSB, MSB
+            reply(doFormat(count));
+            return;
+        }
+        case cSetLba:
+            lba_ = ((uint32_t)inBuf_[0] << 24) | ((uint32_t)inBuf_[1] << 16) |
+                   ((uint32_t)inBuf_[2] << 8)  |  (uint32_t)inBuf_[3];
+            reply(kStatOk);
+            return;
         default:
-            break;   // a DATA write with nothing expecting it is dropped
+            in_ = In::Idle;
+            return;
     }
 }
 
-// IN DATA -- the next byte of a READ_SECTOR transfer. Reading it clears DI7 and advances
-// to the following byte, so one IN-per-byte drains the whole sector (reference section 3).
+// ---- the output FIFO and the STATUS-port handshake ----
+
+// IN DATA -- the next byte the ESP32 is returning. Reading it advances to the following byte;
+// draining the FIFO drops DI7. A read past the end floats 0xFF (the driver never reads when
+// DI7 is low).
 uint8_t DualSdBoard::inData() {
-    if (phase_ == Phase::ReadXfer && xferPtr_ < kSectorSize) {
-        uint8_t b = buf_[xferPtr_++];
-        if (xferPtr_ >= kSectorSize) phase_ = Phase::Idle;
-        return b;
-    }
+    if (outPtr_ < outLen_) return out_[outPtr_++];
     return 0xFF;
 }
 
-// The status byte (reference section 3). DI7 (bit7) is high while a read byte is waiting;
-// bit0 (write-buffer busy) stays 0 -- the engine takes each written byte immediately, so a
-// guest's "wait until bit0 low" before a write falls straight through.
+// The STATUS byte. DI7 (bit7) is high while a byte is waiting to be read; bit0 (write-buffer
+// busy) stays 0 -- the engine takes each written byte at once, so a guest's "wait until bit0
+// low" before a write falls straight through.
 uint8_t DualSdBoard::statusByte() const {
-    uint8_t s = 0;
-    if (phase_ == Phase::ReadXfer && xferPtr_ < kSectorSize) s |= 0x80;
-    return s;
+    return (outPtr_ < outLen_) ? 0x80 : 0x00;
 }
 
-// READ_SECTOR: pull the current 512-byte sector into the buffer and arm the read handshake.
-// An unreadable or short block (a never-written sector on a blank card, or a read past the
-// medium's end) leaves the erased-flash fill in place -- what the real card returns (open
-// item 2), not a hard error.
-void DualSdBoard::doRead() {
-    std::memset(buf_, kErasedFill, kSectorSize);
-    if (MediaFile* m = curMedia())
-        m->readAt((uint64_t)lba_ * kSectorSize, buf_, kSectorSize);  // leaves erased fill on failure
-    phase_   = Phase::ReadXfer;
-    xferPtr_ = 0;
+void DualSdBoard::beginReply() { outLen_ = 0; outPtr_ = 0; }
+
+void DualSdBoard::queueByte(uint8_t b) {
+    if (outLen_ < sizeof out_) out_[outLen_++] = b;
 }
 
-// WRITE_SECTOR: commit the buffered sector to the medium and sync it, the per-sector
-// durability the disk drivers rely on. A write-protected or over-the-end write is dropped
-// and reported through drainLog().
-void DualSdBoard::doWrite() {
+// A command with no data payload: clear the FIFO, queue just the STATUS byte, and idle.
+void DualSdBoard::reply(uint8_t status) {
+    beginReply();
+    queueByte(status);
+    in_ = In::Idle;
+}
+
+// ---- the disk commands ----
+
+// INIT (firmware sdInit): select the drive; OK if a card is mounted in that socket, else ERR.
+uint8_t DualSdBoard::doInit(int drive) {
+    curDrive_ = drive;
+    return curMedia() ? kStatOk : kStatErr;
+}
+
+// READ_SECTOR: queue the current 512-byte sector, then the STATUS byte. On a failed read (no
+// media, or an offset past the medium) the firmware still sends 512 bytes -- of 0x00 -- and
+// STATUS = ERR. A never-written but in-range sector is not a failure: the medium hands back
+// the erased-card fill (a DirectoryMedia returns 0xFF), and STATUS is OK.
+uint8_t DualSdBoard::doRead() {
+    uint8_t sec[kSectorSize];
     MediaFile* m = curMedia();
-    if (!m) return;
+    if (!m || !m->readAt((uint64_t)lba_ * kSectorSize, sec, kSectorSize)) {
+        for (size_t i = 0; i < kSectorSize; ++i) queueByte(0x00);
+        return kStatErr;
+    }
+    for (size_t i = 0; i < kSectorSize; ++i) queueByte(sec[i]);
+    return kStatOk;
+}
+
+// WRITE_SECTOR: commit the buffered sector and sync it (the per-sector durability the disk
+// drivers rely on). A write-protected or over-the-end write fails with STATUS = ERR and is
+// reported through drainLog().
+uint8_t DualSdBoard::doWrite() {
+    MediaFile* m = curMedia();
+    if (!m) return kStatErr;
     if (m->readOnly()) {
         say("write to a write-protected card ignored");
-        return;
+        return kStatErr;
     }
-    if (m->writeAt((uint64_t)lba_ * kSectorSize, buf_, kSectorSize))
+    if (m->writeAt((uint64_t)lba_ * kSectorSize, inBuf_, kSectorSize)) {
         m->sync();
-    else
-        say("write past the end of the card ignored (LBA " + std::to_string(lba_) + ")");
+        return kStatOk;
+    }
+    say("write past the end of the card ignored (LBA " + std::to_string(lba_) + ")");
+    return kStatErr;
 }
 
-// FORMAT_SECTOR (87H): fill the current sector with E5 and commit it. This is the board
-// COMMAND's fill (reference section 2), distinct from what an untouched sector reads.
-void DualSdBoard::doFormat() {
+// FORMAT_SECTOR: fill `count` sectors with E5, starting at the current sector and advancing it
+// (firmware advances `sector` as it goes). Sector 0 is never formatted -- the firmware guards
+// the boot sector. STATUS = ERR the moment a sector cannot be written.
+uint8_t DualSdBoard::doFormat(uint32_t count) {
     MediaFile* m = curMedia();
-    if (!m) return;
+    if (!m) return kStatErr;
     if (m->readOnly()) {
         say("format of a write-protected card ignored");
-        return;
+        return kStatErr;
     }
     uint8_t fill[kSectorSize];
     std::memset(fill, kFormatFill, kSectorSize);
-    if (m->writeAt((uint64_t)lba_ * kSectorSize, fill, kSectorSize))
-        m->sync();
-    else
-        say("format past the end of the card ignored (LBA " + std::to_string(lba_) + ")");
+
+    uint8_t  status = kStatOk;
+    bool     wrote  = false;
+    uint32_t s      = lba_;
+    while (count > 0) {
+        if (s != 0) {   // never format sector 0 (the boot sector) -- firmware
+            if (!m->writeAt((uint64_t)s * kSectorSize, fill, kSectorSize)) {
+                say("format past the end of the card ignored (LBA " + std::to_string(s) + ")");
+                status = kStatErr;
+                break;
+            }
+            wrote = true;
+        }
+        --count;
+        ++s;
+    }
+    if (wrote) m->sync();
+    lba_ = s;   // firmware leaves the current sector advanced past the formatted run
+    return status;
 }
 
 void DualSdBoard::resetEngine() {
-    armed_    = false;
-    phase_    = Phase::Idle;
-    xferPtr_  = 0;
-    addrPtr_  = 0;
+    in_       = In::Idle;
+    cmd_      = 0;
     lba_      = 0;
+    need_     = 0;
+    got_      = 0;
+    echoLen_  = 0;
+    outLen_   = 0;
+    outPtr_   = 0;
     curDrive_ = 0;
-    std::memset(buf_, 0, sizeof buf_);
-}
-
-uint32_t DualSdBoard::decodeAddr() const {
-    // CONFIRMED against SD_CARD.Z80 (see the seam comment in dualsd.h). SET_TRK_SEC sends
-    // the TRACK byte first, then the SECTOR byte, and the card LBA is track*256 + sector:
-    // track is the high byte, sector the low byte. (The driver's "next sector" logic loads
-    // H=track, L=sector and does a single INC HL, so the pair is one big-endian number that
-    // rolls sector->track at 256 -- i.e. 256 sectors per track.)
-    return ((uint32_t)addrBuf_[0] << 8) | (uint32_t)addrBuf_[1];
+    std::memset(inBuf_, 0, sizeof inBuf_);
 }
 
 MediaFile* DualSdBoard::curMedia() const {
@@ -161,8 +286,8 @@ MediaFile* DualSdBoard::curMedia() const {
 }
 
 // ---------------------------------------------------------------------------
-// The bus. Two I/O ports, no memory window (the board carries no boot PROM -- CP/M is
-// loaded by the CPU board's monitor from track 0; reference section 5).
+// The bus. Two I/O ports, no memory window (the board carries no boot PROM -- CP/M is loaded
+// by the CPU board's monitor; reference section 5).
 // ---------------------------------------------------------------------------
 bool DualSdBoard::decodes(const BusCycle& c) const {
     if (!enabled_) return false;
@@ -181,8 +306,10 @@ uint8_t DualSdBoard::read(const BusCycle& c) {
 
 void DualSdBoard::write(const BusCycle& c) {
     if (c.type != Cycle::IoWrite) return;
-    if (c.port() == (uint8_t)port_) outCmd(c.data);
-    else                            outData(c.data);
+    if (c.port() == (uint8_t)port_)
+        beginReply();          // STATUS-port write: flush pending read data (driver housekeeping)
+    else
+        feedInput(c.data);     // DATA-port write: one byte into the ESP32 input stream
 }
 
 // ---------------------------------------------------------------------------
@@ -221,9 +348,9 @@ std::vector<MapEntry> DualSdBoard::ioMap() const {
     uint8_t b = (uint8_t)port_;
     return {
         {(uint32_t)(b + 0), (uint32_t)(b + 0), "read/write",
-         "STATUS (IN: bit7 data-ready, bit0 write-busy) / command (OUT: 33H lead + code)"},
+         "STATUS (IN: bit7 data-ready, bit0 write-busy) / flush (OUT)"},
         {(uint32_t)(b + 1), (uint32_t)(b + 1), "read/write",
-         "DATA (IN: read-sector byte / OUT: address or write-sector byte)"},
+         "DATA (IN: returned byte + status / OUT: 33H lead, command, arguments)"},
     };
 }
 
@@ -310,7 +437,7 @@ std::vector<Property> DualSdBoard::subUnitProperties(const std::string& table) c
     {
         Property x;
         x.name  = "unit";
-        x.help  = "Which SD socket (0 = drive A:, 1 = drive B:)";
+        x.help  = "Which SD socket (0 = drive 1 / C:, 1 = drive 2 / D:)";
         x.kind  = Kind::Int;
         x.radix = 10;
         x.min   = 0;
@@ -381,31 +508,37 @@ std::vector<Board::SubUnit> DualSdBoard::subUnits() const {
 }
 
 // ---------------------------------------------------------------------------
-// SNAPSHOT / RESTORE (DESIGN.md 13). The engine registers and the sector buffer travel;
-// the mounted media are host-backed (reloaded from `mount` in the config on restore) and
-// the port strap is config. Nothing is on the Clock.
+// SNAPSHOT / RESTORE (DESIGN.md 13). The engine state and the buffers travel; the mounted
+// media are host-backed (reloaded from `mount` in the config on restore) and the port strap
+// is config. Nothing is on the Clock.
 // ---------------------------------------------------------------------------
 void DualSdBoard::serialize(StateWriter& w) const {
     Board::serialize(w);
-    w.boolean(armed_);
-    w.u8((uint8_t)phase_);
+    w.u8((uint8_t)in_);
+    w.u8(cmd_);
     w.u32(lba_);
-    w.raw(buf_, sizeof buf_);
-    w.u32((uint32_t)xferPtr_);
-    w.raw(addrBuf_, sizeof addrBuf_);
-    w.u32((uint32_t)(int32_t)addrPtr_);
+    w.u32(need_);
+    w.u32(got_);
+    w.u32(echoLen_);
+    w.raw(inBuf_, sizeof inBuf_);
+    w.u32(outLen_);
+    w.u32(outPtr_);
+    w.raw(out_, sizeof out_);
     w.u32((uint32_t)(int32_t)curDrive_);
 }
 
 void DualSdBoard::deserialize(StateReader& r) {
     Board::deserialize(r);
-    armed_    = r.boolean();
-    phase_    = (Phase)r.u8();
+    in_       = (In)r.u8();
+    cmd_      = r.u8();
     lba_      = r.u32();
-    r.raw(buf_, sizeof buf_);
-    xferPtr_  = r.u32();
-    r.raw(addrBuf_, sizeof addrBuf_);
-    addrPtr_  = (int)(int32_t)r.u32();
+    need_     = r.u32();
+    got_      = r.u32();
+    echoLen_  = r.u32();
+    r.raw(inBuf_, sizeof inBuf_);
+    outLen_   = r.u32();
+    outPtr_   = r.u32();
+    r.raw(out_, sizeof out_);
     curDrive_ = (int)(int32_t)r.u32();
 }
 
