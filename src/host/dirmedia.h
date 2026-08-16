@@ -113,4 +113,41 @@ std::unique_ptr<MediaFile> openHostMedia(const std::string& path, bool readOnly,
 std::unique_ptr<MediaFile> openDirectoryMedia(const std::string& dir, bool readOnly,
                                              std::string& err);
 
+// ---------------------------------------------------------------------------
+// Authoring a blank card -- MOUNT ... CREATE for directory cards.
+//
+// A CardSpec is what the operator asked for: a sector size and an ordered list of
+// volumes, each a name + declared sector count. createDirectoryMedia() turns that into
+// a real card on disk -- the directory, a `card.geometry` descriptor, and one EMPTY
+// (0-byte, growable) backing file per volume. The card is therefore genuinely
+// UNFORMATTED: every block reads the erased byte until the guest FORMATs it, exactly
+// the hard-sector blank-disk model (disk.h). CREATE never writes a CP/M structure.
+// ---------------------------------------------------------------------------
+struct CardSpec {
+    uint32_t sectorSize = 512;
+    struct Volume {
+        std::string name;     // the label, and (with `.img`) the backing filename
+        uint64_t    sectors = 0;
+    };
+    std::vector<Volume> volumes;
+};
+
+// Build a CardSpec from MOUNT `key=value` options. Recognized keys:
+//   format=<name>          a named template, applied FIRST (sector size + volumes)
+//   sector_size=<n>        override the sector size
+//   volume=<name>:<sectors>   a volume (repeatable); appended to any from `format=`
+// At least one volume must result. A key that is not one of these, a malformed value,
+// an unknown template, or a duplicate/zero-sector volume is an error.
+bool parseCardSpec(const std::vector<std::pair<std::string, std::string>>& opts,
+                   CardSpec& spec, std::string& err);
+
+// True if any of these options names a card-authoring key (format/sector_size/volume) --
+// what the monitor uses to tell a directory-card CREATE from a plain-file CREATE.
+bool hasCardSpecKeys(const std::vector<std::pair<std::string, std::string>>& opts);
+
+// Author a blank directory card at `dir` from `spec`: create the directory, write
+// `card.geometry`, and create one empty backing file per volume. `dir` must NOT already
+// exist -- CREATE never clobbers an existing card or folder.
+bool createDirectoryMedia(const std::string& dir, const CardSpec& spec, std::string& err);
+
 } // namespace altair

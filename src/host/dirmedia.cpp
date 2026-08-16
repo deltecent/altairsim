@@ -1,6 +1,7 @@
 #include "host/dirmedia.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <sstream>
@@ -190,6 +191,199 @@ std::unique_ptr<MediaFile> openHostMedia(const std::string& path, bool readOnly,
     std::error_code ec;
     if (fs::is_directory(path, ec)) return openDirectoryMedia(path, readOnly, err);
     return openHostFile(path, readOnly, err);
+}
+
+// ---------------------------------------------------------------------------
+// Authoring a blank card (MOUNT ... CREATE)
+// ---------------------------------------------------------------------------
+namespace {
+
+// The backing filename a volume gets: its name plus `.img`. So `volume=A:...` lands in
+// `A.img`, which is what card.geometry then names -- one obvious file per volume.
+std::string backingFileFor(const std::string& name) { return name + ".img"; }
+
+// A volume name is also a bare filename inside the card dir, so it must be a plain token:
+// no path separators, whitespace, or the comment character the geometry parser splits on.
+bool cleanVolumeName(const std::string& s) {
+    if (s.empty()) return false;
+    for (char c : s) {
+        if (c == '/' || c == '\\' || c == '#') return false;
+        if (static_cast<unsigned char>(c) <= ' ') return false;
+    }
+    return true;
+}
+
+// Strict unsigned parse -- the whole token must be digits (no trailing junk, no sign),
+// so `volume=A:12x` is the error it looks like rather than a silent 12.
+bool parseU64(const std::string& s, uint64_t& out) {
+    if (s.empty()) return false;
+    uint64_t v = 0;
+    for (char c : s) {
+        if (c < '0' || c > '9') return false;
+        v = v * 10 + (uint64_t)(c - '0');
+    }
+    out = v;
+    return true;
+}
+
+// A named `format=` template -- the standard geometry for a card family, so the common
+// case needs no explicit volume list. Grounded in reference/dual-sd-card.md (the Dual SD
+// CP/M 3 DPB: 512-byte sectors, 256 tracks x 61 sectors = 15616 sectors ~= 7.99 MB per
+// volume); NOT invented. Returns false (with err) for an unknown name.
+bool applyCardTemplate(const std::string& name, CardSpec& spec, std::string& err) {
+    if (name == "dualsd") {
+        spec.sectorSize = 512;
+        spec.volumes    = {{"A", 15616}};  // one blank CP/M 3 data volume
+        return true;
+    }
+    err = "unknown format '" + name + "' (known: dualsd)";
+    return false;
+}
+
+} // namespace
+
+bool hasCardSpecKeys(const std::vector<std::pair<std::string, std::string>>& opts) {
+    for (const auto& kv : opts) {
+        std::string k = kv.first;
+        for (auto& c : k) c = (char)std::tolower((unsigned char)c);
+        if (k == "format" || k == "sector_size" || k == "volume") return true;
+    }
+    return false;
+}
+
+bool parseCardSpec(const std::vector<std::pair<std::string, std::string>>& opts,
+                   CardSpec& spec, std::string& err) {
+    spec = CardSpec{};
+
+    // Two order-independent passes: gather the explicit bits first, then apply a `format=`
+    // template UNDERNEATH them so the operator's own sector_size/volume always win no matter
+    // where in the command they appeared. (Applying the template inline would let a
+    // `volume=` typed before `format=` be clobbered by the template's own volume list.)
+    bool                         haveFormat = false, haveSize = false;
+    std::string                  formatName;
+    uint32_t                     explicitSize = 512;
+    std::vector<CardSpec::Volume> explicitVols;
+
+    for (const auto& kv : opts) {
+        std::string k = kv.first;
+        for (auto& c : k) c = (char)std::tolower((unsigned char)c);
+        const std::string& v = kv.second;
+
+        if (k == "format") {
+            formatName = v;
+            haveFormat = true;
+        } else if (k == "sector_size") {
+            uint64_t n = 0;
+            if (!parseU64(v, n) || n == 0) {
+                err = "sector_size needs a positive number";
+                return false;
+            }
+            explicitSize = (uint32_t)n;
+            haveSize     = true;
+        } else if (k == "volume") {
+            // volume=<name>:<sectors>
+            size_t colon = v.find(':');
+            if (colon == std::string::npos || colon == 0 || colon + 1 >= v.size()) {
+                err = "volume needs <name>:<sectors> (e.g. volume=A:15616)";
+                return false;
+            }
+            std::string name = v.substr(0, colon);
+            uint64_t    sec  = 0;
+            if (!cleanVolumeName(name)) {
+                err = "volume name '" + name + "' must be a bare label";
+                return false;
+            }
+            if (!parseU64(v.substr(colon + 1), sec) || sec == 0) {
+                err = "volume '" + name + "' needs a positive sector count";
+                return false;
+            }
+            explicitVols.push_back({name, sec});
+        } else {
+            err = "'" + kv.first + "' is not a card option (format, sector_size, volume)";
+            return false;
+        }
+    }
+
+    if (haveFormat && !applyCardTemplate(formatName, spec, err)) return false;
+    if (haveSize) spec.sectorSize = explicitSize;               // explicit overrides template
+    for (auto& v : explicitVols) spec.volumes.push_back(v);     // explicit APPEND to template
+
+    if (spec.volumes.empty()) {
+        err = "no volumes: give format=<name> or one or more volume=<name>:<sectors>";
+        return false;
+    }
+    // Reject duplicate volume names -- each is a distinct backing file, and two `A`s would
+    // collide on A.img.
+    for (size_t i = 0; i < spec.volumes.size(); ++i)
+        for (size_t j = i + 1; j < spec.volumes.size(); ++j)
+            if (spec.volumes[i].name == spec.volumes[j].name) {
+                err = "duplicate volume '" + spec.volumes[i].name + "'";
+                return false;
+            }
+    return true;
+}
+
+bool createDirectoryMedia(const std::string& dir, const CardSpec& spec, std::string& err) {
+    if (spec.volumes.empty()) {
+        err = "a card needs at least one volume";
+        return false;
+    }
+    if (spec.sectorSize == 0) {
+        err = "sector size must be positive";
+        return false;
+    }
+    for (const auto& v : spec.volumes) {
+        if (!cleanVolumeName(v.name)) {
+            err = "volume name '" + v.name + "' must be a bare label";
+            return false;
+        }
+        if (v.sectors == 0) {
+            err = "volume '" + v.name + "' has zero sectors";
+            return false;
+        }
+    }
+
+    std::error_code ec;
+    if (fs::exists(dir, ec)) {
+        // CREATE never clobbers -- an existing folder is mounted, not overwritten.
+        err = "'" + dir + "' already exists";
+        return false;
+    }
+    if (!fs::create_directory(dir, ec) || ec) {
+        err = "cannot create directory '" + dir + "'";
+        return false;
+    }
+
+    // The descriptor first, then the (empty, growable) backing files. If anything fails
+    // partway, tear the half-built card back down so a retry starts clean and MOUNT does
+    // not find a directory that only looks like a card.
+    auto bail = [&](const std::string& why) {
+        err = why;
+        std::error_code rmec;
+        fs::remove_all(dir, rmec);
+        return false;
+    };
+
+    std::ostringstream geo;
+    geo << "# altairsim directory card (MOUNT ... CREATE) -- blank, UNFORMATTED volumes.\n";
+    geo << "sector_size " << spec.sectorSize << "\n";
+    for (const auto& v : spec.volumes)
+        geo << "partition " << v.name << " " << backingFileFor(v.name) << " " << v.sectors
+            << "\n";
+
+    std::string geoText = geo.str();
+    std::string werr;
+    fs::path    geoPath = fs::path(dir) / kGeometryFile;
+    if (!writeHostFile(geoPath.string(),
+                       std::vector<uint8_t>(geoText.begin(), geoText.end()), werr))
+        return bail(werr);
+
+    for (const auto& v : spec.volumes) {
+        fs::path bpath = fs::path(dir) / backingFileFor(v.name);
+        if (fs::exists(bpath, ec)) return bail("'" + bpath.string() + "' already exists");
+        if (!writeHostFile(bpath.string(), {}, werr)) return bail(werr);
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

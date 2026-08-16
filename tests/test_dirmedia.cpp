@@ -284,6 +284,133 @@ void test_dirmedia() {
         CHECK(file != nullptr && file->size() == 16, "a file resolves to a host file");
     }
 
+    SECTION("dirmedia: parseCardSpec turns MOUNT options into a card spec");
+    {
+        using Opt = std::pair<std::string, std::string>;
+
+        // Explicit sector size + two volumes.
+        {
+            CardSpec    s;
+            std::string err;
+            CHECK(parseCardSpec({{"sector_size", "512"}, {"volume", "A:15616"},
+                                 {"volume", "B:8"}}, s, err),
+                  "sector_size + two volume= parse");
+            CHECK(s.sectorSize == 512 && s.volumes.size() == 2, "sector size and volume count");
+            CHECK(s.volumes[0].name == "A" && s.volumes[0].sectors == 15616 &&
+                      s.volumes[1].name == "B" && s.volumes[1].sectors == 8,
+                  "names and sector counts, in order");
+        }
+
+        // A named template on its own.
+        {
+            CardSpec    s;
+            std::string err;
+            CHECK(parseCardSpec({{"format", "dualsd"}}, s, err), "format=dualsd parses");
+            CHECK(s.sectorSize == 512 && s.volumes.size() == 1 && s.volumes[0].name == "A" &&
+                      s.volumes[0].sectors == 15616,
+                  "the dualsd template is one 15616-sector volume A");
+        }
+
+        // Explicit bits override/extend the template REGARDLESS of order (the two-pass point):
+        // volume= typed BEFORE format= must survive, and explicit sector_size wins.
+        {
+            CardSpec    s;
+            std::string err;
+            CHECK(parseCardSpec({{"volume", "B:100"}, {"format", "dualsd"},
+                                 {"sector_size", "1024"}}, s, err),
+                  "volume= before format= parses");
+            CHECK(s.sectorSize == 1024, "explicit sector_size overrides the template's 512");
+            CHECK(s.volumes.size() == 2, "template volume plus the explicit one");
+            bool haveA = false, haveB = false;
+            for (auto& v : s.volumes) {
+                if (v.name == "A" && v.sectors == 15616) haveA = true;
+                if (v.name == "B" && v.sectors == 100) haveB = true;
+            }
+            CHECK(haveA && haveB, "the explicit volume was NOT clobbered by the template");
+        }
+
+        // Malformed specs are refused with a message.
+        auto bad = [](std::vector<Opt> o, const char* why) {
+            CardSpec    s;
+            std::string err;
+            CHECK(!parseCardSpec(o, s, err) && !err.empty(), why);
+        };
+        bad({}, "no options -> no volumes -> refused");
+        bad({{"sector_size", "512"}}, "sector size but no volume is refused");
+        bad({{"volume", "A"}}, "volume without :sectors is refused");
+        bad({{"volume", "A:0"}}, "a zero-sector volume is refused");
+        bad({{"volume", "A:xyz"}}, "a non-numeric sector count is refused");
+        bad({{"sector_size", "0"}}, "a zero sector size is refused");
+        bad({{"format", "nope"}}, "an unknown template is refused");
+        bad({{"volume", "A:4"}, {"volume", "A:8"}}, "two volumes named A collide -- refused");
+        bad({{"volume", "sub/x:4"}}, "a volume name with a path separator is refused");
+        bad({{"splat", "1"}}, "an option that is not a card key is refused");
+    }
+
+    SECTION("dirmedia: hasCardSpecKeys distinguishes a card CREATE from a plain-file CREATE");
+    {
+        CHECK(hasCardSpecKeys({{"format", "dualsd"}}), "format= is a card key");
+        CHECK(hasCardSpecKeys({{"sector_size", "512"}}), "sector_size= is a card key");
+        CHECK(hasCardSpecKeys({{"volume", "A:4"}}), "volume= is a card key");
+        CHECK(hasCardSpecKeys({{"VOLUME", "A:4"}}), "case-insensitive");
+        CHECK(!hasCardSpecKeys({{"counter", "off"}, {"stop", "2:05"}}),
+              "ordinary unit properties are NOT card keys");
+        CHECK(!hasCardSpecKeys({}), "no options -> no card keys");
+    }
+
+    SECTION("dirmedia: createDirectoryMedia authors a blank, unformatted card");
+    {
+        fs::path dir = testRoot() / "authored";
+        fs::remove_all(dir);
+
+        CardSpec s;
+        s.sectorSize = 512;
+        s.volumes    = {{"A", 4}, {"DATA", 8}};
+        std::string err;
+        CHECK(createDirectoryMedia(dir.string(), s, err), "createDirectoryMedia succeeds");
+
+        // The descriptor and one EMPTY backing file per volume, named <volume>.img.
+        CHECK(fs::exists(dir / kGeometryFile), "card.geometry was written");
+        CHECK(fs::exists(dir / "A.img") && fs::file_size(dir / "A.img") == 0,
+              "A.img exists and is empty (0 bytes, growable -- a blank card)");
+        CHECK(fs::exists(dir / "DATA.img") && fs::file_size(dir / "DATA.img") == 0,
+              "DATA.img exists and is empty too");
+
+        // It is a real, openable card: contiguous (4+8) x 512 bytes, all erased.
+        auto m = openDirectoryMedia(dir.string(), false, err);
+        CHECK(m != nullptr && m->size() == (4 + 8) * 512,
+              "the authored card opens at the declared size");
+        uint8_t buf[512];
+        std::memset(buf, 0, sizeof(buf));
+        CHECK(m && m->readAt(0, buf, 512) && buf[0] == kErasedByte && buf[511] == kErasedByte,
+              "and every block reads erased -- genuinely unformatted, no 0xE5 directory");
+
+        // A guest can format/write it, and the writes persist across a remount.
+        const uint8_t w[4] = {0x01, 0x02, 0x03, 0x04};
+        CHECK(m && m->writeAt(6 * 512, w, 4), "write into the DATA volume");
+        m->sync();
+        m.reset();
+        auto m2 = openDirectoryMedia(dir.string(), false, err);
+        uint8_t r[4] = {};
+        CHECK(m2 && m2->readAt(6 * 512, r, 4) && std::memcmp(r, w, 4) == 0,
+              "the write survived -- a fresh open of the authored card sees it");
+
+        // CREATE never clobbers: a second author at the same path is refused.
+        std::string err2;
+        CHECK(!createDirectoryMedia(dir.string(), s, err2) && !err2.empty(),
+              "authoring over an existing directory is refused");
+    }
+
+    SECTION("dirmedia: createDirectoryMedia refuses a malformed spec and leaves nothing behind");
+    {
+        fs::path dir = testRoot() / "notmade";
+        fs::remove_all(dir);
+        CardSpec    s;  // no volumes
+        std::string err;
+        CHECK(!createDirectoryMedia(dir.string(), s, err), "an empty spec is refused");
+        CHECK(!fs::exists(dir), "and no half-built directory is left on disk");
+    }
+
     // Tidy up -- drop any handles first (Windows will not delete an open file).
     fs::remove_all(testRoot());
 }
