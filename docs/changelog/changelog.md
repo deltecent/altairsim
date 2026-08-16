@@ -24,7 +24,10 @@ it. **SD Systems** shows up as a matching trio — the **SBC-100/200** single-bo
 console that auto-bauds to your terminal, and later a full interrupt-driven CP/M boot with the
 onboard PROM switching itself out), the **VersaFloppy** WD177x controller booting SDOS, and the
 **VDB-8024** 80×24 video terminal card. The **Tarbell #1011** and **#2022** floppy controllers boot
-CP/M entirely on their own, no monitor involved, straight off their own boot PROM. The **iCOM
+CP/M entirely on their own, no monitor involved, straight off their own boot PROM — and the **#2022**
+now boots a disk whose CBIOS moves sectors by **DMA**, driving the card's on-board Intel 8257 to steal
+S-100 bus cycles and drop each sector into memory itself, the first board in the simulator to master
+the bus (`altairsim tarbelldd-dma.toml`). The **iCOM
 FD3712/FD3812** 8″ floppy controller — a programmed-I/O command engine rather than a WD177x
 card, with its driver in a boot PROM up in high memory — boots CP/M 2.2 in both single density
 (FD3712) and double density (FD3812), and both revisions of iCOM's own **FDOS** disk operating

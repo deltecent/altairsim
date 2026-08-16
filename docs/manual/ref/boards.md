@@ -385,6 +385,7 @@ Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0)
 | `port` | int | `0xF8` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 (default F8) |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (binary select 0-3) |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
+| `dmaport` | int | `0xE0` | `0x0` .. `0xF0` | Base of the on-card 8257 DMA controller's 16-port register block (default E0). The DMA-mode CBIOS programs ADR/WCT here; the SD2DD strap is E0 |
 
 
 ### `versafloppy`

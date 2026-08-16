@@ -1,9 +1,12 @@
 # Tarbell double-density floppy disk controller (#2022)
 
 **Status:** built (`tarbelldd`). Boots CP/M 2.2 automatically off the same 32-byte boot PROM as
-the single-density #1011, but from a **mixed-density** disk. `tests/test_tarbell.cpp` and
-`acceptance-tarbelldd` pin it. Run it with `altairsim tarbelldd` (mount a disk) or
-`examples/tarbell/tarbelldd.toml`.
+the single-density #1011, but from a **mixed-density** disk. It carries an **on-card Intel 8257
+DMA controller** and is the **first shipping board to master the S-100 bus** (DESIGN.md §4.5) —
+a CBIOS assembled `DMACNTL=TRUE` moves sectors by DMA instead of an `IN`/`OUT` byte loop.
+`tests/test_tarbell.cpp`, `acceptance-tarbelldd` and `acceptance-tarbelldd-dma` pin it. Run it
+with `altairsim tarbelldd` (mount a disk), `examples/tarbell/tarbelldd.toml` (PIO CBIOS) or
+`examples/tarbell/tarbelldd-dma.toml` (DMA CBIOS).
 
 ## It is the #1011's twin
 
@@ -11,13 +14,14 @@ Read [`tarbell-sd.md`](tarbell-sd.md) first — this card is `TarbellDdBoard : T
 inherits the whole single-density card: the 8-port block at **F8**, the FD177x register file at
 F8-FB, the wait-synced data transfer, the 32-byte boot PROM that shadows 0000 over PHANTOM\*, the
 automatic boot, and the drive table. The double-density card (Tarbell Electronics #2022, 1979-80)
-changes exactly four things, and nothing else.
+changes these things, and nothing else.
 
 | | #1011 (`tarbell`) | #2022 (`tarbelldd`) |
 |---|---|---|
 | **FDC** | WD **FD1771** (single density, FM) | WD **FD1791** (single *and* double density, FM/MFM) |
 | **`OUT FC`** | function decoder; drive select is the **complement** of D5:D4 (the CBIOS does `CMA`) | plain **bitmap latch**: D3 density (0=SD, 1=DD), D5:D4 binary drive, D6 side |
 | **Port FD** | unused | **DMA-busy** (read, bit 7 = complete) / **extended-address latch** A16-A23 (write) |
+| **DMA** | none | an **on-card Intel 8257** at a second port block (base **0xE0**), mastering the bus when the CBIOS drives it |
 | **Media** | uniform single density | **mixed density** — SD track 0, DD tracks 1-76 (and it reads plain SD disks, and formats a blank with `DFORMAT`) |
 
 ## The build-the-right-chip trap
@@ -66,16 +70,49 @@ the public-domain Tarbell mixed-density formatter on the tracked master — turn
 and the SD/DD split falls straight out. Answer **N** to *Use DMA?* (the DMA path bypasses the data
 port). `tests/test_tarbell.cpp` proves the whole cycle at the board level.
 
+## The on-card 8257 — DMA is bus mastering
+
+The #2022 carried an **Intel 8257 DMA controller** as a chip on the card, and this board models it:
+`TarbellDdBoard` *has-a* `BusMaster` (DESIGN.md §4.5) driven by an `I8257 dma_` member
+(`src/chips/i8257.{h,cpp}`), making it the **first shipping board to master the S-100 bus**. A CBIOS
+assembled `DMACNTL=TRUE` moves a sector like this:
+
+1. reset the 8257's first/last byte flip-flop (`OUT 0xE8`, 0),
+2. load the byte **count** low-then-high through `OUT 0xE1` — the top two bits are the mode
+   (01 = write-to-memory = disk→RAM, 10 = read-from-memory = RAM→disk),
+3. load the memory **address** low-then-high through `OUT 0xE0`,
+4. arm channel 0 (`OUT 0xE8`, 0x41), which pulls **pHOLD**,
+5. issue the FD1791 `Read`/`Write` command through the ordinary F8 registers,
+6. spin polling **port FD** bit 7 for completion.
+
+The 8257's register block sits at a second decoded window, base **0xE0** by default (the `dmaport`
+board property; SD2DD straps it E0, so it can be omitted). When channel 0 is armed the board pulls
+pHOLD; the run loop (`Debugger::serviceDma`) grants the bus at the next instruction boundary and the
+board's `Mover` steals one byte per grant — the FD1791 is wait-synced, so each grant does one
+`readData`/`writeData` — advancing the 8257's address and count until terminal count, when it drops
+pHOLD. The stolen T-states are charged to the clock, so the CPU genuinely loses the time (the
+unit test in `tests/test_tarbell.cpp` reads the exact theft back out of `clock.now()`).
+
+`examples/tarbell/TARBELLDD-CPM22-SSDD-48K-DMA.DSK` is such a disk: its CBIOS is `DMACNTL=TRUE`, so
+every post-boot sector read (DIR, warm boot) flows through the 8257. Its **cold boot loader stays
+PIO** — RESET reads SD track 0 the proven way, and the DMA path takes over once CP/M is up.
+`acceptance-tarbelldd-dma` boots it to `A>` and reads a directory through the on-card 8257.
+
 ## Port FD, and why it never hangs
 
-The #2022 offered an optional DMA path. We model it as programmed I/O — the CBIOS on the tracked disk
-transfers through the wait-synced data port like the #1011 — so port FD is two harmless registers:
-`IN FD` returns **0x00** (bit 7 = 0, "DMA complete") so any code that polls the DMA-busy flag falls
-straight through, and `OUT FD` stores the A16-A23 extended-address latch, which has no effect in a
-64K machine.
+Because the FD1791 is wait-synced, a DMA burst completes at the instruction boundary right after the
+`Read`/`Write` command is issued — *before* the CBIOS reaches its port-FD poll. So port FD stays two
+simple registers: `IN FD` returns **0x00** (bit 7 = 0, "DMA complete") so both the DMA poll and any
+PIO code that checks the flag fall straight through, and `OUT FD` stores the A16-A23 extended-address
+latch (consumed by the DMA `Mover` as the high address bits; 0, hence no effect, in a 64K machine).
 
 ## Limitations
 
-- **DMA is not modelled**, only its status (always "complete"). No tracked software drives it.
+- **Format-time DMA is not modelled.** The 8257 moves **sectors** (the `Read`/`Write` data path the
+  CBIOS uses); `DFORMAT`'s optional DMA-during-`Write Track` is a different path we do not drive, so
+  answer **N** to *Use DMA?* when formatting (see above).
+- **Burst, not cycle-steal.** The card holds pHOLD for the whole sector and drains in one grant,
+  which is what the guest's completion poll expects; true interleaved cycle-stealing is a refinement
+  the mechanism already allows (DESIGN.md §4.5) but this board does not use.
 - Everything the #1011 doc lists under *Limitations* applies here too — the wait port never stalls
   the CPU, `IN base+4` bits 6..0 float, and so on.

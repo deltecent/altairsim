@@ -12,6 +12,8 @@
 #include "boards/tarbell.h"
 #include "core/bus.h"
 #include "core/clock.h"
+#include "core/debug.h"
+#include "core/machine.h"
 #include "host/media.h"
 #include "test.h"
 
@@ -31,6 +33,10 @@ constexpr uint8_t SECR = P + 2;  // FA sector
 constexpr uint8_t DAT  = P + 3;  // FB data (wait-synced)
 constexpr uint8_t CTL  = P + 4;  // FC control (out) / WAIT (in)
 constexpr uint8_t EXT  = P + 5;  // FD ext-addr (out) / DMA-busy (in)  -- DD only
+
+// The on-card 8257 DMA controller's register block base (DD only). SD2DD straps it E0,
+// which is the board's default. ADR0 = E0, WCT0 = E1, CMND/status = E8.
+constexpr uint8_t dmaBase = 0xE0;
 
 uint8_t in(TarbellBoard& b, uint8_t port) {
     BusCycle c;
@@ -488,6 +494,88 @@ void test_tarbell() {
             if (got.size() != 128 || (in(b, CMD) & 0x1C) != 0) t1ok = false;
         }
         CHECK(t1ok, "all 51 DD sectors of track 1 read exactly 128 bytes and complete");
+    }
+
+    // ---- THE ON-CARD 8257 STEALS THE BUS: a DMA sector read (DESIGN.md 4.5) ----
+    //
+    // The payoff for the whole card being a bus master. With a channel programmed the
+    // RWDMA way (2abios48.asm) and a WD1791 Read Sector issued, the card pulls pHOLD and
+    // the run loop drives the on-card 8257 to move the sector into RAM -- 128 stolen
+    // cycles the CPU never executes but the clock is charged for. Byte for byte it matches
+    // what the polled-DRQ loop reads above, but no IN FB ever touches the data port: the
+    // guest programs the transfer and HLTs, and the sector is simply there when it wakes.
+    {
+        withRampDisk(26ull * 128 + 76ull * 51 * 128);  // the mixed DD disk (499,456)
+
+        Machine m;
+        m.bus.setVerify(true);  // re-derive the decode AND the pHOLD wire every instruction
+        std::string err;
+
+        Board* mb  = m.add("memory", "mem0", err);
+        auto*  mem = dynamic_cast<MemoryBoard*>(mb);
+        Region r;
+        r.kind = RegionKind::Ram;
+        r.at   = 0x0000;
+        r.size = 0x10000;
+        mem->addRegion(r, err);
+        setProperty(*mem, "fill", "zero", err);
+        mem->power();
+
+        Board* fb  = m.add("tarbelldd", "fdc0", err);
+        auto*  fdc = dynamic_cast<TarbellDdBoard*>(fb);
+        // Plain controller for this test: with the boot PROM off, low RAM is ordinary
+        // read/write and nothing shadows the program or the DMA target.
+        setProperty(*fdc, "bootstrap", "off", err);
+        fdc->power();
+        CHECK(fdc->mount("drive0", "dd.dsk", false, err), "the mixed DD disk mounts on the DMA card");
+
+        m.add("8080", "cpu0", err);
+        m.cpu()->reset(Reset::PowerOn);
+
+        // The RWDMA program: reset the 8257 flip-flop, load count low/high (0x7F, 0x40 =
+        // a 128-byte READ into memory), load address low/high (0x2C00), enable channel 0
+        // with TC-STOP, point the FD1791 at track 0 sector 1, issue Read Sector, HLT. The
+        // burst drains at the instruction boundary right after the Read Sector OUT.
+        const uint8_t ADR0 = dmaBase + 0, WCT0 = dmaBase + 1, CMND = dmaBase + 8;
+        uint16_t pc = 0;
+        auto emit = [&](std::initializer_list<uint8_t> bytes) {
+            for (uint8_t x : bytes) m.bus.memWrite(pc++, x);
+        };
+        emit({0xAF, 0xD3, CMND});         // XRA A ; OUT CMND   -- reset the first/last flip-flop
+        emit({0x3E, 0x7F, 0xD3, WCT0});   // MVI A,7F ; OUT WCT0 -- count low (128 - 1)
+        emit({0x3E, 0x40, 0xD3, WCT0});   // MVI A,40 ; OUT WCT0 -- count high + mode 01 (read)
+        emit({0x3E, 0x00, 0xD3, ADR0});   // MVI A,00 ; OUT ADR0 -- address low
+        emit({0x3E, 0x2C, 0xD3, ADR0});   // MVI A,2C ; OUT ADR0 -- address high (-> 0x2C00)
+        emit({0x3E, 0x41, 0xD3, CMND});   // MVI A,41 ; OUT CMND -- enable ch0 + TC-STOP
+        emit({0x3E, 0x00, 0xD3, TRK});    // MVI A,00 ; OUT F9   -- track 0
+        emit({0x3E, 0x01, 0xD3, SECR});   // MVI A,01 ; OUT FA   -- sector 1
+        emit({0x3E, 0x88, 0xD3, CMD});    // MVI A,88 ; OUT F8   -- FD1791 Read Sector
+        emit({0x76});                     // HLT
+
+        m.cpu()->setPc(0);
+        uint64_t before = m.clock.now();
+        RunResult rr = m.debug.run(0);
+
+        CHECK(rr.why == StopReason::Halted, "the CPU reaches its HLT -- DMA did not derail it");
+
+        // Track 0 sector 1 of the ramp disk is bytes 0..127, stamped (i + i/128) = i. The
+        // whole sector must be sitting at 0x2C00 with nothing spilled on either side.
+        bool landed = true;
+        for (int i = 0; i < 128; ++i)
+            if (m.bus.memRead((uint16_t)(0x2C00 + i)) != (uint8_t)i) landed = false;
+        CHECK(landed, "the whole 128-byte sector was DMA'd into RAM at 0x2C00");
+        CHECK(m.bus.memRead(0x2BFF) == 0 && m.bus.memRead(0x2C80) == 0,
+              "...and nothing spilled outside the 128-byte window");
+
+        // The CPU's own StepResult counts only its instructions; the clock is charged 128
+        // stolen bytes x 4 T-states = 512 more, which is the CPU genuinely losing the bus.
+        CHECK(m.clock.now() - before == rr.tStates + 512,
+              "exactly 512 stolen DMA T-states were charged on top of the CPU's own");
+        CHECK((in(*fdc, CMD) & 0x01) == 0, "the FD1791 command completed (BUSY clear)");
+
+        // pHOLD is released: the channel disabled itself at terminal count, so nobody is
+        // still asking for the bus once the burst is done.
+        CHECK(!fdc->requestsBus(), "the 8257 dropped its bus request at terminal count");
     }
 
     // The DD card READS a single-density-sized image too -- the DD controller is a superset,

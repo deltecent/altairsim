@@ -1,0 +1,40 @@
+# Tarbell double-density, DMA MODE -- 48K CP/M 2.2 whose CBIOS moves sectors by DMA.
+#
+#     cd examples/tarbell && altairsim tarbelldd-dma.toml
+#     -> 48K CP/M 2.2
+#        A>
+#
+# THIS FILE IS A DELTA. `base = "tarbelldd"` brings the machine -- the 8080, the 88-2SIO
+# console at 0x10, the Tarbell #2022 controller at F8 with its boot PROM AND its on-card
+# Intel 8257 DMA controller at E0, the host bridge at B0, and 64K of RAM. All this file
+# adds is the DMA-mode floppy in drive 0.
+#
+# THE DIFFERENCE FROM tarbelldd.toml IS THE DISK. This image's CBIOS is assembled
+# `DMACNTL = TRUE`: instead of an IN/OUT byte loop, it programs the on-card 8257 (address +
+# count + mode), issues the FD1791 command, and lets the CARD steal the bus to move the
+# sector into RAM -- the first shipping board to master the S-100 bus (DESIGN.md 4.5). The
+# cold boot loader stays PIO, so RESET reads SD track 0 the proven way; every post-boot
+# sector move (DIR, STAT, warm boot) flows through the 8257. See docs/boards/tarbelldd.md.
+#
+# THE DISK IS MIXED DENSITY: track 0 single density (the boot path), tracks 1-76 double.
+# The card probes the 499,456-byte size and lays down both formats. The boot is automatic
+# (`startup = ["RUN 0"]`, inherited).
+#
+# THERE IS NO UNDO ON THIS DISK. It is tracked; `git checkout` restores it in a clone. Drive
+# 0 is read/write -- copy the image or set `readonly = true` before testing writes. R.COM /
+# W.COM / HDIR.COM are installed on it (the host bridge at B0).
+
+[machine]
+name = "tarbelldd-dma-cpm"
+base = "tarbelldd"
+
+[[board]]
+type = "tarbelldd"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "TARBELLDD-CPM22-SSDD-48K-DMA.DSK"
+
+[console]
+bsdel = "bs"

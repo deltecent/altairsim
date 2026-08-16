@@ -392,6 +392,7 @@ add_library(altair_core STATIC
   # next 8251 card to turn up gets it for free (src/chips/intel8251.h).
   src/chips/intel8251.cpp
   src/chips/wd17xx.cpp
+  src/chips/i8257.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
   # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
@@ -719,6 +720,7 @@ add_executable(altair_tests
   tests/test_lines.cpp
   tests/test_modemline.cpp
   tests/test_wd17xx.cpp
+  tests/test_i8257.cpp
   tests/test_versafloppy.cpp
   tests/test_tarbell.cpp
   tests/test_cromemco-fdc.cpp
@@ -1377,6 +1379,18 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbelldd.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-tarbelldd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # The same #2022, booting a disk whose CBIOS is assembled DMACNTL=TRUE: post-boot sector
+  # reads move through the on-card Intel 8257, so the card masters the S-100 bus (DESIGN.md
+  # 4.5) instead of an IN/OUT byte loop. Reaching A> and reading a DIR is the whole-machine
+  # proof the DMA path works; the byte-level cycle-steal proof is in tests/test_tarbell.cpp.
+  add_test(NAME acceptance-tarbelldd-dma
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbelldd-dma.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-tarbelldd-dma PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
