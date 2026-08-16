@@ -2419,8 +2419,8 @@ void test_achieved_hz() {
         cmon.exec("BOARDS ADD acr acr0", csink);    // brings the REWIND/WIND/EXTRACT verbs
 
         auto has = [](const Completions& c, const std::string& want) {
-            for (const std::string& m : c.matches)
-                if (m == want) return true;
+            for (const std::string& mt : c.matches)
+                if (mt == want) return true;
             return false;
         };
 

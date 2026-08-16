@@ -1208,7 +1208,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             return dataResult(d, a.items().empty() ? "(no breakpoints)" : text);
         }
         if (action == "add") {
-            BreakKind kind;
+            BreakKind kind{};  // set by breakKindFromName below; init keeps MSVC /W4 (C4701) quiet
             if (!args.has("kind") || !breakKindFromName(args.at("kind").str(), kind))
                 return textResult("add needs kind: pc | memread | memwrite | ioread | iowrite",
                                   true);

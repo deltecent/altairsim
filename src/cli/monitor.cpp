@@ -3211,8 +3211,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                         // so a long choice set does not overrun the terminal.
                         auto legal = legalValues(p);
                         if (!legal.empty())
-                            for (const auto& line : wrapText("values: " + legal, width - helpCol))
-                                out << std::string(helpCol, ' ') << line << "\n";
+                            for (const auto& ln : wrapText("values: " + legal, width - helpCol))
+                                out << std::string(helpCol, ' ') << ln << "\n";
                     }
                 };
 
@@ -5058,8 +5058,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // is what tells `A` the accumulator from `0A` the number.
             std::vector<RegDef> regs = cpu->registers();
             auto known = [&regs](const std::string& name) {
-                for (const RegDef& rd : regs)
-                    if (upper(rd.name) == upper(name)) return true;
+                for (const RegDef& reg : regs)
+                    if (upper(reg.name) == upper(name)) return true;
                 return false;
             };
             // ...and a bare word that is NOT a register may be a loaded symbol, folded to

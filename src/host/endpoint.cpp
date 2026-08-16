@@ -158,9 +158,9 @@ std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> reb
     std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> base,
     std::function<std::string(const std::string&)>                              rebase) {
     if (!rebase) return base;
-    return [base = std::move(base), rebase = std::move(rebase)](const std::string& spec,
-                                                                std::string&       err) {
-        return base(rebaseEndpointPaths(spec, rebase), err);
+    return [baseFn = std::move(base), rebaseFn = std::move(rebase)](const std::string& spec,
+                                                                    std::string&       err) {
+        return baseFn(rebaseEndpointPaths(spec, rebaseFn), err);
     };
 }
 
