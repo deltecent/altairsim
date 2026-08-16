@@ -35,6 +35,22 @@ mount a disk and reset.
 
 The card recognises which format a disk is by its size when you mount it — you do not tell it.
 
+## DMA mode — the card steals the bus
+
+The #2022 carried an **Intel 8257 DMA controller** as a chip on the board, and `tarbelldd-dma.toml`
+boots a disk that uses it:
+
+```
+altairsim tarbelldd-dma.toml   ->   the same 48K CP/M 2.2, but its CBIOS moves sectors by DMA
+```
+
+This image's CBIOS is assembled `DMACNTL=TRUE`: instead of reading each sector byte through an
+`IN`/`OUT` loop, it programs the 8257 with the address and count, issues the disk command, and lets
+the **card take the S-100 bus** and drop the sector into memory itself — the first shipping board in
+this simulator to master the bus. The cold boot is unchanged (it reads track 0 the ordinary way), so
+you land at `A>` exactly as before; the difference is that every directory listing and warm boot
+after that flows through the DMA controller. See `docs/boards/tarbelldd.md`.
+
 ## Moving files in and out
 
 Both machines carry the **host bridge** at port B0. The **single-density disk** ships with the
