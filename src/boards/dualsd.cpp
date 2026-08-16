@@ -147,10 +147,12 @@ void DualSdBoard::resetEngine() {
 }
 
 uint32_t DualSdBoard::decodeAddr() const {
-    // ⚠ PROVISIONAL -- see the seam comment in dualsd.h. Flat 16-bit sector number, low
-    // byte then high, taken as the card LBA. Confirm against SD_CARD.Z80 before trusting
-    // this to boot a real image.
-    return (uint32_t)addrBuf_[0] | ((uint32_t)addrBuf_[1] << 8);
+    // CONFIRMED against SD_CARD.Z80 (see the seam comment in dualsd.h). SET_TRK_SEC sends
+    // the TRACK byte first, then the SECTOR byte, and the card LBA is track*256 + sector:
+    // track is the high byte, sector the low byte. (The driver's "next sector" logic loads
+    // H=track, L=sector and does a single INC HL, so the pair is one big-endian number that
+    // rolls sector->track at 256 -- i.e. 256 sectors per track.)
+    return ((uint32_t)addrBuf_[0] << 8) | (uint32_t)addrBuf_[1];
 }
 
 MediaFile* DualSdBoard::curMedia() const {

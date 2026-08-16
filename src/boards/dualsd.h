@@ -26,9 +26,9 @@
 // geometry (its card.geometry descriptor), so DiskImage's CHS-probe machinery would
 // only fight it. Any MediaFile works, though: a plain image, or a MemoryMedia in a test.
 //
-// ⚠ ONE THING IS NOT YET PINNED FROM HARDWARE: the SET_TRK_SEC (84H) argument bytes and
-// the (track,sector)->card-LBA formula. See the addressing seam (decodeAddr, below) --
-// it is deliberately the one localized, PROVISIONAL part of this board.
+// The SET_TRK_SEC (84H) argument bytes and the (track,sector)->card-LBA formula were the
+// one part of the protocol no fetched page pinned; they are now CONFIRMED from SD_CARD.Z80.
+// See the addressing seam (decodeAddr, below).
 
 #include "core/board.h"
 #include "host/media.h"
@@ -113,8 +113,8 @@ private:
     uint8_t  buf_[kSectorSize]{}; // the 512-byte sector buffer
     size_t   xferPtr_  = 0;       // next byte a DATA read/write moves
 
-    // SET_TRK_SEC argument collection. kAddrBytes and the formula are the PROVISIONAL seam.
-    static constexpr int kAddrBytes = 2;   // ⚠ provisional -- see decodeAddr
+    // SET_TRK_SEC argument collection: two bytes, track then sector (confirmed, see decodeAddr).
+    static constexpr int kAddrBytes = 2;
     uint8_t addrBuf_[4]{};
     int     addrPtr_ = 0;
 
@@ -130,22 +130,16 @@ private:
     void       resetEngine();
     MediaFile* curMedia() const;
 
-    // THE ADDRESSING SEAM -- reference/dual-sd-card.md open item 1 (⚠ PROVISIONAL).
+    // THE ADDRESSING SEAM -- reference/dual-sd-card.md §3 (CONFIRMED from SD_CARD.Z80).
     //
-    // SET_TRK_SEC (84H) is the ONE part of the protocol no fetched page pins: neither the
-    // number of argument bytes it consumes nor the (track,sector)->LBA formula is
-    // documented -- both live in the board's SD_CARD.Z80 / ESP32 firmware, which must be
-    // obtained before this addressing is final. The command is NAMED track+sector, yet the
-    // board page describes only a flat 16-bit sector number (0-FFFFH) as the addressing
-    // quantity, and section 4 gives the on-card layout directly in linear LBA. So the
-    // least-assuming reading -- implemented here PROVISIONALLY -- is: 84H is followed by two
-    // DATA-port bytes, a 16-bit sector number LOW then HIGH, taken AS the card LBA; the byte
-    // offset is LBA * 512. The alternative the firmware may use instead -- a leading track
-    // byte then a 16-bit sector, LBA = track * sectors_per_track + sector -- would change
-    // BOTH kAddrBytes and this formula. Both are localized here on purpose: confirming the
-    // firmware is a one-function change, and the READ/WRITE/FORMAT mechanics and the
-    // handshake do not depend on which reading is correct. Until it is confirmed this board
-    // must NOT be trusted to boot a real card image (the Task 3a gate).
+    // SET_TRK_SEC (84H) was the ONE part of the protocol no fetched page pinned. The board's
+    // own SD_CARD.Z80 test driver settles it: SET_SECTOR sends the CURRENT_TRACK byte first,
+    // then CURRENT_SECTOR -- so kAddrBytes = 2, track then sector. The card LBA is
+    // track*256 + sector: the driver's "next sector" step loads H=track, L=sector and does a
+    // single INC HL, treating the pair as one big-endian 16-bit number that rolls sector into
+    // track at 256 (256 sectors per track). The byte offset is LBA * 512. This stays
+    // localized in decodeAddr on purpose -- the READ/WRITE/FORMAT mechanics and the handshake
+    // never depended on which reading was correct.
     uint32_t decodeAddr() const;
 
     void say(std::string s) { log_.push_back(std::move(s)); }

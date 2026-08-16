@@ -7,6 +7,10 @@ Source (fetched 2026-08-16, John Monahan's S-100 archive):
 - Boot monitor: [MASTER.Z80 (V4.53)](http://www.s100computers.com/Software%20Folder/CPM3%20BIOS%20Installation/MASTER%20(V4.53).pdf),
   [Master.htm](http://www.s100computers.com/Software%20Folder/Master/Master.htm)
 - Ready images: [CPM Card Images Store.htm](https://www.s100computers.com/Software%20Folder/CPM%20Card%20Images/CPM%20Card%20Images%20Store.htm)
+- Board test driver: `SD_CARD.Z80` / `SD_IO.Z80` (John Monahan, V0.5 1/22/2025), the Z80 test
+  program shipped with the board. It is the authoritative statement of the 80/81 port protocol,
+  the 33H command lead, the byte handshake, and the SET_TRK_SEC argument order and LBA mapping
+  (§3). Obtained from the author's SD_Card distribution; not fetchable from an HTML page.
 
 This reference distills what a software emulation of the Dual SD board needs: the two-port
 command protocol, the byte handshake, the 512-byte sector model, the CP/M 3 hard-disk DPB the
@@ -19,12 +23,12 @@ Nothing here is redistributed — this is a text distillation citing the public 
 image or ROM is committed on the strength of it. (Project rule: record the licence, never gate
 on it.)
 
-**⚠ Open items — must be pinned before the addressing is final (do not guess):**
-1. **`SET_TRK_SEC` (84H) byte order and the (track,sector)→LBA formula.** Not shown on any
-   fetchable HTML page. It lives in the board's `SD_CARD.Z80` driver / ESP32 firmware; obtain
-   that source before finalizing the board's byte-offset addressing (§3, §6). The board page
-   states only that the sector number is 16-bit (`0-FFFFH`) and that the default disk shape is
-   `0FFH` tracks × `0FFH` sectors/track.
+**⚠ Open items:**
+1. **`SET_TRK_SEC` (84H) byte order and the (track,sector)→LBA formula — RESOLVED from
+   `SD_CARD.Z80`.** `SET_SECTOR` sends the **track byte first, then the sector byte**; the card
+   LBA is **`track*256 + sector`** (the driver's "next sector" step loads `H=track, L=sector`
+   and does a single `INC HL`, so the pair is one big-endian 16-bit number rolling sector into
+   track at 256 — i.e. 256 sectors per track). Byte offset = `LBA * 512`. See §3.
 2. **Blank/unwritten-sector fill.** What a never-written SD sector reads is *not stated*; a real
    CF/SD returns the erased-flash pattern (typically `0xFF`), **not** `0xE5`. `0xE5` on this
    board comes only from the FORMAT command explicitly writing it (§2). The directory-card medium
@@ -80,11 +84,10 @@ sector read/write the 16-bit sector number (`0-FFFFH`) is also part of the trans
 E5's") — this is the *board command's* fill, distinct from what an untouched sector reads (§ open
 item 2).
 
-## 3. The byte handshake (verbatim driver fragments)
+## 3. The byte handshake and addressing (verbatim driver fragments)
 
-The board page reproduces these `SD_CARD.Z80` routines. They are the authoritative statement of
-the DI7 / write-busy handshake, and the board model must reproduce exactly this observable
-behavior:
+`SD_CARD.Z80` is the authoritative statement of the DI7 / write-busy handshake, and the board
+model must reproduce exactly this observable behavior:
 
 ```
 ; Read one byte: wait for DI7 (bit 7) high, then read the data port.
@@ -105,10 +108,33 @@ So: **status bit 7 (DI7) high = a byte is waiting to be read**; reading the data
 **Status bit 0 high = the last written byte has not been taken yet**; it must fall before the
 next write. A 512-byte sector transfer is 512 iterations of the matching loop.
 
-⚠ The **`SET_TRK_SEC` argument bytes** (whether `84H` is followed by a track byte then a 16-bit
-sector low/high, or a flat 16-bit LBA) and the **(track,sector)→card-LBA formula** are *not* in
-any fetched page. Pin them from `SD_CARD.Z80` / the ESP32 firmware before the board's
-`readAt/writeAt(lba*512, …)` addressing is settled.
+**`SET_TRK_SEC` (84H) addressing** — `SD_CARD.Z80`'s `SET_SECTOR` sends the command, then the
+track byte, then the sector byte:
+
+```
+SET_SECTOR: ...                      ; TRACK and SECTOR each entered as one byte (0-FFH)
+            LD   C,CMD$SET$TRK$SEC   ; 84H
+            CALL SEND_CMD            ; 33H lead + 84H
+            LD   A,(CURRENT_TRACK)
+            LD   C,A
+            CALL SEND_DATA           ; track byte FIRST
+            LD   A,(CURRENT_SECTOR)
+            LD   C,A
+            CALL SEND_DATA           ; sector byte SECOND
+```
+
+and its "advance to the next sector" step shows the two bytes are one big-endian LBA:
+
+```
+            LD   A,(CURRENT_SECTOR)
+            LD   L,A                 ; L = sector (low byte)
+            LD   A,(CURRENT_TRACK)
+            LD   H,A                 ; H = track  (high byte)
+            INC  HL                  ; one sector forward: rolls sector->track at 256
+```
+
+So the card **LBA = `track*256 + sector`** (256 sectors per track), and the byte offset is
+`LBA * 512`. The board model reads the two DATA bytes as track (high) then sector (low).
 
 ## 4. Geometry and the CP/M 3 DPB
 
@@ -146,8 +172,8 @@ fabricating a loader.**
   buffer, current-drive/track/sector state, the DI7/bit-0 handshake of §3, and the eight commands
   of §2. `FORMAT_SECTOR` writes a 512-byte `0xE5` sector.
 - The board addresses its mounted medium **directly by byte offset** — `readAt/writeAt(lba*512,…)`
-  — once the (track,sector)→LBA formula of the open items is pinned. It does **not** wrap the
-  medium in `DiskImage` (the directory-card medium owns its own geometry).
+  with `LBA = track*256 + sector` (§3). It does **not** wrap the medium in `DiskImage` (the
+  directory-card medium owns its own geometry).
 - Two `[[board.drive]]` sub-units = the two SD sockets.
 
 ## 7. Ready-made card images

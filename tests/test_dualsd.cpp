@@ -5,12 +5,10 @@
 // FORMAT's E5 fill, the erased-read fill an unreadable block returns, the two independent
 // SD sockets, RESET, write-protect, and the port strap.
 //
-// ⚠ ONE THING THIS DELIBERATELY DOES NOT ASSERT: the (track,sector)->LBA formula. The
-// SET_TRK_SEC byte order and mapping are the board's one PROVISIONAL seam (dualsd.h,
-// decodeAddr) pending SD_CARD.Z80. Every check below is a self-consistent round trip
-// through the SAME addressing, so it locks the engine mechanics without asserting a
-// mapping we have not yet confirmed against firmware. When the firmware is obtained,
-// decodeAddr changes and these tests still hold.
+// The (track,sector)->LBA mapping is CONFIRMED from SD_CARD.Z80: SET_TRK_SEC sends the
+// track byte then the sector byte, and the card LBA is track*256 + sector (dualsd.h,
+// decodeAddr). The last SECTION pins that mapping white-box; the rest drive round trips
+// through the same addressing, locking the engine mechanics.
 
 #include "boards/dualsd.h"
 #include "core/bus.h"
@@ -78,12 +76,13 @@ void cmd(DualSdBoard& b, uint8_t code) {
     out(b, STATUS, code);
 }
 
-// Set the current sector. PROVISIONAL argument shape (dualsd.h): two DATA bytes, LBA low
-// then high. When the firmware pins a different shape this helper and decodeAddr change together.
+// Set the current sector, in the firmware's argument order (SD_CARD.Z80 SET_SECTOR): the
+// TRACK byte first, then the SECTOR byte. The card LBA is track*256 + sector, so an LBA's
+// high byte is the track and its low byte the sector.
 void setLba(DualSdBoard& b, uint16_t lba) {
     cmd(b, cSETTS);
-    out(b, DATA, (uint8_t)(lba & 0xFF));
-    out(b, DATA, (uint8_t)(lba >> 8));
+    out(b, DATA, (uint8_t)(lba >> 8));     // track (high byte) first
+    out(b, DATA, (uint8_t)(lba & 0xFF));   // sector (low byte) second
 }
 
 void writeSector(DualSdBoard& b, const std::vector<uint8_t>& data) {
@@ -287,12 +286,49 @@ void test_dualsd() {
         CHECK(decodesIo(0x90) && decodesIo(0x91), "decodes the new base 90/91");
         CHECK(!decodesIo(0x80) && !decodesIo(0x81), "no longer decodes the old base 80/81");
 
-        // A round trip at the new base still works.
+        // A round trip at the new base still works. SET_TRK_SEC is track (00) then sector (06)
+        // -> LBA 6.
         auto pat = pattern(0x5A);
-        out(*b, 0x90, LEAD); out(*b, 0x90, cSETTS); out(*b, 0x91, 6); out(*b, 0x91, 0);
+        out(*b, 0x90, LEAD); out(*b, 0x90, cSETTS); out(*b, 0x91, 0); out(*b, 0x91, 6);
         out(*b, 0x90, LEAD); out(*b, 0x90, cWRITE);
         for (uint8_t byte : pat) out(*b, 0x91, byte);
         CHECK(mediaHas(g_cards[0], 6, pat), "write works at the relocated data port");
+
+        delete b;
+    }
+
+    SECTION("dualsd: SET_TRK_SEC maps track then sector to LBA = track*256 + sector");
+    {
+        // The confirmed mapping (SD_CARD.Z80): the address bytes are track then sector, and
+        // the LBA is track*256 + sector. A card larger than one track (>256 sectors) is the
+        // only way to tell that mapping apart from a flat low/high 16-bit number.
+        installCards(600);   // spans track 0 (LBA 0..255), track 1 (256..), track 2 (512..)
+        Clock clk;
+        DualSdBoard* b = makeBoard(clk, "cardA");
+
+        // Send the address bytes by hand so the test states the byte order outright: 84H,
+        // then TRACK, then SECTOR.
+        auto setTrkSec = [&](uint8_t trk, uint8_t sec) {
+            cmd(*b, cSETTS);
+            out(*b, DATA, trk);
+            out(*b, DATA, sec);
+        };
+
+        // Track 1, sector 2 -> LBA 1*256 + 2 = 258.
+        auto pat = pattern(0x7C);
+        setTrkSec(1, 2);
+        writeSector(*b, pat);
+        CHECK(mediaHas(g_cards[0], 258, pat), "track 1 / sector 2 lands at LBA 258");
+
+        // Read it back by the LBA the mapping predicts (setLba decomposes LBA->track,sector).
+        setLba(*b, 258);
+        CHECK(readSector(*b) == pat, "LBA 258 reads back track 1 / sector 2");
+
+        // And track 0 / sector 5 is plain LBA 5 -- the low byte alone when track is 0.
+        auto pat0 = pattern(0x05);
+        setTrkSec(0, 5);
+        writeSector(*b, pat0);
+        CHECK(mediaHas(g_cards[0], 5, pat0), "track 0 / sector 5 lands at LBA 5");
 
         delete b;
     }
