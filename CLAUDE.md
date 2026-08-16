@@ -114,3 +114,20 @@ only leg that builds SDL3 and MSVC skips it, a warning in SDL-guarded code only 
 
 The acceptance tests are not smoke tests: each boots real period software on a whole machine
 through the real CLI and reads back what landed on the terminal.
+
+## Driving a running guest — use `--mcp`, never hand-roll expect
+
+**Any time you need to type at a running guest and read what it prints — boot CP/M, run DDT,
+or just verify a machine boots to `A>` and a command works — drive it with `altairsim
+<machine> --mcp`.** This is a core capability of the simulator; reaching for it is not
+optional. Do **not** write a throwaway `expect`/pty script to poke a guest interactively —
+that fights console pacing and recurring prompts, and it is the exact wheel you keep
+reinventing. `expect` under `tests/acceptance/*.exp` is **only** for a committed acceptance
+test, where the pty harness *is* the deliverable.
+
+The recipe: line-delimited JSON-RPC on stdin (`initialize` → `notifications/initialized` →
+`tools/call`); MCP does **not** run the machine file's `startup>`, so boot yourself with
+`run {from:<PROM/monitor addr>}`, then `run {input:"CMD\r", until:"<string unique to the
+state you want>"}` per command. Never pick an `until` that is a prompt which recurs (a card
+that auto-runs `PROFILE.SUB` reprints `A>` several times, and input sent while a SUB runs is
+swallowed). See `docs/manual/mcp.md`.

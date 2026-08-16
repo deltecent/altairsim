@@ -29,6 +29,13 @@
 name    = "dualsd"
 startup = ["RUN F000"]
 
+# Fold the terminal's Backspace/Delete key (DEL, 0x7F) to BS (0x08) so it just works at the
+# MASTER monitor and the CP/M 3 command line -- a console transform, not hardware. Same fold
+# the default machine ships (see machines/default.toml); reasserted here because loading a
+# machine file replaces the whole config.
+[console]
+bsdel = "bs"
+
 # THE CPU. The V2 Z80 CPU board's processor -- a Z80. clock_hz = 0 runs it flat out (the
 # crystal is on the card); the console below is polled, so nothing depends on the rate.
 [[board]]
@@ -64,6 +71,15 @@ port = 80
 [[board]]
 type = "fp"
 id   = "fp0"
+
+# THE HOST BRIDGE at ports B0/B1 -- our own board, not a period one. R.COM/W.COM/HDIR.COM
+# on the CP/M disk move files between the guest and the host, sandboxed to `hostdir` (empty
+# = the shell's working directory). See docs/boards/hostbridge.md.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
 
 # 64K OF RAM. The whole address space is RAM; the monitor EEPROM above phantom-shadows its
 # window (F000-FFFF) for reads while enabled, and writes fall through to this RAM underneath --

@@ -38,6 +38,13 @@ gate was reverse-engineered from the shipping BIOS binary; the walk-through is i
 
 `^E` (ATTN) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
 
+**Moving files to and from your host.** This machine fits the **host bridge** at ports `B0`/`B1`,
+and the boot card carries its three utilities: `HDIR` lists your host directory, `R <file>` reads
+a host file onto the CP/M drive, and `W <file>` writes a CP/M file back out. They are sandboxed to
+the `hostdir` set in `dualsd.toml` (empty = the directory you launched `altairsim` from). See
+`docs/boards/hostbridge.md`. The machine also folds your terminal's Delete key to Backspace
+(`[console] bsdel = "bs"`) so editing at the `->` monitor and the `A>` prompt just works.
+
 ## A card is an image plus a `.geo` sidecar
 
 Each socket mounts a raw card image (`cpm3-sd.img`) that has a sibling geometry descriptor of
@@ -60,14 +67,14 @@ an error — a card image is meaningless without its declared geometry.)
 
 | File | What it is |
 |---|---|
-| `dualsd.toml` | The machine: V2 Z80 CPU + MASTER EEPROM (`v2z80`), a `propio` console, the `dualsd` board at `80h`/`81h` with a card in each socket, and 64K RAM. |
+| `dualsd.toml` | The machine: V2 Z80 CPU + MASTER EEPROM (`v2z80`), a `propio` console, the `dualsd` board at `80h`/`81h` with a card in each socket, a front panel, the host bridge at `B0`/`B1`, and 64K RAM. |
 | `cpm3-sd.img` + `cpm3-sd.geo` | Drive `A:` — the boot card: the CP/M 3 system image and its geometry sidecar. |
 | `blank.img` + `blank.geo` | Drive `B:` — a blank spare card (`DIR B:` shows `No File`). |
 
 **There is no undo.** The cards are mounted read/write because that is what a real board is,
 and CP/M writes to them. In a clone `git checkout` puts the images back; in a package you were
 handed, nothing does. Copy them first if you are about to test writes in anger, or add
-`ro = true` to a drive in `dualsd.toml`.
+`readonly = true` to a drive in `dualsd.toml`.
 
 This CP/M 3 system image comes from the S100Computers "CP/M Card Images" collection
 (DR-supplied CP/M 3, hobbyist/educational). The trailing sectors of the original card carried

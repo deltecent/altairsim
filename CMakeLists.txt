@@ -1459,6 +1459,23 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # THE S100Computers DUAL SD BOARD boots CP/M 3 -- the whole modern stack in one machine:
+  # the `v2z80` paged-EEPROM MASTER monitor, the `dualsd` 80H/81H command engine, and the
+  # directory-card medium (a truncated `.img` + `.geo` sidecar). The monitor's `I` command
+  # reads the CP/M 3 cold loader off socket 1 and boots; DIR reads the directory back off the
+  # card. An expect test because `I` and DIR must be TYPED, and it must sync past the boot
+  # card's cold-boot PROFILE.SUB (see the .exp header). Both cards are mounted WRITE-PROTECTED
+  # and it shasums the boot card -- the boot only reads.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-dualsd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualsd.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dualsd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
   #
   # It used to. armWrite() saw readOnly() and returned without setting writing_, so ENWD --
