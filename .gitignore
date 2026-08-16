@@ -133,6 +133,7 @@ examples/**
 !examples/sdsys/SD-CPM22R4-SSDDR-256-64K.DSK
 !examples/tarbell/CPM22b15-48K-SSSD.DSK
 !examples/tarbell/TARBELLDD-CPM22-SSDD-48K.DSK
+!examples/tarbell/TARBELLDD-CPM22-SSDD-48K-DMA.DSK
 !examples/icom/CPM22v1.0-3712-48K.DSK
 !examples/icom/CPM22-3812-48K.dsk
 !examples/icom/FDOS-III (2SIO).DSK
