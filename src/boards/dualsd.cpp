@@ -225,7 +225,7 @@ uint8_t DualSdBoard::doInit(int drive) {
 // READ_SECTOR: queue the current 512-byte sector, then the STATUS byte. On a failed read (no
 // media, or an offset past the medium) the firmware still sends 512 bytes -- of 0x00 -- and
 // STATUS = ERR. A never-written but in-range sector is not a failure: the medium hands back
-// the erased-card fill (a DirectoryMedia returns 0xFF), and STATUS is OK.
+// the erased-card fill (a CardImage returns 0xFF), and STATUS is OK.
 uint8_t DualSdBoard::doRead() {
     uint8_t sec[kSectorSize];
     MediaFile* m = curMedia();
@@ -415,7 +415,7 @@ bool DualSdBoard::mount(const std::string& unit, const std::string& path, bool r
     }
 
     // The card is addressed directly by byte offset, so the medium is held raw -- no
-    // DiskImage geometry probe. A DirectoryMedia card owns its own geometry; any MediaFile
+    // DiskImage geometry probe. A CardImage card owns its own geometry; any MediaFile
     // (a plain image, a MemoryMedia in a test) works the same way.
     auto media = openMedia(resolvePath(path), ro, err);
     if (!media) { err += pathNote(path); return false; }
@@ -469,7 +469,7 @@ std::vector<Property> DualSdBoard::subUnitProperties(const std::string& table) c
     {
         Property x;
         x.name = "mount";
-        x.help = "The card (a directory card, or an image) to put in it. Relative to THIS FILE.";
+        x.help = "The card image (a .img with a sibling .geo geometry) to put in it. Relative to THIS FILE.";
         x.kind = Kind::Str;
         p.push_back(std::move(x));
     }

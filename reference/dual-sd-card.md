@@ -250,6 +250,24 @@ media with the HHD Raw Copy Tool). Relevant to the Dual SD board:
 | **18** | A:, B: (SD)  | CP/M 3 | non-banked | 1 GB SD |
 
 **Image-14** is the maintainer-supplied boot target for the acceptance test (a non-banked
-CP/M 3 card with SD volumes). Image-16 (one SD volume) is the cleanest single-volume form,
-usable as a single-partition directory card. System tracks come from `WR_BOOT.COM`, so a
-bootable volume cannot be blank-created — only data volumes can.
+CP/M 3 card with SD volumes). Image-16 (one SD volume) is the cleanest single-card form.
+System tracks come from `WR_BOOT.COM`, so a bootable card cannot be blank-created — only a
+blank data card can.
+
+### How altairsim stores a card
+
+Each SD card is one CP/M drive, and the BIOS assigns the drive letter from the **socket** it
+sits in (socket 1 → A:, socket 2 → B:), not from anything on the card. altairsim therefore
+models a card as a single raw image file, `foo.img`, paired with a sibling **geometry
+sidecar** `foo.geo` of the same base name:
+
+```
+sector_size 512
+sectors     769920      # the card's real size; the .img may be shorter
+```
+
+The board sees one flat LBA space of `sectors × sector_size`; the image may be **truncated**
+to just its live filesystem, and every sector past the image's end reads back the erased-card
+fill byte (0xFF). Mounting a `.img` with no `.geo` beside it is an error — the geometry is
+required. `MOUNT … CREATE format=dualsd` (or `sectors=<n>`) authors a blank, unformatted card
+(an empty `.img` + its `.geo`). See `src/host/cardimg.{h,cpp}`.

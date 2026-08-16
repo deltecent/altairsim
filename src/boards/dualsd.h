@@ -37,7 +37,7 @@
 // ADDRESSING (firmware getTrkSec): SET_TRK_SEC sends the TRACK byte first, then the SECTOR
 // byte, and the current sector is track*256 + sector (track high, sector low). SETLBA sends a
 // full 32-bit LBA, MS byte first. The medium is addressed DIRECTLY by byte offset --
-// readAt/writeAt(lba*512, ...) on a raw MediaFile -- NOT through DiskImage. A DirectoryMedia
+// readAt/writeAt(lba*512, ...) on a raw MediaFile -- NOT through DiskImage. A CardImage
 // card already owns its own geometry; any MediaFile works (a plain image, or a MemoryMedia in
 // a test).
 
@@ -124,7 +124,7 @@ private:
 
     // ---- the two SD sockets ----
     struct Drive {
-        std::unique_ptr<MediaFile> media;   // the microSD card standing in (a DirectoryMedia, image, ...)
+        std::unique_ptr<MediaFile> media;   // the microSD card standing in (a CardImage, image, ...)
         std::string                path;
     };
     std::vector<Drive> drive_;   // size == kDrives

@@ -24,7 +24,7 @@
 #include "host/display_null.h"
 #include "host/endpoint.h"
 #include "host/joystick_null.h"
-#include "host/dirmedia.h"
+#include "host/cardimg.h"
 #include "host/media.h"
 #include "host/terminal/stream.h"
 
@@ -49,7 +49,7 @@ const struct {
     {"srec", test_srec},
     {"symbols", test_symbols},
     {"media", test_media},
-    {"dirmedia", test_dirmedia},
+    {"cardimg", test_cardimg},
     {"imd", test_imd},
     {"tapecodec", test_tapecodec},
     {"roms", test_roms},
@@ -197,9 +197,9 @@ int main(int argc, char** argv) {
     altair::D7aBoard::setJoystick(&g_joystick);
 
     // The REAL media resolver, for the same reason -- and the SAME one the CLI
-    // installs: openHostMedia routes a directory to a DirectoryMedia and a file to a
-    // HostFile. A test that wants a disk without a filesystem installs a MemoryMedia
-    // resolver for its length and puts this one back -- see test_media.cpp.
+    // installs: openHostMedia routes an image with a `.geo` sidecar to a CardImage and a
+    // plain file to a HostFile. A test that wants a disk without a filesystem installs a
+    // MemoryMedia resolver for its length and puts this one back -- see test_media.cpp.
     altair::setMediaResolver(altair::openHostMedia);
 
     const int kCount = static_cast<int>(sizeof(kTests) / sizeof(kTests[0]));

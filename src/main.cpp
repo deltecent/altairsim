@@ -34,7 +34,7 @@
 #include "core/version.h"
 #include "host/console.h"
 #include "host/endpoint.h"
-#include "host/dirmedia.h"
+#include "host/cardimg.h"
 #include "host/media.h"
 #include "host/terminal/emulator.h"
 #include "host/terminal/stream.h"
@@ -318,9 +318,9 @@ int main(int argc, char** argv) {
 
     // The same seam for the other kind of endpoint: a disk board asks openMedia()
     // for a path and gets a medium back, and this is the one line that decides where
-    // the bytes live. openHostMedia routes a DIRECTORY to a DirectoryMedia (a folder of
-    // per-volume files under a card.geometry) and everything else to a plain host file.
-    // A test replaces it with one made of RAM.
+    // the bytes live. openHostMedia routes an image that has a `.geo` sidecar to a lazy
+    // CardImage and everything else to a plain host file. A test replaces it with one
+    // made of RAM.
     setMediaResolver(openHostMedia);
 
     Machine m;

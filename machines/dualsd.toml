@@ -1,10 +1,10 @@
 # S100Computers "Dual SD" machine -- a V2 Z80 CPU board booting CP/M 3 off a microSD card.
 #
 #     altairsim dualsd
-#     MOUNT sd0:drive0 examples/dualsd/cardA/     # SD card 1 = A: (the boot card)
-#     MOUNT sd0:drive1 examples/dualsd/cardB/     # SD card 2 = B:
-#     RUN F000                                    # the MASTER monitor's `.` prompt
-#     I                                           # "boot CP/M 3 from the Dual SD board"
+#     MOUNT sd0:drive0 examples/dualsd/cpm3-sd.img # SD card 1 = A: (the boot card)
+#     MOUNT sd0:drive1 examples/dualsd/blank.img   # SD card 2 = B: (a blank spare)
+#     RUN F000                                     # the MASTER monitor's `.` prompt
+#     I                                            # "boot CP/M 3 from the Dual SD board"
 #     -> CP/M 3
 #        A>
 #
@@ -21,7 +21,9 @@
 # CP/M 3 five-stage cold boot. See reference/dual-sd-card.md and reference/v2-z80-cpu-board.md.
 #
 # WITH NO CARD MOUNTED the `I` command's read reports an error and returns to the monitor.
-# Put a card in each socket (`MOUNT sd0:drive0 <dir>/` and `MOUNT sd0:drive1 <dir>/`), try again.
+# Put a card in each socket (`MOUNT sd0:drive0 <name>.img` and `MOUNT sd0:drive1 <name>.img`),
+# try again. A card is a raw `.img` with a sibling `.geo` geometry descriptor; MOUNT ... CREATE
+# authors a blank one (see reference/dual-sd-card.md).
 
 [machine]
 name    = "dualsd"
@@ -51,7 +53,8 @@ id      = "con0"
 connect = "console"
 
 # THE DUAL SD BOARD at the standard 80/81 port block. Two microSD sockets, none mounted --
-# put a directory card (or a raw image) in drive 0 (`MOUNT sd0:drive0 <dir>/`) to boot.
+# put a card image in drive 0 (`MOUNT sd0:drive0 <name>.img`, its `.geo` sidecar alongside)
+# to boot.
 [[board]]
 type = "dualsd"
 id   = "sd0"

@@ -17,7 +17,7 @@
 #include "core/symbols.h"
 #include "core/version.h"
 #include "host/console.h"
-#include "host/dirmedia.h"  // createDirectoryMedia -- MOUNT ... CREATE authors a directory card
+#include "host/cardimg.h"  // createCardImage -- MOUNT ... CREATE authors a blank card (img + .geo)
 #include "host/display.h"
 #include "host/endpoint.h"
 #include "host/imd.h"    // convertImdToRaw -- MOUNT foo.imd converts to a raw sibling .dsk
@@ -3814,15 +3814,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     extractBase = val;
                     continue;
                 }
-                // NOTE (card authoring): with CREATE, format=/sector_size=/volume= make the
-                // target a DIRECTORY card of blank, UNFORMATTED data volumes -- the guest
-                // FORMATs them. CREATE cannot make a bootable volume (that needs real system
-                // tracks from an image). See createDirectoryMedia (host/dirmedia.cpp).
-                // The card-authoring keys (format/sector_size/volume) shape a directory
-                // card at CREATE; they are NOT unit properties, so they go to their own
-                // list rather than being applied post-mount. hasCardSpecKeys mirrors this.
+                // NOTE (card authoring): with CREATE, format=/sector_size=/sectors= make the
+                // target a blank, UNFORMATTED card image (an empty `.img` plus its `.geo`
+                // sidecar) -- the guest FORMATs it. CREATE cannot make a bootable card (that
+                // needs real system tracks from an image). See createCardImage (host/cardimg.cpp).
+                // The card-authoring keys (format/sector_size/sectors) shape a card at CREATE;
+                // they are NOT unit properties, so they go to their own list rather than being
+                // applied post-mount. hasCardSpecKeys mirrors this.
                 std::string uk = upper(key);
-                if (uk == "FORMAT" || uk == "SECTOR_SIZE" || uk == "VOLUME") {
+                if (uk == "FORMAT" || uk == "SECTOR_SIZE" || uk == "SECTORS") {
                     cardOpts.emplace_back(std::move(key), std::move(val));
                     continue;
                 }
@@ -3918,27 +3918,28 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // CREATE, before the mount: make a zero-length file at the SAME place the board will
         // open it (resolvePath -- identity for a typed path, config-relative inside a machine
         // file), so mount() then finds it. Never clobber a file that is already there.
-        // A card is a DIRECTORY, not a file: a trailing `/` on the path or any card key
-        // (format=/sector_size=/volume=) means CREATE should author a directory card --
-        // the folder, a card.geometry, and one blank backing file per volume -- rather than
-        // a single empty file. The card keys only make sense at CREATE time.
-        bool dirCard = !mountPath.empty() &&
-                       (mountPath.back() == '/' || mountPath.back() == '\\' ||
-                        !cardOpts.empty());
+        // A CARD is an image file plus a `.geo` sidecar, not a lone file: any card key
+        // (format=/sector_size=/sectors=), OR a `.img` target (which the resolver refuses
+        // without its geometry), means CREATE should author a card -- an empty `.img` and its
+        // `.geo` sidecar -- rather than a single empty file. The card keys only apply at CREATE.
+        auto endsWithImg = [](const std::string& s) {
+            return s.size() >= 4 && upper(s.substr(s.size() - 4)) == ".IMG";
+        };
+        bool cardImg = !cardOpts.empty() || endsWithImg(mountPath);
         if (!cardOpts.empty() && !create) {
-            out << b->id << ": format=/sector_size=/volume= author a card and need CREATE: "
+            out << b->id << ": format=/sector_size=/sectors= author a card and need CREATE: "
                 << "MOUNT " << a[1] << " " << a[2] << " CREATE format=...\n";
             failed_ = true;
             return true;
         }
 
-        bool created    = false;  // we made a blank FILE this call (remove it if mount fails)
-        bool createdDir = false;  // we made a directory CARD this call (remove_all on fail)
+        bool created     = false;  // we made a blank FILE this call (remove it if mount fails)
+        bool createdCard = false;  // we made a CARD this call (img + .geo; remove both on fail)
         if (create) {
             std::string     rp = b->resolvePath(mountPath);
             std::error_code ec;
             if (!std::filesystem::exists(rp, ec)) {
-                if (dirCard) {
+                if (cardImg) {
                     CardSpec    spec;
                     std::string serr;
                     if (!parseCardSpec(cardOpts, spec, serr)) {
@@ -3946,12 +3947,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                         failed_ = true;
                         return true;
                     }
-                    if (!createDirectoryMedia(rp, spec, serr)) {
+                    if (!createCardImage(rp, spec, serr)) {
                         out << b->id << ": " << serr << "\n";
                         failed_ = true;
                         return true;
                     }
-                    createdDir = true;
+                    createdCard = true;
                 } else {
                     std::string cerr;
                     if (!writeHostFile(rp, {}, cerr)) {
@@ -3976,11 +3977,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (created) {
                 std::error_code rmec;
                 std::filesystem::remove(b->resolvePath(mountPath), rmec);
-            } else if (createdDir) {
-                // The whole card we just authored -- descriptor and backing files -- comes
+            } else if (createdCard) {
+                // The whole card we just authored -- the image AND its `.geo` sidecar -- comes
                 // back out, not just one file, so a retry starts from bare ground.
-                std::error_code rmec;
-                std::filesystem::remove_all(b->resolvePath(mountPath), rmec);
+                std::error_code    rmec;
+                std::filesystem::path img = b->resolvePath(mountPath);
+                std::filesystem::remove(img, rmec);
+                img.replace_extension(kGeoExt);
+                std::filesystem::remove(img, rmec);
             }
             out << b->id << ": " << err << "\n";
             // A MISSING file is the one mount failure the operator can fix from here: add
@@ -3999,7 +4003,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (created)
                 out << b->id << ":" << u.name << ": created "
                     << resolveFrom(startupDir_, mountPath) << " (empty)\n";
-            else if (createdDir)
+            else if (createdCard)
                 out << b->id << ":" << u.name << ": created card "
                     << resolveFrom(startupDir_, mountPath) << " (blank, unformatted)\n";
             // The trailing key=value options are applied as unit properties now the tape is
