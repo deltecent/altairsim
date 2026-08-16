@@ -103,6 +103,7 @@ Type the part before the bracket.
 | Type | What it is |
 |---|---|
 | `memory` | RAM/ROM board: a list of regions, PHANTOM*, and five banking schemes |
+| `v2z80` | S100Computers V2 Z80 CPU board -- its onboard paged monitor EEPROM (the Z80 itself is board 'z80cpu'). An 8K 28C64 at F000-FFFF holding two 4K pages, builtin:master0 (low) / master1 (high), selected by OUT D3H bit1 (bit0=1 inactivates the EEPROM so RAM shows through). Shadows RAM in its window while enabled. Cold-start the MASTER monitor with startup=["RUN F000"]; the 'I' command boots CP/M 3 off a dualsd card |
 
 **Disk**
 

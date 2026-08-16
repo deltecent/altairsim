@@ -35,6 +35,7 @@
 #include "boards/tarbell.h"
 #include "boards/usio.h"
 #include "boards/propio.h"
+#include "boards/v2z80.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-88sio.h"
 
@@ -98,6 +99,7 @@ std::vector<BoardType> boardTypes() {
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
         {"usio", "Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
         {"propio", "S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A usio subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/rdr_bit/tdre_bit/polarity) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
+        {"v2z80", "S100Computers V2 Z80 CPU board -- its onboard paged monitor EEPROM (the Z80 itself is board 'z80cpu'). An 8K 28C64 at F000-FFFF holding two 4K pages, builtin:master0 (low) / master1 (high), selected by OUT D3H bit1 (bit0=1 inactivates the EEPROM so RAM shows through). Shadows RAM in its window while enabled. Cold-start the MASTER monitor with startup=[\"RUN F000\"]; the 'I' command boots CP/M 3 off a dualsd card"},
     };
 }
 
@@ -140,6 +142,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
     if (type == "usio") return std::make_unique<UsioBoard>();
     if (type == "propio") return std::make_unique<PropIoBoard>();
+    if (type == "v2z80") return std::make_unique<V2Z80Board>();
     return nullptr;
 }
 

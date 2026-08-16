@@ -147,6 +147,14 @@ void test_roms() {
         {"icom-fd3712-cpm",  0xF000, 0xF3FF, 1024, 0x82361A3Bu, true},
         {"icom-fd3712-fdos", 0xC000, 0xC3FF, 1024, 0x47140DCCu, true},
         {"icom-fd3812-cpm",  0xF000, 0xF3F1, 1010, 0x7FCFCA76u, true},
+        // S100Computers MASTER V6.6, the V2 Z80 CPU board's onboard 28C64 monitor EEPROM
+        // (docs/roms.md). Two 4K "pages" both assembled ORG F000, selected by OUT D3H bit 1:
+        // master0 = the low page (everyday menu), master1 = the high page (XModem + the SD/CF
+        // CP/M-3 boot). Each is programmed only part-way into the 4K F000-FFFF window and reads
+        // FF past its end, so the flat span stops short of FFFF -- put the wrong page image in
+        // and the machine hangs the same silent way, which is why each gets a CRC here.
+        {"master0", 0xF000, 0xFF18, 3865, 0xE2276961u, true},
+        {"master1", 0xF000, 0xFDB2, 3507, 0x70A572EDu, true},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;

@@ -112,6 +112,7 @@ const struct {
     {"hdsk", test_hdsk},
     {"icom", test_icom},
     {"dualsd", test_dualsd},
+    {"v2z80", test_v2z80},
     {"88acr", test_88acr},
     {"88uio", test_88uio},
     {"c700", test_c700},

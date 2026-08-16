@@ -494,6 +494,7 @@ add_library(altair_core STATIC
   src/boards/pmmi-mm103.cpp
   src/boards/usio.cpp
   src/boards/propio.cpp   # Console IO Board: a usio subtype (Parallax-Propeller console)
+  src/boards/v2z80.cpp     # S100Computers V2 Z80 CPU board: onboard paged monitor EEPROM
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/frontpanel-link.cpp
@@ -740,6 +741,7 @@ add_executable(altair_tests
   tests/test_hdsk.cpp
   tests/test_icom.cpp
   tests/test_dualsd.cpp
+  tests/test_v2z80.cpp
   tests/test_propio.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
