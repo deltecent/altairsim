@@ -29,6 +29,11 @@ endif()
 option(WERROR "Treat compiler warnings as errors; CI enforces this on all three toolchains." OFF)
 if(MSVC)
   add_compile_options(/W4 /permissive- /wd4244 /wd4267)
+  # The CRT "secure" deprecations (C4996 on getenv/fopen/strcpy/...) are MSVC nagging us to
+  # use its non-portable _s variants. We use the standard C functions on purpose -- the code
+  # is cross-platform -- so turn that family off. This is narrower than /wd4996: a genuine
+  # [[deprecated]] use still warns.
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
   if(WERROR)
     add_compile_options(/WX)
   endif()
