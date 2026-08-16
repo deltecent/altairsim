@@ -1,0 +1,25 @@
+# Dual SD boot acceptance fixture: the V2 Z80 CPU board (its MASTER V6.6 monitor EEPROM) with
+# the CP/M 3 system card in socket 1 (drive A:) and a blank spare in socket 2 (drive B:), BOTH
+# mounted READ-ONLY so the test can never dirty the tracked images. The shipped example
+# (examples/dualsd/dualsd.toml) mounts them read/write instead.
+#
+# The CP/M 3 BIOS cold-boot checks the card-detect line of BOTH sockets and refuses to come up
+# unless it sees a card in each (reference/dual-sd-card.md section 5.1) -- so both are mounted,
+# even though only socket 1 is bootable.
+
+[machine]
+name = "dualsd-acceptance"
+base = "dualsd"
+
+[[board]]
+id = "sd0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/dualsd/cpm3-sd.img"
+  writeprotect = true
+
+  [[board.drive]]
+  unit         = 1
+  mount        = "../../examples/dualsd/blank.img"
+  writeprotect = true

@@ -117,9 +117,14 @@ private:
     // (the err is surfaced through drainLog(), the 6850's discipline).
     void programLine();
 
+protected:
     // Copy a profile's straps into the live fields (leaves `baud` alone -- it is not a
-    // property of the card being emulated, but of the cable you plug into it).
+    // property of the card being emulated, but of the cable you plug into it). Protected so a
+    // subtype (e.g. PropIoBoard, the Console IO Board) can preset a real card's straps in its
+    // constructor -- the engine is unchanged, only the defaults differ.
     void applyProfile(const UsioProfile& p);
+
+private:
 
     // ---- config / straps (rebuilt from TOML) ----
     std::string profile_ = "custom";  // the selected built-in, or "custom"

@@ -8,13 +8,13 @@ as it is now; this document is the record of how it got there.
 
 ## 0.4.0
 
-**0.4.0 is the boards release.** Eighteen new S-100 cards join the backplane — enough that
-four whole new machine families (Cromemco, SD Systems, Tarbell, iCOM) boot alongside the MITS
-originals for the first time — disks and cassettes learn to be built and formatted by the guest
+**0.4.0 is the boards release.** Twenty-one new S-100 cards join the backplane — enough that
+five whole new machine families (Cromemco, SD Systems, Tarbell, iCOM, S100Computers) boot
+alongside the MITS originals for the first time — disks and cassettes learn to be built and formatted by the guest
 instead of only read, and the debugger, the monitor prompt and the video window all got
 noticeably sharper along the way.
 
-### Three new machine families join the MITS originals
+### Five new machine families join the MITS originals
 
 **Cromemco** arrives as a full boot chain: the **16FDC**/**64FDC** floppy controller (Western
 Digital FD1793, a TMS5501 console UART, and the RDOS boot PROM in one card) boots **CDOS**, and
@@ -32,7 +32,12 @@ FD3712/FD3812** 8″ floppy controller — a programmed-I/O command engine rathe
 card, with its driver in a boot PROM up in high memory — boots CP/M 2.2 in both single density
 (FD3712) and double density (FD3812), and both revisions of iCOM's own **FDOS** disk operating
 system — the original **FDOS-I** and the later **FDOS-III** — each off its own PROM
-(`altairsim icom`). On the MITS
+(`altairsim icom`). And the reproduction era shows up too: **S100Computers'** modern boards boot
+**CP/M 3** off flash, the **V2 Z80 CPU board**'s MASTER monitor EEPROM loading it with an `I`
+command off the new **Dual SD** controller — two microSD cards on the bus as raw 512-byte-sector
+drives, each card one CP/M drive stored as a truncated `.img` beside a `.geo` sidecar that declares
+the full card (so a card that is hundreds of megabytes on real flash ships as a couple of megabytes),
+with the **Console I/O** board as its Propeller-based serial console (`altairsim dualsd`). On the MITS
 side, the **88-HDSK** boots CP/M off a hard disk, **88-PIO**/**88-4PIO** add parallel I/O,
 **88-LPC** drives a real line printer, **88-UIO** combines a serial port and a cassette deck on
 one card, and the **8800b Turnkey Module** brings up a front-panel-less Altair with its boot PROM

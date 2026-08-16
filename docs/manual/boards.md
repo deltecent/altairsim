@@ -20,9 +20,11 @@ be wrong.
 | `memory` | RAM and ROM, as a list of regions |
 | `8080` | the MITS 88-CPU |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
+| `v2z80` | S100Computers V2 Z80 CPU board — its onboard MASTER monitor EEPROM |
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
 | `sbc` | SD Systems SBC-100/200 — a Z80 single-board computer's serial console |
+| `propio` | S100Computers Console I/O — a Propeller-based serial console |
 | `acr` | MITS 88-ACR — the cassette interface |
 | `uio` | MITS 88-UIO — a serial port and a cassette, on one card |
 | `pmmi` | PMMI MM-103 — a Bell 103 telephone modem on one card |
@@ -37,6 +39,7 @@ be wrong.
 | `tarbell` | Tarbell #1011 — a single-density floppy controller with its own boot PROM. Boots CP/M by itself |
 | `tarbelldd` | Tarbell #2022 — the double-density twin, mixed-density disks |
 | `icom` | iCOM FD3712/FD3812 — an 8″ floppy controller with its own boot PROM. Boots CP/M and FDOS |
+| `dualsd` | S100Computers Dual SD — two microSD cards as CP/M drives. Boots CP/M 3 |
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
 | `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. Needs a display |
@@ -155,6 +158,24 @@ its paces.
 
 ---
 
+## `v2z80` — the S100Computers V2 Z80 CPU board's monitor
+
+The `z80` above is *the processor*. This board is the **monitor** that a real S100Computers V2 Z80
+CPU board carries on it: an **8K EEPROM** at `F000`–`FFFF` holding John Monahan's MASTER V6.6 ROM
+monitor. The two are separate boards on purpose — a machine that uses this one still needs a `z80`
+beside it for the CPU, exactly as the real card is a Z80 with its own onboard firmware.
+
+The EEPROM is **paged**: two 4K halves both live at `F000`–`FFFF`, and a write to port `D3` chooses
+which is visible (and can switch the EEPROM off altogether, so the RAM underneath shows through).
+That is how CP/M gets a flat 64K after boot — it inactivates the EEPROM and the monitor's window
+becomes ordinary memory. While it is on, the EEPROM shadows the RAM in its window for reads.
+
+There is no `BOOT` verb — **the monitor is the boot command**. `startup = ["RUN F000"]` cold-starts
+it, and at its `->` prompt the **`I` command** boots CP/M 3 off a Dual SD card (below). This is the
+board that makes `altairsim dualsd` go.
+
+---
+
 ## `2sio` — MITS 88-2SIO
 
 Two **6850 ACIAs**, units `a` and `b`, four ports at BASE+0 through BASE+3. Base defaults to `10`
@@ -219,6 +240,21 @@ socket and a `versafloppy` controller beside it, and the monitor's `C` command b
 the VersaFloppy below, and the SD Systems example in `examples/`. `variant` picks the generation
 (`sbc200` or `sbc100`).
 The parallel ports, timer and interrupts of the real card are a later phase; the console is here now.
+
+---
+
+## `propio` — S100Computers Console I/O
+
+A **serial console** of the reproduction era: the S100Computers Console I/O board, built around a
+Parallax Propeller instead of a 6850 or 8251, with status at `00` and data at `01`. It is a polled
+console, unit `serial` — you `CONNECT` it to a terminal, a file, a socket or a serial port like any
+other serial board. It is the console the Dual SD machine uses.
+
+Underneath, `propio` is just a **preset**: it is the generic strap-configurable serial card (`usio`)
+with this board's documented convention filled in — the ports, and which status bit means
+receive-ready and which means transmit-ready. Because the real board is jumpered, every one of those
+straps is still yours to override, so a differently-strapped Console I/O board needs no new board
+type, just a property or two.
 
 ---
 
@@ -460,6 +496,35 @@ Which system it boots is set by its PROM, chosen with `rom`:
 machines for all three — single- and double-density CP/M and FDOS-III — image and all: start one and
 you land at the prompt, read/write, with the guest saving to the disk. Read and write of existing
 disks work; like the other controllers here, it will not lay down a **blank** format from nothing.
+
+---
+
+## `dualsd` — S100Computers Dual SD
+
+A **modern** disk controller among the period ones: the S100Computers Dual SD board puts **two
+microSD cards** on the S-100 bus as raw 512-byte-sector drives, so a Z80 machine runs **CP/M 3** off
+flash. Like the iCOM and the Datakeeper it is a **command-and-handshake** card — two ports (default
+`80`–`81`) and a byte-at-a-time protocol to an onboard microcontroller that does the actual card
+I/O — not a floppy-shift card. Each SD card is one CP/M drive, and the drive letter comes from the
+**socket** it sits in: socket 1 is A:, socket 2 is B:.
+
+**It has no boot PROM** — the CPU board's monitor boots it. That is why `altairsim dualsd` is the
+three boards together: a `z80` for the processor, the `v2z80` monitor EEPROM whose `I` command reads
+CP/M 3 off the card, and this controller. Bring the machine up, type `I` at the `->` monitor prompt,
+and CP/M 3 signs on at `A>`.
+
+**Mount a card in both sockets.** The CP/M 3 boot ROM checks that each socket has a card before it
+will come up — a card in socket 1 alone boots the loader and then stops. So the example fits the
+bootable system card in socket 1 and a blank spare in socket 2.
+
+A card is a raw **`.img` with a sibling `.geo`** file beside it that declares the card's true size.
+The `.img` can be **shorter** than the card — just the live filesystem — and every sector past its
+end reads back as an erased card would (all `FF`), which is why a card that would be hundreds of
+megabytes on real flash ships here as a couple of megabytes. `MOUNT … CREATE` authors a **blank**
+data card (an empty `.img` and its `.geo`) for the guest to format; a *bootable* card, like the
+other controllers here, has to come from a real image — its system tracks cannot be conjured. See
+`examples/dualsd/`, which boots CP/M 3 with the host bridge fitted so `R`/`W`/`HDIR` move files to
+and from your host at the `A>` prompt.
 
 ---
 

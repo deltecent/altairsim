@@ -138,6 +138,13 @@ examples/**
 !examples/icom/CPM22-3812-48K.dsk
 !examples/icom/FDOS-III (2SIO).DSK
 !examples/icom/FDOS-I (2SIO).DSK
+# The Dual SD example ships two card images, each a raw .img plus its .geo sidecar (a
+# truncated bootable card and a blank spare). `*.img` (above) would swallow the images and
+# `examples/**` the sidecars.
+!examples/dualsd/cpm3-sd.img
+!examples/dualsd/cpm3-sd.geo
+!examples/dualsd/blank.img
+!examples/dualsd/blank.geo
 !examples/basic/LDR4K31.HEX
 !examples/basic/LOAD10.HEX
 !examples/uio/8K BASIC Ver 3-2.tap

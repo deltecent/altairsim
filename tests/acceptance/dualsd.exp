@@ -1,0 +1,98 @@
+#!/usr/bin/expect -f
+#
+# THE S100Computers DUAL SD BOARD BOOTS CP/M 3, and then it READS THE CARD. The V2 Z80 CPU
+# board's MASTER V6.6 monitor comes up at F000 (the fixture's `startup = ["RUN F000"]`); its
+# `I` command reads the CP/M 3 cold loader off Dual SD socket 1 -- twelve 512-byte sectors
+# through the 80H/81H command engine -- into 100H and jumps to it, the standard CP/M 3
+# five-stage cold boot. DIR then walks the directory back off the card.
+#
+# THIS IS THE WHOLE STACK IN ONE TEST: the `v2z80` paged-EEPROM monitor, the `dualsd`
+# programmed-I/O engine, and the directory-card medium (`cardimg`: a truncated `.img` plus a
+# `.geo` sidecar that declares the full card, serving 0xFF for every unbacked sector). A byte
+# wrong in any of the three and CP/M never signs on or DIR reads garbage.
+#
+# IT HAS TO BE AN EXPECT TEST. `I` must be TYPED at the monitor prompt and DIR at A> -- a pipe
+# cannot type at a running guest (see [[altairsim-pipe-cannot-type-at-a-guest]]). It also has to
+# sync past the boot card's PROFILE.SUB: CP/M 3 auto-runs it at cold boot (it runs SETDEF), so
+# the bare `A>` prompt RECURS and a command typed while the SUB is still running is SWALLOWED.
+# The fix is to sync on the LAST line the profile prints ("Program Name Display"), let the
+# trailing warm-boot double-prompt drain, and only THEN type -- never `expect "A>"`, which
+# matches the first, mid-SUB prompt.
+#
+# Both cards are mounted WRITE-PROTECTED (tests/acceptance/dualsd.toml) and this shasums the
+# boot card before and after: the boot and DIR only read, so the tracked master must come out
+# byte-identical -- the quiet way for this to rot is for `writeprotect` to stop meaning anything.
+#
+# usage: expect -f dualsd.exp <altairsim>   (run from the repo root)
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set img "examples/dualsd/cpm3-sd.img"
+
+# Leave no orphan behind: expect exiting does not reap the child holding the pty.
+proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]}; exit $code }
+
+set before [exec shasum $img]
+
+spawn $exe tests/acceptance/dualsd.toml
+
+# The fixture's startup cold-starts the MASTER monitor, which prints its banner and the `->`
+# prompt on its own -- nothing typed to get here.
+expect {
+    -ex "->" {}
+    eof     { bail 1 "FAIL: the machine died before the MASTER monitor prompt" }
+    timeout { bail 1 "FAIL: the V2 Z80 MASTER monitor never reached its `->` prompt" }
+}
+
+# `I` = "boot CP/M 3 from the Dual SD board". The loader reads socket 1 and signs on.
+send "I\r"
+expect {
+    -ex "CP/M V3.0" {}
+    eof     { bail 1 "FAIL: the machine died loading CP/M 3 off the Dual SD card" }
+    timeout { bail 1 "FAIL: the `I` command never loaded CP/M 3 off the Dual SD card" }
+}
+expect {
+    -ex "64K CP/M VERSION" {}
+    eof     { bail 1 "FAIL: the CP/M 3 sign-on was cut short" }
+    timeout { bail 1 "FAIL: CP/M 3 loaded but never signed on" }
+}
+
+# SYNC PAST PROFILE.SUB. "Program Name Display" is the last line SETDEF prints from the
+# auto-run profile; matching it (not the recurring `A>`) puts us after the SUB, not inside it.
+expect {
+    -ex "Program Name Display" {}
+    eof     { bail 1 "FAIL: died running the cold-boot PROFILE.SUB" }
+    timeout { bail 1 "FAIL: the cold-boot PROFILE.SUB never finished" }
+}
+# Let the trailing warm-boot double-prompt drain before typing into a now-quiet console.
+sleep 2
+
+# A REAL DIRECTORY READ. DIR walks the card's directory; PIP is a stock CP/M 3 utility on the
+# system card -- proof the listing came back off the medium, not a banner that faked a boot.
+send "DIR\r"
+expect {
+    -ex "PIP" {}
+    eof     { bail 1 "FAIL: the machine died running DIR" }
+    timeout { bail 1 "FAIL: DIR did not read the directory off the Dual SD card (no PIP)" }
+}
+# SYNC TO THE RETURNING PROMPT -- DIR finished and handed control back, not wedged mid-listing.
+expect {
+    -ex "A>" {}
+    eof     { bail 1 "FAIL: DIR listed but the prompt never came back" }
+    timeout { bail 1 "FAIL: DIR listed but CP/M 3 never returned to the A> prompt" }
+}
+
+# The boot and DIR only read the card; the write-protected master must be byte-identical.
+set after [exec shasum $img]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    bail 1 ""
+}
+
+puts "OK: the Dual SD board booted CP/M 3 through the V2 Z80 MASTER monitor to A>, DIR read the\
+      directory off the card (PIP), and the write-protected master is byte-identical."
+bail 0 ""

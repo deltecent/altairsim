@@ -355,6 +355,10 @@ add_library(altair_core STATIC
   # observe-only and 8-bit clean, so it is exempt from the "one FilterStream" rule.
   src/host/tee_stream.cpp
   src/host/media.cpp
+  # A host DIRECTORY as one CF/microSD card: a `card.geometry` descriptor maps LBA runs
+  # to per-volume backing files, streamed lazily (seek per block, never slurped like a
+  # HostFile). openHostMedia() is the resolver both mains install (src/host/cardimg.h).
+  src/host/cardimg.cpp
   src/host/disk.cpp
   # ImageDisk (.IMD) -> raw sibling .DSK, at the MOUNT layer. Pure (bytes in, bytes out),
   # so DiskImage stays raw-only and the container never reaches it (src/host/imd.h).
@@ -421,6 +425,10 @@ add_library(altair_core STATIC
   # directly, not HardSectorFdc): it decodes A0h-A7h and serves 256-byte sectors from
   # a linear .DSK through a command/handshake protocol. See src/boards/mits-88hdsk.h.
   src/boards/mits-88hdsk.cpp
+  # The S100Computers Dual SD card -- another "controller does the work" card (Board directly):
+  # two programmed-I/O ports (80/81) shift whole 512-byte sectors to/from a raw MediaFile card
+  # (a DirectoryMedia directory card). No boot PROM. See src/boards/dualsd.h.
+  src/boards/dualsd.cpp
   # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
   # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
   # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
@@ -485,6 +493,8 @@ add_library(altair_core STATIC
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/pmmi-mm103.cpp
   src/boards/usio.cpp
+  src/boards/propio.cpp   # Console IO Board: a usio subtype (Parallax-Propeller console)
+  src/boards/v2z80.cpp     # S100Computers V2 Z80 CPU board: onboard paged monitor EEPROM
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/frontpanel-link.cpp
@@ -667,6 +677,7 @@ add_executable(altair_tests
   tests/test_srec.cpp
   tests/test_symbols.cpp
   tests/test_media.cpp
+  tests/test_cardimg.cpp
   tests/test_imd.cpp
   tests/test_tapecodec.cpp
   tests/test_roms.cpp
@@ -729,6 +740,9 @@ add_executable(altair_tests
   tests/test_mds.cpp
   tests/test_hdsk.cpp
   tests/test_icom.cpp
+  tests/test_dualsd.cpp
+  tests/test_v2z80.cpp
+  tests/test_propio.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp
@@ -1441,6 +1455,23 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom-fdos-i.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-icom-fdos-i PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE S100Computers DUAL SD BOARD boots CP/M 3 -- the whole modern stack in one machine:
+  # the `v2z80` paged-EEPROM MASTER monitor, the `dualsd` 80H/81H command engine, and the
+  # directory-card medium (a truncated `.img` + `.geo` sidecar). The monitor's `I` command
+  # reads the CP/M 3 cold loader off socket 1 and boots; DIR reads the directory back off the
+  # card. An expect test because `I` and DIR must be TYPED, and it must sync past the boot
+  # card's cold-boot PROFILE.SUB (see the .exp header). Both cards are mounted WRITE-PROTECTED
+  # and it shasums the boot card -- the boot only reads.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-dualsd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualsd.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dualsd PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

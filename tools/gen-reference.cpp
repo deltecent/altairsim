@@ -194,12 +194,12 @@ void schemaTable(std::ostream& o, std::vector<Property>& props) {
 // A board's functional group. Every board type must name one (see die()).
 const char* boardCategory(const std::string& n) {
     if (n == "8080" || n == "z80" || n == "6800") return "CPU";
-    if (n == "memory") return "Memory";
+    if (n == "memory" || n == "v2z80") return "Memory";
     if (n == "dcdd" || n == "mds" || n == "hdsk" || n == "versafloppy" ||
         n == "tarbell" || n == "tarbelldd" || n == "16fdc" || n == "64fdc" ||
-        n == "icom") return "Disk";
+        n == "icom" || n == "dualsd") return "Disk";
     if (n == "2sio" || n == "sio" || n == "sbc" || n == "pmmi" ||
-        n == "turnkey" || n == "usio" || n == "680io") return "Serial";
+        n == "turnkey" || n == "usio" || n == "propio" || n == "680io") return "Serial";
     if (n == "acr" || n == "uio" || n == "680kcacr") return "Tape";
     if (n == "pio" || n == "4pio" || n == "680uio" || n == "d7a" || n == "c700" || n == "lpc")
         return "Parallel and printer";
