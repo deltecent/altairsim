@@ -14,17 +14,26 @@ endif()
 # CI passes -DWERROR=on on every leg (.github/workflows/ci.yml), so a warning fails the build
 # before merge; run `cmake -B build -DWERROR=on` locally to reproduce that gate before a PR.
 #
-# GCC and Clang only, for now. Both are clean at -Wall -Wextra -Wpedantic. MSVC /W4 is not:
-# it carries a pre-existing backlog (intentional integer narrowing, which the other two do not
-# flag, plus some shadowing) that has to be cleared before /WX can go on without failing every
-# build. That work is issue #238; until it lands, WERROR is a no-op on MSVC -- /W4 warnings
-# stay visible in the log but do not fail the build.
-option(WERROR "Treat compiler warnings as errors on GCC/Clang; CI enforces this (MSVC: see #238)" OFF)
+# All three toolchains, now. GCC and Clang are clean at -Wall -Wextra -Wpedantic -Wshadow;
+# MSVC is clean at /W4 once two things are handled (issue #238):
+#
+#   * Variable shadowing (MSVC C4456/C4457) is FIXED at the source -- the shadowing locals
+#     were renamed. -Wshadow on GCC/Clang keeps the class from creeping back on every CI leg,
+#     not just on Windows.
+#   * Integer narrowing (MSVC C4244/C4267 -- uint32->uint8/16, size_t->uint32) is SUPPRESSED
+#     tree-wide with /wd4244 /wd4267. It is the daily bread of an 8-bit emulator's byte/word
+#     masking; GCC/Clang do not flag it at -Wall -Wextra either (only -Wconversion would), so
+#     casting every truncation would be thousands of noise static_casts for no bug caught.
+#
+# With those settled, /WX joins the gate under WERROR on MSVC, matching -Werror on the others.
+option(WERROR "Treat compiler warnings as errors; CI enforces this on all three toolchains." OFF)
 if(MSVC)
-  add_compile_options(/W4 /permissive-)
-  # No /WX yet -- see #238.
+  add_compile_options(/W4 /permissive- /wd4244 /wd4267)
+  if(WERROR)
+    add_compile_options(/WX)
+  endif()
 else()
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra -Wpedantic -Wshadow)
   if(WERROR)
     add_compile_options(-Werror)
   endif()
