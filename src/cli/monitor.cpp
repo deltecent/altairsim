@@ -1342,7 +1342,7 @@ void Monitor::showBoards(std::ostream& out, const Machine& m) {
         wType = std::max(wType, r.type.size());
         wIo = std::max(wIo, r.io.empty() ? 1 : r.io.size());
         wUn = std::max(wUn, r.units.empty() ? 1 : r.units.size());
-        for (const auto& m : r.mem) wMem = std::max(wMem, m.size());
+        for (const auto& mr : r.mem) wMem = std::max(wMem, mr.size());
     }
 
     std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %-*s  %-*s  %s", (int)wId, "ID", (int)wType,
@@ -2842,11 +2842,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 std::string       block = h->detail;
                 for (size_t start = 0; start <= block.size();) {
                     size_t      nl   = block.find('\n', start);
-                    std::string line = block.substr(
+                    std::string ln   = block.substr(
                         start, nl == std::string::npos ? std::string::npos : nl - start);
                     start = (nl == std::string::npos) ? block.size() + 1 : nl + 1;
 
-                    std::vector<std::string> words = tokenize(line);
+                    std::vector<std::string> words = tokenize(ln);
                     // A real sub-command line leads with the command's own name.
                     bool match = !words.empty() && upper(words[0]) == upper(h->name);
                     for (size_t k = 2; match && k < a.size(); ++k) {
@@ -2856,7 +2856,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     }
                     if (match) {
                         if (!kept.empty()) kept += "\n";
-                        kept += line;
+                        kept += ln;
                     }
                 }
                 if (!kept.empty()) {
@@ -2908,7 +2908,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // Sorting a copy of the pointers leaves the table -- and every abbreviation
         // derived from it -- untouched.
         std::vector<const CommandDef*> sorted;
-        for (const CommandDef& c : commands()) sorted.push_back(&c);
+        for (const CommandDef& cd : commands()) sorted.push_back(&cd);
         std::sort(sorted.begin(), sorted.end(),
                   [](const CommandDef* x, const CommandDef* y) {
                       return std::string(x->name) < std::string(y->name);
@@ -2917,9 +2917,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         out << "\n";
         int  col       = 0;
         bool anyUnbuilt = false;
-        for (const CommandDef* c : sorted) {
-            std::string shown = abbreviation(*c);
-            if (!c->built) {
+        for (const CommandDef* cd : sorted) {
+            std::string shown = abbreviation(*cd);
+            if (!cd->built) {
                 shown += "*";
                 anyUnbuilt = true;
             }
@@ -3211,8 +3211,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                         // so a long choice set does not overrun the terminal.
                         auto legal = legalValues(p);
                         if (!legal.empty())
-                            for (const auto& line : wrapText("values: " + legal, width - helpCol))
-                                out << std::string(helpCol, ' ') << line << "\n";
+                            for (const auto& ln : wrapText("values: " + legal, width - helpCol))
+                                out << std::string(helpCol, ' ') << ln << "\n";
                     }
                 };
 
@@ -3352,8 +3352,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     return true;
                 }
                 out << "name      " << bm->name << "\n";
-                for (const auto& line : wrapText(bm->blurb, 78 - 10))
-                    out << "          " << line << "\n";
+                for (const auto& ln : wrapText(bm->blurb, 78 - 10))
+                    out << "          " << ln << "\n";
                 out << "startup   " << (tmp.startup.empty() ? "(none)" : "") << "\n";
                 for (const auto& s : tmp.startup) out << "            " << s << "\n";
                 out << "\n";
@@ -3412,8 +3412,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // A register value IS on the wire, so it is HEX (DESIGN.md 10.0.1). `SET
         // REG A=10` is sixteen, exactly as `EX 10` is address sixteen.
         if (is(a[1], "REG")) {
-            CpuCore* c = needCpu(out);
-            if (!c) return true;
+            CpuCore* cpu = needCpu(out);
+            if (!cpu) return true;
             std::string k, v;
             size_t eq = a[2].find('=');
             if (eq != std::string::npos) {
@@ -3427,7 +3427,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
                 return true;
             }
-            for (const RegDef& r : c->registers()) {
+            for (const RegDef& r : cpu->registers()) {
                 if (upper(r.name) != upper(k)) continue;
                 uint32_t val;
                 if (!addr(v, val, out)) return true;
@@ -3450,7 +3450,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // the halves and the packed flag byte are settable but not on it, so
             // "REGS lists them" would have been a lie the moment we compacted it.
             std::string names;
-            for (const RegDef& r : c->registers()) {
+            for (const RegDef& r : cpu->registers()) {
                 if (!names.empty()) names += " ";
                 names += r.name;
             }
@@ -3538,14 +3538,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // (`SET CONSOLE DEBUG=` is the sink and was handled above; a unit target has no
         // channel, hence the no-colon guard.)
         if ((is(k, "DEBUG") || is(k, "NODEBUG")) && a[1].find(':') == std::string::npos) {
-            if (dbg::Channel* c = dbg::find(a[1])) {
+            if (dbg::Channel* chan = dbg::find(a[1])) {
                 const bool on = is(k, "DEBUG");
                 std::string err;
-                if (!(on ? c->enable(v, err) : c->disable(v, err))) {
+                if (!(on ? chan->enable(v, err) : chan->disable(v, err))) {
                     out << err << "\n";
                     failed_ = true;
                 } else {
-                    out << c->name() << ": " << (on ? "debug" : "nodebug") << "=" << v << "\n";
+                    out << chan->name() << ": " << (on ? "debug" : "nodebug") << "=" << v << "\n";
                 }
                 return true;
             }
@@ -3701,7 +3701,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // ---------------- WHO ----------------
     if (cmd == "WHO") {
         if (!need(2, "WHO <addr> | WHO IO <port>")) return true;
-        BusCycle c;
+        BusCycle cyc;
         if (is(a[1], "IO")) {
             if (!need(3, "WHO IO <port>")) return true;
             uint32_t p;
@@ -3710,10 +3710,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // claim one without the other (a status port that only reads, a strobe
             // that only writes). Probe both so WHO tells the whole truth.
             for (Cycle t : {Cycle::IoRead, Cycle::IoWrite}) {
-                c = BusCycle{};
-                c.type = t;
-                c.addr = (uint16_t)(p & 0xFF);
-                auto who = m_.bus.respondersTo(c);
+                cyc = BusCycle{};
+                cyc.type = t;
+                cyc.addr = (uint16_t)(p & 0xFF);
+                auto who = m_.bus.respondersTo(cyc);
                 std::snprintf(buf, sizeof buf, "port %s %s", fmtByte((uint8_t)(p & 0xFF)).c_str(),
                               t == Cycle::IoRead ? "IN: " : "OUT:");
                 out << buf;
@@ -3729,13 +3729,13 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!addrSym(a[1], A, out)) return true;
 
         for (Cycle t : {Cycle::MemRead, Cycle::MemWrite}) {
-            c = BusCycle{};
-            c.type = t;
-            c.addr = (uint16_t)A;
+            cyc = BusCycle{};
+            cyc.type = t;
+            cyc.addr = (uint16_t)A;
             bool ph = false;
             for (const auto& b : m_.boards())
-                if (b->enabled() && b->assertsPhantom(c)) ph = true;
-            auto who = m_.bus.respondersTo(c);
+                if (b->enabled() && b->assertsPhantom(cyc)) ph = true;
+            auto who = m_.bus.respondersTo(cyc);
 
             std::snprintf(buf, sizeof buf, "%s %-5s ", fmtWord((uint16_t)A).c_str(),
                           t == Cycle::MemRead ? "read" : "write");
@@ -4188,10 +4188,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 // Silence here would be a bug that costs you an hour. If nobody
                 // latched the byte, SAY SO.
                 if (m_.bus.lastUnclaimed()) {
-                    BusCycle c;
-                    c.type = Cycle::MemRead;
-                    c.addr = (uint16_t)A;
-                    auto rdr = m_.bus.respondersTo(c);
+                    BusCycle cyc;
+                    cyc.type = Cycle::MemRead;
+                    cyc.addr = (uint16_t)A;
+                    auto rdr = m_.bus.respondersTo(cyc);
                     std::snprintf(buf, sizeof buf, "%s: no board decodes writes here", fmtWord((uint16_t)A).c_str());
                     out << buf;
                     if (!rdr.empty())
@@ -4765,8 +4765,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // STEP -- one instruction, with real bus cycles, through the real decode.
     if (cmd == "STEP") {
-        CpuCore* c = needCpu(out);
-        if (!c) return true;
+        CpuCore* cpu = needCpu(out);
+        if (!cpu) return true;
 
         uint32_t n = 1;
         if (a.size() >= 2 && !count(a[1], n, out)) return true;  // a count: DECIMAL
@@ -4802,7 +4802,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // pump reflects the resting state, not per-instruction -- the lamps show the
         // last bus cycle, as they did on real hardware.
         m_.pump();
-        disasmNext_ = c->pc();
+        disasmNext_ = cpu->pc();
         if (!echo) {
             char b[96];
             std::snprintf(b, sizeof b, "%llu instructions, %llu T-states.",
@@ -4821,15 +4821,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // console) and interruptible (ATTN, ^C), and a real breakpoint inside it still
     // stops there. The temp target lives in the Debugger, off the user's list.
     if (cmd == "NEXT") {
-        CpuCore* c = needCpu(out);
-        if (!c) return true;
+        CpuCore* cpu = needCpu(out);
+        if (!cpu) return true;
 
-        uint8_t op = m_.bus.peek(c->pc());
+        uint8_t op = m_.bus.peek(cpu->pc());
         SigintGuard guard;
         if (isCall(op) || isRst(op)) {
             uint8_t len = 1;
-            if (const Disassembler* d = disassemblerFor(c->isa())) len = insnAt(c->pc(), *d).len;
-            m_.debug.setStepTarget((c->pc() + len) & 0xFFFF);
+            if (const Disassembler* d = disassemblerFor(cpu->isa())) len = insnAt(cpu->pc(), *d).len;
+            m_.debug.setStepTarget((cpu->pc() + len) & 0xFFFF);
             runMachine(out, /*stepOver=*/true);
             m_.debug.setStepTarget(-1);  // ALWAYS clear -- a real bp/HLT/ATTN may have stopped us first
         } else {
@@ -4840,7 +4840,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // Push the resting bus cycle to the panel (see EXAMINE). The CALL/RST branch
         // already pumped inside runMachine; this extra pump is diff-gated -- harmless.
         m_.pump();
-        disasmNext_ = c->pc();
+        disasmNext_ = cpu->pc();
         showRegs(out);
         return true;
     }
@@ -4875,8 +4875,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "RUN") {
-        CpuCore* c = needCpu(out);
-        if (!c) return true;
+        CpuCore* cpu = needCpu(out);
+        if (!cpu) return true;
 
         if (a.size() >= 2) {
             uint32_t at;
@@ -4886,7 +4886,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
                 return true;
             }
-            c->setPc((uint16_t)at);
+            cpu->setPc((uint16_t)at);
         }
 
         // Under MCP the server is single-threaded and there is no keyboard to press ATTN,
@@ -4895,10 +4895,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // advances with the non-blocking `run` tool (mcp/server.cpp).
         if (mcpMode_) {
             char b[64];
-            std::snprintf(b, sizeof b, "%04X", (unsigned)c->pc());
+            std::snprintf(b, sizeof b, "%04X", (unsigned)cpu->pc());
             out << "PC set to " << b
                 << "; not entering the run loop under MCP -- advance with the run tool.\n";
-            disasmNext_ = c->pc();
+            disasmNext_ = cpu->pc();
             showRegs(out);
             return true;
         }
@@ -4906,7 +4906,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         runMachine(out);
 
         flush(out);
-        disasmNext_ = c->pc();
+        disasmNext_ = cpu->pc();
         showRegs(out);
         return true;
     }
@@ -5038,8 +5038,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 }
                 when = CondWhen::After;
             }
-            CpuCore* c = needCpu(out);
-            if (!c) return true;
+            CpuCore* cpu = needCpu(out);
+            if (!cpu) return true;
 
             std::string src;
             for (size_t i = argi + 2; i < end; ++i) {
@@ -5056,10 +5056,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
             // A bare word is a register if the CPU reflects one by that name -- that
             // is what tells `A` the accumulator from `0A` the number.
-            std::vector<RegDef> regs = c->registers();
+            std::vector<RegDef> regs = cpu->registers();
             auto known = [&regs](const std::string& name) {
-                for (const RegDef& rd : regs)
-                    if (upper(rd.name) == upper(name)) return true;
+                for (const RegDef& reg : regs)
+                    if (upper(reg.name) == upper(name)) return true;
                 return false;
             };
             // ...and a bare word that is NOT a register may be a loaded symbol, folded to
@@ -5248,9 +5248,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // There is no wire on the backplane that resets the processor and nothing
         // else, and saying so is the difference between a tool and a lie.
         if (a.size() >= 2 && is(a[1], "CPU")) {
-            CpuCore* c = needCpu(out);
-            if (!c) return true;
-            c->reset(Reset::Bus);
+            CpuCore* cpu = needCpu(out);
+            if (!cpu) return true;
+            cpu->reset(Reset::Bus);
             out << "CPU reset: PC=0000, interrupts off. The other boards were NOT told.\n";
             return true;
         }

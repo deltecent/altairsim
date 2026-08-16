@@ -202,17 +202,17 @@ void test_cli() {
     // landed, STEP is built, and `S` means exactly what it always meant. Nobody's
     // fingers had to relearn anything, which was the entire point of paying for the
     // reservation up front.
-    const CommandDef* s = resolveCommand("S");
-    CHECK(s && std::string(s->name) == "STEP", "S is STEP -- as it was before STEP existed");
-    CHECK(s && s->built, "and now it is built");
+    const CommandDef* sCmd = resolveCommand("S");
+    CHECK(sCmd && std::string(sCmd->name) == "STEP", "S is STEP -- as it was before STEP existed");
+    CHECK(sCmd && sCmd->built, "and now it is built");
 
     // TRACE and HISTORY have now landed, and they meant what they always meant: `TR`
     // is TRACE, `H` is HISTORY, exactly as reserved.
     const CommandDef* tr = resolveCommand("TR");
     CHECK(tr && std::string(tr->name) == "TRACE", "TR is TRACE -- as it was reserved");
     CHECK(tr && tr->built, "and now it is built");
-    const CommandDef* h = resolveCommand("H");
-    CHECK(h && std::string(h->name) == "HISTORY" && h->built, "H is HISTORY, and built");
+    const CommandDef* hCmd = resolveCommand("H");
+    CHECK(hCmd && std::string(hCmd->name) == "HISTORY" && hCmd->built, "H is HISTORY, and built");
 
     // TYPE landed after TRACE, so `T` still means TRACE and TYPE pays `TY`. Adding a
     // command must not silently change what a shorter prefix already resolves to.
@@ -468,7 +468,7 @@ void test_cli() {
         mono.exec("REGION ADD mem0 type=ram at=0 size=1K", so);
         mono.exec("SET CONSOLE base=octal", so);
 
-        auto run = [&](const char* line) {
+        auto runOct = [&](const char* line) {
             std::ostringstream o;
             mono.exec(line, o);
             return o.str();
@@ -476,30 +476,30 @@ void test_cli() {
 
         // A bare number is now octal, so `100` is the 65th byte (0x40), and it reads
         // back as split octal. `377q` and `0o` still force octal; `0x` still forces hex.
-        run("DEPOSIT 100 0o76 377q");
-        std::string e = run("EX 100");
+        runOct("DEPOSIT 100 0o76 377q");
+        std::string e = runOct("EX 100");
         CHECK(e.compare(0, 9, "000 100  ") == 0, "the address 0x0040 reads as split octal 000 100");
         CHECK(e.compare(9, 3, "076") == 0, "and the byte 0x3E as octal 076");
 
         // A byte typed with an explicit hex marker still lands, in octal mode.
-        run("DEPOSIT 0x40 0xFF");
-        CHECK(run("EX 100").compare(9, 3, "377") == 0, "0xFF deposited via a hex marker reads back 377");
+        runOct("DEPOSIT 0x40 0xFF");
+        CHECK(runOct("EX 100").compare(9, 3, "377") == 0, "0xFF deposited via a hex marker reads back 377");
 
         // DUMP: the address column and every byte are octal; the ASCII column is not.
-        auto dl = run("D 100-100");
+        auto dl = runOct("D 100-100");
         CHECK(dl.compare(0, 7, "000 100") == 0, "DUMP's address column is split octal");
         CHECK(dl.find("377") != std::string::npos, "and its byte column is octal");
 
         // DISASM: opcode bytes AND the 16-bit operand render in the chosen base.
-        run("DEPOSIT 0 0xC3 0x34 0x12");  // JMP 1234
-        std::string d = run("DISASM 0 1");
+        runOct("DEPOSIT 0 0xC3 0x34 0x12");  // JMP 1234
+        std::string d = runOct("DISASM 0 1");
         CHECK(d.find("JMP 022 064") != std::string::npos,
               "a JMP target renders as split octal (0x1234 -> 022 064)");
 
         // base=hex comes straight back -- and a bare number is hex again, so 40 (not
         // 100) is the byte we filled, proving the DEFAULT parse base flipped too.
-        run("SET CONSOLE base=hex");
-        CHECK(run("EX 40").compare(0, 6, "0040  ") == 0, "base=hex restores four-hex-digit addresses");
+        runOct("SET CONSOLE base=hex");
+        CHECK(runOct("EX 40").compare(0, 6, "0040  ") == 0, "base=hex restores four-hex-digit addresses");
     }
 
     Machine m2;
@@ -540,11 +540,11 @@ void test_cli() {
     {
         std::ostringstream ss;
         mon2.exec("S 3", ss);
-        size_t lines = 0;
+        size_t nLines = 0;
         for (size_t p = ss.str().find("P="); p != std::string::npos;
              p = ss.str().find("P=", p + 1))
-            ++lines;
-        CHECK(lines == 3, "S 3 prints three instruction lines, one per step -- not four");
+            ++nLines;
+        CHECK(nLines == 3, "S 3 prints three instruction lines, one per step -- not four");
         CHECK(c->pc() == 0x0103, "and three NOPs later the PC has advanced by three");
     }
 
@@ -1061,16 +1061,16 @@ void test_cli() {
         std::error_code ec;
         std::filesystem::remove(tmp, ec);
 
-        Machine            m;
-        Monitor            mon(m);
-        std::ostringstream sink;
-        mon.exec("BOARDS ADD hdsk h0", sink);
+        Machine            mHd;
+        Monitor            monHd(mHd);
+        std::ostringstream sinkHd;
+        monHd.exec("BOARDS ADD hdsk h0", sinkHd);
 
         // hdsk has a fixed multi-megabyte geometry, so a 0-byte CREATE is refused -- and the
         // refusal names the MISTAKE (you cannot make a blank platter here), not the symptom
         // "0 bytes", which is just the size of the file CREATE made and we are deleting.
         std::ostringstream o;
-        mon.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o);
+        monHd.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o);
         CHECK(o.str().find("cannot make a blank platter") != std::string::npos,
               "hdsk refuses the zero-byte image CREATE made, naming the mistake not the size");
         CHECK(!std::filesystem::exists(tmp, ec),
@@ -1081,7 +1081,7 @@ void test_cli() {
         // survive -- we unlink our own litter, never theirs.
         { std::ofstream(tmp) << "not a disk"; }
         std::ostringstream o2;
-        mon.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o2);
+        monHd.exec("MOUNT h0:drive0 \"" + tmp.string() + "\" CREATE", o2);
         CHECK(std::filesystem::exists(tmp, ec),
               "a pre-existing file that fails to mount is the operator's -- NOT removed");
         std::filesystem::remove(tmp, ec);
@@ -1180,9 +1180,9 @@ void test_cli() {
         CHECK(d.str().find("drive0 drive1 drive2 drive3") != std::string::npos,
               "a card with four drives will not guess -- and it names all four");
 
-        std::ostringstream c;
-        mon5.exec("CONNECT SIO console", c);
-        CHECK(c.str().find("a b") != std::string::npos,
+        std::ostringstream cOut;
+        mon5.exec("CONNECT SIO console", cOut);
+        CHECK(cOut.str().find("a b") != std::string::npos,
               "...nor will a 2SIO, whose two ports are both serial");
 
         // The kind filter is what makes the inference safe: a 2SIO has units, and
@@ -2047,8 +2047,8 @@ void test_achieved_hz() {
         // it wants at load time, and the window does not open until the first frame.
         Display::setFocusPolicy(false);
         Machine mc;
-        std::string err;
-        CHECK(loadTomlText("[display]\nfocus = true\n", "test", mc, err),
+        std::string perr;
+        CHECK(loadTomlText("[display]\nfocus = true\n", "test", mc, perr),
               "a machine file can ask for it");
         CHECK(Display::focusPolicy(), "and it takes effect with no window in sight");
 
@@ -2081,8 +2081,8 @@ void test_achieved_hz() {
         // A machine file can ask for it at load time, long before the window opens.
         Display::setCrt(false);
         Machine mc;
-        std::string err;
-        CHECK(loadTomlText("[display]\ncrt = true\n", "test", mc, err),
+        std::string perr;
+        CHECK(loadTomlText("[display]\ncrt = true\n", "test", mc, perr),
               "a machine file can ask for it");
         CHECK(Display::crt(), "and it takes effect with no window in sight");
 
@@ -2096,8 +2096,8 @@ void test_achieved_hz() {
         // through the same Property layer as everything else. The window math is untestable
         // without a display (host/display_sdl.cpp), but the property round-trip is not.
         Machine     mv;
-        std::string err;
-        Board*      vdm = mv.add("vdm1", "vdm0", err);
+        std::string perr;
+        Board*      vdm = mv.add("vdm1", "vdm0", perr);
         CHECK(vdm != nullptr, "a VDM-1 goes in");
 
         Monitor            monV(mv);
@@ -2288,9 +2288,9 @@ void test_achieved_hz() {
         Machine mb;
         Monitor mon(mb);
 
-        std::ostringstream bare;
-        mon.exec("!", bare);
-        CHECK(bare.str().find("host shell") != std::string::npos,
+        std::ostringstream bareOut;
+        mon.exec("!", bareOut);
+        CHECK(bareOut.str().find("host shell") != std::string::npos,
               "a bare ! reminds you of the form");
 
         // Whitespace before the bang still counts -- it is the first non-blank
@@ -2367,8 +2367,8 @@ void test_achieved_hz() {
     SECTION("EDIT -- type a mnemonic and it assembles in place, dropping by its length");
     {
         Machine me;
-        std::string err;
-        me.add("8080", "cpu0", err);  // an ISA we assemble for -> EDIT accepts mnemonics
+        std::string perr;
+        me.add("8080", "cpu0", perr);  // an ISA we assemble for -> EDIT accepts mnemonics
         Monitor mon(me);
         std::ostringstream setup;
         mon.exec("BOARDS ADD memory mem0", setup);
@@ -2419,8 +2419,8 @@ void test_achieved_hz() {
         cmon.exec("BOARDS ADD acr acr0", csink);    // brings the REWIND/WIND/EXTRACT verbs
 
         auto has = [](const Completions& c, const std::string& want) {
-            for (const std::string& m : c.matches)
-                if (m == want) return true;
+            for (const std::string& mt : c.matches)
+                if (mt == want) return true;
             return false;
         };
 
