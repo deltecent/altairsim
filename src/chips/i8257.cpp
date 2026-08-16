@@ -31,7 +31,7 @@ uint8_t I8257::readPort(uint8_t off) {
     if (off == 8) {
         // Reading the Status register clears its terminal-count bits (real-chip behavior).
         const uint8_t s = status_;
-        status_ &= (uint8_t)~0x0Fu;
+        status_ &= (uint8_t)0xF0u;  // clear the low 4 (terminal-count) bits
         return s;
     }
     if (off >= 8) return 0xFF;
