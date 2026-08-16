@@ -1382,6 +1382,18 @@ if(EXPECT_EXECUTABLE)
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+  # The same #2022, booting a disk whose CBIOS is assembled DMACNTL=TRUE: post-boot sector
+  # reads move through the on-card Intel 8257, so the card masters the S-100 bus (DESIGN.md
+  # 4.5) instead of an IN/OUT byte loop. Reaching A> and reading a DIR is the whole-machine
+  # proof the DMA path works; the byte-level cycle-steal proof is in tests/test_tarbell.cpp.
+  add_test(NAME acceptance-tarbelldd-dma
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbelldd-dma.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-tarbelldd-dma PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
   # ---------------------------------------------------------------------------
   # THE iCOM FD3712/FD3812 boots CP/M off its C0/C1 command engine and boot PROM at F000.
   # Two runs of one script: the single-density FD3712 (256,256-byte SD master), and the

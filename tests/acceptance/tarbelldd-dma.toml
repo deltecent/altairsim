@@ -1,0 +1,22 @@
+# Tarbell double-density DMA-mode boot acceptance fixture: the #2022 controller with the
+# 48K CP/M 2.2 mixed-density (SSDD) master in drive 0, mounted READ-ONLY. Same machine as
+# tarbelldd.toml, but the disk's CBIOS is assembled DMACNTL=TRUE: post-boot sectors move
+# through the on-card Intel 8257 (the card masters the bus, DESIGN.md 4.5), not an IN/OUT
+# loop. The cold boot loader stays PIO -- RESET reads SD track 0 the proven way, then the
+# DMA CBIOS reads the DD tracks 1-76. tarbelldd-dma.exp shasums the image.
+
+[machine]
+name = "tarbelldd-dma-acceptance"
+base = "tarbelldd"
+
+[[board]]
+type = "tarbelldd"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/tarbell/TARBELLDD-CPM22-SSDD-48K-DMA.DSK"
+  writeprotect = true
+
+[console]
+bsdel = "bs"

@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+#
+# THE TARBELL #2022 IN DMA MODE. Same 32-byte boot PROM and same mixed-density master as
+# tarbelldd.exp -- the PROM and cold loader read the single-density track 0 by PIO -- but
+# THIS image's CBIOS is assembled DMACNTL=TRUE. Once CP/M is up, every sector read (the
+# DIR below, the warm boot after each command) is moved by the on-card Intel 8257: the
+# CBIOS programs the DMA channel, issues the FD1791 read, and the CARD steals the bus to
+# land the sector in RAM (DESIGN.md 4.5, the first shipping bus master). If the 8257 model
+# ever miscounts, mis-addresses, or fails to release the hold, the DD tracks never load and
+# this hangs mid-load -- so reaching A> AND reading a directory is the proof the DMA path
+# works end to end on booting software. The byte-level "cycles were really stolen" proof
+# lives in the unit tests (tests/test_tarbell.cpp); this is the whole-machine proof.
+#
+# It has to be an expect test for the same reason as tarbelldd.exp: DIR must be typed at
+# the prompt, which a pipe cannot do.
+#
+# THE DISK MUST NOT MOVE. Mounted write-protected; shasummed before and after.
+#
+# usage: expect -f tarbelldd-dma.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "examples/tarbell/TARBELLDD-CPM22-SSDD-48K-DMA.DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/tarbelldd-dma.toml
+
+# The PROM boots CP/M automatically off the mixed-density master (SD track 0, PIO).
+expect {
+    -ex "Tarbell" {}
+    eof     { puts "FAIL: the machine died before CP/M signed on"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted off the Tarbell DD PROM (no sign-on)"; exit 1 }
+}
+
+# ...and it reaches the A> prompt -- the DMA CBIOS read the DD tracks through the 8257.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M signed on but died before its prompt (the 8257 hung a DD read?)"; exit 1 }
+    timeout { puts "FAIL: CP/M signed on but never reached the A> prompt"; exit 1 }
+}
+
+# The directory is readable off the double-density tracks -- this DIR flows through the 8257.
+send "DIR\r"
+expect {
+    -ex "STAT" {}
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not list the disk (the DMA read never completed?)"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the Tarbell #2022 auto-booted CP/M 2.2, and its DMACNTL=TRUE CBIOS read the DD\
+      tracks through the on-card 8257 to A>, DIR read the disk, and the master is\
+      byte-identical."
+exit 0
