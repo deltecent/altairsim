@@ -99,6 +99,7 @@ const struct {
     {"lines", test_lines},
     {"modemline", test_modemline},
     {"wd17xx", test_wd17xx},
+    {"i8257", test_i8257},
     {"versafloppy", test_versafloppy},
     {"tarbell", test_tarbell},
     {"cromemco_fdc", test_cromemco_fdc},

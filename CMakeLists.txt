@@ -392,6 +392,7 @@ add_library(altair_core STATIC
   # next 8251 card to turn up gets it for free (src/chips/intel8251.h).
   src/chips/intel8251.cpp
   src/chips/wd17xx.cpp
+  src/chips/i8257.cpp
   src/boards/s100-memory.cpp
   src/boards/mits-88cpu.cpp
   # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
@@ -719,6 +720,7 @@ add_executable(altair_tests
   tests/test_lines.cpp
   tests/test_modemline.cpp
   tests/test_wd17xx.cpp
+  tests/test_i8257.cpp
   tests/test_versafloppy.cpp
   tests/test_tarbell.cpp
   tests/test_cromemco-fdc.cpp
