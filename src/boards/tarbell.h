@@ -31,6 +31,7 @@
 // typed 'C'.
 
 #include "boards/floppy-drive.h"
+#include "chips/i8257.h"
 #include "chips/wd17xx.h"
 #include "core/board.h"
 #include "host/disk.h"
@@ -149,14 +150,37 @@ protected:
 // (single-density track 0, double-density tracks 1-76). It also READS plain SD media
 // (256,256) and FORMATS a blank into a mixed image track-by-track, each track's density
 // taken from the OUT-FC density bit -- see describeGeometry.
+//
+// AND IT IS THE FIRST SHIPPING BUS MASTER (DESIGN.md 4.5). The card carries an Intel 8257
+// DMA controller (chips/i8257.h) wired to its FD1791, decoded onto a second port block
+// (default 0xE0). With DMA-mode CBIOS the guest programs the 8257 (address, length, R/W
+// mode), issues the WD1791 read/write, and the card STEALS BUS CYCLES to move the sector
+// -- pulling pHOLD and driving the transfer through the same BusMaster::step() the CPU
+// uses, so BREAK MEM and TRACE catch a DMA cycle like any other. The 8257 is a CHIP the
+// board owns (HAS-A, like the WD1791); the BOARD is the bus master.
 class TarbellDdBoard : public TarbellBoard {
 public:
     // The base constructor already ran buildChip() -- but virtual dispatch during base
     // construction reaches TarbellBoard::buildChip (a Wd1771), not ours. Rebuild here, now
     // that the object is fully a TarbellDdBoard, so the chip is the Wd1791 this card needs.
-    TarbellDdBoard() { buildChip(); }
+    TarbellDdBoard() { mover_.d = this; buildChip(); }
 
     std::string type() const override { return "tarbelldd"; }
+
+    // ---- the bus: the base F8 window PLUS the 8257's register block at dmaport_ ----
+    bool    decodes(const BusCycle& c) const override;
+    uint8_t read(const BusCycle& c) override;
+    void    write(const BusCycle& c) override;
+
+    // ---- pHOLD / the on-card 8257 as a bus master (HAS-A, DESIGN.md 4.5) ----
+    // The card pulls pHOLD when a channel is armed AND the FD1791 has a byte pending
+    // (HRQ = enable & DRQ on the real chip). busMaster() hands back the Mover the run
+    // loop drives once it grants pHLDA.
+    bool       requestsBus() const override;
+    BusMaster* busMaster()         override { return &mover_; }
+
+    std::vector<Property> properties() override;
+    std::vector<MapEntry> ioMap() const override;
 
     void serialize(StateWriter& w) const override;
     void deserialize(StateReader& r) override;
@@ -170,7 +194,25 @@ protected:
                              std::vector<FmtRange>& ranges, std::string& err) const override;
 
 private:
-    uint8_t extAddr_ = 0;   // the A16-A23 extended-address latch (a no-op store in our PIO model)
+    // Is a port in the 8257's 16-address register block? (A3..A0 off a /CS decode.)
+    bool    inDmaWindow(uint8_t p) const { return p >= dmaport_ && (uint8_t)(p - dmaport_) < 16; }
+
+    // ONE granted byte: two real bus cycles through the FD1791, mirroring the board's
+    // own PIO data path (readData/writeData then poll), plus one 8257 advance(). Burst:
+    // held under one pHLDA grant until the channel disables itself at terminal count.
+    StepResult transferOne(Bus& bus);
+
+    // HAS-A, NOT IS-A (board.h, test_dma.cpp): the board CONTAINS this and returns it
+    // from busMaster(); it does NOT inherit BusMaster, or Machine::master()'s
+    // dynamic_cast would mistake the disk controller for a CPU.
+    struct Mover : public BusMaster {
+        TarbellDdBoard* d = nullptr;
+        StepResult step(Bus& bus) override { return d->transferOne(bus); }
+    } mover_;
+
+    I8257  dma_;            // the on-card DMA controller, wired to chip_ (the FD1791)
+    uint8_t dmaport_ = 0xE0; // base of the 8257's register block (SD2DD straps it E0)
+    uint8_t extAddr_ = 0;   // the A16-A23 extended-address latch (beyond our 64K bus; stored only)
 };
 
 } // namespace altair

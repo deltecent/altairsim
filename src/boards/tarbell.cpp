@@ -197,6 +197,12 @@ void TarbellBoard::refresh() {
     if (!clock_) return;
     chip_->poll(*clock_);
     intChanged();
+    // pHOLD may have moved: the poll above raises DRQ when a wait-synced command has a
+    // byte pending and clears it at end-of-command, and a DD card's HRQ is (channel
+    // enabled AND DRQ). requestsBus() is false on the SD base (no 8257), so this is a
+    // cheap no-op there -- but it is the hook that pulls pHOLD the instant OUT DCOM
+    // arms the FD1791 with a channel already enabled, and drops it at terminal count.
+    holdChanged();
     clock_->cancel(wake_);
     wake_ = Clock::kNone;
     uint64_t e = chip_->nextEdge(*clock_);
@@ -600,6 +606,81 @@ void TarbellDdBoard::buildChip() {
     applySelection();
 }
 
+// ---------------------------------------------------------------------------
+// THE BUS, EXTENDED: the base F8 window PLUS the 8257's register block at dmaport_.
+//
+// The DD card carries a second decoded block -- the on-card 8257's sixteen A3..A0
+// addresses (default base 0xE0). Everything outside it is the base card's business:
+// the FD1791 registers at F8-FF and the boot PROM's memory reads. So the override
+// claims only the 8257 window and delegates the rest, exactly as the SD base already
+// answered them.
+// ---------------------------------------------------------------------------
+bool TarbellDdBoard::decodes(const BusCycle& c) const {
+    if (enabled_ && (c.type == Cycle::IoRead || c.type == Cycle::IoWrite) && inDmaWindow(c.port()))
+        return true;
+    return TarbellBoard::decodes(c);
+}
+
+uint8_t TarbellDdBoard::read(const BusCycle& c) {
+    if (c.type == Cycle::IoRead && inDmaWindow(c.port()))
+        return dma_.readPort((uint8_t)(c.port() - dmaport_));
+    return TarbellBoard::read(c);
+}
+
+void TarbellDdBoard::write(const BusCycle& c) {
+    if (c.type == Cycle::IoWrite && inDmaWindow(c.port())) {
+        dma_.writePort((uint8_t)(c.port() - dmaport_), c.data);
+        // OUT CMND may have armed a channel (0x41) or disabled one -- pHOLD tracks the
+        // enable half of HRQ, so announce it. The DRQ half moves in refresh(); between
+        // OUT CMND and OUT DCOM the FD1791 has no byte pending, so this arms nothing yet.
+        holdChanged();
+        return;
+    }
+    TarbellBoard::write(c);
+}
+
+// ---------------------------------------------------------------------------
+// pHOLD and the burst. HRQ on the real 8257 is the channel's enable bit ANDed with the
+// peripheral's DRQ; the card pulls pHOLD on exactly that. Between OUT CMND (channel
+// armed) and OUT DCOM (FD1791 command issued) the chip has no byte pending, so pHOLD
+// stays low and the CPU runs on; the instant the command raises DRQ (in refresh()),
+// pHOLD goes high and the next instruction boundary grants the burst.
+// ---------------------------------------------------------------------------
+bool TarbellDdBoard::requestsBus() const {
+    return dma_.channelEnabled() && chip_->drq();
+}
+
+// ONE granted byte, the analogue of test_dma.cpp's transferOne but with the FD1791 on
+// the device end. It mirrors the board's own PIO data path BYTE FOR BYTE -- readData()
+// then poll() for a disk read, writeData() then poll() for a disk write -- so a DMA
+// transfer moves exactly the bytes a programmed-I/O loop would, and the wait-synced
+// chip delivers/consumes one per call. The 8257 walks its address and counts the byte
+// down; at terminal count it disables its own channel (TC-STOP), requestsBus() goes
+// false, and serviceDma's while-loop ends the burst on the next check.
+StepResult TarbellDdBoard::transferOne(Bus& bus) {
+    // Belt and braces: pHOLD is only pulled once DRQ is up, but a stray grant with no
+    // byte pending must not fabricate one. Zero T-states makes serviceDma yield the bus.
+    if (!chip_->drq()) return {0, RunStatus::Ok};
+
+    Clock&   k    = clk();
+    uint16_t addr = dma_.curAddr();  // A16-A23 (extAddr_) live beyond our 64K bus; unused here
+    if (dma_.writeToMemory()) {
+        // Disk READ: the FD1791 hands up a byte, the 8257 stores it into memory.
+        bus.memWrite(addr, chip_->readData(k));
+    } else {
+        // Disk WRITE: the 8257 fetches a byte from memory, the FD1791 takes it.
+        chip_->writeData(bus.memRead(addr), k);
+    }
+    chip_->poll(k);   // advance the wait-synced chip to the next byte (or end-of-command)
+    dma_.advance();   // bump the address, count the byte down, latch/act on terminal count
+
+    // The enable half of pHOLD may have just dropped (TC-STOP disabled the channel) and
+    // the DRQ half with it (finish() cleared DRQ). Keep the cached wire honest so the run
+    // loop's holdPending() stops entering serviceDma once the burst is over.
+    holdChanged();
+    return {4, RunStatus::Ok};  // a concrete nonzero per-byte cost -- stolen T-states, charged
+}
+
 // OUT FC on the DD card is a PLAIN BITMAP LATCH (not the SD function decoder):
 //   bit3 = density (0 = SD, 1 = DD), bits4-5 = binary drive select, bit6 = side.
 // Density is fidelity-only here -- the read path takes geometry entirely from the
@@ -666,14 +747,49 @@ bool TarbellDdBoard::describeGeometry(uint64_t bytes, int& tracks, int& heads, b
     return false;
 }
 
+// The DD card adds one strap to the base card's set: `dmaport`, the base of the on-card
+// 8257's register block. Everything else (bootstrap, port, drives, interrupt) is the
+// base's, so chain to it and append.
+std::vector<Property> TarbellDdBoard::properties() {
+    std::vector<Property> p = TarbellBoard::properties();
+    Property x;
+    x.name  = "dmaport";
+    x.help  = "Base of the on-card 8257 DMA controller's 16-port register block (default E0). "
+              "The DMA-mode CBIOS programs ADR/WCT here; the SD2DD strap is E0";
+    x.kind  = Kind::Int;
+    x.radix = 16;  // ON THE WIRE -> HEX (DESIGN.md 10.0.1)
+    x.min   = 0;
+    x.max   = 0xF0;
+    x.get   = [this] { return Value::ofInt(dmaport_); };
+    x.set   = [this](const Value& v, std::string&) {
+        dmaport_ = (uint8_t)v.i();
+        decodeChanged();  // the 8257 window moved
+        return true;
+    };
+    p.push_back(std::move(x));
+    return p;
+}
+
+// The base rows (FD1791 at port_) plus the 8257's block at dmaport_.
+std::vector<MapEntry> TarbellDdBoard::ioMap() const {
+    std::vector<MapEntry> m = TarbellBoard::ioMap();
+    m.push_back({(uint32_t)dmaport_ + 0, (uint32_t)dmaport_ + 0, "DMA ch0 address", "Intel 8257"});
+    m.push_back({(uint32_t)dmaport_ + 1, (uint32_t)dmaport_ + 1, "DMA ch0 count",   "Intel 8257"});
+    m.push_back({(uint32_t)dmaport_ + 8, (uint32_t)dmaport_ + 8, "DMA mode/status", "Intel 8257"});
+    return m;
+}
+
 void TarbellDdBoard::serialize(StateWriter& w) const {
     TarbellBoard::serialize(w);
     w.u8(extAddr_);
+    dma_.serialize(w);
 }
 
 void TarbellDdBoard::deserialize(StateReader& r) {
     TarbellBoard::deserialize(r);
     extAddr_ = r.u8();
+    dma_.deserialize(r);
+    holdChanged();  // a snapshot taken mid-burst restores an armed channel; re-drive pHOLD
 }
 
 } // namespace altair
