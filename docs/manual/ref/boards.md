@@ -52,6 +52,7 @@ and within a group the boards are in **alphabetical order**.
 | [`2sio`](#2sio) | MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3 |
 | [`680io`](#680io) | Altair 680b onboard I/O: a 6850 ACIA console ('tty') at F000/F001 and the config-strap read port at F002. Memory-mapped |
 | [`pmmi`](#pmmi) | PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub |
+| [`propio`](#propio) | S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A usio subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/rdr_bit/tdre_bit/polarity) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out: |
 | [`sbc`](#sbc) | SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Intel 8251 console (unit 'tty', data 7C / status 7D, RxD->/DSR auto-baud for MSMONR21), Z80-CTC (78-7B) whose ch1 raises a mode-2 keyboard interrupt (vector 0x82) off the 8251 RxRDY, and a parallel port (7E/7F) whose OUT 7F bit 1 switches the onboard PROM out. Optional onboard boot PROM via [[board.socket]] (at+mount). variant=sbc100\|sbc200 |
 | [`sio`](#sio) | MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED status bits |
 | [`turnkey`](#turnkey) | MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]] |
@@ -515,6 +516,27 @@ PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0.
 | `baud` | int | — | — | Live line rate (read-only), 250000/(16*N) from the OUT BA+2 divisor **(read-only — not a key you may set)** |
 | `uart` | string | — | — | Live UART status (read-only). CAPITALS = asserted: TBMT DAV **(read-only — not a key you may set)** |
 | `lines` | string | — | — | Live modem lines (read-only). CAPITALS = asserted: SH RI DTR ST DT RING CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine) **(read-only — not a key you may set)** |
+
+
+### `propio`
+
+S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A usio subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/rdr_bit/tdre_bit/polarity) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:
+
+**Units:** `serial` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `profile` | enum | `custom` | `custom` \| `tuart` \| `imsai-sio2` \| `compupro-if2` \| `compupro-ss1` | Built-in card to preset the straps from: custom, or a named board. Selecting one sets status_port/data_port/bits/polarity (still overridable) |
+| `status_port` | int | `0x0` | `0x0` .. `0xFF` | Status(read)/control(write) port. Control writes are discarded |
+| `data_port` | int | `0x1` | `0x0` .. `0xFF` | Data port: receive(read)/transmit(write) |
+| `rdr_bit` | int | `1` | `0` .. `7` | Status bit (0-7) that signals receive data ready |
+| `tdre_bit` | int | `2` | `0` .. `7` | Status bit (0-7) that signals transmit data empty |
+| `rdr_active_low` | bool | `false` | `on` \| `off` | Invert the receive-data-ready bit (asserted reads 0) |
+| `tdre_active_low` | bool | `false` | `on` \| `off` | Invert the transmit-data-empty bit (asserted reads 0) |
+| `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
+| `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
 
 ### `sbc`

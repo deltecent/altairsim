@@ -493,6 +493,7 @@ add_library(altair_core STATIC
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/pmmi-mm103.cpp
   src/boards/usio.cpp
+  src/boards/propio.cpp   # Console IO Board: a usio subtype (Parallax-Propeller console)
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/frontpanel-link.cpp
@@ -739,6 +740,7 @@ add_executable(altair_tests
   tests/test_hdsk.cpp
   tests/test_icom.cpp
   tests/test_dualsd.cpp
+  tests/test_propio.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp

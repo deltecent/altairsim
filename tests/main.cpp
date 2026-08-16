@@ -96,6 +96,7 @@ const struct {
     {"sio2", test_sio2},
     {"tms5501", test_tms5501},
     {"usio", test_usio},
+    {"propio", test_propio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},
     {"lines", test_lines},

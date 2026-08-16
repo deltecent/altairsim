@@ -68,6 +68,7 @@ void test_dma();
 void test_sio2();
 void test_tms5501();
 void test_usio();
+void test_propio();
 void test_88sio();
 void test_sbc();
 void test_lines();

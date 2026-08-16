@@ -34,6 +34,7 @@
 #include "boards/sd-versafloppy.h"
 #include "boards/tarbell.h"
 #include "boards/usio.h"
+#include "boards/propio.h"
 #include "boards/mits-2sio.h"
 #include "boards/mits-88sio.h"
 
@@ -96,6 +97,7 @@ std::vector<BoardType> boardTypes() {
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
         {"usio", "Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
+        {"propio", "S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A usio subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/rdr_bit/tdre_bit/polarity) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
     };
 }
 
@@ -137,6 +139,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
     if (type == "usio") return std::make_unique<UsioBoard>();
+    if (type == "propio") return std::make_unique<PropIoBoard>();
     return nullptr;
 }
 
