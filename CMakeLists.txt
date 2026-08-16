@@ -425,6 +425,10 @@ add_library(altair_core STATIC
   # directly, not HardSectorFdc): it decodes A0h-A7h and serves 256-byte sectors from
   # a linear .DSK through a command/handshake protocol. See src/boards/mits-88hdsk.h.
   src/boards/mits-88hdsk.cpp
+  # The S100Computers Dual SD card -- another "controller does the work" card (Board directly):
+  # two programmed-I/O ports (80/81) shift whole 512-byte sectors to/from a raw MediaFile card
+  # (a DirectoryMedia directory card). No boot PROM. See src/boards/dualsd.h.
+  src/boards/dualsd.cpp
   # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
   # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
   # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
@@ -734,6 +738,7 @@ add_executable(altair_tests
   tests/test_mds.cpp
   tests/test_hdsk.cpp
   tests/test_icom.cpp
+  tests/test_dualsd.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp

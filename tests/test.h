@@ -82,6 +82,7 @@ void test_dcdd();
 void test_mds();
 void test_hdsk();
 void test_icom();
+void test_dualsd();
 void test_88acr();
 void test_88uio();
 void test_c700();

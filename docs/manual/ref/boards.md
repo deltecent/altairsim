@@ -37,6 +37,7 @@ and within a group the boards are in **alphabetical order**.
 | [`16fdc`](#16fdc) | Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 drives. Disk registers at 30-34, a TMS 5501 console UART at 00-09 (unit 'tty'), and a 4K RDOS 2.52 boot PROM at C000 (OUT 40H banks it out, RESET restores it). Boots CDOS |
 | [`64fdc`](#64fdc) | Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying an 8K RDOS 3.12 boot PROM at C000-DFFF (OUT 40H banks it out, RESET restores it). Boots CDOS |
 | [`dcdd`](#dcdd) | MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. INVERTED status bits |
+| [`dualsd`](#dualsd) | S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byte-sector CF/SD cards, for CP/M 3. Two ports at BASE+0..1 (default 80): status/command + data. Programmed-I/O command/handshake engine (33H-lead + 8 commands). No boot PROM -- the CPU board's monitor loads CP/M from track 0. Mount a directory card or a raw image |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers |
 | [`icom`](#icom) | iCOM FD3712/FD3812 8" floppy: a programmed-I/O command/handshake controller on the S-100 Interface board. Two ports at BASE+0..1 (default C0) plus a boot PROM and 6810 scratch RAM in high memory (rom=builtin:icom-fd3712-cpm \| icom-fd3712-fdos \| icom-fd3812-cpm). Boots CP/M 2.2 (single and double density) and FDOS. Up to 4 drives |
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s |
@@ -265,6 +266,27 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 | `port` | int | `0x8` | `0x0` .. `0xFD` | Base address. The board decodes three ports: BASE+0 .. BASE+2 |
 | `drives` | int | `4` | `1` .. `16` | Drives on the daisy chain |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
+
+
+### `dualsd`
+
+S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byte-sector CF/SD cards, for CP/M 3. Two ports at BASE+0..1 (default 80): status/command + data. Programmed-I/O command/handshake engine (33H-lead + 8 commands). No boot PROM -- the CPU board's monitor loads CP/M from track 0. Mount a directory card or a raw image
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `1` | Which SD socket (0 = drive A:, 1 = drive B:) |
+| `mount` | string | text | The card (a directory card, or an image) to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the card *(also `writeprotect`)* |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x80` | `0x0` .. `0xFE` | Base address. The board decodes two ports: BASE (status/command) and BASE+1 (data) |
 
 
 ### `hdsk`
