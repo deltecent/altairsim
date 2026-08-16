@@ -96,7 +96,7 @@ void test_cardimg() {
         // The image holds one written sector (0xAA x 512); the card is declared much larger,
         // so the rest is erased -- the truncated-boot-image case.
         fs::path img = buildCard("short", "sector_size 512\nsectors 100\n", 0);
-        { std::ofstream f(img, std::ios::binary); for (int i = 0; i < 512; ++i) f.put((char)0xAA); }
+        { std::ofstream f(img, std::ios::binary); for (int i = 0; i < 512; ++i) f.put('\xAA'); }
 
         std::string err;
         auto        m = openCardImage(img.string(), false, err);
