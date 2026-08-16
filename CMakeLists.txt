@@ -355,6 +355,10 @@ add_library(altair_core STATIC
   # observe-only and 8-bit clean, so it is exempt from the "one FilterStream" rule.
   src/host/tee_stream.cpp
   src/host/media.cpp
+  # A host DIRECTORY as one CF/microSD card: a `card.geometry` descriptor maps LBA runs
+  # to per-volume backing files, streamed lazily (seek per block, never slurped like a
+  # HostFile). openHostMedia() is the resolver both mains install (src/host/dirmedia.h).
+  src/host/dirmedia.cpp
   src/host/disk.cpp
   # ImageDisk (.IMD) -> raw sibling .DSK, at the MOUNT layer. Pure (bytes in, bytes out),
   # so DiskImage stays raw-only and the container never reaches it (src/host/imd.h).
@@ -667,6 +671,7 @@ add_executable(altair_tests
   tests/test_srec.cpp
   tests/test_symbols.cpp
   tests/test_media.cpp
+  tests/test_dirmedia.cpp
   tests/test_imd.cpp
   tests/test_tapecodec.cpp
   tests/test_roms.cpp
