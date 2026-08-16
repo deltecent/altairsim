@@ -38,15 +38,16 @@ struct TapeCounterLine {
         Abandon,    // drop our line WITHOUT wiping -- the guest is printing there now
     };
 
-    bool        shown   = false;
+    bool        shown           = false;
     std::string label;
-    bool        retired = false;
+    bool        retired         = false;
+    bool        paintedThisLoad = false;
 
     Act update(const std::string& activity, bool consoleQuiet) {
         const bool loadLive = !activity.empty();
 
         // No load in progress re-arms the latch: the next load gets a fresh counter.
-        if (!loadLive) retired = false;
+        if (!loadLive) { retired = false; paintedThisLoad = false; }
 
         Act act = Act::None;
         if (loadLive && consoleQuiet && !retired) {
@@ -54,9 +55,10 @@ struct TapeCounterLine {
             // Only actually write when the text changed (the sampler fires several times
             // a second; a new second lands about once a second).
             if (label != activity || !shown) {
-                label = activity;
-                shown = true;
-                act   = Act::Paint;
+                label           = activity;
+                shown           = true;
+                paintedThisLoad = true;
+                act             = Act::Paint;
             }
         } else if (shown && consoleQuiet) {
             // Our line is up and the console is quiet, but we are no longer painting --
@@ -72,10 +74,14 @@ struct TapeCounterLine {
             act   = Act::Abandon;
         }
 
-        // Once the guest speaks mid-load, that load's counter never comes back. Set
-        // this AFTER the decision above so the window in which it first speaks still
-        // yields the line via Abandon rather than being suppressed silently.
-        if (loadLive && !consoleQuiet) retired = true;
+        // Once the guest speaks mid-load, that load's counter never comes back -- but
+        // only if it actually painted this load. A load that BEGINS while the guest is
+        // still talking (its command echo lands in the same window the read goes live,
+        // e.g. typing EDT/AM2 at a monitor prompt -- issue #270) has shown nothing yet,
+        // so it must not be pre-emptively retired; it paints as soon as the console
+        // quiets. Set AFTER the decision above so the window in which an already-shown
+        // counter first speaks still yields the line via Abandon.
+        if (loadLive && !consoleQuiet && paintedThisLoad) retired = true;
 
         return act;
     }

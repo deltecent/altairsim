@@ -94,6 +94,27 @@ void test_tapecounter() {
         CHECK(!c.shown, "the line is never reclaimed for this load");
     }
 
+    SECTION("tape counter -- issue #270: a load that BEGINS on a busy console still paints");
+    {
+        TapeCounterLine c;
+        // The overlay case: EDT/AM2 are started by TYPING at the monitor's `?` prompt, so
+        // the command echo lands in the very window the tape read goes live. The console is
+        // busy the instant the load begins -- but the counter has shown NOTHING yet, so it
+        // must not pre-emptively retire the way an already-painted counter does over a prompt.
+        const std::string live = "tape: 00:01 / 01:04 (1%)";
+        CHECK(c.update(live, false) == Act::None, "load begins while the echo is still on the line: nothing yet");
+        CHECK(!c.retired, "but the never-painted counter is NOT retired");
+
+        // The echo clears and the load reads on: the counter paints as soon as it can.
+        CHECK(c.update(live, true) == Act::Paint, "console quiets mid-load: the counter finally paints");
+        CHECK(c.shown, "the line is up for the overlay load");
+        CHECK(c.update("tape: 00:02 / 01:04 (3%)", true) == Act::Paint, "and it steps as the tape reads");
+
+        // And the #165 guard still holds: once it HAS painted, a talking guest retires it.
+        CHECK(c.update("tape: 00:02 / 01:04 (3%)", false) == Act::Abandon, "the loaded program speaks: abandon");
+        CHECK(c.update("tape: 00:02 / 01:04 (3%)", true) == Act::None, "quiet again: stays retired, no resurrection");
+    }
+
     SECTION("tape counter -- a genuinely new load re-arms the counter");
     {
         TapeCounterLine c;
