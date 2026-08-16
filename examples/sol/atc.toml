@@ -41,3 +41,10 @@ startup = [
 [[board]]
 id       = "cpu0"
 clock_hz = 2045000
+
+# THE PERIOD LOOK. A Sol-20's VDM-1 drove a small CRT: a short, wide raster stretched to a
+# 4:3 tube, with a scan line between the rows -- not the crisp square pixels of a modern
+# panel. `crt = true` paints it that way, which suits this game. `SET DISPLAY crt=off` in the
+# monitor gives the sharp look back at any time (or delete this table to default to it).
+[display]
+crt = true

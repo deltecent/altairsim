@@ -289,6 +289,7 @@ static const std::vector<CommandDef> kCommands = {
      "  SET acr0:tape mode=record   the tape in the recorder, not the recorder\n"
      "  SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)\n"
      "  SET DISPLAY focus=on     the video window takes the keyboard, not the terminal\n"
+     "  SET DISPLAY crt=on       paint the window like the period tube: scan lines and 4:3\n"
      "  SET REG A=3F             a register in the CPU that is in the socket\n"
      "  SET BUS UNCLAIMED=WARN   warn on a cycle no board answered\n"
      "                           (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)"},
@@ -305,7 +306,7 @@ static const std::vector<CommandDef> kCommands = {
      "  SHOW MOUNTS      every disk, tape and ROM in the machine, and what is in it\n"
      "  SHOW PATHS       what a path resolves against -- and there is more than one answer\n"
      "  SHOW CONSOLE     which unit holds the keyboard, and its transforms\n"
-     "  SHOW DISPLAY     the host video window, and whether it takes the keyboard\n"
+     "  SHOW DISPLAY     the host video window: keyboard focus, and the CRT look\n"
      "  SHOW TERMINAL    the built-in terminal's transforms (strip7out, cr, bsdel, ...)\n"
      "  SHOW JOYSTICKS   the host game controllers a D+7A can read (SDL builds)\n"
      "  SHOW SYMBOLS     the loaded symbols (SHOW SYMBOLS SIO* filters); load them with SYMBOLS\n"

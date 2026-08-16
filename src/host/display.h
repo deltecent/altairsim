@@ -381,6 +381,22 @@ public:
     static bool keyboardToConsole() { return keyboardToConsole_; }
     static void setKeyboardToConsole(bool on) { keyboardToConsole_ = on; }
 
+    // ---- CRT PRESENTATION: paint the window like the original monitor, or crisp? ----
+    //
+    // Off (default) -- today's look: the board's pixels drawn as crisp squares at a whole-number
+    // scale, nearest-neighbor. On -- a period tube: the short, wide raster (VDM-1 512x208, a
+    // VDB 640x240) stretched VERTICALLY to a ~4:3 tube face with non-square pixels, and a
+    // scan-line gap between raster rows. The two go together -- the gaps are what make the
+    // stretch read as a raster instead of a blur -- so one knob turns on both.
+    //
+    // Purely how the host PAINTS an existing frame: no board sees it, and the board still hands
+    // down its native-resolution surface. All of it lives in the SDL back end (display_sdl.cpp).
+    // Static and session-wide for the same reasons focusPolicy_ is: one operator, one window,
+    // and it must answer before any window exists (a machine file sets it in [display]). Read
+    // live at each present(), so SET DISPLAY crt=on/off re-fits an already-open window.
+    static bool crt() { return crt_; }
+    static void setCrt(bool on) { crt_ = on; }
+
     // Declared through the same Property layer as a board's or the console's, so
     // `SET DISPLAY focus=on`, `SHOW DISPLAY`, `[display]` in a machine file and
     // CONFIG SAVE all pick it up with no code anywhere else. Static for the same
@@ -440,10 +456,13 @@ private:
 
     // Whether the video window's keys go to the console; see keyboardToConsole().
     static inline bool keyboardToConsole_ = true;
+
+    // The session's CRT-look preference; see crt(). Off is today's crisp integer scaling.
+    static inline bool crt_ = false;
 };
 
-// The `display` settings object -- two properties today (`focus` and `keyboard`), the same
-// shape as the console's so another one costs nothing.
+// The `display` settings object -- three properties today (`focus`, `keyboard` and `crt`), the
+// same shape as the console's so another one costs nothing.
 inline std::vector<Property> Display::properties() {
     std::vector<Property> p;
     {
@@ -470,6 +489,20 @@ inline std::vector<Property> Display::properties() {
         x.get     = [] { return Value::ofStr(keyboardToConsole_ ? "console" : "none"); };
         x.set     = [](const Value& v, std::string&) {
             keyboardToConsole_ = (v.s() == "console");
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "crt";
+        x.help = "Paint the video window like the original monitor: the raster stretched to a "
+                 "~4:3 tube face with scan lines between the rows. Off (default) is today's "
+                 "crisp integer scaling. Takes effect live on an open window";
+        x.kind = Kind::Bool;
+        x.get  = [] { return Value::ofBool(crt_); };
+        x.set  = [](const Value& v, std::string&) {
+            crt_ = v.b();
             return true;
         };
         p.push_back(std::move(x));

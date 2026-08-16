@@ -71,6 +71,16 @@ private:
     // picture is clipped to the top-left (see ensureWindow / the header note on picW_).
     void applyPresentation(int w, int h);
 
+    // Re-fit (and resize) the window when the crt look has flipped since the last fit; returns
+    // true if it did, so pollEvents() knows to repaint. See the definitions for why the crt
+    // toggle resizes the window where a resolution change does not.
+    bool refitForCrt();
+
+    // Paint the current texture into the window -- bezel inset, the crt stretch, the scan lines.
+    // Split out of present() so refitForCrt() can repaint the LAST frame with no new one in hand
+    // (the board only calls present() when the guest's framebuffer changed).
+    void drawLastFrame();
+
     SDL_Window*   window_   = nullptr;
     SDL_Renderer* renderer_ = nullptr;
     SDL_Texture*  texture_  = nullptr;
@@ -95,6 +105,12 @@ private:
     // square modes it is always 1:1, and re-asserting an unchanged ratio would nudge a
     // window the operator has sized. 0 until the first applyPresentation().
     float aspect_ = 0.0f;
+
+    // Which look the current logical fit was built for -- Display::crt() at the last
+    // applyPresentation(). The crt property is a session-wide static with no handle on this
+    // window, so present() compares it against this and re-fits when the operator flips
+    // SET DISPLAY crt=on/off mid-session. See applyPresentation()/present().
+    bool crtFit_ = false;
 
     std::unique_ptr<Surface> surface_;   // the board draws here (indexed)
     std::vector<Color>       palette_;   // index -> Color, set by the board
