@@ -1,0 +1,76 @@
+# S100Computers "Dual SD" machine -- a V2 Z80 CPU board booting CP/M 3 off a microSD card.
+#
+#     altairsim dualsd
+#     MOUNT sd0:drive0 examples/dualsd/cardA/     # SD card 1 = A: (the boot card)
+#     MOUNT sd0:drive1 examples/dualsd/cardB/     # SD card 2 = B:
+#     RUN F000                                    # the MASTER monitor's `.` prompt
+#     I                                           # "boot CP/M 3 from the Dual SD board"
+#     -> CP/M 3
+#        A>
+#
+# MOUNT A CARD IN BOTH SOCKETS. The CP/M 3 BIOS cold-boot checks the STATUS-port card-detect
+# lines for BOTH sockets (bit1 = SD card 1 / drive C:, bit2 = SD card 2 / drive D:) and refuses
+# to come up unless it sees a card in each -- see reference/dual-sd-card.md section 5.1. A single
+# card boots CPMLDR but then stops at "NO CCP.COM FILE".
+#
+# THE MONITOR IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0). The V2 Z80 CPU
+# board carries the MASTER V6.6 monitor in its onboard paged EEPROM at F000-FFFF (the `v2z80`
+# board); `startup = ["RUN F000"]` cold-starts it exactly the way `amon` starts its F000
+# monitor. At the monitor's `.` prompt, the `I` command (MASTER V6.52+) reads the CP/M 3 cold
+# loader (12 sectors from LBA 1 of Dual SD drive 1) into 100H and jumps to it -- the standard
+# CP/M 3 five-stage cold boot. See reference/dual-sd-card.md and reference/v2-z80-cpu-board.md.
+#
+# WITH NO CARD MOUNTED the `I` command's read reports an error and returns to the monitor.
+# Put a card in each socket (`MOUNT sd0:drive0 <dir>/` and `MOUNT sd0:drive1 <dir>/`), try again.
+
+[machine]
+name    = "dualsd"
+startup = ["RUN F000"]
+
+# THE CPU. The V2 Z80 CPU board's processor -- a Z80. clock_hz = 0 runs it flat out (the
+# crystal is on the card); the console below is polled, so nothing depends on the rate.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+# THE MONITOR EEPROM. The V2 Z80 CPU board's onboard 8K paged EEPROM at F000-FFFF, holding the
+# MASTER V6.6 monitor (low page master0 / high page master1, switched by OUT D3H bit 1; the SD
+# boot loader lives in the high page). It phantom-shadows the RAM below while enabled, and
+# vacates the window once CP/M inactivates it (OUT D3H bit 0).
+[[board]]
+type = "v2z80"
+id   = "rom0"
+
+# THE CONSOLE. The S100Computers Console I/O board (a Parallax-Propeller console): status at
+# 00H, data at 01H, RX-ready = status bit 1 / TX-ready = status bit 2 (both active high). The
+# MASTER monitor and CP/M 3's CHARIO talk to it here.
+[[board]]
+type    = "propio"
+id      = "con0"
+connect = "console"
+
+# THE DUAL SD BOARD at the standard 80/81 port block. Two microSD sockets, none mounted --
+# put a directory card (or a raw image) in drive 0 (`MOUNT sd0:drive0 <dir>/`) to boot.
+[[board]]
+type = "dualsd"
+id   = "sd0"
+port = 80
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# 64K OF RAM. The whole address space is RAM; the monitor EEPROM above phantom-shadows its
+# window (F000-FFFF) for reads while enabled, and writes fall through to this RAM underneath --
+# so CP/M 3 gets a flat 64K once it inactivates the EEPROM.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                    # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                     # 0000-FFFF

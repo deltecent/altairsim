@@ -179,8 +179,13 @@ void test_dualsd() {
         delete b;
     }
 
-    SECTION("dualsd: the DI7 read handshake asserts through the data + STATUS, then clears");
+    SECTION("dualsd: DI7 is a per-byte SENDACT handshake -- it drops after each read, re-asserts");
     {
+        // The firmware's SendData() presents ONE byte, then blocks until the CPU reads it
+        // (`while SENDACT==HIGH`); the hardware clears SENDACT the instant the DATA port is read
+        // and only re-raises it for the next byte. So DI7 pulses low between every byte -- which
+        // CP/M 3's CPMLDR relies on (it reads a byte, then spins on DI7 GOING LOW before the
+        // next). This asserts that per-byte pulse, not a "data remains" level.
         installCards(16);
         Clock clk;
         DualSdBoard* b = makeBoard(clk, "cardA");
@@ -189,12 +194,22 @@ void test_dualsd() {
         writeSector(*b, pattern(0x22));
 
         setLba(*b, 2);
-        command(*b, cREAD);
-        CHECK((statusOf(*b) & 0x80) != 0, "DI7 set right after READ -- a byte is waiting");
-        for (int i = 0; i < 512; ++i) (void)in(*b, DATA);          // drain the 512 data bytes
-        CHECK((statusOf(*b) & 0x80) != 0, "DI7 still set -- the trailing STATUS byte is waiting");
-        CHECK(in(*b, DATA) == STAT_OK, "the trailing byte is STATUS OK");
-        CHECK((statusOf(*b) & 0x80) == 0, "DI7 clears once data + STATUS are drained");
+        command(*b, cREAD);                                    // queues 512 data + 1 STATUS
+        CHECK((statusOf(*b) & 0x80) != 0, "DI7 set right after READ -- the first byte is waiting");
+
+        (void)in(*b, DATA);                                    // read the first data byte
+        CHECK((statusOf(*b) & 0x80) == 0, "DI7 drops for one poll right after a read (SENDACT gap)");
+        CHECK((statusOf(*b) & 0x80) != 0, "DI7 re-asserts -- the next byte is presented");
+
+        // Drain the remaining 511 data bytes; each read opens the one-poll gap, then DI7 returns.
+        for (int i = 0; i < 511; ++i) {
+            (void)in(*b, DATA);
+            CHECK((statusOf(*b) & 0x80) == 0, "DI7 low in the gap poll after each read");
+            CHECK((statusOf(*b) & 0x80) != 0, "DI7 high again for the following byte/STATUS");
+        }
+        CHECK(in(*b, DATA) == STAT_OK, "the last byte waiting is the trailing STATUS OK");
+        CHECK((statusOf(*b) & 0x80) == 0, "after the last read DI7 is in its gap...");
+        CHECK((statusOf(*b) & 0x80) == 0, "...and stays low -- data + STATUS fully drained");
         CHECK(in(*b, DATA) == 0xFF, "a DATA read past the reply floats 0xFF");
 
         delete b;
@@ -287,7 +302,10 @@ void test_dualsd() {
         setLba(*b, 7);
         command(*b, cRESET);   // RESET reboots the ESP32 and returns no STATUS
 
-        CHECK(statusOf(*b) == 0, "after RESET the status is idle (no data-ready)");
+        // After RESET no byte is in flight (DI7 clear), but the STATUS port still reports the
+        // sockets' card-detect lines -- drive 0 has a card (bit1), drive 1 is empty (bit2 clear).
+        CHECK((statusOf(*b) & 0x80) == 0, "after RESET no byte is presented (DI7 clear)");
+        CHECK((statusOf(*b) & 0x06) == 0x02, "and STATUS still shows card 1 present, card 2 absent");
         CHECK(in(*b, DATA) == 0xFF, "after RESET a DATA read floats -- no reply in flight");
 
         // RESET returned the current sector to LBA 0: a bare READ now reads sector 0 (zeros here).
@@ -297,6 +315,28 @@ void test_dualsd() {
         CHECK(st == STAT_OK, "and that read succeeds");
 
         delete b;
+    }
+
+    SECTION("dualsd: STATUS reports the sockets' card-detect bits (the CP/M 3 presence gate)");
+    {
+        // The shipping non-banked CP/M 3 BIOS reads STATUS bit1 for SD card 1 (C:) and bit2 for
+        // SD card 2 (D:) to decide a drive is present, and treats an all-ones read (0xFF) as
+        // "no board at all" (reverse-engineered from BIOS3 -- reference/dual-sd-card.md 5.1). A
+        // present board with no cards must therefore read 0x00, never 0xFF.
+        installCards(16);
+        Clock clk;
+
+        DualSdBoard* none = makeBoard(clk, nullptr);
+        CHECK(statusOf(*none) == 0x00, "present board, no cards -> 0x00 (NOT 0xFF)");
+        delete none;
+
+        DualSdBoard* one = makeBoard(clk, "cardA");
+        CHECK((statusOf(*one) & 0x06) == 0x02, "card in socket 1 only -> bit1 set, bit2 clear");
+        delete one;
+
+        DualSdBoard* both = makeBoard(clk, "cardA", "cardB");
+        CHECK((statusOf(*both) & 0x06) == 0x06, "cards in both sockets -> bit1 and bit2 set");
+        delete both;
     }
 
     SECTION("dualsd: a write-protected card fails the write with STATUS ERR and says so");

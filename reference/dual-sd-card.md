@@ -43,9 +43,16 @@ on it.)
 3. **RESOLVED (MASTER V6.6).** The `I` command (`SDBOOTCPM` → `SDCPM`, added V6.52) boots CP/M 3
    directly from the Dual SD board — no CF/IDE board required. The v4.53 "SD boot not wired"
    note is obsolete. See §5.
-4. **`.imgc` container form.** The store page calls them "sector image" files written with the
-   HHD Raw Copy Tool, which strongly implies a plain raw byte-for-byte sector dump; a
-   compressed/container form is not ruled out on the page (§7).
+4. **RESOLVED (`.imgc` is a container).** The store's `.imgc` files are **not** raw sector dumps
+   — they are HDD Raw Copy Tool containers (plaintext header + LZO-compressed, zero-padded
+   blocks). Decode to raw with `unimgc` (github.com/shizmob/unimgc) before mounting; never mount
+   the `.imgc` directly (§7).
+5. **RESOLVED (BIOS binary, §5.1).** The CP/M 3 cold-boot **presence check** — the reason a
+   naïve STATUS=0x00 board boots CPMLDR yet dies at `NO CCP.COM FILE` — was reverse-engineered
+   from the shipping `CPM3.SYS` BIOS3 (no source is published). STATUS **bit 1 / bit 2** are the
+   two sockets' card-detect lines; both must read high (a card in each socket) for the cold boot
+   to proceed, and STATUS must never be 0xFF while the board is present. With that modeled, the
+   `Image-18` SD `CPM3.SYS` boots to the `A>` prompt.
 
 ---
 
@@ -68,7 +75,7 @@ Two ports, DIP-selectable to any 8- or 16-bit address. Defaults:
 
 | Port | Default | Read | Write |
 |------|---------|------|-------|
-| STATUS | **80H** | status byte (bit 7 = data ready, bit 0 = write-buffer busy) | flush pending read data |
+| STATUS | **80H** | status byte (bit 7 = data ready, bits 2/1 = card-detect D:/C:, bit 0 = write-buffer busy; 0xFF = no board) | flush pending read data |
 | DATA   | **81H** | next byte the ESP32 is returning | next byte into the ESP32 (lead, command, or argument) |
 
 **The port model (pinned from the firmware and both Z80 drivers).** There is **one host→board
@@ -129,6 +136,14 @@ mirrored by the drivers' `GET_DATA`/`SEND_DATA`):
 - **Status bit 0 high = the last written byte has not been consumed yet.** The host waits for it
   to fall before the next write. (In emulation the engine consumes each written byte at once, so
   bit 0 reads back 0.)
+- **Status bits 1 and 2 = the two sockets' CARD-DETECT lines.** **bit 1 (0x02) = SD card 1
+  (drive C:) inserted; bit 2 (0x04) = SD card 2 (drive D:) inserted.** These are static presence
+  signals, readable at any time, that the CP/M 3 BIOS keys its cold-boot presence check off (§5).
+  A board that is installed but has *no* card in a socket reads that socket's bit **low** (0); an
+  all-ones read (**0xFF**) means the slot is empty — no board driving the bus at all. The board
+  model ORs bit 1 / bit 2 into the STATUS byte whenever drive 0 / drive 1 has media mounted, and
+  never returns 0xFF while it is present. (The data-transfer masks — bit 7 for DI7, bit 0 for
+  write-busy — are unaffected, so these bits are safe to leave asserted during a transfer.)
 
 **Addressing (firmware `getTrkSec`).** `SET_TRK_SEC` reads the **track byte first, then the
 sector byte**, and forms the current sector as:
@@ -172,6 +187,45 @@ adds the **`I` command** — "boot CPM3 from Dual SD card Board. No IDE/CF board
 
 `WR_BOOT.COM` writes the loader to track 0 on a real card; a *bootable* volume therefore cannot
 be blank-created — only data volumes can.
+
+### 5.1 The CP/M 3 BIOS cold-boot presence check (reverse-engineered)
+
+**There is no published source for the Dual SD CP/M 3 BIOS** (the s100computers "HDISK BIOS"
+page ships only the IDE/CF variant; the SD build — banner `64K CP/M VERSION (Non banked) (John
+Monahan 1/24/2026)`, `A: & B: = SD cards (61 Sec/Track)` — exists only as `CPM3.SYS` on the
+ready-made SD images). The following was **disassembled from that shipping BIOS3 binary in the
+emulator** (loads at BA00; use `SAVE bios3.prn BA00-C600` after the `I` command reaches its
+error, then read the SD routines around BC55 and C284). It is recorded here so nobody has to
+re-derive it.
+
+After the monitor's `I` command loads and jumps to CPMLDR → `CPM3.SYS`, the BIOS cold-boot code
+runs a **STATUS-only presence gate** on each socket — it makes the decision from the STATUS port
+(80H) alone, with **no** disk read and (initially) no `INIT`/`SELECT`:
+
+```
+BC55  IN A,(80)        ; read STATUS
+BC57  CP  FF           ; 0xFF  → "No Dual SD Card Board Detected" (empty slot / floating bus)
+BC59  JP  Z,noBoard
+BC5C  LD  C,88         ; send RESET (88H) to the ESP32
+BC5E  CALL sendCmd
+BC61  IN  A,(80)       ; read STATUS after reset
+BC63  AND 02           ; bit1 = SD card 1 (C:) present?  clear → "SD Drive 1 … is not Present"
+BC6E  IN  A,(80)
+BC70  AND 04           ; bit2 = SD card 2 (D:) present?  clear → "SD Drive 2 … is not Present"
+BC72  RET NZ           ; present → proceed
+```
+
+The disk-access path repeats the same test (`C284: IN A,(80) / CP FF … C28D: BIT 2,A`). So a
+Dual SD board that answers STATUS = 0x00 (as a naïve model does) is read as **both cards
+absent** → `CP/M Error On A: Disk I/O` → `BIOS ERR ON A: NO CCP.COM FILE`. The board model must
+therefore assert the card-detect bits of §3 (bit 1 for a card in socket 1, bit 2 for socket 2);
+with both asserted the same `CPM3.SYS` boots straight through to the `A>` prompt. The `CP FF`
+guard is why an installed-but-empty board must read 0x00, never 0xFF.
+
+> **Drive lettering caveat.** These SD images are multi-build cards authored under AltairZ80;
+> the SD-only `CPM3.SYS` still prints its presence messages as `(CPM C:)` / `(CPM D:)` even
+> though its banner claims `A: & B:`. The presence *mechanism* above is invariant; the CP/M
+> drive-letter mapping on a given image is not, and is a property of that image, not the board.
 
 ## 6. Notes for the emulation
 

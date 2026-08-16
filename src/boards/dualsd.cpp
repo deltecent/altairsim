@@ -169,18 +169,39 @@ void DualSdBoard::completeCollect() {
 // draining the FIFO drops DI7. A read past the end floats 0xFF (the driver never reads when
 // DI7 is low).
 uint8_t DualSdBoard::inData() {
-    if (outPtr_ < outLen_) return out_[outPtr_++];
-    return 0xFF;
+    if (outPtr_ < outLen_) {
+        readGap_ = true;   // SENDACT drops the instant the CPU reads the byte (see readGap_)
+        return out_[outPtr_++];
+    }
+    return 0xFF;   // a read past the end floats 0xFF (the driver never reads when DI7 is low)
 }
 
-// The STATUS byte. DI7 (bit7) is high while a byte is waiting to be read; bit0 (write-buffer
-// busy) stays 0 -- the engine takes each written byte at once, so a guest's "wait until bit0
-// low" before a write falls straight through.
-uint8_t DualSdBoard::statusByte() const {
-    return (outPtr_ < outLen_) ? 0x80 : 0x00;
+// The STATUS byte. DI7 (bit7) says a byte is presented on the DATA port RIGHT NOW; the ESP32
+// drives it per byte, so it drops for one poll after each read (readGap_) before the next byte
+// raises it again. bit0 (write-buffer busy) stays 0 -- the engine takes each written byte at
+// once, so a guest's "wait until bit0 low" before a write falls straight through.
+//
+// bits 1 and 2 are the two sockets' CARD-DETECT lines: bit1 (0x02) = SD card 1 (drive C:)
+// inserted, bit2 (0x04) = SD card 2 (drive D:) inserted. The CP/M 3 BIOS reads these to decide
+// a drive is there before it touches it -- reverse-engineered from the shipping non-banked
+// BIOS3 binary, which has no published source: BC63 `AND 02` prints "SD Drive 1 ... not
+// Present" when bit1 is clear, BC70 `AND 04` / C28D `BIT 2,A` gate drive 2, and BC57 `CP FF`
+// treats an all-ones read (a floating bus, i.e. NO board in the slot) as "No Dual SD Card Board
+// Detected". A present board with no cards therefore returns 0x00 here -- never 0xFF. See
+// reference/dual-sd-card.md section 3.
+uint8_t DualSdBoard::statusByte() {
+    uint8_t cd = 0;                                             // card-detect, one bit per socket
+    if (drive_.size() > 0 && drive_[0].media) cd |= 0x02;      // SD card 1 present (drive C:)
+    if (drive_.size() > 1 && drive_[1].media) cd |= 0x04;      // SD card 2 present (drive D:)
+
+    if (readGap_) {           // the interval after a read, before the ESP32 presents the next
+        readGap_ = false;
+        return cd;
+    }
+    return cd | ((outPtr_ < outLen_) ? 0x80 : 0x00);
 }
 
-void DualSdBoard::beginReply() { outLen_ = 0; outPtr_ = 0; }
+void DualSdBoard::beginReply() { outLen_ = 0; outPtr_ = 0; readGap_ = false; }
 
 void DualSdBoard::queueByte(uint8_t b) {
     if (outLen_ < sizeof out_) out_[outLen_++] = b;
@@ -276,6 +297,7 @@ void DualSdBoard::resetEngine() {
     echoLen_  = 0;
     outLen_   = 0;
     outPtr_   = 0;
+    readGap_  = false;
     curDrive_ = 0;
     std::memset(inBuf_, 0, sizeof inBuf_);
 }
@@ -524,6 +546,7 @@ void DualSdBoard::serialize(StateWriter& w) const {
     w.u32(outLen_);
     w.u32(outPtr_);
     w.raw(out_, sizeof out_);
+    w.u8(readGap_ ? 1 : 0);
     w.u32((uint32_t)(int32_t)curDrive_);
 }
 
@@ -539,6 +562,7 @@ void DualSdBoard::deserialize(StateReader& r) {
     outLen_   = r.u32();
     outPtr_   = r.u32();
     r.raw(out_, sizeof out_);
+    readGap_  = r.u8() != 0;
     curDrive_ = (int)(int32_t)r.u32();
 }
 

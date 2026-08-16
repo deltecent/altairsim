@@ -18,8 +18,11 @@
 //                        command code, then that command's argument/write bytes.
 //   IN  DATA   (BASE+1)  the next byte the ESP32 is returning: read-sector data, a report
 //                        command's payload, then always a trailing STATUS byte.
-//   IN  STATUS (BASE+0)  bit7 (DI7) = a byte is waiting to be read; bit0 = the last written
-//                        byte has not been consumed yet (always 0 here -- we take it at once).
+//   IN  STATUS (BASE+0)  bit7 (DI7) = a byte is waiting to be read; bit2/bit1 = the two sockets'
+//                        card-detect lines (bit1 = SD card 1 / drive C:, bit2 = SD card 2 /
+//                        drive D:), which the CP/M 3 BIOS reads to decide a drive is present;
+//                        bit0 = the last written byte has not been consumed yet (always 0 here
+//                        -- we take it at once). A floating bus reads 0xFF = no board at all.
 //   OUT STATUS (BASE+0)  flush any pending read byte (the driver's init housekeeping).
 //
 // EVERY in-range command (80H..97H) ends by returning a STATUS byte (00 = OK, 1A = ERR) that
@@ -141,12 +144,24 @@ private:
     uint32_t outLen_ = 0;
     uint32_t outPtr_ = 0;
 
+    // The SENDACT (DI7) flip-flop is a PER-BYTE handshake, not a "data remains" level. The
+    // firmware's SendData() presents ONE byte, then blocks until the CPU has read it before
+    // presenting the next (`while (SENDACT == HIGH);`). The hardware sets SENDACT when the ESP32
+    // writes a byte and clears it the instant the CPU reads the DATA port -- so DI7 drops to 0
+    // between every byte and only rises again for the next. A strict driver (CP/M 3's CPMLDR)
+    // reads a byte then spins on DI7 GOING LOW before it reads the next; if DI7 never dropped it
+    // would hang forever. `readGap_` models that low interval: the first STATUS read after a DATA
+    // read returns DI7=0 (the ESP32 has not yet presented the next byte), then it reflects
+    // "bytes remain" again. The laxer MASTER monitor never waits for the drop, so both drivers
+    // work. (reference/dual-sd-card.md section 3; S100_ESP32_Firmware_v1.5 SendData/readData.)
+    bool     readGap_ = false;
+
     // ---- engine helpers ----
     void       feedInput(uint8_t v);      // one OUT-DATA byte into the input stream
     void       startCommand(uint8_t cmd); // dispatch on a freshly received command code
     void       completeCollect();         // a fixed-count Collect finished -> run the command
     uint8_t    inData();                  // one IN-DATA byte from the output FIFO
-    uint8_t    statusByte() const;        // the STATUS-port byte (DI7 = data waiting)
+    uint8_t    statusByte();              // the STATUS-port byte (DI7 = a byte is presented now)
     void       beginReply();              // clear the output FIFO before queueing a reply
     void       queueByte(uint8_t b);      // append a byte to the output FIFO
     void       reply(uint8_t status);     // no-payload command: just queue STATUS, go Idle
