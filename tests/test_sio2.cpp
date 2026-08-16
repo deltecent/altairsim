@@ -459,7 +459,7 @@ void test_sio2() {
         // MITS BASIC's "MEMORY SIZE?", and the exact byte that started all of this.
         // Inbound it is just as important: it is the first byte of an XMODEM block's
         // payload as often as any other value.
-        g.tty->feed(std::string(1, (char)0xC5));
+        g.tty->feed(std::string(1, '\xC5'));  // char literal, not (char)0xC5: MSVC C4310 casts
         (void)g.m.bus.ioRead(0x10);
         CHECK(g.m.bus.ioRead(0x11) == 0xC5, "0xC5 reaches the guest with bit 7 intact");
     }
