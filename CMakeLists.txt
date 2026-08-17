@@ -429,6 +429,11 @@ add_library(altair_core STATIC
   # two programmed-I/O ports (80/81) shift whole 512-byte sectors to/from a raw MediaFile card
   # (a DirectoryMedia directory card). No boot PROM. See src/boards/dualsd.h.
   src/boards/dualsd.cpp
+  # The S100Computers IDE-AB (CF) card -- the IDE/CompactFlash half of the IDE+ESP32 combination
+  # board. An 8255 PPI (five ports at 30-34) drives a minimal ATA register file; whole 512-byte
+  # LBA sectors move to/from the SAME raw MediaFile card dualsd uses. No boot PROM. See
+  # src/boards/dualide.h.
+  src/boards/dualide.cpp
   # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
   # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
   # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
