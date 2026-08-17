@@ -149,6 +149,17 @@ examples/**
 # bootable CompactFlash card). `*.img` and `examples/**` would otherwise swallow both.
 !examples/dualide/cpm3-cf.img
 !examples/dualide/cpm3-cf.geo
+# The combination (Dual IDE + Dual SD) example ships four cards -- the bootable CF system (A:), a
+# byte-copy of it on SD (C:, proving portability), and two blank spares (B: CF, D: SD) -- each a raw
+# .img plus its .geo sidecar. `*.img` and `examples/**` would otherwise swallow all eight files.
+!examples/dualidesd/cpm3-cf.img
+!examples/dualidesd/cpm3-cf.geo
+!examples/dualidesd/cpm3-sd.img
+!examples/dualidesd/cpm3-sd.geo
+!examples/dualidesd/cf-blank.img
+!examples/dualidesd/cf-blank.geo
+!examples/dualidesd/sd-blank.img
+!examples/dualidesd/sd-blank.geo
 !examples/basic/LDR4K31.HEX
 !examples/basic/LOAD10.HEX
 !examples/uio/8K BASIC Ver 3-2.tap

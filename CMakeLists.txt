@@ -1498,6 +1498,23 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # THE WHOLE IDE-AB CF+ESP32 COMBINATION BOARD -- both halves, all four CP/M 3 drives. One V2 Z80
+  # CPU runs the HIDE3 combination BIOS over the `dualide` 8255/ATA engine at 30-34 (CF drives
+  # A:/B:) and the `dualsd` ESP32 engine at 80/81 (SD drives C:/D:). The monitor's `P` command
+  # boots CP/M 3 off CompactFlash (A:), the sign-on names BOTH halves, and DIR C:/DIR D: read the
+  # SD side -- proving image portability (cpm3-sd.img is a byte copy of cpm3-cf.img). An expect
+  # test because `P` and DIR must be TYPED; all four cards are WRITE-PROTECTED and it shasums the
+  # two system images.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-dualidesd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualidesd.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dualidesd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
   #
   # It used to. armWrite() saw readOnly() and returned without setting writing_, so ENWD --

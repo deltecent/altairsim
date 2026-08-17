@@ -1,0 +1,121 @@
+# The S100Computers "IDE-AB CF+ESP32" combination board -- BOTH halves, all four CP/M 3 drives.
+#
+#     altairsim dualidesd.toml
+#
+#     ->                       (the V2 Z80 board's MASTER V6.6 monitor)
+#     P                        (boot CP/M 3 from the IDE/CF card -- drive A:)
+#
+#     A>DIR C:                 (read the SD card in socket 0 -- drive C:)
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). Each drive mounts a
+# raw card image (`*.img`) that has a sibling `.geo` geometry descriptor of the same base name.
+#
+# THE COMBINATION BOARD is two interfaces on one card: an 8255 IDE/CompactFlash controller at
+# ports 30-34 (the `dualide` board) presenting CP/M drives A:/B:, and the Dual SD ESP32 engine at
+# ports 80-81 (the `dualsd` board) presenting C:/D:. One V2 Z80 CPU board runs the HIDE3
+# combination CP/M 3 BIOS over both. See docs/boards/dualide.md, reference/dual-ide-card.md, and
+# reference/dual-sd-card.md.
+#
+# FOUR CARDS, ONE FORMAT. The IDE/CF and SD halves build an identical DPB, LBA and byte order, so
+# a card image is portable between them -- the SAME system image boots as A: on the CF half and
+# reads back as C: on the SD half. That is why cpm3-cf.img and cpm3-sd.img are the same bytes:
+#   A: (ide0 drive 0) = cpm3-cf.img   the CP/M 3 boot system on CompactFlash
+#   B: (ide0 drive 1) = cf-blank.img  a blank spare CF card (DIR B: -> "No File")
+#   C: (sd0  socket 0) = cpm3-sd.img  a portable copy of the system on microSD
+#   D: (sd0  socket 1) = sd-blank.img a blank spare microSD card (DIR D: -> "No File")
+#
+# THE MONITOR IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0). The V2 Z80 CPU board
+# carries the MASTER V6.6 monitor in its onboard paged EEPROM at F000-FFFF (the `v2z80` board);
+# `startup = ["RUN F000"]` cold-starts it. At the monitor's `->` prompt, the `P` command reads the
+# CP/M 3 cold loader (12 sectors from LBA 1 of CF drive 0) into 100H and jumps to it -- the
+# standard CP/M 3 five-stage cold boot. (`I` boots the SD half as A: instead.) The BIOS logs the SD
+# drives lazily: DIR C:/DIR D: initialize the sockets on first access.
+#
+# `^E` (ATTN) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
+
+[machine]
+name    = "dualidesd"
+startup = ["RUN F000"]
+
+# Fold the terminal's Backspace/Delete key (DEL, 0x7F) to BS (0x08) so it just works at the
+# MASTER monitor and the CP/M 3 command line -- a console transform, not hardware.
+[console]
+bsdel = "bs"
+
+# THE CPU. The V2 Z80 CPU board's processor -- a Z80. clock_hz = 0 runs it flat out; the console
+# below is polled, so nothing depends on the rate.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+# THE MONITOR EEPROM. The V2 Z80 CPU board's onboard 8K paged EEPROM at F000-FFFF, holding the
+# MASTER V6.6 monitor. It phantom-shadows the RAM below while enabled, and vacates the window once
+# CP/M inactivates it (OUT D3H bit 0).
+[[board]]
+type = "v2z80"
+id   = "rom0"
+
+# THE CONSOLE. The S100Computers Console I/O board (a Parallax-Propeller console): status at 00H,
+# data at 01H. The MASTER monitor and CP/M 3's CHARIO talk to it here.
+[[board]]
+type    = "propio"
+id      = "con0"
+connect = "console"
+
+# THE IDE/CF BOARD at the standard 30-34 port block -- CP/M drives A: (CF drive 0) and B: (CF
+# drive 1).
+[[board]]
+type = "dualide"
+id   = "ide0"
+port = 30
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm3-cf.img"   # IDE/CF drive 0 = drive A: (the boot card; cpm3-cf.geo alongside)
+
+  [[board.drive]]
+  unit  = 1
+  mount = "cf-blank.img"  # IDE/CF drive 1 = drive B: (a blank spare; cf-blank.geo alongside)
+
+# THE DUAL SD BOARD at the standard 80/81 port block -- CP/M drives C: (socket 0) and D:
+# (socket 1).
+[[board]]
+type = "dualsd"
+id   = "sd0"
+port = 80
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm3-sd.img"   # SD socket 0 = drive C: (portable copy of the system; cpm3-sd.geo)
+
+  [[board.drive]]
+  unit  = 1
+  mount = "sd-blank.img"  # SD socket 1 = drive D: (a blank spare; sd-blank.geo alongside)
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# THE HOST BRIDGE at ports B0/B1 -- our own board, not a period one. R.COM/W.COM/HDIR.COM on the
+# CP/M disk move files between the guest and the host, sandboxed to `hostdir` (empty = the shell's
+# working directory). See docs/boards/hostbridge.md.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+# 64K OF RAM. The monitor EEPROM above phantom-shadows its window (F000-FFFF) for reads while
+# enabled; writes fall through to this RAM underneath -- so CP/M 3 gets a flat 64K once it
+# inactivates the EEPROM.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                    # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                     # 0000-FFFF

@@ -1,0 +1,134 @@
+#!/usr/bin/expect -f
+#
+# THE WHOLE S100Computers "IDE-AB CF+ESP32" COMBINATION BOARD IN ONE TEST: both halves installed,
+# all four CP/M 3 drives. The V2 Z80 CPU board's MASTER V6.6 monitor comes up at F000 (the
+# fixture's `startup = ["RUN F000"]`); its `P` command reads the CP/M 3 cold loader off IDE/CF
+# drive 0 -- twelve 512-byte sectors through the 8255 IDE register file at 30-34 -- into 100H and
+# jumps to it, the standard CP/M 3 five-stage cold boot. The HIDE3 combination BIOS signs on for
+# BOTH boards ("IDE CF cards" AND "SD cards"), then DIR C: reads a card off the OTHER half -- the
+# `dualsd` ESP32 engine at 80/81.
+#
+# THIS IS THE PROJECT GOAL, END TO END: A:/B: = CompactFlash on the 8255 IDE board (`dualide`),
+# C:/D: = microSD on the ESP32 board (`dualsd`), one CPU running one CP/M 3 built for both. And it
+# proves IMAGE PORTABILITY: cpm3-sd.img (C:) is a byte copy of cpm3-cf.img (A:) -- the same bytes
+# boot as A: on CF and read back as C: on SD, because the BIOS builds an identical DPB, LBA and
+# byte order for each half (reference/dual-ide-card.md section 1).
+#
+# IT HAS TO BE AN EXPECT TEST. `P` must be TYPED at the monitor prompt and DIR at A> -- a pipe
+# cannot type at a running guest (see [[altairsim-pipe-cannot-type-at-a-guest]]). The shipped cards
+# carry NO cold-boot PROFILE.SUB (unlike the dualsd example): CP/M 3 auto-SUBMITs it, which writes
+# $$$.SUB to A:, and A: here is mounted read-only -- so the profile was removed from the image to
+# keep a write-protected boot clean (it only ran a cosmetic SETDEF). Cold boot therefore lands
+# straight at A>; sync on the combination sign-on and then the first A>, and let the warm-boot
+# double-prompt settle before typing.
+#
+# All four cards are mounted WRITE-PROTECTED (tests/acceptance/dualidesd.toml) and this shasums the
+# two system images (A: and C:) before and after: the boot and the DIRs only read, so the tracked
+# masters must come out byte-identical -- the quiet way for this to rot is for `writeprotect` to
+# stop meaning anything.
+#
+# usage: expect -f dualidesd.exp <altairsim>   (run from the repo root)
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set cf "examples/dualidesd/cpm3-cf.img"
+set sd "examples/dualidesd/cpm3-sd.img"
+
+# Leave no orphan behind: expect exiting does not reap the child holding the pty.
+proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]}; exit $code }
+
+set cf_before [exec shasum $cf]
+set sd_before [exec shasum $sd]
+
+spawn $exe tests/acceptance/dualidesd.toml
+
+# The fixture's startup cold-starts the MASTER monitor, which prints its banner and the `->`
+# prompt on its own -- nothing typed to get here.
+expect {
+    -ex "->" {}
+    eof     { bail 1 "FAIL: the machine died before the MASTER monitor prompt" }
+    timeout { bail 1 "FAIL: the V2 Z80 MASTER monitor never reached its `->` prompt" }
+}
+
+# `P` = "boot CP/M 3 from the IDE/CF hard disk". The loader reads CF drive 0 and signs on.
+send "P\r"
+expect {
+    -ex "CP/M V3.0" {}
+    eof     { bail 1 "FAIL: the machine died loading CP/M 3 off the IDE/CF card" }
+    timeout { bail 1 "FAIL: the `P` command never loaded CP/M 3 off the IDE/CF card" }
+}
+# THE COMBINATION SIGN-ON names BOTH boards -- proof the HIDE3 BIOS drives the CF half and the SD
+# half from one system, not a fake banner.
+expect {
+    -ex "IDE CF cards" {}
+    eof     { bail 1 "FAIL: the CP/M 3 sign-on was cut short before the IDE/CF line" }
+    timeout { bail 1 "FAIL: CP/M 3 loaded but never named the IDE CF drives" }
+}
+expect {
+    -ex "SD cards" {}
+    eof     { bail 1 "FAIL: the CP/M 3 sign-on was cut short before the SD line" }
+    timeout { bail 1 "FAIL: the combination BIOS never named the SD drives (C:/D:)" }
+}
+
+# LAND AT THE COMMAND PROMPT. With no auto-profile, cold boot goes straight to A>. Sync on it,
+# then let the warm-boot double-prompt drain before typing into a now-quiet console.
+expect {
+    -ex "A>" {}
+    eof     { bail 1 "FAIL: died before the CP/M 3 command prompt" }
+    timeout { bail 1 "FAIL: CP/M 3 loaded but never reached the A> prompt" }
+}
+sleep 2
+
+# A REAL DIRECTORY READ OFF THE SD HALF. DIR C: logs SD socket 0 and walks its directory; PIP is a
+# stock CP/M 3 utility on the card -- proof the listing came back off the ESP32 SD engine, and that
+# a CF-format image is readable on the SD half (portability).
+send "DIR C:\r"
+expect {
+    -ex "PIP" {}
+    eof     { bail 1 "FAIL: the machine died running DIR C:" }
+    timeout { bail 1 "FAIL: DIR C: did not read the directory off the Dual SD card (no PIP)" }
+}
+# SYNC TO THE RETURNING PROMPT -- DIR C: finished and handed control back, not wedged mid-listing.
+expect {
+    -ex "A>" {}
+    eof     { bail 1 "FAIL: DIR C: listed but the prompt never came back" }
+    timeout { bail 1 "FAIL: DIR C: listed but CP/M 3 never returned to the A> prompt" }
+}
+
+# THE SECOND SD SOCKET IS PRESENT. DIR D: logs SD socket 1 (the blank spare) and reports an empty
+# directory -- proof the card-detect gate sees a card in socket 1, distinct from an absent drive.
+send "DIR D:\r"
+expect {
+    -ex "No File" {}
+    eof     { bail 1 "FAIL: the machine died running DIR D:" }
+    timeout { bail 1 "FAIL: DIR D: did not report the blank SD card empty (no \"No File\")" }
+}
+expect {
+    -ex "A>" {}
+    eof     { bail 1 "FAIL: DIR D: reported empty but the prompt never came back" }
+    timeout { bail 1 "FAIL: DIR D: reported empty but CP/M 3 never returned to the A> prompt" }
+}
+
+# The boot and DIRs only read the cards; the write-protected masters must be byte-identical.
+set cf_after [exec shasum $cf]
+set sd_after [exec shasum $sd]
+if {$cf_before ne $cf_after} {
+    puts "FAIL: THE CF IMAGE CHANGED. `writeprotect` did not protect A::"
+    puts "  before: $cf_before"
+    puts "  after:  $cf_after"
+    bail 1 ""
+}
+if {$sd_before ne $sd_after} {
+    puts "FAIL: THE SD IMAGE CHANGED. `writeprotect` did not protect C::"
+    puts "  before: $sd_before"
+    puts "  after:  $sd_after"
+    bail 1 ""
+}
+
+puts "OK: the IDE-AB CF+ESP32 combination board booted CP/M 3 off CompactFlash (A:) through the V2\
+      Z80 MASTER monitor, signed on for both halves, DIR C: read the directory off the Dual SD card\
+      (PIP) and DIR D: found the blank SD spare, and the write-protected CF and SD masters are\
+      byte-identical."
+bail 0 ""
