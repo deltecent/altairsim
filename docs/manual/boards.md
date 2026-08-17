@@ -40,6 +40,7 @@ be wrong.
 | `tarbelldd` | Tarbell #2022 — the double-density twin, mixed-density disks |
 | `icom` | iCOM FD3712/FD3812 — an 8″ floppy controller with its own boot PROM. Boots CP/M and FDOS |
 | `dualsd` | S100Computers Dual SD — two microSD cards as CP/M drives. Boots CP/M 3 |
+| `dualide` | S100Computers IDE-AB — two CompactFlash cards as CP/M drives. Boots CP/M 3 |
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
 | `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. Needs a display |
@@ -525,6 +526,26 @@ data card (an empty `.img` and its `.geo`) for the guest to format; a *bootable*
 other controllers here, has to come from a real image — its system tracks cannot be conjured. See
 `examples/dualsd/`, which boots CP/M 3 with the host bridge fitted so `R`/`W`/`HDIR` move files to
 and from your host at the `A>` prompt.
+
+---
+
+## `dualide` — S100Computers IDE-AB (CompactFlash)
+
+The other half of the same physical S100Computers card. Where the Dual SD engine drives microSD,
+the **IDE-AB** side drives **two CompactFlash cards** through an 8255 parallel port wired to a CF
+card's IDE bus (default ports `30`–`34`). It presents its two cards as CP/M drives A: and B:, boots
+the same **CP/M 3** off flash, and — because it lays a card out byte-for-byte the way the SD side
+does — **a card image is interchangeable between the two**.
+
+**It has no boot PROM** either. `altairsim dualide` is the `z80`, the `v2z80` monitor EEPROM, and
+this controller; at the `->` monitor prompt the **`P` command** (rather than the Dual SD's `I`) reads
+CP/M 3 off CompactFlash drive 0, and CP/M signs on at `A>`.
+
+Cards behave exactly as on the Dual SD board: a raw **`.img` with a sibling `.geo`**, truncatable to
+the live filesystem with `FF` past its end; `MOUNT … CREATE` authors a blank data card, while a
+bootable one has to come from a real image. See `examples/dualide/` for the CompactFlash-only
+machine, and `examples/dualidesd/` for the **whole combination board** at once — CompactFlash as
+A:/B: and microSD as C:/D:, one CP/M 3 system spanning all four drives.
 
 ---
 

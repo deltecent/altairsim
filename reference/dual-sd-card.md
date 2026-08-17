@@ -188,8 +188,15 @@ explains why nothing is stored at offset 0 of a live card.
   no removable-media directory checksumming). (`CPM3.LIB` `dpb` macro args:
   `psize,pspt,trks,bls,ndirs,off,ncks`.) A 32 KB directory track holds 1024 × 32-byte entries.
   - Working volume size: 256 × 61 × 512 = **7,995,392 bytes (~7.63 MB)** per CP/M 3 drive.
-- **On-card layout (LBA, 512-byte units):** boot loader at track 0 (§5); directory table and
-  `CPM3.SYS` follow. (Reconfirm the exact LBAs against a real image in the machine build.)
+- **On-card layout (LBA, 512-byte units), confirmed against the shipped `examples/dualidesd`
+  card.** `CPMLDR` occupies the reserved system track 0 from **LBA 1** (§5). The BIOS maps
+  `LBA = track·256 + sector` (§3) but the DPB uses only **61** of those 256 sectors per track, so
+  each physical track fills a **256-sector LBA slot with sectors 61–255 unused** (a 195-sector
+  gap) — a live card is sparse and truncates cleanly to its used prefix. The `OFF=1` reserved
+  track therefore places the **directory at track 1 = LBA 256** (64 sectors = the sixteen 2 KB
+  directory blocks; first entries verified at LBA 262 in the shipped image: `DD.COM`, `PIP.COM`,
+  `DIR.COM`, …). `CPM3.SYS` and the rest are ordinary files allocated in the data area above the
+  directory.
 
 ## 5. Boot path
 
