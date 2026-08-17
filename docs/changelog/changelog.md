@@ -253,7 +253,6 @@ altairsim cdbl          the default machine, with the Combo Disk Boot Loader in 
 The ROM images shipped in 0.1.0 already; what was new is that each got a machine built around
 it — the whole distance between shipping an image and being able to run it. `hdbl` was
 deliberately left out: it boots an 88-HDSK hard disk, and there is no 88-HDSK board here.
-Those three joined the roster of built-in machines.
 
 ### The video window behaves like a window
 
@@ -293,7 +292,7 @@ exercisers were re-run on all three platforms — roughly 15 billion instruction
 - **8080** — TST8080, 8080PRE, CPUTEST, 8080EXM
 - **Z80** — ZEXDOC, ZEXALL
 
-### The first boards and machines
+### Boards and machines
 
 88-2SIO · 88-SIO · 88-ACR · 88-DCDD · 88-MDS · 88-VI/RTC · 88-C700 · front panel · memory ·
 8080 CPU · Z80 CPU · VDM-1 · Processor Technology Sol-PC · Host Bridge (our own design).
