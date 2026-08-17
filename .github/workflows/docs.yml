@@ -93,6 +93,11 @@ jobs:
         run: |
           command -v google-chrome || { echo "No google-chrome on the runner image."; exit 1; }
           google-chrome --version
+          # build-docs.sh drives Chrome over the DevTools protocol with tools/chrome-print.py
+          # (stdlib only) so it can wait for Paged.js before printing. python3 ships on the
+          # runner image; say so out loud rather than fail cryptically inside the build.
+          command -v python3 || { echo "No python3 on the runner image."; exit 1; }
+          python3 --version
 
       # WHAT THE PDFs SAID BEFORE. Kept so the step after the build can ask the only
       # question worth asking -- did the CONTENT move? -- rather than "is the file

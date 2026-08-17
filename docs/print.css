@@ -64,10 +64,37 @@
   src: url("fonts/DejaVuSansMono-Bold.ttf") format("truetype");
 }
 
+/* PAGE FURNITURE -- the running page number, and the pages that do not get one.
+ *
+ * These @page margin boxes are CSS Paged Media, which the browser's own --print-to-pdf does
+ * NOT implement. They are here because Paged.js (docs/pagedjs/) runs inside the browser before
+ * the print and provides them -- the same polyfill that resolves the table of contents' page
+ * references below. tools/build-docs.sh drives the browser over the DevTools protocol, waits
+ * for Paged.js to finish, and only then prints; see tools/chrome-print.py for why the obvious
+ * --print-to-pdf does not work here.
+ *
+ * The number is set in XCharter, which is embedded -- the finished-PDF font check
+ * (build-docs.sh) rejects any face we did not ship, and a margin box drawn in the browser's
+ * default font would trip it. */
 @page {
   size: letter;
   margin: 22mm 18mm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "XCharter", serif;
+    font-size: 9pt;
+    color: #555;
+    /* Sit the number in the bottom margin, clear of the last line of text. */
+    vertical-align: top;
+    padding-top: 4mm;
+  }
 }
+
+/* The cover and the contents are front matter: they carry no page number. The body's numbering
+ * starts at 1 on the first chapter (counter reset below), so the reader's "page 12" is the
+ * twelfth page of the manual proper, not of the PDF file. */
+@page cover      { @bottom-center { content: none; } }
+@page frontmatter { @bottom-center { content: none; } }
 
 html { font-size: 11pt; }
 
@@ -159,11 +186,102 @@ blockquote {
   break-inside: avoid;
 }
 
-#TOC { break-after: page; }
+/* THE TABLE OF CONTENTS, WITH THE PAGE EACH CHAPTER IS ON.
+ *
+ * target-counter(attr(href), page) is the whole point of adopting Paged.js: it resolves each
+ * TOC link to the page number its chapter LANDS on, so the contents finally say where to turn.
+ * The browser's own print path cannot do this (it has no target-counter), which is why a
+ * contents page that only listed chapter names was the bug TODO.md asked to fix.
+ *
+ * The dots between a title and its number are a leader, so the eye can track across. CSS has a
+ * leader() function for exactly this, but Paged.js 0.4.3 does not implement it -- and worse,
+ * an unknown function invalidates the WHOLE content value, so leader() takes the page number
+ * down with it (verified: the numbers vanish entirely). So the leader is drawn instead as a
+ * dotted bottom border on the flex-growing number box -- no leader() needed, and every browser
+ * and print path renders it. The contents is front matter: its own page carries no number
+ * (@page frontmatter above), and the body's page 1 is the first chapter. */
+#TOC {
+  page: frontmatter;
+  break-after: page;
+  counter-reset: page;          /* keep front matter out of the body's count */
+}
 #TOC ul { list-style: none; padding-left: 1em; }
 #TOC > ul { padding-left: 0; }
+#TOC li { margin: 0.4em 0; }
+#TOC a {
+  display: flex;
+  align-items: baseline;
+  border: 0;                    /* no underline: the leader is the visual connector */
+}
+#TOC a::after {
+  content: target-counter(attr(href), page);
+  flex: 1 0 auto;               /* grow to the right margin; the number rides its right end */
+  margin-left: 0.5em;
+  text-align: right;
+  border-bottom: 1px dotted #999;
+  font-variant-numeric: tabular-nums;
+}
+/* The body's page numbering starts at 1 on the first chapter -- not on the cover or the
+ * contents. The first chapter is the h1 right after the TOC (manual, devguide) or, for a
+ * document with a cover but no contents (the changelog), the h1 right after the cover. A
+ * single-file document with neither -- a README, the cheatsheet -- matches neither selector
+ * and just counts from its first page, which is what we want there too. */
+#TOC + h1,
+header#title-block-header.cover + h1 { counter-reset: page 1; }
 
+/* THE COVER -- a full first page in the feel of a period MITS manual, in altairsim's own words.
+ *
+ * Only the long documents raise it (build-docs.sh adds the `cover` class to the title block);
+ * a one-page example README keeps the plain centered title block below. It EVOKES the era -- a ruled
+ * technical frame, a let-spaced wordmark, a plain descriptive line -- and reproduces no MITS
+ * logo, trademark or artwork: altairsim names the Altair the way the rest of the manual does,
+ * to say what it simulates, and nothing more. */
 header#title-block-header { text-align: center; margin-bottom: 3em; }
 .subtitle { color: #666; font-size: 0.9em; }
+
+header#title-block-header.cover {
+  page: cover;
+  break-after: page;
+  box-sizing: border-box;
+  min-height: 232mm;            /* fill the letter page between its margins */
+  margin: 0;
+  padding: 24mm 16mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border: 3px double #111;
+}
+header#title-block-header.cover h1.title {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 3.1em;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+/* A thin rule under the wordmark, then the descriptive line, then the build stamp -- the
+ * spare, ruled look of a 1970s equipment manual's title page. */
+header#title-block-header.cover h1.title::after {
+  content: "";
+  display: block;
+  width: 60%;
+  margin: 0.7em auto 0;
+  border-bottom: 1px solid #111;
+}
+header#title-block-header.cover::after {
+  content: "A simulation of the MITS Altair 8800 and the S-100 bus";
+  margin-top: 1.4em;
+  font-size: 1.05em;
+  font-style: italic;
+  color: #333;
+  letter-spacing: 0.02em;
+}
+header#title-block-header.cover .subtitle {
+  margin-top: 2.6em;
+  font-size: 0.85em;
+  letter-spacing: 0.03em;
+}
 
 a { color: #111; text-decoration: none; border-bottom: 1px solid #bbb; }
