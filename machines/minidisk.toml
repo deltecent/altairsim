@@ -62,7 +62,7 @@ remove = true
 # ...AND THE MINIDISK CONTROLLER GOES IN ITS SLOT.
 #
 # Two S-100 boards on the real thing (the manual, p4: "Number of slots required in 8800 bus -
-# 2"), but nothing a program can reach tells them apart, so they are one card here.
+# 2"), but nothing a program can reach tells them apart, so they are one board here.
 #
 # THE PORT IS NOT A CHOICE. The schematic decodes 010/011/012 octal in copper -- there is no
 # address jumper on the controller at all; the only DIP switch in the whole system is on the
@@ -78,13 +78,13 @@ drives = 4
   #
   # The real card takes ONE SECOND to spin a stopped drive up, and turns the motor off after
   # 6.4 SECONDS with no access -- which is why the period BIOS pokes TIMER RESET before every
-  # single read. The card models both exactly. It just does not make you live through them:
+  # single read. The board models both exactly. It just does not make you live through them:
   #
   #     motor = "real"     # 1 s spin-up, and it stops after 6.4 s
   #
   # Flat out is the default here for the same reason it is on the CPU (`clock_hz = 0`).
 
-# THE BOOT PROM. The memory card is REPLACED, not modified, because a region list is a list:
+# THE BOOT PROM. The memory board is REPLACED, not modified, because a region list is a list:
 # swapping the ROM means restating the RAM under it. 56K is not a preference -- CPM56K-1.DSK
 # was BUILT for it (BOOT.ASM: MEMSIZE, and the BIOS is linked to the top of RAM), so the disk
 # and the machine have to agree or CP/M loads into nothing. The 24K images beside it are the

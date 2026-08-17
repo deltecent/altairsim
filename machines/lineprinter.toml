@@ -1,6 +1,6 @@
 # The `default` machine with an 88-C700 line printer at port 02, captured to a file.
 #
-# It exists to show the printer card end to end: the guest OUTs a byte to the data
+# It exists to show the printer board end to end: the guest OUTs a byte to the data
 # port (03), it lands on the line, and the line goes to a host file. Nothing about
 # the capture is printer-specific -- CONNECT the `prn` unit anywhere a serial line
 # can go:

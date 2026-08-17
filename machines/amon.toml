@@ -8,7 +8,7 @@
 #
 # The second line is AMON telling you where it put itself: it hunts for the highest
 # contiguous 256-byte page of RAM at startup and relocates its stack, variables and
-# buffers there, then prints the page it found. Change the memory card below and that
+# buffers there, then prints the page it found. Change the memory board below and that
 # number changes with it -- it is a measurement, not a constant.
 #
 # WHAT IT IS FOR. `altmon` is the small monitor you can talk to; this is the big one.

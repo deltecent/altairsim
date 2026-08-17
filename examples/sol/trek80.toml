@@ -10,8 +10,8 @@
 # directory can be copied anywhere and still run. `altairsim examples/sol/trek80.toml`
 # from the repo root means the same machine.
 #
-# `base = "sol20"` IS THE MACHINE -- the Sol-PC's three cards (front panel, VDM-1 video at
-# 0CC00H, the composite `sol` I/O card at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
+# `base = "sol20"` IS THE MACHINE -- the Sol-PC's three boards (front panel, VDM-1 video at
+# 0CC00H, the composite `sol` I/O board at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
 # machines/sol20.toml. This file adds a tape and a clock, and nothing else.
 
 [machine]

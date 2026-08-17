@@ -30,7 +30,7 @@ type     = "8080"
 id       = "cpu0"
 clock_hz = 0                  # flat out (the default)
 
-# THE CONSOLE AND THE SECOND LINE ARE ONE CARD. CUTER numbers its pseudo-devices, and
+# THE CONSOLE AND THE SECOND LINE ARE ONE BOARD. CUTER numbers its pseudo-devices, and
 # the first two of them are the two halves of this 88-2SIO: pseudo-port 0 (console) is
 # 10h/11h and pseudo-port 1 (serial) is 12h/13h (ACUTER.ASM: SIO1CSR/SIO2CSR). So `B`
 # is not decoration here -- it is a device ACUTER can be told to talk over, and it is

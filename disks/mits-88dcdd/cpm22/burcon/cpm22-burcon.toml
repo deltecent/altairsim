@@ -24,10 +24,10 @@ base = "default"
 # sectors 0 and 2 of track 0, and that loader pulls CP/M into high RAM.
 startup = ["RUN FF00"]
 
-# `id` with no `type` = the card ALREADY in the machine (the base's 88-DCDD), so this puts
+# `id` with no `type` = the board ALREADY in the machine (the base's 88-DCDD), so this puts
 # a disk in an existing drive rather than fitting a second controller.
 #
-# No `media` key: the card probes it. 337,664 bytes is the XMODEM-padded 8" floppy
+# No `media` key: the board probes it. 337,664 bytes is the XMODEM-padded 8" floppy
 # (77 x 32 x 137 = 337,568 plus the protocol's block padding), and the board knows that.
 [[board]]
 id = "dsk0"
@@ -40,10 +40,10 @@ id = "dsk0"
 # would need to say something about memory. cpm48k.dsk is the same CP/M sized for a 48K
 # machine, and it will NOT boot in 56K -- the BIOS lands at MSIZE*1024 - BIOSLEN, so the
 # size of the RAM and the size CP/M was built for must agree. To run it, mount it above
-# instead, and re-fit the memory card:
+# instead, and re-fit the memory board:
 #
 #     [[board]]
-#     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,
+#     type = "memory"      # `type` on an id the BASE brought REPLACES the board outright,
 #     id   = "mem0"        # which is what you want: regions are a LIST, and adding a
 #     fill = "random"      # second one would OVERLAP the base's 56K, not replace it.
 #
@@ -53,7 +53,7 @@ id = "dsk0"
 #       size = "48K"
 #
 #       [[board.region]]
-#       type  = "rom"      # ...and re-state the PROM, because you replaced the whole card.
+#       type  = "rom"      # ...and re-state the PROM, because you replaced the whole board.
 #       at    = FF00       # Leave it out and there is nothing at FF00 to RUN.
 #       mount = "builtin:dbl"
 #

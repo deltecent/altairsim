@@ -17,7 +17,7 @@
 # sector move (DIR, STAT, warm boot) flows through the 8257. See docs/boards/tarbelldd.md.
 #
 # THE DISK IS MIXED DENSITY: track 0 single density (the boot path), tracks 1-76 double.
-# The card probes the 499,456-byte size and lays down both formats. The boot is automatic
+# The board probes the 499,456-byte size and lays down both formats. The boot is automatic
 # (`startup = ["RUN 0"]`, inherited).
 #
 # THERE IS NO UNDO ON THIS DISK. It is tracked; `git checkout` restores it in a clone. Drive

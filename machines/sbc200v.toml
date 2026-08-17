@@ -10,7 +10,7 @@
 # differing ONLY in their console driver: MSMONR21 (the `sbc200` machine) polls the 8251
 # USART at 7C/7D, while SDMONV21 -- "SD monitor v2.10 for SBC-100 and VDM Console" --
 # polls the SD Systems VDB-8024 video board at ports 00/01. This machine is the SD build:
-# the `vdb8024` card is the console, and there is no serial port. The monitor's command
+# the `vdb8024` board is the console, and there is no serial port. The monitor's command
 # set is identical to the `sbc200` machine's (reference/SD Systems Monitor.md).
 #
 # NO "PRESS ENTER FIRST." Unlike MSMONR21, SDMONV21 does not auto-baud -- the VDB is a
@@ -58,7 +58,7 @@ interrupt = "vi2"
 
 # THE SBC-200's OWN PERIPHERALS. The real SBC-200 is one board -- CPU, 8251, Z80-CTC and
 # parallel port together -- so the video machine carries them too, even though the console
-# is the VDB and not the 8251. The card is here for the CTC: it generates the mode-2
+# is the VDB and not the 8251. The board is here for the CTC: it generates the mode-2
 # keyboard-interrupt vector (0x02) from the VDB's VI2 strobe, the way it makes 0x82 from
 # the 8251's RxRDY on the serial machine. The 8251 has no console attached here; the
 # parallel port at 7E/7F is SDOS's list device.

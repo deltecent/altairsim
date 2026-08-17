@@ -4,7 +4,7 @@
 #     -> the altairsim> monitor prompt
 #
 # The machine is deliberately small: an 8080, 32K of RAM, an 88-2SIO for the console,
-# and an 88-C700 parallel printer interface -- the card a program prints THROUGH. The
+# and an 88-C700 parallel printer interface -- the board a program prints THROUGH. The
 # C700 has one unit, `prn`, and it starts disconnected (`null`), because what is on the
 # far end of the printer cable is a HOST decision, not a machine one. The README beside
 # this file is the lesson: it sets up a real print queue on your host and CONNECTs `prn`
@@ -36,7 +36,7 @@ port = 10
   [board.unit.b]
   connect = "null"
 
-# The printer card: an 88-C700 at port 02 (status/control at 02, data at 03). Its one
+# The printer board: an 88-C700 at port 02 (status/control at 02, data at 03). Its one
 # unit `prn` comes up disconnected; the README CONNECTs it to a host print queue.
 [[board]]
 type = "c700"

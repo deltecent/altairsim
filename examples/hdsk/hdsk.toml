@@ -47,8 +47,8 @@ port = A0
   unit  = 0
   mount = "HDCPM22v16-48K.DSK"
 
-# THE HDBL PROM. The base's memory card already carries RAM 0000-DFFF and DBL at FF00;
-# naming its `id` with no `type` ADDS a region rather than replacing the card, so this
+# THE HDBL PROM. The base's memory board already carries RAM 0000-DFFF and DBL at FF00;
+# naming its `id` with no `type` ADDS a region rather than replacing the board, so this
 # drops the hard-disk loader in at FC00 alongside DBL.
 [[board]]
 id = "mem0"

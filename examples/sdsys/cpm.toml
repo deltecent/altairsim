@@ -19,7 +19,7 @@
 #      the DDBIOS (F000) live in the SBC's own boot-PROM sockets, shadowing RAM. When
 #      CP/M's cold boot has loaded the system high, it does `OUT 7F,3` to switch the
 #      onboard PROM out of the map, and the 64K of RAM under it shows through. The RAM
-#      card is `honors_phantom = "read"` so the shadow hides reads while writes fall
+#      board is `honors_phantom = "read"` so the shadow hides reads while writes fall
 #      straight through to it.
 #
 # WHY YOU MUST PRESS ENTER FIRST. As on every SBC-200 serial machine, MSMONR21 auto-bauds
@@ -31,7 +31,7 @@ name    = "cpm22"
 startup = ["RUN E000"]                 # enter the onboard monitor PROM (as reset would)
 
 # THE CPU. A 4 MHz Z80. On the real board the CPU is on the SBC card itself; here it is
-# the generic z80 card, and the SBC card carries the 8251, CTC, parallel port and PROM.
+# the generic z80 board, and the SBC card carries the 8251, CTC, parallel port and PROM.
 [[board]]
 type     = "z80"
 id       = "cpu0"
@@ -58,7 +58,7 @@ port    = 7C
   at    = F000
   mount = "builtin:ddb200"             # the DDBIOS VersaFloppy boot BIOS
 
-# A PLAIN 64K RAM CARD under the PROM shadow. `honors_phantom = read` is what lets the
+# A PLAIN 64K RAM BOARD under the PROM shadow. `honors_phantom = read` is what lets the
 # onboard PROM shadow reads while writes fall through to this RAM -- so after `OUT 7F,3`
 # the whole 64K is live and CP/M runs from it (the monitor's FF80 interrupt table too).
 [[board]]
