@@ -13,6 +13,15 @@ Sources (John Monahan's S-100 archive, s100computers.com):
   [Master0.z80](https://www.s100computers.com/Software%20Folder/Master/Master0.z80) /
   [Master1.z80](https://www.s100computers.com/Software%20Folder/Master/Master1.z80)
   (assembled `MASTER0.HEX`/`MASTER1.HEX`, org F000H, ship in the V6.6 distribution). See §5.
+- **CP/M 3 BIOS source — obtained.** `SD3.ASM` (the SD disk driver) and `HBOOT3.ASM` (the
+  cold-boot loader), John Monahan, dated **1/24/2026**, from the author's "AB-SD Disk"
+  distribution. **This is the actual source for the shipping SD `CPM3.SYS` BIOS3 that §5.1 was
+  reverse-engineered from** — its sign-on banner (`64K CP/M VERSION (Non banked) (John Monahan
+  1/24/2026)` / `A: & B: = SD cards (61 Sec/Track)`) and presence messages match the
+  disassembly verbatim. It **confirms** the port map, the command set, the byte handshake, the
+  card-detect bits, the 512-byte sector, and the DPB below; the earlier reverse-engineering
+  stands. (Not a fetchable page; obtained directly from the author. Same licensing note as
+  below — nothing redistributed.)
 - Board test driver `SD_CARD.Z80` / `SD_IO.Z80` (John Monahan, V0.5 1/22/2025), the Z80 test
   program shipped with the board. It agrees with the firmware on the protocol and is a second
   witness for §2–§3. Obtained from the author's SD_Card distribution; not fetchable from HTML.
@@ -47,12 +56,13 @@ on it.)
    — they are HDD Raw Copy Tool containers (plaintext header + LZO-compressed, zero-padded
    blocks). Decode to raw with `unimgc` (github.com/shizmob/unimgc) before mounting; never mount
    the `.imgc` directly (§7).
-5. **RESOLVED (BIOS binary, §5.1).** The CP/M 3 cold-boot **presence check** — the reason a
-   naïve STATUS=0x00 board boots CPMLDR yet dies at `NO CCP.COM FILE` — was reverse-engineered
-   from the shipping `CPM3.SYS` BIOS3 (no source is published). STATUS **bit 1 / bit 2** are the
-   two sockets' card-detect lines; both must read high (a card in each socket) for the cold boot
-   to proceed, and STATUS must never be 0xFF while the board is present. With that modeled, the
-   `Image-18` SD `CPM3.SYS` boots to the `A>` prompt.
+5. **CONFIRMED BY BIOS SOURCE (§5.1).** The CP/M 3 cold-boot **presence check** — the reason a
+   naïve STATUS=0x00 board boots CPMLDR yet dies at `NO CCP.COM FILE` — was first
+   reverse-engineered from the shipping `CPM3.SYS` BIOS3, and is now **confirmed against the
+   BIOS source** (`HBOOT3.ASM` `?INIT`, `SD3.ASM` `SD$RD`). STATUS **bit 1 / bit 2** are the two
+   sockets' card-detect lines; a card in each socket must read high for the cold boot to reach
+   the `A>` prompt, and STATUS must never be 0xFF while the board is present. With that modeled,
+   the SD `CPM3.SYS` boots to `A>`.
 
 ---
 
@@ -123,7 +133,10 @@ in-range sector is *not* an error — the medium returns its erased fill and STA
 **FORMAT (firmware).** `FORMAT_SECTOR` takes a 16-bit sector **count**, then fills each of
 `count` sectors with `0xE5`, **starting at the current sector and advancing it**, and **skips
 sector 0** (it never overwrites the boot sector). The current sector is left advanced past the
-formatted run.
+formatted run. Note the CP/M 3 BIOS (`SD3.ASM`) only *defines* `CMD$FORMAT$SECTOR` (87H) — it
+never issues it, and its EQU comment mischaracterises it as "format the CURRENT sector" (one
+sector). The **firmware's** count semantics are authoritative; a `WR_BOOT`/format utility, not
+the BIOS, drives this command.
 
 ## 3. The byte handshake and addressing
 
@@ -157,12 +170,23 @@ so the card **LBA = `track*256 + sector`** (256 sectors per track), byte offset 
 **most-significant byte first**. The board model reads the two `SET_TRK_SEC` bytes as track
 (high) then sector (low), and addresses the mounted medium directly by byte offset.
 
+**The BIOS sends a 1-based sector on the wire** (confirmed in `SD3.ASM` `SD$wrlba`: `LDA @SECT`
+then `INR A`, "Disk sectors are numbered 1...MAXSEC"). So the CP/M 3 driver's first sector of a
+track lands at card LBA `track*256 + 1`, and **card LBA 0 (track 0, sector 0) is never addressed
+by `SET_TRK_SEC`** — it is the reserved boot sector (the DPB's one system track, §4; the monitor
+loads `CPMLDR` starting at LBA 1, §5; `FORMAT` skips sector 0, §2). This is transparent to the
+board — it just multiplies whatever track/sector bytes arrive into a byte offset — but it
+explains why nothing is stored at offset 0 of a live card.
+
 ## 4. Geometry and the CP/M 3 DPB
 
 - **Physical sector: 512 bytes.** Addressed by LBA (track + sector, or a 32-bit SETLBA).
-- **CP/M 3 hard-disk DPB** (from the HDISK BIOS page): **512 B/physical sector, 61 sectors/track,
-  256 tracks, 2048-byte allocation blocks (BLS = 2K), 1024 directory entries, 1 reserved/system
-  track.** A 32 KB directory track holds 1024 × 32-byte entries.
+- **CP/M 3 hard-disk DPB** — confirmed from the BIOS source (`SD3.ASM`):
+  `DPB 512,61,256,2048,1024,1,8000H`, i.e. **512 B/physical sector, 61 sectors/track, 256 tracks,
+  2048-byte allocation blocks (BLS = 2K), 1024 directory entries, 1 reserved/system track**, and
+  a checksum field of `8000H` — the CP/M 3 "permanent (non-removable) drive" flag (high bit set,
+  no removable-media directory checksumming). (`CPM3.LIB` `dpb` macro args:
+  `psize,pspt,trks,bls,ndirs,off,ncks`.) A 32 KB directory track holds 1024 × 32-byte entries.
   - Working volume size: 256 × 61 × 512 = **7,995,392 bytes (~7.63 MB)** per CP/M 3 drive.
 - **On-card layout (LBA, 512-byte units):** boot loader at track 0 (§5); directory table and
   `CPM3.SYS` follow. (Reconfirm the exact LBAs against a real image in the machine build.)
@@ -188,15 +212,21 @@ adds the **`I` command** — "boot CPM3 from Dual SD card Board. No IDE/CF board
 `WR_BOOT.COM` writes the loader to track 0 on a real card; a *bootable* volume therefore cannot
 be blank-created — only data volumes can.
 
-### 5.1 The CP/M 3 BIOS cold-boot presence check (reverse-engineered)
+### 5.1 The CP/M 3 BIOS cold-boot presence check (confirmed by source)
 
-**There is no published source for the Dual SD CP/M 3 BIOS** (the s100computers "HDISK BIOS"
-page ships only the IDE/CF variant; the SD build — banner `64K CP/M VERSION (Non banked) (John
-Monahan 1/24/2026)`, `A: & B: = SD cards (61 Sec/Track)` — exists only as `CPM3.SYS` on the
-ready-made SD images). The following was **disassembled from that shipping BIOS3 binary in the
-emulator** (loads at BA00; use `SAVE bios3.prn BA00-C600` after the `I` command reaches its
-error, then read the SD routines around BC55 and C284). It is recorded here so nobody has to
-re-derive it.
+**The BIOS source is now in hand** (`SD3.ASM` + `HBOOT3.ASM`, John Monahan 1/24/2026 — see the
+Sources list). It confirms the presence check exactly. The check below was originally
+**disassembled from the shipping BIOS3 binary in the emulator** (loads at BA00; `SAVE bios3.prn
+BA00-C600` after the `I` command reaches its error, then read the SD routines around BC55 and
+C284) before the source surfaced; the two agree byte-for-byte. Both are kept here — the
+disassembly recipe is still useful for any BIOS whose source is not available.
+
+The cold-boot presence gate lives in **`HBOOT3.ASM` `?INIT`** (the `BC55` region): read STATUS,
+`CP FF` → no board, send `RESET` (88H), then test bit 1 (card 1 / C:) and bit 2 (card 2 / D:),
+printing a "…is not Present" warning for each socket that reads low. The disk-access gate is in
+**`SD3.ASM` `SD$RD`** (the `C284` region): `IN 80` / `BIT 1,A` (or `BIT 2,A`) before touching a
+drive, failing the read with the error flag if the card-detect bit is clear — which is what
+turns an absent card into `CP/M Error On A: Disk I/O` → `NO CCP.COM FILE`.
 
 After the monitor's `I` command loads and jumps to CPMLDR → `CPM3.SYS`, the BIOS cold-boot code
 runs a **STATUS-only presence gate** on each socket — it makes the decision from the STATUS port
@@ -222,10 +252,13 @@ therefore assert the card-detect bits of §3 (bit 1 for a card in socket 1, bit 
 with both asserted the same `CPM3.SYS` boots straight through to the `A>` prompt. The `CP FF`
 guard is why an installed-but-empty board must read 0x00, never 0xFF.
 
-> **Drive lettering caveat.** These SD images are multi-build cards authored under AltairZ80;
-> the SD-only `CPM3.SYS` still prints its presence messages as `(CPM C:)` / `(CPM D:)` even
-> though its banner claims `A: & B:`. The presence *mechanism* above is invariant; the CP/M
-> drive-letter mapping on a given image is not, and is a property of that image, not the board.
+> **Drive lettering caveat (confirmed inconsistent in the source).** The SD-only build is
+> internally inconsistent about drive letters, and the source proves it: `HBOOT3.ASM`'s banner
+> prints `A: & B: = SD cards`, while the very same module's presence messages say `SD Drive 1:
+> (CPM C:)` / `SD Drive 2: (CPM D:)`, and `SD3.ASM`'s DPH comments label the two drives `C:` and
+> `D:`. The drive table itself (`HDRVTBL3.ASM` `@DTBL <DPH0,DPH1,…>`) installs them as the first
+> two CP/M drives (A:/B:) on an SD-only card. The presence *mechanism* above is invariant; the
+> CP/M drive-letter mapping on a given image is a property of that image, not the board.
 
 ## 6. Notes for the emulation
 
