@@ -221,12 +221,15 @@ bool parseU64(const std::string& s, uint64_t& out) {
 // DPB: 512-byte sectors, 256 tracks x 61 sectors = 15616 sectors ~= 7.99 MB per card); NOT
 // invented. Returns false (with err) for an unknown name.
 bool applyCardTemplate(const std::string& name, CardSpec& spec, std::string& err) {
-    if (name == "dualsd") {
+    // `dualsd` and `dualide` are the two halves of the same physical card and share this
+    // geometry -- the CP/M 3 DPB and LBA math are identical (reference/dual-ide-card.md 1), so a
+    // card is portable between them; `dualide` is an alias that just reads naturally for CF.
+    if (name == "dualsd" || name == "dualide") {
         spec.sectorSize = 512;
         spec.sectors    = 15616;   // one blank CP/M 3 card
         return true;
     }
-    err = "unknown format '" + name + "' (known: dualsd)";
+    err = "unknown format '" + name + "' (known: dualsd, dualide)";
     return false;
 }
 

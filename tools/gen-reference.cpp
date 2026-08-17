@@ -197,7 +197,7 @@ const char* boardCategory(const std::string& n) {
     if (n == "memory" || n == "v2z80") return "Memory";
     if (n == "dcdd" || n == "mds" || n == "hdsk" || n == "versafloppy" ||
         n == "tarbell" || n == "tarbelldd" || n == "16fdc" || n == "64fdc" ||
-        n == "icom" || n == "dualsd") return "Disk";
+        n == "icom" || n == "dualsd" || n == "dualide") return "Disk";
     if (n == "2sio" || n == "sio" || n == "sbc" || n == "pmmi" ||
         n == "turnkey" || n == "usio" || n == "propio" || n == "680io") return "Serial";
     if (n == "acr" || n == "uio" || n == "680kcacr") return "Tape";
