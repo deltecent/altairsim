@@ -1,0 +1,19 @@
+# Dual IDE (CF) boot acceptance fixture: the V2 Z80 CPU board (its MASTER V6.6 monitor EEPROM)
+# with the CP/M 3 system card on IDE/CF drive 0 (drive A:), mounted READ-ONLY so the test can
+# never dirty the tracked image. The shipped example (examples/dualide/dualide.toml) mounts it
+# read/write instead.
+#
+# CF only -- one card boots A:. Unlike the SD half, the IDE BIOS does not gate the cold boot on a
+# second drive's presence; drive B: is simply absent (its socket floats 0xFF).
+
+[machine]
+name = "dualide-acceptance"
+base = "dualide"
+
+[[board]]
+id = "ide0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/dualide/cpm3-cf.img"
+  writeprotect = true

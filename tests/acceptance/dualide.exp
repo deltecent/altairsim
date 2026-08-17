@@ -1,0 +1,86 @@
+#!/usr/bin/expect -f
+#
+# THE S100Computers IDE-AB (CF) BOARD BOOTS CP/M 3, and then it READS THE CARD. The V2 Z80 CPU
+# board's MASTER V6.6 monitor comes up at F000 (the fixture's `startup = ["RUN F000"]`); its
+# `P` command reads the CP/M 3 cold loader off the CompactFlash card -- twelve 512-byte sectors
+# through the 8255 IDE register file at 30-34 -- into 100H and jumps to it, the standard CP/M 3
+# five-stage cold boot. DIR then walks the directory back off the card.
+#
+# THIS IS THE WHOLE STACK IN ONE TEST: the `v2z80` paged-EEPROM monitor, the `dualide` 8255/ATA
+# engine, and the card medium (`cardimg`: a truncated `.img` plus a `.geo` sidecar that declares
+# the full CF card, serving 0xFF for every unbacked sector). A byte wrong in any of the three and
+# CP/M never signs on or DIR reads garbage.
+#
+# IT HAS TO BE AN EXPECT TEST. `P` must be TYPED at the monitor prompt and DIR at A> -- a pipe
+# cannot type at a running guest (see [[altairsim-pipe-cannot-type-at-a-guest]]).
+#
+# The card is mounted WRITE-PROTECTED (tests/acceptance/dualide.toml) and this shasums it before
+# and after: the boot and DIR only read, so the tracked master must come out byte-identical --
+# the quiet way for this to rot is for `writeprotect` to stop meaning anything.
+#
+# usage: expect -f dualide.exp <altairsim>   (run from the repo root)
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set img "examples/dualide/cpm3-cf.img"
+
+# Leave no orphan behind: expect exiting does not reap the child holding the pty.
+proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]}; exit $code }
+
+set before [exec shasum $img]
+
+spawn $exe tests/acceptance/dualide.toml
+
+# The fixture's startup cold-starts the MASTER monitor, which prints its banner and the `->`
+# prompt on its own -- nothing typed to get here.
+expect {
+    -ex "->" {}
+    eof     { bail 1 "FAIL: the machine died before the MASTER monitor prompt" }
+    timeout { bail 1 "FAIL: the V2 Z80 MASTER monitor never reached its `->` prompt" }
+}
+
+# `P` = "boot CP/M 3 from the IDE/CF hard disk". The loader reads the CF card and signs on.
+send "P\r"
+expect {
+    -ex "CP/M V3.0" {}
+    eof     { bail 1 "FAIL: the machine died loading CP/M 3 off the IDE/CF card" }
+    timeout { bail 1 "FAIL: the `P` command never loaded CP/M 3 off the IDE/CF card" }
+}
+# The sign-on line is this card's own -- proof the boot came off THIS medium, not a fake banner.
+expect {
+    -ex "IDE CF cards" {}
+    eof     { bail 1 "FAIL: the CP/M 3 sign-on was cut short" }
+    timeout { bail 1 "FAIL: CP/M 3 loaded but never signed on" }
+}
+# Let the cold-boot warm-start double-prompt drain before typing into a now-quiet console.
+sleep 2
+
+# A REAL DIRECTORY READ. DIR walks the card's directory; PIP is a stock CP/M 3 utility on the
+# system card -- proof the listing came back off the medium, not a banner that faked a boot.
+send "DIR\r"
+expect {
+    -ex "PIP" {}
+    eof     { bail 1 "FAIL: the machine died running DIR" }
+    timeout { bail 1 "FAIL: DIR did not read the directory off the IDE/CF card (no PIP)" }
+}
+# SYNC TO THE RETURNING PROMPT -- DIR finished and handed control back, not wedged mid-listing.
+expect {
+    -ex "A>" {}
+    eof     { bail 1 "FAIL: DIR listed but the prompt never came back" }
+    timeout { bail 1 "FAIL: DIR listed but CP/M 3 never returned to the A> prompt" }
+}
+
+# The boot and DIR only read the card; the write-protected master must be byte-identical.
+set after [exec shasum $img]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the master:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    bail 1 ""
+}
+
+puts "OK: the IDE-AB CF board booted CP/M 3 through the V2 Z80 MASTER monitor to A>, DIR read the\
+      directory off the CF card (PIP), and the write-protected master is byte-identical."
+bail 0 ""

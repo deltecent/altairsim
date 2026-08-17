@@ -1482,6 +1482,22 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # THE S100Computers IDE-AB (CF) BOARD boots CP/M 3 -- the CF half of the combination board:
+  # the `v2z80` paged-EEPROM MASTER monitor, the `dualide` 8255/ATA register engine, and the
+  # card medium (a truncated `.img` + `.geo` sidecar). The monitor's `P` command reads the CP/M 3
+  # cold loader off the CompactFlash card and boots; DIR reads the directory back off it. An
+  # expect test because `P` and DIR must be TYPED. The card is mounted WRITE-PROTECTED and it
+  # shasums the image -- the boot only reads.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-dualide
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualide.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dualide PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # A WRITE TO A WRITE-PROTECTED DISK MUST NOT HANG THE GUEST.
   #
   # It used to. armWrite() saw readOnly() and returned without setting writing_, so ENWD --

@@ -145,6 +145,10 @@ examples/**
 !examples/dualsd/cpm3-sd.geo
 !examples/dualsd/blank.img
 !examples/dualsd/blank.geo
+# The Dual IDE (CF) example ships one card image, a raw .img plus its .geo sidecar (a truncated
+# bootable CompactFlash card). `*.img` and `examples/**` would otherwise swallow both.
+!examples/dualide/cpm3-cf.img
+!examples/dualide/cpm3-cf.geo
 !examples/basic/LDR4K31.HEX
 !examples/basic/LOAD10.HEX
 !examples/uio/8K BASIC Ver 3-2.tap
