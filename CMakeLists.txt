@@ -746,6 +746,7 @@ add_executable(altair_tests
   tests/test_hdsk.cpp
   tests/test_icom.cpp
   tests/test_dualsd.cpp
+  tests/test_dualide.cpp
   tests/test_v2z80.cpp
   tests/test_propio.cpp
   tests/test_turnkey.cpp
