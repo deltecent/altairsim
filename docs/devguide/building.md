@@ -252,7 +252,7 @@ change a default, or reword a `HELP` string, run it and commit the result alongs
 
 This is not a docs chore bolted on at the end. A board's properties **are** its TOML schema; a
 hand-written parameter table would be a second schema, and the first draft of one in this very
-project got three of the memory card's eight defaults wrong. The reference is printed rather
+project got three of the memory board's eight defaults wrong. The reference is printed rather
 than retyped for the same reason the rest of the program has one source of truth for anything.
 
 The PDFs need `pandoc` and any Chromium-based browser, and are built by `tools/build-docs.sh`.

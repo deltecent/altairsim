@@ -25,13 +25,13 @@ public:
 };
 ```
 
-A CPU card is **both**: `Cpu8080Board : public Board, public BusMaster`. It is a card you can
+A CPU board is **both**: `Cpu8080Board : public Board, public BusMaster`. It is a card you can
 pull out with your hand (`BOARDS REMOVE cpu0` works, and a machine with no processor in it is
 a real machine — it is the one the monitor drove before the 8080 existed), and it is also the
 thing that drives cycles onto the backplane.
 
 **The payoff is DMA, and it is free.** S-100 has `pHOLD`/`pHLDA` precisely because a backplane
-can have more than one master. A DMA card — a disk controller stealing cycles, a Dazzler — is
+can have more than one master. A DMA board — a disk controller stealing cycles, a Dazzler — is
 a `Board` that *becomes* a `BusMaster` when it is granted the bus, and it drives the very same
 cycles through the very same interface the CPU uses. **DMA is never a special path bolted onto
 the bus.** If you find yourself writing one, the model has already gone wrong.
@@ -143,7 +143,7 @@ here. The clocked half is `snoop()`.
 void decodeChanged();   // "my decode just changed" -- sets a dirty flag on the bus
 ```
 
-A bank strap moved. A `PHANTOM*` jumper moved. A chip came out of a socket. The card went
+A bank strap moved. A `PHANTOM*` jumper moved. A chip came out of a socket. The board went
 `enabled = false`. **Call `decodeChanged()`.** Forget, and the tables go stale and the machine
 lies quietly, which is the worst failure mode there is.
 
@@ -167,8 +167,8 @@ write *at all*; it does not reject the write, or ignore it, or log it — it nev
 cycle. So "who answers here" has a **different answer for a read than for a write**, and that
 falls out of the model rather than being bolted onto it.
 
-The consequence you will use immediately: **one card can own `IN FF` while a completely
-different card owns `OUT FF`, with no contention whatsoever.** That is not a trick. It is what
+The consequence you will use immediately: **one board can own `IN FF` while a completely
+different board owns `OUT FF`, with no contention whatsoever.** That is not a trick. It is what
 the Altair front panel actually does. `src/boards/mits-frontpanel.h` decodes exactly this and
 nothing else:
 
@@ -211,7 +211,7 @@ virtual void snoop(const BusCycle&) {}
 
 `snoop()` is called exactly **once per cycle, after it completes**, with `data` back-filled. It
 is the **only** place a board may latch what it saw. It is opt-in via `wantsSnoop()`, because
-calling a do-nothing virtual on every card on every cycle was pure ceremony.
+calling a do-nothing virtual on every board on every cycle was pure ceremony.
 
 The front panel says yes, and it is the clearest example of why the hook exists: **its lamps are
 wired to the backplane.** Not a metaphor — an LED on a bus line sees exactly the cycles
@@ -264,7 +264,7 @@ fake the other two differently.
 **Therefore no board may ever manufacture `0xFF`,** and in particular no board may seed its own
 store with it. A RAM chip does not power up holding `FF`; it powers up holding whatever it feels
 like, which is what `fill = random` is for. Seed a board's store with `FF` and `DUMP` shows `FF`
-for a card whose RAM is fine, `FF` for a card whose RAM was never filled, and `FF` for a card
+for a board whose RAM is fine, `FF` for a board whose RAM was never filled, and `FF` for a board
 that **isn't in the machine**. One symptom, three causes. The moment a board can produce `FF`,
 the only signal the bus has stops being a signal. `tests/test_boundary.cpp` enforces it.
 
