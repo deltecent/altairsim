@@ -223,7 +223,9 @@ assembled in place -- the prompt then drops by the instruction's length, not one
 byte. Operands are numbers in the console base (an H or Q suffix overrides); a
 bare value is still a plain byte. The 8080 and 6800 assemble in full; the Z80 is
 a convenience -- its documented main, CB and ED forms, but not the IX/IY indexed
-or relative JR/DJNZ forms, which report "not implemented" (deposit those bytes).
+forms (they carry a displacement) or the relative JR/DJNZ jumps (their byte is a
+signed offset from the next address), which report "not implemented" -- deposit
+those bytes directly, or use JP.
 Look at four bytes, patch two instructions in, and read them back:
 
 ```
