@@ -1,0 +1,38 @@
+# Dual IDE + Dual SD combo boot acceptance fixture: the V2 Z80 CPU board (its MASTER V6.6 monitor
+# EEPROM) with the whole "IDE-AB CF+ESP32" combination board -- the CP/M 3 system on IDE/CF drive 0
+# (A:), a blank spare CF on drive 1 (B:), a portable COPY of the system on SD socket 0 (C:), and a
+# blank spare SD on socket 1 (D:). ALL FOUR mounted READ-ONLY so the test can never dirty the
+# tracked images. The shipped example (examples/dualidesd/dualidesd.toml) mounts them read/write.
+#
+# The BIOS boots off CF drive 0 (A:) via the monitor's `P` command and logs the SD drives lazily,
+# so DIR C: proves the SD half reads a card built in the SAME format the CF half boots from.
+
+[machine]
+name = "dualidesd-acceptance"
+base = "dualidesd"
+
+[[board]]
+id = "ide0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/dualidesd/cpm3-cf.img"
+  writeprotect = true
+
+  [[board.drive]]
+  unit         = 1
+  mount        = "../../examples/dualidesd/cf-blank.img"
+  writeprotect = true
+
+[[board]]
+id = "sd0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/dualidesd/cpm3-sd.img"
+  writeprotect = true
+
+  [[board.drive]]
+  unit         = 1
+  mount        = "../../examples/dualidesd/sd-blank.img"
+  writeprotect = true

@@ -4,6 +4,7 @@
 #include "boards/cromemco-64fdc.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
+#include "boards/dualide.h"
 #include "boards/dualsd.h"
 #include "boards/hostbridge.h"
 #include "boards/icom-fd3712.h"
@@ -69,6 +70,7 @@ std::vector<BoardType> boardTypes() {
         {"mds", "MITS 88-MDS: 5.25\" minidisk, 4 drives. Same three ports as the dcdd -- but 300 RPM, 64 us/byte, and a motor that stops after 6.4 s"},
         {"hdsk", "MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. Eight ports at BASE+0..7 (default A0). Command/handshake protocol, four page buffers"},
         {"dualsd", "S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byte-sector CF/SD cards, for CP/M 3. Two ports at BASE+0..1 (default 80): status/command + data. Programmed-I/O command/handshake engine (33H-lead + 8 commands). No boot PROM -- the CPU board's monitor loads CP/M from track 0. Mount a card image (a .img with a .geo geometry sidecar)"},
+        {"dualide", "S100Computers IDE-AB (CF): the IDE/CompactFlash half of the IDE+ESP32 combination board -- two CF sockets (drives 0/1 = A:/B:) for CP/M 3. Five 8255 ports at BASE+0..4 (default 30): A/B data, C control lines, mode config, drive select. Programmed-I/O ATA register engine (LBA read/write, 512-byte sectors). No boot PROM -- the CPU board's monitor boots CP/M from the CF. Mounts the SAME card image as dualsd (a .img with a .geo geometry sidecar); pair with dualsd for the full A:/B:+C:/D: system"},
         {"icom", "iCOM FD3712/FD3812 8\" floppy: a programmed-I/O command/handshake controller on the S-100 Interface board. Two ports at BASE+0..1 (default C0) plus a boot PROM and 6810 scratch RAM in high memory (rom=builtin:icom-fd3712-cpm | icom-fd3712-fdos | icom-fd3812-cpm). Boots CP/M 2.2 (single and double density) and FDOS. Up to 4 drives"},
         {"versafloppy", "SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) | vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS"},
         {"tarbell", "Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)"},
@@ -117,6 +119,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "dcdd") return std::make_unique<DcddBoard>();
     if (type == "mds") return std::make_unique<MdsBoard>();
     if (type == "hdsk") return std::make_unique<HdskBoard>();
+    if (type == "dualide") return std::make_unique<DualIdeBoard>();
     if (type == "dualsd") return std::make_unique<DualSdBoard>();
     if (type == "icom") return std::make_unique<IcomFdBoard>();
     if (type == "versafloppy") return std::make_unique<VersaFloppyBoard>();

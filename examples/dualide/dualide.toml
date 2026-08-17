@@ -1,0 +1,87 @@
+# S100Computers "IDE-AB CF" example -- a V2 Z80 CPU board booting CP/M 3 off a CompactFlash
+# card through the 8255 IDE/CF controller. Run it from this directory (or with an explicit path
+# to this file) and it comes up at the CP/M 3 `A>` prompt:
+#
+#     altairsim examples/dualide/dualide.toml
+#     ->                     (the V2 Z80 board's MASTER V6.6 monitor prompt)
+#     P                      ("boot CP/M 3 from the IDE/CF hard disk")
+#     A>                     CP/M V3.0
+#     A>DIR
+#
+# This is the CF-only half of the combination board. For the full A:/B:(CF) + C:/D:(SD) system,
+# see examples/dualidesd/. The IDE/CF half and the SD half read the SAME card image format --
+# see reference/dual-ide-card.md.
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The card IMAGE has a
+# sibling `.geo` geometry descriptor: `cpm3-cf.img` is described by `cpm3-cf.geo`. The image is
+# only ~3 MB -- the CP/M 3 system, its directory, and its files -- while the `.geo` declares the
+# full 7806960-sector (~3.72 GB) CF card, so the medium serves the erased fill byte (0xFF) for
+# every unbacked sector beyond it. That is why a multi-gigabyte CF card ships here as a few
+# megabytes. See reference/dual-ide-card.md section 7.
+
+[machine]
+name    = "dualide"
+startup = ["RUN F000"]
+
+# Fold the terminal's Backspace/Delete key (DEL, 0x7F) to BS (0x08) so it just works at the
+# monitor and the CP/M 3 command line -- a console transform, not hardware.
+[console]
+bsdel = "bs"
+
+# THE CPU. The V2 Z80 CPU board's processor. clock_hz = 0 runs it flat out; the console is
+# polled, so nothing depends on the rate.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+# THE MONITOR EEPROM. The V2 Z80 CPU board's onboard 8K paged EEPROM at F000-FFFF, holding the
+# MASTER V6.6 monitor. `startup = ["RUN F000"]` cold-starts it; at its `->` prompt the `P`
+# command reads the CP/M 3 cold loader off the IDE/CF drive and jumps to it.
+[[board]]
+type = "v2z80"
+id   = "rom0"
+
+# THE CONSOLE. The S100Computers Console I/O board (a Parallax-Propeller console): status at
+# 00H, data at 01H. The MASTER monitor and CP/M 3's CHARIO talk to it here.
+[[board]]
+type    = "propio"
+id      = "con0"
+connect = "console"
+
+# THE IDE/CF BOARD at the standard 30-34 port block (the 8255 IDE/CompactFlash half of the
+# combination board). Drive 0 = A:, the bootable CP/M 3 CF card.
+[[board]]
+type = "dualide"
+id   = "ide0"
+port = 30
+
+  [[board.drive]]
+  unit  = 0
+  mount = "cpm3-cf.img"   # IDE drive 0 = drive A: (the boot card; cpm3-cf.geo alongside)
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# THE HOST BRIDGE at ports B0/B1 -- our own board, not a period one. R.COM/W.COM/HDIR.COM on the
+# boot card move files between the guest and the host, sandboxed to `hostdir` (empty = the
+# shell's working directory). See docs/boards/hostbridge.md.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+# 64K OF RAM. The monitor EEPROM above phantom-shadows its window (F000-FFFF) for reads while
+# enabled; writes fall through to this RAM, so CP/M 3 gets a flat 64K once it inactivates it.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                    # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                     # 0000-FFFF

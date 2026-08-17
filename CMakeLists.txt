@@ -429,6 +429,11 @@ add_library(altair_core STATIC
   # two programmed-I/O ports (80/81) shift whole 512-byte sectors to/from a raw MediaFile card
   # (a DirectoryMedia directory card). No boot PROM. See src/boards/dualsd.h.
   src/boards/dualsd.cpp
+  # The S100Computers IDE-AB (CF) card -- the IDE/CompactFlash half of the IDE+ESP32 combination
+  # board. An 8255 PPI (five ports at 30-34) drives a minimal ATA register file; whole 512-byte
+  # LBA sectors move to/from the SAME raw MediaFile card dualsd uses. No boot PROM. See
+  # src/boards/dualide.h.
+  src/boards/dualide.cpp
   # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
   # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
   # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
@@ -741,6 +746,7 @@ add_executable(altair_tests
   tests/test_hdsk.cpp
   tests/test_icom.cpp
   tests/test_dualsd.cpp
+  tests/test_dualide.cpp
   tests/test_v2z80.cpp
   tests/test_propio.cpp
   tests/test_turnkey.cpp
@@ -1472,6 +1478,39 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualsd.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-dualsd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE S100Computers IDE-AB (CF) BOARD boots CP/M 3 -- the CF half of the combination board:
+  # the `v2z80` paged-EEPROM MASTER monitor, the `dualide` 8255/ATA register engine, and the
+  # card medium (a truncated `.img` + `.geo` sidecar). The monitor's `P` command reads the CP/M 3
+  # cold loader off the CompactFlash card and boots; DIR reads the directory back off it. An
+  # expect test because `P` and DIR must be TYPED. The card is mounted WRITE-PROTECTED and it
+  # shasums the image -- the boot only reads.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-dualide
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualide.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dualide PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE WHOLE IDE-AB CF+ESP32 COMBINATION BOARD -- both halves, all four CP/M 3 drives. One V2 Z80
+  # CPU runs the HIDE3 combination BIOS over the `dualide` 8255/ATA engine at 30-34 (CF drives
+  # A:/B:) and the `dualsd` ESP32 engine at 80/81 (SD drives C:/D:). The monitor's `P` command
+  # boots CP/M 3 off CompactFlash (A:), the sign-on names BOTH halves, and DIR C:/DIR D: read the
+  # SD side -- proving image portability (cpm3-sd.img is a byte copy of cpm3-cf.img). An expect
+  # test because `P` and DIR must be TYPED; all four cards are WRITE-PROTECTED and it shasums the
+  # two system images.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-dualidesd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dualidesd.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dualidesd PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

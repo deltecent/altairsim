@@ -8,7 +8,7 @@ as it is now; this document is the record of how it got there.
 
 ## 0.4.0
 
-**0.4.0 is the boards release.** Twenty-one new S-100 cards join the backplane — enough that
+**0.4.0 is the boards release.** A raft of new S-100 cards join the backplane — enough that
 five whole new machine families (Cromemco, SD Systems, Tarbell, iCOM, S100Computers) boot
 alongside the MITS originals for the first time — disks and cassettes learn to be built and formatted by the guest
 instead of only read, and the debugger, the monitor prompt and the video window all got
@@ -37,7 +37,12 @@ system — the original **FDOS-I** and the later **FDOS-III** — each off its o
 command off the new **Dual SD** controller — two microSD cards on the bus as raw 512-byte-sector
 drives, each card one CP/M drive stored as a truncated `.img` beside a `.geo` sidecar that declares
 the full card (so a card that is hundreds of megabytes on real flash ships as a couple of megabytes),
-with the **Console I/O** board as its Propeller-based serial console (`altairsim dualsd`). On the MITS
+with the **Console I/O** board as its Propeller-based serial console (`altairsim dualsd`). Its
+**IDE-AB** companion does the same off **CompactFlash** — an 8255 driving a CF card's IDE bus, booted
+with the monitor's `P` command as drives A:/B: — and because both halves lay a card out identically,
+one system image is interchangeable between them; the two together make the full combination board,
+CompactFlash as A:/B: and microSD as C:/D:, a single CP/M 3 spanning all four drives (`altairsim
+dualide`, `altairsim dualidesd`). On the MITS
 side, the **88-HDSK** boots CP/M off a hard disk, **88-PIO**/**88-4PIO** add parallel I/O,
 **88-LPC** drives a real line printer, **88-UIO** combines a serial port and a cassette deck on
 one card, and the **8800b Turnkey Module** brings up a front-panel-less Altair with its boot PROM
