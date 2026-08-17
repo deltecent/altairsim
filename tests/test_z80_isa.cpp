@@ -191,4 +191,134 @@ void test_z80_isa() {
     auto ff = [](uint16_t) -> uint8_t { return 0xC3; };  // JP everywhere
     Insn top = d->at(0xFFFF, ff);
     CHECK(top.text == "JP C3C3", "an instruction at FFFF reads its operand from 0000 -- it WRAPS");
+
+    // -----------------------------------------------------------------------
+    // THE CONVENIENCE ASSEMBLER -- the decoder read the other way. Same layer,
+    // same statelessness: text in, bytes out, no CPU.
+    // -----------------------------------------------------------------------
+    SECTION("the assembler round-trips the documented main/CB/ED forms -- disassemble, reassemble, same bytes");
+
+    const Assembler* a = assemblerFor("z80");
+    CHECK(a != nullptr, "we assemble z80");
+    if (!a) return;
+    CHECK(std::string(a->name()) == "z80", "and it says so");
+    CHECK(assemblerFor("z80") == assemblerFor("z80"), "the same one every time");
+
+    auto headOf = [](const std::string& s) {
+        return s.substr(0, s.find(' '));
+    };
+
+    // MAIN table: lay each opcode down with NON-PALINDROMIC operand bytes (34 12,
+    // so a low/high transposition can't hide), disassemble, feed the text back and
+    // demand the same bytes. The four prefix bytes are not main instructions; the
+    // JR/DJNZ (relative) forms are EXCLUDED and must come back as an error.
+    for (int op = 0; op < 256; ++op) {
+        if (op == 0xCB || op == 0xDD || op == 0xED || op == 0xFD) continue;
+        uint8_t win[3] = {(uint8_t)op, 0x34, 0x12};
+        auto wp = [&](uint16_t x) -> uint8_t { return x < 3 ? win[x] : 0x00; };
+        Insn in = d->at(0, wp);
+        AsmResult ra = a->assemble(0, in.text);
+        if (headOf(in.text) == "JR" || headOf(in.text) == "DJNZ") {
+            CHECK(!ra.error.empty() && ra.bytes.empty(),
+                  ("a relative jump is not implemented: " + in.text).c_str());
+            continue;
+        }
+        bool ok = ra.error.empty() && ra.bytes.size() == in.len && ra.bytes[0] == (uint8_t)op;
+        if (ok && in.len >= 2) ok = ra.bytes[1] == win[1];
+        if (ok && in.len == 3) ok = ra.bytes[2] == win[2];
+        CHECK(ok, ("main round-trips: " + in.text).c_str());
+    }
+
+    // CB page: two bytes, no immediate. Documented forms round-trip to {CB, op};
+    // the undocumented SLL and reg-copy forms (the disassembler's `*` text) must
+    // NOT assemble back.
+    for (int op = 0; op < 256; ++op) {
+        uint8_t win[2] = {0xCB, (uint8_t)op};
+        auto wp = [&](uint16_t x) -> uint8_t { return x < 2 ? win[x] : 0x00; };
+        Insn in = d->at(0, wp);
+        AsmResult ra = a->assemble(0, in.text);
+        if (in.undocumented) {
+            CHECK(!ra.error.empty(), ("undoc CB does not assemble: " + in.text).c_str());
+            continue;
+        }
+        bool ok = ra.error.empty() && ra.bytes.size() == 2 && ra.bytes[0] == 0xCB && ra.bytes[1] == (uint8_t)op;
+        CHECK(ok, ("CB round-trips: " + in.text).c_str());
+    }
+
+    // ED page: {ED, op} for the operand-less forms, plus a low-first word for the
+    // LD (nn),ss / LD ss,(nn) family (len 4). Undocumented ED must not round-trip.
+    for (int op = 0; op < 256; ++op) {
+        uint8_t win[4] = {0xED, (uint8_t)op, 0x34, 0x12};
+        auto wp = [&](uint16_t x) -> uint8_t { return x < 4 ? win[x] : 0x00; };
+        Insn in = d->at(0, wp);
+        AsmResult ra = a->assemble(0, in.text);
+        if (in.undocumented) {
+            CHECK(!ra.error.empty(), ("undoc ED does not assemble: " + in.text).c_str());
+            continue;
+        }
+        bool ok = ra.error.empty() && ra.bytes.size() == in.len &&
+                  ra.bytes[0] == 0xED && ra.bytes[1] == (uint8_t)op;
+        if (ok && in.len == 4) ok = ra.bytes[2] == win[2] && ra.bytes[3] == win[3];
+        CHECK(ok, ("ED round-trips: " + in.text).c_str());
+    }
+
+    SECTION("the assembler -- spot encodings, leniency, octal, and honest errors");
+
+    auto asmBytes = [&](const std::string& line, int base = 16) {
+        return a->assemble(0, line, base).bytes;
+    };
+    auto eq = [](const std::vector<uint8_t>& got, std::vector<uint8_t> want) { return got == want; };
+
+    CHECK(eq(asmBytes("LD B,C"), {0x41}), "LD B,C -> 41, a one-byte register move");
+    CHECK(eq(asmBytes("LD HL,1234"), {0x21, 0x34, 0x12}), "LD HL,1234 -> 21 34 12, operand LOW BYTE FIRST");
+    CHECK(eq(asmBytes("JP 0100"), {0xC3, 0x00, 0x01}), "JP 0100 -> C3 00 01");
+    CHECK(eq(asmBytes("LD (0100),HL"), {0x22, 0x00, 0x01}), "LD (0100),HL -> 22 00 01, a MID-string word operand");
+    CHECK(eq(asmBytes("IN A,(10)"), {0xDB, 0x10}), "IN A,(10) -> DB 10");
+    CHECK(eq(asmBytes("OUT (10),A"), {0xD3, 0x10}), "OUT (10),A -> D3 10");
+    CHECK(eq(asmBytes("RST 08"), {0xCF}), "RST 08 -> CF, exact-mapped, its hex digits not parsed as a number");
+    CHECK(eq(asmBytes("HALT"), {0x76}), "HALT -> 76");
+    CHECK(eq(asmBytes("EX DE,HL"), {0xEB}), "EX DE,HL -> EB");
+    CHECK(eq(asmBytes("LDIR"), {0xED, 0xB0}), "LDIR -> ED B0, an ED-page block op");
+    CHECK(eq(asmBytes("NEG"), {0xED, 0x44}), "NEG -> ED 44");
+    CHECK(eq(asmBytes("IM 1"), {0xED, 0x56}), "IM 1 -> ED 56, its mode digit is fixed text");
+    CHECK(eq(asmBytes("SBC HL,BC"), {0xED, 0x42}), "SBC HL,BC -> ED 42");
+    CHECK(eq(asmBytes("IN A,(C)"), {0xED, 0x78}), "IN A,(C) -> ED 78, distinct from IN A,(n)");
+    CHECK(eq(asmBytes("LD BC,(0100)"), {0xED, 0x4B, 0x00, 0x01}), "LD BC,(0100) -> ED 4B 00 01, ED word form");
+    CHECK(eq(asmBytes("BIT 7,A"), {0xCB, 0x7F}), "BIT 7,A -> CB 7F");
+    CHECK(eq(asmBytes("RES 0,(HL)"), {0xCB, 0x86}), "RES 0,(HL) -> CB 86");
+    CHECK(eq(asmBytes("SET 3,C"), {0xCB, 0xD9}), "SET 3,C -> CB D9");
+
+    // Leniency: case, spacing and an explicit suffix all reach the same bytes.
+    CHECK(eq(asmBytes("ld b,c"), {0x41}), "lowercase assembles");
+    CHECK(eq(asmBytes("LD  HL , 1234"), {0x21, 0x34, 0x12}), "extra spaces and spaces around the comma are forgiven");
+    CHECK(eq(asmBytes("IN A,(10H)"), {0xDB, 0x10}), "a trailing H suffix is honored");
+    CHECK(eq(asmBytes("LD B,0x42"), {0x06, 0x42}), "and a 0x prefix");
+
+    // Octal: base 8 changes ONLY how a bare operand is read.
+    CHECK(eq(asmBytes("LD B,377", 8), {0x06, 0xFF}), "base 8: 377 is FF");
+    CHECK(eq(asmBytes("LD B,377Q", 16), {0x06, 0xFF}), "a Q suffix forces octal even in hex mode");
+
+    // The excluded families get a DISTINCT "not implemented" message -- so you know
+    // the mnemonic is real and why it was refused -- while garbage stays "unknown".
+    auto notImpl = [&](const std::string& line) {
+        AsmResult rr = a->assemble(0, line);
+        return rr.bytes.empty() && rr.error.find("not implemented") != std::string::npos;
+    };
+    CHECK(notImpl("JR 0100"), "JR is not implemented -- a relative branch");
+    CHECK(notImpl("DJNZ 0100"), "DJNZ is not implemented -- a relative branch");
+    CHECK(notImpl("LD A,(IX+5)"), "an (IX+d) indexed load is not implemented");
+    CHECK(notImpl("ADD A,IXH"), "the IXH half register is not implemented");
+    CHECK(notImpl("LD IX,1234"), "LD IX,nn is not implemented");
+    CHECK(notImpl("LD B,(IY+2)"), "an (IY+d) indexed load is not implemented");
+
+    auto errs = [&](const std::string& line, int base = 16) {
+        AsmResult rr = a->assemble(0, line, base);
+        return rr.bytes.empty() && !rr.error.empty();
+    };
+    CHECK(errs("FOO 1") && a->assemble(0, "FOO 1").error.find("unknown") != std::string::npos,
+          "genuine garbage is 'unknown instruction', not 'not implemented'");
+    CHECK(errs("JP"), "a word instruction with no operand errors");
+    CHECK(errs("LD B,1FF"), "a byte operand over FF errors");
+    CHECK(errs(""), "an empty line errors");
+    CHECK(errs("*RLC B"), "the disassembler's undocumented '*' marker is not valid input");
 }

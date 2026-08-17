@@ -206,7 +206,7 @@ void test_asm6800() {
     CHECK(a != nullptr, "we assemble 6800");
     if (!a) return;
     CHECK(std::string(a->name()) == "6800", "and it says so");
-    CHECK(assemblerFor("z80") == nullptr, "still no Z80 assembler -- EDIT stays byte-only there");
+    CHECK(assemblerFor("z80") != nullptr, "the Z80 has its own convenience assembler now");
 
     SECTION("one line per addressing mode");
 

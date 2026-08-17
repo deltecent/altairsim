@@ -1,8 +1,13 @@
 #include "isa/isa.h"
 
+#include <cassert>
 #include <cctype>
 #include <cstdio>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace altair {
 namespace {
@@ -429,10 +434,230 @@ public:
 
 const IsaZ80 kZ80;
 
+// ---------------------------------------------------------------------------
+// The Z80 EDIT assembler -- text in, bytes out, the inverse of the decoder
+// above. Like the 8080 assembler (isa8080.cpp) nothing is hand-encoded per
+// opcode: the maps are built by reading the SAME tables and decoders the other
+// way, so the two cannot drift and a full round-trip test proves it.
+//
+// It is a CONVENIENCE, not a full assembler. It covers the documented main
+// table, the CB page (rotate/shift/BIT/RES/SET) and the ED page (block ops,
+// 16-bit arithmetic, IM, IN/OUT (C)...). It DELIBERATELY DOES NOT ASSEMBLE:
+//
+//   IX / IY indexed forms (DD/FD prefix) -- (IX+d)/(IY+d), LD IX,nn, and the
+//     undocumented IXH/IXL half registers. They carry a displacement and/or are
+//     undocumented, not a one-byte poke. Typing one reports "not implemented".
+//
+//   JR / DJNZ (relative jumps) -- the encoded byte is a SIGNED displacement from
+//     the address after the instruction, so it depends on the target and the PC.
+//     Deposit the two bytes directly, or use JP. Also "not implemented".
+//
+// A recognised-but-excluded form gets that distinct "not implemented" message so
+// you know the mnemonic is real and why it was refused; anything else unknown is
+// an honest "unknown instruction".
+// ---------------------------------------------------------------------------
+
+// Uppercase; trim ends; collapse internal whitespace to one space; drop the
+// space on either side of a comma; keep a trailing comma but no trailing space.
+// Applied to BOTH the stored keys and the operator's input so the two always
+// agree. Same rules as the 8080's asmNormalize -- kept file-local because each
+// ISA file is otherwise self-contained.
+std::string asmZ80Normalize(const std::string& s) {
+    std::string t;
+    for (char c : s) t += (char)std::toupper((unsigned char)c);
+
+    std::string out;
+    bool pendingSpace = false;
+    for (char c : t) {
+        if (c == ' ' || c == '\t') {
+            // Fold runs; never a leading space; and drop a space right AFTER a
+            // comma so `LD HL, 1234` and `LD HL,1234` are the one thing -- the
+            // bracket match needs the operand to abut the comma.
+            if (!out.empty() && out.back() != ',') pendingSpace = true;
+            continue;
+        }
+        if (c == ',') {
+            while (!out.empty() && out.back() == ' ') out.pop_back();  // no space before ','
+            out += ',';
+            pendingSpace = false;  // and none after it
+            continue;
+        }
+        if (pendingSpace) { out += ' '; pendingSpace = false; }
+        out += c;
+    }
+    return out;
+}
+
+// Parse one operand into a value. Honors `base` (16 or 8) unless the token
+// carries an explicit radix: a trailing H (hex) or Q/O (octal), or a leading 0x
+// (hex). No symbols, no decimal. Returns false on empty/garbage/overflow of 16
+// bits. Self-contained on purpose -- the ISA layer must not reach into core.
+bool asmZ80ParseNum(const std::string& tok, int base, unsigned& out) {
+    std::string s = tok;
+    if (s.empty()) return false;
+
+    if (s.size() > 2 && s[0] == '0' && (s[1] == 'X' || s[1] == 'x')) {
+        base = 16;
+        s = s.substr(2);
+    } else {
+        char last = (char)std::toupper((unsigned char)s.back());
+        if (last == 'H') { base = 16; s.pop_back(); }
+        else if (last == 'Q' || last == 'O') { base = 8; s.pop_back(); }
+    }
+    if (s.empty()) return false;
+
+    unsigned long v = 0;
+    for (char c : s) {
+        int d;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else return false;
+        if (d >= base) return false;
+        v = v * base + (unsigned)d;
+        if (v > 0xFFFF) return false;  // no operand is wider than a word
+    }
+    out = (unsigned)v;
+    return true;
+}
+
+class IsaZ80Assembler : public Assembler {
+public:
+    IsaZ80Assembler() {
+        // Main table: reverse kMain directly -- it still carries the %B/%W/%R
+        // placeholders, so an exact form or a template falls straight out.
+        for (int op = 0; op < 256; ++op) {
+            std::string text = kMain[op];
+            // The four prefix bytes are not instructions on their own.
+            if (text == "CB" || text == "DD" || text == "ED" || text == "FD") continue;
+            size_t pc = text.find('%');
+            if (pc != std::string::npos && text[pc + 1] == 'R') {
+                // JR / DJNZ -- excluded. Remember the head so a typed one reads as
+                // "not implemented", not "unknown".
+                notImpl_.insert(headToken(text));
+                continue;
+            }
+            addForm(text, {(uint8_t)op});
+        }
+
+        // CB and ED have no placeholder table -- they are decoded by algorithm --
+        // so enumerate them THROUGH the disassembler and read the text back.
+        // Undocumented forms are skipped: they must not round-trip.
+        for (int op = 0; op < 256; ++op) {
+            uint8_t win[2] = {0xCB, (uint8_t)op};
+            Insn in = kZ80.at(0, [&](uint16_t a) -> uint8_t { return a < 2 ? win[a] : 0x00; }, 16);
+            if (in.undocumented) continue;
+            addForm(in.text, {0xCB, (uint8_t)op});  // CB forms carry no immediate
+        }
+        for (int op = 0; op < 256; ++op) {
+            // A sentinel word (ABCD) marks the ED forms that take a %W operand
+            // (LD (nn),ss / LD ss,(nn)); everything else in ED is operand-less.
+            uint8_t win[4] = {0xED, (uint8_t)op, 0xCD, 0xAB};
+            Insn in = kZ80.at(0, [&](uint16_t a) -> uint8_t { return a < 4 ? win[a] : 0x00; }, 16);
+            if (in.undocumented) continue;
+            std::string t = in.text;
+            size_t s = t.find("ABCD");
+            if (s != std::string::npos) t = t.substr(0, s) + "%W" + t.substr(s + 4);
+            addForm(t, {0xED, (uint8_t)op});
+        }
+    }
+
+    const char* name() const override { return "z80"; }
+
+    AsmResult assemble(uint16_t /*addr*/, const std::string& line, int base) const override {
+        std::string n = asmZ80Normalize(line);
+        if (n.empty()) return fail("empty");
+
+        // Exact map first: every operand-less form, so a register letter or a
+        // fixed digit (RST 08, IM 1, BIT 7,A) is never mistaken for a number.
+        auto e = exact_.find(n);
+        if (e != exact_.end()) return ok(e->second);
+
+        // Bracket match: the operand is whatever sits between a template's
+        // (already-normalized) prefix and suffix. Longest prefix wins, so a more
+        // specific form beats a looser one.
+        const Template* best = nullptr;
+        unsigned bestVal = 0;
+        for (const Template& t : templates_) {
+            if (n.size() < t.prefix.size() + t.suffix.size()) continue;
+            if (n.compare(0, t.prefix.size(), t.prefix) != 0) continue;
+            if (n.compare(n.size() - t.suffix.size(), t.suffix.size(), t.suffix) != 0) continue;
+            std::string mid = n.substr(t.prefix.size(), n.size() - t.prefix.size() - t.suffix.size());
+            unsigned v;
+            if (!asmZ80ParseNum(mid, base, v)) continue;
+            if (t.word ? v > 0xFFFF : v > 0xFF) continue;
+            if (!best || t.prefix.size() > best->prefix.size()) { best = &t; bestVal = v; }
+        }
+        if (best) {
+            std::vector<uint8_t> b = best->lead;
+            b.push_back((uint8_t)(bestVal & 0xFF));
+            if (best->word) b.push_back((uint8_t)((bestVal >> 8) & 0xFF));
+            return ok(std::move(b));
+        }
+
+        // Recognised-but-excluded families get a distinct message; true garbage
+        // stays "unknown".
+        if (n.find("IX") != std::string::npos || n.find("IY") != std::string::npos)
+            return fail("IX/IY indexed forms are not implemented -- deposit the bytes directly");
+        std::string head = headToken(n);
+        if (notImpl_.count(head))
+            return fail(head + " is not implemented -- a relative branch's byte depends on the "
+                               "target and PC; deposit the 2 bytes directly, or use JP");
+        return fail("unknown instruction: " + n);
+    }
+
+private:
+    struct Template {
+        std::string prefix, suffix;
+        std::vector<uint8_t> lead;
+        bool word;  // %W (2 operand bytes, low first) vs %B (1)
+    };
+
+    // File a mnemonic form. No %-operand -> the exact map. With one, swap the
+    // placeholder for a single '#' that rides through normalization unchanged, so
+    // the split lands on canonical spacing, then store the bracket template.
+    void addForm(const std::string& text, std::vector<uint8_t> lead) {
+        size_t p = text.find('%');
+        if (p == std::string::npos) {
+            bool ins = exact_.emplace(asmZ80Normalize(text), lead).second;
+            assert(ins && "duplicate exact Z80 mnemonic -- the decode tables are no longer a bijection");
+            (void)ins;
+            return;
+        }
+        Template t;
+        t.word = text[p + 1] == 'W';
+        std::string norm = asmZ80Normalize(text.substr(0, p) + "#" + text.substr(p + 2));
+        size_t h = norm.find('#');
+        t.prefix = norm.substr(0, h);
+        t.suffix = norm.substr(h + 1);
+        t.lead = std::move(lead);
+        templates_.push_back(std::move(t));
+    }
+
+    static std::string headToken(const std::string& s) {
+        std::string h;
+        for (char c : s) {
+            if (c == ' ' || c == '\t') break;
+            h += (char)std::toupper((unsigned char)c);
+        }
+        return h;
+    }
+
+    static AsmResult ok(std::vector<uint8_t> b) { return {std::move(b), {}}; }
+    static AsmResult fail(std::string e) { return {{}, std::move(e)}; }
+
+    std::unordered_map<std::string, std::vector<uint8_t>> exact_;
+    std::vector<Template> templates_;
+    std::unordered_set<std::string> notImpl_;
+};
+
+const IsaZ80Assembler kZ80asm;
+
 } // namespace
 
 // The 8080 file owns the registry (disassemblerFor/instructionSets); it reaches
-// this instance through here so the lookup stays in one place.
+// these instances through here so the lookup stays in one place.
 const Disassembler* z80Disassembler() { return &kZ80; }
+const Assembler*    z80Assembler()    { return &kZ80asm; }
 
 } // namespace altair

@@ -106,8 +106,9 @@ void test_isa() {
     if (!a) return;
     CHECK(std::string(a->name()) == "8080", "and it says so");
     CHECK(assemblerFor("8080") == assemblerFor("8080"), "the same one every time");
-    CHECK(assemblerFor("Z80") == nullptr, "but NOT Z80 yet -- assemblerFor returns null, EDIT falls back to bytes");
-    CHECK(assemblerFor("") == nullptr, "and not the empty ISA of a CPU-less machine");
+    CHECK(assemblerFor("Z80") != nullptr, "the Z80 has a convenience assembler of its own (see test_z80_isa)");
+    CHECK(std::string(assemblerFor("Z80")->name()) == "z80", "and it names itself z80");
+    CHECK(assemblerFor("") == nullptr, "but not the empty ISA of a CPU-less machine");
 
     // For every one of the 256 opcodes: lay it down with NON-PALINDROMIC operand
     // bytes (34 12, so a low/high transposition can't hide), disassemble it, feed

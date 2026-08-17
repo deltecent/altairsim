@@ -353,14 +353,17 @@ const Disassembler* disassemblerFor(const std::string& isa) {
 }
 
 const Assembler* mc6800Assembler();
+const Assembler* z80Assembler();
 
 const Assembler* assemblerFor(const std::string& isa) {
     std::string k;
     for (char c : isa) k += (char)std::tolower((unsigned char)c);
     if (k == "8080") return &k8080asm;
     if (k == "6800") return mc6800Assembler();
-    // No Z80 assembler yet -- prefixes, (IX+d) and signed JR make it a real
-    // mini-assembler, not a table reverse. EDIT falls back to bytes until it lands.
+    // A CONVENIENCE Z80 assembler: the documented main table, CB and ED pages.
+    // It deliberately does NOT assemble the IX/IY indexed forms or the relative
+    // JR/DJNZ (see isaZ80.cpp); those report "not implemented" rather than encode.
+    if (k == "z80") return z80Assembler();
     return nullptr;
 }
 

@@ -93,8 +93,11 @@ public:
     virtual AsmResult assemble(uint16_t addr, const std::string& line, int base = 16) const = 0;
 };
 
-// Null if we do not assemble that instruction set (e.g. "z80" for now, or "" when
-// there is no CPU). The caller reports it and falls back to bytes -- never guesses.
+// Null if we do not assemble that instruction set (e.g. "" when there is no CPU).
+// The 8080 and 6800 are full table reverses; the Z80 is a CONVENIENCE assembler
+// (documented main/CB/ED forms, but not the IX/IY indexed or relative JR/DJNZ
+// forms -- those return a "not implemented" error). The caller reports a null and
+// falls back to bytes -- it never guesses.
 const Assembler* assemblerFor(const std::string& isa);
 
 // Every instruction set we know, for tab completion and the error message.
