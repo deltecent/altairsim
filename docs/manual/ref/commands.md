@@ -221,8 +221,10 @@ way LOAD ... ROM does -- behind the bus, into the chip that answers there.
 If the machine has a CPU, type an INSTRUCTION where a byte would go and it is
 assembled in place -- the prompt then drops by the instruction's length, not one
 byte. Operands are numbers in the console base (an H or Q suffix overrides); a
-bare value is still a plain byte. Look at four bytes, patch two instructions in,
-and read them back:
+bare value is still a plain byte. The 8080 and 6800 assemble in full; the Z80 is
+a convenience -- its documented main, CB and ED forms, but not the IX/IY indexed
+or relative JR/DJNZ forms, which report "not implemented" (deposit those bytes).
+Look at four bytes, patch two instructions in, and read them back:
 
 ```
 altairsim> EDIT 100
