@@ -191,8 +191,16 @@ assemble it in place — `EDIT` is `DISASM` (below) read the other way. Type `IN
 `DB 10`; the prompt then drops by the instruction's length, not one byte, so a two-byte instruction
 lands the next prompt two on. Operands are numbers in the console base — an `H` or `Q` suffix on the
 number overrides it — and there are no labels: this is a patch assembler, not a toolchain. A bare
-value is still a plain byte, so byte entry is unchanged. It is the 8080's instruction set; a CPU
-whose encoding is not yet assembled here keeps taking bytes.
+value is still a plain byte, so byte entry is unchanged.
+
+The 8080 and 6800 assemble in full. The Z80 assembles as a convenience — its documented main,
+`CB` and `ED` instructions — but not the `IX`/`IY` indexed forms or the relative jumps `JR` and
+`DJNZ`, which report *not implemented* rather than take a byte. Those two ask for something a
+single prompt cannot supply: an indexed form carries a displacement (and its `IXH`/`IXL`
+half-registers are undocumented besides), and a relative jump encodes a signed offset from the
+address *after* it, so its byte depends on both where you are jumping to and where you are
+jumping from. Deposit those bytes directly, or reach the same place with `JP`. A CPU whose
+encoding is not assembled here at all keeps taking bytes.
 
 ```
 EDIT 100          0100 C3 IN 10        assembles DB 10, on to 0102
