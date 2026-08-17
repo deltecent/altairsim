@@ -56,6 +56,20 @@ if [ -z "$chrome" ]; then
   exit 1
 fi
 
+# Paged.js (docs/pagedjs/) gives the PDFs their running page numbers, their page-numbered
+# contents and their honest page breaks -- none of which the browser's own print path can do.
+# It runs INSIDE the browser, and it finishes asynchronously, so we cannot use --print-to-pdf
+# (it captures too early). tools/chrome-print.py drives the browser over the DevTools protocol
+# instead, waits for Paged.js, then prints -- and it is stdlib-only Python, so the one new tool
+# the PDFs now need is python3, which the CI runners and every dev machine already have.
+if ! have python3; then
+  echo "build-docs: python3 is not installed -- it drives the browser and waits for Paged.js" >&2
+  echo "            (tools/chrome-print.py, stdlib only). The Markdown manual is at docs/manual/." >&2
+  exit 1
+fi
+pagedjs="$root/docs/pagedjs/paged.polyfill.js"
+[ -f "$pagedjs" ] || { echo "build-docs: docs/pagedjs/paged.polyfill.js is missing -- it is the paginator." >&2; exit 1; }
+
 # ---------------------------------------------------------------------------
 # TOKENS. The manual writes {{MACHINE_CPM}}; docs/package.map says what that is.
 #
@@ -112,6 +126,64 @@ check_fonts() {  # check_fonts <pdf> <display-name>
 }
 
 # ---------------------------------------------------------------------------
+# TURN A PANDOC HTML PAGE INTO A PAGINATED PDF.
+#
+# This is the step the browser cannot do alone. It splices Paged.js into the page (embedded, so
+# the intermediate HTML stays self-contained, exactly like the fonts), then hands it to
+# chrome-print.py, which waits for Paged.js to finish before printing. The Paged.js completion
+# hook is wired here: window.PagedConfig.after stamps the page count into document.title, and
+# chrome-print.py watches for it.
+#
+# Then it CHECKS THE RESULT. If Paged.js had silently not run, the browser would have printed
+# the un-paginated document -- no footer page numbers, an un-numbered contents -- and it would
+# look plausible. So we read the finished PDF back and fail the build if the running page
+# number is not there, in the same spirit as the font check.
+# ---------------------------------------------------------------------------
+paginate() {  # paginate <html> <pdf> <label> [cover]
+  html=$1; pdf=$2; label=$3
+  # The cover flag tags the TITLE BLOCK, not the body. It must be a class on the header element
+  # itself: Paged.js relocates the body into its own page containers before it assigns named
+  # pages, so a `body.something header` selector no longer matches the header when `page: cover`
+  # is read -- and the cover would keep the running page number. A class ON the header has no
+  # body ancestor to lose. (Verified: body-scoped selector -> cover numbered; header class -> clean.)
+  addcover=""
+  [ "${4:-}" = cover ] && addcover="var h=document.getElementById('title-block-header'); if(h){h.classList.add('cover');}"
+
+  # The injected tail: the completion hook and the cover flag FIRST (they must be in place
+  # before the polyfill initializes), then the polyfill itself inline.
+  {
+    printf '<script>window.PagedConfig={after:function(f){document.title="PAGES_"+f.total;}};%s</script>\n' "$addcover"
+    printf '<script>\n'
+    cat "$pagedjs"
+    printf '\n</script>\n'
+  } > "$work/inject.html"
+
+  # Splice it in right before the closing </body>. pandoc emits that tag alone on its own line;
+  # any </body> in prose is escaped to &lt;/body&gt;, so an exact-line match hits only the real one.
+  awk -v injf="$work/inject.html" '
+    $0=="</body>" { while((getline l < injf) > 0) print l }
+    { print }
+  ' "$html" > "$html.paged" && mv "$html.paged" "$html"
+
+  python3 "$root/tools/chrome-print.py" "$chrome" "$html" "$pdf" || {
+    echo "build-docs: $label -- the browser/Paged.js print failed (see above)." >&2; exit 1; }
+
+  [ -s "$pdf" ] || { echo "build-docs: $label came out empty." >&2; exit 1; }
+
+  # Proof that Paged.js actually ran: its @bottom-center margin box prints the page number as a
+  # bare line of its own. The browser's native print ignores @bottom-center, so no such line
+  # means the pagination silently did not happen.
+  if have pdftotext; then
+    if ! pdftotext "$pdf" - 2>/dev/null | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*$'; then
+      echo "build-docs: $label has NO running page numbers -- Paged.js did not paginate it." >&2
+      echo "            The browser printed the un-paginated document. Check docs/pagedjs/ and" >&2
+      echo "            tools/chrome-print.py; do not ship this." >&2
+      exit 1
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # One document.
 # ---------------------------------------------------------------------------
 build() {  # build <docdir> <output-name> <title> [notoc]
@@ -148,9 +220,10 @@ build() {  # build <docdir> <output-name> <title> [notoc]
   # learn the SHAPE of the document, and an index of every `## Getting back out -- ^E` in it
   # tells them the shape of a chapter they have not read yet.
   #
-  # Know what this costs, because it is not nothing: --print-to-pdf emits no bookmark tree
-  # (verified -- zero /Outlines in the PDF, before and after), so the contents page is the
-  # ONLY navigation this document has. Cutting it to depth 1 means a subsection is reached by
+  # Know what this costs, because it is not nothing: the print path emits no bookmark tree
+  # (verified -- zero /Outlines in the PDF, before and after, with Paged.js as with plain
+  # --print-to-pdf), so the contents page is the ONLY navigation this document has -- which is
+  # exactly why its page numbers earn their keep. Cutting it to depth 1 means a subsection is reached by
   # its chapter, or by the reader's own text search. That is the right trade for a manual whose
   # chapters are short and whose reference lives at the back -- but if a chapter ever grows big
   # enough to need finding-by-subsection, the answer is to SPLIT IT, not to reopen this.
@@ -185,10 +258,7 @@ build() {  # build <docdir> <output-name> <title> [notoc]
   # or CI, which commits what it finds there -- picks it up as the real one. It only lands
   # once it has passed. (This is not hypothetical: the font check first fired on a build
   # that had already overwritten docs/altairsim-manual.pdf with the bad copy.)
-  "$chrome" --headless --disable-gpu --no-pdf-header-footer \
-            --print-to-pdf="$work/$name.pdf" "$work/$name.html" 2>/dev/null
-
-  [ -s "$work/$name.pdf" ] || { echo "build-docs: $name.pdf came out empty." >&2; exit 1; }
+  paginate "$work/$name.html" "$work/$name.pdf" "$name.pdf" cover
 
   check_fonts "$work/$name.pdf" "$name.pdf"
 
@@ -232,10 +302,7 @@ build_readme() {  # build_readme <src.md relative to root>
     --metadata subtitle="$date · $stamp" \
     -o "$work/readme.html"
 
-  "$chrome" --headless --disable-gpu --no-pdf-header-footer \
-            --print-to-pdf="$work/readme.pdf" "$work/readme.html" 2>/dev/null
-
-  [ -s "$work/readme.pdf" ] || { echo "build-docs: $rel -> pdf came out empty." >&2; exit 1; }
+  paginate "$work/readme.html" "$work/readme.pdf" "$rel -> pdf"
 
   check_fonts "$work/readme.pdf" "$rel -> pdf"
 
@@ -274,10 +341,7 @@ build_single() {  # build_single <src.md relative to root> <output-name> <title>
     --metadata subtitle="$date · $stamp" \
     -o "$work/$name.html"
 
-  "$chrome" --headless --disable-gpu --no-pdf-header-footer \
-            --print-to-pdf="$work/$name.pdf" "$work/$name.html" 2>/dev/null
-
-  [ -s "$work/$name.pdf" ] || { echo "build-docs: $name.pdf came out empty." >&2; exit 1; }
+  paginate "$work/$name.html" "$work/$name.pdf" "$name.pdf"
 
   check_fonts "$work/$name.pdf" "$name.pdf"
 
