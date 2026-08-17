@@ -8,9 +8,9 @@ as it is now; this document is the record of how it got there.
 
 ## 0.4.0
 
-**0.4.0 is the boards release.** A raft of new S-100 cards join the backplane — enough that
-five whole new machine families (Cromemco, SD Systems, Tarbell, iCOM, S100Computers) boot
-alongside the MITS originals for the first time — disks and cassettes learn to be built and formatted by the guest
+**0.4.0 is the boards release.** New S-100 boards join the backplane, and five new machine
+families (Cromemco, SD Systems, Tarbell, iCOM, S100Computers) boot alongside the MITS
+originals for the first time — disks and cassettes learn to be built and formatted by the guest
 instead of only read, and the debugger, the monitor prompt and the video window all got
 noticeably sharper along the way.
 
@@ -226,7 +226,7 @@ nothing needs fetching first.
 
 ### What did not change
 
-The simulator itself is byte-for-byte the machine 0.2.0 was — the same sixteen machines, the
+The simulator itself is byte-for-byte the machine 0.2.0 was — the same machines, the
 same boards, the same two CPU cores. The holes named in the manual's introduction are still
 holes: no snapshot, no replay, the six reserved monitor verbs still reserved, still no audio.
 Everything that moved is in the box the program arrives in.
@@ -253,7 +253,7 @@ altairsim cdbl          the default machine, with the Combo Disk Boot Loader in 
 The ROM images shipped in 0.1.0 already; what was new is that each got a machine built around
 it — the whole distance between shipping an image and being able to run it. `hdbl` was
 deliberately left out: it boots an 88-HDSK hard disk, and there is no 88-HDSK board here.
-**Sixteen machines** became built in.
+Those three joined the roster of built-in machines.
 
 ### The video window behaves like a window
 
@@ -293,7 +293,7 @@ exercisers were re-run on all three platforms — roughly 15 billion instruction
 - **8080** — TST8080, 8080PRE, CPUTEST, 8080EXM
 - **Z80** — ZEXDOC, ZEXALL
 
-### Fourteen boards, thirteen machines
+### The first boards and machines
 
 88-2SIO · 88-SIO · 88-ACR · 88-DCDD · 88-MDS · 88-VI/RTC · 88-C700 · front panel · memory ·
 8080 CPU · Z80 CPU · VDM-1 · Processor Technology Sol-PC · Host Bridge (our own design).
