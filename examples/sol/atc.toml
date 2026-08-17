@@ -12,8 +12,8 @@
 # tape empties as fast as SOLOS reads it, not at the ~40 s a real recorder took. For that
 # authentic wait, `SET sol0:tape1 rate=real` paces playback at the real 1200 baud.
 #
-# `base = "sol20"` IS THE MACHINE -- the Sol-PC's three cards (front panel, VDM-1 video at
-# 0CC00H, the composite `sol` I/O card at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
+# `base = "sol20"` IS THE MACHINE -- the Sol-PC's three boards (front panel, VDM-1 video at
+# 0CC00H, the composite `sol` I/O board at 0F8H-0FEH), 48K of RAM and SOLOS 1.3 in ROM. See
 # machines/sol20.toml. This file adds a tape, the launch keystrokes, and the clock.
 
 [machine]

@@ -1,9 +1,9 @@
 # A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console.
 #
-# This is the runnable target for the generic Z80 card (src/boards/mits-z80cpu.h)
+# This is the runnable target for the generic Z80 board (src/boards/mits-z80cpu.h)
 # -- the direct analog of `8080` in the default machine, with a Z80 core in the
 # slot instead of an 8080. It carries no boot PROM: there is no period Z80
-# bootstrap for this simulator to be faithful to, and the card claims no
+# bootstrap for this simulator to be faithful to, and the board claims no
 # specific-product features, so this is the honest minimum you can drop a Z80 into
 # and drive.
 #
@@ -17,7 +17,7 @@
 #
 # To boot real Z80 CP/M, mount a disk and add the controller the image expects --
 # the same way the 8080 machines do (see machines/default.toml). That is beyond
-# this example, which exists to prove the CARD, not to ship an OS.
+# this example, which exists to prove the BOARD, not to ship an OS.
 
 [machine]
 name = "z80"

@@ -1,9 +1,9 @@
 # The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO.
 #
-# It exists to show the parallel cards end to end. The 88-PIO's output line captures
+# It exists to show the parallel boards end to end. The 88-PIO's output line captures
 # to a host file; CONNECT its `in` line (or any 4PIO section) to the console, a
 # socket, or a file the same way. Nothing about the wiring is parallel-specific --
-# it is the same CONNECT the line printer and the serial cards use.
+# it is the same CONNECT the line printer and the serial boards use.
 
 [machine]
 name = "parallel"

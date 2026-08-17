@@ -41,7 +41,7 @@ startup = ["RUN FF00"]
 [console]
 bsdel = "bs"
 
-# THE DISK. `id` with NO `type` means "the card already in this machine" -- the base's
+# THE DISK. `id` with NO `type` means "the board already in this machine" -- the base's
 # 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a second
 # controller. This copy carries the extra HELLO.ASM; otherwise it is examples/cpm's disk.
 [[board]]

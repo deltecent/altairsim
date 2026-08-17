@@ -66,14 +66,14 @@ startup = ["RUN FF00"]
 [console]
 bsdel = "bs"
 
-# THE DISK. `id` with NO `type` means "the card already in this machine" -- the base's
+# THE DISK. `id` with NO `type` means "the board already in this machine" -- the base's
 # 88-DCDD -- so this puts a floppy in an existing drive rather than fitting a second
 # controller.
 #
 # NO `media` KEY, AND THE REASON IS SHARPER HERE THAN ON THE 8 MB DISK. This image is
 # 337,664 bytes and an 8" floppy is 77 x 32 x 137 = 337,568 -- it does NOT match. It is
 # XMODEM-padded: the file came off a real machine through a protocol that pads to a block
-# boundary, and the 96 bytes on the end are the padding. The card knows that (sizeMatches()
+# boundary, and the 96 bytes on the end are the padding. The board knows that (sizeMatches()
 # in src/boards/mits-88dcdd.cpp) and probes it as `8in` anyway. A strict compare would
 # reject the only 8" disks we have.
 [[board]]
@@ -114,10 +114,10 @@ id = "dsk0"
 # machine may have MORE RAM than the image was built for (4700-6000 is good RAM here; the
 # 32K above it just goes unused). Only the other direction fails.
 #
-# To have the AUTHENTIC smaller machine as well, re-fit the memory card -- 24K shown:
+# To have the AUTHENTIC smaller machine as well, re-fit the memory board -- 24K shown:
 #
 #     [[board]]
-#     type = "memory"      # `type` on an id the BASE brought REPLACES the card outright,
+#     type = "memory"      # `type` on an id the BASE brought REPLACES the board outright,
 #     id   = "mem0"        # which is what you want: regions are a LIST, and adding a
 #     fill = "random"      # second one would OVERLAP the base's 56K, not replace it.
 #
@@ -128,5 +128,5 @@ id = "dsk0"
 #
 #       [[board.region]]
 #       type  = "rom"      # ...and you must re-state the PROM, because you replaced the
-#       at    = FF00       # whole card. Leave it out and there is nothing at FF00 to RUN.
+#       at    = FF00       # whole board. Leave it out and there is nothing at FF00 to RUN.
 #       mount = "builtin:dbl"

@@ -43,7 +43,7 @@ name = "ps2"
 # The interrupt-driven mode is deliberately NOT what this file selects. It requires an
 # 88-VI/RTC vectored-interrupt board -- the package assumes one is present and enables the
 # real-time-clock interrupt without providing a handler for it, so the RTC interrupt has to
-# be disabled and the console serial port assigned to vector 7. There is no 88-VI card in
+# be disabled and the console serial port assigned to vector 7. There is no 88-VI board in
 # this simulator yet. Until there is, A9 stays UP, and polling is the honest configuration.
 [[board]]
 type  = "fp"

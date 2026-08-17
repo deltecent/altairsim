@@ -42,7 +42,7 @@ bsdel = "bs"
 # THE CPU -- a Z80, replacing the base's 8080. Most Dazzler programs (DAZCHESS, GDEMO,
 # and the graphics demos) are Z80 code and use Z80-only instructions (JR, ...) -- on an
 # 8080 those are no-ops and the program runs off into garbage. CP/M itself is 8080 code and
-# runs fine on the Z80. `type` on the base's id REPLACES that card. 4 MHz = Cromemco Z-1 speed.
+# runs fine on the Z80. `type` on the base's id REPLACES that board. 4 MHz = Cromemco Z-1 speed.
 [[board]]
 type     = "z80"
 id       = "cpu0"

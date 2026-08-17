@@ -28,7 +28,7 @@ name = "tarbell-cpm"
 base = "tarbell"
 
 # THE FLOPPY -- the bootable 48K CP/M 2.2 SSSD master (8" single-sided single-density,
-# 128-byte sectors, 26 sectors x 77 tracks = 256,256 bytes). The card probes the size.
+# 128-byte sectors, 26 sectors x 77 tracks = 256,256 bytes). The board probes the size.
 [[board]]
 type = "tarbell"
 id   = "fdc0"

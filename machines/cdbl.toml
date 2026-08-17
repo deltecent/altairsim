@@ -32,7 +32,7 @@
 name = "cdbl"
 base = "default"
 
-# THE MEMORY CARD IS REPLACED, NOT EDITED, because a region list is a list: putting a
+# THE MEMORY BOARD IS REPLACED, NOT EDITED, because a region list is a list: putting a
 # different PROM in means restating the RAM underneath it. 56K is not a preference --
 # the CP/M images beside this tree were BUILT for it, and the "56K" in CP/M's own
 # banner is this number.

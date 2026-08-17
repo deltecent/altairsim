@@ -1,12 +1,12 @@
 # Writing a board
 
-We are going to build a card. A real one — it plugs into the backplane, it decodes a bus
+We are going to build a board. A real one — it plugs into the backplane, it decodes a bus
 cycle, it holds state, it has a setting you can put in a machine file, and when we are done
 the monitor will know about it, `CONFIG SAVE` will write it out, and an AI assistant driving
 the machine over MCP will be able to configure it. None of that last part will cost us a
 line of code.
 
-The card is **eight lamps and a latch**. `OUT 0FFH` lights them. That is the whole thing.
+The board is **eight lamps and a latch**. `OUT 0FFH` lights them. That is the whole thing.
 
 The finished source is in the tree at **`examples/boards/lamp/lamp.h`**, and
 `tests/test_lamp.cpp` drives it on a real bus — so it compiles and it is tested, which is
@@ -43,11 +43,11 @@ reason the real backplane has two different strobes.
 
 > **The bus routes by cycle type, not just by address.**
 
-So `OUT FF` is a genuinely empty slot in a stock machine, and our card can have it without
+So `OUT FF` is a genuinely empty slot in a stock machine, and our board can have it without
 disturbing anything. Keep that sentence in mind while writing `decodes()` — it is the single
 easiest thing to get wrong, and getting it wrong here would break the SENSE switches.
 
-## 1. The card
+## 1. The board
 
 `examples/boards/lamp/lamp.h`. A board is a class that inherits `Board`
 (`src/core/board.h`) and answers some questions.
@@ -65,13 +65,13 @@ name**, never a catalog number — nobody ever asked for an 88-CPU, they asked f
 
 ```cpp
 bool decodes(const BusCycle& c) const override {
-    if (!enabled_) return false;                 // a card switched off drives nothing
+    if (!enabled_) return false;                 // a board switched off drives nothing
     if (c.type != Cycle::IoWrite) return false;  // OUT only. The panel owns IN.
     return c.port() == port_;
 }
 ```
 
-That middle line is the whole lesson of this chapter. Delete it and the card answers `IN FF`
+That middle line is the whole lesson of this chapter. Delete it and the board answers `IN FF`
 too — the SENSE switches stop working, and the bus starts reporting contention with `fp0`.
 
 Two rules about `decodes()`, and they are not negotiable:
@@ -79,7 +79,7 @@ Two rules about `decodes()`, and they are not negotiable:
 - **It must be pure and combinational.** It answers *"if this cycle happened, would I drive
   the bus?"* and it does nothing else. No side effects, no counters, no latching.
 - **The bus caches the answer.** It keeps one slot per port and per page, so a decode is a
-  table lookup rather than a walk over every card in the machine. Which is why a `decodes()`
+  table lookup rather than a walk over every board in the machine. Which is why a `decodes()`
   with a side effect in it is a bug that will not show up for a month: it does not get called
   when you think it does.
 
@@ -95,7 +95,7 @@ void write(const BusCycle& c) override { latch_ = c.data; }
 We claimed the cycle, so the byte is ours.
 
 We never override `read()`. We never say yes to a read, so we are never asked one — and an
-`IN FF` from our port floats to `0xFF`, which is exactly what an output-only card does.
+`IN FF` from our port floats to `0xFF`, which is exactly what an output-only board does.
 
 ### Power and reset
 
@@ -104,10 +104,10 @@ void reset(Reset) override { latch_ = 0; }
 void power() override      { latch_ = 0; }
 ```
 
-These are **two different events** and a card is entitled to treat them differently.
+These are **two different events** and a board is entitled to treat them differently.
 `Reset::Bus` is the RESET* line — the button on the panel. `Reset::PowerOn` is the power
 coming up, and it is the only thing that loses RAM. For our lamps they mean the same thing:
-the lights go out. For a memory card they emphatically do not.
+the lights go out. For a memory board they emphatically do not.
 
 ### Its state — SNAPSHOT and RESTORE
 
@@ -138,7 +138,7 @@ reads back byte-for-byte on every target. Three rules decide what goes in:
   re-opened from the (unchanged) config. But bytes that are **not on the host yet** — an
   uncommitted write buffer, a tape's head position — *are* your state and *do* travel.
 - **Never write a `Clock::Handle`.** The event queue does not survive a snapshot. If your
-  card sets a deadline, **re-arm it in `deserialize()`** from the state you just read — call
+  board sets a deadline, **re-arm it in `deserialize()`** from the state you just read — call
   the same `refresh()`/`arm…()` you already call when a jumper moves. Store the deadline as
   an absolute T-state if you need the timing back; it stays valid because the clock's time
   travels with it.
@@ -180,7 +180,7 @@ std::vector<Property> properties() override {
 **This vector is the entire configuration layer.** There is no schema file, no parser, no
 registration call, and nowhere else to declare anything. `SET`, `SHOW`, the TOML loader,
 `CONFIG SAVE`, the MCP tool schemas, tab completion, and the User Manual's generated board
-reference are all written **once**, against this, and know nothing about any particular card.
+reference are all written **once**, against this, and know nothing about any particular board.
 
 Two details worth stealing:
 
@@ -195,7 +195,7 @@ Two details worth stealing:
 - **`lamps` has no setter**, and that absence *is* the signal. `SHOW` prints `(read-only)`,
   `CONFIG SAVE` leaves it out of the file, and the manual's reference marks it. A setter that
   merely *refused* would stop a `SET` and fool all three at once — which is a mistake that was
-  in this codebase, on the memory card, until this manual went looking.
+  in this codebase, on the memory board, until this manual went looking.
 - **We never call `decodeChanged()`** in the `port` setter. The property layer calls it for us
   after any successful set, precisely so that a board author cannot forget.
 
@@ -208,8 +208,8 @@ std::vector<MapEntry> ioMap() const override {
 ```
 
 This is what `BOARDS`, `SHOW BUS IO` and `WHO` print. **It is documentation, not decode** —
-the bus never consults it. A card whose `ioMap()` disagreed with its `decodes()` would work
-perfectly and lie to you, which is worse than a card that does not work.
+the bus never consults it. A board whose `ioMap()` disagreed with its `decodes()` would work
+perfectly and lie to you, which is worse than a board that does not work.
 
 ## 2. Put it in the registry
 
@@ -228,7 +228,7 @@ if (type == "lamp") return std::make_unique<LampBoard>();
 That is all. `registry.h` promises *"adding a board type is one line here and nothing anywhere
 else"*, and it means it.
 
-(Our card is a header, so it needs no entry in `CMakeLists.txt`. A real one — with a `.cpp`
+(Our board is a header, so it needs no entry in `CMakeLists.txt`. A real one — with a `.cpp`
 — adds its source to the `altair_core` library alongside the others.)
 
 ## 3. Build it, and watch what you get for free
@@ -237,7 +237,7 @@ else"*, and it means it.
 $ cmake --build build -j
 ```
 
-The card is now in the catalogue. `SHOW BOARDS` lists every type with its description;
+The board is now in the catalogue. `SHOW BOARDS` lists every type with its description;
 name one to see its settings, their help text and their legal values -- and nobody wrote a
 line of code to put it there:
 
@@ -287,7 +287,7 @@ lamp0  (lamp)
 ```
 
 `OUT FF 55` ran a **real output cycle on a real bus** — the same path the 8080's `OUT`
-instruction takes, because there is only one. The card decoded it, latched it, and `SHOW`
+instruction takes, because there is only one. The board decoded it, latched it, and `SHOW`
 read it back out of the reflection layer. `lamps` is marked read-only, and it worked that out
 from the missing setter.
 
@@ -298,7 +298,7 @@ altairsim> IN FF
 port FF -> 00      <- still the SENSE switches
 ```
 
-One port. Two cards. No contention. **Because the bus routes by cycle type.**
+One port. Two boards. No contention. **Because the bus routes by cycle type.**
 
 ## 4. Put it in a machine
 
@@ -313,7 +313,7 @@ id   = "lamp0"
 port = FF          # radix 16 -- no 0x needed
 ```
 
-Nobody taught the TOML loader what a lamp is. It asked the card for its properties, found one
+Nobody taught the TOML loader what a lamp is. It asked the board for its properties, found one
 called `port`, and set it. A board added next year is configurable, scriptable, drivable by
 an assistant, and documented **the day it lands**.
 
@@ -327,11 +327,11 @@ one:
 m.bus.ioWrite(0xFF, 0x55);
 CHECK(lamp->properties()[1].get().i() == 0x55, "OUT FF latches the byte");
 
-// The card is WRITE-ONLY, and the proof is that the read FLOATS.
+// The board is WRITE-ONLY, and the proof is that the read FLOATS.
 CHECK(m.bus.ioRead(0xFF) == 0xFF, "an IN from FF is not the lamp's -- the bus floats");
 ```
 
-…and then it pins down the claim this whole chapter rests on, with both cards in one machine:
+…and then it pins down the claim this whole chapter rests on, with both boards in one machine:
 
 ```cpp
 BusCycle in {Cycle::IoRead,  0xFF};
@@ -346,26 +346,26 @@ CHECK(m.bus.drain().empty(),               "...and the bus says NOTHING. It is n
 ever stopped decoding by direction, this chapter would be teaching a falsehood — and that
 test is what would say so.
 
-> **One trap, and it caught this test.** `m.bus.attach(board)` wires a card to the backplane;
+> **One trap, and it caught this test.** `m.bus.attach(board)` wires a board to the backplane;
 > it does not hand it to the **machine**. Lifecycle events — `reset()`, `power()`, `pump()` —
 > are dispatched by `Machine` over the boards it *owns*. A board that is only on the bus will
-> answer cycles all day and never hear the RESET line. A card that comes from a machine file
+> answer cycles all day and never hear the RESET line. A board that comes from a machine file
 > goes in through `Machine::add()` and gets both.
 
 ## 6. What the lamp skipped — wiring a board that ships
 
 The lamp is complete, tested, and configurable, and everything above is the whole story for a
-card that only latches a byte. A card that talks to the **outside world**, or that a user will
+board that only latches a byte. A board that talks to the **outside world**, or that a user will
 find in the manual, needs a few connections the lamp never made. None of them is hard; each is
 easy to *forget*, and the forgetting fails in a way that does not point back here.
 
 ### A board that talks to an endpoint wires its resolver in two places
 
-A card with a real line — a serial port, a printer, a socket — does not open that line itself.
+A board with a real line — a serial port, a printer, a socket — does not open that line itself.
 It hands a *spec* like `socket:2323` or `file:printout.txt` to a resolver and gets back a
 `ByteStream`. **The endpoint grammar lives in exactly one file, `src/host/endpoint.cpp`
 (`resolveEndpoint`), and a board must not know it** — that separation is what lets `CONNECT`,
-tab completion and the MCP schema all speak the same vocabulary without any card learning what
+tab completion and the MCP schema all speak the same vocabulary without any board learning what
 a socket is.
 
 A board reaches the resolver through a static `setResolver()` (the 88-C700 and the SIO family
@@ -424,23 +424,23 @@ Three loose ends after the board itself compiles:
 
 ## What to do next
 
-Our card answers a cycle. A more interesting one **asks for something**:
+Our board answers a cycle. A more interesting one **asks for something**:
 
 - **Interrupts.** Add an `IrqJumper` and push `irqJumperProperty("interrupt", ..., irq_)` into
   `properties()` — that one call buys you the whole `none | int | vi0..vi7` vocabulary, tab
   completion, and the flag that lets `SHOW BUS IRQ` find your strap. Then override
   `assertsInt()` / `assertsVi()`, and **call `intChanged()` from every place your pending flag
   could move.** A spurious call costs a virtual call. A missing one hangs the guest forever.
-- **Time.** A card with a deadline uses the `Clock` it was handed. A UART absolutely needs
+- **Time.** A board with a deadline uses the `Clock` it was handed. A UART absolutely needs
   one: transmit-buffer-empty is a deadline, not a flag.
 - **The outside world.** Anything that talks to a socket, a file or a keyboard does it in
   `pump()` — **never inside a bus cycle**. That seam is what keeps `read()` and `write()` pure
   computation over state, and it is what a deterministic replay would be built on. The
   **88-C700 printer** (`src/boards/mits-88c700.{h,cpp}`, `docs/boards/mits-88c700.md`) is the
-  smallest shipped card that does this for real: a bare latch that sinks its data port to a
-  `ByteStream`, so `CONNECT lpt0:prn file:printout.txt` captures the printout and the card never
+  smallest shipped board that does this for real: a bare latch that sinks its data port to a
+  `ByteStream`, so `CONNECT lpt0:prn file:printout.txt` captures the printout and the board never
   learns what a file is. It is a good next read after this lamp.
-- **Sub-units.** A card with a *list* of things — regions on a memory card, drives on a
+- **Sub-units.** A board with a *list* of things — regions on a memory board, drives on a
   controller — declares `subUnitTables()` and gets `[[board.region]]` / `[[board.drive]]` in
   TOML for free.
 

@@ -17,11 +17,11 @@
 #
 # A deck plays only while the guest turns its motor (OUT 0FAH D7/D6), which SOLOS does.
 #
-# THREE CARDS MAKE THE SOL-PC. The Sol-20 was one integrated board, but its functions
+# THREE BOARDS MAKE THE SOL-PC. The Sol-20 was one integrated board, but its functions
 # map cleanly onto three of ours: the `fp` sense switches at 0FFH, the `vdm1` video at
-# 0CC00H, and the composite `sol` I/O card at 0F8H-0FEH (serial, keyboard, parallel,
+# 0CC00H, and the composite `sol` I/O board at 0F8H-0FEH (serial, keyboard, parallel,
 # tape -- the last three share one status register at 0FAH, which is why they are one
-# card and not three). See docs/boards/proctech-sol.md and reference/Sol-20.md.
+# board and not three). See docs/boards/proctech-sol.md and reference/Sol-20.md.
 
 [machine]
 name    = "sol20"

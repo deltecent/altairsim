@@ -15,7 +15,7 @@
 #
 # The 6-bit code is not finished ASCII: the 64-char set (0x20..0x5F) is packed into six
 # bits with bit 6 = the complement of bit 5, so 0x20 -> space, 0x00 -> '@', 0x01 -> 'A'.
-# The card decodes it to the glyph the printer would strike. (See
+# The board decodes it to the glyph the printer would strike. (See
 # reference/88-LPC Printer Interface.md; the packing is inferred from the standard
 # 64-char subset, the Okidata glyph chart is not in the LPC manual.)
 #

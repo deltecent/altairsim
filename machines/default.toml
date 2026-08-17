@@ -162,7 +162,7 @@ bsdel = "bs"
 #     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
 #     RUN FF00
 #
-# The card PROBES what you mount -- 337,568 bytes (or the XMODEM-padded 337,664 that
+# The board PROBES what you mount -- 337,568 bytes (or the XMODEM-padded 337,664 that
 # every real image turns out to be) is an 8" floppy, 76,720 is a minidisk, and 8,978,432
 # is an 8 MB image. Geometry belongs to the BOARD (DESIGN.md 7.3), so nothing here has to
 # say which.

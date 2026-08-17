@@ -24,7 +24,7 @@ name = "turnkey-floppy"
 base = "turnkey"
 
 # The disk. Naming the controller by `id` with no `type` adds a drive to the existing
-# 88-DCDD rather than declaring a new card.
+# 88-DCDD rather than declaring a new board.
 [[board]]
 id = "dsk0"
 

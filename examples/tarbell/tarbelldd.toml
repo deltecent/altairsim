@@ -10,7 +10,7 @@
 # drive 0. See machines/tarbelldd.toml for the base, or run `BOARDS`.
 #
 # THE DISK IS MIXED DENSITY: track 0 single density (the boot path), tracks 1-76 double.
-# The card probes the 499,456-byte size and lays down both formats. The boot is automatic
+# The board probes the 499,456-byte size and lays down both formats. The boot is automatic
 # (`startup = ["RUN 0"]`, inherited) -- see docs/boards/tarbelldd.md.
 #
 # THERE IS NO UNDO ON THIS DISK. It is tracked; `git checkout` restores it in a clone. Drive

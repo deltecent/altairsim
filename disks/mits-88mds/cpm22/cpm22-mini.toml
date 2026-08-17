@@ -39,7 +39,7 @@ startup = ["RUN FF00"]
 id = "mds0"
 
   # A: the system disk. NO `media` KEY, AND THAT IS DELIBERATE: the file is 76,800 bytes and
-  # the card PROBES it. 35 x 16 x 137 = 76,720, plus the 80 bytes XMODEM padded on to reach a
+  # the board PROBES it. 35 x 16 x 137 = 76,720, plus the 80 bytes XMODEM padded on to reach a
   # 128-byte boundary. Geometry probing belongs to the BOARD (DESIGN.md 7.3).
   #
   # This is the format that needs the pad tolerance MOST, and the doc used to claim the
@@ -67,7 +67,7 @@ id = "mds0"
 # 56K is what CPM56K-1.DSK was built for -- the BIOS is linked to the top of the memory the
 # image was built for, so the machine must be AT LEAST as big. It may be bigger: CPM24K-1.DSK
 # boots in this same 56K machine and says `24K CP/M 2.2b v2.3`, with the RAM above it unused.
-# Only the other direction fails. Replace the card to get the authentic 24K machine:
+# Only the other direction fails. Replace the board to get the authentic 24K machine:
 #
 #     [[board]]
 #     type = "memory"
@@ -78,6 +78,6 @@ id = "mds0"
 #       at   = 0000
 #       size = "24K"
 #       [[board.region]]
-#       type  = "rom"          # must be re-stated -- you replaced the whole card
+#       type  = "rom"          # must be re-stated -- you replaced the whole board
 #       at    = FF00
 #       mount = "builtin:mdbl"

@@ -9,7 +9,7 @@
 # Auto-Start switches to FC00 so the jam runs HDBL instead of DBL, and adds the 88-HDSK
 # controller with a platter in drive 0. This is exactly examples/hdsk, but on an 8800bt --
 # the boot PROM, the console SIO and the sense switches are on the Turnkey Module instead
-# of spread across an fp card, a 2SIO and a memory region.
+# of spread across an fp board, a 2SIO and a memory region.
 #
 # HDBL sits at FC00; the Auto-Start jam runs it, it reads the disk's Pack Descriptor Page,
 # loads the boot pages, and jumps in. The image is one Pertec platter, borrowed from the

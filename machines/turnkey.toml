@@ -5,16 +5,16 @@
 # switches, and the Auto-Start circuit. There is no front panel and no row of lamps -- you
 # turn it on and it boots. See reference/MITS Turn Key Board.md and docs/boards/mits-turnkey.md.
 #
-# WHAT IS DIFFERENT FROM `default`. The stock machine is a front-panel 8800b: an `fp` card
+# WHAT IS DIFFERENT FROM `default`. The stock machine is a front-panel 8800b: an `fp` board
 # with the sense switches at FF, a separate `88-2SIO` console at 0x10, and the DBL boot PROM
 # in a `memory` region at FF00. The Turnkey Module folds the SIO, the sense switches AND the
 # boot PROM onto ONE card -- so this machine has no `fp` and no `2sio`, and the PROM lives in
-# the turnkey board's own socket, not in the memory card. That is why this is a full machine
-# file and not a `base = "default"` delta: it removes three of the base's cards.
+# the turnkey board's own socket, not in the memory board. That is why this is a full machine
+# file and not a `base = "default"` delta: it removes three of the base's boards.
 #
 # THE PHANTOM IS THE POINT. On `default` the RAM stops at DFFF to leave room for the PROM.
 # Here the RAM is the full 64K: the boot PROM SHADOWS the top 1K for reads until the guest's
-# first `IN` from port FE/FF, then vanishes so all 64K is usable (reference §9). The RAM card
+# first `IN` from port FE/FF, then vanishes so all 64K is usable (reference §9). The RAM board
 # is strapped `honors_phantom = read` -- off for reads while the PROM shadows it, still
 # answering writes, so a byte written under the shadow lands in the RAM beneath.
 #
@@ -47,7 +47,7 @@ sense = 0x00          # SW6/SW7; DBL reads bit 4 (SA12) for the 2SIO stop bits -
 start = FF00          # START ADDR switches: Auto-Start jams JMP FF00
 
   # THE BOOT PROM SOCKETS. Socket H1 (FF00) carries DBL, the floppy boot loader, exactly as
-  # the base machine's memory card did -- but here it phantoms out so the RAM underneath is
+  # the base machine's memory board did -- but here it phantoms out so the RAM underneath is
   # usable. Populate L1 (FC00) with builtin:hdbl to boot a hard disk instead.
   [[board.socket]]
   at    = FF00
