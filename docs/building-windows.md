@@ -548,7 +548,7 @@ build that way; **it is a convenience, not the supported build.**
 
 **Verified on 2026-07-28** — Windows 10 22H2, a standalone **WinLibs MinGW-w64
 GCC 16.1.0 (UCRT)** on `PATH`, from a plain `cmd` (no MSYS2, no Developer shell):
-`mingw32-make` produced a self-contained `altairsim.exe` that lists all 27 machines
+`mingw32-make` produced a self-contained `altairsim.exe` that lists every built-in machine
 and boots, and its embedded ROMs/machines came out byte-identical to the CMake build.
 
 ```bat

@@ -61,7 +61,7 @@ stays optional; add `--with-sdl` to link a private static SDL3 and get a window.
 
 ## What is in the box
 
-Fourteen board types — thirteen modeled from their own manuals, and one of ours — and thirteen
+S-100 board types — most modeled from their own manuals, a few of our own design — and the
 machines built out of them:
 
 | Board | What it is |
