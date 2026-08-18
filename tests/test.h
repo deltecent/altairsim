@@ -21,6 +21,7 @@ void test_statefile();
 void test_snapshot();
 void test_bus();
 void test_memory();
+void test_bankmem();
 void test_readonly_props();
 void test_save_is_a_read();
 void test_hex();

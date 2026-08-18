@@ -6,6 +6,7 @@
 #include "boards/cromemco-dazzler.h"
 #include "boards/dualide.h"
 #include "boards/dualsd.h"
+#include "boards/bankmem.h"
 #include "boards/hostbridge.h"
 #include "boards/icom-fd3712.h"
 #include "boards/mits-88acr.h"
@@ -45,8 +46,8 @@ namespace altair {
 // Milestone 1a is CLI + bus + memory, and NO CPU: the monitor is the bus master.
 // That is not a limitation to apologize for -- it is the point. Every claim the
 // bus design makes (a ROM that never answers a write, an empty socket that
-// floats, a PHANTOM* overlay that is not contention, five incompatible banking
-// cards) is testable with two boards, a hex file, and no processor. And it is
+// floats, a PHANTOM* overlay that is not contention, banked cards that each own
+// their decode) is testable with two boards, a hex file, and no processor. And it is
 // worth testing BEFORE a CPU exists, because those behaviors differ SILENTLY:
 // get one wrong and the symptom is a guest misbehaving ten thousand
 // instructions later.
@@ -56,7 +57,8 @@ namespace altair {
 // too. The card's identity lives in its .md, where it belongs.
 std::vector<BoardType> boardTypes() {
     return {
-        {"memory", "RAM/ROM board: a list of regions, PHANTOM*, and five banking schemes"},
+        {"memory", "RAM/ROM board: a list of regions and PHANTOM* -- plain, unbanked memory (bank switching is its own board, `bankmem`)"},
+        {"bankmem", "S-100 bank-switched RAM. One card, four decoders (card=vector|cromemco64kz|northstar|expandoram2): a write-only select port swaps which RAM plane(s) drive the bus. Each card owns its own decode -- one-hot select (Vector 40), 8-bit bank mask (Cromemco 40), on/off+one-hot toggle (North Star C0), or PROM page-select (ExpandoRAM II FF, approximated)"},
         {"8080", "MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus"},
         {"z80", "Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core"},
         {"6800", "Altair 680b CPU board: a Motorola 6800 at 500 KHz. Decodes nothing -- it drives the bus. The 88-CPU's twin, one core down, with memory-mapped I/O"},
@@ -107,6 +109,7 @@ std::vector<BoardType> boardTypes() {
 
 std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "memory") return std::make_unique<MemoryBoard>();
+    if (type == "bankmem") return std::make_unique<MemBankBoard>();
     if (type == "8080") return std::make_unique<Cpu8080Board>();
     if (type == "z80") return std::make_unique<CpuZ80Board>();
     if (type == "6800") return std::make_unique<Cpu6800Board>();

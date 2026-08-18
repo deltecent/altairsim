@@ -49,18 +49,13 @@ enum class PhantomAssert { None, Read, All };
 enum class PhantomHonor { None, Read, All };
 enum class Fill { Zero, Random };
 
-enum class BankType { None, Eram, Vram, Cram, Hram, B810 };
-
-struct BankSpec {
-    const char* name;
-    const char* card;
-    uint8_t port;
-    int banks;
-    bool oneHot;
-    uint8_t mask;
-};
-const BankSpec& bankSpec(BankType t);
-bool parseBankType(const std::string& s, BankType& out);
+// BANK SWITCHING LIVES ON ITS OWN BOARD NOW -- `bankmem` (src/boards/bankmem.h).
+// This board used to carry a `bank_type=` strap with one SIMH-derived encoding for
+// all five real cards; docs/devguide/banked-ram.md audited that against the period
+// manuals and found it wrong for four of them, because they are genuinely different
+// decoders (DESIGN.md 4.3). So `memory` is purely plain RAM/ROM again -- which is
+// also the honest model of the SD Systems ExpandoRAM I, a static-strapped board with
+// no I/O port at all.
 
 struct Region {
     RegionKind kind = RegionKind::Ram;
@@ -106,12 +101,13 @@ public:
     // bus never asks this board about it in the first place.)
     bool peek(uint16_t addr, uint8_t& out) const override {
         if (!owner(addr)) return false;
-        out = store_[plane(addr)];
+        out = store_[addr];
         return true;
     }
 
     // ---- lifecycle (DESIGN.md 6) ----
-    void reset(Reset r) override;
+    // No reset() override: neither POC* nor RESET* touches RAM, and there is no bank
+    // latch to clear any more, so the base no-op is exactly right.
     void power() override;
 
     // ---- state: SNAPSHOT / RESTORE (DESIGN.md 13) ----
@@ -146,17 +142,16 @@ public:
     // says so; this does not guess and does not silently drop the byte.
     bool poke(uint16_t addr, uint8_t v) {
         if (!owner(addr)) return false;
-        store_[plane(addr)] = v;
+        store_[addr] = v;
         return true;
     }
 
     // ---- The store, flat, by offset. NOT AN ADDRESS SPACE ANYONE TYPES. ----
     //
-    // This is the card's own view of its own silicon: `banks_ * 64K` of it, with bank 3
-    // simply BEING offset 0x30000. It exists so that this board's invariants can be
-    // asserted from outside -- that a bank really is a plane, that random fill really is
-    // random -- and for nothing else. Nothing the operator or an agent can reach comes
-    // through here.
+    // This is the card's own view of its own silicon: a flat 64K, with a bus address
+    // simply BEING its own offset. It exists so that this board's invariants can be
+    // asserted from outside -- that random fill really is random -- and for nothing
+    // else. Nothing the operator or an agent can reach comes through here.
     //
     // It is deliberately NOT on Board. It was, once, as rawRead/rawWrite, and the price
     // was a whole second address space bolted to every card in the machine to serve one.
@@ -169,7 +164,7 @@ public:
     uint8_t storeAt(size_t off) const { return off < store_.size() ? store_[off] : 0x00; }
 
     std::vector<MapEntry> memMap() const override;
-    std::vector<MapEntry> ioMap() const override;
+    // No ioMap() override: this board claims no I/O port (banking moved to `bankmem`).
 
     std::vector<std::string> subUnitTables() const override { return {"region"}; }
     std::vector<Property>    subUnitProperties(const std::string& table) const override;
@@ -204,7 +199,6 @@ protected:
 private:
     static constexpr uint32_t kPage = 0x100;
     static size_t page(uint16_t a) { return a >> 8; }
-    size_t plane(uint16_t a) const { return (size_t)bank_ * 0x10000 + a; }
 
     // The page table stores an INDEX, not a Region* -- pointers into regions_
     // dangle the moment the vector reallocates, which it does on the second
@@ -222,14 +216,10 @@ private:
 
     std::vector<Region> regions_;
     int owner_[256];              // page table: which region covers each page, or -1
-    std::vector<uint8_t> store_;  // banks_ * 64K. Bank 3 simply IS offset 0x30000.
+    std::vector<uint8_t> store_;  // a flat 64K: a bus address IS its own offset.
 
     PhantomHonor honors_ = PhantomHonor::All;
     PhantomAssert phantom_ = PhantomAssert::All;
-
-    BankType bankType_ = BankType::None;
-    int banks_ = 1;
-    int bank_ = 0;
 
     Fill fill_ = Fill::Random;
     uint64_t seed_ = 1;

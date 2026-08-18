@@ -37,19 +37,16 @@ Protect was standing in for *"load a HEX file and treat it as ROM."* It is the w
 
 | Source | Path | Authority |
 |---|---|---|
-| **`s100_bram.c` / `s100_bram.h`** — the five banking types, their ports, bank counts, and select encodings, including the Cromemco 7-bank mask and the Vector/OASIS quirk | `../../simh/Altair8800/s100_bram.c` | **Authoritative.** Patrick Linstruth's own SIMH module (© 2025). Our own prior art, not another project's — see `DESIGN.md` §0.1. |
 | Page granularity, size shortcuts | Patrick (2026-07-11) | 256-byte (100H) pages; `48K`/`64K` shortcuts. |
 | **A reset never clears RAM; only power-off does** | Patrick (2026-07-11) | See *Reset*, below. |
 | **One card may hold several RAM and ROM areas** | Patrick (2026-07-11) | Hence regions, and hence no separate `rom` board. |
 | No write-protect | Patrick (2026-07-11) | See above. |
 
-> The **unbanked** card is a *generic* memory board, not a replica of a specific part number — it is not claiming to be an 88-16MCS and should not pretend to be. The **banked** types are specific, named, real cards, and their quirks are theirs.
+> This card is a *generic* memory board, not a replica of a specific part number — it is not claiming to be an 88-16MCS and should not pretend to be.
 
 ## Register reference
 
-**Unbanked (`bank_type = none`): no registers at all.** The board decodes memory cycles only, claims no I/O port, and the guest cannot reconfigure it. Regions are *configuration*.
-
-**Banked: exactly one write-only I/O port**, whose address, bank count, and **data encoding all depend on which card you are modeling.** See below — this is the interesting part.
+**No registers at all.** The board decodes memory cycles only, claims no I/O port, and the guest cannot reconfigure it. Regions are *configuration*.
 
 ## Regions
 
@@ -210,53 +207,11 @@ A **write** to an unclaimed address is the mirror image: nobody latches it, and 
 >
 > This box previously argued the reverse, in bold, and told the reader that `honors_phantom` "must never grow a `read` mode." That was reasoned, not sourced. And the quote directly above it — *"the memory boards installed in the system must allow writes to their RAM, but not reads"* — was saying so all along. **The memory boards.** Reading past a source to keep an argument is the same failure as inventing one.
 
-## Banking — five real cards, and no two alike
+## Banking is a different board
 
-Bank switching is **not** one mechanism with a parameter. It is a different mechanism on every card, and this table is why `DESIGN.md` §10.2 forbids a `BANK=` qualifier in the monitor: any CLI-level banking syntax would have to pick one of these and be wrong about the other four.
+This board has **no** banking and **no** I/O port. Bank switching lives on its own board, `bankmem` — see `docs/boards/bankmem.md`. A banked card decodes an I/O port that swaps a whole 64K plane underneath the same address range, which is different enough hardware, with a genuinely different decoder on every real card, that folding it into this one was the mistake. This board stays what fact 3 above already made it: plain, unbanked RAM and ROM.
 
-| `bank_type` | Card | Port | Banks | Data written selects the bank how? |
-|---|---|---|---|---|
-| `none` | *(plain unbanked memory)* | — | 1 | n/a |
-| `eram` | **SD Systems ExpandoRAM** | **0xFF** | 8 | **Binary.** `data` *is* the bank number. |
-| `vram` | **Vector Graphic** | **0x40** | 8 | **One-hot.** `0x01`→0, `0x02`→1, `0x04`→2, … `0x80`→7. |
-| `cram` | **Cromemco** | **0x40** | **7** | **One-hot, masked `& 0x7F`.** Only 7 banks — **bit 7 is not a bank select** on this card. |
-| `hram` | **North Star Horizon** | **0xC0** | 16 | **Binary.** |
-| `b810` | **AB Digital Design B810** | **0x40** | 16 | **Binary.** |
-
-Read that table twice before designing anything generic on top of it:
-
-- **Three different ports** (0x40, 0xC0, 0xFF).
-- **Two different encodings** — `0x04` means *bank 4* on an ExpandoRAM and *bank 2* on a Vector.
-- **Cromemco has seven banks, not eight**, and masks the top bit off, because bit 7 does something else on that card.
-- **Three of the five cards share port 0x40.** Two of them in one machine is a real I/O collision, and the contention detector (§4.6) should say so by name rather than letting one silently shadow the other.
-
-**What a bank select does is the board's business, and this document states no general rule.** On these five cards it swaps the whole 64K plane — the store is `banks × 64K`, and the live bank offsets every access:
-
-```cpp
-uint8_t MemoryBoard::read(const BusCycle& c) {
-    return store_[bank_ * 0x10000 + (c.addr - base_)];
-}
-```
-
-Banking and the page map are **orthogonal and both apply**: the page map decides *whether this board answers at all*; the bank decides *which plane is behind it*. An unpopulated page is unpopulated in every bank.
-
-> **None of the five banked cards carries ROM**, so whether a real combo card's ROM regions swap with the RAM planes is **unknown**, and this design does not guess. `bank_type != none` together with a `rom` region is **rejected at config time** until a real card with both turns up and brings a manual (§0.1). The bus, of course, does not care either way — it carries the `OUT` and the board decides.
-
-### The OASIS quirk — reproduce it, and say why
-
-The Vector Graphic card decodes `0x41` and `0x42` as banks 0 and 1 — i.e. **bit 6 is ignored**. That is not a Vector design feature anyone documented; it is that **OASIS writes those values**, and the card happens to tolerate them.
-
-> **Get this wrong and OASIS does not boot**, and it fails in the worst possible way — a bank select that quietly lands on the wrong plane, so the machine runs and then behaves insanely later.
-
-A bank select the card cannot decode is **not** silently swallowed. It is logged, because it is nearly always a bug in the guest or in your `bank_type`:
-
-```
-altairsim> SET mem0 BANK_TYPE=vram
-mem0: banked, Vector Graphic. port 40 (write-only), 8 banks, one-hot select.
-
-; guest does OUT 40,03 -- not a valid one-hot value
-bank: invalid select 0x03 for vram at PC=0119 (mem0). bank unchanged (still 0).
-```
+This board is also the honest model of the **SD Systems ExpandoRAM I**: unlike the boards on `bankmem`, the ExpandoRAM I has **no I/O port at all** — it is static-strapped memory, no different from a jumper-configured 16K board — so it belongs here, not there.
 
 ## Fill on power-up — real RAM does not come up zeroed
 
@@ -274,9 +229,6 @@ bank: invalid select 0x03 for vram at PC=0119 (mem0). bank unchanged (still 0).
 | `pages` | PageMap | **read-only** | The composite page map, as a range list — which pages this board answers for. **Derived from the regions**, and not a key you may set: the regions are the truth, and a page map you could edit behind them would be a second, disagreeing one. |
 | `honors_phantom` | Enum | config | A **jumper**. Another board pulls PHANTOM\* — do I switch off? `none` (never), `read` (reads only), `all`. Default `all`. |
 | `phantom` | Enum | config | What **I** assert over my `rom` regions: `none \| read \| all`. Default `all`. |
-| `bank_type` | Enum | config | `none \| eram \| vram \| cram \| hram \| b810`. **Determines the select port, the bank count, and the data encoding** — see the table. |
-| `banks` | Int | **read-only** | Number of banks. **The card decides it from `bank_type`** — a Cromemco card has 7, the others 8 — so it is reported, not set. Documenting it as writable would be a lie a reader only discovers by being refused. |
-| `bank` | Int | **yes** | The live bank. The *guest* sets this by writing the select port; you can also set it from the monitor to inspect a plane the guest isn't looking at. |
 | `fill` | Enum | config | `random` (default) or `zero`. Applies to `ram` regions. |
 | `seed` | Int | config | RNG seed for `fill=random`. **Snapshotted**, so replay stays deterministic. |
 
@@ -299,9 +251,6 @@ mem0  (memory)
   property         value            legal
   honors_phantom   all              none|read|all
   phantom          all              none|read|all
-  bank_type        none             none|eram|vram|cram|hram|b810
-  banks            1                (read-only)
-  bank             0                0..15
   fill             random           zero|random
   seed             1                
   pages            0000-DFFF,FF00-FFFF (read-only)
@@ -329,33 +278,32 @@ seed = 12345              # ...but reproducibly so. Snapshotted; replay stays de
   at   = 0x0000
   size = "16K"
 
-# A banked card: SD Systems ExpandoRAM, 8 banks of 64K, selected by OUT 0FFH.
+# A second, static-strapped card above it -- an SD Systems ExpandoRAM I has
+# no I/O port, so it is plain memory too, not a bankmem card.
 [[board]]
-type      = "memory"
-id        = "bram0"
-bank_type = "eram"        # port and encoding come from the card, not from us
-banks     = 8
+type = "memory"
+id   = "mem1"
   [[board.region]]
   type = "ram"
-  at   = 0x0000
-  size = "64K"
+  at   = 0x4000
+  size = "48K"
 ```
 
-Overlap two cards and the bus reports it, naming both. That includes **I/O** overlap: put a `vram` and a `b810` card in one machine and they both want port 0x40 — a real collision, reported as one.
+Overlap two cards and the bus reports it, naming both.
 
 ## Reset
 
 **A reset never changes memory. RAM is lost only when the machine is powered off.** (Patrick, 2026-07-11.) Say it out loud, because the code will be tempted to conflate the two.
 
-| Event | Monitor | `ram` contents | `rom` contents | `pages` | `bank` |
-|---|---|---|---|---|---|
-| **Power applied** | `POWER` | **indeterminate** — filled per `fill` | **re-read from their files** | configured | configured |
-| **`Reset::PowerOn`** (POC\*) | *(part of `POWER`)* | untouched | untouched | untouched | **0** |
-| **`Reset::Bus`** (RESET\*, the front-panel button) | `RESET` | untouched | untouched | untouched | **0** |
+| Event | Monitor | `ram` contents | `rom` contents | `pages` |
+|---|---|---|---|---|
+| **Power applied** | `POWER` | **indeterminate** — filled per `fill` | **re-read from their files** | configured |
+| **`Reset::PowerOn`** (POC\*) | *(part of `POWER`)* | untouched | untouched | untouched |
+| **`Reset::Bus`** (RESET\*, the front-panel button) | `RESET` | untouched | untouched | untouched |
 
 POC\* and power coming up coincide on real hardware, which is why they share the `POWER` command — but they are **different things**, and the memory array is the proof: a RAM chip has no POC\* pin. Its contents are indeterminate because *the chips just powered up*, not because a signal arrived. Model the fill as belonging to power, and let both resets leave the store alone.
 
-**What both resets *do* clear is the bank select latch — `bank` returns to 0.** That is load-bearing and not obvious: a warm reset leaves the machine's RAM exactly as it was, but the select latch clears, so the CPU restarts looking at plane 0. Leave the old bank selected and a machine that reset cleanly comes back executing whatever was in the wrong plane.
+**A reset on this board touches nothing at all** — there is no bank latch here to clear. (`bankmem` has its own reset behavior; see `docs/boards/bankmem.md`.)
 
 And the trap in the other direction: *"my program vanished when I hit reset"* reads like a memory-model bug rather than a reset bug, and will cost you a day.
 
@@ -367,20 +315,13 @@ And the trap in the other direction: *"my program vanished when I hit reset"* re
 | **Unpopulated pages read `0xFF`**, not `0x00` | Memory-sizing routines find 64K on every machine and CP/M builds itself the wrong size. A zero-filled hole also disassembles as a field of `NOP`s, which is a uniquely confusing thing to stare at. |
 | **A write to ROM with nothing beneath is silently gone** | It has to be — nothing latched it. But **report it at the monitor** when the operator does it by hand, or `DEPOSIT` looks broken. Do *not* report it for guest writes: period software scans memory by writing and reading back, and it would spew. |
 | **A reset preserves memory; only power-off clears it** | Clear on reset and the user's program vanishes on a reset-button press — which reads like a memory-model bug, not a reset bug. |
-| **Both resets clear `bank` to 0** | Preserve the bank and a cleanly-reset machine comes back executing the wrong plane. |
-| **One-hot vs binary bank select is per-card** | `OUT 40,04` means *bank 4* on an ExpandoRAM and *bank 2* on a Vector. Pick one encoding for all cards and half your machines silently run in the wrong bank. |
-| **Cromemco has 7 banks and masks `& 0x7F`** | Treat bit 7 as a bank select and a Cromemco bank switch decodes as a nonexistent bank 7. |
-| **Vector/OASIS accepts `0x41`/`0x42` as banks 0/1** | **OASIS does not boot.** And it fails late and insanely, because the select lands on the wrong plane rather than erroring. |
 | **A partially-populated card decodes only where chips are** | Model `size` as a plain contiguous range and holes become inexpressible — a real 16K card with 4K fitted cannot be represented at all. |
 | **RAM powers up with indeterminate contents** | Zero-fill and you will never catch guest code that assumes zeroed memory — until it runs on real hardware. |
 
 ## Limitations and deliberate departures
 
-- **The unbanked card is generic, not a specific period part.** Its jumper semantics are ours. A modeled MITS 88-16MCS would get its own doc.
+- **This card is generic, not a specific period part.** Its jumper semantics are ours. A modeled MITS 88-16MCS would get its own doc.
 - **A `rom` region's size comes from its image file**, rounded up to a page. Real cards decode a whole chip's worth (a 2708 covers 1K whether or not the image fills it), and `at` would have to be chip-aligned. We take the file's word instead — simpler, and it lets a 256-byte boot PROM sit at FF00, which a strict 1K-chip model could not express.
-- **`bank_type != none` plus a `rom` region is rejected.** None of the five real banked cards carries ROM, so combo-card banking semantics are unsourced and are not invented (§0.1).
-- **The bank select port is derived from `bank_type`, not independently settable.** On real cards it may be strappable; we do not have those manuals, so we do not invent straps.
-- **Bank select is write-only, and its port is not readable.** A read of the select port is not decoded by this board, so it floats to `0xFF` like any unclaimed port — unless another board claims it, in which case you get contention, correctly.
 - **POC\*'s 200 ns minimum pulse width is not modeled.** It is an analog property of the reset circuit (and on real machines, an RC network that drifts — many owners fit a dedicated supervisor IC to get a clean edge). We assume a clean POC\*. Nothing in the digital model depends on the width.
 - **No parity, no error detection, no wait states.** Period cards had none worth modeling.
 
@@ -410,23 +351,13 @@ No CPU exists in milestone 1a, so **the monitor is the bus master** — `DEPOSIT
 12. `honors_phantom=false` on the RAM card beneath: **both boards drive → contention reported**, naming both. This is a bug the real backplane would have handed you, and it must not be silently resolved.
 13. A phantom shadow is **not** reported as contention (§4.6) — only case 12 is.
 
-**Banking**
-
-14. `bank_type=eram` (port 0xFF, binary). Write bank 3 to the port; `DEPOSIT`/`DUMP` land in plane 3; `SET mem0 BANK=0` and the same address holds different bytes. **The planes are genuinely separate memory.**
-15. `bank_type=vram` (port 0x40, **one-hot**). Writing `0x04` selects **bank 2**, not bank 4 — this test fails loudly if one-hot is treated as binary.
-16. **The OASIS quirk:** with `vram`, `0x41` selects bank 0 and `0x42` selects bank 1. If this fails, OASIS will not boot.
-17. **Cromemco:** `bank_type=cram` rejects `BANKS=8`, and a select of `0x80` is not decoded as a bank.
-18. An undecodable select (`0x03` on a one-hot card) **leaves the bank unchanged and logs it** — it does not silently land somewhere plausible.
-19. **Two banked cards both claiming port 0x40** (`vram` + `b810`) → **I/O contention reported**, naming both. Three of the five real cards share that port; this is not hypothetical.
-20. Warm `RESET` → memory survives, **`bank` returns to 0**.
-21. A `rom` region on a card with `bank_type != none` is **rejected at config time** — we do not guess combo-card banking.
-
 **Round trip**
 
-22. Two `memory` cards at overlapping bases → **contention reported**, naming both.
-23. `CONFIG SAVE` then `CONFIG LOAD` reproduces the regions, page map, and bank config exactly.
+14. Two `memory` cards at overlapping bases → **contention reported**, naming both.
+15. `CONFIG SAVE` then `CONFIG LOAD` reproduces the regions and page map exactly.
 
 ## References
 
 - `DESIGN.md` §4.1 (decode), §4.2 (PHANTOM\*), §4.6 (contention, the floating bus), §5 (properties), §6 (reset), §10.2 (`RAW`), §10.3 (Intel HEX), §10.3.1 (built-in ROMs).
 - `docs/roms.md` — the built-in ROM registry and its provenance rule.
+- `docs/boards/bankmem.md` — the banked-memory board (banking now lives there, not here).

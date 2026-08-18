@@ -398,6 +398,7 @@ add_library(altair_core STATIC
   src/chips/wd17xx.cpp
   src/chips/i8257.cpp
   src/boards/s100-memory.cpp
+  src/boards/bankmem.cpp
   src/boards/mits-88cpu.cpp
   # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
   # CpuZ80 instead of a Cpu8080. Listed after it so the reader sees the pair.
@@ -678,6 +679,7 @@ add_executable(altair_tests
   tests/test_statefile.cpp
   tests/test_snapshot.cpp
   tests/test_memory.cpp
+  tests/test_bankmem.cpp
   tests/test_hex.cpp
   tests/test_srec.cpp
   tests/test_symbols.cpp

@@ -18,6 +18,7 @@ be wrong.
 | Type | What it is |
 |---|---|
 | `memory` | RAM and ROM, as a list of regions |
+| `bankmem` | bank-switched RAM — Vector Graphic, Cromemco 64KZ, North Star HRAM, ExpandoRAM II |
 | `8080` | the MITS 88-CPU |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
 | `v2z80` | S100Computers V2 Z80 CPU board — its onboard MASTER monitor EEPROM |
@@ -77,18 +78,53 @@ board and they are yours to set. Getting them wrong produces a machine that does
 not say why — which is precisely what it did in 1977, and the bus view in the monitor will show you
 both boards claiming the page.
 
-### Banking
+### Banking is its own board
 
 Sixty-four kilobytes was not enough for very long, and the industry's answer was **bank switching**:
-several cards' worth of RAM at the same addresses, with a port that says which one is live. Nobody
-agreed on how.
+several cards' worth of RAM at the same addresses, with a write-only port that says which is live.
+Nobody agreed on how — so banking is **not a knob on `memory`**. It is its own board, **`bankmem`**
+(below), and each real card it models owns its own decode. A plain `memory` board is exactly that:
+plain, unbanked RAM and ROM.
 
-`altairsim` implements several of the real schemes — **ExpandoRAM**, **Vector Graphic**, **Cromemco**,
-**North Star Horizon**, and **AB Digital B810** — and **no two are alike**. Different ports,
-different bit meanings, different numbers of banks. That is not a failure of the simulator to
-generalise; it is the actual history, and software written for one will not drive another.
+---
 
-If you are not running banked software, leave banking off. It is off by default.
+## `bankmem` — bank-switched RAM
+
+When 64K stopped being enough, S-100 makers put several planes of RAM at the same addresses and a
+write-only **select port** that chose which plane the CPU saw. Every maker did it differently, so
+`bankmem` is **one board with four decoders**, chosen by `card`:
+
+| `card` | Real board | Select port | What a write does |
+|---|---|---|---|
+| `vector` | Vector Graphic 64K | `40` | **one-hot** — `01`→bank 0, `02`→1, `04`→2 … `80`→7 |
+| `cromemco64kz` | Cromemco 64KZ / 64KZ-II | `40` | **8-bit mask** — bit *N* turns bank *N* on; **several at once** (`28`→banks 3 and 5) |
+| `northstar` | North Star HRAM | `C0` | bit 0 = on/off, bits 1–7 = which bank; banks toggle **one at a time** |
+| `expandoram2` | SD Systems ExpandoRAM II | `FF` | the byte is a **page number** (an approximation — see below) |
+
+`banks` sets how many planes the card carries (one per real board): up to 8 for `vector` and
+`cromemco64kz`, 6 for `northstar`, 10 for `expandoram2`. `fill` and `seed` behave exactly as they do
+on `memory`. The select port is write-only and the **guest** drives it; from the monitor you can
+drive it yourself with `OUT`, and `SHOW` lists every plane and which is live.
+
+There is no banked operating system in the box to boot, so this board is here to be *driven* — the
+quickest way to see it work is from the monitor:
+
+```
+altairsim bankmem
+OUT 40 01            ; select bank 0
+DEPOSIT 1000 A0
+OUT 40 08            ; select bank 3 (one-hot 0x08, not bank 8)
+DEPOSIT 1000 B3
+OUT 40 01            ; back to bank 0 — DUMP reads A0
+DUMP 1000-1000
+OUT 40 08            ; bank 3 — DUMP reads B3; the plane really swapped
+DUMP 1000-1000
+```
+
+> **`expandoram2` is an approximation.** The real board decodes the page number through an on-board
+> PROM into a 32K or 48K partition; that decode is not published in a form we can reproduce
+> faithfully, so `bankmem` models a plain page-select over 64K planes and says so here. The other
+> three cards are exact.
 
 ---
 

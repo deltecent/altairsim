@@ -191,7 +191,7 @@ bool setPropertyIn(std::vector<Property> props, const std::string& who, const st
 
 // EVERY successful set tells the board to re-settle, without asking what was set.
 //
-// `port`, `phantom`, `honors_phantom`, `bank_type` and `enabled` rewire the card's
+// `port`, `phantom`, `honors_phantom`, `card` (bankmem) and `enabled` rewire the card's
 // decode; `interrupt` moves the wire its IRQ is soldered to; `baud` and `connect`
 // move a deadline it has already set. `upper` does none of the above. WE DO NOT
 // TRY TO TELL THEM APART, and that is deliberate: the distinction is per-board

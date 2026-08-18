@@ -67,7 +67,7 @@ enum class UnitKind {
             // cores are units, exactly one active (DESIGN.md 3.0.1). This needs no
             // new bus concept at all: the card decodes the OUT, sets its own
             // latch, and reports a different active core, which is structurally
-            // identical to a memory card switching banks. The bus arbitrates
+            // identical to a bankmem card switching banks. The bus arbitrates
             // nothing, here as everywhere.
 };
 
@@ -462,8 +462,8 @@ public:
 
     // ---- Lifecycle (DESIGN.md 6) ----
 
-    // POC* or RESET*. Board-specific: each board decides what it means. Memory
-    // clears its bank latch and touches not one byte of RAM.
+    // POC* or RESET*. Board-specific: each board decides what it means. A bankmem
+    // card clears its bank latch and touches not one byte of RAM.
     virtual void reset(Reset) {}
 
     // Power APPLIED. The only event that loses RAM and re-reads ROM images.
@@ -704,7 +704,7 @@ public:
     // everything and told nobody it had not looked. What they bought was two things,
     // and neither needed to be here. Reading behind the bus was never necessary: a ROM
     // answers reads like any other chip, and a bank or a board you cannot see is one you
-    // SELECT (SET mem0 bank=3), exactly as the guest must. Writing behind the bus is
+    // SELECT (OUT its bank port, exactly as the guest must). Writing behind the bus is
     // real, and it is one card's business rather than the backplane's -- it is
     // MemoryBoard::poke, reached through Machine::burn, addressed like everything else.
 
@@ -935,7 +935,7 @@ public:
     // costs you a day.
     //
     // Public because setProperty() calls it FOR every board, on every successful
-    // set: `port`, `phantom`, `honors_phantom`, `bank_type`, `enabled` all change
+    // set: `port`, `phantom`, `honors_phantom`, `card` (bankmem), `enabled` all change
     // the decode, and rather than trust each board to remember that, the one path
     // by which any property is EVER set announces it centrally. A board still calls
     // it directly for changes that do not come through a property -- a guest OUT

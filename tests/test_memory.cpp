@@ -17,14 +17,6 @@ static Region ram(uint16_t at, uint32_t size) {
     r.size = size;
     return r;
 }
-// Look a property up BY NAME. Index-based access (properties()[4]) would break
-// silently the first time a property is added to the board.
-static long long getProp(Board* b, const std::string& name) {
-    for (const auto& p : b->properties())
-        if (p.name == name) return p.get().kind() == Kind::Int ? p.get().i() : -1;
-    return -1;
-}
-
 static Region rom(uint16_t at, const std::string& mount) {
     Region r;
     r.kind = RegionKind::Rom;
@@ -198,116 +190,7 @@ void test_memory() {
               "honors_phantom=none: the RAM keeps driving under the ROM -- real contention");
     }
 
-    SECTION("banking -- five real cards, and no two alike");
-
-    {
-        Machine m;
-        auto* b = addMem(m, "mem0");
-        std::string e2;
-
-        // ExpandoRAM: port FF, BINARY. `data` IS the bank number.
-        CHECK(setProperty(*b, "bank_type", "eram", e2), "bank_type=eram");
-        b->addRegion(ram(0x0000, 0x10000), err);
-        m.power();
-        m.bus.ioWrite(0xFF, 3);
-        CHECK(getProp(b, "bank") == 3, "eram: OUT FF,03 selects bank 3 (binary)");
-
-        // ...and the SAME byte on a Vector Graphic means bank 2, because that
-        // card is ONE-HOT. This is why there is no BANK= in the monitor: any
-        // CLI-level banking syntax would have to pick one of these and be wrong
-        // about the other four.
-        Machine m2;
-        auto* v = addMem(m2, "mem0");
-        CHECK(setProperty(*v, "bank_type", "vram", e2), "bank_type=vram");
-        v->addRegion(ram(0x0000, 0x10000), err);
-        m2.power();
-        m2.bus.ioWrite(0x40, 0x04);
-        CHECK(getProp(v, "bank") == 2, "vram: OUT 40,04 selects bank TWO (one-hot)");
-
-        // The OASIS quirk. Get this wrong and OASIS does not boot -- and it fails
-        // in the worst way: a select that lands on the wrong plane, so the machine
-        // runs and then behaves insanely later.
-        m2.bus.ioWrite(0x40, 0x41);
-        CHECK(getProp(v, "bank") == 0, "vram: 0x41 -> bank 0 (bit 6 ignored: OASIS)");
-        m2.bus.ioWrite(0x40, 0x42);
-        CHECK(getProp(v, "bank") == 1, "vram: 0x42 -> bank 1 (OASIS)");
-
-        // A select the card cannot decode is NOT silently swallowed.
-        m2.bus.ioWrite(0x40, 0x03);
-        CHECK(getProp(v, "bank") == 1, "an undecodable select leaves the bank alone");
-        CHECK(!m2.drainBoardLog().empty(), "and SAYS SO -- a silent one is hours of your life");
-    }
-
-    {
-        // Cromemco has SEVEN banks, because bit 7 is not a bank select on that
-        // card. A generic "banks = 1 << n" would have got this wrong.
-        Machine m;
-        auto* b = addMem(m, "mem0");
-        std::string e2;
-        setProperty(*b, "bank_type", "cram", e2);
-        CHECK(getProp(b, "banks") == 7, "cram has 7 banks, not 8");
-    }
-
-    {
-        // North Star (port C0) and the B810 (port 40) are both BINARY, 16 banks.
-        for (const char* t : {"hram", "b810"}) {
-            Machine m;
-            auto* b = addMem(m, "mem0");
-            std::string e2;
-            setProperty(*b, "bank_type", t, e2);
-            b->addRegion(ram(0x0000, 0x10000), err);
-            m.power();
-            uint8_t port = (std::string(t) == "hram") ? 0xC0 : 0x40;
-            m.bus.ioWrite(port, 0x0D);
-            CHECK(getProp(b, "bank") == 13, (std::string(t) + ": binary select, 16 banks").c_str());
-            CHECK(getProp(b, "banks") == 16, (std::string(t) + " has 16 banks").c_str());
-        }
-    }
-
-    {
-        // Banking actually swaps the plane: the same address, different bytes.
-        Machine m;
-        auto* b = addMem(m, "mem0");
-        std::string e2;
-        setProperty(*b, "bank_type", "eram", e2);
-        setProperty(*b, "fill", "zero", e2);
-        b->addRegion(ram(0x0000, 0x10000), err);
-        m.power();
-
-        m.bus.ioWrite(0xFF, 0);
-        m.bus.memWrite(0x1000, 0xA0);
-        m.bus.ioWrite(0xFF, 3);
-        m.bus.memWrite(0x1000, 0xB3);
-
-        m.bus.ioWrite(0xFF, 0);
-        CHECK(m.bus.memRead(0x1000) == 0xA0, "bank 0 still holds A0");
-        m.bus.ioWrite(0xFF, 3);
-        CHECK(m.bus.memRead(0x1000) == 0xB3, "bank 3 holds B3 -- the plane really swapped");
-        // "Bank 3 simply IS offset 0x30000" -- no new syntax, no new concept.
-        CHECK(b->storeAt(0x31000) == 0xB3, "and the store really is planed: bank 3 IS offset 0x30000");
-        CHECK(b->storeAt(0x01000) == 0xA0, "with bank 0 still at 0x01000");
-    }
-
-    {
-        // THREE of the five real cards use port 0x40. Two of them in one machine
-        // is a real I/O collision, and it must be reported by name rather than
-        // letting one silently shadow the other.
-        Machine m;
-        auto* a = addMem(m, "mem0");
-        auto* b = addMem(m, "mem1");
-        std::string e2;
-        setProperty(*a, "bank_type", "vram", e2);
-        setProperty(*b, "bank_type", "b810", e2);
-        a->addRegion(ram(0x0000, 0x1000), err);
-        b->addRegion(ram(0x2000, 0x1000), err);
-        m.power();
-
-        BusCycle c{Cycle::IoWrite, 0x40, 0, false};
-        CHECK(m.bus.respondersTo(c).size() == 2, "two banked cards both claim port 40");
-        m.bus.clearLog();
-        m.bus.ioWrite(0x40, 0x01);
-        CHECK(!m.bus.drain().empty(), "and the I/O collision is REPORTED, naming both");
-    }
+    SECTION("fill=random -- reproducible from its seed");
 
     {
         // fill=random must be REPRODUCIBLE from its seed, or it is a source of
@@ -335,42 +218,20 @@ void test_memory() {
             if (m1.bus.memRead((uint16_t)k) != m2.bus.memRead((uint16_t)k)) ++diff;
         CHECK(diff > 3000, "and a different seed really is different memory");
     }
-
-    {
-        // None of the five real banked cards carried ROM, so what a bank select
-        // does to one is UNKNOWN -- and we refuse rather than guess (DESIGN.md 0.1).
-        Machine m;
-        auto* b = addMem(m, "mem0");
-        std::string e2;
-        setProperty(*b, "bank_type", "eram", e2);
-        CHECK(!b->addRegion(rom(0xFF00, "builtin:dbl"), err),
-              "a rom region on a banked card is REJECTED, not invented");
-        CHECK(err.find("unsourced") != std::string::npos, "and the error says why");
-    }
 }
 
 // ---------------------------------------------------------------------------
 // A DERIVED PROPERTY HAS NO SETTER. IT DOES NOT HAVE A SETTER THAT SAYS NO.
 //
-// `banks` and `pages` are things the card WORKS OUT -- banks follows bank_type, pages falls
-// out of the regions you declared. Neither is a jumper, and neither belongs in a TOML file.
+// `pages` is a thing the card WORKS OUT -- it falls out of the regions you declared. It is
+// not a jumper, and it does not belong in a TOML file.
 //
-// They used to refuse a SET from inside a setter, and that looked like it was enough. It was
+// It used to refuse a SET from inside a setter, and that looked like it was enough. It was
 // not. Read-only is a FACT ABOUT THE PROPERTY, and the only way a consumer of the reflection
 // layer can see it is THE ABSENCE OF A SETTER (core/board.cpp). With a refusing setter
-// installed, SHOW printed them as settable, MCP offered them as writable, and anything
-// generated off properties() described them as TOML keys you could write -- while the SET
-// they were all advertising failed every time.
-//
-// CONFIG SAVE alone got it right, and HOW it got it right is the argument for this change:
-// it could not ask "is this settable?", so it grew a workaround (config/toml.cpp) that CALLS
-// each setter with the property's own current value and skips the ones that refuse. That is
-// precisely the "second rule to keep in step" this reflection layer exists to abolish -- and
-// it is not free, because probing a setter means CALLING it, on every property, on every save.
-//
-// That last sentence was written as a warning and it turned out to be a bug report: the probe
-// was calling `bank_type`'s setter, which zeroes the live bank. It is GONE now, and
-// test_save_is_a_read() below is what keeps it gone.
+// installed, SHOW printed it as settable, MCP offered it as writable, and anything generated
+// off properties() described it as a TOML key you could write -- while the SET they were all
+// advertising failed every time.
 //
 // One signal, honoured by everybody, or four subsystems each guessing. This test pins the
 // signal down, because the bug it guards is invisible: nothing crashes, and the damage lives
@@ -388,77 +249,59 @@ void test_readonly_props() {
     // `p` (a pointer INTO it) would then dangle -- a use-after-free that reads clean on
     // some allocators and corrupts on others (it aborted under ASan on an M4 Mac).
     const auto props = b->properties();
-    for (const char* name : {"banks", "pages"}) {
-        const Property* p = nullptr;
-        for (const auto& q : props)
-            if (q.name == name) p = &q;
-        CHECK(p != nullptr, (std::string(name) + " exists").c_str());
-        if (!p) continue;
-
+    const Property* p = nullptr;
+    for (const auto& q : props)
+        if (q.name == "pages") p = &q;
+    CHECK(p != nullptr, "pages exists");
+    if (p) {
         // THE WHOLE POINT. Not "setting it fails" -- there is nothing there to set.
-        CHECK(!p->set, (std::string(name) + " has NO SETTER (this is what read-only IS)").c_str());
-        CHECK(!!p->get, (std::string(name) + " still reads").c_str());
+        CHECK(!p->set, "pages has NO SETTER (this is what read-only IS)");
+        CHECK(!!p->get, "pages still reads");
     }
-
-    // And SET still refuses, in the property path, with the property's OWN words -- not with
-    // a sentence about UART pins, which is what the generic refusal used to say to everybody.
-    CHECK(!setProperty(*b, "banks", "4", err), "SET banks is refused");
-    CHECK(err.find("read-only") != std::string::npos, "...and says it is read-only");
-    CHECK(err.find("bank_type") != std::string::npos,
-          "...and says WHY, in the property's own help -- not 'it reports a pin, not a jumper'");
 
     // CONFIG SAVE must not write a key that CONFIG LOAD would then refuse. A save you cannot
     // load is not a save.
     std::string toml = saveTomlText(m);
-    CHECK(toml.find("banks") == std::string::npos, "CONFIG SAVE does not write `banks`");
     CHECK(toml.find("pages") == std::string::npos, "CONFIG SAVE does not write `pages`");
 }
 
 // A SAVE IS A READ.
 //
 // CONFIG SAVE used to probe: it called each board setter with the value it had just got, to
-// find out whether the property was writable (see the note above -- the reflection layer
-// answers that now, with `!p.set`). A setter is not a question, though. Some of them do work,
-// and `bank_type`'s ends:
-//
-//     bankType_ = t;  banks_ = ...;  bank_ = 0;  rebuildPageMap();
-//
-// So saving a banked card DESELECTED THE LIVE BANK and remapped the guest's address space --
-// a save that moved memory underneath a running program. And because `bank_type` is declared
-// BEFORE `bank`, the damage was done before `bank`'s getter ran: the file recorded `bank = 0`
-// as well, so the config did not even describe the machine it had just broken. Measured on the
-// old binary: bank 3 in, bank 0 out, `bank = 0` on disk.
+// find out whether the property was writable (the reflection layer answers that now, with
+// `!p.set`). A setter is not a question, though. Some of them do work -- the `bankmem` card's
+// `card` and `banks` setters rebuild every segment and clear the live bank -- so a save that
+// called them would deselect the guest's bank and remap its address space underneath a running
+// program.
 //
 // This is the whole contract in one test, and it is aimed at the MACHINE, not at the text --
-// a save that perturbs what it describes is broken however good the file looks.
+// a save that perturbs what it describes is broken however good the file looks. It runs on a
+// bankmem card because that is where the perturbing setter now lives.
 void test_save_is_a_read() {
     SECTION("CONFIG SAVE does not write to the machine it is describing");
 
     Machine m;
-    auto* b = addMem(m, "mem0");
     std::string err;
-    CHECK(b->addRegion(ram(0x0000, 0xE000), err), "56K of RAM");
-
-    CHECK(setProperty(*b, "bank_type", "eram", err), "an Ithaca eRAM card: 8 banks");
-    CHECK(setProperty(*b, "bank", "3", err), "and bank 3 is the live one");
+    auto* b = m.add("bankmem", "mem0", err);
+    CHECK(b != nullptr, "a bankmem card");
+    if (!b) return;
+    CHECK(setProperty(*b, "card", "vector", err), "a Vector Graphic: one-hot select");
+    m.power();
+    m.bus.ioWrite(0x40, 0x08);   // one-hot 0x08 selects bank 3
 
     // Held by value -- see test_readonly_props: a pointer into the temporary from
     // properties() dangles the moment the range-for that bound it ends.
     const auto props = b->properties();
-    const Property* bank = nullptr;
+    const Property* active = nullptr;
     for (const auto& p : props)
-        if (p.name == "bank") bank = &p;
-    CHECK(bank != nullptr, "the card has a `bank`");
-    if (!bank) return;
-    CHECK(bank->get().i() == 3, "bank 3 is selected before the save");
+        if (p.name == "active") active = &p;
+    CHECK(active != nullptr, "the card reports its `active` bank");
+    if (!active) return;
+    CHECK(active->get().s() == "bank 3", "bank 3 is selected before the save");
 
     std::string toml = saveTomlText(m);
 
     // THE ASSERTION. Not "the file is right" -- "the machine is untouched".
-    CHECK(bank->get().i() == 3,
+    CHECK(active->get().s() == "bank 3",
           "and bank 3 is STILL selected after it: CONFIG SAVE did not touch the card");
-
-    // ...and, following from that, the file says what was true.
-    CHECK(toml.find("bank = 3") != std::string::npos,
-          "...so the saved config records bank 3 -- the machine that was actually saved");
 }

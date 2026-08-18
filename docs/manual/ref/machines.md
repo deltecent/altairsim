@@ -21,6 +21,7 @@ what is actually in one.
 | `altair680` | The Altair 680b -- MITS's second machine, and a different animal from the 8800. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |
 | `amon` | AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor. |
+| `bankmem` | A bank-switched RAM machine: a Z80, a console, and a Vector Graphic 64K bankmem. |
 | `basic4k` | The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR. |
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR. |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
