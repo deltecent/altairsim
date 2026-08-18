@@ -1,0 +1,124 @@
+# SD Systems SBC-200 + VersaFloppy II -- boots NON-BANKED CP/M 3.
+#
+#     cd examples/sdsys
+#     altairsim cpm3-nb.toml
+#     (press Enter)   ->   .        <- MSMONR21 auto-bauds off the CR
+#     C               ->   SD Systems CP/M Plus Ver 3.0 ...   A>
+#
+# THIS IS THE NON-BANKED CP/M 3, the sibling of the banked machine (cpm3-b.toml). The
+# whole operating system fits inside the ordinary 64K address space, so there is no
+# ExpandoRAM II and no bank switching -- just a plain 64K RAM board. The loader brings in
+# two resident modules, BIOS3.SPR (at E100) and BDOS3.SPR (at C000), which leaves a 48K TPA
+# -- versus the banked build's 60K, the price of keeping the whole OS resident in-address-
+# space instead of paging its far half into a bank. See docs/boards/bankmem.md for the
+# banked alternative.
+#
+# EVERYTHING ELSE IS THE SBC-200, exactly as in cpm.toml: the CBIOS console driver runs
+# the keyboard under a Z80 mode-2 interrupt off the 8251's RxRDY (vector at FF82), and the
+# onboard boot PROM (monitor at E000 + DDBIOS at F000) shadows the top of RAM until cold
+# boot switches it out with `OUT 7F,3`. The 64K RAM sits UNDER that PROM, so it is strapped
+# `honors_phantom = "read"`: while the PROM is enabled it shadows reads, but the loader's
+# writes fall straight through to the RAM it is loading the system into.
+#
+# THE SIGN-ON is customized on this disk: after "SD Systems CP/M Plus Ver 3.0" the CBIOS
+# prints SIGNON.DAT from drive A: -- a CONGRATULATIONS banner ("Rel. 1.6, for -200 series
+# boards") that was edited in with ED.COM. Erase or rename SIGNON.DAT and the default
+# one-line sign-on returns.
+#
+# WHY YOU MUST PRESS ENTER FIRST. As on every SBC-200 serial machine, MSMONR21 auto-bauds
+# off the start bit of the first character you type. It prints nothing until then -- press
+# Enter. See reference/SD Systems SBC-100 & SBC-200.md.
+
+[machine]
+name    = "cpm3-nb"
+startup = ["RUN E000"]                 # enter the onboard monitor PROM (as reset would)
+
+# THE CPU. A 4 MHz Z80. On the real board the CPU is on the SBC card itself; here it is
+# the generic z80 board, and the SBC card carries the 8251, CTC, parallel port and PROM.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE SBC-200's I/O and onboard PROM. The 8251 console at 7C/7D, the CTC keyboard
+# interrupt, the parallel port with the memory switch-out at 7F, and the two boot-PROM
+# sockets: the MSMONR21 monitor at E000 and the DDBIOS disk BIOS at F000.
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:msmonr21"           # the RS232 (MS) monitor PROM
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"             # the DDBIOS VersaFloppy boot BIOS
+
+# A PLAIN 64K RAM BOARD under the PROM shadow. `honors_phantom = read` is what lets the
+# onboard PROM shadow reads while writes fall through to this RAM -- so after `OUT 7F,3`
+# the whole 64K is live and CP/M runs from it (the monitor's FF80 interrupt table too).
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                        # real static RAM does not come up zeroed
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+
+# THE VERSAFLOPPY II -- a WD FD1791 soft-sector controller at the standard 60H block
+# (8" single-sided double-density, 256-byte sectors, 26x77). The non-banked CP/M 3
+# distribution came on THREE disks:
+#
+#   DISK1  (A:, mounted)  the bootable system -- CPM3.SYS, BIOS3.SPR/BDOS3.SPR, CCP.COM,
+#                         the core utilities (PIP, ED, SID, DUMP, DIR, SET, DEVICE, DATE...)
+#                         and the DRI toolchain (MAC, RMAC, LINK, LIB, GENCPM), plus the
+#                         SIGNON.DAT custom sign-on. `C` at the monitor prompt cold-boots it.
+#   DISK2  (B:, mounted)  the CBIOS object modules (.REL: BIOSKRNL, CHARIO, DRVTBL, FLPDRVR,
+#                         BOOT, CPMLDR, MOVE, SCB, RAMDRVR), the non-banked link scripts
+#                         NBLINK.SUB/RNBLINK.SUB, and more utilities (HELP, SHOW, FORMAT,
+#                         MCOPY, SETDEF, INITDIR, PATCH, VERIFY, XREF, TYPE...).
+#   DISK3  (NOT mounted)  the CBIOS assembly SOURCE (.ASM/.DRI: BIOSKRNL, CHARIO, DRVTBL,
+#                         FLPDRVR, BOOT, COLD, MOVE, SCB, RAMDRVR, FD1797SD, the .LIBs).
+#
+# Only the first two are mounted because the CBIOS on the distribution disk is generated for
+# a TWO-DRIVE system (A: and B:) -- there is simply no C: for DISK3 to appear on. To reach
+# DISK3's sources, regenerate the BIOS (DISK2's DRVTBL + NBLINK) for more drives, or swap
+# DISK3 onto B: in place of DISK2.
+[[board]]
+type    = "versafloppy"
+id      = "vf0"
+variant = "vfii"
+port    = 60
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CPM3-NB-SSDD-48K-DISK1.DSK"   # A:
+
+  [[board.drive]]
+  unit  = 1
+  mount = "CPM3-NB-SSDD-DISK2.DSK"       # B:
+
+  # DISK3 is the BIOS source; the shipped CBIOS is a two-drive build, so there is no C:
+  # to mount it on. Regenerate the BIOS for a third drive to enable this.
+  # [[board.drive]]
+  # unit  = 2
+  # mount = "CPM3-NB-SSDD-DISK3.DSK"     # C: (needs a >=3-drive CBIOS)
+
+# THE HOST BRIDGE at ports B0/B1 -- our own board, not a period one. R.COM/W.COM/HDIR.COM on the
+# CP/M disk move files between the guest and the host, sandboxed to `hostdir` (empty = the
+# shell's working directory). See docs/boards/hostbridge.md.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
