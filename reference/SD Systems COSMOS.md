@@ -116,13 +116,16 @@ the exact per-board bit pattern must be read from a clean scan or the schematic.
 each of the 3 (32K) or 4 (48K) boards carries a **distinct board-select value**, and the PROM
 variant is the same across all boards in the system.
 
-> ⚠ **Emulation gap.** `bankmem card=expandoram2` models a **binary page-select over 64K planes** —
-> a documented approximation. It does **not** yet express any of what COSMOS actually needs:
-> **board-select (0–7)**, **partition size (EX-32 / EX-48)**, the **32K+32K / 48K+16K partition
-> geometry** with a fixed common OS region, or multiple boards coordinating on port FF. And the
-> exact port-FF page → (board, window, RAS) map lives in the 82S130 PROM (Fig 2-4 of the ExpandoRAM
-> II manual, not transcribable from the scan). So COSMOS cannot be booted or verified against this
-> card today; a faithful model needs a **PROM dump** and a **COSMOS/SD-OS multi-user image**. See
+> ⚠ **Emulation status.** `bankmem card=expandoram2` now models the part COSMOS most depends on:
+> the **partition** (`partition=ex32|ex48`) with a **fixed common region** shared by every page
+> (EX-32 = 32K banked + 32K common; EX-48 = 48K banked + 16K common), and **board RAM up to 256K**
+> (`ram=`). A banked CP/M whose BIOS writes the bank number to port FF with common at C000 — which
+> is exactly what SD Systems' own banked CP/M 3 does (`COMBAS=C0`) — is expressible and boots the
+> banking mechanism. What is **still approximate**: the exact port-FF page → (board, window, RAS)
+> map lives in the 82S130 PROM (Fig 2-4, not transcribable from the scan), and **board-select (0–7)
+> across multiple coordinated boards** is not modelled (a single board's page range stands in). So
+> COSMOS specifically still cannot be *verified* without a **PROM dump** and a **COSMOS/SD-OS
+> multi-user image**; the general banked-CP/M-3 mechanism, however, is in place. See
 > [`docs/boards/bankmem.md`](#) and [`docs/devguide/banked-ram.md`](#).
 
 Companion jumpers on the other SD boards for a COSMOS install (§6.2.3):

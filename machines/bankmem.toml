@@ -22,6 +22,14 @@
 # To model a different card, `SET mem0 card=cromemco64kz` (8-bit bank MASK, port 40),
 # `northstar` (on/off + one-hot toggle, port C0), or `expandoram2` (page select,
 # port FF -- an approximation; see docs/boards/bankmem.md).
+#
+# The ExpandoRAM II also has common memory for banked CP/M (CP/M 3, COSMOS): a region
+# identical in every bank, where the resident OS and the bank-switch routine live.
+#
+#     SET mem0 card=expandoram2
+#     SET mem0 partition=ex48     ; 48K banked (0000-BFFF) + 16K common (C000-FFFF)
+#     SET mem0 ram=256            ; 256K -> 5 banks; page port FF, common survives OUT
+#     SHOW mem0                   ; the banks, the common region, and the live page
 
 [machine]
 name = "bankmem"

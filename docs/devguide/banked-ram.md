@@ -111,9 +111,15 @@ design decisions taken:
   a flat 64K store. This is also the honest model of the ExpandoRAM I (no port at all).
 - **`b810` removed** — unsourced (§0.1).
 - **`eram` retired** — the ExpandoRAM I is plain memory; the ExpandoRAM II is `card=expandoram2`.
-- **`expandoram2` is a documented approximation** — a binary page-select over 64K planes, because
-  the real 82S130 PROM decode is not transcribable from the scan. The caveat is stated in the board
-  doc and in the code; a PROM dump would let it be made faithful.
+- **`expandoram2` is a documented approximation** — a binary page-select, because the real 82S130
+  PROM decode is not transcribable from the scan. The caveat is stated in the board doc and in the
+  code; a PROM dump would let the *page decode* be made faithful. **What the PROM's stock variants
+  do is modelled, though** (follow-up, `feat/bankmem-partition-ram`): `partition=ex32|ex48` gives a
+  fixed **common region** shared by every page (EX-32 = 32K banked + 32K common; EX-48 = 48K + 16K),
+  and `ram=` sets board size up to 256K. That is what a banked CP/M needs — the resident OS and the
+  bank-switch routine live in common and survive the page `OUT`. SD Systems' own banked CP/M 3 does
+  exactly this (bank number → port FF, `COMBAS=C0` ⇒ `partition=ex48`); the general mechanism is now
+  in place, while board-select across multiple coordinated boards remains the approximated part.
 - **`v2z80` was kept as its own board** — its onboard paged **ROM** overlay (two 4K EEPROM pages at
   F000-FFFF, phantom-shadowing RAM, tied to a CPU card's identity) is a different thing from an
   S-100 banked-RAM card; folding it into `bankmem` (a RAM board) would reintroduce the very

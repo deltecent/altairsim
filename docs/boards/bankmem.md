@@ -53,12 +53,35 @@ real board, so ≤ 6 banks are usable. A byte with no single bank bit, or one ta
 board does not carry, is logged and changes nothing.
 
 ### `expandoram2` — SD Systems ExpandoRAM II (approximation)
-> ⚠ **This card is a documented approximation.** The real board decodes the port-FF page number
+> ⚠ **The page decode is a documented approximation.** The real board runs the port-FF page number
 > through an on-board 82S130 PROM, against the board-select switches and the top address bits, into
 > a 32K or 48K partition. That per-cell PROM map is **not transcribable** from the scanned manual
 > (`reference/SD Systems ExpandoRAM II.md` says so explicitly), and `DESIGN.md` §0.1 forbids
-> inventing hardware we cannot source. So `bankmem` models a plain **binary page-select over 64K
-> planes** and states the gap here. If an 82S130 dump turns up, the faithful decode replaces this.
+> inventing hardware we cannot source. So `bankmem` models a plain **binary page-select** and states
+> the gap here. If an 82S130 dump turns up, the faithful decode replaces this.
+
+**Common memory (`partition=`).** What the PROM's two stock variants *do* — carve a fixed common
+region shared by every page — is well documented (EX-48 = SD# 7010393, EX-32 = SD# 7010392), so that
+part is modelled directly:
+
+| `partition` | Banked window | Common region | Total per bank |
+|---|---|---|---|
+| `none` (default) | `0000-FFFF` (whole 64K plane) | — | 64K |
+| `ex48` | `0000-BFFF` (48K) | `C000-FFFF` (16K, shared) | 48K + 16K common |
+| `ex32` | `0000-7FFF` (32K) | `8000-FFFF` (32K, shared) | 32K + 32K common |
+
+The common region is **one always-live segment every bank sees**: writing the page port swaps only
+the banked window below it. That is exactly what a banked CP/M needs — the resident OS and the
+bank-switch routine itself live in common, so they must survive the `OUT` that changes banks.
+**SD Systems banked CP/M 3** does precisely this: its BIOS writes the bank number straight to port
+FF and puts common at `C000` (`COMBAS=C0` in its GENCPM), i.e. `partition=ex48`
+(`reference/SD Systems COSMOS.md`). With `partition=none` the board is the plain whole-plane model
+and byte-for-byte unchanged from before.
+
+**Size (`ram=`).** `ram` is total board RAM in KB, and it derives the bank count from the current
+partition — the real board is 64K (16K chips) or 256K (64K chips) in four physical banks. With
+`ex48`, `ram=256` → 5 banks (16K common + 5×48K); with `none`, `ram=256` → the 4 physical 64K
+planes. `banks` still works as the direct count knob; the two are two views of the same geometry.
 
 ## Properties
 
@@ -66,8 +89,10 @@ board does not carry, is logged and changes nothing.
 |---|---|---|
 | `card` | enum | `vector \| cromemco64kz \| northstar \| expandoram2`. Sets the decode, the default port, and the bank cap. |
 | `port` | int (hex) | The write-only select port. Card default (40/40/C0/FF), overridable — the real boards relocate it via PROM/straps. |
-| `banks` | int | How many planes this subsystem carries (one per real board). Card-capped: vector/cromemco 8, northstar 6, expandoram2 10. |
-| `active` | str | **Read-only** — the live bank(s). The guest sets this by writing the select port. |
+| `banks` | int | How many switchable planes this subsystem carries (one per real board). Card-capped: vector/cromemco 8, northstar 6, expandoram2 10. The common region is not a bank. |
+| `partition` | enum | **expandoram2 only** — `none \| ex48 \| ex32`. Carves a shared common region (see *Common memory* above). Refused on the other cards, which are whole-64K planes. |
+| `ram` | int | Total board RAM in KB (≤ 256K on expandoram2). Derives `banks` from the partition; the other view of the same geometry. |
+| `active` | str | **Read-only** — the live bank(s), and `+ common` when a partition is set. The guest sets this by writing the select port. |
 | `fill` | enum | RAM contents at power-on: `zero \| random` (real RAM is not zeroed). |
 | `seed` | int | Seed for `fill=random`, so a run is repeatable across POWER. |
 

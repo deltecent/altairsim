@@ -133,6 +133,54 @@ void test_bankmem() {
     }
 
     {
+        // ExpandoRAM II with a common-memory partition (EX-48): the top 16K is shared by
+        // every bank -- what a banked CP/M's resident OS and ?bank routine live in -- and
+        // only 0000-BFFF swaps. This is what lets SD Systems banked CP/M 3 (bank number
+        // straight to port FF, common at C000) run.
+        Machine m;
+        auto* b = addBank(m, "mem0", "expandoram2");
+        std::string e2;
+        setProperty(*b, "partition", "ex48", e2);
+        setProperty(*b, "ram", "256", e2);      // 16K common + 5x48K banked
+        setProperty(*b, "fill", "zero", e2);
+        m.power();
+        CHECK(e2.empty(), "eram2/ex48: partition+ram set without error");
+        CHECK(b->banks() == 5, "eram2/ex48: 256K -> 5 banks of 48K (plus 16K common)");
+
+        // The banked window swaps between pages...
+        m.bus.ioWrite(0xFF, 0x00);
+        m.bus.memWrite(0x1000, 0xA0);           // banked region, page 0
+        m.bus.ioWrite(0xFF, 0x03);
+        m.bus.memWrite(0x1000, 0xB3);           // banked region, page 3
+        m.bus.ioWrite(0xFF, 0x00);
+        CHECK(m.bus.memRead(0x1000) == 0xA0, "eram2/ex48: page 0 keeps its own banked byte");
+        m.bus.ioWrite(0xFF, 0x03);
+        CHECK(m.bus.memRead(0x1000) == 0xB3, "eram2/ex48: page 3 keeps its own banked byte");
+
+        // ...but the common region (C000-FFFF) is the SAME bytes in every bank.
+        m.bus.ioWrite(0xFF, 0x00);
+        m.bus.memWrite(0xE000, 0x5A);           // write common while page 0 is in
+        m.bus.ioWrite(0xFF, 0x04);
+        CHECK(m.bus.memRead(0xE000) == 0x5A, "eram2/ex48: common survives a bank switch (page 4 sees it)");
+        m.bus.memWrite(0xE000, 0x99);           // change it from page 4
+        m.bus.ioWrite(0xFF, 0x01);
+        CHECK(m.bus.memRead(0xE000) == 0x99, "eram2/ex48: common is one shared region, not per-bank");
+    }
+
+    {
+        // partition is an ExpandoRAM II concept; the other cards are whole-64K planes.
+        Machine m;
+        auto* b = addBank(m, "mem0", "vector");
+        std::string err;
+        bool ok = setProperty(*b, "partition", "ex48", err);
+        CHECK(!ok && !err.empty(), "partition is refused on non-expandoram2 cards");
+
+        // ram in KB derives the bank count; whole-plane (none) -> 64K per bank.
+        setProperty(*b, "ram", "256", err);
+        CHECK(b->banks() == 4, "vector: ram=256K -> 4 whole-64K planes");
+    }
+
+    {
         // The select port is per-card, and two banked cards on the same port are a real
         // I/O collision the bus reports by name -- exactly the old vram/b810 test, now
         // between two bankmem boards.
