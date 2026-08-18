@@ -10,35 +10,9 @@
 
 namespace altair {
 
-// ---------------------------------------------------------------------------
-// Banking -- five real cards, and no two alike (docs/boards/s100-memory.md).
-//
-// Read this table twice before you are tempted to generalize it. Three ports,
-// two encodings, and Cromemco has SEVEN banks because bit 7 is not a bank
-// select on that card. `0x04` means bank 4 on an ExpandoRAM and bank 2 on a
-// Vector. This is the strongest evidence in the whole project that boards must
-// own their own decode -- and it is why there is no BANK= in the monitor.
-// ---------------------------------------------------------------------------
-static const BankSpec kBanks[] = {
-    {"none", "(plain unbanked memory)", 0x00, 1, false, 0xFF},
-    {"eram", "SD Systems ExpandoRAM", 0xFF, 8, false, 0x07},
-    {"vram", "Vector Graphic", 0x40, 8, true, 0xFF},
-    {"cram", "Cromemco", 0x40, 7, true, 0x7F},
-    {"hram", "North Star Horizon", 0xC0, 16, false, 0x0F},
-    {"b810", "AB Digital Design B810", 0x40, 16, false, 0x0F},
-};
-
-const BankSpec& bankSpec(BankType t) { return kBanks[(int)t]; }
-
-bool parseBankType(const std::string& s, BankType& out) {
-    for (int i = 0; i < 6; ++i) {
-        if (s == kBanks[i].name) {
-            out = (BankType)i;
-            return true;
-        }
-    }
-    return false;
-}
+// Bank switching used to live here as a `bank_type=` strap; it is now its own board
+// (src/boards/bankmem.h), because the real cards do not share one encoding
+// (docs/devguide/banked-ram.md). What is left is plain RAM/ROM.
 
 std::string Region::describe() const {
     char buf[128];
@@ -75,16 +49,6 @@ bool MemoryBoard::addRegion(Region r, std::string& err) {
         // thing for a card to have: a 4-socket PROM board with two chips in it is
         // an ordinary machine. It decodes nothing (size stays 0), so those pages
         // float -- and it still gets a unit name, so you can MOUNT a chip into it.
-        //
-        // None of the five real banked cards carries ROM, so whether a combo
-        // card's ROM swaps with the RAM planes is UNKNOWN. We do not guess
-        // (DESIGN.md 0.1) -- we refuse, and say why.
-        if (bankType_ != BankType::None) {
-            err = "a rom region on a banked card is unsourced and rejected: none of the five "
-                  "real banked cards carried ROM, so what a bank select does to it is unknown. "
-                  "Use a separate board, or bring a manual.";
-            return false;
-        }
     } else {
         if (r.size == 0) {
             err = "a ram region needs `size`";
@@ -221,25 +185,20 @@ void MemoryBoard::fillRegion(size_t idx) {
     if (r.kind != RegionKind::Ram) return;
 
     std::mt19937_64 rng(seed_ ^ (0x9E3779B97F4A7C15ULL * (idx + 1)));
-    for (int b = 0; b < banks_; ++b)
-        for (uint32_t k = 0; k < r.size; ++k)
-            store_[(size_t)b * 0x10000 + r.at + k] =
-                (fill_ == Fill::Zero) ? 0x00 : (uint8_t)(rng() & 0xFF);
+    for (uint32_t k = 0; k < r.size; ++k)
+        store_[(size_t)r.at + k] = (fill_ == Fill::Zero) ? 0x00 : (uint8_t)(rng() & 0xFF);
 }
 
 void MemoryBoard::fillRam() {
     for (size_t i = 0; i < regions_.size(); ++i) fillRegion(i);
 }
 
-// Size the store to the card's banks. Growing it is ADDING CHIPS -- a new bank
-// plane is real RAM and comes up per `fill`, exactly like every other region.
-// Existing bytes are never disturbed: only POWER loses memory.
+// The store is a flat 64K -- one plane, a bus address is its own offset. This just
+// makes sure it exists before the first region fill; only POWER loses memory.
 void MemoryBoard::growStore() {
-    size_t want = (size_t)banks_ * 0x10000;
-    if (store_.size() == want) return;
-    size_t had = store_.size();
-    store_.resize(want, 0x00);
-    if (want > had) fillRam();  // the new planes; the old bytes are already right
+    if (store_.size() == 0x10000) return;
+    store_.resize(0x10000, 0x00);
+    fillRam();
 }
 
 // THE choke point: every region change, socket mount, socket unmount and bank_type
@@ -285,10 +244,6 @@ bool MemoryBoard::assertsPhantom(const BusCycle& c) const {
 }
 
 bool MemoryBoard::decodes(const BusCycle& c) const {
-    // A bank-select port, if this card has one. Write-only on all five.
-    if (c.type == Cycle::IoWrite && bankType_ != BankType::None)
-        return c.port() == bankSpec(bankType_).port;
-
     if (c.type != Cycle::MemRead && c.type != Cycle::MemWrite) return false;
 
     // SOMEONE ELSE is pulling PHANTOM* and I am strapped to honor it, so I take
@@ -314,68 +269,19 @@ bool MemoryBoard::decodes(const BusCycle& c) const {
 }
 
 uint8_t MemoryBoard::read(const BusCycle& c) {
-    // The bank port is write-only: decodes() never claims an IoRead of it, so this
-    // board is not driving that cycle, nobody else is either, and the BUS floats it
-    // to 0xFF. That is the bus's job and it does it without being told. This board
-    // does not get to have an opinion about a cycle it did not answer.
-    return store_[plane(c.addr)];
+    return store_[c.addr];
 }
 
 void MemoryBoard::write(const BusCycle& c) {
-    if (c.type == Cycle::IoWrite) {
-        const BankSpec& s = bankSpec(bankType_);
-        uint8_t d = (uint8_t)(c.data & s.mask);
-        int want = -1;
-
-        if (!s.oneHot) {
-            want = d;  // binary: the byte IS the bank number
-        } else {
-            // One-hot. The Vector Graphic card also decodes 0x41 and 0x42 as
-            // banks 0 and 1 -- bit 6 is ignored. That is not a documented Vector
-            // feature; it is that OASIS WRITES THOSE VALUES and the card
-            // tolerates them. Get it wrong and OASIS does not boot, and it fails
-            // in the worst way: a select that lands on the wrong plane, so the
-            // machine runs and then behaves insanely later.
-            uint8_t h = (bankType_ == BankType::Vram) ? (uint8_t)(d & 0xBF) : d;
-            for (int i = 0; i < 8; ++i)
-                if (h == (uint8_t)(1u << i)) {
-                    want = i;
-                    break;
-                }
-        }
-
-        if (want < 0 || want >= banks_) {
-            // NOT silently swallowed. A select the card cannot decode is nearly
-            // always a bug in the guest or in your bank_type, and a silent one
-            // is hours of your life.
-            char buf[128];
-            std::snprintf(buf, sizeof buf,
-                          "bank: invalid select 0x%02X for %s (%s). bank unchanged (still %d).",
-                          c.data, s.name, id.c_str(), bank_);
-            log_.push_back(buf);
-            return;
-        }
-        bank_ = want;
-        return;
-    }
-
     // No check. None. A real static RAM chip selected with WE asserted STORES
     // THE BYTE; it has no opinion about who asked. And a write can only reach
     // here if decodes() let it -- which a rom region never does.
-    store_[plane(c.addr)] = c.data;
+    store_[c.addr] = c.data;
 }
 
 // ---------------------------------------------------------------------------
 // Lifecycle (DESIGN.md 6)
 // ---------------------------------------------------------------------------
-
-void MemoryBoard::reset(Reset) {
-    // POC* and RESET* do the SAME thing here, and it is not much: the bank latch
-    // clears. NEITHER TOUCHES ONE BYTE OF RAM. A RAM chip has no POC* pin, and
-    // memory survives a reset on a real machine -- that is why you can reset out
-    // of a hung program and still DUMP what it was doing.
-    bank_ = 0;
-}
 
 void MemoryBoard::power() {
     // Power APPLIED. This is the only event that loses RAM -- and what the RAM
@@ -384,21 +290,19 @@ void MemoryBoard::power() {
     // Real static RAM does not come up zeroed. `fill = random` is the honest
     // default, because software that ASSUMES zeroed memory is buggy software, and
     // a zero-filling simulator will never once catch it.
-    store_.assign((size_t)banks_ * 0x10000, 0x00);
+    store_.assign(0x10000, 0x00);
     fillRam();
     for (size_t i = 0; i < regions_.size(); ++i) {
         if (regions_[i].kind != RegionKind::Rom) continue;
         std::string err;
         if (!loadRomRegion(i, err)) log_.push_back("power: " + err);
     }
-    bank_ = 0;
     enabled_ = true;
 }
 
 void MemoryBoard::serialize(StateWriter& w) const {
     Board::serialize(w);
     w.blob(store_);
-    w.u32((uint32_t)bank_);
 }
 
 void MemoryBoard::deserialize(StateReader& r) {
@@ -407,7 +311,6 @@ void MemoryBoard::deserialize(StateReader& r) {
     // NOT run the power() path, which re-fills RAM and re-reads ROM over exactly
     // these bytes. The regions and page map are config, unchanged and already built.
     store_ = r.blob();
-    bank_  = (int)r.u32();
 }
 
 bool MemoryBoard::blit(const Image& img, std::string& err) {
@@ -469,70 +372,6 @@ std::vector<Property> MemoryBoard::properties() {
             phantom_ = v.s() == "none"   ? PhantomAssert::None
                        : v.s() == "read" ? PhantomAssert::Read
                                          : PhantomAssert::All;
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
-    {
-        Property x;
-        x.name = "bank_type";
-        x.help = "none|eram|vram|cram|hram|b810 -- five real cards, no two alike";
-        x.kind = Kind::Enum;
-        x.choices = {"none", "eram", "vram", "cram", "hram", "b810"};
-        x.get = [this] { return Value::ofStr(bankSpec(bankType_).name); };
-        x.set = [this](const Value& v, std::string& err) {
-            BankType t;
-            if (!parseBankType(v.s(), t)) {
-                err = "unknown bank type";
-                return false;
-            }
-            for (const auto& r : regions_)
-                if (r.kind == RegionKind::Rom && t != BankType::None) {
-                    err = "this board has a rom region; banking a board with ROM is unsourced "
-                          "and rejected (docs/boards/s100-memory.md)";
-                    return false;
-                }
-            bankType_ = t;
-            banks_ = bankSpec(t).banks;
-            bank_ = 0;
-            rebuildPageMap();
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
-    {
-        Property x;
-        x.name = "banks";
-        x.help = "how many banks this board has. The board decides: it follows bank_type";
-        x.kind = Kind::Int;
-        x.get = [this] { return Value::ofInt(banks_); };
-        // NO SETTER, rather than a setter that always refuses. Both stop a `SET banks=4`,
-        // but only one of them stops a doc: read-only is a FACT ABOUT THE PROPERTY, and
-        // the only way a consumer can see it is the absence of a setter. With a refusing
-        // setter here, SHOW, CONFIG SAVE, MCP and the manual's generated reference all
-        // believed `banks` was a key you could write in a TOML file -- and the manual
-        // said so, which is a lie a reader only discovers by being refused.
-        p.push_back(std::move(x));
-    }
-    {
-        Property x;
-        x.name = "bank";
-        // The 0..15 below is the widest any scheme goes, NOT what this board will take:
-        // set() refuses anything at or above banks_, which bank_type decides. Say so, or
-        // the reference's Legal column offers a reader fifteen banks a `none` board has not
-        // got and the error is the first they hear of it.
-        x.help = "The live bank. 0 .. banks-1, and `banks` follows bank_type -- a board "
-                 "with one bank takes only 0";
-        x.kind = Kind::Int;
-        x.min = 0;
-        x.max = 15;
-        x.get = [this] { return Value::ofInt(bank_); };
-        x.set = [this](const Value& v, std::string& err) {
-            if (v.i() >= banks_) {
-                err = "this board has " + std::to_string(banks_) + " bank(s)";
-                return false;
-            }
-            bank_ = (int)v.i();
             return true;
         };
         p.push_back(std::move(x));
@@ -616,23 +455,10 @@ std::vector<MapEntry> MemoryBoard::memMap() const {
             if (phantom_ != PhantomAssert::None)
                 e.note += "  phantom:" +
                           std::string(phantom_ == PhantomAssert::Read ? "read" : "all");
-        } else if (bankType_ != BankType::None) {
-            e.note = "bank " + std::to_string(bank_) + " of " + std::to_string(banks_);
         }
         out.push_back(e);
     }
     return out;
-}
-
-std::vector<MapEntry> MemoryBoard::ioMap() const {
-    if (bankType_ == BankType::None) return {};
-    const BankSpec& s = bankSpec(bankType_);
-    MapEntry e;
-    e.lo = e.hi = s.port;
-    e.what = "write";
-    e.note = std::string("bank select (") + s.card + ", " +
-             (s.oneHot ? "one-hot" : "binary") + ", " + std::to_string(s.banks) + " banks)";
-    return {e};
 }
 
 // WHAT A [[board.region]] TAKES. Declared, not string-compared -- see Board::subUnitProperties.

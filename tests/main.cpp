@@ -58,6 +58,7 @@ const struct {
     {"snapshot", test_snapshot},
     {"bus", test_bus},
     {"memory", test_memory},
+    {"bankmem", test_bankmem},
     {"readonly_props", test_readonly_props},
     {"save_is_a_read", test_save_is_a_read},
     {"phantom", test_phantom},

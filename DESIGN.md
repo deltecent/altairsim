@@ -454,7 +454,7 @@ invisible and maddening.
 > **NEITHER HALF SHIPPED, and this is the gap worth closing first.** `Board::enabled_` exists as
 > a plain C++ field with a non-virtual setter (`src/core/board.h`), reachable from no `Property`
 > — so `SET mem0 enabled=off` is refused, and `MemoryBoard::properties()` declares
-> `honors_phantom, phantom, bank_type, banks, bank, fill, seed, pages` and no `enabled`. The
+> `honors_phantom, phantom, fill, seed, pages` and no `enabled`. The
 > guest-writes-its-own-port and reset paths above are real and are exercised; only the operator's
 > switch and the display of it are missing. The argument for them still stands exactly as written.
 
@@ -508,25 +508,24 @@ An observer is **armed only while the machine is running.** The monitor's own `D
 
 ### 4.3 Banking — the strongest evidence in this document that boards must own their decode
 
-A banked memory board registers a bank-select I/O port; a guest write selects which plane is live. This is an ordinary `IoOut` that mutates the board's **own** state — **not** a bus special case, and the same mechanism as §4.2.1's enable/disable.
+Banking is its own board type, `bankmem` (`docs/boards/bankmem.md`) — the strongest possible expression of this section's conclusion, since it means a banked card cannot even *share code* with the plain `memory` board's decode. A banked card registers a bank-select I/O port; a guest write mutates the board's **own** state to decide which plane is live. This is an ordinary `IoOut` — **not** a bus special case, and the same mechanism as §4.2.1's enable/disable.
 
-**What a bank select *does* is the board's business, and this document states no rule about it.** On the five cards below it swaps the 64K plane. On some other card it might not. The bus carries the `OUT` and the board decides — that is the entire point.
+**What a bank select *does* is the board's business, and this document states no rule about it.** On the four cards below it swaps a 64K plane, or several. On some other card it might not. The bus carries the `OUT` and the board decides — that is the entire point.
 
-If you are ever tempted to hoist banking into the bus or the monitor, read this table first. These are five **real** cards (`docs/boards/s100-memory.md`, sourced from `s100_bram.c`):
+If you are ever tempted to hoist banking into the bus or the monitor, read this table first. These are four **real** cards (`docs/boards/bankmem.md`, each sourced from its own manual — see `reference/*.md`):
 
 | Card | Port | Banks | The data written selects the bank how? |
 |---|---|---|---|
-| SD Systems ExpandoRAM | **0xFF** | 8 | **Binary** — the byte *is* the bank number |
-| Vector Graphic | **0x40** | 8 | **One-hot** — `0x01`→0, `0x02`→1, `0x04`→2, … `0x80`→7 |
-| Cromemco | **0x40** | **7** | One-hot, masked `& 0x7F` — **bit 7 is not a bank select** |
-| North Star Horizon | **0xC0** | 16 | **Binary** |
-| AB Digital Design B810 | **0x40** | 16 | **Binary** |
+| Vector Graphic 64K | **0x40** | 8 | **One-hot, select-one.** `0x01`→0, `0x02`→1, `0x04`→2, … `0x80`→7. Tolerates `0x41`/`0x42` (bit 6 ignored) — an OASIS quirk, not a design feature. |
+| Cromemco 64KZ/64KZ-II | **0x40** | 8 | **8-bit mask, select-many.** Bit *N* enables bank *N*, and several banks are live at once — `OUT 40,28` enables banks 3 *and* 5 together. |
+| North Star HRAM | **0xC0** | ≤6 usable | **On/off plus one-hot toggle**, not a bank number at all: bit 0 is on(0)/off(1), bits 1–7 are a one-hot address of *which* bank to toggle, and switching banks means turning the old one off and the new one on as two separate acts. |
+| SD Systems ExpandoRAM II | **0xFF** | 10 | **Page number** — an *approximation*, flagged as such in `docs/boards/bankmem.md`. The real board decodes the page through an 82S130 PROM into a 32K/48K partition that is not transcribable from the scanned manual, so we model a binary page-select over 64K planes instead. |
 
-**Three ports. Two encodings. One card with seven banks.** `OUT 40,04` means *bank 4* on an ExpandoRAM and *bank 2* on a Vector. And the Vector additionally decodes `0x41`/`0x42` as banks 0/1 — not by design, but because **OASIS writes those values** and the card tolerates them; miss it and OASIS does not boot.
+**Four genuinely different mechanisms, not four parameters of one mechanism.** The sharpest example is that **Vector Graphic and Cromemco 64KZ sit on the same port, 0x40, with incompatible encodings** — one is select-one-of-eight, the other is a mask that can hold several banks live simultaneously. A generic "write a byte, get a bank" abstraction cannot express both, so the board must own its decode or the model silently corrupts whichever card isn't the one the code was written for.
 
 No generic "bank number" abstraction survives that table. Any `BANK=<n>` in the monitor (§10.2) or any bank arbitration in the bus would have to pick one card's convention and be silently wrong about the rest. **The board owns its decode, or the model is a lie.**
 
-One more thing the table gives us for free: **three of the five cards sit on port 0x40**, so two of them in one machine is a genuine I/O collision — which §4.6's contention detector catches and names, exactly as a real backplane would have.
+One more thing the table gives us for free: **Vector Graphic and Cromemco 64KZ both sit on port 0x40**, so both in one machine is a genuine I/O collision — which §4.6's contention detector catches and names, exactly as a real backplane would have.
 
 ### 4.4 Two interrupt models — both required
 
@@ -1493,15 +1492,15 @@ Implemented once against `Board::properties()`; they know nothing about baud rat
 
 It finds the chip by asking who answers a **read** there, which is the whole trick: a ROM does not decode a write, so asking who would take a write is asking the wrong question on precisely the chip you are trying to program. `Bus::respondersTo()` runs the real decode, PHANTOM\* and all — so a shadowed board does not answer, and you cannot burn a chip the machine cannot currently see, any more than the CPU could read it. Nobody home and contention are reported, never guessed at: `Machine::burn()` is the one implementation, and the monitor and MCP are two front ends onto it.
 
-*(Superseded 2026-07-17. This was **`RAW <id>`**: it named a board, addressed that board's store by a **board-local offset**, and worked for reads as well as writes. All three are gone. **The board id** carried no information — through the bus you never name a board, the address picks it, so naming one was a second way to say a thing the address already said. **The offsets** were a second address space, and the same digits meaning two things depending on a qualifier is a trap laid for the operator. **The read side** existed only to reach a store the bus could not see — a bank that is not selected, or a phantomed-out board — and both of those are `properties()`: `SET mem0 bank=3`, `SET mem0 phantom=…`. Select the thing you want to look at, exactly as the guest has to. What was left was the one thing a bus cycle genuinely cannot do, and that is this.)*
+*(Superseded 2026-07-17. This was **`RAW <id>`**: it named a board, addressed that board's store by a **board-local offset**, and worked for reads as well as writes. All three are gone. **The board id** carried no information — through the bus you never name a board, the address picks it, so naming one was a second way to say a thing the address already said. **The offsets** were a second address space, and the same digits meaning two things depending on a qualifier is a trap laid for the operator. **The read side** existed only to reach a store the bus could not see — a bank that is not selected, or a phantomed-out board — and both of those are reachable by selecting the thing you want to look at — `OUT` a bankmem card's bank port, or `SET mem0 phantom=…` — exactly as the guest has to. What was left was the one thing a bus cycle genuinely cannot do, and that is this.)*
 
 The alternative — giving `BusCycle` an `origin = Cpu | Monitor | Dma` field so ROM could accept "monitor" writes — was rejected. A real backplane cycle carries no such tag; that is *why* a front-panel DEPOSIT is indistinguishable from a CPU write, and why a real ROM ignores both. Add the tag and every board built hereafter has to reason about it.
 
 **There is no `BANK=` qualifier, and there must not be one.** Bank *count*, bank *size*, and the bank-select *port* are all board-specific: Cromemco, CompuPro, and Alpha Micro memory boards bank in incompatible ways. A `BANK=<n>` argument in the monitor would hardcode one banking model into a CLI that is supposed to know nothing board-specific — the same error as a bus that invents interrupt vectors (§4.4).
 
-Instead, **banking is reached through the board**: **the live bank is a `properties()` value like any other.** `SHOW mem0` reports `banks` and `bank`; a board whose banking is software-selectable exposes `bank` as a runtime property. The generic `SET`/`SHOW` layer (§5) carries it, so the monitor, the TOML loader and MCP all get it for free — and a memory board with a scheme nobody has thought of yet still works. `SET mem0 bank=3`, then read ordinary addresses — which is what the guest does, because it is all the guest can do.
+Instead, **banking is reached through the board**: **the live bank is a `properties()` value like any other**, reported, not set. `SHOW bram0` reports `banks` and `active` — `active` is **read-only**, because the guest sets it by writing the card's select port and nothing else may. There is no operator override, on any of the four cards: reading it back is the only thing the monitor gets to do, exactly as if you were peeking at a plane the guest itself cannot see any other way.
 
-*(This used to have a second answer: `RAW <id>` addressed the store linearly, so bank 3 simply **was** offset `0x30000` and `DUMP 30000-300FF RAW mem0` needed no new syntax. That answer went with `RAW`, above, and the argument does not miss it — the objection to `BANK=` was never that a workaround existed, it was that the monitor must not learn one card's banking model. Selecting a bank and reading normal addresses concedes nothing to that. The store **is** still planed that way internally — `MemoryBoard::plane()`, and `storeSize()`/`storeAt()` let a test say so — but that is the card's business now, not a thing anybody types.)*
+*(This used to have a second answer: `RAW <id>` addressed the store linearly, so bank 3 simply **was** offset `0x30000` and `DUMP 30000-300FF RAW bram0` needed no new syntax. That answer went with `RAW`, above, and the argument does not miss it — the objection to `BANK=` was never that a workaround existed, it was that the monitor must not learn one card's banking model. Internally `bankmem` keeps each bank as its own segment and its per-card decoder decides which is live; a test reads a plane back through the bus (`peek`) or asks `activeMask()`. That is the card's business now, not a thing anybody types.)*
 
 **Planned, not built:** `DUMP`/`DISASM` were to annotate output when bytes came from a phantom overlay or from a bank that is not currently live, so a confusing read explains itself. Neither handler does. `SHOW BUS MAP` carries the only overlay annotation there is, which means the confusing read is still confusing at the point you actually meet it.
 

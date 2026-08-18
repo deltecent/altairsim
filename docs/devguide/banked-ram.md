@@ -1,6 +1,13 @@
-# Banked memory — the model, and where it is wrong
+# Banked memory — the model, and where it was wrong
 
-This page is a developer-facing audit of how `altairsim` models S-100 memory-bank switching
+> **Status: the fix has landed.** Banking is now its own board, **`bankmem`**
+> (`docs/boards/bankmem.md`, `src/boards/bankmem.{h,cpp}`), with one decoder per real card;
+> the `memory` board is plain, unbanked RAM/ROM again. The `b810` type is gone and the
+> SIMH-derived `bank_type` table is deleted. This page is kept as the **audit that led there** —
+> it records what the manuals say, what the old model said, and why the two diverged. The
+> *decisions* taken are recorded at the end (*The fix that landed*).
+
+This page is a developer-facing audit of how `altairsim` modelled S-100 memory-bank switching
 (`src/boards/s100-memory.h` `BankType`/`BankSpec`, `src/boards/s100-memory.cpp` `kBanks[]`)
 against the **period manuals** for the real cards, distilled in `reference/`. It exists because
 that audit turned up a problem worth writing down before it is fixed: **most of the banked
@@ -89,13 +96,30 @@ shipping hardware behavior we cannot source). Patrick's decision: **remove it.**
 narrative in the code and docs — remove it and that narrative must be re-counted (the real
 port-0x40 sharers among the sourced cards are `vram` and `cram`).
 
-## The follow-on (a separate branch — not this change)
+## The fix that landed
 
-This page is documentation only. Correcting the model is its own plan, because it touches code,
-tests, and several docs, and it has real design questions to settle first (below). When it
-happens it will: **remove `b810`**, and **correct `eram`/`cram`/`hram`** to the real encodings
-(or replace the whole `{port,banks,one-hot,mask}` generalization). The grep-verified footprint to
-revisit, so the next branch starts from facts:
+The correction became the `bankmem` board (`docs/boards/bankmem.md`). What was done, and the
+design decisions taken:
+
+- **Banking is its own board, `bankmem`, with a `card=` variant strap** — one class, four
+  per-card decoders (`vector` one-hot select-one, `cromemco64kz` 8-bit mask, `northstar`
+  on/off + one-hot toggle, `expandoram2` PROM page-select). This was chosen over piling more knobs
+  onto `memory`: the real cards do not share one parameterization, and `DESIGN.md` §4.3 argues a
+  board must own its decode. The unifying model is *segments* (a RAM slice + address window +
+  enabled flag); the port write toggles the flags per the card's rule.
+- **`memory` is plain RAM/ROM again** — no `bank_type`, no `banks`/`bank` properties, no I/O port,
+  a flat 64K store. This is also the honest model of the ExpandoRAM I (no port at all).
+- **`b810` removed** — unsourced (§0.1).
+- **`eram` retired** — the ExpandoRAM I is plain memory; the ExpandoRAM II is `card=expandoram2`.
+- **`expandoram2` is a documented approximation** — a binary page-select over 64K planes, because
+  the real 82S130 PROM decode is not transcribable from the scan. The caveat is stated in the board
+  doc and in the code; a PROM dump would let it be made faithful.
+- **`v2z80` was kept as its own board** — its onboard paged **ROM** overlay (two 4K EEPROM pages at
+  F000-FFFF, phantom-shadowing RAM, tied to a CPU card's identity) is a different thing from an
+  S-100 banked-RAM card; folding it into `bankmem` (a RAM board) would reintroduce the very
+  "ROM on a banked card is unsourced" tension the design refuses. Closed as: stays separate.
+
+The grep-verified footprint the fix touched (kept here as the record of what moved):
 
 | Location | What is there |
 |---|---|
@@ -114,9 +138,13 @@ cards use at least *four* distinct mechanisms (static address-strap, PROM page-s
 select-one, bit-mask, on/off-plus-one-hot-toggle) — the "two encodings" count only holds inside
 the SIMH generalization.
 
-## Open design questions to settle before coding the fix
+## Open design questions — now settled
 
-1. **Should the `v2z80` banked ROM fold into the banked-memory mechanism?** The V2 Z80 CPU
+*(Both were settled with Patrick before the fix; the resolutions are folded into "The fix that
+landed" above and repeated inline here.)*
+
+1. **Should the `v2z80` banked ROM fold into the banked-memory mechanism?** *Resolved: no — it
+   stays its own board.* The V2 Z80 CPU
    board's onboard 8 KB EEPROM is mapped as **two 4 KB pages** switched by `OUT D3H` bit 1
    (`reference/v2-z80-cpu-board.md`, `src/boards/v2z80.{h,cpp}`) — a genuine banked ROM, today
    implemented as its own bespoke board. Its full memory-manager banking (ports D2H/D3H) is
@@ -125,7 +153,8 @@ the SIMH generalization.
    facility should absorb it — or is a CPU board's onboard paged EEPROM legitimately its own
    board? Bears on whether "banking" is a memory-board feature or a reusable mechanism.
 
-2. **New board type, or more knobs on `memory`?** Banked RAM is materially more complex than the
+2. **New board type, or more knobs on `memory`?** *Resolved: a new board type, `bankmem`, with a
+   `card=` variant strap.* Banked RAM is materially more complex than the
    plain RAM/ROM the `memory` board otherwise models, and — now that we know the real cards —
    they do not share one parameterization: a static address-strap (ExpandoRAM I), a PROM
    page-select (ExpandoRAM II), a one-hot select (Vector), a bit-mask (Cromemco), and an

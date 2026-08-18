@@ -1,0 +1,58 @@
+# A bank-switched RAM machine: a Z80, a console, and a Vector Graphic 64K bankmem.
+#
+# This is the runnable target for the `bankmem` board (src/boards/bankmem.h) -- the
+# S-100 bank-switched RAM card. It carries no boot PROM and no operating system:
+# there is no period banked OS this simulator ships a disk for, so this machine
+# exists to prove the BOARD, and you drive the banking yourself from the monitor.
+#
+# The `bankmem` select port is WRITE-ONLY and the guest owns it, but the monitor can
+# write it too (OUT) -- so you can watch a bank switch without any guest software:
+#
+#     altairsim bankmem
+#     OUT 40 01                 ; Vector one-hot: select bank 0
+#     DEPOSIT 1000 A0
+#     OUT 40 08                 ; select bank 3 (one-hot 0x08, NOT bank 8)
+#     DEPOSIT 1000 B3
+#     OUT 40 01                 ; back to bank 0...
+#     DUMP 1000 1               ;   ...reads A0
+#     OUT 40 08                 ; ...and bank 3...
+#     DUMP 1000 1               ;   ...reads B3 -- the plane really swapped
+#     SHOW mem0                 ; the live bank, the port, and every plane's window
+#
+# To model a different card, `SET mem0 card=cromemco64kz` (8-bit bank MASK, port 40),
+# `northstar` (on/off + one-hot toggle, port C0), or `expandoram2` (page select,
+# port FF -- an approximation; see docs/boards/bankmem.md).
+
+[machine]
+name = "bankmem"
+
+# The CPU is a card: it decodes nothing, it drives the bus. A Z80, because the Vector
+# Graphic 64K is a Z80-only board (it leans on the Z80's refresh). `clock_hz = 0` is
+# flat out (the default).
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+# The console -- a 2SIO (a 6850 ACIA) at port 10, channel A wired to the terminal.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# The bank-switched RAM: a Vector Graphic 64K, eight 64K planes selected one-hot at
+# port 40. Bank 0 comes up live at power/RESET, so the machine has memory to run in.
+[[board]]
+type  = "bankmem"
+id    = "mem0"
+card  = "vector"
+banks = 8
+fill  = "random"          # real dynamic RAM does not come up zeroed
