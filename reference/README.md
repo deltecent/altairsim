@@ -26,6 +26,20 @@ The `Source:` links point at `#` — a placeholder to be filled in with a real U
 | [Processor Technology Sol-20](Sol-20.md) | The Sol-PC integrated machine: the `F8h`–`FFh` onboard I/O map (serial `F8`/`F9`, the shared mixed-polarity status register `FA` + tape motor/baud write, tape `FB`, keyboard `FC`, parallel `FD`, VDM display `FE`, sense `FF`), every status bit and its active-high/low polarity from the SOLOS drivers, the **keyboard's key codes** (Table 7-4 — the eight bit-7 special keys `MODE SELECT`/`CLEAR`/`LOAD`/`HOME CURSOR`/arrows, and the five keys that send no code at all), and the `C000`–`CFFF` ROM/scratch/video memory map. |
 | [SD Systems SBC-100 & SBC-200](SD%20Systems%20SBC-100%20%26%20SBC-200.md) | SD Systems Z80 single-board computers (bus master): the shared `78h`–`7Fh` I/O map (CTC `78`–`7B`, 8251 USART console `7C`/`7D`, parallel `7E`/`7F`), the 8251 status polarity (TxRDY=D0, RxRDY=D1, active-high), the CTC baud tables and the `05h`/`45h` init difference, the parallel handshake (input "ready" = `7F` D1 active-low; **SBC-200 `OUT 7F` D1 switches onboard memory**), the X1/X2/X3 memory-mapping headers, and the reset **auto-start** (4K boundary via X16/X17/X18, released by a **read of port `7F`**) with the monitor PROM at `E000` / disk BIOS at `F000`. Documents both boards with the 2.4576-vs-4 MHz, 8251-vs-8251A, current-loop and memory-switch differences called out. |
 
+## Memory and banking
+
+See also [`docs/devguide/banked-ram.md`](../docs/devguide/banked-ram.md), which audits these
+five real cards against how `altairsim` currently models bank switching (and finds most of the
+model wrong).
+
+| Reference | What it covers |
+|---|---|
+| [SD Systems ExpandoRAM](SD%20Systems%20ExpandoRAM.md) | The original ExpandoRAM ("I"), an S-100 DRAM board (MK4115/MK4116). **⚠ It has no I/O port at all** — a static, memory-mapped board whose "banks" are four fixed groups of 8 chips strapped to 8K/16K address slices by an 8-position DIP switch (U2 → 74LS138 → RAS0–3); per-bank write-protect + PHANTOM/manual output-disable. **Not** a runtime bank switcher — do not confuse with the ExpandoRAM-II. |
+| [SD Systems ExpandoRAM II](SD%20Systems%20ExpandoRAM%20II.md) | The second-generation board, a different design: **port FF** takes a **page number** (0–9) that an on-board 82S130 PROM decodes, together with octal board-select + bank-enable DIP switches (S3), into a 32K or 48K **partition**. 4 banks of 8 chips/board (16K or 64K DRAMs → 64K or 256K/board). ⚠ The per-cell PROM page map (Fig. 2-4) is not reliably transcribable from the scan. |
+| [Vector Graphic 64K Dynamic RAM](Vector%20Graphic%2064K%20Dynamic%20RAM.md) | Z-80-only S-100 DRAM board: **port 40H, one-hot** bank select (`1<<bank`, `0x01`→0 … `0x80`→7), 8 banks / ≤8 boards / 512K, bank 0 force-enabled at power-on/RESET (POC clears the port-40H latch and DO0 is pre-inverted so the cleared state = `0x01`). Jumper "area D" trims the top in 8K steps (ships at 56K, not full 64K). The one banked card whose encoding `altairsim` models correctly (`vram`). |
+| [North Star HRAM](North%20Star%20HRAM.md) | HORIZON DRAM board (HRAM-32/48/64): **port C0H**, and the byte is **not** a bank number — **bit 0 = on(0)/off(1) command, bits 1–7 = one-hot** address of which bank the command toggles (per-board JP1). Only **≤6 banks** usable (one of bits 5/6/7 is spent on parity); software must switch the old bank off before the new one on. Two independently-switchable 32K sections (JP2); JP1 also sets the reset state (default: always on). |
+| [Cromemco 64KZ / 64KZ-II RAM](Cromemco%2064KZ%20RAM.md) | Two S-100 DRAM boards as one family: **port 40H**, and the BANK SELECT byte is an **8-bit mask of active banks** (bit N ⇒ bank N on/off, several at once — `OUT 40H,28H` = banks 3 **and** 5), 8 banks. Each board is two 32K blocks A/B with per-block bank-membership switches (SW2/SW3) + a RESET-enable switch; 64KZ ≤512K with DMA/OVERRIDE, 64KZ-II ≤448K with per-16K-half enables and no documented DMA. |
+
 ## Altair 680 (Motorola 6800)
 
 MITS's *second* machine — a **6800** computer, not an 8080/S-100 system, so its boards are
