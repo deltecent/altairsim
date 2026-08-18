@@ -31,6 +31,17 @@
 //                scan (reference/SD Systems ExpandoRAM II.md, DESIGN.md 0.1). We
 //                model a binary page-select over 64K planes and SAY SO.)
 //
+// COMMON MEMORY (expandoram2 `partition=`). Banked CP/M (CP/M 3, SD Systems COSMOS)
+// needs a region that is IDENTICAL in every bank -- the resident OS and the bank-switch
+// routine itself live there, so it must survive the OUT that changes banks. On the real
+// board the 82S130 PROM provides it: the EX-48 part maps the top 16K of every page to the
+// same rows, the EX-32 part the top 32K. We model that directly: `partition=ex48` gives a
+// 48K banked window (0000-BFFF) under a shared 16K common region (C000-FFFF); `ex32` gives
+// 32K/32K; `none` (the default) is the plain whole-64K-plane behavior. The common region is
+// one always-live segment every bank sees; only the region below it swaps. This is what lets
+// SD Systems banked CP/M 3 (which writes the bank number straight to port FF, common at
+// C000) run -- see reference/SD Systems COSMOS.md.
+//
 // RAM ONLY. None of these carried ROM, so there is no `rom` region here and no
 // PHANTOM* role -- what a bank select does to a ROM plane is unknown, and we do not
 // guess (the `memory` board carries ROM sockets; use it for that).
@@ -48,6 +59,9 @@ class MemBankBoard : public Board {
 public:
     enum class Card { Vector, Cromemco, Northstar, Expandoram2 };
     enum class Fill { Zero, Random };
+    // ExpandoRAM II common-memory partition (see the header note). None = whole 64K
+    // plane; Ex48 = 48K banked + 16K common @ C000; Ex32 = 32K banked + 32K common @ 8000.
+    enum class Partition { None, Ex48, Ex32 };
 
     MemBankBoard() { rebuildSegments(); }
 
@@ -75,7 +89,8 @@ public:
     std::vector<std::string> drainLog() override;
 
     // ---- introspection (the tests and the `active` property read these) ----
-    int     banks() const { return (int)segs_.size(); }
+    // The number of switchable banks -- the common region (if any) is not one of them.
+    int     banks() const;
     // Bit i set if segment i currently drives the bus. For a select-one card this has
     // exactly one bit (or none); for Cromemco it is the live bank mask.
     uint32_t activeMask() const;
@@ -91,6 +106,7 @@ private:
         std::vector<uint8_t> ram;            // hi - lo + 1 bytes
         bool enabled = false;                // driving the bus right now?
         bool resetEnabled = false;           // enable state after POC/RESET
+        bool common = false;                 // the shared always-live region (partition!=none)?
         uint16_t key = 0;                    // card-specific selector (see above)
     };
 
@@ -111,7 +127,13 @@ private:
     int  cardMaxBanks() const;           // vector 8, cromemco 8, northstar 6, eram2 10
     uint8_t cardDefaultPort() const;     // 40 / 40 / C0 / FF
 
+    // Partition geometry (expandoram2 common memory). base 0 == no common region.
+    uint16_t partitionCommonBase() const;   // None 0, Ex48 C000, Ex32 8000
+    uint32_t partitionBankedSize() const;   // bytes per switchable bank window
+    uint32_t partitionCommonSize() const;   // bytes of shared common region (0 if None)
+
     Card card_ = Card::Vector;
+    Partition partition_ = Partition::None;
     uint8_t port_ = 0x40;
     int wantBanks_ = 8;                  // requested plane/bank/page count (config)
     std::vector<Segment> segs_;

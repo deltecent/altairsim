@@ -28,6 +28,43 @@ static bool parseCard(const std::string& s, MemBankBoard::Card& out) {
     return false;
 }
 
+static const char* partitionName(MemBankBoard::Partition p) {
+    switch (p) {
+        case MemBankBoard::Partition::None: return "none";
+        case MemBankBoard::Partition::Ex48: return "ex48";
+        case MemBankBoard::Partition::Ex32: return "ex32";
+    }
+    return "none";
+}
+
+static bool parsePartition(const std::string& s, MemBankBoard::Partition& out) {
+    if (s == "none") { out = MemBankBoard::Partition::None; return true; }
+    if (s == "ex48") { out = MemBankBoard::Partition::Ex48; return true; }
+    if (s == "ex32") { out = MemBankBoard::Partition::Ex32; return true; }
+    return false;
+}
+
+// The common region sits at the top of the 64K space; the banked window is everything
+// below it. base 0 means no common region (a plain whole-64K plane).
+uint16_t MemBankBoard::partitionCommonBase() const {
+    switch (partition_) {
+        case Partition::None: return 0x0000;
+        case Partition::Ex48: return 0xC000;   // top 16K common
+        case Partition::Ex32: return 0x8000;   // top 32K common
+    }
+    return 0x0000;
+}
+
+uint32_t MemBankBoard::partitionBankedSize() const {
+    uint16_t base = partitionCommonBase();
+    return base ? (uint32_t)base : 0x10000u;   // bytes below the common region
+}
+
+uint32_t MemBankBoard::partitionCommonSize() const {
+    uint16_t base = partitionCommonBase();
+    return base ? (0x10000u - base) : 0u;
+}
+
 uint8_t MemBankBoard::cardDefaultPort() const {
     switch (card_) {
         case Card::Vector:      return 0x40;
@@ -58,11 +95,16 @@ void MemBankBoard::rebuildSegments() {
     if (n < 1) n = 1;
     if (n > hi) n = hi;
 
+    // The banked window is everything below the common region (the whole 64K when
+    // partition=none). Each bank gets its own copy of that window; the common region,
+    // if any, is one shared segment appended after the banks.
+    uint16_t bankedHi = (uint16_t)(partitionBankedSize() - 1);
+
     segs_.clear();
     for (int i = 0; i < n; ++i) {
         Segment s;
         s.lo = 0x0000;
-        s.hi = 0xFFFF;
+        s.hi = bankedHi;
         switch (card_) {
             case Card::Vector:      s.key = (uint16_t)i;        break;  // plane index
             case Card::Cromemco:    s.key = (uint16_t)(1u << i); break;  // membership mask
@@ -75,6 +117,19 @@ void MemBankBoard::rebuildSegments() {
         // on Vector it is the POC-forced bank 0; on the ExpandoRAM II it is the page-0
         // approximation (the real reset-to-page behavior is unsourced).
         s.resetEnabled = (i == 0);
+        s.ram.assign((size_t)s.hi - s.lo + 1, 0x00);
+        segs_.push_back(std::move(s));
+    }
+    // The common region: one always-live segment every bank sees. It is not a "bank" --
+    // select() never touches it and it is not counted by banks(); it just answers the top
+    // of memory no matter which bank is in. This is the EX-48/EX-32 PROM's job on real
+    // hardware, and what a banked CP/M's resident OS + ?bank routine live in.
+    if (uint16_t base = partitionCommonBase()) {
+        Segment s;
+        s.lo = base;
+        s.hi = 0xFFFF;
+        s.common = true;
+        s.resetEnabled = true;          // always live -- reset and select both leave it on
         s.ram.assign((size_t)s.hi - s.lo + 1, 0x00);
         segs_.push_back(std::move(s));
     }
@@ -116,7 +171,7 @@ void MemBankBoard::select(uint8_t data) {
             int want = -1;
             for (int i = 0; i < 8; ++i)
                 if (h == (uint8_t)(1u << i)) { want = i; break; }
-            if (want < 0 || want >= (int)segs_.size()) {
+            if (want < 0 || want >= banks()) {
                 char buf[128];
                 std::snprintf(buf, sizeof buf,
                               "bank: invalid one-hot select 0x%02X for vector (%s). unchanged.",
@@ -124,7 +179,8 @@ void MemBankBoard::select(uint8_t data) {
                 log_.push_back(buf);
                 return;
             }
-            for (size_t i = 0; i < segs_.size(); ++i) segs_[i].enabled = ((int)i == want);
+            for (size_t i = 0; i < segs_.size(); ++i)
+                if (!segs_[i].common) segs_[i].enabled = ((int)i == want);
             break;
         }
         case Card::Cromemco: {
@@ -132,7 +188,8 @@ void MemBankBoard::select(uint8_t data) {
             // banks -- and so several segments -- may be live at once, which is the
             // whole point (OUT 40H,28H lights banks 3 and 5). Overlapping live windows
             // are a real bus fight on this card; owner() reports it.
-            for (Segment& s : segs_) s.enabled = ((s.key & data) != 0);
+            for (Segment& s : segs_)
+                if (!s.common) s.enabled = ((s.key & data) != 0);
             break;
         }
         case Card::Northstar: {
@@ -154,7 +211,7 @@ void MemBankBoard::select(uint8_t data) {
             }
             bool hit = false;
             for (Segment& s : segs_)
-                if (s.key == (uint16_t)bit) { s.enabled = on; hit = true; }
+                if (!s.common && s.key == (uint16_t)bit) { s.enabled = on; hit = true; }
             if (!hit) {
                 char buf[128];
                 std::snprintf(buf, sizeof buf,
@@ -172,16 +229,19 @@ void MemBankBoard::select(uint8_t data) {
             // model a binary page-select over 64K planes and say so loudly. Get a PROM
             // dump and this is where the faithful decode goes.
             int page = data;
-            if (page < 0 || page >= (int)segs_.size()) {
+            if (page < 0 || page >= banks()) {
                 char buf[128];
                 std::snprintf(buf, sizeof buf,
                               "bank: page %d out of range for expandoram2 (%s, %d page(s)). "
                               "unchanged.",
-                              page, id.c_str(), (int)segs_.size());
+                              page, id.c_str(), banks());
                 log_.push_back(buf);
                 return;
             }
-            for (size_t i = 0; i < segs_.size(); ++i) segs_[i].enabled = ((int)i == page);
+            // Only the banked window swaps; the common region (if any) stays live so the
+            // resident OS and the ?bank routine survive the switch.
+            for (size_t i = 0; i < segs_.size(); ++i)
+                if (!segs_[i].common) segs_[i].enabled = ((int)i == page);
             break;
         }
     }
@@ -295,10 +355,20 @@ void MemBankBoard::deserialize(StateReader& r) {
 // Reflection
 // ---------------------------------------------------------------------------
 
+int MemBankBoard::banks() const {
+    int n = 0;
+    for (const Segment& s : segs_)
+        if (!s.common) ++n;
+    return n;
+}
+
 uint32_t MemBankBoard::activeMask() const {
+    // Bit i for each live BANK; the common region is not a bank and is not counted. Banks
+    // occupy segs_[0..banks()-1] (the common segment, if any, is appended last), so the
+    // segment index doubles as the bank index here.
     uint32_t m = 0;
     for (size_t i = 0; i < segs_.size(); ++i)
-        if (segs_[i].enabled) m |= (1u << i);
+        if (!segs_[i].common && segs_[i].enabled) m |= (1u << i);
     return m;
 }
 
@@ -318,6 +388,9 @@ std::vector<Property> MemBankBoard::properties() {
             card_ = c;
             port_ = cardDefaultPort();
             if (wantBanks_ > cardMaxBanks()) wantBanks_ = cardMaxBanks();
+            // The common-memory partition is an ExpandoRAM II concept -- drop it if the
+            // card is no longer that board.
+            if (card_ != Card::Expandoram2) partition_ = Partition::None;
             rebuildSegments();
             return true;
         };
@@ -343,12 +416,13 @@ std::vector<Property> MemBankBoard::properties() {
     {
         Property x;
         x.name = "banks";
-        x.help = "how many banks/planes/pages this subsystem carries (one per board). "
-                 "Card-capped: vector/cromemco 8, northstar 6, expandoram2 10";
+        x.help = "how many switchable banks/planes/pages this subsystem carries (one per "
+                 "board). Card-capped: vector/cromemco 8, northstar 6, expandoram2 10. The "
+                 "common region (partition) is not a bank. Setting `ram` derives this";
         x.kind = Kind::Int;
         x.min = 1;
         x.max = 10;
-        x.get = [this] { return Value::ofInt((int)segs_.size()); };
+        x.get = [this] { return Value::ofInt(banks()); };
         x.set = [this](const Value& v, std::string& err) {
             if (v.i() < 1 || v.i() > cardMaxBanks()) {
                 err = std::string(cardName(card_)) + " takes 1.." +
@@ -363,6 +437,77 @@ std::vector<Property> MemBankBoard::properties() {
     }
     {
         Property x;
+        x.name = "partition";
+        x.help = "ExpandoRAM II common-memory partition (the EX-48/EX-32 PROM): "
+                 "none | ex48 | ex32. ex48 = 48K banked (0000-BFFF) + 16K common "
+                 "(C000-FFFF); ex32 = 32K banked + 32K common (8000-FFFF). The common "
+                 "region is identical in every bank -- what a banked CP/M's resident OS "
+                 "and bank-switch routine live in. `none` (default) is a whole 64K plane";
+        x.kind = Kind::Enum;
+        x.choices = {"none", "ex48", "ex32"};
+        x.get = [this] { return Value::ofStr(partitionName(partition_)); };
+        x.set = [this](const Value& v, std::string& err) {
+            Partition pt;
+            if (!parsePartition(v.s(), pt)) { err = "partition is none|ex48|ex32"; return false; }
+            if (pt != Partition::None && card_ != Card::Expandoram2) {
+                err = "partition (common memory) is an expandoram2 concept; "
+                      "the other cards are whole-64K planes";
+                return false;
+            }
+            partition_ = pt;
+            if (wantBanks_ > cardMaxBanks()) wantBanks_ = cardMaxBanks();
+            rebuildSegments();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "ram";
+        x.help = "total board RAM in KB. Sets the bank count from the current partition: "
+                 "with ex48, 256 -> 5 banks; with none (whole plane), 256 -> 4 banks of "
+                 "64K. The real ExpandoRAM II is 64K (16K chips) or 256K (64K chips)";
+        x.kind = Kind::Int;
+        x.min = 1;
+        x.max = 640;                       // 10 whole-64K planes; the setter card-caps it
+        x.get = [this] {
+            uint32_t bytes = partitionCommonSize() + (uint32_t)banks() * partitionBankedSize();
+            return Value::ofInt((int)(bytes / 1024));
+        };
+        x.set = [this](const Value& v, std::string& err) {
+            long long kb = v.i();
+            if (card_ == Card::Expandoram2 && kb > 256) {
+                err = "the ExpandoRAM II board is at most 256K (64K chips in four banks)";
+                return false;
+            }
+            uint32_t bankedSize = partitionBankedSize();
+            uint32_t commonSize = partitionCommonSize();
+            long long banked = kb * 1024 - (long long)commonSize;
+            int n = (banked > 0) ? (int)(banked / bankedSize) : 0;
+            if (n < 1) n = 1;
+            if (n > cardMaxBanks()) {
+                err = std::string(cardName(card_)) + " tops out at " +
+                      std::to_string(cardMaxBanks()) + " banks";
+                return false;
+            }
+            // Snap-down note: RAM that is not a whole number of banks lands on the bank below.
+            long long exact = (long long)commonSize + (long long)n * bankedSize;
+            if (exact != kb * 1024) {
+                char buf[128];
+                std::snprintf(buf, sizeof buf,
+                              "ram=%lldK is not a whole number of banks on %s; using %lldK "
+                              "(%d bank(s)).",
+                              kb, id.c_str(), exact / 1024, n);
+                log_.push_back(buf);
+            }
+            wantBanks_ = n;
+            rebuildSegments();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
         x.name = "active";
         x.help = "the live bank(s) right now -- the guest sets this by writing the select "
                  "port. Read-only here";
@@ -370,11 +515,13 @@ std::vector<Property> MemBankBoard::properties() {
         x.get = [this] {
             std::string s;
             for (size_t i = 0; i < segs_.size(); ++i)
-                if (segs_[i].enabled) {
+                if (!segs_[i].common && segs_[i].enabled) {
                     if (!s.empty()) s += ",";
                     s += std::to_string(i);
                 }
-            return Value::ofStr(s.empty() ? "(none)" : ("bank " + s));
+            std::string out = s.empty() ? "(none)" : ("bank " + s);
+            if (partitionCommonBase()) out += " + common";
+            return Value::ofStr(out);
         };
         // No setter: read-only is only visible to SHOW/CONFIG/MCP as the absence of one.
         p.push_back(std::move(x));
@@ -415,7 +562,10 @@ std::vector<MapEntry> MemBankBoard::memMap() const {
         e.lo = segs_[i].lo;
         e.hi = segs_[i].hi;
         e.what = "ram";
-        e.note = "bank " + std::to_string(i) + (segs_[i].enabled ? " (live)" : "");
+        if (segs_[i].common)
+            e.note = "common (always live)";
+        else
+            e.note = "bank " + std::to_string(i) + (segs_[i].enabled ? " (live)" : "");
         out.push_back(e);
     }
     return out;
@@ -435,10 +585,19 @@ std::vector<MapEntry> MemBankBoard::ioMap() const {
 
 std::vector<std::string> MemBankBoard::statusLines() const {
     std::vector<std::string> out;
+    if (partition_ != Partition::None) {
+        char buf[96];
+        std::snprintf(buf, sizeof buf, "partition %s  ram %dK", partitionName(partition_),
+                      (int)((partitionCommonSize() + (uint32_t)banks() * partitionBankedSize()) / 1024));
+        out.push_back(buf);
+    }
     for (size_t i = 0; i < segs_.size(); ++i) {
         char buf[96];
-        std::snprintf(buf, sizeof buf, "bank %zu  %04X-%04X  %s", i, segs_[i].lo, segs_[i].hi,
-                      segs_[i].enabled ? "live" : "off");
+        if (segs_[i].common)
+            std::snprintf(buf, sizeof buf, "common  %04X-%04X  live", segs_[i].lo, segs_[i].hi);
+        else
+            std::snprintf(buf, sizeof buf, "bank %zu  %04X-%04X  %s", i, segs_[i].lo, segs_[i].hi,
+                          segs_[i].enabled ? "live" : "off");
         out.push_back(buf);
     }
     return out;
