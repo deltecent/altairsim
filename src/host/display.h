@@ -132,7 +132,10 @@ public:
 
     // KEYS WITH NO ASCII CODE. A host keyboard has arrows and a Home key; ASCII has
     // no character for either, so a windowed host has to be told what byte to send
-    // and the answer is the guest's, not the terminal's.
+    // and the answer is the guest's, not the terminal's. The Sol-20 also has three
+    // more no-ASCII keys that a modern keyboard has nothing to borrow for at all --
+    // MODE SELECT, CLEAR and LOAD -- so a windowed host reaches those through function
+    // keys (F1/F2/F3 in the SDL back end); issue #59.
     //
     // The defaults are the Processor Technology codes (reference/Sol-20.md, Table
     // 7-4), because the machines with a window are the ones with a VDM in them: a
@@ -146,7 +149,7 @@ public:
     // WHICH key was pressed; deciding what that key is worth in bytes is the same
     // kind of call as RETURN sending 0D, and belongs where it can be read, tested
     // and overridden without a graphics library.
-    enum class SpecialKey { Up, Down, Left, Right, Home, Count_ };
+    enum class SpecialKey { Up, Down, Left, Right, Home, Mode, Clear, Load, Count_ };
 
     uint8_t specialKey(SpecialKey k) const { return special_[(size_t)k]; }
     void    setSpecialKey(SpecialKey k, uint8_t code) { special_[(size_t)k] = code; }
@@ -433,8 +436,11 @@ private:
     KeySink        keySink_;
     SpecialKeySink specialKeySink_;
 
-    // Sol-20 Table 7-4: up 97, down 9A, left 81, right 93, HOME CURSOR 8E.
-    uint8_t special_[(size_t)SpecialKey::Count_] = {0x97, 0x9A, 0x81, 0x93, 0x8E};
+    // Sol-20 Table 7-4: up 97, down 9A, left 81, right 93, HOME CURSOR 8E, MODE SELECT 80,
+    // CLEAR 8B, LOAD 8C. The last three have no key on a modern keyboard and no ASCII code,
+    // so a windowed host reaches them through function keys (see display_sdl.cpp); issue #59.
+    uint8_t special_[(size_t)SpecialKey::Count_] = {0x97, 0x9A, 0x81, 0x93, 0x8E,
+                                                    0x80, 0x8B, 0x8C};
 
     // Minimum seconds between accepted frames; 0 = no limit. See wantsFrame().
     double frameMinPeriod_ = 0.0;

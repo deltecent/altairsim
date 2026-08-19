@@ -740,17 +740,20 @@ equivalent at all, and they are how you drive SOLOS and the screen:
 | `↑` | `97` | Cursor up one | ↑ | Ctrl-W |
 | `↓` | `9A` | Cursor down one | ↓ | Ctrl-Z |
 | `HOME CURSOR` | `8E` | Cursor to the top left, screen untouched | Home | Ctrl-N |
-| `MODE SELECT` | `80` | Return to the command mode, restarting the command line | — | Ctrl-@ |
-| `CLEAR` | `8B` | Erase the screen, cursor home | — | Ctrl-K |
-| `LOAD` | `8C` | Nothing — neither SOLOS nor CONSOL ever claimed it | — | — |
+| `MODE SELECT` | `80` | Return to the command mode, restarting the command line | F1 | Ctrl-@ |
+| `CLEAR` | `8B` | Erase the screen, cursor home | F2 | Ctrl-K |
+| `LOAD` | `8C` | Nothing — neither SOLOS nor CONSOL ever claimed it | F3 | — |
 
-**The `Press` column works in the video window only.** Your keyboard's own arrows and Home send
-these codes when the window has focus. They cannot work from a terminal: there an arrow key sends
-an escape sequence rather than a single byte, and `ESC` is a character the guest legitimately
-needs, so there is nothing to safely match on.
+**The `Press` column works in the video window only.** Your keyboard's own arrows and Home, and
+the function keys F1–F3, send these codes when the window has focus. They cannot work from a
+terminal: there an arrow or function key sends an escape sequence rather than a single byte, and
+`ESC` is a character the guest legitimately needs, so there is nothing to safely match on. From a
+terminal, use the last column.
 
-**`MODE SELECT` and `CLEAR` have no key yet** — a PC keyboard simply has nothing to put them on,
-and choosing what to borrow is a decision that has not been made. Use the last column.
+A PC keyboard has nothing that reads as `MODE SELECT`, `CLEAR` or `LOAD`, so the function keys
+stand in for them: **F1** is `MODE SELECT`, **F2** is `CLEAR`, **F3** is `LOAD`. On a Mac the
+function keys reach the window only if the system is set to send F1, F2, … as plain function keys
+(otherwise hold `fn`).
 
 **That last column is not a hack** — it is how the hardware was built.
 Each special key's code is exactly `80` plus the control code for the same action, because SOLOS's

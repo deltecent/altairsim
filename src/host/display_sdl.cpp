@@ -478,6 +478,13 @@ void SdlDisplay::pollEvents() {
                 case SDLK_RIGHT: emitSpecialKey(SpecialKey::Right); break;
                 case SDLK_HOME:  emitSpecialKey(SpecialKey::Home);  break;
 
+                // The three no-ASCII Sol-20 keys a modern keyboard cannot supply and the
+                // arrows do not cover -- function keys stand in for them (issue #59). Same
+                // seam as the arrows: this only names the key, the byte is on Display.
+                case SDLK_F1:    emitSpecialKey(SpecialKey::Mode);  break;  // MODE SELECT
+                case SDLK_F2:    emitSpecialKey(SpecialKey::Clear); break;  // CLEAR
+                case SDLK_F3:    emitSpecialKey(SpecialKey::Load);  break;  // LOAD (inert in SOLOS)
+
                 default:             break;
                 }
             }
