@@ -63,6 +63,13 @@ other two cores it earns its place at the gate rather than by inspection — Ian
 **8085** instruction-set exerciser, whose expected CRCs were read off real 8085 silicon, runs
 its 2.9 billion instructions against the core on every CI push, on all three platforms.
 
+The core is now something you can drive: an **`8085` machine** (`altairsim 8085` — an 8085, 64K,
+and a 2SIO console, the direct analog of the `z80` machine) and an **8085 disassembler and
+assembler**, so `DISASM` and `EDIT` speak the 8085 where that core is active. `RIM` and `SIM`
+decode as themselves; the ten *undocumented* 8085 opcodes are named and flagged the way `DDT`
+flags a byte outside the published set (`??= 08  *DSUB`), since the core still runs those slots
+as `NOP`. Their faithful behavior and the V/K flag bits remain the open work of the 8085.
+
 ### Disks and tapes the guest can build, not just read
 
 A hard-sector disk or a cassette tape can now be created **blank** and brought to life by the

@@ -181,6 +181,7 @@ Type the part before the bracket.
 
 | Machine | What it is |
 |---|---|
+| `8085` | A minimal 8085 machine: an `8085` CPU, 64K of RAM, and a 2SIO console. |
 | `acuter` | ACUTER at F000 -- CUTER on a plain Altair, with a terminal instead of a VDM. |
 | `altair680` | The Altair 680b -- MITS's second machine, and a different animal from the 8800. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |

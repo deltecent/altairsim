@@ -80,6 +80,7 @@ const struct {
     {"toml_notes", test_toml_notes},
     {"isa", test_isa},
     {"z80_isa", test_z80_isa},
+    {"8085_isa", test_8085_isa},
     {"isa6800", test_isa6800},
     {"asm6800", test_asm6800},
     {"cpu", test_cpu},

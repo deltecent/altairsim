@@ -311,6 +311,7 @@ add_library(altair_core STATIC
   src/core/debuglog.cpp
   src/core/spindle.cpp
   src/isa/isa8080.cpp
+  src/isa/isa8085.cpp
   src/isa/isaZ80.cpp
   src/isa/isa6800.cpp
   src/cpu/cpu8080.cpp
@@ -701,6 +702,7 @@ add_executable(altair_tests
   tests/test_machines.cpp
   tests/test_isa.cpp
   tests/test_z80_isa.cpp
+  tests/test_8085_isa.cpp
   tests/test_isa6800.cpp
   tests/test_cpu.cpp
   tests/test_status.cpp
