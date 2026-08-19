@@ -156,17 +156,18 @@ const Suite kSuites[] = {
     {"ZEXDOC.COM",  "z80",  "Tests complete",                  "ERROR ****",    200'000'000'000ull,   "z80"},
     {"ZEXALL.COM",  "z80",  "Tests complete",                  "ERROR ****",    200'000'000'000ull,   "z80"},
 
-    // The 8085 core is a documented-8085 superset that is byte- and flag-identical
-    // to the 8080 across this whole set (RIM/SIM and the on-chip interrupts are the
-    // only additions, and no 8080 diagnostic exercises them), so the SAME four
-    // images re-run against the `8085` board are its gate -- the independent
-    // re-validation of the copied core (tests/cpu/cpu8085.cpp, issue #233). The
-    // faithful-8085 ANA/V/K work waits on a genuine 8085 CRC exerciser and is not
-    // gated here.
+    // The 8085 core is a documented-8085 superset of the 8080, flag-identical to it
+    // EXCEPT that ANA/ANI always SET the auxiliary carry where the 8080 uses OR-of-
+    // bit-3 (Cpu8085::ana). So the 8085's exerciser is 8085EXM, NOT 8080EXM: Ian
+    // Bartholomew's 8085 port with CRCs read off real 8085 silicon, masked to
+    // [S Z X AC X P X C] -- see tests/cpu/PROVENANCE.md. TST8080 and 8080PRE are
+    // 8080/8085 diagnostics that do not probe that divergence, so they gate the 8085
+    // unchanged. CPUTEST is deliberately NOT here: Diagnostics II checks logical-AND's
+    // AC against the 8080 value, so it fails on a faithful 8085 exactly as it would on
+    // real 8085 silicon. It stays on the 8080 gate above. (issues #233, #347)
     {"TST8080.COM", "8085", "CPU IS OPERATIONAL",              "CPU HAS FAILED",         50'000'000ull,    ""},
     {"8080PRE.COM", "8085", "8080 Preliminary tests complete", "",                       50'000'000ull,    ""},
-    {"CPUTEST.COM", "8085", "CPU TESTS OK",                    "ERROR",           1'000'000'000ull,        ""},
-    {"8080EXM.COM", "8085", "Tests complete",                  "ERROR ****",     10'000'000'000ull,        ""},
+    {"8085EXM.COM", "8085", "Tests complete",                  "ERROR ****",     10'000'000'000ull,        ""},
 };
 
 struct Rig {
@@ -389,7 +390,7 @@ int main(int argc, char** argv) {
 
     std::printf("\n==========================================================\n");
     if (!ran) {
-        std::printf("no suite matched. known: TST8080 8080PRE CPUTEST 8080EXM ZEXDOC ZEXALL\n"
+        std::printf("no suite matched. known: TST8080 8080PRE CPUTEST 8080EXM 8085EXM ZEXDOC ZEXALL\n"
                     "  (qualify a shared image by core, e.g. 8085:TST8080; or a whole core, e.g. 8085)\n");
         return 2;
     }

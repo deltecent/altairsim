@@ -156,13 +156,14 @@ void Cpu8085::cmp(uint8_t v) {
     a_ = save;
 }
 
-// ANA -- KEPT AT THE 8080 RULE ON PURPOSE. AC = OR of bit 3 of the two operands.
-// The real 8085 differs here (it does not use the OR-of-bit-3 rule), but modeling
-// that would break 8080EXM, which CRCs this exact behavior at full flag mask and
-// is this core's gate. The 8085 divergence is a documented known-gap, deferred to
-// the faithful follow-up and pinned by tests/test_8085_cpu.cpp. See cpu8085.h.
+// ANA -- THE FAITHFUL 8085 RULE. The 8085's logical AND always SETS the auxiliary
+// carry (AC = 1), where the 8080 sets it to the OR of bit 3 of the two operands
+// (see Cpu8080::ana). This is the one documented-flag divergence between the two
+// cores, and it is why the 8085 board is gated by 8085EXM -- whose CRCs were read
+// off real 8085 silicon -- rather than 8080EXM. tests/cpu/PROVENANCE.md records
+// the exerciser; tests/test_8085_cpu.cpp pins the rule directly. (issue #347)
 void Cpu8085::ana(uint8_t v) {
-    ac_ = ((a_ | v) & 0x08) != 0;
+    ac_ = true;
     a_ &= v;
     cy_ = false;
     setSZP(a_);

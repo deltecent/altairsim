@@ -1772,7 +1772,7 @@ The **Limitations** and **Quirks** sections are load-bearing. They are what you 
 
 ## 15. Testing
 
-- **CPU:** 8080EXM / CPUTEST / TST8080 / 8080PRE; ZEXALL / ZEXDOC for Z80. A hard CI gate.
+- **CPU:** 8080EXM / CPUTEST / TST8080 / 8080PRE for the 8080; 8085EXM / TST8080 / 8080PRE for the 8085 (its own real-silicon CRCs, since ANA's AC diverges); ZEXALL / ZEXDOC for Z80. A hard CI gate.
 - **Bus:** unit tests for PHANTOM overlay, bank switching, contention detection, VI priority, DMA cycle stealing, floating-bus RST 7.
 - **Boards:** golden-image tests — boot CP/M 2.2 from `CPM22-8MB-56K-SIM.DSK`, run `M80`/`L80`, compare output.
 - **End-to-end:** headless acceptance scripts in CI on all three platforms (Linux, a universal macOS binary, Windows). Note these drive the monitor via `-s`/`-x` and `expect(1)`, not an MCP `expect` tool — there is no such tool (§11).

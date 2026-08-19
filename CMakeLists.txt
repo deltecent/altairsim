@@ -868,17 +868,18 @@ add_test(NAME cpu-8080exm COMMAND altair_cputest 8080:8080EXM)
 set_tests_properties(cpu-8080exm PROPERTIES LABELS slow TIMEOUT 1800)
 set_tests_properties(cpu-cputest PROPERTIES TIMEOUT 600)
 
-# The 8085 gate -- the SAME four images against the `8085` core (tests/cputest.cpp).
-# The 8085 is a documented-8085 superset that is byte- and flag-identical to the
-# 8080 across this set, so these re-prove the copied core independently (issue
-# #233). 8085EXM (the 8080EXM image on the 8085 board) is the deep gate: another
-# ~10-minute, 2.9-billion-instruction run, so it is `slow` like cpu-8080exm.
+# The 8085 gate (tests/cputest.cpp). The 8085 is a documented-8085 superset of the
+# 8080, flag-identical to it EXCEPT for ANA/ANI's auxiliary carry -- so its deep
+# gate is 8085EXM, Ian Bartholomew's 8085 port of the exerciser with CRCs read off
+# real 8085 silicon (tests/cpu/PROVENANCE.md), not 8080EXM. TST8080 and 8080PRE are
+# 8080/8085 diagnostics and gate the 8085 unchanged; CPUTEST is not in the 8085 gate
+# (it checks logical-AND's AC against the 8080 value, which a faithful 8085 fails --
+# see cputest.cpp). cpu-8085exm is another ~10-minute, 2.9-billion-instruction run,
+# so it is `slow` like cpu-8080exm.
 add_test(NAME cpu-8085-tst8080 COMMAND altair_cputest 8085:TST8080)
 add_test(NAME cpu-8085-8080pre COMMAND altair_cputest 8085:8080PRE)
-add_test(NAME cpu-8085-cputest COMMAND altair_cputest 8085:CPUTEST)
-add_test(NAME cpu-8085exm      COMMAND altair_cputest 8085:8080EXM)
+add_test(NAME cpu-8085exm      COMMAND altair_cputest 8085:8085EXM)
 set_tests_properties(cpu-8085exm PROPERTIES LABELS slow TIMEOUT 1800)
-set_tests_properties(cpu-8085-cputest PROPERTIES TIMEOUT 600)
 
 # The Z80 exercisers -- the same gate, one core down. ZEXDOC validates documented
 # behavior; ZEXALL additionally pins the undocumented F5/F3 bits. Each is ~46
