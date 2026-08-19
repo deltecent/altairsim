@@ -22,13 +22,21 @@
 //     EXCEPT ANA/ANI's auxiliary carry -- the 8085 always SETS it, where the 8080
 //     derives it from the operands. Validated against real 8085 silicon: the core
 //     is gated by 8085EXM, not 8080EXM (tests/cputest.cpp, tests/cpu/PROVENANCE.md).
+//   - The two undocumented condition bits V (PSW bit 1) and K/X5 (PSW bit 5), which
+//     the 8080 nails to constants (1 and 0). Their rules are transcribed from Ken
+//     Shirriff's reverse-engineering of the actual 8085 silicon die (issue #347;
+//     reference/Intel 8085 undocumented instructions and flags.md): V is the
+//     carry-into-bit7 XOR carry-out-of-bit7 overflow bit; K is V XOR the result's
+//     sign, EXCEPT for INX/DCX where K is the carry out of the 16-bit incrementer.
+//     8085EXM masks both out ([S Z X AC X P X C]) so the stock gate is blind to them
+//     -- they are pinned by hand-derived unit tests (tests/test_8085_cpu.cpp) whose
+//     oracle is the silicon analysis, not this core (DESIGN.md 3.2).
 //
 // WHAT IT DELIBERATELY DOES NOT (deferred to a faithful follow-up, gated on a
 // GENUINE 8085 exerciser -- a core may not grade its own homework, DESIGN.md 3.2):
 //   - The undocumented opcodes (DSUB/ARHL/RDEL/LDHI/LDSI/RSTV/SHLX/LHLX/JK/JNK) --
-//     their slots stay NOP, exactly as the 8080 leaves them.
-//   - The X5/K/V flag bits. The PSW keeps the 8080 constants (bit1=1, bits3,5=0);
-//     8085EXM masks them out ([S Z X AC X P X C]) so the documented gate stays clean.
+//     their slots stay NOP, exactly as the 8080 leaves them. RSTV/JK/JNK branch on
+//     the V/K bits above, so those become implementable next.
 
 #include "core/bus.h"
 #include "cpu/cpu.h"
@@ -50,8 +58,8 @@ public:
     bool halted() const override { return halted_; }
     bool interruptsEnabled() const override { return ie_; }
 
-    // The flag byte, as PUSH PSW pushes it: S Z 0 AC 0 P 1 CY. The 8085's V/K bits
-    // are not modeled in this landing, so this is the 8080 layout unchanged.
+    // The flag byte, as PUSH PSW pushes it: S Z K AC 0 P V CY. The 8085 puts its two
+    // computed condition bits K (bit 5) and V (bit 1) where the 8080 keeps constants.
     uint8_t psw() const;
     void setPsw(uint8_t f);
 
@@ -100,6 +108,9 @@ private:
     uint8_t a_ = 0, b_ = 0, c_ = 0, d_ = 0, e_ = 0, h_ = 0, l_ = 0;
     uint16_t sp_ = 0, pc_ = 0;
     bool s_ = false, z_ = false, ac_ = false, p_ = false, cy_ = false;
+    // The two 8085-only condition bits (PSW bits 1 and 5). See the header banner and
+    // reference/Intel 8085 undocumented instructions and flags.md for their rules.
+    bool v_ = false, k_ = false;
 
     bool ie_ = false;       // INTE. Cleared by reset, DI, and by taking any interrupt.
     bool halted_ = false;

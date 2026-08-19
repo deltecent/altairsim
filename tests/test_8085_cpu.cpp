@@ -294,4 +294,186 @@ void test_8085_cpu() {
         g.run(1);
         CHECK(g.flag("AC"), "ANI also always sets AC on the 8085");
     }
+
+    // ---- The two undocumented condition bits, V and K. The stock exercisers
+    // CANNOT reach these: 8085EXM masks the flag byte with 0D5h, so V (bit 1) and K
+    // (bit 5) are invisible to it. Every expected value below is hand-derived from
+    // Ken Shirriff's silicon rules (reference/Intel 8085 undocumented instructions
+    // and flags.md): V = carry-in XOR carry-out of bit 7; K = V XOR sign, except
+    // INX/DCX where K is the carry out of the 16-bit incrementer. The oracle is the
+    // die analysis applied by hand, NOT this core grading itself (DESIGN.md 3.2). ----
+
+    SECTION("V/K on add and subtract -- signed overflow, and the useful compare bit");
+    {
+        // 0x7F + 1 = 0x80: the textbook +127 -> -128 overflow. V set; result is
+        // negative so K = V XOR sign = 1 XOR 1 = 0.
+        Rig g;
+        g.setReg("A", 0x7F);
+        g.load({0xC6, 0x01});  // ADI 01
+        g.run(1);
+        CHECK(g.reg("A") == 0x80 && g.flag("V") && !g.flag("K"),
+              "ADI 7F+1 overflows: V set, K clear (result is negative)");
+
+        // 0x80 + 0x80 = 0x00: -128 + -128 overflows to 0. V set, result non-negative,
+        // so K = 1 XOR 0 = 1.
+        Rig h;
+        h.setReg("A", 0x80); h.setReg("B", 0x80);
+        h.load({0x80});  // ADD B
+        h.run(1);
+        CHECK(h.reg("A") == 0x00 && h.flag("V") && h.flag("K"),
+              "ADD 80+80 overflows to 0: V and K both set");
+
+        // 0x10 + 0x10 = 0x20: no overflow, positive result. V and K both clear.
+        Rig n;
+        n.setReg("A", 0x10);
+        n.load({0xC6, 0x10});  // ADI 10
+        n.run(1);
+        CHECK(!n.flag("V") && !n.flag("K"), "ADI 10+10: no overflow, V and K clear");
+
+        // CMP: K = 1 exactly when the second value is larger than the first (a signed
+        // 'below'). 1 vs 2 -> K set; the accumulator is left untouched.
+        Rig c;
+        c.setReg("A", 0x01);
+        c.load({0xFE, 0x02});  // CPI 02
+        c.run(1);
+        CHECK(c.reg("A") == 0x01 && !c.flag("V") && c.flag("K"),
+              "CPI 1<2: second value larger sets K (V clear here)");
+
+        Rig d;
+        d.setReg("A", 0x02);
+        d.load({0xFE, 0x01});  // CPI 01
+        d.run(1);
+        CHECK(!d.flag("K"), "CPI 2>1: second value not larger, K clear");
+
+        // 0x80 - 1 = 0x7F: -128 - 1 overflows. V set, result positive, K = 1 XOR 0 = 1.
+        Rig s;
+        s.setReg("A", 0x80);
+        s.load({0xD6, 0x01});  // SUI 01
+        s.run(1);
+        CHECK(s.reg("A") == 0x7F && s.flag("V") && s.flag("K"),
+              "SUI 80-1 overflows: V and K set");
+    }
+
+    SECTION("V/K on INR/DCR -- only at the signed boundary");
+    {
+        Rig g;  // INR sets V only on 0x7F -> 0x80
+        g.setReg("A", 0x7F);
+        g.load({0x3C});  // INR A
+        g.run(1);
+        CHECK(g.reg("A") == 0x80 && g.flag("V") && !g.flag("K"), "INR 7F->80: V set, K clear");
+
+        Rig h;
+        h.setReg("A", 0x10);
+        h.load({0x3C});  // INR A
+        h.run(1);
+        CHECK(!h.flag("V"), "INR 10->11: no overflow, V clear");
+
+        Rig d;  // DCR sets V only on 0x80 -> 0x7F
+        d.setReg("A", 0x80);
+        d.load({0x3D});  // DCR A
+        d.run(1);
+        CHECK(d.reg("A") == 0x7F && d.flag("V") && d.flag("K"), "DCR 80->7F: V and K set");
+
+        Rig z;  // 0x00 -> 0xFF: no overflow, but the result is negative, so K = sign
+        z.setReg("A", 0x00);
+        z.load({0x3D});  // DCR A
+        z.run(1);
+        CHECK(z.reg("A") == 0xFF && !z.flag("V") && z.flag("K"),
+              "DCR 00->FF: V clear, K = sign of the result");
+    }
+
+    SECTION("V/K on the logical ops -- V forced 0, so K is just the sign");
+    {
+        Rig g;
+        g.setReg("A", 0x80);
+        g.load({0xB7});  // ORA A -- leaves 0x80, negative
+        g.run(1);
+        CHECK(!g.flag("V") && g.flag("K"), "ORA leaves V=0, so K follows the sign (set)");
+
+        Rig h;
+        h.setReg("A", 0x0F);
+        h.load({0xE6, 0x0F});  // ANI 0F -- positive result
+        h.run(1);
+        CHECK(!h.flag("V") && !h.flag("K"), "ANI positive result: V and K clear");
+    }
+
+    SECTION("V/K on INX/DCX -- the special case: K is the 16-bit carry, V untouched");
+    {
+        // INX of 0xFFFF carries out of the incrementer -> K set. And V must be left
+        // exactly as it was: seed V=1 first and prove INX does not disturb it.
+        Rig g;
+        g.setReg("V", 1);
+        g.setReg("HL", 0xFFFF);
+        g.load({0x23});  // INX H
+        g.run(1);
+        CHECK(g.reg("HL") == 0x0000 && g.flag("K"), "INX of 0xFFFF sets K (carry out)");
+        CHECK(g.flag("V"), "INX left V untouched (the one non-V-XOR-sign case)");
+
+        Rig n;
+        n.setReg("V", 0);
+        n.setReg("HL", 0x1234);
+        n.load({0x23});  // INX H
+        n.run(1);
+        CHECK(!n.flag("K") && !n.flag("V"), "INX of a non-max pair: K clear, V still untouched");
+
+        // DCX of 0x0000 borrows out of the decrementer -> K set.
+        Rig d;
+        d.setReg("HL", 0x0000);
+        d.load({0x2B});  // DCX H
+        d.run(1);
+        CHECK(d.reg("HL") == 0xFFFF && d.flag("K"), "DCX of 0x0000 sets K (borrow out)");
+
+        Rig e;
+        e.setReg("HL", 0x0001);
+        e.load({0x2B});  // DCX H
+        e.run(1);
+        CHECK(!e.flag("K"), "DCX of 0x0001: no borrow, K clear");
+    }
+
+    SECTION("V/K on the rotates -- documented carry-only, but the ALU still latches them");
+    {
+        // Left rotates are treated as A+A, so V = bit6 XOR bit7 of the old A.
+        Rig g;
+        g.setReg("A", 0x40);   // bit6=1, bit7=0 -> V=1; result 0x80 negative -> K=0
+        g.load({0x07});  // RLC
+        g.run(1);
+        CHECK(g.reg("A") == 0x80 && g.flag("V") && !g.flag("K"), "RLC 0x40: V set, K clear");
+
+        Rig h;
+        h.setReg("A", 0x80);   // bit6=0, bit7=1 -> V=1; result 0x01 positive -> K=1
+        h.load({0x07});  // RLC
+        h.run(1);
+        CHECK(h.reg("A") == 0x01 && h.flag("V") && h.flag("K"), "RLC 0x80: V and K set");
+
+        // Right rotates have a constant internal carry, so V=0 and K falls to the sign.
+        Rig r;
+        r.setReg("A", 0x01);
+        r.load({0x0F});  // RRC -> 0x80, negative
+        r.run(1);
+        CHECK(r.reg("A") == 0x80 && !r.flag("V") && r.flag("K"), "RRC 0x01: V=0, K = sign (set)");
+    }
+
+    SECTION("V and K ride the PSW where the 8080 keeps constants (bits 1 and 5)");
+    {
+        // PUSH PSW must place V in bit 1 and K in bit 5 -- the two positions the 8080
+        // nails to 1 and 0. Produce V=1,K=1 (0x80+0x80) then push and read the byte.
+        Rig g;
+        g.setReg("SP", 0x8000);
+        g.setReg("A", 0x80); g.setReg("B", 0x80);
+        g.load({0x80, 0xF5});  // ADD B ; PUSH PSW
+        g.run(2);
+        uint8_t f = g.peek(0x7FFE);  // the pushed flags byte
+        CHECK((f & 0x02) != 0, "V is PSW bit 1 (PUSH PSW)");
+        CHECK((f & 0x20) != 0, "K is PSW bit 5 (PUSH PSW)");
+        CHECK((f & 0x08) == 0, "bit 3 stays 0, as on both parts");
+
+        // POP PSW round-trips them back into the flags.
+        Rig h;
+        h.setReg("SP", 0x7FFE);
+        h.poke(0x7FFE, 0x22);  // bits 1 and 5 set: V and K
+        h.poke(0x7FFF, 0x00);
+        h.load({0xF1});  // POP PSW
+        h.run(1);
+        CHECK(h.flag("V") && h.flag("K"), "POP PSW restores V and K from bits 1 and 5");
+    }
 }
