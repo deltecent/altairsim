@@ -72,8 +72,11 @@ jobs:
       # 3.6 in use locally; matching versions is what lets a person check CI's work by
       # running tools/build-docs.sh and getting the same pages.
       - name: Install pandoc 3.6
+        timeout-minutes: 8
         run: |
-          curl -fsSL -o /tmp/pandoc.deb \
+          # --retry/--max-time so a slow or stalled download is retried, not hung
+          # (the same failure class as the apt steps -- see tools/ci-apt-install.sh).
+          curl -fsSL --retry 3 --retry-connrefused --max-time 180 -o /tmp/pandoc.deb \
             https://github.com/jgm/pandoc/releases/download/3.6/pandoc-3.6-1-amd64.deb
           sudo dpkg -i /tmp/pandoc.deb
           pandoc --version | head -1
@@ -83,7 +86,8 @@ jobs:
       # check is skippable locally and is not skipped here -- this is the machine that
       # matters, because this is the machine that commits.
       - name: Install poppler-utils
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+        timeout-minutes: 12
+        run: bash tools/ci-apt-install.sh poppler-utils
 
       # The runner image ships Google Chrome; build-docs.sh finds it by name. Say so out
       # loud, because the alternative failure is a confusing one 20 lines later. (Do not
