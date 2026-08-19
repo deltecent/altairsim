@@ -62,6 +62,7 @@ void test_680io();
 void test_680uio();
 void test_680kcacr();
 void test_z80_cpu();
+void test_8085_cpu();
 void test_expr();
 void test_debug();
 void test_ddt();

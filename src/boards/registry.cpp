@@ -27,6 +27,7 @@
 #include "boards/mits-frontpanel.h"
 #include "boards/mits-turnkey.h"
 #include "boards/mits-z80cpu.h"
+#include "boards/mits-8085cpu.h"
 #include "boards/pmmi-mm103.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
@@ -61,6 +62,7 @@ std::vector<BoardType> boardTypes() {
         {"bankmem", "S-100 bank-switched RAM. One card, four decoders (card=vector|cromemco64kz|northstar|expandoram2): a write-only select port swaps which RAM plane(s) drive the bus. Each card owns its own decode -- one-hot select (Vector 40), 8-bit bank mask (Cromemco 40), on/off+one-hot toggle (North Star C0), or PROM page-select (ExpandoRAM II FF, approximated)"},
         {"8080", "MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus"},
         {"z80", "Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core"},
+        {"8085", "Generic 8085 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with an 8085 core (RIM/SIM + TRAP/RST 5.5/6.5/7.5)"},
         {"6800", "Altair 680b CPU board: a Motorola 6800 at 500 KHz. Decodes nothing -- it drives the bus. The 88-CPU's twin, one core down, with memory-mapped I/O"},
         {"680io", "Altair 680b onboard I/O: a 6850 ACIA console ('tty') at F000/F001 and the config-strap read port at F002. Memory-mapped"},
         {"680uio", "Altair 680b Universal I/O: a second 6850 ACIA serial port ('serial') and a 6820 PIA parallel port (sections 'p1a/p1b', 'p2a/p2b' with pias=2) in an S9-relocatable window (default base F000: serial F006/F007, PIA F008-F00F), plus fixed switch inputs at F003 and a non-latched output at F010-F013. Memory-mapped, active-high"},
@@ -112,6 +114,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "bankmem") return std::make_unique<MemBankBoard>();
     if (type == "8080") return std::make_unique<Cpu8080Board>();
     if (type == "z80") return std::make_unique<CpuZ80Board>();
+    if (type == "8085") return std::make_unique<Cpu8085Board>();
     if (type == "6800") return std::make_unique<Cpu6800Board>();
     if (type == "680io") return std::make_unique<Io680Board>();
     if (type == "680uio") return std::make_unique<Uio680Board>();
