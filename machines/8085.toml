@@ -1,0 +1,67 @@
+# A minimal 8085 machine: an `8085` CPU, 64K of RAM, and a 2SIO console.
+#
+# This is the runnable target for the generic 8085 board (src/boards/mits-8085cpu.h)
+# -- the direct analog of `z80` in machines/z80.toml, with a validated 8085 core in
+# the slot instead of a Z80. It carries no boot PROM: this board claims no
+# specific-product features, so this is the honest minimum you can drop an 8085 into
+# and drive.
+#
+#     altairsim 8085
+#     REGS                     the 8080 register set the 8085 shares -- A/BC/DE/HL,
+#                              SP, PC, and the S Z AC P CY flags
+#     DISASM 0000              defaults to the 8085 ISA, because the active core says
+#                              so -- 20 is RIM and 30 is SIM, not the 8080's NOP holes
+#     DEPOSIT 0100 20 30 3E 42   ; RIM / SIM / MVI A,42
+#     DISASM 0100 3
+#     RUN 0100
+#
+# The 8085's documented instruction set is byte- and flag-identical to the 8080's
+# except ANA/ANI's auxiliary carry (the 8085 always sets it), and it adds RIM and
+# SIM plus the TRAP / RST 5.5 / 6.5 / 7.5 interrupts. The core is validated against
+# real 8085 silicon (8085EXM -- tests/cpu/PROVENANCE.md). The ten *undocumented*
+# 8085 opcodes and the V/K flag bits are not yet modeled (issue #347); DISASM marks
+# them the DDT way, `?\?= <byte>  *MNEM`.
+#
+# To boot real 8085 CP/M, mount a disk and add the controller the image expects --
+# the same way the 8080 machines do (see machines/default.toml). That is beyond this
+# example, which exists to prove the BOARD, not to ship an OS.
+
+[machine]
+name = "8085"
+
+# THE CPU IS A CARD, exactly as the 88-CPU is: it decodes nothing, it drives the
+# bus, and the crystal and idle policy are its properties. `clock_hz = 0` is flat
+# out (the default); a period 8085A ran at 3.072 MHz (`SET cpu0 clock_hz=3072000`),
+# the 8085A-2 at up to 5 MHz -- emulated time is identical either way, only the host
+# sleep differs (src/boards/mits-88cpu.h has the full argument).
+[[board]]
+type     = "8085"
+id       = "cpu0"
+clock_hz = 0
+
+# The console -- a 2SIO (a 6850 ACIA) at port 10, channel A wired to the terminal.
+# Channel B is left unconnected on purpose: an unconnected 6850 sits with TDRE set
+# forever, so software that writes to it works fine and talks to nobody.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# 64K of RAM, the whole address space -- there is no ROM up top to leave room for.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"                # 0000-FFFF

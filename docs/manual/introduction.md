@@ -58,7 +58,11 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 
 This section is here because a manual that only lists strengths is an advertisement.
 
-- **It runs an 8080 or a Z80 — not an 8085.** Software that needs an 8085 will not run.
+- **It runs an 8080, a Z80, or an 8085 — but the 8085's *undocumented* opcodes are not
+  modeled.** The documented 8085 is here and validated against real silicon (RIM/SIM, the
+  TRAP/RST 5.5/6.5/7.5 interrupts, and the whole documented set). What it does not run is the
+  ten undocumented 8085 instructions (`DSUB`, `ARHL`, `LDHI`…) or the V/K flag bits some of
+  them set — code that leans on those will not behave.
 - **You can save state, but not replay.** `SNAPSHOT` writes the machine's whole state to a
   file and `RESTORE` reads it back, so you can save a machine and return to it. What you cannot
   do is *record* a session and step backwards through it, or replay a run from the start —

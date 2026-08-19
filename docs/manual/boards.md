@@ -21,6 +21,7 @@ be wrong.
 | `bankmem` | bank-switched RAM — Vector Graphic, Cromemco 64KZ, North Star HRAM, ExpandoRAM II |
 | `8080` | the MITS 88-CPU |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
+| `8085` | an 8085 CPU board — the 8080's superset, with RIM/SIM and the TRAP/RST interrupts |
 | `v2z80rom` | S100Computers V2 Z80 CPU board — its onboard MASTER monitor EEPROM |
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
@@ -192,6 +193,31 @@ The core is validated the same way the 8080 was, against the same kind of gate: 
 the standard Z80 exercisers, both pass before a single board is built on top of it. The built-in
 `z80` machine is a minimal one — a `z80`, 64K of RAM, and a 2SIO console — for putting it through
 its paces.
+
+---
+
+## `8085` — an 8085 CPU
+
+**A third processor board**, and the closest of the three to the 88-CPU: the 8085 is a binary
+*superset* of the 8080, so every 8080 program runs on it unchanged. It plugs into the same
+backplane, decodes nothing, and drives the bus the same way. It carries the same three properties —
+`clock_hz`, `idle`, and the read-only `achieved_hz` — each meaning exactly what it does on the
+8080.
+
+What the 8085 adds over the 8080: `RIM` and `SIM` (read and set the interrupt mask and the SID/SOD
+serial pins), and the on-chip interrupts — `TRAP` (non-maskable) plus `RST 5.5`, `6.5`, and `7.5`,
+each layered on top of the 8080-style `INTR` line. One documented instruction *differs*: `ANA`/`ANI`
+always set the auxiliary carry on the 8085, where the 8080 derives it from the operands.
+
+The core is validated against **real 8085 silicon** — the 8085EXM exerciser, whose expected CRCs
+were read off actual hardware — before any board is built on it, the same gate the 8080 and Z80
+cores passed. The built-in `8085` machine is a minimal one — an `8085`, 64K of RAM, and a 2SIO
+console.
+
+Two 8085 features are **not** modeled: the ten *undocumented* opcodes (`DSUB`, `ARHL`, `RDEL`,
+`LDHI`, `LDSI`, `RSTV`, `SHLX`, `LHLX`, `JK`/`JNK`) and the V/K flag bits some of them set.
+`DISASM` names each undocumented byte and marks it — `??= <byte>  *DSUB` — the way `DDT` flags a
+byte outside the published set; the core executes those slots as `NOP`.
 
 ---
 

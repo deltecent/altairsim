@@ -52,6 +52,7 @@ void test_subunit_schema();
 void test_toml_notes();
 void test_isa();
 void test_z80_isa();
+void test_8085_isa();
 void test_isa6800();
 void test_asm6800();
 void test_cpu();
