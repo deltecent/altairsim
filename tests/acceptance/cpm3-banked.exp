@@ -1,0 +1,108 @@
+#!/usr/bin/expect -f
+#
+# BANKED CP/M 3 (SD Systems CP/M Plus 3.0) boots off a VersaFloppy II on an SBC-200 whose
+# RAM is a 256K ExpandoRAM II -- and reaching A> is the end-to-end proof of the bankmem
+# common-memory + honors_phantom path. The operating system is bigger than 64K: its resident
+# BDOS/BIOS and the bank-switch routine live in the 16K common region (C000-FFFF, the same RAM
+# in every bank) while the switchable half pages through the 48K below it on port FF. And the
+# ExpandoRAM sits UNDER the onboard boot PROM, strapped honors_phantom=read -- the PROM shadows
+# reads while the cold-boot loader's writes fall straight through to the RAM it loads into.
+# A machine that got either wrong (whole-plane swap, or no phantom honoring) never reaches A>.
+#
+# It also exercises the SBC-200's INTERRUPTS: like the CP/M 2.2 CBIOS (cpm.exp), this CBIOS
+# takes console input ONLY through the Z80 mode-2 keyboard interrupt (8251 RxRDY -> CTC ch1 ->
+# vector 0x82 -> ISR at FF82). Typing `DIR` and getting the directory back is that path proven
+# end to end -- and DIR reading BNKBIOS3.SPR back off the platter is the disk path proven too.
+#
+# IT HAS TO BE AN EXPECT TEST, for the same reasons as cpm.exp/sdos.exp: the auto-baud needs a
+# start bit in emulated time (only a tty paces to clock_hz), and a pipe cannot type C/DIR at a
+# guest. Per ps2-int.exp: DO NOT TYPE INTO A RACE -- wait for each response before sending the
+# next line, or a keystroke is lost and the test "proves" the interrupt failed.
+#
+# THE DISKS MUST NOT MOVE. The fixture mounts both write-protected; shasummed before and after.
+#
+# usage: expect -f cpm3-banked.exp <altairsim>
+#
+set timeout 90
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk1 "examples/sdsys/CPM3-B-SSDD-60K-DISK1.DSK"
+set dsk2 "examples/sdsys/CPM3-B-SSDD-DISK2.DSK"
+
+set before1 [exec shasum $dsk1]
+set before2 [exec shasum $dsk2]
+
+spawn $exe tests/acceptance/cpm3-banked.toml
+
+# The console comes up; nothing prints until we present a CR for the auto-baud.
+expect {
+    -ex "returns to the monitor" {}
+    eof     { puts "FAIL: the machine did not start -- see the error above"; exit 1 }
+    timeout { puts "FAIL: the console never came up"; exit 1 }
+}
+
+# THE AUTO-BAUD. Send a CR; the monitor times its start bit and prints its `.` prompt.
+send "\r"
+expect {
+    -ex "." {}
+    eof     { puts "FAIL: died before the monitor prompt"; exit 1 }
+    timeout { puts "FAIL: the monitor never auto-bauded -- no `.` prompt after the CR"; exit 1 }
+}
+
+# COLD-BOOT CP/M 3 from drive A. The DDBIOS reads the boot sector, the cold booter switches
+# the PROM out with OUT 7F, CPMLDR loads CPM3.SYS into the banked ExpandoRAM, and it signs on.
+send "C\r"
+expect {
+    -ex "CP/M Plus" {}
+    eof     { puts "FAIL: the machine died booting CP/M 3"; exit 1 }
+    timeout { puts "FAIL: CP/M 3 never booted off the VersaFloppy (no sign-on)"; exit 1 }
+}
+
+# ...and it is the BANKED build -- the whole point of the ExpandoRAM common-memory path.
+expect {
+    -ex "Banked" {}
+    eof     { puts "FAIL: signed on but died before the banked banner"; exit 1 }
+    timeout { puts "FAIL: no `Banked` in the sign-on -- did the banked system load?"; exit 1 }
+}
+
+# ...AND IT REACHES ITS PROMPT. `A>` is banked CP/M 3 live and waiting on drive A -- proof the
+# resident survived the port-FF bank switch and the loader's writes reached the phantomed RAM.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M 3 signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M 3 signed on but never reached the `A>` prompt"; exit 1 }
+}
+
+# THE INTERRUPT + DISK PATHS, END TO END. Type DIR; every keystroke reaches CP/M 3 ONLY
+# through the CTC/8251 mode-2 keyboard interrupt, and BNKBIOS3.SPR (the banked BIOS image)
+# coming back is the directory read off the platter through the FDC.
+send "DIR\r"
+expect {
+    -ex "BNKBIOS3" {}
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR produced no directory -- the keyboard interrupt did not deliver\
+                     the keystrokes"; exit 1 }
+}
+
+# ...and DIR returned to the prompt.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: DIR listed files but the console did not return to the prompt"; exit 1 }
+    timeout { puts "FAIL: DIR listed files but never came back to `A>`"; exit 1 }
+}
+
+set after1 [exec shasum $dsk1]
+set after2 [exec shasum $dsk2]
+if {$before1 ne $after1 || $before2 ne $after2} {
+    puts "FAIL: A DISK CHANGED. `writeprotect` did not protect a master:"
+    puts "  disk1 before: $before1"
+    puts "  disk1 after:  $after1"
+    puts "  disk2 before: $before2"
+    puts "  disk2 after:  $after2"
+    exit 1
+}
+
+puts "OK: banked CP/M 3 cold-booted off the VersaFloppy II into the 256K ExpandoRAM to its A>\
+      prompt, DIR ran through the keyboard interrupt, and both masters are byte-identical."
+exit 0
