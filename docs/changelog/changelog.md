@@ -52,6 +52,17 @@ instead of one we picked, with built-in profiles for the Cromemco TU-ART, IMSAI 
 serial channels. A new built-in ROM, **ROM BASIC**, boots Altair BASIC 4.1 straight out of PROM
 with the full 48K free underneath it.
 
+### A third validated CPU core: the Intel 8085
+
+The 8080 and Z80 are joined by a documented **Intel 8085** core — the 8080's binary superset,
+with `RIM`/`SIM` and the on-chip interrupt system (the non-maskable `TRAP` and the maskable
+`RST 5.5/6.5/7.5`, each with its mask and pending latch, in hardware priority order) that the
+8080 never had. It is faithful where the two chips actually differ: the 8085's logical `AND`
+always sets the auxiliary-carry flag, where the 8080 derives it from the operands. Like the
+other two cores it earns its place at the gate rather than by inspection — Ian Bartholomew's
+**8085** instruction-set exerciser, whose expected CRCs were read off real 8085 silicon, runs
+its 2.9 billion instructions against the core on every CI push, on all three platforms.
+
 ### Disks and tapes the guest can build, not just read
 
 A hard-sector disk or a cassette tape can now be created **blank** and brought to life by the

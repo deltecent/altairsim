@@ -18,16 +18,17 @@
 //   - RIM / SIM -- read/set the interrupt mask and the SID/SOD serial pins.
 //   - TRAP (non-maskable) + RST 5.5 / 6.5 / 7.5, each with its own mask/pending,
 //     layered on top of the 8080-style INTR line.
-//   - The whole documented 8080 instruction set, byte- and flag-identical.
+//   - The whole documented 8080 instruction set, byte-identical and flag-identical
+//     EXCEPT ANA/ANI's auxiliary carry -- the 8085 always SETS it, where the 8080
+//     derives it from the operands. Validated against real 8085 silicon: the core
+//     is gated by 8085EXM, not 8080EXM (tests/cputest.cpp, tests/cpu/PROVENANCE.md).
 //
 // WHAT IT DELIBERATELY DOES NOT (deferred to a faithful follow-up, gated on a
 // GENUINE 8085 exerciser -- a core may not grade its own homework, DESIGN.md 3.2):
 //   - The undocumented opcodes (DSUB/ARHL/RDEL/LDHI/LDSI/RSTV/SHLX/LHLX/JK/JNK) --
 //     their slots stay NOP, exactly as the 8080 leaves them.
-//   - The X5/K/V flag bits. The PSW keeps the 8080 constants (bit1=1, bits3,5=0).
-//   - ANA's half-carry: the real 8085 differs here, but this core keeps the 8080
-//     rule so the stock 8080EXM stays a clean gate. The divergence is a documented
-//     known-gap, pinned by a unit test (tests/test_8085_cpu.cpp).
+//   - The X5/K/V flag bits. The PSW keeps the 8080 constants (bit1=1, bits3,5=0);
+//     8085EXM masks them out ([S Z X AC X P X C]) so the documented gate stays clean.
 
 #include "core/bus.h"
 #include "cpu/cpu.h"

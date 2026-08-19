@@ -10,8 +10,8 @@ using namespace altair;
 // stock 8080 suites re-run against the 8085 board re-prove the whole shared subset.
 // These are the targeted CHECKs on the 8085-ONLY surface those suites cannot reach:
 // RIM/SIM, the TRAP + RST 5.5/6.5/7.5 interrupt system with its masks/latches and
-// priority, the SID/SOD pins, and the one documented divergence this landing keeps
-// on the 8080 side of the line (ANA's half-carry). The core is driven directly
+// priority, the SID/SOD pins, and the one documented flag divergence from the 8080
+// (ANA's half-carry, which the 8085 always sets). The core is driven directly
 // against a Bus -- there is no 8085 machine here.
 
 namespace {
@@ -271,20 +271,27 @@ void test_8085_cpu() {
         CHECK(g.reg("PC") == 0x0024, "TRAP woke the core out of HLT and vectored");
     }
 
-    SECTION("ANA -- kept on the 8080 side of the line (a documented known-gap)");
+    SECTION("ANA/ANI -- the faithful 8085 rule (AC is always set)");
     {
-        // This landing keeps ANA's 8080 half-carry rule (AC = OR of bit 3 of the
-        // two operands) so 8080EXM stays a clean gate. The REAL 8085 differs here;
-        // that divergence, with V/K and the undocumented ops, is deferred to the
-        // faithful follow-up (cpu8085.cpp, issue #233). PIN the current behavior so
-        // a future change to it is a conscious one, not an accident.
+        // The 8085's logical AND always SETS the auxiliary carry, where the 8080
+        // sets it to the OR of bit 3 of the two operands. This is the one
+        // documented-flag divergence between the cores, and it is what makes the
+        // 8085 gate 8085EXM (real-8085 CRCs) rather than 8080EXM. Pin it with a
+        // case the two rules DISAGREE on: bit 3 clear in both operands, where the
+        // 8080 would leave AC=0 but the 8085 sets it. (issue #347)
         Rig g;
-        g.setReg("A", 0x08);
-        g.setReg("B", 0x00);
+        g.setReg("A", 0x01);
+        g.setReg("B", 0x01);
         g.load({0xA0});  // ANA B
         g.run(1);
-        CHECK(g.reg("A") == 0x00 && g.flag("Z"), "ANA B cleared A");
-        CHECK(g.flag("AC"),
-              "AC follows the 8080 rule (OR of bit 3) -- the 8085 divergence is deferred");
+        CHECK(g.reg("A") == 0x01 && !g.flag("Z"), "ANA B -> A=01");
+        CHECK(g.flag("AC"), "AC is set with bit 3 clear in both operands -- the 8085 rule");
+
+        // ANI shares the ALU path and follows the same rule.
+        g.setReg("PC", 0);
+        g.setReg("A", 0x01);
+        g.load({0xE6, 0x01});  // ANI 01
+        g.run(1);
+        CHECK(g.flag("AC"), "ANI also always sets AC on the 8085");
     }
 }
