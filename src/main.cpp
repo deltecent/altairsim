@@ -302,6 +302,16 @@ int main(int argc, char** argv) {
                 case Display::SpecialKey::Left:  t->keySpecial((int)TerminalEmulator::Key::Left);  break;
                 case Display::SpecialKey::Right: t->keySpecial((int)TerminalEmulator::Key::Right); break;
                 case Display::SpecialKey::Home:  t->keySpecial((int)TerminalEmulator::Key::Home);  break;
+                // MODE SELECT / CLEAR / LOAD have no terminal-dialect key -- they are literal
+                // 8-bit guest bytes, so inject them raw on the shared console queue rather than
+                // through keyAscii() (whose strip7in would strip bit 7 and mangle 80 -> 00).
+                case Display::SpecialKey::Mode:
+                case Display::SpecialKey::Clear:
+                case Display::SpecialKey::Load: {
+                    uint8_t c = g_display.specialKey(k);
+                    if (c) Console::instance().inject(&c, 1);
+                    break;
+                }
                 case Display::SpecialKey::Count_: break;
             }
             return;

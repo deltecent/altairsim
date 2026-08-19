@@ -581,12 +581,21 @@ void test_sol() {
         CHECK(d.specialKey(Display::SpecialKey::Right) == 0x93, "right sends 93");
         CHECK(d.specialKey(Display::SpecialKey::Home) == 0x8E, "HOME CURSOR sends 8E");
 
+        // The three no-ASCII keys reached through function keys (F1/F2/F3, issue #59).
+        CHECK(d.specialKey(Display::SpecialKey::Mode) == 0x80, "MODE SELECT sends 80");
+        CHECK(d.specialKey(Display::SpecialKey::Clear) == 0x8B, "CLEAR sends 8B");
+        CHECK(d.specialKey(Display::SpecialKey::Load) == 0x8C, "LOAD sends 8C");
+
         std::string got;
         d.setKeySink([&got](const uint8_t* p, size_t n) {
             got.append((const char*)p, n);
         });
         d.press(Display::SpecialKey::Left);
         CHECK(got.size() == 1 && (uint8_t)got[0] == 0x81, "pressing it emits that one byte");
+
+        got.clear();
+        d.press(Display::SpecialKey::Mode);
+        CHECK(got.size() == 1 && (uint8_t)got[0] == 0x80, "MODE SELECT emits the bit-7 byte, not NUL");
 
         // A GUEST THAT WANTS NOTHING GETS NOTHING, and specifically does not get a NUL.
         // On a Sol a NUL is MODE SELECT, so an unmapped key that injected one would not
@@ -634,6 +643,32 @@ void test_sol() {
         b.steps(400'000);
         CHECK(b.cursor() == 0, "HOME CURSOR goes to the first position, top left");
         CHECK(b.screenHas('C'), "...and did not erase anything on the way -- that is CLEAR's job");
+    }
+
+    SECTION("Sol-20 -- CLEAR (F2) wipes the screen, MODE SELECT (F1) brings the prompt back");
+    {
+        // The two keys that had no host key until the function keys (issue #59), pressed
+        // where an SDL window would press them and read back off the VDM screen -- the same
+        // round trip as the arrows, through the table, the sink, port FCh and SOLOS's driver.
+        // CLEAR's code (8B) is Ctrl-K masked; MODE SELECT's (80) is Ctrl-@ masked. This is
+        // the maintainer's own screen-RAM verification from the issue, made into a test.
+        BootRig b;
+        CHECK(b.runToPrompt(4'000'000), "SOLOS is at its prompt");
+
+        ScriptedStream* kbd = b.connectKeyboardToWindow();
+        kbd->feed("ABC");
+        b.steps(400'000);
+        CHECK(b.screenHas('C'), "the typed characters are on the screen");
+
+        b.disp.press(Display::SpecialKey::Clear);
+        b.steps(400'000);
+        CHECK(!b.screenHas('C'), "CLEAR erased what was typed");
+        CHECK(!b.screenHas('>'), "...and the prompt with it -- the screen is blank");
+        CHECK(b.cursor() == 0, "the cursor is home, top left");
+
+        b.disp.press(Display::SpecialKey::Mode);
+        b.steps(400'000);
+        CHECK(b.screenHas('>'), "MODE SELECT re-entered command mode and repainted the prompt");
     }
 
     SECTION("Sol-20 -- SOLOS SAVEs a file to the cassette and GETs it back");
