@@ -15,7 +15,7 @@ BIOS (`HIDE3.ASM`) builds an identical DPB, LBA and byte order for each, so a ca
 between them.
 
 - **No boot PROM on the board.** CP/M is loaded by the *CPU board's* ROM monitor. The pairing we
-  ship is the **V2 Z80 CPU board** (`v2z80`), whose MASTER V6.6 EEPROM monitor has a **`P`
+  ship is the **V2 Z80 CPU board** (`v2z80rom`), whose MASTER V6.6 EEPROM monitor has a **`P`
   command** that boots CP/M 3 from the CF card (the sibling `I` command boots from SD).
 - The CPU drives a **8255 PPI** (five ports at 30–34) that fans out to a minimal **ATA/IDE
   register file**. Whole 512-byte LBA sectors move as 256 16-bit words. Programmed I/O only — no
@@ -116,6 +116,6 @@ See `reference/dual-ide-card.md` for the complete tables and BIOS fragments.
 - `reference/dual-ide-card.md` — the distilled BIOS reference (the authority for every fact above).
 - `docs/boards/dualsd.md` — the SD half (`dualsd`) that shares the card medium and composes into
   the full board.
-- `reference/v2-z80-cpu-board.md` — the V2 Z80 CPU board and its MASTER monitor (the `v2z80` board
+- `reference/v2-z80-cpu-board.md` — the V2 Z80 CPU board and its MASTER monitor (the `v2z80rom` board
   that boots this one).
 - `src/host/cardimg.{h,cpp}` — the card medium (`.img` + `.geo` sidecar).

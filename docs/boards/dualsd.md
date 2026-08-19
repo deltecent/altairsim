@@ -14,7 +14,7 @@ handshake** — architecturally the same shape as the 88-HDSK Datakeeper and the
 programmed-I/O command engine with a full-sector buffer, not a WD177x register file.
 
 - **No boot PROM on the board.** CP/M is loaded by the *CPU board's* ROM monitor. The pairing
-  we ship is the **V2 Z80 CPU board** (`v2z80`), whose MASTER V6.6 EEPROM monitor added an `I`
+  we ship is the **V2 Z80 CPU board** (`v2z80rom`), whose MASTER V6.6 EEPROM monitor added an `I`
   command (V6.52, 12/2025) that boots CP/M 3 straight off this board — no CF/IDE board needed.
 - Runs **CP/M 3**, banked or non-banked. Each SD card is one CP/M drive, and the BIOS assigns
   the drive letter from the **socket** (socket 1 → A:, socket 2 → B:), not from anything on the
@@ -134,6 +134,6 @@ See `reference/dual-sd-card.md` for the complete command tables and firmware fra
 - `reference/dual-sd-card.md` — the distilled firmware/BIOS reference (the authority for every
   fact above).
 - `reference/v2-z80-cpu-board.md` — the V2 Z80 CPU board and its MASTER monitor EEPROM (the
-  `v2z80` board that boots this one).
+  `v2z80rom` board that boots this one).
 - `src/host/cardimg.{h,cpp}` — the directory-card medium (`.img` + `.geo` sidecar).
 - `docs/boards/hostbridge.md` — the host bridge the example fits at B0 for file transfer.

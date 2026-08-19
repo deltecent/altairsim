@@ -120,7 +120,7 @@ design decisions taken:
   bank-switch routine live in common and survive the page `OUT`. SD Systems' own banked CP/M 3 does
   exactly this (bank number → port FF, `COMBAS=C0` ⇒ `partition=ex48`); the general mechanism is now
   in place, while board-select across multiple coordinated boards remains the approximated part.
-- **`v2z80` was kept as its own board** — its onboard paged **ROM** overlay (two 4K EEPROM pages at
+- **`v2z80rom` was kept as its own board** — its onboard paged **ROM** overlay (two 4K EEPROM pages at
   F000-FFFF, phantom-shadowing RAM, tied to a CPU card's identity) is a different thing from an
   S-100 banked-RAM card; folding it into `bankmem` (a RAM board) would reintroduce the very
   "ROM on a banked card is unsourced" tension the design refuses. Closed as: stays separate.
@@ -149,10 +149,10 @@ the SIMH generalization.
 *(Both were settled with Patrick before the fix; the resolutions are folded into "The fix that
 landed" above and repeated inline here.)*
 
-1. **Should the `v2z80` banked ROM fold into the banked-memory mechanism?** *Resolved: no — it
+1. **Should the `v2z80rom` banked ROM fold into the banked-memory mechanism?** *Resolved: no — it
    stays its own board.* The V2 Z80 CPU
    board's onboard 8 KB EEPROM is mapped as **two 4 KB pages** switched by `OUT D3H` bit 1
-   (`reference/v2-z80-cpu-board.md`, `src/boards/v2z80.{h,cpp}`) — a genuine banked ROM, today
+   (`reference/v2-z80-cpu-board.md`, `src/boards/v2z80rom.{h,cpp}`) — a genuine banked ROM, today
    implemented as its own bespoke board. Its full memory-manager banking (ports D2H/D3H) is
    deliberately *not* modeled (the Dual SD target is flat-64K CP/M 3). The question: is this the
    *same kind of thing* as `memory`-board bank switching, such that a corrected banked-memory

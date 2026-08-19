@@ -26,7 +26,7 @@ For the **full A:/B:(CF) + C:/D:(SD)** system — both boards installed, all fou
 combination BIOS builds an identical DPB, LBA and byte order for each, so a card is portable
 between them.
 
-**The monitor is the boot command.** There is no `BOOT` verb. The **V2 Z80 CPU board** (`v2z80`)
+**The monitor is the boot command.** There is no `BOOT` verb. The **V2 Z80 CPU board** (`v2z80rom`)
 carries the **MASTER V6.6** monitor in its paged EEPROM at `F000`–`FFFF`; `startup = ["RUN F000"]`
 cold-starts it. At the monitor's `->` prompt, the `P` command reads the CP/M 3 cold loader (12
 sectors from LBA 1 of the CF card) into `100h` and jumps into the standard five-stage CP/M 3 cold
@@ -63,7 +63,7 @@ without its declared geometry.)
 
 | File | What it is |
 |---|---|
-| `dualide.toml` | The machine: V2 Z80 CPU + MASTER EEPROM (`v2z80`), a `propio` console, the `dualide` board at `30h`–`34h` with the boot card on drive 0, a front panel, the host bridge at `B0`/`B1`, and 64K RAM. |
+| `dualide.toml` | The machine: V2 Z80 CPU + MASTER EEPROM (`v2z80rom`), a `propio` console, the `dualide` board at `30h`–`34h` with the boot card on drive 0, a front panel, the host bridge at `B0`/`B1`, and 64K RAM. |
 | `cpm3-cf.img` + `cpm3-cf.geo` | Drive `A:` — the boot card: the CP/M 3 system image and its geometry sidecar. |
 
 **There is no undo.** The card is mounted read/write because that is what a real board is, and

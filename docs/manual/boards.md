@@ -21,7 +21,7 @@ be wrong.
 | `bankmem` | bank-switched RAM — Vector Graphic, Cromemco 64KZ, North Star HRAM, ExpandoRAM II |
 | `8080` | the MITS 88-CPU |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
-| `v2z80` | S100Computers V2 Z80 CPU board — its onboard MASTER monitor EEPROM |
+| `v2z80rom` | S100Computers V2 Z80 CPU board — its onboard MASTER monitor EEPROM |
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
 | `sbc` | SD Systems SBC-100/200 — a Z80 single-board computer's serial console |
@@ -195,7 +195,7 @@ its paces.
 
 ---
 
-## `v2z80` — the S100Computers V2 Z80 CPU board's monitor
+## `v2z80rom` — the S100Computers V2 Z80 CPU board's monitor
 
 The `z80` above is *the processor*. This board is the **monitor** that a real S100Computers V2 Z80
 CPU board carries on it: an **8K EEPROM** at `F000`–`FFFF` holding John Monahan's MASTER V6.6 ROM
@@ -546,7 +546,7 @@ I/O — not a floppy-shift card. Each SD card is one CP/M drive, and the drive l
 **socket** it sits in: socket 1 is A:, socket 2 is B:.
 
 **It has no boot PROM** — the CPU board's monitor boots it. That is why `altairsim dualsd` is the
-three boards together: a `z80` for the processor, the `v2z80` monitor EEPROM whose `I` command reads
+three boards together: a `z80` for the processor, the `v2z80rom` monitor EEPROM whose `I` command reads
 CP/M 3 off the card, and this controller. Bring the machine up, type `I` at the `->` monitor prompt,
 and CP/M 3 signs on at `A>`.
 
@@ -573,7 +573,7 @@ card's IDE bus (default ports `30`–`34`). It presents its two cards as CP/M dr
 the same **CP/M 3** off flash, and — because it lays a card out byte-for-byte the way the SD side
 does — **a card image is interchangeable between the two**.
 
-**It has no boot PROM** either. `altairsim dualide` is the `z80`, the `v2z80` monitor EEPROM, and
+**It has no boot PROM** either. `altairsim dualide` is the `z80`, the `v2z80rom` monitor EEPROM, and
 this controller; at the `->` monitor prompt the **`P` command** (rather than the Dual SD's `I`) reads
 CP/M 3 off CompactFlash drive 0, and CP/M signs on at `A>`.
 
