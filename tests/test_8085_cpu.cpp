@@ -578,3 +578,139 @@ void test_8085_cpu() {
         CHECK(m.reg("PC") == 0x0005, "JNK not taken skips the operand");
     }
 }
+
+// The five ALU-affecting undocumented opcodes (reference file 2). Operation and flag
+// masks come from the Tundra data sheet + the 1979 Electronics article (they agree);
+// flag VALUES follow section 1 / Shirriff. Vectors are hand-derived.
+//
+// These live in their own function rather than in test_8085_cpu(): that function had
+// grown large enough (the V/K work added many sections) that appending these tipped
+// MSVC over a per-function stack-frame/unwind threshold and SEGFAULTed the Windows
+// unit run -- clang's smaller frame model hid it on macOS/Linux. Splitting keeps each
+// function's frame modest. See the PR discussion for #347.
+void test_8085_undoc_alu() {
+    SECTION("DSUB -- HL = HL - BC, all seven flags (two chained 8-bit subtracts)");
+    {
+        // 0x0501 - 0x0102 = 0x03FF: no borrow, positive, non-zero.
+        Rig g;
+        g.setReg("HL", 0x0501); g.setReg("BC", 0x0102);
+        g.load({0x08});  // DSUB
+        g.run(1);
+        CHECK(g.reg("HL") == 0x03FF && !g.flag("CY") && !g.flag("S") && !g.flag("Z"),
+              "DSUB 0501-0102 = 03FF, no borrow");
+
+        // 0x0000 - 0x0001 = 0xFFFF: borrow out of bit 15 (CY set), negative (S set),
+        // V clear so K = V XOR sign = 1.
+        Rig h;
+        h.setReg("HL", 0x0000); h.setReg("BC", 0x0001);
+        h.load({0x08});
+        h.run(1);
+        CHECK(h.reg("HL") == 0xFFFF && h.flag("CY") && h.flag("S") && !h.flag("Z")
+                  && h.flag("K"),
+              "DSUB 0000-0001 = FFFF: borrow, negative, K set");
+
+        // Equal operands -> 0x0000: Z is the full 16-bit zero, no borrow.
+        Rig n;
+        n.setReg("HL", 0x1234); n.setReg("BC", 0x1234);
+        n.load({0x08});
+        n.run(1);
+        CHECK(n.reg("HL") == 0x0000 && n.flag("Z") && !n.flag("CY") && !n.flag("S"),
+              "DSUB 1234-1234 = 0000: Z set (full 16-bit zero)");
+    }
+
+    SECTION("ARHL -- arithmetic shift-right HL, CY only");
+    {
+        // 0x8004 >> 1, sign preserved: 0xC002; L bit 0 was 0 so CY clear.
+        Rig g;
+        g.setReg("HL", 0x8004);
+        g.load({0x10});  // ARHL
+        g.run(1);
+        CHECK(g.reg("HL") == 0xC002 && !g.flag("CY"),
+              "ARHL 8004 -> C002 (sign held), CY clear");
+
+        // 0x0003 >> 1 = 0x0001; the dropped low bit (1) lands in CY.
+        Rig h;
+        h.setReg("HL", 0x0003);
+        h.load({0x10});
+        h.run(1);
+        CHECK(h.reg("HL") == 0x0001 && h.flag("CY"), "ARHL 0003 -> 0001, CY = old L0");
+
+        // CY ONLY: every other flag is untouched. Seed them and confirm they survive.
+        Rig n;
+        n.setReg("HL", 0x0002);  // L bit 0 = 0 -> CY will clear
+        n.setReg("Z", 1); n.setReg("S", 1); n.setReg("V", 1); n.setReg("K", 1);
+        n.setReg("AC", 1); n.setReg("P", 1);
+        n.load({0x10});
+        n.run(1);
+        CHECK(!n.flag("CY") && n.flag("Z") && n.flag("S") && n.flag("V")
+                  && n.flag("K") && n.flag("AC") && n.flag("P"),
+              "ARHL touches CY only -- S/Z/P/AC/V/K survive");
+    }
+
+    SECTION("RDEL -- rotate DE left through carry, CY and V only");
+    {
+        // 0x8000, CY in 0: bit 15 -> CY (set), result 0x0000; V = bit14 XOR bit15 = 1.
+        Rig g;
+        g.setReg("DE", 0x8000); g.setReg("CY", 0);
+        g.load({0x18});  // RDEL
+        g.run(1);
+        CHECK(g.reg("DE") == 0x0000 && g.flag("CY") && g.flag("V"),
+              "RDEL 8000 (CY=0) -> 0000, CY and V set");
+
+        // 0x4000, CY in 0: bit 15 = 0 (CY clear), V = 1 XOR 0 = 1, result 0x8000.
+        Rig h;
+        h.setReg("DE", 0x4000); h.setReg("CY", 0);
+        h.load({0x18});
+        h.run(1);
+        CHECK(h.reg("DE") == 0x8000 && !h.flag("CY") && h.flag("V"),
+              "RDEL 4000 (CY=0) -> 8000, CY clear, V set");
+
+        // 0x0001, CY in 1: old CY into bit 0 -> 0x0003; bit 15 = 0 (CY clear); V clear.
+        // Also confirm CY and V are the ONLY flags that move (seed Z/S/K and check).
+        Rig n;
+        n.setReg("DE", 0x0001); n.setReg("CY", 1);
+        n.setReg("Z", 1); n.setReg("S", 1); n.setReg("K", 1);
+        n.load({0x18});
+        n.run(1);
+        CHECK(n.reg("DE") == 0x0003 && !n.flag("CY") && !n.flag("V")
+                  && n.flag("Z") && n.flag("S") && n.flag("K"),
+              "RDEL 0001 (CY=1) -> 0003; CY/V only -- Z/S/K survive");
+    }
+
+    SECTION("LDHI d8 -- DE = HL + imm8, no flags");
+    {
+        Rig g;
+        g.setReg("HL", 0x1234);
+        g.load({0x28, 0x11});  // LDHI 11
+        g.run(1);
+        CHECK(g.reg("DE") == 0x1245, "LDHI: DE = HL + imm8");
+
+        // Carry across the byte boundary is a plain 16-bit add; still no flags.
+        Rig h;
+        h.setReg("HL", 0x00F0);
+        h.setReg("CY", 1); h.setReg("Z", 1); h.setReg("V", 1); h.setReg("K", 1);
+        h.load({0x28, 0x20});  // LDHI 20
+        h.run(1);
+        CHECK(h.reg("DE") == 0x0110 && h.flag("CY") && h.flag("Z") && h.flag("V")
+                  && h.flag("K"),
+              "LDHI 00F0+20 = 0110, and every flag survives (no flags)");
+    }
+
+    SECTION("LDSI d8 -- DE = SP + imm8, no flags");
+    {
+        Rig g;
+        g.setReg("SP", 0x2000);
+        g.load({0x38, 0x10});  // LDSI 10
+        g.run(1);
+        CHECK(g.reg("DE") == 0x2010, "LDSI: DE = SP + imm8");
+
+        // 16-bit wrap, and no flags disturbed.
+        Rig h;
+        h.setReg("SP", 0xFFFF);
+        h.setReg("S", 1); h.setReg("AC", 1); h.setReg("P", 1);
+        h.load({0x38, 0x02});  // LDSI 02
+        h.run(1);
+        CHECK(h.reg("DE") == 0x0001 && h.flag("S") && h.flag("AC") && h.flag("P"),
+              "LDSI FFFF+02 = 0001 (wraps), flags survive");
+    }
+}

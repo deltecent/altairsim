@@ -92,6 +92,7 @@ const struct {
     {"680kcacr", test_680kcacr},
     {"z80_cpu", test_z80_cpu},
     {"8085_cpu", test_8085_cpu},
+    {"8085_undoc_alu", test_8085_undoc_alu},
     {"expr", test_expr},
     {"debug", test_debug},
     {"ddt", test_ddt},

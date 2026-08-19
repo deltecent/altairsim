@@ -66,9 +66,17 @@ its 2.9 billion instructions against the core on every CI push, on all three pla
 The core is now something you can drive: an **`8085` machine** (`altairsim 8085` — an 8085, 64K,
 and a 2SIO console, the direct analog of the `z80` machine) and an **8085 disassembler and
 assembler**, so `DISASM` and `EDIT` speak the 8085 where that core is active. `RIM` and `SIM`
-decode as themselves; the ten *undocumented* 8085 opcodes are named and flagged the way `DDT`
-flags a byte outside the published set (`??= 08  *DSUB`), since the core still runs those slots
-as `NOP`. Their faithful behavior and the V/K flag bits remain the open work of the 8085.
+decode as themselves, and the ten *undocumented* 8085 opcodes are named and flagged the way `DDT`
+flags a byte outside the published set (`??= 08  *DSUB`).
+
+The 8085's **faithful reproduction** is now complete: the two extra condition bits **V** (signed
+overflow) and **K** (the X5/UI bit) compute and ride the flag byte where the 8080 keeps constants,
+and **all ten undocumented opcodes execute** — the data-movement and branch group (`SHLX`, `LHLX`,
+`RSTV`, `JK`, `JNK`) and the ALU group (`DSUB`, `ARHL`, `RDEL`, `LDHI`, `LDSI`). Since the stock
+exerciser masks V and K out and never emits the undocumented bytes, these are pinned by
+hand-derived unit tests whose oracle is external — Ken Shirriff's reverse-engineering of the 8085
+silicon die, and two primary data-sheet sources (the Tundra CA80C85B and the 1979 *Electronics*
+article) that agree on every operation and flag mask.
 
 ### Disks and tapes the guest can build, not just read
 

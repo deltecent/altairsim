@@ -269,6 +269,38 @@ void Cpu8085::daa() {
     k_ = (v_ != s_);
 }
 
+// DSUB -- the undocumented HL = HL - BC, the 8085's only 16-bit subtract. The 8-bit
+// ALU runs twice: L - C, then H - B with the low borrow. All seven flags follow that
+// two-subtract sequence. Neither primary source (Tundra data sheet, Electronics 1979)
+// spells out the bit-level derivation for a 16-bit subtract, so these are a DOCUMENTED
+// modeling choice (reference/Intel 8085 undocumented instructions and flags.md 2, the
+// DSUB note), pinned by hand-derived unit tests:
+//   CY = borrow out of bit 15 (the high subtract), stored 8080-style (set on borrow)
+//   S  = bit 15 of the result;  V = overflow of the high subtract;  K = V XOR S
+//   AC = half-borrow of the LOW subtract (the bit 3 -> 4 boundary lives in the low byte)
+//   Z  = the full 16-bit result is zero
+//   P  = parity of the high byte (the last byte through the flag logic)
+void Cpu8085::dsub() {
+    uint8_t nc = (uint8_t)~c_;
+    unsigned lo = (unsigned)l_ + nc + 1;             // L - C
+    uint8_t lores = (uint8_t)lo;
+    unsigned loCarry = (lo > 0xFF) ? 1 : 0;          // raw internal carry (1 = no borrow)
+    ac_ = ((l_ & 0x0F) + (nc & 0x0F) + 1) > 0x0F;
+
+    uint8_t nb = (uint8_t)~b_;
+    unsigned hi = (unsigned)h_ + nb + loCarry;       // H - B - borrow
+    uint8_t hires = (uint8_t)hi;
+    v_ = addOverflow(h_, nb, loCarry);               // overflow uses the RAW internal carry
+    cy_ = !(hi > 0xFF);                              // stored CY = borrow out of bit 15
+
+    h_ = hires;
+    l_ = lores;
+    s_ = (hires & 0x80) != 0;
+    z_ = (hires == 0) && (lores == 0);
+    p_ = kEvenParity[hires];
+    k_ = (v_ != s_);
+}
+
 // A hardware restart (TRAP / RST n.5). Push PC, jump to the fixed vector, disable
 // further interrupts, and come out of HLT. No bus INTA cycle -- the vector is on
 // the chip, not the bus -- so intFetch_ stays clear.
@@ -445,13 +477,58 @@ StepResult Cpu8085::step(Bus& bus) {
         t = (src == 6) ? 7 : 4;
     } else {
         switch (op) {
-        // ---- NOP, and the deferred undocumented-opcode slots. 0x20/0x30 are NOT
-        // here any more -- they are RIM/SIM below. The rest stay NOP until the
-        // faithful follow-up (cpu8085.h). ----
-        case 0x00: case 0x08: case 0x10: case 0x18:
-        case 0x28: case 0x38:
+        // ---- NOP. The 8080 also NOPs 0x08/10/18/20/28/30/38; on the 8085 every one
+        // of those is a real instruction -- 0x20/0x30 are RIM/SIM and the other five
+        // are the ALU-affecting undocumented opcodes below, so only 0x00 remains. ----
+        case 0x00:
             t = 4;  // NOP
             break;
+
+        // ---- The five ALU-affecting undocumented 8085 opcodes. Operation and flag
+        // masks are settled by the Tundra data sheet and the 1979 Electronics article,
+        // which agree (reference/Intel 8085 undocumented instructions and flags.md 2);
+        // the flag VALUES (V, K) follow section 1 / Shirriff. Like the safe five they
+        // still disassemble DDT-style, one byte (isa8085.cpp). ----
+        case 0x08:  // DSUB -- HL = HL - BC, all seven flags (see Cpu8085::dsub).
+            dsub();
+            t = 10;
+            break;
+        case 0x10: {  // ARHL -- arithmetic shift-right HL: sign (bit 15) held, L bit 0
+                      // falls into CY. HL = HL/2 signed. Only CY changes.
+            cy_ = (l_ & 0x01) != 0;
+            uint16_t r = (uint16_t)((hl() >> 1) | (hl() & 0x8000));
+            h_ = (uint8_t)(r >> 8);
+            l_ = (uint8_t)r;
+            t = 7;
+            break;
+        }
+        case 0x18: {  // RDEL -- rotate DE left THROUGH carry (a 16-bit RAL on DE): old
+                      // bit 15 -> CY, old CY -> bit 0. V follows the "DE + DE" overflow
+                      // rule (bit 14 XOR bit 15 of the OLD DE). Only CY and V change.
+            uint16_t old = de();
+            bool oldCy = cy_;
+            v_ = (((old >> 14) & 1) ^ ((old >> 15) & 1)) != 0;
+            cy_ = (old & 0x8000) != 0;
+            uint16_t r = (uint16_t)((old << 1) | (oldCy ? 1 : 0));
+            d_ = (uint8_t)(r >> 8);
+            e_ = (uint8_t)r;
+            t = 10;
+            break;
+        }
+        case 0x28: {  // LDHI d8 -- DE = HL + imm8 (base + displacement; no flags).
+            uint16_t r = (uint16_t)(hl() + fetch(bus));
+            d_ = (uint8_t)(r >> 8);
+            e_ = (uint8_t)r;
+            t = 10;
+            break;
+        }
+        case 0x38: {  // LDSI d8 -- DE = SP + imm8 (no flags).
+            uint16_t r = (uint16_t)(sp_ + fetch(bus));
+            d_ = (uint8_t)(r >> 8);
+            e_ = (uint8_t)r;
+            t = 10;
+            break;
+        }
 
         // ---- RIM / SIM -- the two documented 8085 additions ----
         case 0x20: {  // RIM: read interrupt mask + serial input

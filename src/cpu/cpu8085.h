@@ -35,13 +35,17 @@
 //     SHLD/LHLD), and RSTV / JK / JNK (an RST-if-V and the two jumps on the K bit).
 //     None affect the flags; the two branches only READ the V/K bits above, so no
 //     source beyond the octal table and Shirriff is needed. Pinned by unit test.
+//   - The five ALU-affecting undocumented opcodes: DSUB (HL=HL-BC, all seven flags),
+//     ARHL (signed shift-right HL, CY only), RDEL (16-bit RAL on DE, CY+V), and
+//     LDHI/LDSI d8 (DE = HL/SP + imm8, no flags). Operation and flag masks are now
+//     settled by two primary sources that agree -- the Tundra CA80C85B data sheet and
+//     the 1979 Electronics article (reference file 2). Pinned by hand-derived unit
+//     tests, oracle = those tables (8085EXM never emits these bytes; DESIGN.md 3.2).
+//     DSUB's bit-level flag derivation for a 16-bit subtract is a documented modeling
+//     choice (see Cpu8085::dsub) -- neither prose source spells it out.
 //
-// WHAT IT DELIBERATELY DOES NOT (deferred to a faithful follow-up, gated on a
-// GENUINE 8085 exerciser -- a core may not grade its own homework, DESIGN.md 3.2):
-//   - The five ALU-affecting undocumented opcodes (DSUB/ARHL/RDEL/LDHI/LDSI) -- their
-//     slots stay NOP, exactly as the 8080 leaves them, until their operation and flag
-//     effects are settled against a primary source (the electronicerror compilation
-//     they come from is second-hand and self-contradictory; reference file 2).
+// WHAT IT DELIBERATELY DOES NOT (deferred to a faithful follow-up):
+//   - SID/SOD and the RST 5.5/6.5/7.5 + TRAP pins wired to real boards (issue #347).
 
 #include "core/bus.h"
 #include "cpu/cpu.h"
@@ -99,6 +103,7 @@ private:
     uint8_t dcr(uint8_t v);
     void dad(uint16_t v);
     void daa();
+    void dsub();            // undocumented HL = HL - BC (all seven flags; see .cpp)
 
     // A HARDWARE RESTART -- how TRAP and RST 5.5/6.5/7.5 vector. Unlike the RST
     // instruction it comes from a pin, not an opcode, but the effect is the same:

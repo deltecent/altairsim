@@ -190,10 +190,10 @@ The `8085` core (`src/cpu/cpu8085.{h,cpp}`) models the **documented** 8085 —
 RIM/SIM, the TRAP/RST n.5 interrupts, and the faithful `ANA` half-carry, gated by
 `8085EXM` (real-silicon CRCs) — **plus the V and K bits of §1**, which now compute
 per the rules above and ride PSW bits 1 and 5 (`test_8085_cpu.cpp` pins them by
-hand-derived vector). Five of the ten undocumented opcodes now execute too —
-`SHLX`/`LHLX`/`RSTV`/`JK`/`JNK` (§3, sequencing item 2); the other five
-(`DSUB`/`ARHL`/`RDEL`/`LDHI`/`LDSI`) still run as NOP pending firmer sourcing. Issue
-#347 tracks the remaining gap; this reference is its source.
+hand-derived vector). **All ten undocumented opcodes now execute** —
+`SHLX`/`LHLX`/`RSTV`/`JK`/`JNK` (§3, sequencing item 2) and the five ALU-affecting
+ones `DSUB`/`ARHL`/`RDEL`/`LDHI`/`LDSI` (item 3, this table). Issue #347 tracks what
+remains (SID/SOD and the RST n.5/TRAP pins wired to boards); this reference is its source.
 
 **The gate problem, stated plainly.** `8085EXM`'s `0D5h` mask means the stock
 exerciser structurally **cannot** see V or K (§1) — a faithful-V/K core passes it
@@ -219,11 +219,15 @@ overflows; a signed compare where the second operand is larger sets K; `INX` of
    disassemble DDT-style (`?\?= XX *MNEM`, one byte) — Intel-undocumented regardless
    of the core running them, exactly as the 8080's own executed-but-undocumented
    0xCB-as-JMP does.
-3. **The five ALU-affecting undocumented opcodes** — `DSUB`, `ARHL`, `RDEL`, `LDHI`,
-   `LDSI` — are now fully sourced (§2: Tundra data sheet + *Electronics*, agreeing).
-   `ARHL` (CY only), `LDHI`/`LDSI` (no flags) and `RDEL` (CY + V) are landable as-is;
-   `DSUB` lands with the 16-bit flag-derivation modeling choice noted at its §2 row.
-   Gate them the same way as V/K: hand-derived vectors, oracle = these primary tables.
+3. **The five ALU-affecting undocumented opcodes** — DONE. `DSUB`, `ARHL`, `RDEL`,
+   `LDHI`, `LDSI` execute in the core, sourced from §2 (Tundra data sheet +
+   *Electronics*, agreeing): `ARHL` (CY only), `LDHI`/`LDSI` (no flags), `RDEL` (CY +
+   V), and `DSUB` (all seven, with the 16-bit flag-derivation modeling choice of its §2
+   row realised in `Cpu8085::dsub` as two chained 8-bit subtracts). Gated the same way
+   as V/K: hand-derived vectors in `test_8085_cpu.cpp`, oracle = these primary tables.
+4. **SID/SOD and the RST 5.5/6.5/7.5 + TRAP pins wired to real boards** — the one
+   piece of #347 still open. The latches exist and the unit tests drive them; what is
+   left is board wiring (issue #233 / #347).
 
 Nothing here changes the documented gate: because `8085EXM` masks V/K out and the
 undocumented opcodes are distinct byte values the exerciser never emits, adding all
