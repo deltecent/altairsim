@@ -151,36 +151,13 @@ jobs:
       # expect drives the interactive acceptance tests. Ubuntu needs it installed;
       # macOS ships it; Windows gets none -- those tests self-skip at configure time
       # (CMakeLists.txt: if(EXPECT_EXECUTABLE)) and the build/other tests still run.
-      #
-      # `apt-get update` reaches EVERY configured mirror and intermittently HANGS on a
-      # slow or unreachable one -- a leg once sat 24 minutes on this step with nothing
-      # else wrong, twice in a row. So: try a plain `install` FIRST (the runner image
-      # ships fresh-enough apt lists, so the flaky `update` is usually unnecessary), fall
-      # back to `update`+install only if that misses, bound every apt call with `timeout`
-      # so a wedged mirror is killed instead of stalling the leg, and retry three times
-      # before failing fast and red. timeout-minutes is the outer backstop.
+      # The install goes through tools/ci-apt-install.sh because the runners'
+      # `apt-get update` intermittently HANGS on a slow mirror; the helper tries a
+      # plain install first, times out and retries, and fails fast instead of stalling.
       - name: Install expect (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 12
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          set -uo pipefail
-          install_expect() {
-            sudo timeout 150 apt-get install -y --no-install-recommends expect && return 0
-            sudo timeout 150 apt-get update -o Acquire::Retries=3 \
-              && sudo timeout 150 apt-get install -y --no-install-recommends expect
-          }
-          for attempt in 1 2 3; do
-            if install_expect; then
-              echo "expect installed on attempt $attempt"
-              exit 0
-            fi
-            echo "::warning::expect install attempt $attempt failed or timed out; retrying in 15s"
-            sleep 15
-          done
-          echo "::error::could not install expect after 3 attempts"
-          exit 1
+        run: bash tools/ci-apt-install.sh expect
 
       # SDL3 ON EXACTLY ONE LEG, AND THAT IS THE POINT. display_sdl.cpp is macro-gated
       # behind find_package(SDL3), so with no SDL3 anywhere in CI it was compiled by
