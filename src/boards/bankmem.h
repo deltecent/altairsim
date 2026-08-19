@@ -62,6 +62,12 @@ public:
     // ExpandoRAM II common-memory partition (see the header note). None = whole 64K
     // plane; Ex48 = 48K banked + 16K common @ C000; Ex32 = 32K banked + 32K common @ 8000.
     enum class Partition { None, Ex48, Ex32 };
+    // PHANTOM* honoring, the `memory` board's jumper for a RAM card that sits UNDER a boot
+    // PROM (see the header note and s100-memory.h). None = never step aside; Read = step
+    // aside for reads but keep taking writes (so a cold-boot loader's writes fall through
+    // to this RAM while the PROM shadows reads); All = step aside for reads and writes.
+    // Class-scoped so it does not collide with the `memory` board's altair::PhantomHonor.
+    enum class PhantomHonor { None, Read, All };
 
     MemBankBoard() { rebuildSegments(); }
 
@@ -119,6 +125,11 @@ private:
     // The card's decode: recompute segment `enabled` flags from the select byte.
     void select(uint8_t data);
 
+    // Do I take myself off the bus for THIS cycle when another board pulls PHANTOM*?
+    // (See PhantomHonor.) bankmem carries no ROM, so it never asserts phantom itself --
+    // there is no self-shutoff hazard the `memory` board has to guard against.
+    bool honors(const BusCycle& c) const;
+
     // The enabled segment covering `a`, or nullptr. Reports intra-board contention
     // (two enabled segments over one address -- a Cromemco bus fight) once.
     Segment*       owner(uint16_t a);
@@ -134,6 +145,7 @@ private:
 
     Card card_ = Card::Vector;
     Partition partition_ = Partition::None;
+    PhantomHonor honors_ = PhantomHonor::None;  // config jumper; default off (no PROM overlay)
     uint8_t port_ = 0x40;
     int wantBanks_ = 8;                  // requested plane/bank/page count (config)
     std::vector<Segment> segs_;

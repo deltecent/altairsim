@@ -285,9 +285,23 @@ const MemBankBoard::Segment* MemBankBoard::owner(uint16_t a) const {
 // The bus interface
 // ---------------------------------------------------------------------------
 
+bool MemBankBoard::honors(const BusCycle& c) const {
+    if (honors_ == PhantomHonor::All) return true;
+    return honors_ == PhantomHonor::Read && c.type == Cycle::MemRead;
+}
+
 bool MemBankBoard::decodes(const BusCycle& c) const {
     if (c.type == Cycle::IoWrite) return c.port() == port_;   // the write-only select port
     if (c.type != Cycle::MemRead && c.type != Cycle::MemWrite) return false;
+
+    // SOMEONE ELSE pulls PHANTOM* -- an SBC-200 / VersaFloppy boot PROM shadowing the RAM
+    // it sits under -- and I am strapped to honor it, so I take myself off the bus for this
+    // cycle. With honors=read I keep answering WRITES, which is what lets a cold-boot loader
+    // write the system into the RAM the PROM is shadowing (the ExpandoRAM-under-SBC-PROM
+    // case, exactly like the `memory` board under a Tarbell PROM). No self-shutoff guard is
+    // needed here because bankmem carries no ROM and never asserts phantom itself.
+    if (c.phantom && honors(c)) return false;
+
     return owner(c.addr) != nullptr;
 }
 
@@ -502,6 +516,29 @@ std::vector<Property> MemBankBoard::properties() {
             }
             wantBanks_ = n;
             rebuildSegments();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "honors_phantom";
+        x.help = "A JUMPER. Another board pulls PHANTOM* (a boot PROM shadowing the RAM "
+                 "this card sits under) -- do I switch off? none | read | all. `read` keeps "
+                 "answering writes so a cold-boot loader falls through to this RAM while the "
+                 "PROM shadows reads (an ExpandoRAM II under the SBC-200 boot PROM). Default "
+                 "none -- a plain banked-RAM machine has no PROM overlay";
+        x.kind = Kind::Enum;
+        x.choices = {"none", "read", "all"};
+        x.get = [this] {
+            return Value::ofStr(honors_ == PhantomHonor::None   ? "none"
+                                : honors_ == PhantomHonor::Read ? "read"
+                                                                : "all");
+        };
+        x.set = [this](const Value& v, std::string&) {
+            honors_ = v.s() == "none"   ? PhantomHonor::None
+                      : v.s() == "read" ? PhantomHonor::Read
+                                        : PhantomHonor::All;
             return true;
         };
         p.push_back(std::move(x));

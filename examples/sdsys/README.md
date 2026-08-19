@@ -99,9 +99,99 @@ the SDOS machine:
   on the memory card and never switch anything out.)
 
 The disk is `SD-CPM22R4-SSDDR-256-64K.DSK` -- the same 8" DD-256 format as the SDOS master,
-sysgen'd for a 64K system -- mounted **read/write**. A 32K image
-(`SD-CPM22R4-SSDDR-256-32K.DSK`) boots on the same machine too; being a 32K system it loads
-below the PROM and so never needs the switch-out.
+sysgen'd for a 64K system -- mounted **read/write**. (A CP/M sysgen'd for 32K would load below
+the PROM and so never need the switch-out at all.)
+
+## Booting non-banked CP/M 3
+
+`cpm3-nb.toml` boots **SD Systems CP/M Plus 3.0 (non-banked)** on a plain **64K RAM** board --
+the same SBC-200 and VersaFloppy II as the CP/M 2.2 machine. The whole operating system fits
+inside the 64K address space, so there is no ExpandoRAM II and no bank switching; the loader
+brings in two resident modules, `BIOS3.SPR` and `BDOS3.SPR`, which leaves a **48K TPA** --
+versus the banked build's 60K, the price of keeping the whole OS resident in-address-space
+instead of paging its far half into a bank.
+
+```
+cd examples/sdsys
+altairsim cpm3-nb.toml
+(press Enter)   ->   .
+C               ->   cold-boot CP/M 3 from drive A
+```
+
+```
+ 48K TPA
+SD Systems CP/M Plus Ver 3.0
+                        CONGRATULATIONS
+             Systems Version Of CP/M + Version 3.0,
+             Rel. 1.6, for -200 series boards.
+             ...
+A>
+```
+
+The sign-on is customized on this disk: after "SD Systems CP/M Plus Ver 3.0" the CBIOS prints
+`SIGNON.DAT` from drive A: -- a CONGRATULATIONS banner for the -200 series boards, edited in
+with `ED.COM`. Erase or rename `SIGNON.DAT` and the default one-line sign-on returns.
+
+The non-banked distribution came on **three 8" disks**, and the whole set ships here:
+
+- `CPM3-NB-SSDD-48K-DISK1.DSK` (A:, mounted) -- the bootable system: `CPM3.SYS`,
+  `BIOS3.SPR`/`BDOS3.SPR`, `CCP.COM`, the core utilities (PIP, ED, SID, DUMP, DIR, SET, DEVICE,
+  DATE...) and the DRI toolchain (MAC, RMAC, LINK, LIB, GENCPM), plus `SIGNON.DAT`.
+- `CPM3-NB-SSDD-DISK2.DSK` (B:, mounted) -- the CBIOS object modules (`.REL`), the non-banked
+  link scripts, and more utilities (HELP, SHOW, FORMAT, MCOPY, SETDEF, INITDIR, VERIFY...).
+- `CPM3-NB-SSDD-DISK3.DSK` (ships, **not mounted**) -- the CBIOS assembly *source* (`.ASM`/
+  `.LIB`). The shipped CBIOS is a **two-drive** build (A: and B:), so there is no C: for it to
+  appear on; regenerate the BIOS for a third drive, or swap it onto B:, to reach the sources.
+
+All are mounted **read/write**; `git checkout` restores any you change. As in the CP/M 2.2
+machine, the keyboard is interrupt-driven and the onboard PROM switches out with `OUT 7F,3`,
+and the **Host Bridge** (`hb0`, ports B0/B1) is present for moving files to and from the host.
+
+## Booting banked CP/M 3
+
+`cpm3-b.toml` boots **SD Systems CP/M Plus 3.0 (banked)** -- the same SBC-200 and
+VersaFloppy II, but with the RAM replaced by a **256K ExpandoRAM II** so the operating system
+can be bigger than the 64K address space:
+
+```
+cd examples/sdsys
+altairsim cpm3-b.toml
+(press Enter)   ->   .
+C               ->   cold-boot CP/M 3 from drive A
+```
+
+```
+SD Systems CP/M Plus Ver 3.0
+Banked  Rel. 1.5 Apr 18,1983
+
+A>
+```
+
+The memory is the point. The ExpandoRAM II is the `bankmem` board's `expandoram2` card with
+`partition=ex48`: **five 48K banks** (`0000-BFFF`) under a shared **16K common region**
+(`C000-FFFF`). The resident BDOS/BIOS and the bank-switch routine live in that common region --
+the same RAM in every bank, so they survive the bank change -- while the switchable half of the
+system and the disk buffers live in the banks. CP/M 3's BIOS selects a bank by writing its page
+number to **port FF**; `SHOW mem0` at the `A>` prompt shows `active = bank N + common`, the guest
+banking live. Because the ExpandoRAM sits under the SBC boot PROM, it is strapped
+`honors_phantom = "read"`, exactly as the plain RAM card is in the CP/M 2.2 machine.
+
+The banked distribution also came on **three 8" disks**, all shipped here:
+
+- `CPM3-B-SSDD-60K-DISK1.DSK` (A:, mounted) -- the bootable banked system: `CPM3.SYS`,
+  `BNKBIOS3.SPR`/`BNKBDOS3.SPR`, `CCP.COM`, the utilities and the DRI toolchain (MAC, RMAC,
+  LINK, GENCPM), giving a **60K TPA**.
+- `CPM3-B-SSDD-DISK2.DSK` (B:, mounted) -- more utilities (PIP, ED, SID, SET, SHOW, SYSGEN,
+  MAC/RMAC, XREF...) and the CBIOS object modules, link scripts and `SIGNON.DAT`.
+- `CPM3-B-SSDD-DISK3.DSK` (ships, **not mounted**) -- the CBIOS assembly *source* (`.ASM`/
+  `.LIB`/`.SUB`), an 8" **single-density** image (the other two are double-density).
+
+All are mounted **read/write**; `git checkout` restores any you change. See
+`docs/boards/bankmem.md` for the ExpandoRAM II and its common-memory partition.
+
+This machine also carries the **Host Bridge** (`hb0`, ports B0/B1), so `R.COM`/`W.COM`/`HDIR`
+can move files between the guest and the host directory you launched from -- handy for getting
+files on and off the CP/M 3 disk. See `docs/boards/hostbridge.md`.
 
 ## A video console instead of a serial terminal
 

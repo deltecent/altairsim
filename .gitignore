@@ -131,6 +131,12 @@ examples/**
 !examples/sdsys/SDOS-18B-SSDDR-256-32K-MASTER.DSK
 !examples/sdsys/SDOS-18B-SSDDV-256-32K.DSK
 !examples/sdsys/SD-CPM22R4-SSDDR-256-64K.DSK
+!examples/sdsys/CPM3-NB-SSDD-48K-DISK1.DSK
+!examples/sdsys/CPM3-NB-SSDD-DISK2.DSK
+!examples/sdsys/CPM3-NB-SSDD-DISK3.DSK
+!examples/sdsys/CPM3-B-SSDD-60K-DISK1.DSK
+!examples/sdsys/CPM3-B-SSDD-DISK2.DSK
+!examples/sdsys/CPM3-B-SSDD-DISK3.DSK
 !examples/tarbell/CPM22b15-48K-SSSD.DSK
 !examples/tarbell/TARBELLDD-CPM22-SSDD-48K.DSK
 !examples/tarbell/TARBELLDD-CPM22-SSDD-48K-DMA.DSK

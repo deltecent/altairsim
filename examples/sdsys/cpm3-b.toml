@@ -1,0 +1,98 @@
+# SD Systems SBC-200 + VersaFloppy II + ExpandoRAM II -- boots BANKED CP/M 3.
+#
+#     cd examples/sdsys
+#     altairsim cpm3-b.toml
+#     (press Enter)   ->   .        <- MSMONR21 auto-bauds off the CR
+#     C               ->   SD Systems CP/M Plus Ver 3.0 ...   A>
+#
+# WHAT MAKES THIS DIFFERENT FROM THE CP/M 2.2 MACHINE (cpm.toml) is the memory. CP/M 3
+# here is a BANKED system: the operating system is bigger than the 64K address space, so
+# it lives in an ExpandoRAM II -- 256K of RAM in five 48K banks under a 16K COMMON region
+# at C000-FFFF. The resident BDOS/BIOS and the bank-switch routine itself live in that
+# common region (it is the same RAM in every bank, so it survives the OUT that changes
+# banks); the switchable half of the BDOS/BIOS and the disk buffers live in the banks.
+# The ExpandoRAM II is the `bankmem` board's `expandoram2` card with `partition=ex48`
+# (48K banked + 16K common) and `ram=256`; the guest switches banks by writing the page
+# number to port FF. See docs/boards/bankmem.md.
+#
+# EVERYTHING ELSE IS THE SBC-200, exactly as in cpm.toml: the CBIOS console driver runs
+# the keyboard under a Z80 mode-2 interrupt off the 8251's RxRDY (vector at FF82), and the
+# onboard boot PROM (monitor at E000 + DDBIOS at F000) shadows the top of RAM until cold
+# boot switches it out with `OUT 7F,3`. The ExpandoRAM sits UNDER that PROM, so it is
+# strapped `honors_phantom = "read"`: while the PROM is enabled it shadows reads, but the
+# loader's writes fall straight through to the RAM it is loading the system into.
+#
+# WHY YOU MUST PRESS ENTER FIRST. As on every SBC-200 serial machine, MSMONR21 auto-bauds
+# off the start bit of the first character you type. It prints nothing until then -- press
+# Enter. See reference/SD Systems SBC-100 & SBC-200.md.
+
+[machine]
+name    = "cpm3-banked"
+startup = ["RUN E000"]                 # enter the onboard monitor PROM (as reset would)
+
+# THE CPU. A 4 MHz Z80. On the real board the CPU is on the SBC card itself; here it is
+# the generic z80 board, and the SBC card carries the 8251, CTC, parallel port and PROM.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE SBC-200's I/O and onboard PROM. The 8251 console at 7C/7D, the CTC keyboard
+# interrupt, the parallel port with the memory switch-out at 7F, and the two boot-PROM
+# sockets: the MSMONR21 monitor at E000 and the DDBIOS disk BIOS at F000.
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:msmonr21"           # the RS232 (MS) monitor PROM
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"             # the DDBIOS VersaFloppy boot BIOS
+
+# THE EXPANDORAM II -- 256K of banked RAM, EX-48 partition: five 48K banks (0000-BFFF)
+# under a shared 16K common region (C000-FFFF). `honors_phantom = read` lets the SBC boot
+# PROM shadow it for reads while the cold-boot loader's writes fall through -- so after the
+# boot sector's `OUT 7F,3` the whole banked machine is live and CP/M 3 runs from it.
+[[board]]
+type           = "bankmem"
+id             = "mem0"
+card           = "expandoram2"
+partition      = "ex48"                # 48K banked (0000-BFFF) + 16K common (C000-FFFF)
+ram            = 256                   # 256K -> five 48K banks; bank select at port FF
+honors_phantom = "read"                # sits under the SBC boot PROM
+fill           = "random"              # real dynamic RAM does not come up zeroed
+
+# THE VERSAFLOPPY II -- a WD FD1791 soft-sector controller at the standard 60H block,
+# with the banked CP/M 3 master in drive A (8" single-sided double-density, 256-byte
+# sectors, 26x77). `C` at the monitor prompt cold-boots it.
+[[board]]
+type    = "versafloppy"
+id      = "vf0"
+variant = "vfii"
+port    = 60
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CPM3-B-SSDD-60K-DISK1.DSK"
+
+  [[board.drive]]
+  unit  = 1
+  mount = "CPM3-B-SSDD-DISK2.DSK"
+
+# THE HOST BRIDGE at ports B0/B1 -- our own board, not a period one. R.COM/W.COM/HDIR.COM on the
+# CP/M disk move files between the guest and the host, sandboxed to `hostdir` (empty = the
+# shell's working directory). See docs/boards/hostbridge.md.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
