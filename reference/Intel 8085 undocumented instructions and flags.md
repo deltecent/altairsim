@@ -161,11 +161,12 @@ Notes:
 
 ## 3. What this means for `altairsim`
 
-The `8085` core (`src/cpu/cpu8085.{h,cpp}`) currently models the **documented**
-8085: RIM/SIM, the TRAP/RST n.5 interrupts, and the faithful `ANA` half-carry,
-gated by `8085EXM` (real-silicon CRCs). The V/K bits are pinned to the 8080
-constants and the ten undocumented opcode slots run as NOP. Issue #347 tracks
-closing that gap; this reference is its source.
+The `8085` core (`src/cpu/cpu8085.{h,cpp}`) models the **documented** 8085 —
+RIM/SIM, the TRAP/RST n.5 interrupts, and the faithful `ANA` half-carry, gated by
+`8085EXM` (real-silicon CRCs) — **plus the V and K bits of §1**, which now compute
+per the rules above and ride PSW bits 1 and 5 (`test_8085_cpu.cpp` pins them by
+hand-derived vector). The ten undocumented opcode slots still run as NOP. Issue #347
+tracks the remaining gap; this reference is its source.
 
 **The gate problem, stated plainly.** `8085EXM`'s `0D5h` mask means the stock
 exerciser structurally **cannot** see V or K (§1) — a faithful-V/K core passes it
@@ -180,9 +181,9 @@ overflows; a signed compare where the second operand is larger sets K; `INX` of
 
 **Sequencing (issue #347):**
 
-1. **V/K flags** — fully sourced here (§1), gated by hand-derived vectors. Landing
-   V/K also makes `RSTV`/`JK`/`JNK` implementable, since they only branch on the new
-   bits.
+1. **V/K flags** — DONE. Sourced here (§1), gated by hand-derived vectors in
+   `test_8085_cpu.cpp`. This also makes `RSTV`/`JK`/`JNK` implementable, since they
+   only branch on the new bits.
 2. **The undocumented opcodes** — §2, but the ALU-affecting ones (`DSUB`, `ARHL`,
    `RDEL`) and the `LDHI`/`LDSI` flag question need a primary source first. The pure
    data-movement ones (`SHLX`, `LHLX`) and the flag-conditional jumps/`RSTV` are

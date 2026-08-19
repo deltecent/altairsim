@@ -93,10 +93,24 @@ bool Cpu8085::cond(int i) const {
 }
 
 // ---------------------------------------------------------------------------
-// The flags: S Z 0 AC 0 P 1 CY -- the 8080 layout, unchanged. The 8085's V and K
-// bits are not modeled in this landing (cpu8085.h), so parity stays EVEN parity
-// and the PSW constants stay as the 8080 defines them.
+// The flags: S Z K AC 0 P V CY. Same as the 8080 except the two positions the 8080
+// nails to constants now carry the 8085's computed condition bits -- V (bit 1) and
+// K/X5 (bit 5). Their rules come from Ken Shirriff's silicon die analysis, distilled
+// in reference/Intel 8085 undocumented instructions and flags.md (issue #347).
+//
+//   V = (carry into bit 7) XOR (carry out of bit 7)   -- signed overflow.
+//   K = V XOR (sign of the result)                    -- except INX/DCX (see below).
+//
+// addOverflow() is that V rule for an 8-bit add x + y + c: subtraction feeds it the
+// ones-complement operand and carry-in 1 (the ALU's actual inputs), so V is computed
+// from the RAW internal carry, before the 8080 borrow-inversion.
 // ---------------------------------------------------------------------------
+static bool addOverflow(uint8_t x, uint8_t y, unsigned c) {
+    unsigned full = (unsigned)x + y + c;
+    unsigned low7 = (unsigned)(x & 0x7F) + (y & 0x7F) + c;
+    return (((low7 >> 7) & 1) ^ ((full >> 8) & 1)) != 0;
+}
+
 static constexpr std::array<bool, 256> kEvenParity = [] {
     std::array<bool, 256> t{};
     for (int v = 0; v < 256; ++v) {
@@ -115,10 +129,12 @@ void Cpu8085::setSZP(uint8_t v) {
 }
 
 uint8_t Cpu8085::psw() const {
-    uint8_t f = 0x02;  // bit1 reads 1, bits 3/5 read 0 -- the 8080 constants (cpu8080.cpp)
+    uint8_t f = 0;  // bit 3 reads 0; bits 1 and 5 now carry the 8085's V and K
     if (cy_) f |= 0x01;
+    if (v_)  f |= 0x02;   // 8085: V (the 8080's always-1 filler)
     if (p_)  f |= 0x04;
     if (ac_) f |= 0x10;
+    if (k_)  f |= 0x20;   // 8085: K / X5 (the 8080's always-0 filler)
     if (z_)  f |= 0x40;
     if (s_)  f |= 0x80;
     return f;
@@ -126,18 +142,23 @@ uint8_t Cpu8085::psw() const {
 
 void Cpu8085::setPsw(uint8_t f) {
     cy_ = (f & 0x01) != 0;
+    v_  = (f & 0x02) != 0;
     p_  = (f & 0x04) != 0;
     ac_ = (f & 0x10) != 0;
+    k_  = (f & 0x20) != 0;
     z_  = (f & 0x40) != 0;
     s_  = (f & 0x80) != 0;
 }
 
 void Cpu8085::add(uint8_t v, bool carryIn) {
-    unsigned r = (unsigned)a_ + v + (carryIn ? 1 : 0);
-    ac_ = ((a_ & 0x0F) + (v & 0x0F) + (carryIn ? 1 : 0)) > 0x0F;
+    unsigned c = carryIn ? 1 : 0;
+    unsigned r = (unsigned)a_ + v + c;
+    ac_ = ((a_ & 0x0F) + (v & 0x0F) + c) > 0x0F;
     cy_ = r > 0xFF;
+    v_ = addOverflow(a_, v, c);
     a_ = (uint8_t)r;
     setSZP(a_);
+    k_ = (v_ != s_);
 }
 
 void Cpu8085::sub(uint8_t v, bool borrowIn) {
@@ -145,9 +166,11 @@ void Cpu8085::sub(uint8_t v, bool borrowIn) {
     unsigned carryIn = borrowIn ? 0 : 1;
     unsigned r = (unsigned)a_ + nv + carryIn;
     ac_ = ((a_ & 0x0F) + (nv & 0x0F) + carryIn) > 0x0F;
-    cy_ = !(r > 0xFF);
+    cy_ = !(r > 0xFF);            // stored CY is the INVERTED borrow ...
+    v_ = addOverflow(a_, nv, carryIn);  // ... but V uses the raw internal carry
     a_ = (uint8_t)r;
     setSZP(a_);
+    k_ = (v_ != s_);
 }
 
 void Cpu8085::cmp(uint8_t v) {
@@ -162,11 +185,15 @@ void Cpu8085::cmp(uint8_t v) {
 // cores, and it is why the 8085 board is gated by 8085EXM -- whose CRCs were read
 // off real 8085 silicon -- rather than 8080EXM. tests/cpu/PROVENANCE.md records
 // the exerciser; tests/test_8085_cpu.cpp pins the rule directly. (issue #347)
+// The logical ops force V = 0 (constant carry inside the ALU), so K reduces to the
+// sign of the result (Shirriff; reference file 1.2).
 void Cpu8085::ana(uint8_t v) {
     ac_ = true;
     a_ &= v;
     cy_ = false;
     setSZP(a_);
+    v_ = false;
+    k_ = s_;
 }
 
 void Cpu8085::xra(uint8_t v) {
@@ -174,6 +201,8 @@ void Cpu8085::xra(uint8_t v) {
     cy_ = false;
     ac_ = false;
     setSZP(a_);
+    v_ = false;
+    k_ = s_;
 }
 
 void Cpu8085::ora(uint8_t v) {
@@ -181,25 +210,43 @@ void Cpu8085::ora(uint8_t v) {
     cy_ = false;
     ac_ = false;
     setSZP(a_);
+    v_ = false;
+    k_ = s_;
 }
 
+// INR/DCR leave CY alone but do compute V and K. INR is v + 1, DCR is v + 0xFF (the
+// ALU decrements by adding the ones-complement of 1). By the overflow rule that lands
+// V only on 0x7F->0x80 (INR) and 0x80->0x7F (DCR); K = V XOR sign as usual.
 uint8_t Cpu8085::inr(uint8_t v) {
     uint8_t r = (uint8_t)(v + 1);
     ac_ = (r & 0x0F) == 0;
+    v_ = addOverflow(v, 1, 0);
     setSZP(r);
+    k_ = (v_ != s_);
     return r;
 }
 
 uint8_t Cpu8085::dcr(uint8_t v) {
     uint8_t r = (uint8_t)(v - 1);
     ac_ = (r & 0x0F) != 0x0F;
+    v_ = addOverflow(v, 0xFF, 0);
     setSZP(r);
+    k_ = (v_ != s_);
     return r;
 }
 
+// DAD writes CY (documented) plus V and K -- and NOTHING else (S/Z/P/AC untouched).
+// V is the overflow of the high-order byte addition: carry into bit 15 XOR carry out
+// of bit 15. K = V XOR bit 15 of the result. K is meaningless for DAD (an unsigned
+// add) but the silicon computes it anyway (reference file 1.1/1.2).
 void Cpu8085::dad(uint16_t v) {
     unsigned r = (unsigned)hl() + v;
     cy_ = r > 0xFFFF;
+    unsigned low15 = (unsigned)(hl() & 0x7FFF) + (v & 0x7FFF);
+    bool cin15 = (low15 & 0x8000) != 0;
+    bool cout15 = (r & 0x10000) != 0;
+    v_ = (cin15 != cout15);
+    k_ = (v_ != ((r & 0x8000) != 0));
     h_ = (uint8_t)(r >> 8);
     l_ = (uint8_t)(r & 0xFF);
 }
@@ -215,9 +262,11 @@ void Cpu8085::daa() {
     }
 
     ac_ = ((a_ & 0x0F) + (add & 0x0F)) > 0x0F;
+    v_ = addOverflow(a_, add, 0);  // overflow of the decimal-adjust addition (a + add)
     a_ = (uint8_t)(a_ + add);
     setSZP(a_);
     cy_ = carry;
+    k_ = (v_ != s_);
 }
 
 // A hardware restart (TRAP / RST n.5). Push PC, jump to the fixed vector, disable
@@ -266,6 +315,8 @@ std::vector<RegDef> Cpu8085::registers() {
         flag("S", "M", "sign -- minus", &s_),
         flag("P", "E", "parity -- EVEN parity", &p_),
         flag("AC", "I", "auxiliary (half) carry -- interdigit", &ac_),
+        flag("V", "V", "8085 overflow -- carry-in XOR carry-out of bit 7", &v_),
+        flag("K", "K", "8085 X5 -- V XOR sign (INX/DCX: the 16-bit carry)", &k_),
 
         {"A", 8, "", RegShow::Field, "accumulator", [this] { return (uint32_t)a_; },
          [this](uint32_t v) { a_ = (uint8_t)v; }},
@@ -282,7 +333,7 @@ std::vector<RegDef> Cpu8085::registers() {
         half("B", &b_), half("C", &c_),
         half("D", &d_), half("E", &e_),
         half("H", &h_), half("L", &l_),
-        {"F", 8, "", RegShow::Off, "flags: S Z 0 AC 0 P 1 CY", [this] { return (uint32_t)psw(); },
+        {"F", 8, "", RegShow::Off, "flags: S Z K AC 0 P V CY", [this] { return (uint32_t)psw(); },
          [this](uint32_t v) { setPsw((uint8_t)v); }},
 
         // 8085 interrupt system: masks, pending latches, and the serial pins.
@@ -458,15 +509,19 @@ StepResult Cpu8085::step(Bus& bus) {
             break;
         }
 
-        // ---- INX / DCX -- NO FLAGS AT ALL ----
-        case 0x03: { uint16_t v = (uint16_t)(bc() + 1); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 5; break; }
-        case 0x13: { uint16_t v = (uint16_t)(de() + 1); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 5; break; }
-        case 0x23: { uint16_t v = (uint16_t)(hl() + 1); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 5; break; }
-        case 0x33: ++sp_; t = 5; break;
-        case 0x0B: { uint16_t v = (uint16_t)(bc() - 1); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 5; break; }
-        case 0x1B: { uint16_t v = (uint16_t)(de() - 1); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 5; break; }
-        case 0x2B: { uint16_t v = (uint16_t)(hl() - 1); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; t = 5; break; }
-        case 0x3B: --sp_; t = 5; break;
+        // ---- INX / DCX -- the ONE 8085 special case for K. These 16-bit inc/dec do
+        // NOT go through the V-XOR-sign path: K is the carry (INX) / borrow (DCX) out
+        // of the 16-bit incrementer directly, and V and every other flag are left
+        // untouched (Shirriff's carry_to_k_flag line; reference file 1.2). So INX sets
+        // K only when the pair was 0xFFFF, DCX only when it was 0x0000. ----
+        case 0x03: { uint16_t o = bc(); uint16_t v = (uint16_t)(o + 1); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; k_ = (o == 0xFFFF); t = 5; break; }
+        case 0x13: { uint16_t o = de(); uint16_t v = (uint16_t)(o + 1); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; k_ = (o == 0xFFFF); t = 5; break; }
+        case 0x23: { uint16_t o = hl(); uint16_t v = (uint16_t)(o + 1); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; k_ = (o == 0xFFFF); t = 5; break; }
+        case 0x33: k_ = (sp_ == 0xFFFF); ++sp_; t = 5; break;
+        case 0x0B: { uint16_t o = bc(); uint16_t v = (uint16_t)(o - 1); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; k_ = (o == 0x0000); t = 5; break; }
+        case 0x1B: { uint16_t o = de(); uint16_t v = (uint16_t)(o - 1); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; k_ = (o == 0x0000); t = 5; break; }
+        case 0x2B: { uint16_t o = hl(); uint16_t v = (uint16_t)(o - 1); h_ = (uint8_t)(v >> 8); l_ = (uint8_t)v; k_ = (o == 0x0000); t = 5; break; }
+        case 0x3B: k_ = (sp_ == 0x0000); --sp_; t = 5; break;
 
         case 0x09: dad(bc());  t = 10; break;
         case 0x19: dad(de());  t = 10; break;
@@ -498,11 +553,42 @@ StepResult Cpu8085::step(Bus& bus) {
             break;
         }
 
-        // ---- rotates. CARRY ONLY. ----
-        case 0x07: cy_ = (a_ & 0x80) != 0; a_ = (uint8_t)((a_ << 1) | (cy_ ? 1 : 0)); break;      // RLC
-        case 0x0F: cy_ = (a_ & 0x01) != 0; a_ = (uint8_t)((a_ >> 1) | (cy_ ? 0x80 : 0)); break;   // RRC
-        case 0x17: { bool c = cy_; cy_ = (a_ & 0x80) != 0; a_ = (uint8_t)((a_ << 1) | (c ? 1 : 0)); break; }     // RAL
-        case 0x1F: { bool c = cy_; cy_ = (a_ & 0x01) != 0; a_ = (uint8_t)((a_ >> 1) | (c ? 0x80 : 0)); break; }  // RAR
+        // ---- rotates. Documented as CARRY ONLY (S/Z/P/AC untouched), but the 8085
+        // ALU still latches V and K: Shirriff treats the left rotates as A + A, so V
+        // is bit6 XOR bit7 of the old A; the right rotates have a constant carry, so
+        // V = 0 and K falls back to the sign of the result (reference file 1.2). ----
+        case 0x07: {  // RLC
+            uint8_t old = a_;
+            cy_ = (old & 0x80) != 0;
+            a_ = (uint8_t)((old << 1) | (cy_ ? 1 : 0));
+            v_ = (((old >> 6) & 1) != ((old >> 7) & 1));
+            k_ = (v_ != ((a_ & 0x80) != 0));
+            break;
+        }
+        case 0x0F: {  // RRC
+            cy_ = (a_ & 0x01) != 0;
+            a_ = (uint8_t)((a_ >> 1) | (cy_ ? 0x80 : 0));
+            v_ = false;
+            k_ = (a_ & 0x80) != 0;
+            break;
+        }
+        case 0x17: {  // RAL
+            uint8_t old = a_;
+            bool c = cy_;
+            cy_ = (old & 0x80) != 0;
+            a_ = (uint8_t)((old << 1) | (c ? 1 : 0));
+            v_ = (((old >> 6) & 1) != ((old >> 7) & 1));
+            k_ = (v_ != ((a_ & 0x80) != 0));
+            break;
+        }
+        case 0x1F: {  // RAR
+            bool c = cy_;
+            cy_ = (a_ & 0x01) != 0;
+            a_ = (uint8_t)((a_ >> 1) | (c ? 0x80 : 0));
+            v_ = false;
+            k_ = (a_ & 0x80) != 0;
+            break;
+        }
 
         case 0x27: daa(); break;
         case 0x2F: a_ = (uint8_t)~a_; break;        // CMA -- no flags
