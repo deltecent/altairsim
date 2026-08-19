@@ -377,6 +377,24 @@ public:
 };
 ```
 
+### 4.0 This is the Altair bus, not IEEE-696 — and that is a decision, not an omission
+
+The bus modeled here is the **1975 Altair 8800 bus** — the 100-pin backplane MITS shipped, later called S-100 when other makers cloned it. It is **not IEEE-696-1983**, the belated formal standard, and this simulator will not grow toward 696. That is a position, and the reasons are real even where the conclusion is also a preference. **On principle: no IEEE-696 here.** (Patrick.)
+
+**696 was a different bus wearing the same connector.** The committee needed a 16-bit, multi-processor, 16 MB bus, and it got there by *redefining pins the Altair had left undefined, grounded, or spent on the front panel*:
+
+- **Address** went from A0–A15 (64 KB, all an 8080 can address) to A0–A23 (16 MB), by claiming previously reserved pins.
+- **Data** went from the Altair's **two separate 8-bit unidirectional buses** (DI0–7 in, DO0–7 out — a shape this simulator's `BusCycle` still mirrors) to a scheme where those same lines combine into one 16-bit path.
+- The 8080-specific **status byte** the Altair broadcast every cycle — the thing the front panel and this simulator's `Cycle` enum both read — was **generalized away**, because a 68000 has no PSYNC/8080 status to broadcast.
+
+**Mixing an Altair board and a 696 board in one backplane is not merely unsupported — it is documented to be harmful.** The clearest case is the front panel's own signals. The Altair front panel drives **memory PROTECT / UNPROTECT** (pins 70 and 20) and **sense-switch disable** `/SSW DSBL` (pin 53) so the operator can write-protect memory and read the address/sense switches at port `0xFF`. IEEE-696 dropped those functions and **grounded** the pins. So an old Altair board that pulls pin 70 to protect its RAM, dropped into a 696 machine, is now shorting a signal the new machine grounds — and can disable the host. Two boards, same pin, two incompatible meanings, decided at the connector. There is no honest way to model *both* buses in one machine, because the real hardware could not share one either.
+
+And that last point is the one that matters most for **what this project is**. §1 calls this a hardware development bench whose reason to exist is the Altair and its **front panel** — a `Board` (`fp`) that halts the processor, seizes the address and data buses, and single-steps and examines memory using exactly the 8080 status lines and the protect / sense-switch pins that 696 threw out. IEEE-696's whole design goal — a processor-agnostic bus with formal temporary/permanent-master arbitration — is a goal that treats the Altair front panel as legacy weight to shed. A simulator built around that panel does not get to adopt the standard that deprecated it. The 696 machines are their own thing, well documented elsewhere; this one is the machine with the switches on the front.
+
+None of this bars a board that *happens* to be a later S-100 design from being modeled here, as long as it behaves within the Altair bus this simulator presents. What it bars is teaching the **bus** 696 semantics — 24-bit addressing, 16-bit data folding, arbitration the front panel cannot participate in. The Tarbell footnote in §4.2.2 is the same fault line seen from the board side: a **pre-696** card with no PHANTOM\* at all, which is exactly why it is the awkward one.
+
+> The pin facts above are read off the side-by-side S-100 / IEEE-696 pin list at **[s100computers.com](https://www.s100computers.com/S100%20Bus%20Pins.htm)** — John Monahan's archive, one of the authorized web sources in `docs/sources.md` — with the front-panel PROTECT/UNPROTECT/`/SSW DSBL` roles confirmed against the MITS *Altair 8800 Theory of Operation* (`reference/`, already in the manifest for the `fp` board). This is design rationale, not a board model, so it earns no `reference/*.md` of its own.
+
 ### 4.1 Registration and decode
 
 A board declares I/O port ranges and memory address ranges at construction (from its TOML config). The bus builds decode tables. `decodes()` is the second-level check for boards whose decode is conditional (bank-enabled, phantomed, drive-selected).
