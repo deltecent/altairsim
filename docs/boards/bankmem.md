@@ -93,11 +93,14 @@ planes. `banks` still works as the direct count knob; the two are two views of t
 | `partition` | enum | **expandoram2 only** — `none \| ex48 \| ex32`. Carves a shared common region (see *Common memory* above). Refused on the other cards, which are whole-64K planes. |
 | `ram` | int | Total board RAM in KB (≤ 256K on expandoram2). Derives `banks` from the partition; the other view of the same geometry. |
 | `active` | str | **Read-only** — the live bank(s), and `+ common` when a partition is set. The guest sets this by writing the select port. |
+| `honors_phantom` | enum | A jumper — `none \| read \| all`. When another board pulls PHANTOM\* (a boot PROM shadowing the RAM this card sits under), do I step off the bus? `read` steps aside for reads but keeps taking writes, so a cold-boot loader falls through to this RAM (the ExpandoRAM II under the SBC-200 boot PROM). Default `none`. |
 | `fill` | enum | RAM contents at power-on: `zero \| random` (real RAM is not zeroed). |
 | `seed` | int | Seed for `fill=random`, so a run is repeatable across POWER. |
 
-There is **no ROM region and no PHANTOM\* role**: none of these cards carried ROM, so what a bank
-select would do to a ROM plane is unknown, and we do not guess. Use the `memory` board for ROM.
+There is **no ROM region**: none of these cards carried ROM, so what a bank select would do to a
+ROM plane is unknown, and we do not guess. Use the `memory` board for ROM. The card therefore never
+*asserts* PHANTOM\* (that is a ROM card's job); it only *honors* it (`honors_phantom`), for the case
+where the banked RAM sits under someone else's boot PROM.
 
 ## Reset and snapshot
 
@@ -108,9 +111,14 @@ correct in a matching machine (`DESIGN.md` §13), exactly as the `memory` board 
 
 ## Driving it
 
-There is no banked operating system shipped to boot, so `bankmem` is proven by unit tests of each
-decode (`tests/test_bankmem.cpp`) and driven by hand from the monitor. The select port is
-write-only and the guest owns it, but the monitor's `OUT` writes it too:
+Each decode is proven by unit tests (`tests/test_bankmem.cpp`), and the `expandoram2` card boots a
+real banked operating system: `examples/sdsys/cpm3-b.toml` runs **SD Systems CP/M Plus 3.0
+(banked)** on an SBC-200 + VersaFloppy II with this board as a 256K ExpandoRAM II
+(`partition=ex48`, `honors_phantom=read`). The CP/M 3 BIOS bank-switches port FF with its resident
+half in the common region — `SHOW mem0` at the `A>` prompt reads `active = bank N + common`.
+
+The select port is also write-only and the guest owns it, but the monitor's `OUT` writes it too, so
+you can watch a plane swap by hand with no guest software:
 
 ```
 altairsim bankmem

@@ -168,6 +168,35 @@ void test_bankmem() {
     }
 
     {
+        // honors_phantom: an ExpandoRAM II sitting UNDER the SBC-200 boot PROM. With
+        // honors=read the card steps off the bus for a phantomed READ (the PROM drives it)
+        // but STILL takes the WRITE -- so the cold-boot loader writes the system into the
+        // RAM the PROM is shadowing. This is what makes the banked CP/M 3 machine boot.
+        Machine m;
+        auto* b = addBank(m, "mem0", "expandoram2");
+        std::string e2;
+        setProperty(*b, "partition", "ex48", e2);
+        setProperty(*b, "honors_phantom", "read", e2);
+        setProperty(*b, "fill", "zero", e2);
+        m.power();
+        CHECK(e2.empty(), "phantom: partition+honors_phantom set without error");
+
+        BusCycle rd{Cycle::MemRead, 0xE000, 0, false};       // common region, no phantom
+        CHECK(b->decodes(rd), "phantom: with no PHANTOM* the card answers reads normally");
+        rd.phantom = true;
+        CHECK(!b->decodes(rd), "phantom(read): a phantomed READ is left to the PROM");
+        BusCycle wr{Cycle::MemWrite, 0xE000, 0x5A, false};
+        wr.phantom = true;
+        CHECK(b->decodes(wr), "phantom(read): a phantomed WRITE still falls through to RAM");
+
+        // honors=none (the default) never steps aside -- backward compatible.
+        setProperty(*b, "honors_phantom", "none", e2);
+        BusCycle rd2{Cycle::MemRead, 0xE000, 0, false};
+        rd2.phantom = true;
+        CHECK(b->decodes(rd2), "phantom(none): the card ignores PHANTOM* entirely");
+    }
+
+    {
         // partition is an ExpandoRAM II concept; the other cards are whole-64K planes.
         Machine m;
         auto* b = addBank(m, "mem0", "vector");
