@@ -36,11 +36,15 @@ namespace {
 // exactly these twelve.
 //
 // DOCUMENTED vs the CORE. The core (src/cpu/cpu8085.cpp) executes RIM and SIM for
-// real but still runs the ten undocumented slots as NOP -- their faithful ALU and
-// the V/K flags are deferred to issue #347, gated on a genuine 8085 exerciser. So
-// the ten are marked `undoc` here and print DDT-style, exactly as the 8080's holes
-// do: `?\?= <byte>  *MNEM`, one byte, no operand invented. RIM/SIM, being real on
-// both the silicon and this core, decode as ordinary one-byte instructions.
+// real; it also now runs five of the undocumented ops for real (RSTV/SHLX/LHLX/JK/
+// JNK), while DSUB/ARHL/RDEL/LDHI/LDSI stay NOP pending firmer sourcing (issue #347).
+// Whether or not the core runs one, all ten are still Intel-*undocumented*, so all
+// ten are marked `undoc` here and print DDT-style, exactly as the 8080's holes do:
+// `?\?= <byte>  *MNEM`, one byte, no operand invented -- the way period DDT/SID step
+// over an unknown byte. (The 8080 disassembler does exactly this for its own 0xCB,
+// which the 8080 core executes as a three-byte JMP: an executed op can still be an
+// undocumented one.) RIM/SIM, being real on both the silicon and this core, decode
+// as ordinary one-byte instructions.
 //
 // `%B` is an immediate byte, `%W` an immediate word (low byte first). See
 // isa8080.cpp for the fuller account of the table format and the undoc handling.

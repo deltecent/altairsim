@@ -31,12 +31,17 @@
 //     8085EXM masks both out ([S Z X AC X P X C]) so the stock gate is blind to them
 //     -- they are pinned by hand-derived unit tests (tests/test_8085_cpu.cpp) whose
 //     oracle is the silicon analysis, not this core (DESIGN.md 3.2).
+//   - The five SAFE undocumented opcodes: SHLX / LHLX (the DE-addressed twins of
+//     SHLD/LHLD), and RSTV / JK / JNK (an RST-if-V and the two jumps on the K bit).
+//     None affect the flags; the two branches only READ the V/K bits above, so no
+//     source beyond the octal table and Shirriff is needed. Pinned by unit test.
 //
 // WHAT IT DELIBERATELY DOES NOT (deferred to a faithful follow-up, gated on a
 // GENUINE 8085 exerciser -- a core may not grade its own homework, DESIGN.md 3.2):
-//   - The undocumented opcodes (DSUB/ARHL/RDEL/LDHI/LDSI/RSTV/SHLX/LHLX/JK/JNK) --
-//     their slots stay NOP, exactly as the 8080 leaves them. RSTV/JK/JNK branch on
-//     the V/K bits above, so those become implementable next.
+//   - The five ALU-affecting undocumented opcodes (DSUB/ARHL/RDEL/LDHI/LDSI) -- their
+//     slots stay NOP, exactly as the 8080 leaves them, until their operation and flag
+//     effects are settled against a primary source (the electronicerror compilation
+//     they come from is second-hand and self-contradictory; reference file 2).
 
 #include "core/bus.h"
 #include "cpu/cpu.h"
