@@ -165,8 +165,10 @@ The `8085` core (`src/cpu/cpu8085.{h,cpp}`) models the **documented** 8085 —
 RIM/SIM, the TRAP/RST n.5 interrupts, and the faithful `ANA` half-carry, gated by
 `8085EXM` (real-silicon CRCs) — **plus the V and K bits of §1**, which now compute
 per the rules above and ride PSW bits 1 and 5 (`test_8085_cpu.cpp` pins them by
-hand-derived vector). The ten undocumented opcode slots still run as NOP. Issue #347
-tracks the remaining gap; this reference is its source.
+hand-derived vector). Five of the ten undocumented opcodes now execute too —
+`SHLX`/`LHLX`/`RSTV`/`JK`/`JNK` (§3, sequencing item 2); the other five
+(`DSUB`/`ARHL`/`RDEL`/`LDHI`/`LDSI`) still run as NOP pending firmer sourcing. Issue
+#347 tracks the remaining gap; this reference is its source.
 
 **The gate problem, stated plainly.** `8085EXM`'s `0D5h` mask means the stock
 exerciser structurally **cannot** see V or K (§1) — a faithful-V/K core passes it
@@ -184,10 +186,17 @@ overflows; a signed compare where the second operand is larger sets K; `INX` of
 1. **V/K flags** — DONE. Sourced here (§1), gated by hand-derived vectors in
    `test_8085_cpu.cpp`. This also makes `RSTV`/`JK`/`JNK` implementable, since they
    only branch on the new bits.
-2. **The undocumented opcodes** — §2, but the ALU-affecting ones (`DSUB`, `ARHL`,
-   `RDEL`) and the `LDHI`/`LDSI` flag question need a primary source first. The pure
-   data-movement ones (`SHLX`, `LHLX`) and the flag-conditional jumps/`RSTV` are
-   safe once §1 is in.
+2. **The five SAFE undocumented opcodes** — DONE. `SHLX`/`LHLX` (pure data movement)
+   and `RSTV`/`JK`/`JNK` (they only read the V/K bits) execute in the core, gated by
+   `test_8085_cpu.cpp`. None affects a flag, so nothing beyond §1 + the opcode table
+   was needed. `RSTV` pushes and jumps like the `RST` *instruction*, so it leaves
+   INTE alone (only the hardware TRAP/RST n.5 vectors clear it). They still
+   disassemble DDT-style (`?\?= XX *MNEM`, one byte) — Intel-undocumented regardless
+   of the core running them, exactly as the 8080's own executed-but-undocumented
+   0xCB-as-JMP does.
+3. **The five ALU-affecting undocumented opcodes** — `DSUB`, `ARHL`, `RDEL`, and the
+   `LDHI`/`LDSI` flag question (§2) need a primary source (Tundra CA80C85B / 1979
+   *Electronics*) before their operation and flag effects can land.
 
 Nothing here changes the documented gate: because `8085EXM` masks V/K out and the
 undocumented opcodes are distinct byte values the exerciser never emits, adding all

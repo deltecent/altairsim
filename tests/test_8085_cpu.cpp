@@ -476,4 +476,105 @@ void test_8085_cpu() {
         h.run(1);
         CHECK(h.flag("V") && h.flag("K"), "POP PSW restores V and K from bits 1 and 5");
     }
+
+    // ---- The five SAFE undocumented opcodes. On the 8085 these bytes are NOT the
+    // 8080's duplicate JMP/CALL/RET: RSTV (0xCB), SHLX (0xD9), LHLX (0xED), JNK
+    // (0xDD) and JK (0xFD). None touches a flag; the two branches only READ the V/K
+    // bits proven above. Expected effects are from the octal table + Shirriff
+    // (reference/Intel 8085 undocumented instructions and flags.md 2). ----
+
+    SECTION("SHLX / LHLX -- the DE-addressed twins of SHLD / LHLD");
+    {
+        // SHLX (0xD9) stores HL at (DE), low byte first. It must NOT act as the
+        // 8080's undocumented RET.
+        Rig g;
+        g.setReg("HL", 0xBEEF);
+        g.setReg("DE", 0x4000);
+        g.load({0xD9});  // SHLX
+        g.run(1);
+        CHECK(g.peek(0x4000) == 0xEF && g.peek(0x4001) == 0xBE,
+              "SHLX wrote L then H at (DE)");
+        CHECK(g.reg("PC") == 0x0001, "SHLX is one byte -- it did not RET off the stack");
+
+        // LHLX (0xED) loads HL from (DE). It must NOT act as the 8080's undoc CALL.
+        Rig h;
+        h.setReg("DE", 0x4000);
+        h.poke(0x4000, 0x34);
+        h.poke(0x4001, 0x12);
+        h.load({0xED});  // LHLX
+        h.run(1);
+        CHECK(h.reg("HL") == 0x1234, "LHLX read HL from (DE), low byte first");
+        CHECK(h.reg("PC") == 0x0001, "LHLX is one byte -- it did not CALL");
+
+        // The round trip: LHLX after SHLX of a different pointer.
+        Rig r;
+        r.setReg("HL", 0xABCD);
+        r.setReg("DE", 0x5000);
+        r.load({0xD9,          // SHLX  -> (5000)=CD (5001)=AB
+                0x21, 0x00, 0x00,  // LXI H,0000 -- clobber HL
+                0xED});         // LHLX  -> HL back to ABCD
+        r.run(3);
+        CHECK(r.reg("HL") == 0xABCD, "SHLX then LHLX round-trips HL through (DE)");
+    }
+
+    SECTION("RSTV -- RST to 0x0040 only when V is set, and it leaves INTE alone");
+    {
+        // V set: push PC, jump to 0x0040. Unlike the hardware vectors, an RSTV
+        // instruction does NOT disable interrupts (cf. the RST n instruction).
+        Rig g;
+        g.setReg("SP", 0x8000);
+        g.setReg("PC", 0x0300);
+        g.setReg("IE", 1);
+        g.setReg("V", 1);
+        g.load({0xCB}, 0x0300);  // RSTV, where PC points
+        g.step();
+        CHECK(g.reg("PC") == 0x0040, "RSTV with V set vectors to 0x0040");
+        CHECK(g.reg("SP") == 0x7FFE && g.peek(0x7FFE) == 0x01 && g.peek(0x7FFF) == 0x03,
+              "RSTV pushed the return address (PC past the opcode)");
+        CHECK(g.reg("IE") == 1, "RSTV is an instruction -- it does not clear INTE");
+
+        // V clear: it is a no-op that just falls through to the next instruction.
+        Rig h;
+        h.setReg("SP", 0x8000);
+        h.setReg("PC", 0x0000);
+        h.setReg("V", 0);
+        h.load({0xCB, 0x00}, 0);  // RSTV ; NOP
+        h.step();
+        CHECK(h.reg("PC") == 0x0001 && h.reg("SP") == 0x8000,
+              "RSTV with V clear is a one-byte no-op -- nothing pushed");
+    }
+
+    SECTION("JK / JNK -- the two jumps on the K (X5) bit");
+    {
+        // JK (0xFD) jumps when K is set. Seed K via a compare (1 < 2 sets K).
+        Rig g;
+        g.setReg("A", 0x01);
+        g.load({0xFE, 0x02,          // CPI 02   -> K set (second value larger)
+                0xFD, 0x00, 0x20});  // JK 2000
+        g.run(2);
+        CHECK(g.reg("PC") == 0x2000, "JK taken when K is set");
+
+        // JK not taken when K is clear (2 > 1): PC falls past the 3-byte instruction.
+        Rig h;
+        h.setReg("A", 0x02);
+        h.load({0xFE, 0x01,          // CPI 01   -> K clear
+                0xFD, 0x00, 0x20});  // JK 2000  (not taken)
+        h.run(2);
+        CHECK(h.reg("PC") == 0x0005, "JK not taken skips the operand -- PC past the 3 bytes");
+
+        // JNK (0xDD) is the mirror: taken when K is clear.
+        Rig n;
+        n.setReg("A", 0x02);
+        n.load({0xFE, 0x01,          // CPI 01   -> K clear
+                0xDD, 0x00, 0x20});  // JNK 2000
+        n.run(2);
+        CHECK(n.reg("PC") == 0x2000, "JNK taken when K is clear");
+
+        Rig m;
+        m.setReg("A", 0x01);
+        m.load({0xFE, 0x02,          // CPI 02   -> K set
+                0xDD, 0x00, 0x20});  // JNK 2000 (not taken)
+        m.run(2);
+        CHECK(m.reg("PC") == 0x0005, "JNK not taken skips the operand");
+    }
 }

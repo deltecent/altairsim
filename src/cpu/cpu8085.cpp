@@ -480,6 +480,47 @@ StepResult Cpu8085::step(Bus& bus) {
             break;
         }
 
+        // ---- The five SAFE undocumented 8085 opcodes -- EXECUTED here, where the
+        // 8080 leaves these bytes as duplicate JMP/CALL/RET and where DSUB/ARHL/RDEL/
+        // LDHI/LDSI (above) still NOP pending firmer sourcing. Three are pure data
+        // moves/branches with NO flag effect; two only READ the V and K bits already
+        // computed above -- so nothing here needs a source beyond the octal table and
+        // Shirriff (reference/Intel 8085 undocumented instructions and flags.md 2).
+        // The disassembler still steps over them DDT-style, one byte, exactly as it
+        // does the 8080's own 0xCB-as-JMP (isa8085.cpp). ----
+        case 0xD9:  // SHLX -- store HL at (DE): the DE-addressed twin of SHLD.
+            writeMem(bus, de(), l_);
+            writeMem(bus, (uint16_t)(de() + 1), h_);
+            t = 10;
+            break;
+        case 0xED:  // LHLX -- load HL from (DE): the DE-addressed twin of LHLD.
+            l_ = readMem(bus, de());
+            h_ = readMem(bus, (uint16_t)(de() + 1));
+            t = 10;
+            break;
+        case 0xCB:  // RSTV -- RST to 0x0040, but ONLY if V (overflow) is set. Being an
+                    // instruction, it leaves INTE alone -- exactly like RST n below,
+                    // and unlike the hardware TRAP/RST n.5 vectors.
+            if (v_) {
+                push(bus, pc_);
+                pc_ = 0x0040;
+                t = 12;
+            } else {
+                t = 6;  // not taken: the 8085 skips the work it does not do
+            }
+            break;
+        case 0xDD: {  // JNK a16 -- jump if K (X5) is CLEAR. Always fetches the operand
+                      // (PC advances past it) whether or not the branch is taken.
+            uint16_t a = fetch16(bus);
+            if (!k_) { pc_ = a; t = 10; } else { t = 7; }
+            break;
+        }
+        case 0xFD: {  // JK a16 -- jump if K (X5) is SET.
+            uint16_t a = fetch16(bus);
+            if (k_) { pc_ = a; t = 10; } else { t = 7; }
+            break;
+        }
+
         // ---- 16-bit loads ----
         case 0x01: { uint16_t v = fetch16(bus); b_ = (uint8_t)(v >> 8); c_ = (uint8_t)v; t = 10; break; }
         case 0x11: { uint16_t v = fetch16(bus); d_ = (uint8_t)(v >> 8); e_ = (uint8_t)v; t = 10; break; }
@@ -606,7 +647,7 @@ StepResult Cpu8085::step(Bus& bus) {
         case 0xFE: cmp(fetch(bus)); t = 7; break;          // CPI
 
         // ---- jumps ----
-        case 0xC3: case 0xCB: pc_ = fetch16(bus); t = 10; break;   // JMP (CB: undocumented)
+        case 0xC3: pc_ = fetch16(bus); t = 10; break;   // JMP (0xCB is RSTV on the 8085, above)
         case 0xC2: case 0xCA: case 0xD2: case 0xDA:
         case 0xE2: case 0xEA: case 0xF2: case 0xFA: {
             uint16_t a = fetch16(bus);
@@ -616,7 +657,7 @@ StepResult Cpu8085::step(Bus& bus) {
         }
 
         // ---- calls: 17 taken, 11 not ----
-        case 0xCD: case 0xDD: case 0xED: case 0xFD: {  // CALL (DD/ED/FD: undocumented)
+        case 0xCD: {  // CALL (0xDD/ED/FD are JNK/LHLX/JK on the 8085, above)
             uint16_t a = fetch16(bus);
             push(bus, pc_);
             pc_ = a;
@@ -637,7 +678,7 @@ StepResult Cpu8085::step(Bus& bus) {
         }
 
         // ---- returns: 11 taken, 5 not ----
-        case 0xC9: case 0xD9: pc_ = pop(bus); t = 10; break;  // RET (D9: undocumented)
+        case 0xC9: pc_ = pop(bus); t = 10; break;  // RET (0xD9 is SHLX on the 8085, above)
         case 0xC0: case 0xC8: case 0xD0: case 0xD8:
         case 0xE0: case 0xE8: case 0xF0: case 0xF8:
             if (cond((op >> 3) & 7)) {
