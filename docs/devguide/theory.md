@@ -56,6 +56,13 @@ board instead.** There is exactly one thing the bus does that no board does, and
 DESIGN.md pins it down: it supplies `0xFF` when nobody answered. That is the entire bus/board
 overlap, and it stays that size.
 
+> **This is the Altair bus, not IEEE-696.** The `BusCycle` above carries an 8080 status
+> `Cycle`, a 16-bit address, and separate in/out data — the 1975 bus, not the 1983 standard
+> that folded the data lines to 16 bits, stretched the address to 24, and grounded the
+> front-panel PROTECT / sense-switch pins this simulator's `fp` board relies on. That is a
+> deliberate line, not a gap to close later; **DESIGN.md §4.0** argues it out, including why an
+> Altair board and a 696 board cannot honestly share one backplane.
+
 ## A bus cycle, end to end
 
 ```cpp
