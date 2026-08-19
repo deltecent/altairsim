@@ -58,11 +58,15 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 
 This section is here because a manual that only lists strengths is an advertisement.
 
-- **It runs an 8080, a Z80, or an 8085 — but the 8085's *undocumented* opcodes are not
-  modeled.** The documented 8085 is here and validated against real silicon (RIM/SIM, the
-  TRAP/RST 5.5/6.5/7.5 interrupts, and the whole documented set). What it does not run is the
-  ten undocumented 8085 instructions (`DSUB`, `ARHL`, `LDHI`…) or the V/K flag bits some of
-  them set — code that leans on those will not behave.
+- **It runs an 8080, a Z80, or an 8085 as a processor completely — but the 8085's on-chip
+  serial and interrupt *pins* connect to nothing.** Every documented 8085 instruction runs
+  and is validated against real silicon (RIM/SIM, the TRAP/RST 5.5/6.5/7.5 interrupts, the
+  whole documented set), and so now do the ten *undocumented* opcodes (`DSUB`, `ARHL`,
+  `LDHI`…) with the V/K flag bits some of them set. What no board drives are the 8085's own
+  pins: the `SID`/`SOD` serial lines that `RIM`/`SIM` read and write, and the `TRAP` and
+  `RST 5.5`/`6.5`/`7.5` interrupt inputs. Nothing on the S-100 bus carries them, so code that
+  bit-bangs a console on `SID`/`SOD` or waits on one of those interrupts has nothing on the
+  other end. Ordinary interrupts, over the shared `INTR` line, work exactly as for the 8080.
 - **You can save state, but not replay.** `SNAPSHOT` writes the machine's whole state to a
   file and `RESTORE` reads it back, so you can save a machine and return to it. What you cannot
   do is *record* a session and step backwards through it, or replay a run from the start —

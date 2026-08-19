@@ -214,10 +214,16 @@ were read off actual hardware — before any board is built on it, the same gate
 cores passed. The built-in `8085` machine is a minimal one — an `8085`, 64K of RAM, and a 2SIO
 console.
 
-Two 8085 features are **not** modeled: the ten *undocumented* opcodes (`DSUB`, `ARHL`, `RDEL`,
-`LDHI`, `LDSI`, `RSTV`, `SHLX`, `LHLX`, `JK`/`JNK`) and the V/K flag bits some of them set.
-`DISASM` names each undocumented byte and marks it — `??= <byte>  *DSUB` — the way `DDT` flags a
-byte outside the published set; the core executes those slots as `NOP`.
+All ten *undocumented* 8085 opcodes execute (`DSUB`, `ARHL`, `RDEL`, `LDHI`, `LDSI`, `RSTV`,
+`SHLX`, `LHLX`, `JK`/`JNK`), and the two extra condition bits some of them set — **V** (overflow)
+and **K** — are computed and ride the flag byte where the 8080 keeps constants. `DISASM` still
+names each undocumented byte and marks it — `??= <byte>  *DSUB` — the way `DDT` flags a byte
+outside the published set, since these are Intel-undocumented whether or not the core runs them.
+
+What no board drives is the 8085's on-chip *pins*: the `SID`/`SOD` serial lines that `RIM`/`SIM`
+read and write, and the `TRAP` and `RST 5.5`/`6.5`/`7.5` interrupt inputs. The core keeps them
+as internal latches, but nothing on the S-100 bus carries them, so no card asserts them. Ordinary
+interrupts, over the `INTR` line, work as they do for the 8080.
 
 ---
 
