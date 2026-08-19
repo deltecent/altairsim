@@ -90,6 +90,7 @@ const struct {
     {"680uio", test_680uio},
     {"680kcacr", test_680kcacr},
     {"z80_cpu", test_z80_cpu},
+    {"8085_cpu", test_8085_cpu},
     {"expr", test_expr},
     {"debug", test_debug},
     {"ddt", test_ddt},

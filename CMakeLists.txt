@@ -314,6 +314,7 @@ add_library(altair_core STATIC
   src/isa/isaZ80.cpp
   src/isa/isa6800.cpp
   src/cpu/cpu8080.cpp
+  src/cpu/cpu8085.cpp
   src/cpu/cpu6800.cpp
   src/cpu/cpuZ80.cpp
   src/host/stream.cpp
@@ -403,6 +404,7 @@ add_library(altair_core STATIC
   # The generic Z80 CPU card -- the 88-CPU's twin (mits-z80cpu.h), carrying a
   # CpuZ80 instead of a Cpu8080. Listed after it so the reader sees the pair.
   src/boards/mits-z80cpu.cpp
+  src/boards/mits-8085cpu.cpp
   # The Altair 680b CPU card -- the 88-CPU's twin one core down (mits-680cpu.h),
   # carrying a Cpu6800. Memory-mapped I/O, so it still decodes nothing.
   src/boards/mits-680cpu.cpp
@@ -708,6 +710,7 @@ add_executable(altair_tests
   tests/test_680uio.cpp
   tests/test_680kcacr.cpp
   tests/test_z80_cpu.cpp
+  tests/test_8085_cpu.cpp
   tests/test_expr.cpp
   tests/test_debug.cpp
   tests/test_ddt.cpp
@@ -856,12 +859,26 @@ target_compile_definitions(altair_cputest
 # run is not a gate. It costs ~10 minutes (2.9 billion instructions).
 #
 # While iterating, skip it with `ctest -LE slow`. Run it alone with `ctest -L slow`.
-add_test(NAME cpu-tst8080 COMMAND altair_cputest TST8080)
-add_test(NAME cpu-8080pre COMMAND altair_cputest 8080PRE)
-add_test(NAME cpu-cputest COMMAND altair_cputest CPUTEST)
-add_test(NAME cpu-8080exm COMMAND altair_cputest 8080EXM)
+# The images are shared with the 8085 gate below, so each suite is qualified by
+# core (8080:) -- otherwise `TST8080` would match both and the tests would double up.
+add_test(NAME cpu-tst8080 COMMAND altair_cputest 8080:TST8080)
+add_test(NAME cpu-8080pre COMMAND altair_cputest 8080:8080PRE)
+add_test(NAME cpu-cputest COMMAND altair_cputest 8080:CPUTEST)
+add_test(NAME cpu-8080exm COMMAND altair_cputest 8080:8080EXM)
 set_tests_properties(cpu-8080exm PROPERTIES LABELS slow TIMEOUT 1800)
 set_tests_properties(cpu-cputest PROPERTIES TIMEOUT 600)
+
+# The 8085 gate -- the SAME four images against the `8085` core (tests/cputest.cpp).
+# The 8085 is a documented-8085 superset that is byte- and flag-identical to the
+# 8080 across this set, so these re-prove the copied core independently (issue
+# #233). 8085EXM (the 8080EXM image on the 8085 board) is the deep gate: another
+# ~10-minute, 2.9-billion-instruction run, so it is `slow` like cpu-8080exm.
+add_test(NAME cpu-8085-tst8080 COMMAND altair_cputest 8085:TST8080)
+add_test(NAME cpu-8085-8080pre COMMAND altair_cputest 8085:8080PRE)
+add_test(NAME cpu-8085-cputest COMMAND altair_cputest 8085:CPUTEST)
+add_test(NAME cpu-8085exm      COMMAND altair_cputest 8085:8080EXM)
+set_tests_properties(cpu-8085exm PROPERTIES LABELS slow TIMEOUT 1800)
+set_tests_properties(cpu-8085-cputest PROPERTIES TIMEOUT 600)
 
 # The Z80 exercisers -- the same gate, one core down. ZEXDOC validates documented
 # behavior; ZEXALL additionally pins the undocumented F5/F3 bits. Each is ~46

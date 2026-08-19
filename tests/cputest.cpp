@@ -57,6 +57,8 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <cstring>
+#include <string>
 #include <vector>
 
 using namespace altair;
@@ -153,6 +155,18 @@ const Suite kSuites[] = {
     {"8080EXM.COM", "8080", "Tests complete",                  "ERROR ****",     10'000'000'000ull,        ""},
     {"ZEXDOC.COM",  "z80",  "Tests complete",                  "ERROR ****",    200'000'000'000ull,   "z80"},
     {"ZEXALL.COM",  "z80",  "Tests complete",                  "ERROR ****",    200'000'000'000ull,   "z80"},
+
+    // The 8085 core is a documented-8085 superset that is byte- and flag-identical
+    // to the 8080 across this whole set (RIM/SIM and the on-chip interrupts are the
+    // only additions, and no 8080 diagnostic exercises them), so the SAME four
+    // images re-run against the `8085` board are its gate -- the independent
+    // re-validation of the copied core (tests/cpu/cpu8085.cpp, issue #233). The
+    // faithful-8085 ANA/V/K work waits on a genuine 8085 CRC exerciser and is not
+    // gated here.
+    {"TST8080.COM", "8085", "CPU IS OPERATIONAL",              "CPU HAS FAILED",         50'000'000ull,    ""},
+    {"8080PRE.COM", "8085", "8080 Preliminary tests complete", "",                       50'000'000ull,    ""},
+    {"CPUTEST.COM", "8085", "CPU TESTS OK",                    "ERROR",           1'000'000'000ull,        ""},
+    {"8080EXM.COM", "8085", "Tests complete",                  "ERROR ****",     10'000'000'000ull,        ""},
 };
 
 struct Rig {
@@ -331,6 +345,27 @@ static bool iprefix(const char* arg, const char* file) {
     return true;
 }
 
+// Case-insensitive full compare.
+static bool iequal(const std::string& a, const char* b) {
+    if (a.size() != std::strlen(b)) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
+    return true;
+}
+
+// Does this suite match the selector `arg`? The same image now runs against more
+// than one core (TST8080/8080PRE/CPUTEST/8080EXM on both `8080` and `8085`), so a
+// bare filename is ambiguous. The forms:
+//   "8085:TST8080"  -- the 8085's TST8080 only (cpu exactly, then file prefix)
+//   "8085"          -- every 8085 suite (cpu name alone)
+//   "TST8080"       -- every core's TST8080 (file prefix; the back-compat form)
+static bool suiteWanted(const std::string& arg, const Suite& s) {
+    std::string::size_type colon = arg.find(':');
+    if (colon != std::string::npos)
+        return iequal(arg.substr(0, colon), s.cpu) && iprefix(arg.c_str() + colon + 1, s.file);
+    return iprefix(arg.c_str(), s.file) || iequal(arg, s.cpu);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -345,7 +380,7 @@ int main(int argc, char** argv) {
         if (argc > 1) {
             bool wanted = false;
             for (int i = 1; i < argc; ++i)
-                if (iprefix(argv[i], s.file)) wanted = true;
+                if (suiteWanted(argv[i], s)) wanted = true;
             if (!wanted) continue;
         }
         ++ran;
@@ -354,7 +389,8 @@ int main(int argc, char** argv) {
 
     std::printf("\n==========================================================\n");
     if (!ran) {
-        std::printf("no suite matched. known: TST8080 8080PRE CPUTEST 8080EXM ZEXDOC ZEXALL\n");
+        std::printf("no suite matched. known: TST8080 8080PRE CPUTEST 8080EXM ZEXDOC ZEXALL\n"
+                    "  (qualify a shared image by core, e.g. 8085:TST8080; or a whole core, e.g. 8085)\n");
         return 2;
     }
     std::printf("%d suite%s run, %d failed\n", ran, ran == 1 ? "" : "s", failed);

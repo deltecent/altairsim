@@ -96,6 +96,7 @@ Type the part before the bracket.
 |---|---|
 | `6800` | Altair 680b CPU board: a Motorola 6800 at 500 KHz. Decodes nothing -- it drives the bus. The 88-CPU's twin, one core down, with memory-mapped I/O |
 | `8080` | MITS 88-CPU: an 8080A at 2 MHz. Decodes nothing -- it drives the bus |
+| `8085` | Generic 8085 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with an 8085 core (RIM/SIM + TRAP/RST 5.5/6.5/7.5) |
 | `z80` | Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core |
 
 **Memory**
