@@ -15,7 +15,7 @@
 #        A>
 #
 # THE MONITOR IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0). The V2 Z80 CPU board
-# carries the MASTER V6.6 monitor in its onboard paged EEPROM at F000-FFFF (the `v2z80` board);
+# carries the MASTER V6.6 monitor in its onboard paged EEPROM at F000-FFFF (the `v2z80rom` board);
 # `startup = ["RUN F000"]` cold-starts it. At the monitor's `->` prompt, the `P` command reads
 # the CP/M 3 cold loader (12 sectors from LBA 1 of CF drive 0) into 100H and jumps to it -- the
 # standard CP/M 3 five-stage cold boot. The `I` command boots the SD half instead. The combination
@@ -48,7 +48,7 @@ clock_hz = 0
 # MASTER V6.6 monitor. It phantom-shadows the RAM below while enabled, and vacates the window
 # once CP/M inactivates it (OUT D3H bit 0).
 [[board]]
-type = "v2z80"
+type = "v2z80rom"
 id   = "rom0"
 
 # THE CONSOLE. The S100Computers Console I/O board (a Parallax-Propeller console): status at

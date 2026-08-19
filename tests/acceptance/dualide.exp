@@ -6,7 +6,7 @@
 # through the 8255 IDE register file at 30-34 -- into 100H and jumps to it, the standard CP/M 3
 # five-stage cold boot. DIR then walks the directory back off the card.
 #
-# THIS IS THE WHOLE STACK IN ONE TEST: the `v2z80` paged-EEPROM monitor, the `dualide` 8255/ATA
+# THIS IS THE WHOLE STACK IN ONE TEST: the `v2z80rom` paged-EEPROM monitor, the `dualide` 8255/ATA
 # engine, and the card medium (`cardimg`: a truncated `.img` plus a `.geo` sidecar that declares
 # the full CF card, serving 0xFF for every unbacked sector). A byte wrong in any of the three and
 # CP/M never signs on or DIR reads garbage.

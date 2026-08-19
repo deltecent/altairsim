@@ -1,10 +1,13 @@
 #pragma once
 //
-// S100Computers V2 Z80 CPU board -- onboard paged monitor EEPROM
+// S100Computers V2 Z80 CPU board -- ONLY its onboard paged monitor EEPROM
 // (reference/v2-z80-cpu-board.md).
 //
-// The Z80 processor of that card is a SEPARATE board here (mits-z80cpu); this class models
-// only the card's onboard monitor EEPROM. Pair `v2z80` with a Z80 CPU board and a RAM board in
+// The board id is `v2z80rom`, not `v2z80`, deliberately: this class is NOT a full V2 Z80 CPU
+// board, only the paged monitor-EEPROM feature of that card. The real card has no onboard RAM
+// (it is a CPU + monitor-EEPROM board); the Z80 processor of that card is a SEPARATE board here
+// (mits-z80cpu), and RAM comes from a RAM board. This class models only the card's onboard
+// monitor EEPROM. Pair `v2z80rom` with a Z80 CPU board and a RAM board in
 // a machine file, and cold-start the monitor with the operator's own keystroke --
 // `startup = ["RUN F000"]` (DESIGN.md 10.0; the `amon` machine does the same for its F000
 // monitor). This board does NOT model the card's Power-On-Jump: modeling that reset-vectoring
@@ -38,11 +41,11 @@
 
 namespace altair {
 
-class V2Z80Board : public Board {
+class V2Z80RomBoard : public Board {
 public:
-    V2Z80Board();
+    V2Z80RomBoard();
 
-    std::string type() const override { return "v2z80"; }
+    std::string type() const override { return "v2z80rom"; }
 
     // ---- bus ----
     bool    decodes(const BusCycle&) const override;

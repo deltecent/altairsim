@@ -19,7 +19,7 @@ the card firmware; the Z80 talks to it through two I/O ports at `80h`/`81h` with
 `33h`-lead command protocol. See `docs/boards/dualsd.md` and `reference/dual-sd-card.md`.
 
 **The monitor is the boot command.** There is no `BOOT` verb. The **V2 Z80 CPU board**
-(`v2z80`) carries the **MASTER V6.6** monitor in its paged EEPROM at `F000`–`FFFF`;
+(`v2z80rom`) carries the **MASTER V6.6** monitor in its paged EEPROM at `F000`–`FFFF`;
 `startup = ["RUN F000"]` cold-starts it exactly as EXAMINE `F000` + RUN did on the real
 board. At the monitor's `->` prompt, the `I` command reads the CP/M 3 cold loader off Dual SD
 drive 1 and jumps into the standard five-stage CP/M 3 cold boot.
@@ -67,7 +67,7 @@ an error — a card image is meaningless without its declared geometry.)
 
 | File | What it is |
 |---|---|
-| `dualsd.toml` | The machine: V2 Z80 CPU + MASTER EEPROM (`v2z80`), a `propio` console, the `dualsd` board at `80h`/`81h` with a card in each socket, a front panel, the host bridge at `B0`/`B1`, and 64K RAM. |
+| `dualsd.toml` | The machine: V2 Z80 CPU + MASTER EEPROM (`v2z80rom`), a `propio` console, the `dualsd` board at `80h`/`81h` with a card in each socket, a front panel, the host bridge at `B0`/`B1`, and 64K RAM. |
 | `cpm3-sd.img` + `cpm3-sd.geo` | Drive `A:` — the boot card: the CP/M 3 system image and its geometry sidecar. |
 | `blank.img` + `blank.geo` | Drive `B:` — a blank spare card (`DIR B:` shows `No File`). |
 

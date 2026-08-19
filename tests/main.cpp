@@ -114,7 +114,7 @@ const struct {
     {"icom", test_icom},
     {"dualsd", test_dualsd},
     {"dualide", test_dualide},
-    {"v2z80", test_v2z80},
+    {"v2z80rom", test_v2z80rom},
     {"88acr", test_88acr},
     {"88uio", test_88uio},
     {"c700", test_c700},

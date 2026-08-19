@@ -42,7 +42,7 @@ clock_hz = 0
 # MASTER V6.6 monitor. `startup = ["RUN F000"]` cold-starts it; at its `->` prompt the `I`
 # command reads the CP/M 3 cold loader off Dual SD drive 1 and jumps to it.
 [[board]]
-type = "v2z80"
+type = "v2z80rom"
 id   = "rom0"
 
 # THE CONSOLE. The S100Computers Console I/O board (a Parallax-Propeller console): status at

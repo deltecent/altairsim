@@ -1,5 +1,5 @@
 // S100Computers V2 Z80 CPU board -- onboard paged monitor EEPROM
-// (src/boards/v2z80.h, reference/v2-z80-cpu-board.md).
+// (src/boards/v2z80rom.h, reference/v2-z80-cpu-board.md).
 //
 // Pins the two things the board really is: the D3H-controlled A12 paging of an 8K EEPROM into
 // the F000-FFFF window (bit1 = low/high 4K page, bit0 = inactivate) and the RAM-under-ROM
@@ -8,7 +8,7 @@
 // JP at F000 (C3 ..), but F001 differs -- master0 (low) = 84, master1 (high) = 1C -- which is
 // how a SECTION proves the A12 line actually switched pages rather than just claiming it did.
 
-#include "boards/v2z80.h"
+#include "boards/v2z80rom.h"
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/value.h"
@@ -26,44 +26,44 @@ constexpr uint16_t WIN      = 0xF000;  // EEPROM window base
 constexpr uint8_t  LOW_F001 = 0x84;    // master0 F001 (JP F084)
 constexpr uint8_t  HI_F001  = 0x1C;    // master1 F001 (JP F01C)
 
-uint8_t memrd(V2Z80Board& b, uint16_t a) {
+uint8_t memrd(V2Z80RomBoard& b, uint16_t a) {
     BusCycle c;
     c.type = Cycle::MemRead;
     c.addr = a;
     return b.read(c);
 }
-bool decodesMemRd(V2Z80Board& b, uint16_t a) {
+bool decodesMemRd(V2Z80RomBoard& b, uint16_t a) {
     BusCycle c;
     c.type = Cycle::MemRead;
     c.addr = a;
     return b.decodes(c);
 }
-bool phantomMemRd(V2Z80Board& b, uint16_t a) {
+bool phantomMemRd(V2Z80RomBoard& b, uint16_t a) {
     BusCycle c;
     c.type = Cycle::MemRead;
     c.addr = a;
     return b.assertsPhantom(c);
 }
-bool decodesMemWr(V2Z80Board& b, uint16_t a) {
+bool decodesMemWr(V2Z80RomBoard& b, uint16_t a) {
     BusCycle c;
     c.type = Cycle::MemWrite;
     c.addr = a;
     return b.decodes(c);
 }
-void outp(V2Z80Board& b, uint8_t port, uint8_t v) {
+void outp(V2Z80RomBoard& b, uint8_t port, uint8_t v) {
     BusCycle c;
     c.type = Cycle::IoWrite;
     c.addr = port;
     c.data = v;
     b.write(c);
 }
-bool decodesIoWr(V2Z80Board& b, uint8_t port) {
+bool decodesIoWr(V2Z80RomBoard& b, uint8_t port) {
     BusCycle c;
     c.type = Cycle::IoWrite;
     c.addr = port;
     return b.decodes(c);
 }
-bool decodesIoRd(V2Z80Board& b, uint8_t port) {
+bool decodesIoRd(V2Z80RomBoard& b, uint8_t port) {
     BusCycle c;
     c.type = Cycle::IoRead;
     c.addr = port;
@@ -72,11 +72,11 @@ bool decodesIoRd(V2Z80Board& b, uint8_t port) {
 
 } // namespace
 
-void test_v2z80() {
-    SECTION("v2z80: at reset the low page is visible in the F000-FFFF window");
+void test_v2z80rom() {
+    SECTION("v2z80rom: at reset the low page is visible in the F000-FFFF window");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 
@@ -87,10 +87,10 @@ void test_v2z80() {
         CHECK(!decodesMemRd(b, 0x0000), "no NOP-slide / POJ decode -- the machine RUNs F000");
     }
 
-    SECTION("v2z80: OUT D3H bit 1 switches the A12 page line, bit 0 = 0 keeps it enabled");
+    SECTION("v2z80rom: OUT D3H bit 1 switches the A12 page line, bit 0 = 0 keeps it enabled");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 
@@ -109,10 +109,10 @@ void test_v2z80() {
         CHECK(memrd(b, WIN + 1) == LOW_F001, "04H selects LOW (bit2 ignored)");
     }
 
-    SECTION("v2z80: OUT D3H bit 0 = 1 inactivates the EEPROM -- the window vacates");
+    SECTION("v2z80rom: OUT D3H bit 0 = 1 inactivates the EEPROM -- the window vacates");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 
@@ -128,10 +128,10 @@ void test_v2z80() {
         CHECK(memrd(b, WIN + 1) == LOW_F001, "and the low page is back");
     }
 
-    SECTION("v2z80: RAM-under-ROM -- reads shadow, writes fall through, disable is honored");
+    SECTION("v2z80rom: RAM-under-ROM -- reads shadow, writes fall through, disable is honored");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 
@@ -141,10 +141,10 @@ void test_v2z80() {
         CHECK(!decodesMemWr(b, WIN), "a WRITE in the window is not ours -- it reaches the RAM");
     }
 
-    SECTION("v2z80: the unprogrammed tail of each page reads FF");
+    SECTION("v2z80rom: the unprogrammed tail of each page reads FF");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 
@@ -152,10 +152,10 @@ void test_v2z80() {
         CHECK(memrd(b, 0xFFFF) == 0xFF, "low page: FFFF is past the image, reads FF");
     }
 
-    SECTION("v2z80: reset returns to the low page with the EEPROM enabled");
+    SECTION("v2z80rom: reset returns to the low page with the EEPROM enabled");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 
@@ -166,10 +166,10 @@ void test_v2z80() {
         CHECK(memrd(b, WIN + 1) == LOW_F001, "reset selects the low page");
     }
 
-    SECTION("v2z80: the `port` strap relocates the control latch");
+    SECTION("v2z80rom: the `port` strap relocates the control latch");
     {
         Clock clk;
-        V2Z80Board b;
+        V2Z80RomBoard b;
         b.attachClock(&clk);
         b.power();
 

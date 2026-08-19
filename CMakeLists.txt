@@ -500,7 +500,7 @@ add_library(altair_core STATIC
   src/boards/pmmi-mm103.cpp
   src/boards/usio.cpp
   src/boards/propio.cpp   # Console IO Board: a usio subtype (Parallax-Propeller console)
-  src/boards/v2z80.cpp     # S100Computers V2 Z80 CPU board: onboard paged monitor EEPROM
+  src/boards/v2z80rom.cpp     # S100Computers V2 Z80 CPU board: onboard paged monitor EEPROM
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
   src/boards/frontpanel-link.cpp
@@ -749,7 +749,7 @@ add_executable(altair_tests
   tests/test_icom.cpp
   tests/test_dualsd.cpp
   tests/test_dualide.cpp
-  tests/test_v2z80.cpp
+  tests/test_v2z80rom.cpp
   tests/test_propio.cpp
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
@@ -1486,7 +1486,7 @@ if(EXPECT_EXECUTABLE)
 
   # ---------------------------------------------------------------------------
   # THE S100Computers DUAL SD BOARD boots CP/M 3 -- the whole modern stack in one machine:
-  # the `v2z80` paged-EEPROM MASTER monitor, the `dualsd` 80H/81H command engine, and the
+  # the `v2z80rom` paged-EEPROM MASTER monitor, the `dualsd` 80H/81H command engine, and the
   # directory-card medium (a truncated `.img` + `.geo` sidecar). The monitor's `I` command
   # reads the CP/M 3 cold loader off socket 1 and boots; DIR reads the directory back off the
   # card. An expect test because `I` and DIR must be TYPED, and it must sync past the boot
@@ -1503,7 +1503,7 @@ if(EXPECT_EXECUTABLE)
 
   # ---------------------------------------------------------------------------
   # THE S100Computers IDE-AB (CF) BOARD boots CP/M 3 -- the CF half of the combination board:
-  # the `v2z80` paged-EEPROM MASTER monitor, the `dualide` 8255/ATA register engine, and the
+  # the `v2z80rom` paged-EEPROM MASTER monitor, the `dualide` 8255/ATA register engine, and the
   # card medium (a truncated `.img` + `.geo` sidecar). The monitor's `P` command reads the CP/M 3
   # cold loader off the CompactFlash card and boots; DIR reads the directory back off it. An
   # expect test because `P` and DIR must be TYPED. The card is mounted WRITE-PROTECTED and it
