@@ -1,0 +1,65 @@
+# Banked CP/M 3 boot acceptance fixture: the authentic single-board SBC-200 (onboard
+# MSMONR21 + DDBIOS PROM) + a VersaFloppy II, but with the RAM replaced by a 256K
+# ExpandoRAM II (bankmem card=expandoram2, partition=ex48, honors_phantom=read) so the
+# operating system can be bigger than 64K. This is the machine that proves the bankmem
+# common-memory + honors_phantom path end to end: CP/M 3's resident BDOS/BIOS live in the
+# 16K common region (C000-FFFF) while it bank-switches the 48K below it via port FF, and the
+# ExpandoRAM sits UNDER the boot PROM (honors_phantom=read: the PROM shadows reads, the
+# cold-boot loader's writes fall through).
+#
+# Both disks are mounted READ-ONLY so the test can never dirty the tracked images
+# (cpm3-banked.exp shasums them). The shipped example (examples/sdsys/cpm3-b.toml) mounts
+# them read/write instead -- this is the test's fixture, not the example. DISK3 (the 8" SD
+# source disk) is not part of the boot and is not mounted here.
+
+[machine]
+name    = "cpm3-banked-acceptance"
+startup = ["RUN E000"]
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+
+  [board.unit.tty]
+  connect = "console"
+  baud    = 9600
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:msmonr21"
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"
+
+[[board]]
+type           = "bankmem"
+id             = "mem0"
+card           = "expandoram2"
+partition      = "ex48"
+ram            = 256
+honors_phantom = "read"
+fill           = "random"
+
+[[board]]
+type    = "versafloppy"
+id      = "vf0"
+variant = "vfii"
+port    = 60
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../../examples/sdsys/CPM3-B-SSDD-60K-DISK1.DSK"
+  writeprotect = true
+
+  [[board.drive]]
+  unit         = 1
+  mount        = "../../examples/sdsys/CPM3-B-SSDD-DISK2.DSK"
+  writeprotect = true

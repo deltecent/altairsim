@@ -1378,6 +1378,24 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # BANKED CP/M 3 (SD Systems CP/M Plus 3.0) off the same VersaFloppy II -- but on a 256K
+  # ExpandoRAM II, and THAT is the point: reaching A> is the end-to-end proof of the bankmem
+  # common-memory + honors_phantom path. CP/M 3's resident BDOS/BIOS live in the 16K common
+  # region while the switchable half pages through the 48K below it on port FF, and the
+  # ExpandoRAM sits under the boot PROM (honors_phantom=read: PROM shadows reads, the loader's
+  # writes fall through). A whole-plane swap, or no phantom honoring, never reaches A>. Typing
+  # DIR and reading BNKBIOS3.SPR back proves the SBC-200 keyboard interrupt and the disk path
+  # too. Fixture mounts both masters WRITE-PROTECTED; cpm3-banked.exp shasums them.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-cpm3-banked
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cpm3-banked.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-cpm3-banked PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # THE TARBELL FLOPPY CONTROLLERS -- single density (#1011) and double density (#2022).
   #
   # Each carries its own 32-byte boot PROM, so the boot is AUTOMATIC: RESET arms the PROM at
