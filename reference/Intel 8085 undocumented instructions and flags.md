@@ -1,43 +1,57 @@
 # Intel 8085 undocumented instructions and flags
 
-Source: [Ken Shirriff, "Silicon reverse-engineering: The 8085's undocumented
-flags"](https://www.righto.com/2013/02/looking-at-silicon-to-understanding.html)
-· [Ken Shirriff, "The 8085's instruction set: the octal
-table"](https://www.righto.com/2013/02/8085-instruction-set-octal-table.html)
-· [electronicerror, "Undocumented flags and
-instructions"](https://electronicerror.blogspot.com/2007/08/undocumented-flags-and-instructions.html)
+Sources, in order of authority:
 
-**Provenance and how much to trust each part.** The three web sources above were
-provided and authorized by Patrick on **2026-08-19** (the sourcing rule in
-`docs/sources.md` says *ask Patrick, he sources it* — he did). They are **not** a
-period Intel manual: Intel deliberately left this material out of the 8085
-programmer's manual (`reference/Intel 8080-8085 Assembly Language Programming.md`
-records the flag-byte filler bits as merely "undefined on the 8085"), so this file
-is the only place the *values* are written down.
+- **Tundra CA80C85B data sheet** (`tundra_80c85.pdf`) — a CMOS-8085 second-source
+  vendor data sheet whose Table 2-10 (*Extended Instruction Set*) and Figure 2-9
+  (*Extended Condition Codes*) give the ten opcodes' operation **and flag masks**
+  outright. A manufacturer committing this to a data sheet is the primary reference.
+- **Dehnhardt & Sorensen, "Unspecified 8085 op codes enhance programming,"**
+  *Electronics*, 1979 (`UnDoc85.pdf`) — the first published account, with a per-opcode
+  operation/flag table (the "NEW 8085 INSTRUCTIONS" figure). Agrees with Tundra on
+  every point.
+- [Ken Shirriff, "Silicon reverse-engineering: The 8085's undocumented
+  flags"](https://www.righto.com/2013/02/looking-at-silicon-to-understanding.html)
+  · [Ken Shirriff, "The 8085's instruction set: the octal
+  table"](https://www.righto.com/2013/02/8085-instruction-set-octal-table.html) —
+  die-level analysis of real silicon; the authority for the **values** V and K take.
+- [electronicerror, "Undocumented flags and
+  instructions"](https://electronicerror.blogspot.com/2007/08/undocumented-flags-and-instructions.html)
+  — a second-hand compilation, kept only as corroboration now that the two primary
+  sources above settle the operation/flag effects it once was the sole record of.
 
-They are not equal in weight, and this file keeps them separate on purpose:
+**Provenance and how much to trust each part.** The sources above were provided and
+authorized by Patrick (the web articles 2026-08-19, the two primary artifacts
+2026-08-20) — the sourcing rule in `docs/sources.md` says *ask Patrick, he sources
+it*, and he did. None is a period Intel manual: Intel deliberately left this material
+out of the 8085 programmer's manual (`reference/Intel 8080-8085 Assembly Language
+Programming.md` records the flag-byte filler bits as merely "undefined on the 8085"),
+so this file is the place the *values* are written down.
 
-- **The two flags (§1) are authoritative.** Ken Shirriff derived them by tracing
-  the **actual 8085 silicon die** — reading the flag-computation transistors, not
-  another emulator (which the §0.1 rule forbids). Reverse-engineering the physical
-  chip is as first-hand as a source gets. He also **corrects** an earlier published
-  formula for the K flag from the silicon, which is exactly why his is the one to
-  trust.
-- **The ten instructions' opcodes, mnemonics and lengths (§2) are solid** — the
-  octal table cross-checks them, and they already match the `8085` disassembler
-  (`src/isa/isa8085.cpp`).
-- **The ten instructions' operation and flag effects (§2) are second-hand and in
-  two places contradictory** — they come from the electronicerror compilation
-  (which reads as machine-translated) and the octal table's notes, *not* from the
-  silicon. Every uncertainty is flagged ⚠ inline. **Do not implement an opcode's
-  flag effect from this file alone** where a ⚠ sits on it; settle it against a
-  genuine artifact first (the Tundra CA80C85B data sheet and the 1979 *Electronics*
-  article are the usual primary references, and Shirriff's instruction-decode-ROM
-  work is the silicon cross-check).
+The whole of §1 and §2 is now settled, and by **three sources that agree**:
 
-This split is why the follow-up work is sequenced flags-first: §1 can be built and
-gated now; §2 needs firmer sourcing before the ALU-affecting ones (DSUB/ARHL/RDEL)
-land. See issue #347.
+- **The two flags (§1)** — Shirriff derived them by tracing the **actual 8085 silicon
+  die**, reading the flag-computation transistors (not another emulator, which the
+  §0.1 rule forbids). He also **corrects** an earlier published K formula from the
+  silicon. The Tundra data sheet and the *Electronics* article both give the same
+  flag-byte layout and the same `UI = O1·O2 + O1·R + O2·R` majority formula (which is
+  algebraically Shirriff's `K = V XOR sign` for arithmetic), so the value rules are
+  corroborated three ways.
+- **The ten opcodes' bytes, mnemonics and lengths (§2)** match the octal table, the
+  Tundra data sheet, and the shipped disassembler (`src/isa/isa8085.cpp`). (One print
+  gotcha resolved: the *Electronics* table misprints `RSTV`'s hex as "(C8)", but its
+  binary `11001011` and the Tundra data sheet both give **`CB`** — which is what the
+  core runs.)
+- **The ten opcodes' operation and flag effects (§2)** are no longer second-hand: the
+  Tundra Table 2-10 and the *Electronics* "NEW 8085 INSTRUCTIONS" table give each
+  opcode's flag mask outright and **agree with each other**. The earlier ⚠ conflicts
+  are resolved below (`LDHI`/`LDSI` set **no** flags; `RDEL` sets **CY and V**; `ARHL`
+  sets **CY** only; `DSUB` sets **all seven**). The only detail neither prose source
+  spells out is `DSUB`'s **bit-level** derivation for a 16-bit subtract (which byte
+  drives S/P, whether Z is the full-16 zero, which bit feeds AC) — a narrow modeling
+  choice, noted at that row.
+
+See issue #347.
 
 ---
 
@@ -126,36 +140,47 @@ Two consequences and one special case:
 
 ## 2. The ten undocumented instructions
 
-Opcodes, mnemonics and lengths are solid (octal table + the shipped disassembler).
-**Operation and flag columns are second-hand — read the ⚠ notes.**
+Opcodes, mnemonics, lengths, operation **and flag masks** are all settled — the
+Tundra data sheet (Table 2-10) and the *Electronics* article agree, and the bytes
+match the shipped disassembler (`src/isa/isa8085.cpp`). The **flag *values*** (what V
+and K compute to) come from §1 / Shirriff.
 
-| Opc | Oct | Mnemonic | Len | Clocks | Operation | Flags (⚠ = unsettled) |
+| Opc | Oct | Mnemonic | Len | Clocks | Operation | Flags affected |
 |---|---|---|---|---|---|---|
-| `08` | 010 | `DSUB` | 1 | 10 | `HL = HL − BC` | S Z AC P CY **and V, K** — "all flags" (a 16-bit subtract) |
-| `10` | 020 | `ARHL` | 1 | 7 | Arithmetic shift `HL` right: bit 15 (sign) preserved, `L` bit 0 → CY (`HL = HL/2` signed) | **CY** only ⚠ ("flags unchanged" except CY — wording conflicts, confirm) |
-| `18` | 030 | `RDEL` | 1 | 10 | Rotate `DE` left through carry: `D` bit 7 → CY, old CY → `E` bit 0 (`DE = DE*2`) | **CY** ⚠ ("no other flags"; some refs also set V — confirm) |
-| `28` | 050 | `LDHI d8` | 2 | 10 | `DE = HL + imm8` | ⚠ **conflict**: electronicerror says "setting flags"; the common tables say **no flags**. Do not implement flag effects until settled. |
-| `38` | 070 | `LDSI d8` | 2 | 10 | `DE = SP + imm8` | ⚠ same conflict as `LDHI` |
+| `08` | 010 | `DSUB` | 1 | 10 | `HL = HL − BC` | **S Z AC P CY V K** (all seven) — see the DSUB note |
+| `10` | 020 | `ARHL` | 1 | 7 | Arithmetic shift `HL` right: bit 15 (sign) preserved, `L` bit 0 → CY (`HL = HL/2` signed) | **CY** only (`CY = L0`) |
+| `18` | 030 | `RDEL` | 1 | 10 | Rotate `DE` left through carry: `D` bit 7 → CY, old CY → `E` bit 0 (`DE = DE*2`) | **CY and V** (`CY = D7`; V from the 16-bit add, bit 14 XOR bit 15 of old `DE`) |
+| `28` | 050 | `LDHI d8` | 2 | 10 | `DE = HL + imm8` | **none** |
+| `38` | 070 | `LDSI d8` | 2 | 10 | `DE = SP + imm8` | **none** |
 | `CB` | 313 | `RSTV` | 1 | 6 / 12 | **If V set**: `RST` to **`0x0040`** (push PC, `PC = 0x0040`). If V clear: no-op. | none |
 | `D9` | 331 | `SHLX` | 1 | 10 | `[DE] = L`, `[DE+1] = H` (store HL at address DE) | none |
 | `ED` | 355 | `LHLX` | 1 | 10 | `L = [DE]`, `H = [DE+1]` (load HL from address DE) | none |
-| `DD` | 335 | `JNK a16` (JNX5) | 3 | 7 / 10 | **If K = 0**: `PC = a16` | none |
-| `FD` | 375 | `JK a16` (JX5) | 3 | 7 / 10 | **If K = 1**: `PC = a16` | none |
+| `DD` | 335 | `JNK a16` (JNX5 / "Jump on NOT UI") | 3 | 7 / 10 | **If K = 0**: `PC = a16` | none |
+| `FD` | 375 | `JK a16` (JX5 / "Jump on UI") | 3 | 7 / 10 | **If K = 1**: `PC = a16` | none |
 
 Notes:
 
 - **`RSTV` vectors to `0x0040`**, *not* one of the eight standard `RST` vectors
-  (`0x00`–`0x38`). It is "RST V" / "RST 8". The split clocks (6 not-taken / 12 taken)
-  and the jumps' split clocks (7/10) mirror the documented 8085 habit of skipping the
-  bytes it does not use when a condition fails.
-- **`RSTV`, `JK`, `JNK` depend on the V and K flags from §1** — so §1 must land before
-  these can even be tested. That is the clean reason to sequence flags first.
+  (`0x00`–`0x38`). It is "RST V" / "RST 8". Being an *instruction* it leaves INTE
+  alone (unlike the hardware TRAP/RST n.5 vectors). The split clocks (6 not-taken / 12
+  taken) and the jumps' split clocks (7/10) mirror the documented 8085 habit of
+  skipping the bytes it does not use when a condition fails.
+- **`DSUB` — the one residual.** Both primary sources say it sets all seven flags but
+  neither gives the *bit-level* derivation for a 16-bit subtract. The faithful model
+  is the ALU's own: two chained 8-bit subtracts (`L−C`, then `H−B` with borrow), with
+  CY the borrow out of bit 15, S = bit 15 of the result, V = overflow of the
+  high-order subtract, K = V XOR bit 15, and Z/P/AC from the low-then-high sequence.
+  Pin the exact choice with a unit test (and, ideally, a real-silicon cross-check)
+  when `DSUB` lands.
+- **The K bit is named three ways**: **K** (Shirriff), **X5** (the octal table), and
+  **UI** — "Unsigned / Underflow Indicator" — on the Tundra data sheet, which is why
+  `JK`/`JNK` appear there as "Jump on UI" / "Jump on NOT UI". Same bit, same formula.
 - **`SHLX`/`LHLX`** are the `DE`-addressed twins of `SHLD`/`LHLD` (which are
   absolute-addressed) and of `STAX`/`LDAX` (which move only the accumulator).
 - **`LDHI`/`LDSI`** are the one genuinely useful pair — a base-plus-displacement
-  address calculation the documented 8085 lacks — which is why their flag behavior
-  matters and why the conflict above must be resolved from a primary source, not
-  guessed.
+  address calculation the documented 8085 lacks. Both primary sources are explicit
+  that they set **no** flags (the earlier "setting flags" claim was electronicerror's
+  error).
 
 ---
 
@@ -194,9 +219,11 @@ overflows; a signed compare where the second operand is larger sets K; `INX` of
    disassemble DDT-style (`?\?= XX *MNEM`, one byte) — Intel-undocumented regardless
    of the core running them, exactly as the 8080's own executed-but-undocumented
    0xCB-as-JMP does.
-3. **The five ALU-affecting undocumented opcodes** — `DSUB`, `ARHL`, `RDEL`, and the
-   `LDHI`/`LDSI` flag question (§2) need a primary source (Tundra CA80C85B / 1979
-   *Electronics*) before their operation and flag effects can land.
+3. **The five ALU-affecting undocumented opcodes** — `DSUB`, `ARHL`, `RDEL`, `LDHI`,
+   `LDSI` — are now fully sourced (§2: Tundra data sheet + *Electronics*, agreeing).
+   `ARHL` (CY only), `LDHI`/`LDSI` (no flags) and `RDEL` (CY + V) are landable as-is;
+   `DSUB` lands with the 16-bit flag-derivation modeling choice noted at its §2 row.
+   Gate them the same way as V/K: hand-derived vectors, oracle = these primary tables.
 
 Nothing here changes the documented gate: because `8085EXM` masks V/K out and the
 undocumented opcodes are distinct byte values the exerciser never emits, adding all
