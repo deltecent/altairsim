@@ -36,10 +36,9 @@ namespace {
 // exactly these twelve.
 //
 // DOCUMENTED vs the CORE. The core (src/cpu/cpu8085.cpp) executes RIM and SIM for
-// real; it also now runs five of the undocumented ops for real (RSTV/SHLX/LHLX/JK/
-// JNK), while DSUB/ARHL/RDEL/LDHI/LDSI stay NOP pending firmer sourcing (issue #347).
-// Whether or not the core runs one, all ten are still Intel-*undocumented*, so all
-// ten are marked `undoc` here and print DDT-style, exactly as the 8080's holes do:
+// real; it now also runs ALL TEN undocumented ops for real (issue #347). But whether
+// or not the core runs one, all ten are still Intel-*undocumented*, so all ten are
+// marked `undoc` here and print DDT-style, exactly as the 8080's holes do:
 // `?\?= <byte>  *MNEM`, one byte, no operand invented -- the way period DDT/SID step
 // over an unknown byte. (The 8080 disassembler does exactly this for its own 0xCB,
 // which the 8080 core executes as a three-byte JMP: an executed op can still be an
