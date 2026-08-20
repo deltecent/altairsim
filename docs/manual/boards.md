@@ -375,8 +375,12 @@ printer:linewriter`) — that last one where your build found a print system, an
 has the job-submission options. The capture is byte-for-byte — the bytes the program sent, control
 codes and all, not a reformatted page.
 
-It is **polled**: write a character to the data port (`03`), then poll the status port (`02`, bit 0
-ACKNOWLEDGE, set = ready) before the next. The real card's single-level interrupt is not modeled.
+Drive it **polled or on interrupts**. Polled: write a character to the data port (`03`), then poll
+the status port (`02`, bit 0 ACKNOWLEDGE, set = ready) before the next. Or arm its **single-level
+interrupt** (control bit 1) and let the printer interrupt the CPU each time it takes a byte, so the
+handler just feeds the next one. The `interrupt` strap picks the wire — pin 73 (`int`, the default),
+a vectored-interrupt level (`vi0`..`vi7`), or `none`; `interrupt_after` is the card's SW2 #4,
+firing after every character or only after a CR/LF.
 
 The **`lineprinter`** machine is `default` with one of these already fitted and capturing to a file.
 
@@ -396,8 +400,8 @@ the codes decoded to their glyphs, one text line per printed line — not a byte
 this board the line breaks are commands, not data.
 
 `CONNECT` its `prn` line wherever a line can go — an `out:` file, the `console`, a `socket:`, a real
-`printer:` queue. The **`lineprinter-lpc`** machine has one fitted at `02`. It is polled, like the
-C700; the real card's interrupt is not modeled.
+`printer:` queue. The **`lineprinter-lpc`** machine has one fitted at `02`. It is polled; unlike the
+`c700`, this card's interrupt is not modeled.
 
 ---
 

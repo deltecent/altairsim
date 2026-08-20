@@ -912,6 +912,8 @@ MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+
 |---|---|---|---|---|
 | `port` | int | `0x2` | `0x0` .. `0xFE` | Base address -- MUST BE EVEN. Control/status at BASE, data at BASE+1 |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `interrupt` | enum | `int` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the printer's interrupt is soldered: none \| int (pin 73) \| vi0..vi7 *(interrupt strap)* |
+| `interrupt_after` | enum | `char` | `char` \| `crlf` | SW2 #4: raise the interrupt after every 'char' or only after a 'crlf' |
 
 
 ### `d7a`

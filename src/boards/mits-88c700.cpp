@@ -1,5 +1,6 @@
 #include "boards/mits-88c700.h"
 
+#include "core/clock.h"
 #include "core/statefile.h"
 #include "host/endpoint.h"
 
@@ -17,11 +18,16 @@ constexpr uint8_t kPaperEmpty  = 0x04;  // bit 2: HIGH = out of paper
 constexpr uint8_t kNotSelected = 0x08;  // bit 3: HIGH = NOT selected (select is active-low)
 constexpr uint8_t kFault       = 0x10;  // bit 4: HIGH = fault
 constexpr uint8_t kIntEnable   = 0x40;  // bit 6: HIGH = interrupts enabled
-constexpr uint8_t kIntRequest  = 0x80;  // bit 7: HIGH = interrupt requested (not modeled)
+constexpr uint8_t kIntRequest  = 0x80;  // bit 7: HIGH = interrupt requested
 
 // The control word (reference Table 2). Only two bits exist; the rest are ignored.
 constexpr uint8_t kPrimeLow   = 0x01;  // D0: LOW = reset buffer + home the head
 constexpr uint8_t kIntControl = 0x02;  // D1: HIGH = enable the interrupt structure
+
+// The ACKNOWLEDGE handshake latency, as a rate the crystal divides into T-states. A
+// NOMINAL few-microsecond delay -- its only job is to land the interrupt after the OUT
+// that armed it retires; it is NOT a print-speed model (armAck() in the .cpp says why).
+constexpr long long kAckPerSecond = 50000;  // ~40 T-states at 2 MHz (~20 us)
 
 C700Board::EndpointResolver g_resolver;
 
@@ -55,9 +61,11 @@ uint8_t C700Board::statusByte() const {
     (void)kFault;
 
     if (intEnabled_) s |= kIntEnable;
-    // kIntRequest stays clear: the interrupt request/vector path is not modeled in
-    // the polled card (see the header, and issue #26).
-    (void)kIntRequest;
+    // Bit 7 follows the request flip-flop: a data byte was acknowledged, and nothing
+    // has been written since to dismiss it (§5). A polled driver can read this instead
+    // of taking the interrupt; an interrupt-driven one reads it to confirm the printer
+    // is the requester (issue #26).
+    if (intReq_) s |= kIntRequest;
     return s;
 }
 
@@ -105,6 +113,12 @@ void C700Board::write(const BusCycle& c) {
     if ((c.port() - base_) & 1) {
         // DATA -- the character goes out on the line, verbatim.
         stream_->writeByte(c.data);
+
+        // "So writing a data byte is what dismisses a pending printer interrupt and
+        //  re-arms the ACKNOWLEDGE handshake" (§5). The request drops NOW, and the
+        //  printer's ACKNOWLEDGE -- which sets it again -- lands a short time later.
+        dropRequest();
+        armAck(c.data);
         return;
     }
 
@@ -112,29 +126,94 @@ void C700Board::write(const BusCycle& c) {
     //
     // PRIME is active-low: D0 = 0 resets the printer's buffer and homes the head. We
     // have no buffer to reset (bytes go straight out), so the honest equivalent is to
-    // flush the line -- push out anything a buffered endpoint is still holding.
-    if ((c.data & kPrimeLow) == 0) stream_->flush();
+    // flush the line -- push out anything a buffered endpoint is still holding. It also
+    // clears any pending interrupt, as resetting the printer must.
+    if ((c.data & kPrimeLow) == 0) {
+        stream_->flush();
+        dropRequest();
+    }
 
-    // D1 arms/disarms the interrupt structure. Stored so the status byte reports it;
-    // the request itself is not raised in the polled card.
+    // D1 arms/disarms the interrupt structure. Disabling it drops a pending request and
+    // the in-flight ACKNOWLEDGE with it -- "Disable interrupt structure" (Table 2).
     intEnabled_ = (c.data & kIntControl) != 0;
+    if (!intEnabled_) dropRequest();
+}
+
+// ---------------------------------------------------------------------------
+// THE INTERRUPT: A REQUEST FLIP-FLOP, SET BY ACKNOWLEDGE, CLEARED BY A DATA WRITE.
+//
+// WHY A DEADLINE AND NOT AN IMMEDIATE FLAG. The classic interrupt-driven print loop
+// is: enable, then OUT the first byte to prime the pump; every ACKNOWLEDGE interrupt
+// then OUTs the next byte, until the driver has none left and disables. That only
+// works if the ACKNOWLEDGE arrives AFTER the OUT instruction retires -- if the request
+// re-raised inside the same write(), the driver would re-enter its ISR before it had
+// returned. On real hardware the printer takes the byte and answers ~microseconds
+// later; here that is a short Clock deadline. It is the ACKNOWLEDGE handshake, NOT a
+// model of print speed -- where the bytes actually go, and how fast that sink drains,
+// is the endpoint's business and not this card's (DESIGN.md 7.7).
+//
+// WE ARM IT ONLY WHEN A REQUEST COULD RESULT -- the structure enabled, and (in CR/LF
+// mode) the byte a CR or LF. An always-pending deadline would leave Clock::queued()
+// non-zero, which is one of the two things the run loop reads to decide a HLT has
+// finished (core/debug.cpp): a printer sitting idle must not keep the machine awake.
+void C700Board::armAck(uint8_t byte) {
+    if (!clock_) return;
+    clock_->cancel(ack_);
+    ack_ = Clock::kNone;
+    if (!intEnabled_) return;
+
+    // SW2 #4. In CR/LF mode only a CR (0x0D) or LF (0x0A) raises the interrupt; every
+    // other byte is acknowledged silently. In per-character mode every byte does.
+    bool qualifies = intMode_ == IntMode::Char || byte == '\r' || byte == '\n';
+    if (!qualifies) return;
+
+    // A nominal handshake latency -- long enough to land after the OUT retires, short
+    // enough not to throttle a capture. Scaled by the crystal so it is the same wall
+    // time on any machine; tStatesPer clamps a zero-Hz clock harmlessly to none.
+    uint64_t dt = clock_->tStatesPer(kAckPerSecond);
+    ack_ = clock_->after(dt ? dt : 1, [this] { onAck(); });
+}
+
+// The ACKNOWLEDGE landed. Set the request flip-flop and pull the strap's wire -- but
+// re-check the enable, because the guest may have disarmed the structure in the window
+// between the OUT and now. (armAck already decided this byte qualifies for the mode.)
+void C700Board::onAck() {
+    ack_ = Clock::kNone;
+    if (!intEnabled_) return;
+    intReq_ = true;
+    intChanged();
+}
+
+void C700Board::dropRequest() {
+    if (clock_) clock_->cancel(ack_);
+    ack_ = Clock::kNone;
+    if (!intReq_) return;
+    intReq_ = false;
+    intChanged();
 }
 
 void C700Board::reset(Reset) {
-    // POC/RESET disables the interrupt structure. The line STAYS CONNECTED -- a warm
-    // reset does not unplug the printer.
+    // POC/RESET disables the interrupt structure and drops any pending request. The
+    // line STAYS CONNECTED -- a warm reset does not unplug the printer.
     intEnabled_ = false;
+    dropRequest();  // clears intReq_, cancels the ACK deadline, and settles the wire
     stream_->flush();
 }
 
 void C700Board::serialize(StateWriter& w) const {
     Board::serialize(w);
     w.boolean(intEnabled_);
+    w.boolean(intReq_);
 }
 
 void C700Board::deserialize(StateReader& r) {
     Board::deserialize(r);
     intEnabled_ = r.boolean();
+    intReq_     = r.boolean();
+    // The strap (irq_) and SW2 #4 (intMode_) are config, already correct in a matching
+    // machine. A pending ACKNOWLEDGE deadline does NOT travel (it is a closure, and the
+    // handshake window is microseconds); the settled request does, so re-derive the wire.
+    intChanged();
 }
 
 // The one door to the outside world (DESIGN.md 7.1): let a socket accept/drain, and
@@ -178,6 +257,33 @@ std::vector<Property> C700Board::properties() {
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(connectSpec_); };
         x.set  = [this](const Value& v, std::string& err) { return applyEndpoint(v.s(), err); };
+        p.push_back(std::move(x));
+    }
+    // The interrupt strap. Same ten choices, spelling and completion as every other
+    // interrupting card (board.h). The real card drives the single S-100 interrupt line
+    // (pin 73), so `int` is the default; a machine built around an 88-VI hardwires it to
+    // one of the eight VI levels instead (the manual forbids single-level and VI in one
+    // machine). `none` leaves it unsoldered -- a strictly polled printer.
+    p.push_back(irqJumperProperty(
+        "interrupt",
+        "Where the printer's interrupt is soldered: none | int (pin 73) | vi0..vi7",
+        irq_));
+    {
+        // SW2 #4 -- the granularity switch. ON = after each character; OFF = after each
+        // CR/LF. The card cannot introspect a real DIP switch's label, so it is a strap
+        // here like any other, defaulting to per-character (the simpler, commoner wiring).
+        Property x;
+        x.name    = "interrupt_after";
+        x.help    = "SW2 #4: raise the interrupt after every 'char' or only after a 'crlf'";
+        x.kind    = Kind::Enum;
+        x.choices = {"char", "crlf"};
+        x.get     = [this] {
+            return Value::ofStr(intMode_ == IntMode::Char ? "char" : "crlf");
+        };
+        x.set = [this](const Value& v, std::string&) {
+            intMode_ = v.s() == "crlf" ? IntMode::CrLf : IntMode::Char;
+            return true;
+        };
         p.push_back(std::move(x));
     }
     return p;

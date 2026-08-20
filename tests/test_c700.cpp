@@ -3,6 +3,7 @@
 #include "boards/mits-88c700.h"
 #include "boards/mits-88cpu.h"
 #include "boards/s100-memory.h"
+#include "core/debug.h"
 #include "core/machine.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
@@ -55,6 +56,11 @@ std::string prop(Board& b, const std::string& name) {
 constexpr uint8_t kAcknowledge = 0x01;  // bit 0: SET = will accept a byte
 constexpr uint8_t kBusy        = 0x02;  // bit 1: SET = busy
 constexpr uint8_t kIntEnable   = 0x40;  // bit 6: SET = interrupts enabled
+constexpr uint8_t kIntRequest  = 0x80;  // bit 7: SET = an interrupt is being requested
+
+// Advance emulated time past the ACKNOWLEDGE handshake (~40 T-states at 2 MHz). Well
+// clear of it, but nowhere near enough to matter -- the deadline is a one-shot.
+void settle(Rig& g) { g.m.clock.advance(1000); }
 
 } // namespace
 
@@ -152,11 +158,106 @@ void test_c700() {
         g.control(0x00);  // prime
         CHECK(g.prn->out() == "X", "PRIME does not eat characters already sent");
 
-        // POLLED CARD: enabling interrupts raises NO request and pulls no wire. bit 7
-        // (INTERRUPT REQUEST) stays clear, and the backplane sees nothing on pin 73.
+        // Enabling interrupts with nothing outstanding raises NO request: no character
+        // has been acknowledged, so the flip-flop is clear and pin 73 is up.
         g.control(0x03);
-        CHECK((g.status() & 0x80) == 0, "the interrupt REQUEST bit is not modeled -- stays clear");
+        CHECK((g.status() & kIntRequest) == 0, "arming alone requests nothing");
         CHECK(!g.m.bus.intPending(), "and no interrupt wire is pulled");
+    }
+
+    SECTION("88-C700 -- the interrupt: ACKNOWLEDGE requests, a data write dismisses it");
+    {
+        Rig g;
+        // Default strap is pin 73 (`int`), per-character mode. Arm the structure.
+        g.control(0x03);  // D1 = 1 enable, D0 = 1 no prime
+
+        // A data byte goes out. The request drops immediately (the write dismisses it)
+        // and the ACKNOWLEDGE that raises it lands only after the handshake elapses.
+        g.send('A');
+        CHECK((g.status() & kIntRequest) == 0, "right after the OUT: no request yet");
+        CHECK(!g.m.bus.intPending(), "...and the wire is still up (the ISR hasn't been re-entered)");
+
+        settle(g);
+        CHECK((g.status() & kIntRequest) != 0, "the ACKNOWLEDGE landed: bit 7 SET");
+        CHECK(g.m.bus.intPending(), "and the printer pulls pin 73");
+
+        // The ISR outputs the next byte; that dismisses the request and re-arms it.
+        g.send('B');
+        CHECK((g.status() & kIntRequest) == 0, "writing the next byte clears the request");
+        CHECK(!g.m.bus.intPending(), "and drops the wire");
+        settle(g);
+        CHECK(g.m.bus.intPending(), "the next ACKNOWLEDGE raises it again");
+
+        CHECK(g.prn->out() == "AB", "and the bytes reached the printer");
+    }
+
+    SECTION("88-C700 -- disabling the structure, PRIME, and RESET all drop a request");
+    {
+        Rig g;
+        g.control(0x03);
+        g.send('A');
+        settle(g);
+        CHECK(g.m.bus.intPending(), "a request is pending");
+        g.control(0x01);  // D1 = 0 disable, D0 = 1 no prime
+        CHECK(!g.m.bus.intPending(), "disabling the interrupt structure drops it");
+
+        // ...and PRIME clears it too (resetting the printer).
+        g.control(0x03);
+        g.send('A');
+        settle(g);
+        CHECK(g.m.bus.intPending(), "pending again");
+        g.control(0x02);  // D1 = 1 (still enabled), D0 = 0 PRIME
+        CHECK(!g.m.bus.intPending(), "PRIME clears the pending interrupt");
+
+        // ...and a machine RESET clears request and enable both.
+        g.send('A');
+        settle(g);
+        CHECK(g.m.bus.intPending(), "pending once more");
+        g.m.reset(Reset::Bus);
+        CHECK(!g.m.bus.intPending(), "RESET drops the wire");
+        CHECK((g.status() & kIntEnable) == 0, "and disarms the structure");
+    }
+
+    SECTION("88-C700 -- SW2 #4: per-CR/LF mode only fires on CR or LF");
+    {
+        Rig g;
+        std::string err;
+        CHECK(setProperty(*g.lpt, "interrupt_after", "crlf", err), "strap the granularity to CR/LF");
+        g.control(0x03);
+
+        g.send('A');  // an ordinary character
+        settle(g);
+        CHECK(!g.m.bus.intPending(), "a printable byte is acknowledged silently in CR/LF mode");
+
+        g.send('\r');  // a carriage return
+        settle(g);
+        CHECK(g.m.bus.intPending(), "but a CR raises the interrupt");
+
+        g.send('\n');  // dismiss + a line feed
+        CHECK(!g.m.bus.intPending(), "the write dismisses it");
+        settle(g);
+        CHECK(g.m.bus.intPending(), "and LF raises it again");
+    }
+
+    SECTION("88-C700 -- the interrupt rides the strap: none, pin 73, or a VI line");
+    {
+        Rig g;
+        std::string err;
+
+        // `none` -- an unsoldered strap: the request flip-flop still sets (bit 7), but
+        // it reaches no wire.
+        CHECK(setProperty(*g.lpt, "interrupt", "none", err), "unsolder the strap");
+        g.control(0x03);
+        g.send('A');
+        settle(g);
+        CHECK((g.status() & kIntRequest) != 0, "the request flip-flop still sets");
+        CHECK(!g.m.bus.intPending(), "but nothing is pulled -- the strap goes nowhere");
+
+        // Move it to a VI line. With no 88-VI in this machine the VI wire goes nowhere,
+        // so pin 73 stays up -- but the card is now pulling VI3, not pin 73.
+        CHECK(setProperty(*g.lpt, "interrupt", "vi3", err), "solder it to VI3");
+        CHECK((g.m.bus.viLines() & (1u << 3)) != 0, "the request now rides VI3");
+        CHECK(!g.m.bus.intPending(), "and no longer pin 73 (no 88-VI to forward it)");
     }
 
     SECTION("88-C700 -- disconnect leaves a dead line, not a dangling pointer");
@@ -180,6 +281,90 @@ void test_c700() {
         std::string err;
         CHECK(g.lpt->connect("prn", "null", err), "connect to null");
         CHECK(prop(*g.lpt, "connect") == "null", "and the property reads it back for CONFIG SAVE");
+    }
+
+    SECTION("88-C700 -- INTERRUPT-DRIVEN printing, end to end, on a real 8080");
+    {
+        // THE ISSUE #26 SYMPTOM, GONE. A driver enables the printer interrupt, primes
+        // the pump with one character, and HALTs. Nothing polls; the only thing that
+        // can wake the machine is the ACKNOWLEDGE deadline the card set when the byte
+        // went out. Each RST 7 sends the next character until the string is done. With
+        // no 88-VI in the machine the IntAck floats to FF = RST 7, exactly as the 88-SIO
+        // test relies on -- nothing here chooses the vector.
+        Machine m;
+        std::string err;
+        m.bus.setVerify(true);
+
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region r;
+        r.kind = RegionKind::Ram;
+        r.at   = 0;
+        r.size = 0x10000;
+        mem->addRegion(r, err);
+        setProperty(*mem, "fill", "zero", err);
+
+        auto* lpt = dynamic_cast<C700Board*>(m.add("c700", "lpt0", err));
+        lpt->connect("prn", "scripted", err);
+        auto* prn = dynamic_cast<ScriptedStream*>(lpt->unitStream("prn"));
+
+        m.add("8080", "cpu0", err);
+        m.power();
+
+        // The message the printer receives, NUL-terminated, at 0x0080.
+        uint16_t a = 0x0080;
+        for (uint8_t b : {0x48, 0x45, 0x4C, 0x4C, 0x4F, 0x00})  // "HELLO\0"
+            m.bus.memWrite(a++, b);
+
+        // The ISR at RST 7 (0x0038): send the next byte, or jump to 'done' at the NUL.
+        a = 0x0038;
+        for (uint8_t b : {
+                 0x7E,              // MOV A,M     -- next char
+                 0xB7,              // ORA A       -- terminator?
+                 0xCA, 0x60, 0x00,  // JZ  0060    -- yes: we are done
+                 0xD3, 0x03,        // OUT 03      -- no: send it (dismiss + re-arm ACK)
+                 0x23,              // INX H
+                 0xFB,              // EI
+                 0xC9,              // RET
+             })
+            m.bus.memWrite(a++, b);
+
+        // 'done' at 0x0060: a real driver disarms the printer when the job is finished,
+        // which drops the request that woke this final ISR (only a data write or a
+        // disable clears it -- §5). The test breakpoints on the HLT that follows.
+        a = 0x0060;
+        for (uint8_t b : {
+                 0x3E, 0x01,        // MVI A,01    -- D1=0 disable, D0=1 no prime
+                 0xD3, 0x02,        // OUT 02      -- disarm: drops the pending request
+                 0x76,              // HLT
+             })
+            m.bus.memWrite(a++, b);
+
+        // The mainline: arm the printer interrupt, prime with the first character, then
+        // do nothing but wait to be interrupted.
+        a = 0x0100;
+        for (uint8_t b : {
+                 0x31, 0x00, 0x02,  // LXI SP,0200
+                 0x21, 0x80, 0x00,  // LXI H,0080  -- HL -> message
+                 0x3E, 0x02,        // MVI A,02    -- D1=1 enable interrupts, D0=1 no prime
+                 0xD3, 0x02,        // OUT 02      -- arm the structure
+                 0x7E,              // MOV A,M     -- the first char
+                 0xD3, 0x03,        // OUT 03      -- prime the pump (arms the first ACK)
+                 0x23,              // INX H
+                 0xFB,              // EI
+                 0x76,              // HLT         -- wait for the ACKNOWLEDGE interrupt
+                 0xC3, 0x0F, 0x01,  // JMP 010F    -- resume: HLT again until 'done'
+             })
+            m.bus.memWrite(a++, b);
+        m.cpu()->setPc(0x0100);
+
+        m.debug.add(BreakKind::Pc, 0x0064, 0x0064);  // the HLT after the driver disarms
+        RunResult res = m.debug.run(200000);
+
+        CHECK(res.why == StopReason::Breakpoint,
+              "the driver finished -- every character was carried by an interrupt, "
+              "and the HALTed machine really was woken each time");
+        CHECK(prn->out() == "HELLO", "and the whole string reached the printer");
+        CHECK(!m.bus.intPending(), "and disarming the structure dropped the last request");
     }
 
     SECTION("out: endpoint -- a punch (write-only host sink), 8-bit clean");
