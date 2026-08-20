@@ -28,17 +28,18 @@ bool TerminalRenderer::frameChanged(const TerminalScreen& scr, Display* d) const
     return false;
 }
 
-void TerminalRenderer::render(Display& d, TerminalScreen& scr, int windowWidth) {
+void TerminalRenderer::render(Display::Owner owner, const std::string& label, Display& d,
+                              TerminalScreen& scr, int windowWidth) {
     if (!font_) return;
     const int cw = font_->cellCols(), ch = font_->cellRows();
     const int rows = scr.rows(), cols = scr.cols();
 
-    d.setWindowWidth(windowWidth);  // this board's window-width choice
-    Surface* s = d.acquire(cols * cw, rows * ch, PixelFormat::Indexed8);
+    // owner keys this board's own window (issue #234); label titles it; windowWidth sizes it.
+    Surface* s = d.acquire(owner, label, cols * cw, rows * ch, PixelFormat::Indexed8, windowWidth);
     if (!s) return;
 
     const Color pal[3] = {bg_, fg_, dim_};
-    d.setPalette(pal);
+    d.setPalette(owner, pal);
     s->clear(0);
 
     const bool lit = blinkOn(&d);
@@ -80,7 +81,7 @@ void TerminalRenderer::render(Display& d, TerminalScreen& scr, int windowWidth) 
     scr.clearDirty();
     lastBlinkOn_  = lit;
     hasBlinkCell_ = sawBlink;
-    d.present(s);
+    d.present(owner, s);
 }
 
 } // namespace altair

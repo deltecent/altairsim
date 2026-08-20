@@ -61,8 +61,8 @@ enum class PixelFormat {
 // A drawable buffer the board fills and present()s. Concrete and owns its pixels --
 // a board does not allocate host memory, it asks the Display to acquire() one and
 // then writes into pixels(). The Display may hand back the SAME Surface every
-// frame (it does: acquire() is idempotent for a given w,h,format), so a board must
-// treat the contents as undefined and paint the whole frame each pump().
+// frame (it does: acquire() is idempotent for a given owner + w,h,format), so a board
+// must treat the contents as undefined and paint the whole frame each pump().
 class Surface {
 public:
     Surface(int w, int h, PixelFormat fmt)
@@ -103,25 +103,43 @@ class Display {
 public:
     virtual ~Display() = default;
 
+    // WHO IS DRAWING. Every board-facing call carries the drawing board's identity --
+    // its `this`, as an opaque handle the Display never dereferences -- because a host
+    // opens ONE WINDOW PER BOARD (issue #234) and the handle is which window. Two video
+    // boards of the same resolution (two VDM-1s at 512x208) would otherwise land on one
+    // Surface; the owner is what tells them apart. The board is the natural key: it already
+    // owns its `width`, and it is the thing whose picture the window shows. A `terminal:`
+    // window or any future drawer keys the same way, with no per-type base class.
+    using Owner = const void*;
+
     // Get the buffer to draw this frame's picture into, at the board's logical
-    // resolution. The Display owns it; the board must not delete it and must not
-    // keep the pointer past the next acquire() (the host may resize or reuse it).
-    // Called once per pump() by the board -- cheap on the steady state, since the
-    // dimensions do not change frame to frame.
-    virtual Surface* acquire(int w, int h, PixelFormat fmt) = 0;
+    // resolution, for the given owner's window. The Display owns it; the board must not
+    // delete it and must not keep the pointer past the next acquire() (the host may resize
+    // or reuse it). Called once per pump() by the board -- cheap on the steady state, since
+    // the dimensions do not change frame to frame. `targetWidthPx` is the owner's window
+    // WIDTH (0 = auto, ~half the screen); it lives on the board (Display::widthProperty) and
+    // is handed down here because the window it sizes belongs to this owner. See windowWidth.
+    //
+    // `label` NAMES THE WINDOW after the board whose picture it shows -- its id (`vdm0`,
+    // `daz0`), so a machine with two video boards puts two differently-titled windows on
+    // screen and the operator can tell them apart. The board is the honest source of its own
+    // name; the machine name (setTitle) still frames it. Stable frame to frame, so the host
+    // caches it and retitles only on a change.
+    virtual Surface* acquire(Owner owner, const std::string& label, int w, int h,
+                             PixelFormat fmt, int targetWidthPx) = 0;
 
-    // Show the frame. On a windowed host this uploads the Surface to a texture and
-    // scales it (nearest-neighbor, integer where it fits) so low-res pixels stay
-    // crisp; on a NullDisplay it does nothing. present() is also where the host
-    // pumps its own event queue on the main thread (DESIGN.md 7.4 #2) -- but it
-    // never blocks on vsync, because emulated time, not the monitor, owns the clock.
-    virtual void present(Surface* s) = 0;
+    // Show the owner's frame. On a windowed host this uploads the Surface to that board's
+    // window texture and scales it (nearest-neighbor, integer where it fits) so low-res
+    // pixels stay crisp; on a NullDisplay it does nothing. present() is also where the host
+    // pumps its own event queue on the main thread (DESIGN.md 7.4 #2) -- but it never blocks
+    // on vsync, because emulated time, not the monitor, owns the clock.
+    virtual void present(Owner owner, Surface* s) = 0;
 
-    // The palette an Indexed8 Surface resolves against. Up to 256 entries; a board
-    // sets only as many as it uses (2 for the VDM-1, 16 for the Dazzler). Entries a
-    // board never sets stay black. Cheap enough to call every frame or only on a
-    // change -- the host caches it.
-    virtual void setPalette(std::span<const Color> colors) = 0;
+    // The palette the owner's Indexed8 Surface resolves against. Up to 256 entries; a board
+    // sets only as many as it uses (2 for the VDM-1, 16 for the Dazzler). Entries a board
+    // never sets stay black. Cheap enough to call every frame or only on a change -- the host
+    // caches it per window.
+    virtual void setPalette(Owner owner, std::span<const Color> colors) = 0;
 
     // The keyboard sink (see the header note). A windowed host delivers focus
     // keystrokes here as ASCII; the composition root wires it to Console::inject so
@@ -286,16 +304,26 @@ public:
     // inherits that: a test and a no-SDL build see this as if it did not exist.
     virtual bool takeQuitRequest() { return false; }
 
-    // CLOSE THE WINDOW FOR REAL -- tear it down so it is gone from the screen.
+    // CLOSE FOR REAL WHATEVER THE OPERATOR CLICKED SHUT -- tear those windows down so they
+    // are gone from the screen.
     //
     // The counterpart to takeQuitRequest()'s deliberate NON-closing. A close box clicked
     // while the guest RUNS stops the guest and keeps the window (you may want to look at
     // the last frame, and RUN resumes into it); a close box clicked while the machine is
-    // STOPPED at the monitor prompt means the operator is done with the window, so the
-    // monitor's idle hook calls this. A windowed host destroys its window here; the next
-    // frame a board draws opens a fresh one. The base does nothing, so headless builds
-    // and tests never notice.
+    // STOPPED at the monitor prompt means the operator is done with THAT window, so the
+    // monitor's idle hook calls this and only the windows whose close box was clicked go --
+    // a machine with two video boards keeps the other picture up. A windowed host destroys
+    // those windows here; the next frame their board draws opens a fresh one. The base does
+    // nothing, so headless builds and tests never notice.
     virtual void closeWindow() {}
+
+    // CLOSE EVERY WINDOW, unconditionally -- the whole machine is going away. CONFIG LOAD
+    // replaces the backplane wholesale (machine.h, replaceWith), so every board that owned a
+    // window is about to be destroyed and its Owner handle may be reused by the allocator for
+    // a board of the new machine. The monitor calls this on the replace so no stale handle can
+    // alias a live one; the new machine's video boards reopen their windows on their first
+    // frame. The base does nothing, so headless builds and tests never notice.
+    virtual void closeAllWindows() {}
 
     // THE GUEST HAS STOPPED AND THE OPERATOR IS WANTED AT THE MONITOR PROMPT. A
     // windowed host that currently holds the keyboard gives it back; everyone else
@@ -343,7 +371,13 @@ public:
     static bool focusPolicy() { return focusPolicy_; }
     static void setFocusPolicy(bool on) { focusPolicy_ = on; }
 
-    // ---- HOW WIDE THE WINDOW OPENS, in pixels; height follows the frame's aspect ----
+    // ---- HOW WIDE A BOARD'S WINDOW OPENS, in pixels; height follows the frame's aspect ----
+    //
+    // This is NOT a knob here -- it is the `targetWidthPx` argument to acquire(), because a
+    // window's width belongs to the board whose picture it sizes, and now that each board has
+    // its OWN window (issue #234) two video boards each open at their own width. The value
+    // lives on the board (Display::widthProperty, bound to the board's int slot) and rides
+    // down with every frame the board draws. This note only records what the number means.
     //
     // 0 means AUTO: the back end opens the window about half the usable screen WIDTH, so a
     // 64x64 Dazzler frame and a 512-wide VDM-1 frame land near the same size instead of one
@@ -355,14 +389,6 @@ public:
     // that fits the target width. Whole multiples are the point: nearest-neighbor scaling
     // keeps a 1970s pixel a crisp square, and a fractional scale would blur it. Around it is a
     // thin, even bezel on all four sides (kBorder). See SdlDisplay::ensureWindow().
-    //
-    // This is the sizing MECHANISM, not a user setting: `width` is a per-video-board property
-    // (Display::widthProperty), and the board hands its choice here just before it draws.
-    // Static and session-wide for the same reason focusPolicy_ is -- there is one host window
-    // today, and it must answer before that window exists. (A window per board is future work
-    // -- see TODO.md; that is why width arrives from the drawing board rather than [display].)
-    static int  windowWidth() { return width_; }
-    static void setWindowWidth(int px) { width_ = px; }
 
     // ---- IS THE VIDEO WINDOW A CONSOLE KEYBOARD, OR A DISPLAY-ONLY SURFACE? ----
     //
@@ -394,9 +420,10 @@ public:
     //
     // Purely how the host PAINTS an existing frame: no board sees it, and the board still hands
     // down its native-resolution surface. All of it lives in the SDL back end (display_sdl.cpp).
-    // Static and session-wide for the same reasons focusPolicy_ is: one operator, one window,
-    // and it must answer before any window exists (a machine file sets it in [display]). Read
-    // live at each present(), so SET DISPLAY crt=on/off re-fits an already-open window.
+    // Static and session-wide for the same reasons focusPolicy_ is: one operator, one look for
+    // all of a machine's windows, and it must answer before any window exists (a machine file
+    // sets it in [display]). Read live at each present(), so SET DISPLAY crt=on/off re-fits any
+    // open window.
     static bool crt() { return crt_; }
     static void setCrt(bool on) { crt_ = on; }
 
@@ -411,8 +438,9 @@ public:
     // Each video board pushes one of these into its own properties() so `SET vdm1 width=`,
     // `[vdm1] width=` and SHOW/CONFIG SAVE all work with no per-board parsing -- and so the
     // width lives where the operator looks for it (on the board whose picture it sizes),
-    // not on [display]. The board hands the stored value to setWindowWidth() before it
-    // draws; see windowWidth(). 'auto' opens ~half the screen wide, a number is pixels.
+    // not on [display]. The board hands the stored value to acquire() as targetWidthPx when
+    // it draws, so it sizes that board's own window. 'auto' opens ~half the screen wide, a
+    // number is pixels.
     static Property widthProperty(int& slot);
 
 protected:
@@ -455,10 +483,6 @@ private:
     // The session's focus preference; see focusPolicy(). Inline so the seam stays
     // header-only for everyone who only draws into it.
     static inline bool focusPolicy_ = false;
-
-    // The window-width preference the drawing board last handed us; see windowWidth().
-    // Pixels; 0 = auto (~half the screen wide).
-    static inline int width_ = 0;
 
     // Whether the video window's keys go to the console; see keyboardToConsole().
     static inline bool keyboardToConsole_ = true;
@@ -518,7 +542,7 @@ inline std::vector<Property> Display::properties() {
 
 // The `width` property a video board carries -- see the declaration above. The value lives
 // in the board (the `slot` reference), so two video boards each remember their own; the
-// board hands it to Display::setWindowWidth() when it draws.
+// board hands it to Display::acquire() as targetWidthPx when it draws, sizing its own window.
 inline Property Display::widthProperty(int& slot) {
     Property x;
     x.name = "width";

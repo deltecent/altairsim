@@ -1009,9 +1009,10 @@ For boards with graphics or sound (**VDM-1**, **Cromemco Dazzler**, music boards
 ```cpp
 class Display {
 public:
-    virtual Surface* acquire(int w, int h, PixelFormat) = 0;
-    virtual void     present(Surface*) = 0;
-    virtual void     setPalette(std::span<const Color>) = 0;
+    using Owner = const void*;   // the drawing board's `this` — which window (§ below)
+    virtual Surface* acquire(Owner, int w, int h, PixelFormat, int targetWidthPx) = 0;
+    virtual void     present(Owner, Surface*) = 0;
+    virtual void     setPalette(Owner, std::span<const Color>) = 0;
 };
 
 class Audio {

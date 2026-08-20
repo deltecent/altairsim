@@ -681,8 +681,11 @@ whole-number multiple of the board's pixels so a 1970s frame stays a crisp grid 
 (the leftover is a thin dark border). A width that would run off the screen is brought down to fit.
 
 `width` lives on the board, not on `[display]`, because on real hardware each board has its own
-video-out and could drive its own monitor. Today the simulator has a single window, so if you fit
-two video boards, the one that draws first opens and sizes it; the usual machine has just one.
+video-out and could drive its own monitor — and the simulator matches that: **each video board
+opens its own window**, sized by its own `width`. Fit a VDM-1 and a Dazzler in one machine and you
+get two pictures on two windows, just as the real cards would drive two monitors. The keyboard and
+focus stay shared, though — one operator, one keyboard (see `[display]` in the Configuring
+chapter), so whichever window you type into, the keys reach the machine.
 
 ### A stopped machine's window is responsive, but it does not redraw
 

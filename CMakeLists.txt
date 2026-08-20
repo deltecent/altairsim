@@ -737,6 +737,7 @@ add_executable(altair_tests
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
   tests/test_dazzler.cpp
+  tests/test_multiwindow.cpp
   tests/test_d7a.cpp
   tests/test_sol.cpp
   tests/test_tapemount.cpp
