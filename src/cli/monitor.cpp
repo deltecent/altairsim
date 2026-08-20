@@ -5433,6 +5433,13 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
                 return true;
             }
+            // THE OLD MACHINE'S WINDOWS GO WITH IT. Each video board owned a host window
+            // keyed by its address (host/display.h), and replaceWith() just destroyed those
+            // boards -- the allocator may hand a new board the same address, so a lingering
+            // window would alias it. Close them all; the new machine's video boards reopen
+            // their own on their first frame.
+            if (g_display) g_display->closeAllWindows();
+
             // ...AND THEN POWER IT, because a backplane full of cards that have never
             // seen POC* is not a machine: its RAM was never filled, its ROM images were
             // never read, and no card has been told to reset. This is the same line

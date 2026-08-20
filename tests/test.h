@@ -104,6 +104,7 @@ void test_vdm1();
 void test_vdb8024();
 void test_terminal();
 void test_dazzler();
+void test_multiwindow();
 void test_d7a();
 void test_sol();
 void test_turnkey();

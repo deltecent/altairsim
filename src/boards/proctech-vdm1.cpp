@@ -174,12 +174,12 @@ bool VdmBoard::blinkOn() const {
 
 void VdmBoard::render() {
     const int w = kCols * kCellW, h = kRows * kCellH;  // 512 x 208
-    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
-    Surface* s = g_display->acquire(w, h, PixelFormat::Indexed8);
+    // `this` keys this board's own window (issue #234); id titles it; videoWidth_ sizes it.
+    Surface* s = g_display->acquire(this, id, w, h, PixelFormat::Indexed8, videoWidth_);
     if (!s) return;
 
     const Color pal[2] = {reverse_ ? kFg : kBg, reverse_ ? kBg : kFg};
-    g_display->setPalette(pal);
+    g_display->setPalette(this, pal);
 
     // Cursor visibility this frame (D7 marks the cell; SW3/SW4 pick the behavior).
     bool lit = blinkOn();
@@ -222,7 +222,7 @@ void VdmBoard::render() {
     lastBlinkOn_   = lit;
     hasCursorCell_ = sawCursorCell;
 
-    g_display->present(s);
+    g_display->present(this, s);
 }
 
 // ---------------------------------------------------------------------------

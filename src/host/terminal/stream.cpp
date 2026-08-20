@@ -134,7 +134,9 @@ void TerminalStream::pump() {
     if (!d) return;
     if (!renderer_.frameChanged(screen_, d)) return;
     if (!d->wantsFrame()) return;
-    renderer_.render(*d, screen_, videoWidth_);
+    // `this` keys this terminal's own window (issue #234), distinct from any video board's;
+    // its spec (e.g. "terminal:vt100") titles the window.
+    renderer_.render(this, spec_, *d, screen_, videoWidth_);
 }
 
 } // namespace altair

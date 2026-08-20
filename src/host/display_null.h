@@ -9,31 +9,39 @@
 // runs identically to the shipping binary and a test asserts on the pixels it
 // paints -- with no window, no OS, and nothing to skip.
 //
-// It keeps the Surface it acquire()d (reusing it while the dimensions hold) so a
-// test can read the last frame back after pumping the board. present() and
-// setPalette() record just enough to prove the board CALLED them -- present is a
-// counter, the palette is retained -- and do no host work.
+// ONE SURFACE PER OWNER, exactly as the SDL back end keeps one window per owner
+// (issue #234): two video boards drawing into the same NullDisplay each get their
+// own Surface, so a test can prove they no longer share one. It keeps each Surface
+// it acquire()d (reusing it while the dimensions hold) so a test can read a board's
+// last frame back after pumping it. present() and setPalette() record just enough
+// to prove the board CALLED them -- present is a per-owner counter, the palette is
+// retained per owner -- and do no host work.
 
 #include "host/display.h"
 
+#include <map>
 #include <memory>
 
 namespace altair {
 
 class NullDisplay : public Display {
 public:
-    Surface* acquire(int w, int h, PixelFormat fmt) override {
-        if (!surface_ || surface_->width() != w || surface_->height() != h ||
-            surface_->format() != fmt) {
-            surface_ = std::make_unique<Surface>(w, h, fmt);
+    Surface* acquire(Owner owner, const std::string& /*label*/, int w, int h, PixelFormat fmt,
+                     int /*targetWidthPx*/) override {
+        Win& win = wins_[owner];
+        if (!win.surface || win.surface->width() != w || win.surface->height() != h ||
+            win.surface->format() != fmt) {
+            win.surface = std::make_unique<Surface>(w, h, fmt);
         }
-        return surface_.get();
+        last_ = owner;
+        return win.surface.get();
     }
 
-    void present(Surface*) override { ++frames_; }
+    void present(Owner owner, Surface*) override { ++wins_[owner].frames; last_ = owner; }
 
-    void setPalette(std::span<const Color> colors) override {
-        palette_.assign(colors.begin(), colors.end());
+    void setPalette(Owner owner, std::span<const Color> colors) override {
+        wins_[owner].palette.assign(colors.begin(), colors.end());
+        last_ = owner;
     }
 
     // WALL TIME A TEST CAN SET. The base Display reads steady_clock, which is right
@@ -46,16 +54,38 @@ public:
     void   setHostSeconds(double s) { hostSeconds_ = s; }
     void   advanceHostSeconds(double s) { hostSeconds_ += s; }
 
-    // ---- For tests: look at what the board drew, without a window. ----
-    const Surface* surface() const { return surface_.get(); }
-    uint64_t frames() const { return frames_; }
-    const std::vector<Color>& palette() const { return palette_; }
+    // ---- For tests: look at what a board drew, without a window. ----
+    //
+    // The per-owner overloads are the honest ones now that a NullDisplay may serve
+    // several boards; the zero-arg ones answer for the board that drew most recently,
+    // which is exactly the sole board in a single-board test.
+    const Surface* surface(Owner owner) const {
+        auto it = wins_.find(owner);
+        return it == wins_.end() ? nullptr : it->second.surface.get();
+    }
+    uint64_t frames(Owner owner) const {
+        auto it = wins_.find(owner);
+        return it == wins_.end() ? 0 : it->second.frames;
+    }
+    const std::vector<Color>& palette(Owner owner) const {
+        static const std::vector<Color> empty;
+        auto it = wins_.find(owner);
+        return it == wins_.end() ? empty : it->second.palette;
+    }
+
+    const Surface*            surface() const { return surface(last_); }
+    uint64_t                  frames() const { return frames(last_); }
+    const std::vector<Color>& palette() const { return palette(last_); }
 
 private:
-    std::unique_ptr<Surface> surface_;
-    std::vector<Color> palette_;
-    uint64_t frames_ = 0;
-    double   hostSeconds_ = 0.0;
+    struct Win {
+        std::unique_ptr<Surface> surface;
+        std::vector<Color>       palette;
+        uint64_t                 frames = 0;
+    };
+    std::map<Owner, Win> wins_;
+    Owner  last_        = nullptr;  // the board that most recently drew (the zero-arg answer)
+    double hostSeconds_ = 0.0;
 };
 
 } // namespace altair

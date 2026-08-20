@@ -499,7 +499,9 @@ terminal is the back door.
 
 How *big* the window opens is set per video board, not here — see the `width` property in
 [Boards](boards.md). Each board's video-out could drive its own monitor on a real Altair, so the
-size belongs to the board whose picture it frames.
+size belongs to the board whose picture it frames — and each video board opens its **own** window.
+The `[display]` keys here are **shared across all of a machine's windows**: one operator has one
+keyboard, so `focus`, `keyboard` and `crt` are a session-wide choice, not a per-window one.
 
 `keyboard` decides whether a video window is a *keyboard* at all — which is separate from whether it
 has focus. Default `console`: a focused window is a keyboard, and its keys join the terminal's on the

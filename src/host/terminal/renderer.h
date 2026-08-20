@@ -40,9 +40,12 @@ public:
     // time from the Display -- the one clock a terminal's blink may use, DESIGN.md 7.5).
     bool frameChanged(const TerminalScreen& scr, Display* d) const;
 
-    // Paint the frame and present it. Clears the screen's dirty flag. `windowWidth` is
-    // the board's window-width choice (0 = auto), handed to the Display before drawing.
-    void render(Display& d, TerminalScreen& scr, int windowWidth);
+    // Paint the frame and present it. Clears the screen's dirty flag. `owner` is the board
+    // whose window this is (issue #234 -- one window per video board), `label` titles that
+    // window after the board, and `windowWidth` is the board's width choice (0 = auto) --
+    // all handed to the Display's acquire().
+    void render(Display::Owner owner, const std::string& label, Display& d, TerminalScreen& scr,
+                int windowWidth);
 
 private:
     bool blinkOn(Display* d) const;

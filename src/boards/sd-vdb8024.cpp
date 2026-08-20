@@ -209,7 +209,7 @@ void Vdb8024Board::pump() {
     if (!g_display) return;
     if (!renderer_.frameChanged(screen_, g_display)) return;
     if (!g_display->wantsFrame()) return;
-    renderer_.render(*g_display, screen_, videoWidth_);
+    renderer_.render(this, id, *g_display, screen_, videoWidth_);
 }
 
 void Vdb8024Board::latchKeyboard() {

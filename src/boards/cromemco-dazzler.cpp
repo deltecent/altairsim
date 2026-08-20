@@ -186,12 +186,12 @@ bool DazzlerBoard::frameChanged() {
 // ---------------------------------------------------------------------------
 void DazzlerBoard::render() {
     const int side = elementsPerSide();
-    g_display->setWindowWidth(videoWidth_);            // this board's window-width choice
-    Surface* s = g_display->acquire(side, side, PixelFormat::Indexed8);
+    // `this` keys this board's own window (issue #234); id titles it; videoWidth_ sizes it.
+    Surface* s = g_display->acquire(this, id, side, side, PixelFormat::Indexed8, videoWidth_);
     if (!s) return;
 
     std::array<Color, 16> pal = buildPalette(color());
-    g_display->setPalette(pal);
+    g_display->setPalette(this, pal);
 
     s->clear(0);
     for (auto& b : shadow_) b = 0;
@@ -239,7 +239,7 @@ void DazzlerBoard::render() {
     shadowFormat_ = format_;
     dirty_        = false;
 
-    g_display->present(s);
+    g_display->present(this, s);
 }
 
 // ---------------------------------------------------------------------------
