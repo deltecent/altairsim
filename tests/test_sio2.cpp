@@ -667,6 +667,80 @@ void test_sio2() {
               "and the mainline is still spinning where we left it");
     }
 
+    SECTION("88-2SIO -- THE NEGATIVE CONTROL: jumper OUT, and the guest stays DEAF");
+    {
+        // THIS IS acceptance-2sio-echo's silent phase, PINNED AT THE BOARD LEVEL.
+        //
+        // The .exp negative control (tests/acceptance/2sio-echo.exp:silent) runs the
+        // interrupt-driven ECHOINT with the interrupt jumper OUT and asserts NOTHING
+        // comes back: the 6850 receives the character and raises its own IRQ pin, but
+        // that pin now reaches no backplane wire, so the 8080 is never interrupted, the
+        // ISR at 0038h never runs, and the guest NOPs on, deaf. It was seen to echo
+        // about one run in twenty under load (TODO.md) -- and "under load" means only
+        // that the host delivered the keystroke at a different instruction each time.
+        //
+        // A real 6850 cannot care WHEN in the guest's execution the byte lands: the
+        // strap gate (Sio2Port::assertsInt) consults ch.jumper == Int and nothing else,
+        // and irq() -- which DOES go true, jumper or no jumper -- never reaches pin 73
+        // without it. So the way to settle "interrupt-strap gate vs receiver pacing" is
+        // to reproduce the exact scenario deterministically and SWEEP the one variable
+        // the acceptance test cannot pin: the T-state at which the character arrives.
+        //
+        // Rig runs with bus.setVerify(true), so if the board ever drove pin 73 with the
+        // jumper out -- for ONE instruction, at ONE arrival offset -- verifyInt() aborts
+        // the moment the wire disagrees with the strap. This is the guard the acceptance
+        // test lacks (the shipped binary does not verify), and it is why the board level
+        // is where this belongs.
+        //
+        // The guest is byte-for-byte the interrupt echo above; only the jumper changes.
+        for (int arriveAfter = 0; arriveAfter <= 6000; arriveAfter += 250) {
+            Rig g;
+            Mc6850* a = g.sio->channel("a");
+            a->jumper = IrqJumper::None;  // THE WIRE IS CUT. Everything below turns on this.
+            g.sio->configChanged();       // ...and the card re-settles pin 73 for the strap
+
+            g.m.bus.memWrite(0x0038, 0xDB);  // IN 11    -- the ISR, if it ever ran, would echo
+            g.m.bus.memWrite(0x0039, 0x11);
+            g.m.bus.memWrite(0x003A, 0xD3);  // OUT 11
+            g.m.bus.memWrite(0x003B, 0x11);
+            g.m.bus.memWrite(0x003C, 0xFB);  // EI
+            g.m.bus.memWrite(0x003D, 0xC9);  // RET
+
+            g.load({
+                0x31, 0x00, 0x02,  // LXI SP,0200
+                0x3E, 0x95,        // MVI A,95      -- RIE on: the SAME control byte ECHOINT writes
+                0xD3, 0x10,        // OUT 10        -- arm the receive interrupt
+                0xFB,              // EI            -- 8080 interrupts enabled
+                0xC3, 0x08, 0x01,  // JMP 0108      -- and now do nothing but spin
+            }, 0x0100);
+
+            // Let the guest arm the chip and start spinning, THEN drop the character in --
+            // at a different point in the loop on every pass. arriveAfter=0 lands it before
+            // the guest has even run; 6000 lands it deep into the spin. Not one offset may
+            // wake it.
+            g.run(arriveAfter);
+            g.tty->feed("!");
+            g.sio->pump();  // the byte arrives through the ONE DOOR (DESIGN.md 7.1) -- which is
+                            // what arms the receiver's deadline while the guest only spins
+
+            // Run it out, and check the wire on EVERY instruction boundary -- a leak that
+            // lasted a single step and cleared itself would still have fired an interrupt,
+            // and this is the loop that catches it (verifyInt runs inside intPending()).
+            for (int i = 0; i < 4000; ++i) {
+                CHECK(!g.m.bus.intPending(), "jumper out: pin 73 NEVER lifts, whatever the chip's IRQ says");
+                CHECK(g.m.cpu()->pc() != 0x0038, "so the CPU never vectors to the ISR");
+                StepResult s = g.m.master()->step(g.m.bus);
+                g.m.clock.advance(s.tStates);
+            }
+
+            // The character was received all right -- the chip is not dead, it is UNWIRED.
+            CHECK((g.m.bus.ioRead(0x10) & 0x80) != 0, "the chip DID raise its own IRQ bit (it is a pin)");
+            CHECK((g.m.bus.ioRead(0x10) & 0x01) != 0, "and the byte is sitting in the receiver, unread");
+            // Nothing ever went back out the transmitter: the ISR never ran.
+            CHECK(g.tty->out().empty(), "and NOTHING was echoed -- no jumper, no interrupt, no echo");
+        }
+    }
+
     SECTION("ALTMON -- the ROM runs, and talks");
     {
         // THE ACCEPTANCE TEST. A real 1K monitor PROM, written for real hardware in

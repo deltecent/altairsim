@@ -1551,13 +1551,31 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     const bool watchKeys = anyConsole || tty;
     const bool takeTty   = watchKeys;
 
+    // TAKE THE TERMINAL BEFORE WE SAY ANYTHING, NOT AFTER. The banner just below is the
+    // first thing a typed-ahead keystroke can race, and it used to be printed while the
+    // line editor's raw mode had already been restored to COOKED, ECHO ON. That left a
+    // window -- open until enterRaw() ran a few statements later -- in which the tty
+    // DRIVER echoed whatever was typed at the just-started guest. It is invisible to a
+    // human (nobody types in a microsecond) but it is exactly what made
+    // acceptance-2sio-echo's negative control flaky: the interrupt jumper was out and the
+    // guest was genuinely deaf, but the terminal echoed `HELLO 2SIO` back and the test
+    // matched its own echo (~1-in-20 under load; the board itself never lifts pin 73 --
+    // proven in tests/test_sio2.cpp and over --mcp). enterRaw() turns local echo off, so
+    // from here nothing can come back that the guest did not itself transmit.
+    //
+    // The cost is one character: raw mode also turns OPOST off, so a lone '\n' no longer
+    // carries a return, and the banner has to bring its own. `con.raw()` is false under a
+    // pipe (there is no terminal to have made raw), so piped output keeps its plain '\n'.
+    if (takeTty) con.enterRaw();
+    const char* nl = con.raw() ? "\r\n" : "\n";
+
     // NEXT (stepOver) runs the callee silently: the operator asked to step over one
     // instruction, not to start the machine, so the "running from ..." banner would
     // be noise on every step. The raw-mode/pump/pace paths below are unchanged, so
     // the callee is still live and interruptible -- only the announcement is gone.
     if (!stepOver) {
         if (anyConsole) {
-            out << "[console -- ^" << attn << " returns to the monitor]\n";
+            out << "[console -- ^" << attn << " returns to the monitor]" << nl;
         } else {
             // Not an error, and it must not read like one: a machine with nothing
             // connected to a terminal is a machine that runs perfectly well. It is how
@@ -1582,11 +1600,10 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
                 std::snprintf(buf, sizeof buf, "running from %s.  %s  (no console connected)",
                               fmtWord(cpu->pc()).c_str(), stop.c_str());
             }
-            out << buf << "\n";
+            out << buf << nl;
         }
         out.flush();
     }
-    if (takeTty) con.enterRaw();
 
     // ^C still stops a PIPED run, because there raw mode never happened and the
     // signal is all there is. On a terminal ISIG is off and this never fires --
