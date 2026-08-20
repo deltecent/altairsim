@@ -219,9 +219,9 @@ int readInputBlocking() {
     return c;
 }
 
-// FIELD-UNTESTED (2026-07-25): written from the readInput() console path below and the
-// POSIX poll() sibling, but not yet run on the Win10 box -- verify at the altairsim>
-// prompt (typing still works after a >100ms pause) before this ships. See TODO.md.
+// Field-verified on the Win10 box (2026-08-20): at the altairsim> prompt, typing works
+// after a long idle, and -- the case this code exists for -- a mouse move, focus change
+// or window resize over the console does NOT wedge the prompt; typing still lands.
 //
 // The subtlety a plain WaitForSingleObject misses: a console handle goes signaled for
 // ANY input record -- a mouse move, a focus change, a window resize, a key-UP -- not
