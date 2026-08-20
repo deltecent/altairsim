@@ -31,10 +31,10 @@
 // and status bit 7 (the C1/IRQ1 flag) driving the standard poll -- set when a byte
 // arrives, cleared when the guest reads the data register. STORED but not simulated:
 // the C1/C2 control bits (a guest may write them freely) and the CA2/CB2 output-
-// strobe timing -- invisible through a byte-stream endpoint. POLLED, like the C700:
-// the enable bits are kept but no interrupt wire is pulled (issue #26). DDR is
-// stored and reported; a byte endpoint carries all 8 bits, so per-bit direction
-// masking is not applied.
+// strobe timing -- invisible through a byte-stream endpoint. POLLED: the interrupt
+// enable bits are kept but no interrupt wire is pulled (this card's own #26 is still
+// open; the 88-C700 grew its interrupt structure). DDR is stored and reported; a byte
+// endpoint carries all 8 bits, so per-bit direction masking is not applied.
 
 #include "core/board.h"
 #include "host/stream.h"
