@@ -38,7 +38,8 @@ altairsim [options] [machine]
   -x, --exec <cmd>   run one monitor command (repeatable), then exit.
   -i, --interactive  after --script/--exec, stay in the monitor.
       --mcp          MCP server on stdio.
-  -v, --version      -h, --help
+  -v, --version      print the version and exit.
+  -h, --help         print this help and exit.
 ```
 
 ## Monitor commands
@@ -254,7 +255,13 @@ base      = octal          # read/print the wire class in split octal (MITS styl
 | `console` | the host terminal. Exactly one unit may hold it. |
 | `null` | nowhere. Writes vanish, reads never come. |
 | `loopback` | itself — what you write comes back. |
+| `scripted` | a caller in place of a human — what MCP and the tests type into. |
 | `socket:PORT` | **listens** — this is telnet-in. |
 | `socket:HOST:PORT` | **calls out**. |
 | `serial:DEVICE` | a real serial port on this host. |
+| `in:PATH` | a host file as a reader (paper tape). `?cps=N` paces it. |
+| `out:PATH` | a host file as a punch — 8-bit clean, never truncating. |
+| `terminal` | a window the simulator draws itself (SDL builds). `?emulation=vt100\|adm3a\|vt52\|h19`, `?size=COLSxROWS`. |
+| `printer:QUEUE` | a real print queue on this host. |
+| `<endpoint>\|FILE` | a tap: append `\|FILE` to any endpoint to also log the line. |
 

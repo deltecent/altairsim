@@ -102,7 +102,8 @@ static void usage(std::ostream& o) {
          "  -i, --interactive  after --script/--exec, stay in the monitor.\n"
          "\n"
          "      --mcp          MCP server on stdio (for Claude).\n"
-         "  -v, --version      -h, --help\n";
+         "  -v, --version      print the version and exit.\n"
+         "  -h, --help         print this help and exit.\n";
 }
 
 static void list(std::ostream& o) {

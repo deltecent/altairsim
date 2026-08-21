@@ -552,7 +552,8 @@ void cheatsheet(const std::string& dir) {
          "  -x, --exec <cmd>   run one monitor command (repeatable), then exit.\n"
          "  -i, --interactive  after --script/--exec, stay in the monitor.\n"
          "      --mcp          MCP server on stdio.\n"
-         "  -v, --version      -h, --help\n"
+         "  -v, --version      print the version and exit.\n"
+         "  -h, --help         print this help and exit.\n"
          "```\n\n";
 
     bool anyUnbuilt = false;
@@ -645,9 +646,16 @@ void cheatsheet(const std::string& dir) {
          "| `console` | the host terminal. Exactly one unit may hold it. |\n"
          "| `null` | nowhere. Writes vanish, reads never come. |\n"
          "| `loopback` | itself — what you write comes back. |\n"
+         "| `scripted` | a caller in place of a human — what MCP and the tests type into. |\n"
          "| `socket:PORT` | **listens** — this is telnet-in. |\n"
          "| `socket:HOST:PORT` | **calls out**. |\n"
-         "| `serial:DEVICE` | a real serial port on this host. |\n\n";
+         "| `serial:DEVICE` | a real serial port on this host. |\n"
+         "| `in:PATH` | a host file as a reader (paper tape). `?cps=N` paces it. |\n"
+         "| `out:PATH` | a host file as a punch — 8-bit clean, never truncating. |\n"
+         "| `terminal` | a window the simulator draws itself (SDL builds). "
+         "`?emulation=vt100\\|adm3a\\|vt52\\|h19`, `?size=COLSxROWS`. |\n"
+         "| `printer:QUEUE` | a real print queue on this host. |\n"
+         "| `<endpoint>\\|FILE` | a tap: append `\\|FILE` to any endpoint to also log the line. |\n\n";
 }
 
 }  // namespace
