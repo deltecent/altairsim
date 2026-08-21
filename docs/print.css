@@ -114,6 +114,10 @@ body {
   color: #111;
   max-width: 42em;
   margin: 0 auto;
+  /* Never leave a single line of a paragraph alone at the top or foot of a page --
+   * carry at least two lines across the break, so a broken paragraph reads as one. */
+  orphans: 2;
+  widows: 2;
 }
 
 /* Chapters start on a new page. Every chapter file begins with a single H1. */
@@ -138,10 +142,16 @@ h1, h2, h3, h4 { break-after: avoid; }
  * break-inside:avoid the browser floats the whole table to the next page and strands the
  * heading (and its paragraph) at the foot of this one. Glue the chain: the paragraph right
  * under a heading, and a table right under that paragraph or under the heading itself,
- * refuse a page break before them -- so the heading always leads its table onto the page. */
+ * refuse a page break before them -- so the heading always leads its table onto the page.
+ *
+ * An EXAMPLE (a <pre> code block) is the same shape: heading -> lead-in sentence -> the
+ * command to type. Glue it too, so "here is how you boot CP/M:" never sits at the foot of
+ * one page with the block it introduces at the head of the next. (pre already has
+ * break-inside:avoid, so the block itself stays whole; this keeps its lead-in with it.) */
 h1 + p, h2 + p, h3 + p, h4 + p,
 h1 + table, h2 + table, h3 + table, h4 + table,
-p + table { break-before: avoid; }
+h1 + pre, h2 + pre, h3 + pre, h4 + pre,
+p + table, p + pre { break-before: avoid; }
 
 /* Code is where the reader's hands go, so it gets the room. Period listings and terminal
  * transcripts are written to 79 columns; anything wider is a table pretending to be code. */
@@ -170,6 +180,14 @@ table {
   font-size: 0.86em;
   break-inside: avoid;   /* a parameter table cut across a page is unreadable */
 }
+/* ...but break-inside:avoid can only be honoured while the table FITS on a page. The long
+ * ones -- Monitor commands, the endpoint list -- are taller than the page and MUST break,
+ * and when they did a row could be sliced down the middle, stranding half a cell on the
+ * next page (SEA[RCH] did exactly this). Keep each row whole: break only BETWEEN rows.
+ * (display:table-header-group to repeat the column titles on the continuation page is the
+ * standard mechanism, but this Paged.js build does not honour it, so it is not set here --
+ * a rule that does nothing but claim to is worse than the missing header it does not fix.) */
+tr { break-inside: avoid; }
 th, td {
   border: 1px solid #ccc;
   padding: 0.35em 0.55em;
