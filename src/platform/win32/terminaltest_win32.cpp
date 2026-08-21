@@ -28,7 +28,10 @@
 //
 // SKIPS (exit 77, ctest's SKIP_RETURN_CODE) when there is no console to take -- a
 // service, a detached job, some CI runners -- because a console test that passed with no
-// console would be the green tick that lies.
+// console would be the green tick that lies. It also skips, rather than half-runs, when a
+// console can be taken for only one of the two streams: under ctest on Windows stdin is
+// the console but stdout is captured through a pipe, so a real console must be acquired
+// for BOTH std handles before the assertions run.
 
 #include "platform/terminal.h"
 
@@ -50,12 +53,14 @@ static int g_fail = 0, g_run = 0;
 constexpr int kSkip = 77;  // agrees with SKIP_RETURN_CODE in CMakeLists.txt
 
 int main() {
-    // Get a real console to drive. When stdin is redirected (a pipe, as under ctest)
-    // stdinIsTty() is false even though a console is attached, so open CONIN$/CONOUT$
-    // directly -- that succeeds whenever ANY console exists -- and point the std handles
-    // at it, which is what terminal_win32.cpp reads through GetStdHandle. Only if there
-    // is no console at all do we make one; if even that fails, we SKIP.
-    if (!stdinIsTty()) {
+    // Get a real console to drive, for BOTH std handles. When a stream is redirected (a
+    // pipe, as under ctest) its isTty() is false even though a console is attached -- and
+    // ctest captures the child's stdout, so stdinIsTty() can be true while stdoutIsTty()
+    // is false. Whenever EITHER stream is not a real console, open CONIN$/CONOUT$ directly
+    // -- that succeeds whenever ANY console exists -- and point the std handles at it,
+    // which is what terminal_win32.cpp reads through GetStdHandle. Only if there is no
+    // console at all do we make one; if even that fails, we SKIP.
+    if (!stdinIsTty() || !stdoutIsTty()) {
         HANDLE cin = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE,
                                  FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                                  OPEN_EXISTING, 0, nullptr);
@@ -76,6 +81,17 @@ int main() {
                                   OPEN_EXISTING, 0, nullptr);
         if (cin != INVALID_HANDLE_VALUE) SetStdHandle(STD_INPUT_HANDLE, cin);
         if (cout != INVALID_HANDLE_VALUE) SetStdHandle(STD_OUTPUT_HANDLE, cout);
+
+        // If a console still cannot be taken for BOTH streams, SKIP rather than run half
+        // the suite against a pipe -- running was the spurious ctest failure this fixes.
+        if (!stdinIsTty() || !stdoutIsTty()) {
+            std::printf("SKIPPED: could not obtain a real console for both stdin and "
+                        "stdout (CONIN$ %s, CONOUT$ %s).\n"
+                        "  This test reconfigures a real console; run it from a terminal.\n",
+                        cin != INVALID_HANDLE_VALUE ? "ok" : "failed",
+                        cout != INVALID_HANDLE_VALUE ? "ok" : "failed");
+            return kSkip;
+        }
     }
 
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
