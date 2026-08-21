@@ -3424,7 +3424,20 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     if (cmd == "SET") {
         if (!need(3, "SET <id>[:<unit>]|CONSOLE|DISPLAY|REG|BUS <key>=<value>")) return true;
+        // Reject trailing junk, the same contract SHOW keeps: once the target and its
+        // key=value are parsed, a leftover token is an error, not a silent drop. The
+        // ceiling is 3 for the `key=value` form and 4 for the spaced `key value` form,
+        // applied at each parse arm below.
+        auto tooMany = [&](size_t max) {
+            if (a.size() > max) {
+                out << "SET: unexpected '" << a[max] << "'\n";
+                failed_ = true;
+                return true;
+            }
+            return false;
+        };
         if (is(a[1], "BUS")) {
+            if (tooMany(3)) return true;
             size_t eq = a[2].find('=');
             std::string v = eq == std::string::npos ? "" : upper(a[2].substr(eq + 1));
             if (upper(a[2]).rfind("CONTENTION", 0) == 0) {
@@ -3464,9 +3477,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (eq != std::string::npos) {
                 k = a[2].substr(0, eq);
                 v = a[2].substr(eq + 1);
+                if (tooMany(3)) return true;
             } else if (a.size() >= 4) {
                 k = a[2];
                 v = a[3];
+                if (tooMany(4)) return true;
             } else {
                 out << "usage: SET REG <r>=<v>\n";
                 failed_ = true;
@@ -3513,9 +3528,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             if (eq != std::string::npos) {
                 k = a[2].substr(0, eq);
                 v = a[2].substr(eq + 1);
+                if (tooMany(3)) return true;
             } else if (a.size() >= 4) {
                 k = a[2];
                 v = a[3];
+                if (tooMany(4)) return true;
             } else {
                 out << "usage: SET <id>[:<unit>] <key>=<value>  |  SET CONSOLE <key>=<value>"
                        "  |  SET DISPLAY <key>=<value>\n";
