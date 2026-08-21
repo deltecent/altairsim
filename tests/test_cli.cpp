@@ -944,6 +944,44 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
+    // A SHOW subcommand that has consumed every argument it understands must REJECT a
+    // trailing token, not silently drop it. The reported trap was `SHOW cpu regs`, which
+    // ran as `SHOW cpu` and looked, to the operator, like it had answered -- when REGS is
+    // a separate verb entirely. The rejection precedes any board lookup, so it fires on a
+    // plain machine with no such board, and it covers the no-arg leaves and the ones that
+    // take an argument of their own (past their ceiling) alike.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SHOW rejects a trailing token instead of dropping it");
+    {
+        Machine mx;
+        Monitor monX(mx);
+
+        auto rejects = [&](const std::string& cmd, const std::string& tok) {
+            std::ostringstream o;
+            monX.exec(cmd, o);
+            CHECK(o.str().find("SHOW: unexpected '" + tok + "'") != std::string::npos,
+                  (cmd + " reports the leftover token").c_str());
+        };
+        // The reported case: a board id takes no further word.
+        rejects("SHOW cpu regs", "regs");
+        // A no-arg subcommand.
+        rejects("SHOW MOUNTS foo", "foo");
+        // An arg-taking subcommand, one token past its ceiling.
+        rejects("SHOW BUS MAP extra", "extra");
+        rejects("SHOW BOARD acr units foo", "foo");
+        rejects("SHOW MACHINE altair extra", "extra");
+
+        // The valid forms are untouched -- none of them emits the rejection.
+        for (const char* ok : {"SHOW MOUNTS", "SHOW BUS MAP", "SHOW BOARD acr units",
+                               "SHOW MACHINES"}) {
+            std::ostringstream o;
+            monX.exec(ok, o);
+            CHECK(o.str().find("SHOW: unexpected") == std::string::npos,
+                  (std::string(ok) + " is accepted").c_str());
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // HELP <cmd> <sub>: extra words narrow the help to that sub-level. The text is
     // FILTERED from the command's own detail block (commands.cpp), never a second list,
     // so `HELP SHOW BOARD` shows the BOARD line(s) and drops the unrelated siblings. A
