@@ -245,12 +245,16 @@ altairsim> DISASM 100 2
 ```
 EXAMINE [<addr>]
 ```
-One byte: hex, ASCII, and the bits as the panel's LEDs showed them. Bare
-EXAMINE is the panel's EXAMINE NEXT -- it steps one byte. Its cursor is its
-own; a DUMP does not move it.
+One byte: hex, ASCII, and the bits as the panel's LEDs showed them. EXAMINE
+jams the address into the PROGRAM COUNTER, just like the panel switch, so
+`EX <addr>` also shows the register line and the disassembled instruction the
+PC now points at -- what the next STEP will execute. Bare EXAMINE is the
+panel's EXAMINE NEXT -- it steps one byte, quietly. Its cursor is its own; a
+DUMP does not move it.
 
 ```
 EX 100       0100  C3  .  11000011
+             A=00 ... P=0100  JMP 0138
 EX           and the next byte, and the next
 ```
 

@@ -4252,7 +4252,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!pcOwner) return true;
 
         uint32_t A;
-        if (a.size() < 2) {
+        bool addressed = a.size() >= 2;
+        if (!addressed) {
             // EXAMINE NEXT: the panel steps the counter and shows what is there.
             A = (uint32_t)((pcOwner->pc() + 1) & 0xFFFF);
         } else if (!addrSym(a[1], A, out)) {
@@ -4277,6 +4278,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // at all. FF from a chip and FF from an empty slot read the same.
         if (m_.bus.lastUnclaimed()) out << "   (nobody drives this -- the bus floated it)";
         out << "\n";
+        // `EX <addr>` positions the PC on purpose -- it is how you say "run here next".
+        // So show what the CPU now points at: the register line and the disassembled
+        // instruction at the new PC, exactly what the following STEP will execute.
+        // Bare EXAMINE (EXAMINE NEXT) is a byte-at-a-time memory walk and stays quiet.
+        if (addressed) {
+            disasmNext_ = A;  // a following bare DISASM continues from here, as after STEP/RUN
+            showRegs(out);
+        }
         flush(out);
         // EXAMINE ran a real bus cycle (the CPU drove the PC onto the address lines
         // and MEMR'd the byte), which snoop() latched onto the panel's lamps. Push it:
