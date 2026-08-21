@@ -75,7 +75,7 @@ The 174 bytes that land at `0x0F00` are the real loader, and it is general-purpo
 
 `PS2-MON.TAP` after the bootstrap payload is exactly this: eleven `'<'` blocks, the low
 RST-vector block loaded **last**, and a final `x 0040` that warm-starts into the freshly
-assembled monitor. The monitor is not a monolithic image with an entry point of its own — it is
+assembled monitor. The monitor is not a single image with an entry point of its own — it is
 a handful of checksummed blocks and a jump, delivered by the interpreter the bootstrap just
 installed.
 

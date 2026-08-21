@@ -108,7 +108,7 @@ altairsim> CONNECT sio0:a "terminal?emulation=h19&size=132x24"
 ```
 
 `emulation` is one of `vt100` (the default; `ansi` is the same engine), `adm3a` (the Lear
-Siegler ADM-3A, the archetypal CP/M terminal), `vt52`, or `h19` (the Heath/Zenith H19, a VT52
+Siegler ADM-3A, the classic CP/M terminal), `vt52`, or `h19` (the Heath/Zenith H19, a VT52
 superset with an ANSI mode). `size` is *columns*×*rows* and defaults to `80x24`.
 
 A `terminal` needs a window, so it is available only in a build with a display. Ask for one in
@@ -139,7 +139,7 @@ The second form is Windows. The bytes go out of a real UART, down a real wire, i
 you have on the other end.
 
 **If you get the device name wrong, it lists the ports that actually exist on your machine.**
-It does not merely say "cannot open". A cable that enumerated under a name one character off
+It does not merely say "cannot open". A cable that appeared under a name one character off
 from the one you expected is ten minutes of somebody quietly deciding the simulator is
 broken, and the fix is to print the answer instead of the complaint.
 

@@ -3,7 +3,7 @@
 A machine file is **TOML**. It lists the boards in the backplane, what is set on each of them,
 and what to do once the power is on. That is all it does, and there is nothing else it can do.
 
-This chapter is the normative description of the format.
+This chapter is the definitive description of the format.
 
 ## What TOML is (and why this file is one)
 
@@ -50,7 +50,7 @@ mine.toml: unknown [machine] key 'widget'
 mine.toml: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle achieved_hz
 ```
 
-This is not pedantry. **A configuration that looks like it set something and did not is worse
+This is not fussiness. **A configuration that looks like it set something and did not is worse
 than one that will not load**, because you will spend the afternoon debugging the machine
 instead of the typo. A misconfiguration in this program cannot be silent.
 
@@ -165,7 +165,7 @@ The crystal is soldered to the **88-CPU card**. The sense switches are on the **
 Neither is a property of "the machine" — the machine is just the box they are plugged into. If
 you pull the CPU card out, the crystal goes with it.
 
-These two get a bespoke error rather than the generic *unknown key* because they are the two
+These two get a custom error rather than the generic *unknown key* because they are the two
 people reach for first, and being told *where the thing actually lives* is more use than being
 told it isn't here.
 

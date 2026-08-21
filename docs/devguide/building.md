@@ -283,7 +283,7 @@ does not join wrapped lines** — only `ActualText` does. Our PDFs are already t
 (`pdfinfo` → `Tagged: yes`), and Chrome emits `ActualText` **only for ligatures** (the `fi`/`fl`
 spans), never for paragraphs. Every mainstream HTML/Markdown→PDF engine (WeasyPrint, Prince,
 wkhtmltopdf, Typst, LaTeX) conveys paragraphs through the structure tree, not through
-paragraph-level `ActualText` — so **swapping the PDF engine changes the producer byline and
+paragraph-level `ActualText` — so **swapping the PDF engine changes the producer name and
 nothing about the copy behavior.** Do not propose one as the fix.
 
 Readers split on this: Word and Acrobat honor the structure tree, so the paragraph comes across
@@ -292,7 +292,7 @@ Worse, **macOS Sequoia's Preview/PDFKit regressed** — it stamps a paragraph br
 visual line regardless of the document, surviving even a text-only paste — so it would ignore
 `ActualText` too.
 
-A bespoke `ActualText` post-pass *is* buildable — Chrome already brackets each paragraph in one
+A custom `ActualText` post-pass *is* buildable — Chrome already brackets each paragraph in one
 marked-content span — but it is a real tool, not a shell snippet: the paragraph text is emitted
 as subsetted **hex glyph-IDs**, so each glyph has to be reverse-mapped through the font's
 `ToUnicode` CMap, with TJ kerning arrays and nested ligature/italic spans handled, then the

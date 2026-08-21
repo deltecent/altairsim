@@ -1,8 +1,14 @@
 # Disks
 
-A disk Altair is a floppy **controller** on the bus, some number of **drives** hanging off it,
-and a **disk image** sitting in one of those drives. The three are separate things, and the
-manual keeps them separate, because the machine did.
+A disk on an Altair is really three things: a **controller** board on the bus, some number of
+**drives** hanging off it, and a **disk image** sitting in one of those drives. The three are
+separate, and the manual keeps them separate, because the machine did.
+
+This chapter is about the last two — the **image** and the **drive it goes in** — and the
+`MOUNT` workflow that puts one in the other. That workflow is the same whichever controller you
+have. The **controllers themselves** are boards, one per section in the Boards chapter; this
+chapter uses the MITS hard-sector pair (`dcdd` and `mds`) for its examples because that is what
+the shipped machines boot from.
 
 The controller is a board. It goes in the machine file. The drives are part of the
 controller — a MITS 88-DCDD addresses up to sixteen of them, whether or not you own sixteen.
@@ -16,14 +22,24 @@ The disk goes in a drive, and you may put it there either way: name it in the ma
 > can start the tape, sense it, or know it is there. So the tape is something a human puts in
 > and presses PLAY on, and it stays at the prompt where humans are. See the tapes chapter.
 
-## The two controllers
+## The controllers this chapter uses
+
+`altairsim` has many disk controllers — the two MITS hard-sector boards below, plus the
+Datakeeper hard disk (`hdsk`), the SD Systems VersaFloppy (`versafloppy`), the Tarbell
+single- and double-density boards (`tarbell`, `tarbelldd`), the iCOM 8″ (`icom`), and the
+S100Computers CompactFlash and SD boards (`dualide`, `dualsd`). Each has its own section in the
+**Boards** chapter, which is where the hardware detail lives.
+
+This chapter uses just the two the shipped machines boot from — the MITS hard-sector pair —
+because everything it teaches about the *image* and the `MOUNT` workflow is the same on all of
+them:
 
 | Board | What it is | Drives | Ports |
 |---|---|---|---|
 | `dcdd` | **MITS 88-DCDD** — the 8″ hard-sector floppy controller. The one CP/M booted from. | up to 16 | 08, 09, 0A |
 | `mds` | **88-MDS** — the 5¼″ minidisk. Smaller, slower, four drives. | 4 | 08, 09, 0A |
 
-Read the ports column again. **They are the same ports**, which means the two boards cannot
+Read the ports column again. **They are the same ports**, which means these two boards cannot
 coexist in one machine. That is not a limitation of the simulator; it is the MITS address map.
 A real Altair with both would have had two cards decoding 08 and fighting on the data bus,
 and the bus view in the monitor will tell you so if you try it. Pick one.
@@ -54,6 +70,27 @@ dsk0: to make a blank one, add CREATE: MOUNT dsk0:drive1 my-scratch.dsk CREATE
 
 `CREATE` is how you make one on purpose, and "Making a scratch disk" below is what to do
 with it once you have.
+
+### An `.imd` is converted on the way in
+
+`MOUNT` on a file whose name ends `.imd` (an **ImageDisk** file, the format much archived 8″
+and 5¼″ software is distributed in) does not mount the `.imd` itself. It **reads it, converts
+it to a raw sector image, writes that beside it as `foo.dsk`, and mounts the `.dsk`** — because
+a controller reads raw sectors, not ImageDisk's track records. The conversion is reported so you
+can check it against the disk you expected:
+
+```
+altairsim> MOUNT dsk0:drive0 cpm.imd
+dsk0: converted cpm.imd -> cpm.dsk
+dsk0:   IMD: CP/M 2.2 system disk
+dsk0:   337568 bytes
+dsk0:drive0: mounted cpm.dsk
+```
+
+It **never overwrites a `.dsk` that is already there** — the same caution as `CREATE`. If
+`cpm.dsk` already exists you are told to remove it or mount it directly, so a re-mount cannot
+silently discard edits you made to the converted disk. From then on the `.dsk` is the disk;
+the `.imd` is just where it came from.
 
 `WP` **write-protects the disk**, and it does what a real diskette's write-protect notch did: the
 guest may read the disk, and a write is refused at the controller and never reaches the file on
@@ -212,7 +249,7 @@ never asks how big the disk is, because a real 88-DCDD had no way to ask and no 
 want to. Step it 300 times and it steps 300 times. All the intelligence about *where track
 1500 is* lives in the BIOS, which is software, and software can be rewritten.
 
-The corollary is the useful part: **format and spindle are per drive, not per controller.**
+The upshot is the useful part: **format and spindle are per drive, not per controller.**
 Mixed geometry on one board is the intended arrangement, not an accident — period 8 MB CP/M
 BIOSes expect exactly that, an 8 MB disk on A: and B: and ordinary 77-track floppies on C:
 and D:, so that you can `PIP` between the big disk and something you can hand to somebody
@@ -328,7 +365,7 @@ dsk0:drive1: created my-scratch.dsk (empty)
 dsk0:drive1: mounted my-scratch.dsk
 ```
 
-Nought bytes, and mounted — an unformatted disk, which is a thing you can hold in your hand
+Zero bytes, and mounted — an unformatted disk, which is a thing you can hold in your hand
 and a thing CP/M will refuse to read. That is the correct state for a disk nobody has
 formatted yet.
 

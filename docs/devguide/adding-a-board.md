@@ -395,10 +395,10 @@ config docs). But **store the spec as the user wrote it** for `describe()` and r
 ### Adding a *new* endpoint scheme touches its help in two spots
 
 If you are not just consuming endpoints but adding one (a new `something:` scheme in
-`endpoint.cpp`), it must appear in **`endpointHelp()`** *and* get a one-line gloss in the
+`endpoint.cpp`), it must appear in **`endpointHelp()`** *and* get a one-line explanation in the
 `CONNECT` command help in `src/cli/commands.cpp`. `test_cli.cpp` asserts that every name
-`endpointHelp()` offers is a word `CONNECT` glosses — a bare `null` or `scripted` tells a user
-nothing, and the gloss is a hand-copy that rotted once (it promised `socket:` "was coming" long
+`endpointHelp()` offers is a word `CONNECT` explains — a bare `null` or `scripted` tells a user
+nothing, and the explanation is a hand-copy that rotted once (it promised `socket:` "was coming" long
 after it shipped). The test is what keeps the two honest.
 
 ### Regenerate the reference, ship a machine, and mind the two unguarded docs
@@ -430,7 +430,7 @@ Our board answers a cycle. A more interesting one **asks for something**:
   `properties()` — that one call buys you the whole `none | int | vi0..vi7` vocabulary, tab
   completion, and the flag that lets `SHOW BUS IRQ` find your strap. Then override
   `assertsInt()` / `assertsVi()`, and **call `intChanged()` from every place your pending flag
-  could move.** A spurious call costs a virtual call. A missing one hangs the guest forever.
+  could move.** A needless call costs a virtual call. A missing one hangs the guest forever.
 - **Time.** A board with a deadline uses the `Clock` it was handed. A UART absolutely needs
   one: transmit-buffer-empty is a deadline, not a flag.
 - **The outside world.** Anything that talks to a socket, a file or a keyboard does it in

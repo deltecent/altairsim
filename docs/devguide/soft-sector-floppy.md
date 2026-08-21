@@ -192,10 +192,10 @@ Validate this number against the format program's gap tables, not by "it booted.
 
 ## The flat-`.DSK` limitation
 
-A raw `.DSK` cannot record heterogeneous per-track geometry — it is payload bytes only. So the
+A raw `.DSK` cannot record varied per-track geometry — it is payload bytes only. So the
 geometry is **re-derived from the file size on every remount** (`describeGeometry`), which is
 fine for a uniform SSSD disk and the one standard mixed disk, but a `.DSK` that had been
-formatted to some *bespoke* per-track layout would lose it across a remount. An IMD/TD0-style
+formatted to some *custom* per-track layout would lose it across a remount. An IMD/TD0-style
 container that carries its own sector map would fix this — and is explicitly never coming
 (DESIGN.md §7.3): such files are converted to raw beforehand.
 
