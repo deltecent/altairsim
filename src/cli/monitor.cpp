@@ -3098,55 +3098,79 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                      " | SHOW VERSION"))
             return true;
         std::string sub = upper(a[1]);
+        // Reject trailing junk uniformly: a subcommand that has consumed all the arguments
+        // it understands must report the first leftover token, not silently drop it -- a
+        // silent drop makes `SHOW cpu regs` look like it answered the question it was asked.
+        // Each leaf states its own ceiling; the plain board id (the fallthrough) takes none.
+        auto tooMany = [&](size_t max) {
+            if (a.size() > max) {
+                out << "SHOW: unexpected '" << a[max] << "'\n";
+                failed_ = true;
+                return true;
+            }
+            return false;
+        };
         if (sub == "BUS") {
+            if (tooMany(3)) return true;
             showBus(a, out);
             return true;
         }
         if (sub == "ROMS") {
+            if (tooMany(2)) return true;
             showRoms(out);
             return true;
         }
         // MOUNT and MOUNTS both, because the operator is coming here from the MOUNT verb
         // and making them find the S is a toll booth (the same reason BOARDS needs no LIST).
         if (sub == "MOUNTS" || sub == "MOUNT") {
+            if (tooMany(2)) return true;
             showMounts(out);
             return true;
         }
         if (sub == "PATHS" || sub == "PATH" || sub == "PWD") {
+            if (tooMany(2)) return true;
             showPaths(out);
             return true;
         }
         if (sub == "CONSOLE") {
+            if (tooMany(2)) return true;
             showConsole(out);
             return true;
         }
         if (sub == "DEBUG") {
+            if (tooMany(2)) return true;
             showDebug(out);
             return true;
         }
         // BUILD as well as VERSION: half the time the question being asked is "which
         // build is this", and the operator should not have to guess our noun.
         if (sub == "VERSION" || sub == "BUILD") {
+            if (tooMany(2)) return true;
             showVersion(out);
             return true;
         }
         if (sub == "DISPLAY" || sub == "VIDEO" || sub == "WINDOW") {
+            if (tooMany(2)) return true;
             showDisplay(out);
             return true;
         }
         if (sub == "TERMINAL") {
+            if (tooMany(2)) return true;
             showTerminal(out);
             return true;
         }
         if (sub == "JOYSTICKS" || sub == "JOYSTICK" || sub == "JOY") {
+            if (tooMany(2)) return true;
             showJoysticks(out);
             return true;
         }
         if (sub == "SYMBOLS" || sub == "SYMBOL" || sub == "SYM") {
+            if (tooMany(3)) return true;
             showSymbols(a, out);
             return true;
         }
         if (sub == "BOARDS" || sub == "BOARD") {
+            if (tooMany(4)) return true;
             // The board catalog -- what you can ADD. Plural BOARDS is the whole list, one
             // aligned row per type with the description WRAPPED inside its column; singular
             // BOARD <type> drills into one: its description, then its properties. Either
@@ -3328,6 +3352,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (sub == "MACHINES") {
+            if (tooMany(2)) return true;
             // The catalog of built-in machines -- the same list `--list` prints from the
             // shell, now reachable from the prompt: name + one-line blurb, wrapped.
             const auto machines = builtinMachines();
@@ -3352,6 +3377,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (sub == "MACHINE") {
+            if (tooMany(3)) return true;
             if (a.size() >= 3) {
                 // A built-in, loaded into a SCRATCH machine so the live one is untouched --
                 // exactly what `altairsim -x 'SHOW MACHINE' <name>` does, minus the swap.
@@ -3390,6 +3416,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             showBoards(out, m_);
             return true;
         }
+        if (tooMany(2)) return true;
         Board* b = board(a[1], out);
         if (b) showBoard(b, out);
         return true;
