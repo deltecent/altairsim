@@ -26,6 +26,11 @@
 ; H = msb of load address
 ; L = lsb of load address = length of loader = leader byte
 ;
+; The second stage this loads has a byte at 0F27 that is BOTH filler and code: reached at
+; 0F27 it decodes DA 06 06 = JC 0606; a preceding conditional jump can instead land on 0F28,
+; where 06 06 = MVI B,06. One byte, two decodes by control flow -- which is why a linear
+; disassembly reads as nonsense there. See docs/devguide/ps2-loader.md.
+;
 	lxi	h,0FAEh		;4K BASIC V3.2 / MITS PS II monitor
 
 loop	lxi	sp,stack	;init SP so a RET jumps to loop
