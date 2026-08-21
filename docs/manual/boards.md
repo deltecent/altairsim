@@ -382,7 +382,9 @@ handler just feeds the next one. The `interrupt` strap picks the wire — pin 73
 a vectored-interrupt level (`vi0`..`vi7`), or `none`; `interrupt_after` is the card's SW2 #4,
 firing after every character or only after a CR/LF.
 
-The **`lineprinter`** machine is `default` with one of these already fitted and capturing to a file.
+The **`lineprinter`** machine is `default` with one of these already fitted; its output starts on
+`null`, so `CONNECT lpt0:prn out:printout.txt` to capture it to a file, or `console` to watch it
+live (that takes the console from the terminal).
 
 ---
 
@@ -400,8 +402,8 @@ the codes decoded to their glyphs, one text line per printed line — not a byte
 this board the line breaks are commands, not data.
 
 `CONNECT` its `prn` line wherever a line can go — an `out:` file, the `console`, a `socket:`, a real
-`printer:` queue. The **`lineprinter-lpc`** machine has one fitted at `02`. It is polled; unlike the
-`c700`, this card's interrupt is not modeled.
+`printer:` queue. The **`lineprinter-lpc`** machine has one fitted at `02`, its output on `null`
+until you `CONNECT` it. It is polled; unlike the `c700`, this card's interrupt is not modeled.
 
 ---
 
