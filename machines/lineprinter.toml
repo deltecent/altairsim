@@ -1,29 +1,32 @@
-# The `default` machine with an 88-C700 line printer at port 02, captured to a file.
+# The `default` machine with an 88-C700 line printer at port 02; CONNECT `lpt0:prn` to a file or the console.
 #
 # It exists to show the printer board end to end: the guest OUTs a byte to the data
-# port (03), it lands on the line, and the line goes to a host file. Nothing about
-# the capture is printer-specific -- CONNECT the `prn` unit anywhere a serial line
-# can go:
+# port (03), it lands on the line, and the line goes wherever you CONNECT `prn`. Out
+# of the box that line is `null`, so bytes are accepted and discarded -- SHOW MACHINE
+# never touches your disk. Connect it yourself to see them. Nothing about the
+# destination is printer-specific -- `prn` can go anywhere a serial line can:
 #
 #   altairsim lineprinter
-#   OUT 03 48            'H' -> the printer -> printout.txt
+#   CONNECT lpt0:prn out:printout.txt    capture it byte-for-byte to a file
+#   CONNECT lpt0:prn console             ...or watch it live (takes the console
+#                                        away from the terminal)
+#   OUT 03 48            'H' -> the printer -> wherever prn is connected
 #   OUT 02 01           IN  02 reads the status (bit 0 = will accept a byte)
-#   CONNECT lpt0:prn console      ...or watch it print live on the console instead
 #
-# The file lands in the directory you ran altairsim from (a path TYPED, or one in a
-# machine loaded from a directory, follows the usual rule -- see
-# docs/config.md). It is a byte-for-byte capture: the bytes the guest sends
-# are the bytes in the file, control codes and all. It is not reformatted into a
-# printed page.
+# A file capture lands in the directory you ran altairsim from (a path TYPED, or one in
+# a machine loaded from a directory, follows the usual rule -- see docs/config.md). It
+# is byte-for-byte: the bytes the guest sends are the bytes in the file, control codes
+# and all. It is not reformatted into a printed page.
 
 [machine]
 name = "lineprinter"
 base = "default"
 
 # THE PRINTER -- an 88-C700 at 02, the MITS default (Control/Status at 02, Data at
-# 03). Output-only: the guest writes characters to 03 and polls status at 02.
+# 03). Output-only: the guest writes characters to 03 and polls status at 02. Its
+# output line is `null` (discarded) until you CONNECT it -- see the notes above.
 [[board]]
 type    = "c700"
 id      = "lpt0"
 port    = 02
-connect = "out:printout.txt"
+connect = "null"
