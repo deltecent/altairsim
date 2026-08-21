@@ -517,8 +517,17 @@ void test_cli() {
     CpuCore* c = m2.cpu();
     CHECK(c && c->pc() == 0x0000, "power-on leaves the PC at 0000");
 
-    mon2.exec("EX FF00", s2);
+    std::ostringstream ex0;
+    mon2.exec("EX FF00", ex0);
     CHECK(c->pc() == 0xFF00, "EX FF00 loads the PC -- the switch latches the address");
+    // EX <addr> jams the PC on purpose, so it also reads out what the CPU now points
+    // at: the register line at the NEW PC (P=FF00, before any STEP has run) and the
+    // disassembled instruction there -- what the next STEP will execute.
+    CHECK(ex0.str().compare(0, 4, "FF00") == 0, "EX FF00 still leads with the byte line");
+    CHECK(ex0.str().find("P=FF00") != std::string::npos,
+          "EX <addr> also shows the register line, at the address it just loaded");
+    CHECK(ex0.str().find("INR") != std::string::npos,
+          "and the disassembled instruction the PC now points at -- the next STEP runs it");
 
     std::ostringstream st;
     mon2.exec("STEP", st);
@@ -551,8 +560,13 @@ void test_cli() {
     // EXAMINE NEXT drags the PC with it. The panel's counter IS the cursor -- it
     // has no other, which is why the switch is wired to it in the first place.
     mon2.exec("EX 0200", s2);
-    mon2.exec("EX", s2);
+    std::ostringstream exNext;
+    mon2.exec("EX", exNext);
     CHECK(c->pc() == 0x0201, "EXAMINE NEXT steps the PC too -- it is the same counter");
+    // Bare EXAMINE is a quiet byte-at-a-time memory walk: it does NOT print the
+    // register line, so walking a page does not bury each byte under a register dump.
+    CHECK(exNext.str().find("P=") == std::string::npos,
+          "bare EXAMINE (NEXT) stays a single byte line -- no register line");
 
     // There is no longer an EXAMINE that leaves the PC alone. `EX <addr> RAW mem0` was
     // one -- it ran no bus cycle, so the CPU never saw an address -- and it went with

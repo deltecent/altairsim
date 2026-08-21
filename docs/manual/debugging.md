@@ -159,16 +159,19 @@ DUMP 0 WIDTH=8    eight bytes to a line (a count: decimal)
 ## One byte at a time — `EXAMINE`, `DEPOSIT`, `EDIT`
 
 These are **the front panel's switches**, and they behave like them. `EXAMINE` shows a
-single byte — hex, ASCII, and its bits — and a bare `EXAMINE` steps to the next one, which is
-the panel's EXAMINE NEXT.
+single byte — hex, ASCII, and its bits. It also jams the address into the program counter,
+exactly as the switch does, so `EXAMINE <addr>` follows the byte with the register line and
+the disassembled instruction the PC now points at — what the next `STEP` will run. A bare
+`EXAMINE` steps to the next byte, quietly, which is the panel's EXAMINE NEXT.
 
 `DEPOSIT` runs a **real bus write**. If no board decodes that address, it says so rather than
 pretending to have stored something — which is the difference between a debugger and a
 notepad.
 
 ```
-EXAMINE 2C00      one byte: hex, ASCII, and its bits
-EXAMINE           the next one — the panel's EXAMINE NEXT
+EXAMINE 2C00      one byte: hex, ASCII, and its bits — then the register line
+                  and the instruction the PC now points at, ready for STEP
+EXAMINE           the next byte, quietly — the panel's EXAMINE NEXT
 DEPOSIT 100 C3 00 2C
 ```
 

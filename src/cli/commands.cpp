@@ -324,10 +324,14 @@ static const std::vector<CommandDef> kCommands = {
     // together -- DE and EX. EXAMINE is the quick look at ONE byte; bare EXAMINE
     // steps to the next, which is the panel's EXAMINE NEXT.
     {"EXAMINE", true, nullptr, "EXAMINE [<addr>]",  // EX
-     "One byte: hex, ASCII, and the bits as the panel's LEDs showed them. Bare\n"
-     "EXAMINE is the panel's EXAMINE NEXT -- it steps one byte. Its cursor is its\n"
-     "own; a DUMP does not move it.\n"
+     "One byte: hex, ASCII, and the bits as the panel's LEDs showed them. EXAMINE\n"
+     "jams the address into the PROGRAM COUNTER, just like the panel switch, so\n"
+     "`EX <addr>` also shows the register line and the disassembled instruction the\n"
+     "PC now points at -- what the next STEP will execute. Bare EXAMINE is the\n"
+     "panel's EXAMINE NEXT -- it steps one byte, quietly. Its cursor is its own; a\n"
+     "DUMP does not move it.\n"
      "  EX 100       0100  C3  .  11000011\n"
+     "               A=00 ... P=0100  JMP 0138\n"
      "  EX           and the next byte, and the next"},
     {"IN", true, nullptr, "IN <port>",  // I
      "Runs a REAL IN cycle, with real side effects: an IN from a UART's data port\n"
