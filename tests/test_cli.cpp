@@ -982,6 +982,44 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
+    // SET keeps the same contract as SHOW: once the target and its key=value are parsed,
+    // a leftover token is an error, not a silent drop. Both grammars -- `key=value` and
+    // the spaced `key value` -- and both the console/board and BUS/REG targets.
+    // -----------------------------------------------------------------------
+    SECTION("cli: SET rejects a trailing token instead of dropping it");
+    {
+        Machine            ms;
+        Monitor            monS(ms);
+        std::ostringstream setup;
+        monS.exec("BOARDS ADD 8080 cpu0", setup);
+        monS.exec("BOARDS ADD memory mem0", setup);
+
+        auto rejects = [&](const std::string& cmd, const std::string& tok) {
+            std::ostringstream o;
+            monS.exec(cmd, o);
+            CHECK(o.str().find("SET: unexpected '" + tok + "'") != std::string::npos,
+                  (cmd + " reports the leftover token").c_str());
+        };
+        // key=value form: the value is in one token, so a third word is junk.
+        rejects("SET mem0 fill=zero junk", "junk");
+        rejects("SET CONSOLE base=hex junk", "junk");
+        rejects("SET REG A=3F junk", "junk");
+        rejects("SET BUS CONTENTION=WARN junk", "junk");
+        // spaced `key value` form: the value is a[3], so a fourth word is junk.
+        rejects("SET mem0 fill zero junk", "junk");
+        rejects("SET REG A 3F junk", "junk");
+
+        // Both accepted forms still go through untouched.
+        for (const char* ok : {"SET mem0 fill=zero", "SET mem0 fill zero", "SET REG A=3F",
+                               "SET BUS CONTENTION=WARN"}) {
+            std::ostringstream o;
+            monS.exec(ok, o);
+            CHECK(o.str().find("SET: unexpected") == std::string::npos,
+                  (std::string(ok) + " is accepted").c_str());
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // HELP <cmd> <sub>: extra words narrow the help to that sub-level. The text is
     // FILTERED from the command's own detail block (commands.cpp), never a second list,
     // so `HELP SHOW BOARD` shows the BOARD line(s) and drops the unrelated siblings. A
