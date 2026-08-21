@@ -166,7 +166,7 @@ you mean *the file next to me*, because that is the only thing `scratch.dsk` cou
 mean when you are the one typing it. The simulator does not go rummaging in the machine file's
 directory for a file you named with your own hands.
 
-The corollary is worth stating, because it catches people: **a path in a `startup` command is
+The consequence is worth stating, because it catches people: **a path in a `startup` command is
 inside the machine file, so it is relative to the machine file** — even though `startup`
 commands look exactly like things you type. They were written by the file's author, so they
 mean what the file's author could see.

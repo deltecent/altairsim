@@ -37,7 +37,7 @@ FIFO:
 - `keyAscii(byte)` — a host keystroke with an ASCII code. The base passes it straight through;
   an emulator overrides only to remap.
 - `keySpecial(Key)` — a host key with **no** ASCII (`Key::{Up,Down,Left,Right,Home}`). This is
-  the classic divergence: an arrow is `ESC[A` on a VT100, `ESC A` on a VT52, `Ctrl-K` on an
+  the classic difference: an arrow is `ESC[A` on a VT100, `ESC A` on a VT52, `Ctrl-K` on an
   ADM-3A. The base sends nothing; an emulator with arrows overrides it.
 
 Reports and keystrokes both land in the **reply FIFO**, drained with `takeReply()`. That is
@@ -159,7 +159,7 @@ Design points, all in `src/host/terminal/stream.{h,cpp}`:
 
 A related fix rode along. `Monitor::runFrom` announced `(no console connected)` whenever the
 console was not the **stdio** one — so a machine consoled on a `terminal:` window or a `socket:`
-was libelled as having no console at all. The banner loop already computed `anyRemoteLine` (a
+was mislabeled as having no console at all. The banner loop already computed `anyRemoteLine` (a
 live line that is not the host terminal); it now also captures that line's scheme and prints
 `(console on terminal)` / `(console on socket)`. The honest `(no console connected)` is kept for
 the genuinely bare backplane — the ROM-talking-to-a-disk case — where no serial line is live.

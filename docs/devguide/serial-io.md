@@ -119,7 +119,7 @@ because it shows how far a `ByteStream` decorator gets you with **zero** board o
 
 `TeeStream` (`src/host/tee_stream.h`) wraps an inner stream, copies every byte past in both
 directions to a log file, and forwards everything else — `readable`/`writable`, the modem pins, the
-line rate, `pump`, `pacesItself` — verbatim. It is the same shape as `FilterStream`
+line rate, `pump`, `pacesItself` — unchanged. It is the same shape as `FilterStream`
 (`src/host/filter.h`), with one difference that matters:
 
 > A **filter mutates bytes**, so there is exactly one of them and it lives on the console (a

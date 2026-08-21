@@ -153,7 +153,7 @@ landed" above and repeated inline here.)*
    stays its own board.* The V2 Z80 CPU
    board's onboard 8 KB EEPROM is mapped as **two 4 KB pages** switched by `OUT D3H` bit 1
    (`reference/v2-z80-cpu-board.md`, `src/boards/v2z80rom.{h,cpp}`) — a genuine banked ROM, today
-   implemented as its own bespoke board. Its full memory-manager banking (ports D2H/D3H) is
+   implemented as its own custom board. Its full memory-manager banking (ports D2H/D3H) is
    deliberately *not* modeled (the Dual SD target is flat-64K CP/M 3). The question: is this the
    *same kind of thing* as `memory`-board bank switching, such that a corrected banked-memory
    facility should absorb it — or is a CPU board's onboard paged EEPROM legitimately its own

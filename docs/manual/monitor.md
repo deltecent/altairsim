@@ -117,7 +117,7 @@ anything just tells you there is nothing to repeat yet.
 ## Reaching the host: `!`
 
 A line that begins with `!` is not a monitor command at all — everything after the `!` is
-handed to **your host shell**, verbatim, and the monitor waits until it is done before it
+handed to **your host shell**, word for word, and the monitor waits until it is done before it
 prompts again. The rest of the line is passed through untouched, spaces and all:
 
 ```

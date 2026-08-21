@@ -5,7 +5,7 @@ disk controller, the front panel, and the processor itself. There is no "machine
 boards doing the real work; take the boards out and there is nothing left but a bus.
 
 `altairsim` is built that way on purpose, and it is the reason the CPU's crystal is a property of
-the CPU *board* and the sense switches are a property of the *front panel*. Not pedantry: it is what
+the CPU *board* and the sense switches are a property of the *front panel*. Not nitpicking: it is what
 lets you pull a board out, put a different one in, and find out what the software does about it.
 
 This chapter says what the boards **are** — what the real hardware was, what it is for, and
@@ -15,25 +15,60 @@ be wrong.
 
 ## The boards
 
+Grouped by what they do — the same order as the sections below.
+
+**Memory**
+
 | Type | What it is |
 |---|---|
 | `memory` | RAM and ROM, as a list of regions |
 | `bankmem` | bank-switched RAM — Vector Graphic, Cromemco 64KZ, North Star HRAM, ExpandoRAM II |
+| `v2z80rom` | S100Computers V2 Z80 CPU board's onboard MASTER monitor ROM — a paged EEPROM, not a processor |
+
+**Processors**
+
+| Type | What it is |
+|---|---|
 | `8080` | the MITS 88-CPU |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
 | `8085` | an 8085 CPU board — the 8080's superset, with RIM/SIM and the TRAP/RST interrupts |
-| `v2z80rom` | S100Computers V2 Z80 CPU board — its onboard MASTER monitor EEPROM |
+
+**Serial ports and consoles**
+
+| Type | What it is |
+|---|---|
 | `2sio` | MITS 88-2SIO — two serial ports. The usual console |
 | `sio` | MITS 88-SIO — one serial port. MITS's first |
 | `sbc` | SD Systems SBC-100/200 — a Z80 single-board computer's serial console |
 | `propio` | S100Computers Console I/O — a Propeller-based serial console |
+| `pmmi` | PMMI MM-103 — a Bell 103 telephone modem on one card |
+
+**Cassette**
+
+| Type | What it is |
+|---|---|
 | `acr` | MITS 88-ACR — the cassette interface |
 | `uio` | MITS 88-UIO — a serial port and a cassette, on one card |
-| `pmmi` | PMMI MM-103 — a Bell 103 telephone modem on one card |
+
+**Printers**
+
+| Type | What it is |
+|---|---|
 | `c700` | MITS 88-C700 — the line-printer controller. Capture to a file |
 | `lpc` | MITS 88-LPC — the other line-printer controller, line-buffered |
+
+**Parallel and analog I/O**
+
+| Type | What it is |
+|---|---|
 | `pio` | MITS 88-PIO — an 8-bit parallel port, in and out |
 | `4pio` | MITS 88-4PIO — up to four programmable parallel ports |
+| `d7a` | Cromemco D+7A — analog and parallel I/O; reads joysticks |
+
+**Floppy and disk controllers**
+
+| Type | What it is |
+|---|---|
 | `dcdd` | MITS 88-DCDD — the 8″ floppy controller |
 | `mds` | MITS 88-MDS — the 5¼″ minidisk controller |
 | `hdsk` | MITS 88-HDSK — the Datakeeper hard-disk controller |
@@ -43,17 +78,40 @@ be wrong.
 | `icom` | iCOM FD3712/FD3812 — an 8″ floppy controller with its own boot PROM. Boots CP/M and FDOS |
 | `dualsd` | S100Computers Dual SD — two microSD cards as CP/M drives. Boots CP/M 3 |
 | `dualide` | S100Computers IDE-AB — two CompactFlash cards as CP/M drives. Boots CP/M 3 |
+
+**Video and display**
+
+| Type | What it is |
+|---|---|
 | `vdm1` | Processor Technology VDM-1 — memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler — color graphics. Needs a display |
 | `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. Needs a display |
-| `d7a` | Cromemco D+7A — analog and parallel I/O; reads joysticks |
 | `sol` | Processor Technology Sol-PC — the Sol-20's onboard I/O, on one card |
+
+**Interrupts and the clock**
+
+| Type | What it is |
+|---|---|
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
+
+**The whole machine**
+
+| Type | What it is |
+|---|---|
 | `fp` | the front panel |
 | `turnkey` | MITS 8800b Turnkey Module — the front-panel-less Altair, on one card |
+
+**Host integration**
+
+| Type | What it is |
+|---|---|
 | `hostbridge` | file transfer to your host. **Ours, not a period card** |
 
 ---
+
+## Memory
+
+RAM, ROM, and the boards that switch banks of it.
 
 ## `memory` — RAM and ROM
 
@@ -70,7 +128,7 @@ The bus has a line called `PHANTOM*`. **A board pulls it to switch another board
 PROM at `FF00` is being read, it asserts `PHANTOM*`, and the RAM card underneath — if it is
 jumpered to honour it — shuts up. Two boards decode `FF00`; only one answers.
 
-This is how a disk Altair boots. The PROM overlays the RAM at the top of memory, the loader runs
+This is how an Altair with disks boots. The PROM overlays the RAM at the top of memory, the loader runs
 out of it, and then **the loader gets out of the way** and the RAM underneath is uncovered — which
 matters, because CP/M wants that memory back.
 
@@ -129,18 +187,43 @@ DUMP 1000-1000
 
 ---
 
-## `8080` — the MITS 88-CPU
+## `v2z80rom` — the S100Computers V2 Z80 CPU board's onboard monitor ROM
+
+**This board is not a processor** — it is the **monitor ROM** that a real S100Computers V2 Z80 CPU
+board carries on it: an **8K EEPROM** at `F000`–`FFFF` holding John Monahan's MASTER V6.6 ROM
+monitor. It is a separate board from the CPU on purpose — a machine that uses it still needs a `z80`
+(below) beside it for the processor, exactly as the real card is a Z80 with its own onboard firmware.
+
+The EEPROM is **paged**: two 4K halves both live at `F000`–`FFFF`, and a write to port `D3` chooses
+which is visible (and can switch the EEPROM off altogether, so the RAM underneath shows through).
+That is how CP/M gets a flat 64K after boot — it inactivates the EEPROM and the monitor's window
+becomes ordinary memory. While it is on, the EEPROM shadows the RAM in its window for reads.
+
+There is no `BOOT` verb — **the monitor is the boot command**. `startup = ["RUN F000"]` cold-starts
+it, and at its `->` prompt the **`I` command** boots CP/M 3 off a Dual SD card (below). This is the
+board that makes `altairsim dualsd` go.
+
+---
+
+## The CPU boards — one plugs in, and it drives the bus
+
+`altairsim` has three processor boards — `8080`, `z80`, and `8085` — and everything in this shared
+section is true of all three. Each is described on its own below; what they have in common is here.
 
 **The processor is a board like any other.** It plugs into the backplane, it can be removed, and
-with `-n` you can build a machine that does not have one.
+with `-n` you can build a machine that does not have one. It decodes no ports and answers no
+addresses. What it does is **drive the bus** — which makes it unlike every other board in the box,
+and is exactly what a CPU card did. Put a `z80` where an `8080` would go and the bus, the boards,
+and the debugger neither know nor care; that is the whole point of keeping the processor a board.
 
-It decodes no ports and answers no addresses. What it does is **drive the bus** — which makes it
-unlike every other board in the box, and is exactly what the 88-CPU did.
+Every CPU board carries the same three properties: **`clock_hz`** (the crystal), **`idle`** (stands
+the processor down at a prompt), and the read-only **`achieved_hz`** (the speed it is actually
+managing). The first two are covered next, and each means the same thing on every processor.
 
 ### The crystal is on the board
 
-Which is why **`clock_hz` is this board's property and not the machine's** — and why writing it in
-`[machine]` is an error with an explanation rather than a setting that quietly does nothing.
+Which is why **`clock_hz` is the CPU board's property and not the machine's** — and why writing it
+in `[machine]` is an error with an explanation rather than a setting that quietly does nothing.
 
 **`clock_hz = 0` is the default, and it means run flat out** — as fast as your host can go. On a
 modern machine that is somewhere north of a hundred times a real Altair.
@@ -178,31 +261,32 @@ different. An XMODEM transfer through an idling machine is byte-exact.
 
 ---
 
+## `8080` — the MITS 88-CPU
+
+The original — the board the Altair shipped with, and the one the other two processors stand in
+for. As a board it is the plain case of everything above: it drives the bus, decodes nothing, and
+carries `clock_hz`, `idle`, and `achieved_hz`. Its core is the baseline the Z80 and 8085 cores are
+then measured against.
+
+---
+
 ## `z80` — a Z80 CPU
 
-**A second processor board.** It plugs into the same backplane as the 88-CPU, decodes nothing, and
-drives the bus the same way — the only difference is the instruction set behind it. Put a `z80`
-where an `8080` would go and the bus, the boards, and the debugger neither know nor care; that is
-the whole point of keeping the processor a board.
+**A second processor board**, plugging into the same backplane as the 88-CPU with a different
+instruction set behind it. Everything in *The CPU boards* above applies to it unchanged — the same
+three properties, the same "the slot does not care which processor is in it."
 
-It carries the same three properties as the 8080 — `clock_hz` (the crystal, flat out by default),
-`idle` (stands down at a prompt), and the read-only `achieved_hz` — and each means exactly what it
-means there.
-
-The core is validated the same way the 8080 was, against the same kind of gate: ZEXDOC and ZEXALL,
-the standard Z80 exercisers, both pass before a single board is built on top of it. The built-in
-`z80` machine is a minimal one — a `z80`, 64K of RAM, and a 2SIO console — for putting it through
-its paces.
+The core is validated against ZEXDOC and ZEXALL, the standard Z80 exercisers, both of which pass
+before a single board is built on top of it. The built-in `z80` machine is a minimal one — a `z80`,
+64K of RAM, and a 2SIO console — for putting it through its paces.
 
 ---
 
 ## `8085` — an 8085 CPU
 
 **A third processor board**, and the closest of the three to the 88-CPU: the 8085 is a binary
-*superset* of the 8080, so every 8080 program runs on it unchanged. It plugs into the same
-backplane, decodes nothing, and drives the bus the same way. It carries the same three properties —
-`clock_hz`, `idle`, and the read-only `achieved_hz` — each meaning exactly what it does on the
-8080.
+*superset* of the 8080, so every 8080 program runs on it unchanged. Everything in *The CPU boards*
+above applies to it unchanged; what follows is only what the 8085 adds.
 
 What the 8085 adds over the 8080: `RIM` and `SIM` (read and set the interrupt mask and the SID/SOD
 serial pins), and the on-chip interrupts — `TRAP` (non-maskable) plus `RST 5.5`, `6.5`, and `7.5`,
@@ -227,23 +311,9 @@ interrupts, over the `INTR` line, work as they do for the 8080.
 
 ---
 
-## `v2z80rom` — the S100Computers V2 Z80 CPU board's monitor
+## Serial ports and consoles
 
-The `z80` above is *the processor*. This board is the **monitor** that a real S100Computers V2 Z80
-CPU board carries on it: an **8K EEPROM** at `F000`–`FFFF` holding John Monahan's MASTER V6.6 ROM
-monitor. The two are separate boards on purpose — a machine that uses this one still needs a `z80`
-beside it for the CPU, exactly as the real card is a Z80 with its own onboard firmware.
-
-The EEPROM is **paged**: two 4K halves both live at `F000`–`FFFF`, and a write to port `D3` chooses
-which is visible (and can switch the EEPROM off altogether, so the RAM underneath shows through).
-That is how CP/M gets a flat 64K after boot — it inactivates the EEPROM and the monitor's window
-becomes ordinary memory. While it is on, the EEPROM shadows the RAM in its window for reads.
-
-There is no `BOOT` verb — **the monitor is the boot command**. `startup = ["RUN F000"]` cold-starts
-it, and at its `->` prompt the **`I` command** boots CP/M 3 off a Dual SD card (below). This is the
-board that makes `altairsim dualsd` go.
-
----
+The boards that carry a serial port — a console, a modem, or both.
 
 ## `2sio` — MITS 88-2SIO
 
@@ -327,6 +397,41 @@ type, just a property or two.
 
 ---
 
+## `pmmi` — PMMI MM-103 modem
+
+A **Bell 103 telephone modem on one S-100 card** — the first S-100 modem approved for direct
+connection to the phone line. In a real machine it dialed, answered, and carried a serial link over
+the line at up to 600 baud. Here it is the card's **transmit and receive path**: unit `line`, four
+ports from a base that must sit on a four-port boundary (default `C0`; the DIP switch on the real
+card set it, and PMMI's own North Star software used `E0`).
+
+Its four ports are the card's quirk: **read and write at the same address are different registers.**
+Writing `BASE+0` sets the character format (data bits, parity, stop bits) and the modem-control bits;
+*reading* it gives you UART status. `BASE+1` is transmit on a write, receive on a read. `BASE+2`
+writes the baud-rate divisor and reads modem status; `BASE+3` writes the modem chip's control word
+and, read, returns nothing the card drives. The three control registers are **write-only** — the
+program keeps its own copy of what it wrote, exactly as it had to on the hardware.
+
+There is no telephone network in the box, so **`CONNECT` its `line` to a byte source and sink**: the
+straightforward test is a pair of paper-tape-style files — `CONNECT pmmi0:line
+in:incoming.tap,out:outgoing.tap` — where what the guest sends lands in one file and what it receives
+is read from the other. The bytes are exact; the Bell 103 tones are not simulated, because the
+line here is a byte stream, not audio.
+
+**What it does *not* do yet, on purpose.** It does not dial: the make-and-break of the hook relay a
+period dialer program produces is not decoded into a phone number, and no number picks a far end —
+**placing the call is `CONNECT`'s job**, and reading a number out of the hook would be a behaviour
+this card never had. Modem status (dial tone, ringing, carrier, clear-to-send) reads a fixed
+"connected and ready" value rather than following a real handshake, and the card raises no
+interrupts. `SHOW pmmi0` reports the live frame, baud, UART flags and modem lines alongside the
+base address. To try one, add it to `default` — `BOARDS ADD pmmi` fits it at `C0`.
+
+---
+
+## Cassette
+
+Boards that read and write cassette tape.
+
 ## `acr` — MITS 88-ACR
 
 The **cassette interface**: an 88-SIO channel B with an FSK modem on the end of it, so a byte on the
@@ -361,6 +466,10 @@ standard — because the UIO was sold to talk to either. The tape half brings th
 `WIND`/`REWIND`/`EXTRACT` verbs and the position counter the 88-ACR does.
 
 ---
+
+## Printers
+
+Line-printer controllers — each captures its output to a file or a print queue.
 
 ## `c700` — MITS 88-C700
 
@@ -407,6 +516,10 @@ until you `CONNECT` it. It is polled; unlike the `c700`, this card's interrupt i
 
 ---
 
+## Parallel and analog I/O
+
+Parallel ports, and one board that also reads analog inputs.
+
 ## `pio` — MITS 88-PIO
 
 An **8-bit parallel port**, in and out — the simplest way to move a byte that is not a serial
@@ -431,6 +544,34 @@ the software wants it configured* — the same range the real MITS parallel line
 **`parallel`** machine has a `pio` fitted and capturing to a file.
 
 ---
+
+## `d7a` — Cromemco D+7A
+
+An **analog and parallel I/O card** — one parallel port and **seven analog channels** in a block of
+eight ports (default base `18`). Each analog channel is an **A/D converter when you read it and a
+D/A converter when you write it**, in 8-bit two's-complement: `00` is 0 V, `7F` about +2.5 V, `80`
+about −2.5 V. On a real bench it read sensors and drove instruments.
+
+Here its job is the input end of a **game console**. It reads **one or two JS-1 joysticks**: the X
+and Y pots on analog channels, and the four buttons — **active-low** — packed into the parallel byte,
+low nibble for one stick, high nibble for the other. The sticks come from your host through the same
+kind of injected service the display uses: a **USB gamepad** where SDL3 is present, or the
+**keyboard** as a fallback (arrows and a few keys), and nothing at all in a headless build, which
+still runs.
+
+`joystick1`/`joystick2` choose which host device drives each console. Both default to `auto`,
+which claims a **different** gamepad per console — console 1 takes gamepad 0, console 2 gamepad 1 —
+so two controllers work with no configuration, each falling back to the keyboard when its gamepad
+is absent. `SHOW <id>` shows what each console currently resolves to (a named controller, the
+keyboard, or nothing), and `SHOW JOYSTICKS` lists the controllers your host actually sees. The
+Dazzler examples in `examples/` pair the board with color graphics and set the video window to be a
+**display, not a keyboard** (`[display] keyboard = none`), so your keystrokes drive the stick instead
+of landing at a prompt. (The board's designed-but-unbuilt sound output — a JS-1's speaker is a D/A
+the CPU writes a waveform to — is not here yet.)
+
+## Floppy and disk controllers
+
+The disk controllers, from 8-inch floppies to CompactFlash — several boot an operating system by themselves.
 
 ## `dcdd` — MITS 88-DCDD
 
@@ -595,9 +736,9 @@ bootable system card in socket 1 and a blank spare in socket 2.
 A card is a raw **`.img` with a sibling `.geo`** file beside it that declares the card's true size.
 The `.img` can be **shorter** than the card — just the live filesystem — and every sector past its
 end reads back as an erased card would (all `FF`), which is why a card that would be hundreds of
-megabytes on real flash ships here as a couple of megabytes. `MOUNT … CREATE` authors a **blank**
+megabytes on real flash ships here as a couple of megabytes. `MOUNT … CREATE` creates a **blank**
 data card (an empty `.img` and its `.geo`) for the guest to format; a *bootable* card, like the
-other controllers here, has to come from a real image — its system tracks cannot be conjured. See
+other controllers here, has to come from a real image — its system tracks cannot be invented. See
 `examples/dualsd/`, which boots CP/M 3 with the host bridge fitted so `R`/`W`/`HDIR` move files to
 and from your host at the `A>` prompt.
 
@@ -616,12 +757,16 @@ this controller; at the `->` monitor prompt the **`P` command** (rather than the
 CP/M 3 off CompactFlash drive 0, and CP/M signs on at `A>`.
 
 Cards behave exactly as on the Dual SD board: a raw **`.img` with a sibling `.geo`**, truncatable to
-the live filesystem with `FF` past its end; `MOUNT … CREATE` authors a blank data card, while a
+the live filesystem with `FF` past its end; `MOUNT … CREATE` creates a blank data card, while a
 bootable one has to come from a real image. See `examples/dualide/` for the CompactFlash-only
 machine, and `examples/dualidesd/` for the **whole combination board** at once — CompactFlash as
 A:/B: and microSD as C:/D:, one CP/M 3 system spanning all four drives.
 
 ---
+
+## Video and display
+
+Boards that put a picture on a display window.
 
 ## `vdm1` — Processor Technology VDM-1
 
@@ -732,29 +877,47 @@ size on your screen rather than a sixth of it.
 
 ---
 
-## `d7a` — Cromemco D+7A
+## `vdb8024` — SD Systems VDB-8024
 
-An **analog and parallel I/O card** — one parallel port and **seven analog channels** in a block of
-eight ports (default base `18`). Each analog channel is an **A/D converter when you read it and a
-D/A converter when you write it**, in 8-bit two's-complement: `00` is 0 V, `7F` about +2.5 V, `80`
-about −2.5 V. On a real bench it read sensors and drove instruments.
+An **80-column by 24-line video terminal on one board** — the SD Systems answer to a serial
+console. Where the `sbc` card gives an SBC-100/200 a serial port for a teletype or a glass
+terminal, the VDB-8024 gives it *the terminal itself*: a whole intelligent display, keyboard and
+all, plugged straight into the backplane.
 
-Here its job is the input end of a **game console**. It reads **one or two JS-1 joysticks**: the X
-and Y pots on analog channels, and the four buttons — **active-low** — packed into the parallel byte,
-low nibble for one stick, high nibble for the other. The sticks come from your host through the same
-kind of injected service the display uses: a **USB gamepad** where SDL3 is present, or the
-**keyboard** as a fallback (arrows and a few keys), and nothing at all in a headless build, which
-still runs.
+**Despite the name, it is not memory-mapped.** Nothing of its screen lives in the machine's
+address space. To the computer it is simply **two I/O ports** — a status port and a data port,
+at `00` and `01` — that behave like a terminal on a wire: the program reads the status to
+see whether a key is waiting or the display is ready, writes a character or a control code to the
+data port, and reads a typed key back from it. The screen, its memory and its own processor all
+sit behind that pair of ports, invisible, exactly as they were on the real card. The real card's
+pair was wired at `00`, not jumpered; the board here still carries a `port` so you can move it,
+the same liberty the `sol` takes below.
 
-`joystick1`/`joystick2` choose which host device drives each console. Both default to `auto`,
-which claims a **different** gamepad per console — console 1 takes gamepad 0, console 2 gamepad 1 —
-so two controllers work with no configuration, each falling back to the keyboard when its gamepad
-is absent. `SHOW <id>` shows what each console currently resolves to (a named controller, the
-keyboard, or nothing), and `SHOW JOYSTICKS` lists the controllers your host actually sees. The
-Dazzler examples in `examples/` pair the board with color graphics and set the video window to be a
-**display, not a keyboard** (`[display] keyboard = none`), so your keystrokes drive the stick instead
-of landing at a prompt. (The board's designed-but-unbuilt sound output — a JS-1's speaker is a D/A
-the CPU writes a waveform to — is not here yet.)
+It runs the **SD monitor's video build, `sdmonv21`**, which is the same monitor as the serial
+`sbc200` machine (same commands, same `.` prompt) built to talk to this board instead of the 8251.
+There is **no “press Enter first”** here — the VDB is not a serial line with a speed to measure, so
+the prompt is on the screen the moment the machine starts:
+
+```
+altairsim sbc200v
+```
+
+comes up at the monitor's `.` prompt **on the video display**, and the SD Systems example in
+`examples/` carries the same machine as a file you can read and change.
+
+**It needs a display**, like the VDM-1: built with SDL3 it opens a real window in the board's own
+character font; built without, it runs headless and the text simply has nowhere to show. And like
+a Sol-20, **the window is the console** — the machine asks for `focus=on`, so the window keeps the
+keyboard while the guest runs, and window keys and terminal keys reach the monitor as one stream.
+The characters are drawn from the board's own character-generator font, with true lower-case
+descenders on `g`, `j`, `p`, `q` and `y`, the way the hardware's socketed font PROM did it.
+
+The board understands the control codes its firmware did: carriage return, line feed, backspace,
+tab, cursor up and right, clear-screen and home, and the `ESC` sequences that position the cursor
+and erase to the end of a line or the screen. A line that fills wraps, and a line feed at the
+bottom scrolls the page up.
+
+---
 
 ## `sol` — Processor Technology Sol-PC
 
@@ -816,47 +979,9 @@ operating system.
 
 ---
 
-## `vdb8024` — SD Systems VDB-8024
+## Interrupts and the clock
 
-An **80-column by 24-line video terminal on one board** — the SD Systems answer to a serial
-console. Where the `sbc` card gives an SBC-100/200 a serial port for a teletype or a glass
-terminal, the VDB-8024 gives it *the terminal itself*: a whole intelligent display, keyboard and
-all, plugged straight into the backplane.
-
-**Despite the name, it is not memory-mapped.** Nothing of its screen lives in the machine's
-address space. To the computer it is simply **two I/O ports** — a status port and a data port,
-at `00` and `01` — that behave like a terminal on a wire: the program reads the status to
-see whether a key is waiting or the display is ready, writes a character or a control code to the
-data port, and reads a typed key back from it. The screen, its memory and its own processor all
-sit behind that pair of ports, invisible, exactly as they were on the real card. The real card's
-pair was wired at `00`, not jumpered; the board here still carries a `port` so you can move it,
-the same liberty the `sol` takes below.
-
-It runs the **SD monitor's video build, `sdmonv21`**, which is the same monitor as the serial
-`sbc200` machine (same commands, same `.` prompt) built to talk to this board instead of the 8251.
-There is **no “press Enter first”** here — the VDB is not a serial line with a speed to measure, so
-the prompt is on the screen the moment the machine starts:
-
-```
-altairsim sbc200v
-```
-
-comes up at the monitor's `.` prompt **on the video display**, and the SD Systems example in
-`examples/` carries the same machine as a file you can read and change.
-
-**It needs a display**, like the VDM-1: built with SDL3 it opens a real window in the board's own
-character font; built without, it runs headless and the text simply has nowhere to show. And like
-a Sol-20, **the window is the console** — the machine asks for `focus=on`, so the window keeps the
-keyboard while the guest runs, and window keys and terminal keys reach the monitor as one stream.
-The characters are drawn from the board's own character-generator font, with true lower-case
-descenders on `g`, `j`, `p`, `q` and `y`, the way the hardware's socketed font PROM did it.
-
-The board understands the control codes its firmware did: carriage return, line feed, backspace,
-tab, cursor up and right, clear-screen and home, and the `ESC` sequences that position the cursor
-and erase to the end of a line or the screen. A line that fills wraps, and a line feed at the
-bottom scrolls the page up.
-
----
+Vectored interrupts and a real-time clock, on one board.
 
 ## `virtc` — MITS 88-VI/RTC
 
@@ -882,6 +1007,10 @@ before you strap anything to it.
 supply**, since none is in the package. Its cassette deck comes up empty.
 
 ---
+
+## The whole machine
+
+The front panel, and the turnkey board that stands in for it.
 
 ## `fp` — the front panel
 
@@ -973,36 +1102,9 @@ mount = "builtin:hdbl"
 
 ---
 
-## `pmmi` — PMMI MM-103 modem
+## Host integration
 
-A **Bell 103 telephone modem on one S-100 card** — the first S-100 modem approved for direct
-connection to the phone line. In a real machine it dialed, answered, and carried a serial link over
-the line at up to 600 baud. Here it is the card's **transmit and receive path**: unit `line`, four
-ports from a base that must sit on a four-port boundary (default `C0`; the DIP switch on the real
-card set it, and PMMI's own North Star software used `E0`).
-
-Its four ports are the card's quirk: **read and write at the same address are different registers.**
-Writing `BASE+0` sets the character format (data bits, parity, stop bits) and the modem-control bits;
-*reading* it gives you UART status. `BASE+1` is transmit on a write, receive on a read. `BASE+2`
-writes the baud-rate divisor and reads modem status; `BASE+3` writes the modem chip's control word
-and, read, returns nothing the card drives. The three control registers are **write-only** — the
-program keeps its own copy of what it wrote, exactly as it had to on the hardware.
-
-There is no telephone network in the box, so **`CONNECT` its `line` to a byte source and sink**: the
-straightforward test is a pair of paper-tape-style files — `CONNECT pmmi0:line
-in:incoming.tap,out:outgoing.tap` — where what the guest sends lands in one file and what it receives
-is read from the other. The bytes are verbatim; the Bell 103 tones are not simulated, because the
-line here is a byte stream, not audio.
-
-**What it does *not* do yet, on purpose.** It does not dial: the make-and-break of the hook relay a
-period dialer program produces is not decoded into a phone number, and no number picks a far end —
-**placing the call is `CONNECT`'s job**, and reading a number out of the hook would be a behaviour
-this card never had. Modem status (dial tone, ringing, carrier, clear-to-send) reads a fixed
-"connected and ready" value rather than following a real handshake, and the card raises no
-interrupts. `SHOW pmmi0` reports the live frame, baud, UART flags and modem lines alongside the
-base address. To try one, add it to `default` — `BOARDS ADD pmmi` fits it at `C0`.
-
----
+Not period hardware — a board that bridges to your host.
 
 ## `hostbridge` — ours, not a period card
 
@@ -1010,7 +1112,7 @@ base address. To try one, add it to `default` — `BOARDS ADD pmmi` fits it at `
 says so plainly rather than letting you discover it in a museum catalogue.
 
 It moves **files between the guest and your host**, in both directions, and it is **sandboxed**: the
-guest sees one directory you nominate and **cannot escape it**. Not by `..`, not by an absolute
+guest sees one directory you choose and **cannot escape it**. Not by `..`, not by an absolute
 path, not at all. That is a hard requirement, not a setting with a default.
 
 Default port `B0`. **Nothing of the utilities is in the board.** `R`, `W` and `HDIR` are

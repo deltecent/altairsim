@@ -1,6 +1,6 @@
 # Tapes
 
-Before the floppy, there was a **cassette recorder**. Not a special one — a domestic audio
+Before the floppy, there was a **cassette recorder**. Not a special one — a home audio
 cassette deck from a department store, with a microphone jack and an earphone jack, and MITS
 sold you a card that turned bytes into a noise it could record and turned the noise back into
 bytes. That card is the **88-ACR**, and it is in this simulator.

@@ -9,7 +9,7 @@ machine: default.  HELP for commands.
 altairsim>
 ```
 
-The parenthetical is **the commit this binary was built from**, and yours will differ. Between
+The part in parentheses is **the commit this binary was built from**, and yours will differ. Between
 releases the version number alone names every build alike, so it is the commit that says which
 source produced the program in front of you — quote it in a bug report. `SHOW VERSION` prints it
 on its own, and says whether the tree had uncommitted edits in it at the time.

@@ -379,7 +379,7 @@ cards.**
 ## Memory, ROM, and `PHANTOM*`
 
 A memory card is **a list of regions**, not an address range: RAM here, a ROM socket there, an
-empty socket between them. One card can occupy two disjoint ranges, because a real one does.
+empty socket between them. One card can occupy two separate ranges, because a real one does.
 `SHOW BUS MAP` is per-*range*, not per-board, for that reason.
 
 **An empty socket decodes nothing.** It does not read as zero — it floats to `FF`, like anything
@@ -515,7 +515,7 @@ virtual void reset(Reset) {}
 virtual void power() {}
 ```
 
-Conflating these is the classic source of *"works from power-on but not from the reset button."*
+Mixing these up is the classic source of *"works from power-on but not from the reset button."*
 
 **Neither reset clears memory. Only removing power does.** That is not a nuance, it is the rule,
 and the memory array is the proof: **a RAM chip has no POC\* pin.** Its contents are
@@ -621,7 +621,7 @@ chip/board seam stated in silicon.
 **And the seam is not "the chip does the work and the board forwards to it."** The 88-SIO's
 status word is **inverted** and the 88-2SIO's is not. A shared UART class with a `bool invert`
 on it is *precisely* the bug `src/chips/` exists to prevent — so those two cards share **no
-code**, on purpose. What licenses sharing is being **the same part**, not filling the same role.
+code**, on purpose. What permits sharing is being **the same part**, not filling the same role.
 
 **Where the seam falls is a fact about the chip, not a house style.** The chip is what the data
 sheet describes, at its pins, in true sense. Everything between those pins and the S-100 bus —
