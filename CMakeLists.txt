@@ -1124,6 +1124,20 @@ add_test(NAME docs-package
 set_tests_properties(docs-package PROPERTIES LABELS acceptance TIMEOUT 60)
 
 # ---------------------------------------------------------------------------
+# EVERY reference/ DISTILLATION MUST BE CATALOGUED.
+#
+# reference/*.md are the text-only hardware references. reference/README.md indexes them and
+# docs/sources.md records the period scan each was distilled from -- both hand-maintained, and
+# both went stale silently (four un-indexed files at once, caught only by a hand-run diff).
+# This globs the distillations and fails if any is missing from either catalogue. Text only.
+# ---------------------------------------------------------------------------
+add_test(NAME reference-index
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/reference-index.cmake)
+set_tests_properties(reference-index PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# ---------------------------------------------------------------------------
 # The PDFs. NOT part of the build, and it must never become part of it.
 #
 # altairsim's loudest claim is that it builds with a C++20 compiler and CMake and nothing
