@@ -403,6 +403,9 @@ add_library(altair_core STATIC
   # The CompuPro System Support 1 carries one (src/chips/msm5832.h).
   src/chips/msm5832.cpp
   src/chips/sig2651.cpp
+  # The Intel 8253 -- a three-channel programmable interval timer, counts computed from
+  # the clock rather than stepped. The CompuPro System Support 1 carries one.
+  src/chips/intel8253.cpp
   src/boards/s100-memory.cpp
   src/boards/bankmem.cpp
   src/boards/mits-88cpu.cpp

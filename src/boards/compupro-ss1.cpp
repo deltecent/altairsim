@@ -42,23 +42,28 @@ Ss1Board::~Ss1Board() {
 }
 
 // ---------------------------------------------------------------------------
-// THE DECODE. Two RTC ports (Phase 1) and the four UART ports (Phase 2). The clock
-// command register is write-only; the clock data register is read/write. The UART's four
-// ports are all read/write except status (+13, read-only) and mode (+14, read/write with
-// an internal MR1/MR2 pointer). Everything else in the 16-port block floats -- which is
-// exactly right for the not-yet-landed timer/PIC and the empty math socket.
+// THE DECODE. The three 8253 timer counters + its control word (Phase 3), two RTC ports
+// (Phase 1) and the four UART ports (Phase 2). The clock command register and the timer
+// control word are write-only; the clock data register and the three timer counters are
+// read/write. The UART's four ports are all read/write except status (+13, read-only) and
+// mode (+14, read/write with an internal MR1/MR2 pointer). Everything else in the 16-port
+// block floats -- which is exactly right for the not-yet-landed 8259A and the empty math
+// socket.
 bool Ss1Board::decodes(const BusCycle& c) const {
     if (!enabled_) return false;
     if (c.type == Cycle::IoWrite) {
         uint8_t p = c.port();
-        return p == clockCmdPort() || p == clockDataPort() ||
+        return p == timer0Port() || p == timer1Port() || p == timer2Port() ||
+               p == timerCtlPort() || p == clockCmdPort() || p == clockDataPort() ||
                p == uartDataPort() || p == uartModePort() || p == uartCmdPort();
         // NB: the UART status port (+13) is not written (the write address is the SYN
         // register, which this board never uses), so it is not decoded for a write.
     }
     if (c.type == Cycle::IoRead) {
         uint8_t p = c.port();
-        return p == clockDataPort() ||  // clock command is write-only
+        return p == timer0Port() || p == timer1Port() ||
+               p == timer2Port() ||  // the timer control word is write-only
+               p == clockDataPort() ||  // clock command is write-only
                p == uartDataPort() || p == uartStatusPort() || p == uartModePort() ||
                p == uartCmdPort();
     }
@@ -71,6 +76,14 @@ uint8_t Ss1Board::read(const BusCycle& c) {
     if (p == clockDataPort()) return rtc_.readData();
 
     const Clock& clk = clock_ ? *clock_ : deadCard();
+
+    // The 8253 counter reads are pure (they derive the count from the clock and touch
+    // only the read-pointer/latch state), and the timer drives no interrupt yet, so
+    // they do not go through refresh().
+    if (p == timer0Port()) return timer_.readCounter(0, clk);
+    if (p == timer1Port()) return timer_.readCounter(1, clk);
+    if (p == timer2Port()) return timer_.readCounter(2, clk);
+
     uint8_t v = 0xFF;
     if (p == uartDataPort())        v = uart_.readData(clk);    // clears RxRDY
     else if (p == uartStatusPort()) v = uart_.readStatus(clk);
@@ -95,6 +108,14 @@ void Ss1Board::write(const BusCycle& c) {
     }
 
     const Clock& clk = clock_ ? *clock_ : deadCard();
+
+    // The 8253. Its OUT lines feed no interrupt until Phase 4, so programming it does
+    // not move pin 73 -- no refresh() needed here.
+    if (p == timerCtlPort()) { timer_.writeControl(c.data, clk); return; }
+    if (p == timer0Port())   { timer_.writeCounter(0, c.data, clk); return; }
+    if (p == timer1Port())   { timer_.writeCounter(1, c.data, clk); return; }
+    if (p == timer2Port())   { timer_.writeCounter(2, c.data, clk); return; }
+
     if (p == uartDataPort())      uart_.writeData(c.data, clk);     // transmit
     else if (p == uartModePort()) uart_.writeMode(c.data);          // MR1 then MR2
     else if (p == uartCmdPort())  uart_.writeCommand(c.data, clk);  // TxEN/RxEN/DTR/RTS/...
@@ -124,7 +145,10 @@ uint8_t Ss1Board::assertsVi() const {
 void Ss1Board::reset(Reset r) {
     rtc_.reset();
     if (!clock_) return;
-    if (r == Reset::PowerOn) uart_.powerOn(*clock_);
+    if (r == Reset::PowerOn) {
+        uart_.powerOn(*clock_);
+        timer_.powerOn(*clock_);  // the 8253 has no bus-reset pin either -- power-on only
+    }
     refresh();  // do NOT clear wake_ first: a bus reset does not empty the queue.
 }
 
@@ -182,12 +206,14 @@ void Ss1Board::serialize(StateWriter& w) const {
     Board::serialize(w);
     rtc_.serialize(w);
     uart_.serialize(w);
+    timer_.serialize(w);
 }
 
 void Ss1Board::deserialize(StateReader& r) {
     Board::deserialize(r);
     rtc_.deserialize(r);
     uart_.deserialize(r);
+    timer_.deserialize(r);
     refresh();  // re-drive the interrupt wire and re-arm the deadline from restored state
 }
 
@@ -221,6 +247,19 @@ std::vector<Property> Ss1Board::properties() {
         x.get = [this] { return Value::ofStr(rtc_.describe()); };
         p.push_back(std::move(x));
     }
+    {
+        // LIVE, read-only: each 8253 counter's mode, current count and OUT level. The
+        // guest programs the timer through its ports, not through a monitor SET.
+        Property x;
+        x.name = "timer";
+        x.help = "LIVE: the three 8253 counters -- mode, current count and OUT level";
+        x.kind = Kind::Str;
+        x.get = [this] {
+            const Clock& clk = clock_ ? *clock_ : deadCard();
+            return Value::ofStr(timer_.describe(clk));
+        };
+        p.push_back(std::move(x));
+    }
     return p;
 }
 
@@ -240,6 +279,10 @@ std::vector<Property> Ss1Board::unitProperties(const std::string& unit) {
 
 std::vector<MapEntry> Ss1Board::ioMap() const {
     return {
+        {timer0Port(), timer0Port(), "read/write", "8253 timer -- counter 0"},
+        {timer1Port(), timer1Port(), "read/write", "8253 timer -- counter 1"},
+        {timer2Port(), timer2Port(), "read/write", "8253 timer -- counter 2"},
+        {timerCtlPort(), timerCtlPort(), "write", "8253 timer -- control word"},
         {uartDataPort(), uartDataPort(), "read/write", "2651 UART -- receive/transmit data"},
         {uartStatusPort(), uartStatusPort(), "read", "2651 UART -- status"},
         {uartModePort(), uartModePort(), "read/write", "2651 UART -- mode registers 1/2"},

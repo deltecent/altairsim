@@ -1,8 +1,8 @@
 # CompuPro System Support 1
 
-**Status:** milestone 2 of 4 (issue #392) — the OKI MSM5832 real-time clock and the 2651 UART
-serial channel are implemented. The 8253 interval timer and the dual 8259A interrupt controllers
-are being added in later phases; the 9511A/9512 math-chip socket is deferred to its own issue
+**Status:** milestone 3 of 4 (issue #392) — the OKI MSM5832 real-time clock, the 2651 UART
+serial channel, and the 8253 interval timer are implemented. The dual 8259A interrupt controllers
+are being added in the last phase; the 9511A/9512 math-chip socket is deferred to its own issue
 (#393 — an empty socket is the real board's default).
 
 ## The real hardware
@@ -26,6 +26,7 @@ CompuPro software assumes it, so that is this board's default. The MSM5832 is cr
 | System Support 1 Technical Manual (1981) | `reference/CompuPro System Support 1.md` | Port map, register bits, sample programs |
 | OKI MSM5832 (as reprinted in the SS-1 manual) | `reference/OKI MSM5832.md` | Clock register/digit encoding |
 | Signetics 2651 (as documented in the SS-1 manual) | `reference/Signetics 2651 USART.md` | UART register model, baud table, status/command polarity |
+| Intel 8253 (as reprinted in the SS-1 manual) | `reference/Intel 8253.md` | Timer register map, control word, mode behaviour |
 
 The manual's own clock section (pp.27–30) is the authority for the digit encoding. Two facts in
 it are easy to get wrong and were corrected against the manual text while implementing: the
@@ -34,11 +35,15 @@ seconds are **write-ignored, not read-as-zero**, and the Hours-10 / Days-10 mode
 
 ## Register reference
 
-The whole board occupies 16 ports from `base` (default 50H). This milestone implements the two
-clock ports and the four UART ports:
+The whole board occupies 16 ports from `base` (default 50H). This milestone implements the four
+timer ports, the two clock ports and the four UART ports:
 
 | Addr (base 50H) | OUT (write) | IN (read) |
 |---|---|---|
+| base+4 (54) | 8253 counter 0: load per read/load format | counter 0 count |
+| base+5 (55) | 8253 counter 1: load per read/load format | counter 1 count |
+| base+6 (56) | 8253 counter 2: load per read/load format | counter 2 count |
+| base+7 (57) | 8253 control word: SC(7-6) RL(5-4) mode(3-1) BCD(0) | — (write-only, floats 0xFF) |
 | base+10 (5A) | MSM5832 command: Hold(6) / Write(5) / Read(4) / digit-select(3-0) | — (write-only, floats 0xFF) |
 | base+11 (5B) | MSM5832 data: BCD digit in the low nibble | the selected digit |
 | base+12 (5C) | 2651 data: byte to transmit | received byte (clears RxRDY) |
@@ -51,13 +56,14 @@ Week, 7/8 Days 1/10, 9/10 Months 1/10, 11/12 Years 1/10. **Hours-10 (5)** carrie
 bits 1:0, PM in bit2, and the 12/24-hour mode in bit3 (this model runs in 24-hour mode).
 **Days-10 (8)** carries the digit in bits 1:0 and the leap-year flag in bit2.
 
-The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8/+9`) are not
-decoded yet and float `0xFF`.
+The remaining ports of the block (8259A `+0..+3`, math socket `+8/+9`) are not decoded yet and
+float `0xFF`.
 
 ## How it is simulated
 
-- **Decodes** `base+10` (write only) and `base+11` (read and write) as I/O cycles. Everything
-  else in the block floats until a later phase claims it.
+- **Decodes** the timer ports `base+4..+7` (control at +7 write-only), the clock ports `base+10`
+  (write-only) and `base+11`, and the UART ports `base+12..+15` (status at +13 read-only) as I/O
+  cycles. Everything else in the block floats until a later phase claims it.
 - The clock is the host's own time-of-day. The `Msm5832` chip (`src/chips/msm5832.h`) reads
   `platform::localCalendar(std::time(nullptr) + offset_)` and returns the requested BCD digit.
   `offset_` is a signed second count, 0 at power-on (the guest sees real wall time) and moved
@@ -77,11 +83,21 @@ decoded yet and float `0xFF`.
   and DSR status bits read asserted and PE/OE/FE read 0 — a byte-clean transport has no modem
   control to simulate and no line noise to report. The board owns the UART's clock deadline
   (`refresh()`/`nextEdge()`), the same shape as the SBC-100/200.
+- **The 8253 interval timer** (`src/chips/intel8253.h`) is not stepped — each counter remembers
+  the T-state its count was loaded and the current count and OUT level are **derived from the
+  elapsed clock ticks** (DESIGN.md 7.5). The counter clock is 2 MHz (the S-100 bus signal),
+  independent of the CPU clock, so one tick takes `cpu_hz / 2_000_000` T-states. Modes 0, 2, 3
+  and 4 have their real OUT behaviour; mode 3's count read-back is approximate (a real chip
+  decrements it by two per tick), but OUT is exact. Modes 1 and 5 are gate-triggered and the
+  board ties every gate high, so they idle (no gate edge ever arrives). The Counter Latch Command
+  and BCD counting are modelled. Its OUT lines are readable now; wiring them to the 8259A is the
+  next phase, so the timer drives no interrupt yet and its accesses do not go through `refresh()`.
 - **Interrupts:** the 2651's RxRDY can be routed to pINT or an S-100 VI line by the `serial`
-  unit's `interrupt` jumper (default `none`). On the standard board the UART feeds the on-board
-  8259A instead — that path lands with the 8259A phase. **DMA:** none.
-- **`properties()`:** `base` (the 16-port block base, default 50H) and a read-only `clock`
-  string. The `serial` **unit** carries `baud`, `interrupt` and `connect`.
+  unit's `interrupt` jumper (default `none`). On the standard board the UART and the timer feed
+  the on-board 8259A instead — that path lands with the 8259A phase. **DMA:** none.
+- **`properties()`:** `base` (the 16-port block base, default 50H), a read-only `clock` string
+  and a read-only `timer` string (each counter's mode, count and OUT). The `serial` **unit**
+  carries `baud`, `interrupt` and `connect`.
 
 ### Reset
 
@@ -101,6 +117,9 @@ decoded yet and float `0xFF`.
 | 2651 status TxRDY=D0/RxRDY=D1 active-high; DCD/DSR (D6/D7) and DTR/RTS command bits **inverting** | A polled driver reads the ready flags in the wrong bit; a modem-control test sees the RS-232 sense backwards |
 | 2651 baud comes from Mode Register 2, not a strap | A guest that sets 300 baud via MR2 still runs at the wrong rate if the model ignores MR2 |
 | 2651 MR1 must be written before MR2 (shared address, one-bit pointer) | The frame and the baud land in each other's register |
+| 8253 counter clock is 2 MHz, not the CPU clock | A timing loop calibrated against the timer runs at the wrong rate on any machine whose CPU is not 2 MHz |
+| 8253 control word for a counter stops it until a fresh count is loaded | A program that rewrites the mode and expects the old count to keep running reads a stale OUT |
+| 8253 a count of 0 means the full modulus (65536, or 10000 in BCD) | A "divide by 65536" that loads 0 undercounts to nothing if 0 is taken literally |
 
 ## Limitations and deliberate departures
 
@@ -115,8 +134,14 @@ decoded yet and float `0xFF`.
   read 0 for a byte-clean transport; a real serial-port endpoint would make those real events.
   Sync mode, auto-echo and the loopback operating modes (command bits 6/7) are not modelled — the
   SS-1 uses normal async only. The transmitter is not gated on TxEN (a guest polls TxRDY first).
-- The rest of the board (timer, interrupts, math socket, 4K RAM/EPROM) is not modelled yet; those
-  ports float.
+- **8253 gate inputs are tied high (ungated).** The SS-1 pulls every gate high, so counting is
+  always enabled and the gate-triggered one-shot modes (1 and 5) never trigger — no gate edge is
+  modelled. **Mode 3's count read-back is approximate** (OUT is exact); the terminal-count timing
+  folds the load clock into the write instant rather than modelling the extra load cycle.
+- **The 8253 OUT lines drive no interrupt yet.** They are readable, but routing them to the
+  on-board 8259A (the standard interrupt use) lands with the interrupt-controller phase.
+- The rest of the board (interrupts, math socket, 4K RAM/EPROM) is not modelled yet; those ports
+  float.
 
 ## Verification
 
@@ -127,11 +152,16 @@ survives RESET/power-on and a SNAPSHOT/RESTORE round-trip, and the `base` strap 
 The 2651 is pinned both as a bare chip and over the bus: the MR1-then-MR2 pointer, the full MR2
 baud table, the status polarity, TxRDY as a deadline, a character clocked in over a frame time,
 the RxEN gate, snapshot of the programmed frame/baud, the four-port decode, an end-to-end
-receive/transmit through the bus, and the RxRDY interrupt jumper.
+receive/transmit through the bus, and the RxRDY interrupt jumper. The 8253 is pinned as a bare
+chip and over the bus: mode 0 interrupt-on-terminal-count, the Counter Latch Command freezing a
+16-bit read, the mode 2 rate generator and mode 3 square wave (even and odd counts), `nextEdge`,
+BCD counting, the 2 MHz counter clock being independent of the CPU clock, a snapshot round-trip,
+the four-port decode, and programming/reading a counter over the bus.
 
 ## References
 
 - `reference/CompuPro System Support 1.md` — the distilled board reference.
 - `reference/OKI MSM5832.md` — the clock chip.
 - `reference/Signetics 2651 USART.md` — the UART chip.
+- `reference/Intel 8253.md` — the interval timer chip.
 - Issue #392 — the board's scope and the IEEE-696 finding.
