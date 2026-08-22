@@ -1,0 +1,71 @@
+# An Altair with an SSM PB1 EPROM programmer board in it.
+#
+#     cd examples/pb1 && altairsim pb1.toml
+#
+# The PB1 is a board, not a machine -- this is just a stock Altair (8080, RAM, a
+# 2SIO console, the front panel) with the PB1 added. The manual's own burner
+# software (PROG2708.HEX / PROG2716.HEX) hard-codes the SSM example addresses:
+# control port 10H and the programming window at D000H. So this machine keeps
+# those two addresses free -- the console 2SIO is moved down to port 00, and RAM
+# stops at CFFF so the PB1's 4K window at D000 is not also RAM.
+#
+# BURN AND SAVE (the manual's software does no console I/O -- it just runs and
+# jumps back to the monitor at F021, which altairsim does not ship yet, so catch
+# the return with a breakpoint):
+#
+#     altairsim> LOAD your-data.hex        ; put the bytes to burn at 4000
+#     altairsim> LOAD PROG2708.HEX         ; the SSM 2708 burner (section 4.2)
+#     altairsim> BREAK F021                ; where the burner returns "to the monitor"
+#     altairsim> RUN 100                   ; burns the 2708 in the socket window
+#     altairsim> SAVE eprom.hex D000-D3FF  ; the burn, as an Intel HEX file on the host
+#
+# See the README beside this file and reference/SSM PB1 EPROM Programmer.md.
+
+[machine]
+name = "pb1"
+
+# THE CPU. A stock 8080; clock_hz = 0 runs it flat out.
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+# THE CONSOLE, moved down to ports 00-03 so the PB1's control port can keep its
+# documented 10H (the SSM burner software hard-codes CPORT = 10H).
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 00
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# THE PB1. Control port 10H, the 4K programming window at D000 -- exactly what the
+# SSM sample software (PROG2708/PROG2716) expects. Both sockets start with an
+# erased (all-FF) chip; burn one, then SAVE it.
+[[board]]
+type   = "pb1"
+id     = "pb1"
+port   = 10
+window = D000
+
+# 52K OF RAM (0000-CFFF): the burner runs at 0100 and its source data sits at 4000,
+# both below the PB1 window at D000. Real static RAM does not come up zeroed.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "52K"                     # 0000-CFFF

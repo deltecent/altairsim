@@ -99,7 +99,7 @@ and within a group the boards are in **alphabetical order**.
 
 | Type | What it is |
 |---|---|
-| [`pb1`](#pb1) | SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). No PROM burner software is bundled; run any 2708/2716 burner (e.g. SSM's own, roms/SSM-PB1) |
+| [`pb1`](#pb1) | SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). The board ships no firmware -- run any 2708/2716 burner; SSM's own from the PB1 manual is in examples/pb1 |
 
 **Other**
 
@@ -1105,7 +1105,7 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 
 ### `pb1`
 
-SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). No PROM burner software is bundled; run any 2708/2716 burner (e.g. SSM's own, roms/SSM-PB1)
+SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). The board ships no firmware -- run any 2708/2716 burner; SSM's own from the PB1 manual is in examples/pb1
 
 **Units:** `u22` (rom, MOUNT), `u23` (rom, MOUNT)
 
