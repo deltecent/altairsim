@@ -52,12 +52,15 @@ instead of one we picked, with built-in profiles for the Cromemco TU-ART, IMSAI 
 serial channels. A new built-in ROM, **ROM BASIC**, boots Altair BASIC 4.1 straight out of PROM
 with the full 48K free underneath it.
 
-The **CompuPro System Support 1** joins the backplane as a real-time clock, a serial channel and
-an interval timer: its OKI MSM5832 clock/calendar reads your host's own date and time, a guest can
-set it, and — like the real battery-backed chip — a set survives a RESET (`altairsim compupro`).
-Its **2651 UART** is a spare serial port a guest programs and you `CONNECT` to an endpoint, and its
-**Intel 8253** timer gives a guest three programmable 2 MHz counters. It is a multifunction card
-whose interrupt controllers are still being added in stages.
+The **CompuPro System Support 1** joins the backplane as a real-time clock, a serial channel, an
+interval timer and a pair of interrupt controllers: its OKI MSM5832 clock/calendar reads your
+host's own date and time, a guest can set it, and — like the real battery-backed chip — a set
+survives a RESET (`altairsim compupro`). Its **2651 UART** is a spare serial port a guest programs
+and you `CONNECT` to an endpoint; its **Intel 8253** timer gives a guest three programmable 2 MHz
+counters; and its cascaded **Intel 8259A** controllers make it a full interrupt controller — the
+master prioritizes the bus's vectored-interrupt lines and drives the CPU, while the slave gathers
+the on-board timer and UART interrupts. Everything but the (empty) math-chip socket is now
+implemented.
 
 ### A third validated CPU core: the Intel 8085
 

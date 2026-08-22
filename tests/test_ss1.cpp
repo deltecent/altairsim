@@ -11,6 +11,7 @@
 #include "boards/compupro-ss1.h"
 #include "boards/s100-memory.h"
 #include "chips/intel8253.h"
+#include "chips/intel8259a.h"
 #include "chips/sig2651.h"
 #include "core/clock.h"
 #include "core/machine.h"
@@ -140,6 +141,57 @@ struct TimerRig {
 constexpr uint8_t kLsb = 1, kBoth = 3;  // read/load format (MSB-only is unused here)
 uint8_t ctrl(int counter, uint8_t rl, uint8_t mode, bool bcd = false) {
     return (uint8_t)((counter << 6) | (rl << 4) | (mode << 1) | (bcd ? 1 : 0));
+}
+
+// ---- Phase 4: the dual 8259A interrupt controllers ----
+
+// ICW4 values (D0 = uPM: 0 = MCS-80/85, 1 = 8086). MCS uses the manual's 0x10 (SFNM set,
+// which we accept as ordinary fully-nested); the 8086 test uses 0x01.
+constexpr uint8_t kIcw4Mcs = 0x10, kIcw4_8086 = 0x01;
+
+// Program one lone 8259A. icw1 must set SNGL (D1) so no ICW3 is expected.
+void initPic(Intel8259a& p, uint8_t icw1, uint8_t icw2, uint8_t icw4, uint8_t mask) {
+    p.powerOn();
+    p.write(false, icw1);              // ICW1
+    p.write(true, icw2);               // ICW2
+    if (icw1 & 0x01) p.write(true, icw4);  // ICW4, only if IC4 (ICW1 D0) set
+    p.write(true, mask);               // OCW1 (the mask)
+}
+
+// Program the SS-1's two 8259As over the bus in the standard cascade: master vectors at
+// 0x0200, slave at 0x2200, both level-triggered with interval 4. `mMask`/`sMask` are the
+// OCW1 masks (a 0 bit is unmasked).
+void initSs1Pics(Machine& m, uint8_t base, uint8_t mMask, uint8_t sMask) {
+    uint8_t m0 = (uint8_t)(base + 0), m1 = (uint8_t)(base + 1);
+    uint8_t s0 = (uint8_t)(base + 2), s1 = (uint8_t)(base + 3);
+    m.bus.ioWrite(m0, 0x1D);       // master ICW1: cascade, level, interval 4, IC4
+    m.bus.ioWrite(m1, 0x02);       //        ICW2: vectors at 0x0200
+    m.bus.ioWrite(m1, 0x80);       //        ICW3: a slave on IR7
+    m.bus.ioWrite(m1, kIcw4Mcs);   //        ICW4: MCS-80/85
+    m.bus.ioWrite(m1, mMask);      //        OCW1
+    m.bus.ioWrite(s0, 0x1D);       // slave  ICW1
+    m.bus.ioWrite(s1, 0x22);       //        ICW2: vectors at 0x2200
+    m.bus.ioWrite(s1, 0x07);       //        ICW3: slave ID 7 (wired to master IR7)
+    m.bus.ioWrite(s1, kIcw4Mcs);   //        ICW4
+    m.bus.ioWrite(s1, sMask);      //        OCW1
+}
+
+// A 64K-RAM + ss1 + CPU machine, powered, ready to program. The CPU clocks at 4 MHz so
+// the 2 MHz 8253 takes two T-states per tick.
+Ss1Board* buildIntMachine(Machine& m, const char* cpu = "8080") {
+    std::string err;
+    auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+    Region rr;
+    rr.kind = RegionKind::Ram;
+    rr.at   = 0;
+    rr.size = 0x10000;
+    mem->addRegion(rr, err);
+    setProperty(*mem, "fill", "zero", err);
+    auto* ss1 = dynamic_cast<Ss1Board*>(m.add("ss1", "ss0", err));
+    m.add(cpu, "cpu0", err);
+    setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
+    m.power();
+    return ss1;
 }
 
 }  // namespace
@@ -686,5 +738,260 @@ void test_ss1() {
         CHECK(!ss1->timer().out(0, m.clock), "and OUT is still low");
         m.clock.advance(200);  // 100 more ticks -> terminal count
         CHECK(ss1->timer().out(0, m.clock), "OUT is high once the counter reaches zero");
+    }
+
+    // =====================================================================
+    // Phase 4 -- the dual 8259A interrupt controllers.
+    // =====================================================================
+
+    SECTION("SS-1 8259A -- ICW init and the MCS-80/85 CALL address");
+    {
+        Intel8259a p{"pic"};
+        initPic(p, 0x1F, 0x02, kIcw4Mcs, 0x00);  // single, level, interval 4, base 0x0200
+        CHECK(!p.is8086(), "ICW4 D0 clear -> MCS-80/85 mode");
+        CHECK(p.callAddress(0) == 0x0200, "level 0 -> CALL 0200");
+        CHECK(p.callAddress(3) == 0x020C, "level 3 -> CALL 0200 + 3*4");
+        CHECK(p.callAddress(7) == 0x021C, "level 7 -> CALL 0200 + 7*4");
+
+        initPic(p, 0x1B, 0x02, kIcw4Mcs, 0x00);  // interval 8 (ICW1 D2 clear)
+        CHECK(p.callAddress(2) == 0x0210, "interval 8: level 2 -> CALL 0200 + 2*8");
+    }
+
+    SECTION("SS-1 8259A -- priority, masking, fully-nested in-service");
+    {
+        Intel8259a p{"pic"};
+        initPic(p, 0x1F, 0x20, kIcw4Mcs, 0x00);  // level, single, all unmasked
+        CHECK(p.winner(0x00) == -1, "no request -> no winner");
+        CHECK(p.winner(1u << 2) == 2, "IR2 asking, IR2 wins");
+        CHECK(p.winner((1u << 2) | (1u << 5)) == 2,
+              "IR2 outranks IR5 (a lower number is higher priority)");
+        CHECK(p.acknowledge((1u << 2) | (1u << 5)) == 2, "the acknowledge latches IR2 in service");
+        CHECK(p.winner((1u << 2) | (1u << 5)) == -1,
+              "IR2 in service blocks IR2 and everything lower");
+        CHECK(p.winner((1u << 0) | (1u << 5)) == 0, "...but IR0 (higher) still preempts");
+        p.write(false, 0x20);  // non-specific EOI: clears the highest in-service (IR2)
+        CHECK(p.winner((1u << 2) | (1u << 5)) == 2,
+              "after EOI, IR2 (line still high) is serviceable again");
+        p.write(true, (uint8_t)~(1u << 5));  // OCW1: unmask only IR5
+        CHECK(p.winner(0xFF) == 5, "the mask lets only IR5 through");
+    }
+
+    SECTION("SS-1 8259A -- EOI variants and priority rotation");
+    {
+        Intel8259a p{"pic"};
+        initPic(p, 0x1F, 0x20, kIcw4Mcs, 0x00);
+        p.acknowledge(1u << 3);  // IR3 in service
+        CHECK(p.winner((1u << 3) | (1u << 4)) == -1, "IR3 in service blocks IR4 (lower)");
+        p.write(false, (uint8_t)(0x60 | 3));  // specific EOI IR3
+        CHECK(p.winner((1u << 3) | (1u << 4)) == 3,
+              "specific EOI frees IR3; IR3 outranks IR4");
+        p.acknowledge(1u << 3);
+        p.write(false, 0xA0);  // rotate on non-specific EOI -> IR3 becomes lowest priority
+        CHECK(p.winner((1u << 3) | (1u << 4)) == 4,
+              "after rotate-on-EOI, IR3 is lowest so IR4 now outranks it");
+    }
+
+    SECTION("SS-1 8259A -- edge- vs level-triggered request sensing");
+    {
+        Intel8259a p{"pic"};
+        initPic(p, 0x13, 0x20, kIcw4Mcs, 0x00);  // 0x13: EDGE (D3 clear), single, IC4
+        p.senseEdges(1u << 2);  // IR2 high since init -> no rising edge (edge sense reset)
+        CHECK(p.winner(1u << 2) == -1, "edge mode: a line high since init is not an edge");
+        p.senseEdges(0x00);
+        p.senseEdges(1u << 2);  // a fresh low->high transition
+        CHECK(p.winner(1u << 2) == 2, "a rising edge latches the request");
+        p.acknowledge(1u << 2);
+        p.write(false, 0x20);   // EOI
+        p.senseEdges(1u << 2);  // still high, but no NEW edge
+        CHECK(p.winner(1u << 2) == -1,
+              "edge mode: a still-high line does not re-request after EOI");
+
+        Intel8259a q{"pic"};
+        initPic(q, 0x1B, 0x20, kIcw4Mcs, 0x00);  // level (D3 set)
+        CHECK(q.winner(1u << 2) == 2, "level mode: a high line is a request with no edge");
+    }
+
+    SECTION("SS-1 8259A -- 8086 mode yields a single vector byte");
+    {
+        Intel8259a p{"pic"};
+        initPic(p, 0x1B, 0x40, kIcw4_8086, 0x00);
+        CHECK(p.is8086(), "ICW4 D0 set -> 8086 mode");
+        CHECK(p.vector8086(3) == 0x43, "8086 vector = (ICW2 & F8) | level");
+    }
+
+    SECTION("SS-1 8259A -- the cascade routes a slave source through master IR7");
+    {
+        Intel8259a master{"m"}, slave{"s"};
+        // master: cascade (D1 clear), level, interval 4, IC4; slave on IR7.
+        master.powerOn();
+        master.write(false, 0x1D);
+        master.write(true, 0x02);
+        master.write(true, 0x80);       // ICW3: slave present on IR7
+        master.write(true, kIcw4Mcs);
+        master.write(true, 0x00);
+        slave.powerOn();
+        slave.write(false, 0x1D);
+        slave.write(true, 0x22);        // vectors at 0x2200
+        slave.write(true, 0x07);        // ICW3: slave ID 7
+        slave.write(true, kIcw4Mcs);
+        slave.write(true, 0x00);
+
+        uint8_t sLive = 1u << 6;  // slave IR6 asking
+        CHECK(slave.intOut(sLive), "the slave's INT is up");
+        uint8_t mLive = slave.intOut(sLive) ? (uint8_t)(1u << 7) : 0;  // -> master IR7
+        CHECK(master.winner(mLive) == 7, "the master resolves the cascade line, IR7");
+        CHECK(master.acknowledge(mLive) == 7, "the master acknowledges IR7...");
+        CHECK(slave.acknowledge(sLive) == 6, "...and the slave supplies the source, IR6");
+        CHECK(slave.callAddress(6) == 0x2218, "the vector is the SLAVE's: 0x2200 + 6*4");
+    }
+
+    // ---- the two controllers on a real bus, driving real interrupts ----
+
+    SECTION("SS-1 board -- the 8259A ports decode at base+0..+3");
+    {
+        Machine m;
+        auto* ss1 = new Ss1Board();
+        ss1->id = "ss1";
+        m.bus.attach(ss1);
+        auto decodes = [&](Cycle t, uint8_t port) {
+            BusCycle c;
+            c.type = t;
+            c.addr = port;
+            return ss1->decodes(c);
+        };
+        for (uint8_t p = 0x50; p <= 0x53; ++p) {
+            CHECK(decodes(Cycle::IoRead, p) && decodes(Cycle::IoWrite, p),
+                  "an 8259A port (50-53) reads and writes");
+        }
+        CHECK(!decodes(Cycle::IntAck, 0),
+              "an unprogrammed board claims no IntAck cycle -- the bus floats to RST 7");
+        // And it never pulls PHANTOM* -- our CPU issues an INTA per injected byte, so the
+        // CALL bytes come from the board, not memory (see the board header).
+        BusCycle ic;
+        ic.type = Cycle::IntAck;
+        CHECK(!ss1->assertsPhantom(ic), "the SS-1 needs no PHANTOM* trick in this simulator");
+    }
+
+    SECTION("SS-1 board -- a timer terminal count interrupts through the cascade");
+    {
+        Machine m;
+        m.bus.setVerify(true);
+        buildIntMachine(m);
+
+        // master unmask IR7 (the slave); slave unmask IR1 (Timer 0 OUT).
+        initSs1Pics(m, 0x50, /*mMask*/ (uint8_t)~(1u << 7), /*sMask*/ (uint8_t)~(1u << 1));
+        m.bus.ioWrite(0x57, ctrl(0, kLsb, 0));  // Timer 0, mode 0
+        m.bus.ioWrite(0x54, 50);                // N = 50 ticks
+        CHECK(!m.bus.intPending(), "before terminal count, nothing is asking");
+
+        m.clock.advance(100);  // 50 ticks at 2 MHz on a 4 MHz CPU
+        CHECK(m.bus.intPending(),
+              "the timer's TC raises slave IR1 -> master IR7 -> pin 73");
+        // The acknowledge drives the SLAVE's CALL vector for IR1: 0x2200 + 1*4 = 0x2204.
+        CHECK(m.bus.intAck() == 0xCD, "INTA 1: the CALL opcode");
+        CHECK(m.bus.intAck() == 0x04, "INTA 2: address low (0x2204)");
+        CHECK(m.bus.intAck() == 0x22, "INTA 3: address high");
+        CHECK(!m.bus.intPending(),
+              "the in-service bits are set now, so pin 73 has dropped");
+    }
+
+    SECTION("SS-1 board -- the UART's RxRDY interrupts through the cascade");
+    {
+        Machine m;
+        m.bus.setVerify(true);
+        auto* ss1 = buildIntMachine(m);
+        auto  s   = std::make_unique<ScriptedStream>();
+        ScriptedStream* tty = s.get();
+        ss1->uart().connect(std::move(s));
+
+        m.bus.ioWrite(0x5E, 0x4E);  // UART MR1: 8N1
+        m.bus.ioWrite(0x5E, 0x7E);  // MR2: 9600
+        m.bus.ioWrite(0x5F, 0x27);  // command: TxEN|RxEN|DTR|RTS
+        // Unmask master IR7 and slave IR7 (RxRDY). Mask slave IR6 (TxRDY) so the idle
+        // transmitter does not interrupt and steal the acknowledge.
+        initSs1Pics(m, 0x50, (uint8_t)~(1u << 7), (uint8_t)~(1u << 7));
+
+        tty->feed("Q");
+        ss1->pump();
+        m.clock.advance(kChar + kBit);
+        CHECK(m.bus.intPending(),
+              "a received character raises slave IR7 (RxRDY) -> master IR7 -> pin 73");
+        // The slave's CALL vector for IR7: 0x2200 + 7*4 = 0x221C.
+        CHECK(m.bus.intAck() == 0xCD, "INTA 1: CALL");
+        CHECK(m.bus.intAck() == 0x1C, "INTA 2: address low (0x221C)");
+        CHECK(m.bus.intAck() == 0x22, "INTA 3: address high");
+    }
+
+    SECTION("SS-1 board -- the master prioritizes the S-100 VI lines");
+    {
+        Machine m;
+        m.bus.setVerify(true);
+        auto* ss1 = buildIntMachine(m);
+        auto  s   = std::make_unique<ScriptedStream>();
+        ScriptedStream* tty = s.get();
+        ss1->uart().connect(std::move(s));
+
+        // Route the UART's RxRDY straight to VI2 (the legacy jumper) and unmask master
+        // IR2 -- the SS-1's master is the machine's VI priority encoder, so a VI2 request
+        // comes back in through master IR2 and is vectored with the MASTER's vector.
+        std::string err;
+        CHECK(setUnitProperty(*ss1, "serial", "interrupt", "vi2", err), "strap RxRDY to VI2");
+        initSs1Pics(m, 0x50, (uint8_t)~(1u << 2), 0xFF);  // master: only IR2; slave: all masked
+
+        m.bus.ioWrite(0x5E, 0x4E);
+        m.bus.ioWrite(0x5E, 0x7E);
+        m.bus.ioWrite(0x5F, 0x27);
+        tty->feed("A");
+        ss1->pump();
+        m.clock.advance(kChar + kBit);
+        CHECK(m.bus.viLines() == (1u << 2), "the UART is pulling VI2");
+        CHECK(ss1->intWinner() == 2, "the master resolves VI2 as the winner");
+        CHECK(m.bus.intPending(), "and drives pin 73 for it");
+        CHECK(m.bus.intAck() == 0xCD, "INTA 1: CALL");
+        CHECK(m.bus.intAck() == 0x08, "INTA 2: the MASTER's vector low (0x0200 + 2*4 = 0x0208)");
+        CHECK(m.bus.intAck() == 0x02, "INTA 3: address high");
+    }
+
+    SECTION("SS-1 board -- an interrupt actually vectors the CPU through the CALL");
+    {
+        Machine m;
+        buildIntMachine(m, "8080");
+
+        // EI; HLT at 0x0000. The CPU halts with interrupts enabled; the run loop keeps
+        // time turning while a deadline is queued, so the timer fires and the injected
+        // CALL redirects execution to the slave's IR1 vector at 0x2204, where a HLT waits.
+        m.bus.memWrite(0x0000, 0xFB);  // EI
+        m.bus.memWrite(0x0001, 0x76);  // HLT
+        m.bus.memWrite(0x2204, 0x76);  // HLT at the timer-0 vector
+
+        initSs1Pics(m, 0x50, (uint8_t)~(1u << 7), (uint8_t)~(1u << 1));
+        m.bus.ioWrite(0x57, ctrl(0, kLsb, 0));
+        m.bus.ioWrite(0x54, 40);  // a short interval so it fires within the run cap
+
+        m.debug.add(BreakKind::Pc, 0x2204, 0x2204);
+        RunResult r = m.debug.run(100000);
+        CHECK(m.cpu()->pc() == 0x2204,
+              "the timer interrupt vectored the CPU to the CALL target at 0x2204");
+        (void)r;
+    }
+
+    SECTION("SS-1 board -- snapshot carries the 8259A state");
+    {
+        Machine m;
+        auto* ss1 = buildIntMachine(m);
+        initSs1Pics(m, 0x50, 0x7F, 0xF5);  // master IR7 unmasked; slave IR1/IR3 unmasked
+        ss1->slave().acknowledge(1u << 1);  // put slave IR1 in service
+
+        StateWriter w;
+        ss1->serialize(w);
+
+        Machine m2;
+        auto* b2 = buildIntMachine(m2);
+        StateReader r(w.data());
+        b2->deserialize(r);
+        CHECK(r.ok(), "the snapshot reads back without underrun");
+        CHECK(b2->master().imr() == 0x7F, "the restored master keeps its mask");
+        CHECK(b2->slave().imr() == 0xF5, "the restored slave keeps its mask");
+        CHECK(b2->slave().isr() == (1u << 1), "the restored slave keeps its in-service bit");
     }
 }

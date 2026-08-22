@@ -94,7 +94,7 @@ Grouped by what they do — the same order as the sections below.
 | Type | What it is |
 |---|---|
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
-| `ss1` | CompuPro System Support 1 — a multifunction board; today its real-time clock, serial channel and interval timer |
+| `ss1` | CompuPro System Support 1 — a multifunction board: real-time clock, serial channel, interval timer, and dual interrupt controllers |
 
 **The whole machine**
 
@@ -1051,8 +1051,8 @@ supply**, since none is in the package. Its cassette deck comes up empty.
 
 A **multifunction** board: on the real card, one 16-port block holds a serial channel, an
 interval timer, two interrupt controllers, a battery-backed **real-time clock/calendar**, and a
-socket for a math coprocessor. Today this board is its **clock**, its **serial channel** and its
-**interval timer** — its remaining functions are being added in stages.
+socket for a math coprocessor. This board is its **clock**, its **serial channel**, its **interval
+timer** and its **dual interrupt controllers** — everything but the (empty) math-chip socket.
 
 The clock is the OKI MSM5832. It comes up reading **your host's own date and time**, so a guest
 program that reads it gets the real wall clock for free. A guest can also **set** it, and once set
@@ -1065,13 +1065,22 @@ something with `CONNECT ss1:serial <endpoint>`. Its `baud`, `interrupt` and `con
 settings, shown under `SHOW ss1`.
 
 The interval timer is an **Intel 8253** at `54`–`57`: three independent 16-bit counters a guest
-can program as timers or square-wave/rate generators. The counters tick at 2 MHz. On the real
-board their outputs feed the interrupt controllers; for now they are readable but drive no
-interrupt. `SHOW ss1` prints a live `timer` line with each counter's mode, count and output.
+can program as timers or square-wave/rate generators. The counters tick at 2 MHz. Their outputs
+feed the interrupt controllers. `SHOW ss1` prints a live `timer` line with each counter's mode,
+count and output.
+
+The interrupt system is two **Intel 8259A** controllers at `50`–`53`, cascaded master and slave.
+The master watches the eight vectored-interrupt lines of the bus and drives the CPU's interrupt
+pin; the slave gathers the on-board sources — the three timer outputs and the UART's transmit- and
+receive-ready signals — and feeds them up through the master. A guest programs them the usual
+8259A way (the ICW/OCW words), unmasks the sources it wants, and on an interrupt the controller
+hands the CPU a `CALL` to the vector for the winning source. `SHOW ss1` prints a live `pic` line
+with each controller's request, in-service and mask registers. Because the master is the machine's
+interrupt priority encoder, do not also fit an `88vi` — the two would fight over the acknowledge.
 
 `compupro` is the machine that fits one: a stock Altair with the System Support 1 added, its
 console still on the 2SIO. The clock lives at `5A` (command) / `5B` (data); the digit map, the
-read/set sequences and the UART register layout are in the board's reference.
+read/set sequences and the register layouts are in the board's reference.
 
 ---
 
