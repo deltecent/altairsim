@@ -406,6 +406,9 @@ add_library(altair_core STATIC
   # The Intel 8253 -- a three-channel programmable interval timer, counts computed from
   # the clock rather than stepped. The CompuPro System Support 1 carries one.
   src/chips/intel8253.cpp
+  # The Intel 8259A -- a programmable interrupt controller; INT is a pure function of the
+  # live IR levels the card supplies. The CompuPro System Support 1 carries two (cascade).
+  src/chips/intel8259a.cpp
   src/boards/s100-memory.cpp
   src/boards/bankmem.cpp
   src/boards/mits-88cpu.cpp

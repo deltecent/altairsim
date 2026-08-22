@@ -1,9 +1,10 @@
 # CompuPro System Support 1
 
-**Status:** milestone 3 of 4 (issue #392) — the OKI MSM5832 real-time clock, the 2651 UART
-serial channel, and the 8253 interval timer are implemented. The dual 8259A interrupt controllers
-are being added in the last phase; the 9511A/9512 math-chip socket is deferred to its own issue
-(#393 — an empty socket is the real board's default).
+**Status:** feature-complete for issue #392 — the OKI MSM5832 real-time clock, the 2651 UART
+serial channel, the 8253 interval timer, and the dual 8259A interrupt controllers are all
+implemented. The 9511A/9512 math-chip socket is deferred to its own issue (#393 — an empty socket
+is the real board's default) and the optional 4K RAM/EPROM block is out of scope (it is the one
+IEEE-696 part the Altair bus cannot carry — #344).
 
 ## The real hardware
 
@@ -27,6 +28,7 @@ CompuPro software assumes it, so that is this board's default. The MSM5832 is cr
 | OKI MSM5832 (as reprinted in the SS-1 manual) | `reference/OKI MSM5832.md` | Clock register/digit encoding |
 | Signetics 2651 (as documented in the SS-1 manual) | `reference/Signetics 2651 USART.md` | UART register model, baud table, status/command polarity |
 | Intel 8253 (as reprinted in the SS-1 manual) | `reference/Intel 8253.md` | Timer register map, control word, mode behaviour |
+| Intel 8259A (as reprinted in the SS-1 manual) | `reference/Intel 8259A.md` | Interrupt-controller registers, priority, cascade, the CALL vector |
 
 The manual's own clock section (pp.27–30) is the authority for the digit encoding. Two facts in
 it are easy to get wrong and were corrected against the manual text while implementing: the
@@ -36,10 +38,14 @@ seconds are **write-ignored, not read-as-zero**, and the Hours-10 / Days-10 mode
 ## Register reference
 
 The whole board occupies 16 ports from `base` (default 50H). This milestone implements the four
-timer ports, the two clock ports and the four UART ports:
+8259A ports, the four timer ports, the two clock ports and the four UART ports:
 
 | Addr (base 50H) | OUT (write) | IN (read) |
 |---|---|---|
+| base+0 (50) | master 8259A, A0=0: ICW1 / OCW2 / OCW3 | master IRR or ISR (per OCW3) |
+| base+1 (51) | master 8259A, A0=1: ICW2-4 / OCW1 (mask) | master IMR (the mask) |
+| base+2 (52) | slave 8259A, A0=0 | slave IRR or ISR |
+| base+3 (53) | slave 8259A, A0=1 | slave IMR |
 | base+4 (54) | 8253 counter 0: load per read/load format | counter 0 count |
 | base+5 (55) | 8253 counter 1: load per read/load format | counter 1 count |
 | base+6 (56) | 8253 counter 2: load per read/load format | counter 2 count |
@@ -56,14 +62,26 @@ Week, 7/8 Days 1/10, 9/10 Months 1/10, 11/12 Years 1/10. **Hours-10 (5)** carrie
 bits 1:0, PM in bit2, and the 12/24-hour mode in bit3 (this model runs in 24-hour mode).
 **Days-10 (8)** carries the digit in bits 1:0 and the leap-year flag in bit2.
 
-The remaining ports of the block (8259A `+0..+3`, math socket `+8/+9`) are not decoded yet and
-float `0xFF`.
+The math socket `+8/+9` is unpopulated and floats `0xFF`.
+
+**The interrupt matrix** (the stock J7/J8 shunt) wires the two controllers like this:
+
+| Master IR | Source | Slave IR | Source |
+|:--:|---|:--:|---|
+| 0–6 | S-100 VI0*–VI6* | 1–3 | Timer 0 / 1 / 2 OUT |
+| 7 | slave INT (cascade) | 6 | 2651 TxRDY |
+| | | 7 | 2651 RxRDY |
+
+So the master is the machine's VI priority encoder, its INT drives pin 73, and the on-board
+sources reach the CPU through the slave and the cascade. Slave IR0/IR4/IR5 (unassigned / the empty
+math socket) are tied inactive.
 
 ## How it is simulated
 
-- **Decodes** the timer ports `base+4..+7` (control at +7 write-only), the clock ports `base+10`
-  (write-only) and `base+11`, and the UART ports `base+12..+15` (status at +13 read-only) as I/O
-  cycles. Everything else in the block floats until a later phase claims it.
+- **Decodes** the 8259A ports `base+0..+3`, the timer ports `base+4..+7` (control at +7
+  write-only), the clock ports `base+10` (write-only) and `base+11`, and the UART ports
+  `base+12..+15` (status at +13 read-only) as I/O cycles — and the **IntAck** cycle when the master
+  would interrupt (or a CALL fetch is in progress). The math socket ports float.
 - The clock is the host's own time-of-day. The `Msm5832` chip (`src/chips/msm5832.h`) reads
   `platform::localCalendar(std::time(nullptr) + offset_)` and returns the requested BCD digit.
   `offset_` is a signed second count, 0 at power-on (the guest sees real wall time) and moved
@@ -90,20 +108,41 @@ float `0xFF`.
   and 4 have their real OUT behaviour; mode 3's count read-back is approximate (a real chip
   decrements it by two per tick), but OUT is exact. Modes 1 and 5 are gate-triggered and the
   board ties every gate high, so they idle (no gate edge ever arrives). The Counter Latch Command
-  and BCD counting are modelled. Its OUT lines are readable now; wiring them to the 8259A is the
-  next phase, so the timer drives no interrupt yet and its accesses do not go through `refresh()`.
-- **Interrupts:** the 2651's RxRDY can be routed to pINT or an S-100 VI line by the `serial`
-  unit's `interrupt` jumper (default `none`). On the standard board the UART and the timer feed
-  the on-board 8259A instead — that path lands with the 8259A phase. **DMA:** none.
-- **`properties()`:** `base` (the 16-port block base, default 50H), a read-only `clock` string
-  and a read-only `timer` string (each counter's mode, count and OUT). The `serial` **unit**
-  carries `baud`, `interrupt` and `connect`.
+  and BCD counting are modelled. Its OUT lines now feed the slave 8259A (see below).
+- **The dual 8259A** (`src/chips/intel8259a.h`) are two controllers in the standard master/slave
+  cascade. Each is a **pure function of its programmed state and the live IR input levels** — the
+  card hands them the current levels (a timer OUT off the clock, a VI line off the bus, the UART's
+  ready flags) on every query, so `assertsInt()` stays const and combinational while its inputs
+  move on other chips' clocks (the same stance as the 88-VI). The master watches VI0–6, IR7 is the
+  slave, and its INT output is the card's pin-73 driver; the slave takes the timer OUTs (IR1–3) and
+  the UART's TxRDY/RxRDY (IR6/IR7). The model covers ICW1–4 init, OCW1/2/3, fully-nested priority
+  with rotation, the EOI family, edge/level triggering, and the acknowledge — which drives the
+  **MCS-80/85 3-byte CALL** the CPU executes. The card owns a Clock deadline (`refresh()`/
+  `nextEdge()`) that folds in each **unmasked** timer OUT's next edge, so a terminal count wakes
+  the card to raise the interrupt with nobody polling.
+- **No `PHANTOM*` interrupt-acknowledge trick, and that is a finding.** On real hardware an
+  8080/Z80 issues one INTA pulse and reads the CALL's two address bytes from memory, so the board
+  must assert `PHANTOM*` to blank memory during them. This simulator's CPU cores instead issue an
+  INTA cycle for *every* injected byte (`cpu8080`/`cpu8085`/`cpuZ80` route each fetch to
+  `Bus::intAck()` while taking an interrupt), so the CALL bytes come from the board, never from
+  memory — there is nothing for `PHANTOM*` to suppress, and modelling it would be a behaviour with
+  no observable effect (DESIGN.md 4.0). The card simply keeps claiming the IntAck cycle until it
+  has driven all three CALL bytes.
+- **Interrupts, the legacy path:** the 2651's RxRDY can still be routed straight to pINT or an
+  S-100 VI line by the `serial` unit's `interrupt` jumper (default `none`) for a machine that does
+  not program the on-board controllers. Leave it `none` when using the 8259As. **DMA:** none.
+- **`properties()`:** `base` (the 16-port block base, default 50H), and read-only `clock`, `timer`
+  and `pic` strings (the last shows each controller's IRR/ISR/IMR and the master's INT pin). The
+  `serial` **unit** carries `baud`, `interrupt` and `connect`.
 
 ### Reset
 
-- `Reset::PowerOn` (POC*, cold): clears the command latches. `offset_` is **preserved** — the
-  MSM5832 is battery-backed, so a fresh set survives a power cycle just as it survives RESET.
-- `Reset::Bus` (RESET*, warm): same — clears the command latches, keeps the time.
+- `Reset::PowerOn` (POC*, cold): clears the command latches and puts the UART, the 8253 and both
+  8259As into their power-on state (the 8259As come up **all-masked**, so an unprogrammed board
+  drives no interrupt). `offset_` is **preserved** — the MSM5832 is battery-backed, so a fresh set
+  survives a power cycle just as it survives RESET.
+- `Reset::Bus` (RESET*, warm): clears the command latches, keeps the time. The 8259As have no
+  bus-reset pin (as the 8253 does not), so they keep their programming across a front-panel RESET.
 
 ## Quirks reproduced
 
@@ -120,6 +159,10 @@ float `0xFF`.
 | 8253 counter clock is 2 MHz, not the CPU clock | A timing loop calibrated against the timer runs at the wrong rate on any machine whose CPU is not 2 MHz |
 | 8253 control word for a counter stops it until a fresh count is loaded | A program that rewrites the mode and expects the old count to keep running reads a stale OUT |
 | 8253 a count of 0 means the full modulus (65536, or 10000 in BCD) | A "divide by 65536" that loads 0 undercounts to nothing if 0 is taken literally |
+| 8259A master IR0–6 = the S-100 VI lines; the master's INT drives pin 73 | An SS-1 that ignored the VI lines could not act as the machine's interrupt controller for other cards; one that did not drive pin 73 would never interrupt the CPU |
+| 8259A cascade: a slave source vectors through master IR7, and BOTH chips latch an in-service bit | A handler that EOIs only one chip leaves the other's priority stuck, blocking that level (and, on the master, everything below IR7) forever |
+| 8259A acknowledge drives an MCS-80/85 3-byte CALL (`CD`, addr-lo, addr-hi) | A model that drove a single RST byte would send the CPU to the wrong vector — the SS-1 uses CALL, not RST |
+| 8259A comes up all-masked until ICW1/OCW1 program it | An unprogrammed controller that let the timer or UART through would fire spurious interrupts on a machine that uses the SS-1 only for its clock |
 
 ## Limitations and deliberate departures
 
@@ -138,9 +181,18 @@ float `0xFF`.
   always enabled and the gate-triggered one-shot modes (1 and 5) never trigger — no gate edge is
   modelled. **Mode 3's count read-back is approximate** (OUT is exact); the terminal-count timing
   folds the load clock into the write instant rather than modelling the extra load cycle.
-- **The 8253 OUT lines drive no interrupt yet.** They are readable, but routing them to the
-  on-board 8259A (the standard interrupt use) lands with the interrupt-controller phase.
-- The rest of the board (interrupts, math socket, 4K RAM/EPROM) is not modelled yet; those ports
+- **8259A: the standard shunt only.** The master/slave source assignments are wired by
+  construction (the factory J7/J8 shunt); the dip-header rewiring the manual allows (any source to
+  any input) is not modelled. **Special fully-nested mode** (ICW4 D4) is accepted but treated as
+  ordinary fully-nested — it only changes how a master handles two interrupts from the *same*
+  slave, which the single-slave cascade never does. **Automatic EOI** (ICW4 D1) and **poll mode**
+  (OCW3 P) are not modelled; the manual's own sample program uses neither, and Intel advises
+  against auto-EOI in a cascade. In **edge-triggered** mode a VI-line edge is sensed at the card's
+  next poll rather than the instant it moves (level-triggered, the SS-1 default, is exact).
+- **Do not put an SS-1 (with its 8259As programmed) and an 88-VI in the same machine.** Both watch
+  the VI lines and both claim the IntAck cycle, which is genuine bus contention — the contention
+  detector reports it. A machine picks one interrupt controller.
+- The math socket (`+8/+9`) and the optional 4K RAM/EPROM block are not modelled; those ports
   float.
 
 ## Verification
@@ -156,7 +208,14 @@ receive/transmit through the bus, and the RxRDY interrupt jumper. The 8253 is pi
 chip and over the bus: mode 0 interrupt-on-terminal-count, the Counter Latch Command freezing a
 16-bit read, the mode 2 rate generator and mode 3 square wave (even and odd counts), `nextEdge`,
 BCD counting, the 2 MHz counter clock being independent of the CPU clock, a snapshot round-trip,
-the four-port decode, and programming/reading a counter over the bus.
+the four-port decode, and programming/reading a counter over the bus. The 8259As are pinned as
+bare chips and over the bus: the ICW init sequence and MCS-80/85 CALL address, priority/masking
+and fully-nested in-service blocking, the EOI variants and priority rotation, edge- vs
+level-triggered request sensing, the 8086 single vector byte, and the master/slave cascade. On the
+bus: a timer terminal count and a UART RxRDY each interrupt through the cascade (returning the
+slave's CALL vector over three INTA cycles), the master prioritizes an S-100 VI line (returning
+the master's vector), an interrupt **actually vectors a running CPU** to the CALL target, the board
+never asserts `PHANTOM*`, and a snapshot carries the 8259A registers and in-service state.
 
 ## References
 
@@ -164,4 +223,5 @@ the four-port decode, and programming/reading a counter over the bus.
 - `reference/OKI MSM5832.md` — the clock chip.
 - `reference/Signetics 2651 USART.md` — the UART chip.
 - `reference/Intel 8253.md` — the interval timer chip.
+- `reference/Intel 8259A.md` — the interrupt-controller chip.
 - Issue #392 — the board's scope and the IEEE-696 finding.
