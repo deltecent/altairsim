@@ -1,9 +1,9 @@
 # CompuPro System Support 1
 
-**Status:** milestone 1 of 4 (issue #392) — the OKI MSM5832 real-time clock is implemented.
-The 2651 UART, the 8253 interval timer, and the dual 8259A interrupt controllers are being
-added in later phases; the 9511A/9512 math-chip socket is deferred to its own issue (an empty
-socket is the real board's default).
+**Status:** milestone 2 of 4 (issue #392) — the OKI MSM5832 real-time clock and the 2651 UART
+serial channel are implemented. The 8253 interval timer and the dual 8259A interrupt controllers
+are being added in later phases; the 9511A/9512 math-chip socket is deferred to its own issue
+(#393 — an empty socket is the real board's default).
 
 ## The real hardware
 
@@ -25,6 +25,7 @@ CompuPro software assumes it, so that is this board's default. The MSM5832 is cr
 |---|---|---|
 | System Support 1 Technical Manual (1981) | `reference/CompuPro System Support 1.md` | Port map, register bits, sample programs |
 | OKI MSM5832 (as reprinted in the SS-1 manual) | `reference/OKI MSM5832.md` | Clock register/digit encoding |
+| Signetics 2651 (as documented in the SS-1 manual) | `reference/Signetics 2651 USART.md` | UART register model, baud table, status/command polarity |
 
 The manual's own clock section (pp.27–30) is the authority for the digit encoding. Two facts in
 it are easy to get wrong and were corrected against the manual text while implementing: the
@@ -34,20 +35,24 @@ seconds are **write-ignored, not read-as-zero**, and the Hours-10 / Days-10 mode
 ## Register reference
 
 The whole board occupies 16 ports from `base` (default 50H). This milestone implements the two
-clock ports:
+clock ports and the four UART ports:
 
 | Addr (base 50H) | OUT (write) | IN (read) |
 |---|---|---|
 | base+10 (5A) | MSM5832 command: Hold(6) / Write(5) / Read(4) / digit-select(3-0) | — (write-only, floats 0xFF) |
 | base+11 (5B) | MSM5832 data: BCD digit in the low nibble | the selected digit |
+| base+12 (5C) | 2651 data: byte to transmit | received byte (clears RxRDY) |
+| base+13 (5D) | — (the SYN register, unused; not decoded) | 2651 status: TxRDY(0) RxRDY(1) TxEMT(2) PE/OE/FE(3-5) DCD(6) DSR(7) |
+| base+14 (5E) | 2651 mode: MR1 then MR2 (pointer-sequenced) | current mode register |
+| base+15 (5F) | 2651 command: TxEN(0) DTR(1) RxEN(2) break(3) reset-err(4) RTS(5) | current command |
 
 Digit select (command bits 3-0): 0/1 Seconds 1/10, 2/3 Minutes 1/10, 4/5 Hours 1/10, 6 Day of
 Week, 7/8 Days 1/10, 9/10 Months 1/10, 11/12 Years 1/10. **Hours-10 (5)** carries the digit in
 bits 1:0, PM in bit2, and the 12/24-hour mode in bit3 (this model runs in 24-hour mode).
 **Days-10 (8)** carries the digit in bits 1:0 and the leap-year flag in bit2.
 
-The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8/+9`, 2651
-`+12..+15`) are not decoded yet and float `0xFF`.
+The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8/+9`) are not
+decoded yet and float `0xFF`.
 
 ## How it is simulated
 
@@ -61,12 +66,22 @@ The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8
   into an edit buffer, each Write strobe updates one digit, and dropping Hold composes the
   buffer back to a host `time_t` (via `mktime`) and stores the new `offset_`. A Hold that only
   fenced a glitch-free read writes nothing and changes nothing.
-- **No Clock/EventQueue** is used: the MSM5832 has nothing to schedule; the board's 6 µs / 150 µs
-  wait states are modelled as instant (the reference notes this is safe unless a program times
-  the wait, which none does).
-- **Interrupts / DMA:** none in this milestone (the 8259A phase adds them).
+- **No Clock/EventQueue for the clock:** the MSM5832 has nothing to schedule; the board's 6 µs /
+  150 µs wait states are modelled as instant (the reference notes this is safe unless a program
+  times the wait, which none does).
+- **The 2651 UART** (`src/chips/sig2651.h`) is modelled on the same lines as the 8251: a
+  transmit character occupies the line for one frame-time (a TxRDY deadline), and a receive frame
+  is clocked in over that same time before RxRDY rises. Its **baud rate comes from Mode Register
+  2** (the on-chip generator), so the guest's MR2 write sets the line rate. The four ports remove
+  the 8251's data-vs-control ambiguity; the only internal sequencing is the MR1/MR2 pointer. DCD
+  and DSR status bits read asserted and PE/OE/FE read 0 — a byte-clean transport has no modem
+  control to simulate and no line noise to report. The board owns the UART's clock deadline
+  (`refresh()`/`nextEdge()`), the same shape as the SBC-100/200.
+- **Interrupts:** the 2651's RxRDY can be routed to pINT or an S-100 VI line by the `serial`
+  unit's `interrupt` jumper (default `none`). On the standard board the UART feeds the on-board
+  8259A instead — that path lands with the 8259A phase. **DMA:** none.
 - **`properties()`:** `base` (the 16-port block base, default 50H) and a read-only `clock`
-  string showing the displayed time and its offset from host time.
+  string. The `serial` **unit** carries `baud`, `interrupt` and `connect`.
 
 ### Reset
 
@@ -83,6 +98,9 @@ The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8
 | Hours-10 digit in bits 1:0, 24-hour flag in bit3, PM in bit2 | Software masking `& 0x03` for the tens digit reads garbage if the digit is placed elsewhere; the 20-hour range (20-23) decodes wrong |
 | Days-10 leap-year flag in bit2 | Feb 29 handling and any software that reads the leap bit misbehaves |
 | Battery-backed: the set time survives RESET and power-on | A clock that reverted to host time on RESET would lose a guest-set time that real hardware keeps |
+| 2651 status TxRDY=D0/RxRDY=D1 active-high; DCD/DSR (D6/D7) and DTR/RTS command bits **inverting** | A polled driver reads the ready flags in the wrong bit; a modem-control test sees the RS-232 sense backwards |
+| 2651 baud comes from Mode Register 2, not a strap | A guest that sets 300 baud via MR2 still runs at the wrong rate if the model ignores MR2 |
+| 2651 MR1 must be written before MR2 (shared address, one-bit pointer) | The frame and the baud land in each other's register |
 
 ## Limitations and deliberate departures
 
@@ -93,8 +111,12 @@ The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8
   the year, the century is pinned from the host's current year.
 - **Weekday is derived, not stored.** A weekday the guest writes inconsistent with the date is
   ignored — `mktime` recomputes the day of week from the date.
-- The rest of the board (UART, timer, interrupts, math socket, 4K RAM/EPROM) is not modelled
-  yet; those ports float.
+- **2651 modem-control and line noise are not simulated.** DCD/DSR read asserted and PE/OE/FE
+  read 0 for a byte-clean transport; a real serial-port endpoint would make those real events.
+  Sync mode, auto-echo and the loopback operating modes (command bits 6/7) are not modelled — the
+  SS-1 uses normal async only. The transmitter is not gated on TxEN (a guest polls TxRDY first).
+- The rest of the board (timer, interrupts, math socket, 4K RAM/EPROM) is not modelled yet; those
+  ports float.
 
 ## Verification
 
@@ -102,9 +124,14 @@ The remaining ports of the block (8259A `+0..+3`, 8253 `+4..+7`, math socket `+8
 at power-on, a programmed set reads back exactly (including Feb 29 in a leap year), the seconds
 are forced to 0 on a set, the Hours-10 mode bit and Days-10 leap bit are correct, the set time
 survives RESET/power-on and a SNAPSHOT/RESTORE round-trip, and the `base` strap moves the block.
+The 2651 is pinned both as a bare chip and over the bus: the MR1-then-MR2 pointer, the full MR2
+baud table, the status polarity, TxRDY as a deadline, a character clocked in over a frame time,
+the RxEN gate, snapshot of the programmed frame/baud, the four-port decode, an end-to-end
+receive/transmit through the bus, and the RxRDY interrupt jumper.
 
 ## References
 
 - `reference/CompuPro System Support 1.md` — the distilled board reference.
 - `reference/OKI MSM5832.md` — the clock chip.
+- `reference/Signetics 2651 USART.md` — the UART chip.
 - Issue #392 — the board's scope and the IEEE-696 finding.

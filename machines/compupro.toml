@@ -4,9 +4,9 @@
 #
 # This is the `default` machine (88-CPU, 62K RAM + the DBL boot PROM, an 88-2SIO
 # console, the front panel) with one card added: the System Support 1 at the CompuPro
-# standard base of 50H. Today that card is its OKI MSM5832 real-time clock -- the
-# reason the board exists here (issue #392). Its UART, timer and interrupt controllers
-# are being added in later phases.
+# standard base of 50H. The card carries an OKI MSM5832 real-time clock (base+10/+11)
+# and a 2651 serial channel (base+12..+15); its timer and interrupt controllers are
+# being added in later phases (issue #392).
 #
 # READING THE CLOCK FROM THE MONITOR. The clock lives at 5A (command) / 5B (data).
 # Select a digit for reading, then read the data port -- e.g. the hours-ones digit
@@ -18,6 +18,13 @@
 # The full digit map and the set sequence are in reference/OKI MSM5832.md and
 # reference/CompuPro System Support 1.md. The clock reads the HOST's wall time until a
 # guest sets it, and it is battery-backed: a set survives RESET.
+#
+# THE SERIAL CHANNEL. The 2651 UART sits at 5C (data) / 5D (status) / 5E (mode) /
+# 5F (command). It is a spare port here -- the console stays on the 88-2SIO -- so
+# connect it to something with, e.g., `CONNECT ss1:serial socket:2651`. Its rate,
+# frame and RS-232 handshaking are all programmed through the mode/command registers
+# (reference/Signetics 2651 USART.md); the `baud` unit property seeds the line until
+# then.
 
 [machine]
 name = "compupro"

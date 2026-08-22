@@ -9,13 +9,18 @@
 #include "test.h"
 
 #include "boards/compupro-ss1.h"
+#include "boards/s100-memory.h"
+#include "chips/sig2651.h"
+#include "core/clock.h"
 #include "core/machine.h"
 #include "core/statefile.h"
+#include "host/stream.h"
 #include "platform/localtime.h"
 
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
+#include <memory>
 
 using namespace altair;
 
@@ -78,6 +83,41 @@ int year2Of(Machine& m, uint8_t base) {
 int secOf(Machine& m, uint8_t base) {
     return (readDigit(m, base, 1) & 0x0F) * 10 + (readDigit(m, base, 0) & 0x0F);
 }
+
+// ---- Phase 2: the 2651 UART ----
+
+// STATUS byte bits (reference/Signetics 2651 USART.md §2.2).
+constexpr uint8_t kTxRDY = 0x01, kRxRDY = 0x02, kTxEMT = 0x04, kDCD = 0x40, kDSR = 0x80;
+
+// A bare 2651 on a Clock, driving a scripted terminal -- the CHIP, exercised directly.
+struct UartRig {
+    Clock           clk;
+    Sig2651         u{"serial"};
+    ScriptedStream* tty = nullptr;
+
+    UartRig() {
+        clk.setHz(4000000);  // 4 MHz, so at 9600 baud one bit = ~416 T-states
+        auto s = std::make_unique<ScriptedStream>();
+        tty    = s.get();
+        u.connect(std::move(s));
+        u.powerOn(clk);
+    }
+
+    // Program the chip the manual's own way (§2.6): MR1, then MR2, then a command word.
+    // 0x4E/0x7E/0x27 = async 8N1, 9600 baud, TxEN|RxEN|DTR|RTS.
+    void program(uint8_t mr1 = 0x4E, uint8_t mr2 = 0x7E, uint8_t cmd = 0x27) {
+        u.writeMode(mr1);
+        u.writeMode(mr2);
+        u.writeCommand(cmd, clk);
+    }
+
+    uint8_t status() { return u.readStatus(clk); }
+    void    advance(uint64_t dt) { clk.advance(dt); }
+};
+
+// bit period and whole-character time at 9600/4MHz, for readable assertions.
+constexpr uint64_t kBit  = 4000000 / 9600;  // ~416
+constexpr uint64_t kChar = kBit * 10;       // 8N1 = 10 bits
 
 }  // namespace
 
@@ -193,5 +233,230 @@ void test_ss1() {
         CHECK(year2Of(m, 0x60) == 25 && hourOf(m, 0x60) == 23,
               "the clock answers at its new base");
         CHECK(m.bus.ioRead(0x5B) == 0xFF, "...and no longer at the old data port");
+    }
+
+    // =====================================================================
+    // Phase 2 -- the 2651 UART.
+    // =====================================================================
+
+    SECTION("SS-1 2651 -- the mode-register pointer: MR1 THEN MR2");
+    {
+        // MR1 and MR2 share the mode address; an internal pointer routes the first mode
+        // write to MR1 and the next to MR2. Program MR1 = 7 data bits and MR2 = 9600. If
+        // the pointer were wrong (0x4A taken as MR2), the baud would be 2400 (nibble A)
+        // and the frame 8 bits -- so this single check pins the ordering.
+        UartRig g;
+        g.u.writeMode(0x4A);  // MR1: async 16x, 7 data bits, 1 stop, no parity
+        g.u.writeMode(0x7E);  // MR2: 9600 baud (low nibble E)
+        CHECK(g.u.params().dataBits == 7, "MR1 set the frame (7 data bits)");
+        CHECK(g.u.params().baud == 9600, "MR2 set the baud (9600), not the frame");
+
+        // The pointer wrapped back to MR1 after MR2, so a re-program starts at MR1 again.
+        g.u.writeMode(0x4E);  // MR1 again: 8 data bits
+        CHECK(g.u.params().dataBits == 8, "after MR2 the pointer wrapped: this write is MR1 again");
+
+        // powerOn resets the pointer to MR1 as well.
+        g.u.powerOn(g.clk);
+        g.u.writeMode(0xEE);  // MR1: 8 data, 2 stop (the manual's 8-2 sample)
+        CHECK(g.u.params().dataBits == 8 && g.u.params().stopBits == 2,
+              "power-on rewinds the pointer: this write is MR1 (8 data, 2 stop)");
+    }
+
+    SECTION("SS-1 2651 -- the MR2 baud table");
+    {
+        UartRig g;
+        auto baudFor = [&](uint8_t nibble) {
+            g.u.powerOn(g.clk);
+            g.u.writeMode(0x4E);                       // MR1
+            g.u.writeMode((uint8_t)(0x70 | nibble));   // MR2: board 0111 hi nibble + rate
+            return g.u.params().baud;
+        };
+        CHECK(baudFor(0x0) == 50, "nibble 0 -> 50 baud");
+        CHECK(baudFor(0x5) == 300, "nibble 5 -> 300 baud");
+        CHECK(baudFor(0xE) == 9600, "nibble E -> 9600 baud");
+        CHECK(baudFor(0xF) == 19200, "nibble F -> 19200 baud");
+    }
+
+    SECTION("SS-1 2651 -- status polarity: TxRDY=D0, RxRDY=D1, DCD/DSR asserted");
+    {
+        UartRig g;
+        g.program();
+        uint8_t s = g.status();
+        CHECK((s & kTxRDY) != 0, "an idle transmitter is ready: D0 set");
+        CHECK((s & kRxRDY) == 0, "nobody typed: D1 clear");
+        CHECK((s & kDCD) != 0 && (s & kDSR) != 0,
+              "DCD (D6) and DSR (D7) read asserted for a byte-clean transport");
+    }
+
+    SECTION("SS-1 2651 -- TxRDY is a DEADLINE, not a flag");
+    {
+        UartRig g;
+        g.program();
+        CHECK((g.status() & kTxRDY) != 0, "idle: ready");
+
+        g.u.writeData('X', g.clk);
+        CHECK((g.status() & kTxRDY) == 0, "the instant a character goes out, TxRDY clears -- BUSY");
+        CHECK((g.status() & kTxEMT) == 0, "and TxEMT (D2) too: the shift register is busy");
+        CHECK(g.tty->out() == "X", "and the character really is on the line");
+
+        g.advance(kChar + kBit);
+        CHECK((g.status() & kTxRDY) != 0, "one character time later it is ready again");
+        CHECK((g.status() & kTxEMT) != 0, "and TxEMT set: nothing left to send");
+    }
+
+    SECTION("SS-1 2651 -- a character is clocked in over a frame time");
+    {
+        UartRig g;
+        g.program();
+        g.tty->feed("A");
+        g.u.pump();
+        g.status();               // the frame begins on this poll (the byte leaves the stream)
+        CHECK((g.status() & kRxRDY) == 0, "mid-frame the byte is not yet ready");
+        g.advance(kChar + kBit);  // ...one character time later it has finished arriving
+        CHECK((g.status() & kRxRDY) != 0, "a character finished arriving: D1 set");
+        CHECK(g.u.readData(g.clk) == 'A', "and the data port yields it");
+        CHECK((g.status() & kRxRDY) == 0, "reading the data clears RxRDY");
+    }
+
+    SECTION("SS-1 2651 -- the receiver is gated by RxEN (command D2)");
+    {
+        UartRig g;
+        g.program(0x4E, 0x7E, 0x01);  // command: TxEN only, RxEN OFF
+        g.tty->feed("Z");
+        g.u.pump();
+        g.status();
+        g.advance(kChar + kBit);
+        CHECK((g.status() & kRxRDY) == 0, "with RxEN off, no character is taken off the line");
+
+        g.u.writeCommand(0x05, g.clk);  // TxEN|RxEN
+        g.status();                     // this poll starts the frame now that RxEN is on
+        g.advance(kChar + kBit);        // ...and a char-time later it has arrived
+        CHECK((g.status() & kRxRDY) != 0, "enabling RxEN lets the waiting byte come in");
+        CHECK(g.u.readData(g.clk) == 'Z', "and it is the byte that was waiting");
+    }
+
+    SECTION("SS-1 2651 -- snapshot carries the programmed frame and baud");
+    {
+        UartRig g;
+        g.program(0x4A, 0x75, 0x27);  // 7 data bits, 300 baud (nibble 5)
+        StateWriter w;
+        g.u.serialize(w);
+
+        Clock clk2;
+        clk2.setHz(4000000);
+        clk2.advance(g.clk.now());
+        Sig2651 u2{"serial"};
+        u2.connect(std::make_unique<NullStream>());
+        StateReader r(w.data());
+        u2.deserialize(r);
+        CHECK(r.ok(), "the snapshot reads back without underrun");
+        CHECK(u2.params().dataBits == 7, "the restored chip keeps MR1's frame (7 data bits)");
+        CHECK(u2.params().baud == 300, "and MR2's baud (300)");
+    }
+
+    // ---- the UART on a real bus ----
+
+    SECTION("SS-1 board -- the four UART ports decode at base+12..+15");
+    {
+        Machine m;
+        auto* ss1 = new Ss1Board();
+        ss1->id = "ss1";
+        m.bus.attach(ss1);
+
+        auto decodes = [&](Cycle t, uint8_t port) {
+            BusCycle c;
+            c.type = t;
+            c.addr = port;
+            return ss1->decodes(c);
+        };
+        CHECK(decodes(Cycle::IoRead, 0x5C), "data port (5C) reads");
+        CHECK(decodes(Cycle::IoWrite, 0x5C), "data port (5C) writes");
+        CHECK(decodes(Cycle::IoRead, 0x5D), "status port (5D) reads");
+        CHECK(!decodes(Cycle::IoWrite, 0x5D), "status port (5D) is read-only (write is the unused SYN reg)");
+        CHECK(decodes(Cycle::IoRead, 0x5E) && decodes(Cycle::IoWrite, 0x5E), "mode port (5E) reads and writes");
+        CHECK(decodes(Cycle::IoRead, 0x5F) && decodes(Cycle::IoWrite, 0x5F), "command port (5F) reads and writes");
+        // The math socket (+8/+9) is unpopulated -- those ports float.
+        CHECK(!decodes(Cycle::IoRead, 0x58) && !decodes(Cycle::IoRead, 0x59),
+              "the empty math socket (58/59) floats");
+    }
+
+    SECTION("SS-1 board -- receive end to end over the bus");
+    {
+        Machine     m;
+        std::string err;
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region rr;
+        rr.kind = RegionKind::Ram;
+        rr.at   = 0;
+        rr.size = 0x10000;
+        mem->addRegion(rr, err);
+        setProperty(*mem, "fill", "zero", err);
+
+        auto* ss1 = dynamic_cast<Ss1Board*>(m.add("ss1", "ss0", err));
+        CHECK(ss1 != nullptr, "the 'ss1' board type is registered");
+        auto s = std::make_unique<ScriptedStream>();
+        ScriptedStream* tty = s.get();
+        ss1->uart().connect(std::move(s));
+
+        m.add("z80", "cpu0", err);
+        setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
+        m.power();
+
+        // Program the UART through the bus (MR1, MR2, command) then receive a byte.
+        m.bus.ioWrite(0x5E, 0x4E);  // MR1: 8N1
+        m.bus.ioWrite(0x5E, 0x7E);  // MR2: 9600
+        m.bus.ioWrite(0x5F, 0x27);  // command: TxEN|RxEN|DTR|RTS
+        tty->feed("Q");
+        ss1->pump();
+        m.clock.advance(kChar + kBit);
+        CHECK((m.bus.ioRead(0x5D) & kRxRDY) != 0, "IN 5D shows RxRDY once the frame arrived");
+        CHECK(m.bus.ioRead(0x5C) == 'Q', "IN 5C reads the received byte");
+
+        // Transmit: OUT the data port, the byte lands on the line.
+        m.bus.ioWrite(0x5C, '!');
+        CHECK(tty->out() == "!", "OUT 5C transmits");
+    }
+
+    SECTION("SS-1 board -- the RxRDY interrupt jumper (off by default)");
+    {
+        Machine     m;
+        std::string err;
+        m.bus.setVerify(true);  // re-derive pin 73 every cycle -- catch a missing intChanged()
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region rr;
+        rr.kind = RegionKind::Ram;
+        rr.at   = 0;
+        rr.size = 0x10000;
+        mem->addRegion(rr, err);
+        setProperty(*mem, "fill", "zero", err);
+
+        auto* ss1 = dynamic_cast<Ss1Board*>(m.add("ss1", "ss0", err));
+        auto  s   = std::make_unique<ScriptedStream>();
+        ScriptedStream* tty = s.get();
+        ss1->uart().connect(std::move(s));
+
+        m.add("z80", "cpu0", err);
+        setProperty(*(dynamic_cast<Board*>(m.find("cpu0"))), "clock_hz", "4000000", err);
+        m.power();
+
+        m.bus.ioWrite(0x5E, 0x4E);
+        m.bus.ioWrite(0x5E, 0x7E);
+        m.bus.ioWrite(0x5F, 0x27);
+
+        // Default jumper is none: a received byte raises RxRDY but no interrupt.
+        tty->feed("A");
+        ss1->pump();
+        m.clock.advance(kChar + kBit);
+        CHECK(ss1->uart().rxReady(), "the byte arrived (RxRDY up)");
+        CHECK(!m.bus.intPending(), "but with the jumper at none, no interrupt is asserted");
+
+        // Strap the interrupt to pINT: now the same RxRDY raises /INT. setUnitProperty
+        // re-settles the board (configChanged -> refresh -> intChanged), the same path the
+        // monitor's SET takes.
+        CHECK(setUnitProperty(*ss1, "serial", "interrupt", "int", err),
+              "route the UART interrupt to pINT");
+        CHECK(m.bus.intPending(), "RxRDY now raises /INT through the jumper");
+        CHECK(m.bus.ioRead(0x5C) == 'A', "the ISR reads the data port...");
+        CHECK(!m.bus.intPending(), "...which clears RxRDY, so /INT drops");
     }
 }
