@@ -127,7 +127,10 @@ examples/**
 !examples/hdsk/HDCPM22v16-48K.DSK
 !examples/diskbasic/Disk BASIC 4.1.dsk
 !examples/basic/4K BASIC Ver 3-1.tap
+!examples/basic/4K BASIC Ver 3-1.wav
+!examples/basic/4K BASIC (Kansas City).wav
 !examples/basic/BASIC Ver 1-0.tap
+!examples/basic/BASIC Ver 1-0.wav
 !examples/sdsys/SDOS-18B-SSDDR-256-32K-MASTER.DSK
 !examples/sdsys/SDOS-18B-SSDDV-256-32K.DSK
 !examples/sdsys/SD-CPM22R4-SSDDR-256-64K.DSK
@@ -171,15 +174,15 @@ examples/**
 !examples/basic/LOAD10.HEX
 !examples/uio/8K BASIC Ver 3-2.tap
 !examples/uio/LDR8K32.HEX
-!examples/sol/TREK80.ENT
-!examples/sol/TRK80.TAP
-!examples/sol/TRK80.WAV
-!examples/sol/Trek80 Manual.pdf
-!examples/sol/make-trek80-tape.sh
-!examples/sol/ATC.WAV
-!examples/sol/PACMAN.WAV
-!examples/sol/RAIDERS.WAV
-!examples/sol/ATC Manual.pdf
+!examples/sol20/TREK80.ENT
+!examples/sol20/TRK80.TAP
+!examples/sol20/TRK80.WAV
+!examples/sol20/Trek80 Manual.pdf
+!examples/sol20/make-trek80-tape.sh
+!examples/sol20/ATC.WAV
+!examples/sol20/PACMAN.WAV
+!examples/sol20/RAIDERS.WAV
+!examples/sol20/ATC Manual.pdf
 !examples/altair680/kcacr-demo.tap
 !examples/debugger/HELLO.ASM
 !examples/debugger/HELLO.PRN

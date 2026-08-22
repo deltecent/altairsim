@@ -63,6 +63,13 @@ id = "dsk0"
   unit  = 0
   mount = "cpm22b23-56k.dsk"
 
+# THE WINDOW TAKES FOCUS. `focus = true` lets the terminal window grab keyboard focus the
+# moment it opens, so you can start typing at CP/M without clicking it first -- the friendly
+# default when the window IS your console. Off (the session default) opens it unfocused,
+# leaving the launching terminal in front. Session-wide: `SET DISPLAY focus=on` / `SHOW DISPLAY`.
+[display]
+focus = true
+
 # THE TERMINAL'S TRANSFORM CHAIN. `[terminal]` is to a `connect = "terminal"` window what
 # `[console]` is to stdio: the handful of fold-the-bytes fixes a real terminal-with-a-human
 # wants. It has to live here and NOT on the serial line, because a line also carries XMODEM

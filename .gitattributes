@@ -78,7 +78,7 @@ roms/MBL/*.ASM binary
 *.PDF binary
 
 # The TREK80 ENTER script is a period artifact fetched byte-for-byte from the archive
-# (docs/sources.md), CRLF line endings and all, and examples/sol/make-trek80-tape.sh
+# (docs/sources.md), CRLF line endings and all, and examples/sol20/make-trek80-tape.sh
 # derives the shipped tape from it. Normalising it would change the source of a
 # reproducible build.
-examples/sol/TREK80.ENT binary
+examples/sol20/TREK80.ENT binary

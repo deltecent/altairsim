@@ -1,0 +1,76 @@
+# Altair BASIC 1.0 -- the SAME session as basic1.toml, but loaded from a WAV cassette
+# instead of a decoded .tap. This is what a real 88-ACR heard: 300-baud FSK audio.
+#
+#     cd examples/basic && altairsim basic1-wav.toml
+#     -> the tape loads, the machine goes quiet; press ^E, then type: RUN 0
+#     -> MEMSIZ?
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The tape and
+# the bootstrap are lying in this directory, so this file names them and nothing else --
+# which is what lets the directory be COPIED somewhere and still boot.
+#
+# WHY A SECOND MACHINE FILE. basic1.toml mounts "BASIC Ver 1-0.tap", a stream of decoded
+# bytes -- the fast path. This one mounts "BASIC Ver 1-0.wav", the FSK audio a period
+# recorder actually played into the ACR; the card demodulates it exactly as the hardware
+# did. Both reach MEMSIZ?; the WAV just proves the audio front end end-to-end.
+#
+# THE WAV WAS DERIVED FROM THE .tap with the shipped tapetool:
+#
+#     altair_tapetool encode "BASIC Ver 1-0.tap" "BASIC Ver 1-0.wav" fsk300
+#
+# fsk300 is the 88-ACR's own modulation (2400/1850 Hz).
+#
+# THE BOOT IS STILL TWO MOVES -- LOAD10 loops forever rather than jumping, so after the tape
+# is in (RUN 1800) you press ^E when the machine goes quiet and then RUN 0. See basic1.toml
+# for the full note on why the 1975 bootstrap needs the operator's hand where the 4K one
+# does not; the ONLY change here is that the tape is FSK audio, not the decoded bytes.
+#
+# WANT TO WATCH IT LOAD? `SET acr0:tape rate=real` before you RUN plays the tape at the true
+# 300-baud speed -- about two and a half minutes -- and the counter climbs as it goes.
+
+[machine]
+name = "basic1-wav"
+
+startup = [
+  "MOUNT acr0:tape \"BASIC Ver 1-0.wav\"",
+  "LOAD \"LOAD10.HEX\"",
+  "RUN 1800",
+]
+
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type    = "sio"
+id      = "sio0"
+port    = 00
+connect = "console"
+
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
+
+  [board.unit.tape]
+  counter = "on"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "8K"
+
+[console]
+strip7out = true
+upper     = true

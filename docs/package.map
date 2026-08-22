@@ -62,10 +62,12 @@
 
 DIR  examples/cpm        <=  examples/cpm
 DIR  examples/basic      <=  examples/basic
-DIR  examples/sol        <=  examples/sol
 DIR  examples/diskbasic  <=  examples/diskbasic
 DIR  examples/debugger   <=  examples/debugger
 DIR  examples/ai-mcp     <=  examples/ai-mcp
+DIR  examples/acr        <=  examples/acr
+DIR  examples/hdsk       <=  examples/hdsk
+DIR  examples/printing   <=  examples/printing
 
 # NOT AN EXAMPLE, and the one DIR here not under examples/. cpm/hostbridge/ is the SOURCE of the
 # file-transfer utilities the file-transfer chapter sends across the host bridge -- R/W/HDIR as
@@ -131,12 +133,11 @@ TAPE_BASIC1    = examples/basic/BASIC Ver 1-0.tap
 LOADER_BASIC1  = examples/basic/LOAD10.HEX
 NAME_BASIC1    = 8080 BASIC VER 1.0
 
-# The Sol-20. Reaches SOLOS's prompt with TREK80 in the cassette deck; the operator types
-# `XE TRK80`, because that is input to SOLOS and no machine file can type at a guest.
-MACHINE_SOL   = examples/sol/trek80.toml
-TAPE_SOL      = examples/sol/TRK80.TAP
-WAV_SOL       = examples/sol/TRK80.WAV
-NAME_SOL      = TREK80 (Processor Technology, 1977)
+# The hard-disk machine. HDBL 2.00 boots CP/M 2.2 off the 88-HDSK platter to an `A0>` prompt --
+# naming it IS booting it (the machine file carries the boot in `startup`), and it is the
+# subject of the manual's hard-disk walkthrough.
+MACHINE_HDSK  = examples/hdsk/hdsk.toml
+NAME_HDSK     = CP/M 2.2
 
 # Disk BASIC. Reaches its OK prompt after a five-question startup dialogue, and the second
 # question (LINEPRINTER?) takes C, O or Q and re-asks in silence on anything else -- so any

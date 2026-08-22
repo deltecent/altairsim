@@ -5,20 +5,11 @@ cassette deck from a department store, with a microphone jack and an earphone ja
 sold you a card that turned bytes into a noise it could record and turned the noise back into
 bytes. That card is the **88-ACR**, and it is in this simulator.
 
-So is the other one. Two machines here have cassette interfaces, and they are not the same
-hardware:
-
-| | **88-ACR** | **Sol-20** |
-|---|---|---|
-| What it is | An S-100 card you plug into an Altair | Built into the Sol-PC motherboard |
-| Board id | `acr` | part of `sol` |
-| Units | one — `tape` | two — `tape1`, `tape2` |
-| Modulation | `fsk300` (2400/1850 Hz) | `cuts1200` (1200/600 Hz), `kcs300` (Kansas City, 2400/1200 Hz) |
-| Speed | 300 baud, soldered | 300 or 1200, the *guest* picks |
-| Motor control | none | yes, `OUT 0FAh` |
-
-They are described one at a time below. Everything after them — mounting, rewinding, audio
-files, recording — works the same way on both, and is written once.
+The **Sol-20** has a cassette interface too, but a different one — built into its motherboard,
+with two decks, its own modulation, and motor control the guest can work. It is described with
+the rest of the Sol's onboard hardware in the boards chapter, under `sol`. This chapter is about
+the 88-ACR, and everything in it — mounting, rewinding, audio files, recording — works the same
+way on the Sol's decks; only the unit name changes.
 
 The chapter ends with the thing this is all for: loading {{NAME_BASIC}} the way it was actually
 loaded in 1976, with nothing in ROM, nothing on a disk, a bootstrap you enter by hand, and a
@@ -51,44 +42,11 @@ about the boards that *do* take endpoints.
 going past the head. The machine genuinely does not know a tape is there, so the simulator
 does not pretend that it does — which is why mounting is something you type, below.
 
-## The Sol-20's cassette interface
-
-The **Sol-20** has a CUTS cassette interface built into its motherboard rather than on a card
-of its own, and it has **two decks**:
-
-```
-altairsim> MOUNT sol0:tape1 "mytape.tap"
-altairsim> SET sol0:tape1 mode=record
-altairsim> REW sol0:tape1
-```
-
-Two differences from the ACR are worth knowing, and both are the hardware talking.
-
-**The Sol can work the motors.** `OUT 0FAh` starts and stops each transport, and SOLOS does it
-for you — `SAVE` spins the deck up, writes, and spins it down. So a Sol tape plays only while
-the guest is running it, and a deck whose motor is off yields nothing at all rather than
-merely nothing yet.
-
-It still cannot **wind the tape** on its own. There is no rewind bit on a Sol-PC — a motor line
-only says *turn*, not *which way* — so `WIND` (and its `REWIND` shorthand) is your finger here
-too. Because there are two decks, you must name one: a bare `WIND sol0` is refused rather than
-guessing which tape to move.
-
-**And the speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at
-300 or 1200 and `OUT 0FAh` D5 picks, at run time. SOLOS's `SE TA` command is that bit.
-
-Once a tape is in, SOLOS's own commands work:
-
-```
->SA MYPROG 0100 01FF        (save memory to the tape)
->GE MYPROG                  (find it again and load it)
->CA                         (catalog what is on the tape)
-```
-
 ## Working a tape
 
-Everything in this section is the same on both boards. Only the unit name differs — `acr0:tape`
-on the Altair, `sol0:tape1` or `sol0:tape2` on the Sol.
+Everything in this section is written for the 88-ACR's one `tape` unit. It is the same on the
+Sol's decks — only the unit name changes (`sol0:tape1`, `sol0:tape2`), and where the two boards
+genuinely differ the boards chapter's `sol` section says so.
 
 ### The tape is not hardware
 
@@ -225,7 +183,7 @@ a program you are trying to run should not make you wait for a recorder that has
 forty years.
 
 ```
-altairsim> SET sol0:tape1 rate=real
+altairsim> SET acr0:tape rate=real
 ```
 
 `rate = real` paces playback in **real wall-clock time** at the tape's baud — 1200 or 300 —
@@ -244,14 +202,16 @@ Most surviving Altair and Sol cassettes are not files of bytes. They are **audio
 put a cassette in a deck, played it into a sound card, and saved a `.WAV`. You can mount one,
 on either board.
 
-**There are several in the package**, in the Sol-20 example under `examples/`, each with a
-machine file beside it set up to read it — its README lists them. `TRK80.WAV` is a CUTS
-cassette carrying *Star Trek*, so this is a line you can actually type:
+**There are two in the package**, in the BASIC example under `examples/basic/`: `4K BASIC
+Ver 3-1.wav` and `BASIC Ver 1-0.wav`, the two cassette BASICs of example 2 as 88-ACR audio
+rather than decoded bytes. Each has a machine file beside it — `basic4k-wav.toml` and
+`basic1-wav.toml` — that mounts it and boots. `4K BASIC Ver 3-1.wav` is a 300-baud FSK
+cassette carrying 4K BASIC, so from the `basic` example this is a line you can actually type:
 
 ```
-altairsim> MOUNT sol0:tape1 TRK80.WAV
-sol0:tape1: mounted TRK80.WAV
-TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
+altairsim> MOUNT acr0:tape "4K BASIC Ver 3-1.wav"
+acr0:tape: mounted 4K BASIC Ver 3-1.wav
+4K BASIC Ver 3-1.wav: fsk300, 4439 bytes, 0 framing errors (100.0% of frames intact)
 ```
 
 Nothing else changes. The recording is demodulated **once, when you mount it** — never while
@@ -306,34 +266,34 @@ so programs come apart cleanly and none is cut in half.
 
 ### A board will refuse audio it could not really have heard
 
-That example mounted a Sol tape on a Sol. Put it in an Altair and the board says no:
+The package ships that same 4K BASIC in a modulation the 88-ACR *cannot* read — `4K BASIC
+(Kansas City).wav`, lying right beside the FSK one — precisely so you can watch the board
+refuse a tape it could not really have heard:
 
 ```
-altairsim> MOUNT acr0:tape examples/sol/TRK80.WAV
-acr0: examples/sol/TRK80.WAV: this board's modem cannot hear that tape -- it carries
-2393 Hz / 1204 Hz, and this board reads fsk300
+altairsim> MOUNT acr0:tape "4K BASIC (Kansas City).wav"
+acr0: 4K BASIC (Kansas City).wav: this board's modem cannot hear that tape -- it carries 2400 Hz / 1200 Hz, and this board reads fsk300
 ```
 
 This is deliberate, and it is not the simulator being fussy.
 
 Not all published Altair cassette audio is in the 88-ACR's modulation. The ACR uses
-**2400/1850 Hz FSK**; plenty of archive tapes are **Kansas City** (2400/1200 Hz), and the Sol's
-own CUTS tapes are an octave lower still — **1200/600 Hz** at its default 1200 baud. The
-demodulator here measures the tones actually on the tape, so it *could* read them perfectly well
-— but a real 88-ACR could not. Its demodulator is a PLL centred at 2125 Hz with about ±100 Hz of
-range, and a 1200 Hz (let alone 600 Hz) tone is nowhere near that. A real card fed that tape does
-not read it badly; it reads **nothing**.
+**2400/1850 Hz FSK**; plenty of archive tapes are **Kansas City** (2400/1200 Hz) — the two
+share the 2400 Hz mark tone but part company on the space, 1850 against 1200 — and the Sol's own
+CUTS tapes are an octave lower still, **1200/600 Hz** at 1200 baud. The demodulator here measures
+the tones actually on the tape, so it *could* read any of them perfectly well — but a real 88-ACR
+could not. Its demodulator is a PLL centred at 2125 Hz with about ±100 Hz of range, and a 1200 Hz
+space tone is nowhere near that. A real card fed that tape does not read it badly; it reads
+**nothing**.
 
 Decoding it anyway would hand your guest program data that no 88-ACR on earth could have
 produced. So the board says what the tape is instead, and you go find a machine that reads it.
 
-**The frequencies in that message are a measurement, and a measurement can be out by an
-octave** — which is why the refusal above says 2393/1204 for a tape this chapter calls
-1200/600. All the demodulator has to go on is where the signal crosses zero, and a crossing
-interval is either a whole cycle or half of one depending on the *shape* of the wave; nothing
-in the signal says which. So the message quotes whichever of the two readings is nearer the
-tones the card asking was built for. Read it as *"not mine, and here is roughly what is
-there"*, not as the tape's specification.
+**The frequencies in that message are a measurement, not the tape's specification.** All the
+demodulator has to go on is where the signal crosses zero; on a cleanly dubbed tape the two
+readings land right on the nominal tones — here 2400/1200 — but on a worn or oddly shaped
+recording a crossing interval can read as a whole cycle or half of one, and the figure can come
+out an octave off. Read the message as *"not mine, and here is roughly what is there"*.
 
 ### Recording back out to a `.WAV`
 
@@ -365,9 +325,9 @@ so an empty file — or anything else that is not RIFF/WAVE — falls through to
 recording then puts *bytes* in it, not audio. It will look like it worked. Nothing will play
 it. If you meant audio and you get `raw` on the mount line, that is what happened.
 
-The stop is what writes it. `UNMOUNT` and any `WIND` (`REWIND` included) are stops too, and on
-the Sol so is the guest dropping the motor line — that board can see a deck stop, which the
-88-ACR cannot.
+The stop is what writes it. `UNMOUNT` and any `WIND` (`REWIND` included) are stops too. (The
+Sol's decks add one the ACR has not got — the guest dropping the motor line; the boards chapter's
+`sol` section covers it.)
 
 The whole file is rewritten each time, not patched: the audio for a byte starts at an offset
 that depends on every byte before it, so there is no cheaper splice.
@@ -376,10 +336,13 @@ that depends on every byte before it, so there is no cheaper splice.
 durations, so the leader a real transport needs has to be put back by whoever writes the audio.
 Two properties do that, in seconds:
 
-| Property | 88-ACR | Sol | Where the number comes from |
-|---|---|---|---|
-| `leader` | `15` | `3` | ACR: the MITS manual's *at least ~15 s of steady tone*. Sol: measured off the archived Star Trek recording, a real dub, which carries 3.05 s |
-| `trailer` | `5` | `2` | ACR: §8's *at least 5 s between batches*. Sol: that recording's measured 1.93 s |
+| Property | 88-ACR | Where the number comes from |
+|---|---|---|
+| `leader` | `15` | the MITS manual's *at least ~15 s of steady tone* |
+| `trailer` | `5` | §8's *at least 5 s between batches* |
+
+(The Sol's decks default to shorter leader and trailer, measured off a real dub; the boards
+chapter's `sol` section gives the numbers.)
 
 Set either to `0` to trim the file to its data — which is what the published archive `.wav`
 files are, and why they will not load on real hardware. Even then a floor of sixteen bit times
@@ -397,19 +360,16 @@ It is audible, not structural: a tape written either way decodes back to the sam
 changes how the recording **sounds**, never what it holds. `square` is the default because it is
 the closer match to a real recorder.
 
-**But the recording level and the edge shape are structural — they decide whether a real Sol
-loads the tape.** A genuine Sol CUTS modem is a flip-flop dividing a master clock into a square,
-rounded by an RC network, recorded at a modest level. Two more properties reproduce that, and
-their defaults are measured off the one genuine dub in the package (`TRK80.WAV`):
+**The recording level is structural too — it decides whether the tape reads back cleanly.**
 
-| Property | 88-ACR | Sol | What it does |
-|---|---|---|---|
-| `level` | `36` | `36` | Recording level, percent of full scale. The old default ran at 80% — more than twice a real dub — which overdrove a real Sol's input AGC so the tape read its header and then failed. |
-| `rc` | — | `4000` | Edge-rounding low-pass corner, Hz. Rounds the square's edges the way the modem's RC network and the cassette's own bandwidth do, so the tone curves like a real dub instead of sitting on a flat top. Sol CUTS only. |
+| Property | 88-ACR | What it does |
+|---|---|---|
+| `level` | `36` | Recording level, percent of full scale. The old default ran at 80% — more than twice a real dub — which overdrove a real deck's input AGC so the tape read its header and then failed. |
 
-Unlike `waveform`, these are not merely audible. A Sol CUTS tape the simulator writes now lays its
-tones on the same clock grid a real Sol expects, at a real dub's level — so it is built to load on
-the hardware, not only to read back here.
+Unlike `waveform`, `level` is not merely audible: a tape written at a real dub's level is built to
+load on the hardware, not only to read back here. The Sol's CUTS modem needs one more property,
+`rc`, to shape the edges of its lower tone; the boards chapter's `sol` section covers it and the
+fidelity work behind these defaults.
 
 **A multi-file tape comes back as one continuous run.** The decoded bytes carry no file
 boundaries, so the gaps a real operator left between programs are not reproduced.

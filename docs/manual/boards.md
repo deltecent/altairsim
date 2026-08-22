@@ -962,6 +962,58 @@ polarity**, the keyboard and parallel bits reading active-low while the tape bit
 active-high. That is not a bug in the board or in this simulator; it is what the hardware did, and
 the period software inverts what it needs.
 
+### The cassette decks
+
+The Sol's cassette interface is on the motherboard, not a card, and it has **two decks** —
+`tape1` and `tape2` — where the 88-ACR has one. Everything in the tapes chapter applies to them;
+only the unit name changes, and you must always name the deck (a bare `WIND sol0` is refused
+rather than guessing which tape to move):
+
+```
+altairsim> MOUNT sol0:tape1 "mytape.tap"
+altairsim> SET  sol0:tape1 mode=record
+altairsim> REW  sol0:tape1
+```
+
+Three things differ from the ACR, and each is the hardware talking:
+
+- **The Sol can work the motors.** `OUT 0FAh` starts and stops each transport, and SOLOS does it
+  for you — `SAVE` spins the deck up, writes, and spins it down. So a Sol tape plays only while
+  the guest is running it, and a deck whose motor is off yields nothing at all rather than merely
+  nothing yet. That dropped motor line is a *stop*, so it writes a recording out — something the
+  88-ACR, which cannot see the deck at all, has no equivalent of. It still cannot **wind** the
+  tape on its own: a motor line only says *turn*, not which way, so `WIND`/`REWIND` is your finger
+  here too.
+- **The speed is the guest's.** The ACR's 300 baud is soldered; the Sol's cassette runs at 300 or
+  1200 and `OUT 0FAh` bit D5 picks, at run time. SOLOS's `SE TA` command is that bit.
+- **The modulation is CUTS, not the ACR's FSK.** A Sol tape is `cuts1200` (1200/600 Hz) at 1200
+  baud, an octave below the ACR's 2400/1850 Hz; it also reads Kansas City (`kcs300`, 2400/1200).
+  This is why a Sol tape mounted on an 88-ACR is refused — the tapes chapter has that story.
+
+Once a tape is in, SOLOS's own commands work:
+
+```
+>SA MYPROG 0100 01FF        (save memory to the tape)
+>GE MYPROG                  (find it again and load it)
+>CA                         (catalog what is on the tape)
+```
+
+**Writing audio a real Sol will load** takes more than the right tones — it takes the right
+*shape* and level. A genuine Sol CUTS modem is a flip-flop dividing a master clock into a square,
+rounded by an RC network, recorded at a modest level. Three properties reproduce that when the
+board writes a `.WAV` back, and their defaults are measured off a real archived dub:
+
+| Property | Default | What it does |
+|---|---|---|
+| `leader` | `3` | Seconds of steady tone before the data — the real dub carries 3.05 s (the ACR's is longer, 15 s). |
+| `trailer` | `2` | Seconds of tone after it — the dub's measured 1.93 s. |
+| `rc` | `4000` | Edge-rounding low-pass corner, Hz. Rounds the square's edges the way the modem's RC network and the cassette's own bandwidth do, so the tone curves like a real dub instead of sitting on a flat top. CUTS only. |
+
+`level` (percent of full scale, default `36`) matters on both boards and is covered in the tapes
+chapter; the point of these Sol defaults together is that a CUTS tape the simulator writes lays
+its tones on the same clock grid a real Sol expects, at a real dub's level — built to load on the
+hardware, not only to read back here.
+
 Fit it with a `vdm1` and you have the **`sol20`** machine, which cold-starts the real SOLOS
 operating system.
 
@@ -1053,8 +1105,9 @@ The 8800b "turnkey" system had **no front panel**. One board — the Systems Tur
 did the panel's job and more: it carried the boot PROM, the terminal serial port, the sense
 switches, and a circuit that booted the machine the moment you switched it on. This board is
 that card, so a `turnkey` machine has **no `fp` and no separate `2sio`** — all three live here.
-`altairsim turnkey` is the bare machine; the turnkey example in `examples/` boots CP/M on it
-off a floppy and off a hard disk.
+`altairsim turnkey` is the bare machine. Give it a disk and one of the two boot loaders below
+— `start = "FF00"` for the floppy, `FC00` for the hard disk — and CP/M comes up the moment it
+powers on.
 
 ### It boots itself
 
