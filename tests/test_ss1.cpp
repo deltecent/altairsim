@@ -772,7 +772,7 @@ void test_ss1() {
         p.write(false, 0x20);  // non-specific EOI: clears the highest in-service (IR2)
         CHECK(p.winner((1u << 2) | (1u << 5)) == 2,
               "after EOI, IR2 (line still high) is serviceable again");
-        p.write(true, (uint8_t)~(1u << 5));  // OCW1: unmask only IR5
+        p.write(true, (uint8_t)(~(1u << 5) & 0xFFu));  // OCW1: unmask only IR5
         CHECK(p.winner(0xFF) == 5, "the mask lets only IR5 through");
     }
 
@@ -879,7 +879,7 @@ void test_ss1() {
         buildIntMachine(m);
 
         // master unmask IR7 (the slave); slave unmask IR1 (Timer 0 OUT).
-        initSs1Pics(m, 0x50, /*mMask*/ (uint8_t)~(1u << 7), /*sMask*/ (uint8_t)~(1u << 1));
+        initSs1Pics(m, 0x50, /*mMask*/ (uint8_t)(~(1u << 7) & 0xFFu), /*sMask*/ (uint8_t)(~(1u << 1) & 0xFFu));
         m.bus.ioWrite(0x57, ctrl(0, kLsb, 0));  // Timer 0, mode 0
         m.bus.ioWrite(0x54, 50);                // N = 50 ticks
         CHECK(!m.bus.intPending(), "before terminal count, nothing is asking");
@@ -909,7 +909,7 @@ void test_ss1() {
         m.bus.ioWrite(0x5F, 0x27);  // command: TxEN|RxEN|DTR|RTS
         // Unmask master IR7 and slave IR7 (RxRDY). Mask slave IR6 (TxRDY) so the idle
         // transmitter does not interrupt and steal the acknowledge.
-        initSs1Pics(m, 0x50, (uint8_t)~(1u << 7), (uint8_t)~(1u << 7));
+        initSs1Pics(m, 0x50, (uint8_t)(~(1u << 7) & 0xFFu), (uint8_t)(~(1u << 7) & 0xFFu));
 
         tty->feed("Q");
         ss1->pump();
@@ -936,7 +936,7 @@ void test_ss1() {
         // comes back in through master IR2 and is vectored with the MASTER's vector.
         std::string err;
         CHECK(setUnitProperty(*ss1, "serial", "interrupt", "vi2", err), "strap RxRDY to VI2");
-        initSs1Pics(m, 0x50, (uint8_t)~(1u << 2), 0xFF);  // master: only IR2; slave: all masked
+        initSs1Pics(m, 0x50, (uint8_t)(~(1u << 2) & 0xFFu), 0xFF);  // master: only IR2; slave: all masked
 
         m.bus.ioWrite(0x5E, 0x4E);
         m.bus.ioWrite(0x5E, 0x7E);
@@ -964,7 +964,7 @@ void test_ss1() {
         m.bus.memWrite(0x0001, 0x76);  // HLT
         m.bus.memWrite(0x2204, 0x76);  // HLT at the timer-0 vector
 
-        initSs1Pics(m, 0x50, (uint8_t)~(1u << 7), (uint8_t)~(1u << 1));
+        initSs1Pics(m, 0x50, (uint8_t)(~(1u << 7) & 0xFFu), (uint8_t)(~(1u << 1) & 0xFFu));
         m.bus.ioWrite(0x57, ctrl(0, kLsb, 0));
         m.bus.ioWrite(0x54, 40);  // a short interval so it fires within the run cap
 
