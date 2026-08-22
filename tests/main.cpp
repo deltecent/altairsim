@@ -122,6 +122,7 @@ const struct {
     {"88acr", test_88acr},
     {"88uio", test_88uio},
     {"c700", test_c700},
+    {"pb1", test_pb1},
     {"papertape", test_papertape},
     {"pmmi", test_pmmi},
     {"lpc", test_lpc},
