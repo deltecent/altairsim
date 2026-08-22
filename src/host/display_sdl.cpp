@@ -45,15 +45,11 @@ constexpr int kBorder = 8;  // device pixels per side, at the opening size
 // logical frame (crtDisplayHeight below). Easy to tune here without touching the mechanism.
 constexpr double kCrtAspect = 4.0 / 3.0;
 
-// How dark each scan-line gap is, as an alpha over the picture (0 = invisible, 255 = solid
-// black). A moderate value reads as a raster without swallowing the glyphs; tune with taste.
-constexpr uint8_t kScanlineAlpha = 90;
-
 // The DISPLAY height a w x h frame is painted at: unchanged (h) in the crisp default, or the
 // 4:3 tube height when crt is on -- always a stretch, never a squash, so a frame already taller
 // than 4:3 is left alone. Pushing the extra height into the LOGICAL frame is what lets the one
-// integer-scale + LETTERBOX path present non-square pixels; the scan lines mask the row
-// duplication that nearest-neighbor upscaling would otherwise show as a vertical blur.
+// integer-scale + LETTERBOX path present non-square pixels; crt=on then switches the picture to
+// LINEAR filtering so the stretched rows blend into a smooth tube face rather than a blocky one.
 int crtDisplayHeight(int w, int h) {
     if (!Display::crt()) return h;
     return std::max(h, (int)std::lround((double)w / kCrtAspect));
@@ -238,10 +234,29 @@ bool SdlDisplay::ensureWindow(Window& win, int w, int h, int targetWidthPx) {
     win.border = std::max(1, (int)std::lround((double)kBorder / scale));
     const int logW = w + 2 * win.border, logH = hDisp + 2 * win.border;
 
+    // A requested width (width= on the terminal, a board's width property) opens the window at
+    // EXACTLY that many device pixels -- a non-integer multiple of the frame is fine BECAUSE the
+    // crt look filters the picture linear (drawLastFrame), so the stretch stays smooth. Gated on
+    // crt(): the crisp default keeps the whole-number multiple that makes nearest-neighbor pixels
+    // square (the point of the integer scaling below), and only the soft tube look opens exact.
+    // The height comes off the requested width at the frame aspect, and both stay on the screen.
+    const bool exactSize = requested > 0 && Display::crt();
+    int        createW = logW * scale, createH = logH * scale;
+    if (exactSize) {
+        const int maxW = haveBounds ? usable.w : requested;
+        const int maxH = haveBounds ? std::max(1, usable.h - kChromeH) : (logH * scale);
+        createW = std::min(requested, maxW);
+        createH = (int)std::lround((double)createW * logH / logW);
+        if (createH > maxH) {
+            createH = maxH;
+            createW = (int)std::lround((double)createH * logW / logH);
+        }
+    }
+
     // Named after the machine AND this board, and stamped with run/stop state, from the shared
     // parts the run loop set long before this window existed plus win.label acquire() just set.
     win.title = composedTitle(win);
-    if (!SDL_CreateWindowAndRenderer(win.title.c_str(), logW * scale, logH * scale,
+    if (!SDL_CreateWindowAndRenderer(win.title.c_str(), createW, createH,
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN, &win.window,
                                      &win.renderer)) {
         std::fprintf(stderr, "SDL: window/renderer failed: %s\n", SDL_GetError());
@@ -262,9 +277,20 @@ bool SdlDisplay::ensureWindow(Window& win, int w, int h, int targetWidthPx) {
     // "ask for less" -- the display query above narrows the guess, this makes it true.
     int gotW = 0, gotH = 0;
     SDL_GetWindowSize(win.window, &gotW, &gotH);
-    const int fit = std::max(1, std::min(gotW / logW, gotH / logH));
-    const int wantW = logW * fit, wantH = logH * fit;
-    if (gotW != wantW || gotH != wantH) SDL_SetWindowSize(win.window, wantW, wantH);
+    int wantW, wantH;
+    if (exactSize) {
+        // A literal width was asked for: take the window as it came, no integer re-snap. The
+        // logical presentation scales the frame to fill it (letterboxed to the frame aspect).
+        wantW = gotW;
+        wantH = gotH;
+    } else {
+        // No request: re-derive the whole multiple from the real size (the WM may have clamped)
+        // and set it back, so the crisp default stays an exact integer scale of the frame.
+        const int fit = std::max(1, std::min(gotW / logW, gotH / logH));
+        wantW = logW * fit;
+        wantH = logH * fit;
+        if (gotW != wantW || gotH != wantH) SDL_SetWindowSize(win.window, wantW, wantH);
+    }
 
     // TILE, DON'T STACK. SDL opens every window at the same default spot, so a machine's second
     // video board would land squarely on top of the first (issue #234). Place each new window
@@ -635,10 +661,10 @@ bool SdlDisplay::refitForCrt(Window& win) {
 }
 
 // Paint whatever is in a window's texture into it: the bezel-inset sub-rect of the logical
-// frame, the picture stretched to the painted height when crt is on, and the scan lines over it.
-// Split out of present() so a host-side presentation change (refitForCrt) can repaint the LAST
-// frame with no new one in hand -- the board only calls present() when the guest's framebuffer
-// changed, so a crt toggle at a still screen would otherwise not show until the guest redrew.
+// frame, the picture stretched to the painted height when crt is on. Split out of present() so a
+// host-side presentation change (refitForCrt) can repaint the LAST frame with no new one in hand
+// -- the board only calls present() when the guest's framebuffer changed, so a crt toggle at a
+// still screen would otherwise not show until the guest redrew.
 void SdlDisplay::drawLastFrame(Window& win) {
     if (!win.renderer || !win.texture) return;
 
@@ -648,27 +674,18 @@ void SdlDisplay::drawLastFrame(Window& win) {
     // fills. Coordinates are logical; the aspect-locked LETTERBOX scales the whole frame to the
     // window uniformly, keeping the bezel even at any size. The height is the painted height --
     // taller than the raster when crt is on -- so the w x h texture drawn into it is the tube
-    // stretch (nearest-neighbor, hence the scan lines below to mask the row duplication).
+    // stretch, softened to a smooth phosphor face by the LINEAR filtering set just below.
     const int       w     = win.picW;
     const int       h     = win.picH;
     const int       hDisp = crtDisplayHeight(w, h);
     const SDL_FRect dst{ (float)win.border, (float)win.border, (float)w, (float)hDisp };
-    SDL_RenderTexture(win.renderer, win.texture, nullptr, &dst);
 
-    // The scan lines: one dark, alpha-blended horizontal line at the bottom edge of each native
-    // raster row's stretched band, so the gaps read as a raster rather than a blur. Only worth
-    // drawing when the picture is actually stretched (hDisp > h); at 1:1 there is no band to gap.
-    if (Display::crt() && hDisp > h) {
-        SDL_SetRenderDrawBlendMode(win.renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(win.renderer, 0, 0, 0, kScanlineAlpha);
-        for (int i = 0; i < h; ++i) {
-            const float y = (float)win.border + (float)std::lround((double)(i + 1) * hDisp / h) - 1;
-            SDL_RenderLine(win.renderer, (float)win.border, y, (float)(win.border + w), y);
-        }
-        // Back to opaque black so the next frame's RenderClear paints a solid bezel.
-        SDL_SetRenderDrawBlendMode(win.renderer, SDL_BLENDMODE_NONE);
-        SDL_SetRenderDrawColor(win.renderer, 0, 0, 0, 255);
-    }
+    // The tube look softens the stretch: crt=on scales the picture LINEAR so the 4:3
+    // vertical stretch reads as a soft-phosphor bloom rather than the uneven row duplication
+    // nearest-neighbor leaves; the crisp default keeps NEAREST so low-res pixels stay square.
+    SDL_SetTextureScaleMode(win.texture,
+                            Display::crt() ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+    SDL_RenderTexture(win.renderer, win.texture, nullptr, &dst);
     SDL_RenderPresent(win.renderer);
 }
 

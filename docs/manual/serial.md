@@ -109,7 +109,16 @@ altairsim> CONNECT sio0:a "terminal?emulation=h19&size=132x24"
 
 `emulation` is one of `vt100` (the default; `ansi` is the same engine), `adm3a` (the Lear
 Siegler ADM-3A, the classic CP/M terminal), `vt52`, or `h19` (the Heath/Zenith H19, a VT52
-superset with an ANSI mode). `size` is *columns*×*rows* and defaults to `80x24`.
+superset with an ANSI mode). `size` is *columns*×*rows* and defaults to `80x24`. `phosphor` is
+the tube colour — `green` (the default) or `amber`. `width` is the opening window width in
+pixels (a bare number, e.g. `width=1100`); left off, the window auto-sizes to about half the
+screen. The text is drawn in the real **DEC VT220** character set, and pairs with the period
+tube look — `[display] crt = true` (see [Configuring](configuring.md)), under which a `width`
+opens the window at exactly that size.
+
+```
+altairsim> CONNECT sio0:a terminal?emulation=vt100&phosphor=amber&width=1100
+```
 
 A `terminal` needs a window, so it is available only in a build with a display. Ask for one in
 a build without, and it is refused cleanly at `CONNECT`, with the reason named; use `console`

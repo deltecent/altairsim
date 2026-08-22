@@ -129,6 +129,21 @@ void TerminalStream::keySpecial(int key) {
     emu_->keySpecial((TerminalEmulator::Key)key);
 }
 
+void TerminalStream::setPhosphor(Phosphor p) {
+    // Toned-down period palettes: a lit phosphor is not a saturated full-bright colour, and
+    // the crt=on linear bloom lifts the apparent brightness further. Green matches the
+    // renderer's built-in default; amber is the warm alternative.
+    if (p == Phosphor::Amber) {
+        renderer_.setPalette({0x05, 0x03, 0x00, 0xFF},   // near-black, warm cast
+                             {0xCC, 0x88, 0x14, 0xFF},   // amber, toned down
+                             {0x66, 0x44, 0x0A, 0xFF});  // half amber
+    } else {
+        renderer_.setPalette({0x03, 0x06, 0x03, 0xFF},   // near-black, faint green cast
+                             {0x28, 0xC8, 0x52, 0xFF},   // green, ~78% bright
+                             {0x14, 0x64, 0x2A, 0xFF});  // half green
+    }
+}
+
 void TerminalStream::pump() {
     Display* d = s_display;
     if (!d) return;

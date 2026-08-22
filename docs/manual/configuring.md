@@ -435,7 +435,7 @@ so `width` is a property of each video board — see [Boards](boards.md).)
 |---|---|
 | `focus` | whether the video window comes to the front and takes keyboard focus when it opens. Default `false` |
 | `keyboard` | whether a focused window's keystrokes reach the machine's console: `console` (default) or `none` (display-only). See below |
-| `crt` | paint the window like the original monitor — scan lines and the tall 4:3 tube — instead of crisp square pixels. Default `false`. See below |
+| `crt` | paint the window like the original monitor — a soft phosphor glow and the tall 4:3 tube — instead of crisp square pixels. Default `false`. See below |
 
 With `focus = false` — the default — the terminal keeps the keyboard. The window opens behind
 whatever you were doing, and when the guest stops you can type at `altairsim>` immediately. You
@@ -464,11 +464,13 @@ prompt.
 default — you get today's look: the board's pixels as crisp squares, scaled up a whole number of
 times so a 1970s pixel stays a sharp square on a modern panel. Set it to `true` for the period
 monitor instead. The short, wide raster these boards scan — a VDM-1 is 512×208, a VDB is 640×240 —
-was never square: it was stretched to fill a 4:3 tube, and you saw the gap between each scan line.
-`crt = true` reproduces both, stretching the picture to the 4:3 shape and laying a dark line
-between the rows. It is a matter of taste — some prefer the crisp look, some the tube — and you can
+was never square: it was stretched to fill a 4:3 tube, and the beam softened each row into the next
+rather than drawing a grid of hard dots. `crt = true` reproduces both, stretching the picture to
+the 4:3 shape and softening the raster so the text reads as phosphor glow instead of sharp squares.
+It is a matter of taste — some prefer the crisp look, some the tube — and you can
 flip it with `SET DISPLAY crt=on` / `off` at the monitor, and the open window re-fits at
-once — no need to reopen it. Both looks share one window size, set by the board's `width`.
+once — no need to reopen it. Under the tube look a window opened at a specific `width` fills exactly
+that many pixels; the crisp look keeps the whole-number scaling that makes its squares sharp.
 
 On a build without SDL3 these keys are still accepted and simply have no window to apply to, so a
 machine file that asks for them stays portable.

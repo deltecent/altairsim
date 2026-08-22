@@ -134,7 +134,10 @@ A video window now opens locked to its picture's aspect ratio and resizes propor
 first drag, with an even bezel on all four sides and its title bar reading "simulator stopped"
 whenever the guest is halted. How big it opens is a per-board `width` in pixels, so each card sizes
 itself off its own resolution; the Dazzler's tiny frame gets its own auto-scaling so it lands near
-the same size as a VDM-1's instead of a sixth of it. The D+7A now reports what's actually behind
+the same size as a VDM-1's instead of a sixth of it. A new **`SET DISPLAY crt=on`** (or `[display]
+crt = true`) paints any of these windows like the period tube — the 4:3 aspect of a real monitor,
+the raster softened into a phosphor glow rather than a grid of hard pixels — and under that look a
+window opened at a chosen `width` fills exactly that many pixels. The D+7A now reports what's actually behind
 each joystick console — a named gamepad, the keyboard, or nothing — and a new `SHOW JOYSTICKS`
 lists every controller the host can see; two consoles default to two different gamepads
 automatically, so a pair of controllers just works with no configuration at all.
@@ -150,6 +153,11 @@ full-screen editor), the dumb CP/M **ADM-3A**, the **VT52**, and the Heath/Zenit
 last three being terminals no modern emulator provides, which was the whole point. `?size=COLSxROWS`
 sets the geometry (80×24 by default). Every serial board gets it for free, and in a headless build
 the endpoint simply refuses cleanly at CONNECT rather than opening a line nobody can see.
+
+The window draws in the real **DEC VT220** character set — the terminal's own glyphs, decoded from
+its character-ROM dump — on a softened green phosphor, with **`?phosphor=amber`** for the warm tube
+and **`?width=`** to open the window at a chosen pixel size. It reads as a period terminal rather
+than a modern console font, and pairs with the `crt` look above.
 
 The built-in terminal now carries the same fold-the-bytes settings the console has, in a
 **`[terminal]`** section (`SET TERMINAL`, `SHOW TERMINAL`, or a block in a machine file):

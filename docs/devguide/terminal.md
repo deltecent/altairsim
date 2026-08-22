@@ -18,13 +18,19 @@ that differs between terminals is small:
 | `TerminalScreen` | `screen.h` | the attributed character grid and its primitive ops (`putGlyph`, `lineFeed`, `eraseToEol`, cursor). Sized `(rows, cols)` at construction — nothing is baked to 80×24. |
 | `TerminalEmulator` | `emulator.h` | the **dialect**: a byte→ops state machine (`feed()`), plus the reply FIFO and key encoding. This is the only piece that changes per terminal. |
 | `TerminalRenderer` | `renderer.h` | paints a `TerminalScreen` into a host `Display`, once per frame, using a `TerminalFont`. |
-| `TerminalFont` | `font.h` | the glyph source (the bundled one is the VDM-1 charset). |
+| `TerminalFont` | `font.h` | the glyph source. The bundled default is the authentic **DEC VT220** face (`boards/terminal-vt220font.h`, a 10×20 cell); the VDB-8024 supplies its own CGEN PROM through the same seam. |
 
 **This engine was extracted from the VDB-8024 board** (issue #244, Task 1). The SD Systems
 VDB-8024 is a built-in terminal that happens to be reached through I/O ports and speaks its
 own firmware dialect; `Vdb8024Board` is now a client of this engine, with an `SdVdb16Emulator`
 (`src/boards/sd-vdb8024.cpp`) as its dialect. The generic `terminal:` endpoint is the same
 engine reached through a serial `ByteStream` with a pluggable dialect instead.
+
+`TerminalFont::glyphRow()` returns a **`uint16_t`** scan line with **bit 15 the leftmost dot**, so
+a cell may be wider than eight dots — the VT220 face is 10 wide. An eight-dot font (the VDM-1, the
+VDB CGEN) MSB-aligns its byte into the top of the word, keeping bit 15 leftmost for every font. The
+built-in terminal's phosphor palette (green default, amber) is set on its `TerminalRenderer` by
+`TerminalStream::setPhosphor()`, driven by the `phosphor=` connect-string option.
 
 ## The emulator contract
 

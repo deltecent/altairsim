@@ -52,9 +52,12 @@ private:
 
     const TerminalFont* font_ = nullptr;
 
-    Color bg_  = {0x00, 0x00, 0x00, 0xFF};  // black
-    Color fg_  = {0x33, 0xFF, 0x66, 0xFF};  // full green
-    Color dim_ = {0x1A, 0x80, 0x33, 0xFF};  // half green
+    // Green phosphor, toned down from a full-bright 0xFF green: a lit phosphor is not a
+    // saturated LED, and the crt=on linear bloom pushes the apparent brightness up further.
+    // The background lifts a hair off pure black to soften the contrast against the bezel.
+    Color bg_  = {0x03, 0x06, 0x03, 0xFF};  // near-black, faint green cast
+    Color fg_  = {0x28, 0xC8, 0x52, 0xFF};  // green, ~78% bright
+    Color dim_ = {0x14, 0x64, 0x2A, 0xFF};  // half green
 
     bool    reverse_    = false;
     uint8_t cursorMode_ = 1;  // blink, the usual terminal default

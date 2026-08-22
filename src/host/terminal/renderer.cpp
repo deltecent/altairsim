@@ -71,9 +71,9 @@ void TerminalRenderer::render(Display::Owner owner, const std::string& label, Di
                     for (int x = 0; x < cw; ++x) s->put(px + x, py + y, bgIdx);
             if (!hideGlyph)
                 for (int ry = 0; ry < ch; ++ry) {
-                    uint8_t bits = font_->glyphRow(code, ry);  // bit 7 = leftmost
+                    uint16_t bits = font_->glyphRow(code, ry);  // bit 15 = leftmost
                     for (int rx = 0; rx < cw; ++rx)
-                        if (bits & (0x80 >> rx)) s->put(px + rx, py + ry, fgIdx);
+                        if (bits & (0x8000 >> rx)) s->put(px + rx, py + ry, fgIdx);
                 }
         }
     }

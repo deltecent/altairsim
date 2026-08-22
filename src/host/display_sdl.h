@@ -133,9 +133,9 @@ private:
     // toggle resizes the window where a resolution change does not.
     bool refitForCrt(Window& win);
 
-    // Paint a window's current texture -- bezel inset, the crt stretch, the scan lines. Split
-    // out of present() so refitForCrt() can repaint the LAST frame with no new one in hand
-    // (the board only calls present() when the guest's framebuffer changed).
+    // Paint a window's current texture -- bezel inset, the crt stretch. Split out of present()
+    // so refitForCrt() can repaint the LAST frame with no new one in hand (the board only calls
+    // present() when the guest's framebuffer changed).
     void drawLastFrame(Window& win);
 
     // Compose+cache this window's title from the shared machineName_/running_ and win.label.

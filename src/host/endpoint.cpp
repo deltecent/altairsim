@@ -300,6 +300,8 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
 
         std::string emuName = "vt100";  // the first table row -- the default dialect
         int         cols = 80, rows = 24;  // the reporter's default geometry (issue #244)
+        int         winWidth = 0;          // opening window width in px, 0 = auto (~half screen)
+        auto        phosphor = TerminalStream::Phosphor::Green;  // tube colour (default green)
 
         auto parseSize = [&](const std::string& v) -> bool {
             size_t xp = v.find_first_of("xX");
@@ -338,9 +340,26 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
                 } else if (key == "size" || key == "windowsize") {
                     // `windowsize` is the reporter's spelling; both mean COLSxROWS.
                     if (!parseSize(val)) return nullptr;
+                } else if (key == "width") {
+                    // Opening window width in device pixels (0/auto = ~half the screen).
+                    char*         e = nullptr;
+                    unsigned long v = std::strtoul(val.c_str(), &e, 10);
+                    if (val.empty() || *e || v > 16384) {
+                        err = "terminal: width is a pixel count 0..16384 (0 = auto), got '" +
+                              val + "'";
+                        return nullptr;
+                    }
+                    winWidth = (int)v;
+                } else if (key == "phosphor" || key == "phosphour" || key == "color") {
+                    if (val == "green") phosphor = TerminalStream::Phosphor::Green;
+                    else if (val == "amber") phosphor = TerminalStream::Phosphor::Amber;
+                    else {
+                        err = "terminal: phosphor is green or amber, got '" + val + "'";
+                        return nullptr;
+                    }
                 } else {
                     err = "terminal: unknown option '" + key +
-                          "'. Options are emulation, size (alias windowsize)";
+                          "'. Options are emulation, size (alias windowsize), width, phosphor";
                     return nullptr;
                 }
             }
@@ -363,7 +382,10 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
             return nullptr;
         }
 
-        return std::make_unique<TerminalStream>(spec, rows, cols, std::move(emu));
+        auto term = std::make_unique<TerminalStream>(spec, rows, cols, std::move(emu));
+        term->setWindowWidth(winWidth);
+        term->setPhosphor(phosphor);
+        return term;
     }
 
     // ---- socket: -- listen on a port, or call out to a host ----
