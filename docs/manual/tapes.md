@@ -306,24 +306,33 @@ altairsim> RUN 0                        (the guest records)
 altairsim> SET acr0:tape mode play      (...and the WAV is written here)
 ```
 
-**This records over a WAV you already mounted; it does not make one.** The format and the
-sample rate to re-modulate into are the ones the decode found at mount time, so they have to
-have come from somewhere — and the only place they come from is a real recording that was
-already in the file. There is no blank *audio* tape: a file that is not a WAV is not made into
-one by naming it `.WAV`. To record fresh audio, start from a *copy* of a WAV you have and record
-over it — the recording overwrites the file in place, so work on a copy unless you mean to lose
-the original.
+**You can also make a blank tape from scratch — `MOUNT … CREATE`.** A blank file has no
+recording to sniff, so its *name* decides what it becomes: a `.wav` name makes a blank **audio**
+tape that records a real, playable WAV; any other name makes a blank **byte** tape.
 
-**A blank *byte* tape, though, you can make — with `MOUNT … CREATE`.** `MOUNT acr0:tape
-save.tap CREATE` writes an empty file and mounts it, and the guest can then record a program
-onto it (a `CSAVE` from BASIC, say). That is a byte tape, not audio — which is exactly what
-you want for saving and re-loading a program. Without `CREATE`, `MOUNT` needs a file that
-already exists, so a mistyped name is caught as a mistake rather than turned into a blank tape.
+```
+altairsim> MOUNT acr0:tape new.wav CREATE mode=record    (a fresh FSK-300 audio cassette)
+altairsim> MOUNT acr0:tape new.tap CREATE mode=record    (a fresh byte cassette)
+```
 
-**A file called `.WAV` that is not one mounts as a byte tape, quietly.** The magic decides,
-so an empty file — or anything else that is not RIFF/WAVE — falls through to `raw`, and
-recording then puts *bytes* in it, not audio. It will look like it worked. Nothing will play
-it. If you meant audio and you get `raw` on the mount line, that is what happened.
+The mount line tells you which you got — `new.wav: blank fsk300 tape, ready to record`, or
+`new.tap: blank raw byte tape` — so there is no guessing. `mode=record` is there because the deck
+comes up in PLAY, one head and one direction: it is what lets the tape *record*, not what makes it
+audio — the name does that. The guest can then write to it (a `CSAVE` from BASIC, say), and when
+the transport stops the recording is written; `UNMOUNT` and `QUIT` are stops. Without `CREATE`,
+`MOUNT` needs a file that already exists, so a mistyped name is caught as a mistake rather than
+turned into a blank tape.
+
+**Recording over a WAV you already mounted works too.** The format and the sample rate to
+re-modulate into are then the ones the decode found at mount time — so they come from a recording
+that was already in the file. The recording overwrites the file in place, so work on a *copy*
+unless you mean to lose the original.
+
+**For a file that already exists, the magic decides, never the name.** A `.wav` that is not
+really one — anything that is not RIFF/WAVE — is read as bytes, and recording then puts *bytes*
+in it, not audio. It will look like it worked; nothing will play it. (This is the existing-file
+case only: a blank file from `CREATE` carries no magic, so there its name decides, as above.) If
+you meant audio and the mount line says `raw`, that is what happened.
 
 The stop is what writes it. `UNMOUNT` and any `WIND` (`REWIND` included) are stops too. (The
 Sol's decks add one the ACR has not got — the guest dropping the motor line; the boards chapter's
@@ -397,6 +406,11 @@ its properties underneath. There is no `SHOW <id>:<unit>`.)
 It selects a *reading*; it never widens the hardware. Telling an 88-ACR to demodulate
 `cuts1200` is refused just as firmly as letting it sniff one — the board has the modem it has.
 A companion read-only `detected` property reports what the mounted tape turned out to be.
+
+The same `format` is also what picks the modulation for a **blank** tape from `MOUNT … CREATE`:
+there is no separate flag for it. A `.wav` name records in the card's own modem (`fsk300` on the
+ACR), and `format=fsk300` — or, on the Sol, `format=cuts1200` / `kcs300` — forces one by name.
+An empty file has no magic to sniff, so `format` (or the `.wav` name) is the whole of the choice.
 
 `format` takes effect at the **next** `MOUNT`, because a tape is decoded once, when you put
 it in.
