@@ -176,7 +176,7 @@ Type the part before the bracket.
 |---|---|
 | `fp` | Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT |
 | `hostbridge` | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
-| `ss1` | CompuPro System Support 1: multifunction S-100 board. Today the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11) and a 2651 UART serial channel (base+12..+15); base default 50H. The 8253 timer and dual 8259A interrupt controllers are being added in phases; the 9511/9512 math socket is unpopulated |
+| `ss1` | CompuPro System Support 1: multifunction S-100 board. Today an 8253 interval timer (three counters + control at base+4..+7, 2 MHz clock, OUT lines readable), the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11) and a 2651 UART serial channel (base+12..+15); base default 50H. The dual 8259A interrupt controllers are being added in phases; the 9511/9512 math socket is unpopulated |
 | `virtc` | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 
 ## Machines

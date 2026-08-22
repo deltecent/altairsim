@@ -4,9 +4,9 @@
 #
 # This is the `default` machine (88-CPU, 62K RAM + the DBL boot PROM, an 88-2SIO
 # console, the front panel) with one card added: the System Support 1 at the CompuPro
-# standard base of 50H. The card carries an OKI MSM5832 real-time clock (base+10/+11)
-# and a 2651 serial channel (base+12..+15); its timer and interrupt controllers are
-# being added in later phases (issue #392).
+# standard base of 50H. The card carries an OKI MSM5832 real-time clock (base+10/+11),
+# a 2651 serial channel (base+12..+15) and an 8253 interval timer (base+4..+7); its
+# interrupt controllers are being added in a later phase (issue #392).
 #
 # READING THE CLOCK FROM THE MONITOR. The clock lives at 5A (command) / 5B (data).
 # Select a digit for reading, then read the data port -- e.g. the hours-ones digit
@@ -25,6 +25,11 @@
 # frame and RS-232 handshaking are all programmed through the mode/command registers
 # (reference/Signetics 2651 USART.md); the `baud` unit property seeds the line until
 # then.
+#
+# THE INTERVAL TIMER. The 8253 sits at 54/55/56 (counters 0/1/2) and 57 (control word).
+# Program a counter by writing the control word then the count; the counters tick at
+# 2 MHz. `SHOW ss1` prints a live `timer` line with each counter's mode, count and
+# output (reference/Intel 8253.md).
 
 [machine]
 name = "compupro"

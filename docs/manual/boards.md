@@ -94,7 +94,7 @@ Grouped by what they do — the same order as the sections below.
 | Type | What it is |
 |---|---|
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
-| `ss1` | CompuPro System Support 1 — a multifunction board; today its real-time clock and serial channel |
+| `ss1` | CompuPro System Support 1 — a multifunction board; today its real-time clock, serial channel and interval timer |
 
 **The whole machine**
 
@@ -1051,8 +1051,8 @@ supply**, since none is in the package. Its cassette deck comes up empty.
 
 A **multifunction** board: on the real card, one 16-port block holds a serial channel, an
 interval timer, two interrupt controllers, a battery-backed **real-time clock/calendar**, and a
-socket for a math coprocessor. Today this board is its **clock** and its **serial channel** — its
-other functions are being added in stages.
+socket for a math coprocessor. Today this board is its **clock**, its **serial channel** and its
+**interval timer** — its remaining functions are being added in stages.
 
 The clock is the OKI MSM5832. It comes up reading **your host's own date and time**, so a guest
 program that reads it gets the real wall clock for free. A guest can also **set** it, and once set
@@ -1063,6 +1063,11 @@ The serial channel is a **2651 UART** at `5C`–`5F`. It is a spare serial port 
 its rate, frame and RS-232 handshaking through the mode and command registers — that you point at
 something with `CONNECT ss1:serial <endpoint>`. Its `baud`, `interrupt` and `connect` are unit
 settings, shown under `SHOW ss1`.
+
+The interval timer is an **Intel 8253** at `54`–`57`: three independent 16-bit counters a guest
+can program as timers or square-wave/rate generators. The counters tick at 2 MHz. On the real
+board their outputs feed the interrupt controllers; for now they are readable but drive no
+interrupt. `SHOW ss1` prints a live `timer` line with each counter's mode, count and output.
 
 `compupro` is the machine that fits one: a stock Altair with the System Support 1 added, its
 console still on the 2SIO. The clock lives at `5A` (command) / `5B` (data); the digit map, the
