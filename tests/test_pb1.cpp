@@ -18,7 +18,7 @@ using namespace altair;
 namespace {
 
 // A machine with a PB1 in it: 52K of RAM (0000-CFFF), the programming window at D000, and the
-// control port at 10 -- exactly machines/pb1.toml. The RAM stops below the window so nothing
+// control port at 10 -- exactly examples/pb1/pb1.toml. The RAM stops below the window so nothing
 // contends with the board.
 struct Rig {
     Machine   m;
@@ -131,7 +131,9 @@ void test_pb1() {
 
         // The SSM PB1 manual's 2708 programmer (section 4.2), object code verbatim, exit HLT.
         // Arms the 2708, copies 1K from 4000 into the window at D000, then reads the socket once
-        // to disarm. This is the same program shipped as roms/SSM-PB1/PB1PROG.HEX.
+        // to disarm. This is the same program shipped as examples/pb1/PROG2708.HEX; here the
+        // exit is HLT so the test stops cleanly, where the shipped copy returns to the SSM
+        // monitor at F021 (manual section 4.2).
         const uint8_t prog[] = {
             0x3E, 0x01,        // MVI A,01     ; 2708 mode
             0xD3, 0x10,        // OUT 10       ; arm + latch type

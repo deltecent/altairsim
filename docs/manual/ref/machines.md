@@ -39,7 +39,6 @@ what is actually in one.
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
 | `original` | The Altair as it actually left Albuquerque. |
 | `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
-| `pb1` | SSM PB1 EPROM-programmer machine -- burn a 2708/2716 and save the result as a hex file. |
 | `ps2` | The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap. |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
 | `rombasic` | MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM. |

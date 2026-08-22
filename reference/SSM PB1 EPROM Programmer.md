@@ -21,10 +21,10 @@ states enabled** or the pulse is too short to program a cell.
 This is a distilled emulation reference: the port/socket address decode, the control-port bit
 meaning, the programming handshake and pulse timing, the on-board-PROM address map, and the
 wait/ready wiring. It is emulated as the **`pb1`** board (`src/boards/ssm-pb1.*`,
-`docs/boards/ssm-pb1.md`, machine `machines/pb1.toml`); the programming-pulse timing, the
+`docs/boards/ssm-pb1.md`, example `examples/pb1/`); the programming-pulse timing, the
 S-100 READY/wait handshake and the SW1/TL497 voltage rail are not modeled (a bus write just
-lands — see the board doc's *Limitations*). The manual's section 4.2 2708 programmer runs
-against it verbatim as `roms/SSM-PB1/PB1PROG.{ASM,HEX}`.
+lands — see the board doc's *Limitations*). The manual's four driver routines (sections
+4.2–4.5) are transcribed verbatim into `examples/pb1/*.{ASM,HEX}` and run against the board.
 
 ---
 

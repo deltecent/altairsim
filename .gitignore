@@ -201,6 +201,16 @@ examples/**
 !examples/printing/PRINT.HEX
 !examples/pmmi/PMMITERM.ASM
 !examples/pmmi/PMMITERM.HEX
+# examples/pb1 ships SSM's four PB1 driver routines from the manual (sections 4.2-4.5),
+# source + assembled Intel HEX. `examples/**` would otherwise swallow the .ASM/.HEX.
+!examples/pb1/PROG2708.ASM
+!examples/pb1/PROG2708.HEX
+!examples/pb1/PROG2716.ASM
+!examples/pb1/PROG2716.HEX
+!examples/pb1/ERACHK.ASM
+!examples/pb1/ERACHK.HEX
+!examples/pb1/CPYVFY.ASM
+!examples/pb1/CPYVFY.HEX
 # examples/ai-mcp ships the CP/M disk (with HELLO.ASM baked on for an assistant to build over
 # MCP); HELLO.ASM is here too as the pristine planted bug -- kept to rebuild the disk, stripped
 # from the package like every other .ASM beside an image (tools/build-package.sh).

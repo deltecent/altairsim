@@ -1237,21 +1237,27 @@ before you chase a bug:
 ### Burning an EPROM, and making a hex file
 
 This is the whole point of the board (and the answer to "do I need a burner board, or is a bus
-write enough?" — you need the board, because you want to run the *software*). The `pb1` machine
-has a 2708 burner ready to go: SSM's own routine from the PB1 manual, at `roms/SSM-PB1/PB1PROG.HEX`,
-which copies 1K from `4000` into the socket and comes with a test pattern already at `4000`.
+write enough?" — you need the board, because you want to run the *software*). The example under
+`examples/pb1` is a stock Altair with a `pb1` in it, plus SSM's own burner routines from the PB1
+manual: `PROG2708.HEX` (a 2708) and `PROG2716.HEX` (a 2716). Each copies bytes from `4000` into
+the socket. So put the data you want to burn at `4000`, run the burner, and save the result:
 
 ```
-altairsim pb1
-LOAD roms/SSM-PB1/PB1PROG.HEX     ; the SSM 2708 burner + 1K of data at 4000
-RUN 100                           ; run it: it arms the board and burns the 2708
-SAVE eprom.hex D000-D3FF          ; the burned chip, as an Intel HEX file on your host
+cd examples/pb1
+altairsim pb1.toml
+FILL 4000-43FF E5                ; the 1K you want to burn (or LOAD your own data there)
+LOAD PROG2708.HEX                ; the SSM 2708 burner
+BREAK F021                       ; where the burner "returns to the monitor"
+RUN 100                          ; run it: it arms the board and burns the 2708
+SAVE eprom.hex D000-D3FF         ; the burned chip, as an Intel HEX file on your host
 ```
 
-`SAVE` just reads the socket window back off the bus and writes it out — the socket reads like any
-other memory once it is programmed — so `eprom.hex` is an ordinary Intel HEX image of the chip you
-burned, ready to hand to another tool or `LOAD` back later. Your own burner works the same way:
-put your data in RAM, `OUT 10,01` (or `,02` for a 2716), write it into the window, and `SAVE`.
+The `BREAK F021` is there because SSM's routine ends by jumping to its own system monitor, which
+this machine does not carry — the breakpoint catches that jump once the burn is done. `SAVE` then
+reads the socket window back off the bus and writes it out — the socket reads like any other memory
+once it is programmed — so `eprom.hex` is an ordinary Intel HEX image of the chip you burned, ready
+to hand to another tool or `LOAD` back later. Your own burner works the same way: put your data in
+RAM, `OUT 10,01` (or `,02` for a 2716), write it into the window, and `SAVE`.
 
 The board also has an optional **on-board EPROM area** (the real card's U11–U14): read-only chips
 you mount above `8000` with `[[board.prom]]` (`at` + `mount`), handy as the *source* for copying one

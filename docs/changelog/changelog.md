@@ -65,8 +65,9 @@ implemented.
 The **SSM PB1** brings something new: a **PROM burner**. Instead of preparing a ROM image with
 `LOAD … ROM`, you now *run* a period EPROM-programmer routine against a board that presents the
 real interface — a 4K socket window and an arm/type control port — burn a 2708 or 2716, and
-`SAVE` the result as an ordinary Intel HEX file. The machine ships with SSM's own 2708 burner from
-the PB1 manual, ready to run (`altairsim pb1`).
+`SAVE` the result as an ordinary Intel HEX file. `examples/pb1` carries SSM's own driver routines
+from the PB1 manual — the 2708 and 2716 burners and the erase-check/copy-verify helpers — ready to
+run against the board.
 
 ### A third validated CPU core: the Intel 8085
 
