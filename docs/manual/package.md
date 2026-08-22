@@ -5,6 +5,8 @@ altairsim                the program. One file, nothing to install.
 altairsim-manual.pdf     this.
 altairsim-changelog.pdf  what changed in this release, and the ones before it.
 altairsim-cheatsheet.pdf every command and option, rendered for reading.
+altairsim-monitor.pdf    the altairsim> prompt: driving the machine from the console.
+altairsim-debugger.pdf   breakpoints, stepping, and looking at the bus itself.
 DRIVING-WITH-AI.md       for an AI assistant driving the machine; see below.
 cheatsheet.md            the same reference as plain text, for the AI to read.
 LICENSE                  the MIT licence this is published under.
@@ -20,6 +22,12 @@ file you must write before the program will start.
 not, and the same for the versions before it. It is a separate document from this manual on
 purpose: the manual describes the program as it is *now*, and a record of what changed reads
 better on its own than as a chapter that would have to grow one section per release.
+
+`altairsim-monitor.pdf` and `altairsim-debugger.pdf` are two more documents beside this one.
+They are about driving the program itself — the `altairsim>` prompt where you start and stop
+the machine, and the debugger you reach for at that prompt when something has gone wrong —
+rather than the emulated hardware this manual describes. Open them the way you open this one;
+each says at the top where to start if it is the first one you picked up.
 
 `altairsim` is a single self-contained program. The one outside library it uses — **SDL3**,
 which opens the window the video boards draw into — is compiled *into* it rather than shipped

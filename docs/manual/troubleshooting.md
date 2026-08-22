@@ -40,7 +40,7 @@ it. (`RUN <addr>` is a different thing: it loads the PC first, so it *restarts* 
 resumes.)
 
 And while you are stopped, you can look: `REGS`, `EXAMINE`, `DUMP`, `DISASM` and `STEP` all
-work at this prompt, on a machine that is not moving under you. See the debugging chapter.
+work at this prompt, on a machine that is not moving under you. See the *Debugger* document.
 `BREAK` is for stopping at a place you cannot reach by hand.
 
 ## My file was not written / the disk lost my changes

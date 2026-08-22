@@ -367,4 +367,4 @@ That is the whole trick. Past it, it is BASIC, and the tapes chapter has the lon
 - **The examples this chapter did not walk through** — `examples/`, and the README in each folder.
 - **Move a file between CP/M and your own machine** — the file-transfer chapter (`R`, `W`, `HDIR`).
 - **Telnet into the guest, or wire it to a real serial port** — the serial chapter.
-- **Look at the bus while it runs** — the debugging chapter.
+- **Look at the bus while it runs** — the *Debugger* document.

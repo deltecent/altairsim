@@ -1030,7 +1030,7 @@ sense = 0b10001110  #          again, one digit per switch
 ```
 
 Binary is nothing special to this board — `0b` works anywhere a number does, at the prompt and in
-a machine file alike, and the monitor chapter's number rule has the whole list of prefixes. It is
+a machine file alike, and the *Monitor* document's number rule has the whole list of prefixes. It is
 just that eight switches would rather be eight digits than two hex ones. Whichever way you write
 it, `SHOW fp` reads the byte back in hex.
 

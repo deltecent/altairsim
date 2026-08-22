@@ -1,0 +1,14 @@
+# The Monitor, in order.
+#
+# This is a SEPARATE document from the User Manual (docs/manual/), built by the same
+# tools/build-docs.sh into altairsim-monitor.pdf and shipped beside the manual in the
+# package. It was a manual chapter once (docs/manual/monitor.md); it moved out because the
+# monitor and the debugger are how you drive altairsim ITSELF -- as opposed to the emulated
+# hardware the manual describes -- and the two together outgrew a pair of chapters buried in
+# the middle of the book.
+#
+# One chapter, so the sequence is trivial; ORDER still declares it, because build-docs.sh
+# reads the chapter list from here and from nowhere else. Add a file here only if this
+# document genuinely grows past the one page it opens with.
+
+monitor.md

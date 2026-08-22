@@ -367,7 +367,7 @@ people.
 | `bell` | rings the terminal bell on `^G` |
 | `bsdel` | folds backspace and delete together: `off` (default), `bs` (send BS for both), or `del` (send DEL for both) |
 | `attn` | which control character is ATTN (default `^E`) |
-| `base` | `hex` or `octal` — the base the **monitor** prints numbers in. Not a transform: it changes nothing about a byte crossing the console, only how a number is spelled back to you. The monitor chapter has it. |
+| `base` | `hex` or `octal` — the base the **monitor** prints numbers in. Not a transform: it changes nothing about a byte crossing the console, only how a number is spelled back to you. The *Monitor* document has it. |
 
 Set them with `CONSOLE k=v`. (`SET CONSOLE k=v` is the same thing said longer.)
 

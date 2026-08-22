@@ -22,9 +22,13 @@ quick-start.md
 # on a second screen, and a reader who only ever reads to here can still drive the machine.
 ref/cheatsheet.md
 
+# The monitor and the debugger USED TO BE HERE (monitor.md, debugging.md). They moved to
+# their own shipped documents on 2026-08-22 -- docs/monitor/ -> altairsim-monitor.pdf and
+# docs/debugger/ -> altairsim-debugger.pdf -- because they describe driving altairsim itself,
+# not the emulated hardware this manual is about, and together they were the longest thing in
+# the book. They travel beside the manual in the package; README.md points at them.
+
 # The detail.
-monitor.md
-debugging.md
 machines.md
 configuring.md
 boards.md

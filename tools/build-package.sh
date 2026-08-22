@@ -6,6 +6,8 @@
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
 #   altairsim-changelog.pdf  what changed, per release (docs/changelog/, built by docs.yml)
 #   altairsim-cheatsheet.pdf the quick reference, rendered (docs/manual/ref/, built by docs.yml)
+#   altairsim-monitor.pdf    the altairsim> prompt (docs/monitor/, built by docs.yml)
+#   altairsim-debugger.pdf   debugging from that prompt (docs/debugger/, built by docs.yml)
 #   DRIVING-WITH-AI.md       the same machines, written for an AI assistant driving them over MCP
 #   cheatsheet.md            the quick reference as plain text, for the AI assistant to read
 #   LICENSE                  ours (MIT)
@@ -295,6 +297,23 @@ cheatsheet=$root/docs/altairsim-cheatsheet.pdf
   exit 1
 }
 cp "$cheatsheet" "$pkg/"
+
+# The monitor and the debugger. Two more committed CI artifacts (docs.yml builds
+# docs/altairsim-monitor.pdf and docs/altairsim-debugger.pdf from docs/monitor/ and
+# docs/debugger/), split out of the manual because they describe driving altairsim itself.
+# docs/manual/package.md names them, so they are DELIVERABLES; copy each STRAIGHT FROM THE
+# TREE for the same reason as the changelog and cheatsheet -- the FILE loop's token sed would
+# corrupt a binary PDF.
+for doc in monitor debugger; do
+  pdf=$root/docs/altairsim-$doc.pdf
+  [ -f "$pdf" ] || {
+    echo "build-package: docs/altairsim-$doc.pdf is missing -- CI (docs.yml) builds it." >&2
+    echo "  It is committed at the tag, so a checkout of vX.Y.Z has it. Are you on the tag, or" >&2
+    echo "  packaging before docs.yml has run on master? See DISTRIBUTION.md 5 step 2." >&2
+    exit 1
+  }
+  cp "$pdf" "$pkg/"
+done
 
 # ...and NOT the Developer Guide. That document is about the source, which is not in here.
 

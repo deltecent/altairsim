@@ -1,11 +1,19 @@
 # The monitor
 
+This is one of two short documents about **driving `altairsim` itself** — the program you
+run, as opposed to the machines it emulates. It covers **the monitor**: the `altairsim>`
+prompt where you start, stop, examine and reconfigure the machine. Its companion, *The
+Debugger*, covers what you reach for at that prompt when something has gone wrong. Both stand
+beside the *User Manual*, which describes the hardware — the boards, the machines, the disks
+and the tapes. `altairsim` simulates the MITS Altair 8800 and the S-100 bus it was built
+around; if that is new to you, the manual's opening chapter is the place to start.
+
 The `altairsim>` prompt is **the monitor**: the front panel of the machine, and its debugger,
 which here are the same thing. Everything the front panel of a real Altair could do, the
 monitor can do — and a great deal it could not. It breakpoints, it single-steps, it
 disassembles, and it will show you the bus itself: who decodes what, who is pulling which
-interrupt line, and where two boards are fighting over an address. That is the **debugging**
-chapter, and it is most of why this program exists.
+interrupt line, and where two boards are fighting over an address. That is what *The Debugger*
+is for, and it is most of why this program exists.
 
 What it is not is a *menu* — a layer sitting between you and the machine, offering a fixed set
 of things it is prepared to let you inspect. There is no debug mode to enter and nothing is
@@ -315,8 +323,8 @@ T-states — the crystal buys period *feel*, not *behaviour*. `SHOW cpu0` report
 beside it: the clock the run loop actually hit, a measurement you cannot set.
 
 The one exception is anything the guest times against the *outside* world — an XMODEM transfer
-wants the real crystal, a cassette does not. The boards chapter (`clock_hz`, `idle`) and the
-troubleshooting chapter have the detail.
+wants the real crystal, a cassette does not. The manual's Boards chapter (`clock_hz`, `idle`)
+and its Troubleshooting chapter have the detail.
 
 ## RESET is not POWER
 

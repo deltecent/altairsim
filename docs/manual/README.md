@@ -25,11 +25,18 @@ a separate thing, and the next chapter says where it will come from.
 
 | | |
 |---|---|
-| [The monitor](monitor.md) | The `altairsim>` prompt: prefix commands, the number rule, naming a board, ATTN. |
-| [Debugging](debugging.md) | Breakpoints, stepping, disassembly, and looking at the bus itself. |
 | [Machines](machines.md) | The command line, the built-in machines, and where a path is relative to. |
 | [Machine files](configuring.md) | The TOML format, in full. |
 | [Boards](boards.md) | What each board is, and what it is for. |
+
+Driving `altairsim` *itself* — the `altairsim>` prompt and its debugger — is two separate
+documents that ship beside this one. They are about the program, not the emulated hardware,
+and each stands on its own:
+
+| | |
+|---|---|
+| [The monitor](../monitor/monitor.md) — `altairsim-monitor.pdf` | The `altairsim>` prompt: prefix commands, the number rule, naming a board, ATTN. |
+| [Debugging](../debugger/debugging.md) — `altairsim-debugger.pdf` | Breakpoints, stepping, disassembly, and looking at the bus itself. |
 
 ## Using it
 

@@ -50,7 +50,7 @@ program** — booting a disk on an Altair meant setting the address switches to 
 EXAMINE, and then pressing RUN, so that is what the machine file says, in the operator's own
 words. (EXAMINE is the step that matters: the switches by themselves change nothing, and it is
 EXAMINE that loads them into the program counter. `RUN FF00` is precisely those two presses —
-see the monitor chapter.) Anything you can type, a machine file can do; it gets no special
+see the *Monitor* document.) Anything you can type, a machine file can do; it gets no special
 powers.
 
 From there it is all real: the PROM read sector 0 off track 0, that loader pulled CP/M into

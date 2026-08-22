@@ -94,14 +94,16 @@ endforeach()
 # The chapter opens with a fenced code block -- the archive listing, one ship-item per line in
 # the first column. Read the FIRST fence only: later fences are `$ altairsim ...` command
 # examples, not manifests. Each first-column name must be either something the map ships or one
-# of the three BUILD ARTIFACTS the map does not carry as a line because nothing copies them
-# from the repo -- the binary and the two PDFs are produced, per tools/build-package.sh.
+# of the BUILD ARTIFACTS the map does not carry as a line because nothing copies them from the
+# repo -- the binary and the rendered PDFs are produced, per tools/build-package.sh.
 # ---------------------------------------------------------------------------
 set(artifacts
     "altairsim"                  # the binary, built not copied
     "altairsim-manual.pdf"       # rendered from docs/manual/ by the doc build
     "altairsim-changelog.pdf"    # rendered from docs/changelog/ by docs.yml
-    "altairsim-cheatsheet.pdf")  # rendered from docs/manual/ref/cheatsheet.md by docs.yml
+    "altairsim-cheatsheet.pdf"   # rendered from docs/manual/ref/cheatsheet.md by docs.yml
+    "altairsim-monitor.pdf"      # rendered from docs/monitor/ by docs.yml
+    "altairsim-debugger.pdf")    # rendered from docs/debugger/ by docs.yml
 
 # Split into lines WITHOUT letting CMake's list semantics chop a line on its own semicolons
 # (the manifest's "see below." would otherwise arrive as a phantom line beginning "see"). Park
