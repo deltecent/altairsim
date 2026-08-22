@@ -569,6 +569,22 @@ None of this is saved by `CONFIG SAVE`. A diagnostic is something you switch on 
 problem, not a property of the machine, so a config you write while debugging does not carry the
 noise into every later run.
 
+## A copy of the session — `SET CONSOLE log`
+
+`TRACE` records the bus and `DEBUG` records what a board narrates; `SET CONSOLE log` records the
+*terminal* — everything you saw. Guest output and the keys you typed both go to a host file as
+they happen, so you can read a whole session back later, or hand it to someone who was not there.
+
+```
+SET CONSOLE log=session.txt     start copying the session to a file
+SET CONSOLE log=off             stop (an empty path does the same)
+```
+
+The file is opened for *append*: pointing `log` at the same file twice in a session adds to it
+rather than erasing what you already caught. Like `TRACE` and `DEBUG` it is a diagnostic and not
+part of the machine, so `CONFIG SAVE` does not carry it — a config written while you are capturing
+a session does not turn logging on for every later run.
+
 ## A debugging session
 
 The machine is not booting. Where does it get to?
