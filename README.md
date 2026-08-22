@@ -4,9 +4,9 @@ A C++ simulator of the **MITS Altair 8800** and the **S-100 bus**.
 
 `altairsim` is a **hardware development bench** that happens to run period software. The S-100 bus is a first-class modeled object rather than an implementation detail, because the point is to develop **new hardware** as well as to run old software.
 
-It boots Altair 4K and 8K BASIC off a cassette, MITS Programming System II (polled *and* interrupt-driven), and CP/M 2.2 off both an 8″ floppy and a 5¼″ minidisk — every one of them a real period artifact, running unmodified.
+It boots Altair 4K and 8K BASIC (and the 1975 8080 BASIC 1.0) off cassettes, MITS Programming System II (polled *and* interrupt-driven), CP/M 2.2 off 8″ and 5¼″ floppies, CP/M 3 off CompactFlash and SD cards, Cromemco CDOS, SD Systems SDOS, iCOM FDOS, and the Altair 680b's MON680 monitor — every one a real period artifact, running unmodified.
 
-Every one of those boots is an **acceptance test**: it runs the period software on the whole machine through the real CLI and checks what lands on the terminal. Three CP/M images are tracked in git — one 8″ floppy and the minidisk's two — so a fresh clone boots CP/M and runs those tests without downloading anything first. The four examples that ship — CP/M, cassette BASIC, a Sol-20 running TREK80, and Altair Disk BASIC — live in `examples/`, one directory each, and `acceptance-examples` boots them from a scratch directory with no repository in sight. The larger images that are not needed by any test (the 8 MB FDC+ disk, the 24K build) are fetched by `tools/fetch-disk-images.sh`.
+Every one of those boots is an **acceptance test**: it runs the period software on the whole machine through the real CLI and checks what lands on the terminal. There are more than forty of them. Three CP/M images are tracked in git — one 8″ floppy and the minidisk's two — so a fresh clone boots CP/M and runs those tests without downloading anything first. The eight examples that ship live in `examples/`, one directory each, and `acceptance-examples` boots them from a scratch directory with no repository in sight. The larger images that no test needs are fetched by `tools/fetch-disk-images.sh`.
 
 ```
 $ altairsim basic4k
@@ -32,15 +32,15 @@ That is the whole of it: put the tape in, toggle in the bootstrap MITS printed i
 
 ## Building
 
-**There are no dependencies.** A C++20 compiler and CMake ≥ 3.20 is the entire list. The TOML parser, the JSON encoder and the line editor are all in-tree, so a fresh clone builds with nothing to download.
+**There are no dependencies.** A C++20 compiler and CMake ≥ 3.20 is the entire list. The TOML parser, the JSON encoder, the terminal emulator and the line editor are all in-tree, so a fresh clone builds with nothing to download.
 
-**SDL3 is the one exception, and it is detected rather than required.** Install it and the video boards (`vdm1`, `sol`) open a real window; leave it out and they build headless against a null display, every test still passes, and the build never asks you for anything. `-DALTAIRSIM_ENABLE_SDL=OFF` forces headless even where SDL3 is present.
+**SDL3 is the one exception, and it is detected rather than required.** Install it and the video boards (`vdm1`, `sol`, `dazzler`, `vdb8024`) open a real window — as does the built-in `terminal:` VT100; leave it out and they build headless against a null display, every test still passes, and the build never asks you for anything. `-DALTAIRSIM_ENABLE_SDL=OFF` forces headless even where SDL3 is present.
 
 ```sh
 git clone https://github.com/deltecent/altairsim.git
 cd altairsim
 cmake -S . -B build && cmake --build build -j
-ctest --test-dir build -LE slow      # drop -LE slow for the full 8080 exerciser
+ctest --test-dir build -LE slow      # drop -LE slow for the full CPU exercisers
 ./build/altairsim                    # the default machine
 ```
 
@@ -49,45 +49,114 @@ Release build, builds it, and prints where the binary landed and what version it
 flags, no generator to choose, and a plain sentence to act on if CMake is missing. SDL3
 stays optional; add `--with-sdl` to link a private static SDL3 and get a window.
 
-**Built and run on Linux, macOS, and Windows.** The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and all three platforms are now proven: Linux (Ubuntu/GCC), macOS (a universal `x86_64`+`arm64` binary, so Intel and Apple Silicon both), and Windows on MSVC. See [`docs/building-linux.md`](docs/building-linux.md), [`docs/building-windows.md`](docs/building-windows.md), and [`docs/porting-notes.md`](docs/porting-notes.md).
+**Built and run on Linux, macOS, and Windows.** The code is written to be portable — C++20, no dependencies, and every OS difference confined to `src/platform/` behind a header with zero conditionals — and all three platforms are proven: Linux (Ubuntu/GCC), macOS (a universal `x86_64`+`arm64` binary, so Intel and Apple Silicon both), and Windows on MSVC. See [`docs/building-linux.md`](docs/building-linux.md), [`docs/building-windows.md`](docs/building-windows.md), and [`docs/porting-notes.md`](docs/porting-notes.md).
 
-> **Pre-built packages for every platform.** The downloadable v0.3.0 archives cover macOS
+> **Pre-built packages for every platform.** The downloadable v0.4.0 archives cover macOS
 > (Apple Silicon and Intel), Linux `x86_64`, and Windows `x86_64` — each built natively on its
 > own platform and self-contained: SDL3 is linked statically, and on Windows so is the C
 > runtime, so there is nothing to install and no redistributable to chase. Prefer to build it
 > yourself? See [`docs/building-windows.md`](docs/building-windows.md) and its siblings.
 
-**CI runs the suite on every push.** GitHub Actions builds `altairsim` and runs the tests on all three platforms — Linux, macOS, and Windows are each a required check. The tests below are the same ones; you can run them yourself with `ctest`.
+**CI runs the suite on every push.** GitHub Actions builds `altairsim` and runs the tests on all three platforms — Linux, macOS, and Windows are each a required check, each configured with `-Werror`/`/WX` so a warning on any toolchain reds the PR. The tests below are the same ones; you can run them yourself with `ctest`.
 
 ## What is in the box
 
-S-100 board types — most modeled from their own manuals, a few of our own design — and the
-machines built out of them:
+S-100 board types — most modeled from their own manuals, a few of our own design. Every one
+is added with `BOARDS ADD <type> <id>` or a `[[board]]` in a machine file, and `SHOW BOARDS`
+in the monitor prints this list with a one-line description of each (`SHOW BOARD <type>` for one).
+
+**CPUs** — each decodes nothing; it *drives* the bus.
 
 | Board | What it is |
 |---|---|
-| `8080` | MITS 88-CPU — an 8080A. Decodes nothing; it *drives* the bus. |
-| `z80` | Zilog Z80 CPU card — the same bus as the 88-CPU, a different ISA. ZEXALL-validated. |
-| `memory` | RAM/ROM card — a list of regions, `PHANTOM*`, and five banking schemes. |
+| `8080` | MITS 88-CPU — an 8080A at 2 MHz. |
+| `8085` | 8085 core — the 88-CPU's twin, with `RIM`/`SIM` and `TRAP`/`RST 5.5`/`6.5`/`7.5`. |
+| `z80` | Zilog Z80 card — the same bus, a different ISA. ZEXALL-validated. |
+| `6800` | Altair 680b CPU — a Motorola 6800 at 500 KHz, with memory-mapped I/O. |
+
+**Memory**
+
+| Board | What it is |
+|---|---|
+| `memory` | RAM/ROM card — a list of regions and `PHANTOM*`. Plain, unbanked. |
+| `bankmem` | S-100 bank-switched RAM — one card, four decoders (Vector, Cromemco 64KZ, North Star, ExpandoRAM II). |
+
+**Serial, console and modem**
+
+| Board | What it is |
+|---|---|
 | `2sio` | MITS 88-2SIO — two 6850 ACIAs. |
 | `sio` | MITS 88-SIO — one COM2502 UART. **Inverted** status bits. |
-| `acr` | MITS 88-ACR — cassette. An 88-SIO B plus an FSK modem. |
+| `uio` | MITS 88-UIO — a 6850 serial port and an 88-ACR cassette section on one card. |
+| `sbc` | SD Systems SBC-100/200 — a Z80 SBC: 8251 console, Z80-CTC, parallel port, boot PROM. |
+| `pmmi` | PMMI MM-103 — a Bell 103 modem on an S-100 card. |
+| `usio` | Universal serial — a strap-configurable UART card (TU-ART, IMSAI SIO2, CompuPro IF2/SS1 profiles). |
+| `propio` | S100Computers Console IO — a Parallax-Propeller console, a `usio` subtype. |
+
+**Storage — floppy, hard disk, CompactFlash and SD**
+
+| Board | What it is |
+|---|---|
 | `dcdd` | MITS 88-DCDD — 8″ hard-sector floppy, up to 16 drives. |
-| `mds` | MITS 88-MDS — 5¼″ minidisk. The same registers as the DCDD, different physics. |
-| `c700` | MITS 88-C700 — Centronics line-printer controller. Output-only; `CONNECT` it to a file. |
-| `vdm1` | Processor Technology VDM-1 — memory-mapped 16×64 video. Needs a `Display`. |
+| `mds` | MITS 88-MDS — 5¼″ minidisk. The DCDD's registers, different physics. |
+| `icom` | iCOM FD3712/3812 — 8″ floppy with a boot PROM; boots CP/M 2.2 and FDOS. |
+| `versafloppy` | SD Systems VersaFloppy I/II — WD FD177x soft-sector; boots SDOS. |
+| `tarbell` / `tarbelldd` | Tarbell #1011 (SD) / #2022 (DD) — auto-boots CP/M the moment a disk is in it. |
+| `16fdc` / `64fdc` | Cromemco FDC — WD FD1793, a TMS 5501 console and an RDOS boot PROM; boots CDOS. |
+| `hdsk` | MITS 88-HDSK Datakeeper — a Pertec hard disk, 256-byte sectors from a linear image. |
+| `dualide` | S100Computers IDE-AB — two CompactFlash sockets (A:/B:) for CP/M 3. |
+| `dualsd` | S100Computers Dual SD — two microSD sockets for CP/M 3. |
+| `v2z80rom` | S100Computers V2 Z80 — the onboard paged monitor EEPROM that boots CP/M 3 off a card. |
+
+**Cassette** — `acr` (88-ACR, an 88-SIO B plus an FSK modem); `sol` and `uio` also carry tape.
+
+**Video and graphics** — need a `Display`.
+
+| Board | What it is |
+|---|---|
+| `vdm1` | Processor Technology VDM-1 — memory-mapped 16×64 video. |
+| `dazzler` | Cromemco Dazzler — color graphics from a framebuffer in main RAM. |
+| `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. |
 | `sol` | Processor Technology Sol-PC — serial, keyboard, parallel and CUTS tape as one card. |
+
+**Printer and parallel**
+
+| Board | What it is |
+|---|---|
+| `c700` | MITS 88-C700 — Centronics printer controller. Output-only; `CONNECT` it. |
+| `lpc` | MITS 88-LPC — line-buffered line-printer controller. |
+| `pio` / `4pio` | MITS 88-PIO / 88-4PIO — 8-bit parallel ports. |
+| `d7a` | Cromemco D+7A — analog + parallel I/O; reads host joysticks. |
+
+**680b onboard I/O** — `680io` (6850 console), `680uio` (a second 6850 plus a 6820 PIA), `680kcacr` (Kansas City Standard cassette).
+
+**Interrupts, clock and control**
+
+| Board | What it is |
+|---|---|
+| `fp` | The front panel — SENSE switches at `IN 0FFH`, and the lamps. |
+| `turnkey` | MITS 8800b Turnkey Module — a phantom boot PROM, an integrated 6850, and sense switches. |
 | `virtc` | MITS 88-VI/RTC — vectored interrupts (VI0–VI7 → `RST n`) and a real-time clock. |
-| `fp` | The front panel — SENSE switches at port `FF`, and the lamps. |
+| `ss1` | CompuPro System Support 1 — a multifunction card: MSM5832 clock/calendar, a 2651 UART, an 8253 interval timer, and dual 8259A interrupt controllers in a master/slave cascade. |
 | `hostbridge` | Guest ↔ host file transfer, sandboxed. **Ours, not a period card** — `R`/`W`/`HDIR`. |
 
-`altairsim --list` names the machines: `default`, `original` (the Altair as it actually left Albuquerque), `altmon`, `basic4k`, `basic8k`, `ps2`, `ps2int`, `minidisk`, `lineprinter`, `cuter`, `vdm1`, `sol20`, and `z80`.
+**More than thirty ready-built machines** are compiled into the binary; `altairsim --list`
+names them all. The Altairs proper — `default`, `original` (as it left Albuquerque),
+`altmon`, `amon`, `acuter`, `cuter`, `turnkey`, `rombasic`. The BASIC and PS2 benches —
+`basic4k`, `basic8k`, `ps2`, `ps2int`. The disk machines — `minidisk`, `tarbell`,
+`tarbelldd`, `icom`. Other CPUs and other makers — `z80`, `8085`, `altair680`, `sbc200`,
+`sbc200v`, `dualsd`, `dualide`, `dualidesd`. And the peripheral demos — `vdm1`, `dazzler`,
+`sol20`, `lineprinter`, `parallel`, `bankmem`, `compupro`.
 
-**Both CPUs are validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
+**All three Intel cores are exerciser-validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the 8085 passes its own 8085EXM; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 
-## The interface
+## The monitor and debugger
 
-A SIMH/AltairZ80-style command monitor with line editing and history: `SHOW`, `SET`, `BOARDS`, `MOUNT`, `CONNECT`, breakpoints (including conditional — `BREAK <addr> IF <expr>`), single-stepping, disassembly, a bus-cycle `TRACE`, and a `HISTORY` flight recorder. **ATTN (`^E`) is the stop key** — never `^C`, because `^C` belongs to the guest (CP/M reads it), and a stop key the guest also wants is one the guest eats.
+A SIMH/AltairZ80-style command monitor with line editing and history, and a full symbolic
+debugger sharing the same prompt. **ATTN (`^E`) is the stop key** — never `^C`, because `^C`
+belongs to the guest (CP/M reads it), and a stop key the guest also wants is one the guest
+eats. `HELP` lists every command; it comes off the same table the monitor resolves against,
+so it cannot drift from what the binary does.
 
 ```
 altairsim> BOARDS
@@ -103,9 +172,30 @@ altairsim> BOARDS
   * holds the console
 ```
 
-**An MCP server is built in** (`altairsim --mcp`), so Claude can drive the machine through typed, structured tools instead of screen-scraping a text CLI. It runs on the *same* `Machine` object as the monitor — not a wrapper, not a second model of the world.
+**Building and inspecting the machine.** `BOARDS`/`BOARDS ADD`/`BOARDS REMOVE` build it live;
+`SHOW`, `SET`, `MOUNT`, `CONNECT` configure it; `CONFIG SAVE`/`CONFIG LOAD` write and reload a
+whole machine as a TOML file. `EXAMINE`/`DEPOSIT`, `DUMP`, `FILL`, `MOVE`, `SEARCH` and
+`COMPARE` work memory directly; `LOAD` reads Intel HEX.
 
-**Any board that moves characters** can be connected to the console, a TCP socket, or a real host serial port, interchangeably. The modem-control tests are run against a **real null-modem cable** between two USB serial ports, because a claim about a cable deserves a cable. They are opt-in (`ctest -L hw`, pointed at your ports with `ALTAIR_SERIAL_A`/`_B`) and they **skip loudly** when the hardware is absent — a hardware test that quietly passes with no hardware is a green tick that means nothing.
+**Debugging.** `REGS` shows the CPU; `STEP` and `NEXT` single-step (over calls); `DISASM`
+disassembles, annotated with symbols. `BREAK <addr>` sets a breakpoint and `BREAK <addr> IF
+<expr>` makes it conditional; tracepoints fire an action instead of stopping. `TRACE` records
+every bus cycle, and `HISTORY` is a flight recorder you read back after the fact — so a crash
+is a thing you rewind into, not a thing you try to reproduce. `SYMBOLS LOAD` pulls names from
+a `.PRN` or `.SYM` listing so addresses read as labels everywhere. `SNAPSHOT` and `RESTORE`
+freeze and thaw the entire machine to a file. `SET CONSOLE DEBUG` turns on a per-facility
+trace log. [`docs/debugger/`](docs/debugger/) walks through all of it.
+
+**An MCP server is built in** (`altairsim --mcp`), so Claude can drive the machine through
+typed, structured tools instead of screen-scraping a text CLI. It runs on the *same*
+`Machine` object as the monitor — not a wrapper, not a second model of the world. See
+[`docs/manual/mcp.md`](docs/manual/mcp.md) and [`docs/DRIVING-WITH-AI.md`](docs/DRIVING-WITH-AI.md).
+
+## Consoles and connections
+
+**Any board that moves characters** can be connected to the console, a TCP socket, a real host serial port, or a **built-in terminal window** the simulator draws itself — VT100, VT52 or H19, via a `terminal:` endpoint, no telnet client and no external emulator. They are interchangeable: the same board reaches any of them.
+
+The modem-control tests are run against a **real null-modem cable** between two USB serial ports, because a claim about a cable deserves a cable. They are opt-in (`ctest -L hw`, pointed at your ports with `ALTAIR_SERIAL_A`/`_B`) and they **skip loudly** when the hardware is absent — a hardware test that quietly passes with no hardware is a green tick that means nothing.
 
 ## Configuring a machine
 
@@ -168,17 +258,18 @@ The disk-image tests run on a fresh clone: the 88-MDS and 8″ 88-DCDD images th
 
 | Document | What it covers |
 |---|---|
-| [`docs/manual/`](docs/manual/) | **The User Manual** — boot CP/M, drive the monitor, mount disks and tapes, move files. Written for someone holding a release package and nothing else, so it cites no source file and no repository path. Builds to `altairsim-manual.pdf`, which is what ships. |
+| [`docs/manual/`](docs/manual/) | **The User Manual** — boot CP/M, drive the monitor, debug a guest, mount disks and tapes, move files. Written for someone holding a release package and nothing else, so it cites no source file and no repository path. Builds to `altairsim-manual.pdf`, which is what ships. |
 | [`docs/devguide/`](docs/devguide/) | **The Developer Guide** — Theory of Operation, and a worked example that adds a new board at port `FFH`. Needs the source, so it does not ship. |
 | [`DESIGN.md`](DESIGN.md) | The design, and the reasoning. Read this first. |
 | [`DISTRIBUTION.md`](DISTRIBUTION.md) | How a release is built and where it goes — the four packages, the machine each is built on, and the checks that must pass before one ships. Written to be followed step by step on a build machine that has never seen this repository. |
 | [`docs/config.md`](docs/config.md) | *Why* the TOML format is shaped as it is, by annotated example. **Not the grammar** — that is the manual's, so there is one normative copy of it. |
 | [`docs/cli-commands.md`](docs/cli-commands.md) | Why the monitor's commands rank and abbreviate as they do. **Not a command reference** — `HELP` is, and it comes off the same table the monitor resolves against. |
 | [`docs/boards/`](docs/boards/) | One file per board: the real hardware, the register map, how it is simulated, and the quirks it reproduces. |
+| [`docs/DRIVING-WITH-AI.md`](docs/DRIVING-WITH-AI.md) | Driving a running guest with an AI assistant over the built-in MCP server. |
 | [`docs/sources.md`](docs/sources.md) | Where every hardware fact came from. |
 | [`docs/roadmap.md`](docs/roadmap.md) | Milestones and acceptance criteria. |
 | [`docs/porting-notes.md`](docs/porting-notes.md) | Hard-won lessons from the prior Python prototype. |
-| [`docs/building-linux.md`](docs/building-linux.md) | Building and running on Linux — prerequisites, the serial-build memory trap, and what was verified. |
+| [`docs/building-linux.md`](docs/building-linux.md), [`docs/building-windows.md`](docs/building-windows.md) | Building and running per platform — prerequisites, the serial-build memory trap, and what was verified. |
 
 **Sourcing rule: period manuals and datasheets, never another emulator's source.** Reading past a source to preserve an argument is the same failure as fabricating one.
 
