@@ -806,9 +806,14 @@ Two machines fit one: **`vdm1`**, which is an Altair with a VDM-1 and a demo tha
 Every video board — the VDM-1, the Dazzler, the VDB-8024 — carries a **`width`** property that
 sets how wide its window opens, in pixels. `auto` (the default) opens the window about **half the
 screen wide**; a number like `width = 1024` asks for that many pixels. The **height follows the
-board's own aspect** — you set width, height comes with it — and the picture is drawn at a
-whole-number multiple of the board's pixels so a 1970s frame stays a crisp grid rather than a blur
-(the leftover is a thin dark border). A width that would run off the screen is brought down to fit.
+board's own aspect** — you set width, height comes with it — and in the crisp default the picture
+is drawn at a whole-number multiple of the board's pixels so a 1970s frame stays a crisp grid rather
+than a blur (the leftover is a thin dark border). Under the period tube look (`[display] crt = true`)
+the window instead fills exactly the width you asked for, since the soft raster has no square pixels
+to keep sharp. A width that would run off the screen is brought down to fit.
+
+The built-in `terminal` window (see the [Serial ports](serial.md) chapter) sizes itself the same
+way, through a `width=` option on its connect string rather than a board property.
 
 `width` lives on the board, not on `[display]`, because on real hardware each board has its own
 video-out and could drive its own monitor — and the simulator matches that: **each video board

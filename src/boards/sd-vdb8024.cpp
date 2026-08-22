@@ -24,10 +24,12 @@ EndpointResolver g_resolver;
 // field. Stateless, so one shared instance serves every board.
 class Vdb8024Font : public TerminalFont {
 public:
-    int     cellCols() const override { return vdb8024font::kCols; }
-    int     cellRows() const override { return vdb8024font::kRows; }
-    uint8_t glyphRow(uint8_t code, int row) const override {
-        return vdb8024font::glyphRow(code, row);
+    int      cellCols() const override { return vdb8024font::kCols; }
+    int      cellRows() const override { return vdb8024font::kRows; }
+    uint16_t glyphRow(uint8_t code, int row) const override {
+        // The PROM row is 8 bits with bit 7 leftmost; the seam wants bit 15 leftmost, so
+        // MSB-align the byte into the top of the word (bit 7 -> bit 15).
+        return (uint16_t)vdb8024font::glyphRow(code, row) << 8;
     }
 };
 const Vdb8024Font g_vdbFont;

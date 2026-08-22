@@ -744,8 +744,9 @@ out:        PATH -- a host file as a PUNCH: the line's bytes land on disk,
             for a bidirectional line: in:TAPE.TAP,out:TAPE.PUN
 terminal    a windowed terminal the simulator draws itself, no telnet client
             needed. ?emulation=vt100|adm3a|vt52|h19 picks the dialect (vt100
-            default), ?size=COLSxROWS the geometry (80x24 default). Needs a
-            window, so only in an SDL build -- headless refuses it at CONNECT.
+            default), ?size=COLSxROWS the geometry (80x24 default), ?phosphor=
+            green|amber the tube colour, ?width=PX the opening window width.
+            Needs a window, so only in an SDL build -- headless refuses it.
 printer:    QUEUE -- a real print queue on this host (only where the build found
             one). The bytes buffer into a JOB, submitted after a few idle seconds
             (?idle=N, 0=never), on a form feed (?onff), or at a byte ceiling
@@ -938,7 +939,7 @@ SET mem0 phantom=read
 SET acr0:tape mode=record   the tape in the recorder, not the recorder
 SET vdm0 width=1024      how wide the video window opens, in pixels (auto = ~half the screen)
 SET DISPLAY focus=on     the video window takes the keyboard, not the terminal
-SET DISPLAY crt=on       paint the window like the period tube: scan lines and 4:3
+SET DISPLAY crt=on       paint the window like the period tube: soft phosphor and 4:3
 SET REG A=3F             a register in the CPU that is in the socket
 SET BUS UNCLAIMED=WARN   warn on a cycle no board answered
                          (also CONTENTION=WARN|ERROR|SILENT, UNCLAIMED=WARN|HALT|SILENT)

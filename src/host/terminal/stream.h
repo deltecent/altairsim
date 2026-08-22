@@ -64,6 +64,17 @@ public:
     void keyAscii(uint8_t b);
     void keySpecial(int key);  // a TerminalEmulator::Key value
 
+    // Opening window width in device pixels, handed to the Display's acquire() (0 = auto,
+    // ~half the screen). The `width=` connect-string option sets it, mirroring the video
+    // boards' width property; a larger value opens a larger terminal window.
+    void setWindowWidth(int px) { videoWidth_ = px; }
+
+    // The phosphor colour of the tube. Green is the default (the renderer's built-in
+    // palette); amber is the other common period look. Set by the `phosphor=` connect
+    // option; applies the toned-down palette to this terminal's renderer.
+    enum class Phosphor { Green, Amber };
+    void setPhosphor(Phosphor p);
+
     // ---- [terminal] transform chain (issue #244 follow-up) ----------------------
     // A serial LINE must stay 8-bit clean (host/filter.h): a strip7out on a socket
     // masks bit 7 of every XMODEM byte, silently. But the built-in terminal is a

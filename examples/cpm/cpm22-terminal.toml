@@ -38,6 +38,13 @@ base = "default"
 # so once CP/M is up you type into the VT100 window; ^E returns you here.
 startup = ["RUN FF00"]
 
+# THE CRT LOOK. `crt = true` paints the terminal window like the period tube: the 4:3 aspect
+# of a real monitor, with the raster softened so the text reads as phosphor rather than a
+# crisp pixel grid. A host preference, answerable before any window exists (host/display.h);
+# flip it live with `SET DISPLAY crt=off` / `SHOW DISPLAY`.
+[display]
+crt = true
+
 # THE CONSOLE CABLE. `id = "sio0"` with no `type` reaches the 2SIO the base already put in
 # the machine at port 0x10, and re-plugs its channel A from `console` into a built-in VT100.
 # Channel B stays as the base left it (unconnected).
@@ -45,7 +52,7 @@ startup = ["RUN FF00"]
 id = "sio0"
 
   [board.unit.a]
-  connect = "terminal?emulation=vt100&size=80x24"
+  connect = "terminal?emulation=vt100&size=80x24&width=1100"
 
 # THE DISK, verbatim from cpm22-buffered.toml: the base's 88-DCDD gets the system floppy in
 # drive 0. See that file for the memory arithmetic and what `readonly` really does here.
