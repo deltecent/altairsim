@@ -360,8 +360,8 @@ and did not is the worst outcome available.
 
 ## Numbers: hex on the wire, decimal for counts
 
-The machine file follows the same number rule as the monitor (the monitor chapter states it in
-full): **anything the 8080 sees on the bus is hex; anything that never reaches the bus is
+The machine file follows the same number rule as the monitor (the *Monitor* document states it
+in full): **anything the 8080 sees on the bus is hex; anything that never reaches the bus is
 decimal.**
 
 ```toml

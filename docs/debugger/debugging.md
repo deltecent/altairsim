@@ -1,11 +1,17 @@
 # Debugging
 
-This is the chapter the simulator exists for.
+This is the document the simulator exists for.
+
+It is the companion to *The Monitor*: that document introduces the `altairsim>` prompt — how
+you start, stop and reconfigure the machine — and this one covers what you do at that prompt
+when something has gone wrong. Both stand beside the *User Manual*, which describes the
+emulated hardware. `altairsim` simulates the MITS Altair 8800 and the S-100 bus; if the
+`altairsim>` prompt is new to you, read *The Monitor* first.
 
 Running old software is the easy half. The hard half is being able to see what a machine is
 actually *doing* — which board answered, what went out on the bus, why the interrupt never
-arrived — and that is what the commands in this chapter are for. Not every monitor command
-is here — these are the ones you reach for when something has gone wrong.
+arrived — and that is what the commands here are for. Not every monitor command is one of
+them — these are the ones you reach for when something has gone wrong.
 
 ## Where the processor is — `REGS`
 
@@ -216,7 +222,7 @@ EDIT 100          0100 C3 IN 10        assembles DB 10, on to 0102
 `DISASM` **peeks**: it reads memory without running a bus cycle. That matters, and it is not a
 detail. A `read()` on a serial board *consumes* a byte from its receiver, and a disassembler
 that ate the guest's input while you were looking at it would be a debugger you could not
-trust. Nothing in this chapter that only *looks* at memory will disturb it.
+trust. Nothing here that only *looks* at memory will disturb it.
 
 ```
 DISASM FF00       sixteen instructions

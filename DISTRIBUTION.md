@@ -43,6 +43,8 @@ It is the right choice for two reasons. The download is half the size for everyo
 altairsim[.exe]                       the program
 altairsim-manual.pdf                  the User Manual
 altairsim-changelog.pdf               the release history (docs/changelog/, built by CI)
+altairsim-monitor.pdf                 the altairsim> prompt (docs/monitor/, built by CI)
+altairsim-debugger.pdf                debugging from that prompt (docs/debugger/, built by CI)
 DRIVING-WITH-AI.md                    the briefing for an AI assistant driving it over MCP
 LICENSE                               ours (MIT)
 examples/cpm/                         CP/M 2.2 on an 8" floppy
@@ -482,7 +484,7 @@ Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — t
 
 > **The changelog is curated, not accumulated.** Each released section is a short *narrative* of a handful of themed entries in the voice of the sections already there (0.3.0 is six) — **not** a verbatim promotion of the running `Unreleased` block, which is a detailed working scratch that also carries entries already shipped in an earlier release. Write the new `X.Y.Z` section fresh from `git log --merges <prevtag>..HEAD` (the authoritative "what actually landed since the last tag"), group it into themes, and **trim anything already shipped** — do not just rename `## Unreleased` to `## X.Y.Z`. Confirm a candidate entry is genuinely new with `git merge-base --is-ancestor <feature-sha> <prevtag>` (an *ancestor* of the previous tag already shipped); do not trust `git log --grep`, which matches later mentions too.
 
-**2. Merge, then wait for the PDFs.** `docs.yml` rebuilds all three PDFs on master — the manual, the **changelog** (`docs/changelog/`), and the developer guide — and commits the ones that changed as *"Rebuild the PDFs for `<sha>`"*. **Tag that commit**, not the merge — otherwise the tagged tree carries a stale manual, or no changelog at all. The manual is handed to `build-package.sh` with `--pdf`; the changelog needs no flag — the script copies `docs/altairsim-changelog.pdf` straight from the tagged tree (it is a committed artifact, same as the manual, and it must not go through the token-substitution loop).
+**2. Merge, then wait for the PDFs.** `docs.yml` rebuilds every document on master — the manual, the **changelog** (`docs/changelog/`), the quick reference, the **monitor** and **debugger** documents (`docs/monitor/`, `docs/debugger/`), and the developer guide — and commits the ones that changed as *"Rebuild the PDFs for `<sha>`"*. **Tag that commit**, not the merge — otherwise the tagged tree carries a stale manual, or a shipped document missing altogether. The manual is handed to `build-package.sh` with `--pdf`; the changelog, the monitor and the debugger need no flag — the script copies `docs/altairsim-changelog.pdf`, `docs/altairsim-monitor.pdf` and `docs/altairsim-debugger.pdf` straight from the tagged tree (each is a committed artifact, same as the manual, and none may go through the token-substitution loop).
 
 **3. Tag and push.** This fires `cpu-exerciser-release.yml`: 8080EXM, ZEXDOC and ZEXALL on all three CI platforms, roughly 15 billion instructions each. **Wait for it to go green before publishing anything.**
 

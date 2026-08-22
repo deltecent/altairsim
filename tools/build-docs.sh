@@ -4,6 +4,8 @@
 #
 #   docs/manual/    -> altairsim-manual.pdf     SHIPS IN THE PACKAGE. Self-contained.
 #   docs/changelog/ -> altairsim-changelog.pdf  SHIPS IN THE PACKAGE. What changed, per release.
+#   docs/monitor/   -> altairsim-monitor.pdf    SHIPS IN THE PACKAGE. The altairsim> prompt.
+#   docs/debugger/  -> altairsim-debugger.pdf   SHIPS IN THE PACKAGE. Debugging from that prompt.
 #   docs/devguide/  -> altairsim-devguide.pdf   Repo only. May talk about the source.
 #
 # THIS IS NOT PART OF THE BUILD, and it must never become part of it. altairsim's loudest
@@ -231,7 +233,15 @@ build() {  # build <docdir> <output-name> <title> [notoc]
   # The changelog opts out of the contents page entirely (build ... notoc): it is read
   # newest-first, top to bottom, so a list of the release headings is just the first pages
   # over again. Every other document keeps the chapter-level contents described above.
+  #
+  # A SINGLE-CHAPTER document is the case the depth-1 rule does not fit: its whole contents
+  # would be one line, the chapter title repeated from the cover. The monitor and the debugger
+  # documents (each one chapter, split OUT of the manual -- the very "SPLIT IT" the note above
+  # names) pass `toc2` for a --toc-depth=2 contents of their own subsections, which is the
+  # navigation the reader actually wants and the shape the depth-1 rule was written to protect
+  # a MANY-chapter book from, not to deny a one-chapter one.
   toc_args="--toc --toc-depth=1"
+  [ "${4:-}" = toc2 ]  && toc_args="--toc --toc-depth=2"
   [ "${4:-}" = notoc ] && toc_args=""
 
   # shellcheck disable=SC2086
@@ -353,6 +363,12 @@ mkdir -p "$out"
 build manual    altairsim-manual    "altairsim — User Manual"
 build changelog altairsim-changelog "altairsim — Changelog" notoc
 build devguide  altairsim-devguide  "altairsim — Developer Guide"
+
+# Driving altairsim itself -- two short documents split out of the manual (they describe the
+# program, not the emulated hardware). Each is a single chapter, so it takes a subsection-level
+# contents (toc2) rather than the one-line depth-1 table a chapter-count of one would give.
+build monitor   altairsim-monitor   "altairsim — The Monitor"   toc2
+build debugger  altairsim-debugger  "altairsim — The Debugger"  toc2
 
 # The quick reference, rendered for a human to read. The Markdown still ships too (it is the
 # AI's plain-text crib); this is the same content a file manager can open.
