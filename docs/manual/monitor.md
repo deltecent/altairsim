@@ -298,28 +298,25 @@ A `RUN` ends when it hits a **breakpoint**, or a `HLT` that nothing can wake —
 says which. With no console connected there is nothing to hand the keyboard to, so it simply
 runs, and `^C` stops it.
 
+**RUN and ATTN are the panel's RUN and STOP.** `RUN` starts the processor; ATTN — or a
+breakpoint, or a `HLT` — stops it and hands the monitor back. That prompt is the whole
+distinction: **the monitor exists only while the machine is stopped.** While it runs, the guest
+holds the keyboard and there is no `altairsim>` to type at; when you have the prompt, nothing is
+executing. So every `SET`, `DEPOSIT` and `EXAMINE` you type acts on a *stopped* machine — a
+property is never changed out from under a running instruction, and none is ever locked "while
+running" or settable only then.
+
 ## Speed
 
-**It runs flat out by default.** `clock_hz` on the CPU board is `0`, which means "as fast as
-this host can go", and a cassette that took a real Altair 110 seconds comes off in about one.
+**It runs flat out by default** — `clock_hz` on the CPU board is `0`, so a cassette that took a
+real Altair 110 seconds comes off in about one. `SET cpu0 clock_hz=2000000` buys back the 2 MHz
+machine; what the guest sees is identical either way, because the tape still costs the same
+T-states — the crystal buys period *feel*, not *behaviour*. `SHOW cpu0` reports `achieved_hz`
+beside it: the clock the run loop actually hit, a measurement you cannot set.
 
-```
-SET cpu0 clock_hz=2000000
-```
-
-…buys back the 2 MHz machine, and with it the 110 seconds. **What the guest sees is identical
-either way** — the tape still costs the same number of T-states, the timing loops still count
-the same. The crystal buys period *feel*, not period *behaviour*.
-
-**`SHOW cpu0` reports back what it actually reached.** Beside `clock_hz` — the crystal you
-asked for — sits `achieved_hz`, the clock the run loop hit the last time it ran. Flat out,
-that is how fast this host went; with a crystal set, it is how close the pacing landed. It
-reads `0` until the machine has run, and you cannot set it — it is a measurement, not a knob.
-
-**Until the guest talks to something outside the machine.** A program measures time by counting
-instructions, so at `clock_hz = 0` a timeout it believes is three seconds can expire in thirty
-milliseconds of yours — which is why an XMODEM transfer to your host wants the real crystal, and
-a cassette does not. See the troubleshooting chapter.
+The one exception is anything the guest times against the *outside* world — an XMODEM transfer
+wants the real crystal, a cassette does not. The boards chapter (`clock_hz`, `idle`) and the
+troubleshooting chapter have the detail.
 
 ## RESET is not POWER
 
@@ -328,52 +325,25 @@ a cassette does not. See the troubleshooting chapter.
 | `RESET` | the bus's RESET* line. The processor restarts at `0000`. **Memory survives**, disks stay mounted. |
 | `POWER` | a power cycle. **This is the only thing that loses RAM** and re-reads the ROM images. |
 
-`RESET` does not clear memory because pressing RESET on a real Altair did not clear memory.
-That is not a simplification; it is the behaviour a lot of period software depends on.
+`RESET` does not clear memory because pressing RESET on a real Altair did not clear memory —
+that is behaviour a lot of period software depends on.
 
-### RESET* is a wire, and every board is listening
+`RESET*` is a **line on the backplane**, not an instruction the simulator carries out for you,
+and every board hears it and answers the way its own silicon did — which is not the same answer
+twice. The memory board clears its bank latch but touches no RAM (a RAM chip has no reset pin);
+the floppy controller flushes the sector it was writing and deselects the drive; and the 2SIO
+does **nothing at all**, because the 6850 has no reset pin for `RESET*` to land on — so its baud
+rate, word format and interrupt enables all survive a reset, exactly as on the bench. Hit
+`RESET` mid-write and you get what the hardware gave you: a half-written sector, a serial port
+still configured as the dead program left it, and every byte of RAM intact.
 
-The processor is not the only thing that hears it. `RESET*` is a **line on the backplane**, and
-it runs past every board in the machine — so `RESET` is not an instruction the simulator carries
-out on your behalf. It is a signal put on the bus, and each board answers it the way its own
-silicon answered it, which is not the same answer twice:
-
-- The **memory board** clears its bank latch — and does not touch one byte of RAM. A RAM chip has
-  no reset pin to touch it with.
-- The **floppy controller** flushes the sector it was in the middle of writing, deselects the
-  drive, and lets the head unload. On the 5¼″ minidisk the motor spins down; on the 8″ drive
-  nothing spins down, because that card has no motor control to spin down *with*.
-- The **2SIO does nothing at all**, and that is the most instructive answer of the three. The
-  MC6850 has **no reset pin** — Vss, RxD, RxCLK, TxCLK, RTS, TxD, IRQ, CS0–CS2, RS, Vcc, R/W, E,
-  D0–D7, /DCD, /CTS, and that is the entire package. `RESET*` reaches the card and has **nowhere
-  to land**, so the baud rate, the word format, RTS and the interrupt enables all survive a
-  reset, exactly as they do on the bench. (The 6850's *master reset* is a real thing, but it
-  belongs to the **guest**: a program performs it by writing to the control register. The front
-  panel cannot do it for you.)
-
-Which is why a reset here behaves like a reset there. Hit `RESET` in the middle of a disk write
-and you get what the hardware gave you: a half-written sector on the disk, a serial port still
-configured exactly as the dead program left it, and every byte of your RAM intact and waiting
-to be looked at. Nothing is tidied up on the way out, because on a real machine nobody was there
-to tidy it.
-
-### And `POWER` is a *different wire*
-
-This is the part that makes `POWER` a different event rather than a bigger one. Switching the
-machine on drives **`POC*`** — Power-On Clear, its own line on the backplane — and a board is
-free to treat the two lines differently, because the real cards did.
-
-The **88-VI/RTC** is the case that proves it. Its manual is explicit that POC disables every
-function on the board, and the schematic runs POC — and *only* POC — to that logic. `RESET*` is
-not wired to it at all. So an interrupt controller that a crashed program left armed and
-enabled **stays armed through a `RESET`**, and comes back only when you `POWER` the machine.
-That is not our shortcut; it is the card, and it is why a program that resets its way out of
-trouble can still be taking interrupts it forgot it asked for.
-
-`POC*` is also the only moment RAM is allowed to forget. On `POWER` the memory board refills
-itself — with **random bytes by default**, because static RAM does not come up zeroed, and a
-simulator that quietly zeroes it will never once catch the program that assumed otherwise — and
-re-reads every ROM image from disk.
+**`POWER` is a different wire.** Switching the machine on drives `POC*` — Power-On Clear, its
+own backplane line — and a board may treat the two differently, because the real cards did. The
+88-VI/RTC is the case that proves it: POC disables the board and `RESET*` is not wired to it at
+all, so an interrupt controller a crashed program left armed **stays armed through a `RESET`**
+and only clears on `POWER`. `POC*` is also the only moment RAM is allowed to forget: on `POWER`
+the memory board refills itself — with **random bytes by default**, because static RAM does not
+come up zeroed — and re-reads every ROM image.
 
 | | The processor | The boards | RAM |
 |---|---|---|---|

@@ -43,8 +43,8 @@ the assistant to read.
 
 ## The machines are in the program
 
-You do not need any files to get a running machine. The machine descriptions are
-compiled into the binary, and naming one boots it:
+You do not need any files to get a running machine — the machine descriptions are compiled into
+the binary, and naming one boots it:
 
 ```
 $ altairsim --list                what the built-in names are
@@ -53,20 +53,11 @@ $ altairsim sol20                 a Processor Technology Sol-20, running SOLOS
 ```
 
 A built-in is an ordinary machine file that happens to live inside the executable — the same
-TOML format you would write yourself.
-
-**Several of them carry their software in ROM and need nothing else at all**: `altmon`,
-`amon`, `acuter`, `cuter`, `sol20`, `vdm1`, `rombasic` and the two SD Systems machines
-`sbc200` and `sbc200v` among them, coming up running with nothing fetched and nothing
-mounted.
-
-The rest carry at most a **boot PROM**, which is not the same thing. `default`, `cdbl`,
-`minidisk`, `turnkey` and the two Tarbell machines hold the PROM that *would* boot a disk,
-and their drives are empty — the PROM runs, finds no disk, and that is as far as it gets.
-They want media, and the next section is about where that comes from.
-
-`CONFIG SAVE mine.toml` writes out the machine you are actually running, as a file you can
-edit — which is the usual way to start one of your own.
+TOML format you would write yourself, and `CONFIG SAVE mine.toml` writes any running machine out
+as one you can edit. **Several carry their software in ROM and need nothing else** (`altmon`,
+`amon`, `sol20`, `vdm1`, `rombasic`, the SD Systems `sbc200`/`sbc200v`, among others); the rest
+carry at most a boot PROM and come up with empty drives, wanting media — which the next section
+is about. The machines chapter has the full story.
 
 ## The examples, media included
 

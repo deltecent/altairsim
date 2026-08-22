@@ -6,9 +6,9 @@ separate, and the manual keeps them separate, because the machine did.
 
 This chapter is about the last two — the **image** and the **drive it goes in** — and the
 `MOUNT` workflow that puts one in the other. That workflow is the same whichever controller you
-have. The **controllers themselves** are boards, one per section in the Boards chapter; this
-chapter uses the MITS hard-sector pair (`dcdd` and `mds`) for its examples because that is what
-the shipped machines boot from.
+have. **`altairsim` has many disk controllers** — the **controllers themselves** are boards,
+one per section in the Boards chapter; this chapter uses just the MITS hard-sector pair (`dcdd`
+and `mds`) for its examples, because that is what the shipped machines boot from.
 
 The controller is a board. It goes in the machine file. The drives are part of the
 controller — a MITS 88-DCDD addresses up to sixteen of them, whether or not you own sixteen.
@@ -239,27 +239,18 @@ cannot decide.
 
 ## Why an 8 MB disk works at all
 
-`fdc8mb` is a 2048-track disk on a controller that MITS designed for 77 tracks, and it works
-through the **stock card with the stock PROM**. That deserves an explanation, because it looks
-like a cheat and is not one.
+`fdc8mb` is a 2048-track disk on a controller MITS designed for 77 tracks, and it works through
+the **stock card with the stock PROM** — because the controller cannot tell the two apart. It
+steps the head and shifts bytes; it never asks how big the disk is. All the intelligence about
+*where track 1500 is* lives in the BIOS, which is software.
 
-**The controller cannot tell an 8 MB disk from an 8″ floppy.** It steps the head in, it steps
-the head out, it shifts bytes past a read head, and it reports what the drive tells it. It
-never asks how big the disk is, because a real 88-DCDD had no way to ask and no reason to
-want to. Step it 300 times and it steps 300 times. All the intelligence about *where track
-1500 is* lives in the BIOS, which is software, and software can be rewritten.
+The useful upshot is that **format and spindle are per drive, not per controller**, so mixed
+geometry on one board is the intended arrangement: period 8 MB CP/M BIOSes expect an 8 MB disk
+on A:/B: and ordinary 77-track floppies on C:/D:, so you can `PIP` between them.
 
-The upshot is the useful part: **format and spindle are per drive, not per controller.**
-Mixed geometry on one board is the intended arrangement, not an accident — period 8 MB CP/M
-BIOSes expect exactly that, an 8 MB disk on A: and B: and ordinary 77-track floppies on C:
-and D:, so that you can `PIP` between the big disk and something you can hand to somebody
-else.
-
-**Both of these are images you supply.** Neither is in the package, so the two lines below are
-the shape of the command rather than files you already have. The period 8 MB CP/M image is one
-the **source repository** can fetch for you — it carries a script, `tools/fetch-disk-images.sh`,
-that downloads it and checks it against a known hash — and the package chapter says where the
-source is.
+**Both are images you supply** — neither is in the package, so the lines below are the shape of
+the command, not files you have. The period 8 MB CP/M image is one the source repository can
+fetch for you; the package chapter says where the source is.
 
 ```
 altairsim> MOUNT dsk0:drive0 big.dsk

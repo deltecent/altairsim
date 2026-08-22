@@ -2,43 +2,28 @@
 
 `altairsim` simulates the **MITS Altair 8800** and the **S-100 bus** it was built around.
 
-It boots real software. Not software written to work with it — the actual artifacts, byte
-for byte, as they were sold: Altair BASIC off a cassette, CP/M 2.2 off an 8″ floppy, MITS
-Programming System II off paper tape's successor. None of it has been patched, and none of
-it knows it is not running on a real machine.
-
-The point of a simulator is usually to run the old software. This one is built the other way
-round. It is a **bench for new hardware, and for the software that has to drive it** — which
-are not two jobs, they are one job, and it is very good at running the old software besides.
+It boots real software — not software written to work with it, but the actual artifacts,
+byte for byte, as they were sold: Altair BASIC off a cassette, CP/M 2.2 off an 8″ floppy,
+MITS Programming System II off paper tape. None of it has been patched, and none of it knows
+it is not running on a real machine.
 
 The S-100 bus is a real object in the program, not a wiring diagram implied by the code.
-Boards plug into it. They contend for addresses, pull the interrupt line, float the data bus
-when nobody is driving it, and get the answer wrong in exactly the ways real boards did. So a
-board you have not built yet can be *fitted* here, and the driver you have not finished can be
-*run* against it, months before either exists in copper.
-
-That is the whole of the argument, and it is an argument about **where you find your bugs.**
-On real hardware a bug is a scope probe, a stubborn intermittent, and a machine that will not
-tell you what it just did. Here it is a breakpoint on a bus cycle. You can stop the machine
-mid-instruction, ask which board answered and which stayed silent, watch a driver poll a status
-bit that will never come true, and run the same thing again and get the same answer — because
-nothing here is intermittent, and nothing is hidden.
-
-Every bug you kill on the bench is a bug you are not chasing at 2 MHz with a logic analyser.
-And when you do finally power up the real board, the software has already run — so the faults
-you are left with are the ones that are genuinely the *hardware's*: a timing margin, a noisy
-line, a pin on the wrong side of a buffer. That is a bring-up you can finish. The one where
-you cannot tell whether the board is wrong or the driver is wrong is the one that eats a month.
+Boards plug into it, contend for addresses, pull the interrupt line, and float the data bus
+when nobody is driving it — getting the answer wrong in exactly the ways real boards did. That
+makes the machine a **bench**: a board you have not built yet can be fitted here, and the
+driver you have not finished can be run against it, before either exists in copper. And it
+makes bugs findable — you can stop the machine mid-instruction, ask which board answered and
+which stayed silent, and run the same thing again and get the same answer, because nothing
+here is intermittent and nothing is hidden.
 
 ## What it does
 
-- **An 8080 that is validated, not merely plausible — and a Z80 alongside it.** TST8080,
-  8080PRE, CPUTEST and the full 8080EXM exerciser all pass — every one of the exerciser's CRC
-  groups. Flags, carries, the undocumented behaviours, the lot. The Z80 clears the same bar,
-  against ZEXDOC and ZEXALL.
-- **A board for most of the machine**, all but one modelled from its own manual: CPU boards (an
-  8080, a Z80 and an 8085, and the Altair 680b's Motorola 6800), RAM/ROM, serial boards, cassette
-  interfaces, floppy controllers, a line-printer
+- **An 8080 and its binary-compatible successor the 8085**, with a Z80 alongside — each faithful
+  down to the flags, the carries and the undocumented behaviours, and each checked against the
+  standard processor exercisers before any board is built on it. The Altair 680b's Motorola 6800
+  is here too.
+- **A board for most of the machine**, all but one modelled from its own manual: CPU boards,
+  RAM/ROM, serial boards, cassette interfaces, floppy and disk controllers, a line-printer
   controller, video displays, the Sol-PC's integrated I/O, a vectored-interrupt/real-time-clock
   board, the front panel, and one board of our own for moving files in and out. The boards
   chapter has the whole list.
@@ -49,47 +34,39 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
 - **Real I/O.** A serial board can be wired to your terminal, to a TCP socket (so you can
   telnet into the guest), or to an actual serial port on your machine, with the modem
   control lines wired through. A line-printer board can be wired to a **real print queue**,
-  where your build found a print system, so a listing from 1977 comes out of the printer on
-  your desk.
+  so a listing from 1977 comes out of the printer on your desk.
 - **File transfer** between the host and CP/M, sandboxed. A board in the machine does the
   moving; the things you actually *type* — `HDIR`, `R` and `W` — are ordinary CP/M programs
-  that live on a disk and run at the `A>` prompt, like `PIP` or `STAT`.
+  that run at the `A>` prompt, like `PIP` or `STAT`.
 
 ## What it does not do
 
 This section is here because a manual that only lists strengths is an advertisement.
 
-- **It runs an 8080, a Z80, or an 8085 as a processor completely — but the 8085's on-chip
-  serial and interrupt *pins* connect to nothing.** Every documented 8085 instruction runs
-  and is validated against real silicon (RIM/SIM, the TRAP/RST 5.5/6.5/7.5 interrupts, the
-  whole documented set), and so now do the ten *undocumented* opcodes (`DSUB`, `ARHL`,
-  `LDHI`…) with the V/K flag bits some of them set. What no board drives are the 8085's own
-  pins: the `SID`/`SOD` serial lines that `RIM`/`SIM` read and write, and the `TRAP` and
-  `RST 5.5`/`6.5`/`7.5` interrupt inputs. Nothing on the S-100 bus carries them, so code that
-  bit-bangs a console on `SID`/`SOD` or waits on one of those interrupts has nothing on the
-  other end. Ordinary interrupts, over the shared `INTR` line, work exactly as for the 8080.
+- **The 8085's on-chip serial and interrupt *pins* connect to nothing.** Every documented
+  8085 instruction runs, and so do the undocumented opcodes — but no card on the S-100 bus
+  carries the `SID`/`SOD` serial lines or the `TRAP`/`RST 5.5`/`6.5`/`7.5` inputs, so code
+  that bit-bangs a console on those pins has nothing on the other end. Ordinary interrupts,
+  over the shared `INTR` line, work exactly as for the 8080.
 - **You can save state, but not replay.** `SNAPSHOT` writes the machine's whole state to a
-  file and `RESTORE` reads it back, so you can save a machine and return to it. What you cannot
-  do is *record* a session and step backwards through it, or replay a run from the start —
-  there is no rewind.
-- **The Altair itself had no video and no audio**, and a terminal on a serial port is its
-  display, exactly as it was. But **video cards existed for the S-100 bus, and two of them are
-  here**: the Processor Technology VDM-1, and the Sol-PC's integrated video. Both open a real
-  window when the program was built with SDL3, and fall back to a headless display when it was
-  not. **There is still no audio output** — nothing is ever sent to a speaker. Cassette `.WAV`
-  files are read and written as *files*, which is a different thing, and the tapes chapter
-  covers it.
-- **Not every S-100 board is here.** The ones that are, are in the boards chapter — the list
-  is long, but it is not every card ever made.
-- **Timing is honest, but it is not a circuit simulation.** Instructions cost the right
-  number of T-states and a cassette takes the right number of them to load. Propagation
-  delays and analogue behaviour are not modelled, and no software from the period could tell.
+  file and `RESTORE` reads it back. What you cannot do is *record* a session and step
+  backwards through it — there is no rewind.
+- **The Altair itself had no video and no audio.** A terminal on a serial port is its display,
+  as it was — but **video cards existed for the S-100 bus, and several are here** (the VDM-1,
+  the Dazzler, the SD Systems VDB-8024, the Sol-PC). Each opens a real window when the program
+  was built with SDL3, and falls back to a headless display when it was not. **There is no
+  audio output.** Cassette `.WAV` files are read and written as *files*, which the tapes
+  chapter covers.
+- **Not every S-100 board is here**, and timing, while honest, is not a circuit simulation:
+  instructions cost the right number of T-states and a cassette takes the right number of them
+  to load, but propagation delays and analogue behaviour are not modelled — and no software
+  from the period could tell.
 
 ## What is in the box
 
 You have the `altairsim` program, this manual, and a folder of worked examples with their
-media — complete machines that boot, each with a README of its own saying what it is. More
-machines are built into the program itself. It boots something the moment you unzip it; the
-next chapter says what, and where further disks and tapes will come from.
+media — complete machines that boot, each with a README of its own. More machines are built
+into the program itself. It boots something the moment you unzip it; the next chapter says
+what, and where further disks and tapes come from.
 
-There is no installer, no configuration, and nothing to set up. Unzip it and run it.
+There is no installer and nothing to set up. Unzip it and run it.

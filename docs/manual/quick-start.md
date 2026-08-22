@@ -78,17 +78,10 @@ memory, the disk in the drive and the guest's place in its own program are all e
 were. That is the whole content of *"the machine is still at CA9C"* — it is telling you the
 machine is intact and says where to pick it up.
 
-### Why it is not `^C`
-
-Because **`^C` belongs to the guest.** CP/M reads `^C` — it is how you warm-boot it, and how
-you interrupt a BASIC program. A stop key that the guest also wants is a stop key the guest
-will eat, and then you are trapped inside your own simulator.
-
-So the host intercepts `^E` **before the guest is ever offered the byte**. No program running
-inside the machine can disable it, ignore it, or take it away from you. Everything else on
-the keyboard — including `^C` — goes straight through to the guest, which is entitled to it.
-
-(If `^E` collides with something you need, it moves: `CONSOLE attn=1D` makes it `^]`.)
+Why `^E` and not `^C`? Because **`^C` belongs to the guest** — CP/M warm-boots on it and BASIC
+breaks on it — so the host intercepts `^E` before the guest is ever offered the byte, and no
+program inside the machine can take it from you. Everything else, `^C` included, goes straight
+through. (If `^E` collides with something you need, `CONSOLE attn=1D` moves it to `^]`.)
 
 ## Going back in — `RUN`
 
@@ -117,44 +110,26 @@ There is no `EXIT`. `Q` will do.
 
 ## Careful: the disk is real, and there is no undo
 
-The disk image is mounted **read/write**, because that is what a machine with a disk in it is.
-So anything you do in there *happens to the file on your host*, and nothing is keeping a copy.
+The disk image is mounted **read/write**, because that is what a machine with a disk in it is —
+so anything you do in CP/M happens to the file on your host, with nothing keeping a copy. Two
+ways to be safe:
 
-You have two ways to be safe, and they answer different questions.
+- **Write-protect it.** `MOUNT dsk0:drive0 {{DISK_CPM}} RO` refuses every write at the
+  controller, so the file cannot change however the guest behaves. Use it to *look around*. But
+  the guest is not *told* the disk is protected, so a program that means to write may not survive
+  being refused — mount `RO` to read, not to run a CP/M you expect to save your work.
+- **Copy the folder** when you actually intend to write. It is self-contained and boots from
+  anywhere:
 
-**Write-protect the disk.** `RO` refuses every write at the controller, so the file on your
-host cannot change no matter what the guest does:
+  ```
+  $ cp -R examples/cpm my-cpm
+  $ altairsim my-cpm/cpm22-buffered.toml
+  ```
 
-```
-altairsim> MOUNT dsk0:drive0 {{DISK_CPM}} RO
-```
-
-In a machine file it is `readonly = true` in the drive's table — or `writeprotect = true`,
-which is the same key said the way the rest of the program says it. Use it when you want to *look
-around* — boot it, `DIR`, `TYPE`, run `STARTRK` — with the image guaranteed untouched. It is
-the stronger promise about your file, because it does not depend on you remembering anything.
-
-But it is **read-only, and it means it**: the guest is not *told* the disk is protected, it is
-simply not allowed to write, and a program that sets out to write may not survive being refused.
-Mount `RO` to read a disk, not to run a CP/M that expects to save your work. The disks chapter
-says why the guest cannot be told.
-
-**Or copy the folder,** which is what you want the moment you intend to actually *write* —
-save a BASIC program, assemble something, use `PIP`. It is a directory with a machine file
-and a disk image in it, and it boots from anywhere:
-
-```
-$ cp -R examples/cpm my-cpm
-$ altairsim my-cpm/cpm22-buffered.toml
-```
-
-The disks chapter has both in full.
-
-There is one more trap, and it is not obvious: **this BIOS does not write to the disk when
-CP/M closes a file.** It writes into a track buffer in memory and flushes it the next time it
-reads the console. So do not kill the program the instant a file operation finishes — **get
-back to the `A>` prompt first**, and the directory update will have landed. The disks chapter
-explains why.
+One non-obvious trap: **this BIOS does not write to the disk when CP/M closes a file** — it
+buffers a whole track and flushes it the next time it reads the console. So **get back to the
+`A>` prompt before you quit or copy the image**, or the last write never lands. The disks
+chapter explains all three in full.
 
 ## No disk? Start with a tape instead
 

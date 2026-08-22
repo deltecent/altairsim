@@ -277,9 +277,8 @@ static const std::vector<CommandDef> kCommands = {
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>",  // SE (beats SEARCH)
-     "SHOW <id> lists every property, its value, and whether it can be set while\n"
-     "the machine runs. A property's base is its own: a port is hex, a baud rate\n"
-     "is decimal.\n"
+     "Each property has a base of its own -- a port is hex, a baud rate is decimal.\n"
+     "SHOW <id> lists them all, with each value.\n"
      "\n"
      "A UNIT HAS PROPERTIES OF ITS OWN, and <id>:<unit> is how you reach them: the\n"
      "tape in the recorder rather than the recorder, the disk in the drive rather\n"
