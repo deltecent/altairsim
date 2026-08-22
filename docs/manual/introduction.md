@@ -37,7 +37,8 @@ you cannot tell whether the board is wrong or the driver is wrong is the one tha
   groups. Flags, carries, the undocumented behaviours, the lot. The Z80 clears the same bar,
   against ZEXDOC and ZEXALL.
 - **A board for most of the machine**, all but one modelled from its own manual: CPU boards (an
-  8080 and a Z80), RAM/ROM, serial boards, cassette interfaces, floppy controllers, a line-printer
+  8080, a Z80 and an 8085, and the Altair 680b's Motorola 6800), RAM/ROM, serial boards, cassette
+  interfaces, floppy controllers, a line-printer
   controller, video displays, the Sol-PC's integrated I/O, a vectored-interrupt/real-time-clock
   board, the front panel, and one board of our own for moving files in and out. The boards
   chapter has the whole list.
@@ -78,8 +79,8 @@ This section is here because a manual that only lists strengths is an advertisem
   not. **There is still no audio output** — nothing is ever sent to a speaker. Cassette `.WAV`
   files are read and written as *files*, which is a different thing, and the tapes chapter
   covers it.
-- **Not every S-100 board is here.** The ones that are, are in the boards chapter. A PMMI
-  modem is designed but not built.
+- **Not every S-100 board is here.** The ones that are, are in the boards chapter — the list
+  is long, but it is not every card ever made.
 - **Timing is honest, but it is not a circuit simulation.** Instructions cost the right
   number of T-states and a cassette takes the right number of them to load. Propagation
   delays and analogue behaviour are not modelled, and no software from the period could tell.

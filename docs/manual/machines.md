@@ -24,7 +24,8 @@ altairsim [options] [machine]
 | `-x, --exec <cmd>` | run one monitor command, then exit. Repeatable |
 | `-i, --interactive` | after `--script`/`--exec`, stay in the monitor |
 | `--mcp` | run as an MCP server on stdio |
-| `-v, --version` `-h, --help` | |
+| `-v, --version` | print the version and exit |
+| `-h, --help` | print this help and exit |
 
 **Give exactly one machine.** A positional name *and* a `-m`, or a `-f` *and* a `-n`, is an
 error — the program says *give ONE machine* and stops. It does not guess which one you meant.
