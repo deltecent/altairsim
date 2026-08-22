@@ -18,6 +18,7 @@
 #include "boards/usio.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
+#include "boards/compupro-ss1.h"
 #include "boards/sd-sbc.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/terminal-font.h"
@@ -181,6 +182,7 @@ int main(int argc, char** argv) {
     altair::UsioBoard::setResolver(altair::resolveEndpoint);
     altair::CromemcoFdcBoard::setResolver(altair::resolveEndpoint);
     altair::FrontPanelBoard::setResolver(altair::resolveEndpoint);
+    altair::Ss1Board::setResolver(altair::resolveEndpoint);
 
     // A graphics board draws into an injected Display; headless tests give it a
     // NullDisplay, so a VDM-1 renders into memory and a test reads the pixels back

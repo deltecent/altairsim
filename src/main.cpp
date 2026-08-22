@@ -17,6 +17,7 @@
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-vdb8024.h"
+#include "boards/compupro-ss1.h"
 #include "boards/sd-sbc.h"
 #include "boards/terminal-font.h"
 #ifdef ALTAIRSIM_ENABLE_SDL
@@ -241,6 +242,7 @@ int main(int argc, char** argv) {
     UsioBoard::setResolver(resolveEndpoint);     // the universal serial board's one line
     CromemcoFdcBoard::setResolver(resolveEndpoint);  // the FDC family's TMS 5501 console (16/64FDC)
     FrontPanelBoard::setResolver(resolveEndpoint);   // the fp panel dials OUT to the graphical bridge
+    Ss1Board::setResolver(resolveEndpoint);          // the System Support 1's 2651 serial channel
 
     // The video service, injected the same way (DESIGN.md 7.4): a graphics board
     // draws into a Display and never learns it is SDL. The shipping binary hands it
