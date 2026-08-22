@@ -62,6 +62,12 @@ master prioritizes the bus's vectored-interrupt lines and drives the CPU, while 
 the on-board timer and UART interrupts. Everything but the (empty) math-chip socket is now
 implemented.
 
+The **SSM PB1** brings something new: a **PROM burner**. Instead of preparing a ROM image with
+`LOAD … ROM`, you now *run* a period EPROM-programmer routine against a board that presents the
+real interface — a 4K socket window and an arm/type control port — burn a 2708 or 2716, and
+`SAVE` the result as an ordinary Intel HEX file. The machine ships with SSM's own 2708 burner from
+the PB1 manual, ready to run (`altairsim pb1`).
+
 ### A third validated CPU core: the Intel 8085
 
 The 8080 and Z80 are joined by a documented **Intel 8085** core — the 8080's binary superset,

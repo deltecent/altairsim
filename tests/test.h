@@ -93,6 +93,7 @@ void test_v2z80rom();
 void test_88acr();
 void test_88uio();
 void test_c700();
+void test_pb1();
 void test_papertape();
 void test_pmmi();
 void test_lpc();

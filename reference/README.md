@@ -44,6 +44,12 @@ model wrong).
 | [North Star HRAM](North%20Star%20HRAM.md) | HORIZON DRAM board (HRAM-32/48/64): **port C0H**, and the byte is **not** a bank number — **bit 0 = on(0)/off(1) command, bits 1–7 = one-hot** address of which bank the command toggles (per-board JP1). Only **≤6 banks** usable (one of bits 5/6/7 is spent on parity); software must switch the old bank off before the new one on. Two independently-switchable 32K sections (JP2); JP1 also sets the reset state (default: always on). |
 | [Cromemco 64KZ / 64KZ-II RAM](Cromemco%2064KZ%20RAM.md) | Two S-100 DRAM boards as one family: **port 40H**, and the BANK SELECT byte is an **8-bit mask of active banks** (bit N ⇒ bank N on/off, several at once — `OUT 40H,28H` = banks 3 **and** 5), 8 banks. Each board is two 32K blocks A/B with per-block bank-membership switches (SW2/SW3) + a RESET-enable switch; 64KZ ≤512K with DMA/OVERRIDE, 64KZ-II ≤448K with per-16K-half enables and no documented DMA. |
 
+## PROM / EPROM
+
+| Reference | What it covers |
+|---|---|
+| [SSM PB1 EPROM Programmer](SSM%20PB1%20EPROM%20Programmer.md) | SSM (ex-Solid State Music) **2708/2716 programmer + 4K/8K EPROM board**: two personalities on one S-100 card. The **programmer** reserves a **4K memory window** (any 4K boundary, **SW2-1..4** = A15–A12) for the two sockets (**U22 = 2708, U23 = 2716**) plus one **I/O control port** at any `x0H` address (**SW2-5..8** = A7–A4; only A4–A7 decoded, so low digit must be 0) — an `OUT` arms the board and latches **D0=1 → 2708 / D1=1 → 2716** timing, then each **memory write to the socket window becomes a programming pulse** (2708 ~0.6 ms @ +26 V; 2716 ~50 ms @ +5 V) held by the S-100 **READY** line, so **wait states are mandatory**; a **read of the socket window resets** the flip-flop (LED off). The **read-only** area (U11–U14) maps 4K 2708 / 8K 2716 to any boundary **above `8000H`** via **SW3** (SW3-1 = type), with unused sockets auto-disabling the data bus; jumper-selectable **0–4 read wait states**; +26.5 V from a TL497 (U32). Ships four 8080 driver routines (`ORG 0100H`, exit to the SSM monitor at `F021H`). **⚠ Not emulated** — reference for possible future support. |
+
 ## Altair 680 (Motorola 6800)
 
 MITS's *second* machine — a **6800** computer, not an 8080/S-100 system, so its boards are

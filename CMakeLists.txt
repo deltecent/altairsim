@@ -464,6 +464,9 @@ add_library(altair_core STATIC
   # SD Systems VersaFloppy I/II -- a WD FD177x soft-sector floppy controller. Owns a
   # wd17xx chip and a generic DiskImageDrive adapter (floppy-drive). Boots SDOS.
   src/boards/sd-versafloppy.cpp
+  # SSM PB1 -- a 2708/2716 EPROM programmer + on-board EPROM board. A hybrid decode: a 4K
+  # programming-socket window + one arm/type control port, plus a read-only on-board PROM area.
+  src/boards/ssm-pb1.cpp
   # Tarbell #1011 (SD) / #2022 (DD) -- one card carrying a WD FD177x floppy controller
   # AND a 32-byte boot PROM that shadows low RAM over PHANTOM*. See src/boards/tarbell.h.
   src/boards/tarbell.cpp
@@ -738,6 +741,7 @@ add_executable(altair_tests
   tests/test_tapecounter.cpp
   tests/test_88uio.cpp
   tests/test_c700.cpp
+  tests/test_pb1.cpp
   tests/test_papertape.cpp
   tests/test_pmmi.cpp
   tests/test_usio.cpp
@@ -963,6 +967,17 @@ add_test(NAME acceptance-ps2
                  -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/ps2.cmake)
 set_tests_properties(acceptance-ps2 PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# The SSM PB1 EPROM programmer: run the manual's own 2708 burner software against the board and
+# read the burned chip back out as an Intel HEX file (issues #397, #382). If it fails, the board
+# is wrong, not the software.
+add_test(NAME acceptance-pb1
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/pb1.cmake)
+set_tests_properties(acceptance-pb1 PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # ---------------------------------------------------------------------------
 # THE HOST BRIDGE: a file crosses into CP/M and comes back byte for byte.

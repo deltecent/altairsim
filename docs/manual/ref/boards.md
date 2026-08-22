@@ -95,6 +95,12 @@ and within a group the boards are in **alphabetical order**.
 |---|---|
 | [`sol`](#sol) | Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT). Brings the WIND/REWIND/EXTRACT verbs and a tape counter |
 
+**PROM programmer**
+
+| Type | What it is |
+|---|---|
+| [`pb1`](#pb1) | SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). No PROM burner software is bundled; run any 2708/2716 burner (e.g. SSM's own, roms/SSM-PB1) |
+
 **Other**
 
 | Type | What it is |
@@ -1093,6 +1099,36 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
 | `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
+
+
+## PROM programmer
+
+### `pb1`
+
+SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). No PROM burner software is bundled; run any 2708/2716 burner (e.g. SSM's own, roms/SSM-PB1)
+
+**Units:** `u22` (rom, MOUNT), `u23` (rom, MOUNT)
+
+#### `[[board.socket]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `chip` | enum | `2708` \| `2716` | Which programming socket: 2708 (U22, 1K) or 2716 (U23, 2K) |
+| `mount` | string | text | A source or erased chip image to put in the socket. Relative to THIS FILE. |
+
+#### `[[board.prom]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `at` | int | `0x8000` .. `0xFFFF` | Where the on-board EPROM sits. An address at or above 8000. |
+| `mount` | string | text | The firmware image: a file (relative to THIS FILE), or builtin:<name>. |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x10` | `0x0` .. `0xF0` | Control port: an OUT here arms the board and picks 2708 (D0) or 2716 (D1). Only A4-A7 decode, so it must be an x0H address (00, 10, .. F0) |
+| `window` | int | `0xD000` | `0x0` .. `0xF000` | The 4K programming-socket window, on a 4K boundary (0000, 1000, .. F000). The guest writes bytes here to burn, and reads here to disarm |
 
 
 ## Other

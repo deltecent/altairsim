@@ -36,6 +36,7 @@
 #include "boards/sd-sbc.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/sd-versafloppy.h"
+#include "boards/ssm-pb1.h"
 #include "boards/tarbell.h"
 #include "boards/usio.h"
 #include "boards/propio.h"
@@ -104,6 +105,7 @@ std::vector<BoardType> boardTypes() {
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
         {"ss1", "CompuPro System Support 1: multifunction S-100 board. Dual 8259A interrupt controllers in a master/slave cascade (master/slave at base+0..+3; master watches VI0-6 and drives pin 73, slave takes the timer OUTs and the UART's Rx/TxRDY), an 8253 interval timer (three counters + control at base+4..+7, 2 MHz clock), the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11) and a 2651 UART serial channel (base+12..+15); base default 50H. The 9511/9512 math socket is unpopulated"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
+        {"pb1", "SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). No PROM burner software is bundled; run any 2708/2716 burner (e.g. SSM's own, roms/SSM-PB1)"},
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
         {"usio", "Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
         {"propio", "S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A usio subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/rdr_bit/tdre_bit/polarity) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
@@ -151,6 +153,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "virtc") return std::make_unique<VirtcBoard>();
     if (type == "ss1") return std::make_unique<Ss1Board>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
+    if (type == "pb1") return std::make_unique<Pb1Board>();
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
     if (type == "usio") return std::make_unique<UsioBoard>();
     if (type == "propio") return std::make_unique<PropIoBoard>();

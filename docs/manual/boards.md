@@ -109,6 +109,12 @@ Grouped by what they do — the same order as the sections below.
 |---|---|
 | `hostbridge` | file transfer to your host. **Ours, not a period card** |
 
+**PROM programmers**
+
+| Type | What it is |
+|---|---|
+| `pb1` | SSM PB1 — burn a 2708/2716 EPROM, then save it as a hex file |
+
 ---
 
 ## Memory
@@ -1202,6 +1208,54 @@ rather than a magic trick the simulator performs on your behalf.
 The file-transfer chapter is where this board is explained. It is the fastest way to get your own
 code into CP/M, and it beats XMODEM by a distance — but XMODEM works too, over an ordinary serial
 line, exactly as it did.
+
+---
+
+## PROM programmers
+
+A board here does not run software — it *burns* it. You load a period EPROM-programmer routine,
+point it at the board, and the bytes it "programs" pile up in a socket you can then save to a file.
+
+## `pb1` — SSM PB1
+
+The **SSM PB1** (Solid State Music) is a 2708/2716 EPROM programmer. It puts a **4K window** in
+memory (default `D000`) for its two sockets — **U22** holds a 2708 (1K), **U23** a 2716 (2K) — and
+one **control port** (default `10`). The burn is done by *software*: an `OUT` to the control port
+arms the board and picks the chip (write `01` for the 2708, `02` for the 2716), and from then on
+every byte the guest **writes into the window** is programmed into the socketed chip. A **read** of
+the window disarms the board again — which is exactly how the period routines finish and turn the
+LED off.
+
+Two things follow from "programming is a write, disarming is a read", and they are worth knowing
+before you chase a bug:
+
+- **A socket starts erased** — every byte `FF` — and **programming can only clear bits to 0**, never
+  set them, just like a real EPROM. So burn a *blank* chip; a second burn over the first only ANDs.
+- The burn lives in the board, not on the host. To keep it, **`SAVE` it to a file** (below). A
+  power-cycle re-reads the sockets from their mounts, so an unsaved burn is gone.
+
+### Burning an EPROM, and making a hex file
+
+This is the whole point of the board (and the answer to "do I need a burner board, or is a bus
+write enough?" — you need the board, because you want to run the *software*). The `pb1` machine
+has a 2708 burner ready to go: SSM's own routine from the PB1 manual, at `roms/SSM-PB1/PB1PROG.HEX`,
+which copies 1K from `4000` into the socket and comes with a test pattern already at `4000`.
+
+```
+altairsim pb1
+LOAD roms/SSM-PB1/PB1PROG.HEX     ; the SSM 2708 burner + 1K of data at 4000
+RUN 100                           ; run it: it arms the board and burns the 2708
+SAVE eprom.hex D000-D3FF          ; the burned chip, as an Intel HEX file on your host
+```
+
+`SAVE` just reads the socket window back off the bus and writes it out — the socket reads like any
+other memory once it is programmed — so `eprom.hex` is an ordinary Intel HEX image of the chip you
+burned, ready to hand to another tool or `LOAD` back later. Your own burner works the same way:
+put your data in RAM, `OUT 10,01` (or `,02` for a 2716), write it into the window, and `SAVE`.
+
+The board also has an optional **on-board EPROM area** (the real card's U11–U14): read-only chips
+you mount above `8000` with `[[board.prom]]` (`at` + `mount`), handy as the *source* for copying one
+EPROM to another.
 
 ---
 
