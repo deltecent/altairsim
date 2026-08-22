@@ -80,6 +80,7 @@ in the monitor prints this list with a one-line description of each (`SHOW BOARD
 |---|---|
 | `memory` | RAM/ROM card — a list of regions and `PHANTOM*`. Plain, unbanked. |
 | `bankmem` | S-100 bank-switched RAM — one card, four decoders (Vector, Cromemco 64KZ, North Star, ExpandoRAM II). |
+| `v2z80rom` | S100Computers V2 Z80 CPU board — its onboard paged MASTER monitor EEPROM at `F000`–`FFFF`. ROM only; pair it with a `z80` CPU and a RAM board. |
 
 **Serial, console and modem**
 
@@ -106,7 +107,6 @@ in the monitor prints this list with a one-line description of each (`SHOW BOARD
 | `hdsk` | MITS 88-HDSK Datakeeper — a Pertec hard disk, 256-byte sectors from a linear image. |
 | `dualide` | S100Computers IDE-AB — two CompactFlash sockets (A:/B:) for CP/M 3. |
 | `dualsd` | S100Computers Dual SD — two microSD sockets for CP/M 3. |
-| `v2z80rom` | S100Computers V2 Z80 — the onboard paged monitor EEPROM that boots CP/M 3 off a card. |
 
 **Cassette** — `acr` (88-ACR, an 88-SIO B plus an FSK modem); `sol` and `uio` also carry tape.
 
