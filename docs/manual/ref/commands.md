@@ -803,10 +803,16 @@ crlf       on|off: add LF after every CR the guest prints -- usually WRONG
 echo       on|off: local echo, for half-duplex hardware
 bell       on|off: pass 07 through to the host bell
 bsdel      off | bs (fold DEL->BS) | del (fold BS->DEL)
+log        a host file to copy the whole session to -- guest output and the
+           keys you type both; off (or an empty path) stops it
 ```
 
 These are the TERMINAL's, not a board's; a board's own line coding (baud,
 data_bits) is SHOW sio0. SHOW CONSOLE lists these with their current values.
+
+SET CONSOLE DEBUG=<sink> is not one of these: it aims where the machine's
+diagnostic channels print (SHOW DEBUG), not the terminal, so SHOW CONSOLE does
+not list it. See SET ... DEBUG.
 
 ATTN is the key that takes the keyboard BACK from a running guest. The host
 intercepts it before the guest is ever offered the byte, so the guest cannot
