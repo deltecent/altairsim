@@ -1,0 +1,87 @@
+# Mike Douglas's "MITS Tapes" CP/M disk, with an 88-ACR wired up to record.
+#
+#     cd examples/acr && altairsim mitstapes.toml
+#     -> 48K CP/M
+#        Version 2.2mits (07/28/80)
+#        A>
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The disk is
+# lying in this directory, so this file names it and no directory at all -- which is what
+# lets the folder be copied somewhere and still boot. You get the binary and this tree;
+# you do not get the repository.
+#
+# THIS FILE IS A DELTA. `base = "default"` brings the CP/M Altair -- front panel, 8080,
+# 88-2SIO console at 0x10, 88-DCDD at 0x08 with four empty drives, 56K of RAM, DBL boot
+# PROM at FF00. This file adds two things the default has not got: the MITS Tapes disk in
+# drive 0, and an 88-ACR at port 006 so the tapes on that disk have somewhere to go.
+#
+# WHY THIS MACHINE EXISTS. The disk is Mike Douglas's (deramp.com) collection of the MITS
+# distribution tapes -- every 4K/8K/Extended/Disk BASIC and the PS2 monitor, as `.TAP`
+# images -- plus his WRTAPE.COM utility, which writes one of them back out through the
+# cassette port exactly as a real Altair did. Boot this, put a blank tape in the recorder,
+# and `WRTAPE 8KBAS40.TAP` records a cassette you can then load on the `basic8k` / `ps2`
+# machines. See README.md for the full workflow; `TYPE CONTENTS.TXT` at the A> prompt is the
+# disk's own annotated tape list.
+#
+# THE DISK IS A 48K MITS CP/M 2.2. It boots fine in this 56K machine -- an image asks only
+# that the machine have AT LEAST the RAM it was built for, and 56 > 48 (the 8K above the
+# BIOS just goes unused). See examples/cpm/cpm22-buffered.toml for that arithmetic in full.
+#
+# THE HOST BRIDGE IS ALREADY HERE. `base = "default"` brings an 88-hostbridge (`hb0`, port
+# B0), so this file does not fit one. Its guest utilities -- `HDIR`, `R`, `W` -- have been
+# installed onto the disk above (tools/install-hostbridge-utils.sh), so `R FOO.TAP` pulls a
+# tape image off your working directory and `W FOO.TAP` writes one back. That is the other
+# way onto this disk: fetch a fresh `.TAP` from the host, then WRTAPE it to a cassette. See
+# README.md and docs/boards/hostbridge.md.
+
+[machine]
+name = "mitstapes"
+base = "default"
+
+# THE BOOT PROM IS THE BOOT COMMAND (DESIGN.md 10.0). DBL reads track 0 into RAM; that
+# loader pulls CP/M into high memory and jumps into the BIOS. RUN hands the guest the
+# keyboard, so you land at A>; ATTN (^E) gets you back to the monitor.
+startup = ["RUN FF00"]
+
+# A modern Backspace sends DEL (0x7F); CP/M's line editor wants BS (0x08). `bsdel = bs`
+# folds DEL -> BS on the way in (src/host/filter.cpp). It is a property of the TERMINAL, so
+# it lives on the [console], not on a line (which stays 8-bit clean, DESIGN.md 7.2).
+[console]
+bsdel = "bs"
+
+# THE DISK. `id` with NO `type` means "the board already in this machine" -- the base's
+# 88-DCDD -- so this puts a floppy in drive 0 rather than fitting a second controller.
+# The image is 337,664 bytes (XMODEM-padded past the 337,568 an 8" floppy holds); the board
+# knows that and probes it as `8in` anyway (sizeMatches(), src/boards/mits-88dcdd.cpp).
+#
+# Drive 0 is read/write and there is no undo in the package. WRTAPE only READS the disk, so
+# a normal session leaves it untouched -- but if you mean to test writes, copy the image or
+# add `readonly = true` here.
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit  = 0
+  mount = "MITS Tapes.dsk"
+
+# THE CASSETTE. An 88-ACR at 006/007 -- the port WRTAPE writes through by default (its
+# ReadMe: "an 88-SIO port at 6/7 ... the Altair Cassette port"). It comes up EMPTY, the way
+# a deck sits with no cassette in it: hardware present, nothing to record onto yet.
+#
+# TO RECORD, put a blank tape in and press PLAY+RECORD -- which is one MOUNT. The recorder
+# starts in PLAY, so recording is not the default (`docs/boards/mits-88acr.md` explains why
+# one head means one direction); you ask for it with `mode=record`, and `CREATE` makes the
+# file since it does not exist yet:
+#
+#     MOUNT acr0:tape "8kbas40.tap" CREATE mode=record      # a byte-image cassette
+#     MOUNT acr0:tape "8kbas40.wav" CREATE mode=record      # a real FSK-300 audio cassette
+#
+# then, inside CP/M:  A>WRTAPE 8KBAS40.TAP
+#
+# The `.tap` is the raw byte image; the `.wav` is 300-baud FSK audio you could play into a
+# real Altair (a fresh blank WAV records at fsk300 / 44.1 kHz). When WRTAPE says "File
+# Transfer Complete", `UNMOUNT acr0:tape` (or QUIT) flushes the recording to disk.
+[[board]]
+type = "acr"
+id   = "acr0"
+port = 06
