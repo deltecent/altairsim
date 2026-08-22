@@ -52,6 +52,11 @@ instead of one we picked, with built-in profiles for the Cromemco TU-ART, IMSAI 
 serial channels. A new built-in ROM, **ROM BASIC**, boots Altair BASIC 4.1 straight out of PROM
 with the full 48K free underneath it.
 
+The **CompuPro System Support 1** joins the backplane as a real-time clock: its OKI MSM5832
+clock/calendar reads your host's own date and time, a guest can set it, and — like the real
+battery-backed chip — a set survives a RESET (`altairsim compupro`). It is a multifunction card
+whose serial channel, timer and interrupt controllers are being added in stages.
+
 ### A third validated CPU core: the Intel 8085
 
 The 8080 and Z80 are joined by a documented **Intel 8085** core — the 8080's binary superset,

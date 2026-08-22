@@ -26,6 +26,8 @@ struct CalendarTime {
     int hour;    // 0-23
     int minute;  // 0-59
     int second;  // 0-60 (a leap second is possible)
+    int weekday; // 0-6, Sunday=0 (tm_wday) -- the OKI MSM5832 clock has a day-of-week
+                 // register, and it is the one calendar field a bare Y/M/D loses.
 };
 
 // Break `t` (seconds since the epoch) into LOCAL calendar fields. Thread-safe.

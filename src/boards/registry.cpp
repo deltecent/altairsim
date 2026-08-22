@@ -1,5 +1,6 @@
 #include "boards/registry.h"
 
+#include "boards/compupro-ss1.h"
 #include "boards/cromemco-16fdc.h"
 #include "boards/cromemco-64fdc.h"
 #include "boards/cromemco-d7a.h"
@@ -101,6 +102,7 @@ std::vector<BoardType> boardTypes() {
         {"fp", "Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT"},
         {"turnkey", "MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (unit 'tty', default 0x10), sense switches at FF, and the Auto-Start JMP jam. Sockets via [[board.socket]]"},
         {"virtc", "MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE"},
+        {"ss1", "CompuPro System Support 1: multifunction S-100 board. Today the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11; base default 50H). The 2651 UART, 8253 timer and dual 8259A interrupt controllers are being added in phases; the 9511/9512 math socket is unpopulated"},
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
         {"usio", "Universal Serial board: a UART-agnostic serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes RDR/TDRE at bit positions you pick, write is discarded) and a data port (data_port). Built-in profiles preset the straps: profile=tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
@@ -147,6 +149,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "fp") return std::make_unique<FrontPanelBoard>();
     if (type == "turnkey") return std::make_unique<TurnkeyBoard>();
     if (type == "virtc") return std::make_unique<VirtcBoard>();
+    if (type == "ss1") return std::make_unique<Ss1Board>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
     if (type == "usio") return std::make_unique<UsioBoard>();

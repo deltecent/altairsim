@@ -1,0 +1,30 @@
+# A stock Altair with a CompuPro System Support 1 board for its clock/calendar.
+#
+#     altairsim compupro
+#
+# This is the `default` machine (88-CPU, 62K RAM + the DBL boot PROM, an 88-2SIO
+# console, the front panel) with one card added: the System Support 1 at the CompuPro
+# standard base of 50H. Today that card is its OKI MSM5832 real-time clock -- the
+# reason the board exists here (issue #392). Its UART, timer and interrupt controllers
+# are being added in later phases.
+#
+# READING THE CLOCK FROM THE MONITOR. The clock lives at 5A (command) / 5B (data).
+# Select a digit for reading, then read the data port -- e.g. the hours-ones digit
+# (digit 4):
+#
+#     altairsim> OUT 5A 14        # command: Read (bit4) + digit-select 4 (hours ones)
+#     altairsim> IN 5B            # -> the BCD hours-ones digit, low nibble
+#
+# The full digit map and the set sequence are in reference/OKI MSM5832.md and
+# reference/CompuPro System Support 1.md. The clock reads the HOST's wall time until a
+# guest sets it, and it is battery-backed: a set survives RESET.
+
+[machine]
+name = "compupro"
+base = "default"
+
+# The System Support 1. `base` is the 16-port block base; 50H is the CompuPro standard.
+[[board]]
+type = "ss1"
+id   = "ss1"
+base = 50
