@@ -2,7 +2,7 @@
 #
 # THE SHIPPED SOL-20 EXAMPLE MUST LOAD ITS GAME OFF THE CASSETTE, BY ITSELF.
 #
-# examples/sol is product: trek80.toml, a tape, and a README. The shipped machine file
+# examples/sol20 is product: trek80.toml, a tape, and a README. The shipped machine file
 # AUTO-LAUNCHES -- its `startup` MOUNTs the tape, `TYPE`s `XE TRK80` at the console, and
 # RUNs SOLOS, so the game comes up with no keystroke from anyone. This runs that path end
 # to end: SOLOS's own tape reader, the `sol` board's motor and 0FBh data register, the CUTS

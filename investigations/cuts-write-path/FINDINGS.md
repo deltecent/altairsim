@@ -30,7 +30,7 @@ are at the bottom.
 
 ## The measurement
 
-Same experiment throughout: take the genuine dub's **own decoded bytes** (`examples/sol/TRK80.TAP`,
+Same experiment throughout: take the genuine dub's **own decoded bytes** (`examples/sol20/TRK80.TAP`,
 7,939 B, decodes at 0 errors) and re-encode them with each modulator. Same bytes in every file, so
 any difference is purely the modulation. Then measure the zero-crossing intervals — which is what
 the hardware comparator actually fires on — and read off the implied mark/space tone and its spread.
@@ -114,12 +114,12 @@ cmake --build build --target altair_tapetool
 SP=<this-folder>
 
 # same bytes, different modulators
-./build/altair_tapetool encode examples/sol/TRK80.TAP $SP/A.wav cuts1200 44100 3 2 square
-python3 modem.py hwsquare    examples/sol/TRK80.TAP $SP/D.wav
-python3 modem.py hwsquare_rc examples/sol/TRK80.TAP $SP/E.wav
+./build/altair_tapetool encode examples/sol20/TRK80.TAP $SP/A.wav cuts1200 44100 3 2 square
+python3 modem.py hwsquare    examples/sol20/TRK80.TAP $SP/D.wav
+python3 modem.py hwsquare_rc examples/sol20/TRK80.TAP $SP/E.wav
 
 # each must decode back to the identical payload through the shipping reader
-./build/altair_tapetool decode $SP/E.wav /tmp/rt.bin cuts1200 && cmp /tmp/rt.bin examples/sol/TRK80.TAP
+./build/altair_tapetool decode $SP/E.wav /tmp/rt.bin cuts1200 && cmp /tmp/rt.bin examples/sol20/TRK80.TAP
 
 # the ranking table
 python3 measure.py $SP

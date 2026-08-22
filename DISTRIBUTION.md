@@ -49,9 +49,18 @@ DRIVING-WITH-AI.md                    the briefing for an AI assistant driving i
 LICENSE                               ours (MIT)
 examples/cpm/                         CP/M 2.2 on an 8" floppy
 examples/basic/                       4K BASIC on a cassette
-examples/sol/                         a Sol-20 with TREK80
 examples/diskbasic/                   Altair Disk BASIC 4.1
+examples/hdsk/                        CP/M off an 88-HDSK hard disk
+examples/acr/                         writing MITS cassettes with WRTAPE
+examples/printing/                    an 88-C700 line printer
+examples/debugger/                    a bench for the symbolic debugger
+examples/ai-mcp/                      a machine driven over MCP by an AI assistant
 ```
+
+The full shipped set is whatever carries a `DIR` line in `docs/package.map`; the list above is
+the shape, not the whole of it. The many machines under `examples/` that are **not** in the
+package stay in the source tree and are published separately through the `altairsim-machines`
+companion distribution.
 
 **Added by the SDL3 work** (2026-07-20):
 

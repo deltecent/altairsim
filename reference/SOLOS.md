@@ -190,7 +190,7 @@ for data files. `RDBLK`/`WRBLK` take unit+speed in `A`: **bit 5** speed (0 = 120
 ### What a whole tape file looks like on the wire
 
 Source: `WHEAD`/`WTBL`/`DOCRC` in `roms/SOLOS/SOLOS13.ASM`, confirmed byte-for-byte against
-`examples/sol/TRK80.TAP`.
+`examples/sol20/TRK80.TAP`.
 
 ```
 50 × 00   | 01   | 16-byte header | cksum | 256 data | cksum | 256 data | cksum | … | tail | cksum
@@ -232,7 +232,7 @@ with zero mismatches.
 **A tape whose checksums are wrong is invisible, not faulty.** `CA` lists nothing, `GE` finds
 nothing, and no error is printed anywhere — so "the file is not on the tape" and "the file is on
 the tape and does not verify" look identical to the operator. That is the single most important
-practical fact about this format, and it is why `examples/sol/make-trek80-tape.sh` derives its
+practical fact about this format, and it is why `examples/sol20/make-trek80-tape.sh` derives its
 tape by having SOLOS itself `SA`ve the image rather than assembling the bytes by hand: the
 checksums are then the machine's own arithmetic, and reading it back is the only honest proof.
 

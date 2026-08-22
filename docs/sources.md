@@ -197,7 +197,7 @@ ours is untracked."
 
 ## `examples/` — Sol-20 games, off real cassettes
 
-`examples/sol/` ships a Processor Technology **Sol-20** and four 1977 cassette games: **TREK80**
+`examples/sol20/` ships a Processor Technology **Sol-20** and four 1977 cassette games: **TREK80**
 (© 1977 Processor Technology Corp.), **ATC** (Air Traffic Controller, © 1978 Creative Computing
 Software / David Mannering), **PAC-MAN**, and **RAIDERS**. The four tapes are Sol-20 cassette
 digitizations that deramp.com's `tape_wav_files` directory credits to **Philip Lord** ("P. Lord")

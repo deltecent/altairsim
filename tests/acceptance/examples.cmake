@@ -76,6 +76,24 @@ execute_process(
 )
 expect_basic("${out}" "`altairsim examples/basic/basic4k.toml` from the dist root did not boot BASIC")
 
+# ---- 2a. THE SAME BASIC, OFF A WAV CASSETTE -- the ACR's audio front end end to end. ---
+#
+# basic4k.toml mounts a decoded .tap; basic4k-wav.toml mounts "4K BASIC Ver 3-1.wav", the
+# 300-baud FSK audio a period 88-ACR actually heard, and the card demodulates it. Reaching
+# the SAME TAPE OK proves the whole audio path -- not just that a byte stream was replayed --
+# from the shipped folder, on the documented command. (The sibling "4K BASIC (Kansas
+# City).wav" is a wrong-modulation tape this card cannot read; it is proved to be refused by
+# the tapes chapter, not booted here.)
+execute_process(
+  COMMAND           "${SIM}" basic4k-wav.toml
+  WORKING_DIRECTORY "${example}"
+  INPUT_FILE        "${SRC}/tests/acceptance/basic4k.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_basic("${out}" "`cd examples/basic && altairsim basic4k-wav.toml` did not boot BASIC off the WAV cassette")
+
 # ---- 2b. THE 88-UIO -- 8K BASIC over ONE board that is a serial port AND a cassette. ---
 #
 # examples/uio boots 8K BASIC 3.2 over a single 88-UIO: its 6850 serial at 0x10 (where
@@ -399,6 +417,95 @@ foreach(want
                         "  '${want}' never reached the terminal.\n--- output ---\n${out}")
   endif()
 endforeach()
+
+# ---- 6. THE 88-ACR CASSETTE MACHINE -- Mike Douglas's MITS Tapes disk, and a recorder. --
+#
+# examples/acr boots the "MITS Tapes" CP/M disk (every MITS distribution tape as a .TAP,
+# plus WRTAPE.COM) with an 88-ACR wired up to record onto. Booting it proves the shipped
+# folder comes up to A> off its own disk; the DIR line proves CP/M is really reading that
+# image (WRTAPE.COM is on it, which is the whole reason this machine exists). The recorder
+# itself is exercised, end to end and in period audio, by the acr acceptance suite -- here
+# the claim is only that the SHIPPED directory boots where the user is handed it.
+file(COPY "${SRC}/examples/acr" DESTINATION "${dist}/examples")
+set(acr "${dist}/examples/acr")
+
+function(expect_acr out why)
+  # DIR polls the console between lines and the CR already in the pipe aborts it after the
+  # first entry -- so only the first name is asserted, and it is enough: 4KBAS32.TAP is a
+  # real entry read off the MITS Tapes image, which a machine that merely started cannot show.
+  foreach(want "48K CP/M" "Version 2.2mits" "A>" "4KBAS32")
+    string(FIND "${out}" "${want}" hit)
+    if(hit LESS 0)
+      message(FATAL_ERROR "examples: ${why}\n"
+                          "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+    endif()
+  endforeach()
+endfunction()
+
+execute_process(
+  COMMAND           "${SIM}" mitstapes.toml
+  WORKING_DIRECTORY "${acr}"
+  INPUT_FILE        "${SRC}/tests/acceptance/cpm-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_acr("${out}" "`cd examples/acr && altairsim mitstapes.toml` did not boot the MITS Tapes disk")
+
+# ...and by path from the distribution root, where the disk is NOT.
+execute_process(
+  COMMAND           "${SIM}" examples/acr/mitstapes.toml
+  WORKING_DIRECTORY "${dist}"
+  INPUT_FILE        "${SRC}/tests/acceptance/cpm-dir.keys"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           60
+)
+expect_acr("${out}" "`altairsim examples/acr/mitstapes.toml` from the dist root did not boot")
+
+# ---- 7. THE PRINTER -- a program printing a banner THROUGH the 88-C700, to a byte sink. --
+#
+# examples/printing is the printing walkthrough: a program that sends "ALTAIRSIM 8800" + CR
+# LF + a form feed through an 88-C700 parallel printer card, then halts. The README connects
+# `lpt0:prn` to a real printer (socket: or printer:); here we point the same line at an
+# `out:` file -- a byte sink that needs no host print system -- so a headless run can PROVE
+# the bytes the program prints actually leave the card and land where the line goes. This is
+# the printing PATH, not a physical page: LOAD, CONNECT, RUN, DISCONNECT, then read the file.
+file(COPY "${SRC}/examples/printing" DESTINATION "${dist}/examples")
+set(prn "${dist}/examples/printing")
+set(banner "${dist}/banner.out")
+
+execute_process(
+  COMMAND           "${SIM}" printer.toml
+                    -x "LOAD PRINT.HEX"
+                    -x "CONNECT lpt0:prn out:${banner}"
+                    -x "RUN 0100"
+                    -x "DISCONNECT lpt0:prn"
+  WORKING_DIRECTORY "${prn}"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    out
+  TIMEOUT           30
+)
+
+# The .HEX loaded from beside the machine file, and the line connected to the sink.
+foreach(want "loaded 42 bytes" "connected to out:")
+  string(FIND "${out}" "${want}" hit)
+  if(hit LESS 0)
+    message(FATAL_ERROR "examples: the printing example did not set up the print line.\n"
+                        "  '${want}' never reached the terminal.\n--- output ---\n${out}")
+  endif()
+endforeach()
+
+# ...and the banner the program printed actually reached the sink on the far end of the card.
+if(NOT EXISTS "${banner}")
+  message(FATAL_ERROR "examples: the printer's out: sink was never written -- nothing left the 88-C700.")
+endif()
+file(READ "${banner}" printed)
+string(FIND "${printed}" "ALTAIRSIM 8800" hit)
+if(hit LESS 0)
+  message(FATAL_ERROR "examples: the banner never reached the printer.\n"
+                      "  'ALTAIRSIM 8800' is not in the out: sink.\n--- sink ---\n${printed}")
+endif()
 
 file(REMOVE_RECURSE "${dist}")
 message(STATUS "examples: the shipped examples boot from their own directory, and a typed "

@@ -1,4 +1,4 @@
-# TEST FIXTURE, not product -- the shipped example is examples/sol/atc.toml.
+# TEST FIXTURE, not product -- the shipped example is examples/sol20/atc.toml.
 #
 # Proves a SECOND Sol game auto-launches off its own real tape (Philip Lord's ATC.WAV), so
 # the game tapes are not shipped unguarded: trek80 alone could pass while an ATC.WAV that
@@ -9,7 +9,7 @@
 name    = "atc-boot"
 base    = "sol20"
 startup = [
-  "MOUNT sol0:tape1 \"../../examples/sol/ATC.WAV\"",
+  "MOUNT sol0:tape1 \"../../examples/sol20/ATC.WAV\"",
   "TYPE \"XE ATC\\r\"",
   "RUN C000",
 ]

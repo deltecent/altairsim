@@ -244,83 +244,54 @@ counter climbs through the two and a half minutes it took in 1975.
 
 ---
 
-## 3. A Sol-20 loading {{NAME_SOL}} off cassette
+## 3. {{NAME_HDSK}} off an 88-HDSK hard disk
 
 ```
-$ altairsim {{MACHINE_SOL}}
+$ altairsim {{MACHINE_HDSK}}
 ```
 
-The Sol-20 is not an Altair with a terminal on it. It is an integrated computer with a
-**keyboard and a screen built in**, and that changes what this example looks like on your
-terminal — so read the next paragraph before deciding something is broken.
-
-**The Sol's screen is a VDM-1, and nothing it displays reaches your terminal.** SOLOS signs on,
-`XE TRK80` echoes, the game paints its starfield — all of it into the VDM's video memory at
-`CC00`–`CFFF`, which is a *display*, not a serial line. If altairsim was built with SDL you get
-a window and you watch it there. If it was not, the machine still runs perfectly and the
-console stays quiet. That quiet is correct.
-
-Your typing goes the other way, and does work: keystrokes at the terminal reach the Sol's
-keyboard port just as the window's would.
+Example 1 boots CP/M off an 8" floppy. This one boots the *same operating system* off a
+**hard disk** — a five-megabyte platter where the floppy holds a third of a megabyte — and it
+is here because the disk is the least floppy-like thing in the package: the 88-HDSK is not a
+disk *card* at all, but an outboard controller with its own processor that hands the Altair
+whole sectors over a handshake protocol.
 
 ```
-startup> MOUNT sol0:tape1 "TRK80.WAV"
-sol0:tape1: mounted TRK80.WAV
-TRK80.WAV: cuts1200, 7939 bytes, 0 framing errors (100.0% of frames intact)
-startup> TYPE "XE TRK80\r"
-startup> SET vdm0 cursor=steady
-vdm0: cursor=steady
-startup> RUN C000
+startup> RUN FC00
 [console -- ^E returns to the monitor]
+
+HDBL 2.00
+LOADING FROM 0
+
+48K CP/M 2.2b v1.6
+For MITS 88-HDSK
+
+A0>
 ```
 
-Every line there is the machine file's `startup`, run before you arrive — you type nothing.
-`MOUNT` puts the tape in the deck; `TYPE "XE TRK80\r"` queues that command at the console,
-where SOLOS's type-ahead reads it at its first prompt; `SET vdm0 cursor=steady` stops the
-game's reverse-video cells strobing; and `RUN C000` cold-starts SOLOS, which signs on, reads
-the queued `XE TRK80`, and loads the game. On a real Sol-20 you would type `XE TRK80` at the
-SOLOS prompt yourself — here `TYPE` is the monitor command that does it for you.
+`RUN FC00` is the machine file's whole `startup`, run before you arrive — on a real machine it
+was EXAMINE `FC00` and RUN. `FC00` is **HDBL**, the hard-disk boot PROM: it reads the platter's
+Pack Descriptor Page, loads the boot pages it names, and jumps into CP/M. `LOADING FROM 0` is
+HDBL telling you which platter it took (sense switch A11 picks it; the default is drive 0).
 
-Then wait. **The tape takes about a minute**, because `{{MACHINE_SOL}}` sets the Sol's real
-2.045 MHz and a cassette at 1200 baud takes what a cassette took. That minute is the example
-being honest, not the simulator being slow — `SET cpu0 clock_hz=0` buys the wall clock back
-and changes nothing the guest can observe.
-
-### Reading the screen without a screen
-
-With no window, you can still see what the game painted: stop the machine and dump the VDM's
-memory. Each row is 64 bytes and `DUMP` prints the ASCII beside the hex, so one row is one
-line. `^E` first, then:
+**The prompt is `A0>`, not `A>`.** This CP/M numbers the platter as well as the drive: `A0` is
+drive A, platter 0. Otherwise it is CP/M as example 1 leaves it — `DIR`, `TYPE`, `STAT`, and
+the rest all behave, and this build carries its own source on the disk:
 
 ```
-altairsim> DUMP CD00-CD3F WIDTH=64
-CD00  43 4F 50 59 52 49 47 48 54 ... 43 4F 52 50 2E  COPYRIGHT (C) 1977  PROCESSOR TECHNOLOGY CORP.
+A0>DIR
+A: BOOT     ASM
 ```
 
-That is the game's own copyright line, off a 1977 tape, read out of the screen it drew it on.
-And the row near the bottom is where it stops to ask you something:
+`BOOT.ASM` is the 88-HDSK bootstrap, read straight off the platter through the controller —
+proof the drive is not just spinning but being *read*, sector by sector, the way the real
+Datakeeper was. `^E` (ATTN) takes the keyboard back to the monitor at any point and `RUN`
+resumes; `^C` is CP/M's warm boot and CP/M gets it.
 
-```
-altairsim> DUMP CFC0-CFFF WIDTH=64
-CFC0  45 4E 54 45 52 20 53 50 ... 54 29 29           ENTER SPEED FACTOR (9(SLOW)-0(FAST))
-```
-
-`RUN` resumes, and the answer you type reaches the game.
-
-### The same tape, as bytes
-
-`{{WAV_SOL}}` is a cassette recording — real tones, which is why its mount line above counts
-framing errors as it demodulates them. Beside it is `{{TAPE_SOL}}`, the *same* program already
-decoded to bytes; the machine reads either, so you can mount it in place of the WAV:
-
-```
-altairsim> MOUNT sol0:tape1 TRK80.TAP
-sol0:tape1: mounted TRK80.TAP
-```
-
-Everything else is unchanged: SOLOS's tape reader cannot tell the two apart, because with the
-WAV the demodulation happens once, at mount — there are no tones left to decode by the time the
-guest reads. The tapes chapter has the detail.
+**There is no undo.** Drive 0 is mounted read/write, because that is what a real machine is,
+and CP/M writes to `A:` for anything you create. The package you were handed has no rope back
+to the original image — copy the folder before you test writes in anger, or add
+`readonly = true` to the drive in the machine file.
 
 ---
 

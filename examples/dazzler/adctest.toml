@@ -4,7 +4,7 @@
 #
 # It boots CP/M and runs ADCTEST for you: the `startup` list queues the command as
 # type-ahead (TYPE) and then boots the machine (RUN FF00), so CP/M reads `C:ADCTEST` at
-# the A> prompt and launches it -- the same trick examples/sol/raiders.toml uses for SOLOS.
+# the A> prompt and launches it -- the same trick examples/sol20/raiders.toml uses for SOLOS.
 #
 # ADCTEST turns the Dazzler on and loops reading the D+7A joysticks -- joystick 1's X/Y at
 # IN 19H/1AH, joystick 2's at 1BH/1CH, and the buttons at 18H -- and displays them. On an

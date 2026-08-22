@@ -1,4 +1,4 @@
-# TEST FIXTURE, not product -- the shipped example is examples/sol/trek80.toml.
+# TEST FIXTURE, not product -- the shipped example is examples/sol20/trek80.toml.
 #
 # The .WAV twin of trek80-tap.toml: it mounts the real cassette audio, so this fixture is
 # the CUTS demodulator's regression as well as the auto-launch test -- it decodes Philip
@@ -9,7 +9,7 @@
 name    = "trek80-wav"
 base    = "sol20"
 startup = [
-  "MOUNT sol0:tape1 \"../../examples/sol/TRK80.WAV\"",
+  "MOUNT sol0:tape1 \"../../examples/sol20/TRK80.WAV\"",
   "TYPE \"XE TRK80\\r\"",
   "RUN C000",
 ]

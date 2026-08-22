@@ -22,7 +22,7 @@
 name = "altair680"
 # Put the cassette in the recorder, then start the machine. The tape path is relative
 # to THIS file's directory. (A tape is MOUNTed with the verb, not a unit property --
-# the same way examples/sol mounts a TRK80 cassette.)
+# the same way examples/sol20 mounts a TRK80 cassette.)
 startup = ["MOUNT kc0:tape \"kcacr-demo.tap\"", "RESET", "RUN"]
 
 [[board]]
