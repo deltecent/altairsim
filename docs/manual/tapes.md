@@ -350,7 +350,9 @@ altairsim> SET acr0:tape mode play      (...and the WAV is written here)
 sample rate to re-modulate into are the ones the decode found at mount time, so they have to
 have come from somewhere — and the only place they come from is a real recording that was
 already in the file. There is no blank *audio* tape: a file that is not a WAV is not made into
-one by naming it `.WAV`. To record fresh audio, start from a WAV you have and record over it.
+one by naming it `.WAV`. To record fresh audio, start from a *copy* of a WAV you have and record
+over it — the recording overwrites the file in place, so work on a copy unless you mean to lose
+the original.
 
 **A blank *byte* tape, though, you can make — with `MOUNT … CREATE`.** `MOUNT acr0:tape
 save.tap CREATE` writes an empty file and mounts it, and the guest can then record a program
@@ -514,36 +516,17 @@ to a teletype that isn't there.
 If a tape load hangs and you are sure the tape is mounted, **check the sense switches first.**
 The front-panel chapter says where they live.
 
-### Speed, and what the crystal actually buys you
+### Speed: the tape and the CPU are on separate clocks
 
-**The machine runs flat out by default, and so does the tape.** A cassette that took a real
-Altair about **110 seconds** to load comes off the tape in **about one**.
+**The machine runs flat out by default, and so does the tape** — a cassette that took a real
+Altair about **110 seconds** comes off in **about one**. The two are on separate clocks, as they
+were in the hardware: the processor's speed is `clock_hz` on the CPU card, the tape's is `rate`
+on the deck (above), and neither drags the other.
 
-**The tape and the CPU are on separate clocks — as they were in the hardware.** The processor's
-speed is `clock_hz` on the CPU card; the tape's is `rate` on the deck (above). Setting the CPU
-back to a real 2 MHz:
-
-```
-altairsim> SET cpu0 clock_hz=2000000
-```
-
-buys back the period *feel of the machine* — a game plays at the speed it was played at — but
-it **no longer drags the tape with it**. If you want the load itself to take as long as a load
-took, that is a separate switch:
-
-```
-altairsim> SET acr0:tape rate=real
-```
-
-Here is the part worth understanding. In `rate = full`, **what the guest sees is identical**
-whatever the CPU clock: the ACR is clocked in T-states, and a byte is simply ready whenever the
-guest asks for the next — no program from the period could tell, because a polled loader only
-ever asked. In `rate = real`, the gaps are paced in real seconds instead, off a wall clock the
-CPU speed cannot touch — which is the one and only way to make a load take *wall-clock* time.
-
-So **`clock_hz` buys period feel for the processor; `rate = real` buys it for the tape.** They
-are independent, because on a Sol-20 or an Altair the cassette UART and the CPU each ran off
-their own crystal, and neither could hurry the other.
+So `SET cpu0 clock_hz=2000000` buys back the period feel of the *processor* — a game plays at
+its real speed — while `SET acr0:tape rate=real` is the separate switch that makes the *load*
+take its real wall-clock time. In `rate = full` the guest cannot tell the difference at any CPU
+speed, because a polled loader only ever asks for the next byte and the byte is always ready.
 
 ## {{NAME_DISKBASIC}}
 

@@ -30,8 +30,8 @@ Grouped by what they do — the same order as the sections below.
 | Type | What it is |
 |---|---|
 | `8080` | the MITS 88-CPU |
+| `8085` | an 8085 CPU board — the 8080's binary-compatible superset, with RIM/SIM and the TRAP/RST interrupts |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
-| `8085` | an 8085 CPU board — the 8080's superset, with RIM/SIM and the TRAP/RST interrupts |
 | `6800` | a Motorola 6800 — the CPU of MITS's *other* machine, the Altair 680b. See the note below |
 
 **Serial ports and consoles**
@@ -208,7 +208,7 @@ board that makes `altairsim dualsd` go.
 
 ## The CPU boards — one plugs in, and it drives the bus
 
-`altairsim` has three S-100 processor boards — `8080`, `z80`, and `8085` — and everything in this
+`altairsim` has three S-100 processor boards — `8080`, `8085`, and `z80` — and everything in this
 shared section is true of all three. Each is described on its own below; what they have in common
 is here.
 
@@ -224,48 +224,36 @@ addresses. What it does is **drive the bus** — which makes it unlike every oth
 and is exactly what a CPU card did. Put a `z80` where an `8080` would go and the bus, the boards,
 and the debugger neither know nor care; that is the whole point of keeping the processor a board.
 
-Every CPU board carries the same three properties: **`clock_hz`** (the crystal), **`idle`** (stands
-the processor down at a prompt), and the read-only **`achieved_hz`** (the speed it is actually
-managing). The first two are covered next, and each means the same thing on every processor.
+Every CPU board carries the same three properties: **`clock_hz`** (the crystal), **`idle`**
+(stands the processor down at a prompt), and the read-only **`achieved_hz`** (the speed it
+actually reached).
 
-### The crystal is on the board
+### The crystal is on the board — `clock_hz`
 
-Which is why **`clock_hz` is the CPU board's property and not the machine's** — and why writing it
-in `[machine]` is an error with an explanation rather than a setting that quietly does nothing.
-
-**`clock_hz = 0` is the default, and it means run flat out** — as fast as your host can go. On a
-modern machine that is somewhere north of a hundred times a real Altair.
+Because the crystal is soldered to the CPU card, `clock_hz` is the *board's* property, not the
+machine's. **`clock_hz = 0` is the default, and it means run flat out** — on a modern host,
+north of a hundred times a real Altair.
 
 ```
 SET cpu0 clock_hz=2000000
 ```
 
-buys back the real 2 MHz machine, and it is worth doing at least once. **What the guest *sees* is
-identical either way.** Instructions cost the right number of T-states, a cassette takes the right
-number of them to load, and the disk turns at the right speed regardless. The crystal buys period
-***feel***, not period ***behaviour***. Watch BASIC print its banner at 2 MHz and you learn
-something about 1976 that no amount of reading will teach you. Then set it back.
+buys back the real 2 MHz machine, and it is worth doing once. **What the guest sees is identical
+either way**: instructions cost the same T-states and a cassette loads in the same number of
+them, so the crystal buys period *feel*, not period *behaviour*.
 
-**With one boundary, and it is a real one: that guarantee ends at the edge of the machine.**
-Everything *inside* keeps time by the same T-states, so it all agrees with itself at any speed.
-But a guest program counts instructions to measure a second — `PCGET`'s timeout is a 49-T-state
-loop spun 159 × 256 times — and flat out, your host retires its "three seconds" in a few tens of
-milliseconds while the program at the other end of the wire is still using real ones. **Anything
-the guest times against the outside world wants the real crystal**: XMODEM through a serial port
-is the case you will meet. See the troubleshooting chapter.
+That holds everywhere except at the edge of the machine. A guest counts instructions to measure
+time, so flat out it retires a "three-second" timeout in milliseconds of yours — which is why
+anything the guest times against the *outside* world (XMODEM through a serial port) wants the
+real crystal. The troubleshooting chapter has the full story.
 
 ### `idle` — the CPU stands down at a prompt
 
-A guest sitting at a prompt is not doing anything. It is spinning on the serial board's status
-register, waiting for a byte that has not arrived, and at `clock_hz = 0` it will spin as fast as
-your CPU can let it — one core, pinned, indefinitely, to accomplish nothing.
-
-**`idle` (on by default) stands the processor down when the guest is only polling an empty
-keyboard.** A hundred percent of a core becomes about three and a half.
-
-**The guest cannot tell.** Not "the guest probably won't notice" — it *cannot tell*, because the
-moment a byte arrives the processor is back before the guest's next poll could have seen anything
-different. An XMODEM transfer through an idling machine is byte-exact.
+At a prompt a guest is only spinning on the serial status register waiting for a keystroke, and
+flat out that pins a core to accomplish nothing. **`idle` (on by default) stands the processor
+down while the guest is polling an empty keyboard** — a pinned core becomes a few percent — and
+**the guest cannot tell**, because the moment a byte arrives the processor is back before the
+next poll. An XMODEM transfer through an idling machine is byte-exact.
 
 ---
 
@@ -273,49 +261,36 @@ different. An XMODEM transfer through an idling machine is byte-exact.
 
 The original — the board the Altair shipped with, and the one the other two processors stand in
 for. As a board it is the plain case of everything above: it drives the bus, decodes nothing, and
-carries `clock_hz`, `idle`, and `achieved_hz`. Its core is the baseline the Z80 and 8085 cores are
-then measured against.
-
----
-
-## `z80` — a Z80 CPU
-
-**A second processor board**, plugging into the same backplane as the 88-CPU with a different
-instruction set behind it. Everything in *The CPU boards* above applies to it unchanged — the same
-three properties, the same "the slot does not care which processor is in it."
-
-The core is validated against ZEXDOC and ZEXALL, the standard Z80 exercisers, both of which pass
-before a single board is built on top of it. The built-in `z80` machine is a minimal one — a `z80`,
-64K of RAM, and a 2SIO console — for putting it through its paces.
+carries `clock_hz`, `idle`, and `achieved_hz`.
 
 ---
 
 ## `8085` — an 8085 CPU
 
-**A third processor board**, and the closest of the three to the 88-CPU: the 8085 is a binary
-*superset* of the 8080, so every 8080 program runs on it unchanged. Everything in *The CPU boards*
-above applies to it unchanged; what follows is only what the 8085 adds.
+**The 8080's own successor, and a binary *superset* of it** — every 8080 program runs on an 8085
+unchanged, which makes it the closest of the three to the 88-CPU. Everything in *The CPU boards*
+above applies unchanged; what follows is only what the 8085 adds.
 
-What the 8085 adds over the 8080: `RIM` and `SIM` (read and set the interrupt mask and the SID/SOD
-serial pins), and the on-chip interrupts — `TRAP` (non-maskable) plus `RST 5.5`, `6.5`, and `7.5`,
-each layered on top of the 8080-style `INTR` line. One documented instruction *differs*: `ANA`/`ANI`
-always set the auxiliary carry on the 8085, where the 8080 derives it from the operands.
+Over the 8080 it adds `RIM` and `SIM` (read and set the interrupt mask and the SID/SOD serial
+pins) and the on-chip interrupts — `TRAP` plus `RST 5.5`, `6.5` and `7.5`, layered on the
+8080-style `INTR` line. The documented set is faithful (including the one instruction that
+differs, `ANA`/`ANI` always setting the auxiliary carry), and the undocumented opcodes execute
+too, with the extra V and K flag bits some of them set; `DISASM` marks each undocumented byte
+the way `DDT` does. The built-in `8085` machine is a minimal one — an `8085`, 64K of RAM, and a
+2SIO console.
 
-The core is validated against **real 8085 silicon** — the 8085EXM exerciser, whose expected CRCs
-were read off actual hardware — before any board is built on it, the same gate the 8080 and Z80
-cores passed. The built-in `8085` machine is a minimal one — an `8085`, 64K of RAM, and a 2SIO
-console.
+What no board drives is the 8085's on-chip *pins*: the `SID`/`SOD` serial lines and the
+`TRAP`/`RST 5.5`/`6.5`/`7.5` interrupt inputs. Nothing on the S-100 bus carries them, so no card
+asserts them; ordinary interrupts over the `INTR` line work as they do for the 8080.
 
-All ten *undocumented* 8085 opcodes execute (`DSUB`, `ARHL`, `RDEL`, `LDHI`, `LDSI`, `RSTV`,
-`SHLX`, `LHLX`, `JK`/`JNK`), and the two extra condition bits some of them set — **V** (overflow)
-and **K** — are computed and ride the flag byte where the 8080 keeps constants. `DISASM` still
-names each undocumented byte and marks it — `??= <byte>  *DSUB` — the way `DDT` flags a byte
-outside the published set, since these are Intel-undocumented whether or not the core runs them.
+---
 
-What no board drives is the 8085's on-chip *pins*: the `SID`/`SOD` serial lines that `RIM`/`SIM`
-read and write, and the `TRAP` and `RST 5.5`/`6.5`/`7.5` interrupt inputs. The core keeps them
-as internal latches, but nothing on the S-100 bus carries them, so no card asserts them. Ordinary
-interrupts, over the `INTR` line, work as they do for the 8080.
+## `z80` — a Z80 CPU
+
+**The other processor you can drop into the slot** — the same backplane, a different instruction
+set behind it. Everything in *The CPU boards* above applies unchanged. The built-in `z80`
+machine is a minimal one — a `z80`, 64K of RAM, and a 2SIO console — for putting it through its
+paces.
 
 ---
 

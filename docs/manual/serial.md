@@ -170,12 +170,10 @@ altairsim> SET cpu0 clock_hz=2000000
 ```
 
 The moment the wire leaves the machine, the guest is talking to something that keeps time the
-way *you* do — and the guest does not. It counts instructions. `PCGET` spins a 49-T-state loop
-to time a second, which is a second at 2 MHz and thirty milliseconds when the machine is running
-flat out, so it will decide your sender is dead and give up before your sender has drawn breath.
-
-Flat out is the right default for a machine talking to itself. **A machine talking to you wants
-the crystal.** The troubleshooting chapter has the full story.
+way *you* do — and it does not: it counts instructions, so flat out it retires a "three-second"
+timeout in milliseconds and decides your sender is dead. Flat out is right for a machine talking
+to itself; **a machine talking to you wants the crystal.** The troubleshooting chapter has the
+full story.
 
 ## A paper-tape reader and punch: `in:` and `out:`
 
@@ -346,7 +344,7 @@ altairsim> SHOW CONSOLE
 
 That also shows the transforms, which is the rest of this chapter.
 
-## The transform chain belongs to the console, and only the console
+## The transform chain belongs to the console
 
 This is the most important rule in the chapter, and it is worth stating twice before
 explaining it.

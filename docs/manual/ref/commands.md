@@ -915,9 +915,8 @@ RESTORE before-boot.snap
 ```
 SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>
 ```
-SHOW <id> lists every property, its value, and whether it can be set while
-the machine runs. A property's base is its own: a port is hex, a baud rate
-is decimal.
+Each property has a base of its own -- a port is hex, a baud rate is decimal.
+SHOW <id> lists them all, with each value.
 
 A UNIT HAS PROPERTIES OF ITS OWN, and <id>:<unit> is how you reach them: the
 tape in the recorder rather than the recorder, the disk in the drive rather

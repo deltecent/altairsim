@@ -5,16 +5,11 @@ and what to do once the power is on. That is all it does, and there is nothing e
 
 This chapter is the definitive description of the format.
 
-## What TOML is (and why this file is one)
+## What TOML is
 
-The machine file is written in **TOML** — *Tom's Obvious, Minimal Language*, a
-configuration format Tom Preston-Werner published in 2013 and settled at version 1.0 in
-2021. We picked it the way you pick a good wrench: it is honest, it fits the hand, and it
-never pretends to have done something it didn't. A file you write by hand and read back a
-year later without a manual — that is the whole job, and TOML keeps the one promise the
-rest of this chapter also makes: it means exactly what it says, or it refuses to load.
-
-You need only a handful of rules to read every example below:
+The machine file is written in **TOML** — a plain configuration format meant to be written by
+hand and read back a year later without a manual. You need only a handful of rules to read every
+example below:
 
 - **`key = value`** — one setting per line: `clock_hz = 2000000`.
 - **Quotes are for text.** A string is quoted (`name = "cpm22"`); a number or a
@@ -363,78 +358,27 @@ Without `create`, a `mount` naming a file that is not there is an **error and th
 not load** — the same rule as everywhere else here, that a thing which looks like it worked
 and did not is the worst outcome available.
 
-## Numbers: one rule, and it is not negotiable
+## Numbers: hex on the wire, decimal for counts
 
-> **On the wire → HEX. Never on the wire → DECIMAL.**
-
-(Or **octal** for the wire class, if you prefer the base the MITS manuals used — *Octal, if you
-prefer it* is below. That is a change of base, not of the rule: octal still marks the wire class,
-decimal still marks the counts.)
-
-An address, a port, a data byte, a sense-switch setting is something the 8080 sees on the bus.
-It is written **hex**, and it is written hex *without a prefix*:
+The machine file follows the same number rule as the monitor (the monitor chapter states it in
+full): **anything the 8080 sees on the bus is hex; anything that never reaches the bus is
+decimal.**
 
 ```toml
-port  = 10        # 0x10. SIXTEEN. This is the 2SIO's default port.
+port  = 10        # 0x10 -- a port is on the wire, so it is HEX. This is SIXTEEN.
 at    = 0xFF00    # an address
 sense = 80        # 0x80
+baud  = 9600      # a rate  -- DECIMAL
+size  = 56        # a count -- DECIMAL
 ```
 
-A count, a size, a baud rate, a drive number is a **quantity**. The 8080 never sees it. It is
-written **decimal**:
-
-```toml
-baud   = 9600     # nine thousand six hundred
-drives = 4        # four
-size   = 56       # fifty-six bytes
-unit   = 0
-```
-
-**`port = 10` is port sixteen.** Read that line again, because it is the one that will get you,
-and it is the one the rule exists to make predictable. A port is on the wire. Ports are hex. The
-88-2SIO lives at 10 hex and every listing from 1976 writes it that way.
-
-If you want to be explicit — and in your own files, be explicit — say so:
-
-| | |
-|---|---|
-| `0x10`, `$10`, `10h` | **hex**, whatever the key |
-| `0o20`, `20q` | **octal**, whatever the key |
-| `0b10000` | **binary**, whatever the key |
-| `#16` | **decimal**, whatever the key |
-| `56K`, `1M` | always **decimal**. A suffix implies a count |
-
-The board reference prints every default **in its own base**, so there is never a question about
-which one a given key is.
-
-### Octal, if you prefer it
-
-The rule above is about **classes** — which side of the line a number falls on. It is not about
-which base you *type*, and every marker in that table works in a machine file. So you can write a
-machine the way its own documentation wrote it:
-
-```toml
-port  = 0o20              # the 2SIO, as a MITS manual would have printed it
-sense = 0b10001110        # eight switches, eight digits
-```
-
-That is how you write the file. How the **monitor** reads and prints back at you is a separate
-setting, and it is a key in the machine file too — so a machine can start in octal and stay
-there:
-
-```toml
-[console]
-base = octal
-```
-
-Now a bare number the 8080 can see is octal both ways: `EXAMINE 100` means address `0o100`, and
-addresses, ports and data bytes come back in **split octal**, each byte its own `000`–`377`
-group, the way the front-panel lamps are grouped. Counts and baud rates are unaffected — they
-were never in that class. `[console]` is the section after next, and the monitor chapter shows
-what a session in octal looks like.
-
-Board settings keep their own base regardless: `SHOW` prints a port as `0x20` whichever way you
-wrote it, because a property's base belongs to the property.
+**`port = 10` is port sixteen.** That is the line that catches people: a port is on the wire,
+ports are hex, and every listing from 1976 wrote the 2SIO at 10. In your own files, be explicit
+— the forcing markers all work here: `0x10`/`$10`/`10h` for hex, `0o20`/`20q` for octal,
+`0b10000` for binary, `#16` for decimal, and a `K`/`M` suffix is always a decimal count. To
+read and print in octal throughout, set `[console] base = octal` (below) — that changes the
+base, not the rule. Board settings keep their own base regardless, so `SHOW` prints a port as
+`0x20` however you wrote it.
 
 ## `[console]` — your terminal, which is not a board
 
@@ -523,51 +467,20 @@ monitor instead. The short, wide raster these boards scan — a VDM-1 is 512×20
 was never square: it was stretched to fill a 4:3 tube, and you saw the gap between each scan line.
 `crt = true` reproduces both, stretching the picture to the 4:3 shape and laying a dark line
 between the rows. It is a matter of taste — some prefer the crisp look, some the tube — and you can
-flip it live with `SET DISPLAY crt=on` / `off` while the machine runs; the open window re-fits at
-once. Both looks share one window size, set by the board's `width`.
+flip it with `SET DISPLAY crt=on` / `off` at the monitor, and the open window re-fits at
+once — no need to reopen it. Both looks share one window size, set by the board's `width`.
 
 On a build without SDL3 these keys are still accepted and simply have no window to apply to, so a
 machine file that asks for them stays portable.
 
-## The transform chain belongs to the console, and only to the console
+## The transform chain belongs to the console
 
-This section is here because the temptation to solve it in the wrong place is very strong, and
-solving it in the wrong place silently corrupts your data.
-
-**MITS BASIC sets bit 7 of the last character of every message**, as a string terminator. That is
-not a bug. It is how the interpreter marks the end of a prompt. Send all eight bits to a modern
-terminal and every prompt in the program arrives wearing garbage:
-
-```
-MEMORY SIZ?
-```
-
-The fix is **`strip7out` on the `[console]`**:
-
-```toml
-[console]
-strip7out = true
-```
-
-And the reason that is the *right* fix — rather than a plausible one — is that it is what
-actually happened. **The real machine sent all eight bits.** The 88-SIO put the byte on the wire
-exactly as BASIC handed it over. And the **Teletype ignored the eighth**, because a Model 33 is
-a 7-bit terminal and always was. The stripping was done by the terminal, at the far end, in
-1976. So it is done by the terminal here.
-
-Now the two wrong fixes, because they both look reasonable and they are both traps:
-
-- **It is not a 7-bit strap on the card.** You could set `data_bits = 7` on the SIO and the
-  prompt would come out clean. You would also have quietly made that port unable to carry a
-  binary byte — and the day you run XMODEM through it, every byte with the top bit set is
-  mangled. **Line coding is a *frame*, not a *mask*.** It is real hardware and it is modelled,
-  but it is not this.
-- **It is not a filter on the line.** Same failure, one layer up, and just as silent.
-
-**Every serial line in this simulator is 8-bit clean**, because a line carries XMODEM, and a
-line that eats bit 7 is a line you cannot trust with a file. The transforms — `strip7out`,
-`upper`, `crlf` and the rest — are properties of the **console**, and the console is the one
-place in the system where mangling bytes for a human's benefit is the correct thing to do.
+The `[console]` keys above (`strip7out`, `upper`, `crlf` …) are the **only** thing in the
+simulator that alters a byte, and they belong to the console because that is where a human is
+reading text. **Every serial line is 8-bit clean** — there is no bit-masking strap on any board,
+because a line may carry XMODEM and a line that eats bit 7 is a line you cannot trust with a
+file. So the fix for MITS BASIC's garbled `MEMORY SIZ?` prompt is `strip7out` on the console,
+never `data_bits = 7` on the card. The serial chapter explains why in full.
 
 ## A complete machine file
 
