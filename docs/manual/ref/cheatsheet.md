@@ -176,6 +176,7 @@ Type the part before the bracket.
 |---|---|
 | `fp` | Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT |
 | `hostbridge` | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
+| `ss1` | CompuPro System Support 1: multifunction S-100 board. Today the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11; base default 50H). The 2651 UART, 8253 timer and dual 8259A interrupt controllers are being added in phases; the 9511/9512 math socket is unpopulated |
 | `virtc` | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 
 ## Machines
@@ -191,6 +192,7 @@ Type the part before the bracket.
 | `basic4k` | The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR. |
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR. |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
+| `compupro` | A stock Altair with a CompuPro System Support 1 board for its clock/calendar. |
 | `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
 | `dazzler` | A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |

@@ -94,6 +94,7 @@ Grouped by what they do — the same order as the sections below.
 | Type | What it is |
 |---|---|
 | `virtc` | MITS 88-VI/RTC — vectored interrupts and a clock |
+| `ss1` | CompuPro System Support 1 — a multifunction board; today its real-time clock |
 
 **The whole machine**
 
@@ -1040,6 +1041,22 @@ before you strap anything to it.
 
 `ps2int` is the machine that shows it working — with a MITS Programming System II tape **you
 supply**, since none is in the package. Its cassette deck comes up empty.
+
+## `ss1` — CompuPro System Support 1
+
+A **multifunction** board: on the real card, one 16-port block holds a serial channel, an
+interval timer, two interrupt controllers, a battery-backed **real-time clock/calendar**, and a
+socket for a math coprocessor. Today this board is its **clock** — the reason it is here — and its
+other functions are being added in stages.
+
+The clock is the OKI MSM5832. It comes up reading **your host's own date and time**, so a guest
+program that reads it gets the real wall clock for free. A guest can also **set** it, and once set
+it is battery-backed — the time survives a RESET, exactly as the real chip's battery does. The
+block sits at base **`50H`** by default (the CompuPro convention), movable with the `base` property.
+
+`compupro` is the machine that fits one: a stock Altair with the System Support 1 added for its
+clock. The clock lives at `5A` (command) / `5B` (data); the digit map and the read/set sequences
+are in the board's reference.
 
 ---
 

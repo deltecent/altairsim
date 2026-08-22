@@ -101,6 +101,7 @@ and within a group the boards are in **alphabetical order**.
 |---|---|
 | [`fp`](#fp) | Altair front panel: the SENSE switches a guest reads at IN 0FFH -- a configured byte (SET fp0 sense= or TOML), not toggled here. No OUT |
 | [`hostbridge`](#hostbridge) | Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM |
+| [`ss1`](#ss1) | CompuPro System Support 1: multifunction S-100 board. Today the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11; base default 50H). The 2651 UART, 8253 timer and dual 8259A interrupt controllers are being added in phases; the 9511/9512 math socket is unpopulated |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. One port at FE |
 
 
@@ -1119,6 +1120,18 @@ Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a perio
 | `hostdir` | string |  | text | The sandbox root. Guest names resolve here and CANNOT escape it. Empty = the shell's working directory |
 | `hostdir_root` | string | — | — | LIVE: the sandbox root as RESOLVED -- the actual directory the guest is fenced into. Read-only; `hostdir` is what was written. **(read-only — not a key you may set)** |
 | `readonly` | bool | `false` | `on` \| `off` | Refuse OPEN_WRITE and DELETE -- the guest may read the host, not change it |
+
+
+### `ss1`
+
+CompuPro System Support 1: multifunction S-100 board. Today the OKI MSM5832 battery-backed real-time clock/calendar (command/data at base+10/+11; base default 50H). The 2651 UART, 8253 timer and dual 8259A interrupt controllers are being added in phases; the 9511/9512 math socket is unpopulated
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0x50` | `0x0` .. `0xF0` | Base port of the 16-port I/O block. CompuPro standard is 50H |
+| `clock` | string | — | — | LIVE: the date/time the MSM5832 is showing, and its offset from host time **(read-only — not a key you may set)** |
 
 
 ### `virtc`

@@ -205,7 +205,7 @@ const char* boardCategory(const std::string& n) {
         return "Parallel and printer";
     if (n == "vdm1" || n == "dazzler" || n == "vdb8024") return "Video";
     if (n == "sol") return "Systems";  // a whole machine's I/O on one card -- more will come
-    if (n == "fp" || n == "virtc" || n == "hostbridge") return "Other";
+    if (n == "fp" || n == "virtc" || n == "hostbridge" || n == "ss1") return "Other";
     return nullptr;
 }
 

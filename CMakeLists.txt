@@ -399,6 +399,9 @@ add_library(altair_core STATIC
   src/chips/intel8251.cpp
   src/chips/wd17xx.cpp
   src/chips/i8257.cpp
+  # The OKI MSM5832 -- a BCD real-time clock/calendar reading the host's wall clock.
+  # The CompuPro System Support 1 carries one (src/chips/msm5832.h).
+  src/chips/msm5832.cpp
   src/boards/s100-memory.cpp
   src/boards/bankmem.cpp
   src/boards/mits-88cpu.cpp
@@ -438,6 +441,9 @@ add_library(altair_core STATIC
   # LBA sectors move to/from the SAME raw MediaFile card dualsd uses. No boot PROM. See
   # src/boards/dualide.h.
   src/boards/dualide.cpp
+  # The CompuPro System Support 1 -- a multifunction card. Being brought up in phases
+  # (issue #392); today the OKI MSM5832 real-time clock. See src/boards/compupro-ss1.h.
+  src/boards/compupro-ss1.cpp
   # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
   # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
   # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
@@ -760,6 +766,7 @@ add_executable(altair_tests
   tests/test_turnkey.cpp
   tests/test_lamp.cpp
   tests/test_virtc.cpp
+  tests/test_ss1.cpp
   tests/test_hostdir.cpp
   tests/test_hostbridge.cpp
   tests/test_mcp.cpp)

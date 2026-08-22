@@ -109,6 +109,7 @@ void test_d7a();
 void test_sol();
 void test_turnkey();
 void test_virtc();
+void test_ss1();
 void test_hostdir();
 void test_hostbridge();
 void test_mcp();

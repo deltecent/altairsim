@@ -315,15 +315,20 @@ leap-year (28/29 days in February) bit.
 ### 5.3 Data register — Base+11 (p.28)
 
 A BCD digit (0–9) occupies the low nibble; the upper nibble reads as 0 (write value is don't
-care), except:
+care). For the Hours-10 and Days-10 digits, **only the low two bits (bit1, bit0) carry the
+digit value** — the digit itself never exceeds 2 (hours) or 3 (days), so two bits suffice, and
+the **upper two bits of the low nibble carry a mode flag instead** (p.28, "The lower two bits
+… are the only ones that convey any digit information … the next two bits are used to convey
+other kinds of information"):
 
-- **Hours-10 digit**: bit1 = 0 for 12-hour format / 1 for 24-hour format; bit0 = AM(0)/PM(1)
-  in 12-hour mode, otherwise MSB of the digit in 24-hour mode. (Digit itself never exceeds 2.)
-- **Days-10 digit**: bit1 = leap-year flag — 1 selects 29 days in February, 0 selects 28
-  (cleared automatically after Feb 29 passes, or may be cleared by software). (Digit itself
-  never exceeds 3.)
-- **Both seconds digits are read-only-to-zero**: any value written is ignored and the digit is
-  forced to 0 — "an idiosyncrasy of the MSM5832 clock chip" (p.28, p.29), not a board bug.
+- **Hours-10 digit**: bit1,bit0 = the tens digit (0–2). **bit2 = AM(0)/PM(1)** in 12-hour
+  mode; **bit3 = 12-hour(0)/24-hour(1) mode select**.
+- **Days-10 digit**: bit1,bit0 = the tens digit (0–3). **bit2 = leap-year flag** — 1 selects
+  29 days in February, 0 selects 28.
+- **The seconds digits are write-ignored, not read-as-zero**: reads return the running
+  seconds like any other digit; only *writes* to Seconds-1/Seconds-10 are discarded and the
+  digit forced to 0 — "Both seconds digits are not settable to anything but zeroes … an
+  idiosyncrasy of the MSM 5832 clock chip" (p.28). So setting the clock always zeroes seconds.
 
 ### 5.4 Programming sequences (p.29–30)
 
@@ -428,10 +433,11 @@ the 8231A/8232 datasheets, pp.76, 82) since there is no other recovery path.
   reads of an interrupt acknowledge (PHANTOM\*)** — 8085/8088/8086 systems don't need this
   (selected by jumper J13).
 - **MSM5832 clock**: command register bits Hold(6)/Write(5)/Read(4)/digit-select(3–0); BCD
-  digits in the data register's low nibble; **both seconds digits always read/write as 0**;
-  hours-10 and days-10 digits carry extra mode bits (12/24hr+AM/PM, leap-year) in their upper
-  bits. Board auto-inserts 6 µs (command write) / 150 µs (Hold set) wait states — model as
-  "instant" unless timing-accurate wait-state injection matters.
+  digits in the data register's low nibble; **seconds digits are write-ignored (forced to 0),
+  but reads return the running seconds**; hours-10 and days-10 carry the digit in bits 1:0 and
+  a mode flag in bits 3:2 (H10: bit2=PM, bit3=24-hour; D10: bit2=leap-year). Board auto-inserts
+  6 µs (command write) / 150 µs (Hold set) wait states — model as "instant" unless
+  timing-accurate wait-state injection matters.
 - **Math chip socket**: empty by default; if modeled, pick 9511A (Intel 8231A registers) or
   9512 (Intel 8232 registers) — **not mutually compatible**. Stack-alignment errors are
   unrecoverable except by reset. END polarity (J6) and ERROR-only-on-9512 are board-level

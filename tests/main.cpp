@@ -138,6 +138,7 @@ const struct {
     {"tapemount", test_tapemount},
     {"turnkey", test_turnkey},
     {"virtc", test_virtc},
+    {"ss1", test_ss1},
     {"hostdir", test_hostdir},
     {"hostbridge", test_hostbridge},
     {"mcp", test_mcp},
