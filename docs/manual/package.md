@@ -10,6 +10,7 @@ cheatsheet.md            the same reference as plain text, for the AI to read.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
 examples/                machines that boot, media included.
+cpm/                     the file-transfer utilities (in cpm/hostbridge/): source, HEX, COM.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
@@ -88,6 +89,14 @@ The examples chapter walks through some of them at length. Where an example carr
 documentation of its own — a game's own printed manual, say — that travels in the folder too,
 and its README says so.
 
+## The file-transfer utilities
+
+`cpm/hostbridge/` holds the programs the file-transfer chapter uses to move files between CP/M
+and your host — `R`, `W` and `HDIR`. Both the 8080 **source** and the assembled `.HEX` and
+`.COM` are in there. You do not need them to *use* the utilities on the shipped CP/M disk, which
+already carries the `.COM`; they ship for the other case that chapter covers — putting the
+utilities onto a disk that has not got them, where you paste `R.HEX` in through the console.
+
 ## What is *not* in the package: everything else to run
 
 **What is in `examples/` is the whole of the shipped media.** The other built-ins that want a
@@ -119,10 +128,13 @@ manual's first chapters true.
 
 ## What is *not* in the package: the source
 
-The **source code** is not here. `altairsim` is an open project under the MIT licence, and
-the source is a separate thing to fetch:
+The **source code** is not here — the simulator's, that is. `altairsim` is an open project under
+the MIT licence, and the source is a separate thing to fetch:
 
 **<https://github.com/deltecent/altairsim>**
+
+(The one bit of source that *does* ship is `cpm/hostbridge/` above — but that is 8080 program
+source for the file-transfer utilities, not the simulator's own code.)
 
 Nothing in this manual requires it. The one exception worth naming: **if you want to build a
 board of your own** — which is what the simulator is really for — you need the source, and
