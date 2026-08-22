@@ -32,6 +32,7 @@ Grouped by what they do — the same order as the sections below.
 | `8080` | the MITS 88-CPU |
 | `z80` | a Z80 CPU board — the same bus, a different instruction set |
 | `8085` | an 8085 CPU board — the 8080's superset, with RIM/SIM and the TRAP/RST interrupts |
+| `6800` | a Motorola 6800 — the CPU of MITS's *other* machine, the Altair 680b. See the note below |
 
 **Serial ports and consoles**
 
@@ -207,8 +208,15 @@ board that makes `altairsim dualsd` go.
 
 ## The CPU boards — one plugs in, and it drives the bus
 
-`altairsim` has three processor boards — `8080`, `z80`, and `8085` — and everything in this shared
-section is true of all three. Each is described on its own below; what they have in common is here.
+`altairsim` has three S-100 processor boards — `8080`, `z80`, and `8085` — and everything in this
+shared section is true of all three. Each is described on its own below; what they have in common
+is here.
+
+**A fourth CPU, the Motorola `6800`, is not one of them.** It drives MITS's *other* machine, the
+Altair 680b — a different bus, with memory-mapped I/O rather than S-100 ports, so little of this
+section applies to it. The `6800` and the 680b's own I/O boards (`680io`, `680uio`, `680kcacr`) are
+catalogued in the board reference at the back, and the `altair680` machine boots MON680 out of the
+box.
 
 **The processor is a board like any other.** It plugs into the backplane, it can be removed, and
 with `-n` you can build a machine that does not have one. It decodes no ports and answers no

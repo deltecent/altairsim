@@ -367,6 +367,10 @@ and did not is the worst outcome available.
 
 > **On the wire → HEX. Never on the wire → DECIMAL.**
 
+(Or **octal** for the wire class, if you prefer the base the MITS manuals used — *Octal, if you
+prefer it* is below. That is a change of base, not of the rule: octal still marks the wire class,
+decimal still marks the counts.)
+
 An address, a port, a data byte, a sense-switch setting is something the 8080 sees on the bus.
 It is written **hex**, and it is written hex *without a prefix*:
 

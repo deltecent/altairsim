@@ -140,6 +140,11 @@ A bare `!` with nothing after it just reminds you of the form.
 If the 8080 can see it, it is **hex**: an address, a port, a data byte, a register.
 If it never leaves your head, it is **decimal**: a count, a width, a size, a drive number.
 
+**Hex is only the *default* for the wire class.** Switch the console to octal and that class reads
+and prints in octal instead — the base the MITS manuals and the front panel spoke. The rule does
+not change: octal is still the wire class, decimal is still the counts. *Reading and writing in
+octal*, below, is how.
+
 ```
 DUMP 100            address  -> 0100 hex
 STEP 10             a count  -> ten instructions
