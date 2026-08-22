@@ -14,7 +14,7 @@
 #   LICENSE-SDL3             SDL3's, because SDL3 is linked STATICALLY INTO the program
 #   examples/cpm/            \
 #   examples/basic/           \  the examples, each a self-contained folder: a machine file
-#   examples/sol/             /  and the media it mounts, lying beside it
+#   examples/hdsk/            /  and the media it mounts, lying beside it
 #   examples/diskbasic/      /
 #
 # ONE ARCHIVE, FOR ONE PLATFORM, BUILT ON THAT PLATFORM. --target names it and picks the
@@ -395,9 +395,9 @@ while IFS='|' read -r dest src; do
   # rendered sibling, README.pdf (tools/build-docs.sh builds one beside every examples README):
   # a reader-facing PDF that looks like the rest of the docs and that a package holder can open
   # without a Markdown viewer. Do NOT add README.pdf to this rm -- it ships on purpose.
-  # ...and the same rule takes out SOURCE, which is the other thing that is not product:
-  # examples/sol ships a tape, not the ENTER script the tape was derived from nor the script
-  # that derives it. Both stay in the repository (docs/sources.md has the provenance).
+  # ...and the same rule takes out SOURCE, which is the other thing that is not product: an
+  # example ships its media (a tape, a disk), not the ENTER script the tape was derived from nor
+  # the script that derives it. Both stay in the repository (docs/sources.md has the provenance).
   rm -f "$pkg/$dest"/README.md "$pkg/$dest"/-ReadMe.pdf \
         "$pkg/$dest"/*.ENT "$pkg/$dest"/make-*.sh 2>/dev/null || true
 

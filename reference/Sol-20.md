@@ -200,7 +200,7 @@ The lesson stands even though our old table did not: a high framing rate vouches
 and the bit *rate*, not the tone frequencies or the bit *values*. The old decoder held framing on
 a correct 1200-baud cell while mis-reading both the tones (an octave off) and the data; check the
 header before trusting a decode. And because the archived recording now reads clean, it is the
-shipped example: `examples/sol/TRK80.WAV` **is** this tape, and `acceptance-trek80-wav` reads it
+shipped example: `examples/sol20/TRK80.WAV` **is** this tape, and `acceptance-trek80-wav` reads it
 back through SOLOS as the decoder's regression.
 
 ### Leader, trailer, and what a whole tape looks like (MEASURED)
@@ -270,7 +270,7 @@ Sol derives the CPU clock from the video timing chain, so the processor rate is 
 NTSC colour-burst arithmetic. The faster two are jumper options for the faster-binned parts, not
 separate designs.
 
-altairsim's `examples/sol/trek80.toml` sets `clock_hz = 2045000` for this reason; `machines/sol20.toml`
+altairsim's `examples/sol20/trek80.toml` sets `clock_hz = 2045000` for this reason; `machines/sol20.toml`
 leaves the clock free-running, which is the simulator's default — a period-accurate rate is opt-in.
 
 ## Memory map

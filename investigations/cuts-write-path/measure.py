@@ -23,7 +23,7 @@ def stats(path):
     return (mk.mean(), mk.std(), sp.mean(), sp.std())
 
 rows = [(name, stats(p)) for name, p in (
-    ("REAL dub (loads on HW)",   "examples/sol/TRK80.WAV"),
+    ("REAL dub (loads on HW)",   "examples/sol20/TRK80.WAV"),
     ("A  current square (SHIP)", sys.argv[1]+"/ours_square.wav"),
     ("   current sine",          sys.argv[1]+"/ours_sine.wav"),
     ("D  hw square (grid)",      sys.argv[1]+"/cand_D_hwsquare.wav"),

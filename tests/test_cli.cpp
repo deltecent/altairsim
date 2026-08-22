@@ -1112,9 +1112,9 @@ void test_cli() {
 
         // A file named THROUGH a directory keeps behaving as before: its dir is shown.
         Machine msub;
-        CHECK(loadTomlText(kText, "examples/sol/trek80.toml", msub, err), "a subdir file loads");
+        CHECK(loadTomlText(kText, "examples/sol20/trek80.toml", msub, err), "a subdir file loads");
         CHECK(msub.fromFile, "a path'd .toml is a file");
-        CHECK(msub.dir == "examples/sol", "its dirname is carried through");
+        CHECK(msub.dir == "examples/sol20", "its dirname is carried through");
         Monitor            monsub(msub);
         std::ostringstream osub;
         monsub.exec("SHOW PATHS", osub);
@@ -1126,7 +1126,7 @@ void test_cli() {
         std::string osubNorm = osub.str();
         for (char& ch : osubNorm)
             if (ch == '\\') ch = '/';
-        CHECK(osubNorm.find("examples/sol") != std::string::npos,
+        CHECK(osubNorm.find("examples/sol20") != std::string::npos,
               "...and its directory is shown, resolved absolute");
     }
 
@@ -1510,7 +1510,7 @@ void test_cli() {
 
     // TYPE puts keystrokes in the console's input buffer, as though a key were pressed --
     // which is how a machine file's `startup` reaches a program the monitor cannot, like
-    // SOLOS `XE` (examples/sol). Here the whole point is the DECODING: the escapes turn
+    // SOLOS `XE` (examples/sol20). Here the whole point is the DECODING: the escapes turn
     // into control bytes, so `XE TRK80\r` ends in a real carriage return and SOLOS runs it.
     SECTION("cli: TYPE injects keystrokes at the guest, escapes decoded");
     {

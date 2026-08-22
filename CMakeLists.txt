@@ -1620,7 +1620,7 @@ if(EXPECT_EXECUTABLE)
   # ---------------------------------------------------------------------------
   # THE SOL-20 EXAMPLE AUTO-LAUNCHES ITS GAME OFF THE CASSETTE.
   #
-  # examples/sol is product: a machine file, a tape, and a README. The shipped trek80.toml
+  # examples/sol20 is product: a machine file, a tape, and a README. The shipped trek80.toml
   # MOUNTs the tape, `TYPE`s `XE TRK80` at the console, and RUNs SOLOS -- so the game comes up
   # by itself. This runs that path end to end, and for the .WAV media it is also the REGRESSION
   # TEST for the CUTS demodulator: TRK80.WAV is Philip Lord's Sol-20 cassette digitization
@@ -1656,7 +1656,7 @@ if(EXPECT_EXECUTABLE)
 
   # AND THE SHIPPED FILE ITSELF, unmodified -- acceptance-trek80-shipped. The two fixtures
   # above prove the mechanism and the decoder, but they are flat-out rewrites of the product;
-  # until now nothing booted examples/sol/trek80.toml, the file a user actually runs, with its
+  # until now nothing booted examples/sol20/trek80.toml, the file a user actually runs, with its
   # real 2.045 MHz clock, its `SET vdm0 cursor=steady` line and its config-relative TRK80.WAV.
   # This does, through the same driver, so a regression in the shipped machine file -- a broken
   # `startup`, a moved tape, a wrong clock -- fails here where the fixtures cannot see it. It
@@ -1665,7 +1665,7 @@ if(EXPECT_EXECUTABLE)
            COMMAND ${EXPECT_EXECUTABLE}
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/trek80.exp
                    $<TARGET_FILE:altairsim>
-                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol/trek80.toml)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sol20/trek80.toml)
   set_tests_properties(acceptance-trek80-shipped PROPERTIES LABELS acceptance TIMEOUT 180)
 
   # A SECOND GAME, A SECOND TAPE. trek80 proves the mechanism and the decoder on one tape;

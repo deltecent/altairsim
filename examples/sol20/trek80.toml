@@ -1,13 +1,13 @@
 # TREK80 on a Processor Technology Sol-20 -- boots SOLOS, loads the game off the cassette,
 # and starts it. Just:
 #
-#     cd examples/sol && altairsim trek80.toml
+#     cd examples/sol20 && altairsim trek80.toml
 #
 # and TREK80 comes up. On a real Sol-20 you would type `XE TRK80` at the SOLOS prompt; the
 # `TYPE` line below does that for you (see README.md).
 #
 # THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md), so this whole
-# directory can be copied anywhere and still run. `altairsim examples/sol/trek80.toml`
+# directory can be copied anywhere and still run. `altairsim examples/sol20/trek80.toml`
 # from the repo root means the same machine.
 #
 # `base = "sol20"` IS THE MACHINE -- the Sol-PC's three boards (front panel, VDM-1 video at

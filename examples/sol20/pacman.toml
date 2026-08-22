@@ -1,7 +1,7 @@
 # PAC-MAN on a Processor Technology Sol-20 -- boots SOLOS, loads the game off the cassette,
 # and starts it. Just:
 #
-#     cd examples/sol && altairsim pacman.toml
+#     cd examples/sol20 && altairsim pacman.toml
 #
 # and PAC-MAN comes up. On a real Sol-20 you would type `XE PACMA` at the SOLOS prompt; the
 # `TYPE` line below does that for you (see README.md).

@@ -1,0 +1,46 @@
+# Altair 4K BASIC 3.1 -- the SAME session as basic4k.toml, but loaded from a WAV cassette
+# instead of a decoded .tap. This is what a real 88-ACR heard: 300-baud FSK audio.
+#
+#     cd examples/basic && altairsim basic4k-wav.toml
+#     -> MEMORY SIZE?
+#
+# THE PATHS BELOW ARE RELATIVE TO THIS FILE (core/paths.h, docs/config.md). The tape and
+# the bootstrap are lying in this directory, so this file names them and nothing else --
+# which is what lets the directory be COPIED somewhere and still boot.
+#
+# WHY A SECOND MACHINE FILE. basic4k.toml mounts "4K BASIC Ver 3-1.tap", a stream of
+# decoded bytes -- the fast path, and what most examples use. This one mounts
+# "4K BASIC Ver 3-1.wav", the FSK audio a period recorder actually played into the ACR;
+# the card demodulates it exactly as the hardware did. Both reach MEMORY SIZE?; the WAV
+# just proves the audio front end end-to-end. See docs/manual/tapes.md.
+#
+# THE WAV WAS DERIVED FROM THE .tap with tapetool (the shipped altair_tapetool encodes an
+# 88-ACR cassette; the tree builds it):
+#
+#     altair_tapetool encode "4K BASIC Ver 3-1.tap" "4K BASIC Ver 3-1.wav" fsk300
+#
+# fsk300 is the 88-ACR's own modulation (2400/1850 Hz). The sibling "4K BASIC (Kansas
+# City).wav" is the SAME bytes in kcs300 (2400/1200 Hz) -- a tape this card CANNOT read,
+# kept so the manual can show the ACR refusing a wrong-modulation cassette.
+#
+# `base` is the machine; see basic4k.toml for the full note on why the cassette is written
+# down here and not in machines/basic4k.toml.
+
+[machine]
+name = "basic4k-wav"
+base = "basic4k"
+
+# The same three moves a human made in 1975 -- put the tape in (MOUNT), toggle in the
+# bootstrap (LOAD), run it from 0 -- except the tape here is the FSK audio, not the bytes.
+# The load takes about a second flat out; `SET cpu0 clock_hz=2000000` buys back the real
+# 2 MHz machine and its ~110 seconds. REWIND acr0:tape is your finger on the recorder.
+startup = [
+  "MOUNT acr0:tape \"4K BASIC Ver 3-1.wav\"",
+  "LOAD \"LDR4K31.HEX\"",
+  "RUN 0",
+]
+
+# `upper = true` folds what you TYPE to uppercase -- 4K BASIC 3.1 only understands upper
+# case. It touches only your keystrokes, never BASIC's output.
+[console]
+upper = true

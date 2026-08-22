@@ -88,7 +88,7 @@ def cell_phase(name, a, xc, sr):
 
 if __name__ == '__main__':
     SP = sys.argv[1]
-    a_r, xc_r = report("REAL dub",        f"examples/sol/TRK80.WAV")
+    a_r, xc_r = report("REAL dub",        f"examples/sol20/TRK80.WAV")
     a_q, xc_q = report("OURS square",     f"{SP}/ours_square.wav")
     a_s, xc_s = report("OURS sine",       f"{SP}/ours_sine.wav")
     print("\n--- crossing placement within the bit cell ---")

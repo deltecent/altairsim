@@ -28,13 +28,30 @@ prompt, as if the keys had been pressed. The names, for when you `XE` one yourse
 
 ## What you are looking at
 
-With SDL3 the screen is a **window**, in the VDM-1's own character font — the Sol-20's display was
-memory-mapped video at `0CC00H`, and that is what the games paint on. Headless, the same machine
-runs identically and the screen is readable with `DUMP CC00`, which is how the acceptance test
-checks the example.
+The Sol-20 is not an Altair with a terminal on it — it is an integrated computer with a
+**keyboard and a screen built in**, and that changes what this looks like on your terminal. The
+screen is a **VDM-1**, memory-mapped video at `0CC00H`–`0CFFFH`, and nothing it displays reaches
+your terminal: SOLOS signs on, `XE` echoes, and the game paints its starfield all into that video
+memory. With SDL3 you get a **window**, in the VDM-1's own character font, and you watch it there.
+Built without SDL the machine still runs perfectly and the console stays quiet — that quiet is
+correct. Your typing goes the other way and does work: keystrokes reach the Sol's keyboard port.
 
-`^E` (ATTN) takes the keyboard back to the monitor at any point; `RUN` resumes. The machine is not
-disturbed by stopping it.
+Headless, you can still read what the game painted: stop the machine with `^E` and dump the VDM's
+memory. Each row is 64 bytes, and `DUMP … WIDTH=64` prints the ASCII beside the hex, so one screen
+row is one line. For TREK80:
+
+```
+altairsim> DUMP CD00-CD3F WIDTH=64
+CD00  43 4F 50 59 52 49 47 48 54 ... 43 4F 52 50 2E  COPYRIGHT (C) 1977  PROCESSOR TECHNOLOGY CORP.
+
+altairsim> DUMP CFC0-CFFF WIDTH=64
+CFC0  45 4E 54 45 52 20 53 50 ... 54 29 29           ENTER SPEED FACTOR (9(SLOW)-0(FAST))
+```
+
+That is the game's own copyright line off a 1977 tape, and the row where it stops to ask you
+something — read straight out of the screen it drew them on. `RUN` resumes, and the answer you
+type reaches the game. `^E` (ATTN) takes the keyboard back to the monitor at any point; the
+machine is not disturbed by stopping it.
 
 **The clock is 2.045 MHz**, the stock Sol-20 — the 14.31818 MHz dot clock divided by 7 (Sol Systems
 Manual, Theory of Operation §VIII). Everywhere else in this simulator the default is flat out; here
