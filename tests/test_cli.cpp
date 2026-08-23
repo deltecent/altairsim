@@ -298,6 +298,26 @@ void test_cli() {
     const CommandDef* in = resolveCommand("IN");
     CHECK(in && in->built, "IN is built -- it runs a real ioRead through the real decode");
 
+    // ---- resolveKeyword: SUBcommand selectors abbreviate the same way ----
+    // The top-level table ranks whole commands; subcommand groups (BOARDS, SHOW, SET,
+    // SYMBOLS, CONFIG) rank their selector words with this, and it obeys the same
+    // first-prefix-wins rule -- with EXACT winning over prefix so a spelled-out word
+    // that is a prefix of a sibling still reaches itself.
+    CHECK(resolveKeyword("REM", {"LIST", "ADD", "REMOVE"}) == "REMOVE", "REM is REMOVE");
+    CHECK(resolveKeyword("L", {"LIST", "ADD", "REMOVE"}) == "LIST", "L is LIST");
+    CHECK(resolveKeyword("A", {"LIST", "ADD", "REMOVE"}) == "ADD", "A is ADD");
+    CHECK(resolveKeyword("cle", {"CLEAR", "LOAD"}) == "CLEAR", "case-blind: cle is CLEAR");
+    CHECK(resolveKeyword("ZZ", {"LIST", "ADD", "REMOVE"}) == "",
+          "a word that prefixes nothing resolves to nothing -- the caller falls through");
+    CHECK(resolveKeyword("", {"LIST", "ADD"}) == "", "and so does an empty word");
+    // EXACT-over-prefix: MACHINE and MACHINES sit on DIFFERENT SHOW branches, so a
+    // fully-typed MACHINE must be MACHINE even though MACHINES is listed first and
+    // MACHINE is a prefix of it. Order is irrelevant to the exact hit.
+    CHECK(resolveKeyword("MACHINE", {"MACHINES", "MACHINE"}) == "MACHINE",
+          "exact wins: MACHINE is MACHINE, not the longer MACHINES ahead of it");
+    CHECK(resolveKeyword("MACH", {"MACHINES", "MACHINE"}) == "MACHINES",
+          "but an ambiguous prefix takes the first in list order");
+
     // ---------------------------------------------------------------------
     // DUMP: a bare address is a PAGE, and lines align to the width
     // (Patrick, 2026-07-11)
@@ -817,6 +837,69 @@ void test_cli() {
     mon3.exec("BOARDS", b3);
     CHECK(b3.str().find("FF00-FFFF  rom  dbl") != std::string::npos,
           "and the chip goes back into the SAME socket it came out of");
+
+    // -----------------------------------------------------------------------
+    // Subcommand SELECTORS abbreviate by prefix, the way every command word does
+    // (resolveKeyword). `BOARDS REM` was the report that started this; the rest ride
+    // the same helper. This drives the real dispatcher, not the resolver in isolation.
+    // -----------------------------------------------------------------------
+    SECTION("cli: subcommand selectors abbreviate -- BOARDS REM, SHOW MOU, SET CON, ...");
+    {
+        Machine ma;
+        Monitor monA(ma);
+        std::ostringstream s;
+        monA.exec("BOARDS ADD 8080 cpu0", s);
+        monA.exec("BOARDS ADD memory mem0", s);
+
+        auto ex = [&](const std::string& line) {
+            std::ostringstream o;
+            monA.exec(line.c_str(), o);
+            return o.str();
+        };
+
+        // BOARDS REM reaches REMOVE -- the reported bug.
+        CHECK(ex("BOARDS REM cpu0").find("cpu0: removed") != std::string::npos,
+              "BOARDS REM removes, like BOARDS REMOVE");
+        // ADD abbreviates too, and a bare BOARDS/BOARDS L both list.
+        CHECK(ex("BOARDS A memory memZ").find("memZ: memory added") != std::string::npos,
+              "BOARDS A adds");
+        CHECK(ex("BOARDS L").find("memZ") != std::string::npos, "BOARDS L lists");
+        // An unknown selector is untouched: still the usage line, not a misfire.
+        CHECK(ex("BOARDS ZZ").find("REMOVE <id>") != std::string::npos,
+              "an unknown selector still prints usage");
+
+        // SHOW: keyword prefixes resolve; a non-keyword falls through to a board.
+        // MOU reaches the MOUNTS table (here empty -- these boards have no sockets),
+        // NOT a board lookup, which would answer "no board 'MOU'".
+        CHECK(ex("SHOW MOU").find("no board") == std::string::npos &&
+                  ex("SHOW MOU").find("mountable") != std::string::npos,
+              "SHOW MOU shows the mount table (SHOW MOUNTS), not a board lookup");
+        CHECK(ex("SHOW VER").find("altairsim") != std::string::npos, "SHOW VER is SHOW VERSION");
+        // EXACT-over-prefix through the real command: MACHINE is the live machine,
+        // MACHINES is the catalog -- and the spelled-out MACHINE must not collapse
+        // into the catalog just because MACHINES is checked first.
+        CHECK(ex("SHOW MACHINE").find("name      ") != std::string::npos,
+              "SHOW MACHINE describes the live machine");
+        CHECK(ex("SHOW MACHINES").find("DESCRIPTION") != std::string::npos,
+              "SHOW MACHINES lists the catalog -- a different branch");
+        // A non-keyword word is still a board lookup (the fall-through is intact).
+        CHECK(ex("SHOW mem0").find("mem0") != std::string::npos,
+              "SHOW mem0 still inspects the board -- no keyword prefixes it");
+
+        // SET: the target-kind selector abbreviates; board targets untouched.
+        CHECK(ex("SET CON base=octal").find("console: base=octal") != std::string::npos,
+              "SET CON sets the console");
+        // The console is a PROCESS-WIDE singleton -- put it back, or the next section's
+        // SHOW BUS IRQ prints octal addresses and fails on hex.
+        ex("SET CON base=hex");
+
+        // SYMBOLS and CONFIG selectors.
+        CHECK(ex("SYMBOLS CLE").find("symbols cleared") != std::string::npos,
+              "SYMBOLS CLE clears");
+        CHECK(ex("CONFIG SA " + (std::filesystem::temp_directory_path() / "abbr.toml").string())
+                  .find("saved") != std::string::npos,
+              "CONFIG SA saves");
+    }
 
     // -----------------------------------------------------------------------
     // SHOW BOARD <type> lists a property's LEGAL VALUES under its help, the same

@@ -719,14 +719,19 @@ Completions Monitor::complete(const std::string& line) {
     }
 
     // ---- BOARDS ADD <type> (word 2) -- the registry's type names, like SHOW BOARDS ----
-    if (name == "BOARDS" && wordIdx == 2 && is(toks[1], "ADD")) {
+    // The selector is resolved by prefix, same as the dispatcher, so `BOARDS A <TAB>`
+    // and `BOARDS REM <TAB>` complete the same as the spelled-out words.
+    std::string boardsSel = (name == "BOARDS" && toks.size() > 1)
+                          ? resolveKeyword(toks[1], {"LIST", "ADD", "REMOVE", "TYPES", "TYPE"})
+                          : "";
+    if (name == "BOARDS" && wordIdx == 2 && boardsSel == "ADD") {
         for (const BoardType& t : boardTypes()) keep(t.name);
         comp.suffix = " ";
         return comp;
     }
 
     // ---- BOARDS REMOVE <id> (word 2) ----
-    if (name == "BOARDS" && wordIdx == 2 && is(toks[1], "REMOVE")) {
+    if (name == "BOARDS" && wordIdx == 2 && boardsSel == "REMOVE") {
         for (const auto& b : m_.boards()) keep(b->id);
         comp.suffix = " ";
         return comp;
@@ -3011,8 +3016,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // ---------------- BOARD ----------------
     if (cmd == "BOARDS") {
         // A bare BOARDS is the list. It is the question people actually ask, and
-        // making them type the word LIST to ask it is a toll booth.
-        std::string sub = (a.size() < 2) ? "LIST" : upper(a[1]);
+        // making them type the word LIST to ask it is a toll booth. A given word
+        // resolves by prefix -- `BOARDS REM` reaches REMOVE -- the way every command
+        // word abbreviates; an unrecognised one stays as typed and hits the usage line.
+        std::string sub = (a.size() < 2) ? "LIST"
+                        : resolveKeyword(a[1], {"LIST", "ADD", "REMOVE", "TYPES", "TYPE"});
+        if (sub.empty()) sub = upper(a[1]);
 
         if (sub == "TYPES" || sub == "TYPE") {
             // The catalog of board TYPES moved to SHOW, next to SHOW MACHINES: both answer
@@ -3124,7 +3133,17 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                      " | SHOW MOUNTS | SHOW PATHS | SHOW DEBUG | SHOW JOYSTICKS"
                      " | SHOW VERSION"))
             return true;
-        std::string sub = upper(a[1]);
+        // The selector resolves by prefix -- `SHOW MOU` reaches MOUNTS, `SHOW VER` VERSION --
+        // built-ins first, exactly the ordering the top-level dispatcher keeps (a keyword
+        // wins over a board id at the same letters, which is the documented safety property).
+        // A word that prefixes no keyword stays as typed and falls through to `board()` below,
+        // so `SHOW acr0` and `SHOW d7a0` still inspect a board.
+        std::string sub = resolveKeyword(a[1],
+            {"BUS", "ROMS", "MOUNTS", "MOUNT", "PATHS", "PATH", "PWD", "CONSOLE", "DEBUG",
+             "VERSION", "BUILD", "DISPLAY", "VIDEO", "WINDOW", "TERMINAL", "JOYSTICKS",
+             "JOYSTICK", "JOY", "SYMBOLS", "SYMBOL", "SYM", "BOARDS", "BOARD", "MACHINES",
+             "MACHINE"});
+        if (sub.empty()) sub = upper(a[1]);
         // Reject trailing junk uniformly: a subcommand that has consumed all the arguments
         // it understands must report the first leftover token, not silently drop it -- a
         // silent drop makes `SHOW cpu regs` look like it answered the question it was asked.
@@ -3451,6 +3470,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     if (cmd == "SET") {
         if (!need(3, "SET <id>[:<unit>]|CONSOLE|DISPLAY|REG|BUS <key>=<value>")) return true;
+        // The target-KIND selector resolves by prefix -- `SET CON base=octal` reaches
+        // CONSOLE -- built-ins first. An empty result is not one of these keywords: a[1]
+        // is then a channel, unit or board id, and the paths below use the RAW a[1] to
+        // look it up, so `SET acr0 ...` and `SET 6850 debug=...` are untouched.
+        std::string setSel =
+            resolveKeyword(a[1], {"BUS", "REG", "CONSOLE", "DISPLAY", "TERMINAL"});
         // Reject trailing junk, the same contract SHOW keeps: once the target and its
         // key=value are parsed, a leftover token is an error, not a silent drop. The
         // ceiling is 3 for the `key=value` form and 4 for the spaced `key value` form,
@@ -3463,7 +3488,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
             return false;
         };
-        if (is(a[1], "BUS")) {
+        if (setSel == "BUS") {
             if (tooMany(3)) return true;
             size_t eq = a[2].find('=');
             std::string v = eq == std::string::npos ? "" : upper(a[2].substr(eq + 1));
@@ -3496,7 +3521,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         //
         // A register value IS on the wire, so it is HEX (DESIGN.md 10.0.1). `SET
         // REG A=10` is sixteen, exactly as `EX 10` is address sixteen.
-        if (is(a[1], "REG")) {
+        if (setSel == "REG") {
             CpuCore* cpu = needCpu(out);
             if (!cpu) return true;
             std::string k, v;
@@ -3568,7 +3593,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             }
         }
 
-        if (is(a[1], "CONSOLE")) {
+        if (setSel == "CONSOLE") {
             // DEBUG on the console is the one global diagnostic SINK, not a console
             // property -- it lives on the dbg facility (per-channel flags are set on
             // the channel: SET <board> DEBUG=..., handled below).
@@ -3595,7 +3620,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
         // The window the picture lands in, settable the same way and for the same
         // reason: it is the host's, not a board's (host/display.h).
-        if (is(a[1], "DISPLAY")) {
+        if (setSel == "DISPLAY") {
             std::string err;
             if (!setPropertyIn(Display::properties(), "display", k, v, err)) {
                 out << err << "\n";
@@ -3609,7 +3634,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // The built-in terminal's transform chain -- the `[terminal]` section. Like
         // the console's, but it lives on the `terminal:` endpoint, not the line, so a
         // real serial line stays 8-bit clean (host/terminal/stream.h).
-        if (is(a[1], "TERMINAL")) {
+        if (setSel == "TERMINAL") {
             std::string err;
             if (!setPropertyIn(TerminalStream::properties(), "terminal", k, v, err)) {
                 out << err << "\n";
@@ -5450,13 +5475,16 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "SYMBOLS") {
         if (!need(2, "SYMBOLS LOAD <file> [REPLACE] | SYMBOLS CLEAR")) return true;
 
-        if (is(a[1], "CLEAR")) {
+        // Selector by prefix -- `SYMBOLS CLE` is CLEAR, `SYMBOLS LO` is LOAD.
+        std::string symSel = resolveKeyword(a[1], {"CLEAR", "LOAD"});
+
+        if (symSel == "CLEAR") {
             m_.syms.clear();
             out << "symbols cleared\n";
             return true;
         }
 
-        if (is(a[1], "LOAD")) {
+        if (symSel == "LOAD") {
             if (a.size() < 3) {
                 out << "SYMBOLS LOAD <file> [REPLACE]\n";
                 failed_ = true;
@@ -5519,7 +5547,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "CONFIG") {
         if (!need(3, "CONFIG LOAD|SAVE <file.toml>")) return true;
         std::string err;
-        if (is(a[1], "LOAD")) {
+        // Selector by prefix -- `CONFIG LO` is LOAD, `CONFIG SA` is SAVE.
+        std::string cfgSel = resolveKeyword(a[1], {"LOAD", "SAVE"});
+        if (cfgSel == "LOAD") {
             // THE MACHINE YOU HAD IS GONE, and only if the file was good. loadToml()
             // builds the new machine in a scratch backplane and swaps it in whole
             // (machine.h, replaceWith), so a file that does not parse leaves you
@@ -5552,7 +5582,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             runStartup(out);
             return true;
         }
-        if (is(a[1], "SAVE")) {
+        if (cfgSel == "SAVE") {
             if (!saveToml(a[2], m_, err)) {
                 out << err << "\n";
                 failed_ = true;
