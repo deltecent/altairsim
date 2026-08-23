@@ -38,6 +38,12 @@ repository (rather than a shipped package) there really is a pristine `HELLO.ASM
 this folder for it to land on, which is not the file the exercise is about. Point it at the disk and
 that confusion never starts.
 
+**Want to watch it work live?** Add `--mirror socket:2323` to the registered command
+(`… altairsim cpm-ai.toml --mcp --mirror socket:2323`), then `telnet localhost 2323` in another
+window while the assistant runs. You see the same console it is driving, character by character,
+and can type onto the line to take the keyboard yourself. `--mirror socket:2323?ro` watches
+without touching it. `DRIVING-WITH-AI.md` explains it under *Watching over its shoulder*.
+
 The rest of this file is the session that unfolds, so you can follow along or check its work.
 
 ## 1 — Build it and watch it misbehave
