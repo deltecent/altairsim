@@ -1132,6 +1132,7 @@ Two invariants it enforces so no board has to:
 
 - **A new board written against these services is automatically cross-platform and automatically replayable.** That is the point of the layer, and it is the acceptance test for the API.
 - **`CONNECT` and `MOUNT` are generic**, not per-board commands. The monitor resolves an endpoint string to a `ByteStream` or a file to a `DiskImage` and hands it to whichever board declared a unit of that type — so a board written next year gets `MOUNT`/`CONNECT` for free without touching the monitor. Note the division of labor: the *monitor* opens the file; the *board* decides what its bytes mean (§7.3).
+  - **This is why a network disk cost no board change.** `MediaFile` (§7.3) is *where the bytes are*, and `openHostMedia` is the one place that decides what a mount string becomes. Teaching it that `tnfs://host[:port]/path` means "slurp this image off a TNFS server, serve it from RAM, write the dirty range back on sync" is a new `MediaFile` implementation plus one branch in that resolver — no controller, no `DiskImage`, and no `MOUNT` grammar was touched, and every disk and tape board mounts over the network for free. The two protocol quirks that make it a *network* medium and not a file: a TNFS `READ` returns at most 512 data bytes so the slurp loops in chunks, and a lost UDP datagram is recovered by resending the *same* sequence number (the server idempotently replays its cached reply). Both live entirely in the medium, off the emulation path — the session talks to the server only at mount and at sync.
 
 ---
 

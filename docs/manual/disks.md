@@ -183,6 +183,36 @@ which is what lets the whole folder be copied somewhere else and still boot. A p
 machine file is resolved against **that file**; a path you type is resolved against **your
 shell**. The machines chapter has the rest of that rule.
 
+## …or fetch it over the network
+
+Everything so far assumed the image is a file on your host. It need not be. Point `MOUNT` at a
+**TNFS server** — the network file system the FujiNet project speaks — and the disk is fetched
+across the network instead of read off your disk:
+
+```
+altairsim> MOUNT dsk0:drive0 tnfs://fileserver/cpm/games.dsk
+altairsim> MOUNT dsk0:drive1 tnfs://fileserver:16384/scratch.dsk WP
+```
+
+The form is `tnfs://<host>[:<port>]/<path>`. The port may be left off and defaults to **16384**,
+the TNFS port; the path is where the image lives on the server. A machine file may name one the
+same way — `mount = "tnfs://fileserver/cpm/games.dsk"` on the drive — and because a `tnfs://`
+name carries its own server with it, it is **not** re-based against the machine file or your
+shell the way a bare filename is. It means the same thing wherever you write it.
+
+What happens after that is what happens with any disk. The image is pulled in **once, at mount**,
+and from then on it behaves exactly like a local one: the guest reads and writes it, the geometry
+is probed from its size (below), `SHOW MOUNTS` lists it, and your changes are written back to the
+server when you `UNMOUNT` or the guest flushes. `WP` write-protects it just as it does a local
+disk, and if the **server** will not let us write — the file is read-only there — the disk still
+mounts, protected, and says the protection was not your idea, exactly as a host file whose
+permissions say no.
+
+There is one limit worth knowing. TNFS carries the **single-file images** — a floppy, a
+minidisk, an 8 MB `fdc8mb`, a cassette tape — the ones small enough to hold whole in memory. The
+larger card images that keep their geometry in a companion file (the CompactFlash and SD boards'
+`.img`) are **not** mountable over TNFS; those stay on your host.
+
 ## The geometry is probed, not declared
 
 You do not tell `altairsim` what kind of disk you just mounted. It **looks at the file's byte
