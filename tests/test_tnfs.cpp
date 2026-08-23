@@ -12,6 +12,7 @@
 #include "test.h"
 
 #include "host/disk.h"
+#include "host/media.h"
 #include "host/tnfs.h"
 #include "platform/socket.h"
 
@@ -34,6 +35,7 @@ struct Backing {
     int                  dropReplies = 0;      // make the next N recvs time out (test retransmit)
     int                  eagainCmd   = -1;     // return one EAGAIN for this command id
     uint16_t             lastOpenFlags = 0;    // what OPEN was asked for
+    bool                 failWrites  = false;  // WRITE returns an I/O error (test loud failure)
 };
 
 // ---- little-endian helpers, matching the wire ----
@@ -111,6 +113,7 @@ public:
             }
             case 0x22: {                 // WRITE (handle, size, data)
                 uint16_t sz = get16(p + 1);
+                if (b_->failWrites) { status = 0x03; break; }   // server/network ate the write
                 if (plen < 3u + sz) { status = 0x03; break; }
                 if (pos_ + sz > b_->file.size()) b_->file.resize(pos_ + sz, 0);
                 std::memcpy(b_->file.data() + pos_, p + 3, sz);
@@ -221,6 +224,45 @@ void test_tnfs() {
             CHECK(b->file[299] == (uint8_t)(299 % 251), "and left the neighbours alone");
         }
         setTnfsUdpConnector(nullptr);
+    }
+
+    SECTION("tnfs: a failed write-back is announced once, and so is recovery");
+    {
+        // The point of the loud-failure path: when the server/network eats a write, the
+        // operator is TOLD, through the media log Machine::drainBoardLog() surfaces -- not
+        // left to discover at UNMOUNT that an afternoon's work never left RAM.
+        auto b = pattern(1000);
+        serve(b);
+        std::string err;
+        auto m = openTnfsMedia("tnfs://server/cpm.dsk", false, err);
+        CHECK(m != nullptr, "mount");
+        if (m) {
+            drainMediaLog();                    // clear anything the mount posted
+            const uint8_t data[3] = {0xAA, 0xBB, 0xCC};
+
+            b->failWrites = true;
+            CHECK(m->writeAt(300, data, 3), "writeAt lands in RAM");
+            m->sync();                          // the flush hits the wall
+            auto log1 = drainMediaLog();
+            CHECK(log1.size() == 1, "the failure is announced");
+            CHECK(log1.size() == 1 &&
+                      log1[0].find("tnfs://server/cpm.dsk") != std::string::npos &&
+                      log1[0].find("cannot save") != std::string::npos,
+                  "the line names the mount and says it cannot save");
+            CHECK(b->file[300] != 0xAA, "and nothing reached the server");
+
+            m->sync();                          // still down -> must NOT repeat per sector
+            CHECK(drainMediaLog().empty(), "the warning is latched, not printed every sector");
+
+            b->failWrites = false;
+            m->sync();                          // the held bytes finally go
+            CHECK(b->file[300] == 0xAA && b->file[302] == 0xCC, "the write reached the server");
+            auto log2 = drainMediaLog();
+            CHECK(log2.size() == 1 && log2[0].find("again") != std::string::npos,
+                  "recovery is announced once");
+        }
+        setTnfsUdpConnector(nullptr);
+        drainMediaLog();                        // leave the global buffer clean for the next test
     }
 
     SECTION("tnfs: WP mounts read-only, opens O_RDONLY, refuses writes");

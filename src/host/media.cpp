@@ -15,6 +15,22 @@ MediaResolver g_resolver;
 
 void setMediaResolver(MediaResolver r) { g_resolver = std::move(r); }
 
+// ---------------------------------------------------------------------------
+// The operator-facing media-message channel (media.h). A file-static buffer, the
+// same shape as g_resolver above; drained by Machine::drainBoardLog().
+// ---------------------------------------------------------------------------
+namespace {
+std::vector<std::string> g_mediaLog;
+}
+
+void logMediaMessage(std::string line) { g_mediaLog.push_back(std::move(line)); }
+
+std::vector<std::string> drainMediaLog() {
+    std::vector<std::string> out;
+    out.swap(g_mediaLog);
+    return out;
+}
+
 std::unique_ptr<MediaFile> openMedia(const std::string& path, bool readOnly, std::string& err) {
     if (!g_resolver) {
         // Not a user error and not survivable: some entry point forgot to install

@@ -135,6 +135,27 @@ void setMediaResolver(MediaResolver r);
 // blank disk that boots to nothing is ten minutes of confusion.
 std::unique_ptr<MediaFile> openMedia(const std::string& path, bool readOnly, std::string& err);
 
+// ---------------------------------------------------------------------------
+// OPERATOR-FACING MEDIA MESSAGES.
+//
+// sync() is void and, for a local file, it essentially never fails -- so this file
+// has always let a write-back fail in silence. A NETWORK medium (TnfsMedia) breaks
+// that assumption: a server that goes away makes every per-sector sync() fail, and
+// the operator, told nothing, keeps working while writes pile up unsent in RAM.
+// That must not be silent -- it is the same rule that makes a forced read-only mount
+// SAY SO (see readOnlyForced above).
+//
+// But a sync() failure has no board at its call site the way a MOUNT does (a disk
+// board calls img->sync() per sector and throws the result away), so it cannot be
+// narrated through Board::drainLog() the way forced-read-only is. This is the channel
+// for it: a medium posts a line here, and Machine::drainBoardLog() drains it
+// alongside the boards' own -- the same global-seam shape as setMediaResolver above,
+// and idempotent to threading in the same way (the emulation loop and the monitor
+// share a thread). Lines carry the medium's own name (the tnfs:// URL), so they
+// identify themselves without a board id.
+void                     logMediaMessage(std::string line);
+std::vector<std::string> drainMediaLog();
+
 // The real one -- the host filesystem. This is what both mains install.
 std::unique_ptr<MediaFile> openHostFile(const std::string& path, bool readOnly, std::string& err);
 

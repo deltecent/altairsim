@@ -460,23 +460,48 @@ public:
     }
 
     void sync() override {
-        if (readOnly_ || dirtyLo_ >= dirtyHi_ || !sess_) return;
+        // sync() returns void and a disk board throws its result away, so a failure here
+        // would vanish -- for a local file that is fine (writes don't fail), but a TNFS
+        // write that the network eats must not be silent. narrateFlush() posts one line to
+        // the media log (media.h) on the good->failing edge and one on the way back, which
+        // Machine::drainBoardLog() surfaces to the operator. Not per sector: latched.
         std::string err;
-        // Push the dirty range in <=512-byte writes. If the network fails here there is
-        // no one to tell (sync() returns void, like HostFile's) -- commit() is the hook
-        // that reports, and UNMOUNT calls it.
-        (void)flushDirty(err);
+        (void)narrateFlush(err);
     }
 
     bool commit(std::string& err) override {
-        if (readOnly_ || dirtyLo_ >= dirtyHi_ || !sess_) return true;
-        return flushDirty(err);
+        // UNMOUNT's hook. Same narration, and it still RETURNS the error the way it always
+        // did -- a tape board (sol/acr) reports commit()'s err directly; a disk board that
+        // only ever calls sync() gets the same news through the media log.
+        return narrateFlush(err);
     }
 
     const std::string& describe() const override { return url_; }
 
 private:
     TnfsMedia() = default;
+
+    // Flush the dirty range, and narrate the edges. Returns true when there was nothing to
+    // do or the flush reached the server; false (with `err`) when it did not. The message
+    // fires ONCE per transition -- a network that stays down would otherwise print a line
+    // per sector -- and names the mount, since a media-log line carries no board id.
+    bool narrateFlush(std::string& err) {
+        if (readOnly_ || dirtyLo_ >= dirtyHi_ || !sess_) return true;
+        if (flushDirty(err)) {
+            if (writeFailing_) {
+                writeFailing_ = false;
+                logMediaMessage(url_ + ": saving to the server works again -- "
+                                       "changes are being saved");
+            }
+            return true;
+        }
+        if (!writeFailing_) {
+            writeFailing_ = true;
+            logMediaMessage(url_ + ": cannot save changes to the server (" + err +
+                            ") -- they are being held in memory only until it recovers");
+        }
+        return false;
+    }
 
     bool flushDirty(std::string& err) {
         uint64_t off = dirtyLo_;
@@ -501,6 +526,7 @@ private:
     uint64_t                     dirtyLo_  = 0;
     uint64_t                     dirtyHi_  = 0;
     uint64_t                     onServer_ = 0;
+    bool                         writeFailing_ = false;  // latch: warn once, recover once
 };
 
 } // namespace
