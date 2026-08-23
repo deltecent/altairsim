@@ -15,6 +15,7 @@
 #include "host/tnfs.h"
 #include "platform/socket.h"
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <string>
