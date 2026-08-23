@@ -20,6 +20,13 @@ for the UART's own signals, **`dav`** (data available) and **`tbmt`** (transmit 
 One serial port per board; add another `io2` for another port. The `propio` Console IO Board is
 unchanged — it now rides the `io2` engine.
 
+A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
+and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks
+— over the network instead. Once mounted it behaves like any other disk: the guest reads and
+writes it, `WP` protects it, and your changes are written back to the server. It works for every
+disk and tape controller, since it is the image that arrives over the network, not anything the
+board can tell apart from a local file.
+
 ## 0.4.0
 
 **0.4.0 is the boards release.** New S-100 boards join the backplane, and five new machine
