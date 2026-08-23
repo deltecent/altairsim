@@ -146,7 +146,12 @@ public:
 
     // MOUNT the server's default root; capture the session id and the min retry time.
     bool mount(std::string& err) {
+        // reserve() up front on every builder: it is the capacity the bytes need, and it
+        // stops GCC's inliner mis-reading a push_back sequence as an overflow of a
+        // freshly-allocated small vector (-Werror=stringop-overflow=, a known GCC 12/13
+        // false positive on exactly this idiom).
         std::vector<uint8_t> payload;
+        payload.reserve(5);
         putU16(payload, 0x0100);   // protocol version we speak: v1.0 (LSB minor, MSB major)
         payload.push_back(0x00);   // mount location: empty -> server DEFAULT_ROOT
         payload.push_back(0x00);   // user: none
@@ -170,7 +175,9 @@ public:
 
     // STAT a path for its size in bytes.
     bool statSize(const std::string& path, uint64_t& size, std::string& err) {
-        std::vector<uint8_t> payload(path.begin(), path.end());
+        std::vector<uint8_t> payload;
+        payload.reserve(path.size() + 1);
+        payload.assign(path.begin(), path.end());
         payload.push_back(0x00);
         std::vector<uint8_t> reply;
         uint8_t              status = 0;
@@ -193,6 +200,7 @@ public:
     bool open(const std::string& path, uint16_t flags, uint8_t& handle, uint8_t& status,
               std::string& err) {
         std::vector<uint8_t> payload;
+        payload.reserve(5 + path.size());
         putU16(payload, flags);
         putU16(payload, 0x01A4);   // mode 0644, used only if creating (we never O_CREAT)
         payload.insert(payload.end(), path.begin(), path.end());
@@ -213,6 +221,7 @@ public:
     // (0 at EOF). One datagram; the caller loops for more than kIoChunk.
     bool readChunk(uint8_t handle, uint16_t n, uint8_t* buf, uint16_t& got, std::string& err) {
         std::vector<uint8_t> payload;
+        payload.reserve(3);
         payload.push_back(handle);
         putU16(payload, n);
         std::vector<uint8_t> reply;
@@ -241,6 +250,7 @@ public:
 
     bool writeChunk(uint8_t handle, const uint8_t* buf, uint16_t n, std::string& err) {
         std::vector<uint8_t> payload;
+        payload.reserve(3 + n);
         payload.push_back(handle);
         putU16(payload, n);
         payload.insert(payload.end(), buf, buf + n);
@@ -260,6 +270,7 @@ public:
 
     bool seek(uint8_t handle, uint32_t off, std::string& err) {
         std::vector<uint8_t> payload;
+        payload.reserve(6);
         payload.push_back(handle);
         payload.push_back(SEEK_SET_);
         putU32(payload, off);
@@ -336,6 +347,7 @@ private:
 
     std::vector<uint8_t> frame(uint8_t seq, uint8_t cmd, const std::vector<uint8_t>& payload) {
         std::vector<uint8_t> d;
+        d.reserve(kHeaderSz + payload.size());
         putU16(d, sid_);
         d.push_back(seq);
         d.push_back(cmd);
