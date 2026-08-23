@@ -6,6 +6,20 @@ as it is now; this document is the record of how it got there.
 
 ---
 
+## Unreleased
+
+The strap-configurable serial card is now a real board: the **SSM IO-2** (`io2`) replaces
+`usio`. It is the same describe-it-by-strap engine — status/data ports, the status-bit
+positions and the built-in profiles all carry over — but modeled as the actual SSM IO-2's
+serial personality (an AY-5-1013 MITS-SIO clone) instead of an invented "universal" card. Two
+things change with it: the two separate active-low knobs collapse into one **`inverter_gate`**
+(on the real board both status bits share a single inverting buffer, so they always match), and
+a new **`sior0`** profile — the MITS SIO Rev 0 the SSM 8080 monitor expects — is the board's
+default, so a bare `io2` comes up ready for that console. Its status-bit properties are named
+for the UART's own signals, **`dav`** (data available) and **`tbmt`** (transmit buffer empty).
+One serial port per board; add another `io2` for another port. The `propio` Console IO Board is
+unchanged — it now rides the `io2` engine.
+
 ## 0.4.0
 
 **0.4.0 is the boards release.** New S-100 boards join the backplane, and five new machine

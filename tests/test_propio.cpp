@@ -1,7 +1,7 @@
 // PropIo -- the S100Computers Console IO Board (src/boards/propio.h,
-// reference/Console IO Board.md). propio is a SUBTYPE of the usio engine (tested in
-// test_usio.cpp); this suite does not re-test the engine mechanics -- it asserts the two
-// things that make propio propio: it IS a usio underneath (the engine's data path works
+// reference/Console IO Board.md). propio is a SUBTYPE of the io2 engine (tested in
+// test_io2.cpp); this suite does not re-test the engine mechanics -- it asserts the two
+// things that make propio propio: it IS an io2 underneath (the engine's data path works
 // through it) and it comes up preset to the Console IO Board's documented convention
 // (ports 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high), while
 // every strap stays overridable because the real board is jumpered.
@@ -9,7 +9,7 @@
 #include "test.h"
 
 #include "boards/propio.h"
-#include "boards/usio.h"
+#include "boards/io2.h"
 #include "core/board.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
@@ -20,7 +20,7 @@ using namespace altair;
 
 namespace {
 
-// A propio on the bench with a scripted line, driven exactly as test_usio's Rig -- the same
+// A propio on the bench with a scripted line, driven exactly as test_io2's Rig -- the same
 // real connect path (resolveEndpoint installed in tests/main.cpp).
 struct Rig {
     PropIoBoard     b;
@@ -64,9 +64,9 @@ void test_propio() {
     SECTION("propio -- identifies as the Console IO Board and is one serial unit");
     {
         Rig g;
-        CHECK(g.b.type() == "propio", "type() is propio, not usio");
+        CHECK(g.b.type() == "propio", "type() is propio, not io2");
         CHECK(g.b.units().size() == 1, "one line -- a console");
-        CHECK(g.b.units()[0].name == "serial", "named 'serial' (inherited from the usio engine)");
+        CHECK(g.b.units()[0].name == "serial", "named 'serial' (inherited from the io2 engine)");
         CHECK(g.b.units()[0].kind == UnitKind::Serial, "a serial unit");
     }
 
@@ -74,13 +74,12 @@ void test_propio() {
     {
         // reference/Console IO Board.md: status 00 / data 01; RX-ready = bit 1, TX-ready =
         // bit 2, both active high. The board and the ctor share this one source of truth.
-        UsioProfile p = propioProfile();
+        Io2Profile p = propioProfile();
         CHECK(p.statusPort == 0x00, "status port 00");
         CHECK(p.dataPort == 0x01, "data port 01");
-        CHECK(p.rdrBit == 1, "RX-ready is status bit 1 (AND 02H)");
-        CHECK(p.tdreBit == 2, "TX-ready is status bit 2 (AND 04H)");
-        CHECK(!p.rdrActiveLow, "RX-ready active high (1 = a key waits)");
-        CHECK(!p.tdreActiveLow, "TX-ready active high (0 = busy)");
+        CHECK(p.davBit == 1, "RX-ready (DAV) is status bit 1 (AND 02H)");
+        CHECK(p.tbmtBit == 2, "TX-ready (TBMT) is status bit 2 (AND 04H)");
+        CHECK(!p.inverterGate, "inverter gate off -- both bits active high");
     }
 
     SECTION("propio -- comes up preset, no configuration needed");
@@ -88,8 +87,8 @@ void test_propio() {
         Rig g;
         CHECK(g.get("status_port") == 0x00, "status_port preset to 00");
         CHECK(g.get("data_port") == 0x01, "data_port preset to 01");
-        CHECK(g.get("rdr_bit") == 1, "rdr_bit preset to 1");
-        CHECK(g.get("tdre_bit") == 2, "tdre_bit preset to 2");
+        CHECK(g.get("dav") == 1, "dav preset to 1");
+        CHECK(g.get("tbmt") == 2, "tbmt preset to 2");
 
         // It decodes exactly those two ports and nothing else.
         BusCycle c;

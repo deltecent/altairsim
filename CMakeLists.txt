@@ -517,8 +517,8 @@ add_library(altair_core STATIC
   # The Processor Technology Sol-PC's integrated I/O as one composite card (serial,
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/pmmi-mm103.cpp
-  src/boards/usio.cpp
-  src/boards/propio.cpp   # Console IO Board: a usio subtype (Parallax-Propeller console)
+  src/boards/io2.cpp
+  src/boards/propio.cpp   # Console IO Board: an io2 subtype (Parallax-Propeller console)
   src/boards/v2z80rom.cpp     # S100Computers V2 Z80 CPU board: onboard paged monitor EEPROM
   src/boards/proctech-sol.cpp
   src/boards/mits-frontpanel.cpp
@@ -744,7 +744,7 @@ add_executable(altair_tests
   tests/test_pb1.cpp
   tests/test_papertape.cpp
   tests/test_pmmi.cpp
-  tests/test_usio.cpp
+  tests/test_io2.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_tee.cpp

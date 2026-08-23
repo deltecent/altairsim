@@ -379,7 +379,7 @@ Parallax Propeller instead of a 6850 or 8251, with status at `00` and data at `0
 console, unit `serial` — you `CONNECT` it to a terminal, a file, a socket or a serial port like any
 other serial board. It is the console the Dual SD machine uses.
 
-Underneath, `propio` is just a **preset**: it is the generic strap-configurable serial card (`usio`)
+Underneath, `propio` is just a **preset**: it is the strap-configurable serial card (`io2`)
 with this board's documented convention filled in — the ports, and which status bit means
 receive-ready and which means transmit-ready. Because the real board is jumpered, every one of those
 straps is still yours to override, so a differently-strapped Console I/O board needs no new board

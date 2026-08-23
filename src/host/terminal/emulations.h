@@ -2,7 +2,7 @@
 //
 // The built-in terminal emulations, as a name->factory table (issue #244).
 //
-// The one place that knows which dialects exist, mirroring usioBuiltins(): a row per
+// The one place that knows which dialects exist, mirroring io2Builtins(): a row per
 // emulation the `terminal:` endpoint can speak, keyed by the name the operator types
 // (`emulation=vt100`). Adding a terminal is adding a row here plus its TerminalEmulator
 // subclass -- the endpoint, the grammar and the help all read this table, so nothing
