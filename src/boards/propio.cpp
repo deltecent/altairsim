@@ -7,12 +7,17 @@ namespace altair {
 // status bit 1 and output-ready in status bit 2, both active high (`AND 02H` / `AND 04H`, and
 // a 0 in the TX bit means the display is busy). The real board jumpers all of this (P74-P77,
 // SW2/SW3), so these are PRESETS the operator can still override -- not fixed silicon.
-UsioProfile propioProfile() {
-    return UsioProfile{/*status*/ 0x00, /*data*/ 0x01,
-                       /*rdr*/ 1, /*tdre*/ 2,
-                       /*rdrActiveLow*/ false, /*tdreActiveLow*/ false};
+Io2Profile propioProfile() {
+    return Io2Profile{/*status*/ 0x00, /*data*/ 0x01,
+                      /*dav*/ 1, /*tbmt*/ 2,
+                      /*inverterGate*/ false};
 }
 
-PropIoBoard::PropIoBoard() { applyProfile(propioProfile()); }
+PropIoBoard::PropIoBoard() {
+    applyProfile(propioProfile());
+    // The Io2Board default profile is `sior0`; these are custom straps, so report it
+    // as such for a coherent CONFIG SAVE (the individual straps are still written out).
+    setProfileName("custom");
+}
 
 } // namespace altair

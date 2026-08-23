@@ -274,27 +274,31 @@ manual tells you the polarity and the port map; the data sheet tells you the chi
 right shape when you are modeling real silicon** — and the project rule stands: never give the
 hardware a behavior it never had to make software happy.
 
-**The UART-agnostic card** does not model a chip at all. **`UsioBoard` (`src/boards/usio.h`)** —
-the "universal serial board", `type() == "usio"` — holds a `std::unique_ptr<ByteStream>` directly
-and *synthesizes* a status byte from the stream:
+**The strap-configurable card** does not model a chip's register map at all. **`Io2Board`
+(`src/boards/io2.h`)** — the SSM IO-2 serial board, `type() == "io2"` — holds a
+`std::unique_ptr<ByteStream>` directly and *synthesizes* a status byte from the stream:
 
 ```cpp
 uint8_t s = 0;
-if (stream_->readable() != rdrActiveLow_)  s |= (1u << rdrBit_);   // XOR = active-low inversion
-if (stream_->writable() != tdreActiveLow_) s |= (1u << tdreBit_);
+if (stream_->readable() != inverterGate_) s |= (1u << davBit_);   // XOR = inverter-gate inversion
+if (stream_->writable() != inverterGate_) s |= (1u << tbmtBit_);  // both bits, one knob
 ```
 
-The operator *describes* an abstract interface with straps rather than picking a chip: which port
-is status/control, which port is data, which status bit means receive-data-ready and which means
-transmit-data-empty, and whether each is active-low. Control-port writes are accepted and ignored
+The real SSM IO-2 is a serial+parallel card built on an AY-5-1013 UART whose serial personality
+is a MITS-SIO clone; we model only that single serial port. The operator *describes* the interface
+with straps rather than picking a chip: which port is status/control, which port is data, which
+status bit is `dav` (data available) and which is `tbmt` (transmit buffer empty), and whether the
+**inverter gate** is engaged — one knob, because on the board both status bits pass through the
+same inverting buffer and so always share a polarity. Control-port writes are accepted and ignored
 — there is no chip to program. To make common cards turnkey it ships **built-in profiles** in one
-table (`usioBuiltins()` — `tuart`, `imsai-sio2`, `compupro-if2`, `compupro-ss1`), each just a
-bundle of those straps and trivial
-to extend: add one struct and its name becomes a `profile` choice and appears in the generated
-docs. USIO is **polled, with no interrupts** — a deliberate first phase, because without a working
-control/interrupt-enable register a strapped TX-empty interrupt would storm (TDRE is asserted at
-idle). This is the right shape when the goal is to *reach* an abstract serial interface some
-software expects, not to reproduce a particular board.
+table (`io2Builtins()` — `sior0`, `tuart`, `imsai-sio2`, `compupro-if2`, `compupro-ss1`), each just
+a bundle of those straps and trivial to extend: add one struct and its name becomes a `profile`
+choice and appears in the generated docs. The default profile is **`sior0`** (MITS SIO Rev 0), what
+the SSM 8080 monitor expects on its console. The IO-2 is **polled, with no interrupts** — a
+deliberate first phase, because without a working control/interrupt-enable register a strapped
+TX-empty interrupt would storm (TBMT is asserted at idle). Want more than one serial port? Add
+another `io2` board. This is the right shape when the goal is to *reach* an abstract serial
+interface some software expects, not to reproduce a particular board's silicon.
 
 ## How to add a serial board
 
@@ -312,7 +316,7 @@ The general playbook is `adding-a-board.md`; the serial-specific steps on top of
    any baud change, and surface a refusal through `drainLog()`.
 6. **If you model real silicon**, put the chip in `src/chips/` from its data sheet, keep the
    inverting buffers and interrupt-enable bits on the card, and reuse `Sio2Port` if it is a
-   6850. If instead you want a strap-configured abstract interface, `UsioBoard` already exists —
+   6850. If instead you want a strap-configured abstract interface, `Io2Board` already exists —
    add a profile, do not write a new board.
 7. **Test with a `ScriptedStream`** bound through the real `connect()` path: `feed()` bytes at the
    card, assert on `out()`, and check the status bits land where the straps put them.

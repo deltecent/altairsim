@@ -821,19 +821,19 @@ void test_cli() {
     // -----------------------------------------------------------------------
     // SHOW BOARD <type> lists a property's LEGAL VALUES under its help, the same
     // facts the generated ref/boards.md prints -- so an operator can read the choices
-    // (e.g. a USIO built-in profile) straight off the type card, not just its prose.
+    // (e.g. an IO-2 built-in profile) straight off the type card, not just its prose.
     // -----------------------------------------------------------------------
     SECTION("cli: SHOW BOARD lists a property's legal values under its help");
     {
         Machine mp;
         Monitor monP(mp);
         std::ostringstream o;
-        monP.exec("SHOW BOARD usio", o);
+        monP.exec("SHOW BOARD io2", o);
         const std::string s = o.str();
         // The enum's choices, including every built-in profile name.
         // The enum header plus each built-in name -- the list can word-wrap across lines,
         // so assert the members individually rather than one contiguous string.
-        CHECK(s.find("values: custom | tuart | imsai-sio2") != std::string::npos,
+        CHECK(s.find("values: custom | sior0 | tuart | imsai-sio2") != std::string::npos,
               "the profile enum lists custom plus each built-in as its legal values");
         CHECK(s.find("compupro-if2") != std::string::npos, "compupro-if2 is a listed profile");
         CHECK(s.find("compupro-ss1") != std::string::npos, "compupro-ss1 is a listed profile");

@@ -1,20 +1,27 @@
 #pragma once
 //
-// USIO -- the Universal Serial board. See docs/devguide/serial-io.md.
+// SSM IO-2 -- a strap-configurable serial board. See docs/devguide/serial-io.md.
 //
-// A serial card that emulates NO PARTICULAR UART. Every other serial board in the
-// machine is a chip (the 88-2SIO/Turnkey are a 6850, the 88-SIO/ACR/UIO a COM2502,
-// the SBC an 8251, the PMMI an MM-103) with that chip's register map, polarity and
-// quirks baked in. The USIO is the opposite: it is DESCRIBED, not emulated. The
-// operator says where the status/control port lives, which status bit means
-// "receive data ready" and which means "transmit data empty" (and whether each is
-// active low), and where the data port lives -- and that IS the card.
+// The real SSM IO-2 (reference/SSM IO-2 Parallel IO Board.md) is a serial+parallel
+// card built around an AY-5-1013 / TMS6011 / IM6402 UART, whose serial personality is
+// a MITS-SIO clone: two ports (status/control + data), polled, and a bank of jumpers
+// that let it imitate most polled status+data serial cards on the S-100 bus. WE MODEL
+// ONLY THAT SINGLE SERIAL PORT -- the parallel port and 1702-PROM socket are out of
+// scope, and a user wanting more serial ports adds more `io2` boards.
 //
-// It exists because "read a status bit, then read/write a data byte" is the shape of
-// nearly every polled UART ever put on the S-100 bus, and a card that lets you strap
-// that shape covers a long tail of boards nobody will ever write a dedicated model
-// for. The two built-in PROFILES (Cromemco TU-ART, IMSAI SIO-2) are just named
-// bundles of those straps -- adding a third is one struct in usioBuiltins().
+// Like every serial personality of that shape, this board emulates NO PARTICULAR UART
+// register-for-register. Other serial boards are a chip (the 88-2SIO/Turnkey a 6850,
+// the 88-SIO/ACR a COM2502, the SBC an 8251, the PMMI an MM-103) with that chip's
+// register map baked in. The IO-2 is the opposite: it is DESCRIBED, not emulated. The
+// operator says where the status/control port lives, which status bit is DAV (data
+// available) and which is TBMT (transmit buffer empty), whether the inverter gate is
+// engaged, and where the data port lives -- and that IS the card.
+//
+// The strapped shape -- "read a status bit, then read/write a data byte" -- is nearly
+// every polled UART ever put on the S-100 bus, so the built-in PROFILES are named
+// bundles of those straps that make the board come up as a specific card. Adding one is
+// one struct in io2Builtins(). The default profile is `sior0`, the MITS SIO Rev 0 that
+// the SSM 8080 System Monitor expects on its console.
 //
 // ---------------------------------------------------------------------------
 // WHAT THIS MODELS, AND WHAT IT DELIBERATELY DOES NOT.
@@ -30,7 +37,7 @@
 // NO INTERRUPTS. The card never drives pin 73 or a VI line -- it is polled-only.
 // This is deliberate and not merely unfinished: without a control register there is
 // no interrupt-enable to gate a transmit interrupt, and a strapped TX-empty interrupt
-// would storm (TDRE is asserted whenever the line is idle, which is almost always).
+// would storm (TBMT is asserted whenever the line is idle, which is almost always).
 // Interrupts are an explicit later phase; when they land they bring an enable strap
 // with them.
 // ---------------------------------------------------------------------------
@@ -47,32 +54,33 @@
 namespace altair {
 
 // A strap bundle -- pure data, the whole of what a "board profile" is. Where the two
-// ports sit, which status bits carry RDR/TDRE, and whether each bit is active low.
-struct UsioProfile {
+// ports sit, which status bits carry DAV/TBMT, and whether the inverter gate is engaged
+// (on the real IO-2 both status bits pass through the SAME inverting buffer, so their
+// polarity is a single knob, not two).
+struct Io2Profile {
     uint8_t statusPort = 0x00;   // status(read) / control(write, discarded)
     uint8_t dataPort   = 0x01;   // rx(read) / tx(write)
-    uint8_t rdrBit     = 0;      // status bit: receive data ready
-    uint8_t tdreBit    = 1;      // status bit: transmit data empty
-    bool    rdrActiveLow  = false;
-    bool    tdreActiveLow = false;
+    uint8_t davBit     = 0;      // status bit: DAV, data available (receive)
+    uint8_t tbmtBit    = 7;      // status bit: TBMT, transmit buffer empty
+    bool    inverterGate = true; // both bits through the inverter gate: asserted reads 0
 };
 
 // A named profile. Its `name` becomes a `profile` property choice automatically, so a
-// new built-in is exactly one entry in usioBuiltins() -- no other file to touch.
-struct UsioBuiltin {
+// new built-in is exactly one entry in io2Builtins() -- no other file to touch.
+struct Io2Builtin {
     std::string name;
     std::string help;
-    UsioProfile profile;
+    Io2Profile  profile;
 };
 
-// THE ONE PLACE BUILT-INS LIVE (usio.cpp). List/extend from here.
-const std::vector<UsioBuiltin>& usioBuiltins();
+// THE ONE PLACE BUILT-INS LIVE (io2.cpp). List/extend from here.
+const std::vector<Io2Builtin>& io2Builtins();
 
-class UsioBoard : public Board {
+class Io2Board : public Board {
 public:
-    UsioBoard();
+    Io2Board();
 
-    std::string type() const override { return "usio"; }
+    std::string type() const override { return "io2"; }
 
     // ---- bus: two ports, polled ----
     bool    decodes(const BusCycle& c) const override;
@@ -109,7 +117,7 @@ public:
 
 private:
     // Synthesize the status byte from the line's pins at the strapped bit positions,
-    // applying each active-low inversion (host/stream.h: readable()->RDR, writable()->TDRE).
+    // applying the inverter gate (host/stream.h: readable()->DAV, writable()->TBMT).
     uint8_t statusByte() const;
 
     // Push `baud`/8N1 at the wire. Ignored by every endpoint but a real serial port,
@@ -122,13 +130,17 @@ protected:
     // property of the card being emulated, but of the cable you plug into it). Protected so a
     // subtype (e.g. PropIoBoard, the Console IO Board) can preset a real card's straps in its
     // constructor -- the engine is unchanged, only the defaults differ.
-    void applyProfile(const UsioProfile& p);
+    void applyProfile(const Io2Profile& p);
+
+    // Set the reported profile name. Protected so a subtype that presets custom straps can
+    // keep `profile` coherent for CONFIG SAVE (the default profile is `sior0`).
+    void setProfileName(const std::string& name) { profile_ = name; }
 
 private:
 
     // ---- config / straps (rebuilt from TOML) ----
-    std::string profile_ = "custom";  // the selected built-in, or "custom"
-    UsioProfile straps_;              // the live status/data/bit/polarity straps
+    std::string profile_ = "sior0";   // the selected built-in, or "custom"
+    Io2Profile  straps_;              // the live status/data/bit/polarity straps
     long long   baud_ = 9600;         // programmed onto a real serial port only
 
     // ---- the line ----

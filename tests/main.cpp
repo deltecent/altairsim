@@ -15,7 +15,7 @@
 #include "boards/mits-turnkey.h"
 #include "boards/cromemco-16fdc.h"
 #include "boards/pmmi-mm103.h"
-#include "boards/usio.h"
+#include "boards/io2.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/compupro-ss1.h"
@@ -100,7 +100,7 @@ const struct {
     {"dma", test_dma},
     {"sio2", test_sio2},
     {"tms5501", test_tms5501},
-    {"usio", test_usio},
+    {"io2", test_io2},
     {"propio", test_propio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
     altair::SolBoard::setResolver(altair::resolveEndpoint);
     altair::Vdb8024Board::setResolver(altair::resolveEndpoint);
     altair::PmmiBoard::setResolver(altair::resolveEndpoint);
-    altair::UsioBoard::setResolver(altair::resolveEndpoint);
+    altair::Io2Board::setResolver(altair::resolveEndpoint);
     altair::CromemcoFdcBoard::setResolver(altair::resolveEndpoint);
     altair::FrontPanelBoard::setResolver(altair::resolveEndpoint);
     altair::Ss1Board::setResolver(altair::resolveEndpoint);
