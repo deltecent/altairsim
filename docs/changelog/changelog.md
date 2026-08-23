@@ -25,7 +25,10 @@ and fetches the image off a **TNFS server** — the network file system the Fuji
 — over the network instead. Once mounted it behaves like any other disk: the guest reads and
 writes it, `WP` protects it, and your changes are written back to the server. It works for every
 disk and tape controller, since it is the image that arrives over the network, not anything the
-board can tell apart from a local file.
+board can tell apart from a local file. And because a network — unlike a local disk — can vanish
+mid-session, altairsim now says so out loud if the server stops accepting writes, rather than
+letting your changes pile up unsaved in silence; it keeps retrying and tells you when saving works
+again.
 
 ## 0.4.0
 

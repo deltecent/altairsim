@@ -208,6 +208,14 @@ disk, and if the **server** will not let us write — the file is read-only ther
 mounts, protected, and says the protection was not your idea, exactly as a host file whose
 permissions say no.
 
+A network can go away in the middle of a session, and a local disk cannot — so this one case is
+worth watching for. If the server stops accepting writes while you are using the disk, altairsim
+**tells you**: it prints a line saying it can no longer save changes to that mount, and that they
+are being held in memory only. The guest keeps running, and altairsim keeps trying; when the
+server comes back it says so and the held changes are saved. But until then, treat those changes
+as not yet safe — if you quit or the server never returns, what was written after the warning is
+lost.
+
 There is one limit worth knowing. TNFS carries the **single-file images** — a floppy, a
 minidisk, an 8 MB `fdc8mb`, a cassette tape — the ones small enough to hold whole in memory. The
 larger card images that keep their geometry in a companion file (the CompactFlash and SD boards'

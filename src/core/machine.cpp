@@ -4,6 +4,7 @@
 #include "boards/registry.h"
 #include "core/crc32.h"
 #include "core/statefile.h"
+#include "host/media.h"
 
 #include <algorithm>
 #include <cstring>
@@ -365,6 +366,10 @@ std::vector<std::string> Machine::drainBoardLog() {
     std::vector<std::string> out;
     for (auto& b : boards_)
         for (auto& s : b->drainLog()) out.push_back(s);
+    // A medium with no board at its failing sync() call site speaks here instead --
+    // a TNFS mount whose write-back to the server just failed (or recovered). See
+    // host/media.h's logMediaMessage.
+    for (auto& s : drainMediaLog()) out.push_back(std::move(s));
     return out;
 }
 
