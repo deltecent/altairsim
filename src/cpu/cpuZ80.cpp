@@ -448,15 +448,25 @@ void CpuZ80::blockOut(Bus& bus, int dir, bool repeat) {
 
 // ---------------------------------------------------------------------------
 // Reflection (DESIGN.md 3.0.3). REGS/SET REG/breakpoints/MCP render these with no
-// change from the 8080 -- it is just a longer list. Flags first, PC last, matching
-// the 8080's status-line convention; the alternate bank, I/R and interrupt state
-// are reachable by name but kept off the one-line display (RegShow::Off/Field).
+// change from the 8080 -- the monitor knows no CPU. The Z80 simply has more to say,
+// so it declares TWO status lines (RegDef::line):
+//
+//   C0Z0S0P0H0N0 A=00 BC=0000 DE=0000 HL=0000 SP=0000 IFF1=0 PC=0000  CALL PE,9A78
+//   C0Z0S0P0H0N0 A'00 BC'0000 DE'0000 HL'0000 IX=0000 IY=0000 I=00 IM=00 IFF2=0
+//
+// Line 0 carries the registers the 8080 also has, in the same shape -- the one label
+// that differs is the interrupt-enable flip-flop, which the Z80 names and shows as
+// `IFF1` where the 8080 says `IE`. Line 1 is the Z80's own: the SHADOW bank
+// (`A'`/`BC'`/`DE'`/`HL'`, printed with a ' separator, RegDef::sep), the index
+// registers, and the interrupt state `I`/`IM`/`IFF2` (IFF1's shadow closes the pair).
+// Every LABEL is the `SET REG` name, so what you read is what you type. R and WZ stay
+// reachable by name, off the display.
 // ---------------------------------------------------------------------------
 std::vector<RegDef> CpuZ80::registers() {
-    auto flag = [this](const char* n, const char* lbl, const char* help, uint8_t mask) {
+    auto flag = [](const char* n, const char* lbl, const char* help, uint8_t* fp, uint8_t mask) {
         return RegDef{n, 1, lbl, RegShow::Flag, help,
-                      [this, mask] { return (uint32_t)((f_ & mask) ? 1 : 0); },
-                      [this, mask](uint32_t v) { f_ = v ? (uint8_t)(f_ | mask) : (uint8_t)(f_ & ~mask); }};
+                      [fp, mask] { return (uint32_t)((*fp & mask) ? 1 : 0); },
+                      [fp, mask](uint32_t v) { *fp = v ? (uint8_t)(*fp | mask) : (uint8_t)(*fp & ~mask); }};
     };
     auto half = [](const char* n, uint8_t* p) {
         return RegDef{n, 8, "", RegShow::Off, "", [p] { return (uint32_t)*p; },
@@ -477,49 +487,76 @@ std::vector<RegDef> CpuZ80::registers() {
                       [p](uint32_t v) { *p = (uint8_t)v; }};
     };
 
-    return {
+    std::vector<RegDef> r = {
+        // ---- Line 0: the flags and the registers the 8080 also has ----
         // Flag NAMES avoid the register letters -- `C` and `H` are the B,C,...H,L
         // register halves, so the carry and half-carry flags are `CY` and `HF`
         // (the 8080 core dodges the same clash by calling its carry `CY`). The
         // LABEL is the Z80's own S Z H P/V N C, which is what the status line shows.
-        flag("CY", "C", "carry", FC),
-        flag("Z", "Z", "zero", FZ),
-        flag("S", "S", "sign -- negative", FS),
-        flag("PV", "P", "parity / overflow", FPV),
-        flag("HF", "H", "half carry", FH),
-        flag("N", "N", "add/subtract (for DAA)", FN),
+        flag("CY", "C", "carry", &f_, FC),
+        flag("Z", "Z", "zero", &f_, FZ),
+        flag("S", "S", "sign -- negative", &f_, FS),
+        flag("PV", "P", "parity / overflow", &f_, FPV),
+        flag("HF", "H", "half carry", &f_, FH),
+        flag("N", "N", "add/subtract (for DAA)", &f_, FN),
 
         {"A", 8, "", RegShow::Field, "accumulator", [this] { return (uint32_t)a_; },
          [this](uint32_t v) { a_ = (uint8_t)v; }},
-        pair("BC", "B", RegShow::Field, "the B,C pair", &b_, &c_),
-        pair("DE", "D", RegShow::Field, "the D,E pair", &d_, &e_),
-        pair("HL", "H", RegShow::Field, "the H,L pair", &h_, &l_),
+        pair("BC", "BC", RegShow::Field, "the B,C pair", &b_, &c_),
+        pair("DE", "DE", RegShow::Field, "the D,E pair", &d_, &e_),
+        pair("HL", "HL", RegShow::Field, "the H,L pair", &h_, &l_),
+        word("SP", "SP", RegShow::Field, "stack pointer", &sp_),
+        {"IFF1", 1, "IFF1", RegShow::Field, "interrupt enable flip-flop (paired with IFF2)",
+         [this] { return (uint32_t)(iff1_ ? 1 : 0); }, [this](uint32_t v) { iff1_ = v != 0; }},
+        {"PC", 16, "PC", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
+         [this](uint32_t v) { pc_ = (uint16_t)v; }},
+
+        // ---- Line 1: the shadow flags, the shadow bank, and the Z80's own registers ----
+        // The shadow flags read F' (the same six masks), and the shadow registers
+        // print with a ' separator (sep, set below) so `A'00` reads as the alternate
+        // accumulator, not `A' = 00`. Their NAMES take a trailing ' too, so `SET REG
+        // BC'=1234` is exactly what the line shows.
+        flag("CY'", "C", "shadow carry", &f2_, FC),
+        flag("Z'", "Z", "shadow zero", &f2_, FZ),
+        flag("S'", "S", "shadow sign", &f2_, FS),
+        flag("PV'", "P", "shadow parity / overflow", &f2_, FPV),
+        flag("HF'", "H", "shadow half carry", &f2_, FH),
+        flag("N'", "N", "shadow add/subtract", &f2_, FN),
+
+        byte("A'", "A", RegShow::Field, "alternate accumulator", &a2_),
+        pair("BC'", "BC", RegShow::Field, "alternate BC", &b2_, &c2_),
+        pair("DE'", "DE", RegShow::Field, "alternate DE", &d2_, &e2_),
+        pair("HL'", "HL", RegShow::Field, "alternate HL", &h2_, &l2_),
         word("IX", "IX", RegShow::Field, "index register X", &ix_),
         word("IY", "IY", RegShow::Field, "index register Y", &iy_),
-        word("SP", "S", RegShow::Field, "stack pointer", &sp_),
         byte("I", "I", RegShow::Field, "interrupt vector base", &i_),
         {"IM", 8, "IM", RegShow::Field, "interrupt mode (0/1/2)", [this] { return (uint32_t)im_; },
          [this](uint32_t v) { im_ = (uint8_t)(v & 3); }},
-        {"IFF1", 1, "IE", RegShow::Field, "interrupts enabled (IFF1)",
-         [this] { return (uint32_t)(iff1_ ? 1 : 0); }, [this](uint32_t v) { iff1_ = v != 0; }},
-        {"PC", 16, "P", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
-         [this](uint32_t v) { pc_ = (uint16_t)v; }},
+        {"IFF2", 1, "IFF2", RegShow::Field, "interrupt-enable shadow (copied to P/V by LD A,I)",
+         [this] { return (uint32_t)(iff2_ ? 1 : 0); }, [this](uint32_t v) { iff2_ = v != 0; }},
 
-        // Reachable by name, off the status line: the halves, the flag byte, the
-        // alternate bank, R, IFF2 and WZ.
+        // ---- Reachable by name, off the display ----
+        // The halves, the two flag bytes, R and WZ.
         half("B", &b_), half("C", &c_), half("D", &d_), half("E", &e_),
         half("H", &h_), half("L", &l_),
         {"F", 8, "", RegShow::Off, "flags: S Z F5 H F3 P/V N C", [this] { return (uint32_t)f_; },
          [this](uint32_t v) { f_ = (uint8_t)v; }},
-        pair("AF'", "", RegShow::Off, "alternate AF", &a2_, &f2_),
-        pair("BC'", "", RegShow::Off, "alternate BC", &b2_, &c2_),
-        pair("DE'", "", RegShow::Off, "alternate DE", &d2_, &e2_),
-        pair("HL'", "", RegShow::Off, "alternate HL", &h2_, &l2_),
+        {"F'", 8, "", RegShow::Off, "shadow flags", [this] { return (uint32_t)f2_; },
+         [this](uint32_t v) { f2_ = (uint8_t)v; }},
         byte("R", "", RegShow::Off, "memory refresh", &r_),
-        {"IFF2", 1, "", RegShow::Off, "the IFF shadow (copied to P/V by LD A,I)",
-         [this] { return (uint32_t)(iff2_ ? 1 : 0); }, [this](uint32_t v) { iff2_ = v != 0; }},
         word("WZ", "", RegShow::Off, "MEMPTR internal register", &wz_),
     };
+
+    // The shown Z80-specific registers wrap onto line 1; the shadow bank prints with
+    // a ' separator. Everything else keeps line 0 and '='. (Off registers carry line
+    // 0 too, but never print, so naming them here would be harmless and needless.)
+    for (RegDef& d : r) {
+        if (d.name.size() >= 2 && d.name.back() == '\'') d.line = 1;  // CY'..N', A'..HL'
+        if (d.name == "IX" || d.name == "IY" || d.name == "I" || d.name == "IM" ||
+            d.name == "IFF2") d.line = 1;
+        if (d.name == "A'" || d.name == "BC'" || d.name == "DE'" || d.name == "HL'") d.sep = '\'';
+    }
+    return r;
 }
 
 // Reset: PC and I and R to zero, interrupts off, IM 0, out of HALT. The Z80's

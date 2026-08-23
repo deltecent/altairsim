@@ -290,9 +290,9 @@ std::vector<RegDef> Cpu6800::registers() {
          [this](uint32_t v) { b_ = (uint8_t)v; }},
         {"X", 16, "X", RegShow::Field, "index register", [this] { return (uint32_t)x_; },
          [this](uint32_t v) { x_ = (uint16_t)v; }},
-        {"SP", 16, "S", RegShow::Field, "stack pointer", [this] { return (uint32_t)sp_; },
+        {"SP", 16, "SP", RegShow::Field, "stack pointer", [this] { return (uint32_t)sp_; },
          [this](uint32_t v) { sp_ = (uint16_t)v; }},
-        {"PC", 16, "P", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
+        {"PC", 16, "PC", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
          [this](uint32_t v) { pc_ = (uint16_t)v; }},
 
         {"CC", 8, "", RegShow::Off, "condition codes: 1 1 H I N Z V C",

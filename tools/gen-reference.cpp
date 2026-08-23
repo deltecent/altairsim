@@ -20,10 +20,13 @@
 // lossy TEXT projections of structs we already hold in memory -- the second-schema sin
 // again, one level up, in the least testable place available.
 //
-// The output is committed under docs/manual/ref/, and a ctest re-runs this and diffs. Edit
-// a properties() and forget the docs, and the suite goes red.
+// The output is committed under docs/manual/ref/ and docs/monitor/ref/, and a ctest re-runs
+// this and diffs. Edit a properties() and forget the docs, and the suite goes red.
 //
-//   gen-reference <outdir>
+// The board, machine and cheatsheet tables go in the User Manual's ref dir; the command
+// reference goes in the Monitor's, because that is the document it belongs to. Two dirs, so:
+//
+//   gen-reference <manual-ref-dir> <monitor-ref-dir>
 
 #include "boards/registry.h"
 #include "cli/commands.h"
@@ -662,25 +665,31 @@ void cheatsheet(const std::string& dir) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "usage: gen-reference <outdir>\n";
+    if (argc != 3) {
+        std::cerr << "usage: gen-reference <manual-ref-dir> <monitor-ref-dir>\n";
         return 2;
     }
-    const std::string dir = argv[1];
+    const std::string manualDir  = argv[1];
+    const std::string monitorDir = argv[2];
 
-    boards(dir);
-    commandsDoc(dir);
-    machinesDoc(dir);
-    cheatsheet(dir);
+    boards(manualDir);
+    commandsDoc(monitorDir);
+    machinesDoc(manualDir);
+    cheatsheet(manualDir);
 
     // A silent failure here would commit an empty chapter, and the diff test would then
     // happily hold it stable forever.
-    for (const char* f : {"boards.md", "commands.md", "machines.md", "cheatsheet.md"}) {
+    auto wrote = [](const std::string& dir, const char* f) {
         std::ifstream in(dir + "/" + f, std::ios::ate);
         if (!in || in.tellg() < 200) {
             std::cerr << "gen-reference: " << dir << "/" << f << " did not get written\n";
-            return 1;
+            return false;
         }
+        return true;
+    };
+    if (!wrote(manualDir, "boards.md")   || !wrote(manualDir, "machines.md") ||
+        !wrote(manualDir, "cheatsheet.md") || !wrote(monitorDir, "commands.md")) {
+        return 1;
     }
     return 0;
 }

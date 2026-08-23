@@ -110,7 +110,7 @@ void test_680board() {
         // STEP actually executed on a real Cpu6800: A went 41 then 42, the PC walked
         // off the end of the third instruction (0106), and STAA landed 42 at 0200.
         CHECK(s.find("A=42") != std::string::npos, "LDAA #41 then INCA left A=42");
-        CHECK(s.find("P=0106") != std::string::npos,
+        CHECK(s.find("PC=0106") != std::string::npos,
               "and the PC advanced through all three instructions to 0106");
         CHECK(m.cpu() && m.cpu()->pc() == 0x0106,
               "the active core's PC agrees -- STEP drove the real 6800");

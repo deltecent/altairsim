@@ -74,7 +74,7 @@ instruction it was about to execute.
 ```
 A>
 ATTN -- the machine is still at CA9C. RUN resumes.
-C0Z1M0E1I0 A=00 B=007F D=CA01 H=BC0E S=BC37 IE=1 P=CA9C  CALL CA78
+C0Z1M0E1I0 A=00 BC=007F DE=CA01 HL=BC0E SP=BC37 IE=1 PC=CA9C  CALL CA78
 altairsim>
 ```
 

@@ -41,7 +41,9 @@ mcp.md
 troubleshooting.md
 glossary.md
 
-# The reference, at the back where a reference belongs.
-ref/commands.md
+# The reference, at the back where a reference belongs. The command reference used to live
+# here too (ref/commands.md); it moved to the Monitor document on 2026-08-23, because it
+# describes the altairsim> prompt -- not the emulated hardware this manual is about -- and
+# so it belongs beside monitor.md, the same reasoning that moved that chapter out.
 ref/boards.md
 ref/machines.md

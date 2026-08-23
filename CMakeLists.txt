@@ -669,9 +669,10 @@ target_link_libraries(altairsim PRIVATE altair_core)
 # argument. It is a TOOL, not a feature: the shipping command surface is a contract, and
 # a doc generator has no business in it.
 #
-# `docs-reference` rewrites docs/manual/ref/*.md in the source tree, on purpose -- those
-# files are committed, so that a reader of the repo (and the PDF build) needs no toolchain
-# to see them. `docs-reference-check` below is what stops them going stale.
+# `docs-reference` rewrites docs/manual/ref/*.md and docs/monitor/ref/commands.md in the
+# source tree, on purpose -- those files are committed, so that a reader of the repo (and the
+# PDF build) needs no toolchain to see them. `docs-reference-check` below is what stops them
+# going stale.
 # ---------------------------------------------------------------------------
 add_executable(altair_genref tools/gen-reference.cpp)
 target_link_libraries(altair_genref PRIVATE altair_core)
@@ -684,8 +685,9 @@ target_link_libraries(altair_tapetool PRIVATE altair_core)
 
 add_custom_target(docs-reference
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/docs/manual/ref"
-  COMMAND altair_genref "${CMAKE_SOURCE_DIR}/docs/manual/ref"
-  COMMENT "Generating docs/manual/ref/ from the binary")
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/docs/monitor/ref"
+  COMMAND altair_genref "${CMAKE_SOURCE_DIR}/docs/manual/ref" "${CMAKE_SOURCE_DIR}/docs/monitor/ref"
+  COMMENT "Generating docs/manual/ref/ and docs/monitor/ref/ from the binary")
 
 # ---------------------------------------------------------------------------
 # Tests -- no framework; a test is an executable that returns non-zero.

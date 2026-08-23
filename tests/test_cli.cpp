@@ -521,10 +521,10 @@ void test_cli() {
     mon2.exec("EX FF00", ex0);
     CHECK(c->pc() == 0xFF00, "EX FF00 loads the PC -- the switch latches the address");
     // EX <addr> jams the PC on purpose, so it also reads out what the CPU now points
-    // at: the register line at the NEW PC (P=FF00, before any STEP has run) and the
+    // at: the register line at the NEW PC (PC=FF00, before any STEP has run) and the
     // disassembled instruction there -- what the next STEP will execute.
     CHECK(ex0.str().compare(0, 4, "FF00") == 0, "EX FF00 still leads with the byte line");
-    CHECK(ex0.str().find("P=FF00") != std::string::npos,
+    CHECK(ex0.str().find("PC=FF00") != std::string::npos,
           "EX <addr> also shows the register line, at the address it just loaded");
     CHECK(ex0.str().find("INR") != std::string::npos,
           "and the disassembled instruction the PC now points at -- the next STEP runs it");
@@ -538,7 +538,7 @@ void test_cli() {
     // two ran.)
     CHECK(st.str().find("A=01") != std::string::npos,
           "the INR A at FF00 actually ran -- A went 00 -> 01");
-    CHECK(st.str().find("P=FF01") != std::string::npos,
+    CHECK(st.str().find("PC=FF01") != std::string::npos,
           "so STEP executed AT FF00, not wherever it was, and the PC moved one on");
     CHECK(c->pc() == 0xFF01, "and one instruction later the PC has moved");
 
@@ -550,8 +550,8 @@ void test_cli() {
         std::ostringstream ss;
         mon2.exec("S 3", ss);
         size_t nLines = 0;
-        for (size_t p = ss.str().find("P="); p != std::string::npos;
-             p = ss.str().find("P=", p + 1))
+        for (size_t p = ss.str().find("PC="); p != std::string::npos;
+             p = ss.str().find("PC=", p + 1))
             ++nLines;
         CHECK(nLines == 3, "S 3 prints three instruction lines, one per step -- not four");
         CHECK(c->pc() == 0x0103, "and three NOPs later the PC has advanced by three");
@@ -565,7 +565,7 @@ void test_cli() {
     CHECK(c->pc() == 0x0201, "EXAMINE NEXT steps the PC too -- it is the same counter");
     // Bare EXAMINE is a quiet byte-at-a-time memory walk: it does NOT print the
     // register line, so walking a page does not bury each byte under a register dump.
-    CHECK(exNext.str().find("P=") == std::string::npos,
+    CHECK(exNext.str().find("PC=") == std::string::npos,
           "bare EXAMINE (NEXT) stays a single byte line -- no register line");
 
     // There is no longer an EXAMINE that leaves the PC alone. `EX <addr> RAW mem0` was

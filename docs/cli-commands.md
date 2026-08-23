@@ -6,7 +6,7 @@
 > commands rank and abbreviate the way they do* — which is a design decision, and belongs in a
 > design document.
 >
-> **The reference is `docs/manual/ref/commands.md`**: every command, its usage, its help and its
+> **The reference is `docs/monitor/ref/commands.md`**: every command, its usage, its help and its
 > examples, *printed from the same `CommandDef` table the monitor resolves against* by
 > `tools/gen-reference.cpp`, with a test that fails if it goes stale. It cannot disagree with the
 > program, because it is the program's own words.

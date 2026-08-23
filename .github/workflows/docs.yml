@@ -44,8 +44,9 @@ on:
   workflow_dispatch:
 
 # Only docs/** is filtered on, and that is enough even though the reference chapters are
-# GENERATED from the binary: docs/manual/ref/*.md is committed, and the docs-reference test
-# byte-diffs it against what the binary emits. So a src/ change that moves the reference
+# GENERATED from the binary: docs/manual/ref/*.md and docs/monitor/ref/commands.md are
+# committed, and the docs-reference test byte-diffs them against what the binary emits. So a
+# src/ change that moves the reference
 # either moves docs/ too, or CI is already red. (Precedent: cpu-exerciser.yml.)
 
 permissions:

@@ -103,7 +103,7 @@ void test_z80_cpu() {
 
         Rig h;
         h.setReg("A", 0x55); h.setReg("F", 0x00);
-        h.setReg("AF'", 0x99FF);
+        h.setReg("A'", 0x99); h.setReg("F'", 0xFF);
         h.load({0x08});  // EX AF,AF'
         h.run(1);
         CHECK(h.reg("A") == 0x99 && h.reg("F") == 0xFF, "EX AF,AF' swapped the accumulator and flags");

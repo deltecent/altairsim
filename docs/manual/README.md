@@ -63,9 +63,12 @@ from the same table the monitor resolves against, so it cannot disagree with wha
 
 | | |
 |---|---|
-| [Every monitor command](ref/commands.md) | All of them, with usage and examples. |
 | [Boards and their parameters](ref/boards.md) | Every board, every key, every default. |
 | [The built-in machines](ref/machines.md) | |
+
+The command reference — every `altairsim>` command, with usage and examples — ships with
+[the monitor document](../monitor/monitor.md) (`altairsim-monitor.pdf`), because that is what
+it describes.
 
 ---
 
