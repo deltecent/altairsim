@@ -1,0 +1,298 @@
+	MACRO-80 3.44	09-Dec-81	PAGE	1
+
+
+                                        .8080
+                                ;       SYSTEM CONFIGURATION PACKAGE
+                                
+                                
+                                ;       LOGICAL DEV1CE/DEVICE DRIVER TABLES
+                                ;
+                                ;       EACH 4 ENTRY TABLE LISTS THE ADDRESSES
+                                ;       OF THE DRIVER ROUTINES TO BE USED FOR
+                                ;       THE PHYSICAL DEVICES WHICH HAY ASSIGNED
+                                ;       TO THAT LOGICAL DEVICE.
+                                
+  0000'                         IOTAB:
+                                
+                                ;       CONSOLE STATUS
+                                
+                                ;       RETURN WITH REGISTER A = 0 IF NO
+                                ;       CONSOLE CHARACTER AVAILABLE.
+                                
+  0000'   00A0'                 CSTAB:  DW      TTST        ;0
+  0002'   007F'                         DW      KYST        ;1
+  0004'   007F'                         DW      KYST        ;2
+  0006'   007F'                         DW      KYST        ;3
+                                
+                                ;       CONSOLE INPUT
+                                
+                                ;        RETURN CONSOLE INPUT CHARACTER
+                                ;       IN REGISTER A.
+                                
+  0008'   00A8'                 CITA8:  DW      TTI         ;0
+  000A'   0066'                         DW      KYBD        ;1
+  000C'   0066'                         DW      KYBD        ;2
+  000E'   0066'                         DW      KYBD        ;3
+                                
+                                ;        CONSOLE OUTPUT
+                                
+                                ;       OUTPUT BYTE IN REGLSTER C
+                                ;       TO CONSOLE OUTPUT DEV1CE.
+                                
+  0010'   00B7'                 COTAB:  DW      TTO         ;0
+  0012'   00B7'                         DW      TTO         ;1
+  0014'   00D4'                         DW      THRM        ;2
+  0016'   0059'                         DW      CRT         ;3
+                                
+                                ;       READER INPUT
+                                
+                                ;       RETURN READER INPUT BYTE IN
+                                ;       REGISTER A, CARRY OFF. SET
+                                ;       CARRY IF NO BYTE AVAILABLE.
+                                
+  0018'   00C2'                 RITAB:  DW      TTR         ;0
+  001A'   0087'                         DW      RDR         ;1
+  001C'   0066'                         DW      KYBD        ;2
+  001E'   B8F0                          DW      0B8F0H      ;3 DISK READ
+                                
+                                ;       PUNCH OUTPUT
+                                
+	MACRO-80 3.44	09-Dec-81	PAGE	1-1
+
+
+                                ;       OUTPUT BYTE IN REGISTER C
+                                ;       TO PUNCH DEVICE.
+                                
+  0020'   00B7'                 POTAB:  DW      TTO         ;0
+  0022'   00DF'                         DW      PUNCH       ;1
+  0024'   0059'                         DW      CRT         ;2
+  0026'   B973                          DW      0B973H      ;3 DISK WRITE
+                                
+                                ;       LISTING OUTPUT
+                                
+                                ;       OUTPUT BYTE IN REGISTER C
+                                ;       TO LISTING DEVICE.
+                                
+  0028'   00B7'                 LOTAB:  DW      TTO         ;0
+  002A'   0059'                         DW      CRT         ;1
+  002C'   00D4'                         DW      THRM        ;2
+  002E'   00B7'                         DW      TTO         ;3
+                                
+                                ;       SPECIAL SUBROUTINE TO LOCATE MONITOR
+                                ;       SCRATCH RAM
+                                ;
+                                ;       THE ADDRESS OF THE TOP OF THE SCRATCH
+                                ;       RAM AREA USED BY THE MONITOR IS RETURNED
+                                ;       IN REGISTERS D,E.
+                                ;       NOTE: THIS SUBROUTINE IS NOT CALLED IN THE
+                                ;       USUAL WAY: INSTEAD, THE RETURN ADDRESS
+                                ;       IS PLACED IN REGISTERS, D,E AND THE
+                                ;       SUBROUTINE IS ENTERED BY A ;UMP INSTRUCTION.
+                                ;       RETURN IS DONE BY PLACING THE RETURN
+                                ;       ADDRESS IN H,L AND EXECUTING A PCHL INST.
+                                
+  0030'   C3 003D'              ADSCS:  JMP     ADS2
+                                
+                                ;       SUBROUTINE TO LOCATE MONITOR SCRATCH
+                                ;       RAM
+                                ;
+                                ;       THE ADDRESS OF THE TOP OF THE 64 BYTES
+                                ;       OF RAM TO BE USED BY THE MONITOR FOR
+                                ;       SCRATCHPAD IS RETURNED IN REGISTERS
+                                ;       H,L.
+                                
+  0033'   C3 004F'              ADSCR:  JMP     ADS1
+                                
+                                ;       SUBROUTINE TO SET ADDRESS
+                                ;       OF IOBYT
+                                ;
+                                ;       THE ADDRESS OF THE BYTE USED TO
+                                ;       RECORD THE CURRENT PHYSICAL/LOGICAL
+                                ;       DEVICE ASSIGNMENTS IS RETURNED IN
+                                ;       REGISTERS H,L.
+                                
+  0036'   C3 004F'              ADIOB:  JMP     ADS1
+                                
+                                ;       SUBROUTINE TO SET THE USER STACK
+                                ;       ADDRESS.
+                                ;
+	MACRO-80 3.44	09-Dec-81	PAGE	1-2
+
+
+                                ;       THE ADDRESS TO BE USED AS THE
+                                ;       DEFAULT VALUE OF THE USER STACK
+                                ;       ADDRESS IS RETURNED IN REGISTERS H,L.
+                                
+  0039'   21 0100               ADUST:  LXI     H,0100H
+  003C'   C9                            RET
+                                
+  003D'   21 0000               ADS2:   LXI     H,0
+  0040'   24                    ADS3:   INR     H
+  0041'   7E                            MOV     A,M
+  0042'   2F                            CMA
+  0043'   F3                            DI
+  0044'   77                            MOV     M,A
+  0045'   BE                            CMP     M
+  0046'   2F                            CMA
+  0047'   FB                            EI
+  0048'   77                            MOV     M,A
+  0049'   CA 0040'                      JZ      ADS3
+  004C'   2B                            DCX     H
+  004D'   EB                            XCHG
+  004E'   E9                            PCHL
+                                
+  004F'   D5                    ADS1:   PUSH    D
+  0050'   11 0056'                      LXI     D,$+6
+  0053'   C3 003D'                      JMP     ADS2
+  0056'   EB                            XCHG
+  0057'   D1                            POP     D
+  0058'   C9                            RET
+                                
+                                ;       PHYSICAL DEVICE DRIVER ROUTINES
+                                
+                                ;       REQUIREMENTS
+                                ;               MAINTAIN CONTENTS OF ALL
+                                ;               REGISTEHS EXCEPT A AND F.
+                                ;               EXIT BY RETURN INST.
+                                
+                                ;        VIDEO DRIVER
+                                
+  0059'   79                    CRT:    MOV     A,C
+  005A'   B7                            ORA     A       ;CHECK FOR NULL
+  005B'   C8                            RZ
+  005C'   E5                            PUSH    H
+  005D'   CD 0036'                      CALL    ADIOB
+  0060'   2B                            DCX     H
+  0061'   2B                            DCX     H
+  0062'   2B                            DCX     H
+  0063'   C3 F704                       JMP     0F704H
+                                
+                                ;       KEY80ARD DRIVER
+                                
+  0066'   DB 02                 KYBD:   IN      2
+  0068'   E6 01                         ANI     1
+  006A'   C2 0066'                      JNZ     KYBD
+  006D'   DB 03                         IN      3
+  006F'   E6 7F                         ANI     7FH
+  0071'   FE 61                         CPI     61H     ;LOWER CASE A
+	MACRO-80 3.44	09-Dec-81	PAGE	1-3
+
+
+  0073'   DA 007D'                      JC      KB1
+  0076'   FE 7B                         CPI     7AH+1   ;LOWER CASE Z +1
+  0078'   D2 007D'                      JNC     KB1
+  007B'   E6 DF                         ANI     0DFH    ;DELETE ONE BIT
+  007D'   B7                    KB1:    ORA     A
+  007E'   C9                            RET
+                                
+                                ;       KEYBOARD STATUS DRIVER
+                                
+  007F'   DB 02                 KYST:   IN      2
+  0081'   E6 01                         ANI     1
+  0083'   D6 01                         SUI     1
+  0085'   9F                            SBB     A
+  0086'   C9                            RET
+                                
+                                ;       READER DRIVER
+                                
+  0087'   E5                    RDR:    PUSH    H
+  0088'   21 0000                       LXI     H,0
+  008B'   DB 04                 RD:     IN      4
+  008D'   E6 01                         ANI     1
+  008F'   CA 009B'                      JZ      RD2
+  0092'   2B                            DCX     H
+  0093'   7C                            MOV     A,H
+  0094'   B5                            ORA     L
+  0095'   C2 008B'                      JNZ     RD
+  0098'   37                            STC
+  0099'   E1                            POP     H
+  009A'   C9                            RET
+  009B'   DB 05                 RD2:    IN      5
+  009D'   B7                            ORA     A
+  009E'   E1                            POP     H
+  009F'   C9                            RET
+                                
+                                ;       TELETYPE STATUS DRIVER
+                                
+  00A0'   DB 00                 TTST:   IN      0
+  00A2'   E6 01                         ANI     1
+  00A4'   D6 01                         SUI     1
+  00A6'   9F                            SBB     A
+  00A7'   C9                            RET
+                                
+                                ;       TELETYPE INPUT DRIVER
+                                
+  00A8'   AF                    TTI:    XRA     A
+  00A9'   D3 00                         OUT     0
+  00AB'   DB 00                 TTI1:   IN      0
+  00AD'   E6 01                         ANI     1
+  00AF'   C2 00AB'                      JNZ     TTI1
+  00B2'   DB 01                         IN      1
+  00B4'   E6 7F                         ANI     7FH
+  00B6'   C9                            RET
+                                
+                                ;       TELETYPE OUTPUT DRIVER
+                                
+  00B7'   DB 00                 TTO:    IN      0
+	MACRO-80 3.44	09-Dec-81	PAGE	1-4
+
+
+  00B9'   E6 80                         ANI     080H
+  00BB'   C2 00B7'                      JNZ     TTO
+  00BE'   79                            MOV     A,C
+  00BF'   D3 01                         OUT     1
+  00C1'   C9                            RET
+                                
+                                ;       TELETYPE READER DRIVER
+                                
+  00C2'   3E 01                 TTR:    MVI     A,1
+  00C4'   D3 00                         OUT     0
+  00C6'   3E 00                         MVI     A,0
+  00C8'   D3 00                         OUT     0
+  00CA'   DB 00                 TTR1:   IN      0
+  00CC'   E6 01                         ANI     1
+  00CE'   C2 00CA'                      JNZ     TTR1
+  00D1'   DB 01                         IN      1
+  00D3'   C9                            RET
+                                
+                                ;       THERMAL PRINTER DRIVER
+                                
+  00D4'   DB 02                 THRM:   IN      2
+  00D6'   E6 80                         ANI      80H
+  00D8'   C2 00D4'                      JNZ     THRM
+  00DB'   79                            MOV     A,C
+  00DC'   D3 03                         OUT     3
+  00DE'   C9                            RET
+                                
+                                ;       PUNCH DRIVER
+                                
+  00DF'   DB 04                 PUNCH:  IN      4
+  00E1'   E6 80                         ANI     80H
+  00E3'   C2 00DF'                      JNZ     PUNCH
+  00E6'   79                            MOV     A,C
+  00E7'   D3 05                         OUT     5
+  00E9'   C9                            RET
+                                
+                                END
+	MACRO-80 3.44	09-Dec-81	PAGE	S
+
+
+Macros:
+
+Symbols:
+0036'	ADIOB           004F'	ADS1            003D'	ADS2            
+0040'	ADS3            0033'	ADSCR           0030'	ADSCS           
+0039'	ADUST           0008'	CITA8           0010'	COTAB           
+0059'	CRT             0000'	CSTAB           0000'	IOTAB           
+007D'	KB1             0066'	KYBD            007F'	KYST            
+0028'	LOTAB           0020'	POTAB           00DF'	PUNCH           
+008B'	RD              009B'	RD2             0087'	RDR             
+0018'	RITAB           00D4'	THRM            00A8'	TTI             
+00AB'	TTI1            00B7'	TTO             00C2'	TTR             
+00CA'	TTR1            00A0'	TTST            
+
+
+
+No Fatal error(s)
+
+

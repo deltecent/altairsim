@@ -1,0 +1,397 @@
+	MACRO-80 3.44	09-Dec-81	PAGE	1
+
+
+                                        .8080
+                                ;       VIDEO BOARD DRIVER
+                                
+                                
+                                ;       THIS SUBROUTINE FACILITATES THE USE
+                                ;       OF THE SOLID STATE MUSIC VBL BOARD
+                                ;       AND A VIDEO DISPLAY DEVICE AS A
+                                ;       CONSOLE OUTPUT DEVICE.
+                                ;       ASCII CHARACTERS PRESENTED TO THE
+                                ;       SUBROUTINE IN THE C REGISTER ARE
+                                ;       DISPLAYED ON THE SCREEN. CERTAIN
+                                ;       CHARACTERS, LISTED BELOW, RECEIVE
+                                ;       SPECIAL TREATMENT. ALL REGISTERS
+                                ;       ARE PRESERVED BY THIS SUBROUTINE.
+                                
+                                ;       LOC IS THE BEGINNING ADDRESS OF THE
+                                ;       SUBROUTINE. IT MAY BE IN RAM OR ROM.
+                                
+  F700                          LOC     EQU     0F700H
+                                
+                                ;       VID IS THE BEGINNING ADDRESS ASSIGNED
+                                ;       TO THE DISPLAY RAM LOCATED ON THE VB1
+                                ;       BOARD.
+                                
+  EC00                          VID     EQU     0EC00H
+                                
+                                ;       THREE BYTES OF RAM ARE REQUIRED FOR
+                                ;       HOUSEKEEPING. THESE BYTES MUST BE
+                                ;       IN AN AREA UNUSED BY OTHER PROGRAMS.
+                                
+  BC44                          VDPTR   EQU     0BC44H  ;CURSOR POINTER
+  BC46                          VDHLD   EQU     VDPTR+2 ;CHARACTER HOLD
+                                
+                                
+                                ;       NON-DISPLAYABLE CHARACTERS
+                                
+  000C                          FF      EQU     0CH     ;FORM FEED
+                                                        ;CLEAR SCREEN, HOME CURSOR
+  000A                          LF      EQU     0AH     ;LINE FEED
+                                                        ;DOWN ONE LINE, CLEEAR LINE
+  000D                          CR      EQU     0DH     ;CARRIAGE RETURN
+                                                        ;MOVE CURSOR TO LEFT MARGIN
+                                
+                                ;       NORMAL ENTRY POINT
+                                
+                                
+  0000'   E5                    VDTTY:  PUSH    H       ;SAVE HL
+  0001'   21 BC44                       LXI     H,VDPTR ;ADDR OF CURSOR POINTER
+                                
+                                ;       ALTERNATE ENTRY POINT
+                                
+                                ;       THIS ENTRY POINT T1AY BE USED IF
+                                ;       THE CURSOR POINTER AND CHARACTER
+                                ;       HOLD ARE AT LOCATIONS OTHER THAN
+                                ;       THOSE SPECIFIED ON THIS LISTING.
+                                ;       THE USER MUST SUPPLY SUBROUTINE
+	MACRO-80 3.44	09-Dec-81	PAGE	1-1
+
+
+                                ;       ENTRY CODE AS FOLLOWS.
+                                ;ENTR:  PUSH    H       ;SAVE HL
+                                ;       LXI     H,PNTR  ;AODR OF CURSOR POINTER
+                                ;       JMP     ALTVD   ;;OIN THIS CODE
+                                
+  0004'   D5                    ALTVD:  PUSH    D       ;SAVE DE
+  0005'   C5                            PUSH    B       ;SAVE BC
+  0006'   5E                            MOV     E,M     ;LPTR
+  0007'   23                            INX     H       ;
+  0008'   7E                            MOV     A,M     ;HPTR
+  0009'   E6 03                         ANI     3       ;CONVERT TO VIDEO
+  000B'   C6 EC                         ADI     VID SHR 8 ;RAM ADDRESS
+  000D'   57                            MOV     D,A     ;
+  000E'   23                            INX     H       ;
+  000F'   46                            MOV     B,M     ;CHAR UNDER CURSOR
+  0010'   EB                            XCHG            ;PNTR TO HL
+  0011'   70                            MOV     M,B     ;RESTORE PREV CHAR
+                                
+                                ;       IDENTIFY INPUT CHAR
+                                
+  0012'   79                            MOV     A,C     ;NEW CHAR
+  0013'   FE 0C                         CPI     FF      ;
+  0015'   CA 004B'                      JZ      VIDFF   ;FORM FEED
+  0018'   FE 0D                         CPI     CR      ;
+  001A'   CA 0059'                      JZ      VIDCR   ;CARRIAGE RETURN
+  001D'   FE 0A                         CPI     LF      ;
+  001F'   CA 0060'                      JZ      VIDLF   ;LINE FEED
+                                
+  0022'   71                            MOV     M,C     ;
+  0023'   01 0001               CRRT:   LXI     B,1
+                                
+                                ;       AD;UST CURSOR POINTER
+                                
+  0026'   09                    CRAD:   DAD     B       ;
+                                
+                                ;       CHECK FOR OVERFLOW
+                                
+  0027'   7C                            MOV     A,H     ;
+  0028'   FE F0                         CPI     (VID+1024) SHR 8 ;
+  002A'   C2 0036'                      JNZ     VIDRT   ;
+  002D'   21 EFC0                       LXI     H,VID+960 ;
+  0030'   CD 007F'                      CALL    ROLL0   ;
+  0033'   C3 003C'                      JMP     VIDR1   ;
+                                
+                                ;       COMMON EXIT CODE
+                                ;       NORMALIZE CURSOR POINTER
+                                
+  0036'   26 EF                 VIDRT:  MVI     H,(VID+960) SHR 8 ;
+  0038'   7D                            MOV     A,L     ;
+  0039'   F6 C0                         ORI     0C0H    ;
+  003B'   6F                            MOV     L,A     ;
+  003C'   7E                    VIDR1:  MOV     A,M     ;CHAR UNDER CURSOR
+  003D'   36 7F                         MVI     M,7FH   ;CURSOR
+  003F'   EB                            XCHG            ;PNTR TO DE
+  0040'   77                            MOV     M,A     ;CHAR UNDER CURSOR
+  0041'   2B                            DCX     H       ;
+	MACRO-80 3.44	09-Dec-81	PAGE	1-2
+
+
+  0042'   72                            MOV     M,D     ;HPTR
+  0043'   2B                            DCX     H       ;
+  0044'   73                            MOV     M,E     ;LPTR
+                                
+                                ;       RESTORE REG ISTERS, EXIT
+                                
+  0045'   C1                            POP     B       ;
+  0046'   D1                            POP     D       ;
+  0047'   E1                            POP     H       ;
+  0048'   79                            MOV     A,C     ;
+  0049'   B7                            ORA     A
+  004A'   C9                            RET             ;
+                                
+                                ;       PROCESS FORM FEED
+                                ;       FILL SCREEN WITH SPACES ,
+                                ;       MOVE CURSOR TO TOP LEFT
+                                
+  004B'   21 EC00               VIDFF:  LXI     H,VID   ;
+  004E'   E5                            PUSH    H       ;
+  004F'   36 20                 VIDFC:  MVI     M,' '   ;
+  0051'   23                            INX     H       ;
+  0052'   7C                            MOV     A,H     ;
+  0053'   FE F0                         CPI     (VID+1024) SHR 8 ;
+  0055'   DA 004F'                      JC      VIDFC   ;
+  0058'   E1                            POP     H       ;
+                                
+                                ;       PROCESS CARRIAGE RETURN
+                                ;       MOVE CURSOR TO BEGINNING
+                                ;       OF LINE
+                                
+  0059'   7D                    VIDCR:  MOV     A,L     ;
+  005A'   E6 C0                         ANI     0C0H    ;
+  005C'   6F                            MOV     L,A     ;
+  005D'   C3 0036'                      JMP     VIDRT   ;
+                                
+                                ;       PROCESS LINE FEED
+                                ;       MOVE CURSOR DOWN ONE LINE,
+                                ;       FILL NEW LINE WITH SPACES
+                                
+  0060'   D5                    VIDLF:  PUSH    D       ;
+  0061'   11 0040                       LXI     D,64    ;
+  0064'   19                            DAD     D       ;
+  0065'   7C                            MOV     A,H     ;
+  0066'   FE F0                         CPI     (VID + 1024) SHR 8 ;
+  0068'   D1                            POP     D       ;
+  0069'   C2 0036'                      JNZ     VIDRT   ;
+                                
+                                ;       THE FOLLOWING INSTRUCTION
+                                ;       (MARKED XXXX) MAY BE REMOVED
+                                ;       IF SENSE SWITCHES ARE NOT
+                                ;       TO BE USED.
+                                
+                                ;       WAIT UNTIL SENSE SWITCH 1 IS ON
+                                ;       BEFORE ROLLING UP ONE LINE.
+                                
+  006C'   DB FF                 VDLF2:  IN      0FFH    ;XXXX
+	MACRO-80 3.44	09-Dec-81	PAGE	1-3
+
+
+  006E'   E6 01                         ANI     1       ;XXXX
+  0070'   CA 006C'                      JZ      VDLF2   ;XXXX
+                                
+                                ;       ROLL THE WHOLE DISPLAY UP ONE
+                                ;       LINE.
+                                
+  0073'   CD 007F'                      CALL    ROLL0   ;
+  0076'   7D                            MOV     A,L     ;
+  0077'   F6 C0                         ORI     0C0H    ;
+  0079'   6F                            MOV     L,A     ;
+  007A'   26 EF                         MVI     H,(VID+960) SHR 8 ;
+  007C'   C3 0036'                      JMP     VIDRT   ;
+                                ;
+                                ;       ROLL SUBROUTINE
+                                
+  007F'   D5                    ROLL0:  PUSH    D       ;
+  0080'   E5                            PUSH    H       ;
+  0081'   11 EC00                       LXI     D,VID   ;
+  0084'   21 EC40                       LXI     H,VID+64 ;
+  0087'   7E                    ROLL1:  MOV     A,M     ;
+  0088'   12                            STAX    D
+  0089'   36 20                         MVI     M,20H   ;
+  008B'   13                            INX     D       ;
+  008C'   23                            INX     H       ;
+  008D'   7C                            MOV     A,H     ;
+  008E'   FE F0                         CPI     (VID+1024) SHR 8 ;
+  0090'   C2 0087'                      JNZ     ROLL1   ;
+  0093'   E1                            POP     H       ;
+                                
+  0094'   D1                    ROLL2:  POP     D       ;
+  0095'   C9                            RET             ;
+                                
+                                ;       GRAPHICS INTERFACE SUBROUTINES
+                                
+                                ;       THESE SUBROUTINES FACILITATE THE
+                                ;       USE OF THE SOLID STATE MUSIC VBI
+                                
+                                ;       BOARD AND A VIDEO DISPLAY DEVICE
+                                ;       AS A GRAPHICS DISPLAY DEVICE.
+                                
+                                ;       THESE SUBROUTINES TREAT THE DISPLAY
+                                ;       SCREEN AS A MATRIX OF DOTS,48 DOTS
+                                ;       HIGH BY 128 DOTS WIDE. EACH DOT IS
+                                ;       SPECIFIED IN TERMS OF ITS VERTICAL
+                                ;       COORDINATE(0-47) AND ITS HORIZONTAL
+                                ;       COORDINATE(0-127). DOT 0,0 IS AT
+                                ;       THE LOWER LEFT CORNER OF THE SCREEN.
+                                
+                                ;       THE SUBROUTINES HAVE SIMILIAR
+                                ;       INTERFACES WITH THEIR CALLING
+                                ;       PROGRAHS. REGISTER B IS PRESERVED.
+                                ;       ENTRY CONDITIONS:
+                                ;               H = VERTICAL COORDINATE
+                                ;               L = HORIZONTAL COORDINATE
+                                ;       EXIT CONDITIONS
+                                ;               A = DIFFERS BY SUBROUTINE
+	MACRO-80 3.44	09-Dec-81	PAGE	1-4
+
+
+                                ;               B = PRESERVED
+                                ;               C = BIT MASK FOR SPECIFIED DOT
+                                ;               DE= MEMORY ADDRESS OF DOT
+                                ;               H = VERTICAL COORDINATE
+                                ;               L = HORIZONTAL COORDINATE
+                                ;       H AND L ARE CONVERTED(IF NECESSARY)
+                                ;       MODULO 48 AND 128 RESPECTIVELY.
+                                
+                                ;       THE CHECK SUBROUTINE SETS THE ZERO
+                                ;       FLAG TO INDICATE WHETHER THE SPECIFIED
+                                ;       DOT IS WHITE OR BLACK. IF THE DOT
+                                ;       IS CURRENTLY WHITE THE ZERO FLAG IS
+                                ;       SET ON, IF THE DOT IS BLACK THE FLAG
+                                ;       IS SET OFF. THE A REGISTER CONTAINS
+                                ;       ZERO IF THE DOT IS WHITE, THE BIT
+                                ;       MASK IF IT IS BLACK.
+  0096'   CD 00B0'                      CALL    CNVRT   ;
+  0099'   A1                            ANA     C       ;
+  009A'   C9                            RET             ;
+                                
+                                ;       THE WHITE SUBROUTINE SETS THE
+                                ;       SPECIFIED DOT WHITE. REGISTER
+                                ;       A CONTAINS THE NEW CONTENTS OF
+                                ;       THE MEMORY LOCATION.
+  009B'   CD 00B0'              WHITE:  CALL    CNVRT   ;CONVERT
+  009E'   E6 BF                         ANI     0BFH    ;CLEAR UNUSED BIT
+  00A0'   F6 80                         ORI     80H     ;SET GRAPHICS BIT
+  00A2'   B1                            ORA     C       ;SET THIS DOT
+  00A3'   A9                            XRA     C       ;CLEAR THIS DOT
+  00A4'   12                            STAX    D       ;UPDATE BYTE
+  00A5'   C9                            RET             ;
+                                
+                                ;       THE BLACK SUBROUTINE SETS THE
+                                ;       SPECIFIED DOT BLACK. REGISTER
+                                ;       A CONTAINS THE NEW CONTENTS OF
+                                ;       THE MEMORY LOCATION.
+                                
+  00A6'   CD 00B0'              BLACK:  CALL    CNVRT   ;CONVERT
+  00A9'   E6 BF                         ANI     0BFH    ;CLEAR UNUSED BIT
+  00AB'   F6 80                         ORI     80H     ;SET GRAPHICS BIT
+  00AD'   B1                            ORA     C       ;SET THIS DOT
+  00AE'   12                            STAX    D       ;UPDATE BYTE
+  00AF'   C9                            RET             ;
+                                
+                                ;       THE CNVRT SUBROUTINE PERFORMS
+                                ;       THE COORDINATE TO ADDRESS -
+                                ;       BIT MASK CONVERSION. REGISTER
+                                ;       A CONTAINS THE CURRENT CONTENTS
+                                ;       OF THE MEMORY LOCATION.
+                                
+  00B0'   C5                    CNVRT:  PUSH    B       ;
+                                
+                                ;       NORMALIZE THE COORDINATES
+                                
+  00B1'   7D                            MOV     A,L     ;
+  00B2'   E6 7F                         ANI     7FH     ;
+	MACRO-80 3.44	09-Dec-81	PAGE	1-5
+
+
+  00B4'   6F                            MOV     L,A     ;
+  00B5'   7C                            MOV     A,H     ;
+  00B6'   D6 30                 D1:     SUI     48      ;
+  00B8'   F2 00B6'                      JP      D1      ;
+  00BB'   C6 30                 D2:     ADI     48      ;
+  00BD'   FA 00BB'                      JM      D2      ;
+  00C0'   67                            MOV     H,A     ;
+  00C1'   E5                            PUSH    H       ;
+                                
+                                ;       CONVERT COORDINATES TO ADDRESS
+                                ;       IN DE
+                                
+  00C2'   44                            MOV     B,H     ;
+  00C3'   4D                            MOV     C,L     ;
+  00C4'   5C                            MOV     E,H     ;
+  00C5'   16 00                         MVI     D,0     ;
+  00C7'   21 0001                       LXI     H,1     ;
+  00CA'   19                            DAD     D       ;
+  00CB'   29                            DAD     H       ;
+  00CC'   29                            DAD     H       ;
+  00CD'   19                            DAD     D       ;
+  00CE'   29                            DAD     H       ;
+  00CF'   29                            DAD     H       ;
+  00D0'   19                            DAD     D       ;
+  00D1'   54                            MOV     D,H     ;
+  00D2'   7D                            MOV     A,L     ;
+  00D3'   E6 C0                         ANI     0C0H    ;
+                                
+  00D5'   5F                            MOV     E,A     ;
+  00D6'   19                            DAD     D       ;
+  00D7'   19                            DAD     D       ;
+  00D8'   29                            DAD     H       ;
+  00D9'   29                            DAD     H       ;
+  00DA'   78                            MOV     A,B     ;
+  00DB'   94                            SUB     H       ;
+  00DC'   47                            MOV     B,A     ;
+  00DD'   3E C0                         MVI     A,(VID+960) AND 0FFH
+  00DF'   93                            SUB     E       ;
+  00E0'   5F                            MOV     E,A     ;
+  00E1'   3E EF                         MVI     A,(VID+960) SHR 8
+  00E3'   9A                            SBB     D       ;
+  00E4'   57                            MOV     D,A     ;
+  00E5'   79                            MOV     A,C     ;
+  00E6'   1F                            RAR             ;
+  00E7'   B3                            ORA     E       ;
+  00E8'   5F                            MOV     E,A     ;
+                                
+                                ;       GENERATE BIT MASK
+                                
+  00E9'   79                            MOV     A,C     ;
+  00EA'   1F                            RAR             ;
+  00EB'   78                            MOV     A,B     ;
+  00EC'   17                            RAL
+  00ED'   4F                            MOV     C,A     ;
+  00EE'   06 00                         MVI     B,0     ;
+  00F0'   21 00FA'                      LXI     H,DTAB  ;
+	MACRO-80 3.44	09-Dec-81	PAGE	1-6
+
+
+  00F3'   09                            DAD     B
+  00F4'   7E                            MOV     A,M
+                                
+                                ;       PREPARE FOR EXIT
+                                
+  00F5'   E1                            POP     H       ;
+  00F6'   C1                            POP     B       ;
+  00F7'   4F                            MOV     C,A     ;
+  00F8'   1A                            LDAX    D       ;
+  00F9'   C9                            RET
+                                
+  00FA'   04                    DTAB:   DB      04H
+  00FB'   20                            DB      20H
+  00FC'   02                            DB      02H
+  00FD'   10                            DB      10H
+  00FE'   01                            DB      01H
+  00FF'   08                            DB      08H
+                                
+                                        END
+	MACRO-80 3.44	09-Dec-81	PAGE	S
+
+
+Macros:
+
+Symbols:
+0004'	ALTVD           00A6'	BLACK           00B0'	CNVRT           
+000D 	CR              0026'	CRAD            0023'	CRRT            
+00B6'	D1              00BB'	D2              00FA'	DTAB            
+000C 	FF              000A 	LF              F700 	LOC             
+007F'	ROLL0           0087'	ROLL1           0094'	ROLL2           
+BC46 	VDHLD           006C'	VDLF2           BC44 	VDPTR           
+0000'	VDTTY           EC00 	VID             0059'	VIDCR           
+004F'	VIDFC           004B'	VIDFF           0060'	VIDLF           
+003C'	VIDR1           0036'	VIDRT           009B'	WHITE           
+
+
+
+No Fatal error(s)
+
+
