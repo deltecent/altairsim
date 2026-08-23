@@ -228,4 +228,91 @@ std::unique_ptr<TcpConn> connectTcp(const std::string& host, uint16_t port, std:
     return std::make_unique<Win32Conn>(s, host + ":" + std::to_string(port), connecting);
 }
 
+// ---------------------------------------------------------------------------
+// UDP -- blocking, connect()ed. See src/platform/socket.h for why this is not a
+// TcpConn. All I/O is at MOUNT/sync, off the emulation path, so blocking is right.
+// ---------------------------------------------------------------------------
+namespace {
+
+class Win32Udp : public UdpSocket {
+public:
+    Win32Udp(SOCKET s, std::string peer) : s_(s), peer_(std::move(peer)) {}
+    ~Win32Udp() override {
+        if (s_ != INVALID_SOCKET) closesocket(s_);
+    }
+
+    bool send(const uint8_t* buf, size_t n, std::string& err) override {
+        int w = ::send(s_, (const char*)buf, (int)n, 0);
+        if (w < 0) {
+            err = lastError("udp send");
+            return false;
+        }
+        return true;
+    }
+
+    ptrdiff_t recv(uint8_t* buf, size_t n, int timeoutMs, std::string& err) override {
+        // Wait for readability with a deadline, then take the one datagram.
+        fd_set rd;
+        FD_ZERO(&rd);
+        FD_SET(s_, &rd);
+        timeval tv{timeoutMs / 1000, (timeoutMs % 1000) * 1000};
+        int     sr = ::select(0, &rd, nullptr, nullptr, &tv);
+        if (sr == 0) return 0;  // timeout: the caller retransmits
+        if (sr < 0) {
+            err = lastError("udp select");
+            return -1;
+        }
+        int r = ::recv(s_, (char*)buf, (int)n, 0);
+        if (r < 0) {
+            if (wouldBlock()) return 0;
+            err = lastError("udp recv");
+            return -1;
+        }
+        return (ptrdiff_t)r;
+    }
+
+    const std::string& peer() const override { return peer_; }
+
+private:
+    SOCKET      s_ = INVALID_SOCKET;
+    std::string peer_;
+};
+
+} // namespace
+
+std::unique_ptr<UdpSocket> connectUdp(const std::string& host, uint16_t port, std::string& err) {
+    startWinsock();
+
+    addrinfo hints{};
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    addrinfo* res = nullptr;
+    if (getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res) != 0 || !res) {
+        err = "cannot resolve '" + host + "'";
+        return nullptr;
+    }
+
+    SOCKET s = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (s == INVALID_SOCKET) {
+        err = lastError("socket");
+        freeaddrinfo(res);
+        return nullptr;
+    }
+
+    // connect() on a datagram socket fixes the peer: send()/recv() need no address, and
+    // the stack drops datagrams from anyone else. No handshake, so it cannot fail on a
+    // dead server.
+    if (::connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) {
+        err = "cannot connect udp to " + host + ":" + std::to_string(port) + ": " +
+              lastError("connect");
+        closesocket(s);
+        freeaddrinfo(res);
+        return nullptr;
+    }
+    freeaddrinfo(res);
+
+    return std::make_unique<Win32Udp>(s, host + ":" + std::to_string(port));
+}
+
 } // namespace altair::platform

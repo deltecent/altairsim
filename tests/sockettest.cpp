@@ -161,6 +161,29 @@ int main() {
         CHECK(true, "refused connect failed synchronously (also a correct answer)");
     }
 
+    // -----------------------------------------------------------------------
+    // connectUdp -- resolve and construct, both ways.
+    //
+    // UDP has no handshake, so there is no round trip to prove here without a peer that
+    // speaks back -- that is tnfstest's loopback server, which drives send()/recv()/the
+    // recv timeout and the same-seqno retransmit end to end. What IS UDP-specific and
+    // worth pinning portably is what connectUdp does on its own: resolve a name and fix
+    // the peer (success), and reject a name that will not resolve (a clear error, not a
+    // null returned silently). The select()/poll() timeout path that differs across the
+    // three stacks is the one tnfstest exercises against a real datagram.
+    // -----------------------------------------------------------------------
+    std::printf("\nconnectUdp resolves and constructs\n");
+
+    auto udp = connectUdp("127.0.0.1", 16384, err);
+    CHECK(udp != nullptr, ("connectUdp fixes a loopback peer (no handshake): " + err).c_str());
+    CHECK(udp && udp->peer() == "127.0.0.1:16384", "...and reports the peer it was given");
+
+    std::string uerr;
+    auto bad = connectUdp("no.such.host.invalid.", 16384, uerr);
+    CHECK(bad == nullptr && !uerr.empty(),
+          ("connectUdp fails with a message on an unresolvable host (got '" + uerr + "')")
+              .c_str());
+
     std::printf("\n%d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;
 }
