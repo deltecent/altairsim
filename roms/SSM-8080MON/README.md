@@ -1,4 +1,4 @@
-# SSM 8080 System Monitor V1.0 — source only
+# SSM 8080 System Monitor V1.0
 
 The 8080 system monitor from **SSM Microcomputer Products** (formerly Solid State
 Music), written by **C. E. Ohme**. This is the monitor the SSM PB1 EPROM
@@ -8,10 +8,29 @@ programmer manual calls `MONIT`: its EPROM-burner routines end with `JMP F021h`
 and [`examples/pb1`](../../examples/pb1).
 
 - **Version 1.0** — C. E. Ohme, SSM Microcomputer Products.
-- **Origin of this file:** OCR'd from the printed listing by B. Beech, April 2014.
-- **Console:** serial-A on ports **0** (status) and **1** (data), the SSM IO2/IO4
-  serial board convention — status bit 0 = ready. (Serial-B is ports 2/3; a
-  parallel keyboard and the VB3 video board are also driven.)
+- **Origin of these files:** OCR'd from the printed listing by B. Beech, April 2014.
+- **Console:** serial-A on ports **0** (status) and **1** (data), the SSM IO-2
+  serial board convention — status bit 0 = ready. (A parallel keyboard on ports
+  2/3, a paper-tape reader/punch on 4/5, a thermal printer, and the VB1 video
+  board are also driven — see the System Configuration Package below.)
+
+## The 2K EPROM (`F000`–`F7FF`)
+
+The part is a single 2 KB EPROM built from **three source modules**, each with its
+own origin. They are assembled independently and dropped into the same 2K image —
+they do **not** link against one another (they reach each other only through fixed
+addresses):
+
+| Module | Source | Origin | What it is |
+|---|---|---|---|
+| Monitor | `SSM8080.ASM` | `F000h` | The monitor itself: jump table, command interpreter, EPROM/memory/transfer commands. |
+| System Configuration Package | `SSMSCP.ASM` | `F600h` | The logical-device / driver tables (`IOTAB`) and the physical device drivers (teletype, keyboard, reader, punch, thermal, video). |
+| VB1 video driver | `SSMVID.ASM` | `F700h` | Console-output and graphics driver for the SSM **VB1** video board. |
+
+Programmed bytes span `F000`–`F7FF` with two small gaps (`F5EE`–`F5FF` and
+`F6EA`–`F6FF`) that read back `FF`. CRC32 of the `FF`-filled 2K image = **`DEB0D584`**
+(recorded in [`../../docs/roms.md`](../../docs/roms.md) and checked by
+`tests/test_roms.cpp`).
 
 ## Jump table (`ORG F000h`)
 
@@ -27,25 +46,34 @@ and [`examples/pb1`](../../examples/pb1).
 | `F015h` | `IOCHK` / `F018h` `IOSET` / `F01Bh` `MEMCK` / `F01Eh` `STRNG` |
 | `F021h` | `REENT` — warm re-entry (the PB1 manual's `MONIT`) |
 
-## Status: source only, no built-in ROM yet
+## How the `.HEX` was built (and how to rebuild it)
 
-**There is no `.HEX` here on purpose.** A built-in ROM is a hardware fact — its
-bytes get a CRC in `docs/roms.md` and a test — so the image has to come from the
-assembler these sources were actually written for, and that is not yet settled.
-What is known so far:
+These sources assemble with Microsoft **M80 + L80** under CP/M, driven inside the
+simulator itself — never with `cpmtools`. The three `.ASM` files here are the
+**relocatable** M80 form (`.8080`, no `ASEG`, no absolute top `ORG`); L80's `/P`
+switch sets each module's origin. Their listings are the three `.PRN` files.
 
-- The sources use **C-style operators** — `~` for NOT (`FALSE EQU ~TRUE`) and `|`
-  for OR (`DB LF,'*' | 80H`). Microsoft **M80 rejects these** (it wants `NOT`/`OR`),
-  so M80 is not the assembler these were prepared for.
-- They also assume **16-bit two's-complement arithmetic**: `TRUE=0FFFFH`, so
-  `FALSE=~TRUE` is meant to be `0`. An assembler with wider integers computes
-  `~0FFFFH = -65536` and then overflows a `DEFB`.
-- **This V1.0 source has an internal conflict of its own:** it both `EQU`s
-  `ADSCS/ADSCR/ADIOB/ADUST` into a "System Configuration Package" at `F600h` and
-  defines them as local labels, which every assembler flags as a multiple
-  definition. The later Z80 V1.10 (see [`../SSM-Z80MON`](../SSM-Z80MON)) keeps
-  only the local labels, so it does not have this conflict.
+For each module (origins `F000`, `F600`, `F700`):
 
-Once the assembler is identified, the assembled `.HEX` goes here and the directory
-becomes a built-in ROM automatically (`cmake/embed_roms.cmake` picks up any image
-in a `roms/<NAME>/` directory).
+```
+M80 MON,MON=MON.ASM               ; -> MON.REL + MON.PRN
+L80 /P:F000,MON,MON/N/X/E         ; -> MON.HEX  (answer Y to "move anyway")
+```
+
+L80 warns `Origin above loader memory, move anyway (Y or N)?` for a high ROM
+origin — answer **`Y`**; it builds low but writes the `.HEX` at the true logical
+origin. The three module `.HEX` files are then concatenated into the single
+`SSM-8080MON.HEX` embedded here. The full recipe, including the alternate one-step
+DRI `ASM.COM` route (byte-identical output), is in
+[`../../docs/devguide/assembling-roms.md`](../../docs/devguide/assembling-roms.md).
+
+## Why this was "source only" until now
+
+Earlier the file circulated as one concatenated listing that no assembler accepted:
+it EQU'd `ADSCS/ADSCR/ADIOB/ADUST` at `F600h` **and** defined them as local labels,
+a multiple-definition every assembler rejects. That was the tell that it is really
+**three separate assemblies** — the monitor references the configuration package by
+`EQU`, while the package *defines* those same labels locally. Split into the three
+modules above (and with two OCR typos corrected — `IOTAS`→`IOTAB` and a missing
+colon on `LOAD:`), each assembles clean, and the combined image boots to
+`MONITOR V1.0` with a working command prompt.

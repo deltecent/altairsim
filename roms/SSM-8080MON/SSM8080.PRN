@@ -1,0 +1,1127 @@
+	MACRO-80 3.44	09-Dec-81	PAGE	1
+
+
+                                        .8080
+                                ;OCR'ED BY B BEECH APR 2014
+                                ;       8080 MONITOR VL0
+                                        ;PROGRAMMER: C. E. OHME
+                                ;       (415)657-8326
+                                
+                                
+                                ;
+                                ;       SYSTEM CONFIGURATION INTERFACE
+                                
+  F600                          SCP     EQU     0F600H
+  F600                          IOTAB   EQU     SCP
+  F630                          ADSCS   EQU     SCP+48
+  F633                          ADSCR   EQU     SCP+51
+  F636                          ADIOB   EQU     SCP+54
+  F639                          ADUST   EQU     SCP+57
+                                
+                                ; ASCII CHARACTERS
+                                
+  000D                          CR      EQU     0DH
+  000A                          LF      EQU     0AH
+                                
+                                
+                                ; EXTERNALLY REFERENCED SUBROUTINE
+                                ; JUMP TABLE
+                                
+  0000'   C3 0024'                      JMP     BEGIN
+  0003'   C3 00D6'                      JMP     CI
+  0006'   C3 00E0'                      JMP     RI
+  0009'   C3 00D1'                      JMP     CO
+  000C'   C3 00E5'                      JMP     PO
+  000F'   C3 00EA'                      JMP     LO
+  0012'   C3 00DB'                      JMP     CSTS
+  0015'   C3 010E'                      JMP     IOCHK
+  0018'   C3 0115'                      JMP     IOSET
+  001B'   C3 01B1'                      JMP     MEMCK
+  001E'   C3 011E'                      JMP     STRNG
+  0021'   0E 00                 REENT:  MVI     C,0
+  0023'   21 0000                       LXI     H,0
+                                        ORG     $-2
+                                
+  0024'   0E 01                 BEGIN:  MVI     C,1
+  0026'   11 002C'                      LXI     D,$+6
+  0029'   C3 F630                       JMP     ADSCS
+  002C'   EB                            XCHG
+  002D'   06 15                         MVI     B,ENDX-EXIT-1
+  002F'   11 0276'                      LXI     D,ENDX-1
+  0032'   1B                    BG1:    DCX     D
+  0033'   1A                            LDAX    D
+  0034'   2B                            DCX     H
+  0035'   77                            MOV     M,A
+  0036'   05                            DCR     B
+  0037'   C2 0032'                      JNZ     BG1
+  003A'   F9                            SPHL
+  003B'   CD F639                       CALL    ADUST
+  003E'   E5                            PUSH    H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-1
+
+
+  003F'   26 00                         MVI     H,0
+  0041'   E5                            PUSH    H
+  0042'   E5                            PUSH    H
+  0043'   E5                            PUSH    H
+  0044'   79                            MOV     A,C
+  0045'   B7                            ORA     A
+  0046'   CA 004E'                      JZ      BG2
+  0049'   CD F636                       CALL    ADIOB
+  004C'   36 00                         MVI     M,0
+  004E'   21 008F'              BG2:    LXI     H,VERS
+  0051'   CD 011E'                      CALL    STRNG
+  0054'   B7                            ORA     A
+                                
+                                ; COMMAND RETURN POINT
+                                
+  0055'   D2 0066'              CMNDR:  JNC     START
+                                
+                                ; ERROR RETURN
+                                
+  0058'   CD F633               LER:    CALL    ADSCR
+  005B'   11 FFE3                       LXI     D,EXIT-ENDX-7
+  005E'   19                            DAD     D
+  005F'   F9                            SPHL
+  0060'   21 009D'                      LXI     H,ERM
+  0063'   CD 011E'                      CALL    STRNG
+                                
+                                ;       INPUT AND EXECUTE NEXT COMMAND
+                                
+  0066'   FB                    START:  EI
+  0067'   CD 0146'                      CALL    CRLF
+  006A'   0E 2E                         MVI     C,'.'
+  006C'   CD 00D1'                      CALL    CO
+  006F'   CD 012F'                      CALL    TI
+  0072'   D6 41                         SUI     'A'
+  0074'   FA 0058'                      JM      LER
+  0077'   FE 18                         CPI     'X'-'A'+1
+  0079'   F2 0058'                      JP      LER
+  007C'   87                            ADD     A
+  007D'   21 0055'                      LXI     H,CMNDR
+  0080'   E5                            PUSH    H
+  0081'   21 009F'                      LXI     H,TBL
+  0084'   16 00                         MVI     D,0
+  0086'   5F                            MOV     E,A
+  0087'   19                            DAD     D
+  0088'   7E                            MOV     A,M
+  0089'   23                            INX     H
+  008A'   66                            MOV     H,M
+  008B'   6F                            MOV     L,A
+  008C'   0E 02                         MVI     C,2
+  008E'   E9                            PCHL
+  008F'   0D 0A 4D 4F           VERS:   DB      CR,LF,'MONITOR V1.','0' OR 80H
+  0093'   4E 49 54 4F           
+  0097'   52 20 56 31           
+  009B'   2E B0                 
+  009D'   0A AA                 ERM:    DB      LF,'*' OR 80H
+                                
+	MACRO-80 3.44	09-Dec-81	PAGE	1-2
+
+
+                                ;       COMMAND JUMP TABLE
+                                
+  009F'   0277'                 TBL:    DW      ASSIGN
+  00A1'   02C0'                         DW      BIN
+  00A3'   0058'                         DW      LER
+  00A5'   031C'                         DW      DISP
+  00A7'   0058'                         DW      LER
+  00A9'   033C'                         DW      FILL
+  00AB'   034C'                         DW      GOTO
+  00AD'   03A0'                         DW      HEXN
+  00AF'   0058'                         DW      LER
+  00B1'   0058'                         DW      LER
+  00B3'   03BC'                         DW      KOPY
+  00B5'   03C6'                         DW      LOAD
+  00B7'   040C'                         DW      MOVE
+  00B9'   041E'                         DW      NULL
+  00BB'   0058'                         DW      LER
+  00BD'   0058'                         DW      LER
+  00BF'   0058'                         DW      LER
+  00C1'   0423'                         DW      READ
+  00C3'   0489'                         DW      SUBS
+  00C5'   0058'                         DW      LER
+  00C7'   0058'                         DW      LER
+  00C9'   0058'                         DW      LER
+  00CB'   04B1'                         DW      WRITE
+  00CD'   053D'                         DW      X
+                                
+                                ;    UTILITY SUBROUTINES
+                                
+  00CF'   0E 20                 BLK:    MVI     C,' '
+                                
+  00D1'   CD 00EF'              CO:     CALL    IOBR
+  00D4'   01 10                         DB      1,10H
+                                
+  00D6'   CD 00EF'              CI:     CALL    IOBR
+  00D9'   01 08                         DB      1,8
+                                
+  00DB'   CD 00EF'              CSTS:   CALL    IOBR
+  00DE'   01 00                         DB      1,0
+                                
+  00E0'   CD 00EF'              RI:     CALL    IOBR
+  00E3'   04 18                         DB      4,18H
+                                
+  00E5'   CD 00EF'              PO:     CALL    IOBR
+  00E8'   03 20                         DB      3,20H
+                                
+  00EA'   CD 00EF'              LO:     CALL    IOBR
+  00ED'   02 28                         DB      2,28H
+                                
+  00EF'   E3                    IOBR:   XTHL
+  00F0'   C5                            PUSH    B
+  00F1'   46                            MOV     B,M
+  00F2'   23                            INX     H
+  00F3'   4E                            MOV     C,M
+  00F4'   CD F636                       CALL    ADIOB
+  00F7'   7E                            MOV     A,M
+	MACRO-80 3.44	09-Dec-81	PAGE	1-3
+
+
+  00F8'   0F                            RRC
+  00F9'   07                    IOB1:   RLC
+  00FA'   07                            RLC
+  00FB'   05                            DCR     B
+  00FC'   C2 00F9'                      JNZ     IOB1
+  00FF'   E6 06                         ANI     6
+  0101'   81                            ADD     C
+  0102'   4F                            MOV     C,A
+  0103'   21 F600                       LXI     H,IOTAB
+  0106'   09                            DAD     B
+  0107'   7E                            MOV     A,M
+  0108'   23                            INX     H
+  0109'   66                            MOV     H,M
+  010A'   6F                            MOV     L,A
+  010B'   C1                            POP     B
+  010C'   E3                            XTHL
+  010D'   C9                            RET
+  010E'                         IOCHK:
+  010E'   E5                            PUSH    H
+  010F'   CD F636                       CALL    ADIOB
+  0112'   7E                            MOV     A,M
+  0113'   E1                            POP     H
+  0114'   C9                            RET
+  0115'                         IOSET:
+  0115'   E5                            PUSH    H
+  0116'   F5                            PUSH    PSW
+  0117'   CD F636                       CALL    ADIOB
+  011A'   71                            MOV     M,C
+  011B'   F1                            POP     PSW
+  011C'   E1                            POP     H
+  011D'   C9                            RET
+  011E'                         STRNG:
+  011E'   7E                            MOV     A,M
+  011F'   E6 7F                         ANI     7FH
+  0121'   C8                            RZ
+  0122'   4F                            MOV     C,A
+  0123'   7E                            MOV     A,M
+  0124'   B7                            ORA     A
+  0125'   FA 00D1'                      JM      CO
+  0128'   CD 00D1'                      CALL    CO
+  012B'   23                            INX     H
+  012C'   C3 011E'                      JMP     STRNG
+  012F'                         TI:
+  012F'   CD 00D6'                      CALL    CI
+  0132'   E6 7F                         ANI     7FH
+  0134'   C5                            PUSH    B
+  0135'   4F                            MOV     C,A
+  0136'   CD 00D1'                      CALL    CO
+  0139'   79                            MOV     A,C
+  013A'   C1                            POP     B
+  013B'   C9                            RET
+  013C'                         CONV:
+  013C'   E6 0F                         ANI     0FH
+  013E'   C6 90                         ADI     90H
+  0140'   27                            DAA
+  0141'   CE 40                         ACI     40H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-4
+
+
+  0143'   27                            DAA
+  0144'   4F                            MOV     C,A
+  0145'   C9                            RET
+  0146'                         CRLF:
+  0146'   0E 0D                         MVI     C,CR
+  0148'   CD 00D1'                      CALL    CO
+  014B'   0E 0A                         MVI     C,LF
+  014D'   C3 00D1'                      JMP     CO
+  0150'                         EXPR1:
+  0150'   0E 01                         MVI     C,1
+  0152'                         EXPR:
+  0152'   21 0000                       LXI     H,0000H
+  0155'   CD 012F'              EX0:    CALL    TI
+  0158'   47                    EX1:    MOV     B,A
+  0159'   CD 01D0'                      CALL    NIBBL
+  015C'   DA 0168'                      JC      EX2
+  015F'   29                            DAD     H
+  0160'   29                            DAD     H
+  0161'   29                            DAD     H
+  0162'   29                            DAD     H
+  0163'   B5                            ORA     L
+  0164'   6F                            MOV     L,A
+  0165'   C3 0155'                      JMP     EX0
+  0168'   E3                    EX2:    XTHL
+  0169'   E5                            PUSH    H
+  016A'   78                            MOV     A,B
+  016B'   CD 01E5'                      CALL    P2C
+  016E'   D2 0176'                      JNC     EX3
+  0171'   0D                            DCR     C
+  0172'   C2 0058'                      JNZ     LER
+  0175'   C9                            RET
+  0176'   C2 0058'              EX3:    JNZ     LER
+  0179'   0D                            DCR     C
+  017A'   C2 0152'                      JNZ     EXPR
+  017D'   C9                            RET
+  017E'                         EXF:
+  017E'   0E 01                         MVI     C,1
+  0180'   21 0000                       LXI     H,0000H
+  0183'   C3 0158'                      JMP     EX1
+  0186'                         HILO:
+  0186'   23                            INX     H
+  0187'   7C                            MOV     A,H
+  0188'   B5                            ORA     L
+  0189'   37                            STC
+  018A'   C8                            RZ
+  018B'   7B                            MOV     A,E
+  018C'   95                            SUB     L
+  018D'   7A                            MOV     A,D
+  018E'   9C                            SBB     H
+  018F'   C9                            RET
+  0190'                         LADR:
+  0190'   7C                            MOV     A,H
+  0191'   CD 0195'                      CALL    LBYTE
+  0194'   7D                            MOV     A,L
+  0195'                         LBYTE:
+  0195'   F5                            PUSH    PSW
+	MACRO-80 3.44	09-Dec-81	PAGE	1-5
+
+
+  0196'   0F                            RRC
+  0197'   0F                            RRC
+  0198'   0F                            RRC
+  0199'   0F                            RRC
+  019A'   CD 019E'                      CALL    HXD
+  019D'   F1                            POP     PSW
+  019E'                         HXD:
+  019E'   CD 013C'                      CALL    CONV
+  01A1'   C3 00D1'                      JMP     CO
+  01A4'                         LEADS:
+  01A4'   06 04                         MVI     B,4
+  01A6'                         LEAD:
+  01A6'   0E 00                         MVI     C,0
+  01A8'   CD 00E5'                      CALL    PO
+  01AB'   05                            DCR     B
+  01AC'   C2 01A6'                      JNZ     LEAD
+  01AF'   B7                            ORA     A
+  01B0'   C9                            RET
+  01B1'                         MEMCK:
+  01B1'   E5                            PUSH    H
+  01B2'   D5                            PUSH    D
+  01B3'   CD F633                       CALL    ADSCR
+  01B6'   EB                            XCHG
+  01B7'   21 0000                       LXI     H,0
+  01BA'   24                    MEM0:   INR     H
+  01BB'   7E                            MOV     A,M
+  01BC'   2F                            CMA
+  01BD'   77                            MOV     M,A
+  01BE'   BE                            CMP     M
+  01BF'   2F                            CMA
+  01C0'   77                            MOV     M,A
+  01C1'   CA 01BA'                      JZ      MEM0
+  01C4'   2B                            DCX     H
+  01C5'   44                            MOV     B,H
+  01C6'   7C                            MOV     A,H
+  01C7'   BA                            CMP     D
+  01C8'   3E C0                         MVI     A,0C0H
+  01CA'   D1                            POP     D
+  01CB'   E1                            POP     H
+  01CC'   C8                            RZ
+  01CD'   3E FF                         MVI     A,0FFH
+  01CF'   C9                            RET
+  01D0'                         NIBBL:
+  01D0'   D6 30                         SUI     '0'
+  01D2'   D8                            RC
+  01D3'   C6 E9                         ADI     '0'-'G'
+  01D5'   D8                            RC
+  01D6'   C6 06                         ADI     6
+  01D8'   F2 01DE'                      JP      NI0
+  01DB'   C6 07                         ADI     7
+  01DD'   D8                            RC
+  01DE'   C6 0A                 NI0:    ADI     10
+  01E0'   B7                            ORA     A
+  01E1'   C9                            RET
+  01E2'                         PCHK:
+  01E2'   CD 012F'                      CALL    TI
+	MACRO-80 3.44	09-Dec-81	PAGE	1-6
+
+
+  01E5'                         P2C:
+  01E5'   FE 20                         CPI     ' '
+  01E7'   C8                            RZ
+  01E8'   FE 2C                         CPI     ','
+  01EA'   C8                            RZ
+  01EB'   FE 0D                         CPI     CR
+  01ED'   37                            STC
+  01EE'   C8                            RZ
+  01EF'   3F                            CMC
+  01F0'   C9                            RET
+                                
+                                ; BREAKPOINT ENTRY POINT
+                                
+  01F1'   E5                    RESTRT: PUSH    H
+  01F2'   D5                            PUSH    D
+  01F3'   C5                            PUSH    B
+  01F4'   F5                            PUSH    PSW
+  01F5'   CD F633                       CALL    ADSCR
+  01F8'   11 FFEB                       LXI     D,EXIT-ENDX+1
+  01FB'   19                            DAD     D
+  01FC'   EB                            XCHG
+  01FD'   21 000A                       LXI     H,000AH
+  0200'   39                            DAD     SP
+  0201'   06 04                         MVI     B,4
+  0203'   EB                            XCHG
+  0204'   2B                    RST0:   DCX     H
+  0205'   72                            MOV     M,D
+  0206'   2B                            DCX     H
+  0207'   73                            MOV     M,E
+  0208'   D1                            POP     D
+  0209'   05                            DCR     B
+  020A'   C2 0204'                      JNZ     RST0
+  020D'   C1                            POP     B
+  020E'   0B                            DCX     B
+  020F'   F9                            SPHL
+  0210'   21 0014                       LXI     H,TLOC
+  0213'   39                            DAD     SP
+  0214'   7E                            MOV     A,M
+  0215'   91                            SUB     C
+  0216'   23                            INX     H
+  0217'   C2 0234'                      JNZ     RST1
+  021A'   7E                            MOV     A,M
+  021B'   90                            SUB     B
+  021C'   CA 022D'                      JZ      RST3
+  021F'   23                            INX     H
+  0220'   23                            INX     H
+  0221'   7E                            MOV     A,M
+  0222'   91                            SUB     C
+  0223'   C2 022C'                      JNZ     RST2
+  0226'   23                            INX     H
+  0227'   7E                            MOV     A,M
+  0228'   90                            SUB     B
+  0229'   CA 022D'                      JZ      RST3
+  022C'   03                    RST2:   INX     B
+  022D'   21 000F               RST3:   LXI     H,LLOC
+  0230'   39                            DAD     SP
+	MACRO-80 3.44	09-Dec-81	PAGE	1-7
+
+
+  0231'   73                            MOV     M,E
+  0232'   23                            INX     H
+  0233'   72                            MOV     M,D
+  0234'   23                    RST1:   INX     H
+  0235'   23                            INX     H
+  0236'   71                            MOV     M,C
+  0237'   23                            INX     H
+  0238'   70                            MOV     M,B
+  0239'   C5                            PUSH    B
+  023A'   21 009D'                      LXI     H,ERM
+  023D'   CD 011E'                      CALL    STRNG
+  0240'   E1                            POP     H
+  0241'   CD 0190'                      CALL    LADR
+  0244'   21 0014                       LXI     H,TLOC
+  0247'   39                            DAD     SP
+  0248'   16 02                         MVI     D,2
+  024A'   4E                    RST4:   MOV     C,M
+  024B'   36 00                         MVI     M,0
+  024D'   23                            INX     H
+  024E'   46                            MOV     B,M
+  024F'   36 00                         MVI     M,0
+  0251'   23                            INX     H
+  0252'   79                            MOV     A,C
+  0253'   B0                            ORA     B
+  0254'   CA 0259'                      JZ      RST5
+  0257'   7E                            MOV     A,M
+  0258'   02                            STAX    B
+  0259'   23                    RST5:   INX     H
+  025A'   15                            DCR     D
+  025B'   C2 024A'                      JNZ     RST4
+  025E'   C3 0066'                      JMP     START
+                                
+                                ;       SCRATCHPAD TEMPLATE
+                                
+  0261'   D1                    EXIT:   POP     D
+  0262'   C1                            POP     B
+  0263'   F1                            POP     PSW
+  0264'   E1                            POP     H
+  0265'   F9                            SPHL
+  0266'   FB                            EI
+  0267'   21 0000                       LXI     H,0
+  0268'                         HLX     EQU     $-2
+  026A'   C3 0000                       JMP     0
+  026B'                         PCX     EQU     $-2
+  026D'   0000                  T1A:    DW      0       ;TRAP 1 ADDR
+  026F'   00                            DB      0       ;TRAP 1 INST
+  0270'   0000                          DW      0       ;TRAP 2 ADDR
+  0272'   00                            DB      0       ;TRAP 1 INST
+  0273'   0000                          DW      0       ;VIDEO PNTR
+  0275'   00                            DB      0       ;VIDEO HOLD
+  0276'   00                            DB      0       ;IOBYT
+  0277'                         ENDX:
+  0005                          ALOC    EQU     5
+  0003                          BLOC    EQU     3
+  0002                          CLOC    EQU     2
+  0001                          DLOC    EQU     1
+	MACRO-80 3.44	09-Dec-81	PAGE	1-8
+
+
+  0000                          ELOC    EQU     0
+  0004                          FLOC    EQU     4
+  0010                          HLOC    EQU     HLX-EXIT+9
+  000F                          LLOC    EQU     HLX-EXIT+8
+  0013                          PLOC    EQU     PCX-EXIT+9
+  0007                          SLOC    EQU     7
+  0014                          TLOC    EQU     T1A-EXIT+8
+                                
+                                ;       COMMAND IMPLEMENTATION
+                                
+                                ;       ASSIGN COMMAND
+                                
+  0277'   CD 012F'              ASSIGN: CALL    TI
+  027A'   06 00                         MVI     B,0
+  027C'   FE 43                         CPI     'C'
+  027E'   CA 0293'                      JZ      AS1
+  0281'   04                            INR     B
+  0282'   FE 52                         CPI     'R'
+  0284'   CA 0293'                      JZ      AS1
+  0287'   04                            INR     B
+  0288'   FE 50                         CPI     'P'
+  028A'   CA 0293'                      JZ      AS1
+  028D'   04                            INR     B
+  028E'   FE 4C                         CPI     'L'
+  0290'   C2 02BE'                      JNZ     EREXT
+  0293'   CD 012F'              AS1:    CALL    TI
+  0296'   FE 3D                         CPI     '='
+  0298'   C2 0293'                      JNZ     AS1
+  029B'   CD 012F'                      CALL    TI
+  029E'   D6 30                         SUI     '0'
+  02A0'   6F                            MOV     L,A
+  02A1'   FA 02BE'                      JM      EREXT
+  02A4'   FE 04                         CPI     4
+  02A6'   F2 02BE'                      JP      EREXT
+  02A9'   26 03                         MVI     H,3
+  02AB'   05                    AS2:    DCR     B
+  02AC'   FA 02B4'                      JM      AS3
+  02AF'   29                            DAD     H
+  02B0'   29                            DAD     H
+  02B1'   C3 02AB'                      JMP     AS2
+  02B4'   EB                    AS3:    XCHG
+  02B5'   CD F636                       CALL    ADIOB
+  02B8'   7E                            MOV     A,M
+  02B9'   B2                            ORA     D
+  02BA'   AA                            XRA     D
+  02BB'   B3                            ORA     E
+  02BC'   77                            MOV     M,A
+  02BD'   C9                            RET
+  02BE'   37                    EREXT:  STC
+  02BF'   C9                            RET
+                                
+                                ;       BINARY COMMAND
+                                
+  02C0'   CD 0152'              BIN:    CALL    EXPR
+  02C3'   CD 0146'                      CALL    CRLF
+  02C6'   D1                            POP     D
+	MACRO-80 3.44	09-Dec-81	PAGE	1-9
+
+
+  02C7'   E1                            POP     H
+  02C8'   7A                    BIN0:   MOV     A,D
+  02C9'   B3                            ORA     E
+  02CA'   C2 02D7'                      JNZ     B0
+  02CD'   CD 01A4'                      CALL    LEADS
+  02D0'   0E 78                         MVI     C,78H
+  02D2'   CD 0311'                      CALL    PHL
+  02D5'   B7                            ORA     A
+  02D6'   C9                            RET
+  02D7'   7B                    B0:     MOV     A,E
+  02D8'   95                            SUB     L
+  02D9'   7A                            MOV     A,D
+  02DA'   9C                            SBB     H
+  02DB'   D8                            RC
+  02DC'   7B                    B1:     MOV     A,E
+  02DD'   95                            SUB     L
+  02DE'   4F                            MOV     C,A
+  02DF'   7A                            MOV     A,D
+  02E0'   9C                            SBB     H
+  02E1'   3F                            CMC
+  02E2'   D0                            RNC
+  02E3'   0C                            INR     C
+  02E4'   C2 02E9'                      JNZ     B2
+  02E7'   0E FF                         MVI     C,0FFH
+  02E9'   D5                    B2:     PUSH    D
+  02EA'   59                            MOV     E,C
+  02EB'   CD 01A4'                      CALL    LEADS
+  02EE'   0E 3C                         MVI     C,3CH
+  02F0'   CD 00E5'                      CALL    PO
+  02F3'   4B                            MOV     C,E
+  02F4'   CD 0311'                      CALL    PHL
+  02F7'   7C                            MOV     A,H
+  02F8'   85                            ADD     L
+  02F9'   57                            MOV     D,A
+  02FA'   4E                    B3:     MOV     C,M
+  02FB'   23                            INX     H
+  02FC'   7A                            MOV     A,D
+  02FD'   81                            ADD     C
+  02FE'   57                            MOV     D,A
+  02FF'   CD 00E5'                      CALL    PO
+  0302'   1D                            DCR     E
+  0303'   C2 02FA'                      JNZ     B3
+  0306'   4A                            MOV     C,D
+  0307'   CD 00E5'                      CALL    PO
+  030A'   D1                            POP     D
+  030B'   7D                            MOV     A,L
+  030C'   B4                            ORA     H
+  030D'   C8                            RZ
+  030E'   C3 02DC'                      JMP     B1
+  0311'   CD 00E5'              PHL:    CALL    PO
+  0314'   4D                            MOV     C,L
+  0315'   CD 00E5'                      CALL    PO
+  0318'   4C                            MOV     C,H
+  0319'   C3 00E5'                      JMP     PO
+                                
+                                ;       DISPLAY COMMAND
+	MACRO-80 3.44	09-Dec-81	PAGE	1-10
+
+
+                                
+  031C'   CD 0152'              DISP:   CALL    EXPR
+  031F'   D1                            POP     D
+  0320'   E1                            POP     H
+  0321'   CD 0146'              DI0:    CALL    CRLF
+  0324'   CD 0190'                      CALL    LADR
+  0327'   CD 00CF'              DI1:    CALL    BLK
+  032A'   7E                            MOV     A,M
+  032B'   CD 0195'                      CALL    LBYTE
+  032E'   CD 0186'                      CALL    HILO
+  0331'   3F                            CMC
+  0332'   D0                            RNC
+  0333'   7D                            MOV     A,L
+  0334'   E6 0F                         ANI     0FH
+  0336'   C2 0327'                      JNZ     DI1
+  0339'   C3 0321'                      JMP     DI0
+                                
+                                ;       FILL COMMAND
+                                
+  033C'   0C                    FILL:   INR     C
+  033D'   CD 0152'                      CALL    EXPR
+  0340'   C1                            POP     B
+  0341'   D1                            POP     D
+  0342'   E1                            POP     H
+  0343'   71                    FI0:    MOV     M,C
+  0344'   CD 0186'                      CALL    HILO
+  0347'   D2 0343'                      JNC     FI0
+  034A'   B7                            ORA     A
+  034B'   C9                            RET
+                                
+                                ;       GOTO COMMAND
+                                
+  034C'   E1                    GOTO:   POP     H
+  034D'   CD 01E2'                      CALL     PCHK
+  0350'   DA 0398'                      JC      GO3
+  0353'   CA 0372'                      JZ      GO0
+  0356'   CD 017E'                      CALL    EXF
+  0359'   D1                            POP     D
+  035A'   21 0013                       LXI     H,PLOC
+  035D'   39                            DAD     SP
+  035E'   72                            MOV     M,D
+  035F'   2B                            DCX     H
+  0360'   73                            MOV     M,E
+  0361'   78                            MOV     A,B
+  0362'   FE 0D                         CPI     CR
+  0364'   CA 0398'                      JZ      GO3
+                                ;        MVI     A,(JMP 0)
+  0367'   3E C3                         MVI     A,0C3H
+  0369'   32 0008                       STA     8
+  036C'   21 01F1'                      LXI     H,RESTRT
+  036F'   22 0009                       SHLD    9
+  0372'   16 02                 GO0:    MVI     D,2
+  0374'   21 0014                       LXI     H,TLOC
+  0377'   39                            DAD     SP
+  0378'   E5                    GO1:    PUSH    H
+  0379'   CD 0150'                      CALL    EXPR1
+	MACRO-80 3.44	09-Dec-81	PAGE	1-11
+
+
+  037C'   58                            MOV     E,B
+  037D'   C1                            POP     B
+  037E'   E1                            POP     H
+  037F'   78                            MOV     A,B
+  0380'   B1                            ORA     C
+  0381'   CA 038E'                      JZ      GO2
+  0384'   71                            MOV     M,C
+  0385'   23                            INX     H
+  0386'   70                            MOV     M,B
+  0387'   23                            INX     H
+  0388'   0A                            LDAX    B
+  0389'   77                            MOV     M,A
+  038A'   23                            INX     H
+                                ;        MVI     A,(RST 1)
+  038B'   3E CF                         MVI     A,0CFH
+  038D'   02                            STAX    B
+  038E'   7B                    GO2:    MOV     A,E
+  038F'   FE 0D                         CPI     CR
+  0391'   CA 0398'                      JZ      GO3
+  0394'   15                            DCR     D
+  0395'   C2 0378'                      JNZ     GO1
+  0398'   CD 0146'              GO3:    CALL    CRLF
+  039B'   21 0008                       LXI     H,0008H
+  039E'   39                            DAD     SP
+  039F'   E9                            PCHL
+                                
+                                ;       HEXADECIMAL COMMAND
+                                
+  03A0'   CD 0152'              HEXN:   CALL    EXPR
+  03A3'   D1                            POP     D
+  03A4'   E1                            POP     H
+  03A5'   CD 0146'                      CALL    CRLF
+  03A8'   E5                            PUSH    H
+  03A9'   19                            DAD     D
+  03AA'   CD 0190'                      CALL    LADR
+  03AD'   CD 00CF'                      CALL    BLK
+  03B0'   E1                            POP     H
+  03B1'   7D                            MOV     A,L
+  03B2'   93                            SUB     E
+  03B3'   6F                            MOV     L,A
+  03B4'   7C                            MOV     A,H
+  03B5'   9A                            SBB     D
+  03B6'   67                            MOV     H,A
+  03B7'   CD 0190'                      CALL    LADR
+  03BA'   B7                            ORA     A
+  03BB'   C9                            RET
+                                
+                                ;       COPY COMMAND
+                                
+  03BC'   CD 00E0'              KOPY:   CALL    RI
+  03BF'   4F                            MOV     C,A
+  03C0'   CD 00E5'                      CALL    PO
+  03C3'   C3 03BC'                      JMP     KOPY
+                                
+                                ;       LOAD COMMAND
+                                
+	MACRO-80 3.44	09-Dec-81	PAGE	1-12
+
+
+  03C6'   CD 0150'              LOAD:   CALL    EXPR1
+  03C9'   C1                            POP     B
+  03CA'   CD 00E0'              L1:     CALL    RI
+  03CD'   D8                            RC
+  03CE'   FE 3C                         CPI     3CH
+  03D0'   CA 03DF'                      JZ      L2
+  03D3'   FE 78                         CPI     78H
+  03D5'   C2 03CA'                      JNZ     L1
+  03D8'   CD 0401'                      CALL    LHL
+  03DB'   D8                            RC
+  03DC'   B5                            ORA     L
+  03DD'   C8                            RZ
+  03DE'   E9                            PCHL
+  03DF'   CD 00E0'              L2:     CALL    RI
+  03E2'   D8                            RC
+  03E3'   5F                            MOV     E,A
+  03E4'   CD 0401'                      CALL    LHL
+  03E7'   D8                            RC
+  03E8'   85                            ADD     L
+  03E9'   57                            MOV     D,A
+  03EA'   09                            DAD     B
+  03EB'   CD 00E0'              L3:     CALL    RI
+  03EE'   D8                            RC
+  03EF'   77                            MOV     M,A
+  03F0'   82                            ADD     D
+  03F1'   57                            MOV     D,A
+  03F2'   23                            INX     H
+  03F3'   1D                            DCR     E
+  03F4'   C2 03EB'                      JNZ     L3
+  03F7'   CD 00E0'                      CALL    RI
+  03FA'   D8                            RC
+  03FB'   BA                            CMP     D
+  03FC'   CA 03CA'                      JZ      L1
+  03FF'   37                            STC
+  0400'   C9                            RET
+  0401'   CD 00E0'              LHL:    CALL    RI
+  0404'   D8                            RC
+  0405'   6F                            MOV     L,A
+  0406'   CD 00E0'                      CALL    RI
+  0409'   D8                            RC
+  040A'   67                            MOV     H,A
+  040B'   C9                            RET
+                                
+                                ;       MOVE COMMAND
+                                
+  040C'   0C                    MOVE:   INR     C
+  040D'   CD 0152'                      CALL    EXPR
+  0410'   C1                            POP     B
+  0411'   D1                            POP     D
+  0412'   E1                            POP     H
+  0413'   7E                    MV0:    MOV     A,M
+  0414'   02                            STAX    B
+  0415'   03                            INX     B
+  0416'   CD 0186'                      CALL    HILO
+  0419'   D2 0413'                      JNC     MV0
+  041C'   B7                            ORA     A
+	MACRO-80 3.44	09-Dec-81	PAGE	1-13
+
+
+  041D'   C9                            RET
+                                
+                                ;       NULL COMMAND
+                                
+  041E'   06 3C                 NULL:   MVI     B,60
+  0420'   C3 01A6'                      JMP     LEAD
+                                
+                                ;       READ COMMAND
+                                
+  0423'   CD 0150'              READ:   CALL    EXPR1
+  0426'   E1                            POP     H
+  0427'   CD 00E0'              RED0:   CALL    RI
+  042A'   D8                            RC
+  042B'   E6 7F                         ANI     7FH
+  042D'   D6 3A                         SUI     ':'
+  042F'   C2 0427'                      JNZ     RED0
+  0432'   57                            MOV     D,A
+  0433'   E5                            PUSH    H
+  0434'   CD 0465'                      CALL    BYTE
+  0437'   CA 0459'                      JZ      RED2
+  043A'   5F                            MOV     E,A
+  043B'   CD 0465'                      CALL     BYTE
+  043E'   47                            MOV     B,A
+  043F'   CD 0465'                      CALL    BYTE
+  0442'   4F                            MOV     C,A
+  0443'   09                            DAD     B
+  0444'   CD 0465'                      CALL    BYTE
+  0447'   CD 0465'              RED1:   CALL    BYTE
+  044A'   77                            MOV     M,A
+  044B'   23                            INX     H
+  044C'   1D                            DCR     E
+  044D'   C2 0447'                      JNZ     RED1
+  0450'   CD 0465'                      CALL    BYTE
+  0453'   E1                            POP     H
+  0454'   CA 0427'                      JZ      RED0
+  0457'   37                            STC
+  0458'   C9                            RET
+  0459'   CD 0465'              RED2:   CALL    BYTE
+  045C'   67                            MOV     H,A
+  045D'   CD 0465'                      CALL    BYTE
+  0460'   C1                            POP     B
+  0461'   6F                            MOV     L,A
+  0462'   B4                            ORA     H
+  0463'   C8                            RZ
+  0464'   E9                            PCHL
+  0465'   CD 0476'              BYTE:   CALL    RNBBL
+  0468'   07                            RLC
+  0469'   07                            RLC
+  046A'   07                            RLC
+  046B'   07                            RLC
+  046C'   4F                            MOV     C,A
+  046D'   CD 0476'                      CALL    RNBBL
+  0470'   B1                            ORA     C
+  0471'   4F                            MOV     C,A
+  0472'   82                            ADD     D
+  0473'   57                            MOV     D,A
+	MACRO-80 3.44	09-Dec-81	PAGE	1-14
+
+
+  0474'   79                            MOV     A,C
+  0475'   C9                            RET
+  0476'   CD 00E0'              RNBBL:  CALL    RI
+  0479'   DA 0485'                      JC      RNBER
+  047C'   E6 7F                         ANI     7FH
+  047E'   CD 01D0'                      CALL    NIBBL
+  0481'   DA 0485'                      JC      RNBER
+  0484'   C9                            RET
+  0485'   E1                    RNBER:  POP     H
+  0486'   E1                            POP     H
+  0487'   E1                            POP     H
+  0488'   C9                            RET
+                                
+                                ;       SUBSTITUTE COMMAND
+                                
+  0489'   CD 0150'              SUBS:   CALL    EXPR1
+  048C'   CD 01E5'                      CALL    P2C
+  048F'   E1                            POP     H
+  0490'   D8                            RC
+  0491'   7E                    SU0:    MOV     A,M
+  0492'   CD 0195'                      CALL    LBYTE
+  0495'   0E 2D                         MVI     C,'-'
+  0497'   CD 00D1'                      CALL    CO
+  049A'   CD 01E2'                      CALL    PCHK
+  049D'   3F                            CMC
+  049E'   D0                            RNC
+  049F'   CA 04AD'                      JZ      SU1
+  04A2'   E5                            PUSH    H
+  04A3'   CD 017E'                      CALL    EXF
+  04A6'   D1                            POP     D
+  04A7'   E1                            POP     H
+  04A8'   73                            MOV     M,E
+  04A9'   78                            MOV     A,B
+  04AA'   FE 0D                         CPI     CR
+  04AC'   C8                            RZ
+  04AD'   23                    SU1:    INX     H
+  04AE'   C3 0491'                      JMP     SU0
+                                
+                                ;       WRITE COMMAND
+                                
+  04B1'   CD 0152'              WRITE:  CALL    EXPR
+  04B4'   CD 0146'                      CALL    CRLF
+  04B7'   D1                            POP     D
+  04B8'   E1                            POP     H
+  04B9'   7A                    WRIT0:  MOV     A,D
+  04BA'   B3                            ORA     E
+  04BB'   C2 04DB'                      JNZ     W0
+  04BE'   CD 0533'                      CALL    PEOL
+  04C1'   0E 3A                         MVI     C,':'
+  04C3'   CD 00E5'                      CALL    PO
+  04C6'   AF                            XRA     A
+  04C7'   57                            MOV     D,A
+  04C8'   CD 051C'                      CALL    PBYTE
+  04CB'   CD 0517'                      CALL    PADR
+  04CE'   3E 01                         MVI     A,1
+  04D0'   CD 051C'                      CALL    PBYTE
+	MACRO-80 3.44	09-Dec-81	PAGE	1-15
+
+
+  04D3'   AF                            XRA     A
+  04D4'   92                            SUB     D
+  04D5'   CD 051C'                      CALL    PBYTE
+  04D8'   C3 041E'                      JMP     NULL
+  04DB'   7B                    W0:     MOV     A,E
+  04DC'   95                            SUB     L
+  04DD'   7A                            MOV     A,D
+  04DE'   9C                            SBB     H
+  04DF'   D8                            RC
+  04E0'   7B                    WRI0:   MOV     A,E
+  04E1'   95                            SUB     L
+  04E2'   4F                            MOV     C,A
+  04E3'   7A                            MOV     A,D
+  04E4'   9C                            SBB     H
+  04E5'   3F                            CMC
+  04E6'   D0                            RNC
+  04E7'   79                            MOV     A,C
+  04E8'   E6 0F                         ANI     0FH
+  04EA'   3C                            INR     A
+  04EB'   D5                            PUSH    D
+  04EC'   5F                            MOV     E,A
+  04ED'   16 00                         MVI     D,0
+  04EF'   CD 0533'                      CALL    PEOL
+  04F2'   0E 3A                         MVI     C,':'
+  04F4'   CD 00E5'                      CALL    PO
+  04F7'   7B                            MOV     A,E
+  04F8'   CD 051C'                      CALL    PBYTE
+  04FB'   CD 0517'                      CALL    PADR
+  04FE'   AF                            XRA     A
+  04FF'   CD 051C'                      CALL    PBYTE
+  0502'   7E                    WRI3:   MOV     A,M
+  0503'   23                            INX     H
+  0504'   CD 051C'                      CALL    PBYTE
+  0507'   1D                            DCR     E
+  0508'   C2 0502'                      JNZ     WRI3
+  050B'   AF                            XRA     A
+  050C'   92                            SUB     D
+  050D'   CD 051C'                      CALL    PBYTE
+  0510'   D1                            POP     D
+  0511'   7D                            MOV     A,L
+  0512'   B4                            ORA     H
+  0513'   C8                            RZ
+  0514'   C3 04E0'                      JMP     WRI0
+  0517'   7C                    PADR:   MOV     A,H
+  0518'   CD 051C'                      CALL    PBYTE
+  051B'   7D                            MOV     A,L
+  051C'   F5                    PBYTE:  PUSH    PSW
+  051D'   0F                            RRC
+  051E'   0F                            RRC
+  051F'   0F                            RRC
+  0520'   0F                            RRC
+  0521'   CD 013C'                      CALL    CONV
+  0524'   CD 00E5'                      CALL    PO
+  0527'   F1                            POP     PSW
+  0528'   F5                            PUSH    PSW
+  0529'   CD 013C'                      CALL    CONV
+	MACRO-80 3.44	09-Dec-81	PAGE	1-16
+
+
+  052C'   CD 00E5'                      CALL    PO
+  052F'   F1                            POP     PSW
+  0530'   82                            ADD     D
+  0531'   57                            MOV     D,A
+  0532'   C9                            RET
+  0533'   0E 0D                 PEOL:   MVI     C,CR
+  0535'   CD 00E5'                      CALL    PO
+  0538'   0E 0A                         MVI     C,LF
+  053A'   C3 00E5'                      JMP     PO
+                                
+                                ;       REGISTER COMMAND
+                                
+  053D'   CD 012F'              X:      CALL    TI
+  0540'   21 05CC'                      LXI     H,ACTBL
+  0543'   FE 0D                         CPI     CR
+  0545'   CA 059F'                      JZ      X6
+  0548'   47                            MOV     B,A
+  0549'   BE                    X0:     CMP     M
+  054A'   CA 0557'                      JZ      X1
+  054D'   7E                            MOV     A,M
+  054E'   17                            RAL
+  054F'   D8                            RC
+  0550'   23                            INX     H
+  0551'   23                            INX     H
+  0552'   23                            INX     H
+  0553'   78                            MOV     A,B
+  0554'   C3 0549'                      JMP     X0
+  0557'   CD 00CF'              X1:     CALL    BLK
+  055A'   23                    X2:     INX     H
+  055B'   7E                            MOV     A,M
+  055C'   EB                            XCHG
+  055D'   6F                            MOV     L,A
+  055E'   26 00                         MVI     H,0
+  0560'   39                            DAD     SP
+  0561'   EB                            XCHG
+  0562'   23                            INX     H
+  0563'   46                            MOV     B,M
+  0564'   23                            INX     H
+  0565'   1A                            LDAX    D
+  0566'   CD 0195'                      CALL    LBYTE
+  0569'   05                            DCR     B
+  056A'   CA 0572'                      JZ      X3
+  056D'   1B                            DCX     D
+  056E'   1A                            LDAX    D
+  056F'   CD 0195'                      CALL    LBYTE
+  0572'   04                    X3:     INR     B
+  0573'   0E 2D                         MVI     C,'-'
+  0575'   CD 00D1'                      CALL    CO
+  0578'   CD 01E2'                      CALL    PCHK
+  057B'   3F                            CMC
+  057C'   D0                            RNC
+  057D'   CA 0595'                      JZ      X5
+  0580'   E5                            PUSH    H
+  0581'   C5                            PUSH    B
+  0582'   CD 017E'                      CALL    EXF
+  0585'   E1                            POP     H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-17
+
+
+  0586'   F1                            POP     PSW
+  0587'   C5                            PUSH    B
+  0588'   F5                            PUSH    PSW
+  0589'   7D                            MOV     A,L
+  058A'   12                            STAX    D
+  058B'   C1                            POP     B
+  058C'   05                            DCR     B
+  058D'   CA 0593'                      JZ      X4
+  0590'   13                            INX     D
+  0591'   7C                            MOV     A,H
+  0592'   12                            STAX    D
+  0593'   C1                    X4:     POP     B
+  0594'   E1                            POP     H
+  0595'   7E                    X5:     MOV     A,M
+  0596'   B7                            ORA     A
+  0597'   F8                            RM
+  0598'   78                            MOV     A,B
+  0599'   FE 0D                         CPI     CR
+  059B'   C8                            RZ
+  059C'   C3 055A'                      JMP     X2
+  059F'   CD 0146'              X6:     CALL    CRLF
+  05A2'   CD 00CF'              X7:     CALL    BLK
+  05A5'   7E                            MOV     A,M
+  05A6'   23                            INX     H
+  05A7'   B7                            ORA     A
+  05A8'   F8                            RM
+  05A9'   4F                            MOV     C,A
+  05AA'   CD 00D1'                      CALL    CO
+  05AD'   0E 3D                         MVI     C,'='
+  05AF'   CD 00D1'                      CALL    CO
+  05B2'   7E                            MOV     A,M
+  05B3'   23                            INX     H
+  05B4'   EB                            XCHG
+  05B5'   6F                            MOV     L,A
+  05B6'   26 00                         MVI     H,0
+  05B8'   39                            DAD     SP
+  05B9'   EB                            XCHG
+  05BA'   46                            MOV     B,M
+  05BB'   23                            INX     H
+  05BC'   0A                            LDAX    B
+  05BD'   CD 0195'                      CALL    LBYTE
+  05C0'   05                            DCR     B
+  05C1'   CA 05A2'                      JZ      X7
+  05C4'   1B                            DCX     D
+  05C5'   1A                            LDAX    D
+  05C6'   CD 0195'                      CALL    LBYTE
+  05C9'   C3 05A2'                      JMP     X7
+  05CC'   41 07 01              ACTBL:  DB      'A',    ALOC+2, 1
+  05CF'   42 05 01                      DB      'B',    BLOC+2, 1
+  05D2'   43 04 01                      DB      'C',    CLOC+2, 1
+  05D5'   44 03 01                      DB      'D',    DLOC+2, 1
+  05D8'   45 02 01                      DB      'E',    ELOC+2, 1
+  05DB'   46 06 01                      DB      'F',    FLOC+2, 1
+  05DE'   48 12 01                      DB      'H',    HLOC+2, 1
+  05E1'   4C 11 01                      DB      'L',    LLOC+2, 1
+  05E4'   4D 12 02                      DB      'M',    HLOC+2, 2
+	MACRO-80 3.44	09-Dec-81	PAGE	1-18
+
+
+  05E7'   50 15 02                      DB      'P',    PLOC+2, 2
+  05EA'   53 09 02                      DB      'S',    SLOC+2, 2
+  05ED'   FF                            DB      -1
+                                
+                                END
+	MACRO-80 3.44	09-Dec-81	PAGE	S
+
+
+Macros:
+
+Symbols:
+05CC'	ACTBL           F636 	ADIOB           F633 	ADSCR           
+F630 	ADSCS           F639 	ADUST           0005 	ALOC            
+0293'	AS1             02AB'	AS2             02B4'	AS3             
+0277'	ASSIGN          02D7'	B0              02DC'	B1              
+02E9'	B2              02FA'	B3              0024'	BEGIN           
+0032'	BG1             004E'	BG2             02C0'	BIN             
+02C8'	BIN0            00CF'	BLK             0003 	BLOC            
+0465'	BYTE            00D6'	CI              0002 	CLOC            
+0055'	CMNDR           00D1'	CO              013C'	CONV            
+000D 	CR              0146'	CRLF            00DB'	CSTS            
+0321'	DI0             0327'	DI1             031C'	DISP            
+0001 	DLOC            0000 	ELOC            0277'	ENDX            
+02BE'	EREXT           009D'	ERM             0155'	EX0             
+0158'	EX1             0168'	EX2             0176'	EX3             
+017E'	EXF             0261'	EXIT            0152'	EXPR            
+0150'	EXPR1           0343'	FI0             033C'	FILL            
+0004 	FLOC            0372'	GO0             0378'	GO1             
+038E'	GO2             0398'	GO3             034C'	GOTO            
+03A0'	HEXN            0186'	HILO            0010 	HLOC            
+0268'	HLX             019E'	HXD             00F9'	IOB1            
+00EF'	IOBR            010E'	IOCHK           0115'	IOSET           
+F600 	IOTAB           03BC'	KOPY            03CA'	L1              
+03DF'	L2              03EB'	L3              0190'	LADR            
+0195'	LBYTE           01A6'	LEAD            01A4'	LEADS           
+0058'	LER             000A 	LF              0401'	LHL             
+000F 	LLOC            00EA'	LO              03C6'	LOAD            
+01BA'	MEM0            01B1'	MEMCK           040C'	MOVE            
+0413'	MV0             01DE'	NI0             01D0'	NIBBL           
+041E'	NULL            01E5'	P2C             0517'	PADR            
+051C'	PBYTE           01E2'	PCHK            026B'	PCX             
+0533'	PEOL            0311'	PHL             0013 	PLOC            
+00E5'	PO              0423'	READ            0427'	RED0            
+0447'	RED1            0459'	RED2            0021'	REENT           
+01F1'	RESTRT          00E0'	RI              0476'	RNBBL           
+0485'	RNBER           0204'	RST0            0234'	RST1            
+022C'	RST2            022D'	RST3            024A'	RST4            
+0259'	RST5            F600 	SCP             0007 	SLOC            
+0066'	START           011E'	STRNG           0491'	SU0             
+04AD'	SU1             0489'	SUBS            026D'	T1A             
+009F'	TBL             012F'	TI              0014 	TLOC            
+008F'	VERS            04DB'	W0              04E0'	WRI0            
+0502'	WRI3            04B9'	WRIT0           04B1'	WRITE           
+053D'	X               0549'	X0              0557'	X1              
+055A'	X2              0572'	X3              0593'	X4              
+0595'	X5              059F'	X6              05A2'	X7              
+
+
+
+No Fatal error(s)
+
+

@@ -155,6 +155,14 @@ void test_roms() {
         // and the machine hangs the same silent way, which is why each gets a CRC here.
         {"master0", 0xF000, 0xFF18, 3865, 0xE2276961u, true},
         {"master1", 0xF000, 0xFDB2, 3507, 0x70A572EDu, true},
+        // SSM Microcomputer Products 8080 System Monitor V1.0 (C. E. Ohme): a single 2K
+        // EPROM at F000-F7FF assembled from three independent modules -- the monitor (F000),
+        // the System Configuration Package/driver tables (F600), and the VB1 video driver
+        // (F700). They do not link against one another, so the image has two small gaps that
+        // read FF (F5EE-F5FF and F6EA-F6FF) -> non-contiguous, CRC over the FF-filled 2K span.
+        // Built with M80/L80 under CP/M (roms/SSM-8080MON/, docs/devguide/assembling-roms.md);
+        // boots to "MONITOR V1.0" with a working prompt. This is the PB1 manual's MONIT.
+        {"ssm-8080mon", 0xF000, 0xF7FF, 2048, 0xDEB0D584u, false},
     };
     for (const auto& c : cases) {
         std::string tag = std::string("builtin:") + c.name;
