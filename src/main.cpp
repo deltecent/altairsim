@@ -103,6 +103,8 @@ static void usage(std::ostream& o) {
          "  -i, --interactive  after --script/--exec, stay in the monitor.\n"
          "\n"
          "      --mcp          MCP server on stdio (for Claude).\n"
+         "      --mirror <sock>  with --mcp: mirror the console to socket:PORT so a person\n"
+         "                     can telnet in to watch and take over. Add ?ro for watch-only.\n"
          "  -v, --version      print the version and exit.\n"
          "  -h, --help         print this help and exit.\n";
 }
@@ -125,6 +127,7 @@ int main(int argc, char** argv) {
 
     bool mcp = false, none = false, interactive = false;
     std::string script;
+    std::string mirror;  // --mirror socket:PORT[?ro]: a live console mirror (issue #381)
     std::vector<std::string> exec;
 
     // Three ways in, and only one of them guesses. `positional` is the friendly
@@ -154,6 +157,10 @@ int main(int argc, char** argv) {
             return 0;
         } else if (s == "--mcp") {
             mcp = true;
+        } else if (s == "--mirror") {
+            if (!need(i, "a socket (--mirror socket:2323)")) return 2;
+            // Accept a bare port for convenience: `--mirror 2323` is `socket:2323`.
+            mirror = a[i].rfind("socket:", 0) == 0 ? a[i] : "socket:" + a[i];
         } else if (s == "-n" || s == "--none") {
             none = true;
         } else if (s == "-i" || s == "--interactive") {
@@ -181,6 +188,17 @@ int main(int argc, char** argv) {
             }
             positional = s;
         }
+    }
+
+    // --mirror is a modifier on --mcp: it wraps the console the MCP tools drive so a
+    // person can telnet in and share the session. Without --mcp there is nothing to
+    // mirror -- the interactive console is a real terminal, and `CONNECT <u> <ep>|socket:
+    // PORT` in the monitor is the way to mirror that. Say so rather than ignore the flag.
+    if (!mirror.empty() && !mcp) {
+        std::cerr << "--mirror needs --mcp (it mirrors the console the MCP tools drive).\n"
+                     "Without --mcp, mirror a line from the monitor: CONNECT <u> <ep>|"
+                     "socket:PORT\n";
+        return 2;
     }
 
     // Say which one you meant. Silently preferring one over another is how a
@@ -394,7 +412,7 @@ int main(int argc, char** argv) {
 
     // MCP and the monitor sit on the SAME Machine. Not a wrapper, not a second
     // model of the world -- the same object, reached two ways (DESIGN.md 11).
-    if (mcp) return runMcp(m, std::cin, std::cout);
+    if (mcp) return runMcp(m, std::cin, std::cout, mirror);
 
     Monitor mon(m);
 
