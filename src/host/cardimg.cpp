@@ -1,5 +1,7 @@
 #include "host/cardimg.h"
 
+#include "host/tnfs.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -169,6 +171,18 @@ std::unique_ptr<MediaFile> openCardImage(const std::string& imgPath, bool readOn
 // The resolver both mains install.
 std::unique_ptr<MediaFile> openHostMedia(const std::string& path, bool readOnly,
                                          std::string& err) {
+    // A TNFS URL is a network medium, not a host path -- route it before any of the
+    // filesystem reasoning below (which would take tnfs://... for a relative filename).
+    // Scope: slurp-sized single-file images; a lazy .img+.geo card is not served this
+    // way (a round trip per sector would stall the guest), so refuse that combination.
+    if (isTnfsUrl(path)) {
+        if (hasExt(fs::path(path), ".img")) {
+            err = "'" + path + "': card images (.img) are not supported over TNFS";
+            return nullptr;
+        }
+        return openTnfsMedia(path, readOnly, err);
+    }
+
     std::error_code ec;
     fs::path p(path);
 

@@ -362,6 +362,11 @@ add_library(altair_core STATIC
   # two-way. The watcher never paces the guest (host/mirror_stream.h).
   src/host/mirror_stream.cpp
   src/host/media.cpp
+
+  # A MediaFile that lives on a TNFS server (FujiNet's network filesystem), so a disk
+  # or tape image mounts straight off the network: MOUNT ... tnfs://host/image.dsk. It
+  # slots in behind openHostMedia like any other medium (src/host/tnfs.h).
+  src/host/tnfs.cpp
   # A host DIRECTORY as one CF/microSD card: a `card.geometry` descriptor maps LBA runs
   # to per-volume backing files, streamed lazily (seek per block, never slurped like a
   # HostFile). openHostMedia() is the resolver both mains install (src/host/cardimg.h).
@@ -710,6 +715,7 @@ add_executable(altair_tests
   tests/test_srec.cpp
   tests/test_symbols.cpp
   tests/test_media.cpp
+  tests/test_tnfs.cpp
   tests/test_cardimg.cpp
   tests/test_imd.cpp
   tests/test_tapecodec.cpp

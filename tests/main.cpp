@@ -50,6 +50,7 @@ const struct {
     {"srec", test_srec},
     {"symbols", test_symbols},
     {"media", test_media},
+    {"tnfs", test_tnfs},
     {"cardimg", test_cardimg},
     {"imd", test_imd},
     {"tapecodec", test_tapecodec},
