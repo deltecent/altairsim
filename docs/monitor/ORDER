@@ -7,8 +7,12 @@
 # hardware the manual describes -- and the two together outgrew a pair of chapters buried in
 # the middle of the book.
 #
-# One chapter, so the sequence is trivial; ORDER still declares it, because build-docs.sh
-# reads the chapter list from here and from nowhere else. Add a file here only if this
-# document genuinely grows past the one page it opens with.
-
+# The prose chapter, then the generated command reference. ORDER declares the sequence,
+# because build-docs.sh reads the chapter list from here and from nowhere else.
+#
+# ref/commands.md is GENERATED from the binary (the CommandDef table, via
+# tools/gen-reference.cpp) and byte-checked by the docs-reference test -- do not edit it by
+# hand; run `cmake --build build --target docs-reference`. It reads the altairsim> prompt
+# itself, which is why it lives with this document and not in the User Manual's ref dir.
 monitor.md
+ref/commands.md

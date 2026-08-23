@@ -151,10 +151,10 @@ expect {
 }
 
 # ATTN IS NOT A STOP. The machine is exactly where we left it -- still looping at 0020.
-# The status line is DDT's, so the program counter is P=, not PC=.
+# The status line labels each register with its SET REG name, so the program counter is PC=.
 send "REGS\r"
 expect {
-    -re {P=002[0-2] } { ok "ATTN did not stop the machine -- it is still in its loop" }
+    -re {PC=002[0-2] } { ok "ATTN did not stop the machine -- it is still in its loop" }
     timeout           { fail "the machine was stopped by ^E, or the PC moved somewhere odd" }
 }
 expect -ex "altairsim> "

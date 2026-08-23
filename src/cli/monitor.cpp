@@ -2515,49 +2515,76 @@ uint8_t Monitor::disasmLine(uint32_t at, const Disassembler& d, std::ostream& ou
 // ONE LINE, DDT/SID style -- because three lines is what you read when you wanted
 // to glance:
 //
-//     C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+//     C0Z1M0E1I0 A=3F BC=0000 DE=00FF HL=8000 SP=0100 IE=1 PC=0102  MOV A,B
 //
 // Still generic over registers(). The core said which registers are lamps, what to
 // call them, and in what order (RegShow, cpu.h); this code has never heard of an
 // accumulator, and a Z80 or a 6502 gets its own line here on the day it lands.
 //
-// No address and no hex bytes on the instruction -- P= just told you the address,
+// No address and no hex bytes on the instruction -- PC= just told you the address,
 // and the bytes are what DISASM is for.
 std::string Monitor::regLine(const std::vector<RegDef>& regs,
-                             const std::function<uint32_t(size_t)>& valueAt) {
-    std::string flags, fields;
+                             const std::function<uint32_t(size_t)>& valueAt,
+                             const std::string& insn) {
+    // A core may split its status across more than one line (RegDef::line) when it
+    // has more registers than a terminal width holds -- the Z80 does. Each line keeps
+    // the same DDT/SID format: its own flags first, then its fields. The instruction
+    // is appended after whichever line carries PC (pcLine), so a core is free to put
+    // PC anywhere and still read "... PC=xxxx  <insn>" -- it need not be the last line.
+    struct Line { std::string flags, fields; };
+    std::vector<Line> lines;
+    auto lineFor = [&lines](int idx) -> Line& {
+        if (idx < 0) idx = 0;
+        while ((int)lines.size() <= idx) lines.push_back({});
+        return lines[(size_t)idx];
+    };
+    int pcLine = 0;
     char buf[32];
     for (size_t i = 0; i < regs.size(); ++i) {
         const RegDef& r = regs[i];
+        if (r.name == "PC") pcLine = r.line < 0 ? 0 : r.line;
+        Line& L = lineFor(r.line);
         switch (r.show) {
         case RegShow::Off:
             break;
         case RegShow::Flag:
             std::snprintf(buf, sizeof buf, "%s%u", r.shown().c_str(), valueAt(i) ? 1u : 0u);
-            flags += buf;
+            L.flags += buf;
             break;
         case RegShow::Field:
             // A register narrower than a nibble has no hex digit to print; say the
             // number. That is IE, and anything like it a later core brings.
             if (r.bits < 4)
-                std::snprintf(buf, sizeof buf, "%s=%u ", r.shown().c_str(), valueAt(i));
+                std::snprintf(buf, sizeof buf, "%s%c%u ", r.shown().c_str(), r.sep, valueAt(i));
             else if (octalMode()) {
                 // A wire register in split octal -- a byte in three digits, a word in
                 // two byte-groups. Hex keeps the exact %0*X below, so it does not move.
                 std::string val = r.bits <= 8 ? fmtByte((uint8_t)valueAt(i))
                                               : fmtWord((uint16_t)valueAt(i));
-                std::snprintf(buf, sizeof buf, "%s=%s ", r.shown().c_str(), val.c_str());
+                std::snprintf(buf, sizeof buf, "%s%c%s ", r.shown().c_str(), r.sep, val.c_str());
             } else
-                std::snprintf(buf, sizeof buf, "%s=%0*X ", r.shown().c_str(), r.bits / 4,
+                std::snprintf(buf, sizeof buf, "%s%c%0*X ", r.shown().c_str(), r.sep, r.bits / 4,
                               valueAt(i));
-            fields += buf;
+            L.fields += buf;
             break;
         }
     }
 
-    std::string s = flags;
-    if (!flags.empty() && !fields.empty()) s += " ";
-    s += fields;
+    std::string s;
+    for (size_t li = 0; li < lines.size(); ++li) {
+        std::string part = lines[li].flags;
+        if (!lines[li].flags.empty() && !lines[li].fields.empty()) part += " ";
+        part += lines[li].fields;
+        // The PC line keeps its trailing space, which is the gap before the appended
+        // instruction -- exactly as the single-line case always did. Every other line
+        // has served its purpose; drop the trailing pad.
+        if ((int)li == pcLine && !insn.empty())
+            part += " " + insn;
+        else
+            while (!part.empty() && part.back() == ' ') part.pop_back();
+        if (li) s += "\n";
+        s += part;
+    }
     return s;
 }
 
@@ -2565,12 +2592,12 @@ void Monitor::showRegs(std::ostream& out) {
     CpuCore* c = m_.cpu();
     if (!c) return;
 
-    auto regs = c->registers();
-    out << regLine(regs, [&regs](size_t i) { return regs[i].get(); });
-
+    std::string insn;
     if (const Disassembler* d = disassemblerFor(c->isa()))
-        out << " " << annotateOperands(insnAt(c->pc(), *d));
-    out << "\n";
+        insn = annotateOperands(insnAt(c->pc(), *d));
+
+    auto regs = c->registers();
+    out << regLine(regs, [&regs](size_t i) { return regs[i].get(); }, insn) << "\n";
 }
 
 // The recorded twin of showRegs: the same DDT line, rebuilt from an InsnRec. The
@@ -2582,18 +2609,18 @@ std::string Monitor::renderInsn(const Debugger::InsnRec& rec) {
     CpuCore* c = m_.cpu();
     if (!c) return "";
 
-    auto regs = c->registers();
-    std::string s = regLine(
-        regs, [&rec](size_t i) { return i < rec.regs.size() ? rec.regs[i] : 0u; });
-
+    std::string insn;
     if (const Disassembler* d = disassemblerFor(c->isa())) {
         auto peek = [&rec](uint16_t a) -> uint8_t {
             uint16_t off = (uint16_t)(a - rec.pc);
             return off < rec.nbytes ? rec.bytes[off] : (uint8_t)0;
         };
-        s += " " + annotateOperands(d->at(rec.pc, peek, octalMode() ? 8 : 16));
+        insn = annotateOperands(d->at(rec.pc, peek, octalMode() ? 8 : 16));
     }
-    return s;
+
+    auto regs = c->registers();
+    return regLine(
+        regs, [&rec](size_t i) { return i < rec.regs.size() ? rec.regs[i] : 0u; }, insn);
 }
 
 // What stopped it, said out loud. A run that just... comes back, with no reason

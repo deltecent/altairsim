@@ -38,7 +38,7 @@ class StateReader;
 // HOW a register wants to APPEAR. The monitor prints a one-line, DDT/SID-style
 // status at every stop:
 //
-//     C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+//     C0Z1M0E1I0 A=3F BC=0000 DE=00FF HL=8000 SP=0100 IE=1 PC=0102  MOV A,B
 //
 // The LAYOUT of that line -- which registers pair up, which ones are lamps, what
 // each is called, and in what order -- is the CORE's to describe, because it is
@@ -63,6 +63,18 @@ struct RegDef {
     std::string help;   // "accumulator", "program counter"
     std::function<uint32_t()> get;
     std::function<void(uint32_t)> set;
+
+    // Which STATUS LINE this register prints on. Almost every core is content with
+    // one line (0). A core with more registers than fit a terminal width -- the Z80
+    // -- puts its overflow on line 1, and the monitor wraps there, keeping the same
+    // DDT/SID field format on each line (flags-first, the PC line last). Reachable-
+    // by-name registers (RegShow::Off) ignore this; they never print.
+    int line = 0;
+
+    // The character between LABEL and value on the status line -- normally `=`
+    // (`SP=0100`), but `'` for the Z80's shadow bank so it reads `BC'0000`. A lamp
+    // (RegShow::Flag) ignores it; it prints its label then a single digit.
+    char sep = '=';
 
     const std::string& shown() const { return label.empty() ? name : label; }
 };

@@ -162,12 +162,17 @@ private:
     CpuCore* needCpu(std::ostream& err);
     void showRegs(std::ostream& out);
 
-    // The "C0Z0... A=00 B=0000 ... P=0000" prefix -- flags clustered, then fields -- built
-    // from a register set and a source for each register's value. Shared by the LIVE status
-    // line (showRegs) and the RECORDED one (renderInsn / CPU HISTORY), so the two spellings
-    // of the same line can never drift. `valueAt(i)` is the i-th RegDef's value.
+    // The "C0Z0... A=00 BC=0000 ... PC=0000  <insn>" status line -- flags clustered, then
+    // fields -- built from a register set and a source for each register's value. Shared by
+    // the LIVE status line (showRegs) and the RECORDED one (renderInsn / CPU HISTORY), so the
+    // two spellings of the same line can never drift. `valueAt(i)` is the i-th RegDef's value.
+    // The layout (which line, what label, `=` vs `'`) is the CORE's, declared in registers();
+    // this renderer knows no CPU. A core may wrap onto several lines (RegDef::line): `insn`,
+    // the already-decoded instruction, is appended after the line that carries PC -- so the
+    // eye still reads PC and its instruction together even when PC is not on the last line.
     std::string regLine(const std::vector<RegDef>& regs,
-                        const std::function<uint32_t(size_t)>& valueAt);
+                        const std::function<uint32_t(size_t)>& valueAt,
+                        const std::string& insn = "");
     // One recorded instruction as its DDT-style line -- exactly what STEP printed as it
     // ran. The register line comes from regLine over the record's stored values; the
     // mnemonic is disassembled from the record's stored bytes, not live memory.

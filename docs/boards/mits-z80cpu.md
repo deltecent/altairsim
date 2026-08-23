@@ -52,8 +52,9 @@ against the core's own reflection, so a Z80 gets every one of them for free:
 
 - **`IX` / `IY`** — the 16-bit index registers, and their undocumented halves
   `IXH`/`IXL` reachable through the `DD`/`FD` forms.
-- **The alternate bank** `AF'` `BC'` `DE'` `HL'` — swapped by `EXX` (the BC/DE/HL
-  trio) and `EX AF,AF'`.
+- **The alternate bank** `A'` `F'` `BC'` `DE'` `HL'` — swapped by `EXX` (the BC/DE/HL
+  trio) and `EX AF,AF'` (the accumulator and flags). `REGS` prints the bank on its
+  second line.
 - **`I`** (interrupt vector base), **`R`** (memory refresh), **`IM`** (interrupt
   mode 0/1/2), and **`IFF1`/`IFF2`** (the interrupt enable and its shadow).
 - **`WZ`** — the internal `MEMPTR` latch, reachable by name because its high byte

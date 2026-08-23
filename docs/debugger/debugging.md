@@ -25,7 +25,27 @@ You get this line free every time the machine stops, so most of the time you nev
 
 ```
 altairsim> REGS
-C0Z1M0E1I0 A=00 B=007F D=CA01 H=BC0E S=BC37 IE=1 P=CA9C  CALL CA78
+C0Z1M0E1I0 A=00 BC=007F DE=CA01 HL=BC0E SP=BC37 IE=1 PC=CA9C  CALL CA78
+```
+
+Each register is labelled the way you would name it to `SET REG` — the pairs `BC`/`DE`/`HL`, the
+stack pointer `SP`, the program counter `PC` — so what you read is what you type back.
+
+The line follows the CPU in the machine, so it shows exactly the registers that processor has. A
+Z80 has more to show — extra flags (`S`, `P`, `H`, `N` beside the shared `C` and `Z`), the whole
+alternate register bank and its own flags, the `IX` and `IY` index registers, and the interrupt
+vector and mode `I`/`IM` — too many to sit on one line, so it wraps to two. The **first** line
+carries the registers it shares with the 8080 — the flags, `A`, the pairs, `SP`, `PC` — with the
+interrupt-enable flip-flop shown as `IFF1` (the Z80's own name for it, where the 8080 says `IE`),
+and the instruction the `PC` points at, decoded in the Z80's own mnemonics. The **second** line is
+everything the Z80 adds — the shadow flags, the alternate bank `A'`/`BC'`/`DE'`/`HL'` (a prime
+marks each), then `IX`, `IY`, the interrupt vector `I`, the mode `IM`, and `IFF2` (the shadow of
+the `IFF1` on the first line):
+
+```
+altairsim> REGS            (on a Z80 machine)
+C0Z0S0P0H0N0 A=00 BC=0000 DE=0000 HL=0000 SP=0000 IFF1=0 PC=0000  CALL PE,9A78
+C0Z0S0P0H0N0 A'00 BC'0000 DE'0000 HL'0000 IX=0000 IY=0000 I=00 IM=00 IFF2=0
 ```
 
 Flags are registers, and you may set them:
@@ -35,7 +55,7 @@ SET REG A=3F
 SET REG CY=1
 ```
 
-## Stepping — `STEP`
+## Stepping — `STEP`, `NEXT`
 
 `STEP` runs **real bus cycles through the real instruction decode**. It is not an interpreter
 running alongside the machine — it *is* the machine, moved forward by one instruction. It
@@ -102,6 +122,33 @@ breakpoints are left, whether you cleared them all with `NOBREAK` or removed the
 last one by id. Removing a breakpoint from the middle does not renumber the rest,
 so an id is not the running count of live breakpoints.
 
+**When one fires, it says which, where, and what the machine was doing.** A plain address
+breakpoint stops with the PC *on* the instruction it names — nothing there has run yet:
+
+```
+altairsim> BREAK 2C00
+breakpoint 1: pc     2C00
+altairsim> RUN FF00
+breakpoint 1 (pc     2C00) -- stopped at 2C00
+1414 instructions, 9202 T-states.
+C0Z1M0E1I1 A=C9 BC=0000 DE=2CEB HL=FFFE SP=0000 IE=0 PC=2C00  DI
+```
+
+The header names the breakpoint that fired and where the machine stopped, then how far it ran
+since `RUN`, then the register line `REGS` would print — flags, registers, `PC` (the program
+counter), and the instruction about to run. A cycle watch reads the same way, but *stopped at* is the instruction
+that made the access, not the watched address — so it hands you the culprit. Here a write to
+`2C00` is caught with the PC on the `STAX D` that wrote it:
+
+```
+altairsim> BREAK MEM W 2C00
+breakpoint 1: mem w  2C00
+altairsim> RUN FF00
+breakpoint 1 (mem w  2C00) -- stopped at FF09
+4 instructions, 34 T-states.
+C0Z0M0E0I0 A=F3 BC=00EB DE=2C00 HL=FF13 SP=0000 IE=0 PC=FF09  STAX D
+```
+
 **An address breakpoint can carry a condition.** `BREAK <addr> IF <expr>` stops only when the
 expression is true — the registers, tested the moment the PC reaches the address. It is what you
 reach for when a breakpoint fires ten thousand times before the once you care about: put the
@@ -161,6 +208,20 @@ DUMP FF00-FF0F    exactly that range
 DUMP 100/20       0100-011F  (a length, and it is part of the address, so it is hex)
 DUMP 0 WIDTH=8    eight bytes to a line (a count: decimal)
 ```
+
+Each row is the address, then the bytes in hex, then the same bytes as text — a byte that is not
+a printable character shows as `.`. Here is the default machine's DBL boot PROM at `FF00`:
+
+```
+altairsim> DUMP FF00-FF3F
+FF00  21 13 FF 11 00 2C 0E EB  7E 12 23 13 0D C2 08 FF  !....,..~.#.....
+FF10  C3 00 2C F3 AF D3 22 2F  D3 23 3E 2C D3 22 3E 03  ..,..."/.#>,.">.
+FF20  D3 10 DB FF E6 10 0F 0F  C6 10 D3 10 31 79 2D AF  ............1y-.
+FF30  D3 08 DB 08 E6 08 C2 1C  2C 3E 04 D3 09 C3 38 2C  ........,>....8,
+```
+
+This is code, so the text column is mostly `.` — it earns its keep on a buffer of strings, where
+you can read the message straight out of the right-hand column.
 
 ## One byte at a time — `EXAMINE`, `DEPOSIT`, `EDIT`
 
@@ -249,6 +310,54 @@ stack at `C000`, and calls the sign-on routine at `FBA5`. Stopping at `F811` is 
 bytes that follow are the sign-on text, and `DISASM` would decode that ASCII as instructions —
 nothing in memory says which bytes are code.
 
+**`DISASM` trusts you to start on an opcode, and it cannot check.** Give it an address in the
+*middle* of an instruction and it will decode the operand bytes as if they were opcodes, and the
+listing it prints is fiction. Start the same reset code one byte late, at `F801`, and the `03`
+that was the *operand* of `MVI A,03` becomes an instruction in its own right:
+
+```
+altairsim> DISASM F801-F812
+F801  03        INX B
+F802  D3 10     OUT 10
+F804  D3 12     OUT 12
+...
+```
+
+`INX B` is a phantom — there is no such instruction in this ROM. A disassembler usually re-syncs
+after a byte or two (here `F802` is back on the real code, because `03` happens to be one byte
+long), so a listing can look right a few lines down while its first instruction is nonsense. When
+a `DISASM` reads oddly, check that you started where an instruction *starts*: single-step to the
+address with `STEP`, or begin the range at a label you trust.
+
+**`DISASM` decodes for the CPU the machine is running.** The same bytes are different instructions
+on different processors, so `DISASM` reads them through whichever CPU is in the machine — and
+prints in that CPU's own assembly dialect. Put a Z80 in the machine and bytes that are undefined
+on an 8080 become real instructions, in Zilog mnemonics (`LD`, not the 8080's `MVI`/`MOV`):
+
+```
+altairsim> DISASM 100-10A            (on a Z80 machine)
+0100  ED B0     LDIR
+0102  CB 27     SLA A
+0104  18 FE     JR 0104
+0106  10 FC     DJNZ 0104
+0108  DD 7E 05  LD A,(IX+05)
+```
+
+The very same bytes on an 8080 have no `ED`, `CB` or `DD` prefix to give them meaning, so it
+flags each undefined byte (`??=`) and decodes what is left as unrelated 8080 instructions:
+
+```
+altairsim> DISASM 100-10A            (the same bytes, on an 8080 machine)
+0100  ED        ??= ED  *CALL
+0101  B0        ORA B
+0102  CB        ??= CB  *JMP
+0103  27        DAA
+0104  18        ??= 18  *NOP
+0105  FE 10     CPI 10
+0107  FC DD 7E  CM 7EDD
+010A  05        DCR B
+```
+
 ## Symbols — `SYMBOLS`, `SHOW SYMBOLS`
 
 Everything so far has spoken in hex. Load an assembler's symbols and you can name things
@@ -267,7 +376,9 @@ SYMBOLS CLEAR                      forget them
 ```
 
 The same disassembly, with `ALTMON.PRN` loaded, reads symbolically. A symbol is accepted
-wherever a hex address was — so you can name the range — and the output names what it can:
+wherever a hex address was — so you can name the range — and the output names what it can.
+`DISASM` is the only command whose *output* is symbolic: `DUMP` still prints hex and ASCII, since
+nothing in a data block says which bytes are an address and which are just bytes.
 
 ```
 altairsim> SYMBOLS LOAD ALTMON.PRN
@@ -335,7 +446,7 @@ the file, not the parsed table, exactly as it does for a built-in ROM.
 symbol wins; write `0FACE` (or `$FACE`) to force the number, the same escape that tells the
 register `A` from the number `0A`.
 
-## Searching, filling, moving
+## Searching, filling, moving — `SEARCH`, `FILL`, `MOVE`, `COMPARE`
 
 The block operations. `COMPARE` will take a file as its second operand, which is how you check
 what the machine loaded against what you meant to load.
@@ -362,38 +473,40 @@ OUT FF 55         run a real OUT cycle
 
 ## Asking without touching — `WHO`
 
-`WHO` asks who *would* answer. **No cycle is run and nothing is consumed.** It is the question
-you want when `IN 10` gives you `FF` and you cannot tell whether that is data or whether
-nothing is there at all.
+`WHO` asks which **board** *would* answer — the one that decodes the address or port you name,
+reported by its board id. **No cycle is run and nothing is consumed.** It is the question you
+want when `IN 10` gives you `FF` and you cannot tell whether that is data or whether nothing is
+there at all.
+
+The console 2SIO decodes port 10, so it answers by name — and reads and writes can land on
+different boards, so `WHO` reports each:
+
+```
+altairsim> WHO IO 10
+port 10 IN:  sio0
+port 10 OUT: sio0
+```
+
+A port nothing decodes answers `nobody`, and now you know the `FF` was a floating bus, not data:
+
+```
+altairsim> WHO IO 20
+port 20 IN:  nobody (an IN here reads FF)
+port 20 OUT: nobody (an OUT here goes nowhere)
+```
 
 It reports contention, and it reports `PHANTOM*` — so if two boards are fighting, or if one
-board has switched another one off, `WHO` is where you find out.
+board has switched another one off, `WHO` is where you find out. On the default machine the DBL
+boot ROM lives inside `mem0` at `FF00` and asserts `PHANTOM*` to shadow the RAM beneath it, so a
+read there comes from the ROM while a write falls through to nowhere — and `WHO` flags both:
 
 ```
-altairsim> WHO IO FF
-port FF IN:  nobody (an IN here reads FF)
-port FF OUT: nobody (an OUT here goes nowhere)
-
-WHO 2C00          who decodes this address?
-WHO IO 08         who decodes this port?
+altairsim> WHO FF00
+FF00 read  mem0   [PHANTOM* asserted]
+FF00 write nobody -- floats to FF (a write here is simply gone)  [PHANTOM* asserted]
 ```
 
-## FF is not data
-
-**An `IN` from a port nothing decodes returns `FF`.** So does a read from an address no board
-answers for.
-
-That is not an error code and it is not a convention we invented — it is what a **floating
-bus** reads. Nobody is driving the data lines, they idle high, and the processor faithfully
-reads eight ones. A real Altair does exactly this.
-
-It has a famous consequence, and it is worth knowing because you will meet it: on a machine
-with no interrupt-vector board, a board pulls the interrupt line, nobody drives the data bus
-during the acknowledge cycle, the processor reads `FF` — and `FF` is `RST 7`. That is not a
-fallback anybody coded. It is what the hardware does, and it is why the interrupt vector on a
-bare Altair is `RST 7`.
-
-So when you see `FF`, ask `WHO`.
+`WHO <addr>` asks about a memory address; `WHO IO <port>` asks about a port.
 
 ## Looking at the bus itself — `SHOW BUS`
 
@@ -448,14 +561,25 @@ HISTORY BUS 100       the last hundred cycles
 
 **`TRACE` logs every cycle as it happens** — to the console, or to a file. Like the breakpoints
 that watch the bus, it is not a CPU feature: it watches the same stream every board sees, so it
-works unchanged on any processor you put in the machine. A `MASK` keeps only the categories you
-name, and no mask keeps them all: `IN`, `OUT`, `IRQ`, `DMA`, `CONTENTION`. A cycle survives the
-mask if it matches any of them.
+works unchanged on any processor you put in the machine.
+
+A `MASK` narrows the log to the kinds of cycle you name. With no mask every cycle is logged; with
+one, a cycle is kept if it matches *any* kind you listed. There are five:
+
+- **`IN`** — an I/O read, an `IN` from a port.
+- **`OUT`** — an I/O write, an `OUT` to a port.
+- **`IRQ`** — an interrupt-acknowledge cycle: the `INTA` the CPU runs to take the interrupting
+  device's instruction off the bus.
+- **`DMA`** — every cycle a granted bus master drove, *whatever its type*. `MASK=DMA` is the whole
+  transfer a board stole the bus for, not just its reads or its writes.
+- **`CONTENTION`** — a cycle more than one board answered: the bus fact that two boards decoded
+  the same address at once (the same fault `SHOW BUS CONTENTION` reports, caught as it happens).
 
 ```
 TRACE ON                     every cycle, to the console
 TRACE ON run.log             ...to a file instead
 TRACE ON MASK=IN,OUT         just the port traffic
+TRACE ON MASK=IRQ,DMA        just interrupts and DMA
 TRACE OFF                    stop tracing
 ```
 
@@ -593,46 +717,188 @@ a session does not turn logging on for every later run.
 
 ## A debugging session
 
-The machine is not booting. Where does it get to?
+Here is the whole toolset in one short session on the `altmon` machine. ALTMON prints its
+`ALTMON 1.3` banner at reset, and it does it without passing a pointer to its print routine — a
+neat trick worth taking apart. Break at the sign-on routine `FBA5` and run from the reset entry:
 
 ```
-altairsim> BREAK 2C00           the loader relocates itself to 2C00; does it get there?
-altairsim> RUN FF00
-breakpoint at 2C00
-altairsim> REGS
-altairsim> DISASM               what is it about to do?
-altairsim> STEP 20              walk into it
+altairsim> BREAK FBA5
+breakpoint 1: pc     FBA5
+altairsim> RUN F800
+
+breakpoint 1 (pc     FBA5) -- stopped at FBA5
+8 instructions, 81 T-states.
+C0Z0M0E0I1 A=11 BC=0000 DE=0000 HL=F81F SP=BFFE IE=0 PC=FBA5  POP H
 ```
 
-The disk is not being read. Is the board even being asked?
+The breakpoint prints the registers for you — no `REGS` needed. The PC is on `POP H`, the first
+instruction of the routine. Disassemble to see the whole thing:
 
 ```
-altairsim> BREAK IO R 08        stop on any read of the controller's status port
-altairsim> RUN FF00
+altairsim> DISASM
+FBA5  E1        POP H
+FBA6  7E        MOV A,M
+FBA7  CD 48 FB  CALL FB48
+FBAA  B6        ORA M
+FBAB  23        INX H
+FBAC  F2 A6 FB  JP FBA6
+FBAF  CD 46 FB  CALL FB46
+FBB2  E9        PCHL
+FBB3  CD BC FB  CALL FBBC
+FBB6  FE 1B     CPI 1B
+FBB8  C8        RZ
+FBB9  C3 48 FB  JMP FB48
+FBBC  DB 10     IN 10
+FBBE  0F        RRC
+FBBF  D2 BC FB  JNC FBBC
+FBC2  DB 11     IN 11
 ```
 
-Something is scribbling on the BIOS.
+There is the trick: `POP H` takes the routine's *own return address* into `HL`. The message is
+stored inline, right after the `CALL FBA5` — so `HL` now points at it. Then `MOV A,M` fetches a
+character, `CALL FB48` prints it, `ORA M` tests the byte, `INX H` advances, and `JP FBA6` loops.
+Step into it and watch the banner come out a character at a time:
 
 ```
-altairsim> BREAK MEM W E400
-altairsim> RUN
+altairsim> STEP 20
+C0Z0M0E0I1 A=11 BC=0000 DE=0000 HL=F812 SP=C000 IE=0 PC=FBA6  MOV A,M
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=C000 IE=0 PC=FBA7  CALL FB48
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=BFFE IE=0 PC=FB48  PUSH PSW
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=BFFC IE=0 PC=FB49  IN 10
+C0Z0M0E0I1 A=02 BC=0000 DE=0000 HL=F812 SP=BFFC IE=0 PC=FB4B  ANI 02
+C0Z0M0E0I0 A=02 BC=0000 DE=0000 HL=F812 SP=BFFC IE=0 PC=FB4D  JZ FB49
+C0Z0M0E0I0 A=02 BC=0000 DE=0000 HL=F812 SP=BFFC IE=0 PC=FB50  POP PSW
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=BFFE IE=0 PC=FB51  ANI 7F
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=BFFE IE=0 PC=FB53  OUT 11
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=BFFE IE=0 PC=FB55  RET
+C0Z0M0E0I1 A=0D BC=0000 DE=0000 HL=F812 SP=C000 IE=0 PC=FBAA  ORA M
+C0Z0M0E0I0 A=0D BC=0000 DE=0000 HL=F812 SP=C000 IE=0 PC=FBAB  INX H
+C0Z0M0E0I0 A=0D BC=0000 DE=0000 HL=F813 SP=C000 IE=0 PC=FBAC  JP FBA6
+C0Z0M0E0I0 A=0D BC=0000 DE=0000 HL=F813 SP=C000 IE=0 PC=FBA6  MOV A,M
+C0Z0M0E0I0 A=0A BC=0000 DE=0000 HL=F813 SP=C000 IE=0 PC=FBA7  CALL FB48
+C0Z0M0E0I0 A=0A BC=0000 DE=0000 HL=F813 SP=BFFE IE=0 PC=FB48  PUSH PSW
+C0Z0M0E0I0 A=0A BC=0000 DE=0000 HL=F813 SP=BFFC IE=0 PC=FB49  IN 10
+C0Z0M0E0I0 A=00 BC=0000 DE=0000 HL=F813 SP=BFFC IE=0 PC=FB4B  ANI 02
+C0Z1M0E1I0 A=00 BC=0000 DE=0000 HL=F813 SP=BFFC IE=0 PC=FB4D  JZ FB49
+C0Z1M0E1I0 A=00 BC=0000 DE=0000 HL=F813 SP=BFFC IE=0 PC=FB49  IN 10
 ```
 
-## Saving state, and the tools that are not here yet
+`POP H` landed `HL` on `F812`, the byte right after the `CALL`, and the first character is `0D` —
+a carriage return. `FB48` is the console-output routine: it polls the 2SIO status (`IN 10`,
+`ANI 02`) until the transmitter is ready, then `OUT 11` sends the byte and returns. Back in the
+loop, `INX H` steps `HL` to `F813` and the next character `0A` (line feed) follows the same path —
+and so on, until a byte with its high bit set marks the end of the string. Twenty steps in, you
+have watched the first two characters of the banner reach the terminal.
+
+## Saving state — `SNAPSHOT`, `RESTORE`
 
 `SNAPSHOT` writes the machine's whole state — the CPU, the clock, and every board's registers,
 RAM and latches — to a file, and `RESTORE` reads it back into a machine of the same shape. So
-you *can* save the machine at a moment and return to it later.
+you can save the machine at a moment and return to it later.
 
-What is not here is *rewind*: you cannot record a session and step *backwards* through it, or
-replay a run from the start. `TRACE` logs the machine as it runs and `HISTORY` shows you the
-run-up to a stop, but when you stop the machine, you stop it where it is.
+Mark a spot, change something, and put it back:
 
-Say so plainly rather than let you find out: if you need to catch a bug that happens once in ten
-million instructions and you cannot predict where, a conditional breakpoint (`BREAK <addr> IF
-…`) and the `HISTORY` ring are the tools you have — but nothing here will replay it for you.
+```
+altairsim> SNAPSHOT before.snap
+snapshot written to before.snap
+altairsim> DEPOSIT 100 00 00 00 00      trample four bytes
+altairsim> RESTORE before.snap
+restored from before.snap
+altairsim> DUMP 100-103                 they are back
+0100  DE AD BE EF                                       ....
+```
 
-`DISASM` reads symbolically once you `SYMBOLS LOAD` a listing — labels head their lines and
-operands name their targets (see *Naming addresses* above). `DUMP` does not: a hex/ASCII dump
-still prints the machine in hex, because there is no instruction there to say which bytes are an
-address and which are data.
+It saves *state*, not *configuration* — the boards themselves are not in the file. `RESTORE`
+loads back into the machine you already have, and refuses a file that does not match its shape
+(the same boards, ids, and order), leaving the running machine untouched. Build that shape with
+the machine file or a `CONFIG LOAD` first, then restore into it.
+
+## Getting an assistant to do it — the MCP server
+
+Everything in this document is a command you type. It is also a tool an **AI assistant** can
+call. Start the machine with `--mcp` instead of at a terminal —
+
+```
+$ altairsim <machine> --mcp
+```
+
+— and the same debugger is offered to an assistant as structured tools: it can set a breakpoint,
+run to it, read the registers, disassemble, step, dump memory, and read the bus recorder, on the
+*same* machine object the monitor drives. So instead of learning the commands, you can describe
+the symptom in a sentence and let the assistant work the machine for you. (The MCP server is
+covered in full in the **MCP server** chapter of the User Manual, including how to register it
+with clients other than the one below.)
+
+**Setting it up — the example is Claude Code.** Two one-time steps. First, register the server so
+the assistant can reach the machine; run this in the directory that holds your machine file, so the
+relative path and the host bridge both resolve there:
+
+```
+$ claude mcp add altairsim -- altairsim <machine> --mcp
+$ claude mcp list                      # confirm it registered and is reachable
+```
+
+Second, hand the assistant its briefing. `DRIVING-WITH-AI.md` ships in the package; it is written
+for the assistant, not for you — it teaches these tools and the recipes for booting, building and
+debugging over them. Copy it into the same directory, start `claude` there, and point the assistant
+at it before you give it a job:
+
+```
+$ cp /path/to/DRIVING-WITH-AI.md .
+$ claude
+> Read DRIVING-WITH-AI.md, then use the altairsim MCP tools for what follows.
+```
+
+From then on you talk to the assistant, not to the server.
+
+**What you say.** Give the assistant the whole job in plain language, and name the tools so it
+drives the simulator rather than guessing:
+
+> *Using the altairsim MCP tools, boot the machine and run `HELLO.COM`. It should print
+> `HELLO, WORLD` but it prints `ELLO, WORLD` — find the bug and fix the source.*
+
+> *My loader hangs instead of reaching the prompt. Boot with the MCP tools, break at `2C00`
+> where it relocates itself, and single-step from there to tell me where it goes wrong.*
+
+> *Something is overwriting the BIOS at `E400`. Set a memory-write breakpoint there, run until
+> it trips, and show me the instruction and registers that did it.*
+
+**What the assistant does with that.** It works the same loop you would, one tool call at a time.
+Given the first sentence, it boots the machine, runs the program, and sees `ELLO, WORLD`; sets a
+breakpoint at `0100`, runs there, and disassembles — where it finds the pointer advanced by an
+`INX H` *before* the first character is read, so the `H` is skipped. It corrects the source,
+reassembles it on the CP/M disk, and runs again to confirm `HELLO, WORLD`. You watch the reasoning
+and the fix; you type none of the commands.
+
+**When a typed tool does not reach.** The assistant is not limited to the structured tools: it can
+run any monitor command and read the reply, so a conditional breakpoint (`BREAK 200 IF HL==8000`)
+or an octal dump is one call away, exactly as it is for you.
+
+`examples/ai-mcp/` is a ready-made version of the first sentence above — a CP/M machine and a
+`HELLO.ASM` with one deliberate bug — with a walkthrough of the session the assistant runs to find
+and fix it. It is the fastest way to see this work end to end.
+
+## Things to know about the bus
+
+Not commands — facts about how the backplane behaves, the kind that turn a baffling reading into
+an expected one.
+
+### When `FF` is not data
+
+`FF` is a perfectly good byte — a `RST 38`, an `RST 7`, the value −1 — so most of the time it
+reads back as exactly what a board put there. But it is also what the bus gives you when *nobody
+answered*, and telling those two apart is worth a habit.
+
+**An `IN` from a port nothing decodes, or a read from an address no board answers for, returns
+`FF`.** That is not an error code and it is not a convention we invented — it is what a **floating
+bus** reads. Nobody is driving the data lines, they idle high, and the processor faithfully reads
+eight ones. A real Altair does exactly this.
+
+It has a famous consequence, and it is worth knowing because you will meet it: on a machine with
+no interrupt-vector board, a board pulls the interrupt line, nobody drives the data bus during the
+acknowledge cycle, the processor reads `FF` — and `FF` is `RST 7`. That is not a fallback anybody
+coded. It is what the hardware does, and it is why the interrupt vector on a bare Altair is
+`RST 7`.
+
+So when a read gives you `FF` you did not expect, ask `WHO`: it tells you whether a board answered
+with that byte or the bus floated because none did.

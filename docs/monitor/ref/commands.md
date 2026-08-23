@@ -119,9 +119,9 @@ S 10         ten of them
 altairsim> DEPOSIT 0 3E 05 06 0A 80 76        MVI A,5 / MVI B,0A / ADD B / HLT
 altairsim> EX 0
 altairsim> S 3
-C0Z0M0E0I0 A=05 B=0000 D=0000 H=0000 S=0000 IE=0 P=0002  MVI B,0A
-C0Z0M0E0I0 A=05 B=0A00 D=0000 H=0000 S=0000 IE=0 P=0004  ADD B
-C0Z0M0E1I0 A=0F B=0A00 D=0000 H=0000 S=0000 IE=0 P=0005  HLT
+C0Z0M0E0I0 A=05 BC=0000 DE=0000 HL=0000 SP=0000 IE=0 PC=0002  MVI B,0A
+C0Z0M0E0I0 A=05 BC=0A00 DE=0000 HL=0000 SP=0000 IE=0 PC=0004  ADD B
+C0Z0M0E1I0 A=0F BC=0A00 DE=0000 HL=0000 SP=0000 IE=0 PC=0005  HLT
 ```
 
 Three instructions ran, three lines. Each shows the result: A=05 lands on the
@@ -254,7 +254,7 @@ DUMP does not move it.
 
 ```
 EX 100       0100  C3  .  11000011
-             A=00 ... P=0100  JMP 0138
+             A=00 ... PC=0100  JMP 0138
 EX           and the next byte, and the next
 ```
 
@@ -377,10 +377,11 @@ The flags are registers too, so SET REG CY=1 works. A register value is on
 the wire, so it is HEX.
 
 What it shows is the ACTIVE CPU's own set: an 8080 prints A, the pairs, SP, PC
-and its flags; a Z80 prints those plus IX, IY, I and IM, and keeps the alternate
-bank (AF' BC' DE' HL'), R and the register halves reachable by name though they
-are off the line. SET REG takes any name REGS knows -- and only those, so SET
-REG IX=0 needs a Z80. BREAK ... IF reads the very same names.
+and its flags on one line; a Z80 needs two -- the first carries that same set,
+the second the alternate bank (A' BC' DE' HL'), its shadow flags, IX, IY, I and
+IM. The register halves, R and F are reachable by name though they are off the
+line. SET REG takes any name REGS knows -- and only those, so SET REG IX=0 needs
+a Z80. BREAK ... IF reads the very same names.
 
 ```
 REGS

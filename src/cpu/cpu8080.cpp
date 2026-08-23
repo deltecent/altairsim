@@ -289,19 +289,20 @@ void Cpu8080::daa() {
 //
 // THE ORDER AND THE LABELS ARE THE DDT/SID STATUS LINE (RegShow, cpu.h):
 //
-//     C0Z1M0E1I0 A=3F B=0000 D=00FF H=8000 S=0100 IE=1 P=0102  MOV A,B
+//     C0Z1M0E1I0 A=3F BC=0000 DE=00FF HL=8000 SP=0100 IE=1 PC=0102  MOV A,B
 //
-// which is why the flags come first and PC comes last -- P= and the instruction
+// which is why the flags come first and PC comes last -- PC= and the instruction
 // are the pair your eye actually reads together, so nothing is allowed between
 // them. IE is one bit but it is a FIELD, not a lamp: DDT had no letter for it
 // (its `I` is the INTERDIGIT carry, our AC), and interrupt state is too load-bearing
 // to leave off a machine with a VI/RTC in it.
 //
-// TWO LABEL COLLISIONS, AND BOTH ARE DDT'S OWN:
-//   - `S=` on the line is the STACK POINTER, while the SIGN flag prints as `M`
-//     (minus). `SET REG S=1` is still the sign flag -- name is identity, label is
-//     only paint.
-//   - `B=` on the line is the BC PAIR, while `SET REG B=3F` is still the 8-bit half.
+// THE LABELS ARE THE `SET REG` NAMES: the line shows `BC=`, `DE=`, `HL=`, `SP=`,
+// `PC=`, and that is exactly what you type to change them -- so nothing you read on
+// the line has to be translated before you can set it. The 8-bit halves (`B`, `C`,
+// ...) stay reachable by name, just off a line that already shows the pair; and the
+// sign flag's `M` label is DDT's, while `SET REG S=1` sets it -- name is identity,
+// label is only paint.
 //
 // The pairs are not decoration for the display: they mean `SET REG HL=1234` works,
 // and so will `BREAK 100 IF HL==8000`.
@@ -335,14 +336,14 @@ std::vector<RegDef> Cpu8080::registers() {
 
         {"A", 8, "", RegShow::Field, "accumulator", [this] { return (uint32_t)a_; },
          [this](uint32_t v) { a_ = (uint8_t)v; }},
-        pair("BC", "B", "the B,C pair", &b_, &c_),
-        pair("DE", "D", "the D,E pair", &d_, &e_),
-        pair("HL", "H", "the H,L pair", &h_, &l_),
-        {"SP", 16, "S", RegShow::Field, "stack pointer", [this] { return (uint32_t)sp_; },
+        pair("BC", "BC", "the B,C pair", &b_, &c_),
+        pair("DE", "DE", "the D,E pair", &d_, &e_),
+        pair("HL", "HL", "the H,L pair", &h_, &l_),
+        {"SP", 16, "SP", RegShow::Field, "stack pointer", [this] { return (uint32_t)sp_; },
          [this](uint32_t v) { sp_ = (uint16_t)v; }},
         {"IE", 1, "IE", RegShow::Field, "interrupts enabled (INTE)",
          [this] { return (uint32_t)(ie_ ? 1 : 0); }, [this](uint32_t v) { ie_ = v != 0; }},
-        {"PC", 16, "P", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
+        {"PC", 16, "PC", RegShow::Field, "program counter", [this] { return (uint32_t)pc_; },
          [this](uint32_t v) { pc_ = (uint16_t)v; }},
 
         half("B", &b_), half("C", &c_),
