@@ -25,6 +25,7 @@
 
 #include "core/command.h"  // CommandDef itself -- a BOARD can declare one, so it lives in core
 
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,18 @@ const std::vector<CommandDef>& commands();
 
 // Case-insensitive prefix match. Null if nothing in the table starts with `word`.
 const CommandDef* resolveCommand(const std::string& word);
+
+// Resolve a typed SUBcommand word against an ordered keyword set -- the same
+// first-prefix-wins rule resolveCommand uses for top-level commands, so `BOARDS REM`
+// reaches REMOVE and `SHOW MOU` reaches MOUNTS. EXACT match wins over prefix: the
+// set may hold prefix-pairs on different branches (MACHINE/MACHINES, MOUNT/MOUNTS),
+// and a fully-spelled word must resolve to ITSELF, not to the longer sibling that
+// happens to be listed first. Returns the matched keyword verbatim, or "" if the
+// word is not a prefix of any of them (the caller then reports usage, or -- for
+// SHOW/SET -- falls through to a board/target, built-ins-first exactly as the
+// top-level dispatcher does).
+std::string resolveKeyword(const std::string& word,
+                           std::initializer_list<const char*> keywords);
 
 // The shortest prefix that resolves back to this command -- DERIVED, never stored,
 // so it is right by construction and stays right when the table is reordered.

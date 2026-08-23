@@ -741,4 +741,28 @@ const CommandDef* resolveCommand(const std::string& word) {
     return nullptr;
 }
 
+std::string resolveKeyword(const std::string& word,
+                           std::initializer_list<const char*> keywords) {
+    if (word.empty()) return "";
+
+    std::string w;
+    for (char ch : word) w += (char)std::toupper((unsigned char)ch);
+
+    // EXACT first, across the WHOLE set: `SHOW MACHINE` must be MACHINE even though
+    // MACHINES is listed ahead of it and MACHINE is a prefix of it. A prefix pass
+    // alone would hand the longer sibling every fully-spelled short name.
+    for (const char* kw : keywords)
+        if (w == kw) return kw;
+
+    // Then first-prefix-wins, in list order -- the resolveCommand rule. `MOU` lands
+    // on whichever of MOUNTS/MOUNT is first; both route to the same branch, so it
+    // does not matter, and where it would (different branches) the exact pass above
+    // already caught the spelled-out word.
+    for (const char* kw : keywords) {
+        std::string name = kw;
+        if (name.compare(0, w.size(), w) == 0) return kw;
+    }
+    return "";
+}
+
 } // namespace altair
