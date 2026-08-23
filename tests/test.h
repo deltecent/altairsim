@@ -28,6 +28,7 @@ void test_hex();
 void test_srec();
 void test_symbols();
 void test_media();
+void test_tnfs();
 void test_cardimg();
 void test_imd();
 void test_tapecodec();
