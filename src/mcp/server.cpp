@@ -8,12 +8,14 @@
 #include "core/roms.h"
 #include "core/version.h"
 #include "cpu/cpu.h"
+#include "host/mirror_stream.h"
 #include "host/stream.h"
 #include "isa/isa.h"
 #include "util/json.h"
 
 #include <chrono>
 #include <fstream>
+#include <iostream>
 #include <istream>
 #include <ostream>
 #include <sstream>
@@ -567,27 +569,49 @@ Json breakpointJson(const Breakpoint& b) {
 struct McpSession {
     std::string conBoard;
     std::string conUnit;
+    // `--mirror socket:PORT[?ro]`: when set, the console is `scripted` WRAPPED in a
+    // MirrorStream so a human can telnet in and share the session (issue #381). Empty =
+    // the bare scripted line. Set once at startup (runMcp), read by console().
+    std::string mirror;
 };
+
+// The scripted line the interactive tools drive -- reached THROUGH the mirror when one
+// is in place. Bare, the unit's stream IS the ScriptedStream; under --mirror it is a
+// MirrorStream wrapping one, and the guest talks to the wrapper while we feed()/out()
+// the inner. One level: we only ever wrap scripted in exactly one mirror.
+ScriptedStream* asScripted(ByteStream* s) {
+    if (auto* ss = dynamic_cast<ScriptedStream*>(s)) return ss;
+    if (auto* mir = dynamic_cast<MirrorStream*>(s))
+        return dynamic_cast<ScriptedStream*>(mir->inner());
+    return nullptr;
+}
 
 // Find the serial unit wired to the host console and REBIND it to an in-memory
 // ScriptedStream. Under --mcp there is no terminal, so "console" would aim the guest's
 // keyboard at the JSON-RPC pipe and hang the first run forever (monitor.cpp:818); a
-// scripted line is one we can feed() and read out() instead. Idempotent: once a channel
-// is ours, later calls just re-fetch it. Null + err if the machine has no such line.
+// scripted line is one we can feed() and read out() instead. Under --mirror the scripted
+// line is wrapped in a socket mirror (scripted|socket:PORT), transparently -- we still
+// return the inner scripted, so the run loop is unchanged. Idempotent: once a channel is
+// ours, later calls just re-fetch it. Null + err if the machine has no such line.
 ScriptedStream* console(Machine& m, McpSession& s, std::string& err) {
     if (!s.conBoard.empty())
         if (Board* b = m.find(s.conBoard))
-            if (auto* ss = dynamic_cast<ScriptedStream*>(b->unitStream(s.conUnit)))
+            if (auto* ss = asScripted(b->unitStream(s.conUnit)))
                 return ss;
+
+    // Bare `scripted`, or `scripted|socket:PORT` when a mirror was asked for. The mirror
+    // rides the same tap grammar the resolver already knows (host/endpoint.cpp).
+    const std::string endpoint = s.mirror.empty() ? std::string("scripted")
+                                                   : "scripted|" + s.mirror;
 
     for (const auto& b : m.boards())
         for (const auto& u : b->units()) {
             if (u.kind != UnitKind::Serial) continue;
             if (u.state != "console") continue;
-            if (!b->connect(u.name, "scripted", err)) return nullptr;
+            if (!b->connect(u.name, endpoint, err)) return nullptr;
             s.conBoard = b->id;
             s.conUnit  = u.name;
-            if (auto* ss = dynamic_cast<ScriptedStream*>(b->unitStream(u.name))) return ss;
+            if (auto* ss = asScripted(b->unitStream(u.name))) return ss;
         }
     err = "no console line: CONNECT a serial unit to 'scripted' (one wired to 'console' "
           "is adopted automatically).";
@@ -1404,14 +1428,22 @@ void replyError(std::ostream& out, const Json& id, int code, const std::string& 
 
 } // namespace
 
-int runMcp(Machine& m, std::istream& in, std::ostream& out) {
+int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& mirror) {
     // Take the console off "console" NOW, before anything runs: under --mcp stdin is the
     // JSON-RPC channel, not a keyboard, and a guest reading it would eat our next request.
     // A scripted line is one the interactive tools own. Quietly does nothing if the
     // machine has no console line (an empty backplane, a socket-only machine).
     McpSession sess;
+    sess.mirror = mirror;
     std::string bindErr;
     console(m, sess, bindErr);
+
+    // A mirror that could not bind (its port is in use) is worth saying out loud -- but
+    // to STDERR, never `out`, which is the JSON-RPC channel a stray line would corrupt.
+    // The session still runs; the console just falls back to being un-rebound until a
+    // tool call retries and surfaces the same error to the client.
+    if (!mirror.empty() && !bindErr.empty())
+        std::cerr << "altairsim: --mirror " << mirror << " failed: " << bindErr << "\n";
 
     std::string line;
     while (std::getline(in, line)) {

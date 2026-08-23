@@ -19,6 +19,12 @@
 namespace altair {
 
 // stdio JSON-RPC 2.0, line-delimited.
-int runMcp(Machine& m, std::istream& in, std::ostream& out);
+//
+// `mirror` (empty = off) is a `socket:PORT[?ro]` spec: when set, the console the
+// interactive tools drive is wrapped in a MirrorStream, so a human can `telnet` in to
+// WATCH the session the assistant is running and TYPE back onto the line to take over
+// (issue #381). The assistant still feed()/out()s the inner scripted line unchanged --
+// the wrapper is transparent to the run loop.
+int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& mirror = "");
 
 } // namespace altair

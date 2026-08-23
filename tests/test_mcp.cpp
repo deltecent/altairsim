@@ -1,14 +1,20 @@
 #include "test.h"
 
+#include "core/board.h"
 #include "core/machine.h"
 #include "core/machines.h"
+#include "host/mirror_stream.h"
+#include "host/stream.h"
 #include "mcp/server.h"
+#include "platform/socket.h"
 #include "util/json.h"
 
+#include <chrono>
 #include <filesystem>
 #include <map>
 #include <sstream>
 #include <string>
+#include <thread>
 
 using namespace altair;
 
@@ -17,10 +23,11 @@ using namespace altair;
 // instead of a pipe. No mocks: a real built-in machine, a real 8080, a real 6850.
 namespace {
 
-std::map<int, Json> runScript(Machine& m, const std::string& script) {
+std::map<int, Json> runScript(Machine& m, const std::string& script,
+                              const std::string& mirror = "") {
     std::istringstream in(script);
     std::ostringstream out;
-    runMcp(m, in, out);
+    runMcp(m, in, out, mirror);
 
     std::map<int, Json> byId;
     std::istringstream lines(out.str());
@@ -32,6 +39,39 @@ std::map<int, Json> runScript(Machine& m, const std::string& script) {
         if (Json::parse(line, j, err)) byId[(int)j.at("id").integer()] = j;
     }
     return byId;
+}
+
+// A free TCP port the OS confirms unused -- bind port 0, read what it picked, drop it.
+uint16_t freePort() {
+    std::string err;
+    if (auto probe = platform::listenTcp(0, err)) return probe->port();
+    return 0;
+}
+
+// Poll `ready` for up to ~2 s of REAL time -- the loopback handshake and byte delivery
+// are the kernel's to schedule (test_lines' lesson; sockettest's).
+template <typename Fn>
+bool waitFor(Fn ready, int ms = 2000) {
+    for (int i = 0; i < ms / 5; ++i) {
+        if (ready()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return ready();
+}
+
+// The MirrorStream now wrapping the console unit (and its inner ScriptedStream), if any.
+// After runMcp with --mirror, the console's line is `scripted|socket:PORT` -- a mirror
+// the assistant drives via the inner scripted while a socket client shares it.
+MirrorStream* consoleMirror(Machine& m, ScriptedStream** innerOut = nullptr) {
+    for (const auto& b : m.boards())
+        for (const auto& u : b->units()) {
+            if (u.kind != UnitKind::Serial) continue;
+            if (auto* mir = dynamic_cast<MirrorStream*>(b->unitStream(u.name))) {
+                if (innerOut) *innerOut = dynamic_cast<ScriptedStream*>(mir->inner());
+                return mir;
+            }
+        }
+    return nullptr;
 }
 
 // Load the altmon built-in -- a whole machine (8080, 2SIO, memory), no disk fixture --
@@ -126,6 +166,85 @@ void test_mcp() {
         const Json& dump = rep[5].at("result").at("structuredContent");
         CHECK(dump.at("output").str().find("3E 03 D3 10") != std::string::npos,
               "the DUMP command's output is ALTMON's own initialization bytes");
+    }
+
+    SECTION("MCP: --mirror wraps the console so a socket client watches and takes over");
+    {
+        const BuiltinMachine* altmon = nullptr;
+        for (const auto& b : builtinMachines())
+            if (std::string(b.name) == "altmon") altmon = &b;
+        CHECK(altmon != nullptr, "the altmon built-in is compiled in");
+        if (!altmon) return;
+
+        Machine m;
+        std::string err;
+        CHECK(loadMachine(*altmon, m, err), "altmon loads");
+
+        uint16_t port = freePort();
+        CHECK(port != 0, "the OS hands us a free port");
+        const std::string mirror = "socket:" + std::to_string(port);
+
+        // Drive a real MCP session WITH the mirror: initialize rebinds the console to
+        // scripted|socket:PORT, and the boot run makes the guest print its banner.
+        std::ostringstream s;
+        int                id = 0;
+        auto req = [&](const char* method, const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id << R"(,"method":")" << method
+              << R"(","params":)" << params << "}\n";
+        };
+        req("initialize", "{}");
+        req("tools/call",
+            R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        auto rep = runScript(m, s.str(), mirror);
+
+        // The assistant still sees the guest's output -- the inner scripted is driven
+        // through the wrapper, transparently, so the run loop needed no change.
+        const Json& boot = rep[2].at("result").at("structuredContent");
+        CHECK(boot.at("output").str().find("ALTMON") != std::string::npos,
+              "the assistant's run still sees the banner through the mirror");
+
+        // The console line is now a mirror over scripted, describing the socket sink.
+        ScriptedStream* inner = nullptr;
+        MirrorStream*   mir   = consoleMirror(m, &inner);
+        CHECK(mir != nullptr, "the console unit is wrapped in a MirrorStream");
+        if (mir)
+            CHECK(mir->describe() == "scripted|" + mirror,
+                  "and it describes itself as scripted|socket:PORT");
+        CHECK(inner != nullptr, "the inner line is the scripted stream the tools drive");
+
+        // A human telnets in AFTER the assistant started -- the listener is still open on
+        // the unit -- and takes over: they type a DUMP command, the guest EXECUTES it, and
+        // the result comes back down the same socket. Proves both directions end to end,
+        // through the exact wiring --mcp --mirror builds.
+        if (mir && inner) {
+            auto client = platform::connectTcp("127.0.0.1", port, err);
+            CHECK(client != nullptr, ("a watcher dials in: " + err).c_str());
+            bool up = waitFor([&] {
+                m.pump();  // the run loop pumps every stream, the mirror among them
+                if (client) client->poll();
+                return client && client->established();
+            });
+            CHECK(up, "the watcher connects and the mirror accepts it mid-session");
+
+            // The watcher types ALTMON's own dump command -- INJECTED as input the guest
+            // reads (take-over), not fed through the assistant's channel.
+            const char cmd[] = "DF800F80F\r";
+            if (client) client->write((const uint8_t*)cmd, sizeof cmd - 1);
+
+            std::string seen;
+            waitFor([&] {
+                if (client) client->poll();
+                m.pump();
+                m.debug.run(2000);  // give the guest cycles to read and execute
+                m.pump();
+                uint8_t b[256];
+                size_t  r = client ? client->read(b, sizeof b) : 0;
+                seen.append((const char*)b, r);
+                return seen.find("3E 03 D3 10") != std::string::npos;
+            });
+            CHECK(seen.find("3E 03 D3 10") != std::string::npos,
+                  "the watcher's typed command was executed by the guest, dump came back down the socket");
+        }
     }
 
     SECTION("MCP: a RUN via the monitor tool parks instead of wedging the server");

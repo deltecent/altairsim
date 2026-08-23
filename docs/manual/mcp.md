@@ -57,6 +57,27 @@ write. Everything else on the machine — a second serial board wired to a real 
 socket — keeps running and is serviced on every `run` slice, so a program shuttling bytes
 between the console and a modem port works exactly as it would at a real terminal.
 
+## Watching over your shoulder — `--mirror`
+
+Add `--mirror socket:PORT` alongside `--mcp` and a person can `telnet localhost PORT` to
+**watch the very session the assistant is driving** — every character the guest prints —
+and **type back onto the line to take over**, sharing the console:
+
+```
+$ altairsim cpm --mcp --mirror socket:2323
+```
+
+It wraps the assistant's console in the same mirror the monitor offers (`<endpoint>|socket:
+PORT`, see the *Serial lines* chapter). The assistant keeps driving through `run`/`send`/
+`recv` exactly as before — the mirror is transparent to it — while whatever it types and
+whatever the guest prints also crosses the socket to the watcher. Add `?ro`
+(`--mirror socket:2323?ro`) to make it watch-only. One watcher at a time.
+
+The watcher never sets the pace, and one thing follows from that: the guest only advances
+**during a `run`**, so a character the watcher types between runs waits on the line and is
+read on the next `run` — the same as `send` staging input for the next `run`. While a `run`
+is in flight the two share the console live.
+
 ## Debugging and inspecting
 
 The monitor's debugger is here too, structured. `step` advances a set number of instructions
