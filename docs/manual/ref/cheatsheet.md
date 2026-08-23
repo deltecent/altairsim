@@ -272,4 +272,5 @@ base      = octal          # read/print the wire class in split octal (MITS styl
 | `terminal` | a window the simulator draws itself (SDL builds). `?emulation=vt100\|adm3a\|vt52\|h19`, `?size=COLSxROWS`. |
 | `printer:QUEUE` | a real print queue on this host. |
 | `<endpoint>\|FILE` | a tap: append `\|FILE` to any endpoint to also log the line. |
+| `<endpoint>\|socket:PORT` | a live mirror: `telnet` in to watch and take over. `?ro` = watch-only. |
 

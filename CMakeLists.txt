@@ -356,6 +356,11 @@ add_library(altair_core STATIC
   # decorator ByteStream: it copies bytes past in both directions and forwards the rest,
   # observe-only and 8-bit clean, so it is exempt from the "one FilterStream" rule.
   src/host/tee_stream.cpp
+  # `ENDPOINT|socket:PORT` -- a live BIDIRECTIONAL mirror of a line over TCP: a human
+  # telnets in, watches the session, and can type back onto the wire (issue #381). The
+  # tee's twin (same decorator shape) but the sink is a socket, not a file, and it is
+  # two-way. The watcher never paces the guest (host/mirror_stream.h).
+  src/host/mirror_stream.cpp
   src/host/media.cpp
   # A host DIRECTORY as one CF/microSD card: a `card.geometry` descriptor maps LBA runs
   # to per-volume backing files, streamed lazily (seek per block, never slurped like a
@@ -750,6 +755,7 @@ add_executable(altair_tests
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_tee.cpp
+  tests/test_mirror.cpp
   tests/test_pio.cpp
   tests/test_vdb8024.cpp
   tests/test_terminal.cpp

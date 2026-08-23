@@ -724,7 +724,7 @@ in the machine knows what any of these words mean.
 
 Endpoints: console | null | loopback | scripted | socket:PORT | socket:HOST:PORT |
 serial:DEVICE | in:PATH | out:PATH | terminal[?emulation=vt100&size=80x24] |
-printer:QUEUE | <endpoint>|FILE
+printer:QUEUE | <endpoint>|FILE | <endpoint>|socket:PORT
 
 
 ```
@@ -756,6 +756,10 @@ printer:    QUEUE -- a real print queue on this host (only where the build found
             both directions, to a hex FILE -- a poor man's protocol analyzer. The
             guest cannot tell it is there. ?fmt=dump|cols|jsonl picks the layout,
             ?ts=elapsed|wall|none the timestamps, ?pins=off drops the modem edges.
+<endpoint>|socket:PORT   a live MIRROR: append |socket:PORT to ANY endpoint above
+            and a second person can `telnet localhost PORT` to WATCH the session --
+            and TYPE, sharing the line (take-over). ?ro makes it watch-only. The
+            watcher never paces the guest; a slow one loses scrollback, not a byte.
 ```
 
 

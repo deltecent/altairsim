@@ -4,6 +4,7 @@
 #include "host/console.h"
 #include "host/file.h"
 #include "host/hostserial.h"
+#include "host/mirror_stream.h"
 #include "host/tcp.h"
 #include "host/tee_stream.h"
 #include "host/terminal/emulations.h"
@@ -76,9 +77,12 @@ std::string endpointHelp(bool all) {
 #endif
     if (all || havePrinter) parts.emplace_back("printer:QUEUE");
     // Any endpoint can be TAPPED: append `|FILE` to log the line to a hex file (a
-    // poor man's protocol analyzer; host/tee_stream.h). Advertised last so it reads as
-    // a suffix on all of the above, not a peer of them.
+    // poor man's protocol analyzer; host/tee_stream.h), or `|socket:PORT` to MIRROR it
+    // live over TCP -- a human telnets in to watch and take over (host/mirror_stream.h,
+    // issue #381). Advertised last so they read as a suffix on all of the above, not
+    // peers of them.
     parts.emplace_back("<endpoint>|FILE");
+    parts.emplace_back("<endpoint>|socket:PORT");
 
     // Wrap the grammar so it does not run off the page -- the full list is one long line
     // that landed in the CONNECT help, the "no endpoint" error and the generated reference
@@ -115,7 +119,9 @@ std::string rebaseEndpointPaths(const std::string&                              
             path = file.substr(0, q);
             opts = file.substr(q);  // keeps the leading '?'
         }
-        if (!path.empty()) path = rebase(path);
+        // A `socket:` right side is a MIRROR sink, not a path -- rebasing it against the
+        // config dir would corrupt the port spec. Only a FILE sink (the tee) is a path.
+        if (!path.empty() && path.rfind("socket:", 0) != 0) path = rebase(path);
         return rebaseEndpointPaths(inner, rebase) + "|" + path + opts;
     }
 
@@ -189,6 +195,70 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
         if (path.empty()) {
             err = "capture needs a log file after '|', e.g. socket:2323|cap.hex";
             return nullptr;
+        }
+
+        // ---- ENDPOINT|socket:PORT -- a LIVE mirror, not a file capture (issue #381) ----
+        //
+        // The one place the two taps diverge: a `|` whose right side is a `socket:` is a
+        // MirrorStream (bidirectional, a human watches and takes over over TCP), where a
+        // `|` whose right side is a path is the TeeStream below (one-way hex to a file).
+        // Everything up to here -- the split, the `?query` -- is shared; only the sink
+        // differs. The mirror LISTENS (the watcher telnets in), so the right side is a
+        // bare `socket:PORT`; a `?ro` option makes it read-only (watch, no take-over).
+        if (path.rfind("socket:", 0) == 0) {
+            std::string rest = path.substr(7);
+            if (rest.find(':') != std::string::npos) {
+                err = "mirror listens for a watcher: use ENDPOINT|socket:PORT (a bare port), "
+                      "got '" + path + "'";
+                return nullptr;
+            }
+            uint16_t port = 0;
+            if (!parsePort(rest, port)) {
+                err = "'" + rest + "' is not a TCP port number (1..65535)";
+                return nullptr;
+            }
+
+            // The mirror's only option is `ro` (read-only). A bare key is =true, the same
+            // convention the tee and printer use; `ro=false` spells out take-over.
+            bool readOnly = false;
+            for (size_t start = 0; start <= query.size();) {
+                size_t      amp = query.find('&', start);
+                std::string tok =
+                    query.substr(start, amp == std::string::npos ? std::string::npos : amp - start);
+                if (!tok.empty()) {
+                    size_t      eq  = tok.find('=');
+                    std::string key = tok.substr(0, eq);
+                    std::string val = eq == std::string::npos ? "true" : tok.substr(eq + 1);
+                    if (key == "ro") {
+                        Value       v;
+                        std::string perr;
+                        if (!parseValue(val, Kind::Bool, v, perr)) {
+                            err = "mirror: ro wants a boolean: " + perr;
+                            return nullptr;
+                        }
+                        readOnly = v.b();
+                    } else {
+                        err = "mirror: unknown option '" + key +
+                              "'. The only option is ro (read-only) -- the port comes "
+                              "before '?'";
+                        return nullptr;
+                    }
+                }
+                if (amp == std::string::npos) break;
+                start = amp + 1;
+            }
+
+            // Resolve the wrapped line first (a bad inner spec is the operator's error),
+            // then bind the listener so a port in use REFUSES cleanly here -- a failed
+            // CONNECT, not a half-built mirror. describe() echoes `inner|file`, so SHOW
+            // and CONFIG SAVE round-trip the whole mirror (the socket: right side
+            // re-selects this branch on reload).
+            auto innerStream = resolveEndpoint(inner, err);
+            if (!innerStream) return nullptr;
+            auto listener = platform::listenTcp(port, err);
+            if (!listener) return nullptr;
+            return std::make_unique<MirrorStream>(std::move(innerStream), file,
+                                                  std::move(listener), readOnly);
         }
 
         // The tee's options ride the same `?key[=value][&key...]` grammar as in:/printer:,
