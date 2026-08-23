@@ -219,4 +219,89 @@ std::unique_ptr<TcpConn> connectTcp(const std::string& host, uint16_t port, std:
     return std::make_unique<PosixConn>(fd, host + ":" + std::to_string(port), connecting);
 }
 
+// ---------------------------------------------------------------------------
+// UDP -- blocking, connect()ed. See src/platform/socket.h for why this is not a
+// TcpConn. All I/O is at MOUNT/sync, off the emulation path, so blocking is right.
+// ---------------------------------------------------------------------------
+namespace {
+
+class PosixUdp : public UdpSocket {
+public:
+    PosixUdp(int fd, std::string peer) : fd_(fd), peer_(std::move(peer)) {}
+    ~PosixUdp() override {
+        if (fd_ >= 0) ::close(fd_);
+    }
+
+    bool send(const uint8_t* buf, size_t n, std::string& err) override {
+        ssize_t w = ::send(fd_, buf, n, 0);
+        if (w < 0) {
+            err = std::string("udp send: ") + std::strerror(errno);
+            return false;
+        }
+        return true;
+    }
+
+    ptrdiff_t recv(uint8_t* buf, size_t n, int timeoutMs, std::string& err) override {
+        // Wait for readability with a deadline, then take the one datagram. EINTR
+        // restarts the wait rather than surfacing as a spurious timeout.
+        pollfd p{fd_, POLLIN, 0};
+        int    pr = ::poll(&p, 1, timeoutMs);
+        if (pr == 0) return 0;  // timeout: the caller retransmits
+        if (pr < 0) {
+            if (errno == EINTR) return recv(buf, n, timeoutMs, err);
+            err = std::string("udp poll: ") + std::strerror(errno);
+            return -1;
+        }
+        ssize_t r = ::recv(fd_, buf, n, 0);
+        if (r < 0) {
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+            err = std::string("udp recv: ") + std::strerror(errno);
+            return -1;
+        }
+        return (ptrdiff_t)r;
+    }
+
+    const std::string& peer() const override { return peer_; }
+
+private:
+    int         fd_ = -1;
+    std::string peer_;
+};
+
+} // namespace
+
+std::unique_ptr<UdpSocket> connectUdp(const std::string& host, uint16_t port, std::string& err) {
+    addrinfo hints{};
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    addrinfo* res = nullptr;
+    int rc = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res);
+    if (rc != 0 || !res) {
+        err = "cannot resolve '" + host + "': " + gai_strerror(rc);
+        return nullptr;
+    }
+
+    int fd = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (fd < 0) {
+        err = std::string("socket: ") + std::strerror(errno);
+        freeaddrinfo(res);
+        return nullptr;
+    }
+
+    // connect() on a datagram socket fixes the peer: send()/recv() need no address, and
+    // the kernel drops datagrams from anyone else -- the source check a one-server
+    // session wants. There is no handshake, so this cannot fail on a dead server.
+    if (::connect(fd, res->ai_addr, res->ai_addrlen) != 0) {
+        err = "cannot connect udp to " + host + ":" + std::to_string(port) + ": " +
+              std::strerror(errno);
+        ::close(fd);
+        freeaddrinfo(res);
+        return nullptr;
+    }
+    freeaddrinfo(res);
+
+    return std::make_unique<PosixUdp>(fd, host + ":" + std::to_string(port));
+}
+
 } // namespace altair::platform

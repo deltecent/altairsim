@@ -60,4 +60,42 @@ public:
 std::unique_ptr<TcpListener> listenTcp(uint16_t port, std::string& err);
 std::unique_ptr<TcpConn>     connectTcp(const std::string& host, uint16_t port, std::string& err);
 
+// ---------------------------------------------------------------------------
+// UDP -- for `tnfs://` media (DESIGN.md 7.7). A DATAGRAM socket, and a BLOCKING one,
+// which is the whole reason it is not a TcpConn.
+//
+// TcpConn is non-blocking on purpose: a serial line is pumped every emulated cycle
+// and must never stall emulated time. A TNFS medium is the opposite case -- it does
+// ALL of its network I/O at MOUNT and at sync(), never inside the emulation loop, and
+// each step is a strict request/reply that has no meaning until the reply is in hand.
+// A blocking send() + a recv() with a timeout is exactly that shape, and expressing it
+// with the non-blocking primitive would be a poll-spin reinventing the timeout the
+// kernel already has. So this is a separate, deliberately simpler thing.
+//
+// The peer is fixed at connect() (a connect()ed datagram socket), so send()/recv()
+// need no address -- and the kernel will drop datagrams from anywhere else, which is
+// the source check a session bound to one server wants anyway.
+class UdpSocket {
+public:
+    virtual ~UdpSocket() = default;
+
+    // Send one datagram. False (and `err` set) only on a hard socket error; a datagram
+    // that never arrives is not an error here -- that is what the recv timeout is for.
+    virtual bool send(const uint8_t* buf, size_t n, std::string& err) = 0;
+
+    // Wait up to timeoutMs for one datagram. Returns bytes read (>0), 0 on TIMEOUT
+    // (the caller retransmits -- see host/tnfs.cpp), or -1 on a hard error (`err` set).
+    // A datagram is delivered whole: a return of n truncated to the buffer is a bug in
+    // the caller's buffer size, not a short read to loop on.
+    virtual ptrdiff_t recv(uint8_t* buf, size_t n, int timeoutMs, std::string& err) = 0;
+
+    virtual const std::string& peer() const = 0;
+};
+
+// Resolve host:port and fix it as the datagram peer. Null and `err` set if the name
+// will not resolve or the socket cannot be made; note that with UDP there is no
+// handshake, so a "connected" socket to a dead server still succeeds here and only
+// reveals the silence as a recv timeout.
+std::unique_ptr<UdpSocket> connectUdp(const std::string& host, uint16_t port, std::string& err);
+
 } // namespace altair::platform
