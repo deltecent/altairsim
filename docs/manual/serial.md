@@ -35,9 +35,11 @@ This table is exhaustive. There are no others.
 | `printer:QUEUE` | a real print queue on this host, write-only. Buffers the bytes into a job and prints it. Present only where the build found a host print system. |
 | `scripted` | a terminal with a caller in place of a human. No tty need exist. It is what the MCP tools and the test suite type into; you are unlikely to type it yourself. |
 
-Any of these can be **tapped**: append `|FILE` to log the line to a hex file as it runs. That
-is a modifier on an endpoint, not an endpoint of its own — see *Tapping a line to a log file*,
-below.
+Any of these can be **tapped**: append `|FILE` to log the line to a hex file as it runs, or
+`|socket:PORT` to **mirror** it live — a second person `telnet`s in to watch the session and can
+type back onto the line to take over. Both are modifiers on an endpoint, not endpoints of their
+own — see *Tapping a line to a log file* and *Mirroring a line so a person can watch and take
+over*, below.
 
 ### `null` is not an error
 
@@ -319,6 +321,38 @@ host clock), or `ts=none`; `width=N` bytes per hex row (default 16); `gap=MS` fo
 line waits before a partial row is flushed (default 200 ms); and `pins=off` to leave the modem
 control-line edges out. Note that the second example taps a **paced paper-tape reader** — the tap
 composes with any endpoint, options and all.
+
+## Mirroring a line so a person can watch and take over
+
+A tap writes to a file. A **mirror** writes to a *socket*, and it is a two-way wire: append
+`|socket:PORT` to any endpoint and a second person can `telnet localhost PORT` to watch the very
+session the machine is having — every character the guest prints — and **type back onto the line**,
+sharing it.
+
+```
+altairsim> CONNECT sio0:a console|socket:2323
+```
+
+Now the guest talks to your terminal as before, and anyone who telnets to port 2323 sees the same
+output and can join in at the keyboard. It is the same idea as the tap — a modifier that composes
+with any endpoint — but where the tap only listens, the mirror also speaks. The everyday use is a
+console being driven by a program: a person telnets in, watches it work, and takes the keyboard
+when they want to.
+
+There is no echo added by the mirror. What the watcher sees is exactly what the guest sends, and
+what the watcher types is input the guest reads — so if the guest echoes (a monitor, CP/M), the
+typed characters come back the ordinary way, and a password the guest does *not* echo stays unseen
+at the mirror too. One watcher at a time, the same as a serial line is one wire.
+
+Add `?ro` to make it **watch-only** — a spectator who cannot touch the keyboard:
+
+```
+altairsim> CONNECT sio0:a console|socket:2323?ro
+```
+
+The watcher never sets the pace. If a watcher's connection is slow, or they pause their terminal,
+the guest runs on regardless — a laggy watcher loses a little scrollback, never a byte of the
+guest's. Like the tap, the mirror is remembered: `SHOW` prints it and `CONFIG SAVE` writes it back.
 
 ## A `CONNECT` it does not understand is an error
 

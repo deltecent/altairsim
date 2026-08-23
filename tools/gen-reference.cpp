@@ -659,7 +659,9 @@ void cheatsheet(const std::string& dir) {
          "| `terminal` | a window the simulator draws itself (SDL builds). "
          "`?emulation=vt100\\|adm3a\\|vt52\\|h19`, `?size=COLSxROWS`. |\n"
          "| `printer:QUEUE` | a real print queue on this host. |\n"
-         "| `<endpoint>\\|FILE` | a tap: append `\\|FILE` to any endpoint to also log the line. |\n\n";
+         "| `<endpoint>\\|FILE` | a tap: append `\\|FILE` to any endpoint to also log the line. |\n"
+         "| `<endpoint>\\|socket:PORT` | a live mirror: `telnet` in to watch and take over. "
+         "`?ro` = watch-only. |\n\n";
 }
 
 }  // namespace
