@@ -1,7 +1,7 @@
 #include "core/board.h"
 
 #include "core/statefile.h"
-#include "host/stream.h"
+#include "host/stream.h"  // complete ByteStream, for connectStream's by-value unique_ptr dtor
 
 #include <cctype>
 
@@ -44,6 +44,18 @@ const char* unitKindVerb(UnitKind k) {
 // overrides these chains here first, then writes its own fields.
 void Board::serialize(StateWriter& w) const { w.boolean(enabled_); }
 void Board::deserialize(StateReader& r) { enabled_ = r.boolean(); }
+
+// Default: a board with no serial line -- or one not taught the seam -- refuses cleanly, and
+// the caller (the MCP console binding) falls back to connect(). Out-of-line because destroying
+// the by-value unique_ptr<ByteStream> needs the complete type, which board.h only forward-
+// declares (see the declaration).
+bool Board::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
+                          std::string& err) {
+    (void)unit;
+    (void)s;
+    err = type() + " cannot install a pre-built stream";
+    return false;
+}
 
 // The default: pull the far end of every serial line this card carries, and prefix
 // each line with the card's id so `SHOW`-after-a-run reads "lpt0: print to ...". A

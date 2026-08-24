@@ -831,13 +831,11 @@ public:
     // (host/filter.h). Default: unsupported -- a board with no serial line, or one simply not
     // taught this seam, refuses cleanly and the caller falls back to connect() (a bare line,
     // no transforms, but no regression). Only the serial cards that host a console need it.
+    // Body out-of-line (board.cpp): destroying a by-value unique_ptr<ByteStream> needs the
+    // COMPLETE type, and this header only forward-declares it (a core header must not pull in
+    // host/stream.h). MSVC instantiates that deleter here and rejects the incomplete type.
     virtual bool connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
-                               std::string& err) {
-        (void)unit;
-        (void)s;
-        err = type() + " cannot install a pre-built stream";
-        return false;
-    }
+                               std::string& err);
 
     // ---- VERBS THE CARD BRINGS WITH IT (DESIGN.md 5.4) ------------------------
     //
