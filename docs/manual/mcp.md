@@ -47,9 +47,17 @@ through MCP:
 
 The shape of a session is therefore: `run {from: 0xFF00, until: "A0>"}` to boot, then
 `run {input: "ASM FOO\r", until: "A0>"}` per command, reading the reply each time. A `run`
-**never blocks** — it runs the guest flat out for at most `timeout_ms` (default 2000) and
+**never blocks** — it advances the guest for at most `timeout_ms` (default 2000) and
 returns — so a `tools/call` always comes back, unlike a bare `RUN` through the `monitor`
 tool, which under a pipe waits on a stdin that is the JSON-RPC channel itself.
+
+By default the guest runs flat out, which is what you want for booting and for driving a
+prompt. But when a real device is on a serial line and you have set a clock speed with `SET
+cpu0 clock_hz=…`, `run` paces the guest to that clock, so a reply the device sends a fraction
+of a second later lands while the guest is still waiting for it. And with such a device on the
+line `run` will not cut a transfer off when `timeout_ms` runs out: as long as bytes are still
+arriving off the wire it keeps going, and returns only once the line has genuinely gone quiet.
+So a boot loader that reads its whole system image in over a serial disk finishes in one call.
 
 Under `--mcp` the console line is quietly re-seated onto an in-memory terminal the server
 owns (there is no host keyboard behind a pipe), which is what `send`/`run`/`recv` read and
