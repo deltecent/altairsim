@@ -38,6 +38,15 @@ raw bytes on the wire, so the assistant and any mirror watcher saw bit-7 parity 
 the console's stand-in under `--mcp` wears them too — so what the assistant reads, and what a
 watcher sees, match what a person at the real terminal would.
 
+Driving a machine over `--mcp` can now work with **real hardware in real time**. Wire a serial
+line to an actual device — a FujiNet on a `serial:` port, say — and set a real clock speed with
+`SET cpu0 clock_hz=…`; the `run` tool now paces the guest to that clock instead of running flat
+out, so a reply that takes the device a fraction of a second to send arrives while the guest is
+still waiting for it, exactly as it would on the bench. And `run` no longer cuts a transfer off
+when its time budget runs out: while bytes are still streaming in off the wire it keeps going,
+and hands control back only once the line has genuinely fallen quiet — so a boot loader that
+pulls its whole system image in over a serial disk finishes in a single call.
+
 ## 0.4.0
 
 **0.4.0 is the boards release.** New S-100 boards join the backplane, and five new machine

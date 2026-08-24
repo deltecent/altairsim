@@ -22,6 +22,7 @@
 #include <istream>
 #include <ostream>
 #include <sstream>
+#include <thread>
 
 namespace altair {
 
@@ -169,8 +170,11 @@ Json toolList() {
                                     "(raw bytes; add a trailing \\r to submit a CP/M line).");
         p["until"]      = strSchema("Optional: stop as soon as this substring appears in the "
                                     "output (e.g. a prompt like \"A0>\").");
-        p["timeout_ms"] = intSchema("Wall-clock budget for this call in ms (default 2000). The "
-                                    "guest runs flat out; this only bounds how long we wait.");
+        p["timeout_ms"] = intSchema("Wall-clock budget for this call in ms (default 2000). By "
+                                    "default the guest runs flat out and this only bounds how "
+                                    "long we wait; with `SET cpu0 clock_hz=N` set, the guest is "
+                                    "paced to that crystal so a real serial/socket device has "
+                                    "wall-clock time to reply within this budget.");
         p["max_steps"]  = intSchema("Optional instruction-count cap for this call.");
         list.push(tool("run",
                        "Advance the running guest a bounded slice and return what it printed to "
@@ -992,11 +996,51 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         // couple of slices to be believed.
         static constexpr uint64_t kIdleRatio = 32;
 
-        const auto deadline = clk::now() + std::chrono::milliseconds(timeout);
-        std::string out;
-        uint64_t    steps = 0;
-        int         quiet = 0;
-        std::string stopped;
+        // THROTTLE TO THE CRYSTAL, exactly as runMachine does (monitor.cpp). By default
+        // clock_hz is 0 -- the clock is free() -- and this loop runs the guest FLAT OUT, which
+        // is what a fast CP/M boot and interactive prompt-driving want. But `SET cpu0
+        // clock_hz=N` under --mcp is a request to make the machine real-time, and the reason it
+        // is asked for is a real serial device: a bench peer answers a read hundreds of ms
+        // later, in WALL time, and a guest polling for that reply with a software timeout burns
+        // that timeout in microseconds if we sprint. Paced, its emulated timeout spends real
+        // wall-clock, m.pump() reads the port meanwhile, and the reply lands while it is still
+        // waiting -- the same bargain the standalone monitor RUN already makes (#424). The
+        // deadline below still bounds the call; pacing only declines to do all the emulated work
+        // at once. Baseline is per-call: each run() re-bases, and there is no idle nap to rebase
+        // against (this loop STOPS on idle rather than napping).
+        const long long hz     = m.clock.hz();
+        const uint64_t  startT = m.clock.now();
+        const auto      start  = clk::now();
+
+        // IS A REAL DEVICE ON A LINE? -- a serial cable, a socket, anything but the MCP console
+        // and an empty jack. It changes what "the guest is doing nothing" means: on such a wire,
+        // silence is usually the guest waiting on a reply that arrives hundreds of ms later, or
+        // the gap between two blocks of a disk read, and a byte can land at any moment in WALL
+        // time no matter how the CPU is clocked (#424).
+        bool hasLiveWire = false;
+        for (const auto& b : m.boards())
+            for (const auto& u : b->units()) {
+                if (u.kind != UnitKind::Serial) continue;
+                if (b->id == sess.conBoard && u.name == sess.conUnit) continue;  // the MCP console
+                if (u.state == "null") continue;                                 // nothing plugged in
+                hasLiveWire = true;
+            }
+
+        // The wall-clock grace a live wire buys: idle is not declared, and an active transfer is
+        // not cut off at the budget, until the wire has been silent this long. Zero with no
+        // device -- there the instruction-count rule alone decides idle, exactly as before, so we
+        // still "idle on instruction count" for a plain interactive prompt.
+        const auto idleDwell = hasLiveWire ? std::chrono::milliseconds(5000)
+                                           : std::chrono::milliseconds(0);
+
+        const auto deadline     = start + std::chrono::milliseconds(timeout);
+        const auto hardDeadline = start + std::chrono::milliseconds(600000);  // absolute 10-min cap
+        std::string     out;
+        uint64_t        steps = 0;
+        int             quietSlices = 0;         // consecutive quiet slices -- the instruction-count rule
+        clk::time_point idleSince{};             // when this unbroken run of quiet began; unset = busy
+        clk::time_point lastRxAt{};              // wall time of the last byte in on any line; unset = none
+        std::string     stopped;
 
         auto drain = [&] {
             const std::string& o = con->out();
@@ -1006,7 +1050,16 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         for (;;) {
             drain();
             if (!until.empty() && out.find(until) != std::string::npos) { stopped = "match"; break; }
-            if (clk::now() >= deadline) { stopped = "timeout"; break; }
+            if (clk::now() >= deadline) {
+                // The budget is up -- but do not cut off a transfer that is still streaming. On a
+                // live wire, a byte received within idleDwell means the guest is mid-transaction
+                // (a boot loader pulling 512-byte blocks over a 38.4k serial line runs many
+                // seconds), so let it finish and return only once the wire has genuinely gone
+                // quiet. The absolute ceiling still bounds a peer that never stops talking.
+                const bool activeTransfer = hasLiveWire && lastRxAt != clk::time_point{} &&
+                                            clk::now() - lastRxAt < idleDwell;
+                if (!activeTransfer || clk::now() >= hardDeadline) { stopped = "timeout"; break; }
+            }
             if (maxSteps && steps >= maxSteps) { stopped = "steps"; break; }
 
             const uint64_t rxBefore     = m.rxBytes();
@@ -1015,20 +1068,49 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             m.pump();
             steps += r.steps;
 
+            // Keep wall-clock in step with the crystal (see the baseline above). Only when a
+            // clock_hz was asked for; free() is the flat-out default and never sleeps here.
+            if (!m.clock.free()) {
+                double want = (double)(m.clock.now() - startT) / (double)hz;
+                double got  = std::chrono::duration<double>(clk::now() - start).count();
+                if (want > got)
+                    std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
+            }
+
             const size_t wroteBefore = out.size();
             drain();
             const bool produced = out.size() != wroteBefore;
             const bool received = m.rxBytes() != rxBefore;
             const uint64_t hungry = con->hungry() - hungryBefore;
+            if (received) lastRxAt = clk::now();  // the wire is live -- keep the transfer going
 
             if (r.why == StopReason::Halted)     { stopped = "halt";       break; }
             if (r.why == StopReason::Breakpoint) { stopped = "breakpoint"; break; }
             if (r.why == StopReason::NoCpu)      { stopped = "no-cpu";      break; }
 
-            const bool waiting = con->drained() && !produced && !received &&
-                                 r.steps != 0 && hungry * kIdleRatio >= r.steps;
-            if (waiting) { if (++quiet >= 2) { stopped = "idle"; break; } }
-            else quiet = 0;
+            // IDLE-STOP -- hand control back when the guest has nothing to do, so the AI is not
+            // made to wait out timeout_ms for its next command. Gated on clock.idle() like
+            // runMachine's nap (monitor.cpp): `SET cpu0 idle=off` turns it off entirely. A slice
+            // counts as quiet when the guest said nothing, received nothing on ANY line (rxBytes,
+            // the whole backplane), and kept coming to the console and finding it empty. It takes
+            // BOTH signals to stop: the instruction-count spin (two quiet slices -- fast, and all
+            // a plain interactive prompt needs) AND, when a device is on the wire, that the wire
+            // has stayed silent for idleDwell of WALL time -- so a gap between a request and its
+            // reply, or between two blocks of a disk read, is not mistaken for a prompt (#424).
+            // idleDwell is 0 with no device, so there the two-slice rule alone decides, unchanged.
+            const bool quiet = m.clock.idle() && con->drained() && !produced && !received &&
+                               r.steps != 0 && hungry * kIdleRatio >= r.steps;
+            if (!quiet) {
+                quietSlices = 0;
+                idleSince   = clk::time_point{};                   // it did something -- start over
+            } else {
+                ++quietSlices;
+                if (idleSince == clk::time_point{}) idleSince = clk::now();  // first quiet slice
+                if (quietSlices >= 2 && clk::now() - idleSince >= idleDwell) {
+                    stopped = "idle";
+                    break;
+                }
+            }
         }
 
         Json d = Json::obj();

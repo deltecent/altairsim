@@ -393,6 +393,61 @@ void test_mcp() {
         CHECK(st.at("stopped").str() == "steps", "it stopped on the count, not a HLT/breakpoint");
     }
 
+    SECTION("MCP: run stops on a prompt as idle, and SET cpu0 idle=off keeps it running");
+    {
+        // ALTMON boots to a monitor prompt and spins on console input. With the CPU card's
+        // idle policy on (the default), `run` recognises that spin and hands control back
+        // promptly with stopped=idle. `SET cpu0 idle=off` is how a hardware-in-the-loop run
+        // says "do not park me" -- the same knob #424's guest set -- and then `run` runs the
+        // whole timeout budget instead. Both prove the m.clock.idle() gate on the idle-stop.
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        req(R"({"name":"run","arguments":{"timeout_ms":500}})");                 // at the prompt
+        req(R"({"name":"monitor","arguments":{"command":"SET cpu0 idle=off"}})");
+        req(R"({"name":"run","arguments":{"timeout_ms":500}})");                 // no parking now
+        auto rep = runScript(m, s.str());
+
+        CHECK(rep[1].at("result").at("structuredContent").at("stopped").str() == "match",
+              "the boot run stops on the banner");
+        CHECK(rep[2].at("result").at("structuredContent").at("stopped").str() == "idle",
+              "at the prompt, idle=on -> run hands back with stopped=idle");
+        CHECK(rep[4].at("result").at("structuredContent").at("stopped").str() == "timeout",
+              "idle=off -> the same prompt spin runs the whole budget (no early idle-stop)");
+    }
+
+    SECTION("MCP: a live device on a line defers the idle-stop by a wall-clock grace");
+    {
+        // Same ALTMON prompt spin -- but with a real wire connected (loopback on the 2SIO's
+        // second channel), "quiet" might just be the guest between a request and a reply that
+        // lands hundreds of ms later. So the idle-stop is not taken until the wire has been
+        // silent for a wall-clock grace (seconds), far longer than this run's 500 ms budget --
+        // where the no-device run above stopped=idle almost at once, this one runs the budget
+        // out. That grace is what keeps a boot loader streaming 512-byte sectors from being
+        // cut off mid-transfer (#424); it is measured in WALL time, so it holds at any clock_hz.
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"connect","arguments":{"id":"sio0","unit":"b","endpoint":"loopback"}})");
+        req(R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        req(R"({"name":"run","arguments":{"timeout_ms":500}})");  // at the prompt, device on line
+        auto rep = runScript(m, s.str());
+
+        CHECK(rep[3].at("result").at("structuredContent").at("stopped").str() == "timeout",
+              "with a device on a line the prompt spin is not called idle within the budget");
+    }
+
     SECTION("MCP: mem_fill, mem_search and mem_save round-trip through the bus");
     {
         Machine m;
