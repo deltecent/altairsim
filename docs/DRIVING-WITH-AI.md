@@ -146,7 +146,9 @@ altairsim {{MACHINE_CPM}} --mcp --mirror socket:2323
 The assistant keeps driving through `run`/`send`/`recv` exactly as before — the mirror is
 invisible to it — while whatever it types and whatever the guest prints also crosses the socket to
 you. Type at your `telnet` and the guest reads it as if you had reached over and used the keyboard.
-Add `?ro` (`--mirror socket:2323?ro`) to watch without being able to type. One watcher at a time.
+Add `?ro` to watch without being able to type — quote it (`--mirror 'socket:2323?ro'`), since
+`?` is a shell wildcard and an unquoted `socket:2323?ro` makes the shell fail with `no matches
+found`. One watcher at a time.
 
 The guest only advances **during a `run`**, so a character you type between the assistant's runs
 waits on the line and is read on its next `run` — the same as staging input with `send`. While a

@@ -78,8 +78,15 @@ $ altairsim cpm --mcp --mirror socket:2323
 It wraps the assistant's console in the same mirror the monitor offers (`<endpoint>|socket:
 PORT`, see the *Serial lines* chapter). The assistant keeps driving through `run`/`send`/
 `recv` exactly as before — the mirror is transparent to it — while whatever it types and
-whatever the guest prints also crosses the socket to the watcher. Add `?ro`
-(`--mirror socket:2323?ro`) to make it watch-only. One watcher at a time.
+whatever the guest prints also crosses the socket to the watcher. Add `?ro` to make it
+watch-only — **quote it on the command line**, because `?` is a shell wildcard:
+
+```
+$ altairsim cpm --mcp --mirror 'socket:2323?ro'
+```
+
+Without the quotes the shell tries to match `socket:2323?ro` as a filename and fails
+(zsh reports `no matches found`) before `altairsim` ever sees it. One watcher at a time.
 
 The watcher never sets the pace, and one thing follows from that: the guest only advances
 **during a `run`**, so a character the watcher types between runs waits on the line and is
