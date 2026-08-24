@@ -234,11 +234,32 @@ address range. The host bridge:
 endings, and an LF-only file assembles to nothing (`000H USE FACTOR`). `ASM.COM` also has **no
 `INCLUDE`** directive (that is M80's `MACLIB`) — each `.ASM` carries its own equates.
 
+**`ASM.COM`'s own symbol rules fail *quietly*** — these are Digital Research's, not the
+simulator's, but you meet them the instant you assemble period source, and each one assembles a
+wrong byte instead of an error you can see:
+
+- A symbol name is **letters, digits, `?` and `@` only — no underscore.** An underscore throws
+  an `S` error, the symbol resolves to `0`, and every later use silently assembles `00`.
+- A **reserved mnemonic cannot be a symbol.** `JMP EQU 0C3H` is read as a `JMP` *instruction*,
+  so the name is never defined.
+- `ASM.COM` is **case-insensitive**, so a label equal to an `EQU` under case folding collides:
+  `fujiRd` and `FUJIRD EQU 52H` are one name (a phase error `P`, and `MVI A,FUJIRD` assembles
+  the wrong byte).
+
+When a constant matters, read the `.PRN` back and check the object bytes — `00` where a value
+belongs is the tell that a symbol went unresolved or was defined twice.
+
 **Work on a copy of the disk.** CP/M writes to the mounted image; the `.dsk` files are not
 redistributable and there is no undo — copy the machine directory first if you are about to
 write in anger. This is a **track-buffered** BIOS: it holds the current track in RAM and
 commits it when CP/M changes track or warm-boots. Getting back to a live `A>` prompt is a warm
 boot, so end every session at `A>` before you unmount or snapshot, or the last write is lost.
+
+**Two flushes stand between a guest write and the bytes on your host disk.** The BIOS commits
+its track buffer on console input or a warm boot; altairsim commits the host `.dsk` on
+**`UNMOUNT`** (or `QUIT`). So to read a freshly written image back on the host, first get to the
+`A>` prompt *and* `UNMOUNT` — and release the file from any other altairsim still holding it, or
+a stale write clobbers what you just made.
 
 ## From a bare disk image to a booting machine
 
@@ -256,6 +277,11 @@ things trip up a cold start:
   controller names its units `drive0`, `drive1`, … (unlike a serial card's `a`/`b`/`tty`).
   When in doubt, `monitor {command: "SHOW MOUNTS"}` prints every mountable unit spelled out as
   `id:driveN` with what it holds.
+- **Geometry is read from the image's size, on the same card.** A disk controller sizes itself
+  from the byte count, not a mode switch or a different board — an 8,978,432-byte image comes up
+  as `fdc8mb` (2048 tracks × 32 sectors of 137-byte hard sectors) on the very same 88-DCDD card
+  a 330 KB floppy uses. There is no separate 8 MB card to fit: mount the image and the card
+  sizes to it.
 - **Build the machine file from the skeleton.** The guide always started from an existing
   machine; to write one from scratch, copy the **"A machine file, in one look"** skeleton in
   `cheatsheet.md` (beside this file) — it shows a `[[board.drive]]` with `unit`/`mount`. Pick a
@@ -263,6 +289,24 @@ things trip up a cold start:
   `[[board.drive]]` pointing at your `.dsk`, and add the boot PROM / `startup` line that
   controller boots from. The User Manual's **Disks** chapter (`altairsim-manual.pdf`) walks
   the same ground in depth.
+
+## Amending a machine instead of rewriting it — the delta file
+
+You rarely want to write a whole machine from scratch. A machine file that names `base =
+"<other.toml>"` is a **delta**: it starts from that machine and changes only what you name.
+Inside it, what a `[[board]]` block *does* is decided by its `type` and `id` together, and the
+four cases are easy to get backwards — the difference between "amend the console card to connect
+channel B" and "throw the console card away and fit a new one":
+
+- **`type` + a *new* `id`** → **add** a board.
+- **`type` + an `id` the base already has** → **replace** that whole card.
+- **no `type`, just the `id`** → **modify in place** — change a property, leave the rest.
+- **`remove = true`** → pull the board out.
+
+Redeclaring a `type` for an `id` *this same file* already declared is an error. So to nudge one
+property of an existing board, name it by `id` with **no** `type`; the moment you add a `type`
+you are replacing the card, not editing it. (`board_set` over MCP is the live equivalent of the
+no-`type` modify-in-place; `board_add` is the add.)
 
 ## Debugging a behavior: make the machine show you, don't guess
 
@@ -292,9 +336,14 @@ wrong guess costs a round trip to disprove. One trace replaces a dozen guesses.
 2. **Break on the exact event, not a guessed address.** `BREAK IO R <port>` stops on a port
    read, `BREAK IO W <port>` / `BREAK MEM R|W <addr>` on I/O or memory, `BREAK <addr>` (or
    `BREAK <addr> IF <expr>`) on code. An `IO`/`MEM` break needs **no** reverse-engineering to
-   place — you break on the read/write itself.
-3. **Sweep, then read.** From the break, `STEP 500` runs quietly; `HISTORY CPU 500` then dumps
-   every instruction with its registers. Read what actually executed — do not summarize it in
+   place — you break on the read/write itself. To stop on the *byte* an `IN` read rather than
+   the fact of the read, use `BREAK IO R <port> LOADS <expr>` — it is judged after the
+   instruction, so the register holds what just arrived (the status bit that finally came up,
+   the byte that was out of range).
+3. **Sweep, then read.** The `HISTORY` recorder is **always on**, so the moment a break fires the
+   run-up to it is already captured — `HISTORY CPU 500` dumps the last 500 instructions with their
+   registers, no arming needed. To go forward instead, `STEP 500` runs quietly and `HISTORY CPU
+   500` dumps what it just ran. Either way, read what actually executed — do not summarize it in
    your head, read it.
 4. **Follow the one datum.** Track the specific byte in `A`, the register, or the memory write
    through those instructions: where it is stored (`LD (HL),A`), where control branches, and who
@@ -310,6 +359,66 @@ dropped byte part company — a dropped byte is read, stashed to a scratch addre
 dispatched because control returns into the *previous* character's handler. "The console probably
 loses bytes somewhere" was a guess that led nowhere for hours; the `HISTORY` dump answered it in
 minutes. Reach for the trace first.
+
+### The debugger commands — reach for the one that fits
+
+The whole debugger is reachable over MCP, nearly all of it through `monitor {command: …}`; only
+`regs` and `mem_dump` have dedicated tools. You do not memorize these — `monitor {command: "HELP
+<cmd>"}` prints any one's syntax — but you do need to know they *exist*, because the right command
+turns a guess into a fact. Grouped by what you are trying to see:
+
+**Where the processor is, and moving it forward**
+
+| To… | Command | Why it is the one |
+|---|---|---|
+| See the CPU now | `regs` (or `REGS`) | Free on every stop — you rarely type it. The last column is the next instruction, already disassembled. |
+| Run one instruction, or *n* | `STEP` / `STEP 20` | Real bus cycles through the real decode — it *is* the machine moved forward one instruction. Prints the registers after each. |
+| Step **over** a `CALL`/`RST` | `NEXT` (`N`) | Runs the callee at full speed and stops the instant it returns — so you stay in the code you are reading instead of touring a print routine. On anything else it is a single step. |
+| Jam the PC and look | `EXAMINE <addr>` | Sets PC to `<addr>` (the front-panel switch), then shows the register line and the instruction `STEP` will run. |
+
+**Stopping on the exact event**
+
+| To… | Command | Why it is the one |
+|---|---|---|
+| Reach a code address | `BREAK <addr>` / `BREAK <lo>-<hi>` | PC lands **on** it, nothing there has run yet — `STEP` runs it fresh. |
+| Catch whatever writes/reads memory | `BREAK MEM W <addr>` / `BREAK MEM R <addr>` | Watches the **bus**, not an instruction — so it catches a DMA write no CPU instruction made, and works unchanged on any processor. This is how you find who clobbers a byte. |
+| Catch a port access | `BREAK IO R <port>` / `BREAK IO W <port>` | The same, on I/O — break on the read/write itself, no address to reverse-engineer. |
+| Stop only in the case you care about | `BREAK <addr> IF <expr>` | Condition on the registers. **A bare word is that register; a literal needs a leading zero** — `0A` is ten, `A` is the accumulator. `== != < > <= >= && \|\| & \|` and parens. Works on `MEM`/`IO` breaks too. |
+| Stop on the byte an `IN` **read** | `BREAK IO R <port> LOADS <expr>` | Judged *after* the instruction, so the register holds the byte that just arrived. `IF` sees the inputs, `LOADS` the result. |
+| Stop when a cassette auto-stops | `BREAK TAPE STOP` | A device watch — halts inside the loader the moment the tape parks, without knowing the loader's end address. |
+| List / clear | `BREAK` / `NOBREAK [id]` | Ids are plain decimals, not bus addresses. |
+
+**Reading and changing memory**
+
+| To… | Command | Why it is the one |
+|---|---|---|
+| Read a block | `mem_dump` / `DUMP <addr>` | Peeks — runs no bus cycle, consumes nothing. Hex plus ASCII; read a string straight out of the right column. |
+| Disassemble | `DISASM <addr> <count>` | Peeks, and decodes for the CPU actually in the machine. **Must start on an opcode** — one byte off and the listing is fiction (it re-syncs a line or two later, so it can look right while its first instruction is a phantom). Single-step to a known boundary if unsure. |
+| Patch one byte / a run | `DEPOSIT <addr> <bytes>` / `EDIT <addr>` | A **real** bus write — it says so if nothing decodes the address, rather than pretending. `EDIT` also assembles an instruction in place (`IN 10` → `DB 10`). |
+| Name things | `SYMBOLS LOAD prog.PRN` | Then `BREAK START`, and `DISASM` reads `CALL BDOS`, not a bare address. A `.PRN`/`.LST` listing is richer than a `.SYM` (it marks `EQU`s); an L80 `.SYM` holds globals only. |
+| Find / fill / move / compare | `SEARCH` `FILL` `MOVE` `COMPARE` | `COMPARE <range> <file>` checks what the machine loaded against what you meant to load. |
+
+**The bus and the boards**
+
+| To… | Command | Why it is the one |
+|---|---|---|
+| Poke a board like the guest would | `IN <port>` / `OUT <port> <val>` | **Real** bus cycles with every side effect — consumes a UART byte, advances a sector counter. Poke a board without writing guest software. |
+| Ask who answers | `WHO <addr>` / `WHO IO <port>` | No cycle run. When an `IN` gives you `FF`, `WHO` tells you whether a board answered with that byte or **the bus floated because nobody decodes it** — the single most useful disambiguation on this machine. Also flags contention and `PHANTOM*`. |
+| See the whole backplane | `SHOW BUS MAP\|IO\|IRQ\|CONTENTION` | `IRQ` is the *only* window on interrupt wiring — a board strapped to a line nobody listens to fails in total silence. `CONTENTION` finds two boards on one port in a machine you built yourself. |
+| Hear a board narrate itself | `SHOW DEBUG`, then `SET <ch> DEBUG=<flag>` | Instrumented parts (`dsk0` sector/seek, `6850` serial, `socket` connect) describe what they do in their own terms, each line prefixed with the PC that drove it. |
+
+**The machine over time**
+
+| To… | Command | Why it is the one |
+|---|---|---|
+| See what led to the stop | `HISTORY [n]` / `HISTORY BUS [n]` | A flight recorder that is **always on** — the run-up to any break is already recorded. Each `HISTORY` line reads like a `STEP`; `HISTORY BUS` is raw cycles naming *who drove* and *who answered* (DMA names the board; a floated read shows `--`). |
+| Trace a region as it runs | `TRACE ON [file] [MASK=IN,OUT,IRQ,DMA,CONTENTION]` | Logs every matching cycle. A **tracepoint** — `BREAK <addr> TRACE ON` and `BREAK <addr> TRACE OFF` — flips tracing on entering a subroutine and off leaving it, without ever stopping the machine. |
+| Copy the whole session | `SET CONSOLE log=session.txt` | Guest output and your input to a host file as they happen. |
+| Save and return to a moment | `SNAPSHOT <file>` / `RESTORE <file>` | Saves *state*, not configuration — `RESTORE` reads it back into a machine of the same shape (build the shape first with a machine file or `CONFIG LOAD`). |
+
+The full reference, with a worked session for each, is the **Debugger** document
+(`altairsim-debugger.pdf`, shipped beside this file); every command's one-line syntax is in
+`cheatsheet.md`.
 
 ### Drive it through a persistent `--mcp` session, not a pty
 
@@ -327,7 +436,19 @@ fragments of the next command, and a `RUN` followed by typed input races the mon
 guest over who reads the line. If you catch yourself logging a whole session to a file to grep
 afterward, you have already lost the loop: stop and drive it over `--mcp`.
 
-Two gotchas once you do:
+This is also the only way to reliably send a real **carriage return** — and that is the single
+biggest "the simulator is broken" false alarm, so it earns its own gotcha:
+
+- **A `\r` reaches the guest as 0x0D only if your client JSON-*escapes* it.** The server feeds
+  the bytes of the decoded `input` string verbatim, so `json.dumps({"input": "DIR\r"})` from a
+  persistent Python session puts a genuine 0x0D on the wire. But some tool wrappers pass the two
+  characters `\` and `r` literally, or send an Enter as LF (0x0A) — and **CCP, `DDT` and
+  `ASM.COM` all accept LF**, so nothing looks wrong until a program that does single-character
+  reads and *requires* a true CR. `SYSGEN`'s drive prompts are exactly that: fed anything but
+  0x0D they loop `Invalid drive name` forever. When Enter seems ignored, stop guessing at the
+  program — drive from the persistent Python `--mcp` session, where `\r` is a real 0x0D.
+
+Two more gotchas once you do:
 
 - **`notifications/initialized` gets no reply.** After `initialize`, send it as a JSON-RPC
   *notification* (no `id`) and do **not** try to read a line back for it — waiting for a response
@@ -342,29 +463,20 @@ Two gotchas once you do:
 ## Investigate a program you did not write
 
 Building is half of it; the other half is taking a binary apart to see how it works — a monitor
-loader, a period utility, a game — which is what the machine is really for. The whole debugger is
-reachable over MCP, most of it through the `monitor` tool:
-
-- **`monitor {command: "DISASM <addr> <count>"}`** — disassemble live memory. The address is
-  hex (`0x100`); the count is a number of instructions.
-- **`monitor {command: "SYMBOLS LOAD prog.PRN"}`** — teach it the names from an assembler
-  listing, and `DISASM` then reads `JZ DONE` and `CALL BDOS` instead of bare addresses.
-- **`monitor {command: "BREAK <addr>"}`** (or `BREAK <addr> IF <expr>`) — stop when execution
-  reaches a point, conditionally on a register or memory value. A breakpoint set at a program's
-  load address trips the moment CP/M's loader jumps into it, before its first instruction.
-- **`monitor {command: "EXAMINE <addr>"}`** then **`monitor {command: "STEP <n>"}`** — jam the
-  PC and single-step, watching each instruction and the registers after it.
-- **`regs`** for the CPU state at any moment, **`mem_dump`** for memory (including code the
-  program modified as it ran), **`HISTORY`**/`TRACE` for what led up to a stop.
+loader, a period utility, a game — which is what the machine is really for. The same command crib
+above is the whole toolkit; the moves that take a program apart are `SYMBOLS LOAD prog.PRN` (so
+`DISASM` reads `CALL BDOS`, not a bare address), `BREAK <addr>` at the load address (it trips the
+moment CP/M's loader jumps in, before the first instruction), then `DISASM` the region and `STEP`
+through it — `NEXT` over the calls you already trust.
 
 The pattern for "explain what this does": load or run the code far enough to have it in memory,
 `BREAK` where you want to start looking, `DISASM` the region, then `STEP` through the interesting
 part reading the registers — the same way you would at a front panel, but with the assistant
 doing the bookkeeping. The `examples/ai-mcp/` walkthrough does exactly this to find a planted bug:
 it breaks at the load address, disassembles the loop, and single-steps until a register shows the
-wrong value — then fixes the source and reassembles. The full command set is in the User Manual's
-**Debugging** chapter (`altairsim-manual.pdf`), and every command's syntax is in `cheatsheet.md`
-beside this file.
+wrong value — then fixes the source and reassembles. The full command set with a worked session for
+each is the **Debugger** document (`altairsim-debugger.pdf`), and every command's syntax is in
+`cheatsheet.md` beside this file.
 
 ## Attaching a serial port to a card
 
