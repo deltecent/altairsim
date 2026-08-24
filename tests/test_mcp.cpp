@@ -173,6 +173,38 @@ void test_mcp() {
               "the DUMP command's output is ALTMON's own initialization bytes");
     }
 
+    SECTION("MCP: the monitor TYPE command reaches the guest console (issue #427)");
+    {
+        // TYPE injects type-ahead into Console::instance(), but under --mcp the guest's
+        // console line is rebound to a headless ScriptedStream -- so TYPE via the `monitor`
+        // tool used to vanish silently while `run`/`send` worked. It must now feed the same
+        // scripted line the guest actually reads.
+        Machine m;
+        if (!loadAltmon(m)) return;
+
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const char* method, const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id << R"(,"method":")" << method
+              << R"(","params":)" << params << "}\n";
+        };
+        req("initialize", "{}");
+        req("tools/call", R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        // Type ALTMON's own dump command through the MONITOR tool's TYPE, NOT run's input.
+        req("tools/call", R"({"name":"monitor","arguments":{"command":"TYPE \"DF800F80F\\r\""}})");
+        // Then advance the guest with a bare run -- nothing typed here. If TYPE reached the
+        // scripted line, the guest reads it now and the dump comes out.
+        req("tools/call", R"({"name":"run","arguments":{"timeout_ms":4000}})");
+
+        auto rep = runScript(m, s.str());
+
+        const Json& typed = rep[3].at("result");
+        CHECK(!typed.has("isError"), "the TYPE command did not error");
+        const Json& out = rep[4].at("result").at("structuredContent");
+        CHECK(out.at("output").str().find("3E 03 D3 10") != std::string::npos,
+              "the guest executed the TYPEd command -- its dump reached the scripted console");
+    }
+
     SECTION("MCP: --mirror wraps the console so a socket client watches and takes over");
     {
         const BuiltinMachine* altmon = nullptr;
