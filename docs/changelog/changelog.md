@@ -30,6 +30,14 @@ mid-session, altairsim now says so out loud if the server stops accepting writes
 letting your changes pile up unsaved in silence; it keeps retrying and tells you when saving works
 again.
 
+When you drive a machine over `--mcp` — or watch and take over the session through `--mirror` —
+the console's text transforms now come along for the ride. Before, a machine whose console strips
+the parity bit or forces upper case (the MITS BASIC and Programming System II family) put those
+raw bytes on the wire, so the assistant and any mirror watcher saw bit-7 parity junk: a printed
+`O` arriving as `Ï`, carriage returns ignored. Those transforms belong to the console, and now
+the console's stand-in under `--mcp` wears them too — so what the assistant reads, and what a
+watcher sees, match what a person at the real terminal would.
+
 ## 0.4.0
 
 **0.4.0 is the boards release.** New S-100 boards join the backplane, and five new machine

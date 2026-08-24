@@ -824,6 +824,19 @@ public:
         return false;
     }
 
+    // Install a PRE-BUILT stream on a serial unit, taking ownership -- the counterpart to
+    // connect(unit, endpoint) for a caller that has already resolved AND wrapped the stream
+    // itself. The `--mcp` console binding uses it to install a `scripted` line wrapped in the
+    // console's transform chain, which the endpoint grammar deliberately cannot express
+    // (host/filter.h). Default: unsupported -- a board with no serial line, or one simply not
+    // taught this seam, refuses cleanly and the caller falls back to connect() (a bare line,
+    // no transforms, but no regression). Only the serial cards that host a console need it.
+    // Body out-of-line (board.cpp): destroying a by-value unique_ptr<ByteStream> needs the
+    // COMPLETE type, and this header only forward-declares it (a core header must not pull in
+    // host/stream.h). MSVC instantiates that deleter here and rejects the incomplete type.
+    virtual bool connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
+                               std::string& err);
+
     // ---- VERBS THE CARD BRINGS WITH IT (DESIGN.md 5.4) ------------------------
     //
     // A cassette can be REWOUND and a disk cannot, so `REWIND` should exist when

@@ -117,6 +117,13 @@ public:
 
     static Console& instance();
 
+    // The transform chain, read-only. The `--mcp` console binding reads this to seed
+    // the FilterStream it wraps its scripted stand-in in, so the AI (and any mirror
+    // watcher) see the same strip7out/upper/... a human console would (host/filter.h's
+    // one carve-out). Nobody else needs the chain from outside -- SET/SHOW reach it
+    // through properties().
+    const FilterStream& filter() const { return filter_; }
+
     std::string describe() const override { return "console"; }
 
     size_t read(uint8_t* buf, size_t n) override;

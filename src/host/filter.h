@@ -3,8 +3,18 @@
 // FilterStream -- the CONSOLE's transform chain (DESIGN.md 7.2).
 //
 // A ByteStream that wraps another ByteStream and mangles the bytes on the way
-// through. THERE IS EXACTLY ONE OF THESE IN THE SIMULATOR, and the Console owns
-// it (host/console.h). Nothing else may have one.
+// through. THE CONSOLE OWNS ONE (host/console.h), and it is the only one on a LINE
+// TO A DEVICE -- see the argument below for why a socket, a serial port or a tape
+// must never get one.
+//
+// THE ONE CARVE-OUT is the console's STAND-IN under `--mcp`. When the AI drives the
+// machine, the console is rebound to a headless `scripted` line (src/mcp/server.cpp)
+// and the real Console -- transform chain and all -- is bypassed. That scripted line
+// IS the console: it has the AI (and any mirror watcher) on the end of it, not a
+// device, so it wants the SAME transforms the console owns. So the MCP console binding
+// wraps its scripted line in a FilterStream seeded from Console::instance()'s settings
+// (copySettingsFrom, below). This is not the forbidden case: it is a terminal's
+// transforms on a terminal's stand-in, never a strip7out on a binary wire.
 //
 // AN EARLIER VERSION OF THIS FILE ARGUED THE OPPOSITE, at some length: that the
 // chain belonged on the LINE, inside every UART, so that `SET sio0 UPPER=ON`
@@ -62,6 +72,20 @@ public:
     explicit FilterStream(std::unique_ptr<ByteStream> inner) : inner_(std::move(inner)) {}
 
     ByteStream* inner() { return inner_.get(); }
+
+    // Seed this filter's transforms from another's -- the one carve-out to "the Console
+    // owns the filter" (see the header): the `--mcp` console binding gives its scripted
+    // stand-in the same chain the real Console holds. Copies the transform SETTINGS only,
+    // never the wrapped stream.
+    void copySettingsFrom(const FilterStream& o) {
+        upper_     = o.upper_;
+        strip7in_  = o.strip7in_;
+        strip7out_ = o.strip7out_;
+        crlf_      = o.crlf_;
+        echo_      = o.echo_;
+        bell_      = o.bell_;
+        bsmap_     = o.bsmap_;
+    }
 
     // THERE IS NO reconnect(). There used to be, because the chips each built a
     // FilterStream around whatever was plugged into them and a fresh CONNECT threw

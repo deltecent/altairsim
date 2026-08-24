@@ -81,6 +81,10 @@ public:
 
     bool connect(const std::string& unit, const std::string& endpoint,
                  std::string& err) override;
+    bool connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
+                       std::string& err) override {
+        return sio_.connectStream(unit, std::move(s), err);
+    }
     bool disconnect(const std::string& unit, std::string& err) override {
         return sio_.disconnect(unit, err);
     }
