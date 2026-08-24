@@ -200,6 +200,21 @@ bool Sio2Port::connect(const std::string& unit, const std::string& endpoint, std
     return true;
 }
 
+// Install an ALREADY-BUILT stream (the MCP console's filtered scripted line), bypassing the
+// resolver -- the caller resolved and wrapped it. Otherwise identical to connect(): hand it
+// to the chip and re-arm, since a fresh line may already have a byte waiting.
+bool Sio2Port::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
+                             std::string& err) {
+    Mc6850* ch = channel(unit);
+    if (!ch) {
+        err = "no serial unit '" + unit + "'";
+        return false;
+    }
+    ch->connect(std::move(s));
+    refresh();
+    return true;
+}
+
 bool Sio2Port::disconnect(const std::string& unit, std::string& err) {
     Mc6850* ch = channel(unit);
     if (!ch) {

@@ -89,6 +89,18 @@ public:
 
     bool connect(const std::string& unit, const std::string& endpoint,
                  std::string& err) override;
+    // Install a PRE-BUILT stream (the MCP console's filtered scripted line). The chip
+    // takes it via attachStream; refresh() re-arms in case a byte is already waiting.
+    bool connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
+                       std::string& err) override {
+        if (unit != "tty") {
+            err = "sio has no unit '" + unit + "' -- it has one, and it is called 'tty'";
+            return false;
+        }
+        attachStream(std::move(s));
+        refresh();
+        return true;
+    }
     bool disconnect(const std::string& unit, std::string& err) override;
 
     // The monitor resolves an endpoint string to a stream; the BOARD is not allowed

@@ -3,6 +3,8 @@
 #include "core/board.h"
 #include "core/machine.h"
 #include "core/machines.h"
+#include "host/console.h"
+#include "host/filter.h"
 #include "host/mirror_stream.h"
 #include "host/stream.h"
 #include "mcp/server.h"
@@ -60,13 +62,16 @@ bool waitFor(Fn ready, int ms = 2000) {
 }
 
 // The MirrorStream now wrapping the console unit (and its inner ScriptedStream), if any.
-// After runMcp with --mirror, the console's line is `scripted|socket:PORT` -- a mirror
-// the assistant drives via the inner scripted while a socket client shares it.
+// After runMcp with --mirror the console's line is Filter(Mirror(scripted)) -- the console
+// transform filter is outermost (always), the mirror rides under it, the assistant drives
+// the inner scripted. Peel the filter to reach the mirror.
 MirrorStream* consoleMirror(Machine& m, ScriptedStream** innerOut = nullptr) {
     for (const auto& b : m.boards())
         for (const auto& u : b->units()) {
             if (u.kind != UnitKind::Serial) continue;
-            if (auto* mir = dynamic_cast<MirrorStream*>(b->unitStream(u.name))) {
+            ByteStream* s = b->unitStream(u.name);
+            if (auto* f = dynamic_cast<FilterStream*>(s)) s = f->inner();  // peel the console filter
+            if (auto* mir = dynamic_cast<MirrorStream*>(s)) {
                 if (innerOut) *innerOut = dynamic_cast<ScriptedStream*>(mir->inner());
                 return mir;
             }
@@ -245,6 +250,54 @@ void test_mcp() {
             CHECK(seen.find("3E 03 D3 10") != std::string::npos,
                   "the watcher's typed command was executed by the guest, dump came back down the socket");
         }
+    }
+
+    SECTION("MCP: the console stand-in carries the machine's [console] transforms");
+    {
+        // The bug trgeuy hit on `ps2` (issue #381): under --mcp the console is a headless
+        // scripted line, so strip7out/upper -- the console's transform chain -- were bypassed
+        // and the assistant read bit-7 parity junk (0x4F 'O' came back 0xCF). The scripted
+        // stand-in must wear the same filter a human console would.
+        Machine m;
+        if (!loadAltmon(m)) return;
+
+        // Turn strip7out on the way a machine file's [console] block does -- the same property
+        // seam SET CONSOLE and the TOML loader drive. Save/restore: the Console is a process
+        // singleton shared with every other test.
+        std::string err;
+        bool        saved = false;
+        for (Property& p : Console::instance().properties())
+            if (p.name == "strip7out") { saved = p.get().b(); p.set(Value::ofBool(true), err); }
+
+        std::ostringstream s;
+        s << R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})" << "\n";
+        runScript(m, s.str());  // binds the console to Filter(scripted)
+
+        // The console unit's stream is a FilterStream (outermost) over the scripted line.
+        FilterStream*   filt = nullptr;
+        ScriptedStream* sc   = nullptr;
+        for (const auto& b : m.boards())
+            for (const auto& u : b->units()) {
+                if (u.kind != UnitKind::Serial) continue;
+                if (auto* f = dynamic_cast<FilterStream*>(b->unitStream(u.name))) {
+                    filt = f;
+                    sc   = dynamic_cast<ScriptedStream*>(f->inner());
+                }
+            }
+        CHECK(filt != nullptr, "the console line is wrapped in the console's transform filter");
+        CHECK(sc != nullptr, "and the inner line is the scripted stream the tools drive");
+
+        // A guest byte with bit 7 set is stripped on its way to the assistant's out().
+        if (filt && sc) {
+            uint8_t hi = 0xCF;  // 'O' (0x4F) with the even-parity bit set -- the ps2 case
+            filt->write(&hi, 1);
+            CHECK(sc->out() == std::string(1, (char)0x4F),
+                  "strip7out reaches the assistant: 0xCF arrives as 0x4F, not junk");
+        }
+
+        // Restore the singleton for the tests that follow.
+        for (Property& p : Console::instance().properties())
+            if (p.name == "strip7out") p.set(Value::ofBool(saved), err);
     }
 
     SECTION("MCP: a RUN via the monitor tool parks instead of wedging the server");

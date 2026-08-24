@@ -97,6 +97,7 @@ public:
     std::vector<UnitDef>  units() const;
     std::vector<Property> unitProperties(const std::string& unit);
     bool connect(const std::string& unit, const std::string& endpoint, std::string& err);
+    bool connectStream(const std::string& unit, std::unique_ptr<ByteStream> s, std::string& err);
     bool disconnect(const std::string& unit, std::string& err);
     ByteStream* unitStream(const std::string& unit);
 

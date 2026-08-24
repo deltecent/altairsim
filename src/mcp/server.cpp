@@ -8,6 +8,9 @@
 #include "core/roms.h"
 #include "core/version.h"
 #include "cpu/cpu.h"
+#include "host/console.h"
+#include "host/endpoint.h"
+#include "host/filter.h"
 #include "host/mirror_stream.h"
 #include "host/stream.h"
 #include "isa/isa.h"
@@ -575,14 +578,18 @@ struct McpSession {
     std::string mirror;
 };
 
-// The scripted line the interactive tools drive -- reached THROUGH the mirror when one
-// is in place. Bare, the unit's stream IS the ScriptedStream; under --mirror it is a
-// MirrorStream wrapping one, and the guest talks to the wrapper while we feed()/out()
-// the inner. One level: we only ever wrap scripted in exactly one mirror.
+// The scripted line the interactive tools drive -- reached THROUGH whatever wraps it.
+// Bare, the unit's stream IS the ScriptedStream; the console binding wraps it in the
+// console's transform FilterStream (always) and, under --mirror, a MirrorStream too, so
+// the stack is Filter -> [Mirror ->] Scripted. Peel any of those decorators to reach the
+// ScriptedStream the guest ultimately talks to, which is the one we feed()/out().
 ScriptedStream* asScripted(ByteStream* s) {
-    if (auto* ss = dynamic_cast<ScriptedStream*>(s)) return ss;
-    if (auto* mir = dynamic_cast<MirrorStream*>(s))
-        return dynamic_cast<ScriptedStream*>(mir->inner());
+    while (s) {
+        if (auto* ss = dynamic_cast<ScriptedStream*>(s)) return ss;
+        if (auto* f = dynamic_cast<FilterStream*>(s)) { s = f->inner(); continue; }
+        if (auto* mir = dynamic_cast<MirrorStream*>(s)) { s = mir->inner(); continue; }
+        return nullptr;
+    }
     return nullptr;
 }
 
@@ -601,14 +608,31 @@ ScriptedStream* console(Machine& m, McpSession& s, std::string& err) {
 
     // Bare `scripted`, or `scripted|socket:PORT` when a mirror was asked for. The mirror
     // rides the same tap grammar the resolver already knows (host/endpoint.cpp).
-    const std::string endpoint = s.mirror.empty() ? std::string("scripted")
+    const std::string baseSpec = s.mirror.empty() ? std::string("scripted")
                                                    : "scripted|" + s.mirror;
 
     for (const auto& b : m.boards())
         for (const auto& u : b->units()) {
             if (u.kind != UnitKind::Serial) continue;
             if (u.state != "console") continue;
-            if (!b->connect(u.name, endpoint, err)) return nullptr;
+
+            // Wrap the scripted (optionally mirrored) line in the CONSOLE's transform chain,
+            // so the AI -- and any mirror watcher -- see what a terminal would, not the raw
+            // 8-bit wire. Without it, a machine like `ps2` (strip7out=on, upper=on) reads
+            // back as bit-7 parity junk (0x4F 'O' -> 0xCF). The transforms are the console's,
+            // applied to the console's stand-in; the endpoint grammar deliberately cannot
+            // express a filter (host/filter.h), so it is installed as a pre-built stream.
+            auto base = resolveEndpoint(baseSpec, err);
+            if (!base) return nullptr;
+            auto filt = std::make_unique<FilterStream>(std::move(base));
+            filt->copySettingsFrom(Console::instance().filter());
+
+            // connectStream takes the pre-built, filtered stack. A board not taught the seam
+            // refuses; fall back to the bare line -- no transforms, but no regression. (Every
+            // shipped machine with console transforms consoles on a 2sio or sio, both taught.)
+            if (!b->connectStream(u.name, std::move(filt), err)) {
+                if (!b->connect(u.name, baseSpec, err)) return nullptr;
+            }
             s.conBoard = b->id;
             s.conUnit  = u.name;
             if (auto* ss = asScripted(b->unitStream(u.name))) return ss;
