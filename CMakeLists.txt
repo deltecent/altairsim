@@ -268,6 +268,15 @@ else()
     src/platform/posix/serial_posix.cpp
     src/platform/posix/socket_posix.cpp
     src/platform/posix/terminal_posix.cpp)
+  # A baud with no standard termios constant -- 76800, an S-100 staple -- is set through
+  # an OS-specific ioctl: BOTHER/termios2 on Linux, IOSSIOSPEED on macOS. A genuine
+  # per-OS split is a per-OS FILE, never an #ifdef in the shared serial_posix.cpp
+  # (DESIGN.md 2.1). CMake picks the one that matches.
+  if(APPLE)
+    list(APPEND PLATFORM_SOURCES src/platform/posix/macos/serial_custombaud_macos.cpp)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND PLATFORM_SOURCES src/platform/posix/linux/serial_custombaud_linux.cpp)
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------
