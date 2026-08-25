@@ -19,7 +19,7 @@ using namespace altair;
 
 namespace {
 
-// A propio on the bench with a scripted line, driven exactly as test_io2's Rig -- the same
+// A propio on the bench with a scripted line, driven exactly as test_io4's Rig -- the same
 // real connect path (resolveEndpoint installed in tests/main.cpp).
 struct Rig {
     PropIoBoard     b;
