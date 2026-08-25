@@ -38,7 +38,7 @@
 #include "boards/sd-versafloppy.h"
 #include "boards/ssm-pb1.h"
 #include "boards/tarbell.h"
-#include "boards/io2.h"
+#include "boards/io4.h"
 #include "boards/propio.h"
 #include "boards/v2z80rom.h"
 #include "boards/mits-2sio.h"
@@ -107,8 +107,8 @@ std::vector<BoardType> boardTypes() {
         {"hostbridge", "Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a period one. Two ports at BASE+0..1. R.COM/W.COM/HDIR.COM"},
         {"pb1", "SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). The board ships no firmware -- run any 2708/2716 burner; SSM's own from the PB1 manual is in examples/pb1"},
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
-        {"io2", "SSM IO-2 serial board: a strap-configurable serial card, unit 'serial'. Two ports you strap: a status/control port (status_port -- read synthesizes DAV/TBMT at bit positions you pick, write is discarded) and a data port (data_port); one inverter_gate knob inverts both status bits together. Built-in profiles preset the straps: profile=sior0 (MITS SIO Rev 0, the default and the SSM 8080 monitor console) | tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). One serial port per board; add more boards for more ports. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
-        {"propio", "S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. An io2 subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/dav/tbmt/inverter_gate) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
+        {"io4", "SSM IO-4 serial board: a strap-configurable serial card with TWO independent channels, units 'a' and 'b' (configure each under [board.unit.a] / [board.unit.b]). Per channel you strap: a status/control port (status_port -- read synthesizes DAV/TBMT at bit positions you pick, write is discarded) and a data port (data_port); one inverter_gate knob inverts both status bits together. Built-in profiles preset the straps: profile=sior0 (MITS SIO Rev 0, the default) | tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Channel a defaults to ports 0/1, b to 2/3. Polled, no interrupts. Serial half only -- the board's parallel ports are not modeled. CONNECT each channel to a file, socket, serial port, in:/out:"},
+        {"propio", "S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A strap-configurable serial subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/dav/tbmt/inverter_gate) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
         {"v2z80rom", "S100Computers V2 Z80 CPU board -- its onboard paged monitor EEPROM (the Z80 itself is board 'z80cpu'). An 8K 28C64 at F000-FFFF holding two 4K pages, builtin:master0 (low) / master1 (high), selected by OUT D3H bit1 (bit0=1 inactivates the EEPROM so RAM shows through). Shadows RAM in its window while enabled. Cold-start the MASTER monitor with startup=[\"RUN F000\"]; the 'I' command boots CP/M 3 off a dualsd card"},
     };
 }
@@ -155,7 +155,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
     if (type == "pb1") return std::make_unique<Pb1Board>();
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
-    if (type == "io2") return std::make_unique<Io2Board>();
+    if (type == "io4") return std::make_unique<Io4Board>();
     if (type == "propio") return std::make_unique<PropIoBoard>();
     if (type == "v2z80rom") return std::make_unique<V2Z80RomBoard>();
     return nullptr;

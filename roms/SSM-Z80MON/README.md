@@ -10,7 +10,7 @@ and [`examples/pb1`](../../examples/pb1).
 
 - **Version 1.10** — C. E. Ohme et al., SSM Microcomputer Products, ©1980.
 - **Origin of this file:** OCR'd from the printed listing by B. Beech, April 2014.
-- **Console:** serial-A on ports **0** (status) and **1** (data), the SSM IO2/IO4
+- **Console:** serial-A on ports **0** (status) and **1** (data), the SSM IO-4
   serial board convention — status bit 0 = ready. It also drives serial-B (ports
   2/3), a parallel keyboard, and the SSM VB3 video board.
 

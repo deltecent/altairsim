@@ -54,7 +54,7 @@ clears the FIFO, as an S-100 RESET does.
 ## Registering an emulation
 
 The dialects are a name→factory table, `emulations.{h,cpp}` — the one place that knows which
-terminals exist, mirroring `io2Builtins()`. Adding a terminal is:
+terminals exist, mirroring `serialBuiltins()`. Adding a terminal is:
 
 1. Write the `TerminalEmulator` subclass (e.g. `src/host/terminal/vt52.h`).
 2. Add one row to the table in `emulations.cpp` (`{"vt52", "DEC VT52", &makeVt52}`).

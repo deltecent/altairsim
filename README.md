@@ -91,8 +91,8 @@ in the monitor prints this list with a one-line description of each (`SHOW BOARD
 | `uio` | MITS 88-UIO — a 6850 serial port and an 88-ACR cassette section on one card. |
 | `sbc` | SD Systems SBC-100/200 — a Z80 SBC: 8251 console, Z80-CTC, parallel port, boot PROM. |
 | `pmmi` | PMMI MM-103 — a Bell 103 modem on an S-100 card. |
-| `io2` | SSM IO-2 serial — a strap-configurable serial card (SIO Rev 0 default, plus TU-ART, IMSAI SIO2, CompuPro IF2/SS1 profiles). |
-| `propio` | S100Computers Console IO — a Parallax-Propeller console, an `io2` subtype. |
+| `io4` | SSM IO-4 serial — a strap-configurable serial card with two channels (`a`/`b`); SIO Rev 0 default, plus TU-ART, IMSAI SIO2, CompuPro IF2/SS1 profiles. |
+| `propio` | S100Computers Console IO — a Parallax-Propeller console, a single-channel strap-serial subtype. |
 
 **Storage — floppy, hard disk, CompactFlash and SD**
 

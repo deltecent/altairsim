@@ -72,7 +72,7 @@ void test_ddt();
 void test_dma();
 void test_sio2();
 void test_tms5501();
-void test_io2();
+void test_io4();
 void test_propio();
 void test_88sio();
 void test_sbc();

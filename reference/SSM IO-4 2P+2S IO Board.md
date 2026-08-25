@@ -16,8 +16,10 @@ section responds** in the contended region (a deliberate mutual-exclusion, not a
 
 This is a distilled emulation reference: the serial UART controls, the status/data strapping,
 the baud generator, the current-loop/EIA options, the parallel handshake, the port-address
-decodes, and the interrupt wiring. **This board is not currently emulated** — no `io4` board
-exists in `src/boards/`; this file is period documentation captured for a possible future board.
+decodes, and the interrupt wiring. **The serial half is emulated** as the `io4` board
+(`src/boards/io4.h`, on the chip-less strap engine `src/boards/strapserial.h`): two independent
+strap-configurable serial channels. The **parallel ports and the current-loop/EIA electrical
+options are out of scope** — this reference documents them for completeness.
 
 ---
 
