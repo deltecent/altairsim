@@ -33,9 +33,10 @@ id   = "cpu0"
 type = "hostbridge"
 id   = "hb0"
 [[board]]
-type = "io2"                   # serial console, SSM ports 0/1
+type = "io4"                   # serial console: channel a at SSM ports 0/1
 id   = "io0"
-connect = "console"
+  [board.unit.a]
+  connect = "console"
 # ... your disk controller + A: (8 MB work) and C: (tools floppy) ...
 ```
 

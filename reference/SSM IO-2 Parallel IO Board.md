@@ -25,8 +25,9 @@ to **Malcolm Wright**; the UART and TTY interface circuits to **Lynn Cochran**.
 
 This is a distilled emulation reference: the address decoder, the two committed 8212 ports and
 their control jumpers, and the two optional personalities (serial, PROM). **This board is not
-currently emulated** — no `io2` board exists in `src/boards/` (the unrelated `sio2port` chip is
-the 2SIO, not this card); this file is period documentation captured for a possible future board.
+emulated** — no `io2` board exists in `src/boards/` (the unrelated `sio2port` chip is the 2SIO,
+not this card); this file is period documentation. Its larger sibling the **SSM IO-4** *is*
+emulated as the generic strap-serial board (`io4`, `src/boards/io4.h`).
 
 ---
 

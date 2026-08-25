@@ -10,7 +10,7 @@
 #include "boards/mits-frontpanel.h"
 #include "boards/mits-turnkey.h"
 #include "boards/pmmi-mm103.h"
-#include "boards/io2.h"
+#include "boards/io4.h"
 #include "boards/cromemco-16fdc.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
@@ -257,7 +257,7 @@ int main(int argc, char** argv) {
     SolBoard::setResolver(resolveEndpoint);
     Vdb8024Board::setResolver(resolveEndpoint);  // its keyboard connects to an endpoint
     PmmiBoard::setResolver(resolveEndpoint);     // the modem's phone line is an endpoint
-    Io2Board::setResolver(resolveEndpoint);      // the SSM IO-2 serial board's one line
+    StrapSerialBoard::setResolver(resolveEndpoint);  // the io4 / propio strap-serial family's lines
     CromemcoFdcBoard::setResolver(resolveEndpoint);  // the FDC family's TMS 5501 console (16/64FDC)
     FrontPanelBoard::setResolver(resolveEndpoint);   // the fp panel dials OUT to the graphical bridge
     Ss1Board::setResolver(resolveEndpoint);          // the System Support 1's 2651 serial channel

@@ -12,11 +12,12 @@ terminal). This is the console the Dual SD / SBC-Z80 CP/M 3 machines use.
 **Licensing:** no licence stated. John Monahan's hobbyist/educational S-100 project. Nothing is
 redistributed here — text distillation citing the public page. (Record the licence; never gate.)
 
-This board is emulated as a preset of the existing **`io2` (SSM IO-2) serial engine**
-([[altairsim-io2-board]]): an `io2` subtype `propio` presetting the straps below. Everything the
-board does is "read a status bit, read/write a data byte," which `io2` already models; the
-board's real hardware is *itself* fully jumper-configurable, so a subtype presetting one documented
-convention (all straps still overridable) is a faithful model, not an invented one.
+This board is emulated as a preset of the **chip-less strap-serial engine** (`src/boards/strapserial.h`,
+the same engine behind the `io4` board): a single-channel subtype `propio` presetting the straps
+below. Everything the board does is "read a status bit, read/write a data byte," which the strap
+engine already models; the board's real hardware is *itself* fully jumper-configurable, so a subtype
+presetting one documented convention (all straps still overridable) is a faithful model, not an
+invented one.
 
 ## Port map
 
@@ -70,8 +71,8 @@ OUTPUT: IN   A,(00H)     ; read console status
 
 ## Notes for the emulation
 
-- Model as an `io2` subtype (`propio`) presetting: `status_port=0x00`, `data_port=0x01`,
-  `dav=1`, `tbmt=2`, `inverter_gate=off` (both bits active high). All remain overridable via
-  properties — the real board is jumperable, so a machine whose jumpers differ (or the `14H/15H`
-  test bases) is one property change away. Polled TX/RX console only; no interrupts (the `io2`
-  engine has none — [[altairsim-io2-board]]).
+- Model as a single-channel strap-serial subtype (`propio`) presetting: `status_port=0x00`,
+  `data_port=0x01`, `dav=1`, `tbmt=2`, `inverter_gate=off` (both bits active high). All remain
+  overridable via properties — the real board is jumperable, so a machine whose jumpers differ (or
+  the `14H/15H` test bases) is one property change away. Polled TX/RX console only; no interrupts
+  (the strap-serial engine has none).

@@ -904,14 +904,15 @@ void test_cli() {
     // -----------------------------------------------------------------------
     // SHOW BOARD <type> lists a property's LEGAL VALUES under its help, the same
     // facts the generated ref/boards.md prints -- so an operator can read the choices
-    // (e.g. an IO-2 built-in profile) straight off the type card, not just its prose.
+    // (e.g. a strap-serial built-in profile) straight off the type card, not just its prose.
+    // propio carries these as board-level properties (a single-channel strap-serial card).
     // -----------------------------------------------------------------------
     SECTION("cli: SHOW BOARD lists a property's legal values under its help");
     {
         Machine mp;
         Monitor monP(mp);
         std::ostringstream o;
-        monP.exec("SHOW BOARD io2", o);
+        monP.exec("SHOW BOARD propio", o);
         const std::string s = o.str();
         // The enum's choices, including every built-in profile name.
         // The enum header plus each built-in name -- the list can word-wrap across lines,

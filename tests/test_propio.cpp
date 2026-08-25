@@ -1,15 +1,14 @@
 // PropIo -- the S100Computers Console IO Board (src/boards/propio.h,
-// reference/Console IO Board.md). propio is a SUBTYPE of the io2 engine (tested in
-// test_io2.cpp); this suite does not re-test the engine mechanics -- it asserts the two
-// things that make propio propio: it IS an io2 underneath (the engine's data path works
-// through it) and it comes up preset to the Console IO Board's documented convention
-// (ports 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high), while
-// every strap stays overridable because the real board is jumpered.
+// reference/Console IO Board.md). propio is a SUBTYPE of the strap-serial engine (tested in
+// test_io4.cpp); this suite does not re-test the engine mechanics -- it asserts the two
+// things that make propio propio: it IS a strap-serial channel underneath (the engine's data
+// path works through it) and it comes up preset to the Console IO Board's documented
+// convention (ports 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active
+// high), while every strap stays overridable because the real board is jumpered.
 
 #include "test.h"
 
 #include "boards/propio.h"
-#include "boards/io2.h"
 #include "core/board.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
@@ -64,9 +63,9 @@ void test_propio() {
     SECTION("propio -- identifies as the Console IO Board and is one serial unit");
     {
         Rig g;
-        CHECK(g.b.type() == "propio", "type() is propio, not io2");
+        CHECK(g.b.type() == "propio", "type() is propio, not io4");
         CHECK(g.b.units().size() == 1, "one line -- a console");
-        CHECK(g.b.units()[0].name == "serial", "named 'serial' (inherited from the io2 engine)");
+        CHECK(g.b.units()[0].name == "serial", "named 'serial' (inherited from the strap-serial engine)");
         CHECK(g.b.units()[0].kind == UnitKind::Serial, "a serial unit");
     }
 
@@ -74,7 +73,7 @@ void test_propio() {
     {
         // reference/Console IO Board.md: status 00 / data 01; RX-ready = bit 1, TX-ready =
         // bit 2, both active high. The board and the ctor share this one source of truth.
-        Io2Profile p = propioProfile();
+        SerialStraps p = propioProfile();
         CHECK(p.statusPort == 0x00, "status port 00");
         CHECK(p.dataPort == 0x01, "data port 01");
         CHECK(p.davBit == 1, "RX-ready (DAV) is status bit 1 (AND 02H)");

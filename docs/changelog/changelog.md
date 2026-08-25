@@ -8,17 +8,17 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
-The strap-configurable serial card is now a real board: the **SSM IO-2** (`io2`) replaces
-`usio`. It is the same describe-it-by-strap engine — status/data ports, the status-bit
-positions and the built-in profiles all carry over — but modeled as the actual SSM IO-2's
-serial personality (an AY-5-1013 MITS-SIO clone) instead of an invented "universal" card. Two
-things change with it: the two separate active-low knobs collapse into one **`inverter_gate`**
-(on the real board both status bits share a single inverting buffer, so they always match), and
-a new **`sior0`** profile — the MITS SIO Rev 0 the SSM 8080 monitor expects — is the board's
-default, so a bare `io2` comes up ready for that console. Its status-bit properties are named
-for the UART's own signals, **`dav`** (data available) and **`tbmt`** (transmit buffer empty).
-One serial port per board; add another `io2` for another port. The `propio` Console IO Board is
-unchanged — it now rides the `io2` engine.
+The strap-configurable serial card is now a real board: the **SSM IO-4** (`io4`) replaces
+`usio`. It is a describe-it-by-strap card — you say where the status/control and data ports
+sit, which status bits carry DAV (data available) and TBMT (transmit buffer empty), and whether
+the shared **`inverter_gate`** is engaged — and that is the port. The IO-4 carries **two
+independent serial channels**, `a` and `b`, each configured under its own `[board.unit.a]` /
+`[board.unit.b]` table with its own straps, `baud` and `connect` endpoint; `a` comes up at
+ports 0/1 and `b` at 2/3. Built-in **profiles** preset the straps to imitate a specific card —
+`sior0` (the MITS SIO Rev 0 the SSM 8080 monitor expects, and the default), `tuart`,
+`imsai-sio2`, `compupro-if2`, `compupro-ss1` — and every strap stays overridable afterward. The
+board is polled, with no interrupts; the IO-4's parallel ports are not modeled. The `propio`
+Console IO Board is unchanged — a single-channel console riding the same strap engine.
 
 A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
 and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks
