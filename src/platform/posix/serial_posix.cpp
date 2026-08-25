@@ -5,6 +5,7 @@
 // to be conditional ABOUT. The file simply is the POSIX answer.
 
 #include "platform/serial.h"
+#include "platform/posix/serial_custombaud.h"
 
 #include <cerrno>
 #include <cstring>
@@ -15,35 +16,44 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <string>
 
 namespace altair::platform {
 namespace {
 
-// termios speaks in speed_t constants, not numbers, and the set is finite. A rate
-// the host cannot do is an ERROR with the list attached -- not a silent fallback to
-// 9600, which would leave you staring at garbage wondering which end was wrong.
+// termios speaks in speed_t constants, not numbers. This table holds the rates that
+// EVERY POSIX host we build for spells the same way -- 50 through 230400. It is
+// deliberately NOT the whole story: a rate with no portable constant is not refused,
+// it is handed to setCustomBaud() (below), which tells the OS the number directly. That
+// is how 76800 -- an S-100 staple that glibc's <termios.h> never named at all -- gets
+// through. One table, no per-host conditionals: the universal constants live here,
+// everything else is "custom".
+//
+// kBauds is the single source of both the lookup and the error list, so they cannot
+// drift; the entries are kept in ascending order so the message reads naturally.
+struct BaudEntry { long long baud; speed_t speed; };
+constexpr BaudEntry kBauds[] = {
+    {50, B50},         {75, B75},       {110, B110},     {134, B134},
+    {150, B150},       {200, B200},     {300, B300},     {600, B600},
+    {1200, B1200},     {1800, B1800},   {2400, B2400},   {4800, B4800},
+    {9600, B9600},     {19200, B19200}, {38400, B38400}, {57600, B57600},
+    {115200, B115200}, {230400, B230400},
+};
+
+// A standard constant for this rate, or 0 for "no constant -- try it as a custom rate".
 speed_t toSpeed(long long baud) {
-    switch (baud) {
-    case 50: return B50;
-    case 75: return B75;
-    case 110: return B110;
-    case 134: return B134;
-    case 150: return B150;
-    case 200: return B200;
-    case 300: return B300;
-    case 600: return B600;
-    case 1200: return B1200;
-    case 1800: return B1800;
-    case 2400: return B2400;
-    case 4800: return B4800;
-    case 9600: return B9600;
-    case 19200: return B19200;
-    case 38400: return B38400;
-    case 57600: return B57600;
-    case 115200: return B115200;
-    case 230400: return B230400;
-    default: return 0;
+    for (const auto& e : kBauds)
+        if (e.baud == baud) return e.speed;
+    return 0;
+}
+
+std::string supportedBauds() {
+    std::string s;
+    for (const auto& e : kBauds) {
+        if (!s.empty()) s += ", ";
+        s += std::to_string(e.baud);
     }
+    return s;
 }
 
 class PosixSerial : public SerialPort {
@@ -71,13 +81,10 @@ public:
     }
 
     bool configure(const SerialConfig& c, std::string& err) override {
+        // 0 here means "no standard constant for this rate". That is not a refusal: the
+        // framing below is set the same way regardless, and a custom rate is applied
+        // afterwards through setCustomBaud(). B9600 is a harmless placeholder until then.
         speed_t sp = toSpeed(c.baud);
-        if (!sp) {
-            err = "the host serial driver cannot do " + std::to_string(c.baud) +
-                  " baud (50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, "
-                  "9600, 19200, 38400, 57600, 115200, 230400)";
-            return false;
-        }
 
         termios t{};
         if (tcgetattr(fd_, &t) != 0) {
@@ -86,8 +93,8 @@ public:
         }
 
         cfmakeraw(&t);  // no line discipline: the GUEST owns these bytes, not the tty layer
-        cfsetispeed(&t, sp);
-        cfsetospeed(&t, sp);
+        cfsetispeed(&t, sp ? sp : B9600);
+        cfsetospeed(&t, sp ? sp : B9600);
 
         t.c_cflag &= ~CSIZE;
         switch (c.dataBits) {
@@ -123,6 +130,14 @@ public:
 
         if (tcsetattr(fd_, TCSANOW, &t) != 0) {
             err = std::string("tcsetattr: ") + std::strerror(errno);
+            return false;
+        }
+
+        // The port is framed; if the rate had no standard constant, set it literally now.
+        // setCustomBaud is where the OS-specific machinery lives (Linux BOTHER/termios2,
+        // macOS IOSSIOSPEED) -- and the only thing that can still say the host cannot.
+        if (!sp && !setCustomBaud(fd_, c.baud, err)) {
+            err += " (standard rates, always available: " + supportedBauds() + ")";
             return false;
         }
         return true;
