@@ -4669,7 +4669,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     }
 
     if (cmd == "LOAD") {
-        if (!need(2, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]")) return true;
+        if (!need(2, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX|SREC] [ROM]")) return true;
         a[1] = unquote(a[1]);  // and every message below now names the file, not the quote
 
         // LOAD is MOUNT's other half, and it keeps MOUNT's bargain: a `startup` line in
@@ -4694,14 +4694,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // type FORMAT=HEX and it was dropped on the floor without a word. The command
         // reference promised it, so the reference was a lie -- fixed by making the code
         // tell the truth rather than by quietly deleting the promise.
-        int forced = -1;  // -1 autodetect, 0 BIN, 1 HEX
+        int forced = -1;  // -1 autodetect, 0 BIN, 1 HEX, 2 SREC
         for (size_t i = 2; i < a.size(); ++i) {
             if (upper(a[i]).rfind("FORMAT=", 0) != 0) continue;
             std::string want = upper(a[i]).substr(7);
             if (want == "HEX") forced = 1;
             else if (want == "BIN") forced = 0;
+            else if (want == "SREC") forced = 2;
             else {
-                out << "FORMAT=" << want << "? It is BIN or HEX.\n";
+                out << "FORMAT=" << want << "? It is BIN, HEX or SREC.\n";
                 failed_ = true;
                 return true;
             }
@@ -4730,10 +4731,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // for BIN, and the difference only showed on a file that did not start at
             // zero. The arithmetic (anchor, and the modulo-64K wrap) is hex.h's.
             if (haveAt) relocateTo(img, at);
-        } else if (forced < 0 && looksLikeSrec(data)) {
+        } else if (forced == 2 || (forced < 0 && looksLikeSrec(data))) {
             // A Motorola S-record file carries its own addresses just like Intel HEX,
-            // so it relocates the same way. FORMAT= only spells BIN or HEX, so this is
-            // reached by autodetect alone.
+            // so it relocates the same way. Reached by autodetect or FORMAT=SREC.
             if (!loadSrec(data, img, err)) {
                 out << a[1] << ": " << err << "\n";  // names the record. loudly.
                 failed_ = true;

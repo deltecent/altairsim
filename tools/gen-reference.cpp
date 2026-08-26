@@ -257,7 +257,7 @@ const char* commandSummary(const std::string& n) {
     if (n == "EXAMINE") return "Point the front panel at an address (and show that byte).";
     if (n == "IN") return "Read a byte from an I/O port.";
     if (n == "OUT") return "Write a byte to an I/O port.";
-    if (n == "LOAD") return "Load a file into memory (binary or Intel hex).";
+    if (n == "LOAD") return "Load a file into memory (binary, Intel hex or S-record).";
     if (n == "SAVE") return "Write a range of memory out to a file.";
     if (n == "FILL") return "Fill a range of memory with a byte.";
     if (n == "SEARCH") return "Find bytes or a string in a range of memory.";
