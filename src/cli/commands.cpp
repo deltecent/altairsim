@@ -340,8 +340,8 @@ static const std::vector<CommandDef> kCommands = {
     {"OUT", true, nullptr, "OUT <port> <byte>",  // O
      "Runs a REAL OUT cycle. Says so if no board decodes the port.\n"
      "  O 10 41"},
-    {"LOAD", true, nullptr, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]",
-     "Put a file into memory. There are two kinds of file and they differ in ONE\n"
+    {"LOAD", true, nullptr, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX|SREC] [ROM]",
+     "Put a file into memory. There are three kinds of file and they differ in ONE\n"
      "way -- whether the file knows where it goes.\n"
      "\n"
      "  HEX  Intel HEX. ASCII text, and it CARRIES ITS OWN ADDRESSES, so it needs\n"
@@ -357,13 +357,20 @@ static const std::vector<CommandDef> kCommands = {
      "          |  load address: these bytes go at 0100\n"
      "          10 = sixteen data bytes follow\n"
      "\n"
+     "  SREC Motorola S-records -- the 680b's world, what MON680 punches and loads.\n"
+     "       ASCII text that CARRIES ITS OWN ADDRESSES too, so like HEX it needs no\n"
+     "       AT. Data records are S1/S2/S3 (2/3/4-byte addresses), the terminator\n"
+     "       S7/S8/S9. Every checksum is verified and a bad one FAILS the load.\n"
+     "         S1130100C300F8AF32004D3E0132014D76C9AA5505\n"
+     "         S9030000FC\n"
+     "\n"
      "  BIN  A flat binary: bytes, and nothing else. It carries NO addresses, so\n"
      "       it cannot say where it goes and AT is REQUIRED. Without one, LOAD\n"
      "       refuses rather than guess.\n"
      "\n"
-     "WHICH ONE IS DECIDED BY THE FILE'S CONTENTS, not its name -- Intel HEX\n"
-     "announces itself, and a .bin full of HEX text is still HEX. FORMAT= overrides\n"
-     "that when the sniff is wrong; it always wins.\n"
+     "WHICH ONE IS DECIDED BY THE FILE'S CONTENTS, not its name -- Intel HEX and\n"
+     "S-records each announce themselves, and a .bin full of HEX text is still HEX.\n"
+     "FORMAT= overrides that when the sniff is wrong; it always wins.\n"
      "\n"
      "AT MEANS 'PUT IT HERE', for both kinds. On a HEX file it relocates: the\n"
      "file's FIRST data record lands at AT and everything else moves by the same\n"
@@ -379,7 +386,8 @@ static const std::vector<CommandDef> kCommands = {
      "  LOAD dbl.hex                      where the file says, through the bus\n"
      "  LOAD monitor.bin AT F000 ROM      a flat binary, burned into the ROM there\n"
      "  LOAD prog.hex AT 100              relocate: first record goes to 0100\n"
-     "  LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called"},
+     "  LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called\n"
+     "  LOAD mon.txt FORMAT=SREC          read it as Motorola S-records"},
     {"SAVE", true, nullptr, "SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL|PRN]",
      "Memory to a file, through the bus -- so what you get is what the CPU would\n"
      "read, ROM included. The range is what to save; a byte nobody drives reads FF.\n"

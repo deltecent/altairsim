@@ -1760,11 +1760,18 @@ void test_achieved_hz() {
         std::error_code ec;
         fs::create_directories(dir, ec);
         const std::string hex = (dir / "img.hex").generic_string();
+        const std::string srec = (dir / "img.txt").generic_string();
         const std::string dat = (dir / "out.dat").generic_string();
 
         {
             std::ofstream f(hex);
             f << ":02010000AABB98\n:00000001FF\n";  // AA BB at 0100
+        }
+        {
+            // The same CC DD at 0400, but as Motorola S-records. The .txt name
+            // hides it from the sniff so FORMAT=SREC has to do the work.
+            std::ofstream f(srec);
+            f << "S1050400CCDD4D\nS9030000FC\n";  // CC DD at 0400
         }
 
         Machine mm;
@@ -1794,10 +1801,18 @@ void test_achieved_hz() {
         CHECK(mm.bus.memRead(0x0300) == ':',
               "FORMAT=BIN overrides the sniff -- the file loads as the ASCII it literally is");
 
+        // FORMAT=SREC forces the S-record reader even when the name (.txt) hides it
+        // from the sniff -- the 680b's world, what MON680 punches and loads.
         std::ostringstream a3;
-        mon.exec("LOAD " + hex + " FORMAT=SREC", a3);
-        CHECK(a3.str().find("BIN or HEX") != std::string::npos,
-              "and a format that is not BIN or HEX is refused, not ignored");
+        mon.exec("LOAD " + srec + " FORMAT=SREC", a3);
+        CHECK(mm.bus.memRead(0x0400) == 0xCC && mm.bus.memRead(0x0401) == 0xDD,
+              "FORMAT=SREC reads a Motorola S-record file the sniff would have missed");
+
+        // A format that is none of the three is refused, not ignored.
+        std::ostringstream a4;
+        mon.exec("LOAD " + hex + " FORMAT=OINK", a4);
+        CHECK(a4.str().find("BIN, HEX or SREC") != std::string::npos,
+              "an unknown FORMAT= is refused and the message names the three it takes");
 
         // THROUGH THE BUS, A ROM DOES NOT TAKE THE WRITE. It never answers the cycle.
         uint8_t romWas = mm.bus.memRead(0xFF00);

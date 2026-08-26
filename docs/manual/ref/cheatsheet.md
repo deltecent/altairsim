@@ -64,7 +64,7 @@ Type the part before the bracket.
 | `HE[LP]` | Show help for a command. | `HELP [<command>]` |
 | `H[ISTORY]` | Replay the recent instruction (or bus-cycle) history. | `HISTORY [BUS\|CPU] [n]` |
 | `I[N]` | Read a byte from an I/O port. | `IN <port>` |
-| `L[OAD]` | Load a file into memory (binary or Intel hex). | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX] [ROM]` |
+| `L[OAD]` | Load a file into memory (binary, Intel hex or S-record). | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX\|SREC] [ROM]` |
 | `M[OUNT]` | Put a disk or tape image into a drive; a .imd is converted to a raw .dsk beside it. | `MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
 | `MOV[E]` | Copy a range of memory to another address. | `MOVE <range> <dest> [ROM]` |
 | `N[EXT]` | Step one instruction, running any CALL/RST to completion. | `NEXT` |

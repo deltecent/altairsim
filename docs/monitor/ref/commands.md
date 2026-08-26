@@ -287,9 +287,9 @@ I 10         port 10 -> FF   (nobody answered -- the bus floated it)
 ### LOAD — `L[OAD]`
 
 ```
-LOAD <file> [AT <addr>] [FORMAT=BIN|HEX] [ROM]
+LOAD <file> [AT <addr>] [FORMAT=BIN|HEX|SREC] [ROM]
 ```
-Put a file into memory. There are two kinds of file and they differ in ONE
+Put a file into memory. There are three kinds of file and they differ in ONE
 way -- whether the file knows where it goes.
 
 
@@ -311,15 +311,26 @@ HEX  Intel HEX. ASCII text, and it CARRIES ITS OWN ADDRESSES, so it needs
 
 
 ```
+SREC Motorola S-records -- the 680b's world, what MON680 punches and loads.
+     ASCII text that CARRIES ITS OWN ADDRESSES too, so like HEX it needs no
+     AT. Data records are S1/S2/S3 (2/3/4-byte addresses), the terminator
+     S7/S8/S9. Every checksum is verified and a bad one FAILS the load.
+       S1130100C300F8AF32004D3E0132014D76C9AA5505
+       S9030000FC
+```
+
+
+
+```
 BIN  A flat binary: bytes, and nothing else. It carries NO addresses, so
      it cannot say where it goes and AT is REQUIRED. Without one, LOAD
      refuses rather than guess.
 ```
 
 
-WHICH ONE IS DECIDED BY THE FILE'S CONTENTS, not its name -- Intel HEX
-announces itself, and a .bin full of HEX text is still HEX. FORMAT= overrides
-that when the sniff is wrong; it always wins.
+WHICH ONE IS DECIDED BY THE FILE'S CONTENTS, not its name -- Intel HEX and
+S-records each announce themselves, and a .bin full of HEX text is still HEX.
+FORMAT= overrides that when the sniff is wrong; it always wins.
 
 AT MEANS 'PUT IT HERE', for both kinds. On a HEX file it relocates: the
 file's FIRST data record lands at AT and everything else moves by the same
@@ -338,6 +349,7 @@ LOAD dbl.hex                      where the file says, through the bus
 LOAD monitor.bin AT F000 ROM      a flat binary, burned into the ROM there
 LOAD prog.hex AT 100              relocate: first record goes to 0100
 LOAD odd.txt AT 0 FORMAT=HEX      it IS hex, whatever it is called
+LOAD mon.txt FORMAT=SREC          read it as Motorola S-records
 ```
 
 
