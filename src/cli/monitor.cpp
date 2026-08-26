@@ -4765,7 +4765,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 if (m_.bus.lastUnclaimed()) ++gone;
             }
         }
-        std::snprintf(buf, sizeof buf, "loaded %zu bytes from %s (%s-%s)%s", img.size(),
+        // PAGES is the count CP/M's SAVE wants: 256-byte pages spanning the image,
+        // low page through high page inclusive. For a .COM loaded at 0100 that is
+        // exactly the SAVE argument -- 0100-07FF is `SAVE 7`.
+        unsigned pages = img.empty() ? 0 : ((img.hi() >> 8) - (img.lo() >> 8) + 1);
+        std::snprintf(buf, sizeof buf, "loaded %zu bytes (%u page%s) from %s (%s-%s)%s", img.size(),
+                      pages, pages == 1 ? "" : "s",
                       a[1].c_str(), fmtWord(img.lo()).c_str(), fmtWord(img.hi()).c_str(),
                       romOverride ? " (ROM override)" : "");
         out << buf << "\n";

@@ -27,7 +27,7 @@ a single name.
 altairsim> SYMBOLS LOAD HELLO.PRN
 12 symbol(s) from HELLO.PRN
 altairsim> LOAD HELLO.HEX
-loaded 46 bytes from HELLO.HEX (0100-012D)
+loaded 46 bytes (1 page) from HELLO.HEX (0100-012D)
 ```
 
 ## 2 — Disassemble it, and read it by name
