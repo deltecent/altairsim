@@ -120,7 +120,7 @@ $ altairsim {{MACHINE_BASIC}}
 startup> MOUNT acr0:tape "4K BASIC Ver 3-1.tap"
 acr0:tape: mounted 4K BASIC Ver 3-1.tap
 startup> LOAD "LDR4K31.HEX"
-loaded 20 bytes from LDR4K31.HEX (0000-0013)
+loaded 20 bytes (1 page) from LDR4K31.HEX (0000-0013)
 startup> RUN 0
 [console -- ^E returns to the monitor]
 

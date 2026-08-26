@@ -22,7 +22,7 @@ and re-run it yourself:
 
 ```
 altairsim> LOAD KSCOPE.HEX
-loaded 127 bytes from KSCOPE.HEX (0000-007E)
+loaded 127 bytes (1 page) from KSCOPE.HEX (0000-007E)
 altairsim> RUN 0
 ```
 
