@@ -188,6 +188,12 @@ fill = "random"            # real static RAM does not come up zeroed
   mount = "builtin:altmon" # compiled in: nothing to download, same on every OS
 ```
 
+**Keep `[machine]` keys above the first `[[board]]`.** This is TOML scoping, not a rule of ours:
+once a `[[board]]` (or any `[table]`) block opens, every bare key that follows belongs to *it*. A
+`startup = [...]` written **after** a board block is parsed as a property of that board and
+rejected as an unknown board key — the machine's own `startup` silently never gets set. Put
+`name` and `startup` directly under `[machine]`, before you fit the first board, as above.
+
 ### The transform chain is the CONSOLE's, and only the console's
 
 `UPPER`, `STRIP7OUT`, `CRLF`, `BSDEL` and the rest belong to `[console]` — **not** to a board and **not** to a unit. Every other endpoint (socket, serial port, tape, file) is **8-bit clean, always**, because the next thing down that line may be XMODEM and a filter would corrupt it silently (DESIGN.md §7.2).
