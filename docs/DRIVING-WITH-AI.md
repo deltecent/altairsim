@@ -514,6 +514,46 @@ Ports (base `B`): `B+0` ch-A control(write)/status(read), `B+1` ch-A data; `B+2`
   drop RTS without disturbing framing, write `0x55`. Master reset does **not** clear the other
   control bits; a bus RESET does **not** touch the 6850 (it has no reset pin).
 
+### Driving a real serial device — the clock is the trap
+
+The moment the far end is real hardware with real reply latency, the CPU clock stops being a
+performance knob and becomes a **timing** one. A period BIOS times a serial read with an
+instruction-count busy-loop calibrated for one clock — Mike Douglas's `srByte` does `LXI B,41667`
+= "1 s at 2 MHz". `clock_hz` rescales that constant: `SET cpu0 clock_hz=4000000` halves the
+timeout, `clock_hz=0` (flat-out, the default) burns it in microseconds. Run the guest too fast
+and its timeout shrinks below the device's actual reply latency — the read times out, retries,
+and desyncs **before the answer arrives**. Pin `clock_hz` to the clock the guest's constants
+assume — **2 MHz for classic Altair code** — unless you have measured headroom.
+
+How much margin you need is timeout-vs-latency, not the clock alone. A per-transaction protocol
+(the device pauses to seek or process between requests) needs a big margin; a back-to-back
+streaming transfer tolerates far less — the same guest code has desynced at 4 MHz on a per-sector
+protocol yet run clean well past 20 MHz on a whole-track one. And a serial poll loop is
+I/O-bound: past a modest clock, raising `clock_hz` buys **no** throughput, it only erodes the
+margin. Don't reach for a faster clock to "speed up" a wire-bound transfer.
+
+**Watch the wire.** Tee a line to a chronological hex dump — the single best view of exact TX/RX
+interleaving and timing:
+
+```
+monitor {command: "CONNECT sio0:b serial:/dev/cu.usbserial-XXXX |cap.log?fmt=dump&ts=elapsed&gap=50"}
+```
+
+`gap` is a bare millisecond integer (`gap=50`, not `50ms`; `0` = never break a row on a pause).
+The tap lives **in the sim process**, so it stops on `QUIT` — a late reply a device streams after
+you have quit never reaches the log.
+
+**One owner per host port.** Exactly one process may hold `/dev/cu.…`; close any `pyserial` (or
+other altairsim) that has it, or the attach fails busy. altairsim already flushes stale RX on open
+(`tcflush`), so an external flush is redundant — and worse, opening the port from pyserial toggles
+DTR/RTS, which can knock a device out of its current mode. Let the sim own the port.
+
+**A live transfer holds `run` open.** During a streaming read `run` gets a wall-clock grace
+window: it keeps going while bytes are still crossing and returns only when the wire quiets or
+`until` matches — it will **not** cut a transfer at `timeout_ms`. (On older builds a long read
+could return `stopped: "idle"` mid-transfer; if you see that, resume with `run` and no new `from`
+and watch a destination pointer climb via `regs`/`mem_dump` until it completes.)
+
 ## Toward a real machine
 
 The reason the serial attach matters: the endpoint a channel `CONNECT`s to is the only thing that
