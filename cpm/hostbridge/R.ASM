@@ -154,6 +154,9 @@ EXIT:   JMP     0               ; warm boot
 ;=======================================================================
 ONE:    LXI     H,0
         SHLD    RECS            ; records written, for the report at the end
+        SHLD    BYTES           ; and the TRUE host byte count -- 24 bits, because
+        XRA     A               ; a padded record count is not the file's real size
+        STA     BYTES+2
 
 ; OPEN THE HOST FILE FIRST, BEFORE TOUCHING THE CP/M DIRECTORY.
 ;
@@ -244,7 +247,9 @@ CP1:    IN      HBCMD
         INX     H
         DCR     B
         JNZ     CP1
-        JMP     CPWRIT          ; a full 128 bytes
+        MVI     A,RECLEN        ; a full 128 bytes -- count them...
+        CALL    ADDBYT
+        JMP     CPWRIT
 
 ; PAD THE TAIL OF THE LAST RECORD WITH ^Z.
 ;
@@ -256,7 +261,10 @@ CP1:    IN      HBCMD
 ; This is also the exact reason W.COM has a T switch: coming back the
 ; other way, those pad bytes are indistinguishable from real data, and
 ; only the human knows whether the file was text.
-CPPAD:  MVI     A,CPMEOF
+CPPAD:  MVI     A,RECLEN        ; ...and on a short last record, count only what
+        SUB     B               ; the host actually gave us: 128 - the slots left.
+        CALL    ADDBYT          ; ADDBYT keeps B and HL, so the pad below is intact.
+        MVI     A,CPMEOF
 CPPAD1: MOV     M,A
         INX     H
         DCR     B
@@ -628,12 +636,92 @@ SAYXFR: LXI     D,MPFX
         MVI     C,PRSTR
         JMP     BDOS
 
-; "  12 records"
+; "  12 records, 1493 bytes"
 SAYREC: LHLD    RECS
         CALL    PRDEC
-        LXI     D,MRECS
+        LXI     D,MRECS         ; " records, "
+        MVI     C,PRSTR
+        CALL    BDOS
+        CALL    PRBYT           ; the exact number of host bytes we copied in
+        LXI     D,MBYTES        ; " bytes",CR,LF
         MVI     C,PRSTR
         JMP     BDOS
+
+;-----------------------------------------------------------------------
+; ADDBYT -- add A (0..128) to the 24-bit counter at BYTES. Destroys A;
+; HL is saved and restored, so a caller mid-record (CPPAD) keeps its
+; buffer pointer -- and B, its slot count, is never touched.
+;-----------------------------------------------------------------------
+ADDBYT: PUSH    H
+        LXI     H,BYTES
+        ADD     M               ; low byte + A
+        MOV     M,A
+        MVI     A,0
+        INX     H
+        ADC     M               ; carry into the middle byte
+        MOV     M,A
+        MVI     A,0
+        INX     H
+        ADC     M               ; ...and the top byte
+        MOV     M,A
+        POP     H
+        RET
+
+;-----------------------------------------------------------------------
+; PRBYT -- print the 24-bit value at BYTES in decimal, the same backwards-
+; into-the-buffer way PRDEC prints HL. Divides BYTES by ten in place.
+;-----------------------------------------------------------------------
+PRBYT:  LXI     D,NUMEND
+        MVI     A,'$'
+        STAX    D
+PRB1:   DCX     D
+        PUSH    D               ; DIV10T eats DE
+        CALL    DIV10T          ; BYTES = BYTES/10, A = the remainder
+        POP     D
+        ADI     '0'
+        STAX    D
+        LDA     BYTES           ; anything left?
+        LXI     H,BYTES+1
+        ORA     M
+        INX     H
+        ORA     M
+        JNZ     PRB1
+        MVI     C,PRSTR
+        JMP     BDOS
+
+; DIV10T -- BYTES (24-bit) = BYTES/10, remainder returned in A. Long
+; division from the top byte down: a running remainder r<10 makes
+; r*256+byte < 2560, which fits in DE, so each byte is one small divide.
+DIV10T: XRA     A               ; the running remainder starts at 0
+        LXI     H,BYTES+2       ; most significant byte first
+        CALL    DT1
+        DCX     H
+        CALL    DT1
+        DCX     H
+        JMP     DT1             ; tail: A = the final remainder
+
+; DT1 -- acc = A*256 + (HL); (HL) = acc/10; A = acc MOD 10.  HL is left
+; where it was, so DIV10T just steps it down a byte between calls.
+DT1:    MOV     D,A             ; DE = acc, D the high byte (< 10)
+        MOV     E,M
+        MVI     B,0             ; the quotient byte
+DT2:    MOV     A,D
+        ORA     A
+        JNZ     DT3             ; high byte set -> acc >= 256, so >= 10
+        MOV     A,E
+        CPI     10
+        JC      DT4             ; acc < 10 -> E is the remainder
+DT3:    MOV     A,E
+        SUI     10
+        MOV     E,A
+        MOV     A,D
+        SBI     0
+        MOV     D,A
+        INR     B
+        JMP     DT2
+DT4:    MOV     M,B             ; store the quotient byte back in place
+        MOV     A,E             ; the remainder feeds the next byte down
+        RET
 
 ; PSTR -- print the NUL-terminated string at HL.
 ; HL is pushed around the BDOS call because BDOS EATS EVERY REGISTER.
@@ -778,7 +866,7 @@ MNOHB:  DB      CR,LF,'R: no host bridge at B0H.',CR,LF
         DB      'This machine has no `hostbridge` card in it, or it is at'
         DB      ' another port.',CR,LF,'$'
 
-MUSAGE: DB      CR,LF,'R -- copy a file from the host into CP/M.',CR,LF,CR,LF
+MUSAGE: DB      CR,LF,'R -- copy a file from the host into CP/M.  (1.0)',CR,LF,CR,LF
         DB      '   R <hostfile> [cpmfile]',CR,LF
         DB      '   R <pattern>',CR,LF,CR,LF
         DB      'Examples',CR,LF
@@ -793,7 +881,8 @@ MUSAGE: DB      CR,LF,'R -- copy a file from the host into CP/M.',CR,LF,CR,LF
 
 MPFX:   DB      'R: $'
 MARROW: DB      ' -> $'
-MRECS:  DB      ' records',CR,LF,'$'
+MRECS:  DB      ' records, $'
+MBYTES: DB      ' bytes',CR,LF,'$'
 MERR:   DB      'R: $'
 MCRLF:  DB      CR,LF,'$'
 
@@ -810,14 +899,16 @@ MECLOSE:DB      'R: could not close the CP/M file.',CR,LF,'$'
 BUF:    DS      RECLEN
 
 RECS:   DS      2               ; records written to CP/M
+BYTES:  DS      3               ; and the true host byte count, 24 bits: even the
+                                ; card's 8 MB ceiling needs more than RECS's 16
 FCB:    DS      36              ; ours, not the CCP's at 5CH -- see PARSE
 HNAME:  DS      HNMAX+1         ; the host name (or the pattern, or a match).
                                 ; +1: RECVZ's truncate path writes its NUL one
                                 ; past the count it was given.
 CNAME:  DS      20              ; the CP/M name, if the user gave one
 IDBUF:  DS      IDMAX+1         ; what the card said its name was (+1: as above)
-NUMBUF: DS      6
-NUMEND: DS      1               ; PRDEC builds backwards from here
+NUMBUF: DS      8               ; wide enough for a 24-bit count: 16777215 is 8 digits
+NUMEND: DS      1               ; PRDEC and PRBYT build backwards from here
 
         DS      64              ; stack: BDOS is the deepest thing we call
 STACK   EQU     $

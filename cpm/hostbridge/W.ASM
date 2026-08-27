@@ -280,6 +280,9 @@ ONEBAD: CALL    REPERR
 ;-----------------------------------------------------------------------
 COPY:   LXI     H,0
         SHLD    RECS
+        SHLD    BYTES           ; the TRUE byte count too -- 24 bits, because in T
+        XRA     A               ; mode we stop mid-record and RECS*128 would lie
+        STA     BYTES+2
 
 CP0:    LXI     D,FCB
         MVI     C,FREAD
@@ -306,6 +309,7 @@ CP1:    MOV     A,M
         JZ      CPEND           ; text: the FIRST ^Z ends the file
 
 CP2:    OUT     HBDATA
+        CALL    INCBYT          ; one more byte actually sent to the host -- count it
         INX     H
         DCR     B
         JNZ     CP1
@@ -734,12 +738,88 @@ SAYXFR: LXI     D,MPFX
         MVI     C,PRSTR
         JMP     BDOS
 
-; "  12 records"
+; "  12 records, 1493 bytes"
 SAYREC: LHLD    RECS
         CALL    PRDEC
-        LXI     D,MRECS
+        LXI     D,MRECS         ; " records, "
+        MVI     C,PRSTR
+        CALL    BDOS
+        CALL    PRBYT           ; the exact number of bytes we sent to the host
+        LXI     D,MBYTES        ; " bytes",CR,LF
         MVI     C,PRSTR
         JMP     BDOS
+
+;-----------------------------------------------------------------------
+; INCBYT -- add one to the 24-bit counter at BYTES. Touches only HL (saved
+; and restored) and the flags, so A, B and C survive the copy loop.
+;-----------------------------------------------------------------------
+INCBYT: PUSH    H
+        LXI     H,BYTES
+        INR     M
+        JNZ     IB1             ; no carry out of the low byte -- done
+        INX     H
+        INR     M
+        JNZ     IB1
+        INX     H
+        INR     M
+IB1:    POP     H
+        RET
+
+;-----------------------------------------------------------------------
+; PRBYT -- print the 24-bit value at BYTES in decimal, the same backwards-
+; into-the-buffer way PRDEC prints HL. Divides BYTES by ten in place.
+;-----------------------------------------------------------------------
+PRBYT:  LXI     D,NUMEND
+        MVI     A,'$'
+        STAX    D
+PRB1:   DCX     D
+        PUSH    D               ; DIV10T eats DE
+        CALL    DIV10T          ; BYTES = BYTES/10, A = the remainder
+        POP     D
+        ADI     '0'
+        STAX    D
+        LDA     BYTES           ; anything left?
+        LXI     H,BYTES+1
+        ORA     M
+        INX     H
+        ORA     M
+        JNZ     PRB1
+        MVI     C,PRSTR
+        JMP     BDOS
+
+; DIV10T -- BYTES (24-bit) = BYTES/10, remainder returned in A. Long
+; division from the top byte down: a running remainder r<10 makes
+; r*256+byte < 2560, which fits in DE, so each byte is one small divide.
+DIV10T: XRA     A               ; the running remainder starts at 0
+        LXI     H,BYTES+2       ; most significant byte first
+        CALL    DT1
+        DCX     H
+        CALL    DT1
+        DCX     H
+        JMP     DT1             ; tail: A = the final remainder
+
+; DT1 -- acc = A*256 + (HL); (HL) = acc/10; A = acc MOD 10.  HL is left
+; where it was, so DIV10T just steps it down a byte between calls.
+DT1:    MOV     D,A             ; DE = acc, D the high byte (< 10)
+        MOV     E,M
+        MVI     B,0             ; the quotient byte
+DT2:    MOV     A,D
+        ORA     A
+        JNZ     DT3             ; high byte set -> acc >= 256, so >= 10
+        MOV     A,E
+        CPI     10
+        JC      DT4             ; acc < 10 -> E is the remainder
+DT3:    MOV     A,E
+        SUI     10
+        MOV     E,A
+        MOV     A,D
+        SBI     0
+        MOV     D,A
+        INR     B
+        JMP     DT2
+DT4:    MOV     M,B             ; store the quotient byte back in place
+        MOV     A,E             ; the remainder feeds the next byte down
+        RET
 
 ; PSTR -- print the NUL-terminated string at HL.
 ; HL is pushed around the BDOS call because BDOS EATS EVERY REGISTER.
@@ -885,7 +965,7 @@ MNOHB:  DB      CR,LF,'W: no host bridge at B0H.',CR,LF
         DB      'This machine has no `hostbridge` card in it, or it is at'
         DB      ' another port.',CR,LF,'$'
 
-MUSAGE: DB      CR,LF,'W -- copy a file from CP/M out to the host.',CR,LF,CR,LF
+MUSAGE: DB      CR,LF,'W -- copy a file from CP/M out to the host.  (1.0)',CR,LF,CR,LF
         DB      '   W <cpmfile> [hostfile] [B|T]',CR,LF
         DB      '   W <pattern>',CR,LF,CR,LF
         DB      'Examples',CR,LF
@@ -905,7 +985,8 @@ MUSAGE: DB      CR,LF,'W -- copy a file from CP/M out to the host.',CR,LF,CR,LF
 
 MPFX:   DB      'W: $'
 MARROW: DB      ' -> $'
-MRECS:  DB      ' records',CR,LF,'$'
+MRECS:  DB      ' records, $'
+MBYTES: DB      ' bytes',CR,LF,'$'
 MERR:   DB      'W: $'
 MCRLF:  DB      CR,LF,'$'
 
@@ -927,14 +1008,16 @@ MENOCPM:DB      'W: no such CP/M file.',CR,LF,'$'
 BUF:    DS      RECLEN
 
 RECS:   DS      2               ; records read from CP/M
+BYTES:  DS      3               ; and the true byte count, 24 bits: even the card's
+                                ; 8 MB ceiling needs more than RECS's 16
 FCB:    DS      36              ; ours, copied out of the CCP's -- see INIFCB
 HNAME:  DS      HNMAX+1         ; the host name (given, or derived)
 CNAME:  DS      HNMAX+1         ; the first word of the tail, as typed
 TOK2:   DS      HNMAX+1
 TOK3:   DS      HNMAX+1
 IDBUF:  DS      IDMAX+1         ; what the card said its name was
-NUMBUF: DS      6
-NUMEND: DS      1               ; PRDEC builds backwards from here
+NUMBUF: DS      8               ; wide enough for a 24-bit count: 16777215 is 8 digits
+NUMEND: DS      1               ; PRDEC and PRBYT build backwards from here
 
 NCNT:   DS      1               ; how many wildcard matches we found
 DONE:   DS      1               ; how many of them we have copied
