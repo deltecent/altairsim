@@ -24,6 +24,7 @@ void test_memory();
 void test_bankmem();
 void test_readonly_props();
 void test_save_is_a_read();
+void test_paths();
 void test_hex();
 void test_srec();
 void test_symbols();

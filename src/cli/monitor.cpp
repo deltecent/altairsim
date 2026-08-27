@@ -5396,6 +5396,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         std::ostream* sink = &out;
         if (!file.empty()) {
             if (traceFile_.is_open()) traceFile_.close();
+            file = expandUser(file);  // a typed path; honor `~` as the shell would
             traceFile_.open(file, std::ios::out | std::ios::trunc);
             if (!traceFile_) {
                 out << "TRACE: cannot open " << file << "\n";

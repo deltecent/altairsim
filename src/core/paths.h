@@ -29,6 +29,25 @@
 
 namespace altair {
 
+// Expand a leading `~` in a path the OPERATOR TYPED (docs/config.md).
+//
+// `~` is a shell convention, not a filesystem one: a real shell rewrites `~/x`
+// to `$HOME/x` BEFORE the program is handed the argument, so `altairsim ~/rom`
+// works and `LOAD ~/rom` at the monitor prompt did not -- there is no shell in
+// that loop, and std::ifstream has never heard of `~`. The monitor IS the shell
+// for a typed path (core/paths.h), so it does the one thing the shell would have.
+//
+// Deliberately narrow:
+//   - only a BARE `~` or a `~` followed by a path separator is expanded; `~user`
+//     is left untouched (it would need getpwnam, and it is almost never wanted).
+//   - if the home directory cannot be found, the `~` is left in place, so the
+//     error the operator sees still shows exactly what they typed.
+//
+// A `~` written INSIDE a machine file is NOT expanded -- that path is meant to be
+// portable and handed to someone else, and `~` is host-specific. resolveFrom()
+// applies this only on the typed (empty-dir) side for that reason.
+std::string expandUser(const std::string& path);
+
 // The directory `file` lives in, or "" if it names no directory at all.
 //
 // "" IS THE ANSWER FOR A BARE FILENAME, and it is the answer that matters most:
