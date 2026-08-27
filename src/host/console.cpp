@@ -1,5 +1,6 @@
 #include "host/console.h"
 
+#include "core/paths.h"
 #include "platform/terminal.h"
 
 namespace altair {
@@ -318,13 +319,14 @@ std::vector<Property> Console::properties() {
         x.kind    = Kind::Str;
         x.get     = [this] { return Value::ofStr(logPath_); };
         x.set     = [this](const Value& v, std::string& err) {
-            const std::string path = v.s();
-            if (path.empty() || path == "off") {
+            const std::string typed = v.s();
+            if (typed.empty() || typed == "off") {
                 logFile_.close();
                 logFile_.clear();  // drop any error state so the handle is reusable
                 logPath_.clear();
                 return true;
             }
+            const std::string path = expandUser(typed);  // typed path; honor a leading `~`
             std::ofstream f(path, std::ios::out | std::ios::app | std::ios::binary);
             if (!f) {
                 err = "cannot open log file: " + path;

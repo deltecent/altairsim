@@ -46,6 +46,7 @@ const struct {
     const char* name;
     void (*fn)();
 } kTests[] = {
+    {"paths", test_paths},
     {"hex", test_hex},
     {"srec", test_srec},
     {"symbols", test_symbols},

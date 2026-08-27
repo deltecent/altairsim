@@ -258,12 +258,14 @@ configure_file("${CMAKE_SOURCE_DIR}/cmake/version.h.in"
 # ---------------------------------------------------------------------------
 if(WIN32)
   set(PLATFORM_SOURCES
+    src/platform/win32/home_win32.cpp
     src/platform/win32/localtime_win32.cpp
     src/platform/win32/serial_win32.cpp
     src/platform/win32/socket_win32.cpp
     src/platform/win32/terminal_win32.cpp)
 else()
   set(PLATFORM_SOURCES
+    src/platform/posix/home_posix.cpp
     src/platform/posix/localtime_posix.cpp
     src/platform/posix/serial_posix.cpp
     src/platform/posix/socket_posix.cpp
@@ -721,6 +723,7 @@ add_executable(altair_tests
   tests/test_snapshot.cpp
   tests/test_memory.cpp
   tests/test_bankmem.cpp
+  tests/test_paths.cpp
   tests/test_hex.cpp
   tests/test_srec.cpp
   tests/test_symbols.cpp

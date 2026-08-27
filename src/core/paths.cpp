@@ -1,10 +1,24 @@
 #include "core/paths.h"
 
+#include "platform/home.h"
+
 #include <filesystem>
 
 namespace altair {
 
 namespace fs = std::filesystem;
+
+std::string expandUser(const std::string& path) {
+    if (path.empty() || path[0] != '~') return path;
+    // A bare `~` or `~` + separator only. `~user` (a letter after the tilde) is
+    // left alone -- resolving it would take getpwnam, and it is vanishingly rare.
+    if (path.size() > 1 && path[1] != '/' && path[1] != '\\') return path;
+
+    std::string home = platform::homeDir();  // the OS knows where; the seam hides which
+    if (home.empty()) return path;           // no home to point at -- leave the `~` visible
+
+    return home + path.substr(1);  // "~" -> HOME; "~/x" -> HOME + "/x"
+}
 
 std::string dirOf(const std::string& file) {
     return fs::path(file).parent_path().generic_string();
@@ -35,7 +49,11 @@ bool hasScheme(const std::string& p) {
 } // namespace
 
 std::string resolveFrom(const std::string& dir, const std::string& path) {
-    if (dir.empty() || path.empty()) return path;
+    if (path.empty()) return path;
+    // Empty dir == a path TYPED at the prompt, resolved against the shell's cwd.
+    // We ARE the shell for it, so a leading `~` is ours to expand (core/paths.h).
+    // A path from a machine file (dir set) is left literal -- see expandUser().
+    if (dir.empty()) return expandUser(path);
     if (hasScheme(path)) return path;
     if (fs::path(path).is_absolute()) return path;
 
