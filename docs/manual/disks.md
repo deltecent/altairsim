@@ -287,8 +287,8 @@ geometry on one board is the intended arrangement: period 8 MB CP/M BIOSes expec
 on A:/B: and ordinary 77-track floppies on C:/D:, so you can `PIP` between them.
 
 **Both are images you supply** — neither is in the package, so the lines below are the shape of
-the command, not files you have. The period 8 MB CP/M image is one the source repository can
-fetch for you; the package chapter says where the source is.
+the command, not files you have. The period 8 MB CP/M image is one you supply; the package
+chapter explains where the wider collection of disks and tapes will come from.
 
 ```
 altairsim> MOUNT dsk0:drive0 big.dsk

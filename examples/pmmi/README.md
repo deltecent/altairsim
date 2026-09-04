@@ -84,7 +84,7 @@ answer = "2323"                 # ^D arms auto-answer on TCP port 2323
 
 With a far end configured, `^D` runs the real handshake: `^I` then shows the live status
 walking through dialing, ringing, carrier and clear-to-send instead of the idle constant. The
-board and its handshake are described in [`../../machines/pmmi.toml`](../../machines/pmmi.toml)
+board and its handshake are described in [`pmmiterm.toml`](pmmiterm.toml)
 and the [User Manual](../../docs/manual/boards.md).
 
 ---

@@ -72,7 +72,7 @@ If you name **nothing at all**, and the working directory contains a file called
 ```
 $ altairsim
 altairsim: no machine named -- using ./altairsim.toml (`-m default` for the built-in).
-AltairSim 0.1.0-37-gcc64cca -- 8080, full speed.
+AltairSim 1.0.0 -- 8080, full speed.
 machine: bench.  HELP for commands.
 altairsim>
 ```

@@ -301,9 +301,9 @@ Put the recorder in `record`, and when the transport stops the tape is re-modula
 written back over the file — in the format and at the sample rate it was mounted with:
 
 ```
-altairsim> SET acr0:tape mode record
+altairsim> SET acr0:tape mode=record
 altairsim> RUN 0                        (the guest records)
-altairsim> SET acr0:tape mode play      (...and the WAV is written here)
+altairsim> SET acr0:tape mode=play      (...and the WAV is written here)
 ```
 
 **You can also make a blank tape from scratch — `MOUNT … CREATE`.** A blank file has no

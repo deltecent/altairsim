@@ -4,7 +4,7 @@
 
 ```
 $ ./altairsim
-AltairSim 0.1.0-37-gcc64cca -- 8080, full speed.
+AltairSim 1.0.0 -- 8080, full speed.
 machine: default.  HELP for commands.
 altairsim>
 ```
