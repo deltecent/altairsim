@@ -54,6 +54,13 @@ struct Rig {
         c.addr = port;
         return b.decodes(c);
     }
+    void pump() { b.pump(); }
+    // Bind a scripted line to a parallel port ("pa"/"pb") through the real connect path.
+    ScriptedStream* connectParallel(const std::string& unit) {
+        std::string err;
+        CHECK(b.connect(unit, "scripted", err), ("parallel " + unit + " connects").c_str());
+        return dynamic_cast<ScriptedStream*>(b.unitStream(unit));
+    }
 
     long long get(const std::string& unit, const std::string& key) {
         for (auto& pr : b.unitProperties(unit))
@@ -81,19 +88,23 @@ struct Rig {
 } // namespace
 
 void test_io4() {
-    SECTION("IO-4 -- identity and the two serial units 'a' and 'b'");
+    SECTION("IO-4 -- identity and its four units: serial a/b, parallel pa/pb");
     {
         Rig g;
         CHECK(g.b.type() == "io4", "identifies as io4");
-        CHECK(g.b.units().size() == 2, "two units -- a dual-serial card has two lines");
-        CHECK(g.b.units()[0].name == "a", "first unit is 'a'");
-        CHECK(g.b.units()[1].name == "b", "second unit is 'b'");
-        CHECK(g.b.units()[0].kind == UnitKind::Serial, "a is serial");
-        CHECK(g.b.units()[1].kind == UnitKind::Serial, "b is serial");
+        auto u = g.b.units();
+        CHECK(u.size() == 4, "four units -- two serial channels and two parallel ports");
+        CHECK(u[0].name == "a" && u[1].name == "b", "the two serial channels come first");
+        CHECK(u[2].name == "pa" && u[3].name == "pb", "then the two parallel ports");
+        CHECK(u[0].kind == UnitKind::Serial && u[2].kind == UnitKind::Serial,
+              "all four are CONNECTable byte-stream lines");
+        CHECK(!u[2].consoleCapable && !u[3].consoleCapable,
+              "the parallel ports are not eligible to be the console");
 
         std::string err;
-        CHECK(!g.b.connect("tty", "null", err), "there is no unit but a/b");
+        CHECK(!g.b.connect("tty", "null", err), "there is no unit but a/b/pa/pb");
         CHECK(err.find("tty") != std::string::npos, "and the error names the bad unit");
+        CHECK(err.find("pa") != std::string::npos, "and lists the parallel ports too");
     }
 
     SECTION("IO-4 -- the default 4-port block: A at 0/1, B at 2/3");
@@ -105,7 +116,7 @@ void test_io4() {
         CHECK(g.decodes(0x01), "answers A's data port");
         CHECK(g.decodes(0x02), "answers B's status port");
         CHECK(g.decodes(0x03), "answers B's data port");
-        CHECK(!g.decodes(0x04), "and nothing past the block");
+        CHECK(!g.decodes(0x06), "and nothing past the serial block and the parallel one (4-5)");
         CHECK(!g.decodes(0xFF), "nor a far-off port");
 
         BusCycle c;
@@ -308,6 +319,140 @@ void test_io4() {
 
         CHECK(!b.connectStream("z", std::make_unique<NullStream>(), err),
               "connectStream to a missing unit fails");
+    }
+
+    SECTION("IO-4 -- the parallel section: a 2-port block, default at 4-5");
+    {
+        // Switch S4 default -> Parallel A at 4, Parallel B at 5, just past the serial block.
+        Rig g;
+        CHECK(g.decodes(0x04), "answers Parallel A");
+        CHECK(g.decodes(0x05), "answers Parallel B");
+        CHECK(!g.decodes(0x06), "and nothing past the parallel block");
+        CHECK(g.get("", "par_port") == -1, "par_port is a BOARD property, not a unit one");
+
+        std::string err;
+        long long   base = -1;
+        for (auto& pr : g.b.properties())
+            if (pr.name == "par_port") base = pr.get().i();
+        CHECK(base == 0x04, "and it reads 0x04 by default");
+    }
+
+    SECTION("IO-4 -- switch S4 is a 2-port block: the base must be a multiple of 2");
+    {
+        Rig g;
+        g.setBoard("par_port", "20");  // hex 0x20, a 2-boundary
+        CHECK(g.decodes(0x20) && g.decodes(0x21), "the parallel block relocated to 0x20-0x21");
+        CHECK(!g.decodes(0x04), "and it left the old block");
+        g.setBoard("par_port", "21", false);  // odd -- refused
+        CHECK(g.decodes(0x20), "the refused SET left the base where it was");
+        CHECK(g.decodes(0x00) && g.decodes(0x03), "the serial block is untouched");
+    }
+
+    SECTION("IO-4 -- parallel input: the strobe latches a byte and sets the service request");
+    {
+        // A byte the far end sends is the 8212's external strobe: pump() latches it and sets the
+        // service-request flip-flop. Reading Parallel A (port 4) hands the byte over and
+        // acknowledges -- the flip-flop clears, ready for the next strobe.
+        Rig             g;
+        ScriptedStream* pa = g.connectParallel("pa");
+        CHECK(pa != nullptr, "pa is a ScriptedStream we can drive");
+
+        pa->feed("K");
+        g.pump();  // the strobe: latch the byte, set the service request
+        CHECK(g.in(0x04) == 'K', "reading Parallel A yields the strobed-in byte");
+
+        // A second byte only latches after the first is read (the latch is one deep).
+        pa->feed("LM");
+        g.pump();
+        CHECK(g.in(0x04) == 'L', "the next strobe latched the next byte");
+        g.pump();
+        CHECK(g.in(0x04) == 'M', "and the one after that");
+    }
+
+    SECTION("IO-4 -- parallel output: a write latches out on the line");
+    {
+        Rig             g;
+        ScriptedStream* pb = g.connectParallel("pb");  // Parallel B at port 5
+        g.out(0x05, 'Z');
+        CHECK(pb->out() == "Z", "a write to Parallel B goes out its line");
+        g.out(0x05, '9');
+        CHECK(pb->out() == "Z9", "and the next latches out after it");
+    }
+
+    SECTION("IO-4 -- the status/data console idiom: a DAV flag strapped across ports (§3.2.2)");
+    {
+        // The manual's 8080-console recipe: Parallel A = status port, Parallel B = data port,
+        // with B's service request jumpered onto a bit of A's read, active-low ("D0 going low").
+        // So the guest polls A for the flag and reads the byte from B.
+        Rig             g;
+        g.connectParallel("pa");
+        ScriptedStream* pb = g.connectParallel("pb");
+        g.set("pa", "dav_bit", "0");          // B's flag lands on D0 of A's read
+        g.set("pa", "dav_source", "sibling");  // ...sourced from the DATA port (B)
+        g.set("pa", "dav_active_low", "true"); // D0 low = a byte is waiting
+
+        uint8_t s = g.in(0x04);
+        CHECK((s & 0x01) != 0, "quiet: no byte waiting on B, so D0 reads 1 (active-low idle)");
+
+        pb->feed("!");
+        g.pump();  // strobe a byte into B; its service request sets
+        s = g.in(0x04);  // poll the STATUS port -- this must NOT consume B's byte
+        CHECK((s & 0x01) == 0, "a byte on B drives its flag -> A's D0 reads 0");
+
+        CHECK(g.in(0x05) == '!', "the DATA port still holds the byte (polling A did not eat it)");
+        s = g.in(0x04);
+        CHECK((s & 0x01) != 0, "and reading B acknowledged it -> A's D0 back to 1");
+    }
+
+    SECTION("IO-4 -- the two sections are mutually exclusive where they overlap");
+    {
+        // Park the parallel block ON TOP of the serial block: Parallel A/B at 2-3, over Serial
+        // B at 2-3. The reference: neither section responds in the contended ports (a deliberate
+        // mutual-exclusion, not a bus fight). Serial A at 0-1 is untouched.
+        Rig g;
+        g.setBoard("par_port", "02");
+        CHECK(g.decodes(0x00) && g.decodes(0x01), "Serial A (0-1) still answers");
+        CHECK(!g.decodes(0x02), "port 2 is claimed by both -> dead on both");
+        CHECK(!g.decodes(0x03), "port 3 too");
+
+        // With those two ports dead, a write to what WAS Serial B's data port goes nowhere and a
+        // strobe on the parallel side is not readable either -- proven by the write not landing.
+        ScriptedStream* pa = g.connectParallel("pa");  // pa now at port 2
+        g.out(0x02, 'X');
+        CHECK(pa->out().empty(), "a write to the contended port reaches neither section");
+        CHECK(g.in(0x02) == 0xFF, "and a read floats -- nobody drives the bus");
+    }
+
+    SECTION("IO-4 -- parallel connectStream + disconnect + reset clears the latches");
+    {
+        Clock    clk;
+        Io4Board b;
+        b.attachClock(&clk);
+        auto            s   = std::make_unique<ScriptedStream>();
+        ScriptedStream* raw = s.get();
+        std::string     err;
+        CHECK(b.connectStream("pa", std::move(s), err), "connectStream binds parallel pa");
+        CHECK(b.unitStream("pa") == raw, "and pa's line is the stream we handed in");
+
+        raw->feed("Q");
+        b.pump();
+        BusCycle rc;
+        rc.type = Cycle::IoRead;
+        rc.addr = 0x04;
+        CHECK(b.read(rc) == 'Q', "a strobed byte on pa reaches the guest");
+
+        // Feed another, latch it, then RESET before reading: the 8212 latch and the service
+        // request clear (the line stays connected).
+        raw->feed("R");
+        b.pump();
+        b.reset(Reset::PowerOn);
+        CHECK(b.read(rc) == 0x00, "reset cleared the input latch");
+        CHECK(b.unitStream("pa") == raw, "and the line is still connected");
+
+        CHECK(b.disconnect("pa", err), "pa disconnects");
+        CHECK(!b.connectStream("zz", std::make_unique<NullStream>(), err),
+              "connectStream to a missing unit fails");
+        CHECK(err.find("pa") != std::string::npos, "and the error names the parallel ports");
     }
 
     SECTION("IO-4 -- boots the SSM 8080 System Monitor on channel A");

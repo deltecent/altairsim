@@ -34,8 +34,15 @@ strappable**, just like the real board's W1/W2 header: the six UART status signa
 TEOC and the three error flags) map to any data-bus bits, in either polarity, and the two port
 addresses can be reversed. A `profile` selector presets the whole arrangement from a named host
 personality — `altair-rev1` (the default and the SSM monitor console), `altair-rev0`, `i8251`,
-`proctech`, `imsai`, or `custom` for a hand-rolled map. This is the board's serial half; its
-parallel ports and interrupts are still to come.
+`proctech`, `imsai`, or `custom` for a hand-rolled map. The board's **parallel section** is here
+too: four 8212 latched ports — two in, two out, exposed as units `pa` and `pb` — on their own
+2-port block (switch S4, `par_port`, default 4/5). A byte the far end sends is strobed into the
+input latch and sets a service-request flip-flop the CPU clears by reading the port; a write
+latches out on the line. The manual's status/data "8080 console" wiring is strappable, so one
+port can carry another's data-available flag on a chosen data bit. The two halves are addressed
+independently and exclusively — if their blocks ever overlap, neither answers the shared ports,
+exactly as the real card behaves. `CONNECT` each parallel port to a file, socket, printer or
+`in:`/`out:` file. Interrupts are still to come.
 
 A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
 and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks
