@@ -1,6 +1,10 @@
 # Altair BASIC 1.0 -- the FIRST one -- off a period cassette.
 #
-#   Bill and Paul's Excellent Adventure - Party on, dudes!
+#>
+#>Altair BASIC 1.0 by Micro-Soft
+#>
+#>Bill and Paul's Excellent Adventure - Party on, dudes!
+#>
 #
 #     cd examples/basic && altairsim basic1.toml
 #     -> the tape loads, the machine goes quiet; press ^E, then type: RUN 0
