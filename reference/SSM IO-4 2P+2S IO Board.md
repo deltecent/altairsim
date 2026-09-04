@@ -27,9 +27,11 @@ and the SSM 8080 monitor console — plus `altair-rev0`, `i8251`, `proctech`, `i
 `src/boards/strapserial.h`.) The **parallel section is also emulated**: four 8212 latched ports —
 two in (J4/J6), two out (J3/J5) — each input carrying a service-request flip-flop, on their own
 2-port block (switch S4), with the §3.2.2 status/data console flag strappable across ports. The
-two halves are mutually exclusive on any address overlap. The **interrupts** (header W4) are a
-later phase; the **current-loop/EIA electrical options are out of scope** — this reference
-documents them for completeness.
+two halves are mutually exclusive on any address overlap. The **interrupts** (header W4) are
+emulated too: each serial channel's receive and transmit and each parallel input are strapped to a
+VI line, to pin 73, or to none — with no software enable, exactly as the card works. The
+**current-loop/EIA electrical options are out of scope** — this reference documents them for
+completeness.
 
 ---
 

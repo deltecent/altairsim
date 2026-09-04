@@ -42,7 +42,12 @@ latches out on the line. The manual's status/data "8080 console" wiring is strap
 port can carry another's data-available flag on a chosen data bit. The two halves are addressed
 independently and exclusively — if their blocks ever overlap, neither answers the shared ports,
 exactly as the real card behaves. `CONNECT` each parallel port to a file, socket, printer or
-`in:`/`out:` file. Interrupts are still to come.
+`in:`/`out:` file. And the board **interrupts** now: each serial channel's receive (a new
+character) and transmit (buffer empty), and each parallel input (a byte strobed in), can be
+strapped on header W4 to any of the eight vectored-interrupt lines, to `int` (pin 73), or to
+`none` — `rx_int`/`tx_int` per serial channel, `int` per parallel port. There is no software
+enable; the strap is the enable, just as on the real card, and a parallel input raises its
+interrupt even when the port is not being read.
 
 A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
 and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks

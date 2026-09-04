@@ -2,6 +2,7 @@
 
 #include "boards/io4.h"
 #include "boards/mits-88cpu.h"
+#include "boards/mits-88virtc.h"
 #include "boards/s100-memory.h"
 #include "core/board.h"
 #include "core/clock.h"
@@ -82,6 +83,51 @@ struct Rig {
         std::string err;
         bool        r = setProperty(b, key, v, err);
         CHECK(r == ok, ("SET " + key + "=" + v).c_str());
+    }
+};
+
+// A whole machine -- 88-VI, io4, 60K RAM and an 8080 -- to prove an io4 interrupt strap
+// reaches the BUS and vectors, not just that the pin moves. Mirrors the 88-VI suite's Rig.
+// Verify mode re-derives pin 73 AND all eight VI lines on every bus cycle and aborts the
+// instant the io4 disagrees with a wire. Serial A carries a scripted line, parallel A too.
+struct IrqRig {
+    Machine         m;
+    Io4Board*       io = nullptr;
+    VirtcBoard*     vi = nullptr;
+    ScriptedStream* a  = nullptr;
+    ScriptedStream* pa = nullptr;
+
+    IrqRig() {
+        std::string err;
+        m.bus.setVerify(true);
+
+        auto*  mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        Region r;
+        r.kind = RegionKind::Ram;
+        r.at   = 0;
+        r.size = 0x10000;
+        mem->addRegion(r, err);
+        setProperty(*mem, "fill", "zero", err);
+
+        m.add("8080", "cpu0", err);
+        vi = dynamic_cast<VirtcBoard*>(m.add("virtc", "vi0", err));
+        io = dynamic_cast<Io4Board*>(m.add("io4", "io0", err));
+        CHECK(io != nullptr && vi != nullptr, "the machine has an io4 and an 88-VI");
+
+        CHECK(io->connect("a", "scripted", err), "Serial A gets a scripted line");
+        CHECK(io->connect("pa", "scripted", err), "Parallel A gets a scripted line");
+        a  = dynamic_cast<ScriptedStream*>(io->unitStream("a"));
+        pa = dynamic_cast<ScriptedStream*>(io->unitStream("pa"));
+
+        m.power();
+    }
+
+    // OUT to the 88-VI control port, enabling the structure the way a guest does.
+    void    ctl(uint8_t v) { m.bus.ioWrite(0xFE, v); }
+    uint8_t intAck() { return m.bus.intAck(); }
+    // Let a paced serial receiver clock its byte in (the card's own deadline fires here).
+    void advance() {
+        for (int i = 0; i < 200; ++i) m.clock.advance(1000);
     }
 };
 
@@ -503,5 +549,145 @@ void test_io4() {
             if (tty->out().find("MONITOR V1.0") != std::string::npos) banner = true;
         }
         CHECK(banner, "the IO-4 console prints MONITOR V1.0");
+    }
+
+    // ---- Interrupts: header W4 (§3.3). No software enable -- the strap IS the enable. ----
+
+    SECTION("IO-4 -- interrupts: W4 unstrapped (the default) raises nothing");
+    {
+        // A stock io4 ships with W4 bare, so a live source pulls no wire and the monitor boots
+        // polled. Make the sources genuinely active first, so the negative is not vacuous.
+        Rig             g;
+        ScriptedStream* pa = g.connectParallel("pa");
+        g.a->feed("K");
+        pa->feed("Z");
+        g.pump();
+        CHECK((g.in(0x00) & 0x01) == 0, "a character IS waiting on Serial A (DAV low, altair-rev1)");
+        CHECK(!g.b.assertsInt(), "...but with W4 unstrapped, pin 73 stays up");
+        CHECK(g.b.assertsVi() == 0, "...and no VI line is pulled");
+    }
+
+    SECTION("IO-4 -- interrupts: Serial A receive to pin 73, then a VI line, and the ack");
+    {
+        Rig g;
+        g.set("a", "rx_int", "int");
+        CHECK(!g.b.assertsInt(), "a quiet line asks for nothing");
+        g.a->feed("K");
+        g.pump();
+        CHECK(g.b.assertsInt(), "a character arrived (DAV): the int strap pulls pin 73");
+        CHECK(g.b.assertsVi() == 0, "and pin 73 is not a VI line");
+        g.in(0x01);  // read A's data port -- clears DAV
+        CHECK(!g.b.assertsInt(), "reading the character drops the request");
+
+        g.set("a", "rx_int", "vi1");  // the canonical Serial A receive line
+        g.a->feed("M");
+        g.pump();
+        // A SECOND byte on the same line is baud-paced (the first landed at once): let the
+        // receiver's own deadline clock it in before asserting on DAV.
+        for (int i = 0; i < 100 && !g.b.assertsVi(); ++i) g.clk.advance(1000);
+        CHECK(!g.b.assertsInt(), "a VI strap does not touch pin 73");
+        CHECK(g.b.assertsVi() == viBit(IrqJumper::Vi1), "it pulls VI1 -- and only VI1");
+        g.in(0x01);
+        CHECK(g.b.assertsVi() == 0, "and reading the character drops VI1");
+    }
+
+    SECTION("IO-4 -- interrupts: the transmit interrupt is a LEVEL, held while TBMT is empty");
+    {
+        // Unlike the 88-SIO, this card has no software interrupt enable: a strapped TX source is
+        // asserted whenever the transmit buffer is empty, which at idle is always. That is the
+        // hardware, and it is on the operator not to strap a TX interrupt they will not service.
+        Rig g;
+        g.set("a", "tx_int", "vi2");
+        CHECK(g.b.assertsVi() == viBit(IrqJumper::Vi2),
+              "an idle transmitter holds TBMT -- the strap pulls VI2 with nothing to gate it");
+        g.out(0x01, 'X');  // send a character: TBMT falls while it drains
+        CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) == 0,
+              "sending a character drops it -- the transmitter is busy");
+        for (int i = 0; i < 100; ++i) g.clk.advance(1000);  // let the character leave
+        CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) != 0,
+              "and it rises again the moment the buffer empties");
+    }
+
+    SECTION("IO-4 -- interrupts: a parallel input raises even when unaddressed, and the read acks");
+    {
+        Rig             g;
+        ScriptedStream* pa = g.connectParallel("pa");
+        g.set("pa", "int", "vi6");  // the canonical Parallel A line
+        pa->feed("Z");
+        g.pump();  // the strobe sets the service request WITHOUT the port being addressed
+        CHECK(g.b.assertsVi() == viBit(IrqJumper::Vi6), "the latched byte pulls VI6, unaddressed");
+        CHECK(!g.b.assertsInt(), "and not pin 73");
+        g.in(0x04);  // read Parallel A -- acknowledge
+        CHECK(g.b.assertsVi() == 0, "reading the port acknowledges: VI6 drops");
+
+        g.set("pa", "int", "int");  // and now to pin 73
+        pa->feed("Y");
+        g.pump();
+        CHECK(g.b.assertsInt(), "a fresh strobe on the int strap pulls pin 73");
+        g.in(0x04);
+        CHECK(!g.b.assertsInt(), "and the read drops it");
+    }
+
+    SECTION("IO-4 -- interrupts: independent straps OR into the VI bitmask");
+    {
+        // The card can be pulling several lines at once -- which is why assertsVi() is a mask.
+        Rig             g;
+        ScriptedStream* pb = g.connectParallel("pb");
+        g.set("a", "rx_int", "vi1");  // Serial A receive
+        g.set("pb", "int", "vi5");    // Parallel B input
+        g.a->feed("K");
+        pb->feed("Z");
+        g.pump();
+        CHECK(g.b.assertsVi() == (uint8_t)(viBit(IrqJumper::Vi1) | viBit(IrqJumper::Vi5)),
+              "both sources active at once -> the card pulls VI1 AND VI5");
+    }
+
+    SECTION("IO-4 -- interrupts: a card with no crystal drives nothing");
+    {
+        Io4Board    b;  // never attached to a clock -- the chips are not running
+        std::string err;
+        setUnitProperty(b, "a", "rx_int", "int", err);
+        setUnitProperty(b, "pa", "int", "vi6", err);
+        CHECK(!b.assertsInt(), "no clock: pin 73 stays up regardless of the straps");
+        CHECK(b.assertsVi() == 0, "and no VI line is pulled");
+    }
+
+    SECTION("IO-4 -- interrupts END TO END: Serial A receive on VI2 vectors to RST 2");
+    {
+        // The definitive proof: the strap reaches the BUS. Serial A on VI2 -- a vector (0xD7)
+        // that only a card claiming the IntAck cycle can produce; a floating bus reads 0xFF.
+        IrqRig      g;
+        std::string err;
+        CHECK(setUnitProperty(*g.io, "a", "rx_int", "vi2", err), "Serial A receive -> VI2");
+        g.ctl(0xC0);  // the 88-VI structure enabled
+        CHECK(!g.m.bus.intPending(), "no character yet, so nothing is asking");
+
+        g.a->feed("A");
+        g.io->pump();
+        g.advance();  // the receiver clocks the byte in on the card's own deadline
+        CHECK(g.m.bus.intPending(), "DAV pulls VI2; the 88-VI prioritizes it and pulls pin 73");
+        CHECK(g.vi->winner() == 2, "VI2 is the line being pulled");
+        CHECK(g.intAck() == 0xD7, "-> RST 2 -> 0x0010, a vector only a driven bus can produce");
+
+        g.m.bus.ioRead(0x01);  // read Serial A's data port -- clears DAV
+        CHECK(!g.m.bus.intPending(), "the character was read: VI2 falls and pin 73 with it");
+    }
+
+    SECTION("IO-4 -- interrupts END TO END: a parallel strobe on VI6 vectors to RST 6");
+    {
+        IrqRig      g;
+        std::string err;
+        CHECK(setUnitProperty(*g.io, "pa", "int", "vi6", err), "Parallel A input -> VI6");
+        g.ctl(0xC0);
+        CHECK(!g.m.bus.intPending(), "nothing latched yet");
+
+        g.pa->feed("Z");
+        g.io->pump();  // the strobe sets the service request -- pa is never addressed here
+        CHECK(g.m.bus.intPending(), "the service request pulls VI6; the 88-VI pulls pin 73");
+        CHECK(g.vi->winner() == 6, "VI6 is the line being pulled");
+        CHECK(g.intAck() == rstOpcode(6), "-> RST 6 -> 0x0030");
+
+        g.m.bus.ioRead(0x04);  // read Parallel A -- acknowledge, clearing the service request
+        CHECK(!g.m.bus.intPending(), "the byte was read: VI6 falls and pin 73 with it");
     }
 }
