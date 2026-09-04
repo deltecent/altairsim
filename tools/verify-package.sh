@@ -267,6 +267,16 @@ A>
 A: L80      COM
 EOF
       then _ok=1; fi ;;
+    HDSK)
+      run_piped "$_target" "$_detail" "$root/tests/acceptance/hdsk-dir.keys"
+      if assert_piped "HDSK CP/M ($_cmd)" "$PIPED_OUT" <<EOF
+HDBL 2.00
+48K CP/M 2.2b v1.6
+For MITS 88-HDSK
+A0>
+A: BOOT     ASM
+EOF
+      then _ok=1; fi ;;
     BASIC)
       run_piped "$_target" "$_detail" "$root/tests/acceptance/basic4k.keys"
       if assert_piped "4K BASIC ($_cmd)" "$PIPED_OUT" <<EOF
@@ -345,6 +355,7 @@ while [ "$rec_i" -lt "$nrec" ]; do
   bn=$(basename "$toml_run")
   case $bn in
     cpm22-buffered.toml) dispatch CPM   "$rundir" "$toml_run" "\$ altairsim $arg" ;;
+    hdsk.toml)           dispatch HDSK  "$rundir" "$toml_run" "\$ altairsim $arg" ;;
     basic4k.toml)        dispatch BASIC "$rundir" "$toml_run" "\$ altairsim $arg" ;;
     basic1.toml)
       _cwd=$(cd "$rundir/$(dirname "$toml_run")" && pwd)
