@@ -93,10 +93,14 @@ Io4Board::Io4Board() {
     applyProfile(a_, 0);
     applyProfile(b_, 0);
 
-    // -> NullStream on both channels. There is never a null pointer in the stream path: a
-    // channel with nothing plugged into it has a DEAD line, not a dangling one.
+    // -> NullStream on both serial channels. There is never a null pointer in the stream path:
+    // a channel with nothing plugged into it has a DEAD line, not a dangling one.
     a_.uart.disconnect();
     b_.uart.disconnect();
+
+    // ...and the same for both parallel ports (an 8212 pair with no ribbon on it).
+    pa_.stream = std::make_unique<NullStream>();
+    pb_.stream = std::make_unique<NullStream>();
 }
 
 Io4Board::~Io4Board() = default;
@@ -137,12 +141,22 @@ bool Io4Board::decodePort(uint8_t port, SerialChannel*& ch, bool& isData) const 
     return true;
 }
 
+// The two halves are addressed independently AND exclusively: each answers its own block, and
+// a port BOTH blocks would claim is dead on BOTH (reference "At a glance" -- a deliberate
+// mutual-exclusion, not a bus fight). This is the one place that rule lives.
+Io4Board::Sect Io4Board::sectionAt(uint8_t port) const {
+    bool ser = (uint8_t)(port - base_) < 4;
+    bool par = (uint8_t)(port - par_base_) < 2;
+    if (ser && par) return SectNone;  // contended -- neither section responds
+    if (ser) return SectSerial;
+    if (par) return SectParallel;
+    return SectNone;
+}
+
 bool Io4Board::decodes(const BusCycle& c) const {
     if (!enabled_) return false;
     if (c.type != Cycle::IoRead && c.type != Cycle::IoWrite) return false;
-    SerialChannel* ch     = nullptr;
-    bool           isData = false;
-    return decodePort(c.port(), ch, isData);
+    return sectionAt(c.port()) != SectNone;
 }
 
 // Compose the status byte from the W1/W2 strap map. Each of the six status signals, if
@@ -169,30 +183,86 @@ uint8_t Io4Board::statusByte(const SerialChannel& ch) const {
 }
 
 uint8_t Io4Board::read(const BusCycle& c) {
-    SerialChannel* ch     = nullptr;
-    bool           isData = false;
-    if (!decodePort(c.port(), ch, isData)) return 0xFF;  // decodes() gates this; be defensive
-
-    // The receiver runs on the UART's own clock, not on ours -- advance it before reading.
-    ch->uart.poll(clock_ ? *clock_ : deadCard());
-
-    // The DATA port's read strobe is wired to /RDAR: reading it clears Data Available. The
-    // other port is /SWE -- the synthesized status byte.
-    return isData ? ch->uart.readData() : statusByte(*ch);
+    switch (sectionAt(c.port())) {  // decodes() gates this; be defensive about the rest
+    case SectSerial: {
+        SerialChannel* ch     = nullptr;
+        bool           isData = false;
+        decodePort(c.port(), ch, isData);
+        // The receiver runs on the UART's own clock, not on ours -- advance it before reading.
+        ch->uart.poll(clock_ ? *clock_ : deadCard());
+        // The DATA port's read strobe is wired to /RDAR: reading it clears Data Available. The
+        // other port is /SWE -- the synthesized status byte.
+        return isData ? ch->uart.readData() : statusByte(*ch);
+    }
+    case SectParallel:
+        return parallelRead(*parallelAt(c.port()));
+    default:
+        return 0xFF;
+    }
 }
 
 void Io4Board::write(const BusCycle& c) {
-    SerialChannel* ch     = nullptr;
-    bool           isData = false;
-    if (!decodePort(c.port(), ch, isData)) return;
-
-    if (isData) {
-        // The chip's /TDS strobe: the character goes out, TBMT falls until it has left.
-        ch->uart.writeData(c.data, clock_ ? *clock_ : deadCard());
+    switch (sectionAt(c.port())) {
+    case SectSerial: {
+        SerialChannel* ch     = nullptr;
+        bool           isData = false;
+        decodePort(c.port(), ch, isData);
+        if (isData) {
+            // The chip's /TDS strobe: the character goes out, TBMT falls until it has left.
+            ch->uart.writeData(c.data, clock_ ? *clock_ : deadCard());
+            return;
+        }
+        // OUT to the status/control port: ACCEPTED AND DISCARDED. The 1602 UART has no control
+        // register -- word format is soldered pins (S1/S2), not a byte the guest can write.
         return;
     }
-    // OUT to the status/control port: ACCEPTED AND DISCARDED. The 1602 UART has no control
-    // register -- word format is soldered pins (S1/S2), not a byte the guest can write.
+    case SectParallel:
+        parallelWrite(*parallelAt(c.port()), c.data);
+        return;
+    default:
+        return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The parallel section -- four 8212 latched ports on a 2-port block (switch S4).
+// ---------------------------------------------------------------------------
+
+Io4Board::ParallelChannel* Io4Board::parallelAt(uint8_t port) {
+    uint8_t off = (uint8_t)(port - par_base_);
+    if (off == 0) return &pa_;  // Parallel A at PAR+0
+    if (off == 1) return &pb_;  // Parallel B at PAR+1
+    return nullptr;             // sectionAt() has already gated this
+}
+
+Io4Board::ParallelChannel& Io4Board::sibling(ParallelChannel& pc) {
+    return &pc == &pa_ ? pb_ : pa_;
+}
+
+// Read a parallel input port: hand over the latched byte, overlay any strapped data-available
+// flag (§3.2.2), and acknowledge -- the CPU read clears THIS port's service request.
+uint8_t Io4Board::parallelRead(ParallelChannel& pc) {
+    uint8_t v = pc.inLatch;
+
+    // The status/data console strap: a data-available flag jumpered onto one bit of this port's
+    // read, sourced from this port's own service request or its sibling's (external wiring, so
+    // it drives the bit either way -- set or clear -- rather than OR-ing over the data).
+    if (pc.davBit >= 0) {
+        bool waiting = pc.davFromSibling ? sibling(pc).srq : pc.srq;
+        bool bit     = pc.davActiveLow ? !waiting : waiting;
+        uint8_t mask = (uint8_t)(1u << pc.davBit);
+        if (bit) v |= mask;
+        else     v = (uint8_t)(v & ~mask);
+    }
+
+    pc.srq = false;  // acknowledge: reading the port raises INT again (clears the FF)
+    return v;
+}
+
+// Write a parallel output port: latch the byte and send it down the line.
+void Io4Board::parallelWrite(ParallelChannel& pc, uint8_t v) {
+    pc.outReg = v;
+    pc.stream->writeByte(v);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +275,14 @@ void Io4Board::reset(Reset) {
     const Clock& clk = clock_ ? *clock_ : deadCard();
     a_.uart.masterReset(clk);
     b_.uart.masterReset(clk);
+    // POC/RESET clears the 8212 latches and the service-request flip-flops. The LINES STAY
+    // CONNECTED -- a warm reset does not unplug a ribbon.
+    for (ParallelChannel* pc : {&pa_, &pb_}) {
+        pc->inLatch = 0;
+        pc->outReg  = 0;
+        pc->srq     = false;
+        pc->stream->flush();
+    }
 }
 
 void Io4Board::power() { reset(Reset::PowerOn); }
@@ -217,6 +295,17 @@ void Io4Board::pump() {
     if (clock_) {
         a_.uart.poll(*clock_);
         b_.uart.poll(*clock_);
+    }
+    // A byte the far end sends IS the external strobe: latch it and set the service-request FF
+    // (which the CPU clears by reading the port). The latch is one byte deep, so a byte waits
+    // until read -- exactly the 8212's held state on the strobe's falling edge.
+    for (ParallelChannel* pc : {&pa_, &pb_}) {
+        pc->stream->pump();
+        pc->stream->flush();
+        if (!pc->srq && pc->stream->readable()) {
+            pc->inLatch = pc->stream->readByte();
+            pc->srq     = true;
+        }
     }
 }
 
@@ -238,14 +327,25 @@ void Io4Board::serialize(StateWriter& w) const {
     Board::serialize(w);  // enabled_
     a_.uart.serialize(w);
     b_.uart.serialize(w);
-    // The straps (status map, polarity, PR, base) are CONFIG -- re-applied from TOML into a
-    // machine built from the same file a snapshot restores into -- so they do not travel.
+    // The parallel 8212 latches and service-request FFs are RUNTIME state and travel. (The
+    // straps -- status map, polarity, PR, base, the DAV wiring -- are CONFIG re-applied from
+    // the same TOML a snapshot restores into, so none of those travel.)
+    for (const ParallelChannel* pc : {&pa_, &pb_}) {
+        w.u8(pc->inLatch);
+        w.u8(pc->outReg);
+        w.boolean(pc->srq);
+    }
 }
 
 void Io4Board::deserialize(StateReader& r) {
     Board::deserialize(r);
     a_.uart.deserialize(r);
     b_.uart.deserialize(r);
+    for (ParallelChannel* pc : {&pa_, &pb_}) {
+        pc->inLatch = r.u8();
+        pc->outReg  = r.u8();
+        pc->srq     = r.boolean();
+    }
 }
 
 std::vector<std::string> Io4Board::drainLog() {
@@ -254,6 +354,10 @@ std::vector<std::string> Io4Board::drainLog() {
     for (SerialChannel* ch : {&a_, &b_})
         for (auto& s : ch->uart.drainLog())
             out.push_back(id + ":" + ch->uart.name() + " " + std::move(s));
+    // ...and whatever the far end of a parallel line has to say (a printer that could not spool).
+    for (ParallelChannel* pc : {&pa_, &pb_})
+        for (auto& s : pc->stream->drainLog())
+            out.push_back(id + ":" + pc->name + " " + std::move(s));
     return out;
 }
 
@@ -269,6 +373,13 @@ Io4Board::SerialChannel* Io4Board::channel(const std::string& u) {
 }
 const Io4Board::SerialChannel* Io4Board::channel(const std::string& u) const {
     return const_cast<Io4Board*>(this)->channel(u);
+}
+
+Io4Board::ParallelChannel* Io4Board::parallelChannel(const std::string& u) {
+    std::string n = lowerAscii(u);
+    if (n == "pa") return &pa_;
+    if (n == "pb") return &pb_;
+    return nullptr;
 }
 
 std::vector<Property> Io4Board::properties() {
@@ -292,6 +403,31 @@ std::vector<Property> Io4Board::properties() {
                 return false;
             }
             base_ = (uint8_t)v.i();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    // Switch S4: the parallel 2-port block base. A7-A1, so a multiple of 2. Parallel A at
+    // PAR+0, Parallel B at PAR+1. Independent of the serial block -- and if the two overlap,
+    // neither section answers the contended ports (sectionAt()).
+    {
+        Property x;
+        x.name  = "par_port";
+        x.help  = "Parallel base address (switch S4) -- a 2-PORT BLOCK, so a multiple of 2. "
+                  "Parallel A (J6-in/J5-out) at BASE, Parallel B (J4-in/J3-out) at BASE+1. If "
+                  "it overlaps the serial block, neither section answers the shared ports";
+        x.kind  = Kind::Int;
+        x.radix = 16;  // ON THE WIRE -> HEX (DESIGN.md 10.0.1)
+        x.min   = 0;
+        x.max   = 0xFE;
+        x.get   = [this] { return Value::ofInt(par_base_); };
+        x.set   = [this](const Value& v, std::string& err) {
+            if (v.i() & 1) {
+                err = "the IO-4 parallel section decodes a 2-port block -- the base must be a "
+                      "multiple of 2";
+                return false;
+            }
+            par_base_ = (uint8_t)v.i();
             return true;
         };
         p.push_back(std::move(x));
@@ -471,15 +607,87 @@ std::vector<Property> Io4Board::channelProperties(SerialChannel& ch) {
 }
 
 std::vector<Property> Io4Board::unitProperties(const std::string& unit) {
-    SerialChannel* ch = channel(unit);
-    if (!ch) return {};
-    return channelProperties(*ch);
+    if (SerialChannel* ch = channel(unit)) return channelProperties(*ch);
+    if (ParallelChannel* pc = parallelChannel(unit)) return parallelProperties(*pc);
+    return {};
+}
+
+// The line and the status/data console straps for one parallel port, captured by pointer
+// (the ParallelChannel members never move). Shared by unitProperties("pa") and ("pb").
+std::vector<Property> Io4Board::parallelProperties(ParallelChannel& pc) {
+    std::vector<Property> p;
+    ParallelChannel* cp = &pc;  // stable: the port members never move
+    {
+        Property x;
+        x.name = "connect";
+        x.help = "The endpoint on this parallel port's line (CONNECT sets this): a file, "
+                 "socket, printer, in:/out: file, null. A WRITE latches out; a byte the far "
+                 "end sends is strobed into the input latch";
+        x.kind = Kind::Str;
+        x.get  = [cp] { return Value::ofStr(cp->stream->describe()); };
+        x.set  = [this, cp](const Value& v, std::string& err) { return connect(cp->name, v.s(), err); };
+        p.push_back(std::move(x));
+    }
+    // The §3.2.2 status/data console strap: put a data-available flag onto a bit of this port's
+    // read. `dav_source` chooses whose service request (this port's or its sibling's -- the
+    // console idiom reads the DATA port's flag at the STATUS port), `dav_active_low` its sense.
+    {
+        Property x;
+        x.name    = "dav_bit";
+        x.help    = "Data-bus bit a data-available flag is jumpered onto when this port is read "
+                    "(§3.2.2 status/data console): 0-7, or none";
+        x.kind    = Kind::Enum;
+        x.choices = {"none", "0", "1", "2", "3", "4", "5", "6", "7"};
+        x.get     = [cp] {
+            int b = cp->davBit;
+            return Value::ofStr(b < 0 ? std::string("none") : std::string(1, (char)('0' + b)));
+        };
+        x.set = [cp](const Value& v, std::string&) {
+            cp->davBit = (v.s() == "none") ? -1 : (int)(v.s()[0] - '0');
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name    = "dav_source";
+        x.help    = "Whose service request the dav_bit shows: self (this port's) or sibling "
+                    "(the other parallel port's -- the status/data console reads the data "
+                    "port's flag at the status port)";
+        x.kind    = Kind::Enum;
+        x.choices = {"self", "sibling"};
+        x.get     = [cp] { return Value::ofStr(cp->davFromSibling ? "sibling" : "self"); };
+        x.set     = [cp](const Value& v, std::string&) {
+            cp->davFromSibling = (v.s() == "sibling");
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
+        x.name = "dav_active_low";
+        x.help = "Present the data-available flag active-low -- the dav_bit reads 0 when a byte "
+                 "is waiting (§3.2.2 \"D0 going low\"). Off = active-high";
+        x.kind = Kind::Bool;
+        x.get  = [cp] { return Value::ofBool(cp->davActiveLow); };
+        x.set  = [cp](const Value& v, std::string&) {
+            cp->davActiveLow = v.b();
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    return p;
 }
 
 std::vector<UnitDef> Io4Board::units() const {
     return {
         {"a", UnitKind::Serial, a_.uart.endpoint()},
         {"b", UnitKind::Serial, b_.uart.endpoint()},
+        // The parallel ports are CONNECTable byte-stream lines too (UnitKind::Serial is the
+        // connect-an-endpoint kind), but they are not consoles -- keep the RUN banner from
+        // ever naming one as "the console".
+        {"pa", UnitKind::Serial, pa_.stream->describe(), false, false, false},
+        {"pb", UnitKind::Serial, pb_.stream->describe(), false, false, false},
     };
 }
 
@@ -497,13 +705,26 @@ std::vector<MapEntry> Io4Board::ioMap() const {
     std::vector<MapEntry> m;
     for (auto& e : rows(a_, base_, "Serial A")) m.push_back(e);
     for (auto& e : rows(b_, (uint8_t)(base_ + 2), "Serial B")) m.push_back(e);
+    // The parallel 2-port block (switch S4): each address is an input latch (R) and an output
+    // latch (W).
+    m.push_back({(uint32_t)par_base_, (uint32_t)par_base_, "read/write",
+                 "Parallel A -- J6 input (R) / J5 output (W)"});
+    m.push_back({(uint32_t)(par_base_ + 1), (uint32_t)(par_base_ + 1), "read/write",
+                 "Parallel B -- J4 input (R) / J3 output (W)"});
     return m;
 }
 
+// The board has no unit '<unit>' -- name all four for the operator.
+static std::string noUnit(const std::string& unit) {
+    return "io4 has no unit '" + unit +
+           "' -- serial channels are 'a'/'b', parallel ports are 'pa'/'pb'";
+}
+
 bool Io4Board::connect(const std::string& unit, const std::string& ep, std::string& err) {
-    SerialChannel* ch = channel(unit);
-    if (!ch) {
-        err = "io4 has no unit '" + unit + "' -- its serial channels are 'a' and 'b'";
+    SerialChannel*   sc = channel(unit);
+    ParallelChannel* pc = sc ? nullptr : parallelChannel(unit);
+    if (!sc && !pc) {
+        err = noUnit(unit);
         return false;
     }
     if (!g_resolver) {
@@ -522,34 +743,43 @@ bool Io4Board::connect(const std::string& unit, const std::string& ep, std::stri
         for (const std::string& pth : paths) err += pathNote(pth);
         return false;
     }
-    ch->uart.connect(std::move(s));  // the chip owns the line and brings it up to the straps
+    if (sc) sc->uart.connect(std::move(s));  // the chip owns the line and brings it up to the straps
+    else    pc->stream = std::move(s);       // the 8212 pair drives it verbatim -- no framing
     return true;
 }
 
 bool Io4Board::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
                              std::string& err) {
-    SerialChannel* ch = channel(unit);
-    if (!ch) {
-        err = "io4 has no unit '" + unit + "' -- its serial channels are 'a' and 'b'";
-        return false;
+    if (SerialChannel* sc = channel(unit)) {
+        sc->uart.connect(std::move(s));
+        return true;
     }
-    ch->uart.connect(std::move(s));
-    return true;
+    if (ParallelChannel* pc = parallelChannel(unit)) {
+        pc->stream = std::move(s);
+        return true;
+    }
+    err = noUnit(unit);
+    return false;
 }
 
 bool Io4Board::disconnect(const std::string& unit, std::string& err) {
-    SerialChannel* ch = channel(unit);
-    if (!ch) {
-        err = "io4 has no unit '" + unit + "' -- its serial channels are 'a' and 'b'";
-        return false;
+    if (SerialChannel* sc = channel(unit)) {
+        sc->uart.disconnect();
+        return true;
     }
-    ch->uart.disconnect();
-    return true;
+    if (ParallelChannel* pc = parallelChannel(unit)) {
+        pc->stream = std::make_unique<NullStream>();
+        pc->srq    = false;
+        return true;
+    }
+    err = noUnit(unit);
+    return false;
 }
 
 ByteStream* Io4Board::unitStream(const std::string& unit) {
-    SerialChannel* ch = channel(unit);
-    return ch ? &ch->uart.stream() : nullptr;
+    if (SerialChannel* sc = channel(unit)) return &sc->uart.stream();
+    if (ParallelChannel* pc = parallelChannel(unit)) return pc->stream.get();
+    return nullptr;
 }
 
 } // namespace altair

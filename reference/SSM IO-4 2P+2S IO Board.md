@@ -24,9 +24,12 @@ bits (headers W1/W2), either polarity (the U18/U16 74367/74368 buffer), and per-
 reversal (S1/S2-PR), presettable from named host personalities (`altair-rev1` — the default
 and the SSM 8080 monitor console — plus `altair-rev0`, `i8251`, `proctech`, `imsai`, and
 `custom`). (This is not the generic strap board — that is `gsio`, on the chip-less
-`src/boards/strapserial.h`.) The **parallel ports** and the interrupts are later phases; the
-**current-loop/EIA electrical options are out of scope** — this reference documents them for
-completeness.
+`src/boards/strapserial.h`.) The **parallel section is also emulated**: four 8212 latched ports —
+two in (J4/J6), two out (J3/J5) — each input carrying a service-request flip-flop, on their own
+2-port block (switch S4), with the §3.2.2 status/data console flag strappable across ports. The
+two halves are mutually exclusive on any address overlap. The **interrupts** (header W4) are a
+later phase; the **current-loop/EIA electrical options are out of scope** — this reference
+documents them for completeness.
 
 ---
 
