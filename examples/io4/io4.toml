@@ -1,0 +1,70 @@
+# An Altair with an SSM IO-4 (2P + 2S) board as its console.
+#
+#     cd examples/io4 && altairsim io4.toml
+#
+# The IO-4 is SSM's combined I/O card: two full-duplex serial channels AND four
+# latched 8212 parallel ports on one board. Here its Serial A channel is the
+# console, strapped (out of the box) for the SSM 8080 System Monitor, which this
+# machine boots from a ROM at F000. Serial B and the two parallel ports are along
+# for the ride -- SHOW io40 lists them all.
+#
+# The console is the io4's default profile, altair-rev1 (DAV = D0, TBMT = D7,
+# status inverted), which is exactly the SIO-Rev-0 convention the monitor's own
+# console driver expects: status/data at ports 0/1, "ready" on bit 0.
+#
+# WHAT YOU SEE: the machine cold-starts the monitor (startup RUN F000) and prints
+#
+#     MONITOR V1.0
+#     .
+#
+# Try the monitor's commands at the '.' prompt -- e.g. X (examine the registers).
+# See the README beside this file and reference/SSM IO-4 2P+2S IO Board.md.
+
+[machine]
+name    = "io4"
+startup = ["RUN F000"]                 # cold-start the SSM 8080 monitor at its ORG
+
+# THE CPU. A stock 8080; clock_hz = 0 runs it flat out.
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+# THE IO-4. Serial A (ports 0/1) is the console; the board ships strapped
+# altair-rev1, the SSM monitor's console convention, so no straps are needed
+# here. Serial B answers 2/3, and the parallel section its own block at 4/5 --
+# SHOW io40 lists every unit.
+[[board]]
+type = "io4"
+id   = "io40"
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# 60K OF RAM (0000-EFFF) + the SSM 8080 monitor as a ROM at F000-F7FF. The top of
+# RAM must stop below the ROM: the monitor sizes memory at cold start and puts its
+# stack at the top it finds, so an all-RAM machine would let it climb into its own
+# image. Real static RAM does not come up zeroed.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "60K"                         # 0000-EFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = F000
+  mount = "builtin:ssm-8080mon"        # SSM 8080 System Monitor V1.0

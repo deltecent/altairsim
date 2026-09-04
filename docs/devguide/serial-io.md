@@ -305,6 +305,49 @@ TX-empty interrupt would storm (TBMT is asserted at idle). This is the right sha
 to *reach* an abstract serial interface some software expects, not to reproduce a particular
 board's silicon.
 
+## Adding an IO-4 profile
+
+The chip-backed `io4` (`src/boards/io4.{h,cpp}`, the SSM IO-4) is worth its own note, because the
+cheapest useful change you can make to a serial board lives there: **teaching it a new host
+personality**. Unlike `gsio`'s strap presets — a `dav`/`tbmt` bit pair — an IO-4 **profile** is a
+richer bundle, because the real card's W1/W2 headers strap *six* status signals to any data bit,
+through a buffer of either polarity, with the status and data ports optionally swapped. A profile is
+that whole map:
+
+```cpp
+struct Io4Profile {
+    const char* name;
+    const char* help;
+    int         stat[Io4Board::kNumStat];  // Dav, Ror, Rpe, Rfe, Teoc, Tbmt; -1 = not jumpered
+    bool        invert;                     // 74368 negative sense if true, 74367 positive if false
+    bool        pr;                         // S1/S2-PR: swap the status/data addresses
+};
+```
+
+They live in one table, `io4Profiles()` (anonymous namespace in `io4.cpp`), transcribed from the
+IO-4 manual's applications section. To add a personality, **add a row** — for example the Rev-1
+Altair console the SSM 8080 monitor wants:
+
+```cpp
+{"altair-rev1",
+ "Altair 88-SIO Rev 1 / the SSM 8080 monitor console: DAV=D0, TBMT=D7, status inverted",
+ {/*Dav*/ 0, /*Ror*/ -1, /*Rpe*/ -1, /*Rfe*/ -1, /*Teoc*/ -1, /*Tbmt*/ 7}, true, false},
+```
+
+and its `name` becomes a `profile` choice, appears in `SHOW`, tab completion and the generated board
+reference, and needs no other edit. `applyProfile()` copies the row onto a channel's live straps;
+`profileName()` runs the comparison the other way — it reports whichever profile the current straps
+*match*, or `custom` if none does, so there is no stored profile field to drift out of sync with a
+hand-tweaked strap. That last point is the discipline: **the straps are the truth, the profile name
+is a read-back.** A row is only ever a preset, never state.
+
+Two things to respect when writing a row. Strap an **error flag** (ROR/RPE/RFE) if the host's status
+layout has one — `i8251` does — even though the emulated UART reports it always-inactive: a driver
+that masks the bit still sees the right byte shape, and inventing line-noise to make it toggle is
+exactly the behavior the hardware never had. And `pr: true` **swaps the two port addresses** for that
+channel (data first, status last) — `imsai` needs it — which the addressing code reads back out of
+the same strap, so a profile and a hand-set `port_reversal` cannot disagree.
+
 ## How to add a serial board
 
 The general playbook is `adding-a-board.md`; the serial-specific steps on top of it:

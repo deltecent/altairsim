@@ -1009,6 +1009,17 @@ add_test(NAME acceptance-pb1
 set_tests_properties(acceptance-pb1 PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # ---------------------------------------------------------------------------
+# THE SSM IO-4: the shipped example machine boots the SSM 8080 monitor on a real IO-4
+# serial console, in the layout a user gets (no repository beside it).
+add_test(NAME acceptance-io4
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/io4.cmake)
+set_tests_properties(acceptance-io4 PROPERTIES LABELS acceptance TIMEOUT 120)
+
+# ---------------------------------------------------------------------------
 # THE HOST BRIDGE: a file crosses into CP/M and comes back byte for byte.
 #
 # ONE TEST, AND A SECOND MODE OF THE SAME SCRIPT THAT IS RUN BY HAND.
