@@ -540,6 +540,7 @@ add_library(altair_core STATIC
   src/boards/pmmi-mm103.cpp
   src/boards/strapserial.cpp   # chip-less strap-serial engine (gsio + propio)
   src/boards/gsio.cpp          # generic strap-serial board: two channels
+  src/boards/io4.cpp           # SSM IO-4: real chip-backed dual-UART serial board (2P+2S; serial section)
   src/boards/propio.cpp        # Console IO Board: a single-channel strap-serial subtype (Parallax-Propeller console)
   src/boards/v2z80rom.cpp     # S100Computers V2 Z80 CPU board: onboard paged monitor EEPROM
   src/boards/proctech-sol.cpp
@@ -771,6 +772,7 @@ add_executable(altair_tests
   tests/test_papertape.cpp
   tests/test_pmmi.cpp
   tests/test_gsio.cpp
+  tests/test_io4.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_tee.cpp

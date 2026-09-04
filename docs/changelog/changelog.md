@@ -22,6 +22,16 @@ receive only — no programmable word length, parity or stop bits; a specific ca
 those is a separate, fully emulated board. The `propio` Console IO Board is unchanged — a
 single-channel console riding the same strap engine.
 
+That separate, fully emulated board now exists: the **SSM IO-4** (`io4`), the real Solid State
+Music 2P+2S card. Where `gsio` describes a serial port by its straps, this one models the actual
+silicon — the two 1602-family UARTs (Serial A and Serial B) the board carried — so each channel
+has a real **programmable word length (5–8 data bits), parity and stop bits**, set per channel
+under `[board.unit.a]` / `[board.unit.b]`. The serial section answers as a 4-port block on a
+4-port boundary (switch S3): in the default layout Serial A is at ports 0/1 and Serial B at 2/3,
+which is exactly the console an SSM 8080 System Monitor boots on. `CONNECT` each channel to a
+file, socket, serial port or `in:`/`out:` paper tape. This is the board's serial half; its
+parallel ports and interrupts are still to come.
+
 A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
 and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks
 — over the network instead. Once mounted it behaves like any other disk: the guest reads and

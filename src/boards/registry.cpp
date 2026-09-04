@@ -39,6 +39,7 @@
 #include "boards/ssm-pb1.h"
 #include "boards/tarbell.h"
 #include "boards/gsio.h"
+#include "boards/io4.h"
 #include "boards/propio.h"
 #include "boards/v2z80rom.h"
 #include "boards/mits-2sio.h"
@@ -108,6 +109,7 @@ std::vector<BoardType> boardTypes() {
         {"pb1", "SSM PB1: 2708/2716 EPROM programmer + on-board EPROM board. A 4K programming-socket window (default D000, sockets U22=2708/U23=2716) and one control port (default 10): OUT arms the board and picks the chip (D0=2708, D1=2716), then a window write burns a byte and a window read disarms it. Save the burn to a host hex file with `SAVE file window`. Optional read-only on-board EPROM area via [[board.prom]] (at + mount). The board ships no firmware -- run any 2708/2716 burner; SSM's own from the PB1 manual is in examples/pb1"},
         {"pmmi", "PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0..3 (default C0), read/write different registers. Transmit/receive over a ByteStream; CONNECT it to in:/out: files. No dialer; modem status is a fixed stub"},
         {"gsio", "Generic SIO: a strap-configurable serial board with TWO independent channels, units 'a' and 'b' (configure each under [board.unit.a] / [board.unit.b]). Basic transmit/receive only -- no programmable word length, parity, stop bits or framing/overrun status; a specific card that needs those is a separate emulated board. Per channel you strap: a status/control port (status_port -- read synthesizes DAV/TBMT at bit positions you pick, write is discarded) and a data port (data_port); one inverter_gate knob inverts both status bits together. Built-in profiles preset the straps: profile=sior0 (MITS SIO Rev 0, the default) | tuart (Cromemco TU-ART) | imsai-sio2 | compupro-if2 (CompuPro Interfacer II) | compupro-ss1 (CompuPro System Support 1). Channel a defaults to ports 0/1, b to 2/3. Polled, no interrupts. CONNECT each channel to a file, socket, serial port, in:/out:"},
+        {"io4", "SSM IO-4 (2P+2S): the real Solid State Music board, two independent full-duplex serial channels (units 'a'/'b') on a real 1602-family UART -- programmable word length (data_bits 5-8), parity and stop bits, unlike the generic gsio. A 4-port block set by switch S3 (default 0-3): Serial A status/data at BASE+0/+1, Serial B at BASE+2/+3. Configure each channel's format under [board.unit.a] / [board.unit.b]; CONNECT each to a file, socket, serial port, in:/out:. The parallel section and interrupts are separate phases"},
         {"propio", "S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A strap-configurable serial subtype preset to the board's documented convention: status/data at 00/01, RX-ready = status bit 1, TX-ready = status bit 2, both active high. Every strap (status_port/data_port/dav/tbmt/inverter_gate) is still overridable -- the real board is jumpered. Polled, no interrupts. CONNECT it to a file, socket, serial port, in:/out:"},
         {"v2z80rom", "S100Computers V2 Z80 CPU board -- its onboard paged monitor EEPROM (the Z80 itself is board 'z80cpu'). An 8K 28C64 at F000-FFFF holding two 4K pages, builtin:master0 (low) / master1 (high), selected by OUT D3H bit1 (bit0=1 inactivates the EEPROM so RAM shows through). Shadows RAM in its window while enabled. Cold-start the MASTER monitor with startup=[\"RUN F000\"]; the 'I' command boots CP/M 3 off a dualsd card"},
     };
@@ -156,6 +158,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "pb1") return std::make_unique<Pb1Board>();
     if (type == "pmmi") return std::make_unique<PmmiBoard>();
     if (type == "gsio") return std::make_unique<GsioBoard>();
+    if (type == "io4") return std::make_unique<Io4Board>();
     if (type == "propio") return std::make_unique<PropIoBoard>();
     if (type == "v2z80rom") return std::make_unique<V2Z80RomBoard>();
     return nullptr;
