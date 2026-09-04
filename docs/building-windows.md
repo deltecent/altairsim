@@ -191,7 +191,7 @@ deliberately not added here. MSVC warnings stay visible in the log but non-fatal
 ## 3. Smoke test
 
 ```powershell
-build\Release\altairsim.exe --version        # prints "AltairSim 0.1.0-…"
+build\Release\altairsim.exe --version        # prints "AltairSim 1.0.0-…"
 build\Release\altairsim.exe --list           # lists built-in machines (original, default, minidisk, ...)
 build\Release\altairsim.exe -x "help" default   # boots the default machine, runs one command, exits
 build\Release\altairsim.exe                  # interactive: front panel + monitor

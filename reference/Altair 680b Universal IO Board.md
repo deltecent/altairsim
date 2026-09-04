@@ -16,7 +16,7 @@ slot** and carries three logical ports built from two standard Motorola peripher
 
 It also provides a fixed **8-bit non-latched parallel output** and a set of **hardware
 switch inputs** ("sense" bits). This is the 680-side counterpart to the 8800 family's
-[88-PIO/88-4PIO](88-PIO%20%26%2088-4PIO.md) and [88-SIO/2SIO](88-SIO%20Rev%200%20%26%201.md)
+[88-PIO](MITS%2088-PIO.md)/[88-4PIO](MITS%2088-4PIO.md) and [88-SIO/2SIO](88-SIO%20Rev%200%20%26%201.md)
 boards — same chips (6820/6850), different (memory-mapped, active-**high**) host wrapper.
 See [[altairsim-pio-boards]], [[serial-io-architecture]], [[altairsim-88uio-board]].
 

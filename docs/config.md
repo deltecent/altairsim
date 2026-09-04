@@ -234,7 +234,7 @@ history = 100              # command lines kept in .altairsim_history (per launc
                            #   Default 50; 0 turns the file off.
 ```
 
-`rows`, `cols`, `pace`, `ansi`, `tabs` and `log` are specified in DESIGN.md §7.2 but **not built yet**.
+`rows`, `cols`, `pace`, `ansi` and `tabs` are specified in DESIGN.md §7.2 but **not built yet**.
 
 ### A second 2SIO — same type, own config, different base port
 

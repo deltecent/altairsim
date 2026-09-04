@@ -365,7 +365,7 @@ A>LOAD R
 ```
 
 That is not a different technique, only a longer paste — about 28 KB instead of 4.8 — and it is
-how the committed `.COM` files in this repository were built in the first place. If you only
+how the `.COM` files that ship on the `hostbridge` disk were built in the first place. If you only
 want to *run* the utility, paste the HEX; it is six times shorter and needs no assembler on the
 disk.
 

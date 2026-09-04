@@ -1202,7 +1202,7 @@ The PROM sockets are a list, like a memory card's regions:
 
 ```
 [[board.socket]]
-at    = FC00        # socket L1 — the hard-disk loader
+at    = 0xFC00      # socket L1 — the hard-disk loader
 mount = "builtin:hdbl"
 ```
 
