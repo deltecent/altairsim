@@ -11,6 +11,7 @@
 #include "boards/mits-turnkey.h"
 #include "boards/pmmi-mm103.h"
 #include "boards/gsio.h"
+#include "boards/io4.h"
 #include "boards/cromemco-16fdc.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/cromemco-dazzler.h"
@@ -258,6 +259,7 @@ int main(int argc, char** argv) {
     Vdb8024Board::setResolver(resolveEndpoint);  // its keyboard connects to an endpoint
     PmmiBoard::setResolver(resolveEndpoint);     // the modem's phone line is an endpoint
     StrapSerialBoard::setResolver(resolveEndpoint);  // the gsio / propio strap-serial family's lines
+    Io4Board::setResolver(resolveEndpoint);          // the real SSM IO-4's two UART channels
     CromemcoFdcBoard::setResolver(resolveEndpoint);  // the FDC family's TMS 5501 console (16/64FDC)
     FrontPanelBoard::setResolver(resolveEndpoint);   // the fp panel dials OUT to the graphical bridge
     Ss1Board::setResolver(resolveEndpoint);          // the System Support 1's 2651 serial channel

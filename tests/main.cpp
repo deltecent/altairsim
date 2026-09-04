@@ -16,6 +16,7 @@
 #include "boards/cromemco-16fdc.h"
 #include "boards/pmmi-mm103.h"
 #include "boards/gsio.h"
+#include "boards/io4.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/compupro-ss1.h"
@@ -103,6 +104,7 @@ const struct {
     {"sio2", test_sio2},
     {"tms5501", test_tms5501},
     {"gsio", test_gsio},
+    {"io4", test_io4},
     {"propio", test_propio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},
@@ -184,6 +186,7 @@ int main(int argc, char** argv) {
     altair::Vdb8024Board::setResolver(altair::resolveEndpoint);
     altair::PmmiBoard::setResolver(altair::resolveEndpoint);
     altair::StrapSerialBoard::setResolver(altair::resolveEndpoint);
+    altair::Io4Board::setResolver(altair::resolveEndpoint);
     altair::CromemcoFdcBoard::setResolver(altair::resolveEndpoint);
     altair::FrontPanelBoard::setResolver(altair::resolveEndpoint);
     altair::Ss1Board::setResolver(altair::resolveEndpoint);
