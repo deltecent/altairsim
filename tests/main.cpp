@@ -15,7 +15,7 @@
 #include "boards/mits-turnkey.h"
 #include "boards/cromemco-16fdc.h"
 #include "boards/pmmi-mm103.h"
-#include "boards/io4.h"
+#include "boards/gsio.h"
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/compupro-ss1.h"
@@ -102,7 +102,7 @@ const struct {
     {"dma", test_dma},
     {"sio2", test_sio2},
     {"tms5501", test_tms5501},
-    {"io4", test_io4},
+    {"gsio", test_gsio},
     {"propio", test_propio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},

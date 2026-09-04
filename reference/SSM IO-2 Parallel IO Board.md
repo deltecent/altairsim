@@ -27,7 +27,7 @@ This is a distilled emulation reference: the address decoder, the two committed 
 their control jumpers, and the two optional personalities (serial, PROM). **This board is not
 emulated** — no `io2` board exists in `src/boards/` (the unrelated `sio2port` chip is the 2SIO,
 not this card); this file is period documentation. Its larger sibling the **SSM IO-4** *is*
-emulated as the generic strap-serial board (`io4`, `src/boards/io4.h`).
+emulated as the generic strap-serial board (`gsio`, `src/boards/gsio.h`).
 
 ---
 

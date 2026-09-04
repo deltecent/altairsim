@@ -372,26 +372,27 @@ The parallel ports, timer and interrupts of the real card are a later phase; the
 
 ---
 
-## `io4` — SSM IO-4, the strap-configurable serial board
+## `gsio` — the generic strap-configurable serial board
 
 Most serial boards in this list model **one specific chip** — the 2SIO's 6850, the SBC's 8251, the
-88-SIO's COM2502 — so the software has to be written for that chip. The **SSM IO-4** is the other
-kind: it has no fixed chip to imitate. You **describe** the port with straps — which port is
-status/control, which is data, which status bit means a byte is waiting (`dav`), which means the
-transmitter is ready (`tbmt`), and whether the shared **`inverter_gate`** flips their sense — and
+88-SIO's COM2502 — so the software has to be written for that chip. **`gsio`** is the other kind: a
+generic serial board with no fixed chip to imitate. You **describe** the port with straps — which
+port is status/control, which is data, which status bit means a byte is waiting (`dav`), which means
+the transmitter is ready (`tbmt`), and whether the shared **`inverter_gate`** flips their sense — and
 that description *is* the port. It is the general-purpose serial board for reaching whatever polled
 "read a status bit, then a data byte" interface a piece of software expects.
 
-The real IO-4 carries **two independent serial channels**, and so does this board: units **`a`** and
-**`b`**, each with its own straps, `baud` and `connect` endpoint, configured under its own
-`[board.unit.a]` / `[board.unit.b]` table in a machine file. By default `a` answers ports `0`/`1`
-and `b` answers `2`/`3`. (The real board's parallel ports are not modeled.)
+It carries **two independent serial channels**, units **`a`** and **`b`**, each with its own straps,
+`baud` and `connect` endpoint, configured under its own `[board.unit.a]` / `[board.unit.b]` table in
+a machine file. By default `a` answers ports `0`/`1` and `b` answers `2`/`3`.
 
 You rarely set the straps by hand. A **profile** presets them to imitate a known card: **`sior0`**
 (MITS SIO Rev 0 — the default, what the SSM 8080 monitor expects), `tuart` (Cromemco TU-ART),
 `imsai-sio2`, `compupro-if2` (CompuPro Interfacer II), `compupro-ss1` (CompuPro System Support 1).
-Pick a profile per channel, then override any individual strap afterward — the real board is
-jumpered, and so is this one. The board is polled, with no interrupts.
+Pick a profile per channel, then override any individual strap afterward — a jumpered board, and so
+is this one. The board is polled, with no interrupts, and does **basic transmit and receive only**:
+it does not emulate programmable word length, parity or stop bits. A specific card that needs those
+is a separate, fully emulated board.
 
 ---
 
@@ -403,7 +404,7 @@ console, unit `serial` — you `CONNECT` it to a terminal, a file, a socket or a
 other serial board. It is the console the Dual SD machine uses.
 
 Underneath, `propio` is just a **preset**: it is the strap-configurable serial engine (the same
-one behind the [`io4`](#io4) board) with this board's documented convention filled in — the ports,
+one behind the [`gsio`](#gsio) board) with this board's documented convention filled in — the ports,
 and which status bit means receive-ready and which means transmit-ready. Because the real board is
 jumpered, every one of those straps is still yours to override, so a differently-strapped Console
 I/O board needs no new board type, just a property or two.

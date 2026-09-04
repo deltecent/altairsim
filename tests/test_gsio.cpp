@@ -1,6 +1,6 @@
 #include "test.h"
 
-#include "boards/io4.h"
+#include "boards/gsio.h"
 #include "core/board.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
@@ -9,17 +9,17 @@ using namespace altair;
 
 namespace {
 
-// An IO-4 on the bench with a scripted line on EACH of its two units. No Machine and no
+// A GSIO on the bench with a scripted line on EACH of its two units. No Machine and no
 // Clock: the card is polled and schedules nothing, so a bus cycle is all it needs. Each
 // stream is bound through the REAL connect path (connect(unit,"scripted")), the same wiring
 // an operator's CONNECT drives -- then the test feed()s bytes at a channel and reads what
 // the guest sent out of out(). setResolver() is installed once in tests/main.cpp.
 //
-// io4's straps live PER UNIT (units "a"/"b", configured as [board.unit.a]); board.properties()
+// gsio's straps live PER UNIT (units "a"/"b", configured as [board.unit.a]); board.properties()
 // is empty. So the strap get/set here go through b.unitProperties(unit), the same door a
 // [board.unit.a] table in a machine file uses.
 struct Rig {
-    Io4Board        b;
+    GsioBoard        b;
     ScriptedStream* a = nullptr;
     ScriptedStream* bb = nullptr;
 
@@ -72,11 +72,11 @@ struct Rig {
 
 } // namespace
 
-void test_io4() {
-    SECTION("IO-4 -- two serial units, 'a' and 'b'");
+void test_gsio() {
+    SECTION("GSIO -- two serial units, 'a' and 'b'");
     {
         Rig g;
-        CHECK(g.b.type() == "io4", "identifies as io4");
+        CHECK(g.b.type() == "gsio", "identifies as gsio");
         CHECK(g.b.units().size() == 2, "two units -- a dual-serial card has two lines");
         CHECK(g.b.units()[0].name == "a", "first unit is 'a'");
         CHECK(g.b.units()[1].name == "b", "second unit is 'b'");
@@ -89,9 +89,9 @@ void test_io4() {
         CHECK(err.find("tty") != std::string::npos, "and the error names the bad unit");
     }
 
-    SECTION("IO-4 -- the default 4-port block: a at 0/1, b at 2/3, both sior0");
+    SECTION("GSIO -- the default 4-port block: a at 0/1, b at 2/3, both sior0");
     {
-        // The IO-4's default serial block is 0-3: Serial A at 0/1, Serial B at 2/3
+        // The default serial block is 0-3: Serial A at 0/1, Serial B at 2/3
         // (reference/SSM IO-4 2P+2S IO Board.md). Both come up as MITS SIO Rev 0.
         Rig g;
         CHECK(g.get("a", "status_port") == 0x00, "a: status at 0");
@@ -105,7 +105,7 @@ void test_io4() {
         CHECK(g.get("b", "tbmt") == 7, "b: TBMT is bit 7 (sior0 shape)");
     }
 
-    SECTION("IO-4 -- decodes ONLY its four strapped ports, and no memory");
+    SECTION("GSIO -- decodes ONLY its four strapped ports, and no memory");
     {
         Rig g;
         CHECK(g.decodes(0x00), "answers a's status port");
@@ -121,7 +121,7 @@ void test_io4() {
         CHECK(!g.b.decodes(c), "decodes no MEMORY -- it is an I/O card");
     }
 
-    SECTION("IO-4 -- the two channels are independent: no cross-talk");
+    SECTION("GSIO -- the two channels are independent: no cross-talk");
     {
         // Different straps AND different data on each channel; each must answer only for
         // itself. This is the whole point of a two-channel board.
@@ -148,7 +148,7 @@ void test_io4() {
         CHECK(g.bb->out().empty(), "and nothing bled onto b's line");
     }
 
-    SECTION("IO-4 -- overlapping straps: the earlier channel wins, and it is flagged");
+    SECTION("GSIO -- overlapping straps: the earlier channel wins, and it is flagged");
     {
         Rig g;
         g.b.drainLog();  // clear any prior advisories
@@ -169,7 +169,7 @@ void test_io4() {
         CHECK(flagged, "and configChanged() logged an overlap advisory");
     }
 
-    SECTION("IO-4 -- status synthesis + the inverter gate, on channel a");
+    SECTION("GSIO -- status synthesis + the inverter gate, on channel a");
     {
         Rig g;
         // A neutral custom strap on a: DAV in bit 0, TBMT in bit 1, gate off. A
@@ -194,7 +194,7 @@ void test_io4() {
         CHECK((s & 0x02) == 0, "gate on: asserted TBMT reads 0");
     }
 
-    SECTION("IO-4 -- a bit position is a jumper: put DAV/TBMT anywhere");
+    SECTION("GSIO -- a bit position is a jumper: put DAV/TBMT anywhere");
     {
         Rig g;
         g.set("a", "dav", "6");
@@ -207,7 +207,7 @@ void test_io4() {
         CHECK((g.statusOf("a") & (1 << 6)) != 0, "...and sets in bit 6 when a character arrives");
     }
 
-    SECTION("IO-4 -- the data path both directions, and a discarded control write");
+    SECTION("GSIO -- the data path both directions, and a discarded control write");
     {
         Rig g;
         g.set("a", "dav", "0");
@@ -230,7 +230,7 @@ void test_io4() {
         CHECK(g.a->out() == "X", "control writes go nowhere -- there is no chip to program");
     }
 
-    SECTION("IO-4 -- built-in profiles preset a channel's straps, and an override wins");
+    SECTION("GSIO -- built-in profiles preset a channel's straps, and an override wins");
     {
         const auto& bi = serialBuiltins();
         CHECK(bi.size() >= 2, "the built-ins ship");
@@ -261,11 +261,11 @@ void test_io4() {
         CHECK(g.get("a", "status_port") == 0x50, "an override after the profile is honored");
     }
 
-    SECTION("IO-4 -- connectStream installs a pre-built line on a named channel");
+    SECTION("GSIO -- connectStream installs a pre-built line on a named channel");
     {
         // The --mcp console binding hands the board an already-wrapped stream. It must land
         // on the named channel and carry bytes, exactly like connect() but without the resolver.
-        Io4Board b;
+        GsioBoard b;
         auto s = std::make_unique<ScriptedStream>();
         ScriptedStream* raw = s.get();
         std::string err;
@@ -282,15 +282,15 @@ void test_io4() {
               "connectStream to a missing unit fails");
     }
 
-    SECTION("IO-4 -- an unconnected channel is not an error");
+    SECTION("GSIO -- an unconnected channel is not an error");
     {
         // A channel with nothing plugged into it has a DEAD line: TBMT set, DAV clear,
         // and a write goes nowhere without crashing. Test the active-high sense.
-        Io4Board b;
+        GsioBoard b;
         std::string err;
-        setPropertyIn(b.unitProperties("a"), "io40:a", "dav", "0", err);
-        setPropertyIn(b.unitProperties("a"), "io40:a", "tbmt", "1", err);
-        setPropertyIn(b.unitProperties("a"), "io40:a", "inverter_gate", "false", err);
+        setPropertyIn(b.unitProperties("a"), "gsio0:a", "dav", "0", err);
+        setPropertyIn(b.unitProperties("a"), "gsio0:a", "tbmt", "1", err);
+        setPropertyIn(b.unitProperties("a"), "gsio0:a", "inverter_gate", "false", err);
 
         BusCycle c;
         c.type = Cycle::IoRead;
