@@ -236,6 +236,11 @@ host file:
 altairsim> CONNECT lpt0:prn printer:linewriter
 ```
 
+Host printing is built on **macOS and Linux** today; the **Windows** builds do not have it yet, so
+on Windows `printer:` is absent and printing goes to a host file (`out:`) or a socket (`socket:`)
+instead. To see which your build has, connect to `printer:` with no name — it either lists the
+queues it can reach or tells you host printing is not in this build.
+
 `printer:` is a **write-only** sink like `out:`, and just as un-printer-specific — any line can
 use it, not only the [88-C700](boards.md). The difference is what happens to the bytes: they are
 held in a buffer and then handed to the host print system as one **job**.
