@@ -1,8 +1,8 @@
 # `altairsim` — Design Document
 
-**Status:** implemented and running. Fourteen board types, a validated 8080, and period software
-that boots — CP/M 2.2 off an 8″ floppy, a 5¼″ minidisk and an 8 MB disk; 4K and 8K BASIC and
-MITS Programming System II off cassette. What is *not* built is named where it is described,
+**Status:** implemented and running. A backplane of S-100 board types, a validated 8080, and
+period software that boots — CP/M 2.2 off an 8″ floppy, a 5¼″ minidisk and an 8 MB disk; 4K
+and 8K BASIC and MITS Programming System II off cassette. What is *not* built is named where it is described,
 and the roadmap has the rest.
 **Date:** 2026-07-11, and kept current since.
 
