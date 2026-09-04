@@ -29,7 +29,12 @@ has a real **programmable word length (5–8 data bits), parity and stop bits**,
 under `[board.unit.a]` / `[board.unit.b]`. The serial section answers as a 4-port block on a
 4-port boundary (switch S3): in the default layout Serial A is at ports 0/1 and Serial B at 2/3,
 which is exactly the console an SSM 8080 System Monitor boots on. `CONNECT` each channel to a
-file, socket, serial port or `in:`/`out:` paper tape. This is the board's serial half; its
+file, socket, serial port or `in:`/`out:` paper tape. Each channel's **status port is fully
+strappable**, just like the real board's W1/W2 header: the six UART status signals (DAV, TBMT,
+TEOC and the three error flags) map to any data-bus bits, in either polarity, and the two port
+addresses can be reversed. A `profile` selector presets the whole arrangement from a named host
+personality — `altair-rev1` (the default and the SSM monitor console), `altair-rev0`, `i8251`,
+`proctech`, `imsai`, or `custom` for a hand-rolled map. This is the board's serial half; its
 parallel ports and interrupts are still to come.
 
 A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL

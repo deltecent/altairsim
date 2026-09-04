@@ -625,6 +625,15 @@ SSM IO-4 (2P+2S): the real Solid State Music board, two independent full-duplex 
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
+| `profile` | enum | `altair-rev1` | `custom` \| `altair-rev1` \| `altair-rev0` \| `i8251` \| `proctech` \| `imsai` | Preset the status straps from a host personality: custom, altair-rev1 (the default and the SSM 8080 monitor console), altair-rev0, i8251, proctech, imsai. Sets stat_*, invert_status and port_reversal (overridable) |
+| `stat_dav` | enum | `0` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying DAV, data available (0-7 \| none) |
+| `stat_tbmt` | enum | `7` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying TBMT, transmit buffer empty (0-7 \| none) |
+| `stat_teoc` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying TEOC, transmitter end of character (0-7 \| none) |
+| `stat_ror` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying ROR, receiver over-run (0-7 \| none; always inactive) |
+| `stat_rpe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RPE, receiver parity error (0-7 \| none; always inactive) |
+| `stat_rfe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RFE, receiver framing error (0-7 \| none; always inactive) |
+| `invert_status` | bool | `true` | `on` \| `off` | Invert every status bit -- a 74368 buffer (negative sense): an asserted signal reads 0, an inactive one reads 1. Off = 74367 (positive sense) |
+| `port_reversal` | bool | `false` | `on` \| `off` | Reverse the channel's two ports (S1/S2-PR): off = status first, data last (MITS, Proc Tech); on = data first, status last (IMSAI) |
 | `baud` | int | `9600` | `50` .. `25000` | Line rate (header W3). RX and TX share one rate here -- a real host serial port cannot be split. Canonical IO-4 rates: 55-9600 |
 | `data_bits` | int | `8` | `5` .. `8` | Data bits per character (S1/S2 NDB1+NDB2) |
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits (S1/S2 NSB): 1 or 2 |
@@ -635,6 +644,15 @@ SSM IO-4 (2P+2S): the real Solid State Music board, two independent full-duplex 
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
+| `profile` | enum | `altair-rev1` | `custom` \| `altair-rev1` \| `altair-rev0` \| `i8251` \| `proctech` \| `imsai` | Preset the status straps from a host personality: custom, altair-rev1 (the default and the SSM 8080 monitor console), altair-rev0, i8251, proctech, imsai. Sets stat_*, invert_status and port_reversal (overridable) |
+| `stat_dav` | enum | `0` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying DAV, data available (0-7 \| none) |
+| `stat_tbmt` | enum | `7` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying TBMT, transmit buffer empty (0-7 \| none) |
+| `stat_teoc` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying TEOC, transmitter end of character (0-7 \| none) |
+| `stat_ror` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying ROR, receiver over-run (0-7 \| none; always inactive) |
+| `stat_rpe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RPE, receiver parity error (0-7 \| none; always inactive) |
+| `stat_rfe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RFE, receiver framing error (0-7 \| none; always inactive) |
+| `invert_status` | bool | `true` | `on` \| `off` | Invert every status bit -- a 74368 buffer (negative sense): an asserted signal reads 0, an inactive one reads 1. Off = 74367 (positive sense) |
+| `port_reversal` | bool | `false` | `on` \| `off` | Reverse the channel's two ports (S1/S2-PR): off = status first, data last (MITS, Proc Tech); on = data first, status last (IMSAI) |
 | `baud` | int | `9600` | `50` .. `25000` | Line rate (header W3). RX and TX share one rate here -- a real host serial port cannot be split. Canonical IO-4 rates: 55-9600 |
 | `data_bits` | int | `8` | `5` .. `8` | Data bits per character (S1/S2 NDB1+NDB2) |
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits (S1/S2 NSB): 1 or 2 |
