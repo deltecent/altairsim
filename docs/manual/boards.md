@@ -396,6 +396,63 @@ is a separate, fully emulated board.
 
 ---
 
+## `io4` — SSM IO-4 (2P + 2S)
+
+Where `gsio` describes a serial port with straps, **`io4`** is the specific card `gsio` declines to
+be: the **SSM IO-4**, a combined S-100 board with **two full-duplex serial channels *and* four
+latched parallel ports** on one card, modeled as the real silicon it is. Each serial channel is a
+real UART with **programmable word length (5–8 bits), parity, stop bits and baud**, and the full
+status-word strapping the card was famous for.
+
+Its **two serial channels** are units **`a`** (Serial A) and **`b`** (Serial B), each with its own
+`[board.unit.a]` / `[board.unit.b]` table, its own `baud` and `connect` endpoint. The four ports of
+the serial half sit on a four-port block that must start on a four-boundary (default `0`–`3`):
+`a` answers `0`/`1`, `b` answers `2`/`3`.
+
+### You strap it, or you name a personality
+
+The IO-4 was a heavily jumpered card, and every jumper is a property here. Which data-bus bit carries
+"a byte is waiting" (`dav`), which carries "the transmitter is ready" (`tbmt`), and four more status
+signals; whether the whole status byte is inverted (`invert_status`); and whether the status and data
+ports are swapped (`port_reversal`). You rarely set those one at a time. A **`profile`** presets them
+to imitate a known host: **`altair-rev1`** — the default, the MITS SIO Rev-0 console the SSM 8080
+monitor expects — plus `altair-rev0`, `i8251`, `proctech`, `imsai`, and `custom` (every strap left
+free to roll your own). Pick a profile, then override any individual strap afterward, exactly as you
+would move a jumper.
+
+The three UART **error flags** — parity, framing and overrun — are strappable to the status byte, but
+they always read inactive: the serial line here carries exact bytes and models no line noise, so
+there is nothing for them to report. The card's current-loop and EIA/RS-232 electrical options are an
+electrical choice, not a programming one; they are not modeled.
+
+### The parallel half
+
+The other half is **four 8212 latched ports** — two input, two output — as units **`pa`** and `pb`
+(Parallel A and B), on their own two-port block (default `4`/`5`) that must start on a two-boundary.
+Each input latches a byte on its strobe and raises a service-request flip-flop; a read hands the byte
+over and acknowledges it. `CONNECT io40:pa …` wires a port to a byte source or sink like any serial
+line. The `dav_bit`, `dav_source` and `dav_active_low` straps set up the "status byte here, data byte
+there" console idiom the card supports across a pair of ports.
+
+**The two halves are mutually exclusive on overlap.** Set the serial four-port block and the parallel
+two-port block to overlapping addresses and **neither section responds** in the contended ports — a
+deliberate design of the card, not a bus fight.
+
+### Interrupts, if you strap them
+
+The card's **W4 header** routes interrupts, and `io4` follows it: each serial channel's receive
+(`rx_int`) and transmit (`tx_int`), and each parallel input (`int`), can be strapped to a vectored
+interrupt line, to the plain interrupt pin, or to `none`. There is **no software enable** — the strap
+*is* the enable, just as on the card — so a stock board with the header bare (the default) boots
+polled. A strapped transmit interrupt is a level, asserted whenever the transmitter is idle; a
+parallel input raises its interrupt on the strobe even when the port is not being read. Wire these to
+a `virtc` and the receive of a character, or a parallel strobe, vectors to the RST you strapped.
+
+`SHOW io40` reports every unit, its ports and its live line state. The SSM 8080 monitor booting on a
+stock `io4` console is in the examples.
+
+---
+
 ## `propio` — S100Computers Console I/O
 
 A **serial console** of the reproduction era: the S100Computers Console I/O board, built around a
