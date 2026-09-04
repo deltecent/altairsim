@@ -124,11 +124,16 @@ void test_io4() {
         CHECK(g.decodes(0x10), "the refused SET left the base where it was");
     }
 
-    SECTION("IO-4 -- status byte is MITS-SIO-Rev-0 (active low): DAV bit0, TBMT bit7");
+    SECTION("IO-4 -- default profile is altair-rev1 (active low): DAV bit0, TBMT bit7");
     {
-        // An unconnected/quiet line: the transmitter is ready (TBMT asserted -> bit7 reads 0,
-        // active low) and nothing is waiting to receive (DAV clear -> bit0 reads 1).
+        // The board ships strapped for the SSM 8080 monitor console -- profile altair-rev1:
+        // DAV -> D0, TBMT -> D7, status inverted (74368). An unconnected/quiet line: the
+        // transmitter is ready (TBMT asserted -> bit7 reads 0, active low) and nothing is
+        // waiting to receive (DAV clear -> bit0 reads 1).
         Rig g;
+        CHECK(g.getStr("a", "profile") == "altair-rev1", "channel A defaults to altair-rev1");
+        CHECK(g.getStr("b", "profile") == "altair-rev1", "channel B too");
+
         uint8_t s = g.in(0x00);
         CHECK((s & 0x80) == 0, "TBMT ready reads 0 in bit 7 (active low)");
         CHECK((s & 0x01) != 0, "DAV clear reads 1 in bit 0 (active low, nothing to receive)");
@@ -136,6 +141,86 @@ void test_io4() {
         g.a->feed("K");
         s = g.in(0x00);
         CHECK((s & 0x01) == 0, "a character on the line drives DAV -> bit 0 reads 0");
+    }
+
+    SECTION("IO-4 -- profile i8251: the full six-signal status map, positive sense");
+    {
+        // TBMT->D0, DAV->D1, TEOC->D2, RPE->D3, ROR->D4, RFE->D5, not inverted. On a quiet
+        // line TBMT and TEOC are asserted (transmitter idle) and DAV is clear; the three error
+        // signals are always inactive, so positive sense reads them 0.
+        Rig g;
+        g.set("a", "profile", "i8251");
+        CHECK(g.getStr("a", "profile") == "i8251", "the profile took");
+        CHECK(g.getStr("a", "stat_tbmt") == "0", "TBMT strapped to D0");
+        CHECK(g.getStr("a", "stat_teoc") == "2", "TEOC strapped to D2");
+
+        uint8_t s = g.in(0x00);
+        CHECK((s & 0x01) != 0, "TBMT asserted reads 1 in D0 (positive sense)");
+        CHECK((s & 0x02) == 0, "DAV clear reads 0 in D1");
+        CHECK((s & 0x04) != 0, "TEOC asserted reads 1 in D2 -- the transmitter is idle");
+        CHECK((s & 0x38) == 0, "the three always-inactive error bits (D3-D5) read 0");
+
+        g.a->feed("Q");
+        s = g.in(0x00);
+        CHECK((s & 0x02) != 0, "a character drives DAV -> D1 reads 1");
+    }
+
+    SECTION("IO-4 -- invert_status flips the driven bits (74367 vs 74368)");
+    {
+        // altair-rev0 is DAV->D5, TBMT->D1, positive sense. Turn invert on and the same
+        // signals read the other way -- and the always-inactive error lines, now inverted,
+        // read 1 only where they are strapped (nowhere here), so the byte is just the two.
+        Rig g;
+        g.set("a", "profile", "altair-rev0");
+        uint8_t pos = g.in(0x00);
+        CHECK((pos & 0x02) != 0, "TBMT asserted reads 1 in D1 (positive)");
+        CHECK((pos & 0x20) == 0, "DAV clear reads 0 in D5 (positive)");
+
+        g.set("a", "invert_status", "true");
+        CHECK(g.getStr("a", "profile") == "custom",
+              "inverting a positive-sense profile no longer matches it -- now custom");
+        uint8_t neg = g.in(0x00);
+        CHECK((neg & 0x02) == 0, "TBMT asserted now reads 0 in D1 (inverted)");
+        CHECK((neg & 0x20) != 0, "DAV clear now reads 1 in D5 (inverted)");
+    }
+
+    SECTION("IO-4 -- port_reversal swaps a channel's status and data addresses");
+    {
+        // Default (PR off): A status at 0, data at 1. Turn PR on and the two exchange
+        // addresses -- data at 0, status at 1 (the IMSAI order). Transmit shows it without
+        // tripping the receiver's line-rate pacing: an OUT to the data port reaches the wire.
+        Rig g;
+        g.out(0x01, 'X');
+        CHECK(g.a->out() == "X", "PR off: A's data port is 1");
+
+        g.set("a", "port_reversal", "true");
+        g.out(0x00, 'Q');
+        CHECK(g.a->out() == "XQ", "PR on: A's data port is now 0");
+
+        g.out(0x01, 0xAA);  // port 1 is now the status/control port -- writes go nowhere
+        CHECK(g.a->out() == "XQ", "and port 1 is now the status/control port -- write discarded");
+        CHECK(g.decodes(0x00) && g.decodes(0x01), "the block still occupies the same two ports");
+    }
+
+    SECTION("IO-4 -- a custom status map: strap DAV and TBMT to arbitrary bits");
+    {
+        // trgeuy's roll-your-own: no profile, just individual straps. Put DAV on D3 and TBMT
+        // on D4, positive sense, everything else unconnected.
+        Rig g;
+        g.set("a", "invert_status", "false");  // the default profile is inverted; go positive
+        g.set("a", "stat_dav", "3");
+        g.set("a", "stat_tbmt", "4");
+        g.set("a", "stat_teoc", "none");
+        CHECK(g.getStr("a", "profile") == "custom", "a hand-rolled map reports as custom");
+
+        uint8_t s = g.in(0x00);
+        CHECK((s & 0x10) != 0, "TBMT asserted reads 1 in D4");
+        CHECK((s & 0x08) == 0, "DAV clear reads 0 in D3");
+        CHECK((s & 0xE7) == 0, "and no other bit is driven");
+
+        g.a->feed("M");
+        s = g.in(0x00);
+        CHECK((s & 0x08) != 0, "a character drives DAV -> D3 reads 1");
     }
 
     SECTION("IO-4 -- the data path both directions, and a discarded control write");

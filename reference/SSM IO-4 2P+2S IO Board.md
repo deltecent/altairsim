@@ -19,10 +19,14 @@ the baud generator, the current-loop/EIA options, the parallel handshake, the po
 decodes, and the interrupt wiring. **The serial half is emulated** as the `io4` board
 (`src/boards/io4.h`), a chip-backed card built on the real 1602-family UART
 (`src/chips/uart1602.h`): two independent full-duplex channels with programmable word length,
-parity and stop bits. (This is not the generic strap board — that is `gsio`, on the chip-less
-`src/boards/strapserial.h`.) The status-word strapping, the **parallel ports**, and the
-interrupts are later phases; the **current-loop/EIA electrical options are out of scope** — this
-reference documents them for completeness.
+parity and stop bits, AND the full status-word strap-up — the six status signals to any data
+bits (headers W1/W2), either polarity (the U18/U16 74367/74368 buffer), and per-channel port
+reversal (S1/S2-PR), presettable from named host personalities (`altair-rev1` — the default
+and the SSM 8080 monitor console — plus `altair-rev0`, `i8251`, `proctech`, `imsai`, and
+`custom`). (This is not the generic strap board — that is `gsio`, on the chip-less
+`src/boards/strapserial.h`.) The **parallel ports** and the interrupts are later phases; the
+**current-loop/EIA electrical options are out of scope** — this reference documents them for
+completeness.
 
 ---
 

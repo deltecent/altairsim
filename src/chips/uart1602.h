@@ -65,6 +65,18 @@ public:
     bool dataAvailable() const { return rda_; }        // RDA  -- pin 19
     bool txBufferEmpty(const Clock& clk) const;        // TBMT -- pin 22
 
+    // TEOC -- Transmitter End Of Character (pin 24). High when the transmitter is idle:
+    // the last character has fully left the wire. On the real DOUBLE-buffered UART, TEOC
+    // LAGS TBMT by up to one character time -- TBMT frees the holding register as soon as
+    // its byte moves into the shift register, while TEOC waits for the shift register to
+    // finish clocking that byte out. This model does not split the holding and shift
+    // registers (writeData occupies the line for one character and no more -- see the .cpp),
+    // so there is no interval in which the two disagree and TEOC coincides with TBMT. The
+    // SSM IO-4's status header can strap TEOC to a data bit (the 8251-emulation recipe
+    // does), which is the one card that reads it -- so it EXISTS and is honest rather than
+    // invented. If a two-stage transmitter is ever modeled, this is where the lag lands.
+    bool txEndOfChar(const Clock& clk) const { return txBufferEmpty(clk); }
+
     // The three error flags EXIST and are always FALSE, deliberately -- they report
     // line noise, and there is no line. A ByteStream delivers the byte that was sent
     // or it delivers nothing. Synthesizing them would mean inventing a noise model,
