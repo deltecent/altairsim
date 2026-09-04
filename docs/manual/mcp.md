@@ -166,3 +166,50 @@ instead, so there give the machine an absolute path.
 in a working directory and the assistant has the recipes for booting, building and debugging over
 these tools. The `examples/ai-mcp/` folder is a ready-made such directory, with a walkthrough that
 has an assistant find and fix a bug entirely over MCP.
+
+## Starting a project of your own
+
+The `examples/ai-mcp/` folder is a guided round trip; once you want to write your own software the
+same shape is how to begin. **Make a folder of your own, put a machine in it, and point the
+assistant at that folder — not at the copy that came in the package.**
+
+**Put the machine and its images at the root of the folder.** Copy a machine that boots the system
+you want to build on — the whole `examples/ai-mcp/` folder is a good starting point, disk and
+machine file together — into a new folder, and work there. Register the server from inside that
+folder (as in the section above), so the machine file and the host-bridge sandbox both resolve
+there. The guest writes to the disk image as it runs and the assistant leaves build files beside
+it, so keeping the shipped copy untouched means you always have a clean one to start over from.
+Make that a real baseline: keep a spare copy of just the machine and its fresh disk, so "start
+over" restores something known rather than whatever the guest last wrote.
+
+**Give it the local truth to read.** Drop `DRIVING-WITH-AI.md` in the folder, and keep a second
+folder — call it `Reference` — for anything else you want the assistant to lean on: the parts of
+this manual that matter to your project, and any source material of your own, converted to plain
+Markdown, which is the form an assistant ingests most reliably. These copies go stale the moment
+altairsim updates, and the assistant cannot tell an old copy from a current one, so refresh them
+when you update altairsim.
+
+**Keep a hand on it — it will reach for what it already knows.** An assistant does not read your
+machine's files and then do as they say. It predicts its next move from everything in front of it,
+weighed against everything it learned in training — and what it learned is vast, while a line in a
+local file is a single faint signal it saw a moment ago. So when the job looks like a common one —
+boot CP/M, assemble a file, copy something onto a disk — the move it reaches for first is the one
+it has seen a thousand times, even when the files in the folder say otherwise. A plain example:
+asked to get a program onto a disk, it will reach for a host tool like `cpmtools`, which does not
+understand the Altair's hard-sectored disks at all — when the way that works is to build inside the
+machine over the host bridge, exactly as `DRIVING-WITH-AI.md` lays out. The pull toward the
+familiar answer gets stronger the longer a session runs, and once it starts down that road it tends
+to talk itself further along rather than stop and re-read.
+
+So watch what it actually sends and reads back — the `--mirror` socket above is there for exactly
+this — rather than trusting its own summary of what it did. Correct it at the first wrong step,
+before it builds on that step, and point it at the file you mean and tell it to use that and only
+that. Be most wary when its answer looks the most standard: that is the moment a habit has most
+likely overridden something particular about your machine.
+
+**Make starting and stopping a ritual.** A short instruction you give every session pays for
+itself. At the end — "clean up" — have it close any processes still running, write down what you
+learned, and save where you are in a note in the folder. At the start, have it read that note and
+the `Reference` folder, boot the machine, and tell you where you left off. The note in the folder is
+what makes a session resumable; without it the assistant reconstructs the state from scratch each
+time, and reconstructs it wrong.
