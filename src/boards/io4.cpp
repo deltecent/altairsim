@@ -103,7 +103,11 @@ Io4Board::Io4Board() {
     pb_.stream = std::make_unique<NullStream>();
 }
 
-Io4Board::~Io4Board() = default;
+Io4Board::~Io4Board() {
+    // A card can be pulled from a RUNNING machine (BOARDS REMOVE io4), and a deadline
+    // firing into a destroyed board is a use-after-free with a long fuse. (Same as SioBoard.)
+    if (clock_) clock_->cancel(wake_);
+}
 
 // ---------------------------------------------------------------------------
 // Profiles -- preset the straps, and read back which one they match.
@@ -183,6 +187,7 @@ uint8_t Io4Board::statusByte(const SerialChannel& ch) const {
 }
 
 uint8_t Io4Board::read(const BusCycle& c) {
+    uint8_t v = 0xFF;
     switch (sectionAt(c.port())) {  // decodes() gates this; be defensive about the rest
     case SectSerial: {
         SerialChannel* ch     = nullptr;
@@ -192,13 +197,19 @@ uint8_t Io4Board::read(const BusCycle& c) {
         ch->uart.poll(clock_ ? *clock_ : deadCard());
         // The DATA port's read strobe is wired to /RDAR: reading it clears Data Available. The
         // other port is /SWE -- the synthesized status byte.
-        return isData ? ch->uart.readData() : statusByte(*ch);
+        v = isData ? ch->uart.readData() : statusByte(*ch);
+        break;
     }
     case SectParallel:
-        return parallelRead(*parallelAt(c.port()));
+        v = parallelRead(*parallelAt(c.port()));
+        break;
     default:
-        return 0xFF;
+        break;
     }
+    // Reading the serial data port cleared DAV; reading a parallel port acknowledged its
+    // service request. Either can drop a strapped interrupt -- re-drive the wires.
+    refresh();
+    return v;
 }
 
 void Io4Board::write(const BusCycle& c) {
@@ -210,18 +221,20 @@ void Io4Board::write(const BusCycle& c) {
         if (isData) {
             // The chip's /TDS strobe: the character goes out, TBMT falls until it has left.
             ch->uart.writeData(c.data, clock_ ? *clock_ : deadCard());
-            return;
         }
-        // OUT to the status/control port: ACCEPTED AND DISCARDED. The 1602 UART has no control
-        // register -- word format is soldered pins (S1/S2), not a byte the guest can write.
-        return;
+        // else: OUT to the status/control port is ACCEPTED AND DISCARDED. The 1602 UART has no
+        // control register -- word format is soldered pins (S1/S2), not a byte the guest writes.
+        break;
     }
     case SectParallel:
         parallelWrite(*parallelAt(c.port()), c.data);
-        return;
+        break;
     default:
-        return;
+        break;
     }
+    // A character went out (TBMT fell, then rises again as it drains) -- re-drive the wires and
+    // re-arm the deadline for the moment a strapped TX interrupt would rise.
+    refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +279,82 @@ void Io4Board::parallelWrite(ParallelChannel& pc, uint8_t v) {
 }
 
 // ---------------------------------------------------------------------------
+// Interrupts -- header W4 (§3.3). Six sources, each strapped independently. THERE IS NO
+// SOFTWARE ENABLE: the strap is the enable (unlike the 88-SIO's IC-B flip-flops), so a
+// source that is asserted AND wired somewhere pulls its wire. viBit() is 0 for `none` and
+// for `int`, so an unstrapped or pin-73 source contributes nothing to the VI mask.
+// ---------------------------------------------------------------------------
+
+// PIN 73, combinational and pure (DESIGN.md 4.4.1). Any source strapped to `int` and asserted.
+bool Io4Board::assertsInt() const {
+    if (!clock_) return false;  // no crystal: the chips are not running at all
+    const Clock& clk = *clock_;
+    if (a_.rxIrq == IrqJumper::Int && a_.uart.dataAvailable()) return true;
+    if (b_.rxIrq == IrqJumper::Int && b_.uart.dataAvailable()) return true;
+    if (a_.txIrq == IrqJumper::Int && a_.uart.txBufferEmpty(clk)) return true;
+    if (b_.txIrq == IrqJumper::Int && b_.uart.txBufferEmpty(clk)) return true;
+    if (pa_.inIrq == IrqJumper::Int && pa_.srq) return true;
+    if (pb_.inIrq == IrqJumper::Int && pb_.srq) return true;
+    return false;
+}
+
+// VI0-VI7 as a bitmask -- six independent straps, several of which can be asking at once
+// (a character has arrived on A while B's transmitter is empty and a byte is latched in pa).
+uint8_t Io4Board::assertsVi() const {
+    if (!clock_) return 0;
+    const Clock& clk = *clock_;
+    uint8_t m = 0;
+    if (a_.uart.dataAvailable())    m |= viBit(a_.rxIrq);
+    if (b_.uart.dataAvailable())    m |= viBit(b_.rxIrq);
+    if (a_.uart.txBufferEmpty(clk)) m |= viBit(a_.txIrq);
+    if (b_.uart.txBufferEmpty(clk)) m |= viBit(b_.txIrq);
+    if (pa_.srq)                    m |= viBit(pa_.inIrq);
+    if (pb_.srq)                    m |= viBit(pb_.inIrq);
+    return m;
+}
+
+// THE CARD'S OWN CLOCK (DESIGN.md 4.4.1, 7.5). An interrupt-driven driver never polls a
+// status port, so if the card only advanced its receivers when the guest looked at a
+// register, it would never ingest a character and never raise the request. Advance the
+// receivers here, re-drive the wires, and set the alarm for the next self-moving edge.
+void Io4Board::refresh() {
+    if (!clock_) return;
+
+    a_.uart.poll(*clock_);
+    b_.uart.poll(*clock_);
+    intChanged();  // drive pin 73 and the VI lines -- the bus is not going to come and ask
+
+    clock_->cancel(wake_);
+    wake_ = Clock::kNone;
+    if (uint64_t next = nextEdge()) wake_ = clock_->at(next, [this] { refresh(); });
+}
+
+// WHEN COULD A STRAPPED SOURCE MOVE ON ITS OWN? Zero means never; always strictly future.
+// A parallel input strobe is an outside-world event (pump(), the one door), not a deadline,
+// so it is not considered here -- only the serial transmitter draining and a paced receive.
+uint64_t Io4Board::nextEdge() const {
+    const Clock& clk = clock_ ? *clock_ : deadCard();
+
+    uint64_t best = 0;
+    auto consider = [&](uint64_t when) {
+        // Strictly future: a deadline already past is already showing in assertsInt(); arming
+        // a timer for now() would fire inside the drain loop running us and never stop.
+        if (when <= clk.now()) return;
+        if (!best || when < best) best = when;
+    };
+    auto live = [](IrqJumper j) { return j != IrqJumper::None; };
+
+    // A strapped serial TX interrupt: TBMT rises again when the transmitter finishes draining.
+    if (live(a_.txIrq)) consider(a_.uart.txFreeAt());
+    if (live(b_.txIrq)) consider(b_.uart.txFreeAt());
+    // A strapped serial RX interrupt, but ONLY if there is a character on the line to arrive.
+    if (live(a_.rxIrq) && a_.uart.rxWaiting()) consider(a_.uart.rxNextAt());
+    if (live(b_.rxIrq) && b_.uart.rxWaiting()) consider(b_.uart.rxNextAt());
+
+    return best;
+}
+
+// ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
@@ -283,6 +372,12 @@ void Io4Board::reset(Reset) {
         pc->srq     = false;
         pc->stream->flush();
     }
+
+    // The receivers are empty and the service requests cleared: every interrupt source is
+    // inactive. refresh() re-drives the wires and re-arms from the fresh state. It CANCELS the
+    // outstanding deadline before re-arming, so wake_ must not be zeroed here -- POWER empties
+    // the queue under us, but RESET* does not, and a transmit alarm may still be on the books.
+    refresh();
 }
 
 void Io4Board::power() { reset(Reset::PowerOn); }
@@ -304,9 +399,13 @@ void Io4Board::pump() {
         pc->stream->flush();
         if (!pc->srq && pc->stream->readable()) {
             pc->inLatch = pc->stream->readByte();
-            pc->srq     = true;
+            pc->srq     = true;  // the input strobe raises the interrupt even when unaddressed
         }
     }
+
+    // A received character may have set DAV, and a parallel strobe a service request -- either
+    // is a strapped interrupt source that just went active. Re-drive pin 73 and the VI lines.
+    refresh();
 }
 
 // A strap moved: a port change relocates the block (decodeChanged), and a word-format strap
@@ -316,6 +415,9 @@ void Io4Board::configChanged() {
     decodeChanged();
     programChannel(a_);
     programChannel(b_);
+    // A W4 strap may have moved (which wire a source is soldered to), or a word-format strap
+    // (which retimes every deadline this card set). Re-drive the interrupt wires and re-arm.
+    refresh();
 }
 
 void Io4Board::programChannel(SerialChannel& ch) {
@@ -346,6 +448,7 @@ void Io4Board::deserialize(StateReader& r) {
         pc->outReg  = r.u8();
         pc->srq     = r.boolean();
     }
+    refresh();  // re-drive pin 73 and the VI lines, and re-arm the deadline, from restored state
 }
 
 std::vector<std::string> Io4Board::drainLog() {
@@ -522,6 +625,20 @@ std::vector<Property> Io4Board::channelProperties(SerialChannel& ch) {
         p.push_back(std::move(x));
     }
 
+    // ---- Header W4: this channel's two interrupt straps. No software enable -- the strap
+    // is the enable, and it wires the source's level straight to the bus. ----
+    p.push_back(irqJumperProperty(
+        "rx_int",
+        "Where the receive interrupt (a new character, DAV) is strapped on header W4: none | "
+        "int | vi0..vi7. Canonical: vi1 (Serial A) / vi0 (Serial B)",
+        cp->rxIrq));
+    p.push_back(irqJumperProperty(
+        "tx_int",
+        "Where the transmit interrupt (buffer empty, TBMT) is strapped on header W4: none | "
+        "int | vi0..vi7. It is a LEVEL -- held while the transmitter is idle. Canonical: vi2 "
+        "(Serial A) / vi3 (Serial B)",
+        cp->txIrq));
+
     // ---- The word format (S2 = Serial A / S1 = Serial B) plus the baud header W3. ----
     {
         Property x;
@@ -676,6 +793,13 @@ std::vector<Property> Io4Board::parallelProperties(ParallelChannel& pc) {
         };
         p.push_back(std::move(x));
     }
+    // Header W4: this port's input interrupt strap. Rises with the service-request FF (a byte
+    // strobed in), even when the port is not addressed. No software enable -- the strap is it.
+    p.push_back(irqJumperProperty(
+        "int",
+        "Where this parallel input's interrupt (a byte latched in, service request) is strapped "
+        "on header W4: none | int | vi0..vi7. Canonical: vi6 (Parallel A) / vi5 (Parallel B)",
+        cp->inIrq));
     return p;
 }
 
@@ -745,6 +869,7 @@ bool Io4Board::connect(const std::string& unit, const std::string& ep, std::stri
     }
     if (sc) sc->uart.connect(std::move(s));  // the chip owns the line and brings it up to the straps
     else    pc->stream = std::move(s);       // the 8212 pair drives it verbatim -- no framing
+    refresh();  // a new line, and it may already have a character waiting to raise an interrupt
     return true;
 }
 
@@ -765,11 +890,13 @@ bool Io4Board::connectStream(const std::string& unit, std::unique_ptr<ByteStream
 bool Io4Board::disconnect(const std::string& unit, std::string& err) {
     if (SerialChannel* sc = channel(unit)) {
         sc->uart.disconnect();
+        refresh();  // the line went dead -- no more characters, so no RX interrupt from it
         return true;
     }
     if (ParallelChannel* pc = parallelChannel(unit)) {
         pc->stream = std::make_unique<NullStream>();
-        pc->srq    = false;
+        pc->srq    = false;  // and its pending service request goes with it
+        refresh();
         return true;
     }
     err = noUnit(unit);
