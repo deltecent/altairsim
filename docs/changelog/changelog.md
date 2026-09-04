@@ -6,85 +6,160 @@ as it is now; this document is the record of how it got there.
 
 ---
 
-## Unreleased
+## 1.0.0
 
-The strap-configurable serial card is now its own board: **Generic SIO** (`gsio`), the generic
-name for what was briefly carried as `usio`/`io4`. It is a describe-it-by-strap card — you say
-where the status/control and data ports sit, which status bits carry DAV (data available) and
-TBMT (transmit buffer empty), and whether the shared **`inverter_gate`** is engaged — and that
-is the port. It carries **two independent serial channels**, `a` and `b`, each configured under
-its own `[board.unit.a]` / `[board.unit.b]` table with its own straps, `baud` and `connect`
-endpoint; `a` comes up at ports 0/1 and `b` at 2/3. Built-in **profiles** preset the straps to
-imitate a specific card — `sior0` (the MITS SIO Rev 0 the SSM 8080 monitor expects, and the
-default), `tuart`, `imsai-sio2`, `compupro-if2`, `compupro-ss1` — and every strap stays
-overridable afterward. The board is polled, with no interrupts, and does basic transmit and
-receive only — no programmable word length, parity or stop bits; a specific card that needs
-those is a separate, fully emulated board. The `propio` Console IO Board is unchanged — a
-single-channel console riding the same strap engine.
+**1.0.0 is the version that says the simulator is what it set out to be.** Where 0.4.0 filled
+the backplane, 1.0 fills out the processors behind it and the world around it: two more CPU
+cores — including the first that is not an Intel — more S-100 boards and the machines they
+boot, a disk that arrives over the network, and an AI assistant that can now drive a machine in
+real time against real hardware. It is the release the earlier ones were building toward.
 
-That separate, fully emulated board now exists: the **SSM IO-4** (`io4`), the real Solid State
-Music 2P+2S card. Where `gsio` describes a serial port by its straps, this one models the actual
-silicon — the two 1602-family UARTs (Serial A and Serial B) the board carried — so each channel
-has a real **programmable word length (5–8 data bits), parity and stop bits**, set per channel
-under `[board.unit.a]` / `[board.unit.b]`. The serial section answers as a 4-port block on a
-4-port boundary (switch S3): in the default layout Serial A is at ports 0/1 and Serial B at 2/3,
-which is exactly the console an SSM 8080 System Monitor boots on. `CONNECT` each channel to a
-file, socket, serial port or `in:`/`out:` paper tape. Each channel's **status port is fully
-strappable**, just like the real board's W1/W2 header: the six UART status signals (DAV, TBMT,
-TEOC and the three error flags) map to any data-bus bits, in either polarity, and the two port
-addresses can be reversed. A `profile` selector presets the whole arrangement from a named host
-personality — `altair-rev1` (the default and the SSM monitor console), `altair-rev0`, `i8251`,
-`proctech`, `imsai`, or `custom` for a hand-rolled map. The board's **parallel section** is here
-too: four 8212 latched ports — two in, two out, exposed as units `pa` and `pb` — on their own
-2-port block (switch S4, `par_port`, default 4/5). A byte the far end sends is strobed into the
-input latch and sets a service-request flip-flop the CPU clears by reading the port; a write
-latches out on the line. The manual's status/data "8080 console" wiring is strappable, so one
-port can carry another's data-available flag on a chosen data bit. The two halves are addressed
-independently and exclusively — if their blocks ever overlap, neither answers the shared ports,
-exactly as the real card behaves. `CONNECT` each parallel port to a file, socket, printer or
-`in:`/`out:` file. And the board **interrupts** now: each serial channel's receive (a new
-character) and transmit (buffer empty), and each parallel input (a byte strobed in), can be
-strapped on header W4 to any of the eight vectored-interrupt lines, to `int` (pin 73), or to
-`none` — `rx_int`/`tx_int` per serial channel, `int` per parallel port. There is no software
-enable; the strap is the enable, just as on the real card, and a parallel input raises its
-interrupt even when the port is not being read.
+### Two more CPU cores — and the first that isn't an Intel
 
-A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
-and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks
-— over the network instead. Once mounted it behaves like any other disk: the guest reads and
-writes it, `WP` protects it, and your changes are written back to the server. It works for every
-disk and tape controller, since it is the image that arrives over the network, not anything the
-board can tell apart from a local file. And because a network — unlike a local disk — can vanish
-mid-session, altairsim now says so out loud if the server stops accepting writes, rather than
-letting your changes pile up unsaved in silence; it keeps retrying and tells you when saving works
-again.
+The **Motorola 6800** joins the 8080 and Z80, and with it the **MITS Altair 680b** — a different
+computer from the 8800, a different bus, a different instruction set. `altairsim altair680` brings
+it up under **MON680**, the 680b's own monitor ROM, and `DISASM` and `EDIT` speak 6800 the way
+they speak 8080 where that core is active, down to a 6800 assembler for entering code a byte at a
+time. Its serial I/O board (`680io`) carries the console, the Universal I/O board (`680uio`) adds
+a second port, and the **KCACR cassette** board loads and saves off tape — enough of the machine
+that MITS **680 BASIC** loads from cassette and runs. Because Motorola tools speak Motorola
+formats, `LOAD` now reads a **Motorola S-record** (`.S19`) file as well as Intel HEX, and takes an
+explicit `FORMAT=SREC`.
 
-When you drive a machine over `--mcp` — or watch and take over the session through `--mirror` —
-the console's text transforms now come along for the ride. Before, a machine whose console strips
-the parity bit or forces upper case (the MITS BASIC and Programming System II family) put those
-raw bytes on the wire, so the assistant and any mirror watcher saw bit-7 parity junk: a printed
-`O` arriving as `Ï`, carriage returns ignored. Those transforms belong to the console, and now
-the console's stand-in under `--mcp` wears them too — so what the assistant reads, and what a
-watcher sees, match what a person at the real terminal would.
+The **Intel 8085** joins them too — the 8080's binary superset, with `RIM`/`SIM` and the on-chip
+interrupt system (the non-maskable `TRAP` and the maskable `RST 5.5/6.5/7.5`, each with its mask
+and pending latch, in hardware priority order) that the 8080 never had. It is faithful where the
+two chips actually differ, down to the two undocumented condition bits — **V** (signed overflow)
+and **K** — and all ten undocumented opcodes, which execute rather than trap. Like the other cores
+it earns its place at the gate rather than by inspection: Ian Bartholomew's 8085 exerciser, whose
+expected CRCs were read off real silicon, runs its 2.9 billion instructions against it on every CI
+push, on all three platforms. `altairsim 8085` is the direct analog of the `z80` machine — an
+8085, 64K, and a 2SIO console — and the disassembler and assembler speak 8085, undocumented
+opcodes flagged the way `DDT` flags a byte outside the published set (`??= 08  *DSUB`).
 
-Driving a machine over `--mcp` can now work with **real hardware in real time**. Wire a serial
-line to an actual device — a FujiNet on a `serial:` port, say — and set a real clock speed with
-`SET cpu0 clock_hz=…`; the `run` tool now paces the guest to that clock instead of running flat
-out, so a reply that takes the device a fraction of a second to send arrives while the guest is
-still waiting for it, exactly as it would on the bench. And `run` no longer cuts a transfer off
-when its time budget runs out: while bytes are still streaming in off the wire it keeps going,
-and hands control back only once the line has genuinely fallen quiet — so a boot loader that
-pulls its whole system image in over a serial disk finishes in a single call.
+### More boards, and the machines they boot
+
+Five more controllers and their operating systems boot alongside the rest:
+
+- The **iCOM FD3712/FD3812** 8″ floppy controller — a programmed-I/O command engine with its
+  driver in a high-memory boot PROM — boots CP/M 2.2 in single and double density and both
+  revisions of iCOM's own **FDOS** disk operating system (`altairsim icom`).
+- **S100Computers'** modern reproduction boards boot **CP/M 3**: the **Dual SD** controller runs
+  two microSD cards as raw drives, and the **IDE-AB** board runs a **CompactFlash** card as drives
+  A:/B:; because both lay a card out identically, one system image is interchangeable between them,
+  and the combination board spans all four drives (`altairsim dualsd`, `altairsim dualide`,
+  `altairsim dualidesd`).
+- The **CompuPro System Support 1** is a real-time clock, a serial channel, an interval timer and
+  a pair of cascaded interrupt controllers on one card — its OKI MSM5832 reads your host's own
+  date and time and survives a RESET, and everything but the empty math-chip socket is implemented
+  (`altairsim compupro`).
+- The **SSM PB1** is a **PROM burner**: you *run* a period EPROM-programmer routine against a board
+  that presents the real socket-and-arm interface, burn a 2708 or 2716, and `SAVE` the result as
+  Intel HEX. `examples/pb1` carries SSM's own driver routines from the PB1 manual.
+
+The **Tarbell #2022** now boots a disk whose CBIOS moves sectors by **DMA**, driving the card's
+on-board Intel 8257 to steal S-100 bus cycles and drop each sector into memory itself — the first
+board in the simulator to master the bus (`altairsim tarbelldd-dma.toml`). **Bank-switched RAM** is
+now its own board, `bankmem`, modeling four real decoders (Vector, Cromemco, North Star, and the
+SD Systems **ExpandoRAM II**), and on the ExpandoRAM II an SD Systems machine boots **banked
+CP/M 3** with a full 48K TPA under the operating system's own bank. And the **SSM 8080 System
+Monitor V1.0** is now a built-in ROM the way the Eberhard monitors are — boots by name, nothing to
+fetch — with a cheatsheet to match.
+
+Two new serial boards land the SSM cards properly. **Generic SIO** (`gsio`) is a describe-it-by-strap
+serial card: you say where the status/control and data ports sit, which status bits carry
+data-available and transmit-empty, and whether the shared inverter gate is engaged, and that is the
+port — with two independent channels and built-in profiles that imitate the MITS SIO Rev 0, the
+Cromemco TU-ART, the IMSAI SIO-2 and the CompuPro channels. And the fully emulated **SSM IO-4**
+(`io4`) models the actual 2P+2S card — its two 1602-family UARTs with real programmable word length,
+parity and stop bits; a strappable status word matching the W1/W2 header; four 8212 latched parallel
+ports; and header-W4 interrupts, where each serial receive and transmit and each parallel input can
+be strapped onto any vectored-interrupt line. It boots the SSM 8080 monitor as its console.
+
+### A disk that arrives over the network
+
+`MOUNT` now takes a **`tnfs://host/path`** URL and fetches the image off a **TNFS server** — the
+network file system the FujiNet project speaks — instead of reading a file on your host. Once
+mounted it behaves like any other disk: the guest reads and writes it, `WP` protects it, and your
+changes are written back to the server. It works for every disk and tape controller, since it is
+the image that arrives over the network, not anything the board can tell apart from a local file.
+And because a network can vanish mid-session, altairsim now says so out loud if the server stops
+accepting writes and keeps retrying, rather than letting your changes pile up unsaved in silence.
+
+### Driving a machine over MCP got real teeth
+
+An AI assistant driving a machine over `--mcp` no longer has to screen-scrape the text monitor to
+inspect it. The interface gained **twelve first-class, typed tools** for the work it used to reach
+through the monitor prompt by hand — `step` and `breakpoints`, `snapshot`/`restore`, the always-on
+`bus_trace` flight recorder, `mem_fill`/`mem_search`/`mem_save`, a stateless `disasm` that decodes a
+ROM with no CPU running, typed `mount`/`connect` wiring, and a `bus_irq` view of who is pulling the
+interrupt lines — bringing the MCP surface to the parity the design lays out, structured data in and
+out where there used to be a prompt to parse.
+
+And two things it could not do at all, it can now. It can **share a session**: `--mirror` opens a
+live bidirectional socket onto the same console the assistant is driving, so a person can watch what
+it is doing and take over the keyboard, then hand it back. And it can work with **real hardware in
+real time** — wire a serial line to an actual device and set a real clock speed, and the `run` tool
+paces the guest to that clock instead of running flat out, so a reply that takes the device a
+fraction of a second arrives while the guest is still waiting for it; `run` no longer cuts a
+transfer off when its time budget runs out, so a boot loader pulling its whole system image in over
+a serial disk finishes in a single call. The console's own text transforms now ride along under
+`--mcp` and `--mirror`, so what the assistant reads — and what a watcher sees — matches what a
+person at the real terminal would, parity bit and carriage returns and all.
+
+### A terminal in its own window
+
+A serial line can now open its own **built-in terminal window** the simulator draws itself —
+`CONNECT sio0:a terminal`, or `connect = "terminal"` in a machine file — so the machine's console
+and the monitor's command prompt live in separate windows with no telnet client and nothing to
+install. It speaks four dialects the way period software expects them, `?emulation=` picking one:
+**VT100/ANSI** (the default), the CP/M **ADM-3A**, the **VT52**, and the Heath/Zenith **H19** — the
+last three being terminals no modern emulator provides, which was the whole point. It draws in the
+real **DEC VT220** character set decoded from the terminal's own character ROM, on a softened green
+phosphor (or `?phosphor=amber`), and carries the same fold-the-bytes settings the console has in a
+`[terminal]` section — which earn their keep on a period even-parity monitor that computes parity
+into bit 7. In a headless build the endpoint refuses cleanly rather than opening a line nobody can
+see.
+
+### The video window
+
+**`SET DISPLAY crt=on`** (or `[display] crt = true`) paints any video window like the period tube —
+the 4:3 aspect of a real monitor, the raster softened into a phosphor glow rather than a grid of
+hard pixels — and under that look a window opened at a chosen `width` fills exactly that many
+pixels. Each video board now opens its **own** host window, so a machine with two video cards shows
+two pictures at once rather than sharing one.
+
+### The debugger, and small conveniences everywhere
+
+Cycle breakpoints now take a condition: `BREAK MEM W 100 IF B==0` stops only on the access whose
+registers hold, and `BREAK IO R 10 LOADS A>7F` tests the byte an `IN` actually read rather than the
+state it read it with. `EXAMINE <addr>` now shows the register line and the next instruction along
+with the byte. The byte-at-a-time `EDIT` assembler learned the **Z80**, so between the new cores
+above and this, `EDIT` and `DISASM` now speak whichever of the four processors is running. And a
+scatter of the prompt's rough edges are smoother: a leading `~` in a typed
+path expands to your home directory, monitor subcommands abbreviate by unique prefix, `LOAD`
+reports the page count of a CP/M `SAVE`, the host serial layer accepts non-standard baud rates like
+76800, and the Sol-20's `MODE SELECT`, `CLEAR` and `LOAD` keys are reachable from the keyboard.
+
+### The package, and the documents in it
+
+The monitor prompt and the debugger are now their **own shipped PDFs** — `altairsim-monitor.pdf`
+and `altairsim-debugger.pdf` — pulled out of the manual so each reads as the reference it is. Every
+PDF in the package is now paginated with a cover, a page-numbered table of contents and running
+page numbers. And, quietly, MSVC's `/W4` warnings now fail the Windows build the way the other two
+toolchains already did, closing the last corner where a warning could slip through unseen.
+
+---
 
 ## 0.4.0
 
-**0.4.0 is the boards release.** New S-100 boards join the backplane, and five new machine
-families (Cromemco, SD Systems, Tarbell, iCOM, S100Computers) boot alongside the MITS
+**0.4.0 is the boards release.** Seventeen new S-100 cards join the backplane — enough that
+three whole new machine families (Cromemco, SD Systems, Tarbell) boot alongside the MITS
 originals for the first time — disks and cassettes learn to be built and formatted by the guest
 instead of only read, and the debugger, the monitor prompt and the video window all got
 noticeably sharper along the way.
 
-### Five new machine families join the MITS originals
+### Three new machine families join the MITS originals
 
 **Cromemco** arrives as a full boot chain: the **16FDC**/**64FDC** floppy controller (Western
 Digital FD1793, a TMS5501 console UART, and the RDOS boot PROM in one card) boots **CDOS**, and
@@ -94,25 +169,7 @@ it. **SD Systems** shows up as a matching trio — the **SBC-100/200** single-bo
 console that auto-bauds to your terminal, and later a full interrupt-driven CP/M boot with the
 onboard PROM switching itself out), the **VersaFloppy** WD177x controller booting SDOS, and the
 **VDB-8024** 80×24 video terminal card. The **Tarbell #1011** and **#2022** floppy controllers boot
-CP/M entirely on their own, no monitor involved, straight off their own boot PROM — and the **#2022**
-now boots a disk whose CBIOS moves sectors by **DMA**, driving the card's on-board Intel 8257 to steal
-S-100 bus cycles and drop each sector into memory itself, the first board in the simulator to master
-the bus (`altairsim tarbelldd-dma.toml`). The **iCOM
-FD3712/FD3812** 8″ floppy controller — a programmed-I/O command engine rather than a WD177x
-card, with its driver in a boot PROM up in high memory — boots CP/M 2.2 in both single density
-(FD3712) and double density (FD3812), and both revisions of iCOM's own **FDOS** disk operating
-system — the original **FDOS-I** and the later **FDOS-III** — each off its own PROM
-(`altairsim icom`). And the reproduction era shows up too: **S100Computers'** modern boards boot
-**CP/M 3** off flash, the **V2 Z80 CPU board**'s MASTER monitor EEPROM loading it with an `I`
-command off the new **Dual SD** controller — two microSD cards on the bus as raw 512-byte-sector
-drives, each card one CP/M drive stored as a truncated `.img` beside a `.geo` sidecar that declares
-the full card (so a card that is hundreds of megabytes on real flash ships as a couple of megabytes),
-with the **Console I/O** board as its Propeller-based serial console (`altairsim dualsd`). Its
-**IDE-AB** companion does the same off **CompactFlash** — an 8255 driving a CF card's IDE bus, booted
-with the monitor's `P` command as drives A:/B: — and because both halves lay a card out identically,
-one system image is interchangeable between them; the two together make the full combination board,
-CompactFlash as A:/B: and microSD as C:/D:, a single CP/M 3 spanning all four drives (`altairsim
-dualide`, `altairsim dualidesd`). On the MITS
+CP/M entirely on their own, no monitor involved, straight off their own boot PROM. On the MITS
 side, the **88-HDSK** boots CP/M off a hard disk, **88-PIO**/**88-4PIO** add parallel I/O,
 **88-LPC** drives a real line printer, **88-UIO** combines a serial port and a cassette deck on
 one card, and the **8800b Turnkey Module** brings up a front-panel-less Altair with its boot PROM
@@ -121,49 +178,6 @@ jammed onto the bus at RESET. Two boards round it out: the **PMMI MM-103**, the 
 instead of one we picked, with built-in profiles for the Cromemco TU-ART, IMSAI SIO-2 and CompuPro
 serial channels. A new built-in ROM, **ROM BASIC**, boots Altair BASIC 4.1 straight out of PROM
 with the full 48K free underneath it.
-
-The **CompuPro System Support 1** joins the backplane as a real-time clock, a serial channel, an
-interval timer and a pair of interrupt controllers: its OKI MSM5832 clock/calendar reads your
-host's own date and time, a guest can set it, and — like the real battery-backed chip — a set
-survives a RESET (`altairsim compupro`). Its **2651 UART** is a spare serial port a guest programs
-and you `CONNECT` to an endpoint; its **Intel 8253** timer gives a guest three programmable 2 MHz
-counters; and its cascaded **Intel 8259A** controllers make it a full interrupt controller — the
-master prioritizes the bus's vectored-interrupt lines and drives the CPU, while the slave gathers
-the on-board timer and UART interrupts. Everything but the (empty) math-chip socket is now
-implemented.
-
-The **SSM PB1** brings something new: a **PROM burner**. Instead of preparing a ROM image with
-`LOAD … ROM`, you now *run* a period EPROM-programmer routine against a board that presents the
-real interface — a 4K socket window and an arm/type control port — burn a 2708 or 2716, and
-`SAVE` the result as an ordinary Intel HEX file. `examples/pb1` carries SSM's own driver routines
-from the PB1 manual — the 2708 and 2716 burners and the erase-check/copy-verify helpers — ready to
-run against the board.
-
-### A third validated CPU core: the Intel 8085
-
-The 8080 and Z80 are joined by a documented **Intel 8085** core — the 8080's binary superset,
-with `RIM`/`SIM` and the on-chip interrupt system (the non-maskable `TRAP` and the maskable
-`RST 5.5/6.5/7.5`, each with its mask and pending latch, in hardware priority order) that the
-8080 never had. It is faithful where the two chips actually differ: the 8085's logical `AND`
-always sets the auxiliary-carry flag, where the 8080 derives it from the operands. Like the
-other two cores it earns its place at the gate rather than by inspection — Ian Bartholomew's
-**8085** instruction-set exerciser, whose expected CRCs were read off real 8085 silicon, runs
-its 2.9 billion instructions against the core on every CI push, on all three platforms.
-
-The core is now something you can drive: an **`8085` machine** (`altairsim 8085` — an 8085, 64K,
-and a 2SIO console, the direct analog of the `z80` machine) and an **8085 disassembler and
-assembler**, so `DISASM` and `EDIT` speak the 8085 where that core is active. `RIM` and `SIM`
-decode as themselves, and the ten *undocumented* 8085 opcodes are named and flagged the way `DDT`
-flags a byte outside the published set (`??= 08  *DSUB`).
-
-The 8085's **faithful reproduction** is now complete: the two extra condition bits **V** (signed
-overflow) and **K** (the X5/UI bit) compute and ride the flag byte where the 8080 keeps constants,
-and **all ten undocumented opcodes execute** — the data-movement and branch group (`SHLX`, `LHLX`,
-`RSTV`, `JK`, `JNK`) and the ALU group (`DSUB`, `ARHL`, `RDEL`, `LDHI`, `LDSI`). Since the stock
-exerciser masks V and K out and never emits the undocumented bytes, these are pinned by
-hand-derived unit tests whose oracle is external — Ken Shirriff's reverse-engineering of the 8085
-silicon die, and two primary data-sheet sources (the Tundra CA80C85B and the 1979 *Electronics*
-article) that agree on every operation and flag mask.
 
 ### Disks and tapes the guest can build, not just read
 
@@ -185,12 +199,9 @@ and filter actually shape a signal, not as a clean oscillator a real deck could 
 
 Cycle breakpoints (`BREAK MEM`/`BREAK IO`) now stop **before** the triggering instruction runs
 instead of after, so a breakpoint on a port read shows you the registers exactly as they were the
-instant the instruction fired — no port read, no byte written, nothing to unwind. Cycle
-breakpoints now take a condition as well: `BREAK MEM W 100 IF B==0` or `BREAK IO R 10 IF C==1`
-stops only on the access whose registers hold, and `BREAK IO R 10 LOADS A>7F` tests the byte an
-`IN` actually read rather than the state it read it with. `BREAK TAPE STOP` adds a third kind of
-breakpoint, alongside PC and bus-cycle stops, that halts the instant a cassette reaches its own
-auto-stop. `HISTORY` now defaults to a flight recorder of CPU
+instant the instruction fired — no port read, no byte written, nothing to unwind. `BREAK TAPE
+STOP` adds a third kind of breakpoint, alongside PC and bus-cycle stops, that halts the instant a
+cassette reaches its own auto-stop. `HISTORY` now defaults to a flight recorder of CPU
 instructions rather than raw bus cycles, and its bus view (`HISTORY BUS`) names which board drove
 and which answered every cycle it logs. `EDIT`, the byte-at-a-time memory editor, now assembles a
 full instruction where a byte would go. Loaded symbols make disassembly and single-stepping read
@@ -221,41 +232,10 @@ A video window now opens locked to its picture's aspect ratio and resizes propor
 first drag, with an even bezel on all four sides and its title bar reading "simulator stopped"
 whenever the guest is halted. How big it opens is a per-board `width` in pixels, so each card sizes
 itself off its own resolution; the Dazzler's tiny frame gets its own auto-scaling so it lands near
-the same size as a VDM-1's instead of a sixth of it. A new **`SET DISPLAY crt=on`** (or `[display]
-crt = true`) paints any of these windows like the period tube — the 4:3 aspect of a real monitor,
-the raster softened into a phosphor glow rather than a grid of hard pixels — and under that look a
-window opened at a chosen `width` fills exactly that many pixels. The D+7A now reports what's actually behind
+the same size as a VDM-1's instead of a sixth of it. The D+7A now reports what's actually behind
 each joystick console — a named gamepad, the keyboard, or nothing — and a new `SHOW JOYSTICKS`
 lists every controller the host can see; two consoles default to two different gamepads
 automatically, so a pair of controllers just works with no configuration at all.
-
-### A terminal in its own window
-
-A serial line can now open its own **built-in terminal window** the simulator draws itself —
-`CONNECT sio0:a terminal`, or `connect = "terminal"` in a machine file — so the machine's console
-and the monitor's command prompt live in separate windows with no telnet client, no external
-emulator, and nothing to install on any platform. It speaks four dialects the way period software
-expects them, `?emulation=` picking one: **VT100/ANSI** (the default, enough of it to run a
-full-screen editor), the dumb CP/M **ADM-3A**, the **VT52**, and the Heath/Zenith **H19** — the
-last three being terminals no modern emulator provides, which was the whole point. `?size=COLSxROWS`
-sets the geometry (80×24 by default). Every serial board gets it for free, and in a headless build
-the endpoint simply refuses cleanly at CONNECT rather than opening a line nobody can see.
-
-The window draws in the real **DEC VT220** character set — the terminal's own glyphs, decoded from
-its character-ROM dump — on a softened green phosphor, with **`?phosphor=amber`** for the warm tube
-and **`?width=`** to open the window at a chosen pixel size. It reads as a period terminal rather
-than a modern console font, and pairs with the `crt` look above.
-
-The built-in terminal now carries the same fold-the-bytes settings the console has, in a
-**`[terminal]`** section (`SET TERMINAL`, `SHOW TERMINAL`, or a block in a machine file):
-`strip7out`, `strip7in`, `upper`, `echo`, `bell`, `bsdel`, and a `cr = cr | crlf` line-ending
-option. They earn their keep on a period **even-parity monitor** — the MITS Programming System II
-computes parity into bit 7, so it sends a carriage return as `8D`, which a raw terminal printed as
-a glyph instead of homing the cursor, feeding every line without a return; `strip7out` masks it,
-exactly as it does for MITS BASIC on the console. And the run banner no longer claims **`(no console
-connected)`** when the console is live on a `terminal:` window or a `socket:` — it now names the
-line (`(console on terminal)`), keeping the old phrase only for a machine with no serial line up at
-all.
 
 ### Save a machine, and pick it back up later
 
