@@ -63,7 +63,7 @@ void test_propio() {
     SECTION("propio -- identifies as the Console IO Board and is one serial unit");
     {
         Rig g;
-        CHECK(g.b.type() == "propio", "type() is propio, not io4");
+        CHECK(g.b.type() == "propio", "type() is propio, not gsio");
         CHECK(g.b.units().size() == 1, "one line -- a console");
         CHECK(g.b.units()[0].name == "serial", "named 'serial' (inherited from the strap-serial engine)");
         CHECK(g.b.units()[0].kind == UnitKind::Serial, "a serial unit");

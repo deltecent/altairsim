@@ -5,7 +5,7 @@
 // emulated register-for-register. See docs/devguide/serial-io.md.
 //
 // Two boards ride this engine:
-//   * Io4Board (src/boards/io4.h)   -- the SSM IO-4, TWO serial channels ("a"/"b").
+//   * GsioBoard (src/boards/gsio.h) -- the Generic SIO, TWO serial channels ("a"/"b").
 //   * PropIoBoard (src/boards/propio.h) -- the S100Computers Console IO Board, ONE
 //     channel ("serial"), a Parallax-Propeller console.
 //
@@ -79,7 +79,7 @@ const std::vector<SerialBuiltin>& serialBuiltins();
 
 // One serial channel's runtime state: its straps, its selected profile name, its line
 // rate (programmed onto a real serial port only), the line itself, and the receive
-// counter. The engine holds a vector of these -- one for propio, two for io4.
+// counter. The engine holds a vector of these -- one for propio, two for gsio.
 struct StrapSerialChannel {
     std::string                 name;              // "serial" | "a" | "b"
     std::string                 profile = "sior0"; // the selected built-in, or "custom"
@@ -102,7 +102,7 @@ public:
 
     // ---- reflection ----
     // A single-channel board (propio) surfaces its straps as BOARD-LEVEL properties (and a
-    // unit named "serial"), preserving the historical config. A multi-channel board (io4)
+    // unit named "serial"), preserving the historical config. A multi-channel board (gsio)
     // surfaces them PER-UNIT (units "a"/"b", the `[board.unit.a]` house pattern). The one
     // knob is boardLevelProps_; everything else is uniform over the channel vector.
     std::vector<Property> properties() override;
@@ -125,7 +125,7 @@ public:
     void deserialize(StateReader& r) override;
 
     // The endpoint grammar travels as a function; the board never learns it (DESIGN.md 7.7).
-    // Io4Board and PropIoBoard inherit this static and share the one resolver.
+    // GsioBoard and PropIoBoard inherit this static and share the one resolver.
     using EndpointResolver =
         std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)>;
     static void setResolver(EndpointResolver r);

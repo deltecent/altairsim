@@ -284,10 +284,11 @@ if (ch.stream->readable() != ch.straps.inverterGate) s |= (1u << ch.straps.davBi
 if (ch.stream->writable() != ch.straps.inverterGate) s |= (1u << ch.straps.tbmtBit);  // both bits, one knob
 ```
 
-Two boards ride this engine. **`Io4Board` (`src/boards/io4.h`, `type() == "io4"`)** is the SSM
-IO-4, which carries **two independent serial channels** — units `a` and `b`, configured under
-`[board.unit.a]` / `[board.unit.b]` — modeling the board's serial half (its parallel ports are
-out of scope). **`PropIoBoard` (`src/boards/propio.h`, `type() == "propio"`)** is the
+Two boards ride this engine. **`GsioBoard` (`src/boards/gsio.h`, `type() == "gsio"`)** is the
+Generic SIO, which carries **two independent serial channels** — units `a` and `b`, configured under
+`[board.unit.a]` / `[board.unit.b]`. It makes no claim to be a specific card; a documented board that
+needs programmable word length, parity, stop bits or framing/overrun status is a separate emulated
+board, not a strap on this one. **`PropIoBoard` (`src/boards/propio.h`, `type() == "propio"`)** is the
 S100Computers Console IO Board, a single channel; being single-channel, its straps surface as
 board-level properties and its one unit is named `serial`. The operator *describes* each channel
 with straps rather than picking a chip: which port is status/control, which port is data, which
@@ -321,7 +322,7 @@ The general playbook is `adding-a-board.md`; the serial-specific steps on top of
 6. **If you model real silicon**, put the chip in `src/chips/` from its data sheet, keep the
    inverting buffers and interrupt-enable bits on the card, and reuse `Sio2Port` if it is a
    6850. If instead you want a strap-configured abstract interface, `StrapSerialBoard` already
-   exists (behind `io4` and `propio`) — add a profile, do not write a new board.
+   exists (behind `gsio` and `propio`) — add a profile, do not write a new board.
 7. **Test with a `ScriptedStream`** bound through the real `connect()` path: `feed()` bytes at the
    card, assert on `out()`, and check the status bits land where the straps put them.
 

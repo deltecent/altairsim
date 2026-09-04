@@ -13,7 +13,7 @@ terminal). This is the console the Dual SD / SBC-Z80 CP/M 3 machines use.
 redistributed here — text distillation citing the public page. (Record the licence; never gate.)
 
 This board is emulated as a preset of the **chip-less strap-serial engine** (`src/boards/strapserial.h`,
-the same engine behind the `io4` board): a single-channel subtype `propio` presetting the straps
+the same engine behind the `gsio` board): a single-channel subtype `propio` presetting the straps
 below. Everything the board does is "read a status bit, read/write a data byte," which the strap
 engine already models; the board's real hardware is *itself* fully jumper-configurable, so a subtype
 presetting one documented convention (all straps still overridable) is a faithful model, not an

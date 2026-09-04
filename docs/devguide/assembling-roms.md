@@ -33,7 +33,7 @@ id   = "cpu0"
 type = "hostbridge"
 id   = "hb0"
 [[board]]
-type = "io4"                   # serial console: channel a at SSM ports 0/1
+type = "gsio"                  # serial console: channel a at ports 0/1
 id   = "io0"
   [board.unit.a]
   connect = "console"

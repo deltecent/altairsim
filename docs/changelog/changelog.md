@@ -8,17 +8,19 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
-The strap-configurable serial card is now a real board: the **SSM IO-4** (`io4`) replaces
-`usio`. It is a describe-it-by-strap card — you say where the status/control and data ports
-sit, which status bits carry DAV (data available) and TBMT (transmit buffer empty), and whether
-the shared **`inverter_gate`** is engaged — and that is the port. The IO-4 carries **two
-independent serial channels**, `a` and `b`, each configured under its own `[board.unit.a]` /
-`[board.unit.b]` table with its own straps, `baud` and `connect` endpoint; `a` comes up at
-ports 0/1 and `b` at 2/3. Built-in **profiles** preset the straps to imitate a specific card —
-`sior0` (the MITS SIO Rev 0 the SSM 8080 monitor expects, and the default), `tuart`,
-`imsai-sio2`, `compupro-if2`, `compupro-ss1` — and every strap stays overridable afterward. The
-board is polled, with no interrupts; the IO-4's parallel ports are not modeled. The `propio`
-Console IO Board is unchanged — a single-channel console riding the same strap engine.
+The strap-configurable serial card is now its own board: **Generic SIO** (`gsio`), the generic
+name for what was briefly carried as `usio`/`io4`. It is a describe-it-by-strap card — you say
+where the status/control and data ports sit, which status bits carry DAV (data available) and
+TBMT (transmit buffer empty), and whether the shared **`inverter_gate`** is engaged — and that
+is the port. It carries **two independent serial channels**, `a` and `b`, each configured under
+its own `[board.unit.a]` / `[board.unit.b]` table with its own straps, `baud` and `connect`
+endpoint; `a` comes up at ports 0/1 and `b` at 2/3. Built-in **profiles** preset the straps to
+imitate a specific card — `sior0` (the MITS SIO Rev 0 the SSM 8080 monitor expects, and the
+default), `tuart`, `imsai-sio2`, `compupro-if2`, `compupro-ss1` — and every strap stays
+overridable afterward. The board is polled, with no interrupts, and does basic transmit and
+receive only — no programmable word length, parity or stop bits; a specific card that needs
+those is a separate, fully emulated board. The `propio` Console IO Board is unchanged — a
+single-channel console riding the same strap engine.
 
 A disk no longer has to be a file on your host. `MOUNT` now takes a **`tnfs://host/path`** URL
 and fetches the image off a **TNFS server** — the network file system the FujiNet project speaks

@@ -10,7 +10,7 @@
 namespace altair {
 
 // WHERE THE ENDPOINT GRAMMAR STOPS. main.cpp installs this; the card holds it and
-// hands a spec to it. The card never learns what a socket is (DESIGN.md 7.7). Io4Board
+// hands a spec to it. The card never learns what a socket is (DESIGN.md 7.7). GsioBoard
 // and PropIoBoard inherit the static and share this one resolver.
 namespace {
 StrapSerialBoard::EndpointResolver g_resolver;
@@ -236,7 +236,7 @@ void StrapSerialBoard::deserialize(StateReader& r) {
 // ---------------------------------------------------------------------------
 
 // The properties for ONE channel. Emitted board-level (single channel, propio) or per-unit
-// (multi channel, io4); the names are identical either way because the unit namespaces them.
+// (multi channel, gsio); the names are identical either way because the unit namespaces them.
 std::vector<Property> StrapSerialBoard::channelProperties(size_t idx) {
     std::vector<Property> p;
 
@@ -378,7 +378,7 @@ std::vector<Property> StrapSerialBoard::channelProperties(size_t idx) {
     return p;
 }
 
-// Single-channel boards (propio) surface the straps at BOARD level; multi-channel (io4)
+// Single-channel boards (propio) surface the straps at BOARD level; multi-channel (gsio)
 // surface them per-unit (unitProperties), so here properties() is empty for them.
 std::vector<Property> StrapSerialBoard::properties() {
     if (boardLevelProps_ && !chans_.empty()) return channelProperties(0);
