@@ -514,8 +514,16 @@ bus-accurate board model, an always-on debugger, and `--mcp`.
 
 ## Where to read more
 
-- `docs/manual/` — the User Manual (quick start, machines, disks, boards, MCP, file transfer).
-- `docs/cli-commands.md` — why the monitor commands rank and abbreviate as they do, including the
-  two deliberate breaks with SIMH.
-- `docs/manual/mcp.md` and `docs/DRIVING-WITH-AI.md` — driving a running guest programmatically.
-- `DESIGN.md` — the architecture and the reasoning behind the board/bus model.
+These ship beside this guide in the package:
+
+- `QUICK-START.pdf` — boot CP/M in one command. The shortest path to a running machine.
+- `altairsim-manual.pdf` — the User Manual: quick start, machines, disks, boards, MCP, file
+  transfer. Its MCP chapter and `DRIVING-WITH-AI.md` cover driving a running guest
+  programmatically.
+- `altairsim-monitor.pdf` and `altairsim-debugger.pdf` — the `altairsim>` prompt and the
+  built-in debugger, including the two deliberate breaks with SIMH in how commands rank and
+  abbreviate.
+
+Deeper still, in the **source repository** (<https://github.com/deltecent/altairsim>):
+`DESIGN.md` for the architecture and the reasoning behind the board/bus model, and
+`docs/cli-commands.md` for the full command-ranking rationale.

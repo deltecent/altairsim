@@ -69,7 +69,7 @@ DIR  examples/acr        <=  examples/acr
 DIR  examples/hdsk       <=  examples/hdsk
 DIR  examples/printing   <=  examples/printing
 
-# NOT AN EXAMPLE, and the one DIR here not under examples/. cpm/hostbridge/ is the SOURCE of the
+# NOT AN EXAMPLE, and the one DIR here not under examples/. hostbridge/ is the SOURCE of the
 # file-transfer utilities the file-transfer chapter sends across the host bridge -- R/W/HDIR as
 # 8080 source, the assembled .HEX, and the .COM. It ships because a package holder moving files
 # in and out should not have to clone the repository to get them (issue #380): the disk in
@@ -78,7 +78,12 @@ DIR  examples/printing   <=  examples/printing
 # FILE loop runs token-substitution sed over each file and would corrupt a binary .COM; the DIR
 # copy is a plain cp -R. build-package.sh strips README.md from it, and keeps the .ASM/.PRN
 # because this DIR ships no disk or tape image (that strip is conditional on one).
-DIR  cpm/hostbridge      <=  cpm/hostbridge
+#
+# IT SHIPS AT THE ROOT, not under cpm/. A new user opening the archive reads `cpm/` as "CP/M
+# lives here" and goes looking for the operating system; the utilities are their own thing, so
+# they get their own top-level folder. The repo path is unchanged -- cpm/hostbridge/ in the
+# tree, hostbridge/ in the zip.
+DIR  hostbridge          <=  cpm/hostbridge
 
 # ---------------------------------------------------------------------------
 # FILES -- <package path>  <=  <path in this repo>

@@ -2,21 +2,29 @@
 
 ```
 altairsim                the program. One file, nothing to install.
+QUICK-START.pdf          boot CP/M in one command. Start here.
 altairsim-manual.pdf     this.
 altairsim-changelog.pdf  what changed in this release, and the ones before it.
 altairsim-cheatsheet.pdf every command and option, rendered for reading.
 altairsim-monitor.pdf    the altairsim> prompt: driving the machine from the console.
 altairsim-debugger.pdf   breakpoints, stepping, and looking at the bus itself.
+migrating.pdf            coming from AltairZ80 (SIMH) or z80pack? read this.
 DRIVING-WITH-AI.md       for an AI assistant driving the machine; see below.
 cheatsheet.md            the same reference as plain text, for the AI to read.
 LICENSE                  the MIT licence this is published under.
 LICENSE-SDL3             the licence of SDL3, which is built into the program.
 examples/                machines that boot, media included.
-cpm/                     the file-transfer utilities (in cpm/hostbridge/): source, HEX, COM.
+hostbridge/              the file-transfer utilities: source, HEX, COM.
 ```
 
 That is the whole archive. There is no library to install, no runtime, and no configuration
 file you must write before the program will start.
+
+**Start with `QUICK-START.pdf`.** It boots CP/M in a single command and shows you the three
+keys — `^E`, `RUN`, `QUIT` — that move you between the guest and the monitor. This manual is
+the long version of it; that one page is enough to get a machine running. And if you are
+arriving from another Altair simulator, `migrating.pdf` is the map: what carries over from
+**AltairZ80 (SIMH)** or **z80pack**, what has a new name here, and what you would give up.
 
 `altairsim-changelog.pdf` is the release history — what this version does that the last one did
 not, and the same for the versions before it. It is a separate document from this manual on
@@ -99,7 +107,7 @@ and its README says so.
 
 ## The file-transfer utilities
 
-`cpm/hostbridge/` holds the programs the file-transfer chapter uses to move files between CP/M
+`hostbridge/` holds the programs the file-transfer chapter uses to move files between CP/M
 and your host — `R`, `W` and `HDIR`. Both the 8080 **source** and the assembled `.HEX` and
 `.COM` are in there. You do not need them to *use* the utilities on the shipped CP/M disk, which
 already carries the `.COM`; they ship for the other case that chapter covers — putting the
@@ -141,7 +149,7 @@ the MIT licence, and the source is a separate thing to fetch:
 
 **<https://github.com/deltecent/altairsim>**
 
-(The one bit of source that *does* ship is `cpm/hostbridge/` above — but that is 8080 program
+(The one bit of source that *does* ship is `hostbridge/` above — but that is 8080 program
 source for the file-transfer utilities, not the simulator's own code.)
 
 Nothing in this manual requires it. The one exception worth naming: **if you want to build a

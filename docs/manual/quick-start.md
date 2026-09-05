@@ -4,6 +4,12 @@
 $ altairsim {{MACHINE_CPM}}
 ```
 
+On **Windows** the program is `altairsim.exe` and the path is spelled with backslashes:
+
+```
+> altairsim.exe examples\cpm\cpm22-buffered.toml
+```
+
 That is the whole of it.
 
 ```

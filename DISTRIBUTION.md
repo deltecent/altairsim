@@ -41,12 +41,15 @@ It is the right choice for two reasons. The download is half the size for everyo
 
 ```
 altairsim[.exe]                       the program
+QUICK-START.pdf                       CP/M in one command (docs/QUICK-START.md, built by CI)
 altairsim-manual.pdf                  the User Manual
 altairsim-changelog.pdf               the release history (docs/changelog/, built by CI)
 altairsim-monitor.pdf                 the altairsim> prompt (docs/monitor/, built by CI)
 altairsim-debugger.pdf                debugging from that prompt (docs/debugger/, built by CI)
+migrating.pdf                         coming from AltairZ80/z80pack (docs/migrating.md, by CI)
 DRIVING-WITH-AI.md                    the briefing for an AI assistant driving it over MCP
 LICENSE                               ours (MIT)
+hostbridge/                           file-transfer utilities: source, HEX, COM
 examples/cpm/                         CP/M 2.2 on an 8" floppy
 examples/basic/                       4K BASIC on a cassette
 examples/diskbasic/                   Altair Disk BASIC 4.1

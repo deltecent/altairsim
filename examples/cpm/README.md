@@ -1,8 +1,21 @@
 # CP/M 2.2b on an Altair 8" floppy
 
-```
-altairsim cpm22-buffered.toml
+**To launch it**, name the machine file from inside this folder:
 
+```
+$ altairsim cpm22-buffered.toml
+```
+
+On **Windows** the program is `altairsim.exe`:
+
+```
+> altairsim.exe cpm22-buffered.toml
+```
+
+The machine boots itself — you type no `BOOT` command — and comes up at the CP/M prompt.
+Type `DIR` to see the disk:
+
+```
 56K CP/M 2.2b v2.3
 For Altair 8" Floppy
 

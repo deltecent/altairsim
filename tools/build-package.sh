@@ -3,11 +3,13 @@
 # Assemble the distribution: the archive we actually hand people.
 #
 #   altairsim                the program
+#   QUICK-START.pdf          CP/M in one command -- the first thing to open (docs.yml builds it)
 #   altairsim-manual.pdf     the manual -- and NOTHING in it names a file that is not here
 #   altairsim-changelog.pdf  what changed, per release (docs/changelog/, built by docs.yml)
 #   altairsim-cheatsheet.pdf the quick reference, rendered (docs/manual/ref/, built by docs.yml)
 #   altairsim-monitor.pdf    the altairsim> prompt (docs/monitor/, built by docs.yml)
 #   altairsim-debugger.pdf   debugging from that prompt (docs/debugger/, built by docs.yml)
+#   migrating.pdf            coming from AltairZ80 (SIMH) or z80pack (docs.yml builds it)
 #   DRIVING-WITH-AI.md       the same machines, written for an AI assistant driving them over MCP
 #   cheatsheet.md            the quick reference as plain text, for the AI assistant to read
 #   LICENSE                  ours (MIT)
@@ -308,6 +310,24 @@ for doc in monitor debugger; do
   pdf=$root/docs/altairsim-$doc.pdf
   [ -f "$pdf" ] || {
     echo "build-package: docs/altairsim-$doc.pdf is missing -- CI (docs.yml) builds it." >&2
+    echo "  It is committed at the tag, so a checkout of vX.Y.Z has it. Are you on the tag, or" >&2
+    echo "  packaging before docs.yml has run on master? See DISTRIBUTION.md 5 step 2." >&2
+    exit 1
+  }
+  cp "$pdf" "$pkg/"
+done
+
+# The quick-start sheet and the migration guide. Two more committed CI artifacts (docs.yml
+# builds docs/QUICK-START.pdf and docs/migrating.pdf from docs/QUICK-START.md and
+# docs/migrating.md via build-docs.sh's build_single), and docs/manual/package.md names both,
+# so they are DELIVERABLES. Copy each STRAIGHT FROM THE TREE -- like the changelog and the
+# cheatsheet, not through the FILE loop, whose token sed would corrupt a binary PDF. They keep
+# their own names (no altairsim- prefix): QUICK-START.pdf is the first file a package holder
+# opens, and migrating.pdf reads better than altairsim-migrating.pdf in a directory listing.
+for pdf_name in QUICK-START migrating; do
+  pdf=$root/docs/$pdf_name.pdf
+  [ -f "$pdf" ] || {
+    echo "build-package: docs/$pdf_name.pdf is missing -- CI (docs.yml) builds it." >&2
     echo "  It is committed at the tag, so a checkout of vX.Y.Z has it. Are you on the tag, or" >&2
     echo "  packaging before docs.yml has run on master? See DISTRIBUTION.md 5 step 2." >&2
     exit 1
