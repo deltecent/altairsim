@@ -277,11 +277,11 @@ in it would end the paste, and the bytes above `7Fh` would not survive the trip 
 paste the **`R.HEX`** that `LOAD` was going to turn into `R.COM` anyway. It is Intel HEX:
 colons, hex digits and line ends, about 4.8 KB of them, and every byte of it is printable.
 
-**It ships with the package.** The utilities are in `cpm/hostbridge/` — the 8080 sources, the
+**It ships with the package.** The utilities are in `hostbridge/` — the 8080 sources, the
 `.HEX`, and the assembled `.COM`, all together. The CP/M disk that ships in `examples/cpm`
 already has `R.COM`, `W.COM` and `HDIR.COM` on it, which is why this section is about the other
 kind of disk — a fresh one, or a minidisk image you brought yourself. For the paste below, open
-`cpm/hostbridge/R.HEX`.
+`hostbridge/R.HEX`.
 
 **1. Tell PIP to write a file from the console.**
 
@@ -335,7 +335,7 @@ ordinary binaries — no HEX, no `LOAD`, no pasting — provided `hostdir` point
 they are in:
 
 ```
-altairsim> SET hb0 hostdir=cpm/hostbridge
+altairsim> SET hb0 hostdir=hostbridge
 ```
 
 ### Two things that would bite you on real hardware and do not bite you here

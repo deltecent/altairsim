@@ -374,6 +374,14 @@ build debugger  altairsim-debugger  "altairsim — The Debugger"  toc2
 # AI's plain-text crib); this is the same content a file manager can open.
 build_single docs/manual/ref/cheatsheet.md altairsim-cheatsheet "altairsim — Quick Reference"
 
+# The one-page onboarding sheet and the migration guide, each a loose top-level PDF in the
+# package. QUICK-START.pdf is the first thing a package holder should open -- CP/M in one
+# command; migrating.pdf is for someone arriving from AltairZ80 (SIMH) or z80pack. Both ship
+# ONLY as PDF (their Markdown is repo source, not an AI crib), so they go through build_single
+# exactly like the cheatsheet -- rendered into docs/, tracked, rebuilt by docs.yml.
+build_single docs/QUICK-START.md QUICK-START "altairsim — Quick Start"
+build_single docs/migrating.md    migrating   "altairsim — Migrating from AltairZ80 and z80pack"
+
 # The examples' READMEs, each to a sibling PDF. The index first, then one per directory.
 # Glob against $root, not the caller's cwd -- this script may be run from anywhere.
 for abs in "$root"/examples/README.md "$root"/examples/*/README.md; do
