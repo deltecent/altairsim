@@ -88,12 +88,12 @@ this manual — look in `examples/`, and read the README of whichever one you wa
 
 ```
 $ ls examples/
-$ altairsim {{MACHINE_CPM}}
+$ altairsim examples/cpm/cpm22-buffered.toml
 ```
 
 **The folder is the unit, and you may move it anywhere.** A path written *inside* a machine
 file resolves against **that file**, not against wherever you were standing when you ran the
-program — so `{{MACHINE_CPM}}` names its disk as plain `cpm22b23-56k.dsk`, the one lying next
+program — so `examples/cpm/cpm22-buffered.toml` names its disk as plain `cpm22b23-56k.dsk`, the one lying next
 to it, and the folder still boots after you copy it to your desktop, rename it, or mail it to
 somebody.
 

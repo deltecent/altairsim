@@ -14,7 +14,7 @@ you have is the directory itself, not a list in here.
 ## 1. CP/M from a floppy
 
 ```
-$ altairsim {{MACHINE_CPM}}
+$ altairsim examples/cpm/cpm22-buffered.toml
 ```
 
 ```
@@ -113,7 +113,7 @@ explains why.
 ## 2. Altair BASIC from a cassette
 
 ```
-$ altairsim {{MACHINE_BASIC}}
+$ altairsim examples/basic/basic4k.toml
 ```
 
 ```
@@ -211,7 +211,7 @@ there is, the one Bill Gates and Paul Allen wrote in 1975. Same idea, one differ
 seeing:
 
 ```
-$ altairsim {{MACHINE_BASIC1}}
+$ altairsim examples/basic/basic1.toml
 ```
 
 ```
@@ -244,10 +244,10 @@ counter climbs through the two and a half minutes it took in 1975.
 
 ---
 
-## 3. {{NAME_HDSK}} off an 88-HDSK hard disk
+## 3. CP/M 2.2 off an 88-HDSK hard disk
 
 ```
-$ altairsim {{MACHINE_HDSK}}
+$ altairsim examples/hdsk/hdsk.toml
 ```
 
 Example 1 boots CP/M off an 8" floppy. This one boots the *same operating system* off a
@@ -295,10 +295,10 @@ to the original image — copy the folder before you test writes in anger, or ad
 
 ---
 
-## 4. {{NAME_DISKBASIC}} from a floppy
+## 4. Altair Disk Extended BASIC 4.1 from a floppy
 
 ```
-$ altairsim {{MACHINE_DISKBASIC}}
+$ altairsim examples/diskbasic/diskbasic.toml
 ```
 
 The BASIC in example 2 comes off a cassette and forgets everything when you turn it off. This

@@ -11,7 +11,7 @@ the rest of the Sol's onboard hardware in the boards chapter, under `sol`. This 
 the 88-ACR, and everything in it — mounting, rewinding, audio files, recording — works the same
 way on the Sol's decks; only the unit name changes.
 
-The chapter ends with the thing this is all for: loading {{NAME_BASIC}} the way it was actually
+The chapter ends with the thing this is all for: loading Altair 4K BASIC 3.1 the way it was actually
 loaded in 1976, with nothing in ROM, nothing on a disk, a bootstrap you enter by hand, and a
 tape.
 
@@ -62,7 +62,7 @@ hands this afternoon without unscrewing the lid.
 ### Putting a tape in
 
 ```
-altairsim> MOUNT acr0:tape "{{TAPE_BASIC}}"
+altairsim> MOUNT acr0:tape "examples/basic/4K BASIC Ver 3-1.tap"
 ```
 
 The ACR has one unit, so the unit carries no information, so you may drop it:
@@ -415,7 +415,7 @@ An empty file has no magic to sniff, so `format` (or the `.wav` name) is the who
 `format` takes effect at the **next** `MOUNT`, because a tape is decoded once, when you put
 it in.
 
-## Loading {{NAME_BASIC}} — the three-step ritual
+## Loading Altair 4K BASIC 3.1 — the three-step ritual
 
 This is the whole point of the chapter. It is three commands, and it is what an Altair owner
 did every single time they wanted to use BASIC, because there was nowhere to keep it.
@@ -423,13 +423,13 @@ did every single time they wanted to use BASIC, because there was nowhere to kee
 **1. Put the cassette in.**
 
 ```
-altairsim> MOUNT acr0:tape "{{TAPE_BASIC}}"
+altairsim> MOUNT acr0:tape "examples/basic/4K BASIC Ver 3-1.tap"
 ```
 
 **2. Toggle in the bootstrap.**
 
 ```
-altairsim> LOAD "{{LOADER_BASIC}}"
+altairsim> LOAD "examples/basic/LDR4K31.HEX"
 ```
 
 About twenty bytes. **On a real Altair you entered this by hand on the front-panel switches**
@@ -471,7 +471,7 @@ You are in Altair BASIC. It is 1976, and this is the first product Microsoft eve
 To do the whole thing in one command, the package ships the machine that does it for you:
 
 ```
-$ altairsim {{MACHINE_BASIC}}
+$ altairsim examples/basic/basic4k.toml
 ```
 
 That machine file types those three lines on your behalf. It gets no special powers — every
@@ -502,9 +502,9 @@ its real speed — while `SET acr0:tape rate=real` is the separate switch that m
 take its real wall-clock time. In `rate = full` the guest cannot tell the difference at any CPU
 speed, because a polled loader only ever asks for the next byte and the byte is always ready.
 
-## {{NAME_DISKBASIC}}
+## Altair Disk Extended BASIC 4.1
 
-The other BASIC in the package does not use tape at all. {{NAME_DISKBASIC}} lives on an 8"
+The other BASIC in the package does not use tape at all. Altair Disk Extended BASIC 4.1 lives on an 8"
 floppy, and it has what a cassette cannot give you: files, a directory, and a `SAVE` that
 takes a name.
 

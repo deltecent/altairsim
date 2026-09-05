@@ -519,7 +519,7 @@ something you can mount directly.
 
 This is the board that shows you what an Altair actually was: no disk, no PROM, a bootstrap you
 toggle in by hand, and eight minutes of listening to a cassette. **The tapes chapter is the one to
-read**, and {{NAME_BASIC}} is the machine to run.
+read**, and Altair 4K BASIC 3.1 is the machine to run.
 
 ---
 

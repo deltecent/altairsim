@@ -34,7 +34,7 @@ error — the program says *give ONE machine* and stops. It does not guess which
 
 ```
 $ altairsim basic4k                     a BUILT-IN, by name
-$ altairsim {{MACHINE_CPM}}             a FILE, by path
+$ altairsim examples/cpm/cpm22-buffered.toml             a FILE, by path
 ```
 
 The rule is **purely syntactic**. The filesystem is **never probed**:
@@ -152,7 +152,7 @@ Both are true at once, and they do not conflict, because they are the same idea:
 what its author could see.**
 
 The author of a machine file could see the directory the machine file is in. When
-`{{MACHINE_CPM}}` says `mount = "cpm22b23-56k.dsk"`, it means *the disk lying next to me* — and
+`examples/cpm/cpm22-buffered.toml` says `mount = "cpm22b23-56k.dsk"`, it means *the disk lying next to me* — and
 it goes on meaning that after you copy the folder to your desktop, rename it, or mail it to
 someone. That is why the examples are self-contained directories, and why the quick start's
 `cp -R` actually works.
@@ -274,14 +274,14 @@ moves it.
 
 ```
 $ altairsim -x 'SHOW MACHINE' default
-$ altairsim -x 'DUMP 0 F' {{MACHINE_CPM}}
+$ altairsim -x 'DUMP 0 F' examples/cpm/cpm22-buffered.toml
 ```
 
 `-x` runs one monitor command against the machine and exits. It is **repeatable**, and the
 commands run in the order you gave them:
 
 ```
-$ altairsim -x 'MOUNT dsk0:drive0 mine.dsk' -x 'RUN FF00' -i {{MACHINE_CPM}}
+$ altairsim -x 'MOUNT dsk0:drive0 mine.dsk' -x 'RUN FF00' -i examples/cpm/cpm22-buffered.toml
 ```
 
 `-i` is the difference between a query and a start-up: without it the program exits when the
@@ -291,7 +291,7 @@ commands left it. `-i` alone, with no `-x` or `-s`, does nothing.
 `-s` runs a **script** — a file of monitor commands, one per line, the same ones you type:
 
 ```
-$ altairsim -s boot.cmd {{MACHINE_CPM}}
+$ altairsim -s boot.cmd examples/cpm/cpm22-buffered.toml
 ```
 
 **The exit status is non-zero if any command failed.** That is the whole point: `altairsim -s`

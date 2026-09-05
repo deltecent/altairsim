@@ -1,7 +1,7 @@
 # Quick start: CP/M in one command
 
 ```
-$ altairsim {{MACHINE_CPM}}
+$ altairsim examples/cpm/cpm22-buffered.toml
 ```
 
 On **Windows** the program is `altairsim.exe` and the path is spelled with backslashes:
@@ -120,7 +120,7 @@ The disk image is mounted **read/write**, because that is what a machine with a 
 so anything you do in CP/M happens to the file on your host, with nothing keeping a copy. Two
 ways to be safe:
 
-- **Write-protect it.** `MOUNT dsk0:drive0 {{DISK_CPM}} RO` refuses every write at the
+- **Write-protect it.** `MOUNT dsk0:drive0 examples/cpm/cpm22b23-56k.dsk RO` refuses every write at the
   controller, so the file cannot change however the guest behaves. Use it to *look around*. But
   the guest is not *told* the disk is protected, so a program that means to write may not survive
   being refused — mount `RO` to read, not to run a CP/M you expect to save your work.
@@ -141,5 +141,5 @@ chapter explains all three in full.
 
 If you would rather see something boot from nothing at all — no disk, no PROM, the bootstrap
 toggled in by hand exactly as MITS printed it in the manual — turn to the tapes chapter and
-load {{NAME_BASIC}}. It is the more instructive machine, and it is the one that shows you
+load Altair 4K BASIC 3.1. It is the more instructive machine, and it is the one that shows you
 what an Altair actually was.
