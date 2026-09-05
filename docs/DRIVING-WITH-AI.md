@@ -10,7 +10,7 @@ This works with **any MCP-capable assistant**. The examples below use **Claude**
 client, but the server speaks the open Model Context Protocol and the same steps apply elsewhere.
 
 Every recipe below was **verified end to end** against the CP/M machine that ships in this
-package (`{{MACHINE_CPM}}`): the assemble-and-extract build and the serial attach both run
+package (`examples/cpm/cpm22-buffered.toml`): the assemble-and-extract build and the serial attach both run
 green. Point at the `altairsim` you were given.
 
 **New to this?** The `examples/ai-mcp/` folder is a ready-made working directory: register the
@@ -32,13 +32,13 @@ than entering the run loop — so `CONFIG LOAD anymachine.toml` never wedges the
 it with `run {from: …}` afterward.
 
 `altairsim --list` shows the built-in machines. The CP/M example this guide is written
-against is the machine file `{{MACHINE_CPM}}`.
+against is the machine file `examples/cpm/cpm22-buffered.toml`.
 
 Minimal driver:
 
 ```python
 import subprocess, json
-p = subprocess.Popen(["altairsim", "{{MACHINE_CPM}}", "--mcp"],
+p = subprocess.Popen(["altairsim", "examples/cpm/cpm22-buffered.toml", "--mcp"],
                      cwd=WORKDIR, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                      text=True, bufsize=1)
 # write {"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":..,"arguments":..}}\n
@@ -140,7 +140,7 @@ You do not have to read a transcript after the fact to see what the assistant is
 and **type back onto the line to take over**, sharing the console with the assistant:
 
 ```
-altairsim {{MACHINE_CPM}} --mcp --mirror socket:2323
+altairsim examples/cpm/cpm22-buffered.toml --mcp --mirror socket:2323
 ```
 
 The assistant keeps driving through `run`/`send`/`recv` exactly as before — the mirror is
@@ -207,7 +207,7 @@ generous `timeout_ms` only for long silent work (assembling, a disk load).
 
 ## Recipe: build a CP/M program end to end
 
-Machine: the CP/M config (`{{MACHINE_CPM}}`). Its disk already carries `ASM.COM`, `LOAD.COM`
+Machine: the CP/M config (`examples/cpm/cpm22-buffered.toml`). Its disk already carries `ASM.COM`, `LOAD.COM`
 and the host-bridge `R/W/HDIR.COM`. Launch altairsim **from the directory holding your
 source**, or aim the sandbox elsewhere: `monitor {command: "SET hb0 HOSTDIR=/path"}`.
 
@@ -588,8 +588,8 @@ it there, and when they disagree you have a known-good side to compare against.
 If you cannot run the MCP server, the same machine answers the monitor:
 
 ```
-altairsim {{MACHINE_CPM}} -x 'BOARDS' -i          # run a command, then stay interactive
-altairsim {{MACHINE_CPM}} -s script.cmd           # run a command script, exit with status
+altairsim examples/cpm/cpm22-buffered.toml -x 'BOARDS' -i          # run a command, then stay interactive
+altairsim examples/cpm/cpm22-buffered.toml -s script.cmd           # run a command script, exit with status
 ```
 
 But note: a bare monitor **`RUN` blocks on stdin under a pipe** (stdin is the script/JSON-RPC

@@ -115,7 +115,17 @@ FILE  LICENSE-SDL3         <=  LICENSE-SDL3
 # this note said it would take.
 
 # ---------------------------------------------------------------------------
-# TOKENS -- what the manual writes, and what it means.
+# TOKENS -- a machine/media reference, no longer written into prose.
+#
+# THE MANUAL AND DRIVING-WITH-AI.md NOW WRITE LITERAL PATHS, not {{TOKENS}} (2026-09-05).
+# A reader looking at the raw .md -- on GitHub, or in the tree -- sees the real command, because
+# an unrendered {{MACHINE_CPM}} is not a command anyone can type. The .md files stand on their own.
+#
+# These definitions are RETAINED and the substitution machinery still runs (build-docs.sh and
+# build-package.sh expand() over every doc, then fail on any leftover {{...}}), so a future doc
+# MAY reintroduce a token and it will resolve here -- but nothing does today. They double as the
+# canonical list of which machine/media each shorthand names. If you change a path below, grep the
+# docs for the literal and change it there too: the build no longer does that for you.
 # ---------------------------------------------------------------------------
 
 # The CP/M machine. Buffered CP/M 2.2 on an 8" floppy: it carries `startup = ["RUN FF00"]`,

@@ -64,7 +64,7 @@ with a console and a floppy controller, which is the machine most period softwar
 Naming something gets you something else:
 
 ```
-$ altairsim {{MACHINE_CPM}}     a machine file: this one boots CP/M
+$ altairsim examples/cpm/cpm22-buffered.toml     a machine file: this one boots CP/M
 $ altairsim basic4k                     a BUILT-IN machine, by name
 $ altairsim --list                      what the built-in names are
 ```
