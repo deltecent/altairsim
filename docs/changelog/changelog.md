@@ -6,6 +6,17 @@ as it is now; this document is the record of how it got there.
 
 ---
 
+## Unreleased
+
+### Documentation
+
+A **migration guide** for people coming from the two best-known open Altair/S-100 simulators —
+AltairZ80 (SIMH) and z80pack: what carries across untouched, an objective side-by-side, the
+command mappings (including the deliberate SIMH `D`/`E` swap), disk-image compatibility, and
+worked machine-file conversions (`docs/migrating.md`).
+
+---
+
 ## 1.0.0
 
 **1.0.0 is the version that says the simulator is what it set out to be.** Where 0.4.0 filled
