@@ -2677,6 +2677,22 @@ void test_achieved_hz() {
         CHECK(cmon.complete("MOUNT sio0:").matches.empty(),
               "a serial-only board has no mountable units, so MOUNT sio0: is inert");
 
+        // The board-id half's suffix depends on the board. disk0 has four mountable drives,
+        // so a bare id cannot finish the target -- it completes with a ':' ready for the
+        // unit name, not a space that would force a backspace. acr0 has one thing to mount
+        // (its tape), so the lone-unit rule finishes a bare id and it completes with a space.
+        Completions cmd = cmon.complete("MOUNT disk");
+        CHECK(cmd.matches.size() == 1 && cmd.matches[0] == "disk0" && cmd.suffix == ":",
+              "MOUNT completing a multi-drive board ends on ':' so the unit can follow");
+        Completions cma = cmon.complete("MOUNT acr");
+        CHECK(cma.matches.size() == 1 && cma.matches[0] == "acr0" && cma.suffix == " ",
+              "MOUNT completing a lone-unit board ends on a space -- the bare id resolves");
+        // SET is unaffected: a bare board id targets the board's own properties, always
+        // a finished word, so it keeps its trailing space even for a multi-unit board.
+        Completions csd = cmon.complete("SET disk");
+        CHECK(csd.matches.size() == 1 && csd.matches[0] == "disk0" && csd.suffix == " ",
+              "SET's bare-id target stays a space -- it names the board, not a unit");
+
         // CONNECT: word 1 is a target filtered to SERIAL units -- the mirror image.
         CHECK(has(cmon.complete("CONNECT sio0:"), "a"), "CONNECT sio0: offers the serial units");
         CHECK(cmon.complete("CONNECT disk0:").matches.empty(),
@@ -2835,6 +2851,99 @@ void test_achieved_hz() {
             CHECK(out.str().find("console on") == std::string::npos,
                   "and it does not invent a console that is not there");
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // MACHINE and DO -- pick a machine by name, and run a file of commands
+    // ---------------------------------------------------------------------
+    SECTION("MACHINE loads a built-in by name, or empties the backplane with `none`");
+    {
+        // Prefix resolution: the two new verbs resolve, and neither disturbs the
+        // shorter prefixes that were already spoken for (M is still MOUNT, D still DUMP).
+        CHECK(R("MACHINE") == "MACHINE", "MACHINE resolves to itself");
+        CHECK(R("MAC") == "MACHINE", "MAC reaches MACHINE");
+        CHECK(R("DO") == "DO", "DO resolves to itself");
+        CHECK(R("M") == "MOUNT", "M still MOUNTs -- MACHINE did not steal it");
+        CHECK(R("D") == "DUMP", "D still DUMPs -- DO did not steal it");
+
+        Machine mx;
+        Monitor monx(mx);
+        std::ostringstream ox;
+
+        monx.exec("MACHINE default", ox);
+        CHECK(mx.find("dsk0") != nullptr && mx.find("mem0") != nullptr,
+              "MACHINE default fits the built-in's boards");
+        CHECK(!mx.boards().empty(), "and the backplane is not empty");
+
+        monx.exec("MACHINE none", ox);
+        CHECK(mx.boards().empty(), "MACHINE none empties the backplane, like -n");
+
+        // A name that is not a built-in is a refusal, and it trips failed().
+        Machine mb;
+        Monitor bad(mb);
+        std::ostringstream bo;
+        bad.exec("MACHINE nosuchmachine", bo);
+        CHECK(bo.str().find("no built-in machine") != std::string::npos,
+              "an unknown machine name is refused by name");
+        CHECK(bad.failed(), "and refusing a machine is a failure");
+
+        // MACHINE none is where a from-scratch build starts.
+        monx.exec("MACHINE none", ox);
+        monx.exec("BOARDS ADD 8080 cpu0", ox);
+        monx.exec("BOARDS ADD memory mem0", ox);
+        monx.exec("REGION ADD mem0 type=ram at=0 size=4K", ox);
+        monx.exec("POWER", ox);
+        CHECK(mx.find("cpu0") != nullptr && mx.find("mem0") != nullptr,
+              "MACHINE none then BOARDS ADD builds a machine by hand");
+    }
+
+    SECTION("DO runs a file of commands as if typed, and guards against a runaway");
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "altairsim-dotest";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const std::string script = (dir / "build.ini").generic_string();
+        {
+            std::ofstream f(script);
+            f << "; a from-scratch machine, comments and blanks and all\n";
+            f << "MACHINE none\n";
+            f << "\n";
+            f << "BOARDS ADD 8080 cpu0    ; the processor\n";
+            f << "BOARDS ADD memory mem0\n";
+            f << "REGION ADD mem0 type=ram at=0 size=4K\n";
+            f << "POWER\n";
+        }
+
+        Machine md;
+        Monitor mond(md);
+        std::ostringstream od;
+        mond.exec("DO " + script, od);
+        CHECK(md.find("cpu0") != nullptr && md.find("mem0") != nullptr,
+              "DO ran the file's commands and built its machine");
+        CHECK(!mond.failed(), "a clean DO does not trip failed()");
+
+        // A file that is not there is a refusal, not a crash.
+        Machine m2;
+        Monitor mon2(m2);
+        std::ostringstream o2;
+        mon2.exec("DO " + (dir / "nope.ini").generic_string(), o2);
+        CHECK(o2.str().find("cannot open") != std::string::npos,
+              "DO on a missing file says it cannot open it");
+        CHECK(mon2.failed(), "and a missing DO file is a failure");
+
+        // A DO that runs itself would loop forever; the depth cap stops it.
+        const std::string loop = (dir / "loop.ini").generic_string();
+        {
+            std::ofstream f(loop);
+            f << "DO " << loop << "\n";  // reaches for itself
+        }
+        Machine m3;
+        Monitor mon3(m3);
+        std::ostringstream o3;
+        mon3.exec("DO " + loop, o3);
+        CHECK(o3.str().find("nested too deep") != std::string::npos,
+              "a self-referential DO is stopped by the depth cap, not a stack overflow");
     }
 
 }

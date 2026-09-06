@@ -574,13 +574,32 @@ Completions Monitor::complete(const std::string& line) {
     // (SET, MOUNT, CONNECT, a board verb...). With no colon it offers board ids (and,
     // for SET, the pseudo-targets); past a colon it offers that board's unit NAMES,
     // filtered to the kind the verb can act on, exactly as subunit() filters them.
-    auto completeTarget = [&](const std::string& f, UnitUse use, bool wantPseudo) {
+    auto completeTarget = [&](const std::string& f, UnitUse use, bool wantPseudo,
+                              bool bareIdComplete) {
+        auto fits = [&](UnitKind k) {
+            return use == UnitUse::Any || (use == UnitUse::Mount && isMountable(k)) ||
+                   (use == UnitUse::Connect && k == UnitKind::Serial);
+        };
         size_t c = f.find(':');
         if (c == std::string::npos) {
             for (const auto& b : m_.boards()) keep(b->id);
             if (wantPseudo)
                 for (const char* kw : {"CONSOLE", "DISPLAY", "TERMINAL", "REG", "BUS"}) keep(kw);
+            // What comes after the board-id half depends on the board. For a target that
+            // names a UNIT (MOUNT, CONNECT, a board verb), a bare id is finished only when
+            // the board has exactly one unit of the right kind -- the lone-unit rule
+            // subunit() applies. With more than one a `:unit` must follow, so end the
+            // unique match on `:` and let a second Tab complete the unit; with one (or, for
+            // SET, where a bare id targets the board itself) end on a space.
             comp.suffix = " ";
+            if (!bareIdComplete && comp.matches.size() == 1) {
+                if (Board* b = m_.find(comp.matches[0])) {
+                    int n = 0;
+                    for (const auto& u : b->units())
+                        if (fits(u.kind)) ++n;
+                    if (n > 1) comp.suffix = ":";
+                }
+            }
             return;
         }
         Board* b = resolveQuiet(f.substr(0, c));
@@ -588,10 +607,7 @@ Completions Monitor::complete(const std::string& line) {
         const std::string unitFrag = upper(f.substr(c + 1));
         comp.replaceFrom = wordStart + c + 1;
         for (const auto& u : b->units()) {
-            bool ok = use == UnitUse::Any ||
-                      (use == UnitUse::Mount && isMountable(u.kind)) ||
-                      (use == UnitUse::Connect && u.kind == UnitKind::Serial);
-            if (ok && upper(u.name).compare(0, unitFrag.size(), unitFrag) == 0)
+            if (fits(u.kind) && upper(u.name).compare(0, unitFrag.size(), unitFrag) == 0)
                 comp.matches.push_back(u.name);
         }
         comp.suffix = " ";
@@ -625,7 +641,7 @@ Completions Monitor::complete(const std::string& line) {
     // ---- SET: the target (word 1), then a property key/value (word 2) ----
     if (name == "SET") {
         if (wordIdx == 1) {
-            completeTarget(frag, UnitUse::Any, /*wantPseudo=*/true);
+            completeTarget(frag, UnitUse::Any, /*wantPseudo=*/true, /*bareIdComplete=*/true);
             // Debug channels are SET targets too. A board channel already appears as
             // its board id; a library channel (`6850`, `socket`) is no board, so it
             // is only offered here. Dedup keeps the board-id/channel overlap to one.
@@ -715,9 +731,9 @@ Completions Monitor::complete(const std::string& line) {
     // ---- the other target-taking commands: word 1 is a board id or id:unit ----
     if (wordIdx == 1) {
         if (name == "MOUNT" || name == "UNMOUNT") {
-            completeTarget(frag, UnitUse::Mount, /*wantPseudo=*/false);
+            completeTarget(frag, UnitUse::Mount, /*wantPseudo=*/false, /*bareIdComplete=*/false);
         } else if (name == "CONNECT" || name == "DISCONNECT") {
-            completeTarget(frag, UnitUse::Connect, /*wantPseudo=*/false);
+            completeTarget(frag, UnitUse::Connect, /*wantPseudo=*/false, /*bareIdComplete=*/false);
         } else if (name == "SHOW") {
             // SHOW <id> inspects a board, but its argument is just as often a keyword
             // (SHOW BUS, SHOW MOUNTS, ...). Offer both: the board ids and the canonical
@@ -739,7 +755,7 @@ Completions Monitor::complete(const std::string& line) {
         } else if (boardVerb) {
             // A verb a card brought (REWIND, ...). The verb cannot say which unit kind
             // it acts on, so offer them all -- boardCommand() checks the kind itself.
-            completeTarget(frag, UnitUse::Any, /*wantPseudo=*/false);
+            completeTarget(frag, UnitUse::Any, /*wantPseudo=*/false, /*bareIdComplete=*/false);
         }
         return comp;
     }
@@ -1121,8 +1137,9 @@ void Monitor::showPaths(std::ostream& out) {
     std::error_code ec;
     auto cwd = std::filesystem::current_path(ec);
 
-    row("what you type", ec ? "(unknown)" : cwd.string());
-    out << pad << "MOUNT, LOAD, SAVE and -s scripts resolve against this.\n";
+    row("working directory", ec ? "(unknown)" : cwd.string());
+    out << pad << "MOUNT, LOAD, SAVE, and the -s or DO script you name\n"
+        << pad << "resolve against this.\n";
 
     out << "\n";
 
@@ -2677,7 +2694,7 @@ static void reportStop(const RunResult& r, const Debugger& dbg, std::ostream& ou
     case StopReason::Attn:
         // ATTN IS NOT A FAULT. You asked for the keyboard back, and the machine is
         // exactly where you left it -- so say that, and say how to go on.
-        std::snprintf(buf, sizeof buf, "ATTN -- the machine is still at %s. RUN resumes.",
+        std::snprintf(buf, sizeof buf, "STOP -- the machine is still at %s. RUN resumes.",
                       fmtWord(r.pc).c_str());
         out << buf << "\n";
         break;
@@ -5489,6 +5506,54 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         flush(out);
         return true;
     }
+    if (cmd == "MACHINE") {
+        // Load a BUILT-IN machine by name, replacing whatever is in the backplane -- the
+        // runtime twin of naming one on the command line (`altairsim <name>`), and what a
+        // DO script opens with so it does not depend on how it was launched. `MACHINE
+        // default` is the 56K CP/M Altair; `MACHINE none` is the empty backplane you build
+        // up by hand. It is the command form of a machine file's `base = "<name>"`.
+        if (!need(2, "MACHINE <name> | MACHINE none  (SHOW MACHINES lists them)")) return true;
+        std::string want = a[1];
+
+        // NONE is the empty backplane -- the same machine `-n` gives you, and where you
+        // start when the DO script that follows builds its own with BOARDS ADD. It is not
+        // a built-in in the catalog; it is the absence of one.
+        if (is(want, "NONE")) {
+            if (g_display) g_display->closeAllWindows();
+            m_.clear();
+            m_.power();
+            out << "empty backplane -- build it with BOARDS ADD, then POWER.\n";
+            return true;
+        }
+
+        const BuiltinMachine* bm = findMachine(want);
+        if (!bm) {
+            out << "no built-in machine '" << want << "'. SHOW MACHINES lists them.\n";
+            failed_ = true;
+            return true;
+        }
+
+        // ATOMIC, like CONFIG LOAD: build into a scratch machine first, so a load that
+        // somehow fails leaves the one you had untouched. Then the windows of the old
+        // machine's video boards go (host/display.h), the cards are swapped in, and it is
+        // POWERED -- RAM filled, ROM images read, POC* pulsed -- so it is a live machine
+        // and not a cold backplane. It does NOT run the built-in's startup: `base = "X"`
+        // inherits X's HARDWARE, and the script that ran MACHINE provides its own operate
+        // steps (MOUNT/LOAD/RUN) on the lines below it.
+        Machine scratch;
+        std::string err;
+        if (!loadMachine(*bm, scratch, err)) {
+            out << err << "\n";
+            failed_ = true;
+            return true;
+        }
+        if (g_display) g_display->closeAllWindows();
+        m_.replaceWith(scratch);
+        m_.power();
+        out << "machine " << bm->name << ": " << m_.boards().size() << " board(s)\n";
+        flush(out);
+        return true;
+    }
     if (cmd == "SNAPSHOT") {
         if (!need(2, "SNAPSHOT <file>")) return true;
         std::string shown = unquote(a[1]);
@@ -5514,6 +5579,49 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
         out << "restored from " << shown << "\n";
         flush(out);
+        return true;
+    }
+    if (cmd == "DO") {
+        // Run a file of monitor commands, one per line, as if each were typed here. That
+        // is the whole of it: the config language and the script language are one
+        // language (runStartup, above), so a DO file is a machine's `startup` list living
+        // in a plain text file -- and an easy landing for an AltairZ80 `.ini`, whose SET
+        // and ATTACH lines are monitor commands too. It is a LINE RUNNER, not a scripting
+        // language: no arguments, no IF/GOTO -- for that, drive a live guest over --mcp.
+        if (!need(2, "DO <file>")) return true;
+        std::string shown = unquote(a[1]);
+        // The file itself is named like any typed path -- relative to wherever the CURRENT
+        // list is rooted, which is the shell at the prompt and the calling file inside a
+        // startup or another DO. Its OWN lines then root at ITS directory (runLines).
+        std::string file = resolveFrom(startupDir_, shown);
+
+        // A DO that reaches for itself, directly or round a ring of files, would loop
+        // until the stack gives out. Cap the nesting the way a machine-file include cycle
+        // is capped (config/toml.cpp): deep enough for any real script, shallow enough to
+        // stop a runaway before it hurts.
+        constexpr int kMaxDoDepth = 32;
+        if (doDepth_ >= kMaxDoDepth) {
+            out << "DO: nested too deep (" << kMaxDoDepth
+                << ") -- is a script running itself?\n";
+            failed_ = true;
+            return true;
+        }
+
+        std::ifstream f(file);
+        if (!f) {
+            out << "DO: cannot open '" << shown << "'\n";
+            failed_ = true;
+            return true;
+        }
+        std::vector<std::string> lines;
+        for (std::string ln; std::getline(f, ln);) {
+            if (!ln.empty() && ln.back() == '\r') ln.pop_back();  // a CRLF file, POSIX host
+            lines.push_back(ln);
+        }
+
+        ++doDepth_;
+        runLines(lines, dirOf(file), "do> ", out);
+        --doDepth_;
         return true;
     }
 
@@ -5664,17 +5772,42 @@ void Monitor::runStartup(std::ostream& out) {
     //
     // names the two files lying beside it, and goes on naming them whether you `cd`
     // into that directory or point at it from somewhere else.
-    startupDir_ = m_.dir;
-    for (const auto& b : m_.boards()) b->setConfigDir(m_.dir);
+    runLines(m_.startup, m_.dir, "startup> ", out);
+}
 
-    for (const auto& s : m_.startup) {
-        out << "startup> " << s << "\n";
+void Monitor::runLines(const std::vector<std::string>& lines, const std::string& dir,
+                       const char* echoTag, std::ostream& out) {
+    // FOR THE LENGTH OF THIS LIST, AND NOT ONE COMMAND LONGER, relative paths start at
+    // `dir`. These are ordinary monitor commands -- the config language and the script
+    // language are one language -- but they were WRITTEN IN A FILE, and a path written in
+    // a file is relative to that file (core/paths.h). So a startup list, or a DO script,
+    // that says `MOUNT dsk0:drive0 "cpm.dsk"` names the cpm.dsk beside it, whether you
+    // launched from that directory or pointed at it from across the tree.
+    //
+    // Saved and restored, so it NESTS. A DO called from a machine's startup, or a DO that
+    // runs another DO, each restores the caller's directory on the way out; the instant
+    // the outermost list is done this is "" again and a path typed at the prompt means the
+    // shell you are standing in.
+    std::string prevDir = startupDir_;
+    startupDir_ = dir;
+    for (const auto& b : m_.boards()) b->setConfigDir(dir);
+
+    for (const auto& s : lines) {
+        // Re-stamp every board with the base dir before each line, so a card ADDED by an
+        // earlier line (BOARDS ADD, as a from-scratch DO script does) resolves its own
+        // file paths against the file too, not the cwd it happened to be created in.
+        for (const auto& b : m_.boards()) b->setConfigDir(dir);
+        // A blank or comment-only line runs nothing (tokenize strips `;`/`#` comments), so
+        // don't echo it either -- a DO file is mostly comments, and `do> ;...` for each
+        // would bury the commands that matter. exec() would no-op it anyway.
+        if (tokenize(s).empty()) continue;
+        if (echoTag) out << echoTag << s << "\n";
         if (!exec(s, out)) break;
     }
 
-    // ...and the file stops talking. Whatever the operator types next is theirs.
-    startupDir_.clear();
-    for (const auto& b : m_.boards()) b->setConfigDir("");
+    // ...and the file stops talking. Whatever the caller does next is theirs.
+    startupDir_ = prevDir;
+    for (const auto& b : m_.boards()) b->setConfigDir(prevDir);
 }
 
 int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
@@ -5774,7 +5907,11 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
             if (!ed.read("altairsim> ", line, in)) break;
         } else {
             if (!std::getline(in, line)) break;
-            if (!line.empty()) out << "altairsim> " << line << "\n";  // echo the script
+            // Echo the script line, but not a blank or comment-only one (tokenize strips
+            // `;`/`#` comments) -- a `-s FILE` of a commented .ini would otherwise print an
+            // `altairsim> ;...` for every comment, burying the commands. It runs nothing
+            // either way; this just keeps the transcript to the lines that act.
+            if (!tokenize(line).empty()) out << "altairsim> " << line << "\n";
         }
         if (!exec(line, out)) break;
     }

@@ -230,7 +230,8 @@ const char* commandGroup(const std::string& n) {
         n == "DISASM" || n == "SYMBOLS" || n == "WHO") return "Debugging and tracing";
     if (n == "BOARDS" || n == "REGION" || n == "SET" || n == "SHOW" || n == "CONFIG" ||
         n == "CONSOLE" || n == "MOUNT" || n == "UNMOUNT" || n == "CONNECT" ||
-        n == "DISCONNECT" || n == "SNAPSHOT" || n == "RESTORE")
+        n == "DISCONNECT" || n == "SNAPSHOT" || n == "RESTORE" || n == "MACHINE" ||
+        n == "DO")
         return "Configuring the machine";
     if (n == "HELP" || n == "QUIT") return "Getting help and leaving";
     return nullptr;
@@ -251,6 +252,8 @@ const char* commandSummary(const std::string& n) {
     if (n == "BREAK") return "Set a breakpoint on an address, memory/I/O access, or tape stop.";
     if (n == "EDIT") return "Enter bytes into memory interactively from an address.";
     if (n == "CONFIG") return "Load or save the whole machine as a TOML file.";
+    if (n == "MACHINE") return "Load a built-in machine by name (MACHINE none empties the backplane).";
+    if (n == "DO") return "Run a file of monitor commands, one per line, as if typed.";
     if (n == "SET") return "Change a property of a board, the console, display, a register, or the bus.";
     if (n == "SHOW") return "Display the state of a board, the bus, or the machine.";
     if (n == "DEPOSIT") return "Write bytes into memory at an address.";
@@ -527,7 +530,7 @@ void cheatsheet(const std::string& dir) {
 
     o << "## Getting out, and back in\n\n"
          "| Key | Does |\n|---|---|\n"
-         "| `^E` | **ATTN** — stop the machine and take the keyboard back. Nothing is lost. |\n"
+         "| `^E` | **STOP** — stop the machine and take the keyboard back. Nothing is lost. |\n"
          "| `RUN` | Resume, at the exact instruction it stopped on. |\n"
          "| `QUIT` | Leave. (There is no `EXIT`.) |\n\n";
 

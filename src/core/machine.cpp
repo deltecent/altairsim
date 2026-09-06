@@ -146,6 +146,23 @@ void Machine::replaceWith(Machine& built) {
     startup  = built.startup;
 }
 
+void Machine::clear() {
+    // Out through the same door they came in by -- bus.detach() first, then drop the
+    // unique_ptr. This is the teardown half of replaceWith(), with no scratch machine to
+    // fit in its place: what is left is the empty backplane `-n` gives you.
+    while (!boards_.empty()) {
+        bus.detach(boards_.back().get());
+        boards_.pop_back();
+    }
+    // ...and the identity that came with the file those cards were built from. A machine
+    // with no cards is not the one that was loaded; it is "none", exactly as `-n` names it,
+    // with no directory and no startup list to carry paths against (paths.h).
+    name = "none";
+    dir.clear();
+    fromFile = false;
+    startup.clear();
+}
+
 bool Machine::remove(const std::string& id, std::string& err) {
     Board* b = find(id);
     if (!b) {

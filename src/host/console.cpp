@@ -245,7 +245,8 @@ std::vector<Property> Console::properties() {
     std::vector<Property> p;
     {
         Property x;
-        x.name    = "attn";
+        x.name    = "stop";
+        x.aliases = {"attn"};   // the front-panel STOP switch; `attn` is the old spelling, kept working
         x.help    = "The key that drops from CONSOLE back to the monitor. The guest never sees it";
         x.kind    = Kind::Int;
         x.radix   = 16;

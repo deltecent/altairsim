@@ -226,6 +226,21 @@ private:
     // in -- never the one beside somebody's example config.
     std::string startupDir_;
 
+    // Run a list of command lines as if typed, with `dir` as the base for the relative
+    // paths in them, echoing each behind `echoTag` (null for no echo). This is the ONE
+    // batch engine: runStartup() feeds it the machine's `startup`, and the DO command
+    // feeds it a file's lines. `startupDir_` and each board's config dir are saved and
+    // restored around the run, so it NESTS -- a DO inside a startup, or a DO inside a DO,
+    // each hands the caller's directory back when it returns.
+    void runLines(const std::vector<std::string>& lines, const std::string& dir,
+                  const char* echoTag, std::ostream& out);
+
+    // How many DO files are open right now. A `DO` that reaches for itself, directly or
+    // round a ring of files, would otherwise loop until the stack gives out; past a sane
+    // ceiling DO refuses (the same hang a machine-file include cycle is guarded against,
+    // config/toml.cpp).
+    int doDepth_ = 0;
+
     // The last command line the operator entered, so `.` can repeat it. A `.` is
     // never recorded here, so pressing it again re-runs the SAME line -- which is the
     // point: `.` `.` `.` walks a DISASM or STEPs the CPU. Shell escapes (`!...`) return
