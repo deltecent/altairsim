@@ -1,7 +1,7 @@
 # Quick start: CP/M in one command
 
 ```
-$ altairsim examples/cpm/cpm22-buffered.toml
+$ ./altairsim examples/cpm/cpm22-buffered.toml
 ```
 
 On **Windows** the program is `altairsim.exe` and the path is spelled with backslashes:
@@ -62,14 +62,91 @@ powers.
 From there it is all real: the PROM read sector 0 off track 0, that loader pulled CP/M into
 high memory and jumped into the BIOS, and the BIOS printed its banner.
 
+## Where it found the disk — one base directory
+
+You typed **one** path — the machine file — and the simulator found the rest itself: the disk
+image, named *inside* that file. Both point at the same place, and knowing where is the whole of
+how the program handles directories.
+
+- **The machine file on the command line** is found from **your shell** — the directory you were
+  in when you ran the command — because at that instant no machine exists yet.
+  `examples/cpm/cpm22-buffered.toml` is walked down from there.
+- **Everything after resolves against the machine's own directory** — the folder that `.toml`
+  lives in. The disk it mounts, a PROM it loads, and anything you type at the `altairsim>`
+  prompt (`MOUNT`, `LOAD`, `SYMBOLS LOAD`) all come from there. `cpm22-buffered.toml` mounts
+  `cpm22b23-56k.dsk` with no directory at all, and the simulator looks for it *beside the
+  `.toml`* — and so would a `MOUNT cpm22b23-56k.dsk` you type.
+
+Here it is concretely. Say you unzipped the package into `~/altairsim` and launched it from
+there:
+
+```
+$ pwd
+/home/you/altairsim
+$ ./altairsim examples/cpm/cpm22-buffered.toml
+```
+
+- `examples/cpm/cpm22-buffered.toml` — **you** named it to the shell, so it is found from where
+  you stand: `~/altairsim/examples/cpm/cpm22-buffered.toml`.
+- `cpm22b23-56k.dsk` — the machine mounts it, so it is found in the machine's directory:
+  `~/altairsim/examples/cpm/cpm22b23-56k.dsk`. Type `MOUNT dsk0:drive1 cpm22b23-56k.dsk` and you
+  get that same file, from that same folder.
+
+Copy that folder somewhere else and it still boots, because the disk's path is tied to the
+machine, not to you:
+
+```
+$ cp -R examples/cpm /tmp/mycpm
+$ ./altairsim /tmp/mycpm/cpm22-buffered.toml
+```
+
+Your shell never left `~/altairsim` — the simulator does not change your working directory — yet
+the disk is now read from `/tmp/mycpm/cpm22b23-56k.dsk`, beside the machine file you named, and
+anything you type at the prompt is found there too. That is the whole reason every example is a
+self-contained folder you can copy anywhere and still boot: the disk, and everything you do to
+the machine, travels with the machine file.
+
+To see it, ask — **`SHOW PATHS`** at the `altairsim>` prompt prints the base directory (and the
+one folder kept separate, the hostbridge sandbox):
+
+- **the base directory** — the machine's own folder. What a machine file mounts, and what you
+  *type* (`MOUNT`, `LOAD`, `SAVE`, `DO`, or a `-s` script), both resolve against it. For a
+  built-in machine, which has no folder of its own, it is the directory you launched from.
+- **the sandbox root** — the single directory the hostbridge file-transfer board may reach, and
+  cannot escape.
+
+### The `./`, and running from anywhere
+
+Every command so far began with `./altairsim` — which means *the `altairsim` in **this** folder*.
+A fresh unzip drops the program into a directory your shell does not search for commands, so you
+have to point at it, and `./` is how you say *look right here*.
+
+You can make that unnecessary by **installing** the program — copying it into one of the
+directories your shell already searches, its **`PATH`** (on macOS and Linux, `/usr/local/bin` is
+the usual one). Once it is on your `PATH` you drop the `./` and type just `altairsim`, from any
+directory at all — including from *inside* an example folder:
+
+```
+$ cp altairsim /usr/local/bin/          # once: put it on your PATH
+$ cd examples/cpm
+$ pwd
+/home/you/altairsim/examples/cpm
+$ altairsim cpm22-buffered.toml
+```
+
+Now your shell is *inside* `examples/cpm`, so the machine file is simply `cpm22-buffered.toml`
+with no directory — found from where you are — and the disk it mounts is found beside the file,
+as always. The rule did not change; only where the program lives, and which directory you ran it
+from, did.
+
 ## Getting back out — `^E`
 
-Press **`^E`** (Control-E). This is **ATTN**, and it is how you take the keyboard back from
-a running program:
+Press **`^E`** (Control-E). This is the **STOP** switch — `^E` presses the Altair's front-panel
+STOP for you — and it is how you take the keyboard back from a running program:
 
 ```
 A>
-ATTN -- the machine is still at CA9C. RUN resumes.
+STOP -- the machine is still at CA9C. RUN resumes.
 C0Z1M0E1I0 A=00 BC=007F DE=CA01 HL=BC0E SP=BC37 IE=1 PC=CA9C  CALL CA78
 altairsim>
 ```
@@ -79,15 +156,15 @@ processor executes nothing while this prompt is up: the `PC=CA9C` above is where
 be in an hour. That is what makes the prompt useful — you can read memory, single-step, and set
 a breakpoint, and none of it is a moving target.
 
-Stopped is not **lost**. ATTN is not RESET and it is not POWER: every register, every byte of
-memory, the disk in the drive and the guest's place in its own program are all exactly as they
+Stopped is not **lost**. STOP is not RESET and it is not POWER: every register, every byte of
+memory, the disk in the drive and the CPU's place in its own program are all exactly as they
 were. That is the whole content of *"the machine is still at CA9C"* — it is telling you the
 machine is intact and says where to pick it up.
 
-Why `^E` and not `^C`? Because **`^C` belongs to the guest** — CP/M warm-boots on it and BASIC
-breaks on it — so the host intercepts `^E` before the guest is ever offered the byte, and no
-program inside the machine can take it from you. Everything else, `^C` included, goes straight
-through. (If `^E` collides with something you need, `CONSOLE attn=1D` moves it to `^]`.)
+Why `^E` and not `^C`? Because **`^C` belongs to the software running on the machine** — CP/M
+warm-boots on it and BASIC breaks on it — so the host intercepts `^E` before the running
+program is ever offered the byte, and no program inside the machine can take it from you. Everything else, `^C` included, goes straight
+through. (If `^E` collides with something you need, `CONSOLE stop=1D` moves it to `^]`.)
 
 ## Going back in — `RUN`
 
@@ -110,8 +187,8 @@ There is no `EXIT`. `Q` will do.
 
 | | |
 |---|---|
-| **`^E`** | out of the guest, back to the monitor. The machine stops where it stands, and loses nothing. |
-| **`RUN`** | back into the guest. |
+| **`^E`** | stop the CPU, back to the monitor. The machine stops where it stands, and loses nothing. |
+| **`RUN`** | start the CPU running again. |
 | **`QUIT`** | done. |
 
 ## Careful: the disk is real, and there is no undo
@@ -121,15 +198,15 @@ so anything you do in CP/M happens to the file on your host, with nothing keepin
 ways to be safe:
 
 - **Write-protect it.** `MOUNT dsk0:drive0 examples/cpm/cpm22b23-56k.dsk RO` refuses every write at the
-  controller, so the file cannot change however the guest behaves. Use it to *look around*. But
-  the guest is not *told* the disk is protected, so a program that means to write may not survive
+  controller, so the file cannot change however the program behaves. Use it to *look around*. But
+  the program is not *told* the disk is protected, so a program that means to write may not survive
   being refused — mount `RO` to read, not to run a CP/M you expect to save your work.
 - **Copy the folder** when you actually intend to write. It is self-contained and boots from
   anywhere:
 
   ```
   $ cp -R examples/cpm my-cpm
-  $ altairsim my-cpm/cpm22-buffered.toml
+  $ ./altairsim my-cpm/cpm22-buffered.toml
   ```
 
 One non-obvious trap: **this BIOS does not write to the disk when CP/M closes a file** — it

@@ -594,7 +594,7 @@ altairsim examples/cpm/cpm22-buffered.toml -s script.cmd           # run a comma
 
 But note: a bare monitor **`RUN` blocks on stdin under a pipe** (stdin is the script/JSON-RPC
 channel), so anything that reads the guest console wants the MCP `run` tool or a real TTY /
-`expect`. `ATTN` = **`^E`** returns from a running guest to the monitor; **`^C` belongs to
+`expect`. `STOP` = **`^E`** returns from a running guest to the monitor; **`^C` belongs to
 CP/M** (warm boot), so the guest keeps it. There is no `BOOT` verb — the DBL boot PROM at
 `FF00` is the boot command (`RUN FF00`).
 

@@ -1479,10 +1479,17 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         std::string path = args.at("path").str();
         bool wp = args.has("write_protect") && args.at("write_protect").boolean();
 
+        // Root the mount at the machine's own directory, the one base a typed MOUNT uses
+        // too (Monitor::inputBase). MCP does not run a startup list, so the board is left
+        // at whatever the loader stamped; set it here so `mount` and the `monitor` tool's
+        // `MOUNT` resolve a bare name to the same file -- beside the machine.
+        b->setConfigDir(m.dir);
+
         if (args.has("create") && args.at("create").boolean()) {
-            std::ifstream exists(path, std::ios::binary);
+            std::string rp = b->resolvePath(path);  // create beside where mount() will open
+            std::ifstream exists(rp, std::ios::binary);
             if (!exists) {
-                std::ofstream mk(path, std::ios::binary);  // touch it empty
+                std::ofstream mk(rp, std::ios::binary);  // touch it empty
                 if (!mk) return textResult("cannot create '" + path + "'", true);
             }
         }

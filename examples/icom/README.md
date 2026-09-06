@@ -21,7 +21,7 @@ memory (`F000` for CP/M, `C000` for FDOS). The single-density **FD3712** disk is
 256,256 bytes; the double-density **FD3812** disk is mixed density — a single-density track 0 then
 double-density tracks 1–76 — 509,184 bytes. See `docs/boards/icom-fd3712.md`.
 
-`^E` (ATTN) takes the keyboard back to the monitor at any point; `RUN` resumes. `^C` belongs to
+`^E` (STOP) takes the keyboard back to the monitor at any point; `RUN` resumes. `^C` belongs to
 CP/M (it is warm boot) and CP/M gets it. FDOS's prompt is `!`. The two FDOS revisions do not share
 a command language: **FDOS-III** takes word commands (`LIST` for a directory), while the original
 **FDOS-I** takes single-letter directives — `L` lists the directory, `A` assembles, `P` prints.

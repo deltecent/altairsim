@@ -11,24 +11,24 @@ It is not supposed to.
 of a BASIC program. A stop key the guest also wants is a stop key the guest will eat, and
 then you are trapped inside your own simulator.
 
-**`^E` is the stop key.** It is ATTN, the host intercepts it before the guest is ever offered
-the byte, and **no program running inside the machine can disable it, ignore it, or take it
-from you.**
+**`^E` is the stop key.** It presses the front-panel STOP switch; the host intercepts it before
+the guest is ever offered the byte, and **no program running inside the machine can disable it,
+ignore it, or take it from you.**
 
-If a guest genuinely needs `^E` for something of its own, move ATTN out of its way:
+If a guest genuinely needs `^E` for something of its own, move STOP out of its way:
 
 ```
-altairsim> CONSOLE attn=1D
+altairsim> CONSOLE stop=1D
 ```
 
 That makes it `^]`. It must be a control character.
 
-## I pressed ATTN and now the machine seems stuck
+## I pressed STOP and now the machine seems stuck
 
-It is not stuck. It is **stopped**, which is what ATTN is for, and nothing has been lost.
+It is not stuck. It is **stopped**, which is what STOP is for, and nothing has been lost.
 
-ATTN halts the processor and hands you the monitor. It is not RESET and not POWER: the
-registers, the memory and the disk are precisely as the guest left them, and the monitor told
+STOP halts the processor and hands you the monitor. It is not RESET and not POWER: the
+registers, the memory and the disk are precisely as the CPU left them, and the monitor told
 you where to pick it up when it printed *"still at ...".*
 
 ```
@@ -82,17 +82,18 @@ $ cp -R examples/cpm my-cpm
 
 ## `MOUNT` says "no such file" and the file is right there
 
-Look at *where you typed it from*.
+Look at *which machine you are running*.
 
-**A path you TYPE is relative to YOUR SHELL. A path inside a machine file is relative to
-THAT MACHINE FILE.** Those are two different directories, and one of them is not the one you
-are thinking about.
+**A relative path resolves against the machine's directory — the folder the machine file was
+loaded from — not the folder you launched from.** If you `cd` somewhere with a disk, start a
+machine from elsewhere, and type `MOUNT dsk0:drive1 that.dsk` expecting your current folder,
+it is looked for beside the *machine* instead, and that is the directory you were not thinking
+about. `SHOW PATHS` prints the one it uses.
 
 This is deliberate, and it is the reason an example folder boots from anywhere: the machine
 file says `cpm22.dsk` and means *the image next to me*, so you can move the folder, or run it
-from three levels up, and it still finds its disk. If a typed path resolved the same way, you
-could not mount a file from your own working directory without knowing where the machine file
-happened to live.
+from three levels up, and it still finds its disk — and a name you type finds that same folder,
+so the disk the machine came with and the disk you mount by hand live in one place, not two.
 
 ## Every prompt ends in a garbage character
 

@@ -26,7 +26,7 @@ Mike Douglas's track-buffered **CP/M 2.2b v2.3**, on an 8" Pertec FD-400 behind 
 by the DBL PROM at `FF00` — `RUN FF00` is the machine file's whole startup, because on a real disk
 Altair that was EXAMINE `FF00` and RUN.
 
-`^E` (ATTN) takes the keyboard back to the monitor at any point; `RUN` resumes. `^C` belongs to
+`^E` (STOP) takes the keyboard back to the monitor at any point; `RUN` resumes. `^C` belongs to
 CP/M (it is warm boot) and CP/M gets it.
 
 ## The files

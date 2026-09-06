@@ -140,8 +140,8 @@ send "\005"
 # prompt, not the prompt alone -- a prompt would come back whatever the machine
 # claimed had happened, which is exactly the false pass this file warns about.
 expect {
-    -re {ATTN -- the machine is still at 002[0-2]\.} {
-        ok "ATTN (^E) took the console back, and the machine SAID so"
+    -re {STOP -- the machine is still at 002[0-2]\.} {
+        ok "STOP (^E) took the console back, and the machine SAID so"
     }
     timeout { fail "^E did not return to the monitor, or it did not say why it stopped" }
 }
@@ -154,7 +154,7 @@ expect {
 # The status line labels each register with its SET REG name, so the program counter is PC=.
 send "REGS\r"
 expect {
-    -re {PC=002[0-2] } { ok "ATTN did not stop the machine -- it is still in its loop" }
+    -re {PC=002[0-2] } { ok "STOP left the machine where it was -- still in its loop" }
     timeout           { fail "the machine was stopped by ^E, or the PC moved somewhere odd" }
 }
 expect -ex "altairsim> "

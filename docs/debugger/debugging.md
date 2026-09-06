@@ -74,7 +74,7 @@ routine works, and you want the *next* instruction in the code you are reading, 
 print routine. `NEXT` gives you that. On a `CALL` or `RST` it runs the callee at full speed and
 stops the instant it returns; on anything else it is just a single step. It does exactly what
 you would do by hand — sets a breakpoint at the return address and runs to it — so the callee is
-live while it runs: it can read the console, and `^E` (ATTN) or `^C` stops it if it never comes
+live while it runs: it can read the console, and `^E` (STOP) or `^C` stops it if it never comes
 back. A breakpoint that fires *inside* the callee stops you there, as it should.
 
 ```

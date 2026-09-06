@@ -73,7 +73,7 @@ instruction it was about to execute.
 
 ```
 A>
-ATTN -- the machine is still at CA9C. RUN resumes.
+STOP -- the machine is still at CA9C. RUN resumes.
 C0Z1M0E1I0 A=00 BC=007F DE=CA01 HL=BC0E SP=BC37 IE=1 PC=CA9C  CALL CA78
 altairsim>
 ```
@@ -285,7 +285,7 @@ A: BOOT     ASM
 
 `BOOT.ASM` is the 88-HDSK bootstrap, read straight off the platter through the controller —
 proof the drive is not just spinning but being *read*, sector by sector, the way the real
-Datakeeper was. `^E` (ATTN) takes the keyboard back to the monitor at any point and `RUN`
+Datakeeper was. `^E` (STOP) takes the keyboard back to the monitor at any point and `RUN`
 resumes; `^C` is CP/M's warm boot and CP/M gets it.
 
 **There is no undo.** Drive 0 is mounted read/write, because that is what a real machine is,

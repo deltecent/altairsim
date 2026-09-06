@@ -210,8 +210,8 @@ that still had some on it. An absent file is created.
 `in:` and `out:` are **separate files with separate positions**, so the combined form is two
 independent heads on one line — reading the tape cannot disturb what the punch has written, and
 vice versa. Both are **8-bit clean**: the bytes on the wire are the bytes in the file, control
-codes and all. Nothing reformats them. A relative path follows the usual rule: relative to the file
-when it is written in a machine configuration, relative to your shell when you type it.
+codes and all. Nothing reformats them. A relative path follows the usual rule: it resolves
+against the machine's directory, whether it is written in a machine configuration or you type it.
 
 ### The 88-HSR — a reader with a speed
 
@@ -414,7 +414,7 @@ people.
 | `echo` | echoes your keystrokes locally |
 | `bell` | rings the terminal bell on `^G` |
 | `bsdel` | folds backspace and delete together: `off` (default), `bs` (send BS for both), or `del` (send DEL for both) |
-| `attn` | which control character is ATTN (default `^E`) |
+| `stop` | which control character is the STOP key (default `^E`; `attn` is an accepted alias) |
 | `base` | `hex` or `octal` — the base the **monitor** prints numbers in. Not a transform: it changes nothing about a byte crossing the console, only how a number is spelled back to you. The *Monitor* document has it. |
 
 Set them with `CONSOLE k=v`. (`SET CONSOLE k=v` is the same thing said longer.)
@@ -422,11 +422,11 @@ Set them with `CONSOLE k=v`. (`SET CONSOLE k=v` is the same thing said longer.)
 ```
 altairsim> CONSOLE strip7out=on
 altairsim> CONSOLE upper=on crlf=off
-altairsim> CONSOLE attn=1D
+altairsim> CONSOLE stop=1D
 ```
 
-`attn=1D` moves the escape key from `^E` to `^]`. **It must be a control character** — an
-ATTN you can type by accident in the middle of a sentence is not an escape key, it is a
+`stop=1D` moves the escape key from `^E` to `^]`. **It must be a control character** — a
+STOP key you can type by accident in the middle of a sentence is not an escape key, it is a
 trap.
 
 ### Why it works this way: `MEMORY SIZ?`
@@ -514,7 +514,7 @@ glyph and the cursor never returns to the left — every line feeds without a ca
 `strip7out=on` is the fix, exactly as it is for BASIC's prompt. `cr=crlf` is the neighbouring
 tool, for the rarer guest that sends a bare CR and expects the terminal to supply the LF.
 
-ATTN is the other half of the same fact: it is intercepted at **your keyboard**, before any
+STOP is the other half of the same fact: it is intercepted at **your keyboard**, before any
 board is offered the byte, and it is never looked for on a socket or a serial line. A `05`
 arriving down a cable is a byte of somebody's protocol, and scanning a modem line for a key
 that exists only on the operator's terminal would corrupt data rather than help.

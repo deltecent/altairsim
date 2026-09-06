@@ -10,7 +10,7 @@
 #
 # On an SDL3 build the Dazzler draws in a window; the D+7A reads a USB gamepad (or the
 # keyboard) for any program that wants a joystick. In a headless build it all runs and
-# draws nothing. ATTN (Ctrl-E) breaks back to the monitor.
+# draws nothing. STOP (Ctrl-E) breaks back to the monitor.
 #
 # THE DISKS (all beside this file; paths are relative to it, core/paths.h):
 #   A: cpm22b23-56k.dsk           -- the bootable 56K CP/M 2.2b system disk

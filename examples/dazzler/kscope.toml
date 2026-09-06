@@ -4,7 +4,7 @@
 #
 # It comes up drawing: the `startup` list loads KSCOPE and RUNs it, so on an SDL3 build a
 # window opens and a four-way-mirrored pattern draws in a 2 KB 64x64 color picture. KSCOPE
-# is an endless animation (no HLT), so press **ATTN** (Ctrl-E) to break back to the monitor
+# is an endless animation (no HLT), so press **STOP** (Ctrl-E) to break back to the monitor
 # prompt; `RUN 0` starts it again. In a headless build the machine runs identically and
 # draws nothing.
 #
@@ -16,10 +16,10 @@
 
 [machine]
 name    = "kscope"
-startup = ["LOAD KSCOPE.HEX", "RUN 0"]   # comes up drawing; ATTN (Ctrl-E) stops it
+startup = ["LOAD KSCOPE.HEX", "RUN 0"]   # comes up drawing; STOP (Ctrl-E) stops it
 
 # The Dazzler window IS the show here, so bring it to the front and give it the keyboard
-# when it opens (like a Sol-20), rather than letting it come up behind the terminal. ATTN
+# when it opens (like a Sol-20), rather than letting it come up behind the terminal. STOP
 # (Ctrl-E) still breaks back to the monitor, and the terminal takes the keyboard back then.
 [display]
 focus    = true

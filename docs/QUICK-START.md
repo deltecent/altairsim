@@ -3,7 +3,7 @@
 **Boot CP/M with one command.** From the folder you unzipped this into:
 
 ```
-$ altairsim examples/cpm/cpm22-buffered.toml
+$ ./altairsim examples/cpm/cpm22-buffered.toml
 ```
 
 On **Windows**, the path is spelled with backslashes and the program is `altairsim.exe`:
@@ -33,13 +33,13 @@ Run one — `A>MBASIC` starts Microsoft BASIC.
 
 ## The three keys to remember
 
-You are talking to CP/M inside the machine. Two prompts share the window: `A>` is the guest,
-and `altairsim>` is the simulator's own monitor. You move between them with these:
+You are talking to CP/M, the software the CPU is running. Two prompts share the window: `A>`
+is CP/M, and `altairsim>` is the simulator's own monitor. You move between them with these:
 
 | | |
 |---|---|
-| **`^E`** (Control-E) | Leave the guest, back to the `altairsim>` monitor. The machine stops exactly where it stood and loses nothing. |
-| **`RUN`** | Go back into the guest. It picks up where it left off. |
+| **`^E`** (Control-E) | Stop the CPU and return to the `altairsim>` monitor. The machine stops exactly where it stood and loses nothing. |
+| **`RUN`** | Start the CPU running again. It picks up where it left off. |
 | **`QUIT`** | Done. (`Q` will do. There is no `EXIT`.)|
 
 `^C` is *not* how you get out — that belongs to CP/M, which warm-boots on it. Use `^E`.
@@ -57,12 +57,51 @@ stay safe:
 
   ```
   $ cp -R examples/cpm my-cpm
-  $ altairsim my-cpm/cpm22-buffered.toml
+  $ ./altairsim my-cpm/cpm22-buffered.toml
   ```
 
 One trap worth knowing: this CP/M **buffers a whole track** and only flushes it the next time
 it reads the console, so **get back to the `A>` prompt before you quit or copy the image**, or
 the last write never lands.
+
+## Where the files come from
+
+You named **one** path — the machine file — and the simulator found the disk on its own. One
+rule covers all of it:
+
+- **The machine file you name on the command line** is found from the folder you are in — your
+  shell. That is the one path you hand to the shell, before any machine exists.
+- **Everything after resolves against the machine's own folder** — the directory that `.toml`
+  lives in. The disk it mounts, and the `MOUNT`, `LOAD`, `SAVE` and `DO` you type at the
+  `altairsim>` prompt, all come from there. `cpm22-buffered.toml` mounts `cpm22b23-56k.dsk` from
+  *beside itself* — and if you type `MOUNT dsk0:drive1 cpm22b23-56k.dsk` you get that same file,
+  from that same folder.
+
+For example, from the folder you unzipped into:
+
+```
+$ pwd
+/home/you/altairsim
+$ ./altairsim examples/cpm/cpm22-buffered.toml
+```
+
+`examples/cpm/cpm22-buffered.toml` is found from where you are; the `cpm22b23-56k.dsk` it mounts
+— and anything you later type at the prompt — is found in `examples/cpm/`, beside the machine.
+
+That is why every folder under `examples/` boots wherever you copy it: the disk travels with the
+`.toml` that names it, and so does everything you do to that machine. `altairsim` never changes
+your working directory.
+
+To see it, ask the machine: **`SHOW PATHS`** at the `altairsim>` prompt prints the base
+directory — and the hostbridge sandbox, the one folder kept separate:
+
+- **the base directory** — the machine's own folder; what a machine file mounts and what you type both resolve against it;
+- **the sandbox root** — the one folder the hostbridge file-transfer board may reach, and cannot escape.
+
+The leading `./` means *the `altairsim` in this folder* — a fresh unzip is not on your `PATH`, so
+you point at it. Copy the program into a directory on your `PATH` (`/usr/local/bin` on macOS or
+Linux) and you can drop the `./` and type just `altairsim` from anywhere, including from inside an
+example folder: `cd examples/cpm && altairsim cpm22-buffered.toml`.
 
 ## No disk? Boot a tape instead
 
@@ -71,7 +110,7 @@ of them comes up the moment you name it:
 
 ```
 $ ls examples/
-$ altairsim examples/basic/basic4k.toml
+$ ./altairsim examples/basic/basic4k.toml
 ```
 
 `examples/basic/` toggles in the MITS bootstrap by hand and loads **Altair 4K BASIC** off a

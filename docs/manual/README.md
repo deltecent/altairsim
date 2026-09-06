@@ -35,7 +35,7 @@ and each stands on its own:
 
 | | |
 |---|---|
-| [The monitor](../monitor/monitor.md) — `altairsim-monitor.pdf` | The `altairsim>` prompt: prefix commands, the number rule, naming a board, ATTN. |
+| [The monitor](../monitor/monitor.md) — `altairsim-monitor.pdf` | The `altairsim>` prompt: prefix commands, the number rule, naming a board, STOP. |
 | [Debugging](../debugger/debugging.md) — `altairsim-debugger.pdf` | Breakpoints, stepping, disassembly, and looking at the bus itself. |
 
 ## Using it

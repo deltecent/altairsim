@@ -40,7 +40,7 @@ base = "default"
 
 # THE BOOT PROM IS THE BOOT COMMAND (DESIGN.md 10.0). DBL reads track 0 into RAM; that
 # loader pulls CP/M into high memory and jumps into the BIOS. RUN hands the guest the
-# keyboard, so you land at A>; ATTN (^E) gets you back to the monitor.
+# keyboard, so you land at A>; STOP (^E) gets you back to the monitor.
 startup = ["RUN FF00"]
 
 # A modern Backspace sends DEL (0x7F); CP/M's line editor wants BS (0x08). `bsdel = bs`

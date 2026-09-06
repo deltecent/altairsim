@@ -71,7 +71,7 @@ static const std::vector<CommandDef> kCommands = {
      "STEP that does not descend. A CALL or RST runs to completion and stops at the\n"
      "return address instead of stepping into it; anything else is a plain single\n"
      "step. It is a temporary breakpoint at the return plus a RUN, so the callee is\n"
-     "LIVE -- it can use the console, and ^E (ATTN) or ^C stops it.\n"
+     "LIVE -- it can use the console, and ^E (STOP) or ^C stops it.\n"
      "  N            over the CALL/RST at PC (else single-step)"},
     // RUN is the front panel's switch. It REPLACED GO (Patrick, 2026-07-12) -- there
     // was never a second thing for GO to be: a headless run is not a mode the operator
@@ -88,10 +88,10 @@ static const std::vector<CommandDef> kCommands = {
      "exactly as you would on the panel.\n"
      "\n"
      "If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,\n"
-     "including ^C, which a CP/M program is entitled to read. The way back is ATTN\n"
+     "including ^C, which a CP/M program is entitled to read. The way back is STOP\n"
      "(^E), which the host takes before the guest is ever offered the byte, so the\n"
-     "guest cannot disable it. ATTN STOPS the machine -- nothing executes while this\n"
-     "prompt is up -- but it does not DISTURB it: ATTN is not RESET and not POWER, so\n"
+     "guest cannot disable it. STOP halts the machine -- nothing executes while this\n"
+     "prompt is up -- but it does not DISTURB it: it is not RESET and not POWER, so\n"
      "every register, every byte and every disk survives, and a bare RUN resumes at the\n"
      "exact instruction. Stopped is not lost, and the debugger is at its most useful\n"
      "here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.\n"
@@ -166,8 +166,9 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files\n"
      "\n"
      "SHOW MOUNTS is the other half of this command: every socket in the machine,\n"
-     "what is in it, and which are still empty. UNMOUNT takes it back out. A path is\n"
-     "resolved as SHOW PATHS describes -- what you TYPE is relative to your shell."},
+     "what is in it, and which are still empty. UNMOUNT takes it back out. A relative\n"
+     "path resolves against the machine's own directory -- the same folder the machine\n"
+     "file's own mounts come from -- as SHOW PATHS describes."},
     {"BREAK", true, nullptr,
      "BREAK [<addr> | MEM R|W <addr> | IO R|W <port> | TAPE STOP] [IF <expr> | LOADS <expr>] "
      "[TRACE ON|OFF]",
@@ -259,7 +260,7 @@ static const std::vector<CommandDef> kCommands = {
      "                  memory, and it is a separate file for a reason.\n"
      "  the registers   PC included, so a LOADed machine has not started.\n"
      "  breakpoints     nor tracepoints, nor where TRACE was pointed.\n"
-     "  CONSOLE         attn and the transforms are the HOST's terminal, not a board\n"
+     "  CONSOLE         stop and the transforms are the HOST's terminal, not a board\n"
      "                  in the backplane. They survive CONFIG LOAD untouched.\n"
      "A SAVE IS A READ: it asks every property for its value and writes to nothing.\n"
      "\n"
@@ -274,6 +275,41 @@ static const std::vector<CommandDef> kCommands = {
      "you REPLACED: there is no undo but the file you saved it to.\n"
      "  CONFIG SAVE machines/mine.toml\n"
      "  CONFIG LOAD machines/mine.toml      ...and this is how you get it back"},
+    {"DO", true, nullptr, "DO <file>",  // DO
+     "Run a FILE of monitor commands, one per line, as if you had typed each here. A\n"
+     "DO file is a machine's `startup` list living in a plain text file -- the config\n"
+     "language and the command language are one language, so anything you can type, a\n"
+     "DO file can do. It is the easy landing for an AltairZ80 `.ini`, whose SET and\n"
+     "ATTACH lines are monitor commands too.\n"
+     "\n"
+     "PATHS INSIDE IT ARE RELATIVE TO THE FILE, not to where you are standing -- so\n"
+     "`DO examples/cpm/cpm.ini` mounts the disk beside that file from anywhere. Blank\n"
+     "lines and `;` or `#` comments are skipped, so a DO file reads like a script.\n"
+     "\n"
+     "It runs against whatever machine is loaded, so a DO file usually opens with MACHINE\n"
+     "to pick its own base -- `MACHINE default` then MOUNT/RUN, or `MACHINE none` then\n"
+     "BOARDS ADD to build one from scratch. On the command line, `altairsim -s FILE` runs\n"
+     "the same file at startup and exits with its status.\n"
+     "\n"
+     "It is a LINE RUNNER, not SIMH's scripting language: no arguments, no IF or GOTO.\n"
+     "For conditional or interactive automation, drive a live guest over --mcp.\n"
+     "  DO cpm.ini                   paths relative to cpm.ini's own directory\n"
+     "  DO examples/basic/b.ini      run it from anywhere"},
+    {"MACHINE", true, nullptr, "MACHINE <name> | MACHINE none",  // MA (M is MOUNT, MO)
+     "Load a BUILT-IN machine by name, replacing whatever is in the backplane. It is the\n"
+     "runtime twin of naming one on the command line (`altairsim default`) and the command\n"
+     "form of a machine file's `base = \"<name>\"` -- so a DO script opens with it and no\n"
+     "longer depends on how it was launched. SHOW MACHINES lists the names; SHOW MACHINE\n"
+     "<name> shows what is in one.\n"
+     "\n"
+     "MACHINE none is the empty backplane `-n` gives you -- no boards, nothing driving\n"
+     "anything -- where you START a machine you build up by hand with BOARDS ADD.\n"
+     "\n"
+     "It powers the result (RAM filled, ROM images read, POC* pulsed) but does NOT run the\n"
+     "built-in's startup: like `base =`, it gives you the HARDWARE, and the lines after it\n"
+     "do the MOUNTing and RUNning. For a machine from a FILE, use CONFIG LOAD.\n"
+     "  MACHINE default                  the 56K CP/M Altair, DBL PROM at FF00\n"
+     "  MACHINE none ; BOARDS ADD 8080 cpu0 ; ... ; POWER ; RUN 0"},
 
     // ---- everything else, ranked by how often you type it ----
     {"SET", true, nullptr, "SET <id>[:<u>]|CONSOLE|DISPLAY|REG|BUS <k>=<v>",  // SE (beats SEARCH)
@@ -527,7 +563,7 @@ static const std::vector<CommandDef> kCommands = {
      "CONSOLE k=v does -- the same two commands, spelled short.\n"
      "\n"
      "The keys k, and the value v each takes:\n"
-     "  attn       a control byte 01-1F (HEX): the key that returns to the monitor\n"
+     "  stop       a control byte 01-1F (HEX): the key that returns to the monitor (alias: attn)\n"
      "  base       hex | octal -- the operator's number base for what it PRINTS\n"
      "  history    lines saved in .altairsim_history in the launch dir (default 50; 0 = off)\n"
      "  upper      on|off: fold typed input to uppercase (much period software insists)\n"
@@ -546,11 +582,11 @@ static const std::vector<CommandDef> kCommands = {
      "diagnostic channels print (SHOW DEBUG), not the terminal, so SHOW CONSOLE does\n"
      "not list it. See SET ... DEBUG.\n"
      "\n"
-     "ATTN is the key that takes the keyboard BACK from a running guest. The host\n"
+     "STOP is the key that takes the keyboard BACK from a running guest. The host\n"
      "intercepts it before the guest is ever offered the byte, so the guest cannot\n"
      "disable it -- and that is why it must not be a key the guest needs.\n"
      "  CONSOLE            the settings, and which board unit is wired to the terminal\n"
-     "  CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)\n"
+     "  CONSOLE stop=1D    make it ^]  (hex: it is a byte on the wire; attn= also works)\n"
      "  CONSOLE upper=on strip7out=on   two at once, the classic MITS BASIC pair\n"
      "This command does NOT choose which board is the console -- CONNECT does that\n"
      "(CONNECT <id>:<unit> console); bare CONSOLE only reports the one now wired."},

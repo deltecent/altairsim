@@ -133,9 +133,9 @@ startup = ["RUN FF00"]
 An array of **ordinary monitor commands**, run once the machine is built. Any command. They run
 in order, and you see them run — that is the `startup>` line in the quick start.
 
-**Paths inside a `startup` command are relative to the machine file**, not to your shell, because
-the file's author wrote them and the file's author could see the file's directory. This is the
-one place the two halves of the path rule sit next to each other, and it is worth remembering.
+**Paths inside a `startup` command are relative to the machine file** — the machine's own
+directory, which is the base every relative path uses, whether written in the file or typed at
+the prompt. So a `startup` line and the same command typed by hand find the same file.
 
 ### What `[machine]` will *not* take
 
@@ -384,7 +384,7 @@ base, not the rule. Board settings keep their own base regardless, so `SHOW` pri
 
 ```toml
 [console]
-attn      = 0x05      # the key that gets you back to the monitor. ^E
+stop      = 0x05      # STOP: the key that gets you back to the monitor. ^E  (attn= still accepted)
 base      = hex       # hex | octal -- how you read/write addresses, ports, bytes
 upper     = false
 strip7in  = false
@@ -401,7 +401,7 @@ Altair never knew anything about it.
 
 | Key | |
 |---|---|
-| `attn` | the escape byte. **Hex.** Default `05` = `^E` |
+| `stop` | the STOP key's byte. **Hex.** Default `05` = `^E`. (`attn` is an accepted alias.) |
 | `base` | `hex` \| `octal` — how the monitor reads and prints the wire class (addresses, ports, bytes). `octal` is split octal, the MITS front-panel convention |
 | `upper` | fold input to upper case |
 | `strip7in` | clear bit 7 of everything the guest receives |
@@ -438,11 +438,11 @@ so `width` is a property of each video board — see [Boards](boards.md).)
 | `crt` | paint the window like the original monitor — a soft phosphor glow and the tall 4:3 tube — instead of crisp square pixels. Default `false`. See below |
 
 With `focus = false` — the default — the terminal keeps the keyboard. The window opens behind
-whatever you were doing, and when the guest stops you can type at `altairsim>` immediately. You
+whatever you were doing, and when the CPU stops you can type at `altairsim>` immediately. You
 can still click into the window and type there; the keys join the terminal's on one stream.
 
 With `focus = true` the window comes to the front when it opens and keeps the keyboard when the
-guest stops. That is what a **Sol-20** wants, because there the window *is* the console and the
+CPU stops. That is what a **Sol-20** wants, because there the window *is* the console and the
 terminal is the back door.
 
 How *big* the window opens is set per video board, not here — see the `width` property in
@@ -456,7 +456,7 @@ has focus. Default `console`: a focused window is a keyboard, and its keys join 
 one console stream, which is right for a **Sol-20** where the window *is* the console. Set it to
 `none` for a **display-only** board like a **Dazzler**: the window still shows the picture and still
 comes to the front, but its keystrokes do **not** reach the console — they drive a joystick (a
-`d7a`, if the machine has one), and only `Ctrl-E` in the window is honored, stopping the guest and
+`d7a`, if the machine has one), and only `Ctrl-E` in the window is honored, stopping the CPU and
 handing you back the monitor. This is why typing in a Dazzler game window does not land at the CP/M
 prompt.
 

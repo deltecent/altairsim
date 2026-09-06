@@ -914,11 +914,11 @@ public:
     // resolved against -- so it is the only place that can name the rule that applied.
     // APPEND IT TO AN ERROR; never build a message out of it alone.
     std::string pathNote(const std::string& p) const {
-        if (configDir_.empty()) return {};    // typed at the prompt, or a file naming no dir:
-                                              // the shell's cwd stood, and nothing was re-based.
+        if (configDir_.empty()) return {};    // a built-in with no directory of its own:
+                                              // the launch dir stood, and nothing was re-based.
         if (resolvePath(p) == p) return {};   // absolute, or a `builtin:` scheme -- the rule
                                               // never applied, so explaining it would mislead.
-        return "\n  ('" + p + "' is relative to the machine file that wrote it, in " +
+        return "\n  ('" + p + "' is relative to the machine's directory, " +
                configDir_ + "/)";
     }
 

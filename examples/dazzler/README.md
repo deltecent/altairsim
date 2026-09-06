@@ -13,11 +13,11 @@ list, on an Altair that has a **Dazzler** in it — an 8080 at 4 MHz, 64K of RAM
 the console, and the Dazzler's two ports at `0E`/`0F`. On a build with **SDL3** a window opens
 the moment the Dazzler turns on, and the kaleidoscope appears: a 2 KB, 64×64, 16-color picture.
 
-KSCOPE never stops on its own (there is no `HLT`), so press **ATTN** (`Ctrl-E`) at the terminal
+KSCOPE never stops on its own (there is no `HLT`), so press **STOP** (`Ctrl-E`) at the terminal
 to break back to the `altairsim>` prompt; `RUN 0` starts it again. On a **headless** build the
 machine runs exactly the same and simply draws nothing.
 
-To start it by hand instead — for instance to watch it draw into memory — break out with ATTN
+To start it by hand instead — for instance to watch it draw into memory — break out with STOP
 and re-run it yourself:
 
 ```
@@ -127,7 +127,7 @@ B.SPACEWAR
 ```
 
 On an SDL3 build the Dazzler window opens the moment a game turns the card on; **`Ctrl-E`** in the
-window (ATTN) breaks back to the `altairsim>` monitor. As with `cpm.toml`, these are **Z80**
+window (STOP) breaks back to the `altairsim>` monitor. As with `cpm.toml`, these are **Z80**
 programs on a **4 MHz** machine — the real Cromemco speed, which CDOS's double-density read loop
 depends on.
 

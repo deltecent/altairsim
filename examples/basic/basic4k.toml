@@ -32,7 +32,7 @@ base = "basic4k"
 # are the same three lines.
 #
 # RUN hands the GUEST the keyboard, so you land at BASIC's own prompt with nothing between
-# you and it. ATTN (^E) is the way back to the monitor, and the guest cannot take it from you.
+# you and it. STOP (^E) is the way back to the monitor, and the guest cannot take it from you.
 #
 # The tape comes off in about a second rather than the 110 the real 300-baud cassette took,
 # because `clock_hz = 0` is flat out. `SET cpu0 clock_hz=2000000` buys back the 2 MHz

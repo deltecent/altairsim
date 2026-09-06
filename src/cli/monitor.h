@@ -216,15 +216,53 @@ private:
     bool quit_ = false;
     bool mcpMode_ = false;  // RUN parks instead of blocking -- see setMcpMode()
 
-    // WHOSE DIRECTORY THE COMMAND CURRENTLY RUNNING CAME OUT OF -- and "" whenever a
-    // human is at the keyboard, which is nearly always (core/paths.h).
-    //
-    // Set only for the duration of runStartup(), because a `startup` entry is a command
-    // WRITTEN IN a machine file and a path written in a machine file is relative to that
-    // file. The instant the list is done this goes back to "", and `MOUNT dsk0:drive1
-    // "scratch.dsk"` at the prompt means the scratch.dsk in the shell you are standing
-    // in -- never the one beside somebody's example config.
+    // WHOSE DIRECTORY THE FILE CURRENTLY RUNNING CAME OUT OF -- meaningful only while a
+    // file's lines are running (fileDepth_ > 0): a `startup` list, a `-s`/DO script.
+    // A path WRITTEN IN a file is relative to that file (core/paths.h), so for the length
+    // of that list this is the file's directory. At the prompt it is not read at all --
+    // inputBase() returns the MACHINE's directory there instead (see below).
     std::string startupDir_;
+
+    // HOW MANY FILES ARE RUNNING RIGHT NOW -- 0 at the prompt, 1 inside a startup list or
+    // a `-s`/DO script, more when they nest. It is the one bit that says "typed by a human"
+    // (0) versus "written in a file" (>0), which decides two things: whether a leading `~`
+    // is the shell's to expand (only a human's is), and which base inputBase() hands back.
+    int fileDepth_ = 0;
+
+    // THE ONE BASE every relative path resolves against. While a file runs it is that
+    // file's directory (startupDir_); at the prompt it is the MACHINE's own directory
+    // (m_.dir) -- so `MOUNT scratch.dsk` you type finds the scratch.dsk beside the machine
+    // you loaded, the SAME folder the machine file's own `mount =` names. The two used to
+    // differ (typed paths went to the shell's cwd); collapsing them to one directory is
+    // the whole point. For a built-in, m_.dir is "" and that means the launch directory --
+    // the only anchor a machine with no file of its own can have. hostdir is the lone
+    // exception and is not a base (SHOW PATHS).
+    std::string inputBase() const { return fileDepth_ > 0 ? startupDir_ : m_.dir; }
+
+    // Resolve a path from the CURRENT source against inputBase(). A human's leading `~`
+    // (fileDepth_ == 0) is expanded as the shell would; a file's `~` is left literal, as
+    // it always was (a machine file with a `~` in it is not portable). Everything typed
+    // that names a file -- MOUNT, LOAD, SAVE, DO, SYMBOLS, SNAPSHOT, CONFIG -- goes through
+    // here, so they all root at one directory.
+    std::string resolveInput(const std::string& p) const;
+
+    // Run a list of command lines as if typed, with `dir` as the base for the relative
+    // paths in them, echoing each behind `echoTag` (null for no echo). This is the ONE
+    // batch engine: runStartup() feeds it the machine's `startup`, and the DO command
+    // feeds it a file's lines. `startupDir_` and each board's config dir are saved and
+    // restored around the run, so it NESTS -- a DO inside a startup, or a DO inside a DO,
+    // each hands the caller's directory back when it returns.
+    void runLines(const std::vector<std::string>& lines, const std::string& dir,
+                  const char* echoTag, std::ostream& out);
+
+    // The DO files open right now, innermost last, by canonical path. A `DO` that reaches
+    // for itself -- directly or round a ring of files -- would otherwise recurse until the
+    // stack gives out, and a depth cap alone cannot save it: each level nests a whole
+    // exec() frame, and enough of those overflow a small stack (Windows' is 1 MB, an
+    // eighth of macOS's) BEFORE any depth ceiling can fire. So the cycle is caught by
+    // identity instead -- if a file is already in this stack, DO refuses at depth 1,
+    // before it recurses. size() also serves as the depth for the backstop cap below.
+    std::vector<std::string> doStack_;
 
     // The last command line the operator entered, so `.` can repeat it. A `.` is
     // never recorded here, so pressing it again re-runs the SAME line -- which is the

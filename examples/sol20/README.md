@@ -50,7 +50,7 @@ CFC0  45 4E 54 45 52 20 53 50 ... 54 29 29           ENTER SPEED FACTOR (9(SLOW)
 
 That is the game's own copyright line off a 1977 tape, and the row where it stops to ask you
 something — read straight out of the screen it drew them on. `RUN` resumes, and the answer you
-type reaches the game. `^E` (ATTN) takes the keyboard back to the monitor at any point; the
+type reaches the game. `^E` (STOP) takes the keyboard back to the monitor at any point; the
 machine is not disturbed by stopping it.
 
 **The clock is 2.045 MHz**, the stock Sol-20 — the 14.31818 MHz dot clock divided by 7 (Sol Systems

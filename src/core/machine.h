@@ -123,6 +123,16 @@ public:
     // command line powers after loading (main.cpp) and so does CONFIG LOAD.
     void replaceWith(Machine& built);
 
+    // EMPTY THE BACKPLANE, exactly as `-n` on the command line does (main.cpp) -- every
+    // card off the bus, no memory, nothing driving anything. This is where you START if
+    // you are building a machine up with BOARDS ADD, and it is what the monitor's `MACHINE
+    // none` runs so a `DO` script can build its own machine from scratch. Each card is
+    // detached through the same door replaceWith() uses (bus.detach), never just dropped:
+    // its pins -- interrupt, pHOLD, VI, the decode it answered -- are on the bus, not in
+    // the destructor. Like replaceWith(), it does NOT power the empty result: an empty
+    // machine has nothing to power, and the caller powers once it has fitted its cards.
+    void clear();
+
     // THE PROM BURNER (DESIGN.md 10.2). Put a byte where a bus cycle cannot: into a
     // ROM. A ROM region does not decode a write (§4.2) because on real hardware a bus
     // write cannot program a PROM either -- you pull the chip and put it in a

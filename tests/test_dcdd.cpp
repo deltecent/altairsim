@@ -95,24 +95,25 @@ void test_dcdd() {
               "the reported case still fails to mount -- the RULE is not the bug");
         CHECK(err.find("machines/disks/Kermit/TEST.DSK") != std::string::npos,
               "...and names where we LOOKED, which is the truth and always was");
-        CHECK(err.find("relative to the machine file") != std::string::npos,
+        CHECK(err.find("relative to the machine's directory") != std::string::npos,
               "...and now says WHY we looked there. That sentence is the whole fix.");
 
         // THE HALF THAT MATTERS MORE. A note that appears when nothing was re-based
         // is worse than no note: it blames a rule that never ran, and sends the next
-        // person hunting for a config directory that is not involved.
+        // person hunting for a directory that is not involved. An empty config dir is a
+        // built-in with no directory of its own -- the launch dir stood, nothing re-based.
         b.setConfigDir("");
         err.clear();
-        CHECK(!b.mount("drive0", "nope.dsk", false, err), "a TYPED mount still fails");
-        CHECK(err.find("relative to the machine file") == std::string::npos,
-              "...with NO note: the shell's cwd stood, so there is nothing to explain");
+        CHECK(!b.mount("drive0", "nope.dsk", false, err), "a no-config-dir mount still fails");
+        CHECK(err.find("relative to the machine's directory") == std::string::npos,
+              "...with NO note: nothing was re-based, so there is nothing to explain");
 
         // Absolute, from a machine file: resolveFrom() hands it straight back, so
         // the rule did not apply and must not be blamed for the miss.
         b.setConfigDir("./machines");
         err.clear();
         CHECK(!b.mount("drive0", "/tmp/nope.dsk", false, err), "an ABSOLUTE mount still fails");
-        CHECK(err.find("relative to the machine file") == std::string::npos,
+        CHECK(err.find("relative to the machine's directory") == std::string::npos,
               "...with NO note: an absolute path already said where it is");
 
         setMediaResolver(openHostFile);  // ...and put the real one back

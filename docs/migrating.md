@@ -64,7 +64,7 @@ altairsim does *not* do — then §9 is the honest place to find that out before
 | Graphical front panel | No panel window (real Dazzler/VDM-1 **video** via SDL) | **Yes** — photoreal lights & switches (X11/OpenGL or SDL2; 2D/3D), plus a web panel on some systems | No panel window; the **monitor is the panel** (EXAMINE / DEPOSIT / RUN are the switches). Optional SDL3 for VDM-1 / Dazzler / video terminals |
 | How you describe a machine | `.ini` command script (`SET`/`ATTACH`) | Per-system `conf/system.conf` + `[MEMORY n]` map sections + `disks/` directory | One **TOML machine file** = a self-contained, copyable directory |
 | Debugger | SIMH `EXAMINE`/`DEPOSIT`/`BREAK`, `SAVE`/`RESTORE` | "ICE" monitor (off by default on the panel machines; needs a rebuild to enable) | Always-on monitor: `BREAK … IF`, `HISTORY`, `TRACE`, symbols, `STEP`/`NEXT`, `SNAPSHOT` |
-| Scripting / automation | `.ini` do-scripts, `EXPECT`/`SEND`, Remote Console | Shell-script wrappers, socket-attached SIO ports | `-s` script / `-x` command (shell-testable exit status), and **`--mcp`** (drive a live guest over JSON-RPC) |
+| Scripting / automation | `.ini` do-scripts, `EXPECT`/`SEND`, Remote Console | Shell-script wrappers, socket-attached SIO ports | **`DO` a file of commands** (or `-s` at startup) — a shell-testable exit status; and **`--mcp`** (drive a live guest over JSON-RPC) |
 | Networking | `NET` device (CP/NET, CPNOS) | — | TNFS disk mounts; serial over TCP sockets |
 | Build | CMake (also legacy make / VS) | `make` (+ X11 or SDL2) | CMake, C++20, optional SDL3; a plain `make` convenience build |
 
@@ -297,19 +297,19 @@ you have; `SHOW MOUNTS` and `SHOW PATHS` will tell you what landed where.
 | `DEPOSIT PC 1040` | `SET REG PC=1040` (or `RUN 1040`) | `RUN <addr>` = EXAMINE + RUN |
 | `EXAMINE AF` / registers | `REGS`; `SET REG A=3F` | flags too: `SET REG CY=1` |
 | `RUN` / `GO` | `RUN` | resumes; `RUN <addr>` sets PC first |
-| `CONTINUE` | `RUN` (bare) | resumes from where ATTN stopped |
+| `CONTINUE` | `RUN` (bare) | resumes from where STOP stopped |
 | `STEP` / `STEP n` | `STEP` / `NEXT` | `NEXT` steps *over* CALL/RST |
 | `BREAK 100` / `NOBREAK` | `BREAK 100` / `NOBREAK` | plus `BREAK … IF <cond>` |
 | `SAVE f` / `RESTORE f` | `SNAPSHOT f` / `RESTORE f` | state, not machine shape — build the machine first |
 | `SHOW CONFIGURATION` / `SHOW DEVICES` | `BOARDS`, `SHOW MACHINE` | `BOARDS` is the backplane |
 | `SET REMOTE TELNET=n` | `CONNECT sio0:a socket:n` (console), or `--mcp` | different mechanisms for different jobs |
-| `DO script.ini` | `altairsim -s script.cmd` | one command per line; exit status set |
+| `DO script.ini` | `DO script.ini` (at the prompt) or `altairsim -s script.ini` (at startup) | same command — one line at a time, as if typed; paths inside a `DO` file are relative to the file |
 | `EXPECT`/`SEND` | `altairsim <machine> --mcp` (`run {input:…, until:…}`) | drive a live guest; see `docs/manual/mcp.md` |
-| an `altairz80.ini` startup file | a TOML machine file (auto-loads `./altairsim.toml`) | declarative, not a script |
+| an `altairz80.ini` startup file | a TOML machine file (auto-loads `./altairsim.toml`), or a `DO`-able `.ini` of commands | the TOML is declarative; the `.ini` is the batch-of-commands path, closest to what you have |
 
 Stopping a running machine: in SIMH you press **Ctrl-E** to return to `sim>`. In altairsim the
-stop key is **ATTN = Ctrl-E** as well — but note Ctrl-C belongs to the *guest* (CP/M reads it),
-which is exactly why the front-panel stop is Ctrl-E and not Ctrl-C.
+stop key is **Ctrl-E** as well — it presses the front-panel **STOP** switch — but note Ctrl-C
+belongs to the *guest* (CP/M reads it), which is exactly why the stop is Ctrl-E and not Ctrl-C.
 
 ---
 
@@ -397,6 +397,31 @@ $ altairsim cpm.toml          # -> A>
 ```
 
 (Leave the `startup` line out and you get the monitor instead; `RUN FF00` boots it by hand.)
+
+**Even closer to your `.ini`: a `DO` script.** If you would rather keep a *batch of commands* than
+a declarative file, altairsim's `DO` command runs one — one line at a time, exactly as if you
+typed it. It is the near-literal translation of the `.ini` above, command for command:
+
+```
+; cpm.ini
+MACHINE default              ; an 8080 with 56K + the DBL boot PROM  (SIMH "set cpu 8080" / "64k")
+MOUNT dsk0:drive0 "cpm2.dsk" ; attach dsk
+MOUNT dsk0:drive1 "apps.dsk" ; attach dsk1
+RUN FF00                     ; boot dsk
+```
+
+Run it either way — at startup from the shell, or at the `altairsim>` prompt:
+
+```
+$ altairsim -s cpm.ini          # from the command line -> A>, exits with the script's status
+altairsim> DO cpm.ini           # at the monitor prompt, any time
+```
+
+`MACHINE default` is the whole hardware in one line (`MACHINE none` gives you an empty backplane to
+`BOARDS ADD` onto instead); paths inside a `DO` file are relative to the file, so the folder
+copies and still runs. The TOML above is still the idiomatic, shippable form — but the `.ini` is
+the shortest bridge from what you have. The packaged `examples/` folders carry a `.ini` beside
+their `.toml` to show the two side by side.
 
 The fastest way to get the boards and PROM exactly right is not to type them from scratch:
 `altairsim -x 'CONFIG SAVE cpm.toml' default` writes the shipped `default` machine (8080, DBL
@@ -507,8 +532,9 @@ bus-accurate board model, an always-on debugger, and `--mcp`.
 4. **Start from a built-in.** `altairsim -x 'CONFIG SAVE mine.toml' <closest-machine>`, then edit
    — do not write the file from scratch.
 5. **Relearn `D`/`E`.** `D` dumps, `DE` deposits, `EX` examines (§5).
-6. **Port your automation.** `.ini` do-scripts → `altairsim -s`; `EXPECT`/`SEND` or z80pack shell
-   wrappers → `--mcp`.
+6. **Port your automation.** `.ini` do-scripts → a `DO` file of the same commands (`DO x.ini` at
+   the prompt, or `altairsim -s x.ini` at startup); `EXPECT`/`SEND` or z80pack shell wrappers →
+   `--mcp`.
 7. **Verify on a real boot.** `altairsim mine.toml`, `RUN`, reach `A>`, run a command. If it
    boots and behaves, you are migrated.
 

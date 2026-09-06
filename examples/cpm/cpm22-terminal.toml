@@ -28,7 +28,7 @@
 
 #> CP/M 2.2b, with its console in a windowed VT100 -- the window that just opened.
 #> The monitor stays here on stdio: type BOARDS or SHOW MOUNTS, and RUN FF00 to boot.
-#> ATTN (^E) pulls the keyboard back here to the monitor; RUN resumes the guest.
+#> STOP (^E) pulls the keyboard back here to the monitor; RUN resumes the guest.
 
 [machine]
 name = "cpm22-terminal"

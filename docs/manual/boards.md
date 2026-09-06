@@ -854,7 +854,7 @@ the software uses to avoid writing while the beam is in the way.
 and everything else still works — a program writing to the screen simply has nowhere to show it.
 
 **Closing that window stops the machine, it does not quit the simulator.** The close box is the
-operator talking, so it does what `ATTN` does: the guest stops at an instruction boundary and you
+operator talking, so it does what `STOP` does: the guest stops at an instruction boundary and you
 get the monitor prompt back, with the machine exactly where it was. `RUN` resumes it into the same
 window; `QUIT` is still how you leave.
 
@@ -947,7 +947,7 @@ and **64×64 or 128×128** on/off elements, in **16 colors** or 16 greys. Small 
 **It needs a display**, and like the VDM-1 it draws into it: an SDL3 build opens a window, a headless
 build runs and simply has nowhere to show the picture. The Dazzler example in `examples/` comes up
 running **Li-Chen Wang's Kaleidoscope**, a four-way-mirrored pattern turning over in the window
-(`ATTN` breaks back to the monitor); the `dazzler` machine is the bare board to build on. Because a
+(`STOP` breaks back to the monitor); the `dazzler` machine is the bare board to build on. Because a
 64×64 frame is tiny, the board's `width` property (above) sizes the window up to land near a VDM-1's
 size on your screen rather than a sixth of it.
 

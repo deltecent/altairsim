@@ -35,7 +35,7 @@ NEXT
 STEP that does not descend. A CALL or RST runs to completion and stops at the
 return address instead of stepping into it; anything else is a plain single
 step. It is a temporary breakpoint at the return plus a RUN, so the callee is
-LIVE -- it can use the console, and ^E (ATTN) or ^C stops it.
+LIVE -- it can use the console, and ^E (STOP) or ^C stops it.
 
 ```
 N            over the CALL/RST at PC (else single-step)
@@ -70,10 +70,10 @@ Start the machine. `RUN <addr>` is EXAMINE + RUN -- it loads the PC first,
 exactly as you would on the panel.
 
 If a unit holds the console, the GUEST GETS THE KEYBOARD -- every key,
-including ^C, which a CP/M program is entitled to read. The way back is ATTN
+including ^C, which a CP/M program is entitled to read. The way back is STOP
 (^E), which the host takes before the guest is ever offered the byte, so the
-guest cannot disable it. ATTN STOPS the machine -- nothing executes while this
-prompt is up -- but it does not DISTURB it: ATTN is not RESET and not POWER, so
+guest cannot disable it. STOP halts the machine -- nothing executes while this
+prompt is up -- but it does not DISTURB it: it is not RESET and not POWER, so
 every register, every byte and every disk survives, and a bare RUN resumes at the
 exact instruction. Stopped is not lost, and the debugger is at its most useful
 here: REGS, EXAMINE, DUMP, DISASM and STEP all work at this prompt.
@@ -700,7 +700,7 @@ RAM             what you DEPOSITed is gone. LOAD/SAVE <file> <range> is for
                 memory, and it is a separate file for a reason.
 the registers   PC included, so a LOADed machine has not started.
 breakpoints     nor tracepoints, nor where TRACE was pointed.
-CONSOLE         attn and the transforms are the HOST's terminal, not a board
+CONSOLE         stop and the transforms are the HOST's terminal, not a board
                 in the backplane. They survive CONFIG LOAD untouched.
 ```
 
@@ -811,7 +811,7 @@ CONSOLE k=v does -- the same two commands, spelled short.
 The keys k, and the value v each takes:
 
 ```
-attn       a control byte 01-1F (HEX): the key that returns to the monitor
+stop       a control byte 01-1F (HEX): the key that returns to the monitor (alias: attn)
 base       hex | octal -- the operator's number base for what it PRINTS
 history    lines saved in .altairsim_history in the launch dir (default 50; 0 = off)
 upper      on|off: fold typed input to uppercase (much period software insists)
@@ -832,13 +832,13 @@ SET CONSOLE DEBUG=<sink> is not one of these: it aims where the machine's
 diagnostic channels print (SHOW DEBUG), not the terminal, so SHOW CONSOLE does
 not list it. See SET ... DEBUG.
 
-ATTN is the key that takes the keyboard BACK from a running guest. The host
+STOP is the key that takes the keyboard BACK from a running guest. The host
 intercepts it before the guest is ever offered the byte, so the guest cannot
 disable it -- and that is why it must not be a key the guest needs.
 
 ```
 CONSOLE            the settings, and which board unit is wired to the terminal
-CONSOLE attn=1D    make it ^]  (hex: it is a byte on the wire)
+CONSOLE stop=1D    make it ^]  (hex: it is a byte on the wire; attn= also works)
 CONSOLE upper=on strip7out=on   two at once, the classic MITS BASIC pair
 ```
 
@@ -857,6 +857,59 @@ nobody -- which is exactly what the card does with no cable in it.
 
 ```
 DISC sio0:b
+```
+
+
+### DO — `DO`
+
+```
+DO <file>
+```
+Run a FILE of monitor commands, one per line, as if you had typed each here. A
+DO file is a machine's `startup` list living in a plain text file -- the config
+language and the command language are one language, so anything you can type, a
+DO file can do. It is the easy landing for an AltairZ80 `.ini`, whose SET and
+ATTACH lines are monitor commands too.
+
+PATHS INSIDE IT ARE RELATIVE TO THE FILE, not to where you are standing -- so
+`DO examples/cpm/cpm.ini` mounts the disk beside that file from anywhere. Blank
+lines and `;` or `#` comments are skipped, so a DO file reads like a script.
+
+It runs against whatever machine is loaded, so a DO file usually opens with MACHINE
+to pick its own base -- `MACHINE default` then MOUNT/RUN, or `MACHINE none` then
+BOARDS ADD to build one from scratch. On the command line, `altairsim -s FILE` runs
+the same file at startup and exits with its status.
+
+It is a LINE RUNNER, not SIMH's scripting language: no arguments, no IF or GOTO.
+For conditional or interactive automation, drive a live guest over --mcp.
+
+```
+DO cpm.ini                   paths relative to cpm.ini's own directory
+DO examples/basic/b.ini      run it from anywhere
+```
+
+
+### MACHINE — `MA[CHINE]`
+
+```
+MACHINE <name> | MACHINE none
+```
+Load a BUILT-IN machine by name, replacing whatever is in the backplane. It is the
+runtime twin of naming one on the command line (`altairsim default`) and the command
+form of a machine file's `base = "<name>"` -- so a DO script opens with it and no
+longer depends on how it was launched. SHOW MACHINES lists the names; SHOW MACHINE
+<name> shows what is in one.
+
+MACHINE none is the empty backplane `-n` gives you -- no boards, nothing driving
+anything -- where you START a machine you build up by hand with BOARDS ADD.
+
+It powers the result (RAM filled, ROM images read, POC* pulsed) but does NOT run the
+built-in's startup: like `base =`, it gives you the HARDWARE, and the lines after it
+do the MOUNTing and RUNning. For a machine from a FILE, use CONFIG LOAD.
+
+```
+MACHINE default                  the 56K CP/M Altair, DBL PROM at FF00
+MACHINE none ; BOARDS ADD 8080 cpu0 ; ... ; POWER ; RUN 0
 ```
 
 
@@ -900,8 +953,9 @@ MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files
 
 
 SHOW MOUNTS is the other half of this command: every socket in the machine,
-what is in it, and which are still empty. UNMOUNT takes it back out. A path is
-resolved as SHOW PATHS describes -- what you TYPE is relative to your shell.
+what is in it, and which are still empty. UNMOUNT takes it back out. A relative
+path resolves against the machine's own directory -- the same folder the machine
+file's own mounts come from -- as SHOW PATHS describes.
 
 
 ### REGION — `REGI[ON]`

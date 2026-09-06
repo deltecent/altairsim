@@ -8,7 +8,7 @@
 
 | Key | Does |
 |---|---|
-| `^E` | **ATTN** — stop the machine and take the keyboard back. Nothing is lost. |
+| `^E` | **STOP** — stop the machine and take the keyboard back. Nothing is lost. |
 | `RUN` | Resume, at the exact instruction it stopped on. |
 | `QUIT` | Leave. (There is no `EXIT`.) |
 
@@ -57,6 +57,7 @@ Type the part before the bracket.
 | `DE[POSIT]` | Write bytes into memory at an address. | `DEPOSIT <addr> <bytes...>` |
 | `DI[SASM]` | Disassemble memory into instructions. | `DISASM [<addr>\|<range>] [n] [CPU=8080]` |
 | `DISC[ONNECT]` | Unplug the endpoint from a serial unit. | `DISCONNECT <id>:<u>` |
+| `DO` | Run a file of monitor commands, one per line, as if typed. | `DO <file>` |
 | `D[UMP]` | Show memory as hex and ASCII. | `DUMP [<addr>\|<range>] [WIDTH=16]` |
 | `E[DIT]` | Enter bytes into memory interactively from an address. | `EDIT <addr> [ROM]` |
 | `EX[AMINE]` | Point the front panel at an address (and show that byte). | `EXAMINE [<addr>]` |
@@ -65,6 +66,7 @@ Type the part before the bracket.
 | `H[ISTORY]` | Replay the recent instruction (or bus-cycle) history. | `HISTORY [BUS\|CPU] [n]` |
 | `I[N]` | Read a byte from an I/O port. | `IN <port>` |
 | `L[OAD]` | Load a file into memory (binary, Intel hex or S-record). | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX\|SREC] [ROM]` |
+| `MA[CHINE]` | Load a built-in machine by name (MACHINE none empties the backplane). | `MACHINE <name> \| MACHINE none` |
 | `M[OUNT]` | Put a disk or tape image into a drive; a .imd is converted to a raw .dsk beside it. | `MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
 | `MOV[E]` | Copy a range of memory to another address. | `MOVE <range> <dest> [ROM]` |
 | `N[EXT]` | Step one instruction, running any CALL/RST to completion. | `NEXT` |
