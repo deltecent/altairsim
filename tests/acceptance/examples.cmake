@@ -137,19 +137,19 @@ execute_process(
 )
 expect_basic8k("${out}" "`altairsim examples/uio/uio.toml` from the dist root did not boot 8K BASIC")
 
-# ---- 3. THE NEGATIVE CONTROL, and the only reason to believe either of the above. ------
+# ---- 3. ONE BASE: TYPED PATHS AND THE MACHINE FILE'S OWN RESOLVE TOGETHER. --------------
 #
-# A path a HUMAN TYPES is relative to the SHELL, and it must stay that way. If the config's
-# directory leaked out of the startup list and went on colouring commands typed afterwards,
-# then `MOUNT dsk0:drive1 "scratch.dsk"` at the prompt would quietly mean a file next to
-# somebody's example instead of the one the operator can see -- which is the same class of
-# bug as the one this whole change fixes, only pointing the other way, and far nastier
-# because it would find a file rather than fail to.
+# A path a HUMAN TYPES resolves against the MACHINE's directory -- the very folder the
+# machine file's own `mount =` names -- not against whatever shell they launched from. So
+# the identical MOUNT, whether it sits in the startup list or is typed at the prompt, finds
+# the SAME tape beside the machine file, from wherever you ran altairsim. (This is the
+# unification: typed paths used to go to the shell's cwd, which is how the same disk could
+# show under two different names. hostdir is the one base that stays separate.)
 #
-# So: a machine file whose startup mounts the tape BESIDE IT (which must succeed), followed
-# by the identical MOUNT typed at the prompt from a directory where that tape is NOT
-# (which must FAIL). The two commands are character-for-character the same. Only their
-# provenance differs, and provenance is the entire feature.
+# So: a machine file whose startup mounts the tape BESIDE IT, followed by the identical
+# MOUNT typed at the prompt from a directory that is NOT the machine's -- and BOTH must
+# succeed, resolving to the tape beside the machine file. The two commands are
+# character-for-character the same, and now so is where they look.
 file(WRITE "${example}/probe.toml"
      "[machine]\nname = \"probe\"\nbase = \"basic4k\"\n"
      "startup = [\"MOUNT acr0:tape \\\"4K BASIC Ver 3-1.tap\\\"\"]\n")
@@ -162,7 +162,9 @@ execute_process(
   TIMEOUT           30
 )
 
-# The startup one found it -- resolved against the file, which lives beside the tape.
+# Both resolved against the machine's directory, which lives beside the tape -- so both
+# narrate the same path. The startup one proves the file rule; the typed one, run from
+# ${dist} and not from examples/basic, proves a typed path now roots there too.
 string(FIND "${out}" "mounted examples/basic/4K BASIC Ver 3-1.tap" hit)
 if(hit LESS 0)
   message(FATAL_ERROR
@@ -170,14 +172,15 @@ if(hit LESS 0)
     "--- output ---\n${out}")
 endif()
 
-# ...and the typed one did NOT, because the operator is standing somewhere else.
-string(FIND "${out}" "no such file" hit)
-if(hit LESS 0)
+# The typed one must NOT have failed -- if it resolved against ${dist} (the old cwd rule)
+# it would say "no such file". One base means it found the tape beside the machine file.
+string(FIND "${out}" "no such file" miss)
+if(miss GREATER -1)
   message(FATAL_ERROR
-    "examples: A TYPED PATH WAS RESOLVED AGAINST THE CONFIG'S DIRECTORY.\n"
-    "  `MOUNT acr0:tape \"4K BASIC Ver 3-1.tap\"` was typed from ${dist}, where no such\n"
-    "  tape exists -- and it found one anyway, next to the machine file. The config's\n"
-    "  directory has escaped its startup list and is now colouring what humans type.\n"
+    "examples: A TYPED PATH DID NOT RESOLVE AGAINST THE MACHINE'S DIRECTORY.\n"
+    "  `MOUNT acr0:tape \"4K BASIC Ver 3-1.tap\"` was typed from ${dist} and should have\n"
+    "  found the tape beside the machine file, as its own startup does. It did not --\n"
+    "  the one-base rule (typed paths root at the machine's directory) has regressed.\n"
     "--- output ---\n${out}")
 endif()
 

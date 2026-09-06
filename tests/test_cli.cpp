@@ -1160,26 +1160,31 @@ void test_cli() {
     }
 
     // -----------------------------------------------------------------------
-    // SHOW PATHS: "built in to the binary" is a claim about ORIGIN -- whether a file
-    // was loaded -- NOT about whether the machine file's dirname is empty. A file NAMED
-    // IN THE CWD (`altairsim foo.toml` from foo.toml's own folder, which is how every
-    // example README starts) has an empty dirname and is still a file; reading empty-dir
-    // as built-in made SHOW PATHS lie precisely there. `fromFile` carries the fact.
+    // SHOW PATHS: whether the machine is "built in" is a claim about ORIGIN -- whether a
+    // file was loaded -- NOT about whether the machine file's dirname is empty. A file
+    // NAMED IN THE CWD (`altairsim foo.toml` from foo.toml's own folder, which is how
+    // every example README starts) has an empty dirname and is still a file; reading
+    // empty-dir as built-in made SHOW PATHS lie precisely there. `fromFile` carries the
+    // fact. There is one base directory row now (typed paths and a machine file's own
+    // both resolve against it); the prose is what tells a built-in from a file.
     // -----------------------------------------------------------------------
     SECTION("cli: SHOW PATHS tells a cwd machine file from a built-in machine");
     {
         std::string err;
         const char* kText = "[machine]\nname = \"t\"\n";
 
-        // Built-in: the source is a scheme, not a file. SHOW PATHS says so.
+        // Built-in: the source is a scheme, not a file. SHOW PATHS says so -- the base is
+        // the launch directory, because a built-in has none of its own.
         Machine mbi;
         CHECK(loadTomlText(kText, "builtin:default", mbi, err), "a built-in source loads");
         CHECK(!mbi.fromFile, "a builtin: source is not a file");
         Monitor            monbi(mbi);
         std::ostringstream obi;
         monbi.exec("SHOW PATHS", obi);
-        CHECK(obi.str().find("built in to the binary") != std::string::npos,
+        CHECK(obi.str().find("built in") != std::string::npos,
               "a built-in machine reports it is built in");
+        CHECK(obi.str().find("loaded from") == std::string::npos,
+              "...and does NOT claim a directory it was loaded from");
 
         // A file NAMED IN THE CWD -- a bare filename, empty dirname. It is NOT built in.
         Machine mcwd;
@@ -1189,10 +1194,10 @@ void test_cli() {
         Monitor            moncwd(mcwd);
         std::ostringstream ocwd;
         moncwd.exec("SHOW PATHS", ocwd);
-        CHECK(ocwd.str().find("built in to the binary") == std::string::npos,
+        CHECK(ocwd.str().find("built in") == std::string::npos,
               "a machine file in the cwd is NOT reported built in (the bug this fixes)");
-        CHECK(ocwd.str().find("machine file") != std::string::npos,
-              "...it prints a machine file row instead");
+        CHECK(ocwd.str().find("loaded from") != std::string::npos,
+              "...it says the base is the directory the machine was loaded from");
 
         // A file named THROUGH a directory keeps behaving as before: its dir is shown.
         Machine msub;
@@ -1202,7 +1207,7 @@ void test_cli() {
         Monitor            monsub(msub);
         std::ostringstream osub;
         monsub.exec("SHOW PATHS", osub);
-        CHECK(osub.str().find("built in to the binary") == std::string::npos,
+        CHECK(osub.str().find("built in") == std::string::npos,
               "a machine file in a subdir is not built in either");
         // SHOW PATHS renders the resolved absolute path with NATIVE separators, so on Windows
         // the row reads `...\examples\sol`. Normalise to forward slashes before matching -- the

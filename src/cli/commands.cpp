@@ -166,8 +166,9 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files\n"
      "\n"
      "SHOW MOUNTS is the other half of this command: every socket in the machine,\n"
-     "what is in it, and which are still empty. UNMOUNT takes it back out. A path is\n"
-     "resolved as SHOW PATHS describes -- what you TYPE is relative to your shell."},
+     "what is in it, and which are still empty. UNMOUNT takes it back out. A relative\n"
+     "path resolves against the machine's own directory -- the same folder the machine\n"
+     "file's own mounts come from -- as SHOW PATHS describes."},
     {"BREAK", true, nullptr,
      "BREAK [<addr> | MEM R|W <addr> | IO R|W <port> | TAPE STOP] [IF <expr> | LOADS <expr>] "
      "[TRACE ON|OFF]",

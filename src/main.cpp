@@ -471,6 +471,12 @@ int main(int argc, char** argv) {
             std::cerr << "cannot open '" << script << "'\n";
             return 2;
         }
+        // -x and -s are the same thing (see above): commands given on the command line,
+        // run against the machine. Their paths root at the MACHINE's directory, exactly as
+        // what you type at the prompt does -- not at the script's own folder, which is what
+        // DO is for (a path written in a DO file is relative to that file). For a built-in
+        // machine that base is the launch directory, so a repo-relative test script run
+        // from the repo root resolves as it always has.
         rc = mon.repl(f, std::cout, false);
         ran = true;
     }

@@ -1111,23 +1111,19 @@ void Monitor::showMounts(std::ostream& out) {
 }
 
 // ---------------------------------------------------------------------------
-// SHOW PATHS -- what a path resolves against, and there is more than one answer.
+// SHOW PATHS -- the directory paths resolve against, and the one fence that is separate.
 //
-// THIS COMMAND EXISTS BECAUSE "WHAT IS THE BASE DIRECTORY" HAS NO SINGLE ANSWER, and
-// the question gets asked (twice by Patrick, once as a bug report) because the rule is
-// invisible. A bare `pwd` would have had to pick one of these three and imply it was
-// the rule -- which is the misunderstanding, printed with authority.
-//
-// The three are genuinely different things and only the third is a fence:
-//   - the shell's cwd: what a path you TYPE resolves against (and a -s script's).
-//   - the machine file's dir: what a path WRITTEN IN IT resolves against, and nothing
-//     else. It governs `mount`, `base`, and the MOUNT/LOAD lines in `startup`.
-//   - hostdir: the guest's sandbox -- R.COM/W.COM cannot leave it. Not a base at all.
+// THERE IS ONE BASE: the machine's directory. What a machine file mounts, and what you
+// type -- MOUNT, LOAD, SAVE, DO, -s -- resolve against the same folder, the one the
+// machine was loaded from. It used to be two (typed paths went to the shell's cwd), which
+// is how the SAME disk could show under two different names; that split, and the question
+// "what IS the base directory" that Patrick asked twice, is what this command was born to
+// answer. A built-in has no directory of its own, so its base is the directory you
+// launched from. hostdir is the lone exception: the guest's sandbox, a fence, not a base.
 // ---------------------------------------------------------------------------
 void Monitor::showPaths(std::ostream& out) {
     char buf[512];
-    // One column for the label so the three answers line up and read as three answers to
-    // the same question -- which is the whole point of putting them on one screen.
+    // One column for the label so the values line up under a single left edge.
     auto row = [&](const std::string& label, const std::string& value) {
         std::snprintf(buf, sizeof buf, "  %-17s  %s", label.c_str(), value.c_str());
         out << buf << "\n";
@@ -1137,39 +1133,28 @@ void Monitor::showPaths(std::ostream& out) {
     std::error_code ec;
     auto cwd = std::filesystem::current_path(ec);
 
-    row("working directory", ec ? "(unknown)" : cwd.string());
-    out << pad << "MOUNT, LOAD, SAVE, and the -s or DO script you name\n"
-        << pad << "resolve against this.\n";
-
-    out << "\n";
-
     // BUILT-IN vs FILE is `fromFile`, NEVER `m_.dir.empty()`: a machine file named in the
     // cwd (`altairsim foo.toml` from foo.toml's folder) has an empty dirname, and reading
     // that as "built in" made this command lie in exactly the folder every example README
-    // tells you to `cd` into (empty dirname != no file, the issue-#25 shape). Fall through
-    // to the sandbox loop either way -- a built-in machine can carry a host bridge too.
-    if (!m_.fromFile) {
-        row("machine file", "(none -- this machine is built in to the binary)");
+    // tells you to `cd` into (empty dirname != no file, the issue-#25 shape). A built-in,
+    // OR a file named with no directory, resolves to the cwd -- the only anchor it has.
+    std::string base;
+    if (m_.fromFile && !m_.dir.empty()) {
+        std::error_code e2;
+        auto abs = std::filesystem::absolute(m_.dir, e2);
+        base = e2 ? m_.dir : abs.lexically_normal().string();
     } else {
-        // ABSOLUTE, for the same reason the sandbox is: the machine was named on the command
-        // line, so this is as relative as what you typed. An empty dirname is the cwd -- the
-        // file was named with no directory component -- so resolve it to the cwd we already
-        // have rather than leaving the row blank.
-        std::string mdir = m_.dir;
-        if (mdir.empty()) {
-            mdir = ec ? std::string(".") : cwd.string();
-        } else {
-            std::error_code e2;
-            auto abs = std::filesystem::absolute(mdir, e2);
-            if (!e2) mdir = abs.lexically_normal().string();
-        }
-
-        row("machine file", mdir);
-        out << pad << "`mount`, `base` and the MOUNT/LOAD lines in `startup`\n"
-            << pad << "resolve against THIS, not the cwd -- so a machine file\n"
-            << pad << "names the disks lying beside it and goes on naming them\n"
-            << pad << "from wherever you launch it.\n";
+        base = ec ? std::string(".") : cwd.string();
     }
+
+    row("base directory", base);
+    out << pad << "Everything resolves against this -- what a machine file\n"
+        << pad << "mounts, and the MOUNT / LOAD / SAVE / DO / -s you type.\n";
+    if (m_.fromFile)
+        out << pad << "It is the directory the machine was loaded from.\n";
+    else
+        out << pad << "This machine is built in, so it is the directory you\n"
+            << pad << "launched from.\n";
 
     // hostdir is the hostbridge's own property, so it is printed only if the card is in
     // the backplane. A machine with no host bridge has no sandbox to describe -- which is
@@ -2786,6 +2771,15 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     auto a = tokenize(line);
     if (a.empty()) return true;
 
+    // TYPED-AT-THE-PROMPT commands resolve their file paths against the MACHINE's own
+    // directory (inputBase, at fileDepth_ == 0), so `MOUNT scratch.dsk` finds the disk
+    // beside the machine you loaded -- the same folder its own `mount =` names. A board
+    // opens a mount through its config dir (b->resolvePath), so stamp every board with
+    // that base now, before the command runs. While a FILE is running (fileDepth_ > 0)
+    // runLines has already stamped each board with the file's directory; leave it be.
+    if (fileDepth_ == 0)
+        for (const auto& b : m_.boards()) b->setConfigDir(m_.dir);
+
     // `.` REPEATS THE LAST COMMAND. Caught here -- after tokenize, before
     // resolveCommand (which would call it unknown) -- so a single keystroke walks
     // forward through the continuing verbs: bare DISASM/DUMP resume their cursor and
@@ -3996,6 +3990,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // sibling `.DSK` the block below writes, so everything downstream -- mount(), the
         // narration, CONFIG SAVE -- sees a plain raw image and never the container.
         std::string mountPath = unquote(a[2]);
+        // A `~` you TYPE is the shell's to expand; a `~` in a startup/DO line is left
+        // literal, as everywhere else (resolveInput). The board resolves the rest against
+        // its config dir, which exec() has just stamped to the machine's directory.
+        if (fileDepth_ == 0) mountPath = expandUser(mountPath);
 
         // ---- IMD -> raw sibling .DSK -----------------------------------------------------
         //
@@ -4017,7 +4015,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 // mount it directly.
                 std::error_code ec;
                 if (std::filesystem::exists(dskPath, ec)) {
-                    out << b->id << ": " << resolveFrom(startupDir_, sibling)
+                    out << b->id << ": " << resolveInput(sibling)
                         << " already exists; remove it or MOUNT it directly\n";
                     failed_ = true;
                     return true;
@@ -4032,7 +4030,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 }
                 std::vector<uint8_t> imd((size_t)media->size());
                 if (!imd.empty() && !media->readAt(0, imd.data(), imd.size())) {
-                    out << b->id << ": " << resolveFrom(startupDir_, mountPath) << ": read error\n";
+                    out << b->id << ": " << resolveInput(mountPath) << ": read error\n";
                     failed_ = true;
                     return true;
                 }
@@ -4041,7 +4039,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 std::vector<uint8_t> rawimg;
                 if (!convertImdToRaw(imd, rawimg, info, ierr,
                                      [&](uint64_t bytes) { return b->disksInterleaved(bytes); })) {
-                    out << b->id << ": " << resolveFrom(startupDir_, mountPath) << ": " << ierr
+                    out << b->id << ": " << resolveInput(mountPath) << ": " << ierr
                         << "\n";
                     failed_ = true;
                     return true;
@@ -4056,8 +4054,8 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 // the IMD's own description, the emitted geometry, and the total. This is the
                 // "how the .dsk was created" report -- the operator can sanity-check it against
                 // the disk they expect.
-                out << b->id << ": converted " << resolveFrom(startupDir_, mountPath) << " -> "
-                    << resolveFrom(startupDir_, sibling) << "\n";
+                out << b->id << ": converted " << resolveInput(mountPath) << " -> "
+                    << resolveInput(sibling) << "\n";
                 if (!info.description.empty())
                     out << b->id << ":   IMD: " << info.description << "\n";
                 for (const auto& tl : info.tracks)
@@ -4158,10 +4156,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         } else {
             if (created)
                 out << b->id << ":" << u.name << ": created "
-                    << resolveFrom(startupDir_, mountPath) << " (empty)\n";
+                    << resolveInput(mountPath) << " (empty)\n";
             else if (createdCard)
                 out << b->id << ":" << u.name << ": created card "
-                    << resolveFrom(startupDir_, mountPath) << " (blank, unformatted)\n";
+                    << resolveInput(mountPath) << " (blank, unformatted)\n";
             // The trailing key=value options are applied as unit properties now the tape is
             // in -- so `counter=off`/`stop=2:05` at MOUNT and SET later are the one mechanism.
             // A unit with no such property (a disk, a ROM) says so rather than ignoring it.
@@ -4181,7 +4179,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             //
             // The rule, everywhere: NARRATION SAYS WHERE. CONFIGURATION SAYS WHAT YOU WROTE.
             out << b->id << ":" << u.name << ": mounted "
-                << resolveFrom(startupDir_, mountPath)
+                << resolveInput(mountPath)
                 << (readOnly ? std::string(" (") + protectedWord(u.kind) + ")" : "") << "\n";
 
             // ...and, if asked, split the just-mounted WAV into per-program .TAP files. This
@@ -4689,11 +4687,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (!need(2, "LOAD <file> [AT <addr>] [FORMAT=BIN|HEX|SREC] [ROM]")) return true;
         a[1] = unquote(a[1]);  // and every message below now names the file, not the quote
 
-        // LOAD is MOUNT's other half, and it keeps MOUNT's bargain: a `startup` line in
-        // a machine file that says LOAD "LDRPS2.HEX" means the bootstrap lying beside
-        // that file (core/paths.h). At the prompt startupDir_ is "" and this is the
-        // identity function, so what you type is what the shell would have opened.
-        a[1] = resolveFrom(startupDir_, a[1]);
+        // LOAD is MOUNT's other half, and it keeps MOUNT's bargain: LOAD "LDRPS2.HEX",
+        // whether it is a `startup` line in a machine file or something you type at the
+        // prompt, means the bootstrap lying beside that machine's directory (resolveInput,
+        // core/paths.h) -- the same folder its disks come from.
+        a[1] = resolveInput(a[1]);
         uint32_t at = 0;
         bool haveAt = false;
         for (size_t i = 2; i + 1 < a.size(); ++i)
@@ -4811,7 +4809,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "SAVE") {
         if (!need(3, "SAVE <file> <range> [FORMAT=BIN|HEX|OCTAL]")) return true;
         a[1] = unquote(a[1]);
-        a[1] = resolveFrom(startupDir_, a[1]);  // ...the same rule as LOAD, in reverse
+        a[1] = resolveInput(a[1]);  // ...the same rule as LOAD, in reverse
         uint32_t lo, hi;
         if (!range(a[2], lo, hi, out)) return true;
         Image img;
@@ -5413,7 +5411,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         std::ostream* sink = &out;
         if (!file.empty()) {
             if (traceFile_.is_open()) traceFile_.close();
-            file = expandUser(file);  // a typed path; honor `~` as the shell would
+            file = resolveInput(file);  // rooted at the machine's dir; a typed `~` expands
             traceFile_.open(file, std::ios::out | std::ios::trunc);
             if (!traceFile_) {
                 out << "TRACE: cannot open " << file << "\n";
@@ -5557,7 +5555,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "SNAPSHOT") {
         if (!need(2, "SNAPSHOT <file>")) return true;
         std::string shown = unquote(a[1]);
-        std::string file  = resolveFrom(startupDir_, shown);
+        std::string file  = resolveInput(shown);
         std::string err;
         if (!m_.snapshot(file, err)) {
             out << "SNAPSHOT: " << err << "\n";
@@ -5570,7 +5568,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     if (cmd == "RESTORE") {
         if (!need(2, "RESTORE <file>")) return true;
         std::string shown = unquote(a[1]);
-        std::string file  = resolveFrom(startupDir_, shown);
+        std::string file  = resolveInput(shown);
         std::string err;
         if (!m_.restore(file, err)) {
             out << "RESTORE: " << err << "\n";
@@ -5590,10 +5588,10 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // language: no arguments, no IF/GOTO -- for that, drive a live guest over --mcp.
         if (!need(2, "DO <file>")) return true;
         std::string shown = unquote(a[1]);
-        // The file itself is named like any typed path -- relative to wherever the CURRENT
-        // list is rooted, which is the shell at the prompt and the calling file inside a
-        // startup or another DO. Its OWN lines then root at ITS directory (runLines).
-        std::string file = resolveFrom(startupDir_, shown);
+        // The file itself is named like any typed path -- rooted where the CURRENT source
+        // is rooted (resolveInput): the machine's directory at the prompt, the calling file
+        // inside a startup or another DO. Its OWN lines then root at ITS directory (runLines).
+        std::string file = resolveInput(shown);
 
         // A DO that reaches for itself, directly or round a ring of files, would loop
         // until the stack gives out. Cap the nesting the way a machine-file include cycle
@@ -5645,7 +5643,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 return true;
             }
             std::string shown = unquote(a[2]);                    // the name SHOW SYMBOLS prints
-            std::string file  = resolveFrom(startupDir_, shown);  // ...and where it actually is
+            std::string file  = resolveInput(shown);  // ...and where it actually is
             bool replace = a.size() > 3 && is(a[3], "REPLACE");
 
             std::ifstream f(file, std::ios::binary);
@@ -5703,13 +5701,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         std::string err;
         // Selector by prefix -- `CONFIG LO` is LOAD, `CONFIG SA` is SAVE.
         std::string cfgSel = resolveKeyword(a[1], {"LOAD", "SAVE"});
+        // The .toml is named like any file: rooted at the machine's directory at the prompt
+        // (resolveInput), so CONFIG LOAD/SAVE of a bare name lands beside the machine you are
+        // running, not in whatever shell you launched from. A LOADed file then becomes the
+        // new machine's directory (loadToml sets m.dir), and typed paths follow it there.
+        std::string cfgShown = unquote(a[2]);
+        std::string cfgFile  = resolveInput(cfgShown);
         if (cfgSel == "LOAD") {
             // THE MACHINE YOU HAD IS GONE, and only if the file was good. loadToml()
             // builds the new machine in a scratch backplane and swaps it in whole
             // (machine.h, replaceWith), so a file that does not parse leaves you
             // exactly where you were and this branch is never reached.
             std::vector<std::string> notes;
-            if (!loadToml(a[2], m_, err, &notes)) {
+            if (!loadToml(cfgFile, m_, err, &notes)) {
                 out << err << "\n";
                 failed_ = true;
                 return true;
@@ -5728,7 +5732,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // is here so that the two roads arrive at the same place -- which is the
             // whole claim `CONFIG LOAD mine.toml` makes.
             m_.power();
-            out << "loaded " << a[2] << ": " << m_.boards().size() << " board(s)\n";
+            out << "loaded " << cfgShown << ": " << m_.boards().size() << " board(s)\n";
             // The author's `#>` notes, before the startup commands run -- an operator reads
             // "type DIR at the A> prompt" and then watches the prompt appear, in that order.
             for (const std::string& note : notes) out << note << "\n";
@@ -5737,12 +5741,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (cfgSel == "SAVE") {
-            if (!saveToml(a[2], m_, err)) {
+            if (!saveToml(cfgFile, m_, err)) {
                 out << err << "\n";
                 failed_ = true;
                 return true;
             }
-            out << "saved " << a[2] << "\n";
+            out << "saved " << cfgShown << "\n";
             return true;
         }
         out << "CONFIG LOAD|SAVE <file.toml>\n";
@@ -5790,6 +5794,7 @@ void Monitor::runLines(const std::vector<std::string>& lines, const std::string&
     // shell you are standing in.
     std::string prevDir = startupDir_;
     startupDir_ = dir;
+    ++fileDepth_;  // a file is talking now: `~` goes literal and inputBase() is `dir`
     for (const auto& b : m_.boards()) b->setConfigDir(dir);
 
     for (const auto& s : lines) {
@@ -5806,8 +5811,19 @@ void Monitor::runLines(const std::vector<std::string>& lines, const std::string&
     }
 
     // ...and the file stops talking. Whatever the caller does next is theirs.
+    --fileDepth_;
     startupDir_ = prevDir;
     for (const auto& b : m_.boards()) b->setConfigDir(prevDir);
+}
+
+std::string Monitor::resolveInput(const std::string& p) const {
+    // A HUMAN's leading `~` (nothing running but the prompt) is the shell's to expand;
+    // a `~` written in a file is left literal, as it always was. Then root against the
+    // one base -- the file's directory while a file runs, the machine's directory at the
+    // prompt (inputBase). expandUser is idempotent, so re-running it inside resolveFrom's
+    // own cwd branch (when the base is "") changes nothing.
+    std::string q = (fileDepth_ == 0) ? expandUser(p) : p;
+    return resolveFrom(inputBase(), q);
 }
 
 int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {

@@ -953,8 +953,9 @@ MOUNT sol0:tape1 TRK80.WAV extract     mount a WAV and split it into .TAP files
 
 
 SHOW MOUNTS is the other half of this command: every socket in the machine,
-what is in it, and which are still empty. UNMOUNT takes it back out. A path is
-resolved as SHOW PATHS describes -- what you TYPE is relative to your shell.
+what is in it, and which are still empty. UNMOUNT takes it back out. A relative
+path resolves against the machine's own directory -- the same folder the machine
+file's own mounts come from -- as SHOW PATHS describes.
 
 
 ### REGION — `REGI[ON]`
