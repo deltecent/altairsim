@@ -2937,7 +2937,9 @@ void test_achieved_hz() {
               "DO on a missing file says it cannot open it");
         CHECK(mon2.failed(), "and a missing DO file is a failure");
 
-        // A DO that runs itself would loop forever; the depth cap stops it.
+        // A DO that runs itself would recurse until the stack gives out; the cycle guard
+        // catches it by identity at depth 1, before any recursion -- so it cannot overflow
+        // the stack on the way to a depth cap (which, on a 1 MB stack, it would).
         const std::string loop = (dir / "loop.ini").generic_string();
         {
             std::ofstream f(loop);
@@ -2947,8 +2949,8 @@ void test_achieved_hz() {
         Monitor mon3(m3);
         std::ostringstream o3;
         mon3.exec("DO " + loop, o3);
-        CHECK(o3.str().find("nested too deep") != std::string::npos,
-              "a self-referential DO is stopped by the depth cap, not a stack overflow");
+        CHECK(o3.str().find("already running") != std::string::npos,
+              "a self-referential DO is refused by the cycle guard, not a stack overflow");
     }
 
 }

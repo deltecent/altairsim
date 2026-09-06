@@ -5593,14 +5593,27 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // inside a startup or another DO. Its OWN lines then root at ITS directory (runLines).
         std::string file = resolveInput(shown);
 
-        // A DO that reaches for itself, directly or round a ring of files, would loop
-        // until the stack gives out. Cap the nesting the way a machine-file include cycle
-        // is capped (config/toml.cpp): deep enough for any real script, shallow enough to
-        // stop a runaway before it hurts.
-        constexpr int kMaxDoDepth = 32;
-        if (doDepth_ >= kMaxDoDepth) {
+        // A DO that runs itself -- directly, or round a ring of files -- would recurse
+        // until the stack gives out. A depth cap ALONE cannot stop it: each level nests a
+        // whole exec() frame, and 32 of those overflowed Windows' 1 MB stack (an eighth of
+        // macOS's) before the cap could fire. So catch the CYCLE by identity: if this file
+        // is already open above us, refuse now, at depth 1, before any recursion. A
+        // canonical path makes `a.ini` and `./a.ini` the same file. (A modest depth cap
+        // stays as a backstop for a long NON-cyclic chain of distinct files.)
+        std::error_code cec;
+        std::string canon = std::filesystem::weakly_canonical(file, cec).generic_string();
+        if (cec || canon.empty()) canon = file;
+        for (const auto& open : doStack_) {
+            if (open == canon) {
+                out << "DO: '" << shown << "' is already running -- a script cannot run itself\n";
+                failed_ = true;
+                return true;
+            }
+        }
+        constexpr int kMaxDoDepth = 10;
+        if (static_cast<int>(doStack_.size()) >= kMaxDoDepth) {
             out << "DO: nested too deep (" << kMaxDoDepth
-                << ") -- is a script running itself?\n";
+                << ") -- too many script files running at once\n";
             failed_ = true;
             return true;
         }
@@ -5617,9 +5630,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             lines.push_back(ln);
         }
 
-        ++doDepth_;
+        doStack_.push_back(canon);
         runLines(lines, dirOf(file), "do> ", out);
-        --doDepth_;
+        doStack_.pop_back();
         return true;
     }
 

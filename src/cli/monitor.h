@@ -255,11 +255,14 @@ private:
     void runLines(const std::vector<std::string>& lines, const std::string& dir,
                   const char* echoTag, std::ostream& out);
 
-    // How many DO files are open right now. A `DO` that reaches for itself, directly or
-    // round a ring of files, would otherwise loop until the stack gives out; past a sane
-    // ceiling DO refuses (the same hang a machine-file include cycle is guarded against,
-    // config/toml.cpp).
-    int doDepth_ = 0;
+    // The DO files open right now, innermost last, by canonical path. A `DO` that reaches
+    // for itself -- directly or round a ring of files -- would otherwise recurse until the
+    // stack gives out, and a depth cap alone cannot save it: each level nests a whole
+    // exec() frame, and enough of those overflow a small stack (Windows' is 1 MB, an
+    // eighth of macOS's) BEFORE any depth ceiling can fire. So the cycle is caught by
+    // identity instead -- if a file is already in this stack, DO refuses at depth 1,
+    // before it recurses. size() also serves as the depth for the backstop cap below.
+    std::vector<std::string> doStack_;
 
     // The last command line the operator entered, so `.` can repeat it. A `.` is
     // never recorded here, so pressing it again re-runs the SAME line -- which is the
