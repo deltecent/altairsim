@@ -6,17 +6,6 @@ as it is now; this document is the record of how it got there.
 
 ---
 
-## Unreleased
-
-### Documentation
-
-A **migration guide** for people coming from the two best-known open Altair/S-100 simulators —
-AltairZ80 (SIMH) and z80pack: what carries across untouched, an objective side-by-side, the
-command mappings (including the deliberate SIMH `D`/`E` swap), disk-image compatibility, and
-worked machine-file conversions (`docs/migrating.md`).
-
----
-
 ## 1.0.0
 
 **1.0.0 is the version that says the simulator is what it set out to be.** Where 0.4.0 filled
@@ -140,6 +129,18 @@ hard pixels — and under that look a window opened at a chosen `width` fills ex
 pixels. Each video board now opens its **own** host window, so a machine with two video cards shows
 two pictures at once rather than sharing one.
 
+### Coming from another simulator
+
+For anyone arriving from AltairZ80 (SIMH) or z80pack, 1.0 adds both a map and an on-ramp. A
+**migration guide** lays out what carries across untouched, an objective side-by-side, the command
+mappings — including the deliberate SIMH `D`/`E` swap — disk-image compatibility, and worked
+machine-file conversions (`docs/migrating.md`). And the monitor now runs **command scripts**: `DO
+<file>` reads a file of monitor commands and executes them in order, a machine file can name one to
+run at startup, and the **`.ini`** form is deliberately close to what a SIMH user already writes.
+A new **`MACHINE`** command builds or clears a machine from the prompt, so a script can stand one
+up from nothing the way a SIMH `.ini` does — and every shipped example now carries a `.ini` twin of
+its `.toml` to read from.
+
 ### The debugger, and small conveniences everywhere
 
 Cycle breakpoints now take a condition: `BREAK MEM W 100 IF B==0` stops only on the access whose
@@ -150,7 +151,13 @@ above and this, `EDIT` and `DISASM` now speak whichever of the four processors i
 scatter of the prompt's rough edges are smoother: a leading `~` in a typed
 path expands to your home directory, monitor subcommands abbreviate by unique prefix, `LOAD`
 reports the page count of a CP/M `SAVE`, the host serial layer accepts non-standard baud rates like
-76800, and the Sol-20's `MODE SELECT`, `CLEAR` and `LOAD` keys are reachable from the keyboard.
+76800, and the Sol-20's `MODE SELECT`, `CLEAR` and `LOAD` keys are reachable from the keyboard. A
+relative path now resolves against **one** place — the directory the machine was loaded from,
+whether a machine file mounts the file or you type its name at the prompt — so a name that boots
+from a machine file works the same when you type it, and `SHOW PATHS` prints the one base directory
+it uses (the hostbridge sandbox is the only directory kept separate). And the console property that
+carries the `^E` stop key is now spelled `stop`, matching the switch it presses, with `attn` kept as
+an alias.
 
 ### The package, and the documents in it
 
