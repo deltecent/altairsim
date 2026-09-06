@@ -192,8 +192,13 @@ run at release time, plus a diagram of the whole flow — see §4.5.**
 #        git clone https://github.com/deltecent/altairsim.git      # first time only
 #    Its remote must be the https URL, so fetch needs no credential. The COORDINATOR
 #    uses its own authenticated tree; only workers use anonymous https.
-git fetch --tags
-git checkout vX.Y.Z
+#    --force and -f are load-bearing: section 5 step 2 tags the CI PDF-rebuild commit,
+#    and a doc-only re-spin FORCE-MOVES the tag. A plain `git fetch --tags` will NOT
+#    update a tag that already exists locally -- it keeps the stale one and silently
+#    builds the wrong commit (this bit box 2 during the 1.0.0 build). --force clobbers
+#    the moved tag; checkout -f moves the tree to it.
+git fetch --tags --force
+git checkout -f vX.Y.Z
 
 # 2. Configure. SDL3 MUST be found -- and for a PACKAGE it should be the static
 #    build (3.2), not the system dylib. macOS also needs a deployment target,
@@ -368,7 +373,7 @@ the whole `dist/altairsim-*` each run; its cleanup is now **scoped to the target
 **Box 1 — macOS Apple Silicon** *(the coordinator; also builds `macos-arm64`)*. Uses its own
 authenticated tree.
 ```sh
-git fetch --tags && git checkout vX.Y.Z
+git fetch --tags --force && git checkout -f vX.Y.Z
 cmake -B build -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static" \
       -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
@@ -391,7 +396,7 @@ tools/verify-package.sh dist/altairsim-X.Y.Z-macos-arm64.tar.gz   # CHECK: verif
 Box 1 — only the target and the delivery differ.
 ```sh
 git clone https://github.com/deltecent/altairsim.git   # first time only; no login, no token
-git fetch --tags && git checkout vX.Y.Z
+git fetch --tags --force && git checkout -f vX.Y.Z
 cmake -B build -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static" \
       -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
@@ -434,7 +439,7 @@ reaches the coordinator over the LAN.
 > `Expand-Archive` denies `_manifest`, so extract with `tar.exe`.
 ```powershell
 # --- PowerShell ---   (first time only:  git clone https://github.com/deltecent/altairsim.git)
-git fetch --tags; git checkout vX.Y.Z
+git fetch --tags --force; git checkout -f vX.Y.Z
 cmake -B build -DCMAKE_BUILD_TYPE=Release `
       -DCMAKE_PREFIX_PATH="$env:USERPROFILE\opt\sdl3-static" `
       -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
@@ -454,7 +459,7 @@ glibc here, §4.3)*. Needs the X11 dev headers installed once (`libxtst-dev` and
 will not configure.
 ```sh
 git clone https://github.com/deltecent/altairsim.git   # first time only; no login, no token
-git fetch --tags && git checkout vX.Y.Z
+git fetch --tags --force && git checkout -f vX.Y.Z
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/opt/sdl3-static"
 cmake --build build --config Release          # single-threaded: RAM-starved VM, no --parallel (§4.2)
 ctest --test-dir build -C Release -LE slow
@@ -504,7 +509,19 @@ Steps 1–4 and 6 are the coordinator's. Step 5 is the four build machines — t
 
 **5. Build, on all four machines.** §4.2 / §4.5. Independent, and any order — but **build the three x86 targets one at a time, not all at once.** The Intel Mac, the Windows box and the Linux box are **one physical machine** — the Intel Mac is the host, and Windows and Linux are VMware guests on it (§4.5) — so building `macos-x86_64`, `windows-x86_64` and `linux-x86_64` concurrently just makes them fight for one CPU and one pool of RAM. Only `macos-arm64` (the M4 coordinator, a genuinely separate machine) can build in parallel with them. **The three workers `scp` their archive into the coordinator's repo `dist/` (over `dist.altairsim.com`); the coordinator builds `macos-arm64` straight into the same `dist/`.** No worker authenticates to GitHub.
 
-**6. Checksum, upload all five, then publish — all on the coordinator.** When `dist/` holds all four and §7 passes, generate the checksum file over them first: `tools/build-checksums.sh` — it refuses unless all four of one version are present, writes `dist/SHA256SUMS`, and verifies it against the archives before returning. Then upload the four archives *and* `SHA256SUMS`: `gh release upload vX.Y.Z dist/altairsim-X.Y.Z-*.tar.gz dist/altairsim-X.Y.Z-*.zip dist/SHA256SUMS`, then `gh release edit vX.Y.Z --draft=false`, then mirror the identical files — `SHA256SUMS` included — to altairsim.com. **Only the coordinator has GitHub credentials.**
+**6. Checksum, upload all five, then publish — all on the coordinator.** When `dist/` holds all four and §7 passes, generate the checksum file over them first: `tools/build-checksums.sh` — it refuses unless all four of one version are present, writes `dist/SHA256SUMS`, and verifies it against the archives before returning. Then upload the four archives *and* `SHA256SUMS`: `gh release upload vX.Y.Z dist/altairsim-X.Y.Z-*.tar.gz dist/altairsim-X.Y.Z-*.zip dist/SHA256SUMS`, then `gh release edit vX.Y.Z --draft=false`, then mirror the identical files — `SHA256SUMS` included — to altairsim.com (concretely, below). **Only the coordinator has GitHub credentials.**
+
+**The mirror is a plain `scp` to the web host.** `altairsim.com` is a **separate** host from the coordinator — the coordinator's own name is `dist.altairsim.com`; do not confuse the two. It self-hosts the archives under `/opt/apps/altairsim/downloads_root/`, served at `https://altairsim.com/downloads/<file>`. From the coordinator's repo root, after the release is public:
+
+```sh
+scp dist/altairsim-X.Y.Z-*.tar.gz dist/altairsim-X.Y.Z-*.zip dist/SHA256SUMS \
+    altairsim.com:/opt/apps/altairsim/downloads_root/
+# the files are 640 patrick:www-data (the dir is setgid, group www-data); match that:
+ssh altairsim.com 'cd /opt/apps/altairsim/downloads_root && \
+    chmod 640 altairsim-X.Y.Z-* SHA256SUMS && sha256sum -c SHA256SUMS'   # CHECK: all four OK
+```
+
+This overwrites the prior version's archives in place; leave the `packages/` subdir and the download page's HTML alone (the page already carries the version links). **Then prove the two locations have not diverged** — hash the *live HTTPS* download, not just the file on disk: for each archive, `curl -s https://altairsim.com/downloads/<name> | shasum -a 256` must equal its line in `dist/SHA256SUMS`. Two artifacts calling themselves the same version and differing by a byte is the §6 cardinal failure.
 
 ### The two traps that actually bit v0.2.0
 
