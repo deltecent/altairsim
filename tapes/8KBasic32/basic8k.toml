@@ -24,7 +24,7 @@ base = "basic8k"
 # The same three lines as tests/acceptance/basic8k.cmd, because a config file and a script
 # are the same language (docs/config.md).
 #
-# RUN hands the GUEST the keyboard, so you land at BASIC's prompt. ATTN (^E) is the way back.
+# RUN hands the GUEST the keyboard, so you land at BASIC's prompt. STOP (^E) is the way back.
 startup = [
   "MOUNT acr0:tape \"8K BASIC Ver 3-2.tap\"",
   "LOAD \"LDR8K32.HEX\"",

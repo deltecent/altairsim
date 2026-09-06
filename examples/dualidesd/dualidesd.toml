@@ -31,7 +31,7 @@
 # standard CP/M 3 five-stage cold boot. (`I` boots the SD half as A: instead.) The BIOS logs the SD
 # drives lazily: DIR C:/DIR D: initialize the sockets on first access.
 #
-# `^E` (ATTN) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
+# `^E` (STOP) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
 
 [machine]
 name    = "dualidesd"

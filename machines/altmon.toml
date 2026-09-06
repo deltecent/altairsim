@@ -9,6 +9,17 @@
 #
 # ...and ALTMON prints its banner and a prompt, and D, M, E, S and the rest work.
 #
+# It also carries the DBL boot PROM at FF00 and an 88-DCDD, the same pair as `default`,
+# so the machine you can talk to can also boot a disk. ALTMON is what runs on power-up;
+# when you want CP/M, mount a drive and jump to the PROM:
+#
+#     altairsim altmon
+#     MOUNT dsk0:drive0 "<image>"
+#     RUN FF00
+#
+# The RAM here runs to F7FF, just under the ROM (62K), so a 56K CP/M image boots fine --
+# its BIOS sits well below F800.
+#
 # ALTMON is Mike Douglas's 1K monitor for the Altair (roms/ALTMON), based on the
 # Vector Graphic 2.0C monitor and reworked to drive an 88-2SIO. It expects:
 #
@@ -44,6 +55,10 @@ startup = ["RUN F800"]
 # `mvi a,11h ;8N2`). The board is here because a real Altair HAS a front panel, not
 # because this ROM needs one.
 #
+# DBL, now at FF00, DOES read it: it tests SA12 (bit 4) to pick the stop bits, and
+# sense = 0x00 leaves SA12 down, which DBL reads as 8N2 (DBL.ASM:166) -- exactly the
+# frame ALTMON hard-codes, so the monitor and the boot PROM agree on the wire.
+#
 # (If TKYDSBL were ever set to 1, that `IN 0FFH` would be read for its SIDE EFFECT
 # and not its value: it is how you tell an 88-TURNKEY board to switch its PROM out.
 # That board would SNOOP the read, not answer it -- see boards/mits-frontpanel.h --
@@ -76,20 +91,38 @@ port = 10
   connect = "null"
   baud    = 9600
 
+# THE FLOPPY CONTROLLER -- an 88-DCDD at 0x08, the card DBL is hard-wired to: it selects
+# drive 0 at port 08 and shifts the first sector in through 0A. Four drives, no disks --
+# an Altair shipped with the controller and the cable, not with your floppy. Mount one and
+# `RUN FF00` boots it; leave them empty and ALTMON is still all there for you to talk to.
+[[board]]
+type   = "dcdd"
+id     = "dsk0"
+port   = 08
+drives = 4
+
 [[board]]
 type = "memory"
 id   = "mem0"
 fill = "random"
 
-  # 48K, so the stack ALTMON puts at C000 has RAM underneath it. (It pushes
-  # DOWNWARD from C000, so the top byte it touches is BFFF -- the last byte of
-  # this region, which is not a coincidence: that is how you sized a stack.)
+  # RAM right up to the ROM: 0000-F7FF, 62K, the last byte sitting just under ALTMON at
+  # F800. The stack ALTMON puts at C000 (pushing DOWNWARD) has RAM under it many times
+  # over; filling to F7FF is what lets a CP/M booted from FF00 load its CCP/BDOS/BIOS into
+  # the high RAM just below the PROM.
   [[board.region]]
   type = "ram"
   at   = 0000
-  size = "48K"
+  size = "62K"
 
   [[board.region]]
   type  = "rom"
   at    = F800
   mount = "builtin:altmon"
+
+  # The DBL boot PROM at FF00, the same one `default` carries. ALTMON runs on power-up;
+  # this is here so `RUN FF00` boots a mounted disk from the very machine you talk to.
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:dbl"

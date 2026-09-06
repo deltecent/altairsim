@@ -121,6 +121,7 @@ disks/**
 examples/**
 !examples/**/
 !examples/**/*.toml
+!examples/**/*.ini
 !examples/**/README.md
 !examples/cdos/CDOS258-8IN-DSDD.DSK
 !examples/cpm/cpm22b23-56k.dsk

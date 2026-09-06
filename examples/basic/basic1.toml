@@ -29,7 +29,7 @@
 #
 #     RUN 1800   the loader reads the whole tape into 0000.. (about a second, flat out),
 #                then spins reading a recorder that has nothing left to give.
-#     ^E         ATTN -- the STOP/RESET the 1975 operator did when the tape ran out. It
+#     ^E         the STOP switch the 1975 operator hit when the tape ran out. It
 #                returns you to the monitor without disturbing what was loaded.
 #     RUN 0      start BASIC from zero.
 #

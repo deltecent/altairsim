@@ -10,7 +10,7 @@
 # IN 19H/1AH, joystick 2's at 1BH/1CH, and the buttons at 18H -- and displays them. On an
 # SDL3 build a window opens; plug in a USB gamepad (joystick1 = "auto" below) and the values
 # move, or use the keyboard (arrow keys + Space/Z/X/C). With no controller the axes sit at
-# 00 (centered) and the buttons read all-1s (active-low, released). ATTN (Ctrl-E) breaks
+# 00 (centered) and the buttons read all-1s (active-low, released). STOP (Ctrl-E) breaks
 # back to the monitor.
 #
 # ADCTEST.COM lives on the C: disk (dazzler_stuff_altair.dsk) beside KSCOPE and DAZCHESS;
