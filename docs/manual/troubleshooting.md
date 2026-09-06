@@ -11,24 +11,24 @@ It is not supposed to.
 of a BASIC program. A stop key the guest also wants is a stop key the guest will eat, and
 then you are trapped inside your own simulator.
 
-**`^E` is the stop key.** It is ATTN, the host intercepts it before the guest is ever offered
-the byte, and **no program running inside the machine can disable it, ignore it, or take it
-from you.**
+**`^E` is the stop key.** It presses the front-panel STOP switch; the host intercepts it before
+the guest is ever offered the byte, and **no program running inside the machine can disable it,
+ignore it, or take it from you.**
 
-If a guest genuinely needs `^E` for something of its own, move ATTN out of its way:
+If a guest genuinely needs `^E` for something of its own, move STOP out of its way:
 
 ```
-altairsim> CONSOLE attn=1D
+altairsim> CONSOLE stop=1D
 ```
 
 That makes it `^]`. It must be a control character.
 
-## I pressed ATTN and now the machine seems stuck
+## I pressed STOP and now the machine seems stuck
 
-It is not stuck. It is **stopped**, which is what ATTN is for, and nothing has been lost.
+It is not stuck. It is **stopped**, which is what STOP is for, and nothing has been lost.
 
-ATTN halts the processor and hands you the monitor. It is not RESET and not POWER: the
-registers, the memory and the disk are precisely as the guest left them, and the monitor told
+STOP halts the processor and hands you the monitor. It is not RESET and not POWER: the
+registers, the memory and the disk are precisely as the CPU left them, and the monitor told
 you where to pick it up when it printed *"still at ...".*
 
 ```

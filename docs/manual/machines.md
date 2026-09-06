@@ -211,8 +211,9 @@ machine you are actually running:
 
 ```
 altairsim> SHOW PATHS
-  what you type      /home/you/altair
-                     MOUNT, LOAD, SAVE and -s scripts resolve against this.
+  working directory  /home/you/altair
+                     MOUNT, LOAD, SAVE, and the -s or DO script you name
+                     resolve against this.
 
   machine file       /home/you/altair/disks/cpm22
                      `mount`, `base` and the MOUNT/LOAD lines in `startup`

@@ -38,7 +38,7 @@ never reach the line — they work the modem instead:
 | **^I** | 09h | Read the **modem-status** byte (IN `0xC2`) and print it in hex |
 | **^C** | 03h | Print `BYE` and `HLT` back to the monitor |
 
-`^E` (ATTN) still belongs to the monitor and breaks out at any time; these four belong to the
+`^E` (STOP) still belongs to the monitor and breaks out at any time; these four belong to the
 program.
 
 ## See it echo, with no phone line attached

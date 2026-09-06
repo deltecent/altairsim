@@ -153,7 +153,7 @@ names them all. The Altairs proper — `default`, `original` (as it left Albuque
 ## The monitor and debugger
 
 A SIMH/AltairZ80-style command monitor with line editing and history, and a full symbolic
-debugger sharing the same prompt. **ATTN (`^E`) is the stop key** — never `^C`, because `^C`
+debugger sharing the same prompt. **STOP (`^E`) is the stop key** — never `^C`, because `^C`
 belongs to the guest (CP/M reads it), and a stop key the guest also wants is one the guest
 eats. `HELP` lists every command; it comes off the same table the monitor resolves against,
 so it cannot drift from what the binary does.

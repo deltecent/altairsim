@@ -23,7 +23,7 @@ because on a real disk Altair that was EXAMINE `FF00` and RUN.
 Unlike the cassette BASIC in `../basic`, this one has a filesystem: files, a directory, `SAVE`
 by name, and the `DSKINI` command.
 
-`^E` (ATTN) takes the keyboard back to the monitor at any point; `RUN` resumes.
+`^E` (STOP) takes the keyboard back to the monitor at any point; `RUN` resumes.
 
 ## The startup dialogue, because one question has no guessable answer
 

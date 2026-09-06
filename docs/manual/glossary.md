@@ -9,11 +9,8 @@ one of those.
 ordinary audio cassette and read them back. It is how you loaded BASIC if you could not
 afford a floppy, which in 1976 was most people.
 
-**ATTN** — Attention. The key that stops a running guest and returns you to the monitor. It
-stops the machine but does not disturb it — not RESET, not POWER — so a bare `RUN` resumes at
-the instruction it was about to execute. It is `^E` by default, the host intercepts it before
-the guest sees the byte, and no guest program can take it from you. Move it with
-`CONSOLE attn=`.
+**ATTN** — See **STOP**. The former name for the STOP key; the `CONSOLE attn=` spelling still
+works as an alias.
 
 **backplane** — The PCB with the connectors on it that every board plugs into. It is not itself
 one of them: nothing in a machine file fits a backplane, because the backplane is what a machine
@@ -145,6 +142,12 @@ of which 128 are yours.
 a program as an input port. Software used them for configuration before there was anywhere
 else to put it: which port is the console, how much memory to use, whether to load from tape.
 Half the boot procedures in this manual begin with a sense switch setting.
+
+**STOP** — The front-panel STOP switch, and the key that presses it: `^E` by default. It stops
+the running CPU and returns you to the monitor without disturbing the machine — not RESET, not
+POWER — so a bare `RUN` resumes at the instruction it was about to execute. The host intercepts
+it before the guest sees the byte, so no guest program can take it from you. Move it with
+`CONSOLE stop=` (the older `attn=` still works).
 
 **T-state** — One clock cycle. Every 8080 instruction costs a known number of them, and that
 is how this program knows what time it is. At 2 MHz a T-state is 500 nanoseconds, and a

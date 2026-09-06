@@ -32,7 +32,7 @@ cold-starts it. At the monitor's `->` prompt, the `P` command reads the CP/M 3 c
 sectors from LBA 1 of the CF card) into `100h` and jumps into the standard five-stage CP/M 3 cold
 boot.
 
-`^E` (ATTN) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
+`^E` (STOP) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
 
 **Moving files to and from your host.** This machine fits the **host bridge** at ports `B0`/`B1`,
 and the boot card carries its three utilities: `HDIR` lists your host directory, `R <file>` reads

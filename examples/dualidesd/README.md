@@ -48,7 +48,7 @@ sectors from LBA 1 of CF drive 0) into `100h` and jumps into the CP/M 3 cold boo
 boots the **SD** half as `A:` instead. The combination BIOS logs the SD drives **lazily**: `DIR C:`
 and `DIR D:` initialize their sockets on first access, gated by the card-detect lines.
 
-`^E` (ATTN) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
+`^E` (STOP) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
 
 **Moving files to and from your host.** This machine fits the **host bridge** at ports `B0`/`B1`,
 and the boot card carries its three utilities: `HDIR` lists your host directory, `R <file>` reads a

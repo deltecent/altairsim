@@ -23,7 +23,7 @@ The **88-HDSK "Datakeeper"** is not a floppy card. It is an outboard controller 
 The image is one platter: 406 cylinders × 2 sides × 24 sectors × 256 bytes = 4,988,928
 bytes. See `docs/boards/mits-88hdsk.md` and `reference/88-HDSK.md`.
 
-`^E` (ATTN) takes the keyboard back to the monitor at any point; `RUN` resumes. `^C`
+`^E` (STOP) takes the keyboard back to the monitor at any point; `RUN` resumes. `^C`
 belongs to CP/M (it is warm boot) and CP/M gets it.
 
 ## The files

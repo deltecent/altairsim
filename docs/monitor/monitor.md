@@ -106,9 +106,10 @@ again and it lists them. When nothing fits, it does nothing.
 | `Tab` | complete the word at the cursor |
 | `Ctrl-D` | on an empty line, leave — the same as `QUIT` |
 
-> **`Ctrl-E` here is end-of-line, not ATTN.** At the prompt you are typing to the *editor*, so
-> `Ctrl-E` jumps to the end of the line. Once a **running** guest holds the console, that same
-> `Ctrl-E` is **ATTN** and takes the keyboard back (below). Same key, two places, two jobs.
+> **`Ctrl-E` here is end-of-line, not the STOP key.** At the prompt you are typing to the
+> *editor*, so `Ctrl-E` jumps to the end of the line. Once a **running** guest holds the console,
+> that same `Ctrl-E` is **STOP** and takes the keyboard back (below). Same key, two places, two
+> jobs.
 
 ## Repeating the last command: `.`
 
@@ -281,24 +282,26 @@ start says so with the operator's own keystroke.
 If a board holds the console, **the guest gets the keyboard** — every key, including `^C`,
 which a CP/M program is entitled to read.
 
-### ATTN takes it back
+### STOP takes it back
 
-**`^E`** is ATTN. The host intercepts it *before the guest is ever offered the byte*, so no
-program running inside the machine can disable it, trap it, or take it from you.
+**`^E`** presses the front-panel STOP switch. The host intercepts it *before the guest is ever
+offered the byte*, so no program running inside the machine can disable it, trap it, or take it
+from you.
 
 ```
 A>
-ATTN -- the machine is still at CA9C. RUN resumes.
+STOP -- the machine is still at CA9C. RUN resumes.
 altairsim>
 ```
 
-**ATTN stops the machine and gives you the monitor.** Nothing executes while this prompt is up.
-But it stops the machine without *disturbing* it — ATTN is not RESET and not POWER, so the
+**STOP halts the machine and gives you the monitor.** Nothing executes while this prompt is up.
+But it stops the machine without *disturbing* it — STOP is not RESET and not POWER, so the
 registers, the memory and the disk are exactly as the guest left them, and a bare `RUN` (no
 address) picks up at the very instruction it was about to execute. That is what *"still at
 CA9C"* is telling you.
 
-`CONSOLE attn=1D` moves ATTN to `^]` if `^E` collides with something the guest wants.
+`CONSOLE stop=1D` moves STOP to `^]` if `^E` collides with something the guest wants (the older
+`attn=` spelling still works).
 
 ### What stops it for real
 
@@ -306,7 +309,7 @@ A `RUN` ends when it hits a **breakpoint**, or a `HLT` that nothing can wake —
 says which. With no console connected there is nothing to hand the keyboard to, so it simply
 runs, and `^C` stops it.
 
-**RUN and ATTN are the panel's RUN and STOP.** `RUN` starts the processor; ATTN — or a
+**`RUN` and `^E` are the panel's RUN and STOP switches.** `RUN` starts the processor; STOP — or a
 breakpoint, or a `HLT` — stops it and hands the monitor back. That prompt is the whole
 distinction: **the monitor exists only while the machine is stopped.** While it runs, the guest
 holds the keyboard and there is no `altairsim>` to type at; when you have the prompt, nothing is

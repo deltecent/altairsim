@@ -67,7 +67,7 @@ you booted it — the operator watched the tape run out, hit STOP/RESET, and ran
 `0`. So:
 
 1. `altairsim basic1.toml` puts the tape in, toggles in the bootstrap, and starts it (`RUN 1800`).
-2. When the tape is done, press **`^E`** (ATTN) — the STOP/RESET, which returns you to the monitor.
+2. When the tape is done, press **`^E`** (STOP) — the front-panel STOP switch, which returns you to the monitor.
 3. Type **`RUN 0`** to start BASIC.
 
 `MEMSIZ?` really is spelled that way — Microsoft set the message-terminator bit on the `Z` rather

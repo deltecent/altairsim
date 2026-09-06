@@ -36,7 +36,7 @@ until you copy files onto it or format it, and its backing file grows on write. 
 gate was reverse-engineered from the shipping BIOS binary; the walk-through is in
 `reference/dual-sd-card.md` §5.1.)
 
-`^E` (ATTN) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
+`^E` (STOP) takes the keyboard back to the simulator's monitor at any point; `RUN` resumes.
 
 **Moving files to and from your host.** This machine fits the **host bridge** at ports `B0`/`B1`,
 and the boot card carries its three utilities: `HDIR` lists your host directory, `R <file>` reads

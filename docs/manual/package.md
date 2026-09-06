@@ -21,7 +21,7 @@ That is the whole archive. There is no library to install, no runtime, and no co
 file you must write before the program will start.
 
 **Start with `QUICK-START.pdf`.** It boots CP/M in a single command and shows you the three
-keys — `^E`, `RUN`, `QUIT` — that move you between the guest and the monitor. This manual is
+keys — `^E`, `RUN`, `QUIT` — that move you between the CPU and the monitor. This manual is
 the long version of it; that one page is enough to get a machine running. And if you are
 arriving from another Altair simulator, `migrating.pdf` is the map: what carries over from
 **AltairZ80 (SIMH)** or **z80pack**, what has a new name here, and what you would give up.

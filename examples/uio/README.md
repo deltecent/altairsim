@@ -54,7 +54,7 @@ SET uio0 standard=kansas  ; SW-1: switch the modem to the Kansas City standard (
 REWIND uio0:tape          ; the cassette has motor control, but rewinding is still your finger
 ```
 
-`⌃E` (ATTN) returns you to the `altairsim>` monitor from BASIC at any time.
+`⌃E` (STOP) returns you to the `altairsim>` monitor from BASIC at any time.
 
 ## What is in here
 
