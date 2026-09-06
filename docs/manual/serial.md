@@ -210,8 +210,8 @@ that still had some on it. An absent file is created.
 `in:` and `out:` are **separate files with separate positions**, so the combined form is two
 independent heads on one line — reading the tape cannot disturb what the punch has written, and
 vice versa. Both are **8-bit clean**: the bytes on the wire are the bytes in the file, control
-codes and all. Nothing reformats them. A relative path follows the usual rule: relative to the file
-when it is written in a machine configuration, relative to your shell when you type it.
+codes and all. Nothing reformats them. A relative path follows the usual rule: it resolves
+against the machine's directory, whether it is written in a machine configuration or you type it.
 
 ### The 88-HSR — a reader with a speed
 

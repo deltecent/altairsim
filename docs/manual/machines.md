@@ -139,38 +139,34 @@ No boards. No memory. No processor. `-n` is a bare chassis, and every `BOARDS AD
 is yours. It is the honest starting point when you are building a machine up board by board,
 and it is the one way to be certain nothing is in there that you did not put there.
 
-## The path rule, and it has two halves
+## The path rule: one base directory
 
 This is the rule that lets an example directory be copied anywhere and still boot. It is one
-principle stated twice:
+sentence:
 
-> **A path written inside a machine file is relative to that file.**
->
-> **A path you type at the prompt is relative to your shell.**
+> **A relative path resolves against the machine's directory** — the folder the machine file
+> was loaded from.
 
-Both are true at once, and they do not conflict, because they are the same idea: **a path means
-what its author could see.**
+That folder is the base for *everything*: the disks and PROMs the machine file itself mounts,
+**and** the `MOUNT`, `LOAD`, `SAVE`, `DO` and `-s` paths you type at the prompt. One directory,
+one answer, whether the path was written by the file's author or by you.
 
-The author of a machine file could see the directory the machine file is in. When
-`examples/cpm/cpm22-buffered.toml` says `mount = "cpm22b23-56k.dsk"`, it means *the disk lying next to me* — and
-it goes on meaning that after you copy the folder to your desktop, rename it, or mail it to
-someone. That is why the examples are self-contained directories, and why the quick start's
-`cp -R` actually works.
-
-You, at the prompt, can see your own working directory. When you type
+When `examples/cpm/cpm22-buffered.toml` says `mount = "cpm22b23-56k.dsk"`, it means *the disk in
+this folder* — and it goes on meaning that after you copy the folder to your desktop, rename it,
+or mail it to someone. That is why the examples are self-contained directories, and why the
+quick start's `cp -R` actually works. And when you then type
 
 ```
-altairsim> MOUNT dsk0:drive1 scratch.dsk
+altairsim> MOUNT dsk0:drive1 cpm22b23-56k.dsk
 ```
 
-you mean *the file next to me*, because that is the only thing `scratch.dsk` could sensibly
-mean when you are the one typing it. The simulator does not go rummaging in the machine file's
-directory for a file you named with your own hands.
+you get the **same file**, from the **same folder** — the one the machine came from — no matter
+which directory you launched `altairsim` from. Typed paths used to resolve against your shell
+instead, which is how the identical disk could show up under two different names; that split is
+gone.
 
-The consequence is worth stating, because it catches people: **a path in a `startup` command is
-inside the machine file, so it is relative to the machine file** — even though `startup`
-commands look exactly like things you type. They were written by the file's author, so they
-mean what the file's author could see.
+A **built-in** machine has no directory of its own, so its base is the directory you launched
+from — the only anchor it has.
 
 ### When it bites, and what it looks like
 
@@ -181,45 +177,38 @@ from*, and you get the one confusing case:
 ```toml
 [[board.drive]]
 unit  = 0
-mount = "disks/Kermit/cpm.dsk"      # meant: the disks/ I can see from my shell
+mount = "disks/Kermit/cpm.dsk"      # meant: the disks/ up beside machines/
 ```
 
 `altairsim -f ./machines/8800c.toml` then says:
 
 ```
 ./machines/8800c.toml: dsk0: 'machines/disks/Kermit/cpm.dsk': no such file
-  ('disks/Kermit/cpm.dsk' is relative to the machine file that wrote it, in ./machines/)
+  ('disks/Kermit/cpm.dsk' is relative to the machine's directory, ./machines/)
 ```
 
-**The disk is not missing.** It was looked for beside the machine file, because that is where the
-rule says a machine file's paths point. Write it the way the machine file sees it:
+**The disk is not missing.** It was looked for beside the machine file, because that is the
+machine's directory and that is where relative paths point. Write it the way the machine sees it:
 
 ```toml
 mount = "../disks/Kermit/cpm.dsk"   # up out of machines/, then down into disks/
 ```
 
-…or keep the machine file next to what it mounts, which is what every shipped example does.
-
-Note what is *not* affected: once the machine is up, `MOUNT dsk0:drive1 disks/Kermit/cpm.dsk`
-typed at the prompt needs no `../`, because you are the one typing it. The `../` belongs to the
-file, not to you.
+…or keep the machine file next to what it mounts, which is what every shipped example does. The
+same `../` applies whether the path is in the file or you type it — because both resolve against
+the one base.
 
 ### Ask the machine, rather than working it out
 
-You do not have to hold this in your head. `SHOW PATHS` prints every base at once, for the
-machine you are actually running:
+You do not have to hold this in your head. `SHOW PATHS` prints the base, for the machine you are
+actually running:
 
 ```
 altairsim> SHOW PATHS
-  working directory  /home/you/altair
-                     MOUNT, LOAD, SAVE, and the -s or DO script you name
-                     resolve against this.
-
-  machine file       /home/you/altair/disks/cpm22
-                     `mount`, `base` and the MOUNT/LOAD lines in `startup`
-                     resolve against THIS, not the cwd -- so a machine file
-                     names the disks lying beside it and goes on naming them
-                     from wherever you launch it.
+  base directory     /home/you/altair/disks/cpm22
+                     Everything resolves against this -- what a machine file
+                     mounts, and the MOUNT / LOAD / SAVE / DO / -s you type.
+                     It is the directory the machine was loaded from.
 
   hb0 sandbox        /home/you/altair/disks/cpm22/xfer
                      THE GUEST'S SANDBOX, and the only real fence here:
@@ -227,14 +216,17 @@ altairsim> SHOW PATHS
                      anything you type. Set with `hostdir`.
 ```
 
-Three lines, three different directories, and they are allowed to differ — that is the rule
-working, not a fault.
+Two entries, and only the second is a fence — the base is where paths point, the sandbox is
+where the guest is confined.
 
-Boot a **built-in** machine and the middle line says so, because then there is no file and
-nothing was re-based:
+Boot a **built-in** machine and the base is the directory you launched from, because a built-in
+carries no folder of its own:
 
 ```
-  machine file       (none -- this machine is built in to the binary)
+  base directory     /home/you/altair
+                     ...
+                     This machine is built in, so it is the directory you
+                     launched from.
 ```
 
 `SHOW MOUNTS` is the companion: every disk, tape and ROM in the machine and what is in each,

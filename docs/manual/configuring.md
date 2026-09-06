@@ -133,9 +133,9 @@ startup = ["RUN FF00"]
 An array of **ordinary monitor commands**, run once the machine is built. Any command. They run
 in order, and you see them run — that is the `startup>` line in the quick start.
 
-**Paths inside a `startup` command are relative to the machine file**, not to your shell, because
-the file's author wrote them and the file's author could see the file's directory. This is the
-one place the two halves of the path rule sit next to each other, and it is worth remembering.
+**Paths inside a `startup` command are relative to the machine file** — the machine's own
+directory, which is the base every relative path uses, whether written in the file or typed at
+the prompt. So a `startup` line and the same command typed by hand find the same file.
 
 ### What `[machine]` will *not* take
 

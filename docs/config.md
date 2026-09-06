@@ -33,14 +33,18 @@ mount = "disks/cpm.dsk" # ...with this project's disk in it
 
 ## Where a relative path is relative to
 
-There are two answers, and keeping them apart is the whole of the rule.
+There is one answer, and it is the whole of the rule.
 
-> **A path written *inside* a machine file is relative to THAT FILE.**
-> **A path *typed* at the prompt is relative to THE SHELL.**
+> **A relative path resolves against the machine's directory** — the folder the machine file
+> was loaded from.
 
-That covers `mount`, `base`, and the `MOUNT`/`LOAD` commands inside a `startup` list. It does **not** cover a `-s` script, whose commands are resolved against the working directory like anything else you could have typed.
+That covers everything: `mount`, `base`, the `MOUNT`/`LOAD` commands inside a `startup` list, a
+`-s` script, and anything you type at the prompt. One base, so a disk the machine ships with and
+a disk you mount by hand are found in the same place. (A **built-in** machine has no directory
+of its own, so its base is the directory you launched from — the only anchor it has.)
 
-The first half is what makes a machine file portable. `tapes/MitsPS2/ps2int.toml` says:
+That a machine file's own paths point at its own directory is what makes it portable.
+`tapes/MitsPS2/ps2int.toml` says:
 
 ```toml
 startup = [
@@ -59,13 +63,13 @@ altairsim tapes/MitsPS2/ps2int.toml           # ...and from anywhere else
 
 That matters because **`tapes/` and `disks/` are what we ship.** A user gets the binary and those trees — not this repository. A machine file that only resolved from the repository root would be a machine file that only worked for us, and every example in this tree used to be exactly that.
 
-The second half is not a compromise, it is the other half of the same rule. When you type
+The same base covers what you type. When you type
 
 ```
 altairsim> MOUNT dsk0:drive1 "scratch.dsk"
 ```
 
-you mean the `scratch.dsk` you can see in the shell you are standing in — never one sitting next to somebody's example config. A command whose meaning depended on which machine happened to be loaded would be the same trap as a command line that changes meaning with its surroundings, and `acceptance-examples` has a negative control that fails the build if the config's directory ever leaks out of its `startup` list and starts colouring what a human types.
+you get the `scratch.dsk` in the machine's own directory — the same folder its own disks come from — no matter which shell you launched from. Typed paths used to resolve against your shell instead, which is how the identical disk could appear under two different names; `acceptance-examples` has a control that fails the build if a typed path ever stops resolving against the machine's directory.
 
 **There is no search path.** A file is looked for in exactly one place. If it is not there, the error names the place it looked — not the name you wrote — because the whole point of a resolved path is to be able to see where it went.
 
@@ -75,7 +79,7 @@ Absolute paths and the `builtin:` scheme are never re-based: `mount = "builtin:d
 
 ### This is not a sandbox
 
-**Nothing on this page confines anything.** Both halves of the rule answer one question — *what is a relative path relative to* — and that is a lookup, not a fence. A machine file may write `../../../etc/passwd` and it will be opened. `MOUNT` has never been restricted to a directory tree, and none of this is a security boundary.
+**Nothing on this page confines anything.** The rule answers one question — *what is a relative path relative to* — and that is a lookup, not a fence. A machine file may write `../../../etc/passwd` and it will be opened. `MOUNT` has never been restricted to a directory tree, and none of this is a security boundary.
 
 **The Host Bridge's `hostdir` is the other thing, and it is a real fence.** That one is a sandbox: it is the directory a *guest* program (`R.COM`, `W.COM`) is confined to, and it refuses `..` components, absolute paths, drive letters, and symlink escapes. It defaults to the directory you launched `altairsim` from. See `docs/boards/hostbridge.md`.
 

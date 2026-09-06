@@ -66,13 +66,16 @@ the last write never lands.
 
 ## Where the files come from
 
-You named **one** path — the machine file — and the simulator found the disk on its own. There
-are two rules, and that is all of it:
+You named **one** path — the machine file — and the simulator found the disk on its own. One
+rule covers all of it:
 
-- **A path you type** (the machine file, or anything at the `altairsim>` prompt) is resolved
-  against **the folder you are in**.
-- **A path written inside a machine file** (the disk it mounts) is resolved against **that
-  file**, not against you. `cpm22-buffered.toml` mounts `cpm22b23-56k.dsk` from *beside itself*.
+- **The machine file you name on the command line** is found from the folder you are in — your
+  shell. That is the one path you hand to the shell, before any machine exists.
+- **Everything after resolves against the machine's own folder** — the directory that `.toml`
+  lives in. The disk it mounts, and the `MOUNT`, `LOAD`, `SAVE` and `DO` you type at the
+  `altairsim>` prompt, all come from there. `cpm22-buffered.toml` mounts `cpm22b23-56k.dsk` from
+  *beside itself* — and if you type `MOUNT dsk0:drive1 cpm22b23-56k.dsk` you get that same file,
+  from that same folder.
 
 For example, from the folder you unzipped into:
 
@@ -83,17 +86,17 @@ $ ./altairsim examples/cpm/cpm22-buffered.toml
 ```
 
 `examples/cpm/cpm22-buffered.toml` is found from where you are; the `cpm22b23-56k.dsk` it mounts
-is found beside it, in `examples/cpm/` — never from your current folder.
+— and anything you later type at the prompt — is found in `examples/cpm/`, beside the machine.
 
-That second rule is why every folder under `examples/` boots wherever you copy it: the disk
-travels with the `.toml` that names it. `altairsim` never changes your working directory.
+That is why every folder under `examples/` boots wherever you copy it: the disk travels with the
+`.toml` that names it, and so does everything you do to that machine. `altairsim` never changes
+your working directory.
 
-When you are not sure which rule applies, ask the machine: **`SHOW PATHS`** at the `altairsim>`
-prompt prints the three base directories at once —
+To see it, ask the machine: **`SHOW PATHS`** at the `altairsim>` prompt prints the base
+directory — and the hostbridge sandbox, the one folder kept separate:
 
-- **the working directory** — where a path you type is found, and where the `-s` or `DO` script you name is looked up;
-- **the config directory** — where a path written *inside* a machine file is found, beside that file;
-- **the sandbox root** — the one folder the hostbridge file-transfer board may reach.
+- **the base directory** — the machine's own folder; what a machine file mounts and what you type both resolve against it;
+- **the sandbox root** — the one folder the hostbridge file-transfer board may reach, and cannot escape.
 
 The leading `./` means *the `altairsim` in this folder* — a fresh unzip is not on your `PATH`, so
 you point at it. Copy the program into a directory on your `PATH` (`/usr/local/bin` on macOS or

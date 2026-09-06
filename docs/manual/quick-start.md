@@ -62,20 +62,20 @@ powers.
 From there it is all real: the PROM read sector 0 off track 0, that loader pulled CP/M into
 high memory and jumped into the BIOS, and the BIOS printed its banner.
 
-## Where it found the disk — two paths, two rules
+## Where it found the disk — one base directory
 
 You typed **one** path — the machine file — and the simulator found the rest itself: the disk
-image, named *inside* that file. Those two kinds of path follow two different rules, and knowing
-which is which is the whole of how the program handles directories.
+image, named *inside* that file. Both point at the same place, and knowing where is the whole of
+how the program handles directories.
 
-- **A path you type** — the machine file on the command line, or anything you type at the
-  `altairsim>` prompt (`MOUNT`, `SYMBOLS LOAD`) — is resolved against **your shell**: the
-  directory you were in when you ran the command. `examples/cpm/cpm22-buffered.toml` is walked
-  down from there.
-- **A path written inside a machine file** — the disk it mounts, a PROM it loads — is resolved
-  against **that file**, wherever the file happens to sit. `cpm22-buffered.toml` mounts
+- **The machine file on the command line** is found from **your shell** — the directory you were
+  in when you ran the command — because at that instant no machine exists yet.
+  `examples/cpm/cpm22-buffered.toml` is walked down from there.
+- **Everything after resolves against the machine's own directory** — the folder that `.toml`
+  lives in. The disk it mounts, a PROM it loads, and anything you type at the `altairsim>`
+  prompt (`MOUNT`, `LOAD`, `SYMBOLS LOAD`) all come from there. `cpm22-buffered.toml` mounts
   `cpm22b23-56k.dsk` with no directory at all, and the simulator looks for it *beside the
-  `.toml`*, never beside you.
+  `.toml`* — and so would a `MOUNT cpm22b23-56k.dsk` you type.
 
 Here it is concretely. Say you unzipped the package into `~/altairsim` and launched it from
 there:
@@ -86,15 +86,14 @@ $ pwd
 $ ./altairsim examples/cpm/cpm22-buffered.toml
 ```
 
-Two paths get resolved, from two different places:
+- `examples/cpm/cpm22-buffered.toml` — **you** named it to the shell, so it is found from where
+  you stand: `~/altairsim/examples/cpm/cpm22-buffered.toml`.
+- `cpm22b23-56k.dsk` — the machine mounts it, so it is found in the machine's directory:
+  `~/altairsim/examples/cpm/cpm22b23-56k.dsk`. Type `MOUNT dsk0:drive1 cpm22b23-56k.dsk` and you
+  get that same file, from that same folder.
 
-- `examples/cpm/cpm22-buffered.toml` — **you** typed it, so it is found from your shell:
-  `~/altairsim/examples/cpm/cpm22-buffered.toml`.
-- `cpm22b23-56k.dsk` — the **machine file** names it, in its `mount =` line, so it is found beside
-  the `.toml`: `~/altairsim/examples/cpm/cpm22b23-56k.dsk`.
-
-Copy that folder somewhere else and it still boots, because the disk's path is tied to the file,
-not to you:
+Copy that folder somewhere else and it still boots, because the disk's path is tied to the
+machine, not to you:
 
 ```
 $ cp -R examples/cpm /tmp/mycpm
@@ -102,17 +101,17 @@ $ ./altairsim /tmp/mycpm/cpm22-buffered.toml
 ```
 
 Your shell never left `~/altairsim` — the simulator does not change your working directory — yet
-the disk is now read from `/tmp/mycpm/cpm22b23-56k.dsk`, beside the machine file you named. That
-is the whole reason every example is a self-contained folder you can copy anywhere and still
-boot: the disk always travels with the machine file that names it.
+the disk is now read from `/tmp/mycpm/cpm22b23-56k.dsk`, beside the machine file you named, and
+anything you type at the prompt is found there too. That is the whole reason every example is a
+self-contained folder you can copy anywhere and still boot: the disk, and everything you do to
+the machine, travels with the machine file.
 
-When you lose track of which is which, don't guess — **`SHOW PATHS`** at the `altairsim>` prompt
-lays out all three base directories side by side:
+To see it, ask — **`SHOW PATHS`** at the `altairsim>` prompt prints the base directory (and the
+one folder kept separate, the hostbridge sandbox):
 
-- **the working directory** — what a path you *type* resolves against, and where the `-s` or `DO`
-  script you name is looked up.
-- **the config directory** — what a path written *inside* a machine file resolves against, which
-  is the file's own folder.
+- **the base directory** — the machine's own folder. What a machine file mounts, and what you
+  *type* (`MOUNT`, `LOAD`, `SAVE`, `DO`, or a `-s` script), both resolve against it. For a
+  built-in machine, which has no folder of its own, it is the directory you launched from.
 - **the sandbox root** — the single directory the hostbridge file-transfer board may reach, and
   cannot escape.
 
@@ -137,8 +136,8 @@ $ altairsim cpm22-buffered.toml
 
 Now your shell is *inside* `examples/cpm`, so the machine file is simply `cpm22-buffered.toml`
 with no directory — found from where you are — and the disk it mounts is found beside the file,
-as always. The two rules did not change; only where the program lives, and which directory you
-ran it from, did.
+as always. The rule did not change; only where the program lives, and which directory you ran it
+from, did.
 
 ## Getting back out — `^E`
 
