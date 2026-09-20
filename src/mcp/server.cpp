@@ -363,6 +363,19 @@ Json toolList() {
                        "accepts at the prompt.",
                        p, {"id", "unit", "endpoint"}));
     }
+    list.push(tool("status",
+                   "A guaranteed-non-blocking check (#490): board id, whether a `run` is "
+                   "currently executing, its step count and PC. Unlike every other tool, this "
+                   "one is answered directly by the reader thread rather than the worker, so it "
+                   "still answers while a run is wedged or mid-flight -- the exact case where "
+                   "`recv`, `regs`, even a fresh `who` would sit queued behind it. `pc`/`steps` "
+                   "are the last PUBLISHED slice boundary, never a live read of the running CPU "
+                   "(that would be a data race, not a status check) -- while `in_flight` is "
+                   "true, treat them as approximate and re-poll rather than exact. Because it "
+                   "can land ahead of requests queued before it, don't sequence it with the "
+                   "rest of a script; poll it, standalone, whenever you need to know if the "
+                   "server is still alive.",
+                   Json::obj(), {}));
     return list;
 }
 
@@ -591,6 +604,23 @@ Json breakpointJson(const Breakpoint& b) {
 // The interactive console the four live tools share. Non-owning: the chip owns the
 // ScriptedStream; we remember only WHICH channel it is, and re-fetch the live pointer
 // every call so a reconnect can never leave us holding a dangling one.
+// #490: what `status` reports, published by the `run` tool's WORKER-thread loop at each
+// slice boundary and read by the READER thread to answer `status` out of band -- see
+// runMcp's reader/worker split for why a second thread exists at all. This is a snapshot,
+// not a live view: the whole point of `status` is that it must still answer while `run` is
+// wedged or mid-flight, which rules out synchronizing with the worker for an
+// up-to-the-instruction value (and reading cpu->pc() off the reader thread while the worker
+// is running it would be a genuine data race, not just a stale read). Copied as a whole
+// struct under McpSession::statusMu, never touched field-by-field without that lock.
+struct RunSnapshot {
+    bool        inFlight = false;
+    uint64_t    seq      = 0;    // bumped on every publish -- lets a poller tell "still
+                                  // advancing" from "the same slice as last time"
+    uint64_t    steps    = 0;
+    uint32_t    pc       = 0;
+    std::string boardId;
+};
+
 struct McpSession {
     std::string conBoard;
     std::string conUnit;
@@ -598,7 +628,47 @@ struct McpSession {
     // MirrorStream so a human can telnet in and share the session (issue #381). Empty =
     // the bare scripted line. Set once at startup (runMcp), read by console().
     std::string mirror;
+
+    // #490: guards `status` below. Every read/write is a whole-struct copy under this
+    // lock -- see RunSnapshot's own comment for why individual atomics are not enough
+    // (board id is a std::string, not atomic-sized, and the fields must not tear against
+    // each other: a poller must never see this slice's steps against last slice's pc).
+    std::mutex  statusMu;
+    RunSnapshot status;
 };
+
+// The board id for whichever board carries a CpuCard, or empty if there is none. Same walk
+// as Machine::cpuCard() (core/machine.cpp), but Board-typed: CpuCard is a bare interface
+// (activeCore() and friends) and carries no id of its own -- only Board does, on whatever
+// concrete class multiply-inherits both. Used to seed and refresh the #490 status snapshot.
+std::string cpuBoardId(Machine& m) {
+    for (const auto& b : m.boards())
+        if (dynamic_cast<CpuCard*>(b.get())) return b->id;
+    return std::string();
+}
+
+// #490's out-of-band reply, built ONLY from the published snapshot -- see RunSnapshot's own
+// comment for why. Callable from either thread: the copy under statusMu is the only shared
+// state it touches, and everything after that is pure formatting.
+Json statusResult(McpSession& sess) {
+    RunSnapshot snap;
+    {
+        std::lock_guard<std::mutex> lk(sess.statusMu);
+        snap = sess.status;
+    }
+    Json d = Json::obj();
+    d["board"]      = Json(snap.boardId);
+    d["in_flight"]  = Json(snap.inFlight);
+    d["steps"]      = Json((long long)snap.steps);
+    d["pc"]         = Json((long long)snap.pc);
+    d["generation"] = Json((long long)snap.seq);
+
+    std::string text = snap.boardId.empty() ? "(no board)" : snap.boardId;
+    text += snap.inFlight ? " busy" : " idle";
+    text += ", steps=" + std::to_string(snap.steps) + " pc=" + std::to_string(snap.pc);
+    if (snap.inFlight) text += " (last published slice boundary, not a live read)";
+    return dataResult(d, text);
+}
 
 // The scripted line the interactive tools drive -- reached THROUGH whatever wraps it.
 // Bare, the unit's stream IS the ScriptedStream; the console binding wraps it in the
@@ -1001,6 +1071,24 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         if (args.has("from")) cpu->setPc((uint16_t)args.at("from").integer());
         if (args.has("input")) con->feed(args.at("input").str());
 
+        // #490: publish a slice-boundary snapshot so `status`, answered out of band by the
+        // reader thread, can report on THIS run without ever touching the Machine/CpuCore
+        // itself -- see RunSnapshot's own comment for why that split has to exist. One
+        // publish now (before the first slice runs) and one after each slice below; the
+        // trailing `inFlight:false` publish is right after the loop, alongside the `d`
+        // this call is about to return -- so a poller's last look always matches what the
+        // caller of `run` itself was told.
+        const std::string boardId = cpuBoardId(m);
+        auto publishStatus = [&](bool inFlight, uint64_t stepsSoFar) {
+            std::lock_guard<std::mutex> lk(sess.statusMu);
+            sess.status.inFlight = inFlight;
+            sess.status.boardId  = boardId;
+            sess.status.steps    = stepsSoFar;
+            sess.status.pc       = cpu->pc();
+            ++sess.status.seq;
+        };
+        publishStatus(true, 0);
+
         const std::string until   = args.has("until") ? args.at("until").str() : std::string();
         long long         timeout = args.has("timeout_ms") ? args.at("timeout_ms").integer() : 2000;
         if (timeout < 0) timeout = 0;
@@ -1094,6 +1182,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             m.pump();
             steps += r.steps;
             tStates += r.tStates;
+            publishStatus(true, steps);  // #490: this slice's boundary, for `status` to read
 
             // Keep wall-clock in step with the crystal (see the baseline above). Only when a
             // clock_hz was asked for; free() is the flat-out default and never sleeps here.
@@ -1140,6 +1229,9 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
                 }
             }
         }
+
+        publishStatus(false, steps);  // #490: this call is done -- the next status poll should
+                                       // say idle, with this call's own final steps/pc
 
         Json d = Json::obj();
         d["output"]  = Json(out);
@@ -1626,6 +1718,16 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
     std::string bindErr;
     console(m, sess, bindErr);
 
+    // #490: seed the status snapshot HERE, single-threaded, before the reader/worker split
+    // below even exists -- the one place a direct CPU read is free. After the reader thread
+    // starts, only the `run` tool's own worker-thread loop may write `status`, and only
+    // through statusMu (see RunSnapshot, statusResult()). Left at its default (no board,
+    // not in flight) on a backplane with no CPU at all.
+    if (m.cpu()) {
+        sess.status.boardId = cpuBoardId(m);
+        sess.status.pc      = m.cpu()->pc();
+    }
+
     // A mirror that could not bind (its port is in use) is worth saying out loud -- but
     // to STDERR, never `out`, which is the JSON-RPC channel a stray line would corrupt.
     // The session still runs; the console just falls back to being un-rebound until a
@@ -1655,6 +1757,20 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
     Json                    currentId;               // the request the worker is running now
     bool                    haveCurrentId = false;    // false: nothing in flight to cancel
 
+    // #490 gives `out` a second writer -- the reader thread now answers `status` directly
+    // (below), instead of only ever handing lines to the worker. `reply`/`replyError` were
+    // written for a single writer and do not synchronize themselves, so every call from
+    // here on goes through one of these two wrappers instead of the bare functions.
+    std::mutex outMu;
+    auto safeReply = [&](const Json& id, const Json& result) {
+        std::lock_guard<std::mutex> lk(outMu);
+        reply(out, id, result);
+    };
+    auto safeReplyError = [&](const Json& id, int code, const std::string& msg) {
+        std::lock_guard<std::mutex> lk(outMu);
+        replyError(out, id, code, msg);
+    };
+
     std::thread reader([&] {
         std::string rline;
         while (std::getline(in, rline)) {
@@ -1667,6 +1783,19 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
                 if (haveCurrentId && !target.isNull() && target.dump() == currentId.dump())
                     Debugger::interrupt();
                 continue;  // acted on immediately -- never queued, never replied to
+            }
+            // #490: `status` MUST answer even while the worker is stuck inside a wedged or
+            // long-running `run` -- adding it as an ordinary tool would not do that, since
+            // it would just sit in `pending` behind the very call it exists to report on
+            // (deltecent's own point on the issue: guaranteed-non-blocking is a property of
+            // the transport, not the tool). So, like a cancellation, it is answered HERE,
+            // straight from the published RunSnapshot, never queued and never touching the
+            // Machine -- see statusResult(). Deliberately skips the currentId/haveCurrentId
+            // bookkeeping below: a status call is never itself the target of a cancel.
+            if (qm.parseOk && qm.req.at("method").str() == "tools/call" &&
+                qm.req.at("params").at("name").str() == "status") {
+                safeReply(qm.req.at("id"), statusResult(sess));
+                continue;
             }
             std::unique_lock<std::mutex> lk(mu);
             cv.wait(lk, [&] { return pending.size() < kMaxPending; });
@@ -1690,7 +1819,7 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
         }
 
         if (!qm.parseOk) {
-            replyError(out, Json(), -32700, "parse error: " + qm.parseErr);
+            safeReplyError(Json(), -32700, "parse error: " + qm.parseErr);
             continue;
         }
         const Json& req    = qm.req;
@@ -1725,21 +1854,21 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
             // commit lives, and an MCP client can run it.
             info["version"] = Json(versionNumber());
             r["serverInfo"] = info;
-            reply(out, id, r);
+            safeReply(id, r);
         } else if (method == "notifications/initialized") {
             // no reply -- a notification, not a request
         } else if (method == "tools/list") {
             Json r = Json::obj();
             r["tools"] = toolList();
-            reply(out, id, r);
+            safeReply(id, r);
         } else if (method == "tools/call") {
             const Json& params = req.at("params");
             std::string name = params.at("name").str();
-            reply(out, id, callTool(m, sess, name, params.at("arguments")));
+            safeReply(id, callTool(m, sess, name, params.at("arguments")));
         } else if (method == "ping") {
-            reply(out, id, Json::obj());
+            safeReply(id, Json::obj());
         } else {
-            replyError(out, id, -32601, "method not found: " + method);
+            safeReplyError(id, -32601, "method not found: " + method);
         }
 
         {

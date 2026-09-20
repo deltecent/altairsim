@@ -12,6 +12,7 @@
 #include "platform/socket.h"
 #include "util/json.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -25,6 +26,7 @@
 #include <streambuf>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace altair;
 
@@ -833,6 +835,90 @@ void test_mcp() {
         CHECK(rep[6].at("result").at("structuredContent").at("stopped").str() == "timeout",
               "id 6 runs its own budget out normally -- the cancel for id 3 does not leak "
               "into a later, unrelated request");
+    }
+
+    SECTION("MCP: status answers out of band, from a published slice-boundary snapshot, "
+            "even while a run is mid-flight (#490)");
+    {
+        // #490: adding `status` as an ordinary tool would not make it non-blocking -- it
+        // would just queue behind the very run it exists to report on, exactly like `regs`/
+        // `recv` in the section above. This proves the actual fix: `status` is answered by
+        // the READER thread, straight from the snapshot the `run` tool publishes at each
+        // slice boundary (RunSnapshot, statusResult()), so it lands even while a long run
+        // still sits busy in the worker.
+        Machine m;
+        if (!loadAltmon(m)) return;
+
+        FeedBuf      feedBuf;
+        std::istream feedIn(&feedBuf);
+        std::ostringstream out;
+
+        std::thread worker([&] { runMcp(m, feedIn, out, ""); });
+
+        int  id  = 0;
+        auto req = [&](const std::string& params) {
+            std::ostringstream line;
+            line << R"({"jsonrpc":"2.0","id":)" << ++id
+                 << R"(,"method":"tools/call","params":)" << params << "}\n";
+            feedBuf.feed(line.str());
+        };
+
+        req(R"({"name":"status","arguments":{}})");  // id 1 -- before anything has run
+        req(R"({"name":"run","arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}})");
+        req(R"({"name":"monitor","arguments":{"command":"SET cpu0 idle=off"}})");
+        // id 4: flat out, no `until`, idle disabled -- runs its full 4000ms budget, giving a
+        // wide window to poll `status` while it is genuinely still executing.
+        req(R"({"name":"run","arguments":{"timeout_ms":4000}})");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        req(R"({"name":"status","arguments":{}})");  // id 5 -- id 4 is still running
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        req(R"({"name":"status","arguments":{}})");  // id 6 -- later still, id 4 still running
+
+        feedBuf.close();
+        worker.join();
+
+        std::map<int, Json> rep;
+        std::vector<int>    order;  // the order replies were WRITTEN, not the order requested
+        std::istringstream  lines(out.str());
+        std::string         line;
+        while (std::getline(lines, line)) {
+            if (line.empty()) continue;
+            Json        j;
+            std::string err;
+            if (Json::parse(line, j, err)) {
+                int rid = (int)j.at("id").integer();
+                rep[rid] = j;
+                order.push_back(rid);
+            }
+        }
+
+        const Json& s1 = rep[1].at("result").at("structuredContent");
+        CHECK(!s1.at("in_flight").boolean() && s1.at("steps").integer() == 0,
+              "status before any run has happened: idle, zero steps");
+        CHECK(!s1.at("board").str().empty(),
+              "status knows the CPU board's id even before the first run (#490)");
+
+        const Json& s5 = rep[5].at("result").at("structuredContent");
+        const Json& s6 = rep[6].at("result").at("structuredContent");
+        CHECK(s5.at("in_flight").boolean() && s6.at("in_flight").boolean(),
+              "status reports in_flight while the long run (id 4) is still executing");
+        CHECK(s6.at("steps").integer() > s5.at("steps").integer(),
+              "the published snapshot keeps advancing between two polls of the same live run");
+        CHECK(s6.at("generation").integer() > s5.at("generation").integer(),
+              "the generation counter advances too, so a poller can tell 'still running' from "
+              "'stuck on the same slice'");
+
+        auto posOf = [&](int rid) {
+            return (size_t)(std::find(order.begin(), order.end(), rid) - order.begin());
+        };
+        CHECK(posOf(5) < posOf(4) && posOf(6) < posOf(4),
+              "both mid-run status replies (id 5, id 6) are WRITTEN before id 4's own reply -- "
+              "proof they were answered out of band, not queued behind it");
+
+        CHECK(rep[4].at("result").at("structuredContent").at("stopped").str() == "timeout",
+              "the long run (idle=off, no until) still runs its own budget out normally -- "
+              "status polling alongside it changes nothing about how it stops");
     }
 
     SECTION("MCP: mem_fill, mem_search and mem_save round-trip through the bus");
