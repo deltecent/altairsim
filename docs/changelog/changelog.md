@@ -23,6 +23,18 @@ order once it returns.
 second ^C, pressed before the server has reported the first, ends it as before. A server
 started in the background or under `nohup` ignores ^C, as such programs do.
 
+### A `status` tool answers even while `run` is wedged or mid-flight
+
+There was no way to ask "is the server still alive" without risking the same block as
+everything else: `recv`, `regs`, even a fresh `who` all queue behind a `run` in progress, so
+checking on a call you suspect is stuck could only add another stuck call. **`status` now
+answers immediately, always** — board id, whether a `run` is currently executing, and its
+step count and PC as of the last completed slice. It is deliberately a snapshot rather than
+a live read: reporting the *exact instant's* PC while the guest runs would mean reading CPU
+state from a different thread than the one advancing it, which is not a request `status` is
+in a position to make safely. Poll it standalone rather than sequencing it with the rest of
+a script — it can, and normally will, answer ahead of requests queued before it.
+
 ### `run`'s `timeout_ms` is a real ceiling now
 
 Driving a guest over `--mcp` with a real device on a line — a serial cable, a socket, anything
