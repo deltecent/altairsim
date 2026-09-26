@@ -217,9 +217,17 @@ uint8_t HardSectorFdc::read(const BusCycle& c) {
 
     // ---- base+2: DATA. ----
     if (!d || !online(*d) || !headLoaded(*d)) return 0xFF;
-    syncSector(where());  // the head has kept turning since you last looked
-    if (readPos_ >= kHsSectorBytes) return 0xFF;
-    return buf_[readPos_++];
+    // THE DATA PORT IS A LATCH, NOT A QUEUE. The card loads it with the byte under the head
+    // once every byteUs; reading it clears NRDA and nothing else. A CPU that reads before the
+    // next byte arrives gets the SAME byte again. Every Altair 8" loop takes two bytes per
+    // pass and times the second IN for a 2 MHz CPU, so a 4 MHz CPU reads a stale byte and the
+    // disk does not work -- as on the real machine (FDC+ note "Operation with a Z80 at 4MHz",
+    // reference/FDC+ Manual.md section 7). It used to be a queue, and 8" CP/M booted at 4 MHz.
+    Position pos = where();
+    syncSector(pos);  // the head has kept turning since you last looked
+    if (pos.byteIndex < 0) return 0x00;  // the READ CLEAR one-shot holds the path cleared
+    readPos_ = pos.byteIndex + 1;
+    return buf_[pos.byteIndex];
 }
 
 // ---------------------------------------------------------------------------
@@ -244,8 +252,14 @@ void HardSectorFdc::write(const BusCycle& c) {
     // when a step/select/head-unload moves it -- the very same path a short system sector, which
     // never reaches 137, has always relied on. Committing at exactly 137 was half of the wedge:
     // it cleared writing_ one byte before the BIOS was done.
-    if (writePos_ < kHsSectorBytes) wbuf_[writePos_] = c.data;
-    ++writePos_;
+    //
+    // The byte lands in the slot the write circuit takes NEXT, not after the last one written:
+    // the card holds one byte, so two OUTs inside one byte time leave only the second (the same
+    // latch as the read side, above).
+    Position pos  = where();
+    int      slot = pos.writeIndex > 0 ? pos.writeIndex : 0;
+    if (slot < kHsSectorBytes) wbuf_[slot] = c.data;
+    writePos_ = slot + 1;
 }
 
 // ---------------------------------------------------------------------------

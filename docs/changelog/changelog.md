@@ -8,6 +8,13 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+### 8″ disks need a 2 MHz processor, as on a real Altair
+
+The `dcdd` and `mds` data port now holds one byte, as the real board does, and not a queue. The
+software for 8″ disks times its second byte for a 2 MHz processor, so with `clock_hz` faster than
+2 MHz it now cannot read the disk. A real Altair behaves the same way. Full speed and 2 MHz work
+as before, and minidisk software works at 4 MHz too.
+
 ### A new board: the FDC+ serial drive
 
 The new `fdcplus` board is the FarmTek FDC+ in its serial drive mode (drive types 6 and 7). A

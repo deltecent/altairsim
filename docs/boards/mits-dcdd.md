@@ -134,6 +134,19 @@ single-density rate, and the manual says the same thing in words: *"ENWD goes tr
 So the byte clock is the **medium's**, and like rotation it derives from `Clock::hz()`: a 4 MHz CPU
 does not make the disk read faster.
 
+The loop takes **two bytes per pass**, and the second `IN` is timed for a 2 MHz CPU. That is why
+every original Altair 8" program (Disk BASIC, Altair DOS, CP/M) needs a 2 MHz CPU on real drives
+— the FDC+ note *Operation with a Z80 at 4MHz* (`reference/FDC+ Manual.md` §7) says so for the
+FDC+, and the reason is the software, so it holds for the 88-DCDD too.
+
+**The data port is a latch, and that is what makes it fail.** The card loads it with the byte
+under the head once every 32 µs, and a read only clears NRDA. A second `IN` that comes too soon
+gets the same byte again. At `clock_hz = 4000000` the DBL PROM reads bad sectors and prints `C`
+(checksum error) without end. At 2 MHz, and at full speed (where emulated time is 2 MHz), it boots.
+Writes are the same: two `OUT`s in one byte time leave only the second on the disk. Until this
+was fixed the port was a queue, and 8" CP/M booted at 4 MHz. The minidisk software waits for NRDA
+before every byte, so the 88-MDS works at 4 MHz, as the note says.
+
 Everything else is an **RC one-shot on the card** — a 74123 with a resistor and a capacitor — and the
 MITS manual prints both the nominal value and the range a working board must calibrate to:
 
@@ -337,6 +350,7 @@ They are **separate and both apply.** Document this loudly.
 | Quirk | If you get it wrong |
 |---|---|
 | Status bits are **inverted** on read | Nothing works, immediately and confusingly. |
+| The data port is a **latch**, not a queue: an early read gets the old byte, an early write overwrites | 8" software runs on a 4 MHz CPU, which the real card cannot do. |
 | The sector comes from the **clock**, and reading 0x09 does not advance it | Reading a port must never turn the disk. Bump a counter here and the platter spins at the speed of whatever loop is polling it, and a replay stops reproducing. (**This row used to say the opposite** — see the rotation section.) |
 | Sector True is **low** when positioned, and is a **30 µs one-shot** — not the gap | Too narrow and software never sees it. **Too WIDE and everything works, which is worse** — you have built a card that forgives races the real one punished, and nothing will ever tell you. |
 | The byte clock is **250 kbit/s (64 T @ 2 MHz)**, not the CPU's | Overclock the CPU and the disk reads faster, which is nonsense. `BOOT.ASM`'s transfer loop is cycle-counted against the real rate and breaks if you change it. |

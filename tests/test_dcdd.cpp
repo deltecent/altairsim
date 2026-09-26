@@ -284,6 +284,59 @@ void test_dcdd() {
         CHECK(true, "  not care what crystal the CPU has.");
     }
 
+    SECTION("88-DCDD -- the data port is a LATCH: read or write early and you get the old byte");
+    {
+        // BOOT.ASM takes two bytes a pass: "read first byte at 24-48 cycles", "read at 70-94
+        // cycles (data at 64 and 128)". The second IN is timed for 2 MHz. At 4 MHz the same
+        // instructions run in half the time, the second IN comes before the second byte, and
+        // the card hands back the first one again. The FDC+ note "Operation with a Z80 at 4MHz"
+        // says 8" software needs a 2 MHz CPU for exactly this reason.
+        std::vector<uint8_t> img((size_t)337568, 0);
+        for (int i = 0; i < 137; ++i) img[(size_t)i] = (uint8_t)(0x30 + i);
+        setMediaResolver([&img](const std::string& p, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(p, img, ro);
+        });
+        std::string err;
+
+        for (uint32_t hz : {2000000u, 4000000u}) {
+            Clock     c;
+            c.setHz(hz);
+            DcddBoard b;
+            b.attachClock(&c);
+            b.mount("drive0", "a.dsk", false, err);
+            ready(b);
+            in(b, 0x09);                            // sit on sector 0
+            c.advance((uint64_t)hz * 140 / 1000000 + 24);  // first IN: 24 T after byte 0 lands
+            uint8_t first = in(b, 0x0A);
+            c.advance(46);                          // second IN at 70 T, as BOOT.ASM counts it
+            uint8_t second = in(b, 0x0A);
+            CHECK(first == 0x30, "the first IN gets byte 0");
+            if (hz == 2000000)
+                CHECK(second == 0x31, "at 2 MHz the second IN gets byte 1 -- it landed at 64 T");
+            else
+                CHECK(second == 0x30, "at 4 MHz byte 1 lands at 128 T: the second IN reads byte 0 AGAIN");
+        }
+
+        // The write side is the same latch: two OUTs inside one byte time leave the second.
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        b.mount("drive0", "a.dsk", false, err);
+        ready(b);
+        in(b, 0x09);
+        out(b, 0x09, 0x80);      // cWRTEN
+        c.advance(kWriteStart);
+        out(b, 0x0A, 0x11);
+        out(b, 0x0A, 0x22);      // too early: byte 1 is not being asked for yet
+        out(b, 0x09, 0x01);      // step in -- flushes
+        out(b, 0x09, 0x02);
+        uint64_t perTrack = kPerSector * 32;
+        c.advance(perTrack - (c.now() % perTrack));
+        c.advance(kReadStart);
+        in(b, 0x09);
+        CHECK(in(b, 0x0A) == 0x22, "byte 0 on the disk is the SECOND OUT; the first was overwritten");
+    }
+
     SECTION("88-DCDD -- ANY size mounts: a known one by its format, the rest UNFORMATTED");
     {
         // A hard-sector image carries no geometry -- it is fixed 137-byte slots addressed
@@ -413,14 +466,17 @@ void test_dcdd() {
         // A SYSTEM SECTOR IS 133 BYTES AND NEVER REACHES 137. A card that waited for the
         // 137th byte before committing would lose every system sector ever written --
         // and you would only find out on a disk you had booted from.
-        out(b, 0x09, 0x80);  // cWRTEN, at the top of sector 0
-        for (int i = 0; i < 132; ++i) out(b, 0x0A, (uint8_t)(0x10 + i));
+        out(b, 0x09, 0x80);      // cWRTEN, at the top of sector 0
+        c.advance(kWriteStart);  // the write circuit asks for its first byte at 280us
+        for (int i = 0; i < 132; ++i) { out(b, 0x0A, (uint8_t)(0x10 + i)); c.advance(kByte); }
         out(b, 0x0A, 0x00);  // the 133rd byte: software's trailing zero
 
         out(b, 0x09, 0x01);  // cSTEPI -- steps away, which must FLUSH FIRST
 
         // Come back and read what actually landed.
         out(b, 0x09, 0x02);  // step back out to track 0
+        uint64_t perTrack = kPerSector * 32;
+        c.advance(perTrack - (c.now() % perTrack));  // to the next sector-0 hole
         c.advance(kReadStart);
         CHECK(((in(b, 0x09) >> 1) & 0x1F) == 0, "back on sector 0");
         c.advance(0);
@@ -504,7 +560,8 @@ void test_dcdd() {
         CHECK(((in(b, 0x09) >> 1) & 0x1F) == 0, "back on sector 0");
         c.advance(0);
         CHECK(in(b, 0x0A) == 0x40, "byte 0 of the committed sector is the FIRST byte written...");
-        for (int i = 1; i < kHsSectorBytes - 1; ++i) { in(b, 0x0A); c.advance(kByte); }
+        for (int i = 1; i < kHsSectorBytes - 1; ++i) { c.advance(kByte); in(b, 0x0A); }
+        c.advance(kByte);
         CHECK(in(b, 0x0A) == (uint8_t)(0x40 + kHsSectorBytes - 1),
               "...and byte 136 is the 137th -- the trailing zero never became a 138th byte");
     }

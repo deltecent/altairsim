@@ -132,6 +132,8 @@ and a change in the server's mount map).
   loop (`dNxtSec` in BIOS.ASM): 1.4 s at 2 MHz, 0.28 s at 10 MHz. Flat out, that loop takes a
   few milliseconds, and every track transfer is longer. The crystal can be faster than 2 MHz when
   the line is fast too: the shipped example runs 10 MHz with 230400 baud (a track in 0.19 s).
+  The FDC+ note *Operation with a Z80 at 4MHz* confirms a 4 MHz Z80 works with the serial
+  drive (`reference/FDC+ Manual.md` §7).
 - **`baud` takes the serial drive's rates and no others:** 9600, 19200, 38400, 57600, 76800,
   230400, 403200 (preferred) and 460800. The v1.8 firmware's monitor offered only the last three;
   the slow rates came later, with Serial Drive Server v1.4 (9.6K–76.8K) and v1.41 (57.6K), and
@@ -230,7 +232,8 @@ DBL's checksum.
 - **The machine needs 2 MHz of emulated time**, which flat out gives: the card times itself by
   the same clock as the guest. The BIOS's read loop takes 34 T-states a byte and must be slower
   than the disk's 16 µs; its write loop takes 28 and must be faster. So the 8080 must run between
-  1.75 and 2.1 MHz. At `clock_hz = 4000000` it cannot read the disk, as on a real 4 MHz Altair.
+  1.75 and 2.1 MHz. At `clock_hz = 4000000` it cannot read the disk, as on a real 4 MHz Altair; the FDC+ note
+  *Operation with a Z80 at 4MHz* says the same (`reference/FDC+ Manual.md` §7).
 
 ### Verification (type 5)
 
