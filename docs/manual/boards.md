@@ -849,6 +849,13 @@ supply the image. The package has no 8 MB disk.
 Its status bits are **inverted**, as on the 88-SIO. A clear bit means "ready". The `interrupt`
 strap sets where the board's interrupt goes.
 
+**The machine must run at 2 MHz, or at full speed.** The software for 8″ disks (Disk BASIC,
+Altair DOS, CP/M) reads and writes two bytes each time through its loop, and it times the second
+byte for a 2 MHz processor. At full speed, the board keeps the same 2 MHz time as the processor,
+so the disk works. With a faster `clock_hz`, the software reads each byte before it arrives, as on
+a real Altair with a fast processor, and the disk does not work. The boot PROM then prints `C`
+again and again.
+
 The disks chapter describes this board: the formats, how to mount a disk, write protection, and
 the track buffer, which is why you go back to the `A>` prompt before you stop the machine.
 

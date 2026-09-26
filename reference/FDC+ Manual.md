@@ -356,3 +356,21 @@ Notes:
   at FF00/FE00/FD00/FC00/F800.
 - Serial-drive variants (types 6/7) and iCOM FD3712 (type 8) are host/serial-side
   features rather than S-100 register behavior.
+
+---
+
+## 7. Operation with a Z80 at 4 MHz (separate note)
+
+Source: *FDC+ Operation with a Z80 at 4MHz*, 1 p, M. Douglas, from deramp.com
+(`.../altair/hardware/fdc+/Operation with 4MHz Z80.pdf`). Fetched 2026-09-26.
+
+Whether a 4 MHz CPU works depends on the **software's transfer loop**, not on the FDC+:
+
+| Setup | 2 MHz | 4 MHz | Why |
+|---|---|---|---|
+| Serial disk server (types 6/7) | yes | yes | — |
+| Real 5.25" drives, Altair Minidisk software | yes | yes | The minidisk transfer loop is not timing dependent. |
+| Real drives, original Altair **8"** software (Disk BASIC, Altair DOS, CP/M for Altair, …) | yes | **no** | Every Altair 8" loop reads or writes **two bytes per pass**, and the timing of the second byte depends on a 2 MHz CPU clock. |
+| 1.5 MB CP/M (type 5) | yes | **no** | The data transfer loop is timing dependent. |
+
+*"This has nothing to do with the FDC+ hardware"* — a 4 MHz 88-DCDD fails the same way.

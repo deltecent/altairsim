@@ -485,13 +485,17 @@ void test_mds() {
         // Land inside sector 0's write window and hand the card a full slot.
         c.advance(1000 * 2);  // 1 ms -- the WRITE CLEAR one-shot, where ENWD first goes true
         out(b, 0x09, 0x80);   // WRITE ENABLE
-        for (int i = 0; i < 137; ++i) out(b, 0x0A, (uint8_t)(i + 1));
+        for (int i = 0; i < 137; ++i) { out(b, 0x0A, (uint8_t)(i + 1)); c.advance(kByte); }
 
         // Read it straight back off track 0, sector 0.
         out(b, 0x08, 0x80);  // off
         out(b, 0x08, 0x00);  // and on again -- forces a re-read from the image
-        c.advance(kSpinUp + kReadStart);
+        c.advance(kSpinUp);
+        uint64_t perTrack = kPerSector * 16;
+        c.advance(perTrack - (c.now() % perTrack));  // to the next sector-0 hole
+        c.advance(kReadStart);
         CHECK(in(b, 0x0A) == 1, "byte 0 of sector 0 came back -- startSector is ZERO");
+        c.advance(kByte);
         CHECK(in(b, 0x0A) == 2, "and byte 1");
     }
 
