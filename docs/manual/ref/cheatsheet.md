@@ -4,6 +4,17 @@
 
 # Quick reference
 
+## Contents
+
+- Getting out, and back in
+- Editing the command line
+- Command line
+- Monitor commands
+- Boards
+- Machines
+- A machine file, in one look
+- Endpoints — `CONNECT <id>:<unit> <endpoint>`
+
 ## Getting out, and back in
 
 | Key | Does |

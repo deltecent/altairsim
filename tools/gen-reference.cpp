@@ -541,8 +541,11 @@ void machinesDoc(const std::string& dir) {
 // summarises, and it would drift silently, because nothing would ever check it.
 // ---------------------------------------------------------------------------
 void cheatsheet(const std::string& dir) {
-    std::ofstream o(dir + "/cheatsheet.md");
-    o << kDoNotEdit << "\n# Quick reference\n\n";
+    // The body is built first so the Contents list can be read back from its `## ` lines: a
+    // list typed by hand would drift from the sections it names. The list is there because a
+    // reader that previews only the top of the file (an AI skill, `head -100`) must see every
+    // section exist.
+    std::ostringstream o;
 
     o << "## Getting out, and back in\n\n"
          "| Key | Does |\n|---|---|\n"
@@ -697,6 +700,13 @@ void cheatsheet(const std::string& dir) {
          "`?ro` = watch-only. |\n"
          "| `<endpoint>\\|pty[:LINK]` | the same mirror on a pseudo-terminal (macOS and "
          "Linux): open `/tmp/altairsim0`, or `LINK`, with a terminal program. |\n\n";
+
+    std::ofstream out(dir + "/cheatsheet.md");
+    out << kDoNotEdit << "\n# Quick reference\n\n## Contents\n\n";
+    std::istringstream lines(o.str());
+    for (std::string line; std::getline(lines, line);)
+        if (line.rfind("## ", 0) == 0) out << "- " << line.substr(3) << "\n";
+    out << "\n" << o.str();
 }
 
 }  // namespace

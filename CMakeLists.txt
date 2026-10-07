@@ -1336,6 +1336,15 @@ add_test(NAME docs-package
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/docs-package.cmake)
 set_tests_properties(docs-package PROPERTIES LABELS acceptance TIMEOUT 60)
 
+# The skill's long reference file must open with its Contents (Anthropic's skill guidance:
+# over 100 lines needs a table of contents at the top). The list is hand-typed, so this proves
+# it still names every `##` section. The cheatsheet's list is generated and needs no check.
+add_test(NAME docs-skill-contents
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/docs-skill-contents.cmake)
+set_tests_properties(docs-skill-contents PROPERTIES LABELS acceptance TIMEOUT 60)
+
 # ---------------------------------------------------------------------------
 # THE RELEASE WORKER'S CHECKS MUST READ WHAT THE TOOLS REALLY PRINT.
 #
