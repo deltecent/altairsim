@@ -8,6 +8,10 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**The two long files in the AI skill now open with a list of contents.** `driving-with-ai.md`
+and `cheatsheet.md` are long, and an assistant that reads only the top of a file did not see most
+of the sections. Each file now starts with a `Contents` list.
+
 **`CONFIG SAVE` marks the settings that have the default value.** A saved file used to list every
 setting, and you could not tell a default from a value that was set on purpose. Now a setting that
 has the default value ends with a comment, for example `baud = 9600  # default X.Y.Z`, and `X.Y.Z`

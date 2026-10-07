@@ -16,6 +16,26 @@ package (`examples/cpm/cpm22-buffered.toml`). Point at the `altairsim` you were 
 server there (below) and ask your assistant to build and fix the little program waiting in it —
 a complete, guided round trip through everything this document describes.
 
+## Contents
+
+- Starting the server
+- Register the server with your assistant
+- Several machines, and several projects
+- Watching over its shoulder — and taking the keyboard
+- The tools
+- Knowing the commands
+- The pattern: an expect loop
+- Rules for a guest program
+- From a bare disk image to a booting machine
+- Amending a machine instead of rewriting it — the delta file
+- Debugging a behavior: make the machine show you, don't guess
+- Investigate a program you did not write
+- Attaching a serial port to a card
+- Toward a real machine
+- Gotchas
+- Without the MCP (CLI fallback)
+- Where to go next
+
 ## Starting the server
 
 ```
