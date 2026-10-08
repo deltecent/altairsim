@@ -167,8 +167,10 @@ D4=¬FAST SEEK, D3=¬RESTORE, D2=¬CONTROL OUT — i.e. the 4FDC has **two** eje
 RIGHT, for a dual-PerSci-277 mechanism) and **no side-select or drive-select-override bit at
 all** — those two concepts (dual-headed drives, multiplexed drive status) postdate the 4FDC.
 The 16FDC then drops one eject line to add Drive-Select-Override and Side-Select; the 64FDC
-drops eject/fast-seek/restore entirely (assumed handled by the 1793's own stepping and a
-simpler drive) and keeps only Drive-Select-Override, Control-Out, and Side-Select. **All
+drops eject/fast-seek/restore entirely and keeps only Drive-Select-Override, Control-Out, and
+Side-Select. The 64FDC schematic (Board Rev B, sheet 5 of 6) confirms it: of the TMS 5501's
+parallel outputs, XO3 (D3) has no connection, and XO4 and XO6 reach the 8T98 buffer but its
+outputs for them have no connection. **All
 listed bits are active-low** except where noted, and all "normally high" (i.e., idle/no-op)
 per each manual.
 
@@ -176,9 +178,16 @@ per each manual.
 
 | Bit | 4FDC | 16FDC | 64FDC |
 |:---:|---|---|---|
-| D7 | DRQ (jumper option, mirrors port 30/34 DRQ) | DRQ **or RTC** (jumper option) | *(64FDC's aux disk command is OUT-only per the manual excerpt read; no equivalent IN table captured here beyond D5/D1 above — see 64FDC p.34)* |
-| D6 | SEEK IN PROGRESS (voice-coil motion) | SEEK IN PROGRESS | — |
-| D5–D0 | unassigned (free for system use) | D5–D4 unassigned, **D3–D0 = sense switches 5–8** (0 = ON) | — |
+| D7 | DRQ (jumper option, mirrors port 30/34 DRQ) | DRQ **or RTC** (jumper option) | DRQ **or RTC** (jumper option) |
+| D6 | SEEK IN PROGRESS (voice-coil motion) | SEEK IN PROGRESS | **always 1** |
+| D5–D0 | unassigned (free for system use) | D5–D4 unassigned, **D3–D0 = sense switches 5–8** (0 = ON) | D5 don't care; **D4 = switch 5, D3–D0 = switches 1–4** |
+
+The 64FDC column is its manual's p.33 table. Its D6 has no drive signal behind it: the schematic
+(sheet 5 of 6) holds the TMS 5501's XI6 high through a resistor. **CDOS reads this bit to choose
+how it homes an 8-inch drive.** At each login of an 8-inch drive, CDOS 2.58 writes port 04 with
+D5 low, reads port 04 and tests D6. A 0 marks the drive as voice-coil (PerSci), which CDOS homes
+with D3 ¬RESTORE alone; a 1 makes it home with the FD1793 Restore. So a 64FDC is always homed
+with the FD1793 Restore, which agrees with its unconnected XO3.
 
 ---
 

@@ -548,6 +548,25 @@ void test_cromemco_fdc() {
         CHECK((in(b, FD_CMD) & 0x10) != 0, "...and the track-0 read is Record Not Found");
     }
 
+    // ---- PORT 04 IN D6: 0 ON THE 16FDC, ALWAYS 1 ON THE 64FDC (64FDC manual p.33) ----
+    // CDOS reads this bit each time it logs in an 8" drive (OUT 04 = DF, then IN 04 / BIT 6). A 0
+    // tells it the drive is a voice-coil PerSci, and it then homes the head with port 04 D3
+    // ¬RESTORE only -- a line the 64FDC does not have. So the 64FDC must give a 1, as the
+    // hardware does (XI6 is held high), and CDOS then homes with the FD1793's own Restore
+    // (issue #707). The sense-switch bits below D6 are the same on the two boards.
+    {
+        Fdc16Board b16;
+        Fdc64Board b64;
+        b16.power();
+        b64.power();
+        out(b16, AUX, 0xDF);  // D5 low: drive-select override, as CDOS's probe does
+        out(b64, AUX, 0xDF);
+        CHECK((in(b16, AUX) & 0x40) == 0, "16FDC: port 04 IN D6 is 0 (no seek in progress)");
+        CHECK((in(b64, AUX) & 0x40) != 0, "64FDC: port 04 IN D6 is always 1");
+        CHECK((in(b16, AUX) & 0x1F) == (in(b64, AUX) & 0x1F),
+              "the sense switches (D4-D0) read the same on the two boards");
+    }
+
     // ---- ONE-HOT SELECT, BEHAVIORALLY: only the drive with a disk reads ----
     {
         withRampDisk(26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512);

@@ -1,0 +1,50 @@
+# CDOS 2.58 off a Cromemco 64FDC, booting from an 8" double-sided, mixed-density diskette.
+#
+# This is cdos.toml with the 64FDC in place of the 16FDC: the same FD1793 and the same
+# TMS 5501 console, with RDOS 3.12 in an 8K PROM at C000-DFFF. cdos.toml has the reasons for
+# the other settings.
+#
+# THIS BOOT NEEDS PORT 04 IN D6 TO READ 1. CDOS reads that bit when it logs in an 8" drive. A 0
+# means a voice-coil (PerSci) drive, and CDOS then homes the head with the port 04 RESTORE
+# line, which the 64FDC does not have. The 64FDC gives a 1 always, so CDOS homes with the
+# FD1793's own Restore command (issue #707; docs/boards/cromemco-64fdc.md).
+
+[machine]
+name    = "cdos-64fdc"
+startup = ["RUN C000"]
+
+# Z80 at the real Cromemco 4 MHz.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# The 64FDC: RDOS 3.12 PROM at C000-DFFF (bootstrap on -> auto-boots drive A), an FD1793,
+# and its onboard TMS 5501 wired as the console ('tty').
+[[board]]
+type      = "64fdc"
+id        = "fdc0"
+bootstrap = true
+drives    = 4
+
+  [board.unit.tty]
+  connect = "console"
+  # rate  = "real"   # uncomment for the authentic (slow) 300-baud modem-console timing
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CDOS258-8IN-DSDD.DSK"
+
+# 64K of RAM -- a full Cromemco. The RDOS PROM shadows its C000 window on READS only, so RAM
+# is inhibited there during the boot but a write falls through; that lets CDOS relocate into
+# the RAM beneath the PROM and keep running once the PROM switches itself out (OUT 40H).
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"

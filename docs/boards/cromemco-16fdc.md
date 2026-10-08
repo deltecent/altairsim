@@ -162,6 +162,10 @@ The AUTO WAIT timeout (`D1`, about 4 s) never fires under either setting: every 
 - **`acceptance-cdos-5in`** runs the same test on `tests/media/cdos/cdos-5in.toml`, a 5¼″
   mixed-density DSDD disk. Its double-density tracks run at 250 kbit/s, so the boot fails if the
   chip takes its density from the data rate.
+- **`acceptance-cdos-64fdc-8in`** and **`acceptance-cdos-64fdc`** boot the same two disks on the
+  64FDC. The two boards do not home an 8″ drive the same way: CDOS reads port 04 IN D6 at login,
+  and the 0 it reads on the 16FDC makes it home the drive with port 04 D3 ¬RESTORE. The 64FDC
+  reads 1 (`cromemco-64fdc.md` → *What differs*).
 - The board's disk read/write, the wait-synced transfer, the drive-select latch and the geometry
   probes are exercised through the real ports.
 

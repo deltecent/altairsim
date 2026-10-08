@@ -8,6 +8,11 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**An 8-inch CDOS disk boots on the Cromemco 64FDC board.** Before, the disk printed the CDOS
+sign-on on the `64fdc` board and then stopped with `Read error` and `Status=10`. The board gave
+the wrong value for one bit of port 04. CDOS reads that bit to learn how to move the head to
+track 0, and the wrong value made it use a signal that the 64FDC does not have.
+
 **The Cromemco 16FDC and 64FDC boards check the density.** The double-density bit of port 34 (D6)
 must now agree with the density of the track, as on the hardware. A read or a write at the wrong
 density gives Record Not Found. A 5.25-inch double-density track that a program formats on these
