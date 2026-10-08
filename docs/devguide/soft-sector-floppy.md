@@ -18,7 +18,7 @@ The three layers, top to bottom:
 | Layer | Who | Owns |
 |---|---|---|
 | The **card** | a `Board` (`src/core/board.h`, e.g. `boards/tarbell.h`) | port decode, register bits, the drive-select latch, the **density strap** (`DDEN`), the boot PROM, interrupt straps |
-| The **chip** | `Wd17xx` (`src/chips/wd17xx.h`) | the register file and the Type I/II/III command FSM; `dataRateBits` **is** the `DDEN` pin |
+| The **chip** | `Wd17xx` (`src/chips/wd17xx.h`) | the register file and the Type I/II/III command FSM; `doubleDensity` **is** the `DDEN` pin, `dataRateBits` the media bit rate |
 | The **drive** | `DiskImageDrive` (`src/boards/floppy-drive.h`) over a `DiskImage` (`src/host/disk.h`) | CHS ↔ file offsets, synthesized ID fields, the **format parse** |
 
 A card reaches down to the chip (`Wd17xx::attach`, the straps). It never reaches into the
@@ -36,11 +36,12 @@ the chip/drive split is spelled out there at length. The essentials for a board 
   which data-address-mark a Write writes). Build the part the card has; do not `#ifdef`.
 - **No drive select, no side select, no motor.** The chip talks to ONE `FloppyDrive`; the
   card's select latch points it with `attach()`. Side is a card latch too (`setSide`).
-- **`dataRateBits` is the `DDEN` pin.** 250 kbit/s is 8″ single density; a double-density card
-  writes 500 kbit/s when it decodes its density bit. The chip uses it for byte timing **and hands
-  it to the drive's `Write Track` calls**, which derive the revolution byte budget and the
-  recorded per-track density from it. The board sets it from its control-port density bit. This is
-  the **single source of truth for density** — do not duplicate it onto the drive.
+- **`doubleDensity` is the `DDEN` pin, and `dataRateBits` is the media bit rate.** They are two
+  values, and the board sets both from its control port. The rate is for byte timing and for the
+  revolution byte budget (`trackImageBytes`). The density is what `Write Track` records a track
+  at (`writeTrackImage`) and what the density check compares. **The rate does not give the
+  density:** 8″ single density and 5.25″ double density are both 250 kbit/s. The chip is the
+  **single source of truth** for both — do not duplicate either onto the drive.
 - **The density check is a board strap** (`setDensityChecked`, off by default). On, an ID field
   recorded at the other density does not exist for the chip. See "The density model" below.
 - **Wait-synced vs DRQ-polling.** A card whose data port stalls the CPU on a wait-state
@@ -86,9 +87,9 @@ size, count and density can vary track to track, and none of it is in the `.DSK`
 The chip side is already done (`Wd17xx`, no per-board work): on `Write Track` the chip asks the
 drive for `trackImageBytes(dataRateBits)`, and if it is positive it enters the write phase,
 accumulates every guest byte into an internal buffer, and hands the whole revolution to
-`drive->writeTrackImage(buf, dataRateBits)` at the end. Both calls carry the chip's own configured
-data rate — the chip is the single source of truth for density, and the drive keeps no copy: it
-derives the revolution byte budget and the recorded density from the rate passed in. When
+`drive->writeTrackImage(buf, doubleDensity)` at the end. The first call carries the chip's data
+rate and the second its density — the chip is the single source of truth for both, and the drive
+keeps no copy: it derives the revolution byte budget from the rate and records the density. When
 `trackImageBytes(rate)` is `0` the chip sets **WRITE FAULT (S5)** instead — the honest answer for
 an empty drive or a controller that does not format.
 
@@ -138,12 +139,15 @@ Density is one value with three faces, and they must agree:
 
 | Face | Where |
 |---|---|
-| The `DDEN` pin | `Wd17xx::dataRateBits` (250 kbit/s SD, 500 kbit/s DD) |
-| The board I/O bit | e.g. Tarbell DD `OUT FC` bit 3 (`reference/Tarbell_Floppy_Disk_Interface_Manual.md`: "D3 = density") |
+| The `DDEN` pin | `Wd17xx::doubleDensity` |
+| The board I/O bit | e.g. Tarbell DD `OUT FC` bit 3 (`reference/Tarbell_Floppy_Disk_Interface_Manual.md`: "D3 = density"); Cromemco port 34 D6 |
 | The recorded per-track density | `TrackFormat.density`, written by `Write Track` |
 
-The board sets `dataRateBits` from its control-port bit; the chip hands that same rate to the
-drive's `Write Track` calls; the drive **records** the density it implies into `TrackFormat`. So a
+The board sets `doubleDensity` from its control-port bit; the chip hands it to the drive's
+`Write Track` commit; the drive **records** it into `TrackFormat`. The data rate
+(`Wd17xx::dataRateBits`) is a separate value. On the Tarbell DD and the VersaFloppy it follows the
+density bit (250 or 500 kbit/s). On the Cromemco boards it is MAXI × DDEN: only 8″ double density
+is 500 kbit/s, and a 5.25″ double-density track is recorded at 250 kbit/s. So a
 double-density card formats a mixed disk — SD track 0, DD tracks 1-76 — from the guest's per-track
 `OUT FC` density bit, and it also *reads* plain single-density media. The guest-side proof of the
 board bit driving the chip is `pd2/DFORMAT.ASM` (`ORI 8` / `OUT FC` before a DD format);
@@ -160,7 +164,7 @@ models this with a board strap, `Wd17xx::setDensityChecked(bool)`, which is **of
 
 - **On:** the drive reports how each ID field is recorded (`SectorId::doubleDensity`, from
   `TrackFormat.density`). The chip passes by an ID field whose density is not its own
-  (`dataRateBits >= 500000` is double, the same reading `Write Track` records a track with).
+  (`doubleDensity`, the same value `Write Track` records a track with).
   `Read Address` and the Type II search end in **Record Not Found**, and the Type I verify ends
   in **Seek Error**. A write to a sector at the wrong density is Record Not Found too.
 - **Off:** the medium decides. A track formatted DD reads back with the controller strapped SD.
@@ -168,12 +172,11 @@ models this with a board strap, `Wd17xx::setDensityChecked(bool)`, which is **of
 | Board | Strap | Why |
 |---|---|---|
 | VersaFloppy I / II | **on** | The DDBIOS finds the disk type by trying each density until `Read Address` succeeds (`DDB200.ASM`, `USL1`). Issue #691. |
-| Tarbell DD | **on** | The data rate follows the `OUT FC` density bit, so the check is correct as it stands. Issue #692. |
-| Cromemco 16FDC / 64FDC | off | The medium decides, as before. Turning it on there is the rest of issue #692; see below. |
+| Tarbell DD | **on** | The `OUT FC` density bit must match the track. Issue #692. |
+| Cromemco 16FDC / 64FDC | **on** | Port 34 D6 must match the track. Issue #692. |
 
-The check rests on `dataRateBits`, so it is correct only for a board that sets 500 kbit/s for
-every double-density disk. The Cromemco boards run 5.25″ double density at 250 kbit/s; turning
-the strap on there needs the density given to the chip separately from the rate.
+The check compares densities, not rates. The Cromemco boards run 5.25″ double density at
+250 kbit/s, the 8″ single-density rate; `acceptance-cdos-5in` boots such a disk.
 
 ## Mount vs. format — where geometry starts
 
@@ -263,8 +266,9 @@ container that carries its own sector map would fix this — and is explicitly n
 1. **Build the right WD part** in the board's `buildChip()` — `Wd1771` for a single-density
    card, `Wd1791` for one that does double density — and `setWaitSynced(true)` if the data port
    stalls the CPU.
-2. **Strap density** from the control-port bit into `chip_->dataRateBits` (leave it at 250 kHz
-   for an SD-only card).
+2. **Strap density** from the control-port bit into `chip_->doubleDensity`, and set
+   `chip_->dataRateBits` to the rate the board clocks the part at (leave both at their defaults,
+   single density at 250 kbit/s, for an SD-only card).
 3. **Size-probe with a blank fallback** in `describeGeometry`: recognized sizes → their format;
    anything smaller → empty per-track geometry (unformatted); oversized → error.
 4. **`setExtendsOnWrite(true)`** on the image at mount, and enable formatting on the drive

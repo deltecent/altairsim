@@ -63,6 +63,9 @@ CromemcoFdcBoard::~CromemcoFdcBoard() {
 void CromemcoFdcBoard::buildFdc() {
     chip_ = std::make_unique<Wd1791>("fdc");
     chip_->setWaitSynced(false);
+    // The FD1793 set for one density finds no ID field recorded at the other, so port 34 D6
+    // has to match the track (applySelection). Issue #692.
+    chip_->setDensityChecked(true);
     if (clock_) chip_->powerOn(*clock_);
     applySelection();
 }
@@ -88,6 +91,7 @@ void CromemcoFdcBoard::applySelection() {
         chip_->attach(fd);
         chip_->setSide(side_);
         chip_->dataRateBits = dataRate_;
+        chip_->doubleDensity = (control_ & 0x40) != 0;  // D6, whatever the rate (writePort34)
     }
 }
 

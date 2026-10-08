@@ -127,8 +127,10 @@ void VersaFloppyBoard::selectFromControl() {
     // against the density each track is recorded at (setDensityChecked, buildChip), so a
     // disk read at the wrong density is Record Not Found. The VF-I has no such bit: its
     // FD1771 stays at the single-density rate.
-    if (variant_ == Variant::Vf2 && chip_)
-        chip_->dataRateBits = ((control_ >> 6) & 1) ? 500000 : 250000;
+    if (variant_ == Variant::Vf2 && chip_) {
+        chip_->doubleDensity = ((control_ >> 6) & 1) != 0;
+        chip_->dataRateBits  = chip_->doubleDensity ? 500000 : 250000;
+    }
 
     FloppyDrive* fd = nullptr;
     if (Drive* d = selected()) {

@@ -131,7 +131,7 @@ int DiskImageDrive::trackImageBytes(long long rate) const {
 // data bytes, then 0xF7). 0xF7 is the CRC-generate byte and can never appear as literal track
 // data, so accumulate-until-0xF7 is unambiguous; 0xE5 fill is ordinary data. See the format FSM
 // in docs/devguide/soft-sector-floppy.md, modelled on simh.mdsk/.../wd_17xx.c.
-bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, long long rate) {
+bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) {
     if (!img_) return false;
 
     // Each parsed data field, as an (offset, length) window into `in` -- we copy nothing, and
@@ -178,14 +178,15 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, long long r
     if (fields.empty()) return false;  // nothing legible -> WRITE FAULT (the chip sets S5)
 
     // The track's geometry, derived from the stream: sector count from what we found, sector
-    // size and startSector from the first sector. Density comes from the CHIP's data rate, the
-    // single source of truth (Wd17xx::dataRateBits, handed in as `rate`): an 8" DD track streams
-    // at 500 kbit/s, everything slower is single density. This is what lets one DD card format a
-    // mixed disk -- SD track 0, DD tracks 1-76 -- from the guest's per-track OUT-FC density bit.
+    // size and startSector from the first sector. Density comes from the CHIP's DDEN pin, the
+    // single source of truth (Wd17xx::doubleDensity, handed in). It is not read from the data
+    // rate: a 5.25" double-density track streams at 250 kbit/s, the 8" single-density rate.
+    // This is what lets one DD card format a mixed disk -- SD track 0, DD tracks 1-76 -- from
+    // the guest's per-track density bit.
     // setTrackFormat re-runs rebuild(), so the following tracks' offsets and the growth cap follow
     // (ascending-order invariant, disk.h).
     TrackFormat tf;
-    tf.density     = rate >= 500000 ? Density::DD : Density::SD;
+    tf.density     = doubleDensity ? Density::DD : Density::SD;
     tf.sectors     = (int)fields.size();
     tf.sectorSize  = sectorSize;
     tf.startSector = startSector;

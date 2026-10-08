@@ -55,10 +55,10 @@ public:
     // means this drive CANNOT be formatted: Write Track faults with WRITE FAULT, the wd17xx.h
     // base contract, which is what a raw .DSK on a card that does not implement formatting must
     // do (the VersaFloppy, today). A card that DOES format (either Tarbell generation) sets it
-    // true on mount. Nothing about the RATE lives here: the revolution byte budget and the
-    // recorded density are both derived per call from the data rate the chip hands in
-    // (trackImageBytes/writeTrackImage), keeping the chip (Wd17xx::dataRateBits) the single
-    // source of truth. See docs/devguide/soft-sector-floppy.md.
+    // true on mount. Nothing about the RATE or the DENSITY lives here: the chip hands in its
+    // data rate for the revolution byte budget (trackImageBytes) and its density for the
+    // recorded encoding (writeTrackImage), keeping the chip (Wd17xx::dataRateBits,
+    // Wd17xx::doubleDensity) the single source of truth. See docs/devguide/soft-sector-floppy.md.
     void setFormatting(bool on) { canFormat_ = on; }
 
     // DRIVE ROTATION SPEED, in revolutions per second -- the DENOMINATOR of the Write Track byte
@@ -97,11 +97,11 @@ public:
 
     // ---- FORMAT: the Write Track command lands here (see setFormatting) ----
     // trackImageBytes(rate) is 0 (WRITE FAULT) unless a disk is loaded AND the card enabled
-    // formatting; otherwise it is one revolution at `rate`. writeTrackImage(in, rate) parses the
-    // raw track the guest streamed and (re)establishes the addressed track's geometry as it fills
-    // it, recording the density `rate` implies. floppy-drive.cpp.
+    // formatting; otherwise it is one revolution at `rate`. writeTrackImage(in, doubleDensity)
+    // parses the raw track the guest streamed and (re)establishes the addressed track's geometry
+    // as it fills it, recording the density the chip was set to. floppy-drive.cpp.
     int  trackImageBytes(long long rate) const override;
-    bool writeTrackImage(const std::vector<uint8_t>& in, long long rate) override;
+    bool writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) override;
 
 private:
     // The chip searches ID fields by (track, sector). We hand it the current track's

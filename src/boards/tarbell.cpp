@@ -71,6 +71,7 @@ void TarbellBoardBase::applySelection() {
         chip_->attach(fd);
         chip_->setSide(side_);
         chip_->dataRateBits = dataRate_;
+        chip_->doubleDensity = dataRate_ >= 500000;  // the rate follows the density bit
     }
 }
 

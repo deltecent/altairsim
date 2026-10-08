@@ -174,16 +174,19 @@ public:
     // would set) rather than to hand a formatter 5,208 invented bytes that round-trip
     // into a disk nothing can read.
     //
-    // WRITE TRACK IS THE ONE PLACE GEOMETRY IS ESTABLISHED, so the DATA RATE the chip is
-    // configured at (dataRateBits, the DDEN pin) is handed to BOTH format virtuals: the
-    // revolution byte budget and the recorded density differ per track (an 8" SD track is
-    // ~5208 bytes / single density; a DD track ~10416 / double), and the chip is the single
-    // source of truth for which. The drive stores no rate of its own -- it derives both from
-    // the value passed in. (readTrackImage does NOT format, so it takes no rate.)
+    // WRITE TRACK IS THE ONE PLACE GEOMETRY IS ESTABLISHED, so the chip hands the format
+    // virtuals what it is configured at: the DATA RATE (dataRateBits) to trackImageBytes, for
+    // the revolution byte budget, and the DENSITY (doubleDensity, the DDEN pin) to
+    // writeTrackImage, for the encoding the track is recorded in. Both differ per track (an
+    // 8" SD track is ~5208 bytes / single density; a DD track ~10416 / double), and the chip
+    // is the single source of truth for which. They are two values and not one because the
+    // rate does not give the density: a 5.25" double-density track runs at the 8"
+    // single-density rate. The drive stores neither. (readTrackImage does NOT format, so it
+    // takes neither.)
     virtual int  trackImageBytes(long long dataRateBits) const { (void)dataRateBits; return 0; }
     virtual bool readTrackImage(std::vector<uint8_t>& out) { (void)out; return false; }
-    virtual bool writeTrackImage(const std::vector<uint8_t>& in, long long dataRateBits) {
-        (void)in; (void)dataRateBits; return false;
+    virtual bool writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) {
+        (void)in; (void)doubleDensity; return false;
     }
 };
 
@@ -303,6 +306,14 @@ public:
     // density bit.
     long long dataRateBits = 250000;
 
+    // The DDEN pin: FM (single density, false) or MFM (double). It is a pin of its own and
+    // not a reading of dataRateBits, because the rate does not give the density -- a 5.25"
+    // double-density disk runs at 250 kbit/s, the 8" single-density rate. The board drives
+    // it from its density bit. Write Track records a track at it, and with the density
+    // check on (setDensityChecked) a read sees only the ID fields recorded at it. A
+    // single-density part (the FD1771) has no such pin and leaves it false.
+    bool doubleDensity = false;
+
     // ---- WAIT-STATE (PRDY) SYNCHRONIZATION -- a board strap ----
     //
     // Some cards do not let the guest poll DRQ at all: the DRQ line drives a wait-state
@@ -360,13 +371,11 @@ public:
     //
     // ON: an ID field recorded at the other density does not exist for this chip -- Read
     // Address, the Type II search and the Type I verify all pass it by. The chip's density
-    // is dataRateBits (>= 500 kbit/s is double), the same reading Write Track records a
-    // track with, so what a card formats at a rate it reads back at that rate.
+    // is doubleDensity (the DDEN pin), the same value Write Track records a track with, so
+    // what a card formats at a density it reads back at that density.
     //
-    // OFF (the default): the medium decides, and the strap is fidelity only. That is the
-    // Cromemco FDCs as they stand: they read 5.25" double density at 250 kbit/s, so the
-    // rate does not give the density there (issue #692). The VersaFloppy (issue #691) and
-    // the Tarbell double-density card turn it on.
+    // OFF (the default): the medium decides. The VersaFloppy (issue #691), the Tarbell
+    // double-density card and the Cromemco FDCs (issue #692) turn it on.
     void setDensityChecked(bool on) { densityChecked_ = on; }
     bool densityChecked() const { return densityChecked_; }
 
@@ -526,7 +535,7 @@ protected:
 
     // Can the chip, clocked as it is, see this ID field at all? See setDensityChecked().
     bool legible(const FloppyDrive::SectorId& id) const {
-        return !densityChecked_ || id.doubleDensity == (dataRateBits >= 500000);
+        return !densityChecked_ || id.doubleDensity == doubleDensity;
     }
     void stepOnce();
     bool ready() const { return drive_ && drive_->ready(); }

@@ -45,8 +45,9 @@ window and no port-04 ¬RESTORE. The board type is `64fdc`; `builtin:rdos312` is
 
 ## Verification
 
-The 64FDC rides the shared base that `acceptance-cdos` exercises through the 16FDC; its own
-divergence (the 8K ROM, the dropped ¬RESTORE) is covered by the board's unit tests.
+The 64FDC rides the shared base that `acceptance-cdos` and `acceptance-cdos-5in` exercise through
+the 16FDC; its own divergence (the 8K ROM, the dropped ¬RESTORE) is covered by the board's unit
+tests.
 
 ## References
 

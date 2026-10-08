@@ -809,7 +809,7 @@ void Wd17xx::commitSector(const Clock& clk) {
 }
 
 void Wd17xx::commitTrack(const Clock& clk) {
-    if (!drive_->writeTrackImage(buf_, dataRateBits)) status_ |= kWriteFault;
+    if (!drive_->writeTrackImage(buf_, doubleDensity)) status_ |= kWriteFault;
     finish(clk);
 }
 

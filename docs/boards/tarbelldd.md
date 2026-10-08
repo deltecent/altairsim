@@ -46,8 +46,8 @@ initFormat(1, 76, 0, 0, DD, 51, 128, 1);   // tracks 1-76:  51 × 128, double de
 ```
 
 On a **read**, the `OUT FC` density bit must match the density the track is recorded at. The bit
-sets the chip's `dataRateBits` (250k/500k), and the board turns on the chip's density check
-(`Wd17xx::setDensityChecked`): an FD1791 clocked for one density finds no ID field recorded at the
+sets the chip's density (`doubleDensity`) and its `dataRateBits` (250k/500k), and the board turns on the chip's density check
+(`Wd17xx::setDensityChecked`): an FD1791 set for one density finds no ID field recorded at the
 other, and the command ends in **Record Not Found**. The boot works because track 0 is single
 density and the card powers up density-clear; the CBIOS sets the bit for tracks 1-76. The byte count
 of a sector still comes from the track's declared format.
@@ -74,7 +74,7 @@ mixed disk:
 | larger | error (a real DD disk is never bigger) |
 
 On a **format**, the density is the `OUT FC` strap's, not the medium's: `Write Track` records each
-track at the density the chip's `dataRateBits` implies (SD at 250k, DD at 500k). So `DFORMAT.COM` —
+track at the chip's density, which the bit sets (SD at 250k, DD at 500k). So `DFORMAT.COM` —
 the public-domain Tarbell mixed-density formatter on the tracked master — turns a blank into a valid
 499,456-byte mixed image: it clears the density bit for track 0 and sets it for the tracks-1-76 pass,
 and the SD/DD split falls straight out. Answer **N** to *Use DMA?* (the DMA path bypasses the data

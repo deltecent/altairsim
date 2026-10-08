@@ -110,14 +110,19 @@ struct FakeDrive : FloppyDrive {
         return true;
     }
 
-    // The chip hands its configured data rate to both format virtuals. The fake ignores the
-    // rate for the budget (a test sets trackCap directly) but records it so a test can prove the
-    // chip passed its own dataRateBits through (the DD-density path in DiskImageDrive).
-    long long lastRate = 0;
-    int  trackImageBytes(long long) const override { return trackCap; }
-    bool writeTrackImage(const std::vector<uint8_t>& in, long long rate) override {
-        lastTrack = in;
-        lastRate  = rate;
+    // The chip hands its data rate to trackImageBytes and its density to writeTrackImage. The
+    // fake ignores the rate for the budget (a test sets trackCap directly) but records both, so
+    // a test can prove the chip passed its own dataRateBits and doubleDensity through -- and
+    // that they are two values (the DD-density path in DiskImageDrive).
+    mutable long long lastRate = 0;
+    bool lastDoubleDensity = false;
+    int  trackImageBytes(long long rate) const override {
+        lastRate = rate;
+        return trackCap;
+    }
+    bool writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) override {
+        lastTrack         = in;
+        lastDoubleDensity = doubleDensity;
         return true;
     }
 };
@@ -1126,14 +1131,16 @@ void test_wd17xx() {
         // One Read Address / Read Sector / Seek-with-verify round on track 5, at `rate`,
         // against a track recorded at `diskDd`. Returns the three status bytes.
         struct Round { uint8_t readAddress, readSector, verify; size_t idBytes; };
-        auto round = [](bool checked, long long rate, bool diskDd) {
+        // `chipDd` is the DDEN pin. The rate is given apart from it, and must not matter.
+        auto round = [](bool checked, long long rate, bool chipDd, bool diskDd) {
             Clock clk;
             FakeDrive d;
             Wd1791    f("fdc");
             f.attach(&d);
             f.powerOn(clk);
             f.setDensityChecked(checked);
-            f.dataRateBits = rate;
+            f.dataRateBits  = rate;
+            f.doubleDensity = chipDd;
             d.format(5, 26, 128);
             for (auto& sec : d.track[5]) sec.id.doubleDensity = diskDd;
             d.head = 5;
@@ -1160,30 +1167,42 @@ void test_wd17xx() {
             return r;
         };
 
-        const Round off = round(false, 500000, /*diskDd=*/false);
-        CHECK(off.idBytes == 6 && (off.readAddress & 0x10) == 0 && (off.readSector & 0x10) == 0 &&
-                  (off.verify & 0x10) == 0,
-              "strap off: the medium decides, a single-density track reads at the double rate");
+        auto reads = [](const Round& r) {
+            return r.idBytes == 6 && (r.readAddress & 0x10) == 0 && (r.readSector & 0x10) == 0 &&
+                   (r.verify & 0x10) == 0;
+        };
+        auto fails = [](const Round& r) {
+            return r.idBytes == 0 && (r.readAddress & 0x10) != 0 && (r.readSector & 0x10) != 0 &&
+                   (r.verify & 0x10) != 0;
+        };
 
-        const Round sdAtDd = round(true, 500000, /*diskDd=*/false);
+        const Round off = round(false, 500000, /*chipDd=*/true, /*diskDd=*/false);
+        CHECK(reads(off),
+              "strap off: the medium decides, a single-density track reads with the chip set double");
+
+        const Round sdAtDd = round(true, 500000, /*chipDd=*/true, /*diskDd=*/false);
         CHECK(sdAtDd.idBytes == 0 && (sdAtDd.readAddress & 0x10) != 0,
-              "strap on: Read Address of an FM track at the MFM rate is RECORD NOT FOUND");
+              "strap on: Read Address of an FM track with the chip set for MFM is RECORD NOT FOUND");
         CHECK((sdAtDd.readSector & 0x10) != 0, "...Read Sector is RECORD NOT FOUND");
         CHECK((sdAtDd.verify & 0x10) != 0, "...and the verify of a seek is SEEK ERROR");
 
-        const Round ddAtSd = round(true, 250000, /*diskDd=*/true);
-        CHECK(ddAtSd.idBytes == 0 && (ddAtSd.readAddress & 0x10) != 0 &&
-                  (ddAtSd.readSector & 0x10) != 0 && (ddAtSd.verify & 0x10) != 0,
-              "strap on: an MFM track at the FM rate fails the same three ways");
+        const Round ddAtSd = round(true, 250000, /*chipDd=*/false, /*diskDd=*/true);
+        CHECK(fails(ddAtSd), "strap on: an MFM track with the chip set for FM fails the same three ways");
 
-        const Round sdAtSd = round(true, 250000, /*diskDd=*/false);
-        const Round ddAtDd = round(true, 500000, /*diskDd=*/true);
-        CHECK(sdAtSd.idBytes == 6 && (sdAtSd.readAddress & 0x10) == 0 &&
-                  (sdAtSd.readSector & 0x10) == 0 && (sdAtSd.verify & 0x10) == 0,
-              "strap on: an FM track at the FM rate reads");
-        CHECK(ddAtDd.idBytes == 6 && (ddAtDd.readAddress & 0x10) == 0 &&
-                  (ddAtDd.readSector & 0x10) == 0 && (ddAtDd.verify & 0x10) == 0,
-              "strap on: an MFM track at the MFM rate reads");
+        const Round sdAtSd = round(true, 250000, /*chipDd=*/false, /*diskDd=*/false);
+        const Round ddAtDd = round(true, 500000, /*chipDd=*/true, /*diskDd=*/true);
+        CHECK(reads(sdAtSd), "strap on: an FM track with the chip set for FM reads");
+        CHECK(reads(ddAtDd), "strap on: an MFM track with the chip set for MFM reads");
+
+        // THE DENSITY IS THE DDEN PIN, NOT THE RATE (issue #692). A 5.25" double-density disk
+        // runs at 250 kbit/s, the 8" single-density rate: the Cromemco FDCs read one that way.
+        // A chip that took its density from the rate would call each of those tracks FM.
+        const Round mini = round(true, 250000, /*chipDd=*/true, /*diskDd=*/true);
+        CHECK(reads(mini), "strap on: an MFM track at 250 kbit/s reads with the chip set for MFM");
+        const Round miniSd = round(true, 250000, /*chipDd=*/true, /*diskDd=*/false);
+        CHECK(fails(miniSd), "...and an FM track at that same rate is RECORD NOT FOUND");
+        const Round fastSd = round(true, 500000, /*chipDd=*/false, /*diskDd=*/true);
+        CHECK(fails(fastSd), "...and the 500 kbit/s rate does not make a chip set for FM see MFM");
     }
 
     // The record type is ONE bit on the 179x (S5), where the 1771 uses two (S6|S5).
@@ -1203,12 +1222,13 @@ void test_wd17xx() {
         CHECK((st & 0x40) == 0, "...and NOT S6 -- the 179x has only two data address marks");
     }
 
-    // ---- WRITE TRACK on the 179x, at the DOUBLE-density rate: the chip hands its own data rate
-    //      to the drive's format virtuals (symmetry with the 1771 test above) ----
+    // ---- WRITE TRACK on the 179x, at DOUBLE density: the chip hands its own data rate and
+    //      density to the drive's format virtuals (symmetry with the 1771 test above) ----
     //
     // The DD Tarbell drives the 1791 at 500 kbit/s for a double-density track; the chip must pass
-    // that rate through to trackImageBytes()/writeTrackImage() so the drive derives the right
-    // budget and records DD. Here the fake takes the whole revolution and reports the rate back.
+    // that rate to trackImageBytes() so the drive derives the right budget, and its density to
+    // writeTrackImage() so the drive records DD. Here the fake takes the whole revolution and
+    // reports both back.
     {
         Clock clk;
         FakeDrive d;
@@ -1216,7 +1236,8 @@ void test_wd17xx() {
         f.attach(&d);
         f.powerOn(clk);
         f.setWaitSynced(true);
-        f.dataRateBits = 500000;  // the DD card's density bit -> 500 kbit/s
+        f.dataRateBits  = 500000;  // the DD card's density bit -> 500 kbit/s
+        f.doubleDensity = true;    // ...and the DDEN pin
 
         // A minimal MFM DD track: index mark, then two 128-byte sectors wrapped in ID/data marks.
         std::vector<uint8_t> stream;
@@ -1247,6 +1268,19 @@ void test_wd17xx() {
         CHECK((f.readStatus(clk) & 0x20) == 0, "the 179x takes the DD track: no WRITE FAULT");
         CHECK(d.lastTrack == stream, "...and writeTrackImage got the whole revolution");
         CHECK(d.lastRate == 500000, "...and the chip handed the drive its 500 kbit/s DD rate");
+        CHECK(d.lastDoubleDensity, "...and its density, to record the track in");
+
+        // The same track at the 5.25" double-density rate: the budget is asked for at 250
+        // kbit/s and the track is still recorded double density (issue #692).
+        f.dataRateBits = 250000;
+        f.writeCommand(0xF4, clk);  // Write Track
+        k = 0;
+        for (int guard = 0; guard < 200000 && f.busy(); ++guard) {
+            f.poll(clk);
+            if (f.drq() && k < stream.size()) f.writeData(stream[k++], clk);
+        }
+        CHECK(d.lastRate == 250000 && d.lastDoubleDensity,
+              "a 250 kbit/s double-density track is recorded double density");
     }
 
     // ---- A WAIT-SYNCED TYPE I COMMAND STEPS THE DRIVE THAT IS SELECTED WHEN IT STEPS ----

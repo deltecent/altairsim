@@ -101,6 +101,11 @@ mounts as a **formattable blank** — every access RNFs until the guest's DFORMA
 The **data rate is MAXI × DDEN**, not DDEN alone: only 8″ double density is 500 kbit/s; 8″ SD,
 5¼″ SD and 5¼″ DD are all 250 kbit/s.
 
+The **density is port 34 D6**, and it is given to the FD1793 separately from the data rate
+(`Wd17xx::doubleDensity`). D6 must match the density the track is recorded at: the board turns on
+the chip's density check (`Wd17xx::setDensityChecked`), so a read or a write at the wrong density
+ends in **Record Not Found**, as on the part. `Write Track` records a track at the density of D6.
+
 ### AUTO WAIT and `timing`
 
 With AUTO WAIT (port 34 OUT `D7`) set, an `IN 34` holds the processor until the FD1793 has a byte
@@ -127,6 +132,7 @@ The AUTO WAIT timeout (`D1`, about 4 s) never fires under either setting: every 
 |---|---|
 | **The RDOS ROM shadows RAM read-only; writes fall through** | If writes are shadowed too, CDOS's self-relocation into the RAM under the ROM is lost the moment `OUT 40H` banks the ROM out. If reads aren't shadowed, a 64K RAM card contends with the ROM at C000. |
 | **Data rate is MAXI × DDEN** — only 8″ DD is 500 kbit/s | A naïve "D6 → 250/500" mis-clocks every 5¼″ double-density disk (the likely real-world break behind double-density read failures). |
+| **Density is D6, not the data rate** | A chip that reads its density from the rate (500 kbit/s = double) takes every 5¼″ double-density track for single density: with the density check on, each is Record Not Found, and a formatted track is recorded at the wrong density. |
 | **Cylinder-major, head-minor image order** (`interleaved`) | Mixed-density needs cyl 0's DD side 1 adjacent to its SD side 0; with the flag wrong the reader looks for side 1 after all of side 0, lands on the wrong cylinder, and the cold loader reads garbage where CDOS.COM should be. |
 | **AUTO WAIT covers the port-33 read, not just the port-34 poll** | RDOS reads a byte with `IN 34 / INI` per byte; toggling the wait-sync off between them makes the `INI` see it clear, mis-fire Lost Data, and return the wrong byte — an FD1793 Err-B 06. |
 | **Port 04 D3 ¬RESTORE homes the head on disk selection** | CDOS.COM homes on selection through this line and issues no WD Restore of its own; without it, the first directory read finds the head where the cold loader left it (track 2) and faults Record Not Found. |
@@ -153,6 +159,9 @@ The AUTO WAIT timeout (`D1`, about 4 s) never fires under either setting: every 
   CDOS 2.58 cold-boots off the 16FDC's RDOS 2.52 PROM with no carriage return (the fixed-baud
   strap), then `DIR` reads the whole directory off the mixed-density 8″ DSDD image — proving the
   read path, the interleave order, and the density split.
+- **`acceptance-cdos-5in`** runs the same test on `tests/media/cdos/cdos-5in.toml`, a 5¼″
+  mixed-density DSDD disk. Its double-density tracks run at 250 kbit/s, so the boot fails if the
+  chip takes its density from the data rate.
 - The board's disk read/write, the wait-synced transfer, the drive-select latch and the geometry
   probes are exercised through the real ports.
 
