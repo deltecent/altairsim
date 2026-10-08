@@ -1639,6 +1639,21 @@ if(EXPECT_EXECUTABLE)
                        LABELS acceptance TIMEOUT 60
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+  # The same boot from a 5.25" mixed-density diskette (tests/media/cdos/cdos-5in.toml). Its
+  # double-density tracks run at 250 kbit/s, the 8" single-density rate, so this is the boot
+  # that fails if the FD1793 takes its density from the data rate and not from port 34 D6
+  # (issue #692).
+  add_test(NAME acceptance-cdos-5in
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cdos.exp
+                   $<TARGET_FILE:altairsim>
+                   tests/media/cdos/cdos-5in.toml
+                   tests/media/cdos/CDOS258-5IN-DSDD.DSK
+                   XFER 32)
+  set_tests_properties(acceptance-cdos-5in PROPERTIES
+                       LABELS acceptance TIMEOUT 60
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
   # ---------------------------------------------------------------------------
   # SD Systems CP/M 2.2 off the same VersaFloppy II -- but with the SBC-200's INTERRUPTS.
   #

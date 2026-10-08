@@ -204,11 +204,12 @@ void seekTo(CromemcoFdcBoard& b, Clock& c, uint8_t ctl, int track) {
 // The format parser trusts the head position for the track, reads the sector number and the
 // length code N (=2 -> 512), and terminates each data field at 0xF7. ~9.4 KB of structure,
 // under the ~10.4 KB 8"-DD revolution budget, so all 16 sectors stream before completion.
-std::vector<uint8_t> ddTrack512(int trackNum) {
+// A 5.25" DD track is the same with 10 sectors (~5.9 KB, under its 6.25 KB revolution).
+std::vector<uint8_t> ddTrack512(int trackNum, int sectors = 16) {
     std::vector<uint8_t> s;
     auto put = [&](uint8_t b, int n) { for (int i = 0; i < n; ++i) s.push_back(b); };
     put(0x4E, 40);                                    // lead-in gap (no index mark)
-    for (int sec = 1; sec <= 16; ++sec) {
+    for (int sec = 1; sec <= sectors; ++sec) {
         put(0x4E, 12); put(0x00, 8); put(0xF5, 3);    // gap + sync + A1 marks
         s.push_back(0xFE);                            // ID address mark
         s.push_back((uint8_t)trackNum);               // track (ignored: head position wins)
@@ -423,6 +424,63 @@ void test_cromemco_fdc() {
         out(b, FD_SEC, 1);
         out(b, FD_CMD, 0x88);
         CHECK(pollRead(b, ctl).size() == 512, "track 1 sector 1 is a 512-byte DD sector");
+    }
+
+    // ---- THE WRONG DENSITY IS RECORD NOT FOUND (issue #692) ----
+    //
+    // An FD1793 set for FM finds no MFM address mark, and the reverse, so port 34 D6 has to
+    // match the track. D6 is the density whatever the data rate is: a 5.25" double-density
+    // track runs at 250 kbit/s, the 8" single-density rate, and must still need D6.
+    {
+        struct Case { const char* what; uint64_t bytes; uint8_t maxi; int ddSectors; };
+        const Case cases[] = {
+            {"8\"",    26ull * 128 + 16ull * 512 + 76ull * 2 * 16 * 512, MAXI, 16},  // 1,256,704
+            {"5.25\"", 18ull * 128 + 79ull * 10 * 512,                   0x00, 10},  // 406,784
+        };
+        for (const Case& k : cases) {
+            withRampDisk(k.bytes);
+            Clock c;
+            Fdc16Board b;
+            b.attachClock(&c);
+            b.power();
+            std::string err;
+            const std::string what = k.what;
+            CHECK(b.mount("drive0", "cdos.dsk", false, err), (what + ": the mixed CDOS image mounts").c_str());
+
+            const uint8_t sd = (uint8_t)(k.maxi | MOTOR | 0x01);
+            const uint8_t dd = (uint8_t)(k.maxi | DDEN | MOTOR | 0x01);
+            auto readSec1 = [&](uint8_t ctl) {
+                out(b, FD_FLG, (uint8_t)(AUTOWAIT | ctl));  // the density, before the command
+                out(b, FD_SEC, 1);
+                out(b, FD_CMD, 0x88);  // Read Sector
+                return pollRead(b, ctl).size();
+            };
+
+            // Track 0 side 0: the single-density boot track.
+            out(b, FD_TRK, 0);
+            CHECK(readSec1(dd) == 0 && (in(b, FD_CMD) & 0x10) != 0,
+                  (what + ": the SD boot track with D6 set is Record Not Found").c_str());
+            CHECK(readSec1(sd) == 128 && (in(b, FD_CMD) & 0x1C) == 0,
+                  (what + ": ...and reads with D6 clear").c_str());
+
+            // Track 1: double density.
+            seekTo(b, c, dd, 1);
+            CHECK(readSec1(sd) == 0 && (in(b, FD_CMD) & 0x10) != 0,
+                  (what + ": a DD track with D6 clear is Record Not Found").c_str());
+            CHECK(readSec1(dd) == 512 && (in(b, FD_CMD) & 0x1C) == 0,
+                  (what + ": ...and reads with D6 set").c_str());
+
+            // FORMAT RECORDS THE DENSITY OF D6, NOT OF THE RATE. Write track 1 again at
+            // double density: it must still be a double-density track, also at 250 kbit/s.
+            out(b, FD_FLG, (uint8_t)(AUTOWAIT | dd));
+            out(b, FD_CMD, 0xF4);  // Write Track
+            pollWrite(b, dd, ddTrack512(1, k.ddSectors));
+            CHECK((in(b, FD_CMD) & 0x20) == 0, (what + ": the DD format took: no WRITE FAULT").c_str());
+            CHECK(readSec1(dd) == 512 && (in(b, FD_CMD) & 0x1C) == 0,
+                  (what + ": the track formatted with D6 set reads back with D6 set").c_str());
+            CHECK(readSec1(sd) == 0 && (in(b, FD_CMD) & 0x10) != 0,
+                  (what + ": ...and is Record Not Found with D6 clear").c_str());
+        }
     }
 
     // ---- PORT-04 ¬RESTORE HOMES THE HEAD (the CDOS warm-boot path) ----

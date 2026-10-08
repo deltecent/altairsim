@@ -20,13 +20,28 @@
 # image is mounted read/write there, so the test SHASUMS it before and
 # after: booting and DIR only read, and the tracked master must come out byte-identical.
 #
-# usage: expect -f cdos.exp <altairsim>   (run from the repo root)
+# THE SAME TEST RUNS THE 5.25" DISK (acceptance-cdos-5in): name the machine file, the disk, a
+# file in its directory and its file count. That disk is double density at 250 kbit/s, the 8"
+# single-density rate, so it is the boot that proves the FD1793 takes its density from port 34
+# D6 and not from the data rate (issue #692).
+#
+# usage: expect -f cdos.exp <altairsim> [<machine.toml> <disk> <a file DIR lists> <file count>]
+#        (run from the repo root; with only <altairsim>, the 8" disk)
 #
 set timeout 60
 log_user 0
 
-set exe [lindex $argv 0]
-set dsk "tests/media/cdos/CDOS258-8IN-DSDD.DSK"
+set exe  [lindex $argv 0]
+set toml "tests/media/cdos/cdos.toml"
+set dsk  "tests/media/cdos/CDOS258-8IN-DSDD.DSK"
+set file "XMODEM"
+set count 18
+if {[llength $argv] >= 5} {
+    set toml  [lindex $argv 1]
+    set dsk   [lindex $argv 2]
+    set file  [lindex $argv 3]
+    set count [lindex $argv 4]
+}
 
 # TYPE IT ALL AT ONCE -- and this is the regression guard. CDOS's console routine samples the
 # line between characters, so a whole command pasted in at once used to lose the ones that
@@ -42,7 +57,7 @@ proc bail {code msg} { if {$msg ne ""} { puts $msg }; catch {exec kill [exp_pid]
 
 set before [exec shasum $dsk]
 
-spawn $exe tests/media/cdos/cdos.toml
+spawn $exe $toml
 
 # CDOS loads and prints its sign-on with no input at all.
 expect {
@@ -68,12 +83,12 @@ expect {
 # line is the proof the whole listing came back off the platter, not a banner that faked a boot.
 slowtype "DIR\r"
 expect {
-    -ex "XMODEM" {}
+    -ex $file {}
     eof     { bail 1 "FAIL: the machine died listing the directory" }
     timeout { bail 1 "FAIL: DIR did not read the directory off the disk" }
 }
 expect {
-    -ex "18 Files" {}
+    -ex "$count Files" {}
     eof     { bail 1 "FAIL: the directory listing was cut short" }
     timeout { bail 1 "FAIL: DIR never finished -- no file-count summary" }
 }
@@ -95,6 +110,6 @@ if {$before ne $after} {
     bail 1 ""
 }
 
-puts "OK: CDOS 2.58 booted off the 16FDC to its A. prompt, DIR read the whole directory off the\
-      disk, and the master is byte-identical."
+puts "OK: CDOS 2.58 booted off the 16FDC from $dsk to its A. prompt, DIR read the whole\
+      directory off the disk, and the master is byte-identical."
 bail 0 ""

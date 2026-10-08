@@ -8,6 +8,11 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**The Cromemco 16FDC and 64FDC boards check the density.** The double-density bit of port 34 (D6)
+must now agree with the density of the track, as on the hardware. A read or a write at the wrong
+density gives Record Not Found. A 5.25-inch double-density track that a program formats on these
+boards is now recorded as double density; before, it was recorded as single density.
+
 **The two long files in the AI skill now open with a list of contents.** `driving-with-ai.md`
 and `cheatsheet.md` are long, and an assistant that reads only the top of a file did not see most
 of the sections. Each file now starts with a `Contents` list.

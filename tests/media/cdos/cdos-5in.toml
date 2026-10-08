@@ -1,0 +1,49 @@
+# CDOS 2.58 off a Cromemco 16FDC, booting from a 5.25" double-sided, mixed-density diskette.
+#
+# This is cdos.toml with the 5.25" disk in drive A; that file has the reasons for each setting.
+# The disk is 40 cylinders: cylinder 0 side 0 is single density (18 x 128), all the rest is
+# double density (10 x 512). A 5.25" double-density track runs at 250 kbit/s, the 8"
+# single-density rate, so the board cannot tell the density from the rate: it comes from
+# port 34 D6.
+#
+# clock_hz = 4000000 is the real Cromemco clock, as in cdos.toml.
+
+[machine]
+name    = "cdos-5in"
+startup = ["RUN C000"]
+
+# Z80 at the real Cromemco 4 MHz.
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# The 16FDC: RDOS 2.52 PROM at C000-CFFF (bootstrap on -> auto-boots drive A), an FD1793,
+# and its onboard TMS 5501 wired as the console ('tty').
+[[board]]
+type      = "16fdc"
+id        = "fdc0"
+bootstrap = true
+drives    = 4
+
+  [board.unit.tty]
+  connect = "console"
+  # rate  = "real"   # uncomment for the authentic (slow) 300-baud modem-console timing
+
+  [[board.drive]]
+  unit  = 0
+  mount = "CDOS258-5IN-DSDD.DSK"
+
+# 64K of RAM -- a full Cromemco. The RDOS PROM shadows its C000 window on READS only, so RAM
+# is inhibited there during the boot but a write falls through; that lets CDOS relocate into
+# the RAM beneath the PROM and keep running once the PROM switches itself out (OUT 40H).
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
