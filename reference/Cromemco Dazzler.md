@@ -8,6 +8,8 @@ card for the S-100 bus: a two-board set that uses **high-speed DMA** to read a
 bitmap straight out of the host computer's memory and translate it into a standard
 composite color-TV signal. It is the concrete reason DMA/bus-mastering exists in
 this simulator (DESIGN.md §4.5, §7.4): the card is a **bus master**, not a slave.
+(The later s100computers.com **Dazzler II** keeps the picture in its own RAM and does
+not use DMA — see §6.)
 
 This file captures everything needed to *emulate* the board: the two output ports
 and one input port, the DMA framebuffer layout and scan order, and the byte→pixel
@@ -198,3 +200,51 @@ Raise sense-switch A12 (→ `0x0F` D4 = color) for a color "quilt" pattern. With
 base, resolution/size/color decode, and the DMA scan in one loop — pair it with a
 seeded framebuffer for a headless `test_dazzler` assertion, or run it live under
 the `fp` front-panel board for a visual check.
+
+---
+
+## 6. Dazzler II (on-board RAM, no DMA)
+
+Source: s100computers.com, *Dazzler II Board* and *Dazzler II Board Theory* (a modern
+board, not a Cromemco document). It is register-compatible with the original (ports
+`0E`/`0F`, same bit meanings, §2) but **holds the picture in its own RAM**, so it never
+takes the bus.
+
+| | Original Dazzler (§1–§5) | Dazzler II |
+|---|---|---|
+| Picture memory | Main RAM, read by the card | 4K dual-port SRAM **on the card** |
+| Bus role | Bus master: HOLD/HLDA DMA | Bus slave: only watches writes |
+| CPU slowdown | ~15% | none |
+| Reading the picture back | Reads main RAM | Reads **main RAM** (card RAM is write-only) |
+| Needs main RAM at the picture address | Yes | No — any memory size or type |
+
+**Write-through.** A memory write inside the picture window goes to main memory **and**
+into the card's RAM. A read always comes from main memory, never from the card. Dual-port
+RAM means the display readout and a bus write never conflict, so the bus speed does not
+matter.
+
+**Window.** `OUT 0E` D6–D0 is the base address of the upper-left pixel, as before. The page
+says the card subtracts this base from S-100 `A15–A0`; if the result is `0000`–`0FFF`, the
+data is also written to card RAM. The page also calls the overlay a "2K window". The card
+holds 4K and shows 2K of it. Which 2K is shown: remove jumper P18 pins 31–32 to move the
+display up `800H`, or fit the optional U18 (74LS574) and set its bit 0 from software. The
+card decodes `A0–A23`; switch SW6 sets the upper lines (all closed = lowest 64K). With the
+IDT 7132 chip the card holds only 2K, which is always shown.
+
+**Trap for emulation.** Card RAM holds only what was **written after** the base was set.
+Original games that cleared or drew the picture *before* they turned the Dazzler on and
+did `OUT 0E` show **random data** on the II. Software that re-initializes the picture area
+after the base is set works. A model of the II must therefore start its card RAM with
+undefined contents and fill it from bus writes only — it must not read main RAM at scan
+time.
+
+**Emulation consequence.** No `requestsBus()`. The board watches memory writes, keeps its
+own 4K array, and the frame scan reads that array. Registers, status bits (§2.3) and the
+pixel encoding (§4) do not change.
+
+**Not stated by the page:** the setup time of the base before the first write, the exact
+subtract logic, and what happens if the base changes while the picture is displayed.
+
+**Also on the II board, outside this file:** four video outputs (RGB or B/W at TV or VGA
+rates, YPbPr, NTSC composite) and a built-in joystick/DAC circuit like the D+7A, so one
+board runs the Dazzler games (`reference/JS-1.md`).
