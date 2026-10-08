@@ -1654,6 +1654,34 @@ if(EXPECT_EXECUTABLE)
                        LABELS acceptance TIMEOUT 60
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+  # The same 5.25" boot off the 64FDC (tests/media/cdos/cdos-5in-64fdc.toml): RDOS 3.12 in its
+  # 8K PROM, and no port 04 RESTORE line. CDOS homes a 5.25" drive with the FD1793's own Restore.
+  add_test(NAME acceptance-cdos-64fdc
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cdos.exp
+                   $<TARGET_FILE:altairsim>
+                   tests/media/cdos/cdos-5in-64fdc.toml
+                   tests/media/cdos/CDOS258-5IN-DSDD.DSK
+                   XFER 32 64FDC)
+  set_tests_properties(acceptance-cdos-64fdc PROPERTIES
+                       LABELS acceptance TIMEOUT 60
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # The 8" boot off the 64FDC (tests/media/cdos/cdos-64fdc.toml). CDOS reads port 04 D6 when it
+  # logs in an 8" drive: a 0 means a voice-coil drive, which it homes with the port 04 RESTORE
+  # line that the 64FDC does not have. The 64FDC gives a 1, so CDOS homes with the FD1793's own
+  # Restore. With a 0 there, this boot stops at "Read error ... Status=10" (issue #707).
+  add_test(NAME acceptance-cdos-64fdc-8in
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cdos.exp
+                   $<TARGET_FILE:altairsim>
+                   tests/media/cdos/cdos-64fdc.toml
+                   tests/media/cdos/CDOS258-8IN-DSDD.DSK
+                   XMODEM 18 64FDC)
+  set_tests_properties(acceptance-cdos-64fdc-8in PROPERTIES
+                       LABELS acceptance TIMEOUT 60
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
   # ---------------------------------------------------------------------------
   # SD Systems CP/M 2.2 off the same VersaFloppy II -- but with the SBC-200's INTERRUPTS.
   #

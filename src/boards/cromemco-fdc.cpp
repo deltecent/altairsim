@@ -211,7 +211,8 @@ void CromemcoFdcBoard::write(const BusCycle& c) {
 //     falls straight through instead of spinning forever on a stuck-high bit.
 //   * D3-D0 sense switches 5-8 (0 = ON), left in their all-OFF reset state so RDOS's boot-drive
 //     select (C067: IN 04 / CPL / AND 03 -> drive index) resolves to drive 0.
-// D7 (DRQ/RTC jumper) and D5-D4 are unassigned here. This is the 16FDC/64FDC layout; the 4FDC
+// D7 (DRQ/RTC jumper) and D5-D4 are unassigned here. This is the 16FDC layout. The 64FDC has
+// no seek-complete input -- its D6 reads 1 always -- and overrides (cromemco-64fdc.h); the 4FDC
 // (dual eject, no side/switch nibble) overrides when its leaf lands.
 uint8_t CromemcoFdcBoard::readAux() {
     // D6 = 0 seek complete; D3 = 0 selects RDOS's FIXED console baud (skip the terminal auto-
