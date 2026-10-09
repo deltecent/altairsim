@@ -1003,7 +1003,7 @@ void test_toml_errors() {
     SECTION("every loader error carries the line of the key or the table at fault");
 
     CHECK(refusedWith("[machine]\nbase = \"default\"\n\nwidget = 1\n",
-                      {"t.toml: line 4: unknown [machine] key 'widget'"}),
+                      {"t.toml: line 4: unknown [machine] key 'widget'. Valid keys: base name startup"}),
           "an unknown [machine] key");
     CHECK(refusedWith("[machine]\nbase = \"default\"\n[[board]]\nid = \"cpu0\"\n\nfrobnicate = 1\n",
                       {"line 6: [[board]] cpu0:", "frobnicate"}),

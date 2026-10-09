@@ -468,7 +468,9 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
                 } else if (k == "startup") {
                     m.startup = t.list;
                 } else {
-                    err = at(ln) + "unknown [machine] key '" + k + "'";
+                    // Not a PROPERTY (no SET reaches these), so the list is by hand.
+                    // clock_hz and sense are absent on purpose: refused above, not taken.
+                    err = at(ln) + "unknown [machine] key '" + k + "'. Valid keys: base name startup";
                     return false;
                 }
             }

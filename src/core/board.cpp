@@ -3,6 +3,7 @@
 #include "core/statefile.h"
 #include "host/stream.h"  // complete ByteStream, for connectStream's by-value unique_ptr dtor
 
+#include <algorithm>
 #include <cctype>
 
 namespace altair {
@@ -145,8 +146,11 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
         if (named(x, key)) p = &x;
 
     if (!p) {
-        err = who + " has no property '" + key + "'. Known:";
-        for (const auto& x : props) err += " " + x.name;
+        err = who + " has no property '" + key + "'. Valid properties:";
+        std::vector<std::string> names;
+        for (const auto& x : props) names.push_back(x.name);
+        std::sort(names.begin(), names.end());
+        for (const auto& n : names) err += " " + n;
         return false;
     }
 

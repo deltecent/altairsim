@@ -8,6 +8,12 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**A wrong key in a machine file now lists the keys that are valid.** An unknown key in
+`[machine]` ends with `Valid keys: base name startup`. An unknown property of a board, a unit,
+`[console]`, `[display]` or `[terminal]` ends with `Valid properties:` and the names in
+alphabetical order. Before, the `[machine]` error gave no list, and the other lists were in
+the order of the code.
+
 **The error for a wrong key in a drive or region table gives the correct line.** When a key in
 a `[[board.drive]]` or `[[board.region]]` table was refused, the error gave the line where the
 table started. It now gives the line of the key, and says which table the key is in.
