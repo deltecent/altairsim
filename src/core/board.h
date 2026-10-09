@@ -769,7 +769,11 @@ public:
     // hand. Now they cannot: the schema is declared once and enforced here, and a board
     // that adds a key gets validation, documentation and an MCP schema for it without
     // writing any of the three.
-    bool loadSubUnit(const std::string& table, const KeyValues& kv, std::string& err);
+    //
+    // badKey, when given, gets the index in `kv` of the one key a refusal is about, or
+    // kv.size() when the refusal is about the table as a whole.
+    bool loadSubUnit(const std::string& table, const KeyValues& kv, std::string& err,
+                     size_t* badKey = nullptr);
 
     // THE INVERSE OF addSubUnit(), and the last board-specific line in the config
     // layer went away when this arrived. CONFIG SAVE used to reach for a
