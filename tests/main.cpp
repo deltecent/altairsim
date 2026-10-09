@@ -143,6 +143,7 @@ const struct {
     {"vdb8024", test_vdb8024},
     {"terminal", test_terminal},
     {"dazzler", test_dazzler},
+    {"dazzler2", test_dazzler2},
     {"multiwindow", test_multiwindow},
     {"framedump", test_framedump},
     {"d7a", test_d7a},

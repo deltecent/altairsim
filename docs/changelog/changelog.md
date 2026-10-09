@@ -8,6 +8,12 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**New board: `dazzler2`, the Cromemco Dazzler II.** It works like the `dazzler`, but it keeps the
+picture in 4 KB of RAM on the board and copies the writes it sees. Use it to test a program for
+a real Dazzler II. It shows random data when a program draws before it sets the base. It shows a
+picture at an address with no RAM, and it can show the second 2 KB half (the `page` property).
+`IN 0E` gives `0` in bits 0 to 5. The `dazzler` is not changed.
+
 **A wrong key in a machine file now lists the keys that are valid.** An unknown key in
 `[machine]` ends with `Valid keys: base name startup`. An unknown property of a board, a unit,
 `[console]`, `[display]` or `[terminal]` ends with `Valid properties:` and the names in

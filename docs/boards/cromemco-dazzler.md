@@ -129,6 +129,10 @@ right); every lit bit takes the format-nibble color.
 - **Status timing is a 2 MHz-based approximation**, not a cycle-exact raster position.
   The line and frame windows are fixed T-state counts (like the VDM-1's), so a guest
   polling END-OF-FRAME to avoid tearing sees it move; no guest depends on its exact phase.
+- **The picture is always read from main RAM.** The Dazzler II keeps it in RAM on the card
+  and shows things this board hides (a picture drawn before `OUT 0E`, a picture with no main
+  memory under it); that is the separate board type `dazzler2`
+  (`docs/boards/cromemco-dazzler2.md`).
 - **The joystick / D+7A paddle is a separate board**, not part of the Dazzler; this
   card is output-plus-status only.
 

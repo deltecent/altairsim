@@ -1053,7 +1053,7 @@ public:
 
 The two boards this must serve are usefully different, and the API should be hand-checked against both:
 - **VDM-1** is *memory-mapped*: a 1K text window the CPU writes into, plus a character-generator ROM; renders 16×64 characters. Its keyboard is a **separate parallel board** — so the SDL window's keystrokes must route back through a **`ByteStream`**, not a private path.
-- **Dazzler** is *DMA-driven*: it steals bus cycles to read a bitmap out of main memory. It needs the `requestsBus()`/`busMaster()` path, and it is the concrete reason DMA is in the bus model at all.
+- **Dazzler** is *DMA-driven* on the real card: it steals bus cycles to read a bitmap out of main memory, and it is the concrete reason DMA is in the bus model at all. The simulated `dazzler` does **not** use that path: it reads main RAM with `Bus::peek` once a frame, because nothing on the S-100 side can read a pixel back (`docs/boards/cromemco-dazzler.md`). The **Dazzler II** (`dazzler2`) is a bus *slave*: it watches memory writes (`wantsSnoop()`) and keeps the picture in 4 KB of its own RAM, so a guest can see what the original hides.
 
 Two constraints that are painful to retrofit:
 1. **The SDL event loop does not own the main loop.** The simulator's clock and `EventQueue` own emulated time; the display is pumped once per time slice. Letting SDL drive would put the host frame rate in charge of emulated time and wreck both throttling and replay.

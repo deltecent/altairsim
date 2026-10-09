@@ -186,6 +186,7 @@ Type the part before the bracket.
 |---|---|
 | `cadzilla` | CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC |
 | `dazzler` | Cromemco Dazzler: color graphics |
+| `dazzler2` | Cromemco Dazzler II: color graphics, on-board RAM |
 | `vdb8024` | SD Systems VDB-8024: 80x24 video terminal board |
 | `vdm1` | Processor Technology VDM-1: 16x64 memory-mapped video |
 

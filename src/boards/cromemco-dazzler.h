@@ -74,7 +74,16 @@ public:
     uint8_t  format() const { return format_; }
     uint8_t  statusByte() const;
 
-private:
+protected:
+    // WHERE THE SCAN READS A BYTE FROM. The original card reads main RAM through
+    // Bus::peek, `off` bytes above the base. The Dazzler II (cromemco-dazzler2.h) reads its
+    // own on-card RAM instead, and overrides this -- the one place the two differ.
+    virtual uint8_t sample(uint16_t off) const;
+
+    // IN BASE bits D5-D0, which the card does not drive. The original floats them high;
+    // the Dazzler II drives them low (reference "Cromemco Dazzler.md" 6).
+    uint8_t undrivenBits_ = 0x3F;
+
     // The framebuffer is at most four 512-byte quadrants (2 KB).
     static constexpr uint16_t kQuadrant = 512;
     static constexpr uint16_t kMaxBytes = 2048;
