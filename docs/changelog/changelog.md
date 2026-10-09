@@ -8,6 +8,11 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**The error for two machine names on the command line is clearer.** Before, `altairsim` said
+"more than one machine given" even when the shell had cut one file name at a space. It now says
+that only one machine file or built-in name may be given, says what each name is, and says how
+to start from a built-in and change it: put `base = "name"` under `[machine]` in a file.
+
 **The Cromemco 16FDC and 64FDC boards can boot from drive B, C or D.** The new `boot_drive`
 setting of the `16fdc` and `64fdc` boards sets the boot-drive switches, which RDOS reads for an
 automatic boot. Before, the switches were fixed at drive A, and the only way to boot a different
