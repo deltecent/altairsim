@@ -83,8 +83,8 @@ so it is always current.
 which key it did not know, and the line of the file that the key is on:
 
 ```
-mine.toml: line 4: unknown [machine] key 'widget'
-mine.toml: line 7: [[board]] cpu0: cpu0 has no property 'frobnicate'. Known: clock_hz idle achieved_hz
+mine.toml: line 4: unknown [machine] key 'widget'. Valid keys: base name startup
+mine.toml: line 7: [[board]] cpu0: cpu0 has no property 'frobnicate'. Valid properties: achieved_hz clock_hz idle
 ```
 
 For this reason, a setting with a typing mistake never looks as if it worked. You find the
