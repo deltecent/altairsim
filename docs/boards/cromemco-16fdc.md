@@ -57,8 +57,12 @@ these addresses), plus the RDOS PROM's memory reads.
 
 **Port 04 OUT** (active-low) — `D1` ¬SIDE SELECT (0 = side 1), `D3` ¬RESTORE (homes the selected
 drive to track 0), plus PerSci mechanical bits (¬EJECT, ¬FAST SEEK) that have no emulated effect.
-**Port 04 IN** reads `0x07`: `D6` SEEK IN PROGRESS = 0 (instant-seek), `D3` = 0 (RDOS's fixed
-console baud — skip the terminal auto-baud dance), `D2–D0` sense switches → boot drive 0.
+**Port 04 IN** reads `0x07` by default: `D6` SEEK IN PROGRESS = 0 (instant-seek), and `D3–D0`
+are switch sections 5–8, where a 0 is a switch that is ON. `D3` = 0 is section 5 ON (RDOS's fixed
+console baud — skip the terminal auto-baud dance). `D2` = 1 is section 6 OFF. `D1–D0` are
+sections 7 and 8, the **boot drive**: the `boot_drive` property sets them (A = both OFF). The
+manual lists sections 6–8 as "reserved" (p.3), but RDOS 2.52 reads 7 and 8 as the drive for an
+automatic boot and for its `B` command (`C067`).
 
 ## How it is simulated
 
@@ -85,7 +89,8 @@ it carries. It combines two idioms already in the tree:
   interrupt-address register *are* modeled (RDOS 3.12's disk-read timeout guard arms Timer 1 and
   polls `IN 03`), but interrupt **delivery** to the backplane is deferred.
 - **DMA:** none — an S-100 slave.
-- **Properties:** `bootstrap` (the BOOT/MON strap), `drives` (1–4), `timing` (below). One serial unit `tty` plus
+- **Properties:** `bootstrap` (the BOOT/MON strap), `boot_drive` (A–D, the boot-drive switches),
+  `drives` (1–4), `timing` (below). One serial unit `tty` plus
   `drive0..3`; `[[board.drive]]` for `unit`/`mount`/`readonly`.
 
 ### Media geometries

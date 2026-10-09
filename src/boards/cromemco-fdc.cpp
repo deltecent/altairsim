@@ -10,6 +10,7 @@
 #include "host/stream.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <string>
 
@@ -205,23 +206,33 @@ void CromemcoFdcBoard::write(const BusCycle& c) {
 // 34 latch's D7), this read is the CPU-stall path -- flip the chip wait-synced for the
 // length of the read so the in-flight command resolves to its next DRQ (or completion),
 // exactly as a CPU stalled on the wait-state generator would see. Port 33 stays DRQ-polled.
-// Port 04 IN -- Auxiliary Disk Status (reference §5). Two fields RDOS reads at boot:
+// Port 04 IN -- Auxiliary Disk Status (reference §5). This is the 16FDC layout; the 64FDC
+// changes D6 only (cromemco-64fdc.h).
 //   * D6 SEEK IN PROGRESS -- 0 on an instant-seek emulated drive (the head is always already
-//     where the WD chip stepped it), so RDOS's seek-complete poll (CD9D: IN 04 / AND 40)
+//     where the WD chip stepped it), so RDOS 2.52's seek-complete poll (CD9D: IN 04 / AND 40)
 //     falls straight through instead of spinning forever on a stuck-high bit.
-//   * D3-D0 sense switches 5-8 (0 = ON), left in their all-OFF reset state so RDOS's boot-drive
-//     select (C067: IN 04 / CPL / AND 03 -> drive index) resolves to drive 0.
-// D7 (DRQ/RTC jumper) and D5-D4 are unassigned here. This is the 16FDC layout. The 64FDC has
-// no seek-complete input -- its D6 reads 1 always -- and overrides (cromemco-64fdc.h); the 4FDC
-// (dual eject, no side/switch nibble) overrides when its leaf lands.
+//   * D4-D0 the sense switches, 0 = ON. Each RDOS gives them its own meaning:
+//
+//         bit   16FDC switch (manual pp.3, 32)    64FDC switch (RDOS 3.12 note 023-9208)
+//         D4    not assigned                      5  ON  = boot a floppy (OFF = STDC hard disk)
+//         D3    5  ON = preset baud rate          1  ON  = preset baud rate
+//         D2    6  reserved, not read             2  OFF = boot a floppy (ON = STDC hard disk)
+//         D1    7  boot drive, high bit           3  boot drive, high bit
+//         D0    8  boot drive, low bit            4  boot drive, low bit
+//
+//     The 16FDC manual lists switches 6-8 as reserved, but RDOS 2.52 reads 7 and 8 as the boot
+//     drive (C067: IN 04 / CPL / AND 03), as RDOS 3.12 reads 3 and 4 (C474: IN 04 / CPL /
+//     AND 17). So D1-D0 are the `boot_drive` property, inverted: A = 11, B = 10, C = 01, D = 00.
+//     The other switches are fixed. D3 = 0 is the preset baud rate (2.52 at C24E, 3.12 at CFAA
+//     and C4A1): the other position measures the bit period of an incoming RETURN, and an
+//     emulated console has no bit-level line to measure. D4 = 0 and D2 = 1 are the only
+//     positions that boot a floppy under RDOS 3.12; the rest boot an STDC hard disk, which
+//     is not simulated. The 64FDC manual (023-2022) describes an earlier RDOS and gives
+//     switch 5 as a self-test; RDOS 3.12 has no such switch.
+// D7 (DRQ/RTC jumper) and D5 are unassigned here. The 4FDC (dual eject, no side/switch nibble)
+// overrides when its leaf lands.
 uint8_t CromemcoFdcBoard::readAux() {
-    // D6 = 0 seek complete; D3 = 0 selects RDOS's FIXED console baud (skip the terminal auto-
-    // baud training at C24B: IN 04 / AND 08 / JR Z). Auto-baud measures the bit period of an
-    // incoming RETURN, and an emulated console has no bit-level line to measure -- it runs at
-    // one known rate -- so the fixed-baud strap is the honest, deterministic default (no
-    // "press RETURN four times" dance). D2-D0 = 1: sense switches 7-8 OFF -> boot drive 0
-    // (C067: IN 04 / CPL / AND 03).
-    return 0x07;
+    return (uint8_t)(0x04 | (~bootDrive_ & 0x03));
 }
 
 // Port 04 OUT -- Auxiliary Disk Command (reference §5), all bits active-low. Two bits move
@@ -530,6 +541,26 @@ std::vector<Property> CromemcoFdcBoard::properties() {
     }
     {
         Property x;
+        x.name    = "boot_drive";
+        x.help    = "The boot-drive switches (16FDC switches 7 and 8, 64FDC switches 3 and 4). "
+                    "RDOS reads them for an automatic boot, and for its B command with no "
+                    "drive letter";
+        x.kind    = Kind::Enum;
+        x.choices = {"A", "B", "C", "D"};
+        x.get     = [this] { return Value::ofStr(std::string(1, (char)('A' + bootDrive_))); };
+        x.set     = [this](const Value& v, std::string& err) {
+            int d = v.s().size() == 1 ? std::toupper((unsigned char)v.s()[0]) - 'A' : -1;
+            if (d < 0 || d > 3) {
+                err = "boot_drive is A, B, C or D";
+                return false;
+            }
+            bootDrive_ = d;
+            return true;
+        };
+        p.push_back(std::move(x));
+    }
+    {
+        Property x;
         x.name  = "drives";
         x.help  = "Drives on the controller (A-D, one-hot select DS4-DS1)";
         x.kind  = Kind::Int;
@@ -821,8 +852,8 @@ std::vector<std::string> CromemcoFdcBoard::drainLog() {
 // SNAPSHOT / RESTORE (DESIGN.md 13). The controller state that is NOT host-backed: both
 // chips' register files and any command in flight, the drive-select/side/rate/control
 // latches, each drive's head position, and the ROM flip-flop (armed_ -- a runtime latch
-// that must travel). The disk IMAGES are host-backed; `bootstrap_` is a strap and is not
-// serialized (a snapshot restores into a machine built from the same config).
+// that must travel). The disk IMAGES are host-backed; `bootstrap_` and `bootDrive_` are
+// straps and are not serialized (a snapshot restores into a machine built from the same config).
 // ---------------------------------------------------------------------------
 void CromemcoFdcBoard::serialize(StateWriter& w) const {
     Board::serialize(w);

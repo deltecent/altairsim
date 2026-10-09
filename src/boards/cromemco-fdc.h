@@ -165,7 +165,7 @@ protected:
 
     // Port 04: the auxiliary disk register (the TMS 5501's parallel pins, wired to disk). The
     // 16/64 layout lives here; the 4FDC (dual eject, no side-select) overrides both.
-    virtual uint8_t readAux();             // seek-in-progress / sense switches 5-8
+    virtual uint8_t readAux();             // seek-in-progress / the sense switches
     virtual void    writeAux(uint8_t v);   // ¬SIDE SELECT + PerSci mechanical controls
 
     // Port 04 D3 ¬RESTORE forces the SELECTED drive to track 0 -- a drive-mechanics line the
@@ -207,6 +207,7 @@ protected:
     // ---- runtime latches (these DO travel in a snapshot) ----
     bool armed_     = true;   // the ROM is mapped until OUT 40H (16/64) banks it out
     bool bootstrap_ = true;   // the BOOT/MON strap: on = boot the disk, and ¬BOOT reads low
+    int  bootDrive_ = 0;      // the boot-drive switches: 0-3 = A-D (port 04 IN D1-D0, inverted)
 
     std::vector<std::string> log_;
     Clock::Handle wake_ = Clock::kNone;

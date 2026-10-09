@@ -36,6 +36,8 @@ protected:
     // voice-coil PerSci, which CDOS homes ONLY with ¬RESTORE -- the line this board lacks -- so
     // the head never reaches track 0 and the boot stops on a record-not-found. A 1 makes CDOS
     // home with the FD1793's own Restore.
+    // The switch bits below it come from the base. D4 = 0 there is switch 5 ON, which RDOS 3.12
+    // needs for a floppy boot (cromemco-fdc.cpp, readAux).
     uint8_t     readAux() override { return CromemcoFdcBoard::readAux() | 0x40; }
 };
 

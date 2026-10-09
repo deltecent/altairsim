@@ -564,7 +564,38 @@ void test_cromemco_fdc() {
         CHECK((in(b16, AUX) & 0x40) == 0, "16FDC: port 04 IN D6 is 0 (no seek in progress)");
         CHECK((in(b64, AUX) & 0x40) != 0, "64FDC: port 04 IN D6 is always 1");
         CHECK((in(b16, AUX) & 0x1F) == (in(b64, AUX) & 0x1F),
-              "the sense switches (D4-D0) read the same on the two boards");
+              "the sense switches (D4-D0) read the same at the same boot_drive");
+    }
+
+    // ---- PORT 04 IN D1-D0: THE BOOT-DRIVE SWITCHES (issue #711) ----
+    // RDOS reads the drive for an automatic boot from two switches, 0 = ON: the 16FDC's 7 and 8
+    // (RDOS 2.52, C067: IN 04 / CPL / AND 03) and the 64FDC's 3 and 4 (RDOS 3.12, C474: IN 04 /
+    // CPL / AND 17). `boot_drive` sets them and nothing else. The bits around them must not
+    // move: D3 = 0 is the preset baud rate, and on the 64FDC D4 = 0 with D2 = 1 is the only
+    // position that boots a floppy -- any other sends RDOS 3.12 to an STDC hard disk.
+    {
+        Fdc16Board b16;
+        Fdc64Board b64;
+        b16.power();
+        b64.power();
+        std::string err;
+        CHECK(in(b16, AUX) == 0x07, "16FDC: port 04 IN is 07 by default (boot drive A)");
+        CHECK(in(b64, AUX) == 0x47, "64FDC: port 04 IN is 47 by default (boot drive A)");
+        const char*   letter[] = {"A", "B", "C", "D"};
+        const uint8_t bits[]   = {0x03, 0x02, 0x01, 0x00};
+        for (int d = 0; d < 4; ++d) {
+            const std::string what = std::string("boot_drive = ") + letter[d];
+            CHECK(setProperty(b16, "boot_drive", letter[d], err), ("16FDC: " + what).c_str());
+            CHECK(setProperty(b64, "boot_drive", letter[d], err), ("64FDC: " + what).c_str());
+            CHECK(in(b16, AUX) == (0x04 | bits[d]),
+                  ("16FDC: " + what + " moves D1-D0 only").c_str());
+            CHECK(in(b64, AUX) == (0x44 | bits[d]),
+                  ("64FDC: " + what + " moves D1-D0 only, and D6 stays 1").c_str());
+        }
+        CHECK(setProperty(b64, "boot_drive", "c", err) && in(b64, AUX) == 0x45,
+              "a lower-case letter is the same drive");
+        CHECK(!setProperty(b64, "boot_drive", "E", err), "a drive past D is refused");
+        CHECK(in(b64, AUX) == 0x45, "...and the switches stay where they were");
     }
 
     // ---- ONE-HOT SELECT, BEHAVIORALLY: only the drive with a disk reads ----
