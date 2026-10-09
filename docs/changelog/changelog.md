@@ -8,6 +8,11 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**The Cromemco 16FDC and 64FDC boards can boot from drive B, C or D.** The new `boot_drive`
+setting of the `16fdc` and `64fdc` boards sets the boot-drive switches, which RDOS reads for an
+automatic boot. Before, the switches were fixed at drive A, and the only way to boot a different
+drive was to stop the boot with ESC and type the RDOS command, for example `BB`.
+
 **An 8-inch CDOS disk boots on the Cromemco 64FDC board.** Before, the disk printed the CDOS
 sign-on on the `64fdc` board and then stopped with `Read error` and `Status=10`. The board gave
 the wrong value for one bit of port 04. CDOS reads that bit to learn how to move the head to

@@ -1337,8 +1337,25 @@ Both boards boot Cromemco **CDOS**. The package has no CDOS disk and no built-in
 these boards, so you add the board and supply the disk. **These boards can format a blank
 disk.** Mount a blank image, and the guest's own format program writes the tracks.
 
-The boards are polled. They deliver no interrupts. The front-panel switches of the 64FDC (baud
-rate, boot drive and self-test) are not modeled.
+RDOS boots drive A. To boot a different drive, set `boot_drive` to `B`, `C` or `D`. This sets the
+boot-drive switches of the board. RDOS reads them for the automatic boot, and for its `B` command
+when you give no drive letter:
+
+```
+altairsim> SET fdc0 boot_drive=B
+```
+
+In a machine file:
+
+```toml
+[[board]]
+type       = "64fdc"
+id         = "fdc0"
+boot_drive = "B"
+```
+
+The boards are polled. They deliver no interrupts. The other switches of the boards are fixed:
+the console has a preset baud rate, and RDOS boots from a floppy disk.
 
 ### `dualsd`: S100Computers Dual SD
 

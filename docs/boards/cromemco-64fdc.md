@@ -21,7 +21,7 @@ differs.
 | RDOS boot PROM | 4K RDOS 2.52 (`C000–CFFF`) | **8K RDOS 3.12 (`C000–DFFF`)** |
 | Port 04 D3 ¬RESTORE | homes the head on disk selection | **not assigned** — the drivers home with the FD1793's own Restore command |
 | Port 04 IN D6 | SEEK IN PROGRESS; reads 0 (the seek is complete) | **always 1** — the board has no seek-complete input |
-| Front-panel switches | RDOS-defeat functions | baud / boot-drive / self-test (not modeled) |
+| Switches on port 04 IN | sections 5–8: baud preset, and 7–8 the boot drive | switches 1–5: baud preset and boot device (RDOS 3.12 bulletin 023-9208) |
 | RTC / Mode-2 jumpers | present | dropped (not modeled) |
 
 **The dropped ¬RESTORE line is confirmed, not assumed.** The 64FDC manual (023-2022, March 1983)
@@ -52,9 +52,14 @@ window and no port-04 ¬RESTORE. The board type is `64fdc`; `builtin:rdos312` is
 
 ## Limitations and deliberate departures
 
-- **The 64FDC-specific details Phase 1 does not model** — its front-panel baud/boot-drive/self-test
-  switches, and the RTC/Mode-2 jumpers the 16FDC has and the 64FDC drops — are noted rather than
-  emulated, because a polled CDOS/RDOS boot does not touch them.
+- **Only the boot-drive switches can be set.** RDOS 3.12 reads switches 2–5 for the boot device
+  (`reference/Cromemco RDOS 3.12 for the 64FDC.md`). The `boot_drive` property sets switches 3
+  and 4: drive A, B, C or D for an automatic boot, and for the RDOS `B` command with no letter.
+  The other switches are fixed: switch 1 ON (the console at a preset baud rate, because an
+  emulated console has no bit rate to measure), and switch 2 OFF with switch 5 ON (a floppy
+  boot). Their other positions boot an STDC hard disk, which is not simulated. The 64FDC manual
+  gives switch 5 as a self-test; that is an earlier RDOS, and RDOS 3.12 has no such switch.
+- **The RTC/Mode-2 jumpers** the 16FDC has and the 64FDC drops are not modeled.
 - **The port-04 subset** (the 64FDC drops the 16FDC's eject/fast-seek/¬RESTORE bits) is a
   follow-up for when port 04 stops being an inert stub; today only side-select moves emulated
   state, and the head homes on the FD1793's own Restore.
@@ -71,7 +76,8 @@ window and no port-04 ¬RESTORE. The board type is `64fdc`; `builtin:rdos312` is
   5¼″ mixed-density DSDD disk.
 - The unit tests (`tests/test_cromemco-fdc.cpp`) check the board's own divergence through the
   real ports: the 8K ROM, the dropped ¬RESTORE, and D6 of port 04 IN (1 on the 64FDC, 0 on the
-  16FDC, the switch bits the same on both).
+  16FDC), and the boot-drive switches (D1–D0 follow `boot_drive`, and the other switch bits do
+  not move).
 - The rest of the shared base is exercised through the 16FDC by `acceptance-cdos` and
   `acceptance-cdos-5in`.
 

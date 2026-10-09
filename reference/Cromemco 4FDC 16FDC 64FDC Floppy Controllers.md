@@ -41,7 +41,7 @@ what differs across the three boards.
 | Write precompensation | not documented | not documented (not needed at FM-only / 16FDC era per manual) | **Yes** — PAL (74946) delays WD on 8″ double density inside track 43 |
 | Boot/monitor ROM | **1K** (2708-class) at `C000`–`C3FFH` | **4K** at `C000`–`CFFFH` (RDOS 2.52) | **8K** at `C000`–`DFFFH` (RDOS 3.12) — 32K memory-card address footprint (decode `8000`–`FFFFH`), the ROM answering `C000`–`DFFF`. *(The manuals describe a 4K `C000`–`CFFF` window; the shipping RDOS 3.12 image and its `rdos0312.lst` listing `ORG 0C000H` run through `DFFF`, so the part grew into the second 4K — see `docs/roms.md`.)* |
 | ROM disable | no port-40 bank select (`40` not assigned) | `OUT 40H` (any byte) disables ROM if jumpered for RES; RESET re-enables | `OUT 40H` (any byte) disables ROM if jumper location 2 set; RESET re-enables |
-| Boot/monitor select | SW3 (`BOOT`/`MON`), readable at port 34 D6 | Switches 1–4 (RDOS defeat / disable-after-boot / boot-or-mon / inhibit-init), readable via port 04 D3–D0 (switches 5–8 only) | **Jumpers**, not switches, for RDOS-defeat/disable-after-boot/boot-mon/inhibit-init (jumper locations 1–4); switches 1–5 instead set baud rate + boot **drive** + self-test |
+| Boot/monitor select | SW3 (`BOOT`/`MON`), readable at port 34 D6 | Switches 1–4 (RDOS defeat / disable-after-boot / boot-or-mon / inhibit-init), readable via port 04 D3–D0 (switches 5–8 only) | **Jumpers**, not switches, for RDOS-defeat/disable-after-boot/boot-mon/inhibit-init (jumper locations 1–4); switches 1–5 instead set baud rate + boot **device** (the manual also gives a self-test; with RDOS 3.12 the settings are different — see §5) |
 | Real-Time-Clock interrupt | not documented | **Yes** — 512 ms jumper option onto XI7 (mutually exclusive with the DRQ jumper) | not documented in this manual |
 | Mode-2 (Z80) interrupt vectors | not documented | **Yes** — jumper forces even vectors for Z80 IM2 | not documented in this manual (assume 8080-mode-0 restart-opcode gating only) |
 | Aux. disk register (port 04 OUT) | EJECT L/R, FAST SEEK, RESTORE, CONTROL OUT (PerSci 277 options) | EJECT, DRIVE SELECT OVERRIDE, FAST SEEK, RESTORE, CONTROL OUT, SIDE SELECT (PerSci 277/299B options) | DRIVE SELECT OVERRIDE, CONTROL OUT, SIDE SELECT only (no eject/fast-seek/restore — simpler, PerSci 299B) |
@@ -181,6 +181,21 @@ per each manual.
 | D7 | DRQ (jumper option, mirrors port 30/34 DRQ) | DRQ **or RTC** (jumper option) | DRQ **or RTC** (jumper option) |
 | D6 | SEEK IN PROGRESS (voice-coil motion) | SEEK IN PROGRESS | **always 1** |
 | D5–D0 | unassigned (free for system use) | D5–D4 unassigned, **D3–D0 = sense switches 5–8** (0 = ON) | D5 don't care; **D4 = switch 5, D3–D0 = switches 1–4** |
+
+**What the switches mean is in two places for each board**, and they do not fully agree:
+
+- **16FDC.** p.32 gives the read: "Bits D3 through D0 reflect the state of switch sections 5–8. A
+  zero bit corresponds to a switch being ON." p.3 gives the functions: section 5 OFF is "baud
+  rate not pre-set", and sections 6–8 are "reserved". RDOS 2.52 does use two of the reserved
+  sections: it reads 7 and 8 (D1, D0) as the drive for an automatic boot (`C067`: `IN 04` / `CPL`
+  / `AND 3`), so both OFF is drive A. It reads section 5 at `C24E`.
+- **64FDC.** The manual's table (pp.3, 33) is for an earlier RDOS: switch 1 = 300 baud preset,
+  switches 2–4 = boot drive, switch 5 = self-test. **With RDOS 3.12 the settings are different**:
+  switches 2–5 select the boot device, and switch 5 must be ON for a floppy boot. See
+  [Cromemco RDOS 3.12 for the 64FDC](Cromemco%20RDOS%203.12%20for%20the%2064FDC.md).
+- **64FDC p.33 does not agree with itself about D6.** The bit table says "D6 always 1", and the
+  text below it says "D6 Seek In Progress", which is the 16FDC's text. The schematic settles it,
+  as the next paragraph says.
 
 The 64FDC column is its manual's p.33 table. Its D6 has no drive signal behind it: the schematic
 (sheet 5 of 6) holds the TMS 5501's XI6 high through a resistor. **CDOS reads this bit to choose

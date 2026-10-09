@@ -239,6 +239,7 @@ Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `bootstrap` | bool | `true` | `on` \| `off` | The BOOT/MON strap. On (default): the RDOS ROM is mapped at C000 and ¬BOOT reads low, so RDOS boots the disk. Off: the ROM still answers but ¬BOOT reads high (the monitor prompt instead of an auto-boot) |
+| `boot_drive` | enum | `A` | `A` \| `B` \| `C` \| `D` | The boot-drive switches (16FDC switches 7 and 8, 64FDC switches 3 and 4). RDOS reads them for an automatic boot, and for its B command with no drive letter |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (A-D, one-hot select DS4-DS1) |
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a disk access completes at once. real: with Auto Wait armed, IN 34 holds READY until DRQ or the end of the command, so seek, head settle and byte times take emulated time, as on the board |
 
@@ -273,6 +274,7 @@ Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying a
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `bootstrap` | bool | `true` | `on` \| `off` | The BOOT/MON strap. On (default): the RDOS ROM is mapped at C000 and ¬BOOT reads low, so RDOS boots the disk. Off: the ROM still answers but ¬BOOT reads high (the monitor prompt instead of an auto-boot) |
+| `boot_drive` | enum | `A` | `A` \| `B` \| `C` \| `D` | The boot-drive switches (16FDC switches 7 and 8, 64FDC switches 3 and 4). RDOS reads them for an automatic boot, and for its B command with no drive letter |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (A-D, one-hot select DS4-DS1) |
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a disk access completes at once. real: with Auto Wait armed, IN 34 holds READY until DRQ or the end of the command, so seek, head settle and byte times take emulated time, as on the board |
 
