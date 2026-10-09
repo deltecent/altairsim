@@ -1163,6 +1163,15 @@ add_test(NAME acceptance-cwdconfig
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
 set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
 
+# A file name with a space, run unquoted, is two arguments: the error says names, not
+# machines, states the rule and says how to start from a built-in (issue #712).
+add_test(NAME acceptance-cli-args
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cli-args.cmake)
+set_tests_properties(acceptance-cli-args PROPERTIES LABELS acceptance TIMEOUT 60)
+
 # The per-directory command-history file is written only for a human at a terminal; a
 # script (-x/-s), a pipe, or --mcp must leave the directory untouched. This proves that
 # negative -- the whole of the guarantee (see the file's own header for the pty/pipe trap).

@@ -210,8 +210,22 @@ int main(int argc, char** argv) {
             return 2;
         } else {
             if (!positional.empty()) {
-                std::cerr << "more than one machine given ('" << positional << "' and '" << s
-                          << "')\n";
+                // Nothing is resolved yet, so these are names, not machines: say what
+                // each one looks like (a name check -- looksLikeFile() never probes the
+                // disk), and how to get what the person most likely wanted.
+                auto kind = [](const std::string& n) {
+                    return looksLikeFile(n) ? "a machine file" : "a built-in name";
+                };
+                std::cerr << "Only one machine file or built-in name may be given on the "
+                             "command line.\nGiven: '"
+                          << positional << "' (" << kind(positional) << ") and '" << s << "' ("
+                          << kind(s) << ").\n";
+                const std::string* builtinArg = !looksLikeFile(positional) ? &positional
+                                                : !looksLikeFile(s)        ? &s
+                                                                           : nullptr;
+                if (builtinArg)
+                    std::cerr << "To start from a built-in and change it, put  base = \""
+                              << *builtinArg << "\"  under [machine] in the file.\n";
                 return 2;
             }
             positional = s;
