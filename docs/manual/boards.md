@@ -195,6 +195,7 @@ The boards are in groups, in the same order as the sections below.
 |---|---|
 | `vdm1` | Processor Technology VDM-1: memory-mapped video. Needs a display |
 | `dazzler` | Cromemco Dazzler: color graphics. Needs a display |
+| `dazzler2` | Cromemco Dazzler II: the Dazzler with its picture in RAM on the board. Needs a display |
 | `vdb8024` | SD Systems VDB-8024: an 80×24 video terminal on one board. Needs a display |
 | `cadzilla` | CADzilla: an HD63484 ACRTC graphics board with a Bt453 color table. Needs a display |
 | `sol` | Processor Technology Sol-PC: the onboard I/O of the Sol-20, on one board |
@@ -1478,6 +1479,32 @@ on/off elements, in **16 colors** or 16 greys.
 
 The `dazzler` machine is the plain board, for you to build on. A 64×64 picture is very small, so
 the board's `width` property (above) makes the window about the size of a VDM-1 window.
+
+### `dazzler2`: Cromemco Dazzler II
+
+The Dazzler II is **a modern board**, not a period product. It works like the Dazzler: the same two
+ports (`0E` and `0F`), the same four modes and the same picture. The difference is where the
+picture is kept. The Dazzler reads its picture out of the machine's RAM. The Dazzler II keeps the
+picture in **4 KB of RAM on the board**. It watches the processor's writes to memory, and it keeps
+a copy of each one that is in its 4 KB window. The window starts at the address you set with
+`OUT 0E`.
+
+Use `dazzler2` to **test a program for a real Dazzler II**. The board shows what the real board
+shows, and the Dazzler hides these things:
+
+- The board RAM has no defined contents until the program sets the base. A program that draws its
+  picture *before* `OUT 0E` shows random data. The `seed` property sets the data, so the same
+  seed gives the same picture each time.
+- The picture can be at an address that has no RAM in the machine, such as a ROM or an empty
+  slot. The Dazzler shows nothing there.
+- The board shows 2 KB of its 4 KB. The `page` property is `0` for the first half, or `800` for
+  the second half. On the board, this is jumper P18 pins 31 and 32.
+- A read of the status port (`IN 0E`) gives `0` in bits 0 to 5. The Dazzler gives `1`. A program
+  that waits for the value `3F` can wait for ever.
+
+The board does not model the second color map, the page bit set by the program, or the
+joystick circuit that is also on the real board. The `d7a` board serves the joystick. For the
+Cromemco games, use `dazzler`.
 
 ### `cadzilla`: an HD63484 ACRTC graphics board
 

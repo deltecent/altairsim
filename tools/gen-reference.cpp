@@ -207,7 +207,7 @@ const char* boardCategory(const std::string& n) {
     if (n == "pio" || n == "4pio" || n == "d7a" || n == "music6" || n == "c700" ||
         n == "lpc")
         return "Parallel and printer";
-    if (n == "vdm1" || n == "dazzler" || n == "vdb8024" || n == "cadzilla") return "Video";
+    if (n == "vdm1" || n == "dazzler" || n == "dazzler2" || n == "vdb8024" || n == "cadzilla") return "Video";
     if (n == "sol") return "Systems";  // a whole machine's I/O on one card -- more will come
     if (n == "pb1") return "PROM programmer";
     if (n == "fp" || n == "virtc" || n == "hostbridge" || n == "ss1" || n == "rtc100")

@@ -111,6 +111,7 @@ void test_vdm1();
 void test_vdb8024();
 void test_terminal();
 void test_dazzler();
+void test_dazzler2();
 void test_multiwindow();
 void test_framedump();
 void test_d7a();

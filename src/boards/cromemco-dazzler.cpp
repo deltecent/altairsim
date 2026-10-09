@@ -100,7 +100,7 @@ void DazzlerBoard::write(const BusCycle& c) {
 // 2.3); the manual's prose names only the two bits.
 // ---------------------------------------------------------------------------
 uint8_t DazzlerBoard::statusByte() const {
-    uint8_t s = 0x3F;
+    uint8_t s = undrivenBits_;
     if (clock_) {
         uint64_t pos = clock_->now() % kFrameTStates;
         if (pos < kFrameTStates - kVblankTStates) {                   // D6: 1 outside vblank
@@ -164,6 +164,10 @@ void DazzlerBoard::pump() {
     render();
 }
 
+uint8_t DazzlerBoard::sample(uint16_t off) const {
+    return bus_ ? bus_->peek((uint16_t)(base_ + off)) : 0xFF;
+}
+
 int DazzlerBoard::elementsPerSide() const {
     int quad = x4() ? 64 : 32;      // elements per side within one 512-byte quadrant
     return twoK() ? quad * 2 : quad;
@@ -181,8 +185,7 @@ bool DazzlerBoard::frameChanged() {
 
     uint16_t n = twoK() ? kMaxBytes : kQuadrant;
     for (uint16_t i = 0; i < n; ++i) {
-        uint8_t live = bus_ ? bus_->peek((uint16_t)(base_ + i)) : 0xFF;
-        if (live != shadow_[i]) return true;
+        if (sample(i) != shadow_[i]) return true;
     }
     return false;
 }
@@ -217,7 +220,7 @@ void DazzlerBoard::render() {
             for (int byteRow = 0; byteRow < 32; ++byteRow) {
                 for (int byteCol = 0; byteCol < 16; ++byteCol) {
                     uint16_t off  = (uint16_t)(q * kQuadrant + byteRow * 16 + byteCol);
-                    uint8_t  byte = bus_ ? bus_->peek((uint16_t)(base_ + off)) : 0xFF;
+                    uint8_t  byte = sample(off);
                     shadow_[off]  = byte;
 
                     if (isX4) {

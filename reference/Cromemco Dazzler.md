@@ -223,13 +223,30 @@ into the card's RAM. A read always comes from main memory, never from the card. 
 RAM means the display readout and a bus write never conflict, so the bus speed does not
 matter.
 
-**Window.** `OUT 0E` D6–D0 is the base address of the upper-left pixel, as before. The page
-says the card subtracts this base from S-100 `A15–A0`; if the result is `0000`–`0FFF`, the
-data is also written to card RAM. The page also calls the overlay a "2K window". The card
-holds 4K and shows 2K of it. Which 2K is shown: remove jumper P18 pins 31–32 to move the
-display up `800H`, or fit the optional U18 (74LS574) and set its bit 0 from software. The
-card decodes `A0–A23`; switch SW6 sets the upper lines (all closed = lowest 64K). With the
-IDT 7132 chip the card holds only 2K, which is always shown.
+**Window.** `OUT 0E` D6–D0 is the base address of the upper-left pixel, as before. The card
+subtracts this base from S-100 `A15–A0`; if the result is `0000`–`0FFF`, the data is also
+written to card RAM. This is exact in the CPLD source (`BJL_ver4.pld`): the write is accepted
+when the difference has A15–A12 clear and there was no borrow, so an address below the base
+does not wrap into the window. It is **not** gated by the display being on.
+
+The card holds 4K and **shows 2K of it**: the scan uses 11 address bits (`ra0–ra10`) and
+`ra11` is the *page* signal (`DISPLAY_FINL4CS.PLD`). The page-2 half is at `+800H`. **P18
+pins 31–32 closed** shows it (open = the first half, "TV Dazzler"); the same bit can come from
+the extra user port (SW1, D0 = page, D1 = spare, D2 = alternate color map). The card decodes
+`A0–A23`; switch SW6 sets the upper lines (all closed = lowest 64K). With the IDT 7132 chip
+the card holds only 2K, which is always shown.
+
+**Status port.** `IN 0E` bits D5–D0 read **0** on the II: the CPLD drives `LDI0`–`LDI5`
+from its joystick latches and has no term that sets them for port `0E`, and its comment says
+"PORT 0E BITS 0 TO 5 WILL READ AS LOW". The original floats them high (§2.3). A program that
+waits for `3F` (GOTCHA) would not see it. *Not checked on a board.*
+
+**Alternate color map.** P18 pins 3–4 closed (or extra port D2) selects a second color
+equation set in the video CPLD. The difference is in `DISPLAY_FINL4CS.PLD` (`altmap`); it is
+not documented elsewhere.
+
+**Power-on.** The `OUT 0E` base and display-enable latches and the card RAM have no reset
+term in the CPLD source, so all are undefined at power-on.
 
 **Trap for emulation.** Card RAM holds only what was **written after** the base was set.
 Original games that cleared or drew the picture *before* they turned the Dazzler on and
@@ -242,8 +259,9 @@ time.
 own 4K array, and the frame scan reads that array. Registers, status bits (§2.3) and the
 pixel encoding (§4) do not change.
 
-**Not stated by the page:** the setup time of the base before the first write, the exact
-subtract logic, and what happens if the base changes while the picture is displayed.
+**Not stated, by the page or the CPLD source:** the setup time of the base before the first
+write, and what happens if the base changes while the picture is displayed. The write gate
+(`nxtadrok`) is an input the CPLD source does not define.
 
 **Also on the II board, outside this file:** four video outputs (RGB or B/W at TV or VGA
 rates, YPbPr, NTSC composite) and a built-in joystick/DAC circuit like the D+7A, so one

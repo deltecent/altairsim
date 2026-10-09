@@ -88,6 +88,7 @@ and within a group the boards are in **alphabetical order**.
 |---|---|
 | [`cadzilla`](#cadzilla) | CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC |
 | [`dazzler`](#dazzler) | Cromemco Dazzler: color graphics |
+| [`dazzler2`](#dazzler2) | Cromemco Dazzler II: color graphics, on-board RAM |
 | [`vdb8024`](#vdb8024) | SD Systems VDB-8024: 80x24 video terminal board |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: 16x64 memory-mapped video |
 
@@ -1103,6 +1104,25 @@ Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BA
 | `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Read-only **(read-only — not a key you may set)** |
 | `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Read-only **(read-only — not a key you may set)** |
 | `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only **(read-only — not a key you may set)** |
+
+
+### `dazzler2`
+
+Cromemco Dazzler II (a modern board): the Dazzler with its picture in 4 KB of RAM on the card, not main RAM. It watches memory writes, so the picture can sit in a ROM or an empty address, and it holds undefined data until a base is set. Ports 0E/0F as the Dazzler. Needs a Display
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0xE` | `0x0` .. `0xFE` | I/O base port -- control/status (BASE) and format (BASE+1). Even; default 0E |
+| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
+| `video` | string | — | — | LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Read-only **(read-only — not a key you may set)** |
+| `resolution` | string | — | — | LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 size): 32x32, 64x64 or 128x128. Read-only **(read-only — not a key you may set)** |
+| `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Read-only **(read-only — not a key you may set)** |
+| `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Read-only **(read-only — not a key you may set)** |
+| `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only **(read-only — not a key you may set)** |
+| `page` | enum | `0` | `0` \| `800` | Which 2 KB half of the card's 4 KB RAM is shown: 0 = the first, 800 = the second, at +800H (jumper P18 pins 31-32 closed) |
+| `seed` | int | `1` | any | Seed for the undefined contents of the card RAM at power-on. The same seed gives the same contents at every power |
 
 
 ### `vdb8024`

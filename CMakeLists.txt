@@ -558,6 +558,10 @@ add_library(altair_core STATIC
   # Renders into the same host Display seam as the VDM-1; no bus-mastering. See
   # cromemco-dazzler.h.
   src/boards/cromemco-dazzler.cpp
+  # The Dazzler II: the same card with its picture in 4 KB of on-board RAM, fed by
+  # watching memory writes -- a second board type derived from DazzlerBoard, like
+  # tarbelldd. See cromemco-dazzler2.h.
+  src/boards/cromemco-dazzler2.cpp
   # The SD Systems VDB-8024: an 80x24 video terminal on one board (two I/O ports, NOT
   # memory-mapped), the video console alternative to the SBC's 8251. Renders the same
   # host Display seam as the VDM-1 and takes its keyboard from a ByteStream like the
@@ -822,6 +826,7 @@ add_executable(altair_tests
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
   tests/test_dazzler.cpp
+  tests/test_dazzler2.cpp
   tests/test_multiwindow.cpp
   tests/framecheck.cpp
   tests/test_framedump.cpp

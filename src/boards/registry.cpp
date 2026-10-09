@@ -7,6 +7,7 @@
 #include "boards/cromemco-d7a.h"
 #include "boards/newtech-music.h"
 #include "boards/cromemco-dazzler.h"
+#include "boards/cromemco-dazzler2.h"
 #include "boards/cadzilla.h"
 #include "boards/dualide.h"
 #include "boards/dualsd.h"
@@ -96,6 +97,7 @@ std::vector<BoardType> boardTypes() {
         {"4pio", "MITS 88-4PIO: up to four 6820 parallel ports", "MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BASE (default 20). Software-set direction; CONNECT each section"},
         {"vdm1", "Processor Technology VDM-1: 16x64 memory-mapped video", "Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (default CC00), scroll/status port (default CC). MCM6576 character ROM; control codes 00-1F show their glyphs unless `blanking` says not. Needs a Display"},
         {"dazzler", "Cromemco Dazzler: color graphics", "Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BASE+0..1 (default 0E): control/status and format. 32x32 to 128x128, 16 colors/greys. Needs a Display"},
+        {"dazzler2", "Cromemco Dazzler II: color graphics, on-board RAM", "Cromemco Dazzler II (a modern board): the Dazzler with its picture in 4 KB of RAM on the card, not main RAM. It watches memory writes, so the picture can sit in a ROM or an empty address, and it holds undefined data until a base is set. Ports 0E/0F as the Dazzler. Needs a Display"},
         {"vdb8024", "SD Systems VDB-8024: 80x24 video terminal board", "SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display"},
         {"cadzilla", "CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC", "CADzilla: an HD63484 ACRTC graphics board with a Bt453 RAMDAC and 2 MB of fixed frame memory, on a fixed VESA monitor (mode: 640x480, 800x600, 1024x768 (default)). One 8-port I/O block at BASE (default 70): ACRTC RS=0 at +0, MODE register at +1 (write-only: HSPOL/VSPOL/AMODE/OLEN), ACRTC RS=1 at +2, Bt453 at +4..+7. Draws by command through the ACRTC FIFO; wired for 8 bpp, GAI +8, single or interleaved access set by MODE AMODE. Interrupts (SW1-8) optional (interrupt=none|int|vi0..vi7). Needs a Display"},
         {"d7a", "Cromemco D+7A: analog + parallel I/O, joysticks", "Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host"},
@@ -149,6 +151,7 @@ std::unique_ptr<Board> makeBoard(const std::string& type) {
     if (type == "4pio") return std::make_unique<Pio4Board>();
     if (type == "vdm1") return std::make_unique<VdmBoard>();
     if (type == "dazzler") return std::make_unique<DazzlerBoard>();
+    if (type == "dazzler2") return std::make_unique<Dazzler2Board>();
     if (type == "vdb8024") return std::make_unique<Vdb8024Board>();
     if (type == "cadzilla") return std::make_unique<CadzillaBoard>();
     if (type == "d7a") return std::make_unique<D7aBoard>();
