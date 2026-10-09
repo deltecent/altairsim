@@ -226,7 +226,13 @@ bool setProperty(Board& b, const std::string& key, const std::string& text, std:
 // yet. It validates, and hands the board the raw text to build from -- so the board still
 // parses its own values (`at` is hex, `size` takes a K, a path is a path), and the radix
 // rule lives where it always did, in the property's own declaration.
-bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::string& err) {
+//
+// WHICH KEY IT REFUSED goes back in *badKey, as an index into `kv`, when the refusal is
+// about one key. A key can sit a long way below its table's header -- TOML puts a bare
+// key in the last table opened -- so the loader needs the key's own line, and only the
+// caller knows the lines. A refusal about the whole table leaves *badKey alone.
+bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::string& err,
+                        size_t* badKey) {
     bool known = false;
     for (const auto& t : subUnitTables())
         if (t == table) known = true;
@@ -245,7 +251,11 @@ bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::stri
     // message below that has to quote the reader's own words back.
     std::vector<std::string> written;
 
-    for (const auto& [k, text] : kv) {
+    for (size_t n = 0; n < kv.size(); n++) {
+        const auto& [k, text] = kv[n];
+        // Every refusal inside this loop is about THIS key.
+        if (badKey) *badKey = n;
+
         const Property* p = nullptr;
         for (const auto& x : schema)
             if (named(x, k)) p = &x;
@@ -264,8 +274,11 @@ bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::stri
                 if (!legal.empty()) legal += ", ";
                 legal += x.name;
             }
-            err = where + "has no `" + k + "`";
-            if (!legal.empty()) err += " -- it takes " + legal;
+            // SAY WHAT KIND OF THING IT IS. "has no `name`" left the reader asking: no
+            // `name` what? It is a KEY, the word the manual and the loader's other errors
+            // use for a `key = value` line in a machine file.
+            err = where + "has no key `" + k + "`";
+            if (!legal.empty()) err += " -- its keys are " + legal;
             return false;
         }
 
@@ -299,6 +312,8 @@ bool Board::loadSubUnit(const std::string& table, const KeyValues& kv, std::stri
         written.push_back(k);
     }
 
+    // Every key passed. What addSubUnit() refuses now is about the table as a whole.
+    if (badKey) *badKey = kv.size();
     return addSubUnit(table, canon, err);
 }
 

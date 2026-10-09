@@ -651,11 +651,25 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
             KeyValues kv = t.kv;
             if (dot != std::string::npos) kv.push_back({"unit", sub.substr(dot + 1)});
             // The board's message already names the TABLE and the CARD TYPE ("dcdd:
-            // [[board.drive]] has no `readnoly` -- it takes unit, mount, readonly, media"),
+            // [[board.drive]] has no key `readnoly` -- its keys are unit, mount, readonly, media"),
             // so all this needs to add is the file and the id. Prefixing the table again
             // here read `[[board.drive]] on dsk0: dcdd: [[board.drive]] has no ...`.
-            if (!current->loadSubUnit(table, kv, err)) {
-                err = at(t.line) + current->id + ": " + err;
+            //
+            // THE LINE IS THE KEY'S, NOT THE TABLE'S. TOML puts a bare key in the last
+            // table opened, so a stray key can be far below the header, and the header's
+            // line looks correct. The `unit` appended above has no line of its own; it
+            // and a refusal about the whole table fall back to the header.
+            size_t bad = kv.size();
+            if (!current->loadSubUnit(table, kv, err, &bad)) {
+                bool oneKey = bad < t.kvLine.size();
+                err = at(oneKey ? t.kvLine[bad] : t.line) + current->id + ": " + err;
+                // ...AND SAY WHICH TABLE THE KEY IS IN. The key's line alone reads as
+                // nonsense when the reader did not mean the key for this table at all:
+                // `name = "x"` with no [machine] above it "has no `name`" on a drive.
+                // The header's line is what shows them where the key landed.
+                if (oneKey)
+                    err += "; this key is in the [[board." + table + "]] table that starts at line " +
+                           std::to_string(t.line);
                 return false;
             }
             continue;

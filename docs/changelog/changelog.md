@@ -8,6 +8,10 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**The error for a wrong key in a drive or region table gives the correct line.** When a key in
+a `[[board.drive]]` or `[[board.region]]` table was refused, the error gave the line where the
+table started. It now gives the line of the key, and says which table the key is in.
+
 **The error for two machine names on the command line is clearer.** Before, `altairsim` said
 "more than one machine given" even when the shell had cut one file name at a space. It now says
 that only one machine file or built-in name may be given, says what each name is, and says how

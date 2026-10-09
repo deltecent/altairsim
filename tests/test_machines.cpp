@@ -727,6 +727,55 @@ void test_subunit_schema() {
           "...whichever spelling comes first");
     CHECK(err.find("writeprotect") != std::string::npos && err.find("readonly") != std::string::npos,
           "...and it still quotes BOTH of the reader's own words, not the canonical one twice");
+
+    // ---- THE LINE IN THE ERROR IS THE KEY'S, NOT THE TABLE'S ----
+    //
+    // TOML puts a bare key in the last table opened, so a stray key can be a long way
+    // below its header. Two machine files pasted together did exactly that: the second
+    // file's `name` landed in the first file's [[board.drive]], and the error named the
+    // header's line, which was correct TOML and told the reader nothing.
+    //
+    //   line 4  [[board]]
+    //   line 7  [[board.drive]]
+    //   line 8  unit
+    //   line 12 the key under test
+    auto drive0 = [](const std::string& key) {
+        return "[machine]\nname = \"x\"\nbase = \"default\"\n[[board]]\nid = \"dsk0\"\n\n"
+               "[[board.drive]]\nunit = 0\n\n# a long way down\n\n" + key + "\n";
+    };
+    {
+        Machine     mk;
+        std::string ek;
+        CHECK(!loadTomlText(drive0("name = \"stray\""), "t.toml", mk, ek),
+              "a key the drive table does not take is refused");
+        CHECK(ek.find("t.toml: line 12: ") == 0,
+              "...and the error gives the line of the KEY, which is where the mistake is");
+        CHECK(ek.find("; this key is in the [[board.drive]] table that starts at line 7") !=
+                  std::string::npos,
+              "...and says which table the key landed in, because a key that was never "
+              "meant for a drive makes no sense without that");
+    }
+    {
+        Machine     mk;
+        std::string ek;
+        CHECK(!loadTomlText(drive0("media = \"minidisk\""), "t.toml", mk, ek),
+              "a value the key does not take is refused");
+        CHECK(ek.find("t.toml: line 12: ") == 0, "...at the line of that key too");
+    }
+    {
+        // NOT ABOUT ONE KEY: the table has no `unit`, so there is no key to point at and
+        // the header is the right place to send the reader.
+        Machine     mk;
+        std::string ek;
+        CHECK(!loadTomlText("[machine]\nname = \"x\"\nbase = \"default\"\n[[board]]\nid = \"dsk0\"\n\n"
+                            "[[board.drive]]\n\n\nmount = \"x.dsk\"\n",
+                            "t.toml", mk, ek),
+              "a drive table with no `unit` is refused");
+        CHECK(ek.find("t.toml: line 7: ") == 0,
+              "...at the line of the TABLE, because no one key is wrong");
+        CHECK(ek.find("this key is in") == std::string::npos,
+              "...and with no key to place, it does not say where one is");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -965,9 +1014,9 @@ void test_toml_errors() {
     CHECK(refusedWith("[machine]\nbase = \"default\"\n[[board]]\nid = \"dsk0\"\n"
                       "  [[board.drive]]\n"        // 5
                       "  unit = 0\n"
-                      "  readnoly = true\n",
-                      {"line 5: dsk0:", "readnoly"}),
-          "a bad sub-unit key, at the sub-unit's table");
+                      "  readnoly = true\n",         // 7
+                      {"line 7: dsk0:", "readnoly"}),
+          "a bad sub-unit key, at the key and not at the sub-unit's table");
     CHECK(refusedWith("[machine]\nbase = \"default\"\n[[board]]\nid = \"sio0\"\n"
                       "  [board.unit.a]\n"
                       "  buad = 9600\n",
