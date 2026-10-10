@@ -192,6 +192,12 @@ simulator removes when it stops. With nobody on it the output is dropped, so the
 session from the moment they open it. Windows has no pseudo-terminal: `--mirror pty` is refused
 there, so use `socket:PORT`.
 
+**For a person with a hardware terminal, the mirror can be a real serial port:
+`--mirror serial:DEVICE`** (every platform; `COM3` on Windows). The port is 8N1 at 9600 baud with
+no flow control; `?baud=N` selects another rate and `?ro` makes it watch-only. Quote the option.
+The simulator cannot tell when a terminal is on the port, so it sends at all times, at the speed
+of the port, and it does not make the guest wait.
+
 Between two `run`s the guest is stopped, so a character you type then waits on the line and is
 read on the next `run` — the same as staging input with `send`. To hand the console to a person,
 **`start`** the guest instead (see *Leaving the guest running* below): it then runs between calls,

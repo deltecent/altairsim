@@ -39,6 +39,7 @@
 
 #include "host/stream.h"
 #include "platform/pty.h"
+#include "platform/serial.h"
 #include "platform/socket.h"
 
 #include <cstdint>
@@ -98,6 +99,32 @@ public:
 
 private:
     std::unique_ptr<platform::Pty> pty_;
+};
+
+// The serial sink (issue #683): the watcher is a terminal on a real port. Unlike the
+// socket and the pseudo-terminal, nothing tells us when somebody is there -- DCD and DSR
+// are not reliably driven by a terminal -- so the sink is attached for as long as the
+// port is open, and a terminal that arrives late is simply on a line that was already
+// running. The port is 8N1 with flow control off; with no board on the mirror to program
+// it, the sink owns its one option, the rate.
+class SerialMirrorSink : public MirrorSink {
+public:
+    SerialMirrorSink(std::unique_ptr<platform::SerialPort> port, long long baud)
+        : port_(std::move(port)), baud_(baud) {}
+    void   poll() override {}
+    bool   attached() const override { return true; }
+    size_t read(uint8_t* buf, size_t n) override { return port_->read(buf, n); }
+    // What the driver took -- less than n when its buffer is full. NOT a queue: the
+    // mirror's own bounded, drop-oldest queue holds the rest (HostSerialStream's
+    // always-accept queue is for a board, which must never see a short write).
+    size_t write(const uint8_t* buf, size_t n) override { return port_->write(buf, n); }
+    std::string note() const override {
+        return port_->path() + " at " + std::to_string(baud_) + " baud";
+    }
+
+private:
+    std::unique_ptr<platform::SerialPort> port_;
+    long long                             baud_;
 };
 
 class MirrorStream : public ByteStream {

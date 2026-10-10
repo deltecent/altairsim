@@ -92,6 +92,8 @@ std::string endpointHelp(bool all) {
     // The pseudo-terminal mirror only where the host has pseudo-terminals (not Windows);
     // the docs generator lists it regardless, like `printer:` above.
     if (all || platform::havePty()) parts.emplace_back("<endpoint>|pty[:LINK]");
+    // A real serial port as the mirror's sink (issue #683), on every host that has one.
+    parts.emplace_back("<endpoint>|serial:DEVICE[?baud=N]");
 
     // Wrap the grammar so it does not run off the page -- the full list is one long line
     // that landed in the CONNECT help, the "no endpoint" error and the generated reference
@@ -136,7 +138,9 @@ std::string rebaseEndpointPaths(const std::string&                              
         if (path == "pty") {
         } else if (path.rfind("pty:", 0) == 0) {
             if (path.size() > 4) path = "pty:" + rebase(path.substr(4));
-        } else if (!path.empty() && path.rfind("socket:", 0) != 0) {
+        } else if (!path.empty() && path.rfind("socket:", 0) != 0 &&
+                   path.rfind("serial:", 0) != 0) {
+            // (`serial:` is a mirror sink too: a device name, not a file in the config dir.)
             path = rebase(path);
         }
         return rebaseEndpointPaths(inner, rebase) + "|" + path + opts;
@@ -320,11 +324,22 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
         // bare `socket:PORT`; a `?ro` option makes it read-only (watch, no take-over).
         // A `pty` or `pty:LINK` right side is the same mirror over a pseudo-terminal
         // (issue #683): the watcher opens the link with a terminal program.
-        const bool ptySink = path == "pty" || path.rfind("pty:", 0) == 0;
-        if (path.rfind("socket:", 0) == 0 || ptySink) {
+        const bool ptySink    = path == "pty" || path.rfind("pty:", 0) == 0;
+        const bool serialSink = path.rfind("serial:", 0) == 0;
+        if (path.rfind("socket:", 0) == 0 || ptySink || serialSink) {
             uint16_t    port = 0;
             std::string link;  // "" = the first free /tmp/altairsim{n}
-            if (ptySink) {
+            std::string device;
+            long long   baud = 9600;  // the serial sink's only line setting (8N1 fixed)
+            if (serialSink) {
+                device = path.substr(7);
+                if (device.empty()) {
+                    err = "mirror: serial: needs a device (|serial:/dev/tty.usbserial-XXXX, "
+                          "|serial:COM3)";
+                    for (const auto& p : platform::listSerialPorts()) err += "\n  " + p;
+                    return nullptr;
+                }
+            } else if (ptySink) {
                 link = path.size() > 4 ? path.substr(4) : "";
                 if (path.size() == 4) {
                     err = "mirror: pty: wants a path for the link (or use a bare 'pty')";
@@ -362,10 +377,21 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
                             return nullptr;
                         }
                         readOnly = v.b();
+                    } else if (key == "baud" && serialSink) {
+                        // Only a serial sink has a rate: the socket and the pty are not
+                        // clocked, and a board has nothing here to program it.
+                        char*     end = nullptr;
+                        long long b   = eq == std::string::npos ? 0
+                                                                : std::strtoll(val.c_str(), &end, 10);
+                        if (eq == std::string::npos || val.empty() || *end || b <= 0) {
+                            err = "mirror: baud wants a positive number (baud=9600)";
+                            return nullptr;
+                        }
+                        baud = b;
                     } else {
-                        err = "mirror: unknown option '" + key +
-                              "'. The only option is ro (read-only) -- the port or "
-                              "the link comes before '?'";
+                        err = "mirror: unknown option '" + key + "'. The options are ro "
+                              "(read-only)" + (serialSink ? " and baud" : "") +
+                              " -- the port, the link or the device comes before '?'";
                         return nullptr;
                     }
                 }
@@ -380,6 +406,28 @@ std::unique_ptr<ByteStream> resolveEndpoint(const std::string& spec, std::string
             // re-selects this branch on reload).
             auto innerStream = resolveEndpoint(inner, err);
             if (!innerStream) return nullptr;
+            if (serialSink) {
+                // One port cannot be both the line and its mirror.
+                if (innerStream->describe() == "serial:" + device) {
+                    err = "mirror: " + device + " is already the line this mirrors";
+                    return nullptr;
+                }
+                platform::SerialConfig cfg;
+                cfg.baud = baud;
+                auto sp  = platform::openSerialPort(device, cfg, err);
+                if (!sp) {
+                    // Name what is actually there, as the serial: endpoint does.
+                    auto have = platform::listSerialPorts();
+                    if (!have.empty()) {
+                        err += "\nserial ports on this host:";
+                        for (const auto& p : have) err += "\n  " + p;
+                    }
+                    return nullptr;
+                }
+                return std::make_unique<MirrorStream>(
+                    std::move(innerStream), file,
+                    std::make_unique<SerialMirrorSink>(std::move(sp), baud), readOnly);
+            }
             if (ptySink) {
                 auto pty = platform::openPty(link, err);
                 if (!pty) return nullptr;

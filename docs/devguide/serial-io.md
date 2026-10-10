@@ -157,8 +157,19 @@ truncates the file once at startup. Anything that peels decorators to reach the 
 output is dropped with no watcher, the queue is bounded and drops its oldest bytes, typed keys
 are injected, `ro` discards them — and the sink is only the wire: `poll()`, `attached()`,
 `read()`, `write()`. `SocketMirrorSink` is the TCP listener; `PtyMirrorSink` wraps
-`platform::Pty` (`|pty`, `|pty:LINK`, issue #683). A new sink, such as a real serial port, is a
-third class and one branch in the resolver.
+`platform::Pty` (`|pty`, `|pty:LINK`, issue #683). `SerialMirrorSink` wraps a
+`platform::SerialPort` (`|serial:DEVICE[?baud=N]`). A new sink is one more class and one branch
+in the resolver.
+
+**The serial sink is not a `HostSerialStream`.** `HostSerialStream` is a line for a board: it
+owns the modem pins, a board reprograms it, and it accepts every byte into its own queue because
+a board must never see a short write. A mirror has no board, so the sink opens the port at 8N1
+and 9600 baud (or `?baud=`), with flow control off, and `write()` returns what the driver took.
+`MirrorStream` keeps the rest in its own bounded queue. `attached()` is always true: DCD and DSR
+are not reliably driven by a terminal, so nothing says when one is there. Reads and writes that
+fail return 0, as in `HostSerialStream`, so an adapter that is unplugged makes the mirror go
+quiet without an error. The test uses a fake `SerialPort`, and one case uses the slave of a pty
+as the device.
 
 **`pty` alone is the line itself, not a mirror.** `PtyStream` (`host/pty_stream.h`, issue #685)
 holds the same `platform::Pty` as a plain `ByteStream`, and is built like `TcpStream`: a program

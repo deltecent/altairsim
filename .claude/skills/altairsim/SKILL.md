@@ -63,7 +63,7 @@ guest prints to `FILE` as plain text. It is an ordinary file — they can `cat` 
 follow it live, for example with `tail -f FILE` (PowerShell: `Get-Content -Wait FILE`). It is
 watch-only; `--mirror` is for a person who must type.
 
-**For a person who wants to type**, start the server with `--mirror`. Two sinks:
+**For a person who wants to type**, start the server with `--mirror`. Three sinks:
 
 - `--mirror socket:PORT` — every platform. The person runs `nc localhost PORT` (or `telnet`).
 - `--mirror pty` — macOS and Linux only. The simulator prints
@@ -72,7 +72,11 @@ watch-only; `--mirror` is for a person who must type.
   each key as it is typed and does not echo it, so prefer this sink where it exists.
   `--mirror pty:PATH` picks the name. Windows refuses it (exit 2): use `socket:PORT` there.
 
-`?ro` makes either sink watch-only; quote it (`--mirror 'pty?ro'`). Tell the person the name or
+- `--mirror serial:DEVICE` — every platform (`COM3` on Windows). For a person with a hardware
+  terminal on a serial port. 8N1 at 9600 baud, no flow control; `?baud=N` picks another rate.
+  The simulator cannot tell when a terminal is there, and it never makes the guest wait.
+
+`?ro` makes any sink watch-only; quote it (`--mirror 'pty?ro'`). Tell the person the name or
 the port — they cannot see the server's stderr. Their keys reach the guest only while it runs,
 so `start` the guest before you hand the console over.
 

@@ -4,6 +4,7 @@
 #include "host/mirror_stream.h"
 #include "host/stream.h"
 #include "platform/pty.h"
+#include "platform/serial.h"
 #include "platform/socket.h"
 
 #include <chrono>
@@ -64,6 +65,46 @@ struct FakeListener : platform::TcpListener {
     std::unique_ptr<platform::TcpConn> accept() override { return std::move(pending); }
     uint16_t                           port() const override { return port_; }
 };
+
+// A fake serial port -- no driver, no cable, so every byte is asserted. `toTerm` is what
+// the mirror sent the terminal; `fromTerm` is what the person typed there. `room` models
+// the driver's buffer: the bytes it can still take before write() starts returning 0.
+struct FakeSerial : platform::SerialPort {
+    std::string toTerm;
+    std::string fromTerm;
+    size_t      room = SIZE_MAX;
+    std::string path_ = "FAKE0";
+
+    size_t read(uint8_t* buf, size_t n) override {
+        size_t k = fromTerm.size() < n ? fromTerm.size() : n;
+        std::memcpy(buf, fromTerm.data(), k);
+        fromTerm.erase(0, k);
+        return k;
+    }
+    size_t write(const uint8_t* buf, size_t n) override {
+        size_t k = room < n ? room : n;
+        toTerm.append((const char*)buf, k);
+        if (room != SIZE_MAX) room -= k;
+        return k;
+    }
+    bool                     configure(const platform::SerialConfig&, std::string&) override { return true; }
+    platform::ModemLines     lines() const override { return {}; }
+    void                     setControl(bool, bool) override {}
+    void                     setBreak(bool) override {}
+    void                     flush() override {}
+    const std::string&       path() const override { return path_; }
+};
+
+// A mirror over a scripted line with a FakeSerial as its sink.
+MirrorStream makeSerialMirror(ScriptedStream*& sc, FakeSerial*& fs, bool readOnly,
+                              long long baud = 9600) {
+    auto inner = std::make_unique<ScriptedStream>();
+    sc         = inner.get();
+    auto port  = std::make_unique<FakeSerial>();
+    fs         = port.get();
+    return MirrorStream(std::move(inner), "serial:FAKE0",
+                        std::make_unique<SerialMirrorSink>(std::move(port), baud), readOnly);
+}
 
 void put(ByteStream& s, const std::string& bytes) {
     s.write(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size());
@@ -673,5 +714,156 @@ void test_mirror() {
               "with or without an option");
         CHECK(rebaseEndpointPaths("scripted|pty:con", rebase) == "scripted|pty:/cfg/con",
               "the link after `pty:` is a path, and rebases like one");
+    }
+    SECTION("mirror serial: the guest's output reaches the port, every byte value unchanged");
+    {
+        ScriptedStream* sc = nullptr;
+        FakeSerial*     fs = nullptr;
+        MirrorStream    m  = makeSerialMirror(sc, fs, /*readOnly=*/false);
+        CHECK(m.watching(), "a serial sink is always there: nothing says when a terminal is");
+        std::string all;
+        for (int i = 0; i < 256; ++i) all.push_back((char)i);
+        put(m, all);
+        CHECK(fs->toTerm == all, "all 256 values arrive, with nothing added or eaten");
+        CHECK(sc->out() == all, "and the wrapped line got every byte too");
+        m.pump();
+        CHECK(!m.readable(), "the mirror echoes nothing back to the guest");
+    }
+
+    SECTION("mirror serial: what is typed at the port reaches the guest; ?ro throws it away");
+    {
+        ScriptedStream* sc = nullptr;
+        FakeSerial*     fs = nullptr;
+        MirrorStream    m  = makeSerialMirror(sc, fs, /*readOnly=*/false);
+        fs->fromTerm = "DIR\r";
+        CHECK(!m.readable(), "nothing is readable until pump drains the port");
+        m.pump();
+        CHECK(get(m, 16) == "DIR\r", "the guest reads exactly what was typed");
+
+        ScriptedStream* sc2 = nullptr;
+        FakeSerial*     fs2 = nullptr;
+        MirrorStream    ro  = makeSerialMirror(sc2, fs2, /*readOnly=*/true);
+        fs2->fromTerm = "rm -rf";
+        ro.pump();
+        CHECK(!ro.readable() && fs2->fromTerm.empty(),
+              "read-only drains the port and drops the keys");
+        put(ro, "OUT");
+        CHECK(fs2->toTerm == "OUT", "but output still flows to the terminal");
+    }
+
+    SECTION("mirror serial: a port that takes a few bytes never stalls the guest");
+    {
+        ScriptedStream* sc = nullptr;
+        FakeSerial*     fs = nullptr;
+        MirrorStream    m  = makeSerialMirror(sc, fs, /*readOnly=*/false);
+        fs->room = 4;  // the driver's buffer is nearly full
+        put(m, "ABCDEFGHIJ");
+        CHECK(fs->toTerm == "ABCD", "the port took what it could");
+        CHECK(sc->out() == "ABCDEFGHIJ", "the guest's line got all ten: nothing was held up");
+        CHECK(m.writable(), "and the guest is still allowed to write");
+
+        fs->room = SIZE_MAX;  // the wire drains
+        m.pump();
+        CHECK(fs->toTerm == "ABCDEFGHIJ", "the rest follows at the next pump, in order");
+    }
+
+    SECTION("mirror serial: a port that never drains stays bounded and loses the oldest");
+    {
+        ScriptedStream* sc = nullptr;
+        FakeSerial*     fs = nullptr;
+        MirrorStream    m  = makeSerialMirror(sc, fs, /*readOnly=*/false);
+        fs->room = 0;
+        const std::string chunk(1024, 'x');
+        for (int i = 0; i < 600; ++i) put(m, chunk);  // 600 KB against a 256 KB cap
+        put(m, "TAIL");
+        fs->room = SIZE_MAX;
+        m.pump();
+        CHECK(fs->toTerm.size() == 256 * 1024, "the backlog is the cap, no more");
+        CHECK(fs->toTerm.compare(fs->toTerm.size() - 4, 4, "TAIL") == 0,
+              "and it is the newest bytes that are kept");
+    }
+
+    SECTION("mirror serial: modem pins and the rate are the wrapped line's, not the port's");
+    {
+        ScriptedStream* sc = nullptr;
+        FakeSerial*     fs = nullptr;
+        MirrorStream    m  = makeSerialMirror(sc, fs, /*readOnly=*/false, 19200);
+        LineParams      p;
+        std::string     err;
+        CHECK(m.setParams(p, err) == sc->setParams(p, err), "setParams goes to the inner line");
+        CHECK(m.sinkNote() == "FAKE0 at 19200 baud", "the note names the port and the rate");
+    }
+
+    SECTION("mirror serial: the grammar -- baud, ro, and what is refused");
+    {
+        std::string err;
+        CHECK(resolveEndpoint("scripted|serial:", err) == nullptr, "no device is refused");
+        CHECK(has(err, "device"), "and the error asks for one");
+        err.clear();
+        CHECK(resolveEndpoint("scripted|serial:/dev/altairsim-no-such-port", err) == nullptr,
+              "a port that is not there is refused at resolve time");
+        CHECK(has(err, "cannot open"), "and the error says what failed");
+        err.clear();
+        CHECK(resolveEndpoint("scripted|serial:COM9?baud=fast", err) == nullptr,
+              "a rate that is not a number is refused");
+        CHECK(has(err, "baud"), "and the error names the option");
+        err.clear();
+        CHECK(resolveEndpoint("scripted|serial:COM9?baud=0", err) == nullptr, "baud=0 is refused");
+        err.clear();
+        CHECK(resolveEndpoint("scripted|serial:COM9?bogus", err) == nullptr,
+              "an unknown option is refused");
+        CHECK(has(err, "baud") && has(err, "ro"), "and the error lists baud and ro");
+        err.clear();
+        CHECK(resolveEndpoint("scripted|socket:2323?baud=9600", err) == nullptr,
+              "baud is the serial sink's: the socket sink refuses it");
+
+        auto rebase = [](const std::string& p) { return "/cfg/" + p; };
+        CHECK(rebaseEndpointPaths("scripted|serial:/dev/cu.x?baud=19200", rebase) ==
+                  "scripted|serial:/dev/cu.x?baud=19200",
+              "a serial sink is a device name, not a file in the config folder");
+        CHECK(rebaseEndpointPaths("in:t.tap|serial:COM3", rebase) == "in:/cfg/t.tap|serial:COM3",
+              "while the inner path still rebases");
+    }
+
+    if (platform::havePty()) {
+    SECTION("mirror serial: end to end on a real device (a pty slave stands in for the port)");
+    {
+        const std::string link = ptyLink("altairsim-test-serial");
+        std::string       err;
+        auto              term = platform::openPty(link, err);
+        CHECK(term != nullptr, "a pseudo-terminal to play the terminal");
+        if (term) {
+            const std::string dev = term->device();
+            auto s = resolveEndpoint("scripted|serial:" + dev + "?baud=19200", err);
+            if (!s) std::printf("  note: %s\n", err.c_str());
+            CHECK(s != nullptr, "the mirror opens the device as a serial port");
+            if (s) {
+                CHECK(s->describe() == "scripted|serial:" + dev + "?baud=19200",
+                      "describe() round-trips for SHOW and CONFIG SAVE");
+                auto log = s->drainLog();
+                CHECK(log.size() == 1 && has(log[0], dev) && has(log[0], "19200"),
+                      "the operator is told the device and the rate, once");
+                std::string all;
+                for (int i = 0; i < 256; ++i) all.push_back((char)i);
+                put(*s, all);
+                std::string seen;
+                uint8_t     buf[4096];
+                CHECK(waitFor([&] {
+                          s->pump();
+                          term->poll();
+                          for (size_t r; (r = term->read(buf, sizeof buf)) > 0;)
+                              seen.append((const char*)buf, r);
+                          return seen.size() >= 256;
+                      }),
+                      "all 256 values reach the far end of the device");
+                CHECK(seen == all, "byte for byte");
+
+                const std::string typed = "DIR\r";
+                term->write((const uint8_t*)typed.data(), typed.size());
+                CHECK(waitFor([&] { s->pump(); return s->readable(); }), "keys typed there arrive");
+                CHECK(get(*s, 16) == typed, "and the guest reads them unchanged");
+            }
+        }
+    }
     }
 }

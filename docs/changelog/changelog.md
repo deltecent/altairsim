@@ -8,6 +8,12 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**A mirror can go to a real serial port.** Add `|serial:DEVICE` to any endpoint, or start
+`--mcp` with `--mirror serial:DEVICE`, and a hardware terminal on that port watches the line and
+types on it. The port is 8N1 at 9600 baud with no flow control, and `?baud=N` selects another
+rate. It works on every platform. The program cannot tell when a terminal is on the port, so it
+sends the output at all times and the guest never waits for it.
+
 **New board: `dazzler2`, the Cromemco Dazzler II.** It works like the `dazzler`, but it keeps the
 picture in 4 KB of RAM on the board and copies the writes it sees. Use it to test a program for
 a real Dazzler II. It shows random data when a program draws before it sets the base. It shows a

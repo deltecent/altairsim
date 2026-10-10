@@ -780,7 +780,8 @@ in the machine knows what any of these words mean.
 Endpoints: console | null | loopback | scripted | socket:PORT[?banner] | socket:HOST:PORT |
 telnet:PORT[?banner=off] | telnet:HOST:PORT | serial:DEVICE | pty[:LINK] |
 in:PATH | out:PATH | terminal[?emulation=vt100&size=80x24] | printer:QUEUE |
-<endpoint>|FILE | <endpoint>|socket:PORT | <endpoint>|pty[:LINK]
+<endpoint>|FILE | <endpoint>|socket:PORT | <endpoint>|pty[:LINK] |
+<endpoint>|serial:DEVICE[?baud=N]
 
 ```
 console     the host's terminal -- the keyboard and screen you are typing at
@@ -833,6 +834,9 @@ printer:    QUEUE -- a real print queue on this host (only where the build found
             simulator prints a name, /tmp/altairsim0 for the first, and a person
             opens it with a terminal program (`screen /tmp/altairsim0`).
             |pty:LINK puts the name where you say. ?ro makes it watch-only.
+<endpoint>|serial:DEVICE   the same MIRROR on a real serial port: a hardware
+            terminal on the port watches the line and can type on it. 8N1 at
+            9600 baud; ?baud=N sets the rate, ?ro makes it watch-only.
 ```
 
 Exactly ONE unit may hold the console; connecting a second STEALS it and says
