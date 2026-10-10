@@ -1168,6 +1168,15 @@ add_test(NAME acceptance-cwdconfig
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cwdconfig.cmake)
 set_tests_properties(acceptance-cwdconfig PROPERTIES LABELS acceptance TIMEOUT 60)
 
+# ~/altairsim.ini runs on a plain interactive launch and on nothing else: not --mcp, not -x,
+# not -s, whose stdout is a transport or a CI transcript.
+add_test(NAME acceptance-userinit
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/userinit.cmake)
+set_tests_properties(acceptance-userinit PROPERTIES LABELS acceptance TIMEOUT 60)
+
 # A file name with a space, run unquoted, is two arguments: the error says names, not
 # machines, states the rule and says how to start from a built-in (issue #712).
 add_test(NAME acceptance-cli-args
@@ -1989,3 +1998,17 @@ else()
                  "(prompt echo, ATTN, clock pacing, typed guest commands, interrupt-driven "
                  "console input) go uncovered here.")
 endif()
+
+# An operator's own ~/altairsim.ini would run on every interactive launch an acceptance
+# test makes and print `ini>` lines into what the test reads. Point HOME at a folder with
+# no such file, for every acceptance test, so a developer's machine and CI agree. (Set last,
+# so it covers every test added above.)
+get_property(_all_tests DIRECTORY PROPERTY TESTS)
+foreach(_t IN LISTS _all_tests)
+  # tnfs-hw launches the binary interactively too, but is not named acceptance-*.
+  if(_t MATCHES "^acceptance-" OR _t STREQUAL "tnfs-hw")
+    set_property(TEST ${_t} APPEND PROPERTY ENVIRONMENT
+                 "HOME=${CMAKE_CURRENT_BINARY_DIR}/no-home"
+                 "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/no-home")
+  endif()
+endforeach()

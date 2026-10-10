@@ -397,6 +397,30 @@ This command has one script and one machine. The program loads the machine `mine
 runs its startup commands. It then runs each line of `check.cmd` on that machine. A script
 takes no arguments.
 
+## A script that runs at every start: `~/altairsim.ini`
+
+If there is a file called `altairsim.ini` in your home folder, `altairsim` runs it each time
+that you start the monitor. It is a script, the same kind as `-s` runs: monitor commands, one on
+each line. Use it for settings that belong to you and not to a machine, for example where the
+debug output goes. This line writes it to a file in your home folder:
+
+```
+# ~/altairsim.ini
+SET CONSOLE DEBUG=altairsim-debug.log
+```
+
+The file runs after the machine is loaded and before the machine's own `startup` commands, so a
+machine that starts running at once still gets your settings. The program shows each line
+behind `ini>` as it runs it.
+
+- **No file is not an error.** Without the file, nothing happens.
+- **A command that fails does not stop the file.** The program shows the error, runs the next
+  line, and the exit status is not changed.
+- **A path in the file is relative to your home folder.**
+- **`--mcp`, `-x` and `-s` do not run it.** Their output is read by a program, and a file in
+  your home folder must not change it. To use the same lines in a script, name the file:
+  `altairsim -s ~/altairsim.ini`.
+
 ## Which chapter next
 
 The **configuring** chapter describes the machine file: every table, every key, and the four

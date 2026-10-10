@@ -3650,6 +3650,50 @@ void test_achieved_hz() {
               "MACHINE none then BOARDS ADD builds a machine by hand");
     }
 
+    SECTION("runUserInit runs the operator's ~/altairsim.ini: quiet when absent, never fails the run");
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "altairsim-userinit";
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+        fs::create_directories(dir, ec);
+        const std::string ini = (dir / "altairsim.ini").generic_string();
+        const auto npos = std::string::npos;
+
+        Machine mu;
+        Monitor monu(mu);
+
+        // No file: silence, and nothing tripped. The file is optional.
+        std::ostringstream none;
+        monu.runUserInit(ini, none);
+        CHECK(none.str().empty(), "no altairsim.ini prints nothing");
+        CHECK(!monu.failed(), "no altairsim.ini does not trip failed()");
+
+        // A file: each line runs behind `ini> `, comments and blanks are skipped, and a
+        // relative debug sink lands beside the file (the home folder), not in the cwd.
+        {
+            std::ofstream f(ini);
+            f << "; the operator's own settings\n\n";
+            f << "SET CONSOLE DEBUG=userinit.log\n";
+            f << "NO_SUCH_COMMAND\n";  // a bad line: reported, and the next line still runs
+            f << "SHOW DEBUG\n";
+        }
+        std::ostringstream ran;
+        monu.runUserInit(ini, ran);
+        const std::string t = ran.str();
+        CHECK(t.find("ini> SET CONSOLE DEBUG=userinit.log") != npos, "each line is echoed behind ini>");
+        CHECK(t.find("userinit.log") != npos && t.find("sink=") != npos,
+              "the file's SET CONSOLE DEBUG took effect");
+        CHECK(t.find("ini> SHOW DEBUG") != npos, "a line after a bad one still runs");
+        CHECK(!monu.failed(), "a bad line in the operator's file never changes the exit status");
+        CHECK(fs::exists(dir / "userinit.log"), "a relative sink is rooted at the file's folder");
+
+        // Leave the process-global sink as the other suites expect it.
+        std::ostringstream reset;
+        monu.exec("SET CONSOLE DEBUG=stderr", reset);
+        fs::remove_all(dir, ec);
+    }
+
     SECTION("DO runs a file of commands as if typed, and guards against a runaway");
     {
         namespace fs = std::filesystem;
