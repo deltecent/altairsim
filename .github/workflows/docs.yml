@@ -178,7 +178,27 @@ jobs:
                      -m "Rebuilt by .github/workflows/docs.yml because this push changed the
           documents. Only the PDFs whose extracted text actually moved are here;
           a rebuild that differed solely by its date/hash stamp was discarded."
-          git push origin HEAD:master
+
+          # master may have moved while this run built (two merges seconds apart), and a push
+          # from the older commit is then rejected as not a fast-forward (#650). Two cases:
+          #  - a later push touched the documents: its own run (queued by the docs-pdf group)
+          #    rebuilds every PDF from the newer tree, so this run has nothing left to do.
+          #  - a later push touched nothing here: no run will follow, so these PDFs must
+          #    still land. Put this commit on top of master and push again.
+          # Any other failure stays red.
+          for try in 1 2 3; do
+            git push origin HEAD:master && exit 0
+            git fetch origin master
+            if [ -n "$(git diff --name-only "$GITHUB_SHA" origin/master -- \
+                  'docs/**' 'examples/**/README.md' 'tools/user/README.md' \
+                  tools/build-docs.sh tools/chrome-print.py .github/workflows/docs.yml)" ]; then
+              echo "::notice::master moved and its change touches the documents; the run for that push rebuilds the PDFs."
+              exit 0
+            fi
+            git rebase --onto origin/master HEAD~1
+          done
+          echo "::error::could not push the PDFs after 3 tries"
+          exit 1
 
       # On a PR there is nothing to commit, but there IS something to say: the PDFs on this
       # branch are not the ones that will ship. Master's job rebuilds them after the merge.
