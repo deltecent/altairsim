@@ -123,8 +123,9 @@ static void usage(std::ostream& o) {
          "      --mcp          MCP server on stdio (for Claude).\n"
          "      --mirror <sink>  with --mcp: mirror the console so a person can watch and\n"
          "                     take over. socket:PORT (telnet in), or on macOS and Linux\n"
-         "                     pty or pty:LINK (open the link with a terminal program).\n"
-         "                     Add ?ro for watch-only.\n"
+         "                     pty or pty:LINK (open the link with a terminal program), or\n"
+         "                     serial:DEVICE[?baud=N] (a terminal on a real port, 9600 baud\n"
+         "                     8N1 by default). Add ?ro for watch-only.\n"
          "      --log <file>   with --mcp: write what the guest prints to a text file, as\n"
          "                     it prints it. An ordinary file; starts empty each run.\n"
          "  -v, --version      print the version and exit.\n"
@@ -181,10 +182,13 @@ int main(int argc, char** argv) {
         } else if (s == "--mcp") {
             mcp = true;
         } else if (s == "--mirror") {
-            if (!need(i, "a sink (--mirror socket:2323, or --mirror pty)")) return 2;
+            if (!need(i, "a sink (--mirror socket:2323, --mirror pty or --mirror serial:DEVICE)"))
+                return 2;
             // Accept a bare port for convenience: `--mirror 2323` is `socket:2323`.
-            // `pty` and `pty:LINK` name the other sink, a pseudo-terminal (issue #683).
-            const bool named = a[i].rfind("socket:", 0) == 0 || a[i].rfind("pty", 0) == 0;
+            // `pty` and `pty:LINK` name the pseudo-terminal sink, and `serial:DEVICE` a real
+            // port (issue #683).
+            const bool named = a[i].rfind("socket:", 0) == 0 || a[i].rfind("pty", 0) == 0 ||
+                               a[i].rfind("serial:", 0) == 0;
             mirror = named ? a[i] : "socket:" + a[i];
         } else if (s == "--log") {
             if (!need(i, "a file (--log session.log)")) return 2;
@@ -240,7 +244,9 @@ int main(int argc, char** argv) {
         std::cerr << "--mirror needs --mcp (it mirrors the console the MCP tools drive).\n"
                      "Without --mcp, mirror a line from the monitor: CONNECT <u> <ep>|"
                      "socket:PORT"
-                  << (altair::platform::havePty() ? " (or |pty)" : "") << "\n";
+                  << (altair::platform::havePty() ? " (or |pty, |serial:DEVICE)"
+                                                  : " (or |serial:DEVICE)")
+                  << "\n";
         return 2;
     }
 

@@ -699,7 +699,9 @@ void cheatsheet(const std::string& dir) {
          "| `<endpoint>\\|socket:PORT` | a live mirror: `telnet` in to watch and take over. "
          "`?ro` = watch-only. |\n"
          "| `<endpoint>\\|pty[:LINK]` | the same mirror on a pseudo-terminal (macOS and "
-         "Linux): open `/tmp/altairsim0`, or `LINK`, with a terminal program. |\n\n";
+         "Linux): open `/tmp/altairsim0`, or `LINK`, with a terminal program. |\n"
+         "| `<endpoint>\\|serial:DEVICE` | the same mirror on a real serial port, 8N1: a "
+         "hardware terminal watches and types. `?baud=N` (default 9600), `?ro`. |\n\n";
 
     std::ofstream out(dir + "/cheatsheet.md");
     out << kDoNotEdit << "\n# Quick reference\n\n## Contents\n\n";

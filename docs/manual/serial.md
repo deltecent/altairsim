@@ -79,7 +79,8 @@ This is the complete list.
 
 You can add two things to any endpoint. `|FILE` writes every byte on the line to a log file, and
 `|socket:PORT` lets a second person watch the line and type on it (`|pty` does the same for a
-terminal program, on macOS and Linux). See "Tap a line to a log
+terminal program, on macOS and Linux, and `|serial:DEVICE` does the same for a terminal on a
+serial port). See "Tap a line to a log
 file" and "Mirror a line", below.
 
 ### `null` is not an error
@@ -617,6 +618,50 @@ a = "console|pty:/tmp/console"
 what the guest prints. If `pty:` names a file that is not a link, the program refuses, and does
 not replace the file. Windows has no pseudo-terminal, and refuses `|pty`.
 
+### A mirror on a serial port
+
+A mirror can go to a **serial port** on your computer. A hardware terminal, or a second
+computer with a terminal program, then watches the line and types on it. Add `|serial:DEVICE`
+to any endpoint:
+
+```
+altairsim> CONNECT sio0:a console|serial:/dev/cu.usbserial-AL009KFH
+sio0:a: connected to console|serial:/dev/cu.usbserial-AL009KFH
+mirror: /dev/cu.usbserial-AL009KFH at 9600 baud
+```
+
+The port is 8 data bits, no parity and 1 stop bit, with no flow control. The rate is 9600 baud.
+`?baud=N` selects a different rate, and the terminal must use the same one. No board programs
+this port, as it does for `serial:` as an endpoint, so the rate is part of the mirror:
+
+```
+altairsim> CONNECT sio0:a console|serial:/dev/cu.usbserial-AL009KFH?baud=19200
+```
+
+In a machine file:
+
+```toml
+[[board]]
+id = "sio0"
+a = "console|serial:/dev/cu.usbserial-AL009KFH?baud=19200"
+```
+
+`?ro` makes this mirror watch-only also. Use `&` to give two options:
+`serial:COM3?baud=19200&ro`.
+
+Three things are different from a socket or a pseudo-terminal:
+
+- **The program cannot tell when a terminal is there.** The mirror sends the output to the port
+  at all times. A terminal that you connect later shows the output that is still waiting to go,
+  which is at most 256 KB, and the oldest output is discarded first.
+- **The port sets the speed.** At 9600 baud a long listing takes time to print, and the guest
+  does not wait for it. Only a terminal that falls behind loses the oldest text.
+- **A key that you type reaches the guest only while the guest runs.** This is the same as for
+  a socket.
+
+If the device does not open, the program refuses, and lists the serial ports that it can see.
+The port cannot be the same one that the line uses.
+
 ## An endpoint that `CONNECT` does not understand is an error
 
 If the program cannot read your endpoint, it **refuses, and lists the forms that it accepts**:
@@ -626,7 +671,8 @@ altairsim> CONNECT sio0:a sockit:2323
 no endpoint 'sockit:2323'. Try: console | null | loopback | scripted | socket:PORT[?banner] | socket:HOST:PORT |
 telnet:PORT[?banner=off] | telnet:HOST:PORT | serial:DEVICE | pty[:LINK] |
 in:PATH | out:PATH | terminal[?emulation=vt100&size=80x24] | printer:QUEUE |
-<endpoint>|FILE | <endpoint>|socket:PORT | <endpoint>|pty[:LINK]
+<endpoint>|FILE | <endpoint>|socket:PORT | <endpoint>|pty[:LINK] |
+<endpoint>|serial:DEVICE[?baud=N]
 ```
 
 It never uses `null` in its place. A machine that boots and prints nothing sends you to look for

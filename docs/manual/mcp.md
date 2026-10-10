@@ -158,6 +158,29 @@ while the guest is stopped waits on the line. To take over the console, ask the 
 monitor, and it answers what you type at once. The assistant can still use its other tools. The
 guest runs until the assistant uses `stop`.
 
+### A mirror for a hardware terminal: `--mirror serial:DEVICE`
+
+The mirror can be a **serial port** on your computer. A terminal on that port, or a second
+computer with a terminal program, watches the session and can type on it. This works on every
+platform.
+
+```
+$ altairsim examples/cpm/cpm22-buffered.toml --mcp --mirror serial:/dev/cu.usbserial-AL009KFH
+altairsim: --mirror: open /dev/cu.usbserial-AL009KFH at 9600 baud
+```
+
+The port is 8 data bits, no parity and 1 stop bit, with no flow control, at 9600 baud. Add
+`?baud=N` for a different rate, and `?ro` to make the mirror watch-only. Quote the option, as
+for a socket: `--mirror 'serial:/dev/cu.usbserial-AL009KFH?baud=19200'`. On Windows the device
+is a name such as `COM3`.
+
+The program cannot tell when a terminal is on the port. It sends the output at all times, at the
+speed of the port. The guest does not wait for it. While the guest is stopped between two `run`s,
+the program keeps sending what is still queued, so a long listing finishes on the terminal.
+
+Keys that you type reach the guest only while it runs. Ask the assistant to **`start`** the guest
+to take over the console, as for a socket.
+
 ## Keep a text log: `--log`
 
 Add `--log FILE` with `--mcp`, and the program writes each character that the guest prints to
