@@ -58,6 +58,13 @@ public:
     // config can do -- so `startup` is not a second language.
     void runStartup(std::ostream& out);
 
+    // Run the operator's own script (`~/altairsim.ini`) from `path`, as if typed, echoing
+    // each line behind `ini> `. A file that is not there is silent -- it is optional. A bad
+    // line is reported by the command itself and the rest still run, and none of it
+    // changes the exit status: the file is the operator's, not part of any machine or
+    // test. The caller decides WHEN (main.cpp: a plain interactive launch only).
+    void runUserInit(const std::string& path, std::ostream& out);
+
     // THE WINDOW, so the run loop can be told it was closed (host/display.h).
     //
     // Injected by the composition root, like every other host service the boards get

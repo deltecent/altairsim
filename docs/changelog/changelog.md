@@ -8,6 +8,12 @@ as it is now; this document is the record of how it got there.
 
 ## Unreleased
 
+**`~/altairsim.ini` runs at every start.** Put monitor commands in a file called
+`altairsim.ini` in your home folder, and `altairsim` runs them before the machine's own
+`startup`. Use it for settings that are yours and not a machine's, such as where the debug
+output goes. `--mcp`, `-x` and `-s` do not run it, so a script or a test gives the same result
+on every computer.
+
 **A mirror can go to a real serial port.** Add `|serial:DEVICE` to any endpoint, or start
 `--mcp` with `--mirror serial:DEVICE`, and a hardware terminal on that port watches the line and
 types on it. The port is 8N1 at 9600 baud with no flow control, and `?baud=N` selects another

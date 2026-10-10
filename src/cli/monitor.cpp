@@ -231,10 +231,12 @@ static bool is(const std::string& tok, const char* kw) { return upper(tok) == kw
 // Point the one global debug sink (SET CONSOLE DEBUG=<sink>). `stderr` and `stdout`
 // are reserved words; anything else is a file path opened for APPEND (a transcript,
 // not a truncate). A bad path leaves the prior sink in place and returns false.
-static bool applyDebugSink(const std::string& v, std::string& err) {
+// `file` is `v` rooted like any other typed path (Monitor::resolveInput), so a `~` at the
+// prompt and a relative path in a script both mean what they mean everywhere else.
+static bool applyDebugSink(const std::string& v, const std::string& file, std::string& err) {
     if (is(v, "STDERR")) return dbg::setSink(dbg::Sink::Stderr, "", err);
     if (is(v, "STDOUT")) return dbg::setSink(dbg::Sink::Stdout, "", err);
-    return dbg::setSink(dbg::Sink::File, v, err);
+    return dbg::setSink(dbg::Sink::File, file, err);
 }
 
 // ---------------------------------------------------------------------------
@@ -3878,7 +3880,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // the channel: SET <board> DEBUG=..., handled below).
             if (is(k, "DEBUG")) {
                 std::string err;
-                if (!applyDebugSink(v, err)) {
+                if (!applyDebugSink(v, resolveInput(v), err)) {
                     out << err << "\n";
                     failed_ = true;
                 } else {
@@ -4106,7 +4108,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             std::string k = a[i].substr(0, eq), v = a[i].substr(eq + 1);
             std::string err;
             if (is(k, "DEBUG")) {  // the global sink, as in SET CONSOLE DEBUG= above
-                if (!applyDebugSink(v, err)) {
+                if (!applyDebugSink(v, resolveInput(v), err)) {
                     out << err << "\n";
                     failed_ = true;
                     return true;
@@ -6185,6 +6187,19 @@ void Monitor::runStartup(std::ostream& out) {
     // names the two files lying beside it, and goes on naming them whether you `cd`
     // into that directory or point at it from somewhere else.
     runLines(m_.startup, m_.dir, "startup> ", out);
+}
+
+void Monitor::runUserInit(const std::string& path, std::ostream& out) {
+    std::ifstream f(path);
+    if (!f) return;  // optional: no file is the normal case
+    std::vector<std::string> lines;
+    for (std::string ln; std::getline(f, ln);) {
+        if (!ln.empty() && ln.back() == '\r') ln.pop_back();  // a CRLF file, POSIX host
+        lines.push_back(ln);
+    }
+    const bool wasFailed = failed_;
+    runLines(lines, dirOf(path), "ini> ", out);
+    failed_ = wasFailed;  // the operator's file never decides the exit status
 }
 
 void Monitor::runLines(const std::vector<std::string>& lines, const std::string& dir,

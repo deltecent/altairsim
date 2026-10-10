@@ -41,6 +41,7 @@
 #include "host/endpoint.h"
 #include "host/cardimg.h"
 #include "host/media.h"
+#include "platform/home.h"
 #include "host/terminal/emulator.h"
 #include "host/terminal/stream.h"
 #include "mcp/server.h"
@@ -119,6 +120,9 @@ static void usage(std::ostream& o) {
          "                     it are relative to the script's folder.\n"
          "  -x, --exec <cmd>   run one monitor command (repeatable), then exit.\n"
          "  -i, --interactive  after --script/--exec, stay in the monitor.\n"
+         "\n"
+         "  An interactive launch first runs ~/altairsim.ini if it exists -- monitor commands,\n"
+         "  one per line, for settings such as SET CONSOLE DEBUG. --mcp, -s and -x skip it.\n"
          "\n"
          "      --mcp          MCP server on stdio (for Claude).\n"
          "      --mirror <sink>  with --mcp: mirror the console so a person can watch and\n"
@@ -542,6 +546,14 @@ int main(int argc, char** argv) {
     const bool willRepl = interactive || (exec.empty() && script.empty());
     const bool hasCliCmds = !exec.empty() || !script.empty();
     if (willRepl && !hasCliCmds) banner();
+
+    // The operator's own `~/altairsim.ini` -- DEBUG sinks and the like. Only on a plain
+    // launch: -x/-s output is a CI transcript, and --mcp returned above (its stdout is the
+    // JSON-RPC transport). A file in the home directory must never change either.
+    if (exec.empty() && script.empty()) {
+        const std::string home = platform::homeDir();
+        if (!home.empty()) mon.runUserInit(home + "/altairsim.ini", std::cout);
+    }
 
     mon.runStartup(std::cout);
 
