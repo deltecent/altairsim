@@ -23,14 +23,24 @@ runs until you start one.
 ## macOS: the first run
 
 macOS marks a file that comes from the internet. It does not run a marked program that is not
-signed. If you see *"cannot be opened because the developer cannot be verified"*, remove the
-mark:
+signed. The first time that you start the program, macOS shows one of these messages:
+
+- macOS 27: a dialog with the title *"altairsim" Not Opened* and the text *Apple could
+  not verify "altairsim" is free of malware that may harm your Mac or compromise your privacy.*
+- Earlier versions: *"altairsim" cannot be opened because the developer cannot be verified.*
+
+**Press Done. Do not press Move to Trash.** Move to Trash is the default button, so the Return
+key deletes the program. After you press Done, remove the mark:
 
 ```
 $ xattr -dr com.apple.quarantine ./altairsim
 ```
 
-You do this one time. macOS does this to every unsigned program in a downloaded archive.
+Start the program again. macOS does not show the message again for this copy.
+
+Do this one time for each download. Each new archive has a new mark, so you do it again for
+each release. You can also allow the program in System Settings, in Privacy & Security, with
+**Allow Anyway**. That way needs an administrator password.
 
 A browser or a mail client adds the mark. If you got the archive with `curl` or `scp`, the file
 may have no mark. In that case, the command does nothing, and that is correct.

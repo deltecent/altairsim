@@ -1028,7 +1028,7 @@ MACHINE none     ; an empty backplane: BOARDS ADD 8080 cpu0, ..., POWER, RUN 0
 ### MOUNT — `M[OUNT]`
 
 ```
-MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]
+MOUNT <id>[:<u>] <file>|tnfs://<host>[:<port>]/<path> [WP] [CREATE] [extract[=<base>]] [k=v...]
 ```
 Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.
 WP write-protects it: the guest may read it and may not write it.
@@ -1038,6 +1038,11 @@ read-only because of what it is.
 CREATE makes the file first if it is not there (empty), then mounts it -- a
 fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing
 file is a 'no such file', because a mistyped name is a mistake, not a new disk.
+
+tnfs://<host>[:<port>]/<path> mounts an image from a TNFS server, the FujiNet
+network file system. The port is 16384 if you do not give one. The program
+reads the whole image at MOUNT. It writes the changes back to the server when
+the guest flushes the disk, and at UNMOUNT.
 
 A TRAILING k=v IS CHECKED BEFORE ANYTHING IS CREATED OR MOUNTED. A bad key or
 value is refused, and nothing is created or mounted.
@@ -1060,6 +1065,7 @@ MOUNT dsk0:drive0 disks/cpm.dsk
 MOUNT dsk0:drive1 disks/master.dsk WP
 MOUNT dsk0:drive1 new.dsk CREATE      ; a blank disk to FORMAT from the guest
 MOUNT fd0:drive1 new.dsk CREATE media=8ds ; a blank 8" two-sided disk
+MOUNT dsk0:drive1 tnfs://fileserver/cpm/games.dsk ; an image on a TNFS server
 MOUNT mem0:rom0 roms/monitor.bin
 MOUNT ACR tape.bin                    ; the one cassette, its one tape: acr0:tape
 MOUNT ACR new.wav CREATE mode=record  ; a blank tape, in and recording

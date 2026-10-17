@@ -12,6 +12,25 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**The Quick Start now gives the macOS step for a downloaded copy.** macOS blocks a program from
+a browser download until you remove its mark with `xattr -dr com.apple.quarantine ./altairsim`.
+Only the chapters *Running it* and *Troubleshooting* gave the command, and they quoted only the
+message of earlier macOS versions. Now both Quick Starts give it. The
+manual also quotes the macOS 27 dialog, *"altairsim" Not Opened*, and tells you to press
+**Done**, because the default button, **Move to Trash**, deletes the program. You do the step
+one time for each download, not one time only.
+
+**`HELP MOUNT` now names `tnfs://`.** `MOUNT` can get a disk image from a TNFS server, but only
+the *Disks* chapter said so. The syntax line, the cheat sheet and `DRIVING-WITH-AI.md` now give
+the form `tnfs://<host>[:<port>]/<path>`, with an example.
+
+**The manual now puts the skills where Claude Code loads them.** *Start a project of your own*
+and *What is in the package* told you to put the `skills` folder in the project folder. Claude
+Code does not load skills from there. Now they tell you to install the skills in a skills
+folder, and to put `DRIVING-WITH-AI.md` and `cheatsheet.md` in the project folder only for an
+assistant that does not read skills. `DRIVING-WITH-AI.md` has a new section, *Your own
+project*: keep a spare copy of the machine, and keep a session note in the folder.
+
 **The MCP `connect` tool now lists the endpoints that `CONNECT` takes.** The description of
 its `endpoint` argument gave `tcp:HOST:PORT` and `file:PATH` as examples. The simulator has no
 `tcp:` endpoint, and `out:PATH` replaced `file:PATH` before the first release. An assistant that

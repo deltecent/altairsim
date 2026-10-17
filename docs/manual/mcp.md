@@ -231,15 +231,26 @@ you keep the copy in the package unchanged, you always have a clean one to start
 Also keep a spare copy of the machine and its new disk, so that "start again" gives you a known
 state, not what the guest last wrote.
 
-**Give it local information to read.** Put `DRIVING-WITH-AI.md` and the `skills` folder in the
-folder. `DRIVING-WITH-AI.md` is the briefing for the assistant itself, with the steps for booting
-and debugging over MCP. The files in `skills` have the rules for programs that run in the
-machine, such as the assembler and MBASIC.
+**Give it local information to read.** The package has the files for this:
+`DRIVING-WITH-AI.md`, `cheatsheet.md` and the `skills` folder. `DRIVING-WITH-AI.md` is the
+briefing for the assistant, with the steps for booting and debugging over MCP. The other folders
+in `skills` have the rules for programs that run in the machine, such as the assembler and
+MBASIC.
+
+- If your assistant reads Agent Skills, install the folders in `skills` in its skills folder.
+  The section on `DRIVING-WITH-AI.md` in the chapter *What is in the package* tells you where.
+  The `altairsim` skill has its own copy of `DRIVING-WITH-AI.md` and `cheatsheet.md`, so do not
+  put these files in the project folder too. Claude Code loads skills only from the places that
+  section names. It does not load a `skills` folder at the top of the project folder.
+- If your assistant does not read Agent Skills, put `DRIVING-WITH-AI.md`, `cheatsheet.md` and
+  the `skills` folder in the project folder, and tell the assistant to read them.
+
 Keep a second folder, for example `Reference`, for anything else that you want the assistant to
 use: the parts of this manual that are important to your project, and your own source material,
-converted to plain Markdown. An assistant reads Markdown most reliably. These copies go out of
-date when `altairsim` changes, and the assistant cannot tell an old copy from a current one.
-Update them when you update `altairsim`.
+converted to plain Markdown. An assistant reads Markdown most reliably. All of these copies go
+out of date when `altairsim` changes: the installed skills, the files in the project folder and
+the `Reference` folder. The assistant cannot tell an old copy from a current one. When you update
+`altairsim`, copy the skills or the files again from the new package, and update `Reference`.
 
 **Watch what it does, because it uses what it already knows.** An assistant does not read the
 files in your folder and then do what they say. It chooses its next step from everything in

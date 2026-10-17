@@ -277,10 +277,15 @@ plug, and the program keeps that difference.
 
 ## macOS refuses to run the program
 
-If you see *"cannot be opened because the developer cannot be verified"*, type:
+macOS 27 shows *"altairsim" Not Opened* and *Apple could not verify "altairsim" is free of
+malware*. Earlier versions show *"cannot be opened because the developer cannot be verified"*.
+
+**Press Done. Do not press Move to Trash**, because that button deletes the program.
+After you press Done, type:
 
 ```
 $ xattr -dr com.apple.quarantine ./altairsim
 ```
 
-You do this one time. The chapter *Running it* tells you more.
+Do this one time for each download. Each new archive has the mark again. The chapter
+*Running it* tells you more.

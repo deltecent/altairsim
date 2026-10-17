@@ -89,7 +89,7 @@ Type the part before the bracket.
 | `I[N]` | Read a byte from an I/O port. | `IN <port>` |
 | `L[OAD]` | Load a file into memory (binary, Intel hex or S-record). | `LOAD <file> [AT <addr>] [FORMAT=BIN\|HEX\|SREC] [ROM]` |
 | `MA[CHINE]` | Load a built-in machine by name (MACHINE none empties the backplane). | `MACHINE <name> \| MACHINE none` |
-| `M[OUNT]` | Put a disk or tape image into a drive; a .imd is converted to a raw .dsk beside it. | `MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
+| `M[OUNT]` | Put a disk or tape image into a drive; a .imd is converted to a raw .dsk beside it. | `MOUNT <id>[:<u>] <file>\|tnfs://<host>[:<port>]/<path> [WP] [CREATE] [extract[=<base>]] [k=v...]` |
 | `MOV[E]` | Copy a range of memory to another address. | `MOVE <range> <dest> [ROM]` |
 | `N[EXT]` | Step one instruction, running any CALL/RST to completion. | `NEXT` |
 | `NO[BREAK]` | Remove a breakpoint, or all of them. | `NOBREAK [id]` |

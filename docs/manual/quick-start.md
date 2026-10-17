@@ -5,6 +5,16 @@ commands that you use every time: `Ctrl-E`, `RUN` and `QUIT`.
 
 Type the commands in the folder where you unzipped the package.
 
+On **macOS**, if you got the package with a browser, type this command first. Without it, macOS
+does not run the program:
+
+```
+$ xattr -dr com.apple.quarantine ./altairsim
+```
+
+If macOS shows a message about the program, press **Done**, not **Move to Trash**. The chapter
+*Running it* tells you more.
+
 ## Boot CP/M
 
 1. Start the machine:

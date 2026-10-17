@@ -150,7 +150,7 @@ static const std::vector<CommandDef> kCommands = {
      "  HISTORY 100      ; the last hundred instructions\n"
      "  HISTORY BUS      ; the last 16 bus cycles\n"
      "  HISTORY BUS 100  ; the last hundred cycles"},
-    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file> [WP] [CREATE] [extract[=<base>]] [k=v...]",
+    {"MOUNT", true, nullptr, "MOUNT <id>[:<u>] <file>|tnfs://<host>[:<port>]/<path> [WP] [CREATE] [extract[=<base>]] [k=v...]",
      "Put a disk in a drive, a tape in a recorder, or an image in a ROM socket.\n"
      "WP write-protects it: the guest may read it and may not write it.\n"
      "RO is accepted and means the same -- it is the word for a ROM, which is\n"
@@ -159,6 +159,11 @@ static const std::vector<CommandDef> kCommands = {
      "CREATE makes the file first if it is not there (empty), then mounts it -- a\n"
      "fresh hard-sector disk to FORMAT, or a blank cassette. Without CREATE a missing\n"
      "file is a 'no such file', because a mistyped name is a mistake, not a new disk.\n"
+     "\n"
+     "tnfs://<host>[:<port>]/<path> mounts an image from a TNFS server, the FujiNet\n"
+     "network file system. The port is 16384 if you do not give one. The program\n"
+     "reads the whole image at MOUNT. It writes the changes back to the server when\n"
+     "the guest flushes the disk, and at UNMOUNT.\n"
      "\n"
      "A TRAILING k=v IS CHECKED BEFORE ANYTHING IS CREATED OR MOUNTED. A bad key or\n"
      "value is refused, and nothing is created or mounted.\n"
@@ -180,6 +185,7 @@ static const std::vector<CommandDef> kCommands = {
      "  MOUNT dsk0:drive1 disks/master.dsk WP\n"
      "  MOUNT dsk0:drive1 new.dsk CREATE      ; a blank disk to FORMAT from the guest\n"
      "  MOUNT fd0:drive1 new.dsk CREATE media=8ds ; a blank 8\" two-sided disk\n"
+     "  MOUNT dsk0:drive1 tnfs://fileserver/cpm/games.dsk ; an image on a TNFS server\n"
      "  MOUNT mem0:rom0 roms/monitor.bin\n"
      "  MOUNT ACR tape.bin                    ; the one cassette, its one tape: acr0:tape\n"
      "  MOUNT ACR new.wav CREATE mode=record  ; a blank tape, in and recording\n"

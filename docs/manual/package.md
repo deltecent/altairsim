@@ -53,8 +53,10 @@ only if you want to build a board of your own.
 This document is for an **AI assistant**, not for you. It tells the assistant how to control the
 machine through the MCP interface of the program. To use it:
 
-1. Put `DRIVING-WITH-AI.md` and the `skills` folder in a working folder. The document names
-   files in `skills/`, which have the rules for programs such as `ASM` and MBASIC.
+1. Make a working folder. If your assistant reads Agent Skills, install the skills as this
+   section shows below. If it does not, put `DRIVING-WITH-AI.md` and the `skills` folder in the
+   working folder. The document names files in `skills/`, which have the rules for programs such
+   as `ASM` and MBASIC.
 2. Start an assistant in that folder.
 3. Ask for what you want, for example: *"Using altairsim, boot CP/M and show me what is on the
    disk."*

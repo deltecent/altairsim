@@ -21,6 +21,7 @@ a complete, guided round trip through everything this document describes.
 - Starting the server
 - Register the server with your assistant
 - Several machines, and several projects
+- Your own project
 - Watching over its shoulder — and taking the keyboard
 - The tools
 - Knowing the commands
@@ -49,6 +50,13 @@ blocks before you have control. Switching machines mid-session with `CONFIG LOAD
 same way: its `startup` runs up to the boot `RUN`, which under `--mcp` **parks** the PC rather
 than entering the run loop — so `CONFIG LOAD anymachine.toml` never wedges the server. Advance
 it with `run {from: …}` afterward.
+
+**On macOS, a downloaded copy will not start until its quarantine mark is gone.** If the user
+got the archive with a browser, macOS blocks the first run with a dialog (*"altairsim" Not
+Opened* on macOS 27, *cannot be opened because the developer cannot be verified* before it).
+Tell them to press **Done** — **Move to Trash** is the default button and deletes the program —
+then run `xattr -dr com.apple.quarantine ./altairsim` in the package folder. It is once per
+download: every new archive carries a new mark.
 
 `altairsim --list` shows the built-in machines. The CP/M example this guide is written
 against is the machine file `examples/cpm/cpm22-buffered.toml`.
@@ -155,6 +163,18 @@ machine's own folder just works, and why relative paths in a committed `.mcp.jso
 (use `${CLAUDE_PROJECT_DIR}` in the paths to be robust even when `claude` is started from a
 subfolder). The **Desktop app** is the exception noted above — it starts the server in your home
 directory — so there, use absolute paths.
+
+## Your own project
+
+When the user starts a project of their own, two habits keep it on track:
+
+- **Keep a spare copy of the machine and its disk image**, untouched, beside the working copy.
+  The guest writes to the disk as it runs, so "start again" means copying the spare back — a
+  known state — not rebooting whatever the guest last wrote.
+- **Keep a session note in the project folder.** At the end of a session, stop any processes
+  you started, then write down what you learned and where the work stands. At the start of the
+  next one, read that note first, boot the machine, and tell the user where you left off.
+  Without the note you rebuild the state from scratch each time, and get it wrong.
 
 ## Watching over its shoulder — and taking the keyboard
 
@@ -750,6 +770,9 @@ it there, and when they disagree you have a known-good side to compare against.
 - **Disk units are `driveN`, and `.imd` converts on MOUNT** — `MOUNT dsk0:0 …` is rejected;
   the unit is `drive0`. `SHOW MOUNTS` spells them out. A `.imd` becomes a raw `.dsk` on
   interactive `MOUNT` only, not through a TOML `mount =` line (see the bare-image section).
+- **A disk image can live on a TNFS server.** `MOUNT dsk0:drive1 tnfs://<host>[:<port>]/<path>`
+  (default port 16384) reads the whole image at mount; changes go back to the server when the
+  guest flushes and at `UNMOUNT`. A machine file takes the same URL in `mount =`.
 - **High bytes in output** — a serial terminal can print any byte; the server escapes
   non-UTF-8 bytes as `\u00XX` so the JSON stays valid. Read `output` as text.
 - **Debug at runtime** — `mem_dump` the (possibly self-modified) code and `regs` mid-run.

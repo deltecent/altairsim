@@ -12,6 +12,15 @@ On **Windows**, the path is spelled with backslashes and the program is `altairs
 > altairsim.exe examples\cpm\cpm22-buffered.toml
 ```
 
+On **macOS**, if you got the package with a browser, macOS blocks the program until you remove
+its download mark. Type this first, one time for each download:
+
+```
+$ xattr -dr com.apple.quarantine ./altairsim
+```
+
+If macOS shows a message about the program, press **Done**, not **Move to Trash**.
+
 That is the whole of it. The machine file boots itself — you do not type a `BOOT` command,
 because an Altair had none — and a few seconds later you are in CP/M:
 
