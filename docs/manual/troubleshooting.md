@@ -278,8 +278,11 @@ plug, and the program keeps that difference.
 
 ## macOS refuses to run the program
 
-macOS checks the program with Apple the first time that you start a new copy. If the Mac is
-offline, the check fails. macOS then shows one of these messages:
+macOS checks the program with Apple the first time that you start a new copy. The check fails
+when the Mac is offline. It also fails when you double-click `altairsim` in Finder, even when
+the Mac is online. Finder opens a plain executable as a document, and macOS checks documents
+differently from programs. A start from a terminal is checked as a program. That check passes
+when the Mac is online. When the check fails, macOS shows one of these messages:
 
 - Newer versions of macOS: a dialog with the title *"altairsim" Not Opened* and the text
   *Apple could not verify "altairsim" is free of malware*.
@@ -288,18 +291,21 @@ offline, the check fails. macOS then shows one of these messages:
 **Press Done. Do not press Move to Trash.** Move to Trash is the default button, so the Return
 key deletes the program.
 
-Connect the Mac to the internet, and start the program again. If you cannot connect it, remove
-the mark that macOS put on the download:
+Start the program from a terminal, not with a double-click:
+`./altairsim examples/cpm/cpm22-buffered.toml`. If the Mac was offline, connect it to the
+internet first. That start also clears the record of the refused double-click. If you cannot
+connect the Mac, remove the quarantine mark that macOS put on the download:
 
 ```
 $ xattr -dr com.apple.quarantine ./altairsim
 ```
 
-You can also allow the program in System Settings. This way needs an administrator password.
+You can also allow the program in System Settings when you open it from Finder. This way needs
+an administrator password.
 
 1. Press **Done** in the first dialog.
 2. In System Settings, open Privacy & Security.
 3. Press **Allow Anyway**.
-4. Start the program again. A second dialog asks if you want to open it.
+4. Double-click the program again. A second dialog asks if you want to open it.
 5. Press **Open Anyway**. Do not press Move to Trash. It is the default button in this dialog
    also.

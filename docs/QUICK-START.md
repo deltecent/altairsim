@@ -12,8 +12,10 @@ On **Windows**, the path is spelled with backslashes and the program is `altairs
 > altairsim.exe examples\cpm\cpm22-buffered.toml
 ```
 
-On **macOS**, if you got the package with a browser, macOS blocks the program until you remove
-its download mark. Type this first, one time for each download:
+On **macOS**, start the program from a terminal, not with a double-click. Finder opens a plain
+executable as a document, and macOS refuses that even when the package is signed and notarized.
+If you got the package with a browser and macOS still blocks the first start, remove its
+quarantine mark. Type this once for each download:
 
 ```
 $ xattr -dr com.apple.quarantine ./altairsim

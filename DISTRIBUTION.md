@@ -271,6 +271,14 @@ archive stays a tar.gz.
 notary ticket. For a bare `altairsim`, macOS gets the ticket from Apple the first time a user
 starts a new copy. The manual's Troubleshooting chapter says what to do when the Mac is offline.
 
+**A double-click on a notarized bare executable is still refused.** Finder starts a bare
+executable as a document. macOS checks documents separately from programs, and the check
+refuses a notarized copy, online or offline. A start from a terminal is checked as a program.
+That check passes when the Mac is online. The start also clears the record of the refused
+double-click. The manual tells users to start `altairsim` from a terminal. A `.dmg` does not
+change this, because its payload is still a bare executable. A `.pkg` would, and that is a
+release-process change, not a documentation fix.
+
 **The signing is done on the worker, not on the coordinator.** The coordinator could sign the
 Intel binary, but it would then change an archive after delivery. Step 7 proves the archive
 that ships, on the hardware that it is for. That holds only if the worker signs.

@@ -12,6 +12,11 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**The manual and the quick start now say to start the macOS program from a terminal, not with
+a double-click.** Finder refuses a double-click on the notarized `altairsim`, online or
+offline, because Finder checks the file as a document. The manual keeps the `xattr` command
+for a Mac that cannot reach Apple.
+
 **`RESTORE` reads a snapshot from an earlier release.** Before, `RESTORE` refused a snapshot
 when its format version was not the newest. It also refused a snapshot when one board was
 added, removed or changed. A snapshot from 1.3.4 could not go into 1.3.5. Now `RESTORE` matches

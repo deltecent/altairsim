@@ -51,13 +51,13 @@ same way: its `startup` runs up to the boot `RUN`, which under `--mcp` **parks**
 than entering the run loop — so `CONFIG LOAD anymachine.toml` never wedges the server. Advance
 it with `run {from: …}` afterward.
 
-**On macOS, a downloaded copy will not start until its quarantine mark is gone.** If the user
-got the archive with a browser, macOS blocks the first run with a dialog (*"altairsim" Not
-Opened* on newer versions, seen on macOS 27; *cannot be opened because the developer cannot be
-verified* on older ones).
-Tell them to press **Done** — **Move to Trash** is the default button and deletes the program —
-then run `xattr -dr com.apple.quarantine ./altairsim` in the package folder. It is once per
-download: every new archive carries a new mark.
+**On macOS, start a downloaded copy from a terminal, not with a double-click.** Finder opens a
+plain executable as a document, and macOS refuses that even when the copy is notarized. The
+same copy started from a terminal is checked as a program. That check passes when the Mac is
+online. If the Mac cannot reach Apple, remove the quarantine mark. Tell the user
+to press **Done**. **Move to Trash** is the default button and deletes the program. Run
+`xattr -dr com.apple.quarantine ./altairsim` in the package folder. Remove the mark once per
+download. Every new archive carries a new mark.
 
 `altairsim --list` shows the built-in machines. The CP/M example this guide is written
 against is the machine file `examples/cpm/cpm22-buffered.toml`.
