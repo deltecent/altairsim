@@ -40,8 +40,9 @@ public:
     void setPc(uint16_t v) override { pc_ = v; }
     bool halted() const override { return halted_; }
     bool interruptsEnabled() const override { return iff1_; }
-    // INT with IFF1 set. NMI would end a HALT whatever IFF1 says, but NMI is not modeled
-    // anywhere in the tree; when it is, a pending NMI belongs here.
+    // INT with IFF1 set. An NMI edge ends a HALT whatever IFF1 says (step()), but no
+    // board on the S-100 bus pulls NMI* yet, so it cannot wake a halt there and is left
+    // out of this answer. A board that drives NMI* on the S-100 bus must add it here.
     bool haltCanEnd(bool pint, bool eventsQueued) const override {
         return iff1_ && (pint || eventsQueued);
     }
@@ -168,6 +169,10 @@ private:
     // Inside an IM 0 interrupt acknowledge the opcode comes from the bus, not memory,
     // and PC does not move -- same seam as the 8080's INTA (bus.intAck()).
     bool intFetch_ = false;
+
+    // The NMI* level step() saw at the last instruction boundary. NMI is edge-triggered,
+    // and this is the edge detector: an NMI fires when the wire is pulled and this is not.
+    bool nmiLast_ = false;
 };
 
 } // namespace altair
