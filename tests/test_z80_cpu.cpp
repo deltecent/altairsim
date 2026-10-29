@@ -2,6 +2,7 @@
 
 #include "boards/s100-memory.h"
 #include "core/machine.h"
+#include "core/statefile.h"
 #include "cpu/cpuZ80.h"
 
 using namespace altair;
@@ -31,11 +32,25 @@ public:
     void drop() { asserting = false; intChanged(); }
 };
 
+// A board pulling NMI*. A LEVEL on the wire; the Z80 makes the edge.
+class NmiSource : public Board {
+public:
+    bool asserting = false;
+
+    std::string type() const override { return "test-nmi"; }
+    bool assertsNmi() const override { return asserting; }
+    std::vector<Property> properties() override { return {}; }
+
+    void raise() { asserting = true; nmiChanged(); }
+    void drop() { asserting = false; nmiChanged(); }
+};
+
 struct Rig {
     Machine m;
     MemoryBoard* mem = nullptr;
     CpuZ80 cpu;
     IntSource irq;
+    NmiSource nmi;
 
     Rig() {
         std::string err;
@@ -51,10 +66,16 @@ struct Rig {
 
         irq.id = "irq0";
         m.bus.attach(&irq);
+        nmi.id = "nmi0";
+        m.bus.attach(&nmi);
+        m.bus.setVerify(true);  // a stale NMI* or pINT wire aborts the suite
 
         cpu.reset(Reset::PowerOn);
     }
-    ~Rig() { m.bus.detach(&irq); }
+    ~Rig() {
+        m.bus.detach(&nmi);
+        m.bus.detach(&irq);
+    }
 
     void load(std::initializer_list<uint8_t> code, uint16_t at = 0) {
         uint16_t a = at;
@@ -241,8 +262,10 @@ void test_z80_cpu() {
         // After EI, IFF1 turns on at the end of the NOP; the interrupt is taken at the
         // next boundary. Step once more to reach it.
         g.irq.raise(0x40);
+        uint32_t r0 = g.reg("R");
         r = g.step();
         CHECK(g.cpu.pc() == 0x8000, "PC vectored through 3040 to the handler at 8000");
+        CHECK(((g.reg("R") - r0) & 0x7F) == 1, "the IM 2 acknowledge M1 refreshes, so R ticks once");
         CHECK(!g.flag("IFF1"), "accepting the interrupt cleared IFF1");
         CHECK(g.peek(0xFEFF) == 0x01, "the return address (0102) was pushed, high byte at SP-1");
         (void)r;
@@ -258,8 +281,150 @@ void test_z80_cpu() {
         g.step();                 // EI
         g.irq.raise(0x00);        // vector byte irrelevant in IM 1
         g.step();                 // NOP -- IFF1 becomes live at its end
+        uint32_t r0 = g.reg("R");
         StepResult r = g.step();  // interrupt taken here
         CHECK(g.cpu.pc() == 0x0038, "IM 1 jams RST 38");
+        CHECK(((g.reg("R") - r0) & 0x7F) == 1, "the IM 1 acknowledge M1 refreshes, so R ticks once");
         (void)r;
+    }
+
+    SECTION("IM 0 -- the device drives RST 38, and R ticks once for the acknowledge");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        g.load({0xFB, 0x00, 0x00}, 0x0700);  // EI ; NOP ; NOP
+        g.cpu.setPc(0x0700);
+        g.step();                 // EI
+        g.irq.raise(0xFF);        // RST 38 on the data bus
+        g.step();                 // NOP -- IFF1 becomes live at its end
+        uint32_t r0 = g.reg("R");
+        g.step();                 // interrupt taken here
+        CHECK(g.cpu.pc() == 0x0038, "IM 0 executes the RST the device drove");
+        CHECK(((g.reg("R") - r0) & 0x7F) == 1, "one M1, one tick -- not two");
+    }
+
+    SECTION("NMI -- a restart to 0066, 11 T-states, IFF1 cleared and IFF2 kept");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        g.load({0x00, 0x00}, 0x1A45);  // NOP ; NOP
+        g.cpu.setPc(0x1A45);
+        g.setReg("IFF1", 1);
+        g.setReg("IFF2", 1);
+        uint32_t r0 = g.reg("R");
+        g.nmi.raise();
+        StepResult r = g.step();
+        CHECK(g.cpu.pc() == 0x0066, "the NMI restarts at 0066");
+        CHECK(r.tStates == 11, "an NMI response is a restart: 11 T-states (Mode 1 is 13)");
+        CHECK(g.reg("SP") == 0xFEFE, "the return address was pushed");
+        CHECK(g.peek(0xFEFF) == 0x1A && g.peek(0xFEFE) == 0x45, "the PC it interrupted, high byte first");
+        CHECK(!g.flag("IFF1"), "accepting the NMI cleared IFF1");
+        CHECK(g.flag("IFF2"), "IFF2 kept the old IFF1 for RETN");
+        CHECK(g.reg("WZ") == 0x0066, "MEMPTR follows the restart");
+        CHECK(((g.reg("R") - r0) & 0x7F) == 1, "the acknowledge M1 refreshes, so R ticks");
+    }
+
+    SECTION("NMI -- taken with interrupts disabled, and before a pending INT");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        g.load({0xF3, 0x00}, 0x0300);  // DI ; NOP
+        g.cpu.setPc(0x0300);
+        g.step();                      // DI
+        g.nmi.raise();
+        g.step();
+        CHECK(g.cpu.pc() == 0x0066, "IFF1 = 0 does not mask an NMI");
+        CHECK(!g.flag("IFF2"), "IFF2 records that interrupts were off");
+
+        Rig h;
+        h.setReg("IM", 1);
+        h.setReg("SP", 0xFF00);
+        h.setReg("IFF1", 1);
+        h.setReg("IFF2", 1);
+        h.poke(0x0066, 0xED); h.poke(0x0067, 0x45);  // the NMI handler: RETN
+        h.load({0x00}, 0x0400);
+        h.cpu.setPc(0x0400);
+        h.irq.raise(0x00);
+        h.nmi.raise();
+        h.step();
+        CHECK(h.cpu.pc() == 0x0066, "NMI and INT together: the NMI wins");
+        h.step();                      // RETN: IFF1 <- IFF2 = 1
+        CHECK(h.cpu.pc() == 0x0400 && h.flag("IFF1"), "RETN came back with interrupts enabled");
+        h.step();
+        CHECK(h.cpu.pc() == 0x0038, "the INT that waited is taken after the RETN");
+    }
+
+    SECTION("NMI -- ends a HALT, and returns past it");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        g.load({0xF3, 0x76, 0x00}, 0x0500);  // DI ; HALT ; NOP
+        g.cpu.setPc(0x0500);
+        g.step();
+        g.step();
+        CHECK(g.cpu.halted(), "halted with interrupts off");
+        g.step();
+        CHECK(g.cpu.halted(), "and it stays halted with nothing on NMI*");
+        g.nmi.raise();
+        g.step();
+        CHECK(!g.cpu.halted() && g.cpu.pc() == 0x0066, "the NMI ended the halt");
+        CHECK(g.peek(0xFEFF) == 0x05 && g.peek(0xFEFE) == 0x02, "it pushed the address after the HALT");
+    }
+
+    SECTION("NMI -- edge-triggered: a held line fires once, a new edge fires again");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        for (uint16_t a = 0; a < 0x100; ++a) g.poke(a, 0x00);  // NOPs, handler included
+        g.cpu.setPc(0x0010);
+        g.nmi.raise();
+        g.step();
+        CHECK(g.cpu.pc() == 0x0066, "the first edge is taken");
+        g.run(4);
+        CHECK(g.cpu.pc() == 0x006A, "the line is still held: no second NMI");
+        g.nmi.drop();
+        g.step();
+        g.nmi.raise();
+        g.step();
+        CHECK(g.cpu.pc() == 0x0066 && g.reg("SP") == 0xFEFC, "release and pull again: a second NMI");
+    }
+
+    SECTION("NMI -- in the EI shadow, IFF2 keeps the enable EI gave");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        g.poke(0x0066, 0xED); g.poke(0x0067, 0x45);  // RETN
+        g.load({0xFB, 0x00}, 0x0600);  // EI ; NOP
+        g.cpu.setPc(0x0600);
+        g.step();                      // EI -- on the chip IFF1 = IFF2 = 1 now
+        g.nmi.raise();
+        g.step();
+        CHECK(g.cpu.pc() == 0x0066, "the NMI is taken right after EI");
+        CHECK(!g.flag("IFF1") && g.flag("IFF2"), "IFF1 cleared, IFF2 holds EI's enable");
+        g.step();                      // RETN
+        CHECK(g.cpu.pc() == 0x0601 && g.flag("IFF1"), "RETN restores the enable");
+    }
+
+    SECTION("NMI -- the edge detector travels in a snapshot");
+    {
+        Rig g;
+        g.setReg("SP", 0xFF00);
+        for (uint16_t a = 0; a < 0x100; ++a) g.poke(a, 0x00);
+        g.cpu.setPc(0x0010);
+        g.nmi.raise();
+        g.step();                      // taken; the line stays held
+        StateWriter w;
+        g.cpu.serialize(w);
+
+        CpuZ80 back;
+        StateReader r(w.data());
+        back.deserialize(r);
+        back.step(g.m.bus);
+        CHECK(back.pc() == 0x0067, "a held NMI does not fire again after RESTORE");
+
+        back.reset(Reset::PowerOn);
+        back.setPc(0x0010);
+        back.step(g.m.bus);
+        CHECK(back.pc() == 0x0011, "a reset does not move the pin, so a held line is no new edge");
     }
 }

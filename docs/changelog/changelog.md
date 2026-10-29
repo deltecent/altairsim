@@ -12,6 +12,11 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**The Z80 adds 1 to its `R` register when it takes an IM 1 or IM 2 interrupt.** The interrupt
+acknowledge is an M1 cycle with a refresh, the same as an opcode fetch. Before, the processor
+did not count it in IM 1 or IM 2, so `LD A,R` read 1 too low for each interrupt taken. IM 0 was
+already right. A guest that takes interrupts in IM 1 or IM 2 now reads `R` as a real Z80 shows it.
+
 **`bankmem card=expandoram2` uses only the low four bits of the page byte.** Before, the board
 took the whole byte written to port `FF` as the page. `OUT FF 13` was refused as page 19, and the
 old page stayed live. The real board latches only D0–D3, so `OUT FF 13` now selects page 3. A

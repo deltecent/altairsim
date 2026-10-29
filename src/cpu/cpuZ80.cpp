@@ -589,6 +589,8 @@ void CpuZ80::reset(Reset) {
     halted_ = false;
     intFetch_ = false;
     wz_ = 0;
+    // nmiLast_ is NOT reset: it is the level last seen on the NMI* pin, and a reset does
+    // not move the pin -- a line held through reset is not a new edge.
 }
 
 bool CpuZ80::memFormMain(uint8_t op) {
@@ -603,6 +605,37 @@ bool CpuZ80::memFormMain(uint8_t op) {
 // One instruction.
 // ---------------------------------------------------------------------------
 StepResult CpuZ80::step(Bus& bus) {
+    // ---- NMI, at the instruction boundary, before INT ----
+    //
+    // NMI* is NEGATIVE-EDGE triggered and "always recognized at the end of the current
+    // instruction, independent of the status of the interrupt enable flip-flop" (UM0080,
+    // pin description). The bus carries a LEVEL (Bus::nmiAsserted()); the edge is the
+    // moment that level goes from released to pulled, so a line held low fires ONCE.
+    // Sampled here, once per instruction: a board moves the wire from a deadline or an
+    // I/O cycle, and both land between steps. The one thing this misses is a pulse that
+    // rises AND falls inside a single instruction (a block I/O repeat), which no board
+    // in the tree produces.
+    //
+    // The response "functions as if it had recycled a restart instruction" to 0066h, and
+    // Mode 1 is "identical to that of a nonmaskable interrupt" plus two wait states --
+    // so 11 T-states, against Mode 1's 13. IFF1 clears and IFF2 keeps the old IFF1 for
+    // RETN. EI sets both at once on the chip; this core defers them one instruction
+    // (eiPending_), so an NMI in that shadow must save the enable EI already gave.
+    bool nmi = bus.nmiAsserted();
+    bool nmiEdge = nmi && !nmiLast_;
+    nmiLast_ = nmi;
+    if (nmiEdge) {
+        if (eiPending_) iff2_ = true;
+        eiPending_ = false;
+        iff1_ = false;
+        halted_ = false;
+        r_ = (uint8_t)((r_ & 0x80) | ((r_ + 1) & 0x7F));  // the M1 refreshes (Figure 10)
+        push(bus, pc_);
+        pc_ = 0x0066;
+        wz_ = 0x0066;
+        return {11, RunStatus::Ok};
+    }
+
     // ---- The maskable interrupt, at the instruction boundary ----
     //
     // pINT is a LEVEL (bus.intPending() reads the wire-OR). If IFF1 is set we
@@ -613,6 +646,9 @@ StepResult CpuZ80::step(Bus& bus) {
         iff1_ = iff2_ = false;
         eiPending_ = false;
         halted_ = false;
+        // The acknowledge is an M1 cycle with a refresh (UM0080 Fig. 9), so R ticks. IM 0
+        // gets its tick from fetchOp(), which reads the opcode the device drives.
+        if (im_ != 0) r_ = (uint8_t)((r_ & 0x80) | ((r_ + 1) & 0x7F));
         switch (im_) {
         case 1:
             push(bus, pc_);
@@ -1080,7 +1116,8 @@ StepResult CpuZ80::execED(Bus& bus) {
 
 // SNAPSHOT/RESTORE (DESIGN.md 13). The whole architectural state, plus the four
 // bits registers() cannot show: WZ/MEMPTR (it leaks into F5/F3), IFF2 (LD A,I
-// copies it into P/V), the interrupt mode, and the two EI/INTA latches. Miss any
+// copies it into P/V), the interrupt mode, the two EI/INTA latches, and the NMI* level
+// the edge detector last saw (a held NMI must not fire again on RESTORE). Miss any
 // of them and a snapshot taken between an EI and its RET, or mid-block-transfer,
 // resumes subtly wrong.
 void CpuZ80::serialize(StateWriter& w) const {
@@ -1095,6 +1132,7 @@ void CpuZ80::serialize(StateWriter& w) const {
     w.boolean(halted_);
     w.boolean(eiPending_);
     w.boolean(intFetch_);
+    w.boolean(nmiLast_);
 }
 
 void CpuZ80::deserialize(StateReader& r) {
@@ -1109,6 +1147,7 @@ void CpuZ80::deserialize(StateReader& r) {
     halted_    = r.boolean();
     eiPending_ = r.boolean();
     intFetch_  = r.boolean();
+    nmiLast_   = r.boolean();
 }
 
 } // namespace altair

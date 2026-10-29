@@ -17,6 +17,7 @@ void Bus::attach(Board* b) {
     // accounts for enabled: a disabled card drives nothing, and says so when it is
     // disabled, not when it is asked.)
     if (b->intWire()) ++intCount_;
+    if (b->nmiWire()) ++nmiCount_;    // ...and it may arrive already pulling NMI*
     if (b->holdWire()) ++holdCount_;  // ...and it may arrive already pulling pHOLD
     viWireChanged(0, b->viWire());  // ...and whatever VI lines it arrived pulling
     // If the card offers debug flags, give it a diagnostic channel named by its id
@@ -29,6 +30,7 @@ void Bus::attach(Board* b) {
 void Bus::detach(Board* b) {
     boards_.erase(std::remove(boards_.begin(), boards_.end(), b), boards_.end());
     if (b->intWire()) --intCount_;  // and it takes its interrupt out with it
+    if (b->nmiWire()) --nmiCount_;  // ...and its NMI* with it
     if (b->holdWire()) --holdCount_;  // ...and its pHOLD request comes out too
     viWireChanged(b->viWire(), 0);  // ...and its VI lines go with it
     b->attachBus(nullptr);
@@ -260,9 +262,44 @@ bool Bus::intPending() const {
     return intCount_ > 0;
 }
 
+bool Bus::nmiAsserted() const {
+    if (verify_) verifyNmi();
+    return nmiCount_ > 0;
+}
+
 bool Bus::holdPending() const {
     if (verify_) verifyHold();
     return holdCount_ > 0;
+}
+
+// The proof for NMI*, the counterpart of verifyInt(). A board that moved its
+// NMI level and forgot nmiChanged() loses the edge -- the NMI simply never happens.
+void Bus::verifyNmi() const {
+    int live = 0;
+    for (Board* b : boards_) {
+        bool actual = b->enabled() && b->assertsNmi();
+        if (b->nmiWire()) ++live;
+        if (actual == b->nmiWire()) continue;
+
+        std::fprintf(stderr,
+                     "\nNMI* WIRE IS STALE -- board '%s'\n"
+                     "  the wire says: %s\n"
+                     "  the board says: %s\n"
+                     "It changed its NMI state and did not call nmiChanged().\n",
+                     b->id.c_str(), b->nmiWire() ? "pulling" : "not pulling",
+                     actual ? "pulling" : "not pulling");
+        std::abort();
+    }
+
+    if (live != nmiCount_) {
+        std::fprintf(stderr,
+                     "\nNMI* WIRE-OR COUNT IS WRONG\n"
+                     "  the bus thinks %d board(s) are pulling NMI*\n"
+                     "  %d actually are\n"
+                     "A board went into or out of the backplane without the count following.\n",
+                     nmiCount_, live);
+        std::abort();
+    }
 }
 
 // The proof for pHOLD, the exact counterpart of verifyInt(): re-derive the wire from

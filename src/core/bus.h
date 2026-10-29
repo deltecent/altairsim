@@ -240,6 +240,16 @@ public:
     // A board's pin moved. Called by Board::intChanged(), and by nothing else.
     void intWireChanged(bool pulling) { intCount_ += pulling ? 1 : -1; }
 
+    // ---- NMI* -- A WIRE, EXACTLY LIKE pin 73 ----
+    //
+    // Is any enabled board pulling NMI* right now? A level, read once per instruction
+    // by a core that has the pin (the Z80); the 8080 and 8085 cores never read it.
+    // Under setVerify(true) the wire is re-derived the slow way, as for pINT.
+    bool nmiAsserted() const;
+
+    // A board's NMI* moved. Called by Board::nmiChanged(), and by nothing else.
+    void nmiWireChanged(bool pulling) { nmiCount_ += pulling ? 1 : -1; }
+
     // ---- pHOLD (pin 74) -- A WIRE, EXACTLY LIKE pin 73 ----
     //
     // A DMA card PULLS pHOLD and HOLDS it, and the run loop reads the wire at an
@@ -480,11 +490,15 @@ private:
     void rebuild();
     void verifySlot(const BusCycle& c, const Slot& s) const;
     void verifyInt() const;
+    void verifyNmi() const;
     void verifyHold() const;
 
     // pINT as a WIRE-OR: how many enabled boards are pulling it down right now.
     // Maintained by intWireChanged(); never recomputed on the hot path.
     int intCount_ = 0;
+
+    // NMI* as a WIRE-OR, the same way. Maintained by nmiWireChanged().
+    int nmiCount_ = 0;
 
     // pHOLD as a WIRE-OR: how many enabled boards want the bus right now. Maintained
     // by holdWireChanged(); read once per instruction as holdPending(), so a machine

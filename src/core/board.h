@@ -339,6 +339,17 @@ public:
     // the IntAck cycle like any other cycle (DESIGN.md 4.4).
     virtual bool assertsInt() const { return false; }
 
+    // ---- NMI*. ONE MORE WIRE, AND THE SAME RULES. ----
+    //
+    // Am I pulling the non-maskable interrupt line right now? A LEVEL, exactly like
+    // assertsInt(), and announced the same way (nmiChanged()). It is the Z80 that
+    // turns the level into an event: NMI is negative-edge triggered, so the core
+    // acts on the moment the wire goes from released to pulled, once (cpuZ80.cpp).
+    // A board with its own Z80 (the Jade Double D) pulls it on that Z80's private bus.
+    // No board pulls it on the machine's bus; a later S-100 CPU board may take it from
+    // a bus pin (the CCS 2810's jumper W29 names pin 12), within the Altair bus (§4.0).
+    virtual bool assertsNmi() const { return false; }
+
     // ---- VI0-VI7 (S-100 pins 4-11). EIGHT MORE WIRES, AND THE SAME RULES. ----
     //
     // Which VI lines am I pulling right now, as a BITMASK: bit n = VIn. Same
@@ -416,6 +427,20 @@ public:
     // ...and the same, for the eight VI lines.
     uint8_t viWire() const { return viWire_; }
 
+    // "MY NMI* PIN MAY HAVE MOVED." The counterpart of intChanged() for NMI*, and
+    // for the same reason: the bus keeps the wire-OR as a count (Bus::nmiAsserted()).
+    // A MISSING call loses the edge, and the NMI never happens.
+    void nmiChanged() {
+        bool now = enabled_ && assertsNmi();
+        if (now != nmiWire_) {
+            nmiWire_ = now;
+            if (bus_) bus_->nmiWireChanged(now);
+        }
+    }
+
+    // What this card is ACTUALLY driving onto NMI* -- the latched wire.
+    bool nmiWire() const { return nmiWire_; }
+
     // ---- pHOLD / pHLDA (S-100 pins 74/26). BUS MASTERING / DMA. (DESIGN.md 4.5) ----
     //
     // A board pulls pHOLD to ask for the bus; the run loop grants pHLDA at an
@@ -491,6 +516,7 @@ public:
         enabled_ = e;
         decodeChanged();
         intChanged();   // a card that is out of the machine is not pulling pin 73
+        nmiChanged();   // ...nor NMI*
         holdChanged();  // ...and it is not asking for the bus either
     }
 
@@ -522,7 +548,7 @@ public:
     // The base handles enabled_ (a boot ROM that switched itself out must travel).
     // An override CHAINS to the base and adds its own fields. After every board has
     // read its state, Machine::restore rebuilds what is derived: the bus decode
-    // cache and the interrupt/hold wires (intChanged()/holdChanged()), so a board
+    // cache and the interrupt/NMI/hold wires (intChanged()/nmiChanged()/holdChanged()), so a board
     // does not serialize those either.
     virtual void serialize(StateWriter& w) const;
     virtual void deserialize(StateReader& r);
@@ -1046,6 +1072,9 @@ private:
 
     // ...and onto VI0-VI7. Same reason, eight more wires.
     uint8_t viWire_ = 0;
+
+    // ...and onto NMI*. Maintained by nmiChanged().
+    bool nmiWire_ = false;
 
     // ...and onto pHOLD. Latched for the same reason: the run loop reads the wire, it
     // does not poll us for it. Maintained by holdChanged().

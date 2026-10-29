@@ -601,8 +601,11 @@ He was describing the hardware. He was also describing a bug.
 |---|---|---|---|
 | address decode | `decodes()` | `decodeChanged()` | caches a page table |
 | interrupt | `assertsInt() const` | `intChanged()` | caches a wire-OR count |
+| NMI\* | `assertsNmi() const` | `nmiChanged()` | caches a wire-OR count |
 
 > **A board's outputs are pure functions of its state. When its state changes, it says so. The bus caches the rest.**
+
+**NMI\* is a level on the bus and an edge in the processor.** The bus carries it like pin 73 (`Bus::nmiAsserted()`, checked by `setVerify(true)` the same way). The Z80 core keeps the level it saw at the last instruction boundary and takes the NMI when the wire goes from released to pulled: a restart to `0066h` in 11 T-states, with IFF1 cleared and IFF2 kept for `RETN` (UM0080). The 8080 and 8085 cores do not read it. The wire is built for a board with its own Z80, such as the Jade Double D, whose FD1791 drives that Z80's NMI on the board's private bus. No board pulls it on the machine's bus yet, so `CpuZ80::haltCanEnd()` leaves it out.
 
 Reading pin 73 is now an integer test — **1.8 ns, flat in the number of cards in the machine.**
 
