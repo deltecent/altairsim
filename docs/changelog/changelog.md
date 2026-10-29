@@ -12,6 +12,13 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `jadedd`, the Jade Double D floppy controller.** The board has its own Z80, 2K of RAM and
+an FD1791. The host sees 1K of the board's RAM through a window at `E000`–`FC00`, and controls
+the board through one port at `40`–`43`. The board's Z80 runs the program that the host loads
+there, such as Jade's DCM2, and does the disk work. It takes up to four drives, and it knows the
+Jade double-density and single-density disks and the IBM 3740 disk by their size. The package
+has no Jade boot PROM and no machine for this board.
+
 **The Z80 adds 1 to its `R` register when it takes an IM 1 or IM 2 interrupt.** The interrupt
 acknowledge is an M1 cycle with a refresh, the same as an opcode fetch. Before, the processor
 did not count it in IM 1 or IM 2, so `LD A,R` read 1 too low for each interrupt taken. IM 0 was

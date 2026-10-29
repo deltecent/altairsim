@@ -42,6 +42,7 @@
 #include "boards/sd-versafloppy.h"
 #include "boards/ssm-pb1.h"
 #include "boards/tarbell.h"
+#include "boards/jade-dd.h"
 #include "boards/gsio.h"
 #include "boards/io4.h"
 #include "boards/propio.h"
@@ -85,6 +86,7 @@ std::vector<BoardType> boardTypes() {
         {"versafloppy", "SD Systems VersaFloppy I/II: WD177x floppy controller", "SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight ports at BASE+0..7 (default 60). variant=vfi (FD1771, single density) | vfii (FD1791, single+double). Boots SDOS with the SBC-200 + DDBIOS"},
         {"tarbell", "Tarbell #1011: single-density floppy controller", "Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)"},
         {"tarbelldd", "Tarbell #2022: double-density floppy controller", "Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0), up to 4 drives. The single-density card's twin with a bitmap OUT-FC latch and a port-FD DMA/ext-addr register. Same 32-byte boot PROM"},
+        {"jadedd", "Jade Double D: double-density controller, own Z80", "Jade Double D Rev C: an intelligent double-density floppy controller with its own Z80A, 2 K RAM and WD FD1791. The host loads a program (Jade's DCM2) through a 1 K window at E000-FC00 and talks to it through one port (40-43, default 43). Up to 4 drives"},
         {"disk1", "CompuPro Disk 1: uPD765A floppy controller with DMA", "CompuPro Disk 1 (1981), the Disk 1A's predecessor: an NEC uPD765A floppy controller for 8\" drives, single and double density, up to 4 drives. Four ports at BASE+0..3 (default C0): 765 status, 765 data, board status / DMA address, and a bit-banged serial line on D7. All data moves by DMA. Carries a 2716 boot EPROM whose selected 256-byte routine answers at 0000 over PHANTOM* until the guest switches it off; any reset turns it back on"},
         {"disk1a", "CompuPro Disk 1A: uPD765A floppy controller with DMA", "CompuPro Disk 1A: an NEC uPD765A floppy controller for 8\" and 5.25\" drives, single and double density, up to 4 drives. Four ports at BASE+0..3 (default C0): 765 status / drive select, 765 data, board status / DMA address, motor control. All data moves by DMA. Carries a boot EPROM whose selected 512-byte routine answers at 0000 over PHANTOM* until the guest switches it off; any reset turns it back on"},
         {"16fdc", "Cromemco 16FDC: floppy controller + console UART, RDOS 2.52", "Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 drives. Disk registers at 30-34, a TMS 5501 console UART at 00-09 (unit 'tty'), and a 4K RDOS 2.52 boot PROM at C000 (OUT 40H banks it out, RESET restores it). Boots CDOS"},
@@ -147,6 +149,7 @@ std::unique_ptr<Board> makeBoard(const std::string& typeName) {
     if (type == "versafloppy") return std::make_unique<VersaFloppyBoard>();
     if (type == "tarbell") return std::make_unique<TarbellBoard>();
     if (type == "tarbelldd") return std::make_unique<TarbellDdBoard>();
+    if (type == "jadedd") return std::make_unique<JadeDdBoard>();
     if (type == "16fdc") return std::make_unique<Fdc16Board>();
     if (type == "64fdc") return std::make_unique<Fdc64Board>();
     if (type == "acr") return std::make_unique<AcrBoard>();

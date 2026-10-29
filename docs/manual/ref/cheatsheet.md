@@ -148,6 +148,7 @@ Type the part before the bracket.
 | `fdcplus` | FarmTek FDC+: serial drive (drive types 6, 7) |
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | `icom` | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
+| `jadedd` | Jade Double D: double-density controller, own Z80 |
 | `mds` | MITS 88-MDS: 5.25" minidisk controller |
 | `mdsa` | North Star MDS-A: single-density 5.25" floppy controller |
 | `mdsad` | North Star MDS-A-D: double-density 5.25" floppy controller |
