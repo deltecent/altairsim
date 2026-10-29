@@ -1127,6 +1127,16 @@ add_test(NAME acceptance-disk1a
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/disk1a.cmake)
 set_tests_properties(acceptance-disk1a PROPERTIES LABELS acceptance TIMEOUT 200)
 
+# The Jade Double D: Jade's own FORMAT.COM makes double-density, single-density and 3740 disks,
+# reformats a disk to a smaller layout and two tracks of another, and the new disk boots.
+add_test(NAME acceptance-jadedd-format
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd-format.cmake)
+set_tests_properties(acceptance-jadedd-format PROPERTIES LABELS acceptance TIMEOUT 150)
+
 # The CompuPro Disk 1: boot CompuPro CP/M 2.2N off a real 8" disk through builtin:DISK1
 # (the factory EPROM, routine 4), then read and write files on it.
 add_test(NAME acceptance-disk1
