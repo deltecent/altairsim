@@ -103,19 +103,17 @@ constexpr uint8_t DSE  = 0x04;
 constexpr uint8_t DDEN = 0x10;
 constexpr uint8_t SID1 = 0x20;
 
-// Append bytes to a program one at a time. GCC 15 at -O2 reports a false -Warray-bounds on
-// vector::insert of a brace list into a vector that has just been built, and CI builds with
-// -Werror.
-void emit(std::vector<uint8_t>& p, std::initializer_list<uint8_t> bytes) {
-    for (uint8_t b : bytes) p.push_back(b);
+// Write bytes into a program at `at`. Each program is made at its full size, filled with
+// HALT, and never grows: GCC 15 at -O2 reports a false -Warray-bounds or -Wstringop-overflow
+// on a vector that grows just after it is built from a brace list, and CI builds with -Werror.
+void put(std::vector<uint8_t>& p, size_t at, std::initializer_list<uint8_t> bytes) {
+    for (uint8_t b : bytes) p.at(at++) = b;
 }
 
 // The NMI handler, as DCM2's WD.INT at 0066h: read the FD1791 status, un-invert it, keep it at
 // 0100h, and return to the address in IY (EX (SP),IY ; RETN).
 void nmiHandler(std::vector<uint8_t>& p) {
-    if (p.size() < 0x70) p.resize(0x70, Rig::kGap);
-    const uint8_t h[] = {0xDB, 0x04, 0xA9, 0x32, 0x00, 0x01, 0xFD, 0xE3, 0xED, 0x45};
-    for (size_t i = 0; i < sizeof h; ++i) p[0x66 + i] = h[i];
+    put(p, 0x66, {0xDB, 0x04, 0xA9, 0x32, 0x00, 0x01, 0xFD, 0xE3, 0xED, 0x45});
 }
 
 // A sector transfer as DCM2's RD.SEC and WR.SEC do it: select, load the track and sector
@@ -123,7 +121,8 @@ void nmiHandler(std::vector<uint8_t>& p) {
 // FD1791's INTRQ (NMI*) ends the loop. Buffer at 0200h. At the end, HL goes to 0102h and the
 // Z80 halts at 0033h. Every FD1791 byte goes through XOR C (C = FFh), as DCM2's do.
 std::vector<uint8_t> transfer(bool write, uint8_t ctl, uint8_t track, uint8_t sector) {
-    std::vector<uint8_t> p = {
+    std::vector<uint8_t> p(0x70, Rig::kGap);
+    put(p, 0x0000, {
         0x31, 0x00, 0x04,                     // 0000 LD SP,0400h
         0x0E, 0xFF,                           // 0003 LD C,FFh
         0x3E, ctl,  0xD3, 0x00,               // 0005 LD A,ctl ; OUT (00h),A
@@ -133,21 +132,21 @@ std::vector<uint8_t> transfer(bool write, uint8_t ctl, uint8_t track, uint8_t se
         0x21, 0x00, 0x02,                     // 0015 LD HL,0200h
         0x3E, (uint8_t)~(write ? 0xA0 : 0x80), 0xD3, 0x04,  // 0018 Write/Read Sector
         0xDB, 0x80,                           // 001C IN A,(80h): wait for DRQ or INTRQ
-    };
-    if (write) emit(p, {0x7E, 0xA9, 0xD3, 0x07});  // LD A,(HL) ; XOR C ; OUT (07h),A
-    else       emit(p, {0xDB, 0x07, 0xA9, 0x77});  // IN A,(07h) ; XOR C ; LD (HL),A
-    emit(p, {0x23, 0x18, 0xF7});    // 0022 INC HL ; JR 001Ch
-    p.resize(0x30, Rig::kGap);
-    emit(p, {0x22, 0x02, 0x01, 0x76});  // 0030 LD (0102h),HL ; HALT
+    });
+    if (write) put(p, 0x001E, {0x7E, 0xA9, 0xD3, 0x07});  // LD A,(HL) ; XOR C ; OUT (07h),A
+    else       put(p, 0x001E, {0xDB, 0x07, 0xA9, 0x77});  // IN A,(07h) ; XOR C ; LD (HL),A
+    put(p, 0x0022, {0x23, 0x18, 0xF7});        // 0022 INC HL ; JR 001Ch
+    put(p, 0x0030, {0x22, 0x02, 0x01, 0x76});  // 0030 LD (0102h),HL ; HALT
     nmiHandler(p);
     return p;
 }
 
 // Step the selected drive `n` times in one direction (IN 08h), then halt.
 std::vector<uint8_t> steps(uint8_t ctl, int n) {
-    std::vector<uint8_t> p = {0x3E, ctl, 0xD3, 0x00};
-    for (int i = 0; i < n; ++i) emit(p, {0xDB, 0x08});
-    p.push_back(0x76);
+    std::vector<uint8_t> p(4 + 2 * (size_t)n + 1, Rig::kGap);
+    put(p, 0, {0x3E, ctl, 0xD3, 0x00});
+    for (size_t i = 0; i < (size_t)n; ++i) put(p, 4 + 2 * i, {0xDB, 0x08});
+    put(p, 4 + 2 * (size_t)n, {0x76});
     return p;
 }
 
@@ -358,11 +357,11 @@ void test_jadedd() {
         // LD A,ctl ; OUT (00h),A ; LD A,27h ; OUT (04h),A (D8h, the immediate interrupt) ;
         // HALT ; then at 0066h: LD A,1 ; LD (0101h),A ; HALT.
         auto prog = [](uint8_t ctl, bool enableAfter) {
-            std::vector<uint8_t> p = {0x3E, ctl, 0xD3, 0x00, 0x3E, 0x27, 0xD3, 0x04};
-            if (enableAfter) emit(p, {0x3E, DSE, 0xD3, 0x00});
-            p.push_back(0x76);
-            p.resize(0x66, Rig::kGap);
-            emit(p, {0x3E, 0x01, 0x32, 0x01, 0x01, 0x76});
+            std::vector<uint8_t> p(0x6C, Rig::kGap);
+            put(p, 0, {0x3E, ctl, 0xD3, 0x00, 0x3E, 0x27, 0xD3, 0x04});
+            if (enableAfter) put(p, 8, {0x3E, DSE, 0xD3, 0x00});
+            put(p, enableAfter ? 12 : 8, {0x76});
+            put(p, 0x66, {0x3E, 0x01, 0x32, 0x01, 0x01, 0x76});
             return p;
         };
         Rig a;
