@@ -1732,6 +1732,24 @@ A>
 
 A disk with a 56K system prints `56K CP/M 2.2 DDBIOS2`.
 
+Jade's `FORMAT` program makes a new disk. The CP/M BIOS on the 56K disk has two drives, A: and
+B:, so put the new disk in drive B. `FORMAT` reads each answer as a line, so press Return after
+each one. To make a double-density disk that boots:
+
+1. Press `Ctrl-E` to go to the monitor.
+2. Type `MOUNT fd0:drive1 NEW.DSK CREATE`, with the name of the new disk.
+3. Type `RUN` to go back to CP/M.
+4. Type `FORMAT`.
+5. Type `B` at `Select DRIVE to be FORMATTED:`.
+6. Type `1` at `ENTER Function NUMBER:`. `FORMAT` formats the disk and asks for the next function.
+7. Type `4`, then `A` at `READ System from DRIVE:`. `FORMAT` reads the system tracks of drive A.
+8. Type `5`. `FORMAT` writes the system tracks to drive B.
+9. Press `Ctrl-C` to go back to `A>`.
+
+Function `2` makes a Jade single-density disk, and function `3` makes an IBM 3740 disk. `FORMAT`
+can also reformat a disk to a different layout. The image file then changes to the size of the
+new layout, so the next `MOUNT` reads the disk correctly.
+
 These things are not part of the board:
 
 - **The serial port.** The board's EIA output is not connected. DCM2 sends list output there, and

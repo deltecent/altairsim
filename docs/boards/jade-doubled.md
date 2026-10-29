@@ -4,7 +4,8 @@
 FD1791, and the host talks to it through one port and a 1 K memory window, as on the real board.
 `tests/test_jadedd.cpp` runs small Z80 programs on the board that read, write and step the way
 Jade's DCM2 does. The `jadedd` machine boots Jade CP/M 2.2 Release 2 through the DDBOOT PROM,
-patched for an 88-2SIO console (`builtin:ddboot-2sio`). Two acceptance tests boot it to `A>`.
+patched for an 88-2SIO console (`builtin:ddboot-2sio`). Two acceptance tests boot it to `A>`,
+and a third makes new disks with Jade's FORMAT.
 
 ## The real hardware
 
@@ -113,6 +114,14 @@ The status byte of a strobe read is the one from before the strobes act (see *Li
   Track 1 is double density on both Jade layouts. It holds the CCP and BDOS. The images use a
   linear sector order: the directory is at byte 9728, the start of track 2, as the DPB's
   `OFF = 2` says.
+- **A format changes the file size.** The drives follow the format (`setExtendsOnWrite`), so each
+  Write Track sets that track's layout. When a track changes size, the tracks after it move with
+  it (`DiskImage::moveTail`, `docs/devguide/soft-sector-floppy.md`). A reformat from double
+  density to single density leaves a 259,328-byte file. FORMAT's `*` function formats tracks 0
+  and 1 only, and the data on tracks 2–76 stays.
+- **The 56K CP/M BIOS has two drives.** The board has four, but DDBIOS2 on the 56K disk is built
+  with `N$DRVS EQU 2`. Its SELDSK refuses C: and D:, so FORMAT gives `NOT a VALID SELECTION` and
+  CP/M gives `Bdos Err On C: Select`.
 - **No interrupt to the host but VI.** The board has no pINT strap, so `interrupt` takes `none`
   and `vi0`–`vi7`.
 - **`SHOW`** prints the board Z80's PC, whether it has halted, and who holds the RAM.
@@ -207,6 +216,18 @@ Both disks are mounted write-protected, and the test compares their SHA-1 before
 Over `--mcp`, a PIP copy of a 22K file on the double-density disk, a `Ctrl-C` warm boot, and a
 `STAT` of the copy also worked. A `SAVE` to the write-protected master gives `Bdos Err On A: Bad
 Sector`.
+
+`acceptance-jadedd-format` (`tests/acceptance/jadedd-format.cmake`) drives the `jadedd` machine
+over `--mcp` with Jade's FORMAT.COM, Release 2A, from the 56K disk. It works on copies of the
+tracked image:
+
+- function 1 formats a blank disk double density, and functions 4 and 5 copy the system tracks;
+- function 2 reformats a double-density disk single density, and the file falls to 259,328;
+- function 3 formats a blank 3740 disk, and `*` then grows it to 259,328 and keeps its files;
+- after each remount, `STAT` reads the file that PIP wrote, and the new double-density disk
+  boots by itself.
+
+With the tail move disabled, the test fails at the `STAT` after the single-density remount.
 
 Each of these mutations fails at least one check: NMI\* not gated by `DSE`, reads not inverted,
 writes not inverted, STEP not gated by `DSE`, `IN 10h` not clearing the timer, no wait on
