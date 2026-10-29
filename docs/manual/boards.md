@@ -201,6 +201,7 @@ The boards are in groups, in the same order as the sections below.
 | `mdsad` | North Star MDS-A-D: the double-density version, for one-sided and two-sided disks |
 | `16fdc` | Cromemco 16FDC: a floppy controller with a console UART and the RDOS 2.52 boot PROM. Boots CDOS |
 | `64fdc` | Cromemco 64FDC: a floppy controller with a console UART and the RDOS 3.12 boot PROM. Boots CDOS |
+| `jadedd` | Jade Double D: a double-density floppy controller with its own Z80. The host loads the program that the Z80 runs |
 | `dualsd` | S100Computers Dual SD: two microSD cards as CP/M drives. Boots CP/M 3 |
 | `dualide` | S100Computers IDE-AB: two CompactFlash cards as CP/M drives. Boots CP/M 3 |
 
@@ -1640,6 +1641,104 @@ port `04` (D3). The 64FDC has no such line, so CDOS homes its drive with the dis
 
 The boards are polled. They deliver no interrupts. The other switches of the boards are fixed:
 the console has a preset baud rate, and RDOS boots from a floppy disk.
+
+### `jadedd`: Jade Double D
+
+The **Jade Double D** (Rev C, 1980) is a double-density floppy controller with its own **Z80**
+processor, 2K of RAM and a **Western Digital FD1791**. The host processor never reaches the
+FD1791. It sees 1K of the board's RAM through a window in its own memory, and it controls the
+board through one port. The host writes a program or a command into the RAM, and the board's Z80
+runs it and does the disk work. Jade's CP/M loads the board's program, DCM2, from the disk.
+
+The board's Z80 runs on the board's own crystal: 4 MHz with 8″ drives, and 2 MHz with 5″ drives.
+It runs only while the host processor runs. At the monitor, with the machine stopped, the board's
+Z80 does not move.
+
+| Setting | Values | What it does |
+|---|---|---|
+| `port` | `40`–`43` | The host port. The default is `43`, the port that the Jade software uses. |
+| `window` | `E000`–`FC00`, on a 1K boundary | Where the host sees the board's RAM. The default is `E000`. |
+| `phantom` | `true`, `false` | With `true`, the board pulls PHANTOM\* while the host reads the window. The window can then be over RAM that obeys PHANTOM\*. The default is `false`. |
+| `interrupt` | `none`, `vi0`–`vi7` | The vectored interrupt line that the board pulls when its Z80 halts. The default is `none`. |
+| `size` | `8`, `5` | The drive size. `8` runs the Z80 at 4 MHz, and `5` runs it at 2 MHz. The default is `8`. |
+
+The host port has these bits:
+
+| Bit | `OUT` | `IN` |
+|---|---|---|
+| D0 | `1`: the host has the RAM. `0`: the board has it. | `0`: the board's Z80 has halted. |
+| D1 | Interrupt the board's Z80. While the host has the RAM, this bit also selects which 1K of the 2K is in the window. | Bit A10 of the window address. |
+| D2, D3 | Not used. | Bits A11 and A12 of the window address. |
+| D4–D6 | Not used. | Always `1`. |
+| D7 | Reset the board's Z80, which starts at `0000`. | Always `1`. |
+
+One `OUT` sets all three bits. `OUT 43 02` gives the RAM to the board and interrupts its Z80.
+`OUT 43 80` gives the RAM to the board and starts its Z80 at `0000`. After a reset, the host has
+the RAM.
+
+`SHOW` gives the PC of the board's Z80, and whether the Z80 runs, has halted, or is stopped
+because the host has the RAM:
+
+```
+altairsim> BOARDS ADD jadedd fd0
+fd0: jadedd added
+altairsim> MOUNT fd0:drive0 CPM22DD.DSK
+fd0:drive0: mounted CPM22DD.DSK
+altairsim> SET fd0 interrupt=vi2
+altairsim> SHOW fd0
+```
+
+`SHOW fd0` prints this line after the settings:
+
+```
+  board Z80  PC 0000  stopped  RAM held by the host
+```
+
+The board has up to four drives. It recognizes a disk by the size of the image:
+
+| Image size | Disk |
+|---|---|
+| 489,728 bytes | A Jade double-density disk. Track 0 is single density, and tracks 1–76 are double density, with 50 sectors. |
+| 259,328 bytes | A Jade single-density disk. Track 0 and tracks 2–76 are single density. Track 1, the system track, is double density. |
+| 256,256 bytes | An IBM 3740 single-density disk. |
+| Smaller | A blank disk. The guest can format it. |
+
+The board refuses an image of any other size. The board checks the density. A read at the wrong
+density gives **Record Not Found**, as on the hardware.
+
+The `jadedd` machine boots Jade CP/M 2.2. It has an 8080 processor, 56K of RAM, an 88-2SIO, this
+board, and a boot PROM, **DDBOOT-2SIO** (`builtin:ddboot-2sio`), at `F000`. The PROM is in the
+host's memory, not on the board. It starts the board's Z80, which reads CP/M from drive 0. The CP/M BIOS on Jade's
+disks uses the PROM's console routines, so the PROM stays in memory while CP/M runs.
+
+The console is channel A of the 88-2SIO at port `10`. Jade's own PROM, `builtin:ddboot`, reads a
+console at ports `00` and `01`. Jade marked those ports as the places to change for the owner's
+console board. `builtin:ddboot-2sio` is Jade's PROM, changed at those places for the 88-2SIO. No
+other byte of the PROM is different. To boot CP/M:
+
+1. Type `altairsim jadedd`. With no disk in drive 0, the PROM prints `INSERT SYSTEM DISKETTE` and
+   waits.
+2. Press `Ctrl-E` to go to the monitor.
+3. Type `MOUNT fd0:drive0 JADE20K.DSK`, with the name of your Jade system disk.
+4. Type `RUN`. The PROM reads the drive again and boots CP/M:
+
+```
+JADE COMPUTER PRODUCTS
+20K CP/M 2.2 DDBIOS2
+
+
+A>
+```
+
+A disk with a 56K system prints `56K CP/M 2.2 DDBIOS2`.
+
+These things are not part of the board:
+
+- **The serial port.** The board's EIA output is not connected. DCM2 sends list output there, and
+  that output is lost.
+- **Two-sided disks.** Each drive has one side.
+- **The 24-bit address mode.** The window is in the 16-bit address space.
+- **The debugger on the board's Z80.** `BREAK`, `STEP` and `REGS` work on the host processor only.
 
 ### `dualsd`: S100Computers Dual SD
 

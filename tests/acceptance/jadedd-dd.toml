@@ -1,0 +1,16 @@
+# Jade Double D DOUBLE-DENSITY boot acceptance fixture: a 56K Jade CP/M 2.2 system ("56K CP/M
+# 2.2 DDBIOS2") on a double-density disk in drive 0. SD track 0, DD tracks 1-76, 50 x 128 bytes
+# a track. This is the proof that the board reads a whole DD data disk, not only the DD system
+# track of the master. Mounted READ-ONLY; jadedd.exp shasums it.
+
+[machine]
+name = "jadedd-dd-acceptance"
+base = "jadedd"
+
+[[board]]
+id = "fd0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../media/jade/jadedd-dd-sysgen-56k.dsk"
+  writeprotect = true

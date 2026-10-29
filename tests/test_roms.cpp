@@ -134,6 +134,15 @@ void test_roms() {
         {"icom-fd3712-cpm",  0xF000, 0xF3FF, 1024, 0x82361A3Bu, true},
         {"icom-fd3712-fdos", 0xC000, 0xC3FF, 1024, 0x47140DCCu, true},
         {"icom-fd3812-cpm",  0xF000, 0xF3F1, 1010, 0x7FCFCA76u, true},
+        // The Jade Double D host boot PROM (DDBOOT, CP/M 2.2 Release 2): 590 bytes at F000,
+        // assembled by DRI ASM from Jade's own source on the master disk. It starts the board
+        // Z80 and is the console for Jade's BIOS, so it stays mapped while CP/M runs. An ORG
+        // puts the injection module's NMI handler at its offset 0066h, which leaves F1E3-F1EB
+        // unprogrammed (read as FF).
+        {"ddboot",           0xF000, 0xF24D,  590, 0x631C3AD5u, false},
+        // The same PROM patched at Jade's patch points for an 88-2SIO console at 10/11 (INIT
+        // resets the 6850; status bits RDRF/TDRE). Every address, the gap included, is unmoved.
+        {"ddboot-2sio",      0xF000, 0xF24D,  590, 0xA017E174u, false},
         // S100Computers MASTER V6.6, the V2 Z80 CPU board's onboard 28C64 monitor EEPROM
         // (docs/roms.md). Two 4K "pages" both assembled ORG F000, selected by OUT D3H bit 1:
         // master0 = the low page (everyday menu), master1 = the high page (XModem + the SD/CF

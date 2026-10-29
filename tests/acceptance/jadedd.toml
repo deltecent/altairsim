@@ -1,0 +1,15 @@
+# Jade Double D boot acceptance fixture: Jade's own CP/M 2.2 Release 2 master (serial number
+# 2-187-01961, "20K CP/M 2.2 DDBIOS2") in drive 0. SD track 0, DD track 1 (the system), SD
+# tracks 2-76. Mounted READ-ONLY; jadedd.exp shasums it.
+
+[machine]
+name = "jadedd-acceptance"
+base = "jadedd"
+
+[[board]]
+id = "fd0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../media/jade/JADEDD-CPM22-MASTER-SSSD.DSK"
+  writeprotect = true

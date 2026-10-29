@@ -548,6 +548,7 @@ add_library(altair_core STATIC
   # Tarbell #1011 (SD) / #2022 (DD) -- one card carrying a WD FD177x floppy controller
   # AND a 32-byte boot PROM that shadows low RAM over PHANTOM*. See src/boards/tarbell.h.
   src/boards/tarbell.cpp
+  src/boards/jade-dd.cpp
   # Cromemco 4FDC/16FDC/64FDC family -- one card carrying a WD FD177x floppy controller, a
   # TMS 5501 console UART, and an RDOS boot PROM at C000. A base (CromemcoFdcBoard) plus the
   # 16FDC/64FDC leaves (header-only); boots CDOS. See src/boards/cromemco-fdc.h.
@@ -880,6 +881,7 @@ add_executable(altair_tests
   tests/test_cadzilla.cpp
   tests/test_versafloppy.cpp
   tests/test_tarbell.cpp
+  tests/test_jadedd.cpp
   tests/test_disk1.cpp
   tests/test_disk1a.cpp
   tests/test_cromemco-fdc.cpp
@@ -1965,6 +1967,34 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/icom-fdos-i.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-icom-fdos-i PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
+  # THE JADE DOUBLE D boots Jade CP/M 2.2 Release 2 through the DDBOOT host PROM at F000,
+  # which starts the board's own Z80 to read the system. Once with Jade's 20K master (SD
+  # data tracks), once with a 56K double-density disk. Both are mounted WRITE-PROTECTED and
+  # shasummed.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-jadedd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd.toml
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/media/jade/JADEDD-CPM22-MASTER-SSSD.DSK
+                   "20K CP/M" STAT)
+  set_tests_properties(acceptance-jadedd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  add_test(NAME acceptance-jadedd-dd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd-dd.toml
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/media/jade/jadedd-dd-sysgen-56k.dsk
+                   "56K CP/M" DDBIOS56)
+  set_tests_properties(acceptance-jadedd-dd PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

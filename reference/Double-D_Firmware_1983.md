@@ -13,7 +13,7 @@ The board itself is in
 [Jade Double D Disk Controller Rev C Manual](Jade%20Double%20D%20Disk%20Controller%20Rev%20C%20Manual.md).
 That file has the port bits, the Release 2 command block and the Release 2 boot. This file
 adds what the listings show about **Release 1**, **Rev B boards**, the **disk layout** and
-the **formats**. **Not emulated.**
+the **formats**. The `jadedd` board emulates the Rev C board, not Rev B.
 
 Pages are cited as PDF pages ("p. 56"). Each listing also has its own page numbers, which
 are not used here.

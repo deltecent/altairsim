@@ -46,6 +46,7 @@ and within a group the boards are in **alphabetical order**.
 | [`fdcplus`](#fdcplus) | FarmTek FDC+: serial drive (drive types 6, 7) |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | [`icom`](#icom) | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
+| [`jadedd`](#jadedd) | Jade Double D: double-density controller, own Z80 |
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk controller |
 | [`mdsa`](#mdsa) | North Star MDS-A: single-density 5.25" floppy controller |
 | [`mdsad`](#mdsad) | North Star MDS-A-D: double-density 5.25" floppy controller |
@@ -494,6 +495,31 @@ iCOM FD3712/FD3812 8" floppy: a programmed-I/O command/handshake controller on t
 | `port` | int | `0xC0` | `0x0` .. `0xFE` | Base address. The board decodes two ports: BASE (command/status) and BASE+1 (data) |
 | `rom` | string | `builtin:icom-fd3712-cpm` | text | The boot PROM this interface board carries: builtin:icom-fd3712-cpm (CP/M 2.2, single density, F000), builtin:icom-fd3712-fdos (FDOS, C000), or builtin:icom-fd3812-cpm (CP/M 2.2, double density, F000). The window base and the 6810 scratch RAM follow the image |
 | `drives` | int | `2` | `1` .. `4` | Drives on the controller (unit 0..3, selected by cDRVSEC bits 7:6) |
+
+
+### `jadedd`
+
+Jade Double D Rev C: an intelligent double-density floppy controller with its own Z80A, 2 K RAM and WD FD1791. The host loads a program (Jade's DCM2) through a 1 K window at E000-FC00 and talks to it through one port (40-43, default 43). Up to 4 drives
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive (0..3) |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x43` | `0x40` .. `0x43` | The host I/O port, set by switches P0 and P1: 40, 41, 42 or 43 (default 43, the port the Jade software uses) |
+| `window` | int | `0xE000` | `0xE000` .. `0xFC00` | Where the host sees the 1 K memory window, set by switches M10-M12: a 1 K boundary from E000 to FC00 (default E000) |
+| `phantom` | bool | `false` | `on` \| `off` | The PHAN* jumper. On: the board pulls PHANTOM* while the host reads the window, so the window can overlap RAM that honors PHANTOM* |
+| `interrupt` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | The VI line the board pulls when its Z80 has halted (none by default) *(interrupt strap)* |
+| `size` | enum | `8` | `8` \| `5` | The CLOCK SELECT jumper. 8: 8-inch drives, Z80 at 4 MHz, FD1791 at 2 MHz. 5: 5.25-inch drives, Z80 at 2 MHz, FD1791 at 1 MHz |
 
 
 ### `mds`

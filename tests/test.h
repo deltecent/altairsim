@@ -88,6 +88,7 @@ void test_hd63484();
 void test_cadzilla();
 void test_versafloppy();
 void test_tarbell();
+void test_jadedd();
 void test_disk1();
 void test_disk1a();
 void test_cromemco_fdc();

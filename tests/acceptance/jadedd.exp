@@ -1,0 +1,67 @@
+#!/usr/bin/expect -f
+#
+# THE JADE DOUBLE D BOOTS CP/M through the DDBOOT PROM at F000 (machines/jadedd.toml's
+# startup). The PROM is in host memory: it copies a small program into the board's RAM,
+# starts the board's own Z80, and waits for it to halt. The board Z80 reads DCM off track 0,
+# DCM loads CP/M through the 1 K window, and the PROM jumps to it. The sign-on comes up on
+# the PROM's console, the 88-2SIO at ports 10/11. Nothing is typed to boot -- but DIR must
+# be typed at A>, which a pipe cannot do, so this is an expect test.
+#
+# ONE SCRIPT, BOTH DISK LAYOUTS. Called once with Jade's 20K master (SD track 0, DD track 1,
+# SD tracks 2-76) and once with a 56K double-density disk (SD track 0, DD tracks 1-76). The
+# sign-on token tells the two builds apart, so a run that boots the wrong disk fails. The
+# disk is mounted write-protected and shasummed before and after.
+#
+# usage: expect -f jadedd.exp <altairsim> <config> <disk-for-shasum> <sign-on> <known-file>
+
+set timeout 60
+log_user 0
+
+set exe    [lindex $argv 0]
+set cfg    [lindex $argv 1]
+set dsk    [lindex $argv 2]
+set signon [lindex $argv 3]
+set known  [lindex $argv 4]
+
+set before [exec shasum $dsk]
+
+spawn $exe $cfg
+
+# The PROM boots CP/M automatically. With no disk it prints INSERT SYSTEM DISKETTE and waits.
+expect {
+    -ex $signon {}
+    -ex "INSERT SYSTEM DISKETTE" { puts "FAIL: the PROM found no disk in drive 0"; exit 1 }
+    -ex "DDBOOT LOAD ERROR" { puts "FAIL: the PROM reported a load error"; exit 1 }
+    eof     { puts "FAIL: the machine died before CP/M signed on"; exit 1 }
+    timeout { puts "FAIL: CP/M never booted off the DDBOOT PROM (no $signon)"; exit 1 }
+}
+
+# ...and it reaches the A> prompt.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: CP/M signed on but died before its prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M signed on but never reached the A> prompt"; exit 1 }
+}
+
+# Let the BIOS settle on the console before typing, as icom.exp does.
+sleep 1
+
+# The directory is readable: DIR returns a known file off the disk.
+send "DIR\r"
+expect {
+    -ex $known {}
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not list the disk (no $known)"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. `writeprotect` did not protect the disk:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: DDBOOT booted $signon off the Jade Double D to A>, DIR read the disk ($known),\
+      and the image is byte-identical."
+exit 0

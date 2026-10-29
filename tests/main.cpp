@@ -121,6 +121,7 @@ const struct {
     {"cadzilla", test_cadzilla},
     {"versafloppy", test_versafloppy},
     {"tarbell", test_tarbell},
+    {"jadedd", test_jadedd},
     {"disk1", test_disk1},
     {"disk1a", test_disk1a},
     {"cromemco_fdc", test_cromemco_fdc},

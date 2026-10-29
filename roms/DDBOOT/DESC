@@ -1,0 +1,1 @@
+Jade Double D host boot PROM (DDBOOT, CP/M 2.2 Release 2) at F000 -- starts the board Z80, loads CP/M; console at ports 00/01

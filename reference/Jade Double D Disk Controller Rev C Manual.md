@@ -8,7 +8,8 @@ with the period figures pasted in. Ten Engineering Change Notices (ECNs, August 
 1981) come before the manual. The Double D is an **intelligent** S-100 floppy controller. It
 has its own Z80A, 2 K of static RAM and a WD FD1791. The host never touches the FD1791. The
 host talks to the board through one I/O port and a 1 K memory window. This file leaves out
-the assembly steps and most of the parts list. **Not emulated.**
+the assembly steps and most of the parts list. Emulated as the `jadedd` board
+(`docs/boards/jade-doubled.md`).
 
 **The scan is incomplete.** The table of contents lists Appendices D (S-100 bus connections),
 E (schematics) and F (feedback). The PDF ends after Appendix C, at printed p. 38. The download
@@ -116,7 +117,9 @@ The values that the Jade software writes (`DDBOOT.asm`, `DDBIOS.ASM`):
 
 - **Board reset** (`BR*`, from SLVCLR\*, or from POC\* with the `BRST*`–`POC*` jumper) sets the
   port to the state where the **memory is switched onto the bus** (p. 5). After reset the
-  host owns the window and can load the Z80's program before the Z80 runs.
+  host owns the window and can load the Z80's program before the Z80 runs. Fig 2-4 shows
+  `BR*` clearing both 74LS74s (2L), so `SLVRQ` and `ZINT` are **both 1** after a reset: bank 1
+  is in the window. Fig 2-4 does not show `BR*` reaching the Z80's RESET\*.
 - While the Z80 has granted the bus it does not take an interrupt. This is why `ZINT` can act
   as the bank bit (p. 6).
 - The Z80 clears `ZINT` itself with an `IN` from its port 20h (§3.2).
@@ -309,7 +312,11 @@ each data byte.
 One-shot 0M (74LS123, R12 = 240 K, C16 = 47 µF). An IN from port 40h starts it. An IN from
 port 10h clears it. While it runs it drives J2 pin 16 `MOTOR ON*` for 5″ drives. The Z80 reads
 its state as `TOFF` (status bit 5). The program uses it to deselect an idle drive. The manual
-gives no period.
+gives no period. The DM74LS123 data sheet (Fairchild, April 2000, p. 2 note 3) gives
+tW = K × RX × CX with K ≈ 0.37 for CX ≫ 1000 pF: 0.37 × 240 kΩ × 47 µF = **4.17 s**. The
+74LS123 retriggers, so a start while the timer runs extends it (note 7). DCM2's `SELECT`
+reads `TOFF`, then starts the timer with `IN 40h`, and waits its motor delay only if `TOFF`
+was 1.
 
 ### 3.8 Step control (p. 11, Fig 2-9)
 

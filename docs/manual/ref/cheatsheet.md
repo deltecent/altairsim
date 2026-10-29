@@ -148,6 +148,7 @@ Type the part before the bracket.
 | `fdcplus` | FarmTek FDC+: serial drive (drive types 6, 7) |
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | `icom` | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
+| `jadedd` | Jade Double D: double-density controller, own Z80 |
 | `mds` | MITS 88-MDS: 5.25" minidisk controller |
 | `mdsa` | North Star MDS-A: single-density 5.25" floppy controller |
 | `mdsad` | North Star MDS-A-D: double-density 5.25" floppy controller |
@@ -241,6 +242,7 @@ Type the part before the bracket.
 | `dualidesd` | S100Computers "IDE-AB CF+ESP32" machine -- both boards, CP/M 3 on CF drives A:/B: and SD drives C:/D:. |
 | `dualsd` | S100Computers "Dual SD" machine -- a V2 Z80 CPU board booting CP/M 3 off a microSD card. |
 | `icom` | iCOM FD3712 8" floppy machine -- boots CP/M 2.2 off a single-density iCOM disk. |
+| `jadedd` | Jade Double D machine -- boots Jade CP/M 2.2 (Release 2) off an 8" Jade disk. |
 | `lineprinter-lpc` | The `default` machine with an 88-LPC line printer at port 02; CONNECT `lpt0:prn` to a file or the console. |
 | `lineprinter` | The `default` machine with an 88-C700 line printer at port 02; CONNECT `lpt0:prn` to a file or the console. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
