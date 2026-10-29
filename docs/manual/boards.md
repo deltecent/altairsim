@@ -1706,10 +1706,34 @@ The board has up to four drives. It recognizes a disk by the size of the image:
 The board refuses an image of any other size. The board checks the density. A read at the wrong
 density gives **Record Not Found**, as on the hardware.
 
+The `jadedd` machine boots Jade CP/M 2.2. It has an 8080 processor, 56K of RAM, an 88-2SIO, this
+board, and a boot PROM, **DDBOOT-2SIO** (`builtin:ddboot-2sio`), at `F000`. The PROM is in the
+host's memory, not on the board. It starts the board's Z80, which reads CP/M from drive 0. The CP/M BIOS on Jade's
+disks uses the PROM's console routines, so the PROM stays in memory while CP/M runs.
+
+The console is channel A of the 88-2SIO at port `10`. Jade's own PROM, `builtin:ddboot`, reads a
+console at ports `00` and `01`. Jade marked those ports as the places to change for the owner's
+console board. `builtin:ddboot-2sio` is Jade's PROM, changed at those places for the 88-2SIO. No
+other byte of the PROM is different. To boot CP/M:
+
+1. Type `altairsim jadedd`. With no disk in drive 0, the PROM prints `INSERT SYSTEM DISKETTE` and
+   waits.
+2. Press `Ctrl-E` to go to the monitor.
+3. Type `MOUNT fd0:drive0 JADE20K.DSK`, with the name of your Jade system disk.
+4. Type `RUN`. The PROM reads the drive again and boots CP/M:
+
+```
+JADE COMPUTER PRODUCTS
+20K CP/M 2.2 DDBIOS2
+
+
+A>
+```
+
+A disk with a 56K system prints `56K CP/M 2.2 DDBIOS2`.
+
 These things are not part of the board:
 
-- **A boot PROM.** The package has no Jade boot PROM (DDBOOT) and no built-in machine for this
-  board. A host program must load the board's program into the window.
 - **The serial port.** The board's EIA output is not connected. DCM2 sends list output there, and
   that output is lost.
 - **Two-sided disks.** Each drive has one side.

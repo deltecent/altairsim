@@ -1,0 +1,86 @@
+# Jade Double D machine -- boots Jade CP/M 2.2 (Release 2) off an 8" Jade disk.
+#
+#     altairsim jadedd
+#     MOUNT fd0:drive0 "JADEDD-CPM22-MASTER-SSSD.DSK"
+#     RUN F000
+#
+# THE BOOT PROM IS THE BOOT COMMAND. There is no BOOT verb (DESIGN.md 10.0). The DDBOOT
+# PROM (roms/DDBOOT-2SIO) is in HOST memory at F000, not on the board. It copies a small
+# program into the board's RAM, starts the board's Z80, and waits for it to halt. The board
+# Z80 reads DCM (Jade's disk program for the board) off track 0, and DCM loads CP/M through
+# the window. The PROM stays mapped while CP/M runs -- the BIOS on Jade's disks (DDBIOS)
+# calls the PROM's console routines. See docs/boards/jade-doubled.md and
+# roms/DDBOOT-2SIO/README.md.
+#
+# WITH NO DISK MOUNTED the PROM prints INSERT SYSTEM DISKETTE and tries the drive again until
+# a disk is in it. Press Ctrl-E, mount a disk in drive 0, and type RUN: the PROM then boots.
+
+[machine]
+name    = "jadedd"
+startup = ["RUN F000"]
+
+# THE CPU. A stock 2 MHz 8080; clock_hz = 0 runs it flat out (the crystal is on the card).
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+# THE CONSOLE. An 88-2SIO at port 10, channel A on the console. Jade's PROM reads a console
+# at ports 00/01, and Jade marked those ports as patch points for the owner's own board.
+# builtin:ddboot-2sio is that PROM patched at those points for this board: INIT resets the
+# 6850, and the console routines read status at 10 and data at 11. Channel B is left
+# unconnected.
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+# THE FRONT PANEL, so RUN/EXAMINE/DEPOSIT and the sense switches work.
+[[board]]
+type = "fp"
+id   = "fp0"
+
+# THE JADE DOUBLE D at port 43, with its 1 K memory window at E000 -- the straps the Jade
+# software expects. 8" drives. Four drives, none mounted -- put a disk in drive 0
+# (`MOUNT fd0:drive0 ...`) to boot.
+[[board]]
+type   = "jadedd"
+id     = "fd0"
+port   = 43
+window = E000
+size   = "8"
+
+# THE HOST BRIDGE at B0, so R and W can move files between the host and CP/M.
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+# 56K OF RAM (0000-DFFF). The board's window is at E000 and the PROM at F000, so main memory
+# stops below them.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"                    # real static RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"                     # 0000-DFFF
+
+  [[board.region]]
+  type  = "rom"
+  at    = F000
+  mount = "builtin:ddboot-2sio"
+
+[console]
+bsdel = "bs"

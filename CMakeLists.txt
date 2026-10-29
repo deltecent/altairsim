@@ -1971,6 +1971,34 @@ if(EXPECT_EXECUTABLE)
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   # ---------------------------------------------------------------------------
+  # THE JADE DOUBLE D boots Jade CP/M 2.2 Release 2 through the DDBOOT host PROM at F000,
+  # which starts the board's own Z80 to read the system. Once with Jade's 20K master (SD
+  # data tracks), once with a 56K double-density disk. Both are mounted WRITE-PROTECTED and
+  # shasummed.
+  # ---------------------------------------------------------------------------
+  add_test(NAME acceptance-jadedd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd.toml
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/media/jade/JADEDD-CPM22-MASTER-SSSD.DSK
+                   "20K CP/M" STAT)
+  set_tests_properties(acceptance-jadedd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  add_test(NAME acceptance-jadedd-dd
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd.exp
+                   $<TARGET_FILE:altairsim>
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/jadedd-dd.toml
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/media/jade/jadedd-dd-sysgen-56k.dsk
+                   "56K CP/M" DDBIOS56)
+  set_tests_properties(acceptance-jadedd-dd PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # ---------------------------------------------------------------------------
   # THE S100Computers DUAL SD BOARD boots CP/M 3 -- the whole modern stack in one machine:
   # the `v2z80rom` paged-EEPROM MASTER monitor, the `dualsd` 80H/81H command engine, and the
   # directory-card medium (a truncated `.img` + `.geo` sidecar). The monitor's `I` command
