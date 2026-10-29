@@ -117,21 +117,28 @@ density signature are ordinary data, not special). Then:
 
 Return `false` (→ WRITE FAULT) only if nothing parsed or a write could not land.
 
-### The ascending-track-order invariant
+### A track that changes size moves the tail
 
-Correctness rests on one fact: **FORMAT writes tracks 0→N in order.** So when a track is
-(re)formatted to a *larger* geometry, `rebuild()` moving the following tracks' offsets clobbers
-nothing valid — they have not been written yet, or are about to be overwritten. Every real
-Tarbell format program formats ascending (`pd2/FORMAT.ASM`, `pd2/DFORMAT.ASM`). A fully-correct
-out-of-order / cross-density reformat of an *already populated* disk would have to shift the
-tail by the size delta first; that is **deferred** (see below).
+The image is the tracks end to end: `rebuild()` sets each track's offset to the sum of the
+tracks before it. A Write Track that makes a track larger or smaller therefore moves the start of
+every track after it. `setTrackFormat` moves those bytes by the same distance and resizes the
+medium to match (`DiskImage::moveTail`), so every other track keeps its data in any write order:
+a whole-disk FORMAT, Jade's FORMAT `*` (tracks 0–1 only), or one reformatted track. A whole-disk
+reformat to a smaller layout (DD → SD) ends at the smaller layout's size, which is what the next
+mount reads the layout from. A blank disk has no tail, so nothing moves. Only a medium with
+`extendsOnWrite` on moves, and one that cannot `resize()` keeps its bytes where they are.
+
+This replaced an earlier rule, that FORMAT writes tracks 0→N in order. That rule held for a blank
+disk and for a reformat to a larger layout. It failed for a reformat to a smaller layout: the
+file kept its old size, and the next mount read the old layout (`Bad Sector` on the Jade Double D).
 
 ### Growth: `setExtendsOnWrite` and the dynamic cap
 
 `DiskImage::setExtendsOnWrite(true)` lets the backing file grow as sectors are written, capped
 at `geometryBytes_`. For a soft-sector card that cap is **dynamic** — it rises as each track is
 formatted (`setTrackFormat` → `rebuild`). A recognized full disk never grows (its writes stay
-in bounds); a blank one grows track by track as it formats. The board turns it on at mount.
+in bounds); a blank one grows track by track as it formats, and a track that changes size moves
+the tail (above). The board turns it on at mount.
 
 ## The density model
 
@@ -274,10 +281,6 @@ container that carries its own sector map would fix this — and is explicitly n
 
 ## Deferred
 
-- **Shift-tail resize** — on a `Write Track` that changes a *populated* track's total size,
-  `memmove` the following data by the size delta before `setTrackFormat`, so a partial /
-  out-of-order / cross-density reformat stays correct. Not needed for blank format or a
-  whole-disk ascending reformat.
 - **Read-side density gate** (above): reads validate geometry, not density. Deferred until a
   workload needs it.
 - **A real-CP/M FORMAT/DFORMAT acceptance test.** *Both* densities are now covered end-to-end at
@@ -321,7 +324,7 @@ container that carries its own sector map would fix this — and is explicitly n
       resolves it by *order* — the format table lists `8dd256` first, so an unforced probe of
       512,512 lands on the SDOS master; `media=8sd-ds` forces the other. When two formats share a
       byte count, list the default first and require `media=` for the other.
-    - **Double-sided blank-grow rides the ascending-slot-order invariant.** A blank double-sided
+    - **Double-sided blank-grow rides the format order.** A blank double-sided
       disk grows contiguously only if the guest's format order matches the image's slot layout, so
       `setExtendsOnWrite` never has to fill a gap. The VersaFloppy lays disks **cylinder-major**
       (interleaved: `T0H0, T0H1, T1H0, …`, per the vf.z80 dumps), and the DDBIOS `FMAT` records

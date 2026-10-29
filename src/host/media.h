@@ -70,15 +70,15 @@ public:
     // SHRINK (or grow) THE MEDIUM. False if this medium cannot -- which is the
     // default, and the honest answer for anything fixed.
     //
-    // Only a TAPE needs it, and only one that re-encodes itself: recording four
-    // hundred bytes over a tape that held four thousand rewrites the file SHORTER,
-    // and without a truncate the tail of the old recording survives past the end and
-    // the next mount decodes it back as trailing garbage. writeAt() may extend a
-    // medium but has no way to end one.
+    // A TAPE that re-encodes itself needs it: recording four hundred bytes over a tape
+    // that held four thousand rewrites the file SHORTER, and without a truncate the tail
+    // of the old recording survives past the end and the next mount decodes it back as
+    // trailing garbage. writeAt() may extend a medium but has no way to end one.
     //
-    // A DISK NEVER CALLS THIS, and could not use it if it did: a platter is a fixed
-    // geometry, and DiskImage bounds every access against it before the medium is
-    // ever reached (disk.h).
+    // A SOFT-SECTOR DISK needs it when the guest's Write Track changes a track's size:
+    // DiskImage moves the bytes after the track and resizes the medium to match, because
+    // the next mount reads the layout from the size (disk.h, setTrackFormat). Every
+    // other disk access is bounded by the geometry and never reaches this.
     virtual bool resize(uint64_t) { return false; }
 
     // THE TRANSPORT STOPPED -- finish the medium, and say whether it worked.

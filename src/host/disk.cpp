@@ -29,14 +29,41 @@ void DiskImage::initFormat(int trackLo, int trackHi, int headLo, int headHi, Den
 // One track's geometry, at runtime. The same slot-index arithmetic as initFormat, for a
 // single (t,h): the WD177x Write Track command lands here once per track as a soft-sector
 // FORMAT streams. rebuild() re-runs so the following tracks' offsets and geometryBytes_
-// (the growth cap) follow -- correct under the ascending-track-order invariant (see disk.h).
+// (the growth cap) follow. When the track changes size, the bytes after it move with it
+// (moveTail), so every other track keeps its data whatever order the guest formats in.
 void DiskImage::setTrackFormat(int t, int h, const TrackFormat& fmt) {
     if (t < 0 || t >= tracks_ || h < 0 || h >= heads_) return;
     size_t i = slotIndex(t, h);
     if (i >= slots_.size()) return;
+    const uint64_t off    = slots_[i].offset;
+    const uint64_t before = slotBytes(slots_[i]);
     slots_[i].fmt   = fmt;
     slots_[i].valid = fmt.sectors > 0 && fmt.sectorSize > 0;
     rebuild();
+    const uint64_t after = slotBytes(slots_[i]);
+    if (after != before) moveTail(off + before, off + after);
+}
+
+// THE TAIL MOVES WITH THE TRACK. A raw image is the tracks end to end, so a track that
+// changes size moves the start of every track after it (rebuild). Their bytes must move
+// the same distance, or a guest that reformats one track -- Jade's FORMAT `*` does tracks
+// 0-1 only -- reads every later track at the wrong place, and a whole-disk reformat to a
+// smaller layout leaves the file at the old size, which the next mount reads as the old
+// layout. Only a medium that follows the format (extendsOnWrite) moves; one that cannot
+// resize() keeps its bytes where they are.
+void DiskImage::moveTail(uint64_t oldEnd, uint64_t newEnd) {
+    if (!extendsOnWrite_ || media_->readOnly()) return;
+    const uint64_t size = media_->size();
+    if (size <= oldEnd) {
+        // No tail: the file ends inside this track or before it. A smaller track only
+        // cuts what is past its new end; a larger one grows as the guest writes it.
+        if (size > newEnd) media_->resize(newEnd);
+        return;
+    }
+    std::vector<uint8_t> tail(size_t(size - oldEnd));
+    if (!media_->readAt(oldEnd, tail.data(), tail.size())) return;
+    if (!media_->resize(newEnd + tail.size())) return;
+    media_->writeAt(newEnd, tail.data(), tail.size());
 }
 
 // The offsets, recomputed from scratch after every initFormat. A track's offset is
@@ -46,7 +73,7 @@ void DiskImage::rebuild() {
     uint64_t off = 0;
     for (auto& s : slots_) {
         s.offset = off;
-        if (s.valid) off += (uint64_t)s.fmt.sectors * (uint64_t)s.fmt.sectorSize;
+        off += slotBytes(s);
     }
     geometryBytes_ = off;
 }

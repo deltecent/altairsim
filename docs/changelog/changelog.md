@@ -21,6 +21,18 @@ machine boots Jade CP/M 2.2 through Jade's boot PROM, DDBOOT, at `F000`. The mac
 an 88-2SIO at port `10`, so its PROM is `builtin:ddboot-2sio`. That PROM is DDBOOT, patched at
 Jade's patch points for the 88-2SIO. Jade's unpatched PROM, for a console at ports `00` and `01`,
 is `builtin:ddboot`.
+Jade's FORMAT program makes double-density, single-density and IBM 3740 disks on the board, and
+copies the system tracks to a new disk.
+
+**A format that changes the size of a track now moves the tracks after it.** A soft-sector disk
+image holds the tracks one after another. When the guest's Write Track command gave a track a
+different size, the start of each later track moved. The bytes of those tracks stayed where they
+were, and the file kept its old size. Jade's FORMAT, function 2, reformatted a double-density disk single
+density and left a 489,728-byte file. The next `MOUNT` read the file as a double-density disk, and
+CP/M gave `Bdos Err On B: Bad Sector`. Now the bytes after the track move with it, and the file
+takes the size of the new layout. A format of only some tracks keeps the data on the others, for
+example FORMAT's `*` function, which formats tracks 0 and 1. The fix applies to the `tarbell`,
+`cromemco-fdc`, `sd-versafloppy`, `compupro-disk` and `jadedd` boards.
 
 **The Z80 adds 1 to its `R` register when it takes an IM 1 or IM 2 interrupt.** The interrupt
 acknowledge is an M1 cycle with a refresh, the same as an opcode fetch. Before, the processor
