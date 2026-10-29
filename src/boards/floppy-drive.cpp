@@ -183,8 +183,8 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
     // rate: a 5.25" double-density track streams at 250 kbit/s, the 8" single-density rate.
     // This is what lets one DD card format a mixed disk -- SD track 0, DD tracks 1-76 -- from
     // the guest's per-track density bit.
-    // setTrackFormat re-runs rebuild(), so the following tracks' offsets and the growth cap follow
-    // (ascending-order invariant, disk.h).
+    // setTrackFormat re-runs rebuild(), so the following tracks' offsets and the growth cap follow,
+    // and a track that changes size moves the bytes after it (disk.h).
     TrackFormat tf;
     tf.density     = doubleDensity ? Density::DD : Density::SD;
     tf.sectors     = (int)fields.size();
@@ -238,7 +238,7 @@ bool DiskImageDrive::formatTrack(const std::vector<SectorId>& ids, uint8_t fill)
     tf.startSector = lo;
     img_->setTrackFormat(head_, side_, tf);
 
-    // In ascending order, so a blank image grows in order (the invariant in host/disk.h).
+    // In ascending order, so a blank image grows in order, with no gap to fill.
     const std::vector<uint8_t> data((size_t)size, fill);
     for (int s = 0; s < tf.sectors; ++s) {
         size_t len = data.size();

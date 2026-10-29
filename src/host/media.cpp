@@ -162,9 +162,10 @@ bool HostFile::resize(uint64_t n) {
 void HostFile::sync() {
     if (readOnly_ || dirtyLo_ >= dirtyHi_) return;
 
-    // THE FILE GREW, so it cannot be patched in place. Only a tape does this -- a floppy
-    // image is a fixed platter and never changes size -- and a recording tape grows by
-    // one byte at a time, so the rewrite is rare and small. Truncate and start again.
+    // THE FILE CHANGED SIZE, so it cannot be patched in place. A recording tape grows by
+    // one byte at a time, and a floppy changes size only while the guest formats it (a
+    // blank disk grows, and a track that changes size moves the tail), so the rewrite is
+    // rare. Truncate and start again.
     if (bytes_.size() != onDisk_) {
         std::ofstream f(path_, std::ios::binary | std::ios::trunc);
         if (!f) return;

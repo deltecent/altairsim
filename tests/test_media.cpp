@@ -322,6 +322,76 @@ void test_media() {
         CHECK(!s->readSector(50, 0, 0, buf, &n), "and reads off the end of it fail");
     }
 
+    SECTION("disk: a Write Track that changes a track's size moves the tracks after it");
+    {
+        // Five tracks of 4 x 128, end to end: track t starts at 512 t. mem() fills byte i
+        // with i mod 251, so a sector that reads the bytes from its ORIGINAL offset still
+        // holds its own data.
+        auto fiveTracks = [](size_t extra, bool follow) {
+            auto d = std::make_unique<DiskImage>(mem(5 * 512 + extra));
+            d->init(5, 1, false);
+            d->initFormat(0, 4, 0, 0, Density::DD, 4, 128, 1);
+            d->setExtendsOnWrite(follow);
+            return d;
+        };
+        auto holds = [](DiskImage& d, int t, int s, uint64_t from) {
+            uint8_t buf[128] = {};
+            size_t  n        = sizeof(buf);
+            if (!d.readSector(t, 0, s, buf, &n) || n != 128) return false;
+            for (size_t i = 0; i < 128; ++i)
+                if (buf[i] != (uint8_t)((from + i) % 251)) return false;
+            return true;
+        };
+        const TrackFormat two{Density::SD, 2, 128, 1};
+        const TrackFormat six{Density::DD, 6, 128, 1};
+
+        // One track in the middle made smaller, as a repair program reformats one track.
+        auto d = fiveTracks(0, true);
+        d->setTrackFormat(2, 0, two);
+        CHECK(d->size() == 5 * 512 - 256, "the file is 256 bytes shorter");
+        CHECK(holds(*d, 1, 4, 512 + 384), "track 1 is where it was");
+        CHECK(holds(*d, 3, 1, 3 * 512), "track 3 moved down with its data");
+        CHECK(holds(*d, 4, 4, 4 * 512 + 384), "and so did the last sector of track 4");
+
+        // One track in the middle made larger, as Jade's FORMAT `*` makes track 1 DD.
+        d = fiveTracks(0, true);
+        d->setTrackFormat(2, 0, six);
+        CHECK(d->size() == 5 * 512 + 256, "the file is 256 bytes longer");
+        CHECK(holds(*d, 3, 1, 3 * 512), "track 3 moved up with its data");
+        CHECK(holds(*d, 4, 4, 4 * 512 + 384), "and so did track 4");
+
+        // A whole-disk reformat to a smaller layout, in track order, on an image with a pad.
+        // The next mount reads the layout from the size, so the file must end at the new
+        // layout, and the pad moves with the tail.
+        d = fiveTracks(100, true);
+        for (int t = 0; t < 5; ++t) d->setTrackFormat(t, 0, two);
+        CHECK(d->size() == 5 * 256 + 100, "the file is the new layout plus the pad");
+        CHECK(d->geometryBytes() == 5 * 256, "and the geometry is the new layout");
+        CHECK(holds(*d, 4, 2, 4 * 512 + 128), "each track kept the start of its old data");
+
+        // A blank disk has no tail. Formatting it moves nothing; it grows as it is written.
+        auto b = std::make_unique<DiskImage>(mem(0));
+        b->init(5, 1, false);
+        b->setExtendsOnWrite(true);
+        b->setTrackFormat(0, 0, six);
+        b->setTrackFormat(1, 0, six);
+        CHECK(b->size() == 0, "a blank disk does not grow when a track is formatted");
+
+        // A medium that does not follow the format keeps its bytes where they are.
+        d = fiveTracks(0, false);
+        d->setTrackFormat(2, 0, two);
+        CHECK(d->size() == 5 * 512, "without extendsOnWrite the file keeps its size");
+        CHECK(holds(*d, 3, 1, 3 * 512 - 256), "and the bytes did not move");
+
+        // Neither does a write-protected one.
+        auto r = std::make_unique<DiskImage>(mem(5 * 512, /*ro=*/true));
+        r->init(5, 1, false);
+        r->initFormat(0, 4, 0, 0, Density::DD, 4, 128, 1);
+        r->setExtendsOnWrite(true);
+        r->setTrackFormat(2, 0, two);
+        CHECK(r->size() == 5 * 512, "a write-protected disk keeps its size");
+    }
+
     SECTION("tape: read, write, rewind");
     {
         std::vector<uint8_t> t = {0x11, 0x22, 0x33};

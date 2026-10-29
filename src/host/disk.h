@@ -111,15 +111,14 @@ public:
     // so the following tracks' offsets and the growth cap follow. It is safe to call after
     // init()/initFormat and after mount.
     //
-    // CORRECTNESS RESTS ON THE ASCENDING-SLOT-ORDER INVARIANT. FORMAT writes slots 0->N in IMAGE
-    // order (slotIndex), so when a track is (re)formatted to a LARGER geometry the slots after it
-    // have either not been written yet or are about to be overwritten -- rebuild() moving their
-    // offsets clobbers nothing valid. This is why the format program's write order must agree with
-    // the image layout: a head-major image wants all of side 0 then side 1, an interleaved
-    // (cylinder-major) image wants both sides of a cylinder before the next -- and a real
-    // controller's FORMAT does whichever its dumped images use (the VersaFloppy, cylinder-major).
-    // An out-of-order or cross-density reformat of an already populated disk would need the tail
-    // shifted first; that is a deferred, separate feature.
+    // A TRACK THAT CHANGES SIZE MOVES THE TAIL. The image is the slots end to end in IMAGE order
+    // (slotIndex), so rebuild() moves the offset of every slot after a resized one. With
+    // extendsOnWrite on, the bytes after the slot move by the same amount and the medium is
+    // resized to match (moveTail), so the other tracks keep their data in any write order:
+    // a whole-disk format, Jade's FORMAT `*` (tracks 0-1 only), or one reformatted track. A
+    // whole-disk reformat to a smaller layout ends at the smaller layout's size, which is what
+    // the next mount reads the layout from. A blank disk has no tail, so it grows as it is
+    // written. A medium that cannot resize() keeps its bytes where they are.
     void setTrackFormat(int t, int h, const TrackFormat& fmt);
 
     int  tracks() const { return tracks_; }
@@ -143,9 +142,9 @@ public:
     //
     //   - SOFT-SECTOR (Tarbell): the geometry arrives one track at a time from the Write
     //     Track command (setTrackFormat), so geometryBytes_ is DYNAMIC -- it grows as each
-    //     track is formatted, and the cap rises with it under the ascending-order invariant.
-    //     A recognized full disk never grows (its writes stay in bounds); a blank one grows
-    //     as it formats.
+    //     track is formatted. A recognized full disk never grows (its writes stay in bounds);
+    //     a blank one grows as it formats. A track that changes size moves the bytes after it
+    //     and resizes the medium (setTrackFormat), so the file follows the format both ways.
     //
     // A card that neither pre-declares its whole geometry nor formats leaves this OFF, and a
     // short image there really is a truncated one.
@@ -193,6 +192,12 @@ private:
         uint64_t    offset = 0;
         bool        valid  = false;
     };
+    static uint64_t slotBytes(const Slot& s) {
+        return s.valid ? (uint64_t)s.fmt.sectors * (uint64_t)s.fmt.sectorSize : 0;
+    }
+    // A track went from ending at oldEnd to ending at newEnd: move the bytes after it.
+    void moveTail(uint64_t oldEnd, uint64_t newEnd);
+
     std::unique_ptr<MediaFile> media_;
     int               tracks_        = 0;
     int               heads_         = 0;
