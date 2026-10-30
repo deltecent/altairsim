@@ -12,15 +12,23 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
-**`CONFIG SAVE` now saves the transform keys of `[console]`.** It left out the whole section, so the
-loader set `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel` back to their defaults.
-The `basic4k` file sets `strip7out = true`. A copy saved with `CONFIG SAVE` loaded with `strip7out`
-off, and MITS BASIC printed `MEMORY SIZ?` for `MEMORY SIZE?`. The saved file now has a `[console]`
-section with the seven keys. The keys `stop`, `base`, `history` and `log` are still not saved,
-because they belong to the person at the keyboard.
+**`CONFIG SAVE` now saves the `[terminal]` section.** It left out `upper`, `strip7in`, `strip7out`,
+`crlf`, `echo`, `bell` and `bsdel`, the settings of the terminal window. A machine file with
+`strip7out = true` in `[terminal]` lost that key in a save. On a guest that writes parity in bit 7,
+a CR then printed as a character and did not move the cursor. The saved file now has a
+`[terminal]` section with the seven keys.
+
+**`CONFIG SAVE` now saves the transform keys of `[console]`.** It left out the whole section, so a
+saved file did not have `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel`. The
+loader does not reset these keys. A new run of the saved file used the defaults, and `CONFIG LOAD`
+kept the values of the last machine. The `basic4k` file sets `strip7out = true`. A copy saved with
+`CONFIG SAVE` started with `strip7out` off, and MITS BASIC printed `MEMORY SIZ?` for `MEMORY SIZE?`.
+The saved file now has a `[console]` section with the seven keys. The keys `stop`, `base`, `history`
+and `log` are still not saved, because they belong to the person at the keyboard.
 
 **`CONFIG SAVE` now saves the `[display]` section.** It wrote the boards and left out `focus`,
-`keyboard` and `crt`, so the loader set them back to their defaults. The `sbc200v` file sets
+`keyboard` and `crt`. The loader does not reset these keys. A new run of the saved file used the
+defaults, and `CONFIG LOAD` kept the values of the last machine. The `sbc200v` file sets
 `focus = true`, so that its video window is the console. A copy saved with `CONFIG SAVE`
 opened its window behind other windows, and the console kept the keyboard. The saved file now
 has a `[display]` section, and `focus` comes back as `true`.

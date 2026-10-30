@@ -6,6 +6,7 @@
 #include "core/version.h"
 #include "host/console.h"
 #include "host/display.h"
+#include "host/terminal/stream.h"
 
 #include <filesystem>
 #include <fstream>
@@ -14,6 +15,16 @@
 #include <vector>
 
 using namespace altair;
+
+// The lines of one table of a saved file, so a key is looked for in its own table: [console]
+// and [terminal] have the same key names, and a board can have a `base`.
+static std::string savedTable(const std::string& text, const std::string& name) {
+    const std::string head = "\n[" + name + "]\n";
+    const size_t      at   = text.find(head);
+    if (at == std::string::npos) return "";
+    const size_t from = at + head.size() - 1;
+    return text.substr(from, text.find("\n[", from) - from + 1);
+}
 
 // BUILT-IN MACHINES ARE IN THE BINARY, NOT ON THE DISK.
 //
@@ -516,16 +527,17 @@ remove = true
         CHECK(set("strip7out", Value::ofBool(true)) && set("upper", Value::ofBool(true)) &&
                   set("bsdel", Value::ofStr("del")),
               "three transforms set");
-        const std::string text = saveTomlText(cm);
+        const std::string text  = saveTomlText(cm);
+        const std::string table = savedTable(text, "console");
+        CHECK(!table.empty(), "the save has a [console] table");
         for (const char* key : {"upper", "strip7in", "strip7out", "crlf", "echo", "bell", "bsdel"})
-            CHECK(text.find(std::string("\n") + key + " = ") != std::string::npos,
+            CHECK(table.find(std::string("\n") + key + " = ") != std::string::npos,
                   (std::string("the save has [console] ") + key).c_str());
-        CHECK(text.find("\n[console]\n") != std::string::npos, "...under a [console] table");
-        CHECK(text.find("\nstrip7out = true\n") != std::string::npos &&
-                  text.find("\nbsdel = \"del\"\n") != std::string::npos,
+        CHECK(table.find("\nstrip7out = true\n") != std::string::npos &&
+                  table.find("\nbsdel = \"del\"\n") != std::string::npos,
               "...with the values that were set");
         for (const char* key : {"log", "history", "stop", "base"})
-            CHECK(text.find(std::string("\n") + key + " = ") == std::string::npos,
+            CHECK(table.find(std::string("\n") + key + " = ") == std::string::npos,
                   (std::string("...and not the operator's ") + key).c_str());
 
         set("strip7out", Value::ofBool(false));
@@ -541,6 +553,44 @@ remove = true
         set("strip7out", strip0);
         set("upper", upper0);
         set("bsdel", bs0);
+    }
+
+    SECTION("CONFIG SAVE writes [terminal], and it loads back");
+    {
+        // [terminal] is the same kind of table as [console], and the save left it out. A
+        // machine file with `strip7out = true` there lost it on a save and a load. On a
+        // guest that writes parity in bit 7, CR then prints as a glyph.
+        TerminalStream::Settings&      s  = TerminalStream::settings();
+        const TerminalStream::Settings s0 = s;
+
+        Machine     tm;
+        std::string te;
+        const BuiltinMachine* b = findMachine("default");
+        CHECK(b && loadMachine(*b, tm, te), "a machine to save");
+        s.strip7out = true;
+        s.upper     = true;
+        s.bell      = false;
+        s.bsdel     = BsMap::Del;
+        const std::string text  = saveTomlText(tm);
+        const std::string table = savedTable(text, "terminal");
+        CHECK(!table.empty(), "the save has a [terminal] table");
+        for (const char* key : {"upper", "strip7in", "strip7out", "crlf", "echo", "bell", "bsdel"})
+            CHECK(table.find(std::string("\n") + key + " = ") != std::string::npos,
+                  (std::string("the save has [terminal] ") + key).c_str());
+        CHECK(table.find("\nstrip7out = true\n") != std::string::npos &&
+                  table.find("\nbell = false\n") != std::string::npos &&
+                  table.find("\nbsdel = \"del\"\n") != std::string::npos,
+              "...with the values that were set");
+
+        s = TerminalStream::Settings{};
+        Machine     back;
+        std::string be;
+        CHECK(loadTomlText(text, "t (saved)", back, be), "the saved file loads");
+        CHECK(s.strip7out && s.upper && !s.bell && s.bsdel == BsMap::Del,
+              "...and the settings came back");
+        CHECK(saveTomlText(back) == text, "...and saving it again is byte-identical");
+
+        s = s0;
     }
 }
 

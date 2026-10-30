@@ -918,8 +918,8 @@ static std::string defaultMark(const std::map<std::string, std::string>& default
     return std::string("  # default ") + versionNumber();
 }
 
-// One host-settings table: [display] or [console]. Like the board walk, this is a READ --
-// get() only, never set().
+// One host-settings table: [display], [console] or [terminal]. Like the board walk, this is
+// a READ -- get() only, never set().
 static void writeHostTable(std::ostream& f, const char* table, const std::vector<Property>& props,
                            std::string* err) {
     f << "\n[" << table << "]\n";
@@ -1005,19 +1005,20 @@ std::string saveTomlText(Machine& m, std::string* err) {
         f << "]\n";
     }
 
-    // [display] and [console] -- the host's video window and keyboard, which the loader
-    // reads (#862, #863). Neither is a board, so the walk over the boards below never
-    // reaches them, and a machine file that set `focus = true` or `strip7out = true` lost
-    // it on the way through a save.
+    // [display], [console] and [terminal] -- the host's windows, keyboard and terminal
+    // window, which the loader reads (#862, #863). None is a board, so the walk over the
+    // boards below never reaches them, and a machine file that set `focus = true` or
+    // `strip7out = true` lost it on the way through a save.
     //
     // EVERY key is written, whatever its value. Loading a file does not put these settings
     // back to their defaults, so a file that said nothing would keep whatever the last
-    // machine set. No `# default` marks: neither has a fresh object to compare with.
+    // machine set. No `# default` marks: none has a fresh object to compare with.
     //
     // [console] holds only the transform chain. stop, base, history and log are the
     // operator's session, not the machine's, and `log` opens a file.
     writeHostTable(f, "display", Display::properties(), err);
     writeHostTable(f, "console", Console::instance().transformProperties(), err);
+    writeHostTable(f, "terminal", TerminalStream::properties(), err);
 
     for (const auto& b : m.boards()) {
         f << "\n[[board]]\n";

@@ -398,7 +398,7 @@ std::vector<Property> Console::properties() {
     // reported and leaves logging OFF -- a transcript that silently isn't recording is
     // worse than none. The path is the shell cwd's (the process cwd), like any path typed
     // at the prompt. This does NOT round-trip through CONFIG SAVE: it is a diagnostic, not
-    // machine hardware, the same as `[console]` is not emitted.
+    // machine hardware, and the save writes only the transform keys of `[console]`.
     {
         Property x;
         x.name    = "log";
