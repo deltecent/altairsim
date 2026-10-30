@@ -439,9 +439,11 @@ std::vector<Property> Console::properties() {
     // sent all eight bits and the Teletype IGNORED the eighth -- on a Model 33 that is
     // the parity position and the printer never decodes it. The ignoring belongs to
     // the terminal. It is not a strap, and it is CERTAINLY not a mask in the UART.
-    for (Property& f : filter_.properties()) p.push_back(std::move(f));
+    for (Property& f : transformProperties()) p.push_back(std::move(f));
 
     return p;
 }
+
+std::vector<Property> Console::transformProperties() { return filter_.properties(); }
 
 } // namespace altair

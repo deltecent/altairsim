@@ -4,6 +4,7 @@
 #include "config/toml.h"
 #include "core/machines.h"
 #include "core/version.h"
+#include "host/console.h"
 #include "host/display.h"
 
 #include <filesystem>
@@ -484,6 +485,62 @@ remove = true
         Display::setFocusPolicy(focus0);
         Display::setKeyboardToConsole(kb0);
         Display::setCrt(crt0);
+    }
+
+    SECTION("CONFIG SAVE writes the console's transforms, and not the operator's settings (#863)");
+    {
+        // basic4k sets `strip7out = true` in [console]. The save dropped it, and the copy
+        // printed MEMORY SIZ? for MEMORY SIZE?.
+        Console& con = Console::instance();
+        auto set = [&con](const char* name, const Value& v) {
+            for (auto& p : con.properties()) {
+                if (p.name != name) continue;
+                std::string e;
+                return p.set && p.set(v, e);
+            }
+            return false;
+        };
+        auto get = [&con](const char* name) {
+            for (auto& p : con.properties())
+                if (p.name == name) return p.get();
+            return Value::ofBool(false);
+        };
+        const Value strip0 = get("strip7out"), upper0 = get("upper"), bs0 = get("bsdel");
+
+        // Load first: the default machine has a [console] of its own, and it would
+        // overwrite what the test sets.
+        Machine     cm;
+        std::string ce;
+        const BuiltinMachine* b = findMachine("default");
+        CHECK(b && loadMachine(*b, cm, ce), "a machine to save");
+        CHECK(set("strip7out", Value::ofBool(true)) && set("upper", Value::ofBool(true)) &&
+                  set("bsdel", Value::ofStr("del")),
+              "three transforms set");
+        const std::string text = saveTomlText(cm);
+        for (const char* key : {"upper", "strip7in", "strip7out", "crlf", "echo", "bell", "bsdel"})
+            CHECK(text.find(std::string("\n") + key + " = ") != std::string::npos,
+                  (std::string("the save has [console] ") + key).c_str());
+        CHECK(text.find("\n[console]\n") != std::string::npos, "...under a [console] table");
+        CHECK(text.find("\nstrip7out = true\n") != std::string::npos &&
+                  text.find("\nbsdel = \"del\"\n") != std::string::npos,
+              "...with the values that were set");
+        for (const char* key : {"log", "history", "stop", "base"})
+            CHECK(text.find(std::string("\n") + key + " = ") == std::string::npos,
+                  (std::string("...and not the operator's ") + key).c_str());
+
+        set("strip7out", Value::ofBool(false));
+        set("upper", Value::ofBool(false));
+        set("bsdel", Value::ofStr("off"));
+        Machine     back;
+        std::string be;
+        CHECK(loadTomlText(text, "c (saved)", back, be), "the saved file loads");
+        CHECK(get("strip7out").b() && get("upper").b() && get("bsdel").s() == "del",
+              "...and the transforms came back");
+        CHECK(saveTomlText(back) == text, "...and saving it again is byte-identical");
+
+        set("strip7out", strip0);
+        set("upper", upper0);
+        set("bsdel", bs0);
     }
 }
 

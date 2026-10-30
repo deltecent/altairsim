@@ -12,6 +12,13 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`CONFIG SAVE` now saves the transform keys of `[console]`.** It left out the whole section, so the
+loader set `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel` back to their defaults.
+The `basic4k` file sets `strip7out = true`. A copy saved with `CONFIG SAVE` loaded with `strip7out`
+off, and MITS BASIC printed `MEMORY SIZ?` for `MEMORY SIZE?`. The saved file now has a `[console]`
+section with the seven keys. The keys `stop`, `base`, `history` and `log` are still not saved,
+because they belong to the person at the keyboard.
+
 **`CONFIG SAVE` now saves the `[display]` section.** It wrote the boards and left out `focus`,
 `keyboard` and `crt`, so the loader set them back to their defaults. The `sbc200v` file sets
 `focus = true`, so that its video window is the console. A copy saved with `CONFIG SAVE`
