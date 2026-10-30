@@ -40,7 +40,7 @@ jobs:
       matrix:
         include:
           - { name: linux-x86_64,    os: ubuntu-latest }
-          - { name: macos-arm64,     os: macos-14 }
+          - { name: macos-arm64,     os: macos-15 }
           # Visual Studio 2026, the release compiler -- see ci.yml for why it is named outright.
           - { name: windows-x86_64,  os: windows-2025-vs2026 }
 
