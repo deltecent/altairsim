@@ -121,8 +121,8 @@ When a review finds a concept with two names, choose one, add a row, and report 
 A review reports. It does not edit.
 
 **Run the review as one subagent.** A review needs only the file and this skill, not the
-session. Start one `Agent` with `model: sonnet` and effort `medium`. Give it the file path and
-tell it to follow §5 of `.claude/skills/simplified-english/SKILL.md` and return the report.
+session. Start one `Agent` with effort `medium`, and do not give it a `model`. Give it the file
+path and tell it to follow §5 of `.claude/skills/simplified-english/SKILL.md` and return the report.
 The subagent starts with a small context, so it costs less than a review in a long session.
 Do not do this for §6. A writer must have the rules in its own context.
 
