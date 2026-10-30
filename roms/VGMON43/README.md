@@ -17,8 +17,7 @@ board's memory at `F000h` and reads the keyboard at ports `00h` and `01h`.
 - `B` boots from a floppy disk. It needs the Dual-Mode controller, which altairsim does not
   have yet.
 
-These facts come from running the image and from its disassembly. There is no listing in this
-folder.
+These facts come from running the image, from its disassembly and from the listing.
 
 ## Use it
 
@@ -34,4 +33,31 @@ mount = "builtin:vgmon43"
 ## Source
 
 `VGMON43.BIN` is a byte-for-byte copy of `mon43.bin` from `oasis.zip` on schorn.ch. The image
-has no listing and no check against a real PROM. See [`docs/roms.md`](../../docs/roms.md).
+has no check against a real PROM. See [`docs/roms.md`](../../docs/roms.md).
+
+The `source/` folder holds source made from the printed listing, *Vector MZ Monitor, Version
+4.3* (R. S. Harp, 7/16/79, modified 1/12/81). These files are in a subfolder because the build
+embeds the first image file in a ROM folder. `MON43.HEX` must not replace `VGMON43.BIN`.
+
+| File | What it is |
+|---|---|
+| `MON43.ASM` | The source for M80 and L80. Its first lines list each change from the printed text. |
+| `MON43.PRN` | The M80 listing. Its addresses are the printed addresses. |
+| `MON43.HEX` | The assembled output, `E000`–`E7FF`, 2048 bytes. |
+
+`MON43.HEX` is the same as the first 2048 bytes of `VGMON43.BIN`. Their checksum is `43`, the
+value that `ROM Checksums.pdf` gives for the 4.3 Monitor.
+
+- The listing ends at `E7EE`. The source adds `E7EF`–`E7FF` from the image: 16 zero bytes, then
+  `66` at `E7FF`.
+- The listing does not cover `E800`–`EFFF`, so that part of the image has no source.
+- The comments and the label names were read from the scan. The assembly does not check them.
+
+To assemble the source in a CP/M machine:
+
+1. Type `M80 MON43,MON43=MON43.ASM`.
+2. Type `L80 /P:E000,MON43,MON43/N/X/E`.
+3. Answer `Y` when L80 asks to move above loader memory. L80 writes `MON43.HEX`.
+4. Answer `N` when L80 asks again. L80 returns to CP/M.
+
+[Assembling a ROM](../../docs/devguide/assembling-roms.md) gives the setup.
