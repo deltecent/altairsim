@@ -34,7 +34,7 @@ That is the whole of it: put the tape in, toggle in the bootstrap MITS printed i
 
 **There are no dependencies.** A C++20 compiler and CMake ≥ 3.20 is the entire list. The TOML parser, the JSON encoder, the terminal emulator and the line editor are all in-tree, so a fresh clone builds with nothing to download.
 
-**SDL3 is the one exception, and it is detected rather than required.** Install it and the video boards (`vdm1`, `sol`, `dazzler`, `vdb8024`, `cadzilla`) open a real window — as does the built-in `terminal:` VT100; leave it out and they build headless against a null display, every test still passes, and the build never asks you for anything. `-DALTAIRSIM_ENABLE_SDL=OFF` forces headless even where SDL3 is present.
+**SDL3 is the one exception, and it is detected rather than required.** Install it and the video boards (`vdm1`, `sol`, `dazzler`, `vdb8024`, `fwii`, `cadzilla`) open a real window — as does the built-in `terminal:` VT100; leave it out and they build headless against a null display, every test still passes, and the build never asks you for anything. `-DALTAIRSIM_ENABLE_SDL=OFF` forces headless even where SDL3 is present.
 
 ```sh
 git clone https://github.com/deltecent/altairsim.git
@@ -120,6 +120,7 @@ in the monitor prints this list with a one-line description of each (`SHOW BOARD
 | `dazzler` | Cromemco Dazzler — color graphics from a framebuffer in main RAM. |
 | `cadzilla` | CADzilla — HD63484 ACRTC graphics processor and Bt453 RAMDAC; draws by command into 2 MB of its own frame memory, on a fixed VESA monitor. |
 | `vdb8024` | SD Systems VDB-8024 — an 80×24 video terminal on one board. |
+| `fwii` | Vector Graphic Flashwriter II — memory-mapped 80×24 video with the keyboard port. |
 | `sol` | Processor Technology Sol-PC — serial, keyboard, parallel and CUTS tape as one card. |
 
 **Printer and parallel**
@@ -147,7 +148,7 @@ names them all. The Altairs proper — `default`, `original` (as it left Albuque
 `basic4k`, `basic8k`, `ps2`, `ps2int`. The disk machines — `minidisk`, `tarbell`,
 `tarbelldd`, `icom`, `northstar`, `northstardd`, `disk1`, `disk1a`. Other CPUs and other makers — `z80`, `8085`, `sbc200`,
 `sbc200v`, `dualsd`, `dualide`, `dualidesd`. And the peripheral demos — `vdm1`, `dazzler`,
-`cadzilla`, `sol20`, `lineprinter`, `parallel`, `bankmem`, `compupro`.
+`cadzilla`, `sol20`, `vector`, `lineprinter`, `parallel`, `bankmem`, `compupro`.
 
 **All three Intel cores are exerciser-validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the 8085 passes its own 8085EXM; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 

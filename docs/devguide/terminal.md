@@ -144,9 +144,9 @@ Design points, all in `src/host/terminal/stream.{h,cpp}`:
   `TerminalStream::properties()` publishes it through the one `Property` layer — so SET, SHOW,
   TOML load and tab-completion all pick it up with no new plumbing. Config binding is at
   `src/config/toml.cpp` (a `[terminal]` branch beside `[console]`/`[display]`), and the monitor
-  SET/SHOW/`showTerminal` sites mirror `display`. Like `[console]`, it does **not** round-trip
-  through `CONFIG SAVE`, and it is accepted on a headless build (the setting is about what the
-  machine wants).
+  SET/SHOW/`showTerminal` sites mirror `display`. Like `[display]`, `CONFIG SAVE` writes every
+  key of it, and it is accepted on a headless build (the setting is about what the machine
+  wants).
 - **A live-read `static`, global.** One section for the machine, like `[console]`; `SET terminal
   strip7out=on` reaches the running window because `write()`/`keyAscii()` read the static each
   time. `BsMap` is reused from `host/filter.h` rather than re-declared.

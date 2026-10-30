@@ -12,6 +12,36 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`CONFIG SAVE` now saves the `[terminal]` section.** It left out `upper`, `strip7in`, `strip7out`,
+`crlf`, `echo`, `bell` and `bsdel`, the settings of the terminal window. A machine file with
+`strip7out = true` in `[terminal]` lost that key in a save. On a guest that writes parity in bit 7,
+a CR then printed as a character and did not move the cursor. The saved file now has a
+`[terminal]` section with the seven keys.
+
+**`CONFIG SAVE` now saves the transform keys of `[console]`.** It left out the whole section, so a
+saved file did not have `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel`. The
+loader does not reset these keys. A new run of the saved file used the defaults, and `CONFIG LOAD`
+kept the values of the last machine. The `basic4k` file sets `strip7out = true`. A copy saved with
+`CONFIG SAVE` started with `strip7out` off, and MITS BASIC printed `MEMORY SIZ?` for `MEMORY SIZE?`.
+The saved file now has a `[console]` section with the seven keys. The keys `stop`, `base`, `history`
+and `log` are still not saved, because they belong to the person at the keyboard.
+
+**`CONFIG SAVE` now saves the `[display]` section.** It wrote the boards and left out `focus`,
+`keyboard` and `crt`. The loader does not reset these keys. A new run of the saved file used the
+defaults, and `CONFIG LOAD` kept the values of the last machine. The `sbc200v` file sets
+`focus = true`, so that its video window is the console. A copy saved with `CONFIG SAVE`
+opened its window behind other windows, and the console kept the keyboard. The saved file now
+has a `[display]` section, and `focus` comes back as `true`.
+
+**New: `fwii`, the Vector Graphic Flashwriter II video board, and the `vector` machine.** The
+board gives a machine an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard
+port at `00` and `01`. The ports are read only, as on the real board. A read of port `01` clears
+the key flag, and a key can raise `RST 7` through the `interrupt` property. The character shapes
+come from the printed chart of the manual. The `vector` machine runs Vector Graphic's Monitor
+4.3 from ROM. Type `altairsim vector`, and the Monitor's `Mon>` prompt appears in the video
+window. Press `R` for the registers. The machine has no disk controller yet, so `B` returns to
+the prompt.
+
 **New: `jadedd`, the Jade Double D floppy controller.** The board has its own Z80, 2K of RAM and
 an FD1791. The host sees 1K of the board's RAM through a window at `E000`–`FC00`, and controls
 the board through one port at `40`–`43`. The board's Z80 runs the program that the host loads

@@ -23,6 +23,7 @@
 #include "boards/compupro-ss1.h"
 #include "boards/sd-sbc.h"
 #include "boards/sd-vdb8024.h"
+#include "boards/vector-fwii.h"
 #include "boards/terminal-font.h"
 #include "host/display_null.h"
 #include "host/endpoint.h"
@@ -150,6 +151,7 @@ const struct {
     {"4pio", test_4pio},
     {"vdm1", test_vdm1},
     {"vdb8024", test_vdb8024},
+    {"fwii", test_fwii},
     {"terminal", test_terminal},
     {"dazzler", test_dazzler},
     {"dazzler2", test_dazzler2},
@@ -200,6 +202,7 @@ int main(int argc, char** argv) {
     altair::Pio4Board::setResolver(altair::resolveEndpoint);
     altair::SolBoard::setResolver(altair::resolveEndpoint);
     altair::Vdb8024Board::setResolver(altair::resolveEndpoint);
+    altair::FwiiBoard::setResolver(altair::resolveEndpoint);
     altair::PmmiBoard::setResolver(altair::resolveEndpoint);
     altair::StrapSerialBoard::setResolver(altair::resolveEndpoint);
     altair::Io4Board::setResolver(altair::resolveEndpoint);
@@ -216,6 +219,7 @@ int main(int argc, char** argv) {
     altair::VdmBoard::setDisplay(&g_display);
     altair::DazzlerBoard::setDisplay(&g_display);
     altair::Vdb8024Board::setDisplay(&g_display);
+    altair::FwiiBoard::setDisplay(&g_display);
     altair::CadzillaBoard::setDisplay(&g_display);
 
     // The generic terminal endpoint reads these the same way (issue #244). A NullDisplay is

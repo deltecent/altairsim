@@ -18,6 +18,7 @@
 #include "boards/proctech-sol.h"
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-vdb8024.h"
+#include "boards/vector-fwii.h"
 #include "boards/compupro-disk1.h"
 #include "boards/compupro-ss1.h"
 #include "boards/sd-sbc.h"
@@ -368,6 +369,7 @@ int main(int argc, char** argv) {
     Pio4Board::setResolver(resolveEndpoint);
     SolBoard::setResolver(resolveEndpoint);
     Vdb8024Board::setResolver(resolveEndpoint);  // its keyboard connects to an endpoint
+    FwiiBoard::setResolver(resolveEndpoint);     // and so does the Flashwriter II's
     PmmiBoard::setResolver(resolveEndpoint);     // the modem's phone line is an endpoint
     StrapSerialBoard::setResolver(resolveEndpoint);  // the gsio / propio strap-serial family's lines
     Io4Board::setResolver(resolveEndpoint);          // the real SSM IO-4's two UART channels
@@ -385,6 +387,7 @@ int main(int argc, char** argv) {
     VdmBoard::setDisplay(&g_display);
     DazzlerBoard::setDisplay(&g_display);
     Vdb8024Board::setDisplay(&g_display);
+    FwiiBoard::setDisplay(&g_display);
     CadzillaBoard::setDisplay(&g_display);
 
     // The generic built-in terminal (issue #244) draws into the SAME host video service and

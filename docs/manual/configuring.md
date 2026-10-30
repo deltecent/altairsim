@@ -642,6 +642,16 @@ altairsim> CONFIG LOAD mine.toml
 property, with every change that you made with `SET`. When you load the file, you get the same
 machine. Give the machine a name with `SET MACHINE name=` before you save it.
 
+**`CONFIG SAVE` also saves `[display]`, `[terminal]` and the transform keys of `[console]`.** It
+writes these keys every time, with their values at that moment:
+
+- `[display]`: `focus`, `keyboard` and `crt`
+- `[console]` and `[terminal]`: `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel`
+
+It does not mark the defaults in these three sections. It does not save the `stop`, `base`,
+`history` and `log` keys of `[console]`. These four keys belong to the person at the keyboard, not
+to the machine.
+
 **`CONFIG SAVE` marks each setting that has the default value.** The mark is a comment that
 names the release the default belongs to:
 

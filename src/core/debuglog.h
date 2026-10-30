@@ -19,7 +19,7 @@
 //     if (ch.on(SEEK)) dbg::line(ch) << "seek track=" << t << "\n";
 //
 // This is a DIAGNOSTIC, not machine config: the sink and the enabled flags do not
-// round-trip through CONFIG SAVE (like [console], they are the operator's session).
+// round-trip through CONFIG SAVE (like `log` in [console], they are the operator's session).
 // ---------------------------------------------------------------------------
 
 #include <cstdint>

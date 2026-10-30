@@ -110,6 +110,9 @@ void test_roms() {
         // sdmonv21 is the SD (VDB-8024 video console, ports 00/01) sibling of msmonr21;
         // same E000 window and size, a different console driver -- and a different CRC.
         {"sdmonv21", 0xE000, 0xE7FF, 2048, 0x4B101B4Bu, true},
+        // Vector Graphic Monitor 4.3, a binary image with no listing. A .BIN has no address of
+        // its own, so the range starts at 0000; the machine file mounts it at E000.
+        {"vgmon43", 0x0000, 0x0FFF, 4096, 0x29A0FCEEu, true},
         // The Tarbell floppy boot PROM: 32 bytes at 0000, shared by the single- and
         // double-density cards. Reads track 0 sector 1 into 0000 and jumps into it (07D).
         {"tarbell-sd", 0x0000, 0x001F, 32, 0x55E3446Du, true},

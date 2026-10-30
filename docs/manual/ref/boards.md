@@ -92,6 +92,7 @@ and within a group the boards are in **alphabetical order**.
 | [`cadzilla`](#cadzilla) | CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC |
 | [`dazzler`](#dazzler) | Cromemco Dazzler: color graphics |
 | [`dazzler2`](#dazzler2) | Cromemco Dazzler II: color graphics, on-board RAM |
+| [`fwii`](#fwii) | Vector Graphic Flashwriter II: 80x24 video and keyboard port |
 | [`vdb8024`](#vdb8024) | SD Systems VDB-8024: 80x24 video terminal board |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: 16x64 memory-mapped video |
 
@@ -1218,6 +1219,30 @@ Cromemco Dazzler II (a modern board): the Dazzler with its picture in 4 KB of RA
 | `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only **(read-only — not a key you may set)** |
 | `page` | enum | `0` | `0` \| `800` | Which 2 KB half of the card's 4 KB RAM is shown: 0 = the first, 800 = the second, at +800H (jumper P18 pins 31-32 closed) |
 | `seed` | int | `1` | any | Seed for the undefined contents of the card RAM at power-on. The same seed gives the same contents at every power |
+
+
+### `fwii`
+
+Vector Graphic Flashwriter II: 2K of memory-mapped video RAM at BASE (default F000) shown as 24 rows of 80 characters, and two input ports at PORT (default 00): status and keyboard data. Unit 'keyboard' (CONNECT). The key flag drives pin 73 with no vector, so the acknowledge reads as RST 7 (`interrupt`). Needs a Display
+
+**Units:** `keyboard` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0xF000` | `0xC000` .. `0xF800` | Video RAM base address: a 2K block from C000 to F800 (area F) |
+| `port` | int | `0x0` | `0x0` .. `0xE` | Status port (IN). The data port is the next one up. Even, 00 to 0E (area J) |
+| `interrupt` | enum | `int` | `none` \| `int` | Key flag to pin 73 (area L): int = fitted, or none. No vector, so the acknowledge reads as RST 7 *(interrupt strap)* |
+| `fill` | enum | `random` | `zero` \| `random` | Video RAM at power-on: zero \| random (real RAM is not zeroed) |
+| `seed` | int | `1` | any | Seed for fill=random. The same seed fills the RAM the same way at every POWER, so a run is repeatable; change it for a different pattern |
+| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
+
+#### Unit `keyboard` — `[board.unit.keyboard]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of the keyboard line (CONNECT sets this) |
 
 
 ### `vdb8024`

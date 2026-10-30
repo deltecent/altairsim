@@ -22,6 +22,7 @@ The folder name is the ROM name. `roms/DBL/` is `builtin:dbl`.
 | `*.ASM`, `*.PRN` | The source and the assembler listing, where we have them. `SYMBOLS LOAD` reads the `.PRN`. |
 | `README.md` | Where the ROM came from, what it does and how to use it. |
 | `*.pdf` | The period manual, where one exists. |
+| A subfolder | Files that the build must not embed. The build looks only at the top of a ROM folder, so a `.HEX` in `source/` is safe. |
 
 ## How a ROM gets into the program
 

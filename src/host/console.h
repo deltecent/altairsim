@@ -266,6 +266,11 @@ public:
 
     std::vector<Property> properties();
 
+    // The terminal's transform chain only (upper, strip7in, strip7out, crlf, echo, bell,
+    // bsdel). These describe the Teletype a machine was written for, so CONFIG SAVE writes
+    // them to [console]. stop, base, history and log are the operator's own, and are not.
+    std::vector<Property> transformProperties();
+
 private:
     Console() = default;
 

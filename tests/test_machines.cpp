@@ -4,6 +4,9 @@
 #include "config/toml.h"
 #include "core/machines.h"
 #include "core/version.h"
+#include "host/console.h"
+#include "host/display.h"
+#include "host/terminal/stream.h"
 
 #include <filesystem>
 #include <fstream>
@@ -12,6 +15,16 @@
 #include <vector>
 
 using namespace altair;
+
+// The lines of one table of a saved file, so a key is looked for in its own table: [console]
+// and [terminal] have the same key names, and a board can have a `base`.
+static std::string savedTable(const std::string& text, const std::string& name) {
+    const std::string head = "\n[" + name + "]\n";
+    const size_t      at   = text.find(head);
+    if (at == std::string::npos) return "";
+    const size_t from = at + head.size() - 1;
+    return text.substr(from, text.find("\n[", from) - from + 1);
+}
 
 // BUILT-IN MACHINES ARE IN THE BINARY, NOT ON THE DISK.
 //
@@ -447,6 +460,138 @@ remove = true
         for (const auto& bt : boardTypes())
             CHECK(makeBoard(bt.name) != nullptr,
                   ("makeBoard builds '" + bt.name + "', so CONFIG SAVE can mark its defaults").c_str());
+
+    SECTION("CONFIG SAVE writes [display], and it loads back (#862)");
+    {
+        // [display] is the host's window, not a board, so the walk over the boards never
+        // reached it. A machine file that set `focus = true` lost it on a save and a load.
+        const bool focus0 = Display::focusPolicy(), kb0 = Display::keyboardToConsole(),
+                   crt0 = Display::crt();
+
+        Display::setFocusPolicy(true);
+        Display::setKeyboardToConsole(false);
+        Display::setCrt(true);
+        Machine     dm;
+        std::string de;
+        const BuiltinMachine* b = findMachine("default");
+        CHECK(b && loadMachine(*b, dm, de), "a machine to save");
+        const std::string text = saveTomlText(dm);
+        CHECK(text.find("\n[display]\nfocus = true\nkeyboard = \"none\"\ncrt = true\n") !=
+                  std::string::npos,
+              "the save has a [display] section with all three keys");
+
+        // Loading does not put the settings back by itself, so flip them first: only the
+        // file can bring them to the values the save held.
+        Display::setFocusPolicy(false);
+        Display::setKeyboardToConsole(true);
+        Display::setCrt(false);
+        Machine     back;
+        std::string be;
+        CHECK(loadTomlText(text, "d (saved)", back, be), "the saved file loads");
+        CHECK(Display::focusPolicy(), "...focus came back");
+        CHECK(!Display::keyboardToConsole(), "...keyboard came back");
+        CHECK(Display::crt(), "...crt came back");
+        CHECK(saveTomlText(back) == text, "...and saving it again is byte-identical");
+
+        Display::setFocusPolicy(focus0);
+        Display::setKeyboardToConsole(kb0);
+        Display::setCrt(crt0);
+    }
+
+    SECTION("CONFIG SAVE writes the console's transforms, and not the operator's settings (#863)");
+    {
+        // basic4k sets `strip7out = true` in [console]. The save dropped it, and the copy
+        // printed MEMORY SIZ? for MEMORY SIZE?.
+        Console& con = Console::instance();
+        auto set = [&con](const char* name, const Value& v) {
+            for (auto& p : con.properties()) {
+                if (p.name != name) continue;
+                std::string e;
+                return p.set && p.set(v, e);
+            }
+            return false;
+        };
+        auto get = [&con](const char* name) {
+            for (auto& p : con.properties())
+                if (p.name == name) return p.get();
+            return Value::ofBool(false);
+        };
+        const Value strip0 = get("strip7out"), upper0 = get("upper"), bs0 = get("bsdel");
+
+        // Load first: the default machine has a [console] of its own, and it would
+        // overwrite what the test sets.
+        Machine     cm;
+        std::string ce;
+        const BuiltinMachine* b = findMachine("default");
+        CHECK(b && loadMachine(*b, cm, ce), "a machine to save");
+        CHECK(set("strip7out", Value::ofBool(true)) && set("upper", Value::ofBool(true)) &&
+                  set("bsdel", Value::ofStr("del")),
+              "three transforms set");
+        const std::string text  = saveTomlText(cm);
+        const std::string table = savedTable(text, "console");
+        CHECK(!table.empty(), "the save has a [console] table");
+        for (const char* key : {"upper", "strip7in", "strip7out", "crlf", "echo", "bell", "bsdel"})
+            CHECK(table.find(std::string("\n") + key + " = ") != std::string::npos,
+                  (std::string("the save has [console] ") + key).c_str());
+        CHECK(table.find("\nstrip7out = true\n") != std::string::npos &&
+                  table.find("\nbsdel = \"del\"\n") != std::string::npos,
+              "...with the values that were set");
+        for (const char* key : {"log", "history", "stop", "base"})
+            CHECK(table.find(std::string("\n") + key + " = ") == std::string::npos,
+                  (std::string("...and not the operator's ") + key).c_str());
+
+        set("strip7out", Value::ofBool(false));
+        set("upper", Value::ofBool(false));
+        set("bsdel", Value::ofStr("off"));
+        Machine     back;
+        std::string be;
+        CHECK(loadTomlText(text, "c (saved)", back, be), "the saved file loads");
+        CHECK(get("strip7out").b() && get("upper").b() && get("bsdel").s() == "del",
+              "...and the transforms came back");
+        CHECK(saveTomlText(back) == text, "...and saving it again is byte-identical");
+
+        set("strip7out", strip0);
+        set("upper", upper0);
+        set("bsdel", bs0);
+    }
+
+    SECTION("CONFIG SAVE writes [terminal], and it loads back");
+    {
+        // [terminal] is the same kind of table as [console], and the save left it out. A
+        // machine file with `strip7out = true` there lost it on a save and a load. On a
+        // guest that writes parity in bit 7, CR then prints as a glyph.
+        TerminalStream::Settings&      s  = TerminalStream::settings();
+        const TerminalStream::Settings s0 = s;
+
+        Machine     tm;
+        std::string te;
+        const BuiltinMachine* b = findMachine("default");
+        CHECK(b && loadMachine(*b, tm, te), "a machine to save");
+        s.strip7out = true;
+        s.upper     = true;
+        s.bell      = false;
+        s.bsdel     = BsMap::Del;
+        const std::string text  = saveTomlText(tm);
+        const std::string table = savedTable(text, "terminal");
+        CHECK(!table.empty(), "the save has a [terminal] table");
+        for (const char* key : {"upper", "strip7in", "strip7out", "crlf", "echo", "bell", "bsdel"})
+            CHECK(table.find(std::string("\n") + key + " = ") != std::string::npos,
+                  (std::string("the save has [terminal] ") + key).c_str());
+        CHECK(table.find("\nstrip7out = true\n") != std::string::npos &&
+                  table.find("\nbell = false\n") != std::string::npos &&
+                  table.find("\nbsdel = \"del\"\n") != std::string::npos,
+              "...with the values that were set");
+
+        s = TerminalStream::Settings{};
+        Machine     back;
+        std::string be;
+        CHECK(loadTomlText(text, "t (saved)", back, be), "the saved file loads");
+        CHECK(s.strip7out && s.upper && !s.bell && s.bsdel == BsMap::Del,
+              "...and the settings came back");
+        CHECK(saveTomlText(back) == text, "...and saving it again is byte-identical");
+
+        s = s0;
+    }
 }
 
 // ---------------------------------------------------------------------------

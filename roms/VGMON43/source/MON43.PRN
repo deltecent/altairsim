@@ -1,0 +1,1701 @@
+	MACRO-80 3.44	09-Dec-81	PAGE	1
+
+
+                                ;  VECTOR MZ MONITOR 4.3, converted from the printed listing to M80 source.
+                                ;
+                                ;  Assemble and link with M80 and L80:
+                                ;
+                                ;	M80 MON43,MON43=MON43.ASM
+                                ;	L80 /P:E000,MON43,MON43/N/X/E
+                                ;
+                                ;  L80 asks "Origin above loader memory" twice. Answer Y, which writes
+                                ;  MON43.HEX, then N, which returns to CP/M.
+                                ;
+                                ;  Changes from the listing, made because M80 needs them. The object
+                                ;  code is the same:
+                                ;	RET, PAGE, HEXRULER	renamed VRET, VPAGE, HEXRLR
+                                ;	DTH, DT			written as DC, DB
+                                ;	PUSH IX, PUSH IY	written as DB
+                                ;	*			comment lines start with ;*
+                                ;	LINK			kept as a comment
+                                ;	ORG BASE		written as .PHASE BASE, L80 /P sets the origin
+                                ;	ORG MSEND		kept as a comment
+                                ;	ORG and DS above ROM	written as EQU, so nothing lands in RAM
+                                ;	ORG KTABL+30		written as DS with a zero fill
+                                ;	E7EF-E7FF		added at the end, from the ROM
+                                ;	strict left-to-right expressions rewritten with HIGH, LOW, ()
+                                ;
+                                	.8080
+                                ;
+                                ;  The listing's Z-80 instructions, as macros
+                                ;
+                                JR	MACRO	ADDR
+                                	DB	18H
+                                	DB	ADDR-$-1
+                                	ENDM
+                                JRNZ	MACRO	ADDR
+                                	DB	20H
+                                	DB	ADDR-$-1
+                                	ENDM
+                                JRZ	MACRO	ADDR
+                                	DB	28H
+                                	DB	ADDR-$-1
+                                	ENDM
+                                JRNC	MACRO	ADDR
+                                	DB	30H
+                                	DB	ADDR-$-1
+                                	ENDM
+                                JRC	MACRO	ADDR
+                                	DB	38H
+                                	DB	ADDR-$-1
+                                	ENDM
+                                LDED	MACRO	ADDR
+                                	DB	0EDH,5BH
+                                	DW	ADDR
+                                	ENDM
+                                SDED	MACRO	ADDR
+                                	DB	0EDH,53H
+                                	DW	ADDR
+                                	ENDM
+	MACRO-80 3.44	09-Dec-81	PAGE	1-1
+
+
+                                SBCD	MACRO	ADDR
+                                	DB	0EDH,43H
+                                	DW	ADDR
+                                	ENDM
+                                LDI	MACRO
+                                	DB	0EDH,0A0H
+                                	ENDM
+                                LDIR	MACRO
+                                	DB	0EDH,0B0H
+                                	ENDM
+                                CCI	MACRO
+                                	DB	0EDH,0A1H
+                                	ENDM
+                                OUTI	MACRO
+                                	DB	0EDH,0A3H
+                                	ENDM
+                                EXAF	MACRO
+                                	DB	08H
+                                	ENDM
+                                EXX	MACRO
+                                	DB	0D9H
+                                	ENDM
+                                INP	MACRO	R
+                                	DB	0EDH,40H+(R*8)
+                                	ENDM
+                                OUTP	MACRO	R
+                                	DB	0EDH,41H+(R*8)
+                                	ENDM
+                                DD	MACRO	V
+                                	DB	HIGH (V)
+                                	DB	LOW (V)
+                                	ENDM
+                                ;
+  E000                          BASE	EQU	0E000H			;ASSEMBLY ADDRESS
+  E000                          PR	EQU	0E000H			;PROM/RAM ADDRESS
+                                ;	LINK	'M6'
+                                ;*******************************************************
+                                ;*                                                     *
+                                ;*           VECTOR MZ MONITOR - VERSION 4.3           *
+                                ;*       R. S. HARP  7/16/79  MODIFIED 1/12/81         *
+                                ;*                                                     *
+                                ;*******************************************************
+                                ;*
+                                ;* SYSTEM EQUATES
+  0000                          CONS	EQU	0			;CONS STATUS PRT
+  0001                          COND	EQU	1			;CONS DATA PORT
+  0040                          RDA	EQU	40H			;RECEIVE FLAG
+  0000                          STPOL	EQU	0			;STATUS POLARITY
+  FFD0                          SPTR	EQU	PR+01FD0H		;STACK POINTER
+  E800                          DSBOOT	EQU	0E800H			;DUALSTOR BOOTSTRAP
+  E802                          MSBOOT	EQU	0E802H			;MEGASTOR BOOTSTRAP
+  E80C                          FLBOOT	EQU	0E80CH			;FLOPPY BOOTSTRAP
+  FF10                          DBUSY	EQU	0FF10H			;CONTROLLER BUSY
+                                ;*
+                                ;****************** COMMAND FORMAT *******************
+                                ;*   A SSSS FFFF ASCII DUMP OF MEMORY                  *
+	MACRO-80 3.44	09-Dec-81	PAGE	1-2
+
+
+                                ;*   B JUMP TO BOOTSTRAP LOADER                        *
+                                ;*   C SSSS FFFF CCCC COMPARE BLOCKS                   *
+                                ;*   D SSSS FFFF DUMP MEMORY IN HEX & ASCII            *
+                                ;*   E EXTERNAL COMMUNICATIONS                         *
+                                ;*   F SSSS FFFF DD DD TWO BYTE SEARCH                 *
+                                ;*   G SSSS GO TO AND EXECUTE                          *
+                                ;*   H JUMP TO HIGH RAM AT FC00                        *
+                                ;*   I PP INPUT FROM PORT                              *
+                                ;*   J JUMP TO DOS                                     *
+                                ;*   K LLLL SET A BREAKPOINT                           *
+                                ;*   L JUMP TO LOW RAM AT 0                            *
+                                ;*   M SSSS FFFF DDDD MOVE BLOCK                       *
+                                ;*   N NON DESTRUCTIVE MEMORY TEST                     *
+                                ;*   O PP DD OUTPUT TO PORT                            *
+                                ;*   P LLLL PROGRAM MEMORY                             *
+                                ;*   Q SSSS FFFF COMPUTE CHECKSUM                      *
+                                ;*   R DUMP Z-80 REGISTERS                             *
+                                ;*   S SSSS FFFF DD SEARCH FOR SINGLE BYTE             *
+                                ;*   T SSSS FFFF TEST MEMORY                           *
+                                ;*   U JUMP TO USER AREA AT 100H                       *
+                                ;*   V BOOT FROM 8 INCH DISK                           *
+                                ;*   W BOOT WINCHESTER DISK                            *
+                                ;*   X SSSS FFFF DDDD EXCHANGE BLOCK                   *
+                                ;*   Y KEYBOARD ECHO                                   *
+                                ;*   Z SSSS FFFF DD ZERO OR FILL MEMORY                *
+                                ;*******************************************************
+                                ;*
+                                	.PHASE	BASE
+                                ;* JUMP TABLE OF ENTRY POINTS
+  E000    C3 E015               MONIT:	JMP	INIT			;INITIALIZE ALL
+  E003    C3 E13C               KEYTST:	JMP	KEYSTAT			;TEST KEYBOARD
+  E006    C3 E141               KEYDATA:	JMP	CONVERT			;INPUT KEYBOARD
+  E009    C3 E37B               CRT:	JMP	VIDEO			;OUTPUT TO SCREEN
+  E00C    C3 E12F               ESC:	JMP	ESCAPE			;KEYBOARD INPUT
+                                ;*
+                                ;* TABLE OF COMMANDS FOR USART
+  E00F    00 00 00 40           INITABLE:	DB	0,0,0,40H,0CEH,27H
+  E013    CE 27                 
+                                ;*
+  E015    31 FFD0               INIT:	LXI	SP,SPTR			;INIT STACK
+  E018    CD E12F               	CALL	ESCAPE			;DUMP LATCH
+  E01B    AF                    	XRA	A
+  E01C    32 FFEA               	STA	XYFLAG
+  E01F    32 FF10               	STA	DBUSY			;CLEAR CONTROLLER FLAG
+                                ;* INITIALIZE USARTS AT PORTS 3,5,7
+  E022    3E 03                 	MVI	A,3			;STARTING PORT
+  E024    4F                    	MOV	C,A
+  E025    06 06                 INILOOP:	MVI	B,6			;NO OF COMMANDS
+  E027    21 E00F               	LXI	H,INITABLE
+  E02A                          OUTLOOP:	OUTI				;OUTPUT A BYTE
+  E02A    ED A3           +     	DB	0EDH,0A3H
+  E02C    E3                    	XTHL				;DELAY FOR 6 MHZ.
+  E02D    E3                    	XTHL
+                                	JRNZ	OUTLOOP			;SEND NEXT BYTE
+  E02E    20              +     	DB	20H
+  E02F    FA              +     	DB	OUTLOOP-$-1
+	MACRO-80 3.44	09-Dec-81	PAGE	1-3
+
+
+  E030    0C                    	INR	C
+  E031    0C                    	INR	C
+  E032    3D                    	DCR	A			;DO 3 PORTS IN ALL
+                                	JRNZ	INILOOP
+  E033    20              +     	DB	20H
+  E034    F0              +     	DB	INILOOP-$-1
+                                ;* PATCH RST 7
+  E035    3E C3                 	MVI	A,0C3H			;JUMP
+  E037    32 0038               	STA	38H			;RST 7
+  E03A    21 E6CB               	LXI	H,DUMPREGS
+                                ;* DISPLAY SIGN ON
+  E03D    CD E4CF               	CALL	SIGN
+                                ;* CLEAR BREAKPOINT
+  E040    2A FFE7               CLRBRK:	LHLD	BKPTLOC
+  E043    11 FFE9               	LXI	D,BRKCODE
+                                	SDED	BKPTLOC
+  E046    ED 53           +     	DB	0EDH,53H
+  E048    FFE7            +     	DW	BKPTLOC
+  E04A    1A                    	LDAX	D
+  E04B    77                    	MOV	M,A
+  E04C    31 FFD0               START:	LXI	SP,SPTR			;INITIALIZE STACK
+  E04F    21 F000               	LXI	H,VPAGE			;FULL SCREEN SCROLL
+  E052    22 FFDF               	SHLD	TOSCN
+  E055    CD E52E               	CALL	PROMPT
+  E058    CD E12F               KEYPOL:	CALL	ESCAPE			;READ KEYBOARD
+                                	JRZ	KEYPOL
+  E05B    28              +     	DB	28H
+  E05C    FB              +     	DB	KEYPOL-$-1
+  E05D    E6 5F                 	ANI	5FH			;UPPER AND LOWER
+  E05F    21 E04C               	LXI	H,START
+  E062    E5                    	PUSH	H
+  E063    FE 04                 	CPI	'D'-64
+  E065    CC E37B               	CZ	VIDEO			;ECHO CLEARSCN
+  E068    FE 41                 	CPI	'A'
+  E06A    D8                    	RC				;TOO SMALL
+  E06B    FE 5B                 	CPI	05BH
+  E06D    D0                    	RNC				;TOO LARGE
+  E06E    21 E0F9               	LXI	H,CMDTB+7EH
+  E071    F5                    	PUSH	PSW
+  E072    87                    	ADD	A
+  E073    85                    	ADD	L
+  E074    6F                    	MOV	L,A
+  E075    5E                    	MOV	E,M
+  E076    23                    	INX	H
+  E077    56                    	MOV	D,M
+  E078    EB                    	XCHG
+  E079    F1                    	POP	PSW
+  E07A    E9                    	PCHL				;AWAY WE GO
+                                ;* COMMAND TABLE
+  E07B    E537                  CMDTB:	DW	WASCII			;A
+  E07D    E80C                  	DW	FLBOOT			;B
+  E07F    E2E2                  	DW	COMPR			;C
+  E081    E5BB                  	DW	HEXRUL			;D
+  E083    E7D0                  	DW	EXTCOM			;E
+  E085    E305                  	DW	FIND			;F
+  E087    E0AF                  	DW	EXEC			;G
+	MACRO-80 3.44	09-Dec-81	PAGE	1-4
+
+
+  E089    E256                  	DW	RAM			;H
+  E08B    E353                  	DW	PINPT			;I
+  E08D    E196                  	DW	WARM			;J
+  E08F    E7B5                  	DW	SETBRK			;K
+  E091    E262                  	DW	LORAM			;L
+  E093    E296                  	DW	MOVEB			;M
+  E095    E2BE                  	DW	NDMT			;N
+  E097    E365                  	DW	POUTP			;O
+  E099    E608                  	DW	PROGRAM			;P
+  E09B    E179                  	DW	CHKSM			;Q
+  E09D    E6BF                  	DW	DREGS			;R
+  E09F    E312                  	DW	SRCH			;S
+  E0A1    E1C3                  	DW	TMEM			;T
+  E0A3    E247                  	DW	USER			;U
+  E0A5    E800                  	DW	DSBOOT			;V
+  E0A7    E802                  	DW	MSBOOT			;W
+  E0A9    E287                  	DW	EXCHG			;X
+  E0AB    E1AE                  	DW	ECHO			;Y
+  E0AD    E26E                  	DW	ZEROM			;Z
+                                ;*
+                                ;*** EXECUTE THE PROGRAM AT THE ADDRESS ***
+                                ;*
+  E0AF    CD E4C4               EXEC:	CALL	PTSTNG
+  E0B2    47 4F 20 54           	DC	'GO TO '
+  E0B6    4F A0                 
+  E0B8    CD E0BD               	CALL	AHEX			;READ ADD FROM KB
+  E0BB    EB                    	XCHG
+  E0BC    E9                    	PCHL				;JUMP TO IT
+                                ;*
+                                ;*** CONVERT UP TO 4 HEX DIGITS TO BIN
+                                ;*
+  E0BD    0E 04                 AHEX:	MVI	C,4			;COUNT OF 4 DIGITS
+  E0BF    21 0000               AHE0:	LXI	H,0			;16 BIT ZERO
+  E0C2    CD E12F               AHE1:	CALL	ESCAPE
+  E0C5    FE 20                 	CPI	' '			;SPACE?
+  E0C7    CA E0E8               	JZ	SPCOVR
+  E0CA    CD E0ED               	CALL	HEX			;CHECK VALUE
+                                	JRC	AHE1
+  E0CD    38              +     	DB	38H
+  E0CE    F3              +     	DB	AHE1-$-1
+  E0CF    29                    	DAD	H			;MULT H*16
+  E0D0    29                    	DAD	H
+  E0D1    29                    	DAD	H
+  E0D2    29                    	DAD	H
+  E0D3    85                    	ADD	L
+  E0D4    6F                    	MOV	L,A
+  E0D5    0D                    	DCR	C			;4 DIGITS?
+  E0D6    C2 E0C2               	JNZ	AHE1			;KEEP READING
+  E0D9    EB                    	XCHG
+  E0DA    3E 20                 SPCE:	MVI	A,20H			;PRINT SPACE
+  E0DC    C3 E37B               PTCN:	JMP	VIDEO
+  E0DF    3E 0D                 CRLF:	MVI	A,0DH			;PRINT CR
+  E0E1    CD E0DC               	CALL	PTCN
+  E0E4    3E 0A                 	MVI	A,0AH
+                                	JR	PTCN
+  E0E6    18              +     	DB	18H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-5
+
+
+  E0E7    F4              +     	DB	PTCN-$-1
+                                ;*
+  E0E8    CD E37B               SPCOVR:	CALL	VIDEO
+                                	JR	SPCE-1
+  E0EB    18              +     	DB	18H
+  E0EC    EC              +     	DB	SPCE-1-$-1
+                                ;*
+                                ;* CHECK FOR HEX VALUE, CONVERT
+  E0ED    FE 30                 HEX:	CPI	30H			;<0
+  E0EF    D8                    	RC
+  E0F0    FE 3A                 	CPI	':'			;>9
+                                	JRC	NUM
+  E0F2    38              +     	DB	38H
+  E0F3    09              +     	DB	NUM-$-1
+  E0F4    E6 5F                 	ANI	5FH			;UPPER & LOWER CASE
+  E0F6    FE 41                 	CPI	'A'			;<A
+  E0F8    D8                    	RC
+  E0F9    FE 47                 	CPI	'G'			;>F
+  E0FB    3F                    	CMC
+  E0FC    D8                    	RC
+  E0FD    CD E37B               NUM:	CALL	VIDEO
+  E100    D6 30                 	SUI	48			;ASCII BIAS
+  E102    FE 0A                 	CPI	10			;DIGIT 0-10
+                                	JRC	ALFA
+  E104    38              +     	DB	38H
+  E105    02              +     	DB	ALFA-$-1
+  E106    D6 07                 	SUI	7			;ALPHA BIAS
+  E108    A7                    ALFA:	ANA	A			;CLEAR CY
+  E109    C9                    	RET				;WITH CY CLEAR
+                                ;*
+                                ;* READ 2 DIGITS FROM THE CONSOLE
+  E10A    0E 02                 AHE2:	MVI	C,2
+                                	JR	AHE0
+  E10C    18              +     	DB	18H
+  E10D    B1              +     	DB	AHE0-$-1
+                                ;*
+                                ;* SHORT ROUTINE TO SAVE CODE
+  E10E    CD E0BD               TAHEX:	CALL	AHEX
+                                	JR	AHEX
+  E111    18              +     	DB	18H
+  E112    AA              +     	DB	AHEX-$-1
+                                ;*
+                                ;*** READ FROM CONSOLE TO REG A ***
+                                ;*
+  E113    CD E12F               RDCN:	CALL	ESCAPE			;READ KEYBOARD
+                                	JRZ	RDCN
+  E116    28              +     	DB	28H
+  E117    FB              +     	DB	RDCN-$-1
+  E118    FE 60                 	CPI	60H
+                                	JRC	PTCN
+  E11A    38              +     	DB	38H
+  E11B    C0              +     	DB	PTCN-$-1
+  E11C    E6 5F                 	ANI	5FH
+                                	JR	PTCN
+  E11E    18              +     	DB	18H
+  E11F    BC              +     	DB	PTCN-$-1
+	MACRO-80 3.44	09-Dec-81	PAGE	1-6
+
+
+                                ;*
+  E120    CD E12F               PAUSE:	CALL	ESCAPE
+  E123    FE 20                 	CPI	20H
+  E125    C0                    	RNZ
+  E126    CD E12F               PLOOP:	CALL	ESCAPE
+  E129    FE 20                 	CPI	20H
+  E12B    C2 E126               	JNZ	PLOOP
+  E12E    C9                    	RET
+                                ;*
+  E12F    CD E13C               ESCAPE:	CALL	KEYSTAT
+  E132    C8                    	RZ
+  E133    CD E141               	CALL	CONVERT
+  E136    FE 1B                 	CPI	1BH			;ESCAPE
+  E138    CA E04C               	JZ	START
+  E13B    C9                    	RET
+                                ;*
+  E13C    DB 00                 KEYSTAT:	IN	CONS
+  E13E    E6 40                 	ANI	RDA
+  E140    C9                    	RET
+                                ;*
+                                ;* KEYBOARD CODE CONVERSION
+  E141    DB 01                 CONVERT:	IN	COND			;KEYBOARD DATA
+  E143    E5                    	PUSH	H
+  E144    C5                    	PUSH	B
+  E145    01 0005               	LXI	B,(TABLEND-KTABL)/2
+  E148    21 E15B               	LXI	H,KTABL
+  E14B                          LOOP:	CCI				;COMPARE TABLE
+  E14B    ED A1           +     	DB	0EDH,0A1H
+                                	JRZ	FND
+  E14D    28              +     	DB	28H
+  E14E    06              +     	DB	FND-$-1
+  E14F    23                    	INX	H
+  E150    EA E14B               	JPE	LOOP			;CONT LOOKING
+                                	JR	NFND
+  E153    18              +     	DB	18H
+  E154    01              +     	DB	NFND-$-1
+  E155    7E                    FND:	MOV	A,M			;NEW CODE
+  E156    E6 7F                 NFND:	ANI	7FH			;MASK DOWN
+  E158    C1                    	POP	B
+  E159    E1                    	POP	H
+  E15A    C9                    	RET
+                                ;*
+                                ;* THIS TABLE CAN BE EXTENDED IF DESIRED
+  E15B                          KTABL:	DD	0E15DH			;]
+  E15B    E1              +     	DB	HIGH (0E15DH)
+  E15C    5D              +     	DB	LOW (0E15DH)
+                                	DD	0F15BH			;[
+  E15D    F1              +     	DB	HIGH (0F15BH)
+  E15E    5B              +     	DB	LOW (0F15BH)
+                                	DD	0A17EH			;~
+  E15F    A1              +     	DB	HIGH (0A17EH)
+  E160    7E              +     	DB	LOW (0A17EH)
+                                	DD	0B15CH			;\
+  E161    B1              +     	DB	HIGH (0B15CH)
+  E162    5C              +     	DB	LOW (0B15CH)
+                                	DD	06015H			;CURSOR UP
+	MACRO-80 3.44	09-Dec-81	PAGE	1-7
+
+
+  E163    60              +     	DB	HIGH (06015H)
+  E164    15              +     	DB	LOW (06015H)
+  E165                          TABLEND	EQU	$
+  E165                          	DS	KTABL+30-$,0		;ROOM FOR 15 CONVS
+                                ;*
+                                ;* CHECKSUM ROUTINE
+  E179    CD E4C4               CHKSM:	CALL	PTSTNG
+  E17C    43 48 45 43           	DC	'CHECKSUM '
+  E180    4B 53 55 4D           
+  E184    A0                    
+  E185    CD E10E               	CALL	TAHEX
+  E188    06 00                 	MVI	B,0
+  E18A    7E                    CHKSMLP:	MOV	A,M
+  E18B    80                    	ADD	B
+  E18C    47                    	MOV	B,A
+  E18D    CD E23F               	CALL	BMP
+                                	JRNZ	CHKSMLP
+  E190    20              +     	DB	20H
+  E191    F8              +     	DB	CHKSMLP-$-1
+  E192    78                    	MOV	A,B
+  E193    C3 E226               	JMP	PT2
+                                ;*
+                                ;* WARM START
+                                ;*
+  E196    CD E4C4               WARM:	CALL	PTSTNG
+  E199    4A 55 4D 50           	DC	'JUMP TO DOS'
+  E19D    20 54 4F 20           
+  E1A1    44 4F D3              
+  E1A4    21 04E7               	LXI	H,04E7H			;MDOS RESTART
+  E1A7    7E                    	MOV	A,M
+  E1A8    FE C3                 	CPI	0C3H
+  E1AA    C2 0000               	JNZ	0			;CP/M RESTART
+  E1AD    E9                    	PCHL				;MDOS WARM START
+                                ;*
+                                ;* KEYBOARD ECHO ROUTINE
+  E1AE    CD E4C4               ECHO:	CALL	PTSTNG
+  E1B1    45 43 48 4F           	DC	'ECHO KEYS '
+  E1B5    20 4B 45 59           
+  E1B9    53 A0                 
+  E1BB    CD E12F               ECOLP:	CALL	ESCAPE			;LOOK AT KEYBOARD
+  E1BE    C4 E0DC               	CNZ	PTCN			;PRINT IF KEYPRESS
+                                	JR	ECOLP			;CONTINUE LOOPING
+  E1C1    18              +     	DB	18H
+  E1C2    F8              +     	DB	ECOLP-$-1
+                                ;*
+                                ;*** MEMORY TEST ROUTINE ***
+                                ;*
+  E1C3    CD E4C4               TMEM:	CALL	PTSTNG
+  E1C6    54 45 53 54           	DC	'TEST '
+  E1CA    A0                    
+  E1CB    CD E10E               	CALL	TAHEX			;READ ADDRESSES
+  E1CE    01 5A5A               	LXI	B,5A5AH			;INI B,C
+  E1D1    CD E1FD               CYCL:	CALL	RNDM
+  E1D4    C5                    	PUSH	B			;KEEP ALL REGS
+  E1D5    E5                    	PUSH	H
+  E1D6    D5                    	PUSH	D
+	MACRO-80 3.44	09-Dec-81	PAGE	1-8
+
+
+  E1D7    CD E1FD               TLOP:	CALL	RNDM
+  E1DA    70                    	MOV	M,B			;WRITE IN MEM
+  E1DB    CD E23F               	CALL	BMP
+  E1DE    C2 E1D7               	JNZ	TLOP			;REPEAT LOOP
+  E1E1    D1                    	POP	D
+  E1E2    E1                    	POP	H			;RESTORE ORIG
+  E1E3    C1                    	POP	B			;VALUES OF
+  E1E4    E5                    	PUSH	H
+  E1E5    D5                    	PUSH	D
+  E1E6    CD E1FD               RLOP:	CALL	RNDM			;GEN NEW SEQ
+  E1E9    7E                    	MOV	A,M			;READ MEM
+  E1EA    B8                    	CMP	B			;COMP MEM
+  E1EB    C4 E21D               	CNZ	ERR			;CALL ERROR RTN
+  E1EE    CD E23F               	CALL	BMP
+  E1F1    C2 E1E6               	JNZ	RLOP
+  E1F4    D1                    	POP	D
+  E1F5    E1                    	POP	H
+  E1F6    3E 2E                 	MVI	A,'.'
+  E1F8    CD E37B               	CALL	VIDEO
+                                	JR	CYCL
+  E1FB    18              +     	DB	18H
+  E1FC    D4              +     	DB	CYCL-$-1
+                                ;*** THIS ROUTINE GENERATES RANDOM NOS ***
+  E1FD    CD E120               RNDM:	CALL	PAUSE
+  E200    78                    	MOV	A,B			;LOOK AT B
+  E201    E6 B4                 	ANI	0B4H			;MASK BITS
+  E203    A7                    	ANA	A			;CLEAR CY
+  E204    EA E208               	JPE	PEVE			;JUMP IF EVEN
+  E207    37                    	STC
+  E208    79                    PEVE:	MOV	A,C			;LOOK AT C
+  E209    17                    	RAL				;ROTATE CY IN
+  E20A    4F                    	MOV	C,A			;RESTORE C
+  E20B    78                    	MOV	A,B			;LOOK AT B
+  E20C    17                    	RAL				;ROTATE CY IN
+  E20D    47                    	MOV	B,A			;RESTORE B
+  E20E    C9                    	RET				;RETURN W NEW B,C
+                                ;*
+                                ;*** ERROR PRINT OUT ROUTINE
+                                ;*
+  E20F    CD E0DF               PTAD:	CALL	CRLF			;PRINT CR,LF
+  E212    CD E120               	CALL	PAUSE
+  E215    7C                    	MOV	A,H			;PRINT
+  E216    CD E226               	CALL	PT2			;ASCII
+  E219    7D                    	MOV	A,L			;CODES
+  E21A    C3 E71F               	JMP	PT2S			;FOR ADDRESS
+                                ;*
+  E21D    F5                    ERR:	PUSH	PSW			;SAVE ACC
+  E21E    CD E20F               	CALL	PTAD			;PRINT ADD.
+  E221    78                    	MOV	A,B			;DATA
+  E222    CD E71F               	CALL	PT2S			;WRITTEN
+  E225    F1                    	POP	PSW			;DATA READ
+  E226    F5                    PT2:	PUSH	PSW
+  E227    CD E22D               	CALL	BINH
+  E22A    F1                    	POP	PSW
+                                	JR	BINL
+  E22B    18              +     	DB	18H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-9
+
+
+  E22C    04              +     	DB	BINL-$-1
+  E22D    1F                    BINH:	RAR				;SHIFT RHT 4 BITS
+  E22E    1F                    	RAR
+  E22F    1F                    	RAR
+  E230    1F                    	RAR
+  E231    E6 0F                 BINL:	ANI	0FH			;LOW 4 BITS
+  E233    C6 30                 	ADI	48			;ASCII BIAS
+  E235    FE 3A                 	CPI	58			;DIGIT 0-9
+  E237    DA E0DC               	JC	PTCN
+  E23A    C6 07                 	ADI	7			;DIGIT A-F
+  E23C    C3 E0DC               	JMP	PTCN
+                                ;*
+                                ;* COMPARE ADDRESSES AND INCREMENT H
+  E23F    7B                    BMP:	MOV	A,E
+  E240    95                    	SUB	L
+                                	JRNZ	GOON
+  E241    20              +     	DB	20H
+  E242    02              +     	DB	GOON-$-1
+  E243    7A                    	MOV	A,D
+  E244    9C                    	SBB	H
+  E245    23                    GOON:	INX	H
+  E246    C9                    	RET
+                                ;*
+                                ;* JUMP TO USER RAM
+  E247    CD E4C4               USER:	CALL	PTSTNG
+  E24A    55 53 45 52           	DC	'USER AREA'
+  E24E    20 41 52 45           
+  E252    C1                    
+  E253    C3 0100               	JMP	0100H
+                                ;*
+                                ;* JUMP TO RAM AT PR+1C00
+  E256    CD E4C4               RAM:	CALL	PTSTNG
+  E259    48 49 20 52           	DC	'HI RAM'
+  E25D    41 CD                 
+  E25F    C3 FC00               	JMP	PR+1C00H
+                                ;*
+                                ;* JUMP TO RAM AT 0
+  E262    CD E4C4               LORAM:	CALL	PTSTNG
+  E265    4C 4F 20 52           	DC	'LO RAM'
+  E269    41 CD                 
+  E26B    C3 0000               	JMP	0
+                                ;*
+                                ;* ZERO OR FILL MEMORY WITH A CONSTANT
+  E26E    CD E4C4               ZEROM:	CALL	PTSTNG
+  E271    46 49 4C 4C           	DC	'FILL '
+  E275    A0                    
+  E276    CD E10E               	CALL	TAHEX			;READ ADDRESSES
+  E279    E5                    	PUSH	H			;SAVE H
+  E27A    CD E10A               	CALL	AHE2			;READ 2 DIGITS
+  E27D    EB                    	XCHG
+  E27E    E3                    	XTHL				;RESTORE H,L
+  E27F    C1                    	POP	B
+  E280    71                    ZLOOP:	MOV	M,C			;WRITE INTO MEM
+  E281    CD E23F               	CALL	BMP			;COMP ADD, INCR H
+  E284    C8                    	RZ				;RETURN IF DONE
+                                	JR	ZLOOP			;CONTINUE TIL DONE
+	MACRO-80 3.44	09-Dec-81	PAGE	1-10
+
+
+  E285    18              +     	DB	18H
+  E286    F9              +     	DB	ZLOOP-$-1
+                                ;* EXCHANGE OR MOVE A BLOCK OF MEMORY
+  E287    47                    EXCHG:	MOV	B,A
+  E288    CD E4C4               	CALL	PTSTNG
+  E28B    45 58 43 48           	DC	'EXCHANGE '
+  E28F    41 4E 47 45           
+  E293    A0                    
+                                	JR	MOVENTR
+  E294    18              +     	DB	18H
+  E295    09              +     	DB	MOVENTR-$-1
+  E296    47                    MOVEB:	MOV	B,A			;SAVE CODE
+  E297    CD E4C4               	CALL	PTSTNG
+  E29A    4D 4F 56 45           	DC	'MOVE '
+  E29E    A0                    
+  E29F    CD E10E               MOVENTR:	CALL	TAHEX			;READ ADDRESSES
+  E2A2    E5                    	PUSH	H
+  E2A3    CD E0BD               	CALL	AHEX
+  E2A6    EB                    	XCHG
+  E2A7    E3                    	XTHL				;BACK TO NORMAL
+  E2A8    4E                    MLOOP:	MOV	C,M
+  E2A9    E3                    	XTHL
+  E2AA    78                    	MOV	A,B
+  E2AB    FE 4D                 	CPI	'M'
+                                	JRZ	NEXCH
+  E2AD    28              +     	DB	28H
+  E2AE    04              +     	DB	NEXCH-$-1
+  E2AF    7E                    	MOV	A,M
+  E2B0    E3                    	XTHL
+  E2B1    77                    	MOV	M,A
+  E2B2    E3                    	XTHL
+  E2B3    71                    NEXCH:	MOV	M,C
+  E2B4    23                    	INX	H
+  E2B5    E3                    	XTHL
+  E2B6    CD E23F               	CALL	BMP
+  E2B9    CA E04C               	JZ	START
+                                	JR	MLOOP
+  E2BC    18              +     	DB	18H
+  E2BD    EA              +     	DB	MLOOP-$-1
+                                ;* NON DESTRUCTIVE MEMORY TEST
+  E2BE    CD E4C4               NDMT:	CALL	PTSTNG
+  E2C1    4D 45 4D 20           	DC	'MEM CHECK'
+  E2C5    43 48 45 43           
+  E2C9    CB                    
+  E2CA    21 0000               	LXI	H,0			;START AT ZERO
+  E2CD    4E                    NDLOP:	MOV	C,M
+  E2CE    06 FF                 	MVI	B,0FFH
+  E2D0    70                    	MOV	M,B
+  E2D1    7E                    	MOV	A,M
+  E2D2    B8                    	CMP	B
+  E2D3    C2 E2DB               	JNZ	ERRJP			;PRINT ERROR
+  E2D6    06 00                 	MVI	B,0
+  E2D8    70                    	MOV	M,B
+  E2D9    7E                    	MOV	A,M
+  E2DA    B8                    	CMP	B
+  E2DB    C2 E21D               ERRJP:	JNZ	ERR
+	MACRO-80 3.44	09-Dec-81	PAGE	1-11
+
+
+  E2DE    71                    	MOV	M,C
+  E2DF    23                    	INX	H
+                                	JR	NDLOP
+  E2E0    18              +     	DB	18H
+  E2E1    EB              +     	DB	NDLOP-$-1
+                                ;* COMPARE TWO BLOCKS OF MEMORY
+  E2E2    CD E4C4               COMPR:	CALL	PTSTNG
+  E2E5    43 4F 4D 50           	DC	'COMPARE '
+  E2E9    41 52 45 A0           
+  E2ED    CD E10E               	CALL	TAHEX
+  E2F0    E5                    	PUSH	H
+  E2F1    CD E0BD               	CALL	AHEX
+  E2F4    EB                    	XCHG
+  E2F5    7E                    VMLOP:	MOV	A,M
+  E2F6    23                    	INX	H
+  E2F7    E3                    	XTHL
+  E2F8    BE                    	CMP	M
+  E2F9    46                    	MOV	B,M
+  E2FA    C4 E21D               	CNZ	ERR
+  E2FD    CD E23F               	CALL	BMP
+  E300    E3                    	XTHL
+                                	JRNZ	VMLOP
+  E301    20              +     	DB	20H
+  E302    F2              +     	DB	VMLOP-$-1
+  E303    F1                    	POP	PSW
+  E304    C9                    	RET
+                                ;* SEARCH FOR SPECIFIC CODES
+  E305    F5                    FIND:	PUSH	PSW
+  E306    CD E4C4               	CALL	PTSTNG
+  E309    46 49 4E 44           	DC	'FIND-2 '
+  E30D    2D 32 A0              
+                                	JR	SRCHENT
+  E310    18              +     	DB	18H
+  E311    0D              +     	DB	SRCHENT-$-1
+  E312    F5                    SRCH:	PUSH	PSW
+  E313    CD E4C4               	CALL	PTSTNG
+  E316    53 45 41 52           	DC	'SEARCH-1 '
+  E31A    43 48 2D 31           
+  E31E    A0                    
+  E31F    CD E10E               SRCHENT:	CALL	TAHEX
+  E322    E5                    	PUSH	H			;SAVE H
+  E323    CD E10A               	CALL	AHE2			;READ 2 DIGITS
+  E326    EB                    	XCHG				;H=CODE,D=F
+  E327    45                    	MOV	B,L			;PUT CODE IN B
+  E328    E1                    	POP	H			;RESTORE H
+  E329    F1                    	POP	PSW
+  E32A    FE 53                 	CPI	'S'
+  E32C    F5                    	PUSH	PSW
+                                	JRZ	CONT
+  E32D    28              +     	DB	28H
+  E32E    07              +     	DB	CONT-$-1
+  E32F    E5                    	PUSH	H
+  E330    CD E10A               	CALL	AHE2			;READ 2 DIGITS
+  E333    EB                    	XCHG
+  E334    4D                    	MOV	C,L
+  E335    E1                    	POP	H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-12
+
+
+  E336    7E                    CONT:	MOV	A,M			;READ MEMORY
+  E337    B8                    	CMP	B			;COMPARE TO CODE
+                                	JRNZ	SKP			;SKIP IF NO COMP
+  E338    20              +     	DB	20H
+  E339    12              +     	DB	SKP-$-1
+  E33A    F1                    	POP	PSW			;FETCH CONTROL
+  E33B    FE 53                 	CPI	'S'
+  E33D    F5                    	PUSH	PSW
+                                	JRZ	OBCP
+  E33E    28              +     	DB	28H
+  E33F    06              +     	DB	OBCP-$-1
+  E340    23                    	INX	H
+  E341    7E                    	MOV	A,M
+  E342    2B                    	DCX	H
+  E343    B9                    	CMP	C
+                                	JRNZ	SKP
+  E344    20              +     	DB	20H
+  E345    06              +     	DB	SKP-$-1
+  E346    23                    OBCP:	INX	H
+  E347    7E                    	MOV	A,M			;READ NEXT BYTE
+  E348    2B                    	DCX	H			;DECR ADDRESS
+  E349    CD E21D               	CALL	ERR			;PRINT CODES
+  E34C    CD E23F               SKP:	CALL	BMP			;CHECK IF DONE
+                                	JRNZ	CONT			;BACK FOR MORE
+  E34F    20              +     	DB	20H
+  E350    E5              +     	DB	CONT-$-1
+  E351    F1                    	POP	PSW
+  E352    C9                    	RET
+                                ;*
+                                ;* INPUT DATA FROM A PORT
+  E353    CD E4C4               PINPT:	CALL	PTSTNG
+  E356    49 4E 50 55           	DC	'INPUT '
+  E35A    54 A0                 
+  E35C    CD E10A               	CALL	AHE2			;READ 2 DIGITS
+  E35F    4B                    	MOV	C,E
+                                	INP	A
+  E360    ED 78           +     	DB	0EDH,40H+(A*8)
+  E362    C3 E226               	JMP	PT2
+                                ;*
+                                ;* OUTPUT TO A PORT
+  E365    CD E4C4               POUTP:	CALL	PTSTNG
+  E368    4F 55 54 50           	DC	'OUTPUT '
+  E36C    55 54 A0              
+  E36F    CD E10A               	CALL	AHE2			;READ 2 DIGITS
+  E372    CD E10A               	CALL	AHE2			;READ 2 DIGITS
+  E375    4D                    	MOV	C,L
+                                	OUTP	E
+  E376    ED 59           +     	DB	0EDH,41H+(E*8)
+  E378    C9                    	RET
+                                ;*
+                                ;*
+                                ;*************************************************
+                                ;*                                               *
+                                ;*        VIDEO DRIVER FOR  FLASHWRITER II       *
+                                ;*                                               *
+                                ;*************************************************
+	MACRO-80 3.44	09-Dec-81	PAGE	1-13
+
+
+                                ;*
+  F000                          VPAGE	EQU	PR+1000H		;SCREEN LOCATION
+  0020                          SPACE	EQU	20H
+  0004                          CLRSCRN	EQU	4
+                                ;*************************************************
+                                ;*                                               *
+                                ;* CONTROL CODE COMMANDS:                        *
+                                ;*     (B) HOME CURSOR                           *
+                                ;*     (D) CLEAR SCREEN                          *
+                                ;*     (E) PRINT CONTROL CODE                    *
+                                ;*     (H) BACKSPACE                             *
+                                ;*     (I) TAB                                   *
+                                ;*     (J) LINEFEED                              *
+                                ;*     (M) CARRIAGE RETURN                       *
+                                ;*     (N) NO CURSOR                             *
+                                ;*     (P) CLEAR TO END OF SCREEN                *
+                                ;*     (Q) CLEAR TO END OF LINE                  *
+                                ;*     (R) CURSOR DOWN                           *
+                                ;*     (T) TOGGLE REVERSE VIDEO                  *
+                                ;*     (U) CURSOR UP                             *
+                                ;*     (W) CURSOR LEFT                           *
+                                ;*     (X) CLEAR TO START OF LINE                *
+                                ;*     (Z) CURSOR RIGHT                          *
+                                ;*     ESC XY POSITION LEAD-IN                   *
+                                ;*                                               *
+                                ;*************************************************
+                                ;*
+                                ;* VIDEO BOARD PARAMETERS
+  0050                          HORIZ	EQU	80			;NO. OF CHARACTERS
+  0018                          VERT	EQU	24			;NO. OF LINES
+                                ;*
+  E379    3E 14                 TVIDEO:	MVI	A,'T'-64		;TOGGLE VIDEO
+                                ;*
+  E37B    F5                    VIDEO:	PUSH	PSW
+  E37C    C5                    	PUSH	B
+  E37D    D5                    	PUSH	D
+  E37E    E5                    	PUSH	H
+  E37F    E6 7F                 	ANI	07FH
+  E381    4F                    	MOV	C,A
+  E382    3A E800               	LDA	BASE+800H
+  E385    FE C3                 	CPI	0C3H			;PROM THERE?
+  E387    79                    	MOV	A,C
+  E388    CC E800               	CZ	BASE+800H		;CALL IT IF SO
+  E38B    CD E460               DISPL:	CALL	LIFTCURS		;ERASE CURSOR
+  E38E    3A FFEA               	LDA	XYFLAG
+  E391    A7                    	ANA	A
+                                	JRZ	NOXY
+  E392    28              +     	DB	28H
+  E393    0A              +     	DB	NOXY-$-1
+  E394    3D                    	DCR	A
+  E395    32 FFEA               	STA	XYFLAG
+  E398    CA E4AF               	JZ	YPOS
+  E39B    C3 E4A6               	JMP	XPOS
+  E39E    79                    NOXY:	MOV	A,C			;RECOVER CHARACTER
+  E39F    FE 20                 	CPI	SPACE			;PRINTING CODE?
+  E3A1    F2 E3D5               	JP	PRINT
+	MACRO-80 3.44	09-Dec-81	PAGE	1-14
+
+
+  E3A4    FE 1C                 	CPI	PCL-TABL		;TOO LARGE?
+  E3A6    F2 E442               	JP	VRET
+  E3A9    E5                    	PUSH	H			;CURSOR IN MEMORY
+  E3AA    21 E3B8               	LXI	H,TABL			;TABLE START
+  E3AD    5F                    	MOV	E,A
+  E3AE    16 00                 	MVI	D,0
+  E3B0    19                    	DAD	D
+  E3B1    5E                    	MOV	E,M
+  E3B2    21 E3D4               	LXI	H,PCL
+  E3B5    19                    	DAD	D
+  E3B6    E3                    	XTHL				;RECOVER H
+  E3B7    C9                    	RET				;EXECUTE ROUTINE
+                                ;* CONTROL CHARACTER JUMP TABLE
+  E3B8    6E                    TABL:	DB	VRET-PCL		;@
+  E3B9    6E                    	DB	VRET-PCL		;A
+  E3BA    63                    	DB	HOME-PCL		;B HOME CURSOR
+  E3BB    6E                    	DB	VRET-PCL		;C
+  E3BC    60                    	DB	FORM-PCL		;D CLEAR SCREEN
+  E3BD    00                    	DB	PCL-PCL			;E PRT CONTROL
+  E3BE    6E                    	DB	VRET-PCL		;F
+  E3BF    6E                    	DB	VRET-PCL		;G
+  E3C0    42                    	DB	DBACKSP-PCL		;H BACKSPACE
+  E3C1    59                    	DB	TAB-PCL			;I TAB OVER
+  E3C2    12                    	DB	LINF-PCL		;J LINE FEED
+  E3C3    6E                    	DB	VRET-PCL		;K
+  E3C4    6E                    	DB	VRET-PCL		;L
+  E3C5    6A                    	DB	CRET-PCL		;M CARRIAGE RET
+  E3C6    71                    	DB	VRET+3-PCL		;N NO CURSOR
+  E3C7    6E                    	DB	VRET-PCL		;O
+  E3C8    A7                    	DB	CLEND-PCL		;P CLR SCN TO END
+  E3C9    AC                    	DB	CLLINE-PCL		;Q CLR LINE TO END
+  E3CA    12                    	DB	LINF-PCL		;R CURSOR DOWN
+  E3CB    6E                    	DB	VRET-PCL		;S
+  E3CC    76                    	DB	TVIDF-PCL		;T TOGGLE VIDEO
+  E3CD    80                    	DB	CURSUP-PCL		;U CURSOR UP
+  E3CE    6E                    	DB	VRET-PCL		;V
+  E3CF    50                    	DB	BACKSP-PCL		;W CURSOR LEFT
+  E3D0    E4                    	DB	CLSTRT-PCL		;X CLR START OF LN
+  E3D1    6E                    	DB	VRET-PCL		;Y
+  E3D2    06                    	DB	EOL-PCL			;Z CURSOR RIGHT
+  E3D3    CB                    	DB	LEDIN-PCL		;[ ESC=XY LEADIN
+                                ;*
+                                ;* PRINT CODE IN B REGARDLESS
+  E3D4    48                    PCL:	MOV	C,B
+                                ;* PRINT THE CHARACTER ON THE SCREEN
+  E3D5    3A FFDD               PRINT:	LDA	VFL
+  E3D8    A9                    	XRA	C
+  E3D9    77                    	MOV	M,A
+                                ;* EOL CHECKS THE CURS POS FOR END OF LINE
+  E3DA    3A FFDB               EOL:	LDA	CURPOS
+  E3DD    3C                    	INR	A
+  E3DE    FE 50                 	CPI	HORIZ
+                                	JRC	TABRET
+  E3E0    38              +     	DB	38H
+  E3E1    5D              +     	DB	TABRET-$-1
+  E3E2    AF                    	XRA	A
+	MACRO-80 3.44	09-Dec-81	PAGE	1-15
+
+
+  E3E3    32 FFDB               	STA	CURPOS
+                                ;* MOVE DN 1 LINE
+  E3E6    3A FFDC               LINF:	LDA	LINENO
+  E3E9    FE 17                 	CPI	VERT-1
+                                	JRNZ	NOSCRL
+  E3EB    20              +     	DB	20H
+  E3EC    23              +     	DB	NOSCRL-$-1
+                                ;* SCROLL UP ONE LINE
+  E3ED    21 0050               SCROLL:	LXI	H,HORIZ
+                                	LDED	TOSCN
+  E3F0    ED 5B           +     	DB	0EDH,5BH
+  E3F2    FFDF            +     	DW	TOSCN
+  E3F4    19                    	DAD	D
+  E3F5                          SCRL:	LDI
+  E3F5    ED A0           +     	DB	0EDH,0A0H
+                                	LDI
+  E3F7    ED A0           +     	DB	0EDH,0A0H
+  E3F9    7C                    	MOV	A,H
+  E3FA    FE F7                 	CPI	HIGH (HORIZ*VERT+VPAGE)
+                                	JRNZ	SCRL
+  E3FC    20              +     	DB	20H
+  E3FD    F7              +     	DB	SCRL-$-1
+  E3FE    7D                    	MOV	A,L
+  E3FF    FE 80                 	CPI	LOW (HORIZ*VERT+VPAGE)
+                                	JRNZ	SCRL
+  E401    20              +     	DB	20H
+  E402    F2              +     	DB	SCRL-$-1
+  E403    3A FFDC               	LDA	LINENO
+                                ;* ERASE BOTTOM LINE
+  E406    EB                    EBOTL:	XCHG
+  E407    06 50                 	MVI	B,HORIZ
+  E409    36 20                 ELOP:	MVI	M,SPACE
+  E40B    23                    	INX	H
+  E40C    05                    	DCR	B
+                                	JRNZ	ELOP
+  E40D    20              +     	DB	20H
+  E40E    FA              +     	DB	ELOP-$-1
+  E40F    3D                    	DCR	A
+  E410    3C                    NOSCRL:	INR	A
+  E411    32 FFDC               	STA	LINENO
+                                	JR	VRET
+  E414    18              +     	DB	18H
+  E415    2C              +     	DB	VRET-$-1
+                                ;*
+                                ;* ERASE BEFORE BACKSPACING
+  E416    36 20                 DBACKSP:	MVI	M,20H
+  E418    3A FFDB               	LDA	CURPOS
+  E41B    A7                    	ANA	A
+                                	JRZ	VRET
+  E41C    28              +     	DB	28H
+  E41D    24              +     	DB	VRET-$-1
+  E41E    3D                    	DCR	A
+  E41F    2B                    	DCX	H
+  E420    36 20                 	MVI	M,20H
+                                	JR	TABRET
+  E422    18              +     	DB	18H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-16
+
+
+  E423    1B              +     	DB	TABRET-$-1
+                                ;* MOVE THE CURSOR BACK
+  E424    3A FFDB               BACKSP:	LDA	CURPOS
+  E427    3D                    	DCR	A
+  E428    F2 E43F               	JP	TABRET
+                                	JR	CRET
+  E42B    18              +     	DB	18H
+  E42C    11              +     	DB	CRET-$-1
+                                ;* TAB OVER TO THE NEXT 8 MULTIPLE
+  E42D    3A FFDB               TAB:	LDA	CURPOS
+  E430    F6 07                 	ORI	7
+                                	JR	EOL+3
+  E432    18              +     	DB	18H
+  E433    A9              +     	DB	EOL+3-$-1
+                                ;* CLEAR THE SCREEN AND HOME UP
+  E434    CD E48D               FORM:	CALL	CLEAR
+  E437    AF                    HOME:	XRA	A
+  E438    32 FFDC               	STA	LINENO
+  E43B    32 FFDD               	STA	VFL			;CLR VID FLAG
+                                ;* CARRIAGE RETURN
+  E43E    AF                    CRET:	XRA	A
+  E43F    32 FFDB               TABRET:	STA	CURPOS
+                                ;* RETURN TO THE CALLING ROUTINE
+  E442    CD E460               VRET:	CALL	LIFTCURS
+  E445    E1                    	POP	H
+  E446    D1                    	POP	D
+  E447    C1                    	POP	B
+  E448    F1                    	POP	PSW
+  E449    C9                    	RET
+  E44A    3A FFDD               TVIDF:	LDA	VFL
+  E44D    EE 80                 	XRI	80H
+  E44F    32 FFDD               	STA	VFL
+                                	JR	VRET
+  E452    18              +     	DB	18H
+  E453    EE              +     	DB	VRET-$-1
+                                ;*
+                                ;* MOVE THE CURSOR UP
+  E454    3A FFDC               CURSUP:	LDA	LINENO
+  E457    A7                    	ANA	A
+                                	JRZ	VRET
+  E458    28              +     	DB	28H
+  E459    E8              +     	DB	VRET-$-1
+  E45A    3D                    	DCR	A
+  E45B    32 FFDC               STORLN:	STA	LINENO
+                                	JR	VRET
+  E45E    18              +     	DB	18H
+  E45F    E2              +     	DB	VRET-$-1
+                                ;* CALCULATE MEM ADD FROM CURSOR POSITION
+  E460    21 F780               LIFTCURS:	LXI	H,HORIZ*VERT+VPAGE
+  E463    11 FFB0               	LXI	D,-HORIZ
+  E466    3A FFDC               	LDA	LINENO
+  E469    3C                    CLOP:	INR	A
+  E46A    19                    	DAD	D
+  E46B    FE 18                 	CPI	VERT
+                                	JRNZ	CLOP			;OPTIMIZED AT BOTTOM
+  E46D    20              +     	DB	20H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-17
+
+
+  E46E    FA              +     	DB	CLOP-$-1
+  E46F                          CFIN:	LDED	CURPOS
+  E46F    ED 5B           +     	DB	0EDH,5BH
+  E471    FFDB            +     	DW	CURPOS
+  E473    16 00                 	MVI	D,0
+  E475    19                    	DAD	D
+                                ;* REVERSE THE VIDEO
+  E476    7E                    	MOV	A,M
+  E477    EE 80                 	XRI	80H
+  E479    77                    	MOV	M,A
+  E47A    C9                    	RET
+                                ;* CLEAR TO END OF SCREEN
+  E47B    CD E496               CLEND:	CALL	WRSPC
+                                	JR	VRET
+  E47E    18              +     	DB	18H
+  E47F    C2              +     	DB	VRET-$-1
+                                ;* CLEAR TO END OF LINE
+  E480    3A FFDB               CLLINE:	LDA	CURPOS
+  E483    36 20                 	MVI	M,20H
+  E485    23                    	INX	H
+  E486    3C                    	INR	A
+  E487    FE 50                 	CPI	50H
+                                	JRNZ	CLLINE+3
+  E489    20              +     	DB	20H
+  E48A    F8              +     	DB	CLLINE+3-$-1
+                                	JR	VRET
+  E48B    18              +     	DB	18H
+  E48C    B5              +     	DB	VRET-$-1
+                                ;* CLEAR THE SCREEN
+  E48D    21 F000               CLEAR:	LXI	H,VPAGE
+  E490    22 FFDF               	SHLD	TOSCN
+  E493    22 FFEA               	SHLD	XYFLAG
+  E496    36 20                 WRSPC:	MVI	M,20H
+  E498    23                    	INX	H
+  E499    7C                    	MOV	A,H
+  E49A    FE F8                 	CPI	HIGH (VPAGE+2048)
+                                	JRNZ	WRSPC
+  E49C    20              +     	DB	20H
+  E49D    F8              +     	DB	WRSPC-$-1
+  E49E    C9                    	RET
+                                ;*
+                                ;* PROCESS LEAD IN CODE
+  E49F    3E 02                 LEDIN:	MVI	A,2
+  E4A1    32 FFEA               	STA	XYFLAG
+                                	JR	VRET
+  E4A4    18              +     	DB	18H
+  E4A5    9C              +     	DB	VRET-$-1
+                                ;*
+                                ;* SET X AND Y CURSOR POSITIONS
+  E4A6    79                    XPOS:	MOV	A,C
+  E4A7    FE 50                 	CPI	80
+                                	JRC	XINRG
+  E4A9    38              +     	DB	38H
+  E4AA    02              +     	DB	XINRG-$-1
+  E4AB    3E 4F                 	MVI	A,79
+  E4AD                          XINRG:	JR	TABRET
+	MACRO-80 3.44	09-Dec-81	PAGE	1-18
+
+
+  E4AD    18              +     	DB	18H
+  E4AE    90              +     	DB	TABRET-$-1
+                                ;*
+  E4AF    79                    YPOS:	MOV	A,C
+  E4B0    FE 18                 	CPI	24
+                                	JRC	YINRG
+  E4B2    38              +     	DB	38H
+  E4B3    02              +     	DB	YINRG-$-1
+  E4B4    3E 17                 	MVI	A,23
+  E4B6                          YINRG:	JR	STORLN
+  E4B6    18              +     	DB	18H
+  E4B7    A3              +     	DB	STORLN-$-1
+                                ;*
+  E4B8    AF                    CLSTRT:	XRA	A
+  E4B9    32 FFDB               	STA	CURPOS
+  E4BC    CD E460               	CALL	LIFTCURS
+                                	JR	CLLINE
+  E4BF    18              +     	DB	18H
+  E4C0    BF              +     	DB	CLLINE-$-1
+  E4C1                          MSEND	EQU	$
+                                ;* CURSOR STORAGE LOCATIONS
+  FFDB                          CURPOS	EQU	SPTR+0BH		;POS ON LINE
+  FFDC                          LINENO	EQU	CURPOS+1		;LINE NUMBER
+  FFDD                          VFL	EQU	LINENO+1		;REVERSE VID FLAG
+  FFDE                          WIDTH	EQU	VFL+1			;PRINT WIDTH
+  FFDF                          TOSCN	EQU	WIDTH+1			;TOP OF SCREEN
+  FFE1                          TCURPOS	EQU	TOSCN+2			;TEMP POSITION
+                                ;	LINK	'M5'
+                                ;* ADDITIONS TO 4.0 MONITOR
+                                ;	ORG	MSEND
+                                ;* PRINT A STRING
+  E4C1    CD E0DF               RPTSTNG:	CALL	CRLF			;CRLF FIRST
+  E4C4    E3                    PTSTNG:	XTHL
+  E4C5    7E                    	MOV	A,M
+  E4C6    23                    	INX	H
+  E4C7    E3                    	XTHL
+  E4C8    A7                    	ANA	A
+  E4C9    CD E37B               	CALL	VIDEO			;PRINT IT
+  E4CC    F8                    	RM
+                                	JR	PTSTNG
+  E4CD    18              +     	DB	18H
+  E4CE    F5              +     	DB	PTSTNG-$-1
+                                ;* SIGN ON MESSAGE
+  E4CF    22 0039               SIGN:	SHLD	39H			;REMNANT FROM RST 7 PATCH
+  E4D2    3E 04                 	MVI	A,4			;CLEAR SCREEN
+  E4D4    CD E37B               	CALL	VIDEO
+  E4D7    21 F150               	LXI	H,VPAGE+150H
+  E4DA    E5                    	PUSH	H
+  E4DB    11 F151               	LXI	D,VPAGE+151H
+  E4DE    01 0030               	LXI	B,30H
+  E4E1    36 12                 	MVI	M,12H			;GRAPHIC CHARACTER
+                                	LDIR
+  E4E3    ED B0           +     	DB	0EDH,0B0H
+  E4E5    E1                    	POP	H
+  E4E6    11 F1A0               	LXI	D,VPAGE+1A0H
+  E4E9    01 0280               	LXI	B,640
+	MACRO-80 3.44	09-Dec-81	PAGE	1-19
+
+
+                                	LDIR
+  E4EC    ED B0           +     	DB	0EDH,0B0H
+  E4EE    CD E4C4               	CALL	PTSTNG
+  E4F1    1B                    	DB	27			;ESC
+                                	DD	2007H			;X=32 Y=7
+  E4F2    20              +     	DB	HIGH (2007H)
+  E4F3    07              +     	DB	LOW (2007H)
+  E4F4    20 56 45 43           	DB	' VECTOR GRAPHIC '
+  E4F8    54 4F 52 20           
+  E4FC    47 52 41 50           
+  E500    48 49 43 20           
+  E504    1B                    	DB	27			;ESC
+                                	DD	2008H			;X=32 Y=8
+  E505    20              +     	DB	HIGH (2008H)
+  E506    08              +     	DB	LOW (2008H)
+  E507    20 20 20 20           	DB	'    MONITOR     '
+  E50B    4D 4F 4E 49           
+  E50F    54 4F 52 20           
+  E513    20 20 20 20           
+  E517    1B                    	DB	27			;ESC
+                                	DD	2009H			;X=32 Y=9
+  E518    20              +     	DB	HIGH (2009H)
+  E519    09              +     	DB	LOW (2009H)
+  E51A    20 20 56 45           	DB	'  VERSION 4.3   '
+  E51E    52 53 49 4F           
+  E522    4E 20 34 2E           
+  E526    33 20 20 20           
+  E52A    1B                    	DB	27			;ESC
+                                	DD	8DH			;X=0 Y=13
+  E52B    00              +     	DB	HIGH (8DH)
+  E52C    8D              +     	DB	LOW (8DH)
+  E52D    C9                    	RET
+  E52E    CD E4C1               PROMPT:	CALL	RPTSTNG
+  E531    4D 6F 6E 3E           	DC	'Mon> '
+  E535    A0                    
+  E536    C9                    	RET
+                                ;*
+                                ;*WIDE ASCII DUMP
+  E537    CD E4C4               WASCII:	CALL	PTSTNG
+  E53A    41 53 43 49           	DC	'ASCII DUMP '
+  E53E    49 20 44 55           
+  E542    4D 50 A0              
+  E545    CD E10E               	CALL	TAHEX
+  E548    CD E58B               	CALL	HOMEC
+                                ;* MAKE A RULER FOR ASCII DUMP
+  E54B    78                    RULELP:	MOV	A,B
+  E54C    FE 40                 	CPI	64
+                                	JRZ	TERMLIN
+  E54E    28              +     	DB	28H
+  E54F    1A              +     	DB	TERMLIN-$-1
+  E550    E6 0F                 	ANI	0FH
+                                	JRZ	NUMBER
+  E552    28              +     	DB	28H
+  E553    10              +     	DB	NUMBER-$-1
+  E554    E6 03                 	ANI	3
+                                	JRZ	MARKER
+	MACRO-80 3.44	09-Dec-81	PAGE	1-20
+
+
+  E556    28              +     	DB	28H
+  E557    08              +     	DB	MARKER-$-1
+  E558    3E 20                 	MVI	A,' '
+  E55A    CD E37B               REENTR:	CALL	VIDEO
+  E55D    04                    	INR	B
+                                	JR	RULELP
+  E55E    18              +     	DB	18H
+  E55F    EB              +     	DB	RULELP-$-1
+  E560    3E 6C                 MARKER:	MVI	A,'l'
+                                	JR	REENTR
+  E562    18              +     	DB	18H
+  E563    F6              +     	DB	REENTR-$-1
+  E564    78                    NUMBER:	MOV	A,B
+  E565    CD E22D               	CALL	BINH
+                                	JR	REENTR+3
+  E568    18              +     	DB	18H
+  E569    F3              +     	DB	REENTR+3-$-1
+                                ;* TOGGLE REVERSE VIDEO
+  E56A    CD E379               TERMLIN:	CALL	TVIDEO
+  E56D    CD E5F7               WDMP1:	CALL	SETSCRLL
+  E570    CD E20F               	CALL	PTAD
+  E573    0E 3F                 	MVI	C,63
+  E575    CD E57C               	CALL	WDMP2
+  E578    FA E56D               	JM	WDMP1
+  E57B    C8                    	RZ
+  E57C    7E                    WDMP2:	MOV	A,M
+  E57D    47                    	MOV	B,A
+  E57E    3E 05                 	MVI	A,'E'-64
+  E580    CD E37B               	CALL	VIDEO
+  E583    CD E23F               	CALL	BMP
+  E586    C8                    	RZ
+  E587    0D                    	DCR	C
+  E588    F8                    	RM
+                                	JR	WDMP2
+  E589    18              +     	DB	18H
+  E58A    F1              +     	DB	WDMP2-$-1
+                                ;* HOME CURSOR, PRINT "ADDR"
+  E58B    CD E4C1               HOMEC:	CALL	RPTSTNG
+  E58E    14                    	DB	'T'-64
+  E58F    41 44 44 52           	DC	'ADDR '
+  E593    A0                    
+  E594    06 00                 	MVI	B,0
+  E596    3E 18                 	MVI	A,24
+  E598    32 FFDE               	STA	WIDTH
+  E59B    C9                    	RET
+                                ;* MAKE A RULER FOR HEX DUMP
+  E59C    78                    HEXRLR:	MOV	A,B
+  E59D    FE 10                 	CPI	16
+                                	JRZ	HEXRCT
+  E59F    28              +     	DB	28H
+  E5A0    06              +     	DB	HEXRCT-$-1
+  E5A1    CD E71F               	CALL	PT2S
+  E5A4    04                    	INR	B
+                                	JR	HEXRLR
+  E5A5    18              +     	DB	18H
+  E5A6    F5              +     	DB	HEXRLR-$-1
+	MACRO-80 3.44	09-Dec-81	PAGE	1-21
+
+
+                                ;* EXTEND FOR ASCII
+  E5A7    CD E0DA               HEXRCT:	CALL	SPCE
+  E5AA    CD E0DA               	CALL	SPCE
+  E5AD    06 00                 	MVI	B,0
+  E5AF    78                    HEXRLP:	MOV	A,B
+  E5B0    FE 10                 	CPI	16
+  E5B2    C8                    	RZ
+  E5B3    E6 0F                 	ANI	0FH
+  E5B5    CD E231               	CALL	BINL
+  E5B8    04                    	INR	B
+                                	JR	HEXRLP
+  E5B9    18              +     	DB	18H
+  E5BA    F4              +     	DB	HEXRLP-$-1
+                                ;* HEX DUMP ROUTINE
+  E5BB    CD E4C4               HEXRUL:	CALL	PTSTNG
+  E5BE    48 45 58 20           	DC	'HEX DUMP '
+  E5C2    44 55 4D 50           
+  E5C6    A0                    
+  E5C7    CD E10E               	CALL	TAHEX
+  E5CA    CD E58B               	CALL	HOMEC
+  E5CD    CD E59C               	CALL	HEXRLR
+  E5D0    CD E379               	CALL	TVIDEO
+  E5D3    CD E5F7               	CALL	SETSCRLL
+  E5D6    CD E20F               HLP1:	CALL	PTAD
+  E5D9    E5                    	PUSH	H
+  E5DA    D5                    	PUSH	D
+  E5DB    0E 10                 	MVI	C,16
+  E5DD    7E                    HLP2:	MOV	A,M
+  E5DE    CD E71F               	CALL	PT2S
+  E5E1    23                    	INX	H
+  E5E2    0D                    	DCR	C
+  E5E3    C2 E5DD               	JNZ	HLP2
+  E5E6    D1                    	POP	D
+  E5E7    E1                    	POP	H
+  E5E8    0E 0F                 	MVI	C,15
+  E5EA    CD E0DA               	CALL	SPCE
+  E5ED    CD E0DA               	CALL	SPCE
+  E5F0    CD E57C               	CALL	WDMP2
+  E5F3    FA E5D3               	JM	HLP1-3
+  E5F6    C9                    	RET
+                                ;* CHECK TO SET SCROLL POINT
+  E5F7    3A FFDE               SETSCRLL:	LDA	WIDTH
+  E5FA    3D                    	DCR	A
+  E5FB    32 FFDE               	STA	WIDTH
+                                	JRNZ	CTSCRL
+  E5FE    20              +     	DB	20H
+  E5FF    07              +     	DB	CTSCRL-$-1
+  E600    01 F050               	LXI	B,VPAGE+50H		;2ND LINE
+                                	SBCD	TOSCN			;SCROLL POINT
+  E603    ED 43           +     	DB	0EDH,43H
+  E605    FFDF            +     	DW	TOSCN
+  E607    C9                    CTSCRL:	RET
+                                ;*
+                                ;* PROGRAM MEMORY
+  E608    CD E4C4               PROGRAM:	CALL	PTSTNG
+  E60B    50 52 4F 47           	DC	'PROGRAM '
+	MACRO-80 3.44	09-Dec-81	PAGE	1-22
+
+
+  E60F    52 41 4D A0           
+  E613    CD E0BD               	CALL	AHEX			;ADDR IN HL
+                                	SDED	TCURPOS
+  E616    ED 53           +     	DB	0EDH,53H
+  E618    FFE1            +     	DW	TCURPOS
+  E61A    CD E58B               	CALL	HOMEC			;PRINT "ADDR"
+  E61D    CD E59C               	CALL	HEXRLR
+  E620    CD E379               	CALL	TVIDEO
+  E623    AF                    	XRA	A
+  E624    32 FFDE               	STA	WIDTH
+  E627    CD E691               	CALL	PRT1LINE		;PRINT LINE CONT H
+  E62A    CD E12F               POLLOOP:	CALL	ESCAPE
+  E62D    CD E0ED               	CALL	HEX
+  E630    2A FFE1               	LHLD	TCURPOS
+                                	JRNC	MODMEM
+  E633    30              +     	DB	30H
+  E634    1A              +     	DB	MODMEM-$-1
+                                ;* CONTROL CODE TABLE
+  E635    FE 20                 	CPI	' '
+                                	JRZ	CSRT
+  E637    28              +     	DB	28H
+  E638    46              +     	DB	CSRT-$-1
+  E639    FE 08                 	CPI	8
+                                	JRZ	CSLT
+  E63B    28              +     	DB	28H
+  E63C    45              +     	DB	CSLT-$-1
+  E63D    FE 12                 	CPI	'R'-64
+                                	JRZ	CSDN
+  E63F    28              +     	DB	28H
+  E640    39              +     	DB	CSDN-$-1
+  E641    FE 15                 	CPI	'U'-64
+                                	JRZ	CSUP
+  E643    28              +     	DB	28H
+  E644    2F              +     	DB	CSUP-$-1
+  E645    FE 17                 	CPI	'W'-64
+                                	JRZ	CSLT
+  E647    28              +     	DB	28H
+  E648    39              +     	DB	CSLT-$-1
+  E649    FE 1A                 	CPI	'Z'-64
+                                	JRZ	CSRT
+  E64B    28              +     	DB	28H
+  E64C    32              +     	DB	CSRT-$-1
+                                	JR	POLLOOP
+  E64D    18              +     	DB	18H
+  E64E    DB              +     	DB	POLLOOP-$-1
+                                ;* MODIFY A MEMORY LOCATION
+  E64F    2A FFE1               MODMEM:	LHLD	TCURPOS
+  E652    4F                    	MOV	C,A
+  E653    3A FFDE               	LDA	WIDTH
+  E656    A7                    	ANA	A
+  E657    7E                    	MOV	A,M
+                                	JRZ	LSNIBL
+  E658    28              +     	DB	28H
+  E659    0D              +     	DB	LSNIBL-$-1
+  E65A    E6 F0                 	ANI	0F0H
+  E65C    B1                    	ORA	C
+	MACRO-80 3.44	09-Dec-81	PAGE	1-23
+
+
+  E65D    77                    REMEM:	MOV	M,A
+  E65E    3A FFDE               	LDA	WIDTH
+  E661    EE 01                 	XRI	1
+                                	JRNZ	RTRTN+1
+  E663    20              +     	DB	20H
+  E664    1F              +     	DB	RTRTN+1-$-1
+                                	JR	CSRT
+  E665    18              +     	DB	18H
+  E666    18              +     	DB	CSRT-$-1
+  E667    17                    LSNIBL:	RAL
+  E668    17                    	RAL
+  E669    17                    	RAL
+  E66A    17                    	RAL
+  E66B    E6 F0                 	ANI	0F0H
+  E66D    B1                    	ORA	C
+  E66E    0F                    	RRC
+  E66F    0F                    	RRC
+  E670    0F                    	RRC
+  E671    0F                    	RRC
+                                	JR	REMEM
+  E672    18              +     	DB	18H
+  E673    E9              +     	DB	REMEM-$-1
+                                ;* MOVE UP ONE LINE
+  E674    11 FFF0               CSUP:	LXI	D,-16
+  E677    19                    	DAD	D
+                                	JR	RTRTN
+  E678    18              +     	DB	18H
+  E679    09              +     	DB	RTRTN-$-1
+                                ;* MOVE DOWN ONE LINE
+  E67A    11 0010               CSDN:	LXI	D,16
+                                	JR	CSUP+3
+  E67D    18              +     	DB	18H
+  E67E    F8              +     	DB	CSUP+3-$-1
+                                ;* MOVE RIGHT ONE SPACE
+  E67F    23                    CSRT:	INX	H
+                                	JR	RTRTN
+  E680    18              +     	DB	18H
+  E681    01              +     	DB	RTRTN-$-1
+                                ;* MOVE LEFT ONE SPACE
+  E682    2B                    CSLT:	DCX	H
+                                ;*
+  E683    AF                    RTRTN:	XRA	A
+  E684    32 FFDE               	STA	WIDTH
+  E687    22 FFE1               	SHLD	TCURPOS
+  E68A    3E 15                 UPAROW:	MVI	A,'U'-64
+  E68C    CD E37B               	CALL	VIDEO
+                                	JR	POLLOOP-3
+  E68F    18              +     	DB	18H
+  E690    96              +     	DB	POLLOOP-3-$-1
+                                ;* PRINT A LINE CONTAINING ((H))
+  E691    2A FFE1               PRT1LINE:	LHLD	TCURPOS
+  E694    E5                    	PUSH	H
+  E695    D1                    	POP	D
+  E696    7D                    	MOV	A,L
+  E697    F6 0F                 	ORI	0FH
+  E699    5F                    	MOV	E,A
+	MACRO-80 3.44	09-Dec-81	PAGE	1-24
+
+
+  E69A    E6 F0                 	ANI	0F0H
+  E69C    6F                    	MOV	L,A
+  E69D    CD E5D6               	CALL	HLP1
+                                ;* NOW PUT CURSOR WHERE IT GOES
+  E6A0    CD E460               	CALL	LIFTCURS
+  E6A3    2A FFE1               	LHLD	TCURPOS
+  E6A6    7D                    	MOV	A,L
+  E6A7    E6 0F                 	ANI	0FH
+  E6A9    6F                    	MOV	L,A
+  E6AA    3E 05                 	MVI	A,5
+  E6AC    2D                    PLOP1:	DCR	L
+  E6AD    FA E6B4               	JM	PGCONT
+  E6B0    C6 03                 	ADI	3
+                                	JR	PLOP1
+  E6B2    18              +     	DB	18H
+  E6B3    F8              +     	DB	PLOP1-$-1
+  E6B4    6F                    PGCONT:	MOV	L,A
+  E6B5    3A FFDE               	LDA	WIDTH
+  E6B8    85                    	ADD	L
+                                ;* A = 5+3*L+W
+  E6B9    32 FFDB               	STA	CURPOS
+  E6BC    C3 E460               	JMP	LIFTCURS
+                                ;*
+                                ;*
+                                ;* DISPLAY REGISTERS
+  E6BF    CD E4C4               DREGS:	CALL	PTSTNG
+  E6C2    52 45 47 49           	DC	'REGISTERS'
+  E6C6    53 54 45 52           
+  E6CA    D3                    
+                                ;* DUMP REGISTERS AFTER ENTRY FROM RST 7
+  E6CB    E3                    DUMPREGS:	XTHL
+  E6CC    F5                    	PUSH	PSW
+  E6CD    CD E725               	CALL	DISPREGS
+  E6D0    2B                    	DCX	H			;GET BREAK ADD
+  E6D1    CD E20F               	CALL	PTAD
+  E6D4    E1                    	POP	H
+  E6D5    C5                    	PUSH	B
+  E6D6    CD E77A               	CALL	PRTFLGS
+  E6D9    C1                    	POP	B
+  E6DA    CD E212               	CALL	PTAD+3			;PRINT AF
+  E6DD    E1                    	POP	H
+  E6DE    22 FFE3               	SHLD	HLTEMP
+  E6E1    CD E79B               	CALL	PTHREE			;PRINT B D H
+  E6E4    DD E5                 	DB	0DDH,0E5H		;PUSH IX
+  E6E6    E1                    	POP	H
+  E6E7    CD E212               	CALL	PTAD+3			;PRINT IX
+  E6EA    FD E5                 	DB	0FDH,0E5H		;PUSH IY
+  E6EC    E1                    	POP	H
+  E6ED    CD E212               	CALL	PTAD+3			;PRINT IY
+  E6F0    21 0000               	LXI	H,0
+  E6F3    39                    	DAD	SP
+  E6F4    22 FFE5               	SHLD	SPTEMP
+  E6F7    CD E212               	CALL	PTAD+3			;PRINT SP
+                                	EXAF
+  E6FA    08              +     	DB	08H
+  E6FB    F5                    	PUSH	PSW
+	MACRO-80 3.44	09-Dec-81	PAGE	1-25
+
+
+  E6FC    E1                    	POP	H
+  E6FD    CD E212               	CALL	PTAD+3
+                                	EXX
+  E700    D9              +     	DB	0D9H
+  E701    CD E79B               	CALL	PTHREE
+                                	EXX
+  E704    D9              +     	DB	0D9H
+  E705    0A                    	LDAX	B
+  E706    CD E71F               	CALL	PT2S
+  E709    1A                    	LDAX	D
+  E70A    CD E71F               	CALL	PT2S
+  E70D    2A FFE3               	LHLD	HLTEMP
+  E710    7E                    	MOV	A,M
+  E711    CD E71F               	CALL	PT2S
+  E714    2A FFE5               	LHLD	SPTEMP
+  E717    F9                    	SPHL
+  E718    E1                    	POP	H
+  E719    CD E212               	CALL	PTAD+3
+  E71C    C3 E040               	JMP	CLRBRK			;CLEAR BREAKPOINT
+                                ;*
+  E71F    CD E226               PT2S:	CALL	PT2			;PRINT 2 CHARS
+  E722    C3 E0DA               	JMP	SPCE			;PRINT SPACE
+                                ;* DISPLAY REGISTER HEADER ON SCREEN
+  E725    CD E4C1               DISPREGS:	CALL	RPTSTNG
+  E728    14                    	DB	'T'-64
+  E729    41 44 44 52           	DB	'ADDR FLAGS  AF   BC   DE'
+  E72D    20 46 4C 41           
+  E731    47 53 20 20           
+  E735    41 46 20 20           
+  E739    20 42 43 20           
+  E73D    20 20 44 45           
+  E741    20 20 20 48           	DB	'   HL   IX   IY   SP '
+  E745    4C 20 20 20           
+  E749    49 58 20 20           
+  E74D    20 49 59 20           
+  E751    20 20 53 50           
+  E755    20                    
+  E756    20 20 41 46           	DB	'  AF'
+  E75A    27                    	DB	27H			;'
+  E75B    20 20 42 43           	DB	'  BC'
+  E75F    27                    	DB	27H
+  E760    20 20 44 45           	DB	'  DE'
+  E764    27                    	DB	27H
+  E765    20 20 48 4C           	DB	'  HL'
+  E769    27                    	DB	27H
+  E76A    20 40 42 20           	DB	' @B @D @H @SP '
+  E76E    40 44 20 40           
+  E772    48 20 40 53           
+  E776    50 20                 
+  E778    94                    	DB	'T'+64
+  E779    C9                    	RET
+                                ;*
+                                ;* PRINT FLAGS
+  E77A    01 405A               PRTFLGS:	LXI	B,405AH			;Z
+  E77D    CD E7AA               	CALL	MASKFLG
+  E780    01 0143               	LXI	B,143H			;C
+	MACRO-80 3.44	09-Dec-81	PAGE	1-26
+
+
+  E783    CD E7AA               	CALL	MASKFLG
+  E786    01 804D               	LXI	B,804DH			;M
+  E789    CD E7AA               	CALL	MASKFLG
+  E78C    01 0445               	LXI	B,445H			;E
+  E78F    CD E7AA               	CALL	MASKFLG
+  E792    01 1048               	LXI	B,1048H			;H
+  E795    CD E7AA               	CALL	MASKFLG
+  E798    C3 E0DA               	JMP	SPCE
+                                ;*
+                                ;* PRINT BC DE HL IN ORDER
+  E79B    E5                    PTHREE:	PUSH	H
+  E79C    C5                    	PUSH	B
+  E79D    E1                    	POP	H
+  E79E    CD E212               	CALL	PTAD+3
+  E7A1    D5                    	PUSH	D
+  E7A2    E1                    	POP	H
+  E7A3    CD E212               	CALL	PTAD+3
+  E7A6    E1                    	POP	H
+  E7A7    C3 E212               	JMP	PTAD+3
+                                ;*
+  E7AA    7D                    MASKFLG:	MOV	A,L
+  E7AB    A0                    	ANA	B
+  E7AC    3E 20                 	MVI	A,20H
+  E7AE    CA E37B               	JZ	VIDEO
+  E7B1    79                    	MOV	A,C
+  E7B2    C3 E37B               	JMP	VIDEO
+                                ;*
+                                ;* SET BREAKPOINT
+  E7B5    CD E4C4               SETBRK:	CALL	PTSTNG
+  E7B8    42 52 45 41           	DC	'BREAK AT '
+  E7BC    4B 20 41 54           
+  E7C0    A0                    
+  E7C1    CD E0BD               	CALL	AHEX
+  E7C4    1A                    	LDAX	D
+  E7C5    32 FFE9               	STA	BRKCODE
+                                	SDED	BKPTLOC
+  E7C8    ED 53           +     	DB	0EDH,53H
+  E7CA    FFE7            +     	DW	BKPTLOC
+  E7CC    3E FF                 	MVI	A,0FFH			;RST 7
+  E7CE    12                    	STAX	D
+  E7CF    C9                    	RET
+                                ;*
+                                ;* EXTERNAL COMMUNICATIONS
+  E7D0    CD E4C4               EXTCOM:	CALL	PTSTNG
+  E7D3    45 58 54 20           	DC	'EXT COM '
+  E7D7    43 4F 4D A0           
+  E7DB    DB 05                 RECEIVE:	IN	5
+  E7DD    E6 02                 	ANI	2
+                                	JRZ	NEXCHR
+  E7DF    28              +     	DB	28H
+  E7E0    05              +     	DB	NEXCHR-$-1
+  E7E1    DB 04                 	IN	4
+  E7E3    CD E37B               	CALL	VIDEO
+  E7E6    CD E12F               NEXCHR:	CALL	ESCAPE
+                                	JRZ	RECEIVE
+  E7E9    28              +     	DB	28H
+	MACRO-80 3.44	09-Dec-81	PAGE	1-27
+
+
+  E7EA    F0              +     	DB	RECEIVE-$-1
+  E7EB    D3 04                 	OUT	4
+                                	JR	RECEIVE
+  E7ED    18              +     	DB	18H
+  E7EE    EC              +     	DB	RECEIVE-$-1
+                                ;*
+                                ;* TEMPORARY STORAGE LOCATIONS FOR REGISTERS,ETC.
+  FFE3                          HLTEMP	EQU	TCURPOS+2
+  FFE5                          SPTEMP	EQU	HLTEMP+2
+  FFE7                          BKPTLOC	EQU	SPTEMP+2		;BREAKPT LOCATION
+  FFE9                          BRKCODE	EQU	BKPTLOC+2		;CODE AT BREAKPT
+  FFEA                          XYFLAG	EQU	BRKCODE+1		;CURSOR XY FLAG
+                                
+                                ;
+                                ;  Not in the listing, which ends at E7EE. The ROM has these bytes, and the
+                                ;  listed checksum of 43 includes the 66 at E7FF.
+                                ;
+  E7EF                          	DS	MONIT+7FFH-$,0
+  E7FF    66                    	DB	66H
+                                
+                                	.DEPHASE
+                                	END
+	MACRO-80 3.44	09-Dec-81	PAGE	S
+
+
+Macros:
+CCI             DD              EXAF            EXX             INP             
+JR              JRC             JRNC            JRNZ            JRZ             
+LDED            LDI             LDIR            OUTI            OUTP            
+SBCD            SDED            
+
+Symbols:
+E0BF 	AHE0            E0C2 	AHE1            E10A 	AHE2            
+E0BD 	AHEX            E108 	ALFA            E424 	BACKSP          
+E000 	BASE            E22D 	BINH            E231 	BINL            
+FFE7 	BKPTLOC         E23F 	BMP             FFE9 	BRKCODE         
+E46F 	CFIN            E179 	CHKSM           E18A 	CHKSMLP         
+E48D 	CLEAR           E47B 	CLEND           E480 	CLLINE          
+E469 	CLOP            E040 	CLRBRK          0004 	CLRSCRN         
+E4B8 	CLSTRT          E07B 	CMDTB           E2E2 	COMPR           
+0001 	COND            0000 	CONS            E336 	CONT            
+E141 	CONVERT         E43E 	CRET            E0DF 	CRLF            
+E009 	CRT             E67A 	CSDN            E682 	CSLT            
+E67F 	CSRT            E674 	CSUP            E607 	CTSCRL          
+FFDB 	CURPOS          E454 	CURSUP          E1D1 	CYCL            
+E416 	DBACKSP         FF10 	DBUSY           E38B 	DISPL           
+E725 	DISPREGS        E6BF 	DREGS           E800 	DSBOOT          
+E6CB 	DUMPREGS        E406 	EBOTL           E1AE 	ECHO            
+E1BB 	ECOLP           E409 	ELOP            E3DA 	EOL             
+E21D 	ERR             E2DB 	ERRJP           E00C 	ESC             
+E12F 	ESCAPE          E287 	EXCHG           E0AF 	EXEC            
+E7D0 	EXTCOM          E305 	FIND            E80C 	FLBOOT          
+E155 	FND             E434 	FORM            E245 	GOON            
+E0ED 	HEX             E5A7 	HEXRCT          E5AF 	HEXRLP          
+E59C 	HEXRLR          E5BB 	HEXRUL          E5D6 	HLP1            
+E5DD 	HLP2            FFE3 	HLTEMP          E437 	HOME            
+E58B 	HOMEC           0050 	HORIZ           E025 	INILOOP         
+E015 	INIT            E00F 	INITABLE        E006 	KEYDATA         
+E058 	KEYPOL          E13C 	KEYSTAT         E003 	KEYTST          
+E15B 	KTABL           E49F 	LEDIN           E460 	LIFTCURS        
+FFDC 	LINENO          E3E6 	LINF            E14B 	LOOP            
+E262 	LORAM           E667 	LSNIBL          E560 	MARKER          
+E7AA 	MASKFLG         E2A8 	MLOOP           E64F 	MODMEM          
+E000 	MONIT           E296 	MOVEB           E29F 	MOVENTR         
+E802 	MSBOOT          E4C1 	MSEND           E2CD 	NDLOP           
+E2BE 	NDMT            E2B3 	NEXCH           E7E6 	NEXCHR          
+E156 	NFND            E410 	NOSCRL          E39E 	NOXY            
+E0FD 	NUM             E564 	NUMBER          E346 	OBCP            
+E02A 	OUTLOOP         E120 	PAUSE           E3D4 	PCL             
+E208 	PEVE            E6B4 	PGCONT          E353 	PINPT           
+E126 	PLOOP           E6AC 	PLOP1           E62A 	POLLOOP         
+E365 	POUTP           E000 	PR              E3D5 	PRINT           
+E608 	PROGRAM         E52E 	PROMPT          E691 	PRT1LINE        
+E77A 	PRTFLGS         E226 	PT2             E71F 	PT2S            
+E20F 	PTAD            E0DC 	PTCN            E79B 	PTHREE          
+E4C4 	PTSTNG          E256 	RAM             0040 	RDA             
+E113 	RDCN            E7DB 	RECEIVE         E55A 	REENTR          
+E65D 	REMEM           E1E6 	RLOP            E1FD 	RNDM            
+E4C1 	RPTSTNG         E683 	RTRTN           E54B 	RULELP          
+E3F5 	SCRL            E3ED 	SCROLL          E7B5 	SETBRK          
+E5F7 	SETSCRLL        E4CF 	SIGN            E34C 	SKP             
+	MACRO-80 3.44	09-Dec-81	PAGE	S-1
+
+
+0020 	SPACE           E0DA 	SPCE            E0E8 	SPCOVR          
+FFE5 	SPTEMP          FFD0 	SPTR            E312 	SRCH            
+E31F 	SRCHENT         E04C 	START           E45B 	STORLN          
+0000 	STPOL           E42D 	TAB             E3B8 	TABL            
+E165 	TABLEND         E43F 	TABRET          E10E 	TAHEX           
+FFE1 	TCURPOS         E56A 	TERMLIN         E1D7 	TLOP            
+E1C3 	TMEM            FFDF 	TOSCN           E379 	TVIDEO          
+E44A 	TVIDF           E68A 	UPAROW          E247 	USER            
+0018 	VERT            FFDD 	VFL             E37B 	VIDEO           
+E2F5 	VMLOP           F000 	VPAGE           E442 	VRET            
+E196 	WARM            E537 	WASCII          E56D 	WDMP1           
+E57C 	WDMP2           FFDE 	WIDTH           E496 	WRSPC           
+E4AD 	XINRG           E4A6 	XPOS            FFEA 	XYFLAG          
+E4B6 	YINRG           E4AF 	YPOS            E26E 	ZEROM           
+E280 	ZLOOP           
+
+
+
+No Fatal error(s)
+
+

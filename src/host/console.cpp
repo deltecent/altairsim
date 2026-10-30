@@ -398,7 +398,7 @@ std::vector<Property> Console::properties() {
     // reported and leaves logging OFF -- a transcript that silently isn't recording is
     // worse than none. The path is the shell cwd's (the process cwd), like any path typed
     // at the prompt. This does NOT round-trip through CONFIG SAVE: it is a diagnostic, not
-    // machine hardware, the same as `[console]` is not emitted.
+    // machine hardware, and the save writes only the transform keys of `[console]`.
     {
         Property x;
         x.name    = "log";
@@ -439,9 +439,11 @@ std::vector<Property> Console::properties() {
     // sent all eight bits and the Teletype IGNORED the eighth -- on a Model 33 that is
     // the parity position and the printer never decodes it. The ignoring belongs to
     // the terminal. It is not a strap, and it is CERTAINLY not a mask in the UART.
-    for (Property& f : filter_.properties()) p.push_back(std::move(f));
+    for (Property& f : transformProperties()) p.push_back(std::move(f));
 
     return p;
 }
+
+std::vector<Property> Console::transformProperties() { return filter_.properties(); }
 
 } // namespace altair
