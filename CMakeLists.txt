@@ -595,6 +595,9 @@ add_library(altair_core STATIC
   # host Display seam as the VDM-1 and takes its keyboard from a ByteStream like the
   # Sol. See sd-vdb8024.h.
   src/boards/sd-vdb8024.cpp
+  # The Vector Graphic Flashwriter II: 80x24 memory-mapped video and the keyboard port on
+  # one board. See vector-fwii.h.
+  src/boards/vector-fwii.cpp
   # CADzilla: an HD63484 ACRTC + Bt453 RAMDAC graphics board with its own frame memory;
   # six I/O ports, no memory decoded. Renders the same host Display seam. See cadzilla.h.
   src/boards/cadzilla.cpp
@@ -854,6 +857,7 @@ add_executable(altair_tests
   tests/test_ptystream.cpp
   tests/test_pio.cpp
   tests/test_vdb8024.cpp
+  tests/test_fwii.cpp
   tests/test_terminal.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp
@@ -1126,6 +1130,16 @@ add_test(NAME acceptance-disk1a
                  -DBIN=${CMAKE_CURRENT_BINARY_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/disk1a.cmake)
 set_tests_properties(acceptance-disk1a PROPERTIES LABELS acceptance TIMEOUT 200)
+
+# Vector Graphic Monitor 4.3 on the FlashWriter II: the banner reaches the screen, the machine
+# stands down at the prompt, and keys typed at the board run the Monitor's R and D commands.
+add_test(NAME acceptance-vector
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vector.cmake)
+set_tests_properties(acceptance-vector PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # The Jade Double D: Jade's own FORMAT.COM makes double-density, single-density and 3740 disks,
 # reformats a disk to a smaller layout and two tracks of another, and the new disk boots.

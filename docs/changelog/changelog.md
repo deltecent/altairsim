@@ -12,6 +12,15 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `fwii`, the Vector Graphic Flashwriter II video board, and the `vector` machine.** The
+board gives a machine an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard
+port at `00` and `01`. The ports are read only, as on the real board. A read of port `01` clears
+the key flag, and a key can raise `RST 7` through the `interrupt` property. The character shapes
+come from the printed chart of the manual. The `vector` machine runs Vector Graphic's Monitor
+4.3 from ROM. Type `altairsim vector`, and the Monitor's `Mon>` prompt appears in the video
+window. Press `R` for the registers. The machine has no disk controller yet, so `B` returns to
+the prompt.
+
 **New: `jadedd`, the Jade Double D floppy controller.** The board has its own Z80, 2K of RAM and
 an FD1791. The host sees 1K of the board's RAM through a window at `E000`–`FC00`, and controls
 the board through one port at `40`–`43`. The board's Z80 runs the program that the host loads

@@ -213,6 +213,7 @@ The boards are in groups, in the same order as the sections below.
 | `dazzler` | Cromemco Dazzler: color graphics. Needs a display |
 | `dazzler2` | Cromemco Dazzler II: the Dazzler with its picture in RAM on the board. Needs a display |
 | `vdb8024` | SD Systems VDB-8024: an 80×24 video terminal on one board. Needs a display |
+| `fwii` | Vector Graphic Flashwriter II: memory-mapped 80×24 video with the keyboard port. Needs a display |
 | `cadzilla` | CADzilla: an HD63484 ACRTC graphics board with a Bt453 color table. Needs a display |
 | `sol` | Processor Technology Sol-PC: the onboard I/O of the Sol-20, on one board |
 
@@ -1814,7 +1815,7 @@ with the machine where it was. `RUN` continues in the same window. `QUIT` leaves
 
 ### The window size: the `width` property
 
-Every video board (the VDM-1, the Dazzler and the VDB-8024) has a **`width`** property. It sets
+Every video board (the VDM-1, the Dazzler, the VDB-8024 and the Flashwriter II) has a **`width`** property. It sets
 the width of the window in pixels. `auto`, the default, makes the window about **half as wide as
 the screen**. A number such as `width = 1024` asks for that many pixels. **The height follows
 from the shape of the board's picture.** With the default look, the program draws each pixel of
@@ -2034,6 +2035,49 @@ The board obeys the same control codes as its firmware: carriage return, line fe
 tab, cursor up and right, clear screen and home, and the `ESC` sequences that move the cursor
 and erase to the end of a line or of the screen. A full line wraps, and a line feed on the
 bottom line scrolls the page up.
+
+### `fwii`: Vector Graphic Flashwriter II
+
+An **80-column by 24-line text screen and the keyboard port, on one board.** The screen is **2K
+of the machine's own memory**, at `F000` by default. A program puts a character on the screen
+when it stores a byte, as on the VDM-1. The 24 rows of 80 characters are the first 1920 bytes.
+The last 128 bytes do not show, and they are ordinary RAM.
+
+Bits 0 to 6 of a byte choose one of 128 characters. Codes `00` to `1F` are blocks of graphics.
+Bit 7 shows the cell in reverse video. The board has no cursor, so a program makes one by
+reversing a cell.
+
+Two input ports, `00` and `01` by default, carry the keyboard. **Both ports are read only.** An
+`OUT` to them reaches nothing. Port `00` is the status. Bit 6 is 1 and bit 0 is 0 when a key
+waits, and bit 5 is 0 during the blanking between two pictures. The other bits read 1. A read of
+port `01` gives the key and clears the flag. A read of port `00` leaves the flag as it is.
+
+The `keyboard` unit takes the keys. Connect it to `console` and the keys of the video window
+reach the guest. The `interrupt` property is `int` by default. A waiting key then pulls the
+interrupt line of the bus until the program reads port `01`. The board gives no vector, so a
+Z80 or 8080 runs `RST 7`. Set `interrupt = none` for a program that polls.
+
+The `base` property moves the screen to any 2K block from `C000` to `F800`. Vector Graphic's
+Monitor 4.3 expects `F000`. The `port` property moves the two ports to an even address from `00`
+to `0E`. The `fill` property sets the screen RAM at power-on. Real RAM is not zeroed, so the
+default is `random`.
+
+The board does not make a program wait for the picture, as the real board did. The status bit 5
+is a 60 Hz clock from the board's own crystal, at any clock setting.
+
+The `vector` machine has this board, a Z80 and Monitor 4.3 in ROM at `E000`:
+
+```
+$ altairsim vector
+```
+
+The Monitor prints `VECTOR GRAPHIC` and its `Mon>` prompt **in the video window**. Press `R` for
+the registers. Type `DE000E03F` and Return to dump the Monitor's first bytes. The window is the
+console, so the keys go to the Monitor. The machine has no disk controller, so `B` prints `BOOT
+FLOPPY` and returns to the prompt.
+
+Without SDL3 the machine runs the same and shows no window. The command `DUMP F000-F77F` shows
+the screen as bytes.
 
 ### `sol`: Processor Technology Sol-PC
 

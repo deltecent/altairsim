@@ -1,0 +1,64 @@
+# A Vector Graphic machine with a FlashWriter II console: Monitor 4.3 on an 80x24 screen.
+#
+#     altairsim vector
+#     Mon>                       <- the monitor prompt, ON THE VIDEO SCREEN
+#
+# THE CONSOLE IS THE VIDEO BOARD. The Monitor writes each character into the board's memory
+# at F000 and reads the keyboard at ports 00/01. There is no serial port, so the text never
+# reaches the host terminal. Keys from the video window or the host terminal reach the
+# Monitor (they merge in the one Console).
+#
+# WITHOUT SDL3 there is no window. The guest runs the same, and `DUMP F000-F77F` at the
+# altairsim> monitor reads the screen. See docs/boards/vector-fwii.md.
+#
+# WHAT IS NOT HERE. This is the Monitor and its console, and no more. There is no disk
+# controller, so `B` prints BOOT FLOPPY and comes back to Mon>. There is no 8251 at the ports
+# the Monitor writes at reset (03, 05 and 07), so nothing answers them and `E` has no line.
+
+[machine]
+name    = "vector"
+startup = ["RUN E000"]        # the stand-in below has no jump on reset
+
+# The video window is this machine's console: it comes to the front when it opens and
+# keeps the keyboard when the guest stops.
+[display]
+focus    = true
+keyboard = "console"
+
+# THE CPU. Monitor 4.3 is Z80 code.
+[[board]]
+type = "z80"
+id   = "cpu0"
+
+# THE SCREEN AND THE KEYBOARD: 2K of video RAM at F000 and the keyboard ports at 00/01, the
+# board's own defaults and the addresses the Monitor has in it.
+[[board]]
+type = "fwii"
+id   = "fw0"
+
+  [board.unit.keyboard]
+  connect = "console"
+
+# MEMORY. A STAND-IN. The Monitor and its RAM were on a Vector Graphic board, the 12K
+# PROM/RAM or the ZCB, and neither of those is built yet. This generic board gives the
+# Monitor the same addresses. It leaves a hole at F000-F7FF, where the FlashWriter II
+# answers. The Monitor's stack is at FFD0, so RAM must be there.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"               # real RAM does not come up zeroed
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = E000
+  mount = "builtin:vgmon43"
+
+  [[board.region]]
+  type = "ram"
+  at   = F800
+  size = "2K"

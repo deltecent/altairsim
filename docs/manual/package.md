@@ -98,7 +98,7 @@ same TOML format that you would write yourself. `CONFIG SAVE mine.toml` saves an
 machine to a file that you can edit.
 
 **Some built-in machines have their software in ROM and need nothing else.** Examples are
-`altmon`, `amon`, `sol20`, `vdm1`, `rombasic`, and the SD Systems `sbc200` and `sbc200v`. The
+`altmon`, `amon`, `sol20`, `vdm1`, `rombasic`, `vector`, and the SD Systems `sbc200` and `sbc200v`. The
 other machines have at most a boot PROM, and they start with empty drives. They need media,
 which the next section is about. The machines chapter gives the full detail.
 

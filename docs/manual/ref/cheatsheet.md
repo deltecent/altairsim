@@ -194,6 +194,7 @@ Type the part before the bracket.
 | `cadzilla` | CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC |
 | `dazzler` | Cromemco Dazzler: color graphics |
 | `dazzler2` | Cromemco Dazzler II: color graphics, on-board RAM |
+| `fwii` | Vector Graphic Flashwriter II: 80x24 video and keyboard port |
 | `vdb8024` | SD Systems VDB-8024: 80x24 video terminal board |
 | `vdm1` | Processor Technology VDM-1: 16x64 memory-mapped video |
 
@@ -260,6 +261,7 @@ Type the part before the bracket.
 | `tarbelldd` | Tarbell #2022 double-density floppy machine -- boots CP/M 2.2 the moment a disk is in it. |
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
 | `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |
+| `vector` | A Vector Graphic machine with a FlashWriter II console: Monitor 4.3 on an 80x24 screen. |
 | `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |
 
 ## A machine file, in one look
