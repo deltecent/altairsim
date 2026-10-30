@@ -12,6 +12,12 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`CONFIG SAVE` now saves the `[display]` section.** It wrote the boards and left out `focus`,
+`keyboard` and `crt`, so the loader set them back to their defaults. The `sbc200v` file sets
+`focus = true`, so that its video window is the console. A copy saved with `CONFIG SAVE`
+opened its window behind other windows, and the console kept the keyboard. The saved file now
+has a `[display]` section, and `focus` comes back as `true`.
+
 **New: `fwii`, the Vector Graphic Flashwriter II video board, and the `vector` machine.** The
 board gives a machine an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard
 port at `00` and `01`. The ports are read only, as on the real board. A read of port `01` clears

@@ -4,6 +4,7 @@
 #include "config/toml.h"
 #include "core/machines.h"
 #include "core/version.h"
+#include "host/display.h"
 
 #include <filesystem>
 #include <fstream>
@@ -447,6 +448,43 @@ remove = true
         for (const auto& bt : boardTypes())
             CHECK(makeBoard(bt.name) != nullptr,
                   ("makeBoard builds '" + bt.name + "', so CONFIG SAVE can mark its defaults").c_str());
+
+    SECTION("CONFIG SAVE writes [display], and it loads back (#862)");
+    {
+        // [display] is the host's window, not a board, so the walk over the boards never
+        // reached it. A machine file that set `focus = true` lost it on a save and a load.
+        const bool focus0 = Display::focusPolicy(), kb0 = Display::keyboardToConsole(),
+                   crt0 = Display::crt();
+
+        Display::setFocusPolicy(true);
+        Display::setKeyboardToConsole(false);
+        Display::setCrt(true);
+        Machine     dm;
+        std::string de;
+        const BuiltinMachine* b = findMachine("default");
+        CHECK(b && loadMachine(*b, dm, de), "a machine to save");
+        const std::string text = saveTomlText(dm);
+        CHECK(text.find("\n[display]\nfocus = true\nkeyboard = \"none\"\ncrt = true\n") !=
+                  std::string::npos,
+              "the save has a [display] section with all three keys");
+
+        // Loading does not put the settings back by itself, so flip them first: only the
+        // file can bring them to the values the save held.
+        Display::setFocusPolicy(false);
+        Display::setKeyboardToConsole(true);
+        Display::setCrt(false);
+        Machine     back;
+        std::string be;
+        CHECK(loadTomlText(text, "d (saved)", back, be), "the saved file loads");
+        CHECK(Display::focusPolicy(), "...focus came back");
+        CHECK(!Display::keyboardToConsole(), "...keyboard came back");
+        CHECK(Display::crt(), "...crt came back");
+        CHECK(saveTomlText(back) == text, "...and saving it again is byte-identical");
+
+        Display::setFocusPolicy(focus0);
+        Display::setKeyboardToConsole(kb0);
+        Display::setCrt(crt0);
+    }
 }
 
 // ---------------------------------------------------------------------------

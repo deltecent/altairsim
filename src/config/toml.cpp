@@ -988,6 +988,26 @@ std::string saveTomlText(Machine& m, std::string* err) {
         f << "]\n";
     }
 
+    // [display] -- the host's video window, which the loader reads (issue #862). It is not a
+    // board, so the walk over the boards below never reaches it, and a machine that sets
+    // `focus = true` so its window is the console lost that on the way through a save.
+    //
+    // EVERY key is written, whatever its value. Loading a file does not put the three
+    // settings back to their defaults, so a file that said nothing would keep whatever the
+    // last machine set. No `# default` marks: Display has no fresh object to compare with.
+    // Like the board walk, this is a READ -- get() only.
+    f << "\n[display]\n";
+    for (const auto& p : Display::properties()) {
+        if (!p.set) continue;
+        const std::string text = p.get().text(p.radix);
+        f << p.name << " = ";
+        if (p.kind == Kind::Str || p.kind == Kind::Enum)
+            f << tomlString(text, "display " + p.name, err);
+        else
+            f << text;
+        f << "\n";
+    }
+
     for (const auto& b : m.boards()) {
         f << "\n[[board]]\n";
         f << "type = " << tomlString(b->type(), b->id + " type", err) << "\n";
