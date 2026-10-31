@@ -680,6 +680,13 @@ line. You cannot undo it, except with a file that you saved. It **loads all of t
 nothing**. The program builds the new machine first. If the file does not load, you keep the
 machine that you had.
 
+**`CONFIG LOAD` also replaces the settings that `CONFIG SAVE` writes.** It sets the `[display]` and
+`[terminal]` keys and the transform keys of `[console]` to their defaults, and then applies the
+file. A key that the file does not name gets its default, as it does when you name the file on the
+command line. A value that you set with `SET` at the monitor is lost, unless the file names the key.
+The `stop`, `base`, `history` and `log` keys of `[console]` keep their values, unless the file names
+them. If the file does not load, no setting changes.
+
 To write a machine file fast, build the machine at the monitor with `BOARDS ADD` and `SET`, and
 save it. The machines chapter shows the steps, under "From an empty backplane to a machine
 file".

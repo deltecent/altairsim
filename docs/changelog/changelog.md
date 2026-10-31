@@ -12,6 +12,18 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`CONFIG LOAD` now gives the same machine as the same file at startup.** The loader wrote
+`[console]`, `[display]` and `[terminal]` while it read the file, and it did not reset them first. A
+`CONFIG LOAD` that failed kept the boards but changed these settings. A file that did not name a key
+kept the value of the last machine. A file with no `strip7out` key had it on after `basic4k`, and
+off at startup. `SHOW MACHINE basic4k` also turned `strip7out` on for the running machine.
+
+A load that succeeds now sets the keys that `CONFIG SAVE` writes to their defaults, and then applies
+the file. `MACHINE none` sets these keys to their defaults too. A load that fails changes no
+setting, and `SHOW MACHINE <name>` changes nothing. A value that you set with `SET` at the monitor is
+lost in a load, unless the file names the key. The `stop`, `base`, `history` and `log` keys of
+`[console]` keep their values, unless the file names them.
+
 **`CONFIG SAVE` now saves the `[terminal]` section.** It left out `upper`, `strip7in`, `strip7out`,
 `crlf`, `echo`, `bell` and `bsdel`, the settings of the terminal window. A machine file with
 `strip7out = true` in `[terminal]` lost that key in a save. On a guest that writes parity in bit 7,

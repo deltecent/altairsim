@@ -271,6 +271,10 @@ public:
     // them to [console]. stop, base, history and log are the operator's own, and are not.
     std::vector<Property> transformProperties();
 
+    // The transform chain back to its defaults, for a load (config/toml.h). stop, base,
+    // history and log stay: a load does not reset the operator's own settings.
+    void resetTransforms() { filter_.resetSettings(); }
+
 private:
     Console() = default;
 

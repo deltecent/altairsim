@@ -461,6 +461,13 @@ public:
     static bool crt() { return crt_; }
     static void setCrt(bool on) { crt_ = on; }
 
+    // focus, keyboard and crt back to their defaults, for a load (config/toml.h).
+    static void resetSettings() {
+        focusPolicy_       = kDefaultFocusPolicy;
+        keyboardToConsole_ = kDefaultKeyboardToConsole;
+        crt_               = kDefaultCrt;
+    }
+
     // Declared through the same Property layer as a board's or the console's, so
     // `SET DISPLAY focus=on`, `SHOW DISPLAY`, `[display]` in a machine file and
     // CONFIG SAVE all pick it up with no code anywhere else. Static for the same
@@ -519,13 +526,16 @@ private:
 
     // The session's focus preference; see focusPolicy(). Inline so the seam stays
     // header-only for everyone who only draws into it.
-    static inline bool focusPolicy_ = false;
+    static constexpr bool kDefaultFocusPolicy = false;
+    static inline bool    focusPolicy_        = kDefaultFocusPolicy;
 
     // Whether the video window's keys go to the console; see keyboardToConsole().
-    static inline bool keyboardToConsole_ = true;
+    static constexpr bool kDefaultKeyboardToConsole = true;
+    static inline bool    keyboardToConsole_        = kDefaultKeyboardToConsole;
 
     // The session's CRT-look preference; see crt(). Off is today's crisp integer scaling.
-    static inline bool crt_ = false;
+    static constexpr bool kDefaultCrt = false;
+    static inline bool    crt_        = kDefaultCrt;
 };
 
 // The `display` settings object -- three properties today (`focus`, `keyboard` and `crt`), the

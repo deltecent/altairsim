@@ -24,6 +24,7 @@
 #include "host/media.h"
 #include "host/speaker.h"
 #include "host/stream.h"
+#include "host/terminal/stream.h"
 #include "test.h"
 
 #include <algorithm>
@@ -3214,6 +3215,33 @@ void test_achieved_hz() {
         CHECK(Display::focusPolicy(), "and it takes effect with no window in sight");
 
         Display::setFocusPolicy(false);  // a process-wide setting: put it back
+    }
+
+    SECTION("SHOW MACHINE <name> is a read, and MACHINE none is the -n machine (#864)");
+    {
+        const HostSettings before = saveHostSettings();
+        Machine            mh;
+        Monitor            monH(mh);
+        std::ostringstream sh;
+        auto strip = [] { return storedText(Console::instance().properties(), "strip7out", "?"); };
+
+        // basic4k says strip7out = true. Loading it to print it set that on the live console.
+        monH.exec("SET CONSOLE strip7out=off", sh);
+        monH.exec("SHOW MACHINE basic4k", sh);
+        CHECK(sh.str().find("basic4k") != std::string::npos, "SHOW MACHINE prints the built-in");
+        CHECK(strip() == "false", "...and it leaves the live console as it was");
+
+        monH.exec("SET CONSOLE strip7out=on", sh);
+        monH.exec("SET CONSOLE history=33", sh);
+        monH.exec("SET DISPLAY crt=on", sh);
+        TerminalStream::settings().strip7in = true;
+        monH.exec("MACHINE none", sh);
+        CHECK(strip() == "false" && !Display::crt() && !TerminalStream::settings().strip7in,
+              "MACHINE none has the default host settings, as -n does");
+        CHECK(storedText(Console::instance().properties(), "history", "?") == "33",
+              "...and it keeps the operator's history");
+
+        restoreHostSettings(before);
     }
 
     SECTION("the CRT look is a display setting, opt-in, and answerable before a window");

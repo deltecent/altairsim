@@ -3889,9 +3889,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                     out << "no built-in machine '" << a[2] << "'. SHOW MACHINES lists them.\n";
                     return true;
                 }
+                // The load also sets the host settings, which no scratch machine holds, and
+                // SHOW is a read.
+                const HostSettings host = saveHostSettings();
                 Machine tmp;
                 std::string err;
-                if (!loadMachine(*bm, tmp, err)) {
+                const bool loaded = loadMachine(*bm, tmp, err);
+                restoreHostSettings(host);
+                if (!loaded) {
                     out << err << "\n";
                     return true;
                 }
@@ -6072,6 +6077,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         if (is(want, "NONE")) {
             if (g_display) g_display->closeAllWindows();
             m_.clear();
+            resetHostSettings();
             m_.power();
             out << "empty backplane -- build it with BOARDS ADD, then POWER.\n";
             return true;
