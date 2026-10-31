@@ -7,9 +7,10 @@ Revision A*, February 1, 1981, 62 PDF pages. The file holds the manual, the Z-80
 (dated 01/26/81, written by Jay Rasmussen) and two schematics. This board drives one hard disk
 and up to three floppies, or four floppies, through four I/O ports and a 512-byte buffer RAM.
 
-**Not emulated.** This file holds what an implementer needs: ports, bits, sector images,
-sequences, geometry, the ECC polynomial and the schematic facts that the text leaves out. It omits
-the BIOS and timeshare glue, and the full listing of the ECC correction routine.
+**Emulated as `dualmode`, for the floppy drives only** (`docs/boards/vector-dualmode.md`). Issue
+#872 holds the hard disk half. This file holds what an implementer needs: ports, bits, sector
+images, sequences, geometry, the ECC polynomial and the schematic facts that the text leaves out.
+It omits the BIOS and timeshare glue, and the full listing of the ECC correction routine.
 
 Citations: `1-n` is a printed page. The listing has no page numbers, so `PDF n` is a PDF page.
 PDF page = printed page + 4 for 1-1 to 1-15, and + 3 for 1-17 to 1-21. **Printed page 1-16 is not
@@ -477,11 +478,13 @@ wins over the prose unless the entry says otherwise.
 - **⚠ Q10. "10 megabyte".** `H10.DISK` has 6 heads × 153 tracks × 32 sectors × 256 bytes =
   7,520,256 bytes. Only 8 heads gives 10,027,008. The listing wins, and the "10 MB" name stays
   **unresolved**.
-- **⚠ Q11. The floppy format and the rate.** The fields before the postamble total 315 bytes
-  (§3). The manual gives no rotation speed or data rate. If `TX CLOCK X2` is twice the bit rate,
-  a 2 MHz `CLK` gives 250 kbit/s. At 300 RPM, a 12.5 ms sector then holds 312.5 bytes, which is
-  less than 315. A 4 MHz `CLK` gives 625 bytes. The one-shot in §4 fits 300 RPM, but does not
-  prove it. **Unresolved.**
+- **⚠ Q11. The floppy format and the rate.** The manual gives no rotation speed or data rate. **The
+  rotation is settled: 300 RPM**, so a sector is 12.5 ms. The
+  [System B Overview](System%20B%20Overview.md) §2 gives 300 RPM and 250 kbit/s, and the
+  [Micropolis 1115](Floppy%20Drive%20%281115%29.md) gives the same, with 12.5 ms for 16 sectors and
+  an index hole that fits the one-shot in §4. The fit of the format is **unresolved**. The fields
+  before the postamble total 315 bytes (§3). At 250 kbit/s, a 12.5 ms sector holds 312.5 bytes,
+  which is less than 315. A 4 MHz `CLK` would give 625 bytes.
 - **⚠ Q12. `RECAL` against `WPC`.** On the 8″ sheet, C1H bit 7 goes to `RECAL`, but the pre-comp
   PROM `U32` still has a `WPC` input. The sheet shows no other source for `WPC`. **Unresolved.**
   No listing for the 8″ board is in the scan.

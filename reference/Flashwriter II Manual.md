@@ -101,12 +101,12 @@ The real value of the undriven bits depends on the bus. The table is for the sim
 **Data port.** U45, an LS244, puts the U46 latch on the bus (*sheet*). The eight key bits go through
 with no inversion, and bit 7 is not masked.
 
-**The rest of the machine** (*Port Map*, 1981):
+**The rest of the machine** ([Port Map](Vector%20Graphic%20Port%20Map.md), 1981, in short form):
 
 | Port | Board |
 |---|---|
 | 00–01 | Flashwriter I or II keyboard. Also the Bitstreamer I parallel port and the Analog Interface |
-| 02–07 | Bitstreamer II serial ports A, B and C (data at even, status at odd). The ZCB has serial ports at 04–07 |
+| 02–07 | [Bitstreamer II](Bitstreamer%20II.md) serial ports A, B and C (data at even, status at odd), at its factory base of 02. The ZCB has serial ports at 04–07 |
 | 08–0B | Bitstreamer II and ZCB parallel ports |
 | 40 | Memory bank select, [64K Dynamic RAM](Vector%20Graphic%2064K%20Dynamic%20RAM.md) and 16K Static RAM |
 | 82–87 | Clock/Calendar |
