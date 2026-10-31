@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
 
           # The legs.
-          #   macos-14 is the Apple-Silicon runner. This leg BUILDS NATIVE arm64 and is the
+          #   macos-15 is the Apple-Silicon runner. This leg BUILDS NATIVE arm64 and is the
           #   one leg with SDL3 installed, so it is the only place display_sdl.cpp is
           #   compiled at all -- see the Configure step. It used to cross-build a universal
           #   x86_64+arm64 binary, back when CI artifacts WERE the release. They are not any
@@ -87,7 +87,7 @@ jobs:
           #   and the release on different compilers again -- the 2022/2026 split let a warning
           #   through that only the release compiler reported.
           linux='{"name":"linux-x86_64","os":"ubuntu-latest","artifact":"altairsim-linux-x86_64","binary":"build/altairsim"}'
-          macos='{"name":"macos-arm64","os":"macos-14","artifact":"altairsim-macos-arm64","binary":"build/altairsim"}'
+          macos='{"name":"macos-arm64","os":"macos-15","artifact":"altairsim-macos-arm64","binary":"build/altairsim"}'
           windows='{"name":"windows-x86_64","os":"windows-2025-vs2026","artifact":"altairsim-windows-x86_64","binary":"build/altairsim.exe"}'
           full="{\"include\":[$linux,$macos,$windows]}"
           linuxonly="{\"include\":[$linux]}"
