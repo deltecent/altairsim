@@ -159,6 +159,7 @@ The boards are in groups, in the same order as the sections below.
 | `io4` | SSM IO-4: two serial ports and four parallel ports |
 | `propio` | S100Computers Console I/O: a serial console built on a Propeller chip |
 | `pmmi` | PMMI MM-103: a Bell 103 telephone modem on one board |
+| `bitstreamer` | Vector Graphic Bitstreamer II: three 8251 serial channels, a 55 Hz clock and the interrupt mask |
 
 **Cassette**
 
@@ -204,6 +205,7 @@ The boards are in groups, in the same order as the sections below.
 | `jadedd` | Jade Double D: a double-density floppy controller with its own Z80. The host loads the program that the Z80 runs |
 | `dualsd` | S100Computers Dual SD: two microSD cards as CP/M drives. Boots CP/M 3 |
 | `dualide` | S100Computers IDE-AB: two CompactFlash cards as CP/M drives. Boots CP/M 3 |
+| `dualmode` | Vector Graphic Dual-Mode: four 5.25-inch 16-hard-sector floppy drives. Boots OASIS 5.5A |
 
 **Video and display**
 
@@ -375,6 +377,11 @@ decoder:
 `northstar`, and 10 for `expandoram2` (11 with a partition). On `expandoram3`, `ram` sets the size instead. `fill` and `seed` work as they do on `memory`. The guest
 writes the select port. At the monitor, you can write it yourself with `OUT`, and `SHOW` lists
 every plane and which plane is on.
+
+On `vector`, a select of a bank that the board does not carry takes the live bank off the bus, and
+nothing answers until a bank that exists is selected. The `window_lo` and `window_hi` properties set
+the addresses of each plane on `vector`. The default is `0000` to `FFFF`. The real board ships with
+its last address at `DFFF`, which leaves room for a ROM and a video board.
 
 The package has no operating system that uses banks. The quickest way to see the board work is
 from the monitor:
@@ -849,6 +856,35 @@ property gives the number. The board also raises no interrupts.
 `SHOW pmmi0` shows the live character format, baud rate, UART flags and modem lines, with the
 base address. To try the board, add it to `default`. `BOARDS ADD pmmi pmmi0` adds it at `C0`.
 
+### `bitstreamer`: Vector Graphic Bitstreamer II
+
+**Three 8251 serial channels, two parallel channels and a 55 Hz clock, on one board.** The board
+decodes eight ports. The `port` property is the first of them, and it must end in 2: `02`, `12` and
+so on to `72`. The default is `02`. This table uses base `22`:
+
+| Port | OUT | IN |
+|---|---|---|
+| `22`–`27` | Serial A, B and C: data at the even port, mode and command at the odd port | Data at the even port, status at the odd port |
+| `28` | The interrupt mask, which is also the parallel A latch | The J4 lines |
+| `29` | The parallel B latch | The J5 lines. The read also clears the clock latch |
+
+The units are `a`, `b` and `c`. Each one has a `baud` property with the eight values of the switch
+on the board, from 110 to 9600.
+
+The clock is 54.6 Hz, from the 2 MHz clock of the bus. The manual of the real board calls it 55 Hz.
+The clock sets a latch, and only an `IN` from port `29` clears the latch.
+
+Interrupts are jumpers on the real board, so each one is a property, and each is `none` by default.
+`clock_int` is for the clock. `rx_int` and `tx_int` are properties of each unit. Each source also
+has a bit in the mask. Bits 0 to 5 are TxRDY and RxRDY of serial A, B and C. Bit 6 is the clock.
+The board gives no vector, so a Z80 or 8080 runs `RST 7`.
+
+The `j4_d0` property sets what drives bit 0 of `IN 28`. It is `open` by default, and all the bits
+then read 1. OASIS 5.5A needs `clock-latch`, because it reads that bit to tell its clock from a key.
+No Vector Graphic document shows this wire. The value comes from what OASIS does.
+
+No cable can be connected to the parallel channels.
+
 ## Cassette
 
 Boards that read and write cassette tape.
@@ -1127,6 +1163,36 @@ timing = "real"
 With `real`, the processor must be fast enough for the disk, as on the real machine. On the
 `tarbelldd`, a double-density disk without DMA needs a 4 MHz processor (`clock_hz = 4000000`). At
 2 MHz, the guest loses data and reports a disk error.
+
+### `dualmode`: Vector Graphic Dual-Mode Disk Controller
+
+**Four floppy drives behind four ports and a 512-byte RAM.** The board has no commands. A program
+fills the RAM or empties it through a port, and one `OUT` starts the read or the write of one sector.
+The ports are `C0` to `C3` by default, and the `port` property moves them. The hard disk half of the
+real board is not built.
+
+The units are `drive0` to `drive3`. A disk image holds 275-byte slots, 16 on a track, with no file
+header. A file of 677600 bytes has two sides, and a file of 338800 bytes has one side. A file of
+any other size mounts with two sides and grows when a program writes to it.
+
+The `vector` machine has this board, with all the drives empty. Monitor 4.3 boots from `drive1`.
+To boot a disk:
+
+1. Start the machine with `altairsim vector`.
+2. Press `Ctrl-E` to go to the monitor.
+3. Type `MOUNT dm0:drive1 mydisk.vgi`.
+4. Type `RUN`. Monitor 4.3 continues at its `Mon>` prompt.
+5. Press `B`.
+
+The `vector` machine also has the banked RAM and the clock that OASIS 5.5A needs. The first thing
+OASIS asks for is the time, then the date. Type `FI` at its `>` prompt to list the files. OASIS does
+not see a second drive until you tell it. Mount a disk on `drive2`, and type these at the `>` prompt:
+
+```
+ATTACH A FLOPPY2
+MOUNT A
+FI * * A
+```
 
 ### `dcdd`: MITS 88-DCDD
 
@@ -2073,8 +2139,8 @@ $ altairsim vector
 
 The Monitor prints `VECTOR GRAPHIC` and its `Mon>` prompt **in the video window**. Press `R` for
 the registers. Type `DE000E03F` and Return to dump the Monitor's first bytes. The window is the
-console, so the keys go to the Monitor. The machine has no disk controller, so `B` prints `BOOT
-FLOPPY` and returns to the prompt.
+console, so the keys go to the Monitor. The drives are empty, so `B` prints `BOOT FLOPPY` and
+returns to the prompt. See `dualmode` for how to boot a disk.
 
 Without SDL3 the machine runs the same and shows no window. The command `DUMP F000-F77F` shows
 the screen as bytes.

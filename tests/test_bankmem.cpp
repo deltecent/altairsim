@@ -68,6 +68,56 @@ void test_bankmem() {
     }
 
     {
+        // Each board compares the latch with its own switch, so a bank with no board answers
+        // nothing. OASIS finds its banks this way, by a read-back that must fail.
+        Machine m;
+        std::string err;
+        auto* b = addBank(m, "mem0", "vector");
+        CHECK(setProperty(*b, "banks", "1", err), "vector: one board");
+        m.power();
+        m.bus.memWrite(0x1000, 0xA5);
+        m.bus.ioWrite(0x40, 0x42);
+        CHECK(m.bus.memRead(0x1000) == 0xFF, "vector: bank 1 has no board, so nothing answers");
+        m.bus.memWrite(0x1000, 0x5A);
+        m.bus.ioWrite(0x40, 0x41);
+        CHECK(m.bus.memRead(0x1000) == 0xA5, "vector: bank 0 is back, and the write went nowhere");
+        CHECK(m.drainBoardLog().empty(), "vector: a bank with no board is not an error to log");
+    }
+
+    {
+        // Area D trims the top of a plane. A window that starts higher stands for the 16K static
+        // boards, and the low addresses stay free for a board that answers in every bank.
+        Machine m;
+        std::string err;
+        auto* b = addBank(m, "mem0", "vector");
+        CHECK(setProperty(*b, "window_lo", "4000", err), "vector: window_lo");
+        CHECK(setProperty(*b, "window_hi", "DFFF", err), "vector: window_hi");
+        CHECK(setProperty(*b, "banks", "2", err), "vector: two boards");
+        m.power();
+        m.bus.memWrite(0x3FFF, 0x11);
+        m.bus.memWrite(0x4000, 0x22);
+        m.bus.memWrite(0xDFFF, 0x33);
+        m.bus.memWrite(0xE000, 0x44);
+        CHECK(m.bus.memRead(0x3FFF) == 0xFF, "vector: below the window nothing answers");
+        CHECK(m.bus.memRead(0x4000) == 0x22, "vector: the first address of the window");
+        CHECK(m.bus.memRead(0xDFFF) == 0x33, "vector: the last address of the window");
+        CHECK(m.bus.memRead(0xE000) == 0xFF, "vector: above the window nothing answers");
+        m.bus.ioWrite(0x40, 0x02);
+        m.bus.memWrite(0x4000, 0x55);
+        m.bus.ioWrite(0x40, 0x01);
+        CHECK(m.bus.memRead(0x4000) == 0x22, "vector: the window is banked");
+
+        CHECK(!setProperty(*b, "window_lo", "4001", err), "vector: a window starts on a page");
+        CHECK(!setProperty(*b, "window_hi", "DF00", err), "vector: a window ends on a page");
+        CHECK(!setProperty(*b, "window_lo", "E000", err), "vector: a window ends after it starts");
+
+        Machine m2;
+        auto* c = addBank(m2, "mem0", "cromemco64kz");
+        CHECK(!setProperty(*c, "window_lo", "4000", err), "cromemco: no window");
+        CHECK(setProperty(*c, "window_hi", "FFFF", err), "cromemco: the factory value loads back");
+    }
+
+    {
         // Vector: the plane really swaps -- same address, different bytes.
         Machine m;
         auto* b = addBank(m, "mem0", "vector");

@@ -12,6 +12,19 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `dualmode`, the Vector Graphic Dual-Mode Disk Controller, and `bitstreamer`, the Vector
+Graphic Bitstreamer II. The `vector` machine now boots a disk.** `dualmode` runs four floppy drives
+through four ports and a 512-byte RAM, with the real 32-bit ECC. `bitstreamer` gives three 8251
+serial channels, the interrupt mask and a 55 Hz clock. On the `vector` machine, type `MOUNT
+dm0:drive1 mydisk.vgi` at the monitor and press `B` at `Mon>`. OASIS 5.5A boots to its `>` prompt
+from such a disk. The package holds no OASIS disk.
+
+**`bankmem`, `card=vector`: a bank with no board now answers nothing.** A select of a bank that the
+board does not carry left the old bank live. OASIS tests each bank by a read-back, so every bank
+looked like RAM, the test changed OASIS's own code, and OASIS overwrote itself. The real board
+compares the select with its own switch, so the old bank now leaves the bus. New `window_lo` and
+`window_hi` properties set the addresses of each plane, which jumper area D does on the real board.
+
 **`CONFIG LOAD` now gives the same machine as the same file at startup.** The loader wrote
 `[console]`, `[display]` and `[terminal]` while it read the file, and it did not reset them first. A
 `CONFIG LOAD` that failed kept the boards but changed these settings. A file that did not name a key

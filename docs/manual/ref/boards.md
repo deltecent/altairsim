@@ -42,6 +42,7 @@ and within a group the boards are in **alphabetical order**.
 | [`disk1`](#disk1) | CompuPro Disk 1: uPD765A floppy controller with DMA |
 | [`disk1a`](#disk1a) | CompuPro Disk 1A: uPD765A floppy controller with DMA |
 | [`dualide`](#dualide) | S100Computers IDE-AB: two CompactFlash sockets for CP/M 3 |
+| [`dualmode`](#dualmode) | Vector Graphic Dual-Mode: 5.25" floppy controller, 4 drives |
 | [`dualsd`](#dualsd) | S100Computers Dual SD: two microSD sockets for CP/M 3 |
 | [`fdcplus`](#fdcplus) | FarmTek FDC+: serial drive (drive types 6, 7) |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
@@ -59,6 +60,7 @@ and within a group the boards are in **alphabetical order**.
 | Type | What it is |
 |---|---|
 | [`2sio`](#2sio) | MITS 88-2SIO: two 6850 serial ports |
+| [`bitstreamer`](#bitstreamer) | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 | [`gsio`](#gsio) | Generic SIO: two strap-configurable serial channels |
 | [`io4`](#io4) | SSM IO-4: two serial + two parallel ports |
 | [`pmmi`](#pmmi) | PMMI MM-103: Bell 103 modem |
@@ -179,6 +181,8 @@ S-100 bank-switched RAM. One card, five decoders (card=vector|cromemco64kz|north
 | `card` | enum | `vector` | `vector` \| `cromemco64kz` \| `northstar` \| `expandoram2` \| `expandoram3` | which banked card this is -- each owns its own decode: vector \| cromemco64kz \| northstar \| expandoram2 \| expandoram3 |
 | `port` | int | `0x40` | `0x0` .. `0xFF` | the write-only bank-select port. Card default (vector/cromemco 40, northstar C0, expandoram2/expandoram3 FF); overridable, as the real boards relocate it |
 | `partition` | enum | `none` | `none` \| `ex48` \| `ex32` | ExpandoRAM II common-memory partition (the EX-48/EX-32 PROM): none \| ex48 \| ex32. ex48 = 48K banked (0000-BFFF) + 16K common (C000-FFFF); ex32 = 32K banked + 32K common (8000-FFFF). The common region is identical in every bank -- what a banked CP/M's resident OS and bank-switch routine live in. `none` (default) is a whole 64K plane |
+| `window_lo` | int | `0x0` | `0x0` .. `0xFFFF` | vector: the first address of each plane. A 64K board starts at 0000 |
+| `window_hi` | int | `0xFFFF` | `0x0` .. `0xFFFF` | vector: the last address of each plane, jumper area D on a 64K board: FFFF, DFFF (as shipped) or BFFF |
 | `banks` | int | `8` | `1` .. `11` | how many switchable banks/planes/pages this subsystem carries (one per board). Card-capped: vector/cromemco 8, northstar 6, expandoram2 10 (11 with a partition: page A). The common region (partition) is not a bank. Setting `ram` derives this. expandoram3 carries 5 pages per board, so it takes 5 or 10 |
 | `config` | enum | `cpm` | `cpm` \| `oasis` | ExpandoRAM III S3 switch 5, which PROM map is in force: cpm (ON, the factory setting) = pages in 0000-BFFF under a common 16K at C000; oasis (OFF) = pages in 4000-FFFF over a common 16K at 0000 |
 | `bank_enable` | int | `0xFF` | `0x0` .. `0xFF` | ExpandoRAM III S3 bank enables: bit = board x 4 + bank, set = enabled (factory FF). On each board, S3 switch 4 is bank 0 and switch 1 is bank 3. A switched-off bank answers nothing |
@@ -405,6 +409,28 @@ S100Computers IDE-AB (CF): the IDE/CompactFlash half of the IDE+ESP32 combinatio
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x30` | `0x0` .. `0xFB` | Base address. The board decodes five 8255 ports: BASE..BASE+4 (A,B,C,cfg,drive) |
+
+
+### `dualmode`
+
+Vector Graphic Dual-Mode Disk Controller, floppy half: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, 1 or 2 sides, at four ports from PORT (default C0). A 512-byte buffer RAM, a 32-bit ECC, and a 4-second motor timer. While busy the board answers no port. Monitor 4.3 boots from drive 1
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive, 0 to 3. Monitor 4.3 boots from drive 1 |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status 0 bit 0, and the drive drops the write *(also `writeprotect`)* |
+| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0xC0` | `0x0` .. `0xF0` | Base address, set by jumper block D. The board decodes BASE+0 .. BASE+3 |
 
 
 ### `dualsd`
@@ -715,6 +741,48 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+
+
+### `bitstreamer`
+
+Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two parallel latches and a 55 Hz clock latch at eight ports from PORT (default 02). OUT to PORT+6 is the interrupt mask, and IN from PORT+7 clears the clock latch. Interrupts are jumpers, off by default. `j4_d0` is the wire OASIS needs on bit 0 of IN PORT+6
+
+**Units:** `a` (serial, CONNECT), `b` (serial, CONNECT), `c` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x2` | `0x2` .. `0x72` | Base address (area W): 02, 12, 22, 32, 42, 52, 62 or 72. The board decodes eight ports from there |
+| `clock_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers the clock latch, through mask bit 6: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `j4_d0` | enum | `open` | `open` \| `clock-latch` | What drives pin 11 of J4, which is bit 0 of IN x8: open, or clock-latch (U4 pin 5). OASIS needs clock-latch. No Vector Graphic document shows it |
+
+#### Unit `a` — `[board.unit.a]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
+| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+
+#### Unit `b` — `[board.unit.b]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
+| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+
+#### Unit `c` — `[board.unit.c]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
+| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
 
 
 ### `gsio`

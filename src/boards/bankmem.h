@@ -175,6 +175,12 @@ private:
     std::vector<Segment> segs_;
     uint8_t latch_ = 0;                  // last byte written to the select port
 
+    // vector: the addresses each plane answers. A 64K board starts at 0000 and area D trims its
+    // top. A window that starts higher stands for the 16K static boards, which the manual mixes
+    // with it and which carry the same bank select.
+    uint16_t windowLo_ = 0x0000;
+    uint16_t windowHi_ = 0xFFFF;
+
     // expandoram3 config (S3). bankEnable_ bit = board x 4 + bank, set = switch ON.
     Config config_ = Config::Cpm;
     uint8_t bankEnable_ = 0xFF;

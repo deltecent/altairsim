@@ -972,6 +972,7 @@ Why each piece is there — each corresponds to a disk that exists:
 | | `sectorSize` | What the image holds |
 |---|---|---|
 | **88-DCDD** (hard sector) | **137** | The *whole slot*: sync byte, track/sector header, 128-byte payload, checksum, stop byte, trailer. |
+| **Vector Graphic Dual-Mode** (hard sector) | **275** | The *whole slot*: sync byte, track, sector, 10 zeros, 256-byte payload, checksum, 4 ECC bytes, valid byte. |
 | Tarbell, Disk 1A… (soft sector) | **128** / 256 | **Payload only.** The header and checksum were in the inter-sector gaps on real media and never made it into the image. |
 | North Star MDS-A / MDS-A-D (hard sector, payload-only image) | **256** / 512 | **Payload only**, although the diskette is hard-sectored. A North Star sector has no header at all — zeros, a sync character, the data, a check character — and a `.NSI` file keeps the data. The board makes the check character on a read and drops it on a write (`docs/boards/northstar-mds.md`). |
 

@@ -59,6 +59,7 @@ uint16_t MemBankBoard::partitionCommonBase() const {
 
 uint32_t MemBankBoard::partitionBankedSize() const {
     uint16_t base = partitionCommonBase();
+    if (card_ == Card::Vector) return (uint32_t)windowHi_ - windowLo_ + 1;
     return base ? (uint32_t)base : 0x10000u;   // bytes below the common region
 }
 
@@ -221,11 +222,12 @@ void MemBankBoard::rebuildSegments() {
     // partition=none). Each bank gets its own copy of that window; the common region,
     // if any, is one shared segment appended after the banks.
     uint16_t bankedHi = (uint16_t)(partitionBankedSize() - 1);
+    if (card_ == Card::Vector) bankedHi = windowHi_;
 
     segs_.clear();
     for (int i = 0; i < n; ++i) {
         Segment s;
-        s.lo = 0x0000;
+        s.lo = card_ == Card::Vector ? windowLo_ : (uint16_t)0x0000;
         s.hi = bankedHi;
         // ex48's page A is a single 16K cell: board 7 bank 3, at A=2 in Fig 2-4. The
         // manual's text puts it at C000 instead (p. 12); the figure is the PROM program.
@@ -300,7 +302,15 @@ void MemBankBoard::select(uint8_t data) {
             int want = -1;
             for (int i = 0; i < 8; ++i)
                 if (h == (uint8_t)(1u << i)) { want = i; break; }
-            if (want < 0 || want >= banks()) {
+            // Each board compares the latch with its own switch, so a bank with no board
+            // answers nothing, and the bank that was in goes out. OASIS tests for this.
+            if (want >= banks()) {
+                for (Segment& s : segs_)
+                    if (!s.common) s.enabled = false;
+                decodeChanged();
+                return;
+            }
+            if (want < 0) {
                 char buf[128];
                 std::snprintf(buf, sizeof buf,
                               "bank: invalid one-hot select 0x%02X for vector (%s). unchanged.",
@@ -616,6 +626,43 @@ std::vector<Property> MemBankBoard::properties() {
         };
         p.push_back(std::move(x));
     }
+    // Before banks and ram, because the window sizes a bank.
+    auto windowEnd = [this](const char* name, const char* help, uint16_t& end, uint16_t factory) {
+        Property x;
+        x.name  = name;
+        x.help  = help;
+        x.kind  = Kind::Int;
+        x.radix = 16;
+        x.min   = 0;
+        x.max   = 0xFFFF;
+        x.get   = [&end] { return Value::ofInt(end); };
+        x.set   = [this, &end, factory](const Value& v, std::string& err) {
+            if (v.i() != factory && card_ != Card::Vector) {
+                err = "the plane window is a vector setting";
+                return false;
+            }
+            if ((v.i() & 0xFF) != (factory & 0xFF)) {
+                err = "a window starts on a page and ends on one: xx00-xxFF";
+                return false;
+            }
+            end = (uint16_t)v.i();
+            if (windowLo_ > windowHi_) {
+                end = factory;
+                err = "the window ends before it starts";
+                return false;
+            }
+            rebuildSegments();
+            return true;
+        };
+        return x;
+    };
+    p.push_back(windowEnd("window_lo",
+                          "vector: the first address of each plane. A 64K board starts at 0000",
+                          windowLo_, 0x0000));
+    p.push_back(windowEnd("window_hi",
+                          "vector: the last address of each plane, jumper area D on a 64K board: "
+                          "FFFF, DFFF (as shipped) or BFFF",
+                          windowHi_, 0xFFFF));
     {
         Property x;
         x.name = "banks";

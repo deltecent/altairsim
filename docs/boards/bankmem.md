@@ -39,6 +39,23 @@ to writing `0x01`). The card also decodes `0x41`/`0x42` as banks 0/1 — bit 6 i
 **OASIS writes those values**; miss it and OASIS boots into the wrong plane and misbehaves later.
 A select that is not a tolerated one-hot value is logged and leaves the live bank alone.
 
+**A bank with no board answers nothing.** Each real board compares the latch with its own switch.
+A select of a bank that this subsystem does not carry takes the live bank off the bus. OASIS finds
+its banks with this: it complements a byte in a bank and reads it back. If the old bank stayed live,
+every bank would look like RAM, and the test would change OASIS's own code.
+
+**`window_lo` and `window_hi`** set the addresses of each plane. A 64K board starts at `0000`, and
+jumper area D sets its last address: `FFFF`, `DFFF` as shipped, or `BFFF`. The option of 48K plus 8K
+at `E000` has two windows and is not built. A window that starts higher stands for the 16K static
+boards, which the 64K RAM manual says carry the same bank select.
+
+The `vector` machine uses `4000-DFFF`, and a `memory` board answers `0000-3FFF` in every bank. OASIS
+needs that split, because its copy routine and its stack stay in low memory across a switch. The
+*OASIS System Reference Manual* (`SET BANK`) gives 16K, 32K or 48K for this common memory. The
+`oasis` map of the ExpandoRAM III is also `0000-3FFF`. OASIS sets bit 6 in each byte it writes to
+port 40, which fits a board strapped to bank 6. No Vector Graphic document shows which board held
+the common memory.
+
 ### `cromemco64kz` — Cromemco 64KZ / 64KZ-II
 The select byte is a **bit-mask of active banks**: `OUT 40H,28H` turns banks 3 and 5 on together.
 On real hardware each bank is realized by a 32K block strapped to a bank subset, so several banks
@@ -174,6 +191,7 @@ the 48K PROM runs unchanged. The SD Systems CP/M 3 banked disk proves it
 | `card` | enum | `vector \| cromemco64kz \| northstar \| expandoram2 \| expandoram3`. Sets the decode, the default port, and the bank cap. |
 | `port` | int (hex) | The write-only select port. Card default (40/40/C0/FF/FF), overridable — the real boards relocate it via PROM/straps. |
 | `banks` | int | How many switchable planes this subsystem carries (one per real board). Card-capped: vector/cromemco 8, northstar 6, expandoram2 10 (11 with a partition: page A). On expandoram3 it reads the pages carried, and takes only 5 or 10 (one or two boards), so a CONFIG SAVE file loads back. The common region is not a bank. |
+| `window_lo`, `window_hi` | int (hex) | **vector only**: the first and last address of each plane, on page boundaries. Default `0000` and `FFFF`. Other cards accept only those values, so a CONFIG SAVE file loads back. |
 | `partition` | enum | **expandoram2 only** — `none \| ex48 \| ex32`. Carves a shared common region (see *Common memory* above). Refused on the other cards: vector, cromemco64kz and northstar are whole-64K planes, and the expandoram3 PROM fixes its own map. |
 | `ram` | int | Total board RAM in KB (on expandoram2: ≤ 256K with `partition=none`; with a partition it counts 64K boards, ≤ 512K on ex48 and ≤ 384K on ex32). Derives `banks` from the partition; the other view of the same geometry. On expandoram3: `256` (one board) or `512` (two boards). |
 | `config` | enum | **expandoram3** — `cpm \| oasis`, S3 switch 5 (see the maps above). Default `cpm`. Other cards accept only `cpm`, the factory value, so a CONFIG SAVE file loads back. |

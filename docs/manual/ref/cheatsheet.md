@@ -144,6 +144,7 @@ Type the part before the bracket.
 | `disk1` | CompuPro Disk 1: uPD765A floppy controller with DMA |
 | `disk1a` | CompuPro Disk 1A: uPD765A floppy controller with DMA |
 | `dualide` | S100Computers IDE-AB: two CompactFlash sockets for CP/M 3 |
+| `dualmode` | Vector Graphic Dual-Mode: 5.25" floppy controller, 4 drives |
 | `dualsd` | S100Computers Dual SD: two microSD sockets for CP/M 3 |
 | `fdcplus` | FarmTek FDC+: serial drive (drive types 6, 7) |
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
@@ -161,6 +162,7 @@ Type the part before the bracket.
 | Type | What it is |
 |---|---|
 | `2sio` | MITS 88-2SIO: two 6850 serial ports |
+| `bitstreamer` | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 | `gsio` | Generic SIO: two strap-configurable serial channels |
 | `io4` | SSM IO-4: two serial + two parallel ports |
 | `pmmi` | PMMI MM-103: Bell 103 modem |

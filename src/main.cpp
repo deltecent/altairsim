@@ -1,4 +1,5 @@
 #include "boards/mits-2sio.h"
+#include "boards/vector-bitstreamer.h"
 #include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88lpc.h"
@@ -362,6 +363,7 @@ int main(int argc, char** argv) {
     TurnkeyBoard::setResolver(resolveEndpoint);  // shares Sio2Port's resolver
     SerialBoardBase::setResolver(resolveEndpoint);  // the 88-SIO / 88-ACR / 88-UIO serial engine
     SbcBoard::setResolver(resolveEndpoint);
+    BitstreamerBoard::setResolver(resolveEndpoint);
     UioBoard::setResolver(resolveEndpoint);  // serial half; the cassette half refuses CONNECT
     C700Board::setResolver(resolveEndpoint);
     LpcBoard::setResolver(resolveEndpoint);
