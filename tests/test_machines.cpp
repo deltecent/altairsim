@@ -468,20 +468,20 @@ remove = true
         const bool focus0 = Display::focusPolicy(), kb0 = Display::keyboardToConsole(),
                    crt0 = Display::crt();
 
-        Display::setFocusPolicy(true);
-        Display::setKeyboardToConsole(false);
-        Display::setCrt(true);
+        // Load first: a load resets these settings, and it would overwrite what the test sets.
         Machine     dm;
         std::string de;
         const BuiltinMachine* b = findMachine("default");
         CHECK(b && loadMachine(*b, dm, de), "a machine to save");
+        Display::setFocusPolicy(true);
+        Display::setKeyboardToConsole(false);
+        Display::setCrt(true);
         const std::string text = saveTomlText(dm);
         CHECK(text.find("\n[display]\nfocus = true\nkeyboard = \"none\"\ncrt = true\n") !=
                   std::string::npos,
               "the save has a [display] section with all three keys");
 
-        // Loading does not put the settings back by itself, so flip them first: only the
-        // file can bring them to the values the save held.
+        // Flip them first: only the file can bring them to the values the save held.
         Display::setFocusPolicy(false);
         Display::setKeyboardToConsole(true);
         Display::setCrt(false);
@@ -689,6 +689,101 @@ fill = "zero"
           "a file with a `base` loads into a machine that already has cards");
     CHECK(live.name == "derived", "...and it is the derived machine now");
     CHECK(live.boards().size() == 6, "...with the base's cards, once each");
+
+    // ---- THE HOST SETTINGS FOLLOW THE SAME RULE (#864) ----
+    //
+    // They are not on the scratch machine: they are process-wide, so the loader wrote them
+    // as it read the file. A failed load changed them, and a file that did not name a key
+    // kept the last machine's value. Every check here starts from CHANGED settings, because
+    // a process that has its defaults cannot show either bug.
+    SECTION("a load gives the same host settings at the monitor as at startup (#864)");
+    const HostSettings before = saveHostSettings();
+    Console&           con    = Console::instance();
+    auto conSet = [&con](const char* key, const char* value) {
+        std::string err;
+        return setPropertyIn(con.properties(), "console", key, value, err);
+    };
+    auto conGet = [&con](const char* key) { return storedText(con.properties(), key, "?"); };
+    auto dump   = [&con] {
+        std::string text;
+        for (const auto& list : {con.properties(), Display::properties(), TerminalStream::properties()})
+            for (const Property& p : list)
+                if (p.get) text += p.name + "=" + p.get().text(p.radix) + "\n";
+        return text;
+    };
+    auto changeAll = [&] {
+        Display::setFocusPolicy(false);
+        Display::setKeyboardToConsole(false);
+        Display::setCrt(true);
+        TerminalStream::settings().strip7in = true;
+        return conSet("upper", "true") && conSet("crlf", "true") && conSet("bsdel", "bs") &&
+               conSet("stop", "2") && conSet("base", "octal") && conSet("history", "33");
+    };
+    const std::string logA = (std::filesystem::temp_directory_path() / "altair-864-a.log").string();
+    const std::string logB = (std::filesystem::temp_directory_path() / "altair-864-b.log").string();
+    std::filesystem::remove(logA);
+    std::filesystem::remove(logB);
+
+    CHECK(changeAll() && conSet("log", logA.c_str()), "the settings to protect are set");
+    const std::string changed = dump();
+    const std::string kBadHost = R"(
+[machine]
+name = "badhost"
+[console]
+strip7out = true
+upper = false
+stop = 3
+base = "hex"
+history = 7
+log = ")" + logB + R"("
+[display]
+focus = true
+keyboard = "console"
+crt = false
+[terminal]
+strip7out = true
+bell = false
+[[board]]
+type = "nosuchcard"
+id   = "bad"
+)";
+    CHECK(!loadTomlText(kBadHost, "badhost", live, why), "a bad file is refused");
+    CHECK(dump() == changed, "...and it changed no host setting in any of the three tables");
+    CHECK(conGet("log") == logA, "...and the log is the one that was open");
+
+    CHECK(loadTomlText("[machine]\nname = \"plain\"\n", "plain", live, why), "a plain file loads");
+    CHECK(conGet("upper") == "false" && conGet("crlf") == "false" && conGet("bsdel") == "off",
+          "a [console] key that the file does not name is at its default");
+    CHECK(!Display::focusPolicy() && Display::keyboardToConsole() && !Display::crt(),
+          "...and a [display] key");
+    CHECK(!TerminalStream::settings().strip7in, "...and a [terminal] key");
+    CHECK(conGet("base") == "octal" && conGet("history") == "33" && conGet("log") == logA &&
+              con.attn() == 2,
+          "...and stop, base, history and log are the operator's: they stay");
+
+    // The reset happens once, at the outermost file, so a `base` is not reset by the file
+    // on top of it. basic4k says strip7out = true.
+    CHECK(changeAll(), "the settings are changed again");
+    CHECK(loadTomlText("[machine]\nname = \"b\"\nbase = \"basic4k\"\n[console]\nbell = false\n",
+                       "b", live, why),
+          "a file with a base loads");
+    CHECK(conGet("strip7out") == "true", "the base's key applies");
+    CHECK(conGet("bell") == "false", "...and so does the file's");
+    CHECK(conGet("upper") == "false", "...and a key that neither one names is at its default");
+    CHECK(loadTomlText("[machine]\nname = \"c\"\nbase = \"basic4k\"\n[console]\nstrip7out = false\n",
+                       "c", live, why) &&
+              conGet("strip7out") == "false",
+          "the file's key wins over the base's");
+
+    const std::string round = saveTomlText(live);
+    CHECK(changeAll(), "the settings are changed once more");
+    CHECK(loadTomlText(round, "round", live, why), "the save loads back");
+    CHECK(saveTomlText(live) == round, "...and the transforms in it replace the changed ones");
+
+    conSet("log", "off");
+    restoreHostSettings(before);
+    std::filesystem::remove(logA);
+    std::filesystem::remove(logB);
 }
 
 // ---------------------------------------------------------------------------

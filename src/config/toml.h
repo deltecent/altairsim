@@ -16,6 +16,7 @@
 // tell you plainly when it meets something it does not.
 
 #include "core/machine.h"
+#include "core/value.h"
 
 #include <string>
 #include <vector>
@@ -35,6 +36,25 @@ bool loadToml(const std::string& path, Machine& m, std::string& err,
 // errors. One machine language, no second dialect for the things we ship.
 bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
                   std::string& err, std::vector<std::string>* notes = nullptr);
+
+// THE HOST SETTINGS ARE PROCESS-WIDE, and the scratch machine that makes a load all or
+// nothing does not hold them: [console], [display] and [terminal] are not boards. So a load
+// saves them, resets them, and puts them back if the file fails. A load that succeeds gives
+// the same settings at the monitor as it does at startup.
+//
+// resetHostSettings() resets the keys that CONFIG SAVE writes. stop, base, history and log
+// stay, because they are the operator's. saveHostSettings() walks the property lists, so a
+// new key is covered with no second list, and it holds every key so a failed load puts
+// those four back too.
+struct SavedHostSetting {
+    Property property;
+    Value    value;
+};
+using HostSettings = std::vector<SavedHostSetting>;
+
+HostSettings saveHostSettings();
+void         restoreHostSettings(const HostSettings& saved);
+void         resetHostSettings();
 
 bool saveToml(const std::string& path, Machine& m, std::string& err);
 

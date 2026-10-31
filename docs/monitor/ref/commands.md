@@ -779,8 +779,8 @@ RAM             what you DEPOSITed is gone. LOAD/SAVE <file> <range> is for
                 memory, and it is a separate file for a reason.
 the registers   PC included, so a LOADed machine has not started.
 breakpoints     nor tracepoints, nor where TRACE was pointed.
-CONSOLE         stop and the transforms are the console's, not a board's in
-                the backplane. They survive CONFIG LOAD untouched.
+CONSOLE         stop, base, history and log belong to the person at the
+                keyboard. LOAD keeps them, unless the file names them.
 ```
 
 A SAVE IS A READ: it asks every property for its value and writes to nothing.
@@ -789,6 +789,9 @@ LOAD IS THE WHOLE MACHINE, so it REPLACES the one you have: the boards you had
 are out of the backplane, the new ones are in, and it is powered up and running
 its startup list -- a file whose startup says RUN comes up running. Naming that
 same file on the command line does the identical thing; there is one road.
+
+THE FILE ALSO SETS THE HOST. SAVE writes [display], [terminal] and the transforms
+of [console]. LOAD sets these keys to their defaults, then applies the file.
 
 AND IT IS ALL OR NOTHING. The machine is built off to one side first, so a file
 that will not load -- a key that does not parse, a disk image that is not there

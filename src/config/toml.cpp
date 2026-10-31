@@ -860,12 +860,47 @@ bool loadInto(const std::string& text, const std::string& source, Machine& m,
 // another, and it recurses through loadInto() below, not through here. Note that it can
 // only work at all now: `base` refuses to run once a machine has boards in it, so in the
 // old world CONFIG LOAD of any file with a `base` was dead on arrival.
+//
+// THE HOST SETTINGS FOLLOW THE SAME RULE (#864; toml.h says why they need help). The reset is
+// here and not in loadInto(), so that a `base` is not reset by the file on top of it.
 bool loadTomlText(const std::string& text, const std::string& source, Machine& m,
                   std::string& err, std::vector<std::string>* notes) {
+    const HostSettings was = saveHostSettings();
+    resetHostSettings();
     Machine built;
-    if (!loadInto(text, source, built, err, /*depth=*/0, notes)) return false;
+    if (!loadInto(text, source, built, err, /*depth=*/0, notes)) {
+        restoreHostSettings(was);
+        return false;
+    }
     m.replaceWith(built);
     return true;
+}
+
+HostSettings saveHostSettings() {
+    HostSettings saved;
+    for (std::vector<Property> props :
+         {Console::instance().properties(), Display::properties(), TerminalStream::properties()})
+        for (Property& p : props)
+            if (p.get && p.set) {
+                Value v = p.get();
+                saved.push_back({std::move(p), std::move(v)});
+            }
+    return saved;
+}
+
+// ONLY WHAT MOVED. Setting `log` opens a file, so a load that left it alone must not touch it.
+void restoreHostSettings(const HostSettings& saved) {
+    for (const SavedHostSetting& s : saved) {
+        if (s.property.get().text(s.property.radix) == s.value.text(s.property.radix)) continue;
+        std::string ignored;
+        s.property.set(s.value, ignored);
+    }
+}
+
+void resetHostSettings() {
+    Console::instance().resetTransforms();
+    Display::resetSettings();
+    TerminalStream::settings() = TerminalStream::Settings{};
 }
 
 bool loadToml(const std::string& path, Machine& m, std::string& err,
@@ -1010,9 +1045,8 @@ std::string saveTomlText(Machine& m, std::string* err) {
     // boards below never reaches them, and a machine file that set `focus = true` or
     // `strip7out = true` lost it on the way through a save.
     //
-    // EVERY key is written, whatever its value. Loading a file does not put these settings
-    // back to their defaults, so a file that said nothing would keep whatever the last
-    // machine set. No `# default` marks: none has a fresh object to compare with.
+    // EVERY key is written, whatever its value. No `# default` marks: none has a fresh
+    // object to compare with.
     //
     // [console] holds only the transform chain. stop, base, history and log are the
     // operator's session, not the machine's, and `log` opens a file.

@@ -125,6 +125,9 @@ public:
     // The transform set. Declared once, consumed by everything.
     std::vector<Property> properties();
 
+    // Every transform back to its default. A machine file starts from these.
+    void resetSettings() { own_ = FilterSettings{}; }
+
 private:
     std::unique_ptr<ByteStream> inner_;
 
