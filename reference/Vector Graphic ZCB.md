@@ -4,9 +4,9 @@ Source: [ZCB CPU - Misc.pdf](#) and [ZCB Mod for 19.2K baud.pdf](#)
 
 Vector Graphic bulletins on the ZCB, the Z-80 single board computer, 10 PDF pages, 1980–1982, and a
 one-page note on a 19,200 baud change. The ZCB holds the processor, the Monitor PROMs, 1K of RAM at
-FC00, an 8251 and programmable parallel ports. This file holds what the bulletins give. It does not
-give the bits of the ports or the jumpers in full. The deramp folder also lists `ZCB CPU Manual.pdf`
-and `ZCB CPU Manual (another).pdf`, and neither one was read for this file.
+FC00, an 8251 and an 8255. This file holds what the bulletins give. The
+[ZCB CPU Manual](ZCB%20CPU%20Manual.md) file has the reset logic, the decode, the ports and the
+jumpers.
 
 **Not emulated.** `machines/vector.toml` has a generic Z-80 and a stand-in memory board. The ports
 are in [Vector Graphic Port Map](Vector%20Graphic%20Port%20Map.md), and the addresses are in

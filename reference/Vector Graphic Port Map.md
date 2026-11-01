@@ -89,3 +89,5 @@ the Flashwriter board, in a five-user system (page 4).
 - **⚠ Q3. Time share ports.** The note gives 08–0F. The
   [Flashwriter II Manual](Flashwriter%20II%20Manual.md) §12 gives 0, 1, A, B, C, D, E and F for
   four boards, each with its own bank.
+- **⚠ Q4. "Serial port A1" on the ZCB is not a second port.** The ZCB decodes no A1 at its 8251, so 06
+  and 07 are copies of 04 and 05. See [ZCB CPU Manual](ZCB%20CPU%20Manual.md) §6.
