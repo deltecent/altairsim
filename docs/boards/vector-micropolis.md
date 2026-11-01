@@ -107,6 +107,8 @@ The command is in bits 7-5.
 
 Vector's 56K CP/M 2.20 A was checked once by hand, on a `zcb` at 4 MHz with `fwii` and 56K of RAM. It boots to `A>` with `B` on Monitor 4.0, and with `GF800` on Monitor 4.3. `DIR`, `STAT`, `SAVE`, `PIP` and `ERA` work, and the disk image changed. The tests do not hold a Vector disk.
 
+All 20 disks of `56K Bootable Disk Images.zip` boot, each checked once (reference section 9). Six use serial port A of a Bitstreamer II at port 02, and these were run with a `bitstreamer` beside the `zcb`. Both boards then drive ports 05 and 07, and the bus reports `CONTENTION`.
+
 ## References
 
 - `docs/boards/vector-zcb.md`, the processor board, and its Monitor.

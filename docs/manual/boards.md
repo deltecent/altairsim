@@ -1317,6 +1317,9 @@ mounts with two sides and grows when a program writes to it. You supply the disk
 2. Start altairsim with this file.
 3. Type `GF800` and press Enter at the `Mon>` prompt. The disk boots to the `A>` prompt.
 
+**Some Vector disks print to serial port A of a Bitstreamer II, at port `02`, and not to the
+Flashwriter.** These disks show nothing on this machine.
+
 **Put a disk in `drive0` before you boot.** With an empty drive, the boot PROM waits for a sector
 that never comes, and the guest prints nothing.
 

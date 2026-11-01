@@ -229,6 +229,29 @@ load address is 015F, so the loader starts at 016B. The ROM is 8080 code.
 `micropolis` board. The 4.x Monitors take console
 I/O entry points that VG CP/M calls, so CP/M needs a 4.x Monitor at E000 (`ReadMe.pdf`).
 
+**The disks of `56K Bootable Disk Images.zip`.** *56K Disk Directory.pdf* lists all 20 as bootable on an MZ in the
+56K configuration, with the banner and the files of each. It also says that not every version of CP/M uses the
+console of the ROM Monitor, and that the others use serial port A of a Bitstreamer II. On VG17 the note says that
+`CONFIG.COM` location 0120 set to 84 selects the Monitor console. CPM22B-Lifeboat.VGI already has this change.
+
+All 20 were tried once on the emulated board: a `zcb` at 4 MHz, `fwii`, 56K of RAM, and each disk read by the boot ROM.
+
+| Disks | Console | Result |
+|---|---|---|
+| CPM22A-MikeD, CPM22B-Lifeboat, VG03, VG09, VG43, VG46, Vector CPM for Micropolis, Vector System B CPM | Monitor | 56K CP/M 2.20 banner, with Monitor 4.3 and `GF800` |
+| VG01, VG16, VG42 | Monitor | 48K CP/M 2.01 or 2.10 banner |
+| MDOS40-BillS, VG35, VG36 | Monitor | MDOS 4.0 banner and prompt |
+| VG00, MDEMO | Port 02 and 03 | 46K CP/M 1.411 to `A>`. `DIR` works |
+| VG13 | Port 02 and 03 | 47K CP/M 1.42 to `A>`. `DIR` works |
+| VG08, VG17, VG18 | Port 02 and 03 | 56K CP/M 2.20B to `A>`. `DIR` works |
+
+The serial disks were run with a `bitstreamer` at port 02, unit `a` on the console, and a start at F800. With no
+board at those ports, they print nothing on the Flashwriter, and VG00 and MDEMO stop in the Monitor's register display at
+B8AE. These guests also write ports 05 and 07, the mode ports of Bitstreamer serial B and C. Those ports are in the
+`zcb` serial block, so both boards drive them. ⚠ No source says how a real MZ with both boards avoids this.
+
+VG00's three bad sectors are all on track 75. MDEMO has 290 bad sectors, and it still boots.
+
 ## Quirks worth carrying
 
 - **⚠ Q1. The base in the figures is not Vector's base.** Fig 1-2 shows F400, and Table II on sheet 1 says
