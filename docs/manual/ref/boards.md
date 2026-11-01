@@ -52,6 +52,7 @@ and within a group the boards are in **alphabetical order**.
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk controller |
 | [`mdsa`](#mdsa) | North Star MDS-A: single-density 5.25" floppy controller |
 | [`mdsad`](#mdsad) | North Star MDS-A-D: double-density 5.25" floppy controller |
+| [`micropolis`](#micropolis) | Vector Graphic Micropolis: 5.25" floppy controller, 4 drives |
 | [`tarbell`](#tarbell) | Tarbell #1011: single-density floppy controller |
 | [`tarbelldd`](#tarbelldd) | Tarbell #2022: double-density floppy controller |
 | [`versafloppy`](#versafloppy) | SD Systems VersaFloppy I/II: WD177x floppy controller |
@@ -663,6 +664,31 @@ North Star MDS-A-D: double-density 5.25" hard-sector floppy (single, double and 
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the sector-pulse interrupt is jumpered (lower left of the board) *(interrupt strap)* |
 | `motor` | enum | `free` | `free` \| `real` | free: the motors run until they are stopped (default). real: they stop by themselves after the board's count of revolutions |
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a read-data or write-data access completes at once. real: it holds READY until the byte is under the head, so a sector transfer takes emulated time, as on the board |
+
+
+### `micropolis`
+
+Vector Graphic Micropolis Disk Controller Board: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, in a 1K memory block at BASE (default F800). A boot PROM, four registers at BASE+200, no buffer and no DMA: the guest moves each byte, paced by PRDY. Holds the MBOOT ROM
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive, 0 to 3. The boot ROM reads drive 0 |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status bit 4, and the board drops the write *(also `writeprotect`)* |
+| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0xF800` | `0xC000` .. `0xFC00` | Base address, set by W1-W4. Any 1K boundary from C000 to FC00. Vector's 56K machines use F800, and 48K machines use D800 |
+| `speed` | enum | `4mhz` | `4mhz` \| `2mhz` | Jumper W9: the processor speed that sector register bit 5 reports |
+| `ready` | enum | `forced` | `forced` \| `drive` | RDY status: forced is true with a drive selected, the Rev. 1 standard. drive is true only with a disk in the drive |
+| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Interrupt jumper, for the interrupt on each sector *(interrupt strap)* |
 
 
 ### `tarbell`

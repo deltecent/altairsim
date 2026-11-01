@@ -10,7 +10,7 @@ February 6, 1981. Page numbers below are the printed numbers. This file also use
 *ROM Checksums* sheet. It omits the phase-locked loop, the bit encoding and the repair procedures,
 because a model at the byte level does not need them.
 
-**Not emulated.**
+Emulated as the `micropolis` board (`docs/boards/vector-micropolis.md`).
 
 ## 1. Quick reference for emulation
 
@@ -106,6 +106,8 @@ To move a 48K board to 56K, remove W1.
 | 70 µs after SF | Last time to issue Set WRITE. The manual gives 100 µs from the hole | p. 1-17 |
 | 700 µs | ROS ends, the read logic looks for the sync byte | Fig 1-7, p. 1-14 |
 | 1200 µs | WOS ends after a write, the byte counter starts | p. 1-14, p. 1-18 |
+| 1232 µs | TF true on a write, after 8 bits | p. 1-18 |
+| 1268 µs | TF true on a read, one byte time before the sync byte | Fig 1-12 |
 | About 1300 µs | Sync byte on a read, after about 40 bytes of zero | Fig 1-12, p. 1-1 |
 | 12.5 ms | Next hole. WRT and TF reset | p. 1-10, Fig 1-5 |
 
@@ -223,7 +225,8 @@ load address is 015F, so the loader starts at 016B. The ROM is 8080 code.
 | 4.0c (`MON40C.MAC`, sum 78) | PR + 1800, which is F800 | 4 MHz, serial terminal |
 | 4.3 (`roms/VGMON43`, sum 43) | E80C, in the ZCB PROM space | 6 MHz, Tandon |
 
-**Monitor 4.3 does not boot this board with `B`.** A guest can type `GF800`. The 4.x Monitors take console
+**Monitor 4.3 does not boot this board with `B`.** A guest can type `GF800`. This booted a 56K disk on the
+`micropolis` board. The 4.x Monitors take console
 I/O entry points that VG CP/M calls, so CP/M needs a 4.x Monitor at E000 (`ReadMe.pdf`).
 
 ## Quirks worth carrying

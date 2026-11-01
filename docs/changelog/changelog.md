@@ -12,6 +12,12 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `micropolis`, the Vector Graphic Micropolis Disk Controller.** The board puts four 5.25-inch
+floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default. The processor
+moves each byte, and the board holds it to the speed of the disk, as the real board does. On a machine
+with a `zcb` board and 56K of RAM, type `GF800` at the `Mon>` prompt of Monitor 4.3 to boot Vector CP/M
+from `drive0`. The package holds no Micropolis disk.
+
 **New: `zcb`, the Vector Graphic ZCB processor board.** One board entry gives a Z80, three PROM
 sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a
 reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000 as
