@@ -16,7 +16,7 @@
 # one line ending cmd.exe is guaranteed to parse without surprises around labels/goto.
 *.bat  text eol=crlf
 
-# CP/M source and listing files (.ASM, .PRN, .INC, .Z80, .LST) go onto a CP/M disk as they
+# CP/M source, listing and Intel HEX files (.ASM, .MAC, .PRN, .HEX, .INC, .Z80, .LST) go onto a CP/M disk as they
 # are: pasted with PIP x=CON:, run through the assembler's LOAD, or carried in a bootable
 # image. CP/M needs CRLF line ends in them (and, for text, a trailing ^Z). The global
 # `eol=lf` rule above would strip the CRs on checkout, which broke `PIP R.ASM=CON:`: the
@@ -28,7 +28,7 @@
 #                         this off.)
 #   whitespace=cr-at-eol  `git diff` does not mark the CR at the end of a line.
 #
-# Keep every one of these files CRLF on all lines. (.HEX is binary in the media section below.)
+# Keep every one of these files CRLF on all lines.
 *.ASM -text diff whitespace=cr-at-eol
 *.asm -text diff whitespace=cr-at-eol
 *.PRN -text diff whitespace=cr-at-eol
@@ -39,20 +39,18 @@
 *.z80 -text diff whitespace=cr-at-eol
 *.LST -text diff whitespace=cr-at-eol
 *.lst -text diff whitespace=cr-at-eol
+*.MAC -text diff whitespace=cr-at-eol
+*.mac -text diff whitespace=cr-at-eol
+*.HEX -text diff whitespace=cr-at-eol
+*.hex -text diff whitespace=cr-at-eol
 
-# The CP/M symbol-file fixtures carry two more format-under-test extensions
-# (tests/programs/symbols/README.md): their CRLF and trailing ^Z padding are part of the
-# format, so they follow the same rule. (.ASM/.PRN there are covered by the rule above.)
+# The CP/M symbol-file fixtures carry one more format-under-test extension
+# (tests/programs/symbols/README.md): its CRLF and trailing ^Z padding are part of the
+# format, so it follows the same rule. (The other fixtures are covered by the rule above.)
 tests/programs/symbols/*.SYM -text diff whitespace=cr-at-eol
-tests/programs/symbols/*.MAC -text diff whitespace=cr-at-eol
-
-# The CPU exerciser sources (tests/cpu/*.MAC) are the same kind of period CP/M file as the
-# .ASM files above: fetched from altairclone.com (see tests/cpu/PROVENANCE.md), CRLF and all.
-# The .COM images they assemble to are the binary media that actually run the gate.
-tests/cpu/*.MAC -text diff whitespace=cr-at-eol
 
 # The MBL boot ROM's source and listing are deramp originals, CRLF like every other
-# CP/M file here (roms/MBL/). (.HEX is binary globally below.)
+# CP/M file here (roms/MBL/).
 roms/MBL/*.PRN -text diff whitespace=cr-at-eol
 roms/MBL/*.ASM -text diff whitespace=cr-at-eol
 
@@ -61,8 +59,6 @@ roms/MBL/*.ASM -text diff whitespace=cr-at-eol
 *.dsk binary
 *.bin binary
 *.BIN binary
-*.hex binary
-*.HEX binary
 *.keys binary
 *.tap binary
 *.TAP binary
