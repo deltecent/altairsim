@@ -639,8 +639,8 @@ clock_hz = 4000000
 **After every reset, each address reads as the `E000` block.** The Z80 starts at 0000 and reads the
 jump at `E000`. The board also pulls `PHANTOM*`, so a memory board that honors this line stays off
 the bus. The first memory cycle in `E000`-`FFFF` ends both. The `boot` property turns off the first
-part, and the `phantom` property turns off the second. Set `honors_phantom = "all"` on a memory
-board, and end that board at `DFFF`.
+part, and the `phantom` property turns off the second. A `memory` board honors this line by default.
+On a `bankmem` board, set `honors_phantom = "all"`. End either board at `DFFF`.
 
 These are the other properties:
 
