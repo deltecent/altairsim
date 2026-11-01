@@ -110,11 +110,22 @@ bool FwiiBoard::peek(uint16_t addr, uint8_t& out) const {
 // once a slice in pump() would make a slice the raster's unit, and the 1.4 ms of blanking
 // that a guest polls bit 5 for can fall between two slices.
 //
+// A PACED MACHINE IS THE EXCEPTION. The run loop executes a slice in a burst and then sleeps, so
+// host time gives the guest only a few instructions of each blanking pulse. The Vector CP/M 2.22 H
+// BIOS counts loops across that pulse to learn the processor's speed, and it took 4 MHz for 2 MHz.
+// Its disk timeout then ended before one turn of the disk. With clock_hz set, emulated time keeps
+// real time, so the raster reads it and the guest sees the whole pulse.
+//
 // Whole seconds and the rest go through the crystal apart, because the host's nanosecond
 // count times 14334700 does not fit 64 bits.
 int FwiiBoard::lineNow() const {
     if (!bus_) return 0;
-    const uint64_t ns = bus_->busClock().hostNs();
+    uint64_t ns = bus_->busClock().hostNs();
+    if (clock_ && !clock_->free()) {
+        const uint64_t t  = clock_->now();
+        const uint64_t hz = (uint64_t)clock_->hz();
+        ns = (t / hz) * kNsPerSecond + (t % hz) * kNsPerSecond / hz;
+    }
     const uint64_t dots =
         (ns / kNsPerSecond) * kDotHz + (ns % kNsPerSecond) * kDotHz / kNsPerSecond;
     return (int)((dots % kDotsPerField) / kDotsPerLine);
