@@ -18,6 +18,7 @@
 #include "core/machine.h"
 #include "core/value.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -56,7 +57,13 @@ HostSettings saveHostSettings();
 void         restoreHostSettings(const HostSettings& saved);
 void         resetHostSettings();
 
-bool saveToml(const std::string& path, Machine& m, std::string& err);
+// Who holds the console, for a session that keeps it on a line of its own (--mcp, issue #873).
+// That line is the session's, not the machine's, so the unit is saved as `console`. Empty on
+// the command line, where a unit's `connect` already says so.
+using SaveConsoleHolds = std::function<bool(Board& b, const std::string& unit)>;
+
+bool saveToml(const std::string& path, Machine& m, std::string& err,
+              const SaveConsoleHolds& holds = {});
 
 // ...and the same text, without a file in the way. The round trip is then something a
 // test can just DO -- saveTomlText() into loadTomlText() and compare -- which is how
@@ -67,6 +74,6 @@ std::string saveTomlText(Machine& m);
 // ...and the same, reporting a value it could not write. A text value holding BOTH ' and "
 // has no form the reader takes back (issue #538); the first such value is named in `*err`,
 // and saveToml() refuses rather than write a file that will not load.
-std::string saveTomlText(Machine& m, std::string* err);
+std::string saveTomlText(Machine& m, std::string* err, const SaveConsoleHolds& holds = {});
 
 } // namespace altair

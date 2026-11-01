@@ -12,6 +12,12 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Fixed: `CONFIG SAVE` under `--mcp` saved a machine with no console.** The save wrote the
+session's own line, `connect = "scripted"`, for the unit that holds the console. With `--mirror`
+or `--log` it also wrote those endpoints. When you loaded `vector` from that file, `run` stopped
+with `no console line`. The save now writes `connect = "console"` for that unit. A unit that
+the machine file connects to `scripted` stays `scripted`.
+
 **New: the `vgbs` board, the Vector Graphic Bit Streamer.** It has one 8251 serial port and two
 parallel ports, at ports `00`-`03` by default.
 

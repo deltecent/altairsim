@@ -6388,7 +6388,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (cfgSel == "SAVE") {
-            if (!saveToml(cfgFile, m_, err)) {
+            if (!saveToml(cfgFile, m_, err, consoleHolds_)) {
                 out << err << "\n";
                 failed_ = true;
                 return true;

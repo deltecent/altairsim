@@ -642,6 +642,9 @@ altairsim> CONFIG LOAD mine.toml
 property, with every change that you made with `SET`. When you load the file, you get the same
 machine. Give the machine a name with `SET MACHINE name=` before you save it.
 
+**Under `--mcp`, `CONFIG SAVE` writes `connect = "console"` for the unit that holds the console.**
+`SHOW` gives `scripted` for this unit, because `scripted` is the line of the session.
+
 **`CONFIG SAVE` also saves `[display]`, `[terminal]` and the transform keys of `[console]`.** It
 writes these keys every time, with their values at that moment:
 
