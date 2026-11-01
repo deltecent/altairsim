@@ -1,6 +1,6 @@
 ---
 name: ship-change
-description: How a reviewed altairsim change is shipped — commit after the maintainer approves, open the PR only after a second approval, poll CI, merge on green, then comment on the related issues. Use when told to commit, open the PR, push, ship or merge. Every step here waits for its own approval; work-task comes first.
+description: How a reviewed altairsim change is shipped — commit after the maintainer approves, open the PR only after a second approval, then start ship-merge, which waits for CI, merges on green and comments on the related issues. Use when told to commit, open the PR, push, ship or merge. Every step here waits for its own approval; work-task comes first.
 ---
 
 # Ship a reviewed change: commit, PR, merge, issues
@@ -48,68 +48,32 @@ The body gives a summary, the verification done (pass lines), and for each relat
 commit message. No attribution. Any comment you post on it ends with
 `--AltairSim Claude`.
 
-## 4. Watch CI with one background command
+## 4. Start `ship-merge`
 
-```sh
-gh pr checks <N> --watch --interval 20 --fail-fast
-```
+After the PR is open, run the `ship-merge` skill. It runs in a fresh subagent, so CI, the merge
+and the issue comments do not send this conversation with each step. Give it these arguments:
 
-Run it with `run_in_background`, and read its result once, when it exits. **Never poll with
-repeated foreground `gh pr checks` calls:** each call is one more model request, and each
-request reads the whole conversation again. One background watch wakes the session once.
+- the PR number and the branch
+- each related issue, with its author and its keyword: `Fixes #N` or `Refs #N`
 
-Wait until every leg the run started has finished. A core change runs Linux, macOS and
-Windows; any other change runs Linux only (`tools/ci-changed-code.sh` decides, and the
-`Classify the change` log says which). A leg that never started is not a missing check.
+It waits for CI, merges on green, comments on the issues, and watches the `master` run and the
+PDF commit. It stops and reports a red, cancelled or stalled leg.
 
-- **Red:** stop and report the failing step and its log excerpt
-  (`gh run view <id> --log-failed`). Never re-run a failure hoping it goes green — that hides
-  a flake. Never merge. A fix for red CI is a new change: `work-task` step 3, review, commit
-  approval.
+**On a stop report:** do not merge. A fix for red CI is a new change: `work-task` step 3, review,
+commit approval. Before you run `ship-merge`, say so if the change leans on anything CI does not
+check, such as a platform not tested by hand or a window check that a person has not done.
 
-## 5. Merge on green
+## 5. Close out, so the session can be cleared
 
-No further approval is needed once every leg that ran is green.
+**The merge is not the end of the work. Finish these before you say the task is done, so the
+maintainer can `/clear` without losing anything.** Say when they are all done.
 
-```sh
-gh pr merge <N> --merge --delete-branch
-```
-
-**Never `--auto`:** there is no branch protection, so it merges immediately, before CI.
-Before merging, say so if the change leans on anything CI did not check — a platform not
-tested by hand, a window check a person has not done.
-
-## 6. After the merge
-
-- **Comment on each related issue:** `Fixed by #<PR> (merged <sha>)`, or what is still left,
-  signed `--AltairSim Claude` — on every related issue, whether or not the merge closed it.
-  **Never close someone else's issue** — the person who opened it does. Only a `deltecent`
-  issue closes, and only through `Fixes #N`. Write it to the `simplified-english` light rules.
-- Sync: `git switch master && git pull --ff-only`.
-- If `TODO.md` tracks the item, update it. It is untracked, so it needs no branch or PR.
-
-## 7. Close out, so the session can be cleared
-
-**The merge is not the end of the work — finish these before saying the task is done, so the
-maintainer can `/clear` without losing anything.** Say explicitly when they are all done.
-
-- **Check the `master` run of a code change.** After any non-docs merge, `CI` on `master`
-  builds Linux, macOS and Windows — for most PRs that is the first time macOS and Windows
-  compile the change. Find the run (`gh run list --workflow=ci.yml --branch master -L 1`), then
-  watch it with one background `gh run watch <id> --interval 20 --exit-status`, as in §4, and
-  read every leg's result. A red leg
-  is reported at once with its log excerpt (`gh run view <id> --log-failed`), and its fix is the
-  next change, before anything else merges.
-
-- **Wait for CI's PDF commit, then pull again.** If the change touched anything under `docs/`,
-  the `Documents` workflow rebuilds `docs/*.pdf` and pushes a `Rebuild the PDFs for <sha>`
-  commit to `master` a minute or two AFTER the merge. Find the run
-  (`gh run list --workflow=docs.yml -L 1`), watch it the same way, then `git pull --ff-only`. Skip this and the next
-  session starts a branch on a stale `master` and rediscovers it as a conflict.
+- **Sync:** `git switch master && git pull --ff-only`.
 - **Confirm the branch is gone** both locally and on origin (`git fetch --prune`), and that
   `git status` is clean. A leftover branch or a stray edit is the thing a `/clear` hides.
+- If `TODO.md` tracks the item, update it. It is untracked, so it needs no branch or PR.
 - **Write back what was learned.** A non-obvious trace, a trap paid for once, or a procedure
-  that is now a skill goes into a memory note (and its one-line pointer in `MEMORY.md`) — or
+  that is now a skill goes into a memory note (and its one-line pointer in `MEMORY.md`) or
   into `docs/devguide/` when the fact is about how the code is built. Nothing durable should
   exist only in the transcript.
 - **Report the final state in the reply**: the merge commit, the PDF commit if there was one,
