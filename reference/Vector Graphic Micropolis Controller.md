@@ -221,8 +221,8 @@ load address is 015F, so the loader starts at 016B. The ROM is 8080 code.
 
 | Monitor | `B` jumps to | Boot, from *ROM Checksums* |
 |---|---|---|
-| 4.0 (`MON40.HEX`, sum F8) | F800, read from the image | 4 MHz, Micropolis |
-| 4.0c (`MON40C.MAC`, sum 78) | PR + 1800, which is F800 | 4 MHz, serial terminal |
+| 4.0 (`roms/VGMON40`, sum F8) | F800, read from the image | 4 MHz, Micropolis |
+| 4.0c (`roms/VGMON40C`, sum 78) | PR + 1800, which is F800 | 4 MHz, serial terminal |
 | 4.3 (`roms/VGMON43`, sum 43) | E80C, in the ZCB PROM space | 6 MHz, Tandon |
 
 **Monitor 4.3 does not boot this board with `B`.** A guest can type `GF800`. This booted a 56K disk on the
@@ -248,7 +248,9 @@ All 20 were tried once on the emulated board: a `zcb` at 4 MHz, `fwii`, 56K of R
 The serial disks were run with a `bitstreamer` at port 02, unit `a` on the console, and a start at F800. With no
 board at those ports, they print nothing on the Flashwriter, and VG00 and MDEMO stop in the Monitor's register display at
 B8AE. These guests also write ports 05 and 07, the mode ports of Bitstreamer serial B and C. Those ports are in the
-`zcb` serial block, so both boards drive them. ⚠ No source says how a real MZ with both boards avoids this.
+`zcb` serial block, so both boards drive them. On a real machine the ZCB chips are turned off or moved: see
+[ZCB CPU Manual](ZCB%20CPU%20Manual.md) §6.1. With the `zcb` bases at 0C and 18, VG08 boots on Monitor 4.0c with no
+contention.
 
 VG00's three bad sectors are all on track 75. MDEMO has 290 bad sectors, and it still boots.
 

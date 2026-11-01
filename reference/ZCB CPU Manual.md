@@ -181,6 +181,9 @@ characters. The 40 is then the internal reset command. The second pass starts in
 three 00 bytes are commands, and the 40 is again the internal reset. Both passes end with mode CE
 (8 bits, no parity, 2 stop bits, clock factor 16) and command 27.
 
+Ports 3, 5 and 7 are also the three 8251 status ports of a Bitstreamer II. On that board, each pass
+of `INIT` reaches a different chip.
+
 ### 6.1 Port address (p. 2-8, sheet 6)
 
 Area G sets a group of 32 ports. Area E sets the base of each device in that group, in steps of 4.
@@ -197,6 +200,13 @@ serial select and pad 2 is the parallel select.
 | 8 | 14 | |
 | 9 | 18 | |
 | 10 | 1C | |
+
+**Beside a Bitstreamer II.** A Bitstreamer II at 02 decodes 04-07 and 08-09, so it conflicts with both
+devices at their shipped ports. Real machines resolved this at U2. Sheet 6 shows U2 as the 74LS42 port
+decoder, and it is in a socket. Its pin 2 (output 1) feeds SER* through area E, and its pin 3 (output 2) feeds
+PAR*. SER* and PAR* have 1K pull-ups. Lifting pin 2 stops the 8251. Pulling U2 stops the 8251 and the
+8255. Pads 6 and 9 of area E give 0C and 18. The table in the Port Map lists neither, but its note puts the
+time share system at 08-0F.
 
 | Group | Ports | Area G |
 |---|---|---|

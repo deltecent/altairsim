@@ -658,6 +658,22 @@ the value. The label 9600 runs at 9615 baud, as on the real board.
 
 The board has no interrupt source. Nothing connects to the parallel port, so an input reads `FF`.
 
+**Move the ports to use this board with a `bitstreamer`.** At their default ports, the two boards
+both decode `04`-`09`, and `SHOW BUS CONTENTION` reports it. Ports `0C` and `18` are free:
+
+```toml
+[[board]]
+type          = "zcb"
+id            = "cpu0"
+clock_hz      = 4000000
+serial_port   = 0C
+parallel_port = 18
+```
+
+To try this for one run, without a change to the machine file, start altairsim with
+`--set "cpu0 serial_port=0C" --set "cpu0 parallel_port=18"`. A guest that drives the parallel port
+of the `zcb` must use the new port.
+
 ## Serial ports and consoles
 
 The boards that have a serial port, for a console, a modem or both.
@@ -937,6 +953,8 @@ then read 1. OASIS 5.5A needs `clock-latch`, because it reads that bit to tell i
 No Vector Graphic document shows this wire. The value comes from what OASIS does.
 
 No cable can be connected to the parallel channels.
+
+Beside a `zcb`, move the ports of the `zcb`, as the section on that board shows.
 
 ## Cassette
 
@@ -1267,7 +1285,8 @@ to 127 bytes longer also has one side, and these bytes stay as they are. A file 
 mounts with two sides and grows when a program writes to it. You supply the disk image.
 
 **Boot a disk with a `zcb` board.** Vector CP/M needs a Vector Monitor at `E000` and RAM up to
-`DFFF`. The `B` key of Monitor 4.3 boots the Dual-Mode board, so use the `G` key for this board.
+`DFFF`. The `B` key of Monitor 4.3 boots the Dual-Mode board, so use the `G` key for this board. With
+`builtin:vgmon40` in the socket, the `B` key boots this board.
 
 1. Put this machine file next to your disk image, and name the image `mydisk.vgi`:
 
@@ -1318,7 +1337,13 @@ mounts with two sides and grows when a program writes to it. You supply the disk
 3. Type `GF800` and press Enter at the `Mon>` prompt. The disk boots to the `A>` prompt.
 
 **Some Vector disks print to serial port A of a Bitstreamer II, at port `02`, and not to the
-Flashwriter.** These disks show nothing on this machine.
+Flashwriter.** These disks show nothing on this machine. To boot one, do these steps:
+
+1. Remove the `[board.unit.keyboard]` table from the `fwii` board. Only one unit can hold the console.
+2. Add a `bitstreamer` board, and set `connect = "console"` on its unit `a`.
+3. Move the ports of the `zcb` board, as the section on that board shows.
+4. Put `builtin:vgmon40c` in the socket. This Monitor uses serial port A.
+5. Type `B` at the `Mon>` prompt.
 
 **Put a disk in `drive0` before you boot.** With an empty drive, the boot PROM waits for a sector
 that never comes, and the guest prints nothing.

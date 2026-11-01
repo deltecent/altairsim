@@ -113,6 +113,10 @@ void test_roms() {
         // Vector Graphic Monitor 4.3, a binary image with no listing. A .BIN has no address of
         // its own, so the range starts at 0000; the machine file mounts it at E000.
         {"vgmon43", 0x0000, 0x0FFF, 4096, 0x29A0FCEEu, true},
+        // Monitors 4.0 and 4.0c, the same: mounted at E000. 4.0c is the 1616 bytes that assemble,
+        // and the sum 78 on Vector's sheet is the sum of those bytes.
+        {"vgmon40",  0x0000, 0x07FF, 2048, 0x95D8858Fu, true},
+        {"vgmon40c", 0x0000, 0x064F, 1616, 0x6662335Cu, true},
         // The Tarbell floppy boot PROM: 32 bytes at 0000, shared by the single- and
         // double-density cards. Reads track 0 sector 1 into 0000 and jumps into it (07D).
         {"tarbell-sd", 0x0000, 0x001F, 32, 0x55E3446Du, true},

@@ -1,0 +1,867 @@
+;  Assemble and link with M80 and L80
+;
+;  	M80 MON40C,MON40C=MON40C
+;	L80 /P:E000,/D:FFDE,MON40C,MON40C/N/X/E
+;
+;	Answer the L80 "Origin above loader..." error
+;	message with "N" when prompted.
+;
+;       Creates mon40c.hex. Edit the hex file and
+;	delete the line for data at FFDE.
+
+
+;********* VECTOR MZ MONITOR - VERSION 4.0c ********
+;*               R. S. HARP  7/16/79               *
+;*                SYSTEM MZ VERSION                *
+;*               ASSEMBLES AT C OR E               *
+;*             ONLY FOR SERIAL CONSOLE             *
+;***************************************************
+
+TITLE   'Vector Monitor Program'
+;*
+;* SYSTEM EQUATES
+CONS	EQU	    03H	   	;CONS STATUS PRT
+COND	EQU	    02H		;CONS DATA PORT
+RDA	    EQU	    02H		;RECEIVE FLAG
+
+BASE	EQU	    0E000H	;ASSEMBLY ADDRESS
+PR	EQU	    0E000H	;PROM/RAM ADDRESS
+SPTR	EQU	    PR+01FD0H	;STACK POINTER
+
+;* CONSTANTS
+RST7    EQU     038H            ;RST7 VECTOR
+
+CR      EQU     00DH            ;CARRIAGE RETURN
+LF      EQU     00AH            ;LINE FEED
+
+.Z80
+ASEG
+
+;*
+;************** COMMAND FORMAT **************
+;* A SSSS FFFF ASCII DUMP OF MEMORY         *
+;* B JUMP TO BOOTSTRAP LOADER               *
+;* C SSSS FFFF CCCC COMPARE BLOCKS          *
+;* D SSSS FFFF DUMP MEMORY IN HEX & ASCII   *
+;* E EXTERNAL COMMUNICATIONS                *
+;* F SSSS FFFF DD DD TWO BYTE SEARCH        *
+;* G SSSS GO TO AND EXECUTE                 *
+;* H JUMP TO HIGH RAM AT FC00               *
+;* I PP INPUT FROM PORT                     *
+;* J JUMP TO DOS                            *
+;* K LLLL SET A BREAKPOINT                  *
+;* L JUMP TO LOW RAM AT 0                   *
+;* M SSSS FFFF DDDD MOVE BLOCK              *
+;* N NON DESTRUCTIVE MEMORY TEST            *
+;* O PP OUTPUT TO PORT                      *
+;* P LLLL PROGRAM MEMORY                    *
+;* Q SSSS FFFF COMPUTE CHECKSUM             *
+;* R DUMP Z-80 REGISTERS                    *
+;* S SSSS FFFF DD SEARCH FOR SINGLE BYTE    *
+;* T SSSS FFFF TEST MEMORY                  *
+;* U JUMP TO USER AREA AT 2B00              *
+;* V                                        *
+;* W                                        *
+;* X SSSS FFFF DDDD EXCHANGE BLOCK          *
+;* Y KEYBOARD ECHO                          *
+;* Z SSSS FFFF DD ZERO OR FILL MEMORY       *
+;********************************************
+;*
+	ORG	BASE
+;* JUMP TABLE OF ENTRY POINTS
+MONIT:  JP      INIT            ;INITIALIZE ALL
+KEYTST: JP      KEYSTAT         ;TEST KEYBOARD
+KEYDATA: JP     CONVERT         ;INPUT KEYBOARD
+CRT:    JP      VIDEO           ;OUTPUT TO SCREEN
+ESC:    JP      ESCAPE          ;KEYBOARD INPUT
+OTPRTS: OUT     (CONS),A
+        OUT     (05H),A
+        OUT     (07H),A
+        RET     
+
+INIT:   LD      SP,SPTR         ;INIT STACK
+        XOR     A
+        LD      (XYFLAG),A
+        CALL    OTPRTS
+        CALL    OTPRTS
+        CALL    OTPRTS
+        LD      A,40H           ;RESET USART
+        CALL    OTPRTS
+        LD      A,0CEH          ;MODE
+        CALL    OTPRTS
+        LD      A,27H           ;COMMAND
+        CALL    OTPRTS
+        CALL    ESCAPE
+;* PATCH RST 7        
+        LD      A,0C3H          ;JUMP
+        LD      (RST7),A        ;RST 7
+        LD      HL,DUMPREGS
+        LD      (RST7+1),HL
+;* DISPLAY SIGN ON
+        CALL    SIGN
+;* CLEAR BREAKPOINT
+CLRBRK: LD      HL,(BKPTLOC)
+        LD      DE,BRKCODE
+        LD      (BKPTLOC),DE
+        LD      A,(DE)
+        LD      (HL),A
+START:  LD      SP,SPTR         ;INITIALIZE STACK
+        CALL    PROMPT
+START6: CALL    ESCAPE          ;READ KEYBOARD
+        JR      Z,START6
+        AND     5FH             ;UPPER AND LOWER
+        LD      HL,START
+        PUSH    HL
+        CP      'D'-64          ;04H
+        CALL    Z,VIDEO         ;ECHO CLEARSCN
+        CP      'A'
+        RET     C               ;TOO SMALL
+
+        CP      5BH
+        RET     NC              ;TOO LARGE
+
+        LD      HL,CMDTB+7EH    ;0E0F9H
+        PUSH    AF
+        ADD     A,A
+        ADD     A,L
+        LD      L,A
+        LD      E,(HL)
+        INC     HL
+        LD      D,(HL)
+        EX      DE,HL
+        POP     AF
+        JP      (HL)            ;AWAY WE GO
+;* COMMAND TABLE
+CMDTB:  DEFW    WASCII          ;A
+        DEFW	BOOT		;B
+	DEFW	COMPR	    	;C
+	DEFW	HEXRUL		;D
+	DEFW	EXTCOM		;E
+	DEFW	FIND		;F
+	DEFW	EXEC		;G
+	DEFW	RAM		;H
+	DEFW	PINPT		;I
+	DEFW	WARM		;J
+	DEFW	SETBRK		;K
+	DEFW	LORAM		;L
+	DEFW	MOVEB		;M
+	DEFW	NDMT		;N
+	DEFW	POUTP		;O
+	DEFW	PROGRAM		;P
+	DEFW	CHKSM	 	;Q
+	DEFW	DREGS		;R
+	DEFW	SRCH		;S
+	DEFW	TMEM		;T
+	DEFW	USER		;U
+	DEFW	START		;V
+	DEFW	START		;W
+	DEFW	EXCHG		;X
+	DEFW	ECHO		;Y
+	DEFW	ZEROM		;Z
+
+EXEC:   CALL    PTSTNG
+        DEFB    'GO TO', 0A0H
+
+        CALL    AHEX            ;READ ADD FROM KB
+        EX      DE,HL
+        JP      (HL)            ;JUMP TO IT
+
+AHEX:   LD      C,04H           ;COUNT OF 4 DIGITS
+AHE0:   LD      HL,0            ;16 BIT ZERO
+AHE1:   CALL    ESCAPE
+        CP      ' '             ;SPACE?
+        JP      Z,SPCOVR
+AHEX3:  CALL    HEX             ;CHECK VALUE
+        JR      C,AHE1
+        ADD     HL,HL           ;MULT HL * 16
+        ADD     HL,HL
+        ADD     HL,HL
+        ADD     HL,HL
+        ADD     A,L
+        LD      L,A
+        DEC     C               ;4 DIGITS?
+        JP      NZ,AHE1         ;KEEP READING
+SPCEM1:  
+        EX      DE,HL
+SPCE:   LD      A,' '           ;PRINT SPACE
+VIDEO:  JP      PTCN
+CRLF:   LD      A,CR           ;PRINT CR
+        CALL    VIDEO
+        LD      A,LF
+        JR      VIDEO
+SPCOVR: CALL    VIDEO
+        JR      SPCEM1
+;*
+;* CHECK FOR HEX VALUE, CONVERT
+HEX:    CP      '0'             ;<0
+        RET     C
+        CP      ':'             ;>9
+        JR      C,NUM
+        AND     5FH             ;UPPER & LOWER CASE
+        CP      'A'             ;<A
+        RET     C
+        CP      'G'             ;>F
+        CCF     
+        RET     C
+NUM:    CALL    VIDEO
+        SUB     30H             ;ASCII BIAS
+        CP      0AH             ;DIGIT 0-10
+        JR      C,ALFA
+        SUB     07H             ;ALPHA BIAS
+ALFA:   AND     A               ;CLEAR CY
+        RET                     ;WITH CY CLEAR
+
+;*
+;* READ 2 DIGITS FROM THE CONSOLE
+AHE2:   LD      C,02H
+        JR      AHE0
+;*
+;* SHORT ROUTINE TO SAVE CODE
+TAHEX:  CALL    AHEX
+        JR      AHEX
+;*
+;*** READ FROM CONSOLE TO REG A ***
+;*
+RDCN:   CALL    ESCAPE          ;READ KEYBOARD
+        JR      Z,RDCN
+        CP      60H
+        JR      C,VIDEO
+        AND     5FH
+        JR      VIDEO
+;*
+PAUSE:  CALL    ESCAPE
+        CP      ' '
+        RET     NZ
+PLOOP:  CALL    ESCAPE
+        CP      ' '
+        JP      NZ,PLOOP
+        RET     
+;*
+ESCAPE: CALL    KEYSTAT
+        RET     Z
+
+        CALL    CONVERT
+        CP      1BH             ;ESCAPE
+        JP      Z,START
+        RET     
+
+KEYSTAT:  
+        IN      A,(CONS)
+        AND     RDA
+        RET     
+
+CONVERT:  
+        IN      A,(COND)        ;KEYBOARD DATA
+        PUSH    HL
+        PUSH    BC
+        LD      BC,1			;TABLEND-KTABL/2  ;0001H
+        LD      HL,KTABL        ;0E15BH
+LOOP:   CPI                     ;COMPARE TABLE
+        JR      Z,FND
+        INC     HL
+        JP      PE,LOOP         ;KEEP LOOKING
+        JR      NFND 
+FND:    LD      A,(HL)          ;NEW CODE
+NFND:   AND     7FH             ;MASK DOWN
+        POP     BC
+        POP     HL
+        RET     
+;*
+;* THIS TABLE CAN BE EXTENDED IF DESIRED
+KTABL:  DEFS    30
+TABLEND EQU     KTABL
+;*
+;* CHECKSUM ROUTINE
+CHKSM:  CALL    PTSTNG
+        DEFB    'CHECKSUM',0A0H
+        CALL    TAHEX
+        LD      B,00H
+CHKSMLP:
+        LD      A,(HL)
+        ADD     A,B
+        LD      B,A
+        CALL    BMP
+        JR      NZ,CHKSMLP
+        LD      A,B
+        JP      PT2
+;*
+;* WARM START
+;*
+WARM:   CALL    PTSTNG
+        DEFB    'JUMP TO DO',0D3H
+
+        LD      HL,04E7H        ;MDOS RESTART
+        LD      A,(HL)
+        CP      0C3H
+        JP      NZ,0H           ;CP/M RESTART
+        JP      (HL)            ;MDOS WARM START
+;*
+;* KEYBOARD ECHO ROUTINE
+ECHO:   CALL    PTSTNG
+        DEFB    'ECHO KEYS',0A0H
+ECOLP:  CALL    ESCAPE          ;LOOK AT KEYBOARD
+        CALL    NZ,VIDEO        ;PRINT IF KEYPRESS
+        JR      ECOLP           ;CONTINUE LOOPING
+;*
+;*** MEMORY TEST ROUTINE ***
+;*
+TMEM:   CALL    PTSTNG
+        DEFB    'TEST',0A0H
+        CALL    TAHEX           ;READ ADDRESSES
+        LD      BC,5A5AH        ;INI B,C
+CYCL:   CALL    RNDM
+        PUSH    BC              ;KEEP ALL REGS
+        PUSH    HL
+        PUSH    DE
+TLOP:   CALL    RNDM
+        LD      (HL),B          ;WRITE IT IN MEM
+        CALL    BMP
+        JP      NZ,TLOP         ;REPEAT LOOP
+        POP     DE
+        POP     HL              ;RESTORE ORIG
+        POP     BC              ;VALUES OF
+        PUSH    HL
+        PUSH    DE
+RLOP:   CALL    RNDM            ;GEN NEW SEQ
+        LD      A,(HL)          ;READ MEM
+        CP      B               ;COMP MEM
+        CALL    NZ,ERR          ;CALL ERROR RTN
+        CALL    BMP
+        JP      NZ,RLOP
+        POP     DE
+        POP     HL
+        LD      A,2EH
+        CALL    VIDEO
+        JR      CYCL
+;*** THIS ROUTINE GENERATES RANDOM NOS ***
+RNDM:   CALL    PAUSE
+        LD      A,B             ;LOOK AT B
+        AND     0B4H            ;MASK BITS
+        AND     A               ;CLEAR CY
+        JP      PE,PEVE         ;JMP IF EVEN
+        SCF     
+PEVE:   LD      A,C             ;LOOK AT C
+        RLA                     ;ROTATE CY IN
+        LD      C,A             ;RESTORE C
+        LD      A,B             ;LOOK AT B
+        RLA                     ;ROTATE CY IN
+        LD      B,A             ;RESTORE B
+        RET                     ;RETURN W NEW B,C
+;*
+;*** ERROR PRINT OUT ROUTINE
+;*
+PTAD:   CALL    CRLF            ;PRINT CR,LF
+PTAD3:  CALL    PAUSE
+        LD      A,H             ;PRINT
+        CALL    PT2             ;ASCII
+        LD      A,L             ;CODES
+        JP      PT25            ;FOR ADDRESS
+;*
+ERR:    PUSH    AF              ;SAVE ACC
+        CALL    PTAD            ;PRINT ADD.
+        LD      A,B             ;DATA
+        CALL    PT25            ;WRITTEN
+        POP     AF              ;DATA READ
+PT2:    PUSH    AF
+        CALL    BINH
+        POP     AF
+        JR      BINL
+BINH:   RRA                     ;SHIFT RHT 4 BITS
+        RRA     
+        RRA     
+        RRA     
+BINL:   AND     0FH             ;LOW 4 BITS
+        ADD     A,48            ;ASCII BIAS
+        CP      58              ;DIGIT 0-9
+        JP      C,VIDEO
+        ADD     A,7             ;DIGIT A-F
+        JP      VIDEO
+;*
+;* COMPARE ADDRESSES AND INCREMENT HL
+BMP:    LD      A,E
+        SUB     L
+        JR      NZ,GOON
+        LD      A,D
+        SBC     A,H
+GOON:   INC     HL
+        RET     
+;*
+;* DISK BOOTSTRAP
+BOOT:   CALL    PTSTNG
+        DEFB    'BOOT DIS',0CBH
+        JP      PR+1800H
+;*
+;* JUMP TO USER RAM
+USER:   CALL    PTSTNG
+        DEFB    'USER ARE',0C1H
+        JP      2B00H	
+
+;*
+;* JUMP TO RAM AT PR+1C00
+RAM:	CALL    PTSTNG
+        DEFB    'HI RA',0CDH
+	JP	PR+01C00h
+        
+;*
+;* JUMP TO RAM AT 0
+LORAM:  CALL    PTSTNG
+        DEFB    'LO RA',0CDH
+        JP      0H
+;*
+;* ZERO OR FILL MEM WITH A CONSTANT
+ZEROM:  CALL    PTSTNG
+        DEFB    'FILL',0A0H
+        CALL    TAHEX           ;READ ADDRESSES
+        PUSH    HL              ;SAVE HL
+        CALL    AHE2            ;READ 2 DIGITS
+        EX      DE,HL
+        EX      (SP),HL         ;RESTORE HL
+        POP     BC
+ZLOOP:  LD      (HL),C          ;WRITE INTO MEM
+        CALL    BMP             ;COMP ADD, INCR 4
+        RET     Z               ;RETURN IF DONE
+        JR      ZLOOP           ;CONTINUE TIL DONE
+;* EXCHANGE OR MOVE A BLOCK OF MEMORY
+EXCHG:  LD      B,A
+        CALL    PTSTNG
+        DEFB    'EXCHANGE',0A0H
+        JR      MOVENTR
+MOVEB:  LD      B,A             ;SAVE CODE
+        CALL    PTSTNG
+        DEFB    'MOVE',0A0H
+MOVENTR:  
+        CALL    TAHEX           ;READ ADDRESSES
+        PUSH    HL
+        CALL    AHEX
+        EX      DE,HL
+        EX      (SP),HL         ;BACK TO NORMAL
+MLOOP:  LD      C,(HL)
+        EX      (SP),HL
+        LD      A,B
+        CP      4DH
+        JR      Z,NEXCH
+        LD      A,(HL)
+        EX      (SP),HL
+        LD      (HL),A
+        EX      (SP),HL
+NEXCH:  LD      (HL),C
+        INC     HL
+        EX      (SP),HL
+        CALL    BMP
+        JP      Z,START
+        JR      MLOOP
+;* NON DESTRUCTIVE MEMORY TEST
+NDMT:   CALL    PTSTNG
+        DEFB    'MEM CHEC',0CBH
+        LD      HL,0H           ;START AT ZERO
+NDLOP:  LD      C,(HL)
+        LD      B,0FFH
+        LD      (HL),B
+        LD      A,(HL)
+        CP      B
+        JP      NZ,ERRJP        ;PRINT ERROR
+        LD      B,00H
+        LD      (HL),B
+        LD      A,(HL)
+        CP      B
+ERRJP:  JP      NZ,ERR
+        LD      (HL),C
+        INC     HL
+        JR      NDLOP
+;* COMPARE TWO BLOCKS OF MEMORY
+COMPR:  CALL    PTSTNG
+        DEFB    'COMPARE',0A0H
+        CALL    TAHEX
+        PUSH    HL
+        CALL    AHEX
+        EX      DE,HL
+VMLOP:  LD      A,(HL)
+        INC     HL
+        EX      (SP),HL
+        CP      (HL)
+        LD      B,(HL)
+        CALL    NZ,ERR
+        CALL    BMP
+        EX      (SP),HL
+        JR      NZ,VMLOP
+        POP     AF
+        RET     
+;* SEARCH FOR SPECIFIC CODES
+FIND:   PUSH    AF
+        CALL    PTSTNG
+        DEFB    'FIND-2',0A0H
+        JR      SRCHENT
+
+SRCH:   PUSH    AF
+	    CALL    PTSTNG
+        DEFB    'SEARCH-1',0A0H
+SRCHENT:  
+        CALL    TAHEX
+        PUSH    HL              ;SAVE HL
+        CALL    AHE2            ;READ 2 DIGITS
+        EX      DE,HL           ;HL=CODE, DE=F
+        LD      B,L             ;PUT CODE IN B
+        POP     HL              ;RESTORE HL
+        POP     AF
+        CP      53H
+        PUSH    AF
+        JR      Z,CONT
+        PUSH    HL
+        CALL    AHE2            ;READ 2 DIGITS
+        EX      DE,HL
+        LD      C,L
+        POP     HL
+CONT:   LD      A,(HL)          ;READ MEMORY
+        CP      B               ;COMPARE TO CODE
+        JR      NZ,SKP          ;SKIP IF NO COMP
+        POP     AF              ;FETCH CONTROL
+        CP      53H
+        PUSH    AF
+        JR      Z,OBCP
+        INC     HL
+        LD      A,(HL)
+        DEC     HL
+        CP      C
+        JR      NZ,SKP
+OBCP:   INC     HL
+        LD      A,(HL)          ;READ NEXT BYTE
+        DEC     HL              ;DECR ADDRESS
+        CALL    ERR             ;PRINT CODES
+SKP:    CALL    BMP             ;CHECK IF DONE
+        JR      NZ,CONT         ;BACK FOR MORE
+        POP     AF
+        RET     
+;*
+;* INPUT DATA FROM A PORT
+PINPT:  CALL    PTSTNG
+        DEFB    'INPUT',0A0H
+        CALL    AHE2            ;READ 2 DIGITS
+        LD      C,E
+        IN      A,(C)
+        JP      PT2
+;*
+;* OUTPUT TO A PORT
+POUTP:  CALL    PTSTNG
+        DEFB    'OUTPUT',0A0H
+        CALL    AHE2            ;READ 2 DIGITS
+        CALL    AHE2            ;READ 2 DIGITS
+        LD      C,L
+        OUT     (C),E
+        RET     
+;*
+RPTSTNG:  
+        CALL    CRLF            ;CRLF FIRST
+PTSTNG: EX      (SP),HL
+        LD      A,(HL)
+        INC     HL
+        EX      (SP),HL
+        AND     A
+        CALL    VIDEO           ;PRINT IT
+        RET     M
+
+        JR      PTSTNG
+;*
+;* SIGN ON MESSAGE
+SIGN:   CALL    CRLF
+        LD      B,22
+CLRSCRN:                        ;CLEAR SCREEN
+        LD      A,LF
+        CALL    VIDEO
+        DJNZ    CLRSCRN
+        LD      A,' '
+        LD      B,20
+CENTER1:  
+        CALL    VIDEO
+        DJNZ    CENTER1
+        CALL    PTSTNG
+	DEFB	'--VECTOR GRAPHIC MONITOR VERSION 4.0 C--',LF,8DH
+        LD      B,32
+        LD      A,' '
+CENTER2:  
+        CALL    VIDEO
+        DJNZ    CENTER2
+        CALL    PTSTNG
+        DEFB    'COPYRIGHT  1979',LF,LF,LF,8AH
+        RET     
+
+PROMPT: CALL    RPTSTNG
+        DEFB    'Mon>',0A0H
+        RET     
+
+WASCII: CALL    PTSTNG
+        DEFB    'ASCII DUMP',0A0H
+        CALL    TAHEX
+        CALL    HOMEC
+RULELP: LD      A,B
+        CP      40H
+        JR      Z,TERMLIN
+        AND     0FH
+        JR      Z,NUMBER
+        AND     03H
+        JR      Z,MARKER
+        LD      A,' '
+REENTR: CALL    VIDEO
+REENTR2:
+        INC     B
+        JR      RULELP
+MARKER: LD      A,'.'
+        JR      REENTR
+NUMBER: LD      A,B
+        CALL    BINH
+        JR      REENTR2
+TERMLIN:  
+        CALL    PTAD
+        LD      C,3FH
+        CALL    WDMP2
+        JP      M,TERMLIN
+        RET     Z
+
+WDMP2:  LD      A,(HL)
+        AND     7FH
+        CP      7FH
+        JP      Z,NONPRT
+        CP      ' '
+        JP      P,PRTNG
+NONPRT: LD      A,'.'           ;NON PRINTING CHARACTER
+PRTNG:  CALL    VIDEO
+        CALL    BMP
+        RET     Z
+
+        DEC     C
+        RET     M
+        JR      WDMP2
+;* HOME CURSOR, PRINT "ADDR"
+HOMEC:  CALL    RPTSTNG
+        DEFB    'ADDR',0A0H
+        LD      B,0
+        LD      A,24
+        LD      (WIDTH),A
+        RET     
+;* MAKE A RULER FOR HEX DUMP
+HEXRULER:  
+        LD      A,B
+        CP      16
+        JR      Z,HEXRCT
+        CALL    PT25
+        INC     B
+        JR      HEXRULER
+;* EXTEND FOR ASCII
+HEXRCT:  
+        CALL    SPCE
+        CALL    SPCE
+        LD      B,00H
+HEXRLP: LD      A,B
+        CP      10H
+        RET     Z
+
+        AND     0FH
+        CALL    BINL
+        INC     B
+        JR      HEXRLP
+;* HEX DUMP ROUTINE
+HEXRUL: CALL    PTSTNG
+        DEFB    'HEX DUMP',0A0H
+        CALL    TAHEX
+        CALL    HOMEC
+        CALL    HEXRULER
+HLP1:   CALL    PTAD
+        PUSH    HL
+        PUSH    DE
+        LD      C,16
+HLP2:   LD      A,(HL)
+        CALL    PT25
+        INC     HL
+        DEC     C
+        JP      NZ,HLP2
+        POP     DE
+        POP     HL
+        LD      C,15
+        CALL    SPCE
+        CALL    SPCE
+        CALL    WDMP2
+        JP      M,HLP1          ; FIXME: is this correct?
+        RET     
+;*
+;* PROGRAM MEMORY
+PROGRAM: 
+        CALL    PTSTNG
+        DEFB    'PROGRAM',0A0H
+        CALL    AHEX            ;ADDR IN HL
+        LD      (TCURPOS),DE
+        CALL    HOMEC           ;PRINT "ADDR"
+        CALL    HEXRULER
+        XOR     A
+        LD      (WIDTH),A
+        CALL    PRT1LINE        ;PRINT LINE CONT
+        CALL    CRLF
+RTRTN:  LD      HL,(TCURPOS)
+        LD      A,(HL)
+        CALL    PT2
+        LD      A,'-'
+        CALL    VIDEO
+POLLOOP:  
+        CALL    ESCAPE
+        JR      Z,POLLOOP
+        CP      ' '
+        JR      Z,CSRT
+        LD      C,02H
+        LD      HL,0H
+        CALL    AHEX3
+        LD      HL,(TCURPOS)
+        LD      (HL),E
+CSRT:   INC     HL
+        LD      (TCURPOS),HL
+        JR      RTRTN
+;* PRINT A LINE CONTAINING ((HL))
+PRT1LINE:  
+        LD      HL,(TCURPOS)
+        PUSH    HL
+        POP     DE
+        LD      A,L
+        OR      0FH
+        LD      E,A
+        AND     0F0H
+        LD      L,A
+        JP      HLP1
+;*
+;* DISPLAY REGISTERS
+;*
+DREGS:  CALL    PTSTNG
+        DEFB    'REGISTER',0D3H
+;* DUMP REGISTERS AFTER ENTRY FROM RST7
+DUMPREGS:
+        EX      (SP),HL
+        PUSH    AF
+        CALL    DISPREGS
+        DEC     HL              ;GET BREAK ADD
+        CALL    PTAD
+        POP     HL
+        PUSH    BC
+        CALL    PRTFLGS
+        POP     BC
+        CALL    PTAD3           ;PRINT AF
+        POP     HL
+        LD      (HLTEMP),HL
+        CALL    PTHREE          ;PRINT BC DE HL
+        PUSH    IX
+        POP     HL
+        CALL    PTAD3           ;PRINT IX
+        PUSH    IY
+        POP     HL
+        CALL    PTAD3           ;PRINT IY
+        LD      HL,0H
+        ADD     HL,SP
+        LD      (SPTEMP),HL
+        CALL    PTAD3           ;PRINT SP
+        EX      AF,AF'
+        PUSH    AF
+        POP     HL
+        CALL    PTAD3
+        EXX     
+        CALL    PTHREE
+        EXX     
+        LD      A,(BC)
+        CALL    PT25
+        LD      A,(DE)
+        CALL    PT25
+        LD      HL,(HLTEMP)
+        LD      A,(HL)
+        CALL    PT25
+        LD      HL,(SPTEMP)
+        LD      SP,HL
+        POP     HL
+        CALL    PTAD3
+        JP      CLRBRK          ;CLEAR BREAKPOINT
+;*
+PT25:   CALL    PT2             ;PRINT 2 CHARS
+        JP      SPCE            ;PRINT SPACE
+;* DISPLAY REGISTER HEADER ON SCREEN
+DISPREGS:  
+        CALL    RPTSTNG
+        DEFB    'ADDR FLAGS  AF   BC   DE   HL   IX   IY   SP '
+        DEFB    '  AF',27H
+        DEFB    '  BC',27H
+        DEFB    '  DE',27H
+        DEFB    '  HL',27H
+        DEFB    ' @B @D @H @SP',0A0H
+        RET     
+;*
+;* PRINT FLAGS
+PRTFLGS:  
+        LD      BC,405AH        ;Z
+        CALL    MASKFLG
+        LD      BC,0143H        ;C
+        CALL    MASKFLG
+        LD      BC,804DH        ;M
+        CALL    MASKFLG
+        LD      BC,0445H        ;E
+        CALL    MASKFLG
+        LD      BC,1048H        ;H
+        CALL    MASKFLG
+        JP      SPCE
+;*
+;* PRINT BC DE HL IN ORDER
+PTHREE: PUSH    HL
+        PUSH    BC
+        POP     HL
+        CALL    PTAD3
+        PUSH    DE
+        POP     HL
+        CALL    PTAD3
+        POP     HL
+        JP      PTAD3
+;*
+MASKFLG:
+        LD      A,L
+        AND     B
+        LD      A,' '
+        JP      Z,VIDEO
+        LD      A,C
+        JP      VIDEO
+;*
+;* SET BREAKPOINT
+SETBRK: CALL    PTSTNG
+        DEFB    'BREAK AT',0A0H
+        CALL    AHEX
+        LD      A,(DE)
+        LD      (BRKCODE),A
+        LD      (BKPTLOC),DE
+        LD      A,0FFH          ;RST 7
+        LD      (DE),A
+        RET     
+
+EXTCOM: CALL    PTSTNG
+        DEFB    'EXT COM',0A0H
+RECEIVE:  
+        IN      A,(05H)
+        AND     02H
+        JR      Z,NEXCHAR
+        IN      A,(04H)
+        CALL    VIDEO
+NEXCHAR:
+        CALL    ESCAPE
+        JR      Z,RECEIVE
+        OUT     (04H),A
+        JR      RECEIVE
+
+PTCN:   PUSH    AF
+CNRDY:  IN      A,(CONS)
+        AND     01H
+        JR      Z,CNRDY
+        POP     AF
+        OUT     (COND),A
+        RET     
+;*
+;* TEMPORARY STORAGE LOCATION FOR REGISTERS,ETC.
+        DSEG
+WIDTH:      DEFS    1           ;PRINT WIDTH
+DUMMY0:     DEFS    2
+TCURPOS:    DEFS    2           ;TEMP POSITION
+HLTEMP:     DEFS    2
+SPTEMP:     DEFS    2
+BKPTLOC:    DEFW    BRKCODE     ;BREAKPT LOCATION
+BRKCODE:    DEFS    1           ;CODE AT BREAKPT
+XYFLAG:     DEFS    1           ;CURSOR XY FLAG
+
+        END
+        

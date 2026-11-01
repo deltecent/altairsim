@@ -1,6 +1,6 @@
 // The Vector Graphic ZCB (docs/boards/vector-zcb.md) and its Intel 8255.
 //
-// Real bus cycles through the decode. The last sections run the real Monitor 4.3 from the reset at
+// Real bus cycles through the decode. The last sections run the real Monitors from the reset at
 // 0000, with no help from the test.
 
 #include "boards/s100-memory.h"
@@ -89,13 +89,13 @@ struct Vector {
     FwiiBoard*      fw  = nullptr;
     ScriptedStream* kbd = nullptr;
 
-    Vector() {
+    explicit Vector(const std::string& rom = "builtin:vgmon43") {
         std::string err;
         FwiiBoard::setDisplay(&disp);
         z  = dynamic_cast<ZcbBoard*>(m.add("zcb", "cpu0", err));
         fw = dynamic_cast<FwiiBoard*>(m.add("fwii", "fw0", err));
         auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
-        z->loadSubUnit("socket", {{"at", "E000"}, {"mount", "builtin:vgmon43"}}, err);
+        z->loadSubUnit("socket", {{"at", "E000"}, {"mount", rom}}, err);
         Region ram;
         ram.kind = RegionKind::Ram;
         ram.at   = 0;
@@ -601,6 +601,35 @@ void test_zcb() {
         CHECK(p.dataBits == 8 && p.stopBits == 2 && p.parity == LineParity::None,
               "INIT left mode CE, through 05 and 07");
         CHECK(g.m.cpu()->pc() < 0xF000, "the stack at FFD0 held");
+    }
+
+    SECTION("zcb: Monitor 4.0 starts from the reset at 0000");
+    {
+        Vector g("builtin:vgmon40");
+        CHECK(g.run([&] { return g.screenHas("Mon>"); }, 2000000), "the Monitor comes up");
+        CHECK(g.screenHas("VERSION 4.0"), "and it is 4.0");
+        CHECK(!g.z->armed(), "the jump ended the override");
+    }
+
+    SECTION("zcb: Monitor 4.0c runs on a Bitstreamer II with the ZCB ports moved");
+    {
+        Vector      g("builtin:vgmon40c");
+        std::string err;
+        CHECK(setProperty(*g.z, "serial_port", "0C", err), "the 8251 moves to 0C");
+        CHECK(setProperty(*g.z, "parallel_port", "18", err), "the 8255 moves to 18");
+        Board* bs = g.m.add("bitstreamer", "bs0", err);
+        CHECK(setProperty(*bs, "port", "02", err), "the Bitstreamer II goes to 02");
+        auto  line = std::make_unique<ScriptedStream>();
+        auto* s    = line.get();
+        CHECK(bs->connectStream("a", std::move(line), err), "port A has a line");
+        g.m.bus.setContentionPolicy(Contention::Warn);
+        g.m.power();
+        const auto seen = [&](const char* text) {
+            bs->pump();
+            return s->out().find(text) != std::string::npos;
+        };
+        CHECK(g.run([&] { return seen("Mon>"); }, 2000000), "the prompt reaches port A");
+        CHECK(g.m.bus.drain().empty(), "no board shares a port with the ZCB");
     }
 
     SECTION("zcb: the Monitor's E command passes a byte both ways");
