@@ -43,12 +43,12 @@
 
 namespace altair {
 
-class BitstreamerBoard : public Board {
+class Bitstreamer2Board : public Board {
 public:
-    BitstreamerBoard();
-    ~BitstreamerBoard() override;
+    Bitstreamer2Board();
+    ~Bitstreamer2Board() override;
 
-    std::string type() const override { return "bitstreamer"; }
+    std::string type() const override { return "vgbsii"; }
 
     bool    decodes(const BusCycle& c) const override;
     uint8_t read(const BusCycle& c) override;

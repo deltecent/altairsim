@@ -10,7 +10,7 @@ February 6, 1981. Page numbers below are the printed numbers. This file also use
 *ROM Checksums* sheet. It omits the phase-locked loop, the bit encoding and the repair procedures,
 because a model at the byte level does not need them.
 
-Emulated as the `micropolis` board (`docs/boards/vector-micropolis.md`).
+Emulated as the `vgmdc` board (`docs/boards/vector-micropolis.md`).
 
 ## 1. Quick reference for emulation
 
@@ -226,7 +226,7 @@ load address is 015F, so the loader starts at 016B. The ROM is 8080 code.
 | 4.3 (`roms/VGMON43`, sum 43) | E80C, in the ZCB PROM space | 6 MHz, Tandon |
 
 **Monitor 4.3 does not boot this board with `B`.** A guest can type `GF800`. This booted a 56K disk on the
-`micropolis` board. The 4.x Monitors take console
+`vgmdc` board. The 4.x Monitors take console
 I/O entry points that VG CP/M calls, so CP/M needs a 4.x Monitor at E000 (`ReadMe.pdf`).
 
 **The disks of `56K Bootable Disk Images.zip`.** *56K Disk Directory.pdf* lists all 20 as bootable on an MZ in the
@@ -234,7 +234,7 @@ I/O entry points that VG CP/M calls, so CP/M needs a 4.x Monitor at E000 (`ReadM
 console of the ROM Monitor, and that the others use serial port A of a Bitstreamer II. On VG17 the note says that
 `CONFIG.COM` location 0120 set to 84 selects the Monitor console. CPM22B-Lifeboat.VGI already has this change.
 
-All 20 were tried once on the emulated board: a `zcb` at 4 MHz, `fwii`, 56K of RAM, and each disk read by the boot ROM.
+All 20 were tried once on the emulated board: a `vgzcb` at 4 MHz, `vgfwii`, 56K of RAM, and each disk read by the boot ROM.
 
 | Disks | Console | Result |
 |---|---|---|
@@ -245,11 +245,11 @@ All 20 were tried once on the emulated board: a `zcb` at 4 MHz, `fwii`, 56K of R
 | VG13 | Port 02 and 03 | 47K CP/M 1.42 to `A>`. `DIR` works |
 | VG08, VG17, VG18 | Port 02 and 03 | 56K CP/M 2.20B to `A>`. `DIR` works |
 
-The serial disks were run with a `bitstreamer` at port 02, unit `a` on the console, and a start at F800. With no
+The serial disks were run with a `vgbsii` at port 02, unit `a` on the console, and a start at F800. With no
 board at those ports, they print nothing on the Flashwriter, and VG00 and MDEMO stop in the Monitor's register display at
 B8AE. These guests also write ports 05 and 07, the mode ports of Bitstreamer serial B and C. Those ports are in the
-`zcb` serial block, so both boards drive them. On a real machine the ZCB chips are turned off or moved: see
-[ZCB CPU Manual](ZCB%20CPU%20Manual.md) §6.1. With the `zcb` bases at 0C and 18, VG08 boots on Monitor 4.0c with no
+`vgzcb` serial block, so both boards drive them. On a real machine the ZCB chips are turned off or moved: see
+[ZCB CPU Manual](ZCB%20CPU%20Manual.md) §6.1. With the `vgzcb` bases at 0C and 18, VG08 boots on Monitor 4.0c with no
 contention.
 
 VG00's three bad sectors are all on track 75. MDEMO has 290 bad sectors, and it still boots.

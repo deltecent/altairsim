@@ -1,4 +1,4 @@
-#include "boards/vector-bitstreamer.h"
+#include "boards/vector-bitstreamer2.h"
 
 #include "core/bus.h"
 #include "core/statefile.h"
@@ -20,19 +20,19 @@ Clock& deadCard() {
 }
 
 std::string noUnit(const std::string& unit) {
-    return "bitstreamer has no unit '" + unit + "' -- the serial channels are 'a', 'b' and 'c'";
+    return "vgbsii has no unit '" + unit + "' -- the serial channels are 'a', 'b' and 'c'";
 }
 
 } // namespace
 
-void BitstreamerBoard::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
+void Bitstreamer2Board::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
 
 // A channel with nothing plugged in has a dead line, never a null pointer.
-BitstreamerBoard::BitstreamerBoard() {
+Bitstreamer2Board::Bitstreamer2Board() {
     for (Channel* ch : {&a_, &b_, &c_}) ch->uart.disconnect();
 }
 
-BitstreamerBoard::~BitstreamerBoard() {
+Bitstreamer2Board::~Bitstreamer2Board() {
     // BOARDS REMOVE can pull this from a running machine, with a deadline still queued.
     if (clock_) {
         clock_->cancel(wake_);
@@ -43,19 +43,19 @@ BitstreamerBoard::~BitstreamerBoard() {
 // ---------------------------------------------------------------------------
 // The ports.
 // ---------------------------------------------------------------------------
-bool BitstreamerBoard::decodes(const BusCycle& c) const {
+bool Bitstreamer2Board::decodes(const BusCycle& c) const {
     if (!enabled_) return false;
     if (c.type != Cycle::IoRead && c.type != Cycle::IoWrite) return false;
     return (uint8_t)(c.port() - port_) < 8;
 }
 
 // An open input reads 1. U4 pin 5 is the Q of the latch, and the mask does not reach it.
-uint8_t BitstreamerBoard::j4() const {
+uint8_t Bitstreamer2Board::j4() const {
     if (j4d0_ == J4D0::ClockLatch && !latch_) return 0xFE;
     return 0xFF;
 }
 
-uint8_t BitstreamerBoard::read(const BusCycle& c) {
+uint8_t Bitstreamer2Board::read(const BusCycle& c) {
     const Clock&  clk = clock_ ? *clock_ : deadCard();
     const uint8_t off = (uint8_t)(c.port() - port_);
     uint8_t       v   = 0xFF;
@@ -71,7 +71,7 @@ uint8_t BitstreamerBoard::read(const BusCycle& c) {
     return v;
 }
 
-void BitstreamerBoard::write(const BusCycle& c) {
+void Bitstreamer2Board::write(const BusCycle& c) {
     const Clock&  clk = clock_ ? *clock_ : deadCard();
     const uint8_t off = (uint8_t)(c.port() - port_);
     if (off < 6) {
@@ -89,17 +89,17 @@ void BitstreamerBoard::write(const BusCycle& c) {
 // ---------------------------------------------------------------------------
 // Interrupts.
 // ---------------------------------------------------------------------------
-bool BitstreamerBoard::rxLine(const Channel& ch) const {
+bool Bitstreamer2Board::rxLine(const Channel& ch) const {
     return (mask_ & ch.rxBit) && ch.uart.rxReady();
 }
 
 // The TxRDY pin needs TxEN, which the chip's status bit does not (reference, the 8251 file).
 // CTS is at ground on this board, so only TxEN gates it.
-bool BitstreamerBoard::txLine(const Channel& ch) const {
+bool Bitstreamer2Board::txLine(const Channel& ch) const {
     return (mask_ & ch.txBit) && clock_ && ch.uart.txEnabled() && ch.uart.txReady(*clock_);
 }
 
-bool BitstreamerBoard::assertsInt() const {
+bool Bitstreamer2Board::assertsInt() const {
     if (clockIrq_ == IrqJumper::Int && clockLine()) return true;
     for (const Channel* ch : {&a_, &b_, &c_}) {
         if (ch->rxIrq == IrqJumper::Int && rxLine(*ch)) return true;
@@ -108,7 +108,7 @@ bool BitstreamerBoard::assertsInt() const {
     return false;
 }
 
-uint8_t BitstreamerBoard::assertsVi() const {
+uint8_t Bitstreamer2Board::assertsVi() const {
     uint8_t m = clockLine() ? viBit(clockIrq_) : 0;
     for (const Channel* ch : {&a_, &b_, &c_}) {
         if (rxLine(*ch)) m |= viBit(ch->rxIrq);
@@ -119,7 +119,7 @@ uint8_t BitstreamerBoard::assertsVi() const {
 
 // Nothing polls a chip for a guest that waits on interrupts, so the receivers advance here, the
 // wires are driven, and the alarm is set for the next time a source moves with no bus cycle.
-void BitstreamerBoard::refresh() {
+void Bitstreamer2Board::refresh() {
     if (!clock_) return;
     for (Channel* ch : {&a_, &b_, &c_}) ch->uart.poll(*clock_);
     intChanged();
@@ -131,7 +131,7 @@ void BitstreamerBoard::refresh() {
 
 // Zero means never. Only a source that passes its mask and has a jumper can leave a deadline, so
 // an idle board lets the machine stand down.
-uint64_t BitstreamerBoard::nextEdge() const {
+uint64_t Bitstreamer2Board::nextEdge() const {
     const uint64_t now  = clock_->now();
     uint64_t       best = 0;
     auto consider = [&](uint64_t when) {
@@ -148,7 +148,7 @@ uint64_t BitstreamerBoard::nextEdge() const {
     return best;
 }
 
-void BitstreamerBoard::armClock() {
+void Bitstreamer2Board::armClock() {
     if (!clock_) return;
     if (clockIrq_ == IrqJumper::None && j4d0_ == J4D0::Open) {
         clockTick_.stop(clock_);
@@ -169,7 +169,7 @@ void BitstreamerBoard::armClock() {
 // POC* is the reset wire here, and it drives the 8251 RESET pins through U21. The manual gives no
 // power-on state for the LS75 latches or U4, so they come up clear: a mask of 0 is the state the
 // manual tells software not to rely on anyway. RESET* reaches nothing.
-void BitstreamerBoard::reset(Reset r) {
+void Bitstreamer2Board::reset(Reset r) {
     if (r != Reset::PowerOn) return;
     const Clock& clk = clock_ ? *clock_ : deadCard();
     for (Channel* ch : {&a_, &b_, &c_}) ch->uart.powerOn(clk);
@@ -180,15 +180,15 @@ void BitstreamerBoard::reset(Reset r) {
     refresh();
 }
 
-void BitstreamerBoard::power() { reset(Reset::PowerOn); }
+void Bitstreamer2Board::power() { reset(Reset::PowerOn); }
 
-void BitstreamerBoard::pump() {
+void Bitstreamer2Board::pump() {
     clockTick_.pump(clock_);
     for (Channel* ch : {&a_, &b_, &c_}) ch->uart.pump();
     refresh();
 }
 
-void BitstreamerBoard::configChanged() {
+void Bitstreamer2Board::configChanged() {
     decodeChanged();
     for (Channel* ch : {&a_, &b_, &c_}) ch->uart.programLine();
     armClock();
@@ -196,7 +196,7 @@ void BitstreamerBoard::configChanged() {
 }
 
 // The ticker's schedule is host time, which does not travel, so a restore starts it again.
-void BitstreamerBoard::serialize(StateWriter& w) const {
+void Bitstreamer2Board::serialize(StateWriter& w) const {
     Board::serialize(w);
     for (const Channel* ch : {&a_, &b_, &c_}) ch->uart.serialize(w);
     w.u8(mask_);
@@ -204,7 +204,7 @@ void BitstreamerBoard::serialize(StateWriter& w) const {
     w.boolean(latch_);
 }
 
-void BitstreamerBoard::deserialize(StateReader& r) {
+void Bitstreamer2Board::deserialize(StateReader& r) {
     Board::deserialize(r);
     for (Channel* ch : {&a_, &b_, &c_}) ch->uart.deserialize(r);
     mask_  = r.u8();
@@ -214,11 +214,11 @@ void BitstreamerBoard::deserialize(StateReader& r) {
     refresh();
 }
 
-uint64_t BitstreamerBoard::rxBytes() const {
+uint64_t Bitstreamer2Board::rxBytes() const {
     return a_.uart.rxBytes() + b_.uart.rxBytes() + c_.uart.rxBytes();
 }
 
-std::vector<std::string> BitstreamerBoard::drainLog() {
+std::vector<std::string> Bitstreamer2Board::drainLog() {
     auto out = std::move(log_);
     log_.clear();
     for (Channel* ch : {&a_, &b_, &c_})
@@ -229,7 +229,7 @@ std::vector<std::string> BitstreamerBoard::drainLog() {
 // ---------------------------------------------------------------------------
 // Reflection.
 // ---------------------------------------------------------------------------
-BitstreamerBoard::Channel* BitstreamerBoard::channel(const std::string& unit) {
+Bitstreamer2Board::Channel* Bitstreamer2Board::channel(const std::string& unit) {
     std::string n = lowerAscii(unit);
     if (n == "a") return &a_;
     if (n == "b") return &b_;
@@ -237,7 +237,7 @@ BitstreamerBoard::Channel* BitstreamerBoard::channel(const std::string& unit) {
     return nullptr;
 }
 
-std::vector<Property> BitstreamerBoard::properties() {
+std::vector<Property> Bitstreamer2Board::properties() {
     std::vector<Property> p;
     {
         Property x;
@@ -291,7 +291,7 @@ std::vector<Property> BitstreamerBoard::properties() {
     return p;
 }
 
-std::vector<Property> BitstreamerBoard::channelProperties(Channel& ch) {
+std::vector<Property> Bitstreamer2Board::channelProperties(Channel& ch) {
     std::vector<Property> p;
     Channel* cp = &ch;  // the channels are members, and they never move
     {
@@ -329,18 +329,18 @@ std::vector<Property> BitstreamerBoard::channelProperties(Channel& ch) {
     return p;
 }
 
-std::vector<Property> BitstreamerBoard::unitProperties(const std::string& unit) {
+std::vector<Property> Bitstreamer2Board::unitProperties(const std::string& unit) {
     if (Channel* ch = channel(unit)) return channelProperties(*ch);
     return {};
 }
 
-std::vector<UnitDef> BitstreamerBoard::units() const {
+std::vector<UnitDef> Bitstreamer2Board::units() const {
     return {{"a", UnitKind::Serial, a_.uart.endpoint()},
             {"b", UnitKind::Serial, b_.uart.endpoint()},
             {"c", UnitKind::Serial, c_.uart.endpoint()}};
 }
 
-std::vector<MapEntry> BitstreamerBoard::ioMap() const {
+std::vector<MapEntry> Bitstreamer2Board::ioMap() const {
     const uint32_t b = port_;
     return {
         {b, b, "read/write", "Serial A -- data"},
@@ -354,7 +354,7 @@ std::vector<MapEntry> BitstreamerBoard::ioMap() const {
     };
 }
 
-bool BitstreamerBoard::connect(const std::string& unit, const std::string& ep, std::string& err) {
+bool Bitstreamer2Board::connect(const std::string& unit, const std::string& ep, std::string& err) {
     Channel* ch = channel(unit);
     if (!ch) {
         err = noUnit(unit);
@@ -380,7 +380,7 @@ bool BitstreamerBoard::connect(const std::string& unit, const std::string& ep, s
     return true;
 }
 
-bool BitstreamerBoard::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
+bool Bitstreamer2Board::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
                                      std::string& err) {
     Channel* ch = channel(unit);
     if (!ch) {
@@ -392,7 +392,7 @@ bool BitstreamerBoard::connectStream(const std::string& unit, std::unique_ptr<By
     return true;
 }
 
-bool BitstreamerBoard::disconnect(const std::string& unit, std::string& err) {
+bool Bitstreamer2Board::disconnect(const std::string& unit, std::string& err) {
     Channel* ch = channel(unit);
     if (!ch) {
         err = noUnit(unit);
@@ -403,7 +403,7 @@ bool BitstreamerBoard::disconnect(const std::string& unit, std::string& err) {
     return true;
 }
 
-ByteStream* BitstreamerBoard::unitStream(const std::string& unit) {
+ByteStream* Bitstreamer2Board::unitStream(const std::string& unit) {
     Channel* ch = channel(unit);
     return ch ? &ch->uart.stream() : nullptr;
 }

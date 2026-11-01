@@ -15,7 +15,7 @@ board's memory at `F000h` and reads the keyboard at ports `00h` and `01h`.
 - It takes one letter for each command and prints the name of the command. `R` shows the
   registers. `DE000E03F` shows the memory from `E000` to `E03F`.
 - `B` boots from a floppy disk. It needs the Dual-Mode controller, the
-  [`dualmode`](../../docs/boards/vector-dualmode.md) board.
+  [`vgdmdc`](../../docs/boards/vector-dualmode.md) board.
 
 These facts come from running the image, from its disassembly and from the listing.
 

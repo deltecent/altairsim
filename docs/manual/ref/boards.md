@@ -22,8 +22,8 @@ and within a group the boards are in **alphabetical order**.
 |---|---|
 | [`8080`](#8080) | MITS 88-CPU: 8080A CPU board |
 | [`8085`](#8085) | Generic 8085 CPU board |
+| [`vgzcb`](#vgzcb) | Vector Graphic ZCB: Z-80 single board computer |
 | [`z80`](#z80) | Generic Z80 CPU board |
-| [`zcb`](#zcb) | Vector Graphic ZCB: Z-80 single board computer |
 
 **Memory**
 
@@ -43,7 +43,6 @@ and within a group the boards are in **alphabetical order**.
 | [`disk1`](#disk1) | CompuPro Disk 1: uPD765A floppy controller with DMA |
 | [`disk1a`](#disk1a) | CompuPro Disk 1A: uPD765A floppy controller with DMA |
 | [`dualide`](#dualide) | S100Computers IDE-AB: two CompactFlash sockets for CP/M 3 |
-| [`dualmode`](#dualmode) | Vector Graphic Dual-Mode: 5.25" floppy controller, 4 drives |
 | [`dualsd`](#dualsd) | S100Computers Dual SD: two microSD sockets for CP/M 3 |
 | [`fdcplus`](#fdcplus) | FarmTek FDC+: serial drive (drive types 6, 7) |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
@@ -52,17 +51,17 @@ and within a group the boards are in **alphabetical order**.
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk controller |
 | [`mdsa`](#mdsa) | North Star MDS-A: single-density 5.25" floppy controller |
 | [`mdsad`](#mdsad) | North Star MDS-A-D: double-density 5.25" floppy controller |
-| [`micropolis`](#micropolis) | Vector Graphic Micropolis: 5.25" floppy controller, 4 drives |
 | [`tarbell`](#tarbell) | Tarbell #1011: single-density floppy controller |
 | [`tarbelldd`](#tarbelldd) | Tarbell #2022: double-density floppy controller |
 | [`versafloppy`](#versafloppy) | SD Systems VersaFloppy I/II: WD177x floppy controller |
+| [`vgdmdc`](#vgdmdc) | Vector Graphic Dual-Mode: 5.25" floppy controller, 4 drives |
+| [`vgmdc`](#vgmdc) | Vector Graphic Micropolis: 5.25" floppy controller, 4 drives |
 
 **Serial**
 
 | Type | What it is |
 |---|---|
 | [`2sio`](#2sio) | MITS 88-2SIO: two 6850 serial ports |
-| [`bitstreamer`](#bitstreamer) | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 | [`gsio`](#gsio) | Generic SIO: two strap-configurable serial channels |
 | [`io4`](#io4) | SSM IO-4: two serial + two parallel ports |
 | [`pmmi`](#pmmi) | PMMI MM-103: Bell 103 modem |
@@ -70,6 +69,7 @@ and within a group the boards are in **alphabetical order**.
 | [`sbc`](#sbc) | SD Systems SBC-100/200: Z80 single-board computer |
 | [`sio`](#sio) | MITS 88-SIO: one serial port (COM2502 UART) |
 | [`turnkey`](#turnkey) | MITS 8800b Turnkey Module: boot PROM, serial, auto-start |
+| [`vgbsii`](#vgbsii) | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 
 **Tape**
 
@@ -96,9 +96,9 @@ and within a group the boards are in **alphabetical order**.
 | [`cadzilla`](#cadzilla) | CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC |
 | [`dazzler`](#dazzler) | Cromemco Dazzler: color graphics |
 | [`dazzler2`](#dazzler2) | Cromemco Dazzler II: color graphics, on-board RAM |
-| [`fwii`](#fwii) | Vector Graphic Flashwriter II: 80x24 video and keyboard port |
 | [`vdb8024`](#vdb8024) | SD Systems VDB-8024: 80x24 video terminal board |
 | [`vdm1`](#vdm1) | Processor Technology VDM-1: 16x64 memory-mapped video |
+| [`vgfwii`](#vgfwii) | Vector Graphic Flashwriter II: 80x24 video and keyboard port |
 
 **Systems**
 
@@ -155,22 +155,7 @@ Generic 8085 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin,
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
 
-### `z80`
-
-Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core
-
-**Units:** `z80` (cpu)
-
-#### Board properties
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
-
-
-### `zcb`
+### `vgzcb`
 
 Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF ([[board.socket]], at + mount), 1K of RAM at FC00, one 8251 (unit 'serial', ports 04-07, 06 and 07 repeat 04 and 05) and one 8255 (ports 08-0B). After a reset the board pulls PHANTOM* and every address decodes as the E000 block, until the first memory cycle in E000-FFFF. No on-board interrupts
 
@@ -203,6 +188,21 @@ Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF 
 |---|---|---|---|---|
 | `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | Switch S1, for a guest that selects a clock factor of 16. The 2 MHz clock over 13 makes the label 9600 run at 9615 |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this) |
+
+
+### `z80`
+
+Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, with a Z80 core
+
+**Units:** `z80` (cpu)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
+| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
 
 
 ## Memory
@@ -448,28 +448,6 @@ S100Computers IDE-AB (CF): the IDE/CompactFlash half of the IDE+ESP32 combinatio
 | `port` | int | `0x30` | `0x0` .. `0xFB` | Base address. The board decodes five 8255 ports: BASE..BASE+4 (A,B,C,cfg,drive) |
 
 
-### `dualmode`
-
-Vector Graphic Dual-Mode Disk Controller, floppy half: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, 1 or 2 sides, at four ports from PORT (default C0). A 512-byte buffer RAM, a 32-bit ECC, and a 4-second motor timer. While busy the board answers no port. Monitor 4.3 boots from drive 1
-
-**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
-
-#### `[[board.drive]]` — a list you may add
-
-| Key | Kind | Legal | Meaning |
-|---|---|---|---|
-| `unit` | int | `0` .. `3` | Which drive, 0 to 3. Monitor 4.3 boots from drive 1 |
-| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status 0 bit 0, and the drive drops the write *(also `writeprotect`)* |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
-
-#### Board properties
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `port` | int | `0xC0` | `0x0` .. `0xF0` | Base address, set by jumper block D. The board decodes BASE+0 .. BASE+3 |
-
-
 ### `dualsd`
 
 S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byte-sector CF/SD cards, for CP/M 3. Two ports at BASE+0..1 (default 80): status/command + data. Programmed-I/O command/handshake engine (33H-lead + 8 commands). No boot PROM -- the CPU board's monitor loads CP/M from track 0. Mount a card image (a .img with a .geo geometry sidecar)
@@ -666,31 +644,6 @@ North Star MDS-A-D: double-density 5.25" hard-sector floppy (single, double and 
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a read-data or write-data access completes at once. real: it holds READY until the byte is under the head, so a sector transfer takes emulated time, as on the board |
 
 
-### `micropolis`
-
-Vector Graphic Micropolis Disk Controller Board: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, in a 1K memory block at BASE (default F800). A boot PROM, four registers at BASE+200, no buffer and no DMA: the guest moves each byte, paced by PRDY. Holds the MBOOT ROM
-
-**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
-
-#### `[[board.drive]]` — a list you may add
-
-| Key | Kind | Legal | Meaning |
-|---|---|---|---|
-| `unit` | int | `0` .. `3` | Which drive, 0 to 3. The boot ROM reads drive 0 |
-| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status bit 4, and the board drops the write *(also `writeprotect`)* |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
-
-#### Board properties
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `base` | int | `0xF800` | `0xC000` .. `0xFC00` | Base address, set by W1-W4. Any 1K boundary from C000 to FC00. Vector's 56K machines use F800, and 48K machines use D800 |
-| `speed` | enum | `4mhz` | `4mhz` \| `2mhz` | Jumper W9: the processor speed that sector register bit 5 reports |
-| `ready` | enum | `forced` | `forced` \| `drive` | RDY status: forced is true with a drive selected, the Rev. 1 standard. drive is true only with a disk in the drive |
-| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Interrupt jumper, for the interrupt on each sector *(interrupt strap)* |
-
-
 ### `tarbell`
 
 Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at BASE+0..7 (default F8). Carries a 32-byte boot PROM that shadows 0000 over PHANTOM* -- boots CP/M automatically at reset (bootstrap=on)
@@ -768,6 +721,53 @@ SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a disk access completes at once. real: the data port holds READY until the next byte or the end of the command (while the wait-state circuit is enabled), so seek, head settle and byte times take emulated time, as on the board |
 
 
+### `vgdmdc`
+
+Vector Graphic Dual-Mode Disk Controller, floppy half: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, 1 or 2 sides, at four ports from PORT (default C0). A 512-byte buffer RAM, a 32-bit ECC, and a 4-second motor timer. While busy the board answers no port. Monitor 4.3 boots from drive 1
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive, 0 to 3. Monitor 4.3 boots from drive 1 |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status 0 bit 0, and the drive drops the write *(also `writeprotect`)* |
+| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0xC0` | `0x0` .. `0xF0` | Base address, set by jumper block D. The board decodes BASE+0 .. BASE+3 |
+
+
+### `vgmdc`
+
+Vector Graphic Micropolis Disk Controller Board: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, in a 1K memory block at BASE (default F800). A boot PROM, four registers at BASE+200, no buffer and no DMA: the guest moves each byte, paced by PRDY. Holds the MBOOT ROM
+
+**Units:** `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
+
+#### `[[board.drive]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `unit` | int | `0` .. `3` | Which drive, 0 to 3. The boot ROM reads drive 0 |
+| `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
+| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status bit 4, and the board drops the write *(also `writeprotect`)* |
+| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0xF800` | `0xC000` .. `0xFC00` | Base address, set by W1-W4. Any 1K boundary from C000 to FC00. Vector's 56K machines use F800, and 48K machines use D800 |
+| `speed` | enum | `4mhz` | `4mhz` \| `2mhz` | Jumper W9: the processor speed that sector register bit 5 reports |
+| `ready` | enum | `forced` | `forced` \| `drive` | RDY status: forced is true with a drive selected, the Rev. 1 standard. drive is true only with a disk in the drive |
+| `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Interrupt jumper, for the interrupt on each sector *(interrupt strap)* |
+
+
 ## Serial
 
 ### `2sio`
@@ -803,48 +803,6 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
-
-
-### `bitstreamer`
-
-Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two parallel latches and a 55 Hz clock latch at eight ports from PORT (default 02). OUT to PORT+6 is the interrupt mask, and IN from PORT+7 clears the clock latch. Interrupts are jumpers, off by default. `j4_d0` is the wire OASIS needs on bit 0 of IN PORT+6
-
-**Units:** `a` (serial, CONNECT), `b` (serial, CONNECT), `c` (serial, CONNECT)
-
-#### Board properties
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `port` | int | `0x2` | `0x2` .. `0x72` | Base address (area W): 02, 12, 22, 32, 42, 52, 62 or 72. The board decodes eight ports from there |
-| `clock_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers the clock latch, through mask bit 6: none \| int \| vi0..vi7 *(interrupt strap)* |
-| `j4_d0` | enum | `open` | `open` \| `clock-latch` | What drives pin 11 of J4, which is bit 0 of IN x8: open, or clock-latch (U4 pin 5). OASIS needs clock-latch. No Vector Graphic document shows it |
-
-#### Unit `a` — `[board.unit.a]`
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
-| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
-| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
-| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
-
-#### Unit `b` — `[board.unit.b]`
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
-| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
-| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
-| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
-
-#### Unit `c` — `[board.unit.c]`
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
-| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
-| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
-| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
 
 
 ### `gsio`
@@ -1089,6 +1047,48 @@ MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (u
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+
+
+### `vgbsii`
+
+Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two parallel latches and a 55 Hz clock latch at eight ports from PORT (default 02). OUT to PORT+6 is the interrupt mask, and IN from PORT+7 clears the clock latch. Interrupts are jumpers, off by default. `j4_d0` is the wire OASIS needs on bit 0 of IN PORT+6
+
+**Units:** `a` (serial, CONNECT), `b` (serial, CONNECT), `c` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x2` | `0x2` .. `0x72` | Base address (area W): 02, 12, 22, 32, 42, 52, 62 or 72. The board decodes eight ports from there |
+| `clock_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers the clock latch, through mask bit 6: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `j4_d0` | enum | `open` | `open` \| `clock-latch` | What drives pin 11 of J4, which is bit 0 of IN x8: open, or clock-latch (U4 pin 5). OASIS needs clock-latch. No Vector Graphic document shows it |
+
+#### Unit `a` — `[board.unit.a]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
+| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+
+#### Unit `b` — `[board.unit.b]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
+| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+
+#### Unit `c` — `[board.unit.c]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The channel's eight-position switch, for a guest that selects a clock factor of 16 |
+| `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
 
 
 ## Tape
@@ -1351,30 +1351,6 @@ Cromemco Dazzler II (a modern board): the Dazzler with its picture in 4 KB of RA
 | `seed` | int | `1` | any | Seed for the undefined contents of the card RAM at power-on. The same seed gives the same contents at every power |
 
 
-### `fwii`
-
-Vector Graphic Flashwriter II: 2K of memory-mapped video RAM at BASE (default F000) shown as 24 rows of 80 characters, and two input ports at PORT (default 00): status and keyboard data. Unit 'keyboard' (CONNECT). The key flag drives pin 73 with no vector, so the acknowledge reads as RST 7 (`interrupt`). Needs a Display
-
-**Units:** `keyboard` (serial, CONNECT)
-
-#### Board properties
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `base` | int | `0xF000` | `0xC000` .. `0xF800` | Video RAM base address: a 2K block from C000 to F800 (area F) |
-| `port` | int | `0x0` | `0x0` .. `0xE` | Status port (IN). The data port is the next one up. Even, 00 to 0E (area J) |
-| `interrupt` | enum | `int` | `none` \| `int` | Key flag to pin 73 (area L): int = fitted, or none. No vector, so the acknowledge reads as RST 7 *(interrupt strap)* |
-| `fill` | enum | `random` | `zero` \| `random` | Video RAM at power-on: zero \| random (real RAM is not zeroed) |
-| `seed` | int | `1` | any | Seed for fill=random. The same seed fills the RAM the same way at every POWER, so a run is repeatable; change it for a different pattern |
-| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
-
-#### Unit `keyboard` — `[board.unit.keyboard]`
-
-| Key | Kind | Default | Legal | Meaning |
-|---|---|---|---|---|
-| `connect` | string | `null` | text | The endpoint on the other end of the keyboard line (CONNECT sets this) |
-
-
 ### `vdb8024`
 
 SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display
@@ -1414,6 +1390,30 @@ Processor Technology VDM-1: memory-mapped 16x64 video, screen RAM at BASE (defau
 | `fill` | enum | `random` | `zero` \| `random` | Screen RAM at power-on: zero \| random (real RAM is not zeroed; 0x00 shows as a box) |
 | `seed` | int | `1` | any | Seed for fill=random. The same seed fills the screen the same way at every POWER, so a run is repeatable; change it for a different pattern |
 | `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
+
+
+### `vgfwii`
+
+Vector Graphic Flashwriter II: 2K of memory-mapped video RAM at BASE (default F000) shown as 24 rows of 80 characters, and two input ports at PORT (default 00): status and keyboard data. Unit 'keyboard' (CONNECT). The key flag drives pin 73 with no vector, so the acknowledge reads as RST 7 (`interrupt`). Needs a Display
+
+**Units:** `keyboard` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `base` | int | `0xF000` | `0xC000` .. `0xF800` | Video RAM base address: a 2K block from C000 to F800 (area F) |
+| `port` | int | `0x0` | `0x0` .. `0xE` | Status port (IN). The data port is the next one up. Even, 00 to 0E (area J) |
+| `interrupt` | enum | `int` | `none` \| `int` | Key flag to pin 73 (area L): int = fitted, or none. No vector, so the acknowledge reads as RST 7 *(interrupt strap)* |
+| `fill` | enum | `random` | `zero` \| `random` | Video RAM at power-on: zero \| random (real RAM is not zeroed) |
+| `seed` | int | `1` | any | Seed for fill=random. The same seed fills the RAM the same way at every POWER, so a run is repeatable; change it for a different pattern |
+| `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
+
+#### Unit `keyboard` — `[board.unit.keyboard]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `connect` | string | `null` | text | The endpoint on the other end of the keyboard line (CONNECT sets this) |
 
 
 ## Systems

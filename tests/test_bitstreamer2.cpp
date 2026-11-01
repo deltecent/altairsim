@@ -1,10 +1,10 @@
-// The Vector Graphic Bitstreamer II (docs/boards/vector-bitstreamer.md).
+// The Vector Graphic Bitstreamer II (docs/boards/vector-bitstreamer2.md).
 //
 // Real bus cycles through the decode. The clock keeps real time (issue #825), so a test sets the
 // host time and pumps the board, as the run loop does once a slice.
 
 #include "boards/s100-memory.h"
-#include "boards/vector-bitstreamer.h"
+#include "boards/vector-bitstreamer2.h"
 #include "core/machine.h"
 #include "core/statefile.h"
 #include "host/stream.h"
@@ -22,14 +22,14 @@ constexpr uint64_t kClockNs = 36608ull * 500;  // 2 MHz / (13 x 4 x 22 x 16 x 2)
 
 struct Rig {
     Machine           m;
-    BitstreamerBoard* bs = nullptr;
+    Bitstreamer2Board* bs = nullptr;
     uint64_t          hostNs = 1000000000;
 
     explicit Rig(const std::string& clockInt = "none", const std::string& j4 = "open") {
         std::string err;
         m.bus.setVerify(true);
         m.add("z80", "cpu0", err);
-        bs = dynamic_cast<BitstreamerBoard*>(m.add("bitstreamer", "bs0", err));
+        bs = dynamic_cast<Bitstreamer2Board*>(m.add("vgbsii", "bs0", err));
         m.bus.busClock().setHostNs([this] { return hostNs; });
         setProperty(*bs, "port", "22", err);
         setProperty(*bs, "clock_int", clockInt, err);
@@ -63,8 +63,8 @@ struct Rig {
 
 }  // namespace
 
-void test_bitstreamer() {
-    SECTION("bitstreamer: the port map");
+void test_bitstreamer2() {
+    SECTION("vgbsii: the port map");
     {
         Rig r;
         CHECK(r.in(0x23) == 0x05, "a fresh 8251: TxRDY and TxEMPTY");
@@ -79,7 +79,7 @@ void test_bitstreamer() {
         CHECK(r.in(0x23) == 0xFF, "r.in(0x23) == 0xFF");
     }
 
-    SECTION("bitstreamer: the base ends in 2 and stays below 80");
+    SECTION("vgbsii: the base ends in 2 and stays below 80");
     {
         Rig         r;
         std::string err;
@@ -91,7 +91,7 @@ void test_bitstreamer() {
         CHECK(!setUnitProperty(*r.bs, "a", "baud", "19200", err), "the switch has no 19200");
     }
 
-    SECTION("bitstreamer: open parallel inputs read 1");
+    SECTION("vgbsii: open parallel inputs read 1");
     {
         Rig r;
         r.out(0x28, 0x40);
@@ -99,7 +99,7 @@ void test_bitstreamer() {
         CHECK(r.in(0x29) == 0xFF, "r.in(0x29) == 0xFF");
     }
 
-    SECTION("bitstreamer: the clock period comes from the divider chain");
+    SECTION("vgbsii: the clock period comes from the divider chain");
     {
         Rig r("int");
         r.pass(kClockNs - 1);
@@ -108,7 +108,7 @@ void test_bitstreamer() {
         CHECK(r.bs->clockLatch(), "r.bs->clockLatch()");
     }
 
-    SECTION("bitstreamer: only IN x9 clears the latch, and the data does not matter");
+    SECTION("vgbsii: only IN x9 clears the latch, and the data does not matter");
     {
         Rig r("int");
         r.pass(kClockNs);
@@ -124,7 +124,7 @@ void test_bitstreamer() {
         CHECK(r.bs->clockLatch(), "r.bs->clockLatch()");
     }
 
-    SECTION("bitstreamer: pin 73 is the latch through mask bit 6");
+    SECTION("vgbsii: pin 73 is the latch through mask bit 6");
     {
         Rig r("int");
         r.pass(kClockNs);
@@ -141,7 +141,7 @@ void test_bitstreamer() {
         CHECK(r.m.bus.intPending(), "r.m.bus.intPending()");
     }
 
-    SECTION("bitstreamer: a VI jumper drives its line and not pin 73");
+    SECTION("vgbsii: a VI jumper drives its line and not pin 73");
     {
         Rig r("vi3");
         r.out(0x28, 0x40);
@@ -152,7 +152,7 @@ void test_bitstreamer() {
         CHECK(r.bs->assertsVi() == 0, "r.bs->assertsVi() == 0");
     }
 
-    SECTION("bitstreamer: J4 D0 follows the latch when jumpered");
+    SECTION("vgbsii: J4 D0 follows the latch when jumpered");
     {
         Rig r("none", "clock-latch");
         CHECK(r.in(0x28) == 0xFE, "latch clear, mask off: low, the mask does not reach U4 pin 5");
@@ -169,7 +169,7 @@ void test_bitstreamer() {
         CHECK(!r.m.bus.intPending(), "the jumper is an input, it drives no pin");
     }
 
-    SECTION("bitstreamer: no wire, no deadline");
+    SECTION("vgbsii: no wire, no deadline");
     {
         Rig r;
         CHECK(r.m.clock.queued() == 0, "r.m.clock.queued() == 0");
@@ -193,14 +193,14 @@ void test_bitstreamer() {
         CHECK(later.m.clock.queued() == 0, "and the deadline goes with it");
     }
 
-    SECTION("bitstreamer: the clock survives the move from a scratch machine");
+    SECTION("vgbsii: the clock survives the move from a scratch machine");
     {
         uint64_t    hostNs = 1000000000;
         Machine     m;
         Machine     scratch;
         std::string err;
         scratch.add("z80", "cpu0", err);
-        auto* bs = dynamic_cast<BitstreamerBoard*>(scratch.add("bitstreamer", "bs0", err));
+        auto* bs = dynamic_cast<Bitstreamer2Board*>(scratch.add("vgbsii", "bs0", err));
         setProperty(*bs, "port", "22", err);
         setProperty(*bs, "clock_int", "int", err);
         scratch.power();
@@ -215,7 +215,7 @@ void test_bitstreamer() {
         CHECK(bs->clockLatch(), "the host time comes from the new bus");
     }
 
-    SECTION("bitstreamer: RESET* reaches nothing, POC* clears");
+    SECTION("vgbsii: RESET* reaches nothing, POC* clears");
     {
         Rig r("int");
         r.out(0x28, 0x40);
@@ -228,7 +228,7 @@ void test_bitstreamer() {
         CHECK(!r.m.bus.intPending(), "!r.m.bus.intPending()");
     }
 
-    SECTION("bitstreamer: serial data and status at each channel");
+    SECTION("vgbsii: serial data and status at each channel");
     {
         Rig  r;
         auto a = r.line("a");
@@ -254,7 +254,7 @@ void test_bitstreamer() {
         CHECK((r.in(0x27) & 0x02) == 0, "(r.in(0x27) & 0x02) == 0");
     }
 
-    SECTION("bitstreamer: each serial source has its own mask bit");
+    SECTION("vgbsii: each serial source has its own mask bit");
     {
         struct Case {
             const char* unit;
@@ -302,7 +302,7 @@ void test_bitstreamer() {
         }
     }
 
-    SECTION("bitstreamer: the unit properties");
+    SECTION("vgbsii: the unit properties");
     {
         Rig         r;
         std::string err;
@@ -315,7 +315,7 @@ void test_bitstreamer() {
         CHECK(v == "1200", "v == \"1200\"");
     }
 
-    SECTION("bitstreamer: snapshot");
+    SECTION("vgbsii: snapshot");
     {
         Rig  src("int", "clock-latch");
         Rig  dst("int", "clock-latch");
@@ -342,7 +342,7 @@ void test_bitstreamer() {
         CHECK(dst.bs->clockLatch(), "dst.bs->clockLatch()");
     }
 
-    SECTION("bitstreamer: a guest takes the clock and returns");
+    SECTION("vgbsii: a guest takes the clock and returns");
     {
         Machine     m;
         std::string err;
@@ -356,7 +356,7 @@ void test_bitstreamer() {
         mem->addRegion(ram, err);
         setProperty(*mem, "fill", "zero", err);
         m.add("z80", "cpu0", err);
-        auto* bs = dynamic_cast<BitstreamerBoard*>(m.add("bitstreamer", "bs0", err));
+        auto* bs = dynamic_cast<Bitstreamer2Board*>(m.add("vgbsii", "bs0", err));
         m.bus.busClock().setHostNs([&] { return hostNs; });
         setProperty(*bs, "port", "22", err);
         setProperty(*bs, "clock_int", "int", err);

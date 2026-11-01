@@ -39,7 +39,7 @@ public:
     ZcbBoard();
     ~ZcbBoard() override;
 
-    std::string type() const override { return "zcb"; }
+    std::string type() const override { return "vgzcb"; }
 
     // ---- the bus ----
     bool    decodes(const BusCycle& c) const override;

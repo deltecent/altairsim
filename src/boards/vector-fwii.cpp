@@ -230,7 +230,7 @@ void FwiiBoard::deserialize(StateReader& r) {
 // ---------------------------------------------------------------------------
 bool FwiiBoard::connect(const std::string& unit, const std::string& endpoint, std::string& err) {
     if (unit != "keyboard") {
-        err = "fwii has no unit '" + unit + "' -- keyboard";
+        err = "vgfwii has no unit '" + unit + "' -- keyboard";
         return false;
     }
     if (!g_resolver) {
@@ -255,7 +255,7 @@ bool FwiiBoard::connect(const std::string& unit, const std::string& endpoint, st
 
 bool FwiiBoard::disconnect(const std::string& unit, std::string& err) {
     if (unit != "keyboard") {
-        err = "fwii has no unit '" + unit + "' -- keyboard";
+        err = "vgfwii has no unit '" + unit + "' -- keyboard";
         return false;
     }
     kb_ = std::make_unique<NullStream>();

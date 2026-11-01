@@ -1,26 +1,26 @@
 # Vector Graphic Monitor 4.0c (`builtin:vgmon40c`)
 
 Vector's Monitor for an MZ with a serial terminal. It is Z80 code at `E000h`. Its console is
-port A of a [Bitstreamer II](../../docs/boards/vector-bitstreamer.md) at port `02`: `03h` is
+port A of a [Bitstreamer II](../../docs/boards/vector-bitstreamer2.md) at port `02`: `03h` is
 status and `02h` is data.
 
 - **Load address:** `E000h`. Entry at `E000h`.
 - **Image:** `E000`–`E64F`, 1616 bytes, CRC32 `6662335C`, checksum `78`.
 - **Boot:** `B` jumps to `F800`, the boot PROM of the
-  [`micropolis`](../../docs/boards/vector-micropolis.md) board.
+  [`vgmdc`](../../docs/boards/vector-micropolis.md) board.
 
 `ROM Checksums.pdf` lists checksum `78` for this Monitor. The image holds only the bytes that
-assemble. A socket on the [`zcb`](../../docs/boards/vector-zcb.md) board treats the image as a
+assemble. A socket on the [`vgzcb`](../../docs/boards/vector-zcb.md) board treats the image as a
 2K PROM, and `E650`–`E7FF` reads `FF`.
 
 ## Use it
 
-A `bitstreamer` at `02` decodes the ports of the `zcb` serial and parallel blocks. Move those
+A `vgbsii` at `02` decodes the ports of the `vgzcb` serial and parallel blocks. Move those
 blocks to free ports:
 
 ```toml
 [[board]]
-type          = "zcb"
+type          = "vgzcb"
 serial_port   = 0x0C
 parallel_port = 0x18
 

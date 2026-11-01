@@ -39,7 +39,7 @@ struct Rig {
     Rig() {
         std::string err;
         m.bus.setVerify(true);
-        z   = dynamic_cast<ZcbBoard*>(m.add("zcb", "zcb0", err));
+        z   = dynamic_cast<ZcbBoard*>(m.add("vgzcb", "zcb0", err));
         mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
         z->loadSubUnit("socket", {{"at", "E000"}, {"mount", "builtin:vgmon43"}}, err);
         Region ram;
@@ -92,8 +92,8 @@ struct Vector {
     explicit Vector(const std::string& rom = "builtin:vgmon43") {
         std::string err;
         FwiiBoard::setDisplay(&disp);
-        z  = dynamic_cast<ZcbBoard*>(m.add("zcb", "cpu0", err));
-        fw = dynamic_cast<FwiiBoard*>(m.add("fwii", "fw0", err));
+        z  = dynamic_cast<ZcbBoard*>(m.add("vgzcb", "cpu0", err));
+        fw = dynamic_cast<FwiiBoard*>(m.add("vgfwii", "fw0", err));
         auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
         z->loadSubUnit("socket", {{"at", "E000"}, {"mount", rom}}, err);
         Region ram;
@@ -261,7 +261,7 @@ void test_intel8255() {
 }
 
 void test_zcb() {
-    SECTION("zcb: the serial port, with A1 not decoded");
+    SECTION("vgzcb: the serial port, with A1 not decoded");
     {
         Rig  r;
         auto s = r.line();
@@ -275,7 +275,7 @@ void test_zcb() {
         CHECK(r.in(0x05) == r.in(0x07), "05 and 07 are one status register");
     }
 
-    SECTION("zcb: the status bits");
+    SECTION("vgzcb: the status bits");
     {
         Rig  r;
         auto s = r.line();
@@ -297,7 +297,7 @@ void test_zcb() {
         CHECK(!(r.in(0x05) & kDSR), "D7 reads the line");
     }
 
-    SECTION("zcb: the board has no interrupt");
+    SECTION("vgzcb: the board has no interrupt");
     {
         Rig  r;
         auto s = r.line();
@@ -310,7 +310,7 @@ void test_zcb() {
         CHECK(!r.m.bus.intPending(), "and pin 73 stays free");
     }
 
-    SECTION("zcb: S1 gives the real rate, and the mode word divides it");
+    SECTION("vgzcb: S1 gives the real rate, and the mode word divides it");
     {
         Rig  r;
         auto s = r.line();
@@ -333,7 +333,7 @@ void test_zcb() {
         CHECK(!setUnitProperty(*r.z, "serial", "baud", "19200", err), "S1 has eight rockers");
     }
 
-    SECTION("zcb: the parallel port");
+    SECTION("vgzcb: the parallel port");
     {
         Rig r;
         CHECK(r.in(0x08) == 0xFF && r.in(0x09) == 0xFF && r.in(0x0A) == 0xFF, "J1 is open");
@@ -349,7 +349,7 @@ void test_zcb() {
         CHECK(r.in(0x0A) == 0x80, "bit set on port C");
     }
 
-    SECTION("zcb: both chips move with their jumpers, and nothing stays behind");
+    SECTION("vgzcb: both chips move with their jumpers, and nothing stays behind");
     {
         Rig         r;
         auto        s = r.line();
@@ -369,7 +369,7 @@ void test_zcb() {
         CHECK(r.m.bus.respondersTo({Cycle::IoRead, 0x58}).empty(), "58 is past the chip");
     }
 
-    SECTION("zcb: the jumpers refuse what the board cannot do");
+    SECTION("vgzcb: the jumpers refuse what the board cannot do");
     {
         Rig         r;
         std::string err;
@@ -381,7 +381,7 @@ void test_zcb() {
         CHECK(!setProperty(*r.z, "wait", "two", err), "area N has three settings");
     }
 
-    SECTION("zcb: the memory map");
+    SECTION("vgzcb: the memory map");
     {
         Rig r;
         r.release();
@@ -398,11 +398,11 @@ void test_zcb() {
         CHECK(!r.z->assertsPhantom({Cycle::MemRead, 0xE000}), "and no PHANTOM* in normal running");
     }
 
-    SECTION("zcb: a write to the on-board RAM goes out on the bus too");
+    SECTION("vgzcb: a write to the on-board RAM goes out on the bus too");
     {
         Machine     m;
         std::string err;
-        auto*       z   = dynamic_cast<ZcbBoard*>(m.add("zcb", "zcb0", err));
+        auto*       z   = dynamic_cast<ZcbBoard*>(m.add("vgzcb", "zcb0", err));
         auto*       mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
         Region      ram;
         ram.kind = RegionKind::Ram;
@@ -417,7 +417,7 @@ void test_zcb() {
         CHECK(mem->peek(0xFC10, under) && under == 0x77, "and so has the board under it");
     }
 
-    SECTION("zcb: after a reset every address reads as the E000 block");
+    SECTION("vgzcb: after a reset every address reads as the E000 block");
     {
         Rig r;
         r.wr(0x0100, 0x11);
@@ -431,7 +431,7 @@ void test_zcb() {
         CHECK(r.z->armed(), "an I/O cycle does not clear it");
     }
 
-    SECTION("zcb: the first read in E000-FFFF ends the override");
+    SECTION("vgzcb: the first read in E000-FFFF ends the override");
     {
         Rig r;
         r.rd(0x0003);
@@ -443,7 +443,7 @@ void test_zcb() {
         CHECK(r.rd(0x0000) == 0x42, "0000 is the RAM under it");
     }
 
-    SECTION("zcb: the first write in E000-FFFF ends it too");
+    SECTION("vgzcb: the first write in E000-FFFF ends it too");
     {
         Rig r;
         r.wr(0xE123, 0);
@@ -455,7 +455,7 @@ void test_zcb() {
         CHECK(r.rd(0xFC00) == 0x99, "and the byte went in");
     }
 
-    SECTION("zcb: an address below the block writes the mirror of the RAM");
+    SECTION("vgzcb: an address below the block writes the mirror of the RAM");
     {
         Rig r;
         r.wr(0x1C05, 0x3C);
@@ -465,7 +465,7 @@ void test_zcb() {
         CHECK(r.rd(0xFC05) == 0x3C, "it landed at FC05");
     }
 
-    SECTION("zcb: jumper B cut");
+    SECTION("vgzcb: jumper B cut");
     {
         Rig         r;
         std::string err;
@@ -476,7 +476,7 @@ void test_zcb() {
         CHECK(!r.z->armed(), "until a cycle in the block");
     }
 
-    SECTION("zcb: jumper C cut");
+    SECTION("vgzcb: jumper C cut");
     {
         Rig         r;
         std::string err;
@@ -485,7 +485,7 @@ void test_zcb() {
         CHECK(r.z->armed(), "the decode is still overridden");
     }
 
-    SECTION("zcb: both jumpers cut boots from off the board");
+    SECTION("vgzcb: both jumpers cut boots from off the board");
     {
         Rig         r;
         std::string err;
@@ -495,7 +495,7 @@ void test_zcb() {
         CHECK(r.rd(0x0000) == 0x3E, "0000 is the RAM");
     }
 
-    SECTION("zcb: a reset reaches both chips and spares the RAM");
+    SECTION("vgzcb: a reset reaches both chips and spares the RAM");
     {
         Rig r;
         r.release();
@@ -514,7 +514,7 @@ void test_zcb() {
         CHECK(r.z->armed(), "power sets the latch");
     }
 
-    SECTION("zcb: the wait states of area N");
+    SECTION("vgzcb: the wait states of area N");
     {
         constexpr uint8_t kFetch = StM1 | StMemR | StWo;
         Rig               r;
@@ -539,14 +539,14 @@ void test_zcb() {
         CHECK(r.m.bus.takeWaitStates() == 3, "wait = all is one on each cycle");
     }
 
-    SECTION("zcb: the sockets");
+    SECTION("vgzcb: the sockets");
     {
         const std::string oneK = writeImage("zcb-test-1k.bin", 0x400, 0x11);
         const std::string twoK = writeImage("zcb-test-2k.bin", 0x800, 0x22);
         std::string       err;
 
         Machine m;
-        auto*   z = dynamic_cast<ZcbBoard*>(m.add("zcb", "zcb0", err));
+        auto*   z = dynamic_cast<ZcbBoard*>(m.add("vgzcb", "zcb0", err));
         CHECK(z->loadSubUnit("socket", {{"at", "E000"}, {"mount", twoK}}, err), "2K at E000");
         CHECK(z->loadSubUnit("socket", {{"at", "E800"}, {"mount", oneK}}, err), "1K at E800");
         CHECK(z->loadSubUnit("socket", {{"at", "EC00"}, {"mount", oneK}}, err), "1K at EC00");
@@ -559,7 +559,7 @@ void test_zcb() {
         CHECK(z->subUnits().size() == 3, "all three save");
 
         Machine m2;
-        auto*   y = dynamic_cast<ZcbBoard*>(m2.add("zcb", "zcb0", err));
+        auto*   y = dynamic_cast<ZcbBoard*>(m2.add("vgzcb", "zcb0", err));
         CHECK(!y->loadSubUnit("socket", {{"at", "D000"}, {"mount", oneK}}, err), "below the range");
         CHECK(!y->loadSubUnit("socket", {{"at", "E100"}, {"mount", oneK}}, err), "not on a 1K line");
         CHECK(y->loadSubUnit("socket", {{"at", "E400"}, {"mount", twoK}}, err), "the file is read");
@@ -572,7 +572,7 @@ void test_zcb() {
         std::filesystem::remove(twoK);
     }
 
-    SECTION("zcb: the snapshot");
+    SECTION("vgzcb: the snapshot");
     {
         Rig src, dst;
         src.wr(0xFC40, 0x4D);  // this also clears the latch
@@ -590,7 +590,7 @@ void test_zcb() {
         CHECK(dst.z->usart().params().stopBits == 2, "the 8251 travels");
     }
 
-    SECTION("zcb: Monitor 4.3 starts from the reset at 0000");
+    SECTION("vgzcb: Monitor 4.3 starts from the reset at 0000");
     {
         Vector g;
         CHECK(g.m.cpu()->pc() == 0x0000, "the Z-80 starts at 0000");
@@ -603,7 +603,7 @@ void test_zcb() {
         CHECK(g.m.cpu()->pc() < 0xF000, "the stack at FFD0 held");
     }
 
-    SECTION("zcb: Monitor 4.0 starts from the reset at 0000");
+    SECTION("vgzcb: Monitor 4.0 starts from the reset at 0000");
     {
         Vector g("builtin:vgmon40");
         CHECK(g.run([&] { return g.screenHas("Mon>"); }, 2000000), "the Monitor comes up");
@@ -611,13 +611,13 @@ void test_zcb() {
         CHECK(!g.z->armed(), "the jump ended the override");
     }
 
-    SECTION("zcb: Monitor 4.0c runs on a Bitstreamer II with the ZCB ports moved");
+    SECTION("vgzcb: Monitor 4.0c runs on a Bitstreamer II with the ZCB ports moved");
     {
         Vector      g("builtin:vgmon40c");
         std::string err;
         CHECK(setProperty(*g.z, "serial_port", "0C", err), "the 8251 moves to 0C");
         CHECK(setProperty(*g.z, "parallel_port", "18", err), "the 8255 moves to 18");
-        Board* bs = g.m.add("bitstreamer", "bs0", err);
+        Board* bs = g.m.add("vgbsii", "bs0", err);
         CHECK(setProperty(*bs, "port", "02", err), "the Bitstreamer II goes to 02");
         auto  line = std::make_unique<ScriptedStream>();
         auto* s    = line.get();
@@ -632,7 +632,7 @@ void test_zcb() {
         CHECK(g.m.bus.drain().empty(), "no board shares a port with the ZCB");
     }
 
-    SECTION("zcb: the Monitor's E command passes a byte both ways");
+    SECTION("vgzcb: the Monitor's E command passes a byte both ways");
     {
         Vector      g;
         auto        line = std::make_unique<ScriptedStream>();

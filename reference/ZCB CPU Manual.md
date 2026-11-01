@@ -12,7 +12,7 @@ The ZCB is one S-100 board with a Z-80, 1K of RAM, three PROM sockets, an 8251 a
 this file does not repeat them. Chip detail of the 8251 is in
 [Intel 8251 USART](Intel%208251%20USART.md).
 
-**Emulated** as `zcb` (`src/boards/vector-zcb.h`, `docs/boards/vector-zcb.md`). The `vector` machine does not use it yet: `machines/vector.toml` has a generic Z-80 and a stand-in memory board.
+**Emulated** as `vgzcb` (`src/boards/vector-zcb.h`, `docs/boards/vector-zcb.md`). The `vector` machine does not use it yet: `machines/vector.toml` has a generic Z-80 and a stand-in memory board.
 
 ---
 

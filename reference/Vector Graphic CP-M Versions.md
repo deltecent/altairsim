@@ -70,4 +70,4 @@ temporary.
 - **⚠ The Dualmode runs Micropolis drives too.** Versions N, R, S and T are Micropolis on Dualmode.
   A Vector Graphic disk from a Dualmode machine is not always a Tandon disk.
 - **⚠ `SB` is not a floppy-only name here.** Versions S and T add a Seagate hard drive to an SB.
-  altairsim's `dualmode` board has no hard disk.
+  altairsim's `vgdmdc` board has no hard disk.

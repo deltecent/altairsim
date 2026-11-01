@@ -48,7 +48,7 @@ class FwiiBoard : public Board {
 public:
     FwiiBoard();
 
-    std::string type() const override { return "fwii"; }
+    std::string type() const override { return "vgfwii"; }
 
     bool    decodes(const BusCycle& c) const override;
     uint8_t read(const BusCycle& c) override;

@@ -606,8 +606,8 @@ add_library(altair_core STATIC
   # Vector Graphic Micropolis controller: a 1K memory-mapped block. See vector-micropolis.h.
   src/boards/vector-micropolis.cpp
   # The Vector Graphic Bitstreamer II: three 8251s, the parallel latches, and the 55 Hz clock
-  # that OASIS runs on. See vector-bitstreamer.h.
-  src/boards/vector-bitstreamer.cpp
+  # that OASIS runs on. See vector-bitstreamer2.h.
+  src/boards/vector-bitstreamer2.cpp
   # The Vector Graphic ZCB: a Z-80 with its PROM, RAM, 8251 and 8255 on one board. See
   # vector-zcb.h.
   src/boards/vector-zcb.cpp
@@ -873,7 +873,7 @@ add_executable(altair_tests
   tests/test_fwii.cpp
   tests/test_dualmode.cpp
   tests/test_micropolis.cpp
-  tests/test_bitstreamer.cpp
+  tests/test_bitstreamer2.cpp
   tests/test_zcb.cpp
   tests/test_terminal.cpp
   tests/test_4pio.cpp

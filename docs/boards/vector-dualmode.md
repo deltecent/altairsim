@@ -4,7 +4,7 @@
 
 ## The real hardware
 
-The **Dual-Mode Disk Controller** is a Vector Graphic S-100 board for one hard disk and floppy drives. This model is Rev 2.0, February 1981. A jumper removes the hard disk, and the board then runs four floppy drives. `dualmode` is the board in that setup.
+The **Dual-Mode Disk Controller** is a Vector Graphic S-100 board for one hard disk and floppy drives. This model is Rev 2.0, February 1981. A jumper removes the hard disk, and the board then runs four floppy drives. `vgdmdc` is the board in that setup.
 
 The board has no command set. It has four ports, a 512-byte RAM and a 32-bit ECC circuit. It does not seek and it does not look for a sector header. The guest loads every byte of a sector into the RAM, and the guest checks each header byte. The only compare in the hardware is the sector number against the sector counter.
 
@@ -78,12 +78,12 @@ The ports are `port` to `port` + 3. The default base is `C0`. Ports `C4` to `CF`
 
 ## Verification
 
-`./build/altair_tests dualmode` checks every port with real bus cycles, on made-up sectors. The suite also boots the real Monitor ROM from a made-up disk, with the head on track 3 at the start. The tests do not hold an OASIS byte.
+`./build/altair_tests vgdmdc` checks every port with real bus cycles, on made-up sectors. The suite also boots the real Monitor ROM from a made-up disk, with the head on track 3 at the start. The tests do not hold an OASIS byte.
 
 OASIS 5.5A was checked once by hand, on the `vector` machine. It boots from `drive1`, and a second disk reads from `drive2`. A `RENAME` on a copy of the disk survives a reboot.
 
 ## References
 
-- `docs/boards/vector-bitstreamer.md`, the board that gives OASIS its clock.
+- `docs/boards/vector-bitstreamer2.md`, the board that gives OASIS its clock.
 - `docs/boards/vector-fwii.md`, the screen and the keyboard.
 - `docs/boards/bankmem.md`, the banked RAM that OASIS needs.

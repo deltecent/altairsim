@@ -7,7 +7,7 @@ Handbook*. The chip has 24 I/O pins in three ports and three modes of operation.
 programmer's model. It leaves out the electrical tables, the timing diagrams, the handshake timing of
 modes 1 and 2 and the application figures.
 
-**Emulated** as `Intel8255` (`src/chips/intel8255.h`), mode 0 only, on the `zcb` board.
+**Emulated** as `Intel8255` (`src/chips/intel8255.h`), mode 0 only, on the `vgzcb` board.
 
 ---
 
