@@ -207,7 +207,7 @@ The boards are in groups, in the same order as the sections below.
 | `jadedd` | Jade Double D: a double-density floppy controller with its own Z80. The host loads the program that the Z80 runs |
 | `dualsd` | S100Computers Dual SD: two microSD cards as CP/M drives. Boots CP/M 3 |
 | `dualide` | S100Computers IDE-AB: two CompactFlash cards as CP/M drives. Boots CP/M 3 |
-| `vgdmdc` | Vector Graphic Dual-Mode: four 5.25-inch 16-hard-sector floppy drives. Boots OASIS 5.5A |
+| `vgdmdc` | Vector Graphic Dual-Mode: four 5.25-inch 16-hard-sector floppy drives |
 | `vgmdc` | Vector Graphic Micropolis: four 5.25-inch 16-hard-sector floppy drives in memory, with its own boot PROM. Boots Vector CP/M |
 
 **Video and display**
@@ -1262,24 +1262,14 @@ The units are `drive0` to `drive3`. A disk image holds 275-byte slots, 16 on a t
 header. A file of 677600 bytes has two sides, and a file of 338800 bytes has one side. A file of
 any other size mounts with two sides and grows when a program writes to it.
 
-The `vector` machine has this board, with all the drives empty. Monitor 4.3 boots from `drive1`.
+The `vg3vipt` machine has this board, with all the drives empty. Monitor 4.3 boots from `drive1`.
 To boot a disk:
 
-1. Start the machine with `altairsim vector`.
+1. Start the machine with `altairsim vg3vipt`.
 2. Press `Ctrl-E` to go to the monitor.
 3. Type `MOUNT dm0:drive1 mydisk.vgi`.
 4. Type `RUN`. Monitor 4.3 continues at its `Mon>` prompt.
 5. Press `B`.
-
-The `vector` machine also has the banked RAM and the clock that OASIS 5.5A needs. The first thing
-OASIS asks for is the time, then the date. Type `FI` at its `>` prompt to list the files. OASIS does
-not see a second drive until you tell it. Mount a disk on `drive2`, and type these at the `>` prompt:
-
-```
-ATTACH A FLOPPY2
-MOUNT A
-FI * * A
-```
 
 ### `vgmdc`: Vector Graphic Micropolis Disk Controller
 
@@ -2299,12 +2289,12 @@ to `0E`. The `fill` property sets the screen RAM at power-on. Real RAM is not ze
 default is `random`.
 
 The board does not make a program wait for the picture, as the real board did. The status bit 5
-is a 60 Hz clock from the board's own crystal, at any clock setting.
+is a 60 Hz clock. With `clock_hz` set, it follows emulated time. At `clock_hz=0`, it follows host time.
 
-The `vector` machine has this board, a Z80 and Monitor 4.3 in ROM at `E000`:
+The `vg3vipt` machine has this board and Monitor 4.3 in ROM at `E000`:
 
 ```
-$ altairsim vector
+$ altairsim vg3vipt
 ```
 
 The Monitor prints `VECTOR GRAPHIC` and its `Mon>` prompt **in the video window**. Press `R` for

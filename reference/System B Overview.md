@@ -8,8 +8,7 @@ unpack and start a System B. This file keeps the board list, the drive specifica
 checks and the Monitor commands that the checks show. It omits the printer setup, the site advice
 and the unpacking steps.
 
-**Not emulated** as a machine. `machines/vector.toml` has the screen, the Monitor, the Dual-Mode
-controller and the Bitstreamer II.
+**Emulated** as `machines/vg3sb.toml`.
 
 Citations: `n-m` is a printed page. PDF page 7 is printed page 1-1.
 

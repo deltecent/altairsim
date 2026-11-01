@@ -12,6 +12,11 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: the `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines. They replace `vector`.** Each is a Vector Graphic machine: a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ. `builtin:vgmon41` and `builtin:vgmon20c` are new, for Monitor 4.1 and Monitor 2.0C. The `vector` machine is removed. Its boards remain.
+
+**Fixed: CP/M 2.22 on a Flashwriter II machine with `clock_hz` set stopped with `Bdos Err On A: Not ready`.**
+Bit 5 of port `00` (V BLANK) followed host time, but a paced machine runs in bursts and sleeps. The BIOS counts loops across that pulse to find the processor speed. The count was too low, so the BIOS took a 4 MHz machine for 2 MHz, and its disk timeout became shorter than one disk revolution. With `clock_hz` set, the bit now follows emulated time. At `clock_hz=0`, it follows host time.
+
 **Fixed: `SYMBOLS LOAD` read no symbols from a MACRO-80 listing.** It read an M80 `.PRN` with the ASM layout, found no address, and reported `0 symbol(s)`. It did not refuse a relocatable M80 listing, and it took a MAC `SET` as a program label. It now finds the M80 page header and uses the M80 columns, takes `EQU`, `SET`, `DEFL` and `ASET` as constants, and refuses a relocatable listing and names the line.
 
 **Fixed: a machine with a VDB-8024 keyboard held one host core at a prompt when it ran flat out.**

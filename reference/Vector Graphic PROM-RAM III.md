@@ -7,7 +7,7 @@ Manual Revision A, July 16, 1979, © 1979, 42 PDF pages. This is the board that 
 Graphic machines use for the Monitor. It also programs a 2708 or 2704 in one socket. This file omits
 the listing of the program (2-18 to 2-24) and the repair agreement.
 
-**Not emulated.** `machines/vector.toml` has a stand-in memory board for the Monitor.
+**Not emulated.** `machines/vg3sb.toml` and `machines/vgmz.toml` have a stand-in memory board for the Monitor.
 
 ---
 

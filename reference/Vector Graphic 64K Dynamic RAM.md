@@ -136,7 +136,7 @@ bank 6 therefore answers every byte that OASIS writes, and 16K is a size that `S
 64K board always starts at 0000H (§3), so it could not share that range. This is also an inference.
 No document shows this machine.
 
-`machines/vector.toml` gives the split as a `bankmem` window of 4000H–DFFFH, with RAM at 0000H that
+A machine gives the split as a `bankmem` window of 4000H–DFFFH, with RAM at 0000H that
 always answers. `SHOW BANK` then reads as below. With `banks = 2`, a line for `Bank #1` with the
 same range follows. `SHOW BANK` puts the nucleus above 3FFFH as well, and its tail at 4000H–4712H
 is in the banked range.

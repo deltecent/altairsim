@@ -8,7 +8,7 @@ names Monitors 4.1, 4.2 and Timeshare Monitor 4.4. The
 [PROM Reference](Vector%20Graphic%20PROM%20Reference.md) of December 1980 stops at 4.1, so the System
 RAM sheet is likely later.
 
-**Reference only.** `machines/vector.toml` has the same addresses, with a stand-in for the ZCB.
+**Reference only.** `machines/vg3vip.toml` has the same addresses.
 
 ---
 
