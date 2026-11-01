@@ -1,0 +1,10 @@
+; M80REL.MAC - relocatable M80 listing fixture
+	.8080
+BDOS	EQU	5
+START:	LXI	D,MSG
+	MVI	C,9
+	CALL	BDOS
+	RET
+MSG:	DB	'HI',24H
+TBL:	DW	START
+	END	START

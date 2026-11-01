@@ -1,0 +1,45 @@
+M80ABS	MACRO-80 3.44	09-Dec-81	PAGE	1
+
+
+                                ; M80ABS.MAC - absolute M80 listing fixture
+                                	TITLE	M80ABS
+                                	.8080
+  0000'                         	ASEG
+                                	ORG	0100H
+  0005                          BDOS	EQU	5
+  000D                          CR	EQU	0DH
+  0001                          COUNT	SET	1
+  0002                          COUNT	SET	2
+  0003                          STEP	DEFL	3
+  0004                          NAME	ASET	4
+  0100    11 010B               START:	LXI	D,MSG
+  0103    0E 09                 	MVI	C,9
+  0105    CD 0005               	CALL	BDOS
+  0108    3E 0D                 NOCOL:	MVI	A,CR
+  010A    C9                    	RET
+  010B    49 54 27 53           MSG:	DB	'IT''S A LONG STRING',24H
+  010F    20 41 20 4C           
+  0113    4F 4E 47 20           
+  0117    53 54 52 49           
+  011B    4E 47 24              
+  011E    0100 0108             TBL:	DW	START,NOCOL
+  0122                          	DS	4
+  0126    00                    PUB::	NOP
+  0127    00                    LAST:	NOP
+                                	END	START
+M80ABS	MACRO-80 3.44	09-Dec-81	PAGE	S
+
+
+Macros:
+
+Symbols:
+0005 	BDOS            0002 	COUNT           000D 	CR              
+0127 	LAST            010B 	MSG             0004 	NAME            
+0108 	NOCOL           0126I 	PUB             0100 	START           
+0003 	STEP            011E 	TBL             
+
+
+
+No Fatal error(s)
+
+

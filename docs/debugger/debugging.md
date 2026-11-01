@@ -526,12 +526,12 @@ A **`.SYM`** file is a list of names and values. Two toolchains write one:
   are not in it. For those, use the assembler's listing.
 
 A **`.PRN`** or **`.LST`** file is the listing from an assembler: CP/M `ASM`, Microsoft `M80`,
-or `MAC`. A listing gives more than a `.SYM` file, because it marks each `EQU`. For this reason,
-the debugger can tell a constant from a program label. Only program labels show as label
+or `MAC`. `SYMBOLS LOAD` finds the layout of each assembler itself. A listing gives more than a
+`.SYM` file, because it shows each `EQU` and `SET`. For this reason, the debugger can tell a constant from a program label. Only program labels show as label
 lines, so `0005` does not show as `BDOS:`.
 
 **The addresses must be absolute.** A relocatable `M80` listing marks its addresses, and
-`SYMBOLS LOAD` refuses it and names the line. Link the program and load the `.SYM`, or assemble
+`SYMBOLS LOAD` refuses a listing that gives a name to such an address and names the line. Link the program and load the `.SYM`, or assemble
 it to an absolute origin. The linker writes a `.SYM` after it links, so the addresses in a
 `.SYM` are always absolute.
 
