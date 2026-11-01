@@ -91,6 +91,7 @@ public:
     bool    rxReady() const { return rxRdy_; }   // status D1
     bool    txReady(const Clock& clk) const;     // status D0 (a deadline)
     bool    txEmpty(const Clock& clk) const;     // status D2
+    bool    txEnabled() const { return (command_ & 0x01) != 0; }  // TxEN, gates the TxRDY pin
 
     // ADVANCE THE RECEIVER. Take the next byte off the line if the last frame has
     // finished, and clock the in-flight frame forward. Public because the CARD calls

@@ -4,6 +4,7 @@
 #include "boards/cadzilla.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/mits-2sio.h"
+#include "boards/vector-bitstreamer.h"
 #include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88lpc.h"
@@ -152,6 +153,8 @@ const struct {
     {"vdm1", test_vdm1},
     {"vdb8024", test_vdb8024},
     {"fwii", test_fwii},
+    {"dualmode", test_dualmode},
+    {"bitstreamer", test_bitstreamer},
     {"terminal", test_terminal},
     {"dazzler", test_dazzler},
     {"dazzler2", test_dazzler2},
@@ -195,6 +198,7 @@ int main(int argc, char** argv) {
     altair::TurnkeyBoard::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::SbcBoard::setResolver(altair::resolveEndpoint);
+    altair::BitstreamerBoard::setResolver(altair::resolveEndpoint);
     altair::UioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
     altair::LpcBoard::setResolver(altair::resolveEndpoint);

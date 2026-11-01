@@ -11,9 +11,12 @@
 # WITHOUT SDL3 there is no window. The guest runs the same, and `DUMP F000-F77F` at the
 # altairsim> monitor reads the screen. See docs/boards/vector-fwii.md.
 #
-# WHAT IS NOT HERE. This is the Monitor and its console, and no more. There is no disk
-# controller, so `B` prints BOOT FLOPPY and comes back to Mon>. There is no 8251 at the ports
-# the Monitor writes at reset (03, 05 and 07), so nothing answers them and `E` has no line.
+# THE DISK. `B` boots from drive 1 of the controller, which is empty in this file. Put a disk
+# in it at the altairsim> monitor with `MOUNT dm0:drive1 <file>`, then press `B`. With no disk,
+# `B` prints BOOT FLOPPY and comes back to Mon>. OASIS 5.5A boots on this machine.
+#
+# WHAT IS NOT HERE. The Bitstreamer II below is at base 22 for OASIS. No board answers at the
+# ports the Monitor writes at reset (03, 05 and 07), so `E` has no line.
 
 [machine]
 name    = "vector"
@@ -39,10 +42,40 @@ id   = "fw0"
   [board.unit.keyboard]
   connect = "console"
 
+# THE DISK CONTROLLER, at the board's default ports C0-C3. All four drives are empty.
+[[board]]
+type = "dualmode"
+id   = "dm0"
+
+# THE CLOCK, for OASIS. The base is 22, and nothing is connected to the serial channels. OASIS
+# reads bit 0 of IN 28 to tell its clock from a key, so j4_d0 wires the clock to that input. No
+# Vector Graphic document shows that wire. See docs/boards/vector-bitstreamer.md.
+[[board]]
+type      = "bitstreamer"
+id        = "bs0"
+port      = 22
+clock_int = "int"
+j4_d0     = "clock-latch"
+
+# THE BANKED RAM. OASIS writes port 40 and tests each bank from 4000 up, so bank 1 must not
+# answer. Its copy routine and its stack stay in 0000-3FFF across a bank switch, so that part
+# must answer in every bank, and it is on the next board. The OASIS System Reference Manual
+# (SET BANK) gives 16K, 32K or 48K for this common memory.
+[[board]]
+type      = "bankmem"
+id        = "ram0"
+card      = "vector"
+window_lo = 4000
+window_hi = DFFF
+banks     = 1
+fill      = "random"
+
 # MEMORY. A STAND-IN. The Monitor and its RAM were on a Vector Graphic board, the 12K
 # PROM/RAM or the ZCB, and neither of those is built yet. This generic board gives the
 # Monitor the same addresses. It leaves a hole at F000-F7FF, where the FlashWriter II
-# answers. The Monitor's stack is at FFD0, so RAM must be there.
+# answers. The Monitor's stack is at FFD0, so RAM must be there. The RAM at 0000 answers in
+# every bank. OASIS sets bit 6 in every byte it writes to port 40, which fits a board strapped
+# to bank 6, but no Vector Graphic document shows which board held the common memory.
 [[board]]
 type = "memory"
 id   = "mem0"
@@ -51,7 +84,7 @@ fill = "random"               # real RAM does not come up zeroed
   [[board.region]]
   type = "ram"
   at   = 0000
-  size = "56K"
+  size = "16K"
 
   [[board.region]]
   type  = "rom"

@@ -598,6 +598,12 @@ add_library(altair_core STATIC
   # The Vector Graphic Flashwriter II: 80x24 memory-mapped video and the keyboard port on
   # one board. See vector-fwii.h.
   src/boards/vector-fwii.cpp
+  # The Vector Graphic Dual-Mode Disk Controller, floppy half: a 512-byte buffer RAM behind
+  # four ports, and 275-byte hard-sector slots. See vector-dualmode.h.
+  src/boards/vector-dualmode.cpp
+  # The Vector Graphic Bitstreamer II: three 8251s, the parallel latches, and the 55 Hz clock
+  # that OASIS runs on. See vector-bitstreamer.h.
+  src/boards/vector-bitstreamer.cpp
   # CADzilla: an HD63484 ACRTC + Bt453 RAMDAC graphics board with its own frame memory;
   # six I/O ports, no memory decoded. Renders the same host Display seam. See cadzilla.h.
   src/boards/cadzilla.cpp
@@ -858,6 +864,8 @@ add_executable(altair_tests
   tests/test_pio.cpp
   tests/test_vdb8024.cpp
   tests/test_fwii.cpp
+  tests/test_dualmode.cpp
+  tests/test_bitstreamer.cpp
   tests/test_terminal.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp

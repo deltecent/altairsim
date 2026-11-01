@@ -115,3 +115,34 @@ all (p. 11, p. 21).
   (pp. 18–19, 24) — a real hazard for an emulator that halts refresh bookkeeping, though the
   refresh electronics themselves are out of scope here. Board-level RFSH/MWRITE/RESET-pulse
   jumpers (areas A/B/C, pp. 15–18) are not software-visible and are omitted.
+
+---
+
+## 7. What OASIS 5.5A shows
+
+This section comes from a disk image and from the *OASIS System Reference Manual*, Second Edition
+Revised, and not from the RAM manual. The Vector Graphic hardware for it is an inference.
+
+OASIS 5.5A writes port 40H, always as `40H OR bit`. Bit 6 alone fits a board set to bank 6. The
+RAM test at 544D reads back each bank from 4000H up, so a bank with no board must float. The copy
+routine and the stack stay at 24xxH and 256EH across a switch, so 0000H–3FFFH answers in each
+bank. The RAM manual does not describe this split. `SET BANK` in the OASIS manual calls this memory
+common or global, and gives its size as the first 16K, 32K or 48K. `SET BANK` is for systems with a
+programmable bank size, and on this disk `SET BANK 16` gives `Syntax error.`
+
+The [Early Products](Vector%20Graphic%20Early%20Products.md) sheet says that a 16K static board can
+go in "1 or more" banks. By §1, a board answers when its bit is 1 in the byte. A 16K board set to
+bank 6 therefore answers every byte that OASIS writes, and 16K is a size that `SET BANK` names. A
+64K board always starts at 0000H (§3), so it could not share that range. This is also an inference.
+No document shows this machine.
+
+`machines/vector.toml` gives the split as a `bankmem` window of 4000H–DFFFH, with RAM at 0000H that
+always answers. `SHOW BANK` then reads as below. With `banks = 2`, a line for `Bank #1` with the
+same range follows. `SHOW BANK` puts the nucleus above 3FFFH as well, and its tail at 4000H–4712H
+is in the banked range.
+
+```
+Region  Low   High  Size
+NUCLEUS 0000H 4712H 18195
+Bank #0 4713H DFFFH 39149
+```

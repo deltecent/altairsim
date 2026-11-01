@@ -118,6 +118,8 @@ void test_4pio();
 void test_vdm1();
 void test_vdb8024();
 void test_fwii();
+void test_dualmode();
+void test_bitstreamer();
 void test_terminal();
 void test_dazzler();
 void test_dazzler2();
