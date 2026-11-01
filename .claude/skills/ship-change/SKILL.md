@@ -71,7 +71,6 @@ maintainer can `/clear` without losing anything.** Say when they are all done.
 - **Sync:** `git switch master && git pull --ff-only`.
 - **Confirm the branch is gone** both locally and on origin (`git fetch --prune`), and that
   `git status` is clean. A leftover branch or a stray edit is the thing a `/clear` hides.
-- If `TODO.md` tracks the item, update it. It is untracked, so it needs no branch or PR.
 - **Write back what was learned.** A non-obvious trace, a trap paid for once, or a procedure
   that is now a skill goes into a memory note (and its one-line pointer in `MEMORY.md`) or
   into `docs/devguide/` when the fact is about how the code is built. Nothing durable should
