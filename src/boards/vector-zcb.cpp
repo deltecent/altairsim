@@ -377,7 +377,7 @@ std::vector<MapEntry> ZcbBoard::memMap() const {
 
 bool ZcbBoard::connect(const std::string& unit, const std::string& ep, std::string& err) {
     if (unit != "serial") {
-        err = "zcb has no unit '" + unit + "' to connect -- it has 'serial'";
+        err = "vgzcb has no unit '" + unit + "' to connect -- it has 'serial'";
         return false;
     }
     if (!g_resolver) {
@@ -401,7 +401,7 @@ bool ZcbBoard::connect(const std::string& unit, const std::string& ep, std::stri
 
 bool ZcbBoard::disconnect(const std::string& unit, std::string& err) {
     if (unit != "serial") {
-        err = "zcb has no unit '" + unit + "' to disconnect -- it has 'serial'";
+        err = "vgzcb has no unit '" + unit + "' to disconnect -- it has 'serial'";
         return false;
     }
     u_.disconnect();
@@ -412,7 +412,7 @@ bool ZcbBoard::disconnect(const std::string& unit, std::string& err) {
 bool ZcbBoard::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
                              std::string& err) {
     if (unit != "serial") {
-        err = "zcb has no unit '" + unit + "' to connect -- it has 'serial'";
+        err = "vgzcb has no unit '" + unit + "' to connect -- it has 'serial'";
         return false;
     }
     u_.connect(std::move(s));

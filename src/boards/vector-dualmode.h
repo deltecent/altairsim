@@ -44,7 +44,7 @@ namespace altair {
 
 class DualModeBoard : public Board {
 public:
-    std::string type() const override { return "dualmode"; }
+    std::string type() const override { return "vgdmdc"; }
 
     bool    decodes(const BusCycle& c) const override;
     uint8_t read(const BusCycle& c) override;

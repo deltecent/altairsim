@@ -147,7 +147,7 @@ The boards are in groups, in the same order as the sections below.
 | `8080` | the MITS 88-CPU |
 | `8085` | an 8085 processor board. It runs all 8080 code, and adds RIM, SIM and the TRAP and RST interrupts |
 | `z80` | a Z80 processor board. The same bus, with a different instruction set |
-| `zcb` | Vector Graphic ZCB: a Z80 single board computer with PROM, RAM, a serial port and a parallel port |
+| `vgzcb` | Vector Graphic ZCB: a Z80 single board computer with PROM, RAM, a serial port and a parallel port |
 
 **Serial ports and consoles**
 
@@ -160,7 +160,7 @@ The boards are in groups, in the same order as the sections below.
 | `io4` | SSM IO-4: two serial ports and four parallel ports |
 | `propio` | S100Computers Console I/O: a serial console built on a Propeller chip |
 | `pmmi` | PMMI MM-103: a Bell 103 telephone modem on one board |
-| `bitstreamer` | Vector Graphic Bitstreamer II: three 8251 serial channels, a 55 Hz clock and the interrupt mask |
+| `vgbsii` | Vector Graphic Bitstreamer II: three 8251 serial channels, a 55 Hz clock and the interrupt mask |
 
 **Cassette**
 
@@ -206,8 +206,8 @@ The boards are in groups, in the same order as the sections below.
 | `jadedd` | Jade Double D: a double-density floppy controller with its own Z80. The host loads the program that the Z80 runs |
 | `dualsd` | S100Computers Dual SD: two microSD cards as CP/M drives. Boots CP/M 3 |
 | `dualide` | S100Computers IDE-AB: two CompactFlash cards as CP/M drives. Boots CP/M 3 |
-| `dualmode` | Vector Graphic Dual-Mode: four 5.25-inch 16-hard-sector floppy drives. Boots OASIS 5.5A |
-| `micropolis` | Vector Graphic Micropolis: four 5.25-inch 16-hard-sector floppy drives in memory, with its own boot PROM. Boots Vector CP/M |
+| `vgdmdc` | Vector Graphic Dual-Mode: four 5.25-inch 16-hard-sector floppy drives. Boots OASIS 5.5A |
+| `vgmdc` | Vector Graphic Micropolis: four 5.25-inch 16-hard-sector floppy drives in memory, with its own boot PROM. Boots Vector CP/M |
 
 **Video and display**
 
@@ -217,7 +217,7 @@ The boards are in groups, in the same order as the sections below.
 | `dazzler` | Cromemco Dazzler: color graphics. Needs a display |
 | `dazzler2` | Cromemco Dazzler II: the Dazzler with its picture in RAM on the board. Needs a display |
 | `vdb8024` | SD Systems VDB-8024: an 80×24 video terminal on one board. Needs a display |
-| `fwii` | Vector Graphic Flashwriter II: memory-mapped 80×24 video with the keyboard port. Needs a display |
+| `vgfwii` | Vector Graphic Flashwriter II: memory-mapped 80×24 video with the keyboard port. Needs a display |
 | `cadzilla` | CADzilla: an HD63484 ACRTC graphics board with a Bt453 color table. Needs a display |
 | `sol` | Processor Technology Sol-PC: the onboard I/O of the Sol-20, on one board |
 
@@ -503,12 +503,12 @@ The `dualsd` machine uses this board.
 
 ## The processor boards
 
-The S-100 processor boards are `8080`, `8085`, `z80` and `zcb`. This section applies to all of
+The S-100 processor boards are `8080`, `8085`, `z80` and `vgzcb`. This section applies to all of
 them. The sections after it describe each one.
 
 **The processor is a board like the other boards.** It plugs into the backplane, and you can
 remove it. With `-n`, you can build a machine with no processor. A processor board other than
-`zcb` decodes no ports and no addresses. It runs the program, and it drives the bus to do that. You can put a
+`vgzcb` decodes no ports and no addresses. It runs the program, and it drives the bus to do that. You can put a
 `z80` where an `8080` was, and the bus, the other boards and the debugger all work the same.
 
 Every processor board has the same three properties:
@@ -607,10 +607,10 @@ interrupts on the `INTR` line work as they do on the 8080.
 different instruction set. Everything in *The processor boards* above applies. The built-in
 `z80` machine has a `z80`, 64K of RAM and a 2SIO console, so that you can try the processor.
 
-### `zcb`: Vector Graphic ZCB
+### `vgzcb`: Vector Graphic ZCB
 
 **A Z80 processor, PROM, 1K of RAM, a serial port and a parallel port, on one board.** Do not add a
-`z80` to a machine with this board, because `zcb` is the processor. Everything in *The processor
+`z80` to a machine with this board, because `vgzcb` is the processor. Everything in *The processor
 boards* above applies. The crystal of the real board is 4 MHz, so set `clock_hz = 4000000` for the
 real speed.
 
@@ -628,7 +628,7 @@ Put the PROMs in `[[board.socket]]` tables. The board has three sockets. `at` is
 
 ```toml
 [[board]]
-type     = "zcb"
+type     = "vgzcb"
 id       = "cpu0"
 clock_hz = 4000000
 
@@ -658,12 +658,12 @@ the value. The label 9600 runs at 9615 baud, as on the real board.
 
 The board has no interrupt source. Nothing connects to the parallel port, so an input reads `FF`.
 
-**Move the ports to use this board with a `bitstreamer`.** At their default ports, the two boards
+**Move the ports to use this board with a `vgbsii`.** At their default ports, the two boards
 both decode `04`-`09`, and `SHOW BUS CONTENTION` reports it. Ports `0C` and `18` are free:
 
 ```toml
 [[board]]
-type          = "zcb"
+type          = "vgzcb"
 id            = "cpu0"
 clock_hz      = 4000000
 serial_port   = 0C
@@ -672,7 +672,7 @@ parallel_port = 18
 
 To try this for one run, without a change to the machine file, start altairsim with
 `--set "cpu0 serial_port=0C" --set "cpu0 parallel_port=18"`. A guest that drives the parallel port
-of the `zcb` must use the new port.
+of the `vgzcb` must use the new port.
 
 ## Serial ports and consoles
 
@@ -925,7 +925,7 @@ property gives the number. The board also raises no interrupts.
 `SHOW pmmi0` shows the live character format, baud rate, UART flags and modem lines, with the
 base address. To try the board, add it to `default`. `BOARDS ADD pmmi pmmi0` adds it at `C0`.
 
-### `bitstreamer`: Vector Graphic Bitstreamer II
+### `vgbsii`: Vector Graphic Bitstreamer II
 
 **Three 8251 serial channels, two parallel channels and a 55 Hz clock, on one board.** The board
 decodes eight ports. The `port` property is the first of them, and it must end in 2: `02`, `12` and
@@ -954,7 +954,7 @@ No Vector Graphic document shows this wire. The value comes from what OASIS does
 
 No cable can be connected to the parallel channels.
 
-Beside a `zcb`, move the ports of the `zcb`, as the section on that board shows.
+Beside a `vgzcb`, move the ports of the `vgzcb`, as the section on that board shows.
 
 ## Cassette
 
@@ -1235,7 +1235,7 @@ With `real`, the processor must be fast enough for the disk, as on the real mach
 `tarbelldd`, a double-density disk without DMA needs a 4 MHz processor (`clock_hz = 4000000`). At
 2 MHz, the guest loses data and reports a disk error.
 
-### `dualmode`: Vector Graphic Dual-Mode Disk Controller
+### `vgdmdc`: Vector Graphic Dual-Mode Disk Controller
 
 **Four floppy drives behind four ports and a 512-byte RAM.** The board has no commands. A program
 fills the RAM or empties it through a port, and one `OUT` starts the read or the write of one sector.
@@ -1265,7 +1265,7 @@ MOUNT A
 FI * * A
 ```
 
-### `micropolis`: Vector Graphic Micropolis Disk Controller
+### `vgmdc`: Vector Graphic Micropolis Disk Controller
 
 **Four floppy drives in a 1K block of memory, with a boot PROM.** The board has no ports. The
 processor moves each byte of a sector through a register in the block, and the board holds the
@@ -1284,7 +1284,7 @@ slots, 16 on a track, 77 tracks, with no file header. A file of 338800 bytes has
 to 127 bytes longer also has one side, and these bytes stay as they are. A file of any other size
 mounts with two sides and grows when a program writes to it. You supply the disk image.
 
-**Boot a disk with a `zcb` board.** Vector CP/M needs a Vector Monitor at `E000` and RAM up to
+**Boot a disk with a `vgzcb` board.** Vector CP/M needs a Vector Monitor at `E000` and RAM up to
 `DFFF`. The `B` key of Monitor 4.3 boots the Dual-Mode board, so use the `G` key for this board. With
 `builtin:vgmon40` in the socket, the `B` key boots this board.
 
@@ -1300,7 +1300,7 @@ mounts with two sides and grows when a program writes to it. You supply the disk
    keyboard = "console"
 
    [[board]]
-   type     = "zcb"
+   type     = "vgzcb"
    id       = "cpu0"
    clock_hz = 4000000
 
@@ -1309,7 +1309,7 @@ mounts with two sides and grows when a program writes to it. You supply the disk
      mount = "builtin:vgmon43"
 
    [[board]]
-   type = "fwii"
+   type = "vgfwii"
    id   = "fw0"
 
      [board.unit.keyboard]
@@ -1325,7 +1325,7 @@ mounts with two sides and grows when a program writes to it. You supply the disk
      size = "56K"
 
    [[board]]
-   type = "micropolis"
+   type = "vgmdc"
    id   = "mp0"
 
      [[board.drive]]
@@ -1339,9 +1339,9 @@ mounts with two sides and grows when a program writes to it. You supply the disk
 **Some Vector disks print to serial port A of a Bitstreamer II, at port `02`, and not to the
 Flashwriter.** These disks show nothing on this machine. To boot one, do these steps:
 
-1. Remove the `[board.unit.keyboard]` table from the `fwii` board. Only one unit can hold the console.
-2. Add a `bitstreamer` board, and set `connect = "console"` on its unit `a`.
-3. Move the ports of the `zcb` board, as the section on that board shows.
+1. Remove the `[board.unit.keyboard]` table from the `vgfwii` board. Only one unit can hold the console.
+2. Add a `vgbsii` board, and set `connect = "console"` on its unit `a`.
+3. Move the ports of the `vgzcb` board, as the section on that board shows.
 4. Put `builtin:vgmon40c` in the socket. This Monitor uses serial port A.
 5. Type `B` at the `Mon>` prompt.
 
@@ -2256,7 +2256,7 @@ tab, cursor up and right, clear screen and home, and the `ESC` sequences that mo
 and erase to the end of a line or of the screen. A full line wraps, and a line feed on the
 bottom line scrolls the page up.
 
-### `fwii`: Vector Graphic Flashwriter II
+### `vgfwii`: Vector Graphic Flashwriter II
 
 An **80-column by 24-line text screen and the keyboard port, on one board.** The screen is **2K
 of the machine's own memory**, at `F000` by default. A program puts a character on the screen
@@ -2294,7 +2294,7 @@ $ altairsim vector
 The Monitor prints `VECTOR GRAPHIC` and its `Mon>` prompt **in the video window**. Press `R` for
 the registers. Type `DE000E03F` and Return to dump the Monitor's first bytes. The window is the
 console, so the keys go to the Monitor. The drives are empty, so `B` prints `BOOT FLOPPY` and
-returns to the prompt. See `dualmode` for how to boot a disk.
+returns to the prompt. See `vgdmdc` for how to boot a disk.
 
 Without SDL3 the machine runs the same and shows no window. The command `DUMP F000-F77F` shows
 the screen as bytes.

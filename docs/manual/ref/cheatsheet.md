@@ -124,8 +124,8 @@ Type the part before the bracket.
 |---|---|
 | `8080` | MITS 88-CPU: 8080A CPU board |
 | `8085` | Generic 8085 CPU board |
+| `vgzcb` | Vector Graphic ZCB: Z-80 single board computer |
 | `z80` | Generic Z80 CPU board |
-| `zcb` | Vector Graphic ZCB: Z-80 single board computer |
 
 **Memory**
 
@@ -145,7 +145,6 @@ Type the part before the bracket.
 | `disk1` | CompuPro Disk 1: uPD765A floppy controller with DMA |
 | `disk1a` | CompuPro Disk 1A: uPD765A floppy controller with DMA |
 | `dualide` | S100Computers IDE-AB: two CompactFlash sockets for CP/M 3 |
-| `dualmode` | Vector Graphic Dual-Mode: 5.25" floppy controller, 4 drives |
 | `dualsd` | S100Computers Dual SD: two microSD sockets for CP/M 3 |
 | `fdcplus` | FarmTek FDC+: serial drive (drive types 6, 7) |
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
@@ -154,17 +153,17 @@ Type the part before the bracket.
 | `mds` | MITS 88-MDS: 5.25" minidisk controller |
 | `mdsa` | North Star MDS-A: single-density 5.25" floppy controller |
 | `mdsad` | North Star MDS-A-D: double-density 5.25" floppy controller |
-| `micropolis` | Vector Graphic Micropolis: 5.25" floppy controller, 4 drives |
 | `tarbell` | Tarbell #1011: single-density floppy controller |
 | `tarbelldd` | Tarbell #2022: double-density floppy controller |
 | `versafloppy` | SD Systems VersaFloppy I/II: WD177x floppy controller |
+| `vgdmdc` | Vector Graphic Dual-Mode: 5.25" floppy controller, 4 drives |
+| `vgmdc` | Vector Graphic Micropolis: 5.25" floppy controller, 4 drives |
 
 **Serial**
 
 | Type | What it is |
 |---|---|
 | `2sio` | MITS 88-2SIO: two 6850 serial ports |
-| `bitstreamer` | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 | `gsio` | Generic SIO: two strap-configurable serial channels |
 | `io4` | SSM IO-4: two serial + two parallel ports |
 | `pmmi` | PMMI MM-103: Bell 103 modem |
@@ -172,6 +171,7 @@ Type the part before the bracket.
 | `sbc` | SD Systems SBC-100/200: Z80 single-board computer |
 | `sio` | MITS 88-SIO: one serial port (COM2502 UART) |
 | `turnkey` | MITS 8800b Turnkey Module: boot PROM, serial, auto-start |
+| `vgbsii` | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 
 **Tape**
 
@@ -198,9 +198,9 @@ Type the part before the bracket.
 | `cadzilla` | CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC |
 | `dazzler` | Cromemco Dazzler: color graphics |
 | `dazzler2` | Cromemco Dazzler II: color graphics, on-board RAM |
-| `fwii` | Vector Graphic Flashwriter II: 80x24 video and keyboard port |
 | `vdb8024` | SD Systems VDB-8024: 80x24 video terminal board |
 | `vdm1` | Processor Technology VDM-1: 16x64 memory-mapped video |
+| `vgfwii` | Vector Graphic Flashwriter II: 80x24 video and keyboard port |
 
 **Systems**
 

@@ -7,7 +7,7 @@ Revision A*, February 1, 1981, 62 PDF pages. The file holds the manual, the Z-80
 (dated 01/26/81, written by Jay Rasmussen) and two schematics. This board drives one hard disk
 and up to three floppies, or four floppies, through four I/O ports and a 512-byte buffer RAM.
 
-**Emulated as `dualmode`, for the floppy drives only** (`docs/boards/vector-dualmode.md`). Issue
+**Emulated as `vgdmdc`, for the floppy drives only** (`docs/boards/vector-dualmode.md`). Issue
 #872 holds the hard disk half. This file holds what an implementer needs: ports, bits, sector
 images, sequences, geometry, the ECC polynomial and the schematic facts that the text leaves out.
 It omits the BIOS and timeshare glue, and the full listing of the ECC correction routine.

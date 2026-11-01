@@ -36,7 +36,7 @@ id   = "cpu0"
 # THE SCREEN AND THE KEYBOARD: 2K of video RAM at F000 and the keyboard ports at 00/01, the
 # board's own defaults and the addresses the Monitor has in it.
 [[board]]
-type = "fwii"
+type = "vgfwii"
 id   = "fw0"
 
   [board.unit.keyboard]
@@ -44,14 +44,14 @@ id   = "fw0"
 
 # THE DISK CONTROLLER, at the board's default ports C0-C3. All four drives are empty.
 [[board]]
-type = "dualmode"
+type = "vgdmdc"
 id   = "dm0"
 
 # THE CLOCK, for OASIS. The base is 22, and nothing is connected to the serial channels. OASIS
 # reads bit 0 of IN 28 to tell its clock from a key, so j4_d0 wires the clock to that input. No
-# Vector Graphic document shows that wire. See docs/boards/vector-bitstreamer.md.
+# Vector Graphic document shows that wire. See docs/boards/vector-bitstreamer2.md.
 [[board]]
-type      = "bitstreamer"
+type      = "vgbsii"
 id        = "bs0"
 port      = 22
 clock_int = "int"

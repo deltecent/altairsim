@@ -48,7 +48,7 @@ struct Rig {
         std::string err;
         m.bus.setVerify(true);
         m.bus.busClock().setHostNs([this] { return ns; });
-        fw = dynamic_cast<FwiiBoard*>(m.add("fwii", "fw0", err));
+        fw = dynamic_cast<FwiiBoard*>(m.add("vgfwii", "fw0", err));
         FwiiBoard::setDisplay(&disp);
         fw->connect("keyboard", "scripted", err);
         kbd = dynamic_cast<ScriptedStream*>(fw->unitStream("keyboard"));

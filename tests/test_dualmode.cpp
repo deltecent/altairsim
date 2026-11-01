@@ -78,7 +78,7 @@ struct Rig {
 
     Rig() {
         std::string err;
-        dm = dynamic_cast<DualModeBoard*>(m.add("dualmode", "dm0", err));
+        dm = dynamic_cast<DualModeBoard*>(m.add("vgdmdc", "dm0", err));
         m.power();
     }
     ~Rig() { setMediaResolver(nullptr); }
@@ -140,8 +140,8 @@ struct Vector {
         std::string err;
         FwiiBoard::setDisplay(&disp);
         m.add("z80", "cpu0", err);
-        fw = dynamic_cast<FwiiBoard*>(m.add("fwii", "fw0", err));
-        dm = dynamic_cast<DualModeBoard*>(m.add("dualmode", "dm0", err));
+        fw = dynamic_cast<FwiiBoard*>(m.add("vgfwii", "fw0", err));
+        dm = dynamic_cast<DualModeBoard*>(m.add("vgdmdc", "dm0", err));
         auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
         Region ram, rom, high;
         ram.kind = RegionKind::Ram;
@@ -218,7 +218,7 @@ void putBootSector(std::vector<uint8_t>& img, std::initializer_list<uint8_t> cod
 } // namespace
 
 void test_dualmode() {
-    SECTION("dualmode: the port map");
+    SECTION("vgdmdc: the port map");
     {
         Rig g;
         CHECK(g.in(0xC0) == kStatus0, "status 0, with no drive selected");
@@ -252,7 +252,7 @@ void test_dualmode() {
         CHECK(err.find("A7-A4") != std::string::npos, "and the refusal says why");
     }
 
-    SECTION("dualmode: the RAM counter");
+    SECTION("vgdmdc: the RAM counter");
     {
         Rig g;
         (void)g.in(0xC3);
@@ -267,7 +267,7 @@ void test_dualmode() {
         CHECK(g.in(0xC2) == 0xEE, "only IN C3 clears it");
     }
 
-    SECTION("dualmode: status bits and the motor timer");
+    SECTION("vgdmdc: status bits and the motor timer");
     {
         Rig g;
         CHECK(g.load(1, formatted(kTwoSides), /*ro=*/true), "mount protected");
@@ -293,7 +293,7 @@ void test_dualmode() {
         CHECK(g.in(0xC1) & 0x04, "each OUT C0 retriggers the timer");
     }
 
-    SECTION("dualmode: step and track 0");
+    SECTION("vgdmdc: step and track 0");
     {
         Rig g;
         g.out(0xC0, 0x01 | kIn);
@@ -321,7 +321,7 @@ void test_dualmode() {
         CHECK(g.dm->driveTrack(1) == 76, "the stop at track 76");
     }
 
-    SECTION("dualmode: busy floats the board");
+    SECTION("vgdmdc: busy floats the board");
     {
         Rig g;
         CHECK(g.load(1, formatted(kTwoSides)), "mount");
@@ -347,7 +347,7 @@ void test_dualmode() {
         CHECK(g.in(0xC0) & 0x04, "OUT C0 was lost too: the head and the select stayed");
     }
 
-    SECTION("dualmode: the wait follows the disk");
+    SECTION("vgdmdc: the wait follows the disk");
     {
         Rig g;
         CHECK(g.load(1, formatted(kTwoSides)), "mount");
@@ -372,7 +372,7 @@ void test_dualmode() {
         CHECK(g.in(0xC1) != 0xFF, "and then passes");
     }
 
-    SECTION("dualmode: START with no motor, and with no disk");
+    SECTION("vgdmdc: START with no motor, and with no disk");
     {
         Rig g;
         g.out(0xC3, 0);
@@ -397,7 +397,7 @@ void test_dualmode() {
         CHECK(g.ramOut(1)[0] == 0x77, "and no transfer ran");
     }
 
-    SECTION("dualmode: reading, by track, side and sector");
+    SECTION("vgdmdc: reading, by track, side and sector");
     {
         Rig g;
         CHECK(g.load(0, formatted(kTwoSides)), "two sides by size");
@@ -428,7 +428,7 @@ void test_dualmode() {
         CHECK(g.ramOut(1)[0] == 0x77, "side 1 of it gives no sync, so RAM keeps what it held");
     }
 
-    SECTION("dualmode: the ECC");
+    SECTION("vgdmdc: the ECC");
     {
         // Track 5, sector 9, data 00 to FF. The two values come from a separate script, whose
         // ECC matches the stored one on 2446 sectors of a real disk.
@@ -471,7 +471,7 @@ void test_dualmode() {
         CHECK(got != 0 && got == want, "a damaged sector gives the syndrome, not 00");
     }
 
-    SECTION("dualmode: writing");
+    SECTION("vgdmdc: writing");
     {
         Rig g;
         CHECK(g.load(1, formatted(kTwoSides)), "mount");
@@ -507,7 +507,7 @@ void test_dualmode() {
         CHECK(g.in(0xC2) == 0, "and that sector is unformatted");
     }
 
-    SECTION("dualmode: write protect drops the write with no error");
+    SECTION("vgdmdc: write protect drops the write with no error");
     {
         Rig g;
         CHECK(g.load(1, formatted(kTwoSides), /*ro=*/true), "mount");
@@ -522,7 +522,7 @@ void test_dualmode() {
         CHECK(g.dm->drainLog().empty(), "and only once");
     }
 
-    SECTION("dualmode: blank disks, and sizes the board does not know");
+    SECTION("vgdmdc: blank disks, and sizes the board does not know");
     {
         Rig g;
         CHECK(g.load(1, {}), "an empty file is an unformatted disk");
@@ -544,7 +544,7 @@ void test_dualmode() {
         CHECK(g.ramOut(1)[0] == 0x77, "still reads as one side");
     }
 
-    SECTION("dualmode: POC clears the latches, RESET does not");
+    SECTION("vgdmdc: POC clears the latches, RESET does not");
     {
         Rig g;
         g.out(0xC0, 0x01 | kIn);
@@ -555,7 +555,7 @@ void test_dualmode() {
         CHECK(g.in(0xC1) == kStatus1, "POC* clears the one-shot");
     }
 
-    SECTION("dualmode: snapshot");
+    SECTION("vgdmdc: snapshot");
     {
         Rig src;
         CHECK(src.load(1, formatted(kTwoSides)), "mount");
@@ -589,7 +589,7 @@ void test_dualmode() {
         CHECK(dst.in(0xC0) & 0x04, "drive 0 is on track 0");
     }
 
-    SECTION("dualmode: the machine file side");
+    SECTION("vgdmdc: the machine file side");
     {
         Rig g;
         KeyValues kv = {{"unit", "1"}, {"mount", "a.vgi"}, {"readonly", "true"}};
@@ -610,7 +610,7 @@ void test_dualmode() {
         CHECK(!g.dm->unmount("drive1", err), "and the drive is empty");
     }
 
-    SECTION("dualmode: Monitor 4.3 boots from drive 1");
+    SECTION("vgdmdc: Monitor 4.3 boots from drive 1");
     {
         Vector g;
         auto   img = formatted(kTwoSides);
@@ -636,7 +636,7 @@ void test_dualmode() {
         CHECK(g.m.bus.memRead(0x0600) == 0x3E, "the sector landed at 0600");
     }
 
-    SECTION("dualmode: the Monitor refuses a sector that does not start with 3E");
+    SECTION("vgdmdc: the Monitor refuses a sector that does not start with 3E");
     {
         Vector g;
         auto   img = formatted(kTwoSides);

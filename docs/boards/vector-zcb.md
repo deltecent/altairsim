@@ -17,7 +17,7 @@ Jumpers set the board up. Areas E and G set the ports. Area F joins the PROMs to
 | Intel 8255A data sheet, 1979 | `reference/Intel 8255.md` | The mode word, the port directions, the bit set and reset, the reset state |
 | Intel 8251 data sheet | `reference/Intel 8251 USART.md` | The serial chip |
 | Monitor 4.3 | `roms/VGMON43/VGMON43.BIN` | The check of the reset path and the serial init: it starts from 0000 and programs the 8251 through 05 and 07 |
-| Monitors 4.0 and 4.0c | `roms/VGMON40/VGMON40.BIN`, `roms/VGMON40C/VGMON40C.BIN` | The check of the reset path with the older Monitors, and of a `bitstreamer` beside this board |
+| Monitors 4.0 and 4.0c | `roms/VGMON40/VGMON40.BIN`, `roms/VGMON40C/VGMON40C.BIN` | The check of the reset path with the older Monitors, and of a `vgbsii` beside this board |
 
 The manual gives port 04 as control on p. 2-1 and as data on p. 2-7. Data at 04 won, because sheet 7 and `mon40c` show it. The Port Map lists a second serial port at 06 and 07. The manual and sheet 7 show one 8251 with A1 not decoded, and that won. The manual says that TxRDY can interrupt. Sheet 7 marks the pin as no connection, and that won. `reference/ZCB CPU Manual.md` lists each conflict.
 
@@ -73,7 +73,7 @@ Both chips are in one group of 32 ports. The port is `group` + `serial_port`, or
 
 ## Beside a Bitstreamer II
 
-A `bitstreamer` at its default port 02 decodes 02-09. The `zcb` decodes 04-07 and 08-0B at its default ports, so the two boards share 04-09 and the bus reports `CONTENTION`. On real hardware, pulling U2, the 74LS42 port decoder, stops the 8251 and the 8255. Lifting pin 2 of U2 stops the 8251 only.
+A `vgbsii` at its default port 02 decodes 02-09. The `vgzcb` decodes 04-07 and 08-0B at its default ports, so the two boards share 04-09 and the bus reports `CONTENTION`. On real hardware, pulling U2, the 74LS42 port decoder, stops the 8251 and the 8255. Lifting pin 2 of U2 stops the 8251 only.
 
 This model has no U2 setting. Move the two chips to free ports with `serial_port = 0C` and `parallel_port = 18`, as area E can do on the real board. The table in the Port Map lists nothing at 0C-0F or 18-1F. A note there puts the multiuser time share system at 08-0F, so these ports are not free on that system. The defaults stay at 04 and 08. A guest that drives the 8255 must use the new port.
 
@@ -101,7 +101,7 @@ This model has no U2 setting. Move the two chips to free ports with `serial_port
 
 S1 is measured in T-states for each clock factor. `test_intel8255` covers the chip.
 
-The real Monitor 4.3 starts from a reset at 0000 on a machine with the ZCB, the Flashwriter II and RAM. Its `E` command passes a byte both ways. Monitor 4.0 starts in the same way. Monitor 4.0c runs on a `bitstreamer` at 02 with the ZCB ports at 0C and 18, and the bus reports no contention. A mutation check on the decode and the reset latch failed the suite each time.
+The real Monitor 4.3 starts from a reset at 0000 on a machine with the ZCB, the Flashwriter II and RAM. Its `E` command passes a byte both ways. Monitor 4.0 starts in the same way. Monitor 4.0c runs on a `vgbsii` at 02 with the ZCB ports at 0C and 18, and the bus reports no contention. A mutation check on the decode and the reset latch failed the suite each time.
 
 ## References
 

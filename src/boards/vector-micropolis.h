@@ -42,7 +42,7 @@ public:
     MicropolisBoard();
     ~MicropolisBoard() override;
 
-    std::string type() const override { return "micropolis"; }
+    std::string type() const override { return "vgmdc"; }
 
     bool    decodes(const BusCycle& c) const override;
     uint8_t read(const BusCycle& c) override;

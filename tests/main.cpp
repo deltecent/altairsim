@@ -4,7 +4,7 @@
 #include "boards/cadzilla.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/mits-2sio.h"
-#include "boards/vector-bitstreamer.h"
+#include "boards/vector-bitstreamer2.h"
 #include "boards/mits-884pio.h"
 #include "boards/mits-88c700.h"
 #include "boards/mits-88lpc.h"
@@ -153,11 +153,11 @@ const struct {
     {"4pio", test_4pio},
     {"vdm1", test_vdm1},
     {"vdb8024", test_vdb8024},
-    {"fwii", test_fwii},
-    {"dualmode", test_dualmode},
-    {"micropolis", test_micropolis},
-    {"bitstreamer", test_bitstreamer},
-    {"zcb", test_zcb},
+    {"vgfwii", test_fwii},
+    {"vgdmdc", test_dualmode},
+    {"vgmdc", test_micropolis},
+    {"vgbsii", test_bitstreamer2},
+    {"vgzcb", test_zcb},
     {"intel8255", test_intel8255},
     {"terminal", test_terminal},
     {"dazzler", test_dazzler},
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
     altair::TurnkeyBoard::setResolver(altair::resolveEndpoint);
     altair::SioBoard::setResolver(altair::resolveEndpoint);
     altair::SbcBoard::setResolver(altair::resolveEndpoint);
-    altair::BitstreamerBoard::setResolver(altair::resolveEndpoint);
+    altair::Bitstreamer2Board::setResolver(altair::resolveEndpoint);
     altair::ZcbBoard::setResolver(altair::resolveEndpoint);
     altair::UioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);

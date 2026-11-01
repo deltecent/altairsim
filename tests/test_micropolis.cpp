@@ -72,7 +72,7 @@ struct Rig {
 
     Rig() {
         std::string err;
-        mp = dynamic_cast<MicropolisBoard*>(m.add("micropolis", "mp0", err));
+        mp = dynamic_cast<MicropolisBoard*>(m.add("vgmdc", "mp0", err));
         m.power();
     }
     ~Rig() { setMediaResolver(nullptr); }
@@ -137,7 +137,7 @@ struct Rig {
 } // namespace
 
 void test_micropolis() {
-    SECTION("micropolis: decode");
+    SECTION("vgmdc: decode");
     {
         Rig g;
         CHECK(g.rd(0xF800) != 0xFF, "the boot PROM answers at the base");
@@ -161,7 +161,7 @@ void test_micropolis() {
         CHECK(!g.mp->peek(0xDA00, b), "peek leaves the registers alone");
     }
 
-    SECTION("micropolis: the registers repeat");
+    SECTION("vgmdc: the registers repeat");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -175,7 +175,7 @@ void test_micropolis() {
         CHECK((g.rd(kSta) & 3) == 1, "a command at base + 201");
     }
 
-    SECTION("micropolis: status");
+    SECTION("vgmdc: status");
     {
         Rig g;
         CHECK(g.rd(kSta) == kSltd, "nothing selected: SLTD/ reads 1 and no bit is on");
@@ -203,7 +203,7 @@ void test_micropolis() {
         CHECK(g.rd(kSec) & 0x20, "W9 out reads 1");
     }
 
-    SECTION("micropolis: sector flag and number");
+    SECTION("vgmdc: sector flag and number");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -220,7 +220,7 @@ void test_micropolis() {
         CHECK((g.rd(kSec) & 0x8F) == 0x80, "then sector 0");
     }
 
-    SECTION("micropolis: step");
+    SECTION("vgmdc: step");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -239,7 +239,7 @@ void test_micropolis() {
         CHECK(g.mp->driveTrack(0) == 76, "the stop at track 76");
     }
 
-    SECTION("micropolis: read");
+    SECTION("vgmdc: read");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -265,7 +265,7 @@ void test_micropolis() {
         CHECK(!(g.rd(kSta) & kTf), "the next hole ends TF");
     }
 
-    SECTION("micropolis: a late guest loses bytes");
+    SECTION("vgmdc: a late guest loses bytes");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -275,7 +275,7 @@ void test_micropolis() {
         CHECK(g.held() == kByte - 1, "and no more hold than that");
     }
 
-    SECTION("micropolis: an unformatted sector");
+    SECTION("vgmdc: an unformatted sector");
     {
         Rig g;
         CHECK(g.load(0, std::vector<uint8_t>(kOneSide, 0)), "mount");
@@ -284,7 +284,7 @@ void test_micropolis() {
         CHECK(!(g.rd(kSta) & kTf), "no sync, no TF");
     }
 
-    SECTION("micropolis: write");
+    SECTION("vgmdc: write");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -319,7 +319,7 @@ void test_micropolis() {
         CHECK(back[100] == 0xA5, "the write reads back");
     }
 
-    SECTION("micropolis: the checksum is the guest's");
+    SECTION("vgmdc: the checksum is the guest's");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -331,7 +331,7 @@ void test_micropolis() {
         CHECK(g.readSector(2)[269] == s[269], "and reads back as it is");
     }
 
-    SECTION("micropolis: a protected disk");
+    SECTION("vgmdc: a protected disk");
     {
         Rig g;
         CHECK(g.load(0, formatted(), true), "mount read-only");
@@ -343,7 +343,7 @@ void test_micropolis() {
         CHECK(g.mp->drainLog().size() == 1, "and the board says so once");
     }
 
-    SECTION("micropolis: the 4-second timer");
+    SECTION("vgmdc: the 4-second timer");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -366,7 +366,7 @@ void test_micropolis() {
         CHECK(g.rd(kSta) & kSltd, "a step does not, and the timer ends the select");
     }
 
-    SECTION("micropolis: the reset command");
+    SECTION("vgmdc: the reset command");
     {
         Rig g;
         CHECK(g.load(0, formatted()), "mount");
@@ -377,7 +377,7 @@ void test_micropolis() {
         CHECK(g.mp->driveTrack(0) == 1, "and the head stays");
     }
 
-    SECTION("micropolis: interrupt");
+    SECTION("vgmdc: interrupt");
     {
         Rig g;
         std::string err;
@@ -405,7 +405,7 @@ void test_micropolis() {
         CHECK(!g.mp->assertsInt(), "reset clears it");
     }
 
-    SECTION("micropolis: image sizes");
+    SECTION("vgmdc: image sizes");
     {
         Rig g;
         CHECK(g.load(0, formatted(kOneSide + 16)), "the 16 extra bytes of five images");
@@ -414,7 +414,7 @@ void test_micropolis() {
         CHECK(g.disk->bytes().size() == kOneSide + 16, "the size stays");
     }
 
-    SECTION("micropolis: units");
+    SECTION("vgmdc: units");
     {
         Rig g;
         std::string err;
@@ -424,7 +424,7 @@ void test_micropolis() {
         CHECK(!g.mp->unmount("drive3", err), "an empty drive");
     }
 
-    SECTION("micropolis: snapshot");
+    SECTION("vgmdc: snapshot");
     {
         Rig src;
         CHECK(src.load(1, formatted()), "mount");
@@ -443,12 +443,12 @@ void test_micropolis() {
         CHECK((dst.rd(kSta) & 7) == 1, "the select travelled");
     }
 
-    SECTION("micropolis: the real boot ROM");
+    SECTION("vgmdc: the real boot ROM");
     {
         Machine m;
         std::string err;
         m.add("8080", "cpu0", err);
-        m.add("micropolis", "mp0", err);
+        m.add("vgmdc", "mp0", err);
         auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
         Region ram;
         ram.kind = RegionKind::Ram;

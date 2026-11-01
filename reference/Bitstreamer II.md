@@ -8,7 +8,7 @@ serial channels, two parallel channels and a 55 Hz real-time clock. Interrupts a
 a technician wires with jumpers. This file omits the RS-232C theory, the cable lists for printers
 and the kit of spare gates, except where a port or an interrupt depends on them.
 
-Emulated as the `bitstreamer` board (`docs/boards/vector-bitstreamer.md`).
+Emulated as the `vgbsii` board (`docs/boards/vector-bitstreamer2.md`).
 
 Citations: `n-m` is a printed page. PDF page = printed page + 12 for 1-1 to 1-9, and + 22 for 2-1
 to 2-21. Pages 3-1, 3-2 and 3-3 are PDF 45, 46 and 49, and the board layout is PDF 47. The

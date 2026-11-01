@@ -6,14 +6,14 @@ Z80 code at `E000h`. Its console is the [FlashWriter II](../../docs/boards/vecto
 - **Load address:** `E000h`. Entry at `E000h`.
 - **Image:** `E000`–`E7FF`, 2048 bytes, CRC32 `95D8858F`, checksum `F8`.
 - **Boot:** `B` jumps to `F800`, the boot PROM of the
-  [`micropolis`](../../docs/boards/vector-micropolis.md) board.
+  [`vgmdc`](../../docs/boards/vector-micropolis.md) board.
 
 `ROM Checksums.pdf` lists checksum `F8` for this Monitor, for a 4 MHz processor and a Micropolis
 disk.
 
 ## Use it
 
-On a [`zcb`](../../docs/boards/vector-zcb.md) board:
+On a [`vgzcb`](../../docs/boards/vector-zcb.md) board:
 
 ```toml
 [[board.socket]]

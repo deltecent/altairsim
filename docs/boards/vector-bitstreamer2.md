@@ -89,7 +89,7 @@ The base is `port`, and it ends in 2. This table uses base `22`.
 
 ## Verification
 
-`./build/altair_tests bitstreamer` checks the board with real bus cycles. It covers the port map, the period of the clock, each mask bit, the snapshot and the move from a scratch machine. In one test, a real Z80 takes the clock with `RST 7` once for each tick. A mutation of the `IN x9` clear and of each mask gate fails the suite.
+`./build/altair_tests vgbsii` checks the board with real bus cycles. It covers the port map, the period of the clock, each mask bit, the snapshot and the move from a scratch machine. In one test, a real Z80 takes the clock with `RST 7` once for each tick. A mutation of the `IN x9` clear and of each mask gate fails the suite.
 
 OASIS 5.5A was checked once by hand on the `vector` machine. The routine at `26DF` ran 164 times in 3.0 seconds, which is 54.7 times a second. On that disk, `SHOW CLKFRQ` reads `55, 0`, and `SHOW RTCAVAIL` reads `ON`.
 

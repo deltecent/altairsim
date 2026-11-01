@@ -6,7 +6,7 @@ Vector Graphic Inc., *Flashwriter II Board*, Manual Revision 3, March 29, 1979, 
 S-100 board shows 24 rows of 80 characters from 2K of on-board RAM. It also holds the parallel
 keyboard port, so the screen and the keyboard of a Vector Graphic machine are one board.
 
-**Emulated** as the `fwii` board (`docs/boards/vector-fwii.md`). This file holds what an implementer needs. It gives the addresses, status bits,
+**Emulated** as the `vgfwii` board (`docs/boards/vector-fwii.md`). This file holds what an implementer needs. It gives the addresses, status bits,
 keyboard flag, interrupt, character codes, raster timing, wait states, jumpers and board revisions.
 It omits monitor adjustment, video cabling and the blank character forms. **The dot patterns of the
 character set are in `src/boards/vector-fwii-font.h`** (Q15).

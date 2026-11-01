@@ -13,26 +13,26 @@ register, the bit or the command that was wrong.
 ## Unreleased
 
 **New: Monitors 4.0 and 4.0c, the Vector Graphic Monitors for Micropolis disks.** Mount
-`builtin:vgmon40` in a `zcb` socket, and the `B` key boots the `micropolis` board. `builtin:vgmon40c`
-does the same with its console on serial port A of a `bitstreamer`. A `zcb` beside a `bitstreamer`
+`builtin:vgmon40` in a `vgzcb` socket, and the `B` key boots the `vgmdc` board. `builtin:vgmon40c`
+does the same with its console on serial port A of a `vgbsii`. A `vgzcb` beside a `vgbsii`
 needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards
 overlap at `04`-`09`.
 
-**New: `micropolis`, the Vector Graphic Micropolis Disk Controller.** The board puts four 5.25-inch
+**New: `vgmdc`, the Vector Graphic Micropolis Disk Controller.** The board puts four 5.25-inch
 floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default. The processor
 moves each byte, and the board holds it to the speed of the disk, as the real board does. On a machine
-with a `zcb` board and 56K of RAM, type `GF800` at the `Mon>` prompt of Monitor 4.3 to boot Vector CP/M
+with a `vgzcb` board and 56K of RAM, type `GF800` at the `Mon>` prompt of Monitor 4.3 to boot Vector CP/M
 from `drive0`. The package holds no Micropolis disk.
 
-**New: `zcb`, the Vector Graphic ZCB processor board.** One board entry gives a Z80, three PROM
+**New: `vgzcb`, the Vector Graphic ZCB processor board.** One board entry gives a Z80, three PROM
 sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a
 reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000 as
 it does on the real board. The `baud` property has the eight values of switch S1, and the guest's
 clock factor divides the rate.
 
-**New: `dualmode`, the Vector Graphic Dual-Mode Disk Controller, and `bitstreamer`, the Vector
-Graphic Bitstreamer II. The `vector` machine now boots a disk.** `dualmode` runs four floppy drives
-through four ports and a 512-byte RAM, with the real 32-bit ECC. `bitstreamer` gives three 8251
+**New: `vgdmdc`, the Vector Graphic Dual-Mode Disk Controller, and `vgbsii`, the Vector
+Graphic Bitstreamer II. The `vector` machine now boots a disk.** `vgdmdc` runs four floppy drives
+through four ports and a 512-byte RAM, with the real 32-bit ECC. `vgbsii` gives three 8251
 serial channels, the interrupt mask and a 55 Hz clock. On the `vector` machine, type `MOUNT
 dm0:drive1 mydisk.vgi` at the monitor and press `B` at `Mon>`. OASIS 5.5A boots to its `>` prompt
 from such a disk. The package holds no OASIS disk.
@@ -76,7 +76,7 @@ defaults, and `CONFIG LOAD` kept the values of the last machine. The `sbc200v` f
 opened its window behind other windows, and the console kept the keyboard. The saved file now
 has a `[display]` section, and `focus` comes back as `true`.
 
-**New: `fwii`, the Vector Graphic Flashwriter II video board, and the `vector` machine.** The
+**New: `vgfwii`, the Vector Graphic Flashwriter II video board, and the `vector` machine.** The
 board gives a machine an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard
 port at `00` and `01`. The ports are read only, as on the real board. A read of port `01` clears
 the key flag, and a key can raise `RST 7` through the `interrupt` property. The character shapes
