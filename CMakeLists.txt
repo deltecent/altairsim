@@ -445,6 +445,8 @@ add_library(altair_core STATIC
   # The Intel 8251 USART -- the console chip of the SD Systems SBC-100/200, and the
   # next 8251 card to turn up gets it for free (src/chips/intel8251.h).
   src/chips/intel8251.cpp
+  # The Intel 8255A PPI, mode 0. The Vector Graphic ZCB carries one (src/chips/intel8255.h).
+  src/chips/intel8255.cpp
   src/chips/wd17xx.cpp
   # The NEC uPD765A (Intel 8272) -- the CompuPro Disk 1A's FDC (src/chips/upd765.h).
   src/chips/upd765.cpp
@@ -604,6 +606,9 @@ add_library(altair_core STATIC
   # The Vector Graphic Bitstreamer II: three 8251s, the parallel latches, and the 55 Hz clock
   # that OASIS runs on. See vector-bitstreamer.h.
   src/boards/vector-bitstreamer.cpp
+  # The Vector Graphic ZCB: a Z-80 with its PROM, RAM, 8251 and 8255 on one board. See
+  # vector-zcb.h.
+  src/boards/vector-zcb.cpp
   # CADzilla: an HD63484 ACRTC + Bt453 RAMDAC graphics board with its own frame memory;
   # six I/O ports, no memory decoded. Renders the same host Display seam. See cadzilla.h.
   src/boards/cadzilla.cpp
@@ -866,6 +871,7 @@ add_executable(altair_tests
   tests/test_fwii.cpp
   tests/test_dualmode.cpp
   tests/test_bitstreamer.cpp
+  tests/test_zcb.cpp
   tests/test_terminal.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp

@@ -68,9 +68,19 @@ int Intel8251::bitsPerChar() const {
     return 1 + dataBits() + (parity() == LineParity::None ? 0 : 1) + stopBits();
 }
 
+// The B2 B1 field. 00 is synchronous mode, which is not modeled: a guest passes through it
+// on the way to an internal reset (Monitor 4.3 does), so the frame stays at the usual 16.
+int Intel8251::clockFactor() const {
+    switch (mode_ & 0x03) {
+    case 0x01: return 1;
+    case 0x03: return 64;
+    default:   return 16;
+    }
+}
+
 LineParams Intel8251::params() const {
     LineParams p;
-    p.baud     = baud;
+    p.baud     = txcHz > 0 ? baud * 16 / clockFactor() : baud;
     p.dataBits = dataBits();
     p.stopBits = stopBits();
     p.parity   = parity();
@@ -78,6 +88,7 @@ LineParams Intel8251::params() const {
 }
 
 uint64_t Intel8251::bitTStates(const Clock& clk) const {
+    if (txcHz > 0) return clk.tStatesPer(txcHz) * (uint64_t)clockFactor();
     return baud > 0 ? clk.tStatesPer(baud) : 0;
 }
 
@@ -128,6 +139,7 @@ void Intel8251::driveControl() {
 // out. See reference/Intel 8251 USART.md and the board reference.
 // ---------------------------------------------------------------------------
 bool Intel8251::dsrBit(const Clock& clk) const {
+    if (dsrSrc == DsrSource::Line) return stream_->status().dsr;
     if (dsrSrc != DsrSource::FollowRxD) return false;
     if (!rxActive_) return false;                     // idle: line marking, /DSR negated
     uint64_t bit = bitTStates(clk);

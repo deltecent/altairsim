@@ -120,6 +120,8 @@ void test_vdb8024();
 void test_fwii();
 void test_dualmode();
 void test_bitstreamer();
+void test_zcb();
+void test_intel8255();
 void test_terminal();
 void test_dazzler();
 void test_dazzler2();
