@@ -54,6 +54,7 @@ using EndpointResolver =
 enum class DsrSource {
     Inactive,   // D7 reads 0 (the /DSR pin is tied to its inactive level)
     FollowRxD,  // D7 = NOT(current RxD line bit) while a receive frame is in flight
+    Line,       // D7 = the DSR the line reports. An open line reports it active
 };
 
 class Intel8251 {
@@ -75,6 +76,10 @@ public:
     // ---- straps (config; NOT serialized) ----
     long long baud   = 9600;               // paces the receive frame AND sizes the DSR
                                            // bit width. Min 50, no zero (see the .cpp).
+    long long txcHz  = 0;                  // the clock at TxC and RxC, for a card that wires
+                                           // one to them. The MODE word's clock factor then
+                                           // divides it, `baud` is the rate at a factor of 16
+                                           // for a real serial port, and 0 = `baud` alone.
     DsrSource dsrSrc = DsrSource::Inactive;
     IrqJumper jumper = IrqJumper::None;     // decoded, NOT honored in Phase 1
 
@@ -126,6 +131,7 @@ private:
     LineParity parity() const;
     int      stopBits() const;   // 1 or 2 (1.5 rounds up for the bit-count)
     int      bitsPerChar() const;
+    int      clockFactor() const;          // 1, 16 or 64
     uint64_t bitTStates(const Clock& clk) const;   // one bit period
     uint64_t charTStates(const Clock& clk) const;  // a whole frame
     bool     dsrBit(const Clock& clk) const;       // D7 when dsrSrc == FollowRxD

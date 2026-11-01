@@ -42,6 +42,7 @@
 #include "boards/vector-bitstreamer.h"
 #include "boards/vector-dualmode.h"
 #include "boards/vector-fwii.h"
+#include "boards/vector-zcb.h"
 #include "boards/sd-versafloppy.h"
 #include "boards/ssm-pb1.h"
 #include "boards/tarbell.h"
@@ -110,6 +111,7 @@ std::vector<BoardType> boardTypes() {
         {"vdb8024", "SD Systems VDB-8024: 80x24 video terminal board", "SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console for an SBC-100/200 (the alternative to the 8251). Two I/O ports at BASE+0..1 (default 00): status/keyboard/display. Unit 'keyboard' (CONNECT). Optional keyboard-strobe interrupt strap (interrupt=vi0..vi7) for the SBC-200's CTC to vector -- what the SD video CBIOS needs; polled by default. Boots sdmonv21. Needs a Display"},
         {"dualmode", "Vector Graphic Dual-Mode: 5.25\" floppy controller, 4 drives", "Vector Graphic Dual-Mode Disk Controller, floppy half: 4 drives of 77-track 16-hard-sector disks in 275-byte slots, 1 or 2 sides, at four ports from PORT (default C0). A 512-byte buffer RAM, a 32-bit ECC, and a 4-second motor timer. While busy the board answers no port. Monitor 4.3 boots from drive 1"},
         {"bitstreamer", "Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock", "Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two parallel latches and a 55 Hz clock latch at eight ports from PORT (default 02). OUT to PORT+6 is the interrupt mask, and IN from PORT+7 clears the clock latch. Interrupts are jumpers, off by default. `j4_d0` is the wire OASIS needs on bit 0 of IN PORT+6"},
+        {"zcb", "Vector Graphic ZCB: Z-80 single board computer", "Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF ([[board.socket]], at + mount), 1K of RAM at FC00, one 8251 (unit 'serial', ports 04-07, 06 and 07 repeat 04 and 05) and one 8255 (ports 08-0B). After a reset the board pulls PHANTOM* and every address decodes as the E000 block, until the first memory cycle in E000-FFFF. No on-board interrupts"},
         {"fwii", "Vector Graphic Flashwriter II: 80x24 video and keyboard port", "Vector Graphic Flashwriter II: 2K of memory-mapped video RAM at BASE (default F000) shown as 24 rows of 80 characters, and two input ports at PORT (default 00): status and keyboard data. Unit 'keyboard' (CONNECT). The key flag drives pin 73 with no vector, so the acknowledge reads as RST 7 (`interrupt`). Needs a Display"},
         {"cadzilla", "CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC", "CADzilla: an HD63484 ACRTC graphics board with a Bt453 RAMDAC and 2 MB of fixed frame memory, on a fixed VESA monitor (mode: 640x480, 800x600, 1024x768 (default)). One 8-port I/O block at BASE (default 70): ACRTC RS=0 at +0, MODE register at +1 (write-only: HSPOL/VSPOL/AMODE/OLEN), ACRTC RS=1 at +2, Bt453 at +4..+7. Draws by command through the ACRTC FIFO; wired for 8 bpp, GAI +8, single or interleaved access set by MODE AMODE. Interrupts (SW1-8) optional (interrupt=none|int|vi0..vi7). Needs a Display"},
         {"d7a", "Cromemco D+7A: analog + parallel I/O, joysticks", "Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host"},
@@ -171,6 +173,7 @@ std::unique_ptr<Board> makeBoard(const std::string& typeName) {
     if (type == "bitstreamer") return std::make_unique<BitstreamerBoard>();
     if (type == "dualmode") return std::make_unique<DualModeBoard>();
     if (type == "fwii") return std::make_unique<FwiiBoard>();
+    if (type == "zcb") return std::make_unique<ZcbBoard>();
     if (type == "cadzilla") return std::make_unique<CadzillaBoard>();
     if (type == "d7a") return std::make_unique<D7aBoard>();
     if (type == "music6") return std::make_unique<NewtechMusicBoard>();

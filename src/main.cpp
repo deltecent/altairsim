@@ -20,6 +20,7 @@
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/vector-fwii.h"
+#include "boards/vector-zcb.h"
 #include "boards/compupro-disk1.h"
 #include "boards/compupro-ss1.h"
 #include "boards/sd-sbc.h"
@@ -364,6 +365,7 @@ int main(int argc, char** argv) {
     SerialBoardBase::setResolver(resolveEndpoint);  // the 88-SIO / 88-ACR / 88-UIO serial engine
     SbcBoard::setResolver(resolveEndpoint);
     BitstreamerBoard::setResolver(resolveEndpoint);
+    ZcbBoard::setResolver(resolveEndpoint);
     UioBoard::setResolver(resolveEndpoint);  // serial half; the cassette half refuses CONNECT
     C700Board::setResolver(resolveEndpoint);
     LpcBoard::setResolver(resolveEndpoint);
