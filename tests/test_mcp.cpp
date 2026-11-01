@@ -2365,6 +2365,68 @@ void test_mcp() {
         closer.join();
     }
 
+    SECTION("MCP: CONFIG SAVE writes the console, not the session's line (#873)");
+    {
+        const std::string toml = tmpPath("altair_mcp_save.toml");
+        const std::string log  = tmpPath("altair_mcp_save.log");
+        auto slurp = [](const std::string& p) {
+            std::ifstream     f(p, std::ios::binary);
+            std::stringstream ss;
+            ss << f.rdbuf();
+            return ss.str();
+        };
+        auto monitor = [](int id, const std::string& command) {
+            return R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
+                   R"(,"method":"tools/call","params":{"name":"monitor","arguments":{"command":)" +
+                   Json(command).dump() + "}}}\n";
+        };
+        const std::string init = R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})" "\n";
+
+        // Bare: the holder saves as `console`. A unit the operator set to `scripted` does not.
+        {
+            Machine m;
+            if (!loadAltmon(m)) return;
+            auto rep = runScript(m, init + monitor(2, "CONNECT sio0:b scripted") +
+                                        monitor(3, "CONFIG SAVE " + toml));
+            CHECK(rep.count(3) && !rep[3].at("result").has("isError"), "CONFIG SAVE succeeds");
+            const std::string text = slurp(toml);
+            CHECK(text.find("connect = \"console\"") != std::string::npos,
+                  "the holder is saved on the console");
+            CHECK(text.find("connect = \"scripted\"") != std::string::npos,
+                  "a second unit on its own scripted line stays scripted");
+        }
+
+        // The saved file has a console: a session on it can run.
+        {
+            Machine m;
+            if (!loadAltmon(m)) return;
+            std::string script = init + monitor(2, "CONFIG LOAD " + toml) +
+                R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run",)"
+                R"("arguments":{"from":63488,"until":"ALTMON","timeout_ms":4000}}})" "\n";
+            auto rep = runScript(m, script);
+            CHECK(rep.count(3) && !rep[3].at("result").has("isError"),
+                  "the saved machine runs: its console is there");
+        }
+
+        // Mirror and log are the session's: neither reaches the file.
+        {
+            uint16_t port = freePort();
+            CHECK(port != 0, "the OS hands us a free port");
+            Machine m;
+            if (!loadAltmon(m)) return;
+            runScript(m, init + monitor(2, "CONFIG SAVE " + toml),
+                      "socket:" + std::to_string(port), log);
+            const std::string text = slurp(toml);
+            CHECK(text.find("connect = \"console\"") != std::string::npos,
+                  "the holder is saved on the console under --mirror and --log");
+            CHECK(text.find("socket:") == std::string::npos, "no mirror in the file");
+            CHECK(text.find(".log") == std::string::npos, "no log tap in the file");
+        }
+        std::error_code ec;
+        std::filesystem::remove(toml, ec);
+        std::filesystem::remove(log, ec);
+    }
+
     SECTION("ScriptedStream::trimOut keeps the newest bytes (#602's held-output cap)");
     {
         ScriptedStream s;

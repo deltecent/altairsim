@@ -970,10 +970,11 @@ static void writeHostTable(std::ostream& f, const char* table, const std::vector
     }
 }
 
-bool saveToml(const std::string& path, Machine& m, std::string& err) {
+bool saveToml(const std::string& path, Machine& m, std::string& err,
+              const SaveConsoleHolds& holds) {
     // Build the text FIRST: a refused save must not have truncated the file already there.
     std::string why;
-    std::string text = saveTomlText(m, &why);
+    std::string text = saveTomlText(m, &why, holds);
     if (!why.empty()) {
         err = why;
         return false;
@@ -997,7 +998,7 @@ bool saveToml(const std::string& path, Machine& m, std::string& err) {
 // generic now, and this is what keeps them that way.
 std::string saveTomlText(Machine& m) { return saveTomlText(m, nullptr); }
 
-std::string saveTomlText(Machine& m, std::string* err) {
+std::string saveTomlText(Machine& m, std::string* err, const SaveConsoleHolds& holds) {
     std::ostringstream f;
     f << "[machine]\n";
     f << "name     = " << tomlString(m.name, "machine name", err) << "\n";
@@ -1111,10 +1112,12 @@ std::string saveTomlText(Machine& m, std::string* err) {
             if (up.empty()) continue;
             f << "\n  [board.unit." << u.name << "]\n";
             const std::map<std::string, std::string> freshUnit = defaultsOf(fresh.get(), u.name);
+            const bool held = holds && holds(*b, u.name);
             for (const auto& p : up) {
                 if (!p.set) continue;
                 Value v = p.get();
-                const std::string text = v.text(p.radix);
+                // The whole value: a --mirror or --log tap belongs to the session too.
+                const std::string text = held && p.name == "connect" ? "console" : v.text(p.radix);
                 if (p.kind == Kind::Str || p.kind == Kind::Enum)
                     f << "  " << p.name << " = "
                       << tomlString(text, b->id + ":" + u.name + " " + p.name, err);
