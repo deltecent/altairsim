@@ -154,6 +154,7 @@ Type the part before the bracket.
 | `mds` | MITS 88-MDS: 5.25" minidisk controller |
 | `mdsa` | North Star MDS-A: single-density 5.25" floppy controller |
 | `mdsad` | North Star MDS-A-D: double-density 5.25" floppy controller |
+| `micropolis` | Vector Graphic Micropolis: 5.25" floppy controller, 4 drives |
 | `tarbell` | Tarbell #1011: single-density floppy controller |
 | `tarbelldd` | Tarbell #2022: double-density floppy controller |
 | `versafloppy` | SD Systems VersaFloppy I/II: WD177x floppy controller |

@@ -207,6 +207,7 @@ The boards are in groups, in the same order as the sections below.
 | `dualsd` | S100Computers Dual SD: two microSD cards as CP/M drives. Boots CP/M 3 |
 | `dualide` | S100Computers IDE-AB: two CompactFlash cards as CP/M drives. Boots CP/M 3 |
 | `dualmode` | Vector Graphic Dual-Mode: four 5.25-inch 16-hard-sector floppy drives. Boots OASIS 5.5A |
+| `micropolis` | Vector Graphic Micropolis: four 5.25-inch 16-hard-sector floppy drives in memory, with its own boot PROM. Boots Vector CP/M |
 
 **Video and display**
 
@@ -1245,6 +1246,82 @@ ATTACH A FLOPPY2
 MOUNT A
 FI * * A
 ```
+
+### `micropolis`: Vector Graphic Micropolis Disk Controller
+
+**Four floppy drives in a 1K block of memory, with a boot PROM.** The board has no ports. The
+processor moves each byte of a sector through a register in the block, and the board holds the
+processor until that byte is under the head. The boot PROM is at the base of the block, and the
+registers are at base + `200`.
+
+| Property | What it sets |
+|---|---|
+| `base` | The start of the 1K block, any 1K boundary from `C000` to `FC00`. The default is `F800`. A 48K Vector machine uses `D800` |
+| `speed` | The processor speed that the board reports to the guest, `4mhz` (the default) or `2mhz`. This setting does not change the processor |
+| `ready` | The drive-ready status. `forced` (the default) is true for any selected drive. `drive` is true only with a disk in the drive |
+| `interrupt` | The interrupt jumper, for the interrupt on each sector. The default is `none`. Vector software does not use it |
+
+The units are `drive0` to `drive3`, and the boot PROM reads `drive0`. A disk image holds 275-byte
+slots, 16 on a track, 77 tracks, with no file header. A file of 338800 bytes has one side. A file up
+to 127 bytes longer also has one side, and these bytes stay as they are. A file of any other size
+mounts with two sides and grows when a program writes to it. You supply the disk image.
+
+**Boot a disk with a `zcb` board.** Vector CP/M needs a Vector Monitor at `E000` and RAM up to
+`DFFF`. The `B` key of Monitor 4.3 boots the Dual-Mode board, so use the `G` key for this board.
+
+1. Put this machine file next to your disk image, and name the image `mydisk.vgi`:
+
+   ```toml
+   [machine]
+   name    = "vg-micropolis"
+   startup = ["RUN 0"]
+
+   [display]
+   focus    = true
+   keyboard = "console"
+
+   [[board]]
+   type     = "zcb"
+   id       = "cpu0"
+   clock_hz = 4000000
+
+     [[board.socket]]
+     at    = E000
+     mount = "builtin:vgmon43"
+
+   [[board]]
+   type = "fwii"
+   id   = "fw0"
+
+     [board.unit.keyboard]
+     connect = "console"
+
+   [[board]]
+   type = "memory"
+   id   = "mem0"
+
+     [[board.region]]
+     type = "ram"
+     at   = 0
+     size = "56K"
+
+   [[board]]
+   type = "micropolis"
+   id   = "mp0"
+
+     [[board.drive]]
+     unit  = 0
+     mount = "mydisk.vgi"
+   ```
+
+2. Start altairsim with this file.
+3. Type `GF800` and press Enter at the `Mon>` prompt. The disk boots to the `A>` prompt.
+
+**Some Vector disks print to serial port A of a Bitstreamer II, at port `02`, and not to the
+Flashwriter.** These disks show nothing on this machine.
+
+**Put a disk in `drive0` before you boot.** With an empty drive, the boot PROM waits for a sector
+that never comes, and the guest prints nothing.
 
 ### `dcdd`: MITS 88-DCDD
 

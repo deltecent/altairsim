@@ -155,6 +155,7 @@ const struct {
     {"vdb8024", test_vdb8024},
     {"fwii", test_fwii},
     {"dualmode", test_dualmode},
+    {"micropolis", test_micropolis},
     {"bitstreamer", test_bitstreamer},
     {"zcb", test_zcb},
     {"intel8255", test_intel8255},
