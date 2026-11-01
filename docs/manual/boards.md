@@ -147,6 +147,7 @@ The boards are in groups, in the same order as the sections below.
 | `8080` | the MITS 88-CPU |
 | `8085` | an 8085 processor board. It runs all 8080 code, and adds RIM, SIM and the TRAP and RST interrupts |
 | `z80` | a Z80 processor board. The same bus, with a different instruction set |
+| `zcb` | Vector Graphic ZCB: a Z80 single board computer with PROM, RAM, a serial port and a parallel port |
 
 **Serial ports and consoles**
 
@@ -501,12 +502,12 @@ The `dualsd` machine uses this board.
 
 ## The processor boards
 
-`altairsim` has three S-100 processor boards: `8080`, `8085` and `z80`. This section applies to
-all three. The sections after it describe each one.
+The S-100 processor boards are `8080`, `8085`, `z80` and `zcb`. This section applies to all of
+them. The sections after it describe each one.
 
 **The processor is a board like the other boards.** It plugs into the backplane, and you can
-remove it. With `-n`, you can build a machine with no processor. The processor board decodes no
-ports and no addresses. It runs the program, and it drives the bus to do that. You can put a
+remove it. With `-n`, you can build a machine with no processor. A processor board other than
+`zcb` decodes no ports and no addresses. It runs the program, and it drives the bus to do that. You can put a
 `z80` where an `8080` was, and the bus, the other boards and the debugger all work the same.
 
 Every processor board has the same three properties:
@@ -604,6 +605,57 @@ interrupts on the `INTR` line work as they do on the 8080.
 **The other processor that you can put in the machine.** It uses the same backplane, with a
 different instruction set. Everything in *The processor boards* above applies. The built-in
 `z80` machine has a `z80`, 64K of RAM and a 2SIO console, so that you can try the processor.
+
+### `zcb`: Vector Graphic ZCB
+
+**A Z80 processor, PROM, 1K of RAM, a serial port and a parallel port, on one board.** Do not add a
+`z80` to a machine with this board, because `zcb` is the processor. Everything in *The processor
+boards* above applies. The crystal of the real board is 4 MHz, so set `clock_hz = 4000000` for the
+real speed.
+
+The board decodes these addresses and ports:
+
+| Address or port | What it is |
+|---|---|
+| `E000`-`EFFF` | PROM sockets, read only |
+| `FC00`-`FFFF` | 1K of RAM. A write also goes out on the bus |
+| `04`-`07` | An 8251 serial port: data at `04` and status and command at `05`, repeated at `06` and `07` |
+| `08`-`0B` | An 8255 parallel port: ports A, B and C, and the control port |
+
+Put the PROMs in `[[board.socket]]` tables. The board has three sockets. `at` is `E000`, `E400`,
+`E800` or `EC00`. The size of the image sets the size of the chip, 1K, 2K or 4K:
+
+```toml
+[[board]]
+type     = "zcb"
+id       = "cpu0"
+clock_hz = 4000000
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:vgmon43"
+```
+
+**After every reset, each address reads as the `E000` block.** The Z80 starts at 0000 and reads the
+jump at `E000`. The board also pulls `PHANTOM*`, so a memory board that honors this line stays off
+the bus. The first memory cycle in `E000`-`FFFF` ends both. The `boot` property turns off the first
+part, and the `phantom` property turns off the second. Set `honors_phantom = "all"` on a memory
+board, and end that board at `DFFF`.
+
+These are the other properties:
+
+| Property | What it sets |
+|---|---|
+| `group` | The group of 32 ports that holds both chips: `00`, `20` and so on to `E0` |
+| `serial_port` | The base of the 8251 in the group, a multiple of 4 from `00` to `1C`. The default is `04` |
+| `parallel_port` | The base of the 8255 in the group, a multiple of 4 from `00` to `1C`. The default is `08` |
+| `wait` | `m1` adds one wait state to each M1 cycle, as the real board is shipped. `none` adds none. `all` adds one to each bus cycle |
+
+The unit is `serial`. Its `baud` property has the eight values of the switch on the board, from 110
+to 9600. The guest's clock factor divides this rate, so with a factor of 64 the rate is a quarter of
+the value. The label 9600 runs at 9615 baud, as on the real board.
+
+The board has no interrupt source. Nothing connects to the parallel port, so an input reads `FF`.
 
 ## Serial ports and consoles
 

@@ -23,6 +23,7 @@ and within a group the boards are in **alphabetical order**.
 | [`8080`](#8080) | MITS 88-CPU: 8080A CPU board |
 | [`8085`](#8085) | Generic 8085 CPU board |
 | [`z80`](#z80) | Generic Z80 CPU board |
+| [`zcb`](#zcb) | Vector Graphic ZCB: Z-80 single board computer |
 
 **Memory**
 
@@ -166,6 +167,41 @@ Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, 
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+
+
+### `zcb`
+
+Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF ([[board.socket]], at + mount), 1K of RAM at FC00, one 8251 (unit 'serial', ports 04-07, 06 and 07 repeat 04 and 05) and one 8255 (ports 08-0B). After a reset the board pulls PHANTOM* and every address decodes as the E000 block, until the first memory cycle in E000-FFFF. No on-board interrupts
+
+**Units:** `z80` (cpu), `serial` (serial, CONNECT)
+
+#### `[[board.socket]]` — a list you may add
+
+| Key | Kind | Legal | Meaning |
+|---|---|---|---|
+| `at` | int | any | Where the PROM sits: E000, E400, E800 or EC00 |
+| `mount` | string | text | What is in the socket: builtin:<name> or a HEX/BIN path, 1K to 4K. Relative to THIS FILE. |
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
+| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `group` | int | `0x0` | `0x0` .. `0xE0` | The 32-port group of both chips (area G): 00, 20, 40 ... E0 |
+| `serial_port` | int | `0x4` | `0x0` .. `0x1C` | Base of the 8251 in the group (area E). Data at BASE, status and command at BASE+1, repeated at BASE+2 and BASE+3 |
+| `parallel_port` | int | `0x8` | `0x0` .. `0x1C` | Base of the 8255 in the group (area E): ports A, B, C and control |
+| `boot` | bool | `true` | `on` \| `off` | Jumper B: after a reset every address decodes as the E000 block, until the first memory cycle in E000-FFFF |
+| `phantom` | bool | `true` | `on` \| `off` | Jumper C: the board pulls PHANTOM* from a reset until the first memory cycle in E000-FFFF |
+| `wait` | enum | `m1` | `m1` \| `none` \| `all` | Area N, the automatic wait state: m1 = one after each M1, none, or all = one on each bus cycle |
+
+#### Unit `serial` — `[board.unit.serial]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | Switch S1, for a guest that selects a clock factor of 16. The 2 MHz clock over 13 makes the label 9600 run at 9615 |
+| `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this) |
 
 
 ## Memory

@@ -125,6 +125,7 @@ Type the part before the bracket.
 | `8080` | MITS 88-CPU: 8080A CPU board |
 | `8085` | Generic 8085 CPU board |
 | `z80` | Generic Z80 CPU board |
+| `zcb` | Vector Graphic ZCB: Z-80 single board computer |
 
 **Memory**
 

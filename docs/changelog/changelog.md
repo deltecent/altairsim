@@ -12,6 +12,12 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `zcb`, the Vector Graphic ZCB processor board.** One board entry gives a Z80, three PROM
+sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a
+reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000 as
+it does on the real board. The `baud` property has the eight values of switch S1, and the guest's
+clock factor divides the rate.
+
 **New: `dualmode`, the Vector Graphic Dual-Mode Disk Controller, and `bitstreamer`, the Vector
 Graphic Bitstreamer II. The `vector` machine now boots a disk.** `dualmode` runs four floppy drives
 through four ports and a 512-byte RAM, with the real 32-bit ECC. `bitstreamer` gives three 8251

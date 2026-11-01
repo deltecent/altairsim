@@ -92,7 +92,7 @@ The unit `keyboard` takes `connect`. A machine file connects it to `console`, so
 ## Limitations and deliberate departures
 
 - **The wait states are not modeled.** On the real board, a processor access to video RAM holds `PRDY` low until horizontal retrace. A block move in video RAM is slower there than in plain RAM. The guest has no flag for the wait, so a guest still runs correctly. With `clock_hz` set, screen writes run faster here than on the real board.
-- **The on-board PROM is not modeled.** Socket U42, the jump on reset (areas C and K) and `PHANTOM*` from the board are absent. The `vector` machine puts the Monitor on a generic `memory` board, and that board stands in for the 12K PROM/RAM board or the ZCB board. Neither of those exists here yet.
+- **The on-board PROM is not modeled.** Socket U42, the jump on reset (areas C and K) and `PHANTOM*` from the board are absent. The `vector` machine puts the Monitor on a generic `memory` board, and that board stands in for the 12K PROM/RAM board or the `zcb` board. The 12K PROM/RAM board does not exist here yet.
 - **256 characters are not offered.** Areas B, E and I give 256 characters on the real board. This board has the 128 of the shipped setting.
 - **Low intensity is not modeled.** Areas O and P show bit 7 as low intensity on the real board. This board shows reverse video only.
 - **50 Hz is not offered.** The 50 Hz board has a different crystal, 314 lines and a cell of 8 by 12 dots. This board is the 60 Hz board.

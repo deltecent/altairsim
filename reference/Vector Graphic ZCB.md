@@ -8,7 +8,7 @@ FC00, an 8251 and an 8255. This file holds what the bulletins give. The
 [ZCB CPU Manual](ZCB%20CPU%20Manual.md) file has the reset logic, the decode, the ports and the
 jumpers.
 
-**Not emulated.** `machines/vector.toml` has a generic Z-80 and a stand-in memory board. The ports
+**Emulated** as `zcb` (`src/boards/vector-zcb.h`, `docs/boards/vector-zcb.md`). The `vector` machine does not use it yet: `machines/vector.toml` has a generic Z-80 and a stand-in memory board. The ports
 are in [Vector Graphic Port Map](Vector%20Graphic%20Port%20Map.md), and the addresses are in
 [Vector Graphic Memory Maps](Vector%20Graphic%20Memory%20Maps.md).
 
