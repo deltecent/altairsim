@@ -611,6 +611,7 @@ add_library(altair_core STATIC
   # The Vector Graphic ZCB: a Z-80 with its PROM, RAM, 8251 and 8255 on one board. See
   # vector-zcb.h.
   src/boards/vector-zcb.cpp
+  src/boards/vector-bitstreamer.cpp
   # CADzilla: an HD63484 ACRTC + Bt453 RAMDAC graphics board with its own frame memory;
   # six I/O ports, no memory decoded. Renders the same host Display seam. See cadzilla.h.
   src/boards/cadzilla.cpp
@@ -875,6 +876,7 @@ add_executable(altair_tests
   tests/test_micropolis.cpp
   tests/test_bitstreamer2.cpp
   tests/test_zcb.cpp
+  tests/test_bitstreamer.cpp
   tests/test_terminal.cpp
   tests/test_4pio.cpp
   tests/test_vdm1.cpp

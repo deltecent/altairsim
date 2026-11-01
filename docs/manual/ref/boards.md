@@ -69,6 +69,7 @@ and within a group the boards are in **alphabetical order**.
 | [`sbc`](#sbc) | SD Systems SBC-100/200: Z80 single-board computer |
 | [`sio`](#sio) | MITS 88-SIO: one serial port (COM2502 UART) |
 | [`turnkey`](#turnkey) | MITS 8800b Turnkey Module: boot PROM, serial, auto-start |
+| [`vgbs`](#vgbs) | Vector Graphic Bit Streamer: one 8251, two parallel ports |
 | [`vgbsii`](#vgbsii) | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 
 **Tape**
@@ -1047,6 +1048,26 @@ MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (u
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+
+
+### `vgbs`
+
+Vector Graphic Bit Streamer: an I/O board at four ports from a multiple of 4. Base+0 and +1 are parallel ports A and B, with latched outputs and open inputs that read FF. Base+2 and +3 are the data and status of one 8251 (unit 'serial'). No clock and no interrupts
+
+**Units:** `serial` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x0` | `0x0` .. `0xFC` | Base of the four ports, set by the pads beside U7: a multiple of 4 |
+
+#### Unit `serial` — `[board.unit.serial]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The baud switch, for a guest that selects a clock factor of 16. The 2 MHz clock over 13 makes the label 9600 run at 9615 |
+| `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this) |
 
 
 ### `vgbsii`

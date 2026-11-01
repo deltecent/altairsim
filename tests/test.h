@@ -122,6 +122,7 @@ void test_dualmode();
 void test_micropolis();
 void test_bitstreamer2();
 void test_zcb();
+void test_bitstreamer();
 void test_intel8255();
 void test_terminal();
 void test_dazzler();

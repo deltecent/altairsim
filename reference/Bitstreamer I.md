@@ -7,7 +7,7 @@ is the board before the [Bitstreamer II](Bitstreamer%20II.md), which has three 8
 The Bit Streamer has no clock and no interrupt logic. The board also appears in the
 [Early Products](Vector%20Graphic%20Early%20Products.md) sheets.
 
-**Not emulated.** This file omits the repair agreement and the general trouble shooting guide.
+**Emulated as `vgbs`.** This file omits the repair agreement and the general trouble shooting guide.
 
 ---
 
