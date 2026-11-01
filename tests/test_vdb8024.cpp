@@ -45,6 +45,19 @@ struct Rig {
 } // namespace
 
 void test_vdb8024() {
+    SECTION("VDB-8024 -- a status poll reaches the keyboard line (#861)");
+    {
+        Rig g;
+        uint64_t before = g.kbd->hungry();
+        for (int i = 0; i < 10; ++i) g.status();
+        CHECK(g.kbd->hungry() - before == 10, "each poll of an empty keyboard counts as hungry");
+        g.kbd->feed("K");
+        g.status();
+        CHECK((g.status() & 0x02) == 0, "the poll only asks -- a key does not cross in a bus cycle");
+        g.vdb->pump();
+        CHECK((g.status() & 0x02) != 0, "the key crosses in pump()");
+    }
+
     SECTION("VDB-8024 -- two I/O ports, and not a third");
     {
         Rig g;
