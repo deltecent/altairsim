@@ -15,6 +15,13 @@ a declined board is recorded there with its reason.
 
 ## Before you write a line
 
+- **Settle the name first.** Do this step before you touch a file.
+  1. Choose the registry key (`type()`), the class name and the name for the docs.
+  2. Check the names against `DESIGN.md` §0.3 ("board", not "card").
+  3. Check that the names are not already in the registry.
+  4. Show the names to the maintainer. Ask the maintainer to confirm them or give others.
+  5. Wait for the answer. A rename later touches the registry, the class, CMake,
+     `boardCategory`, the tests, the generated reference and `docs/boards/*.md`.
 - **Model it from a period source.** `reference/*.md` if we have one, and if we do not, the scan
   goes through the `pdf-to-reference` skill first. Never from another emulator's source.
 - **Reuse the chip.** `src/chips/` already holds the 6850, 8251, 8253, 8259A, 2651, MSM5832,
