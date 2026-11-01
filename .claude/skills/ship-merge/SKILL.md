@@ -22,17 +22,22 @@ anything. A fix is a new change, and the main session owns it.
 
 ## 1. Wait for CI
 
-Run ONE foreground command, with the tool timeout at 600000 ms (10 minutes):
+Start ONE command with `run_in_background`:
 
 ```sh
-sleep 120; gh pr checks <N> --watch --interval 20 --fail-fast
+sleep 120; perl -e 'alarm 480; exec @ARGV' gh pr checks <N> --watch --interval 20 --fail-fast
 ```
 
 The command waits 2 minutes. Then `gh` checks every 20 seconds until CI is done or a leg fails.
-Keep the command in the foreground: it holds this subagent's turn open.
+The `alarm` ends `gh` after 8 more minutes, for a limit of 10 minutes. The limit is in the command
+because a tool timeout does not apply to a background command. `perl` sets the limit because
+macOS has no `timeout` command.
 
-- **Do not repeat the command.** A run that passes the 10 minute timeout has stalled. Report it.
-- If the harness refuses the `sleep`, wait the 2 minutes with `Monitor`, and say so in the report.
+End your turn after you start the command. Its exit wakes this subagent. Do not poll.
+
+- **Exit 0:** every leg passed.
+- **Exit 142:** the limit ended the wait, so CI has stalled. Report it. Do not repeat the command.
+- **Any other exit:** read the legs with `gh pr checks <N>`.
 
 A core change runs Linux, macOS and Windows. Any other change runs Linux only
 (`tools/ci-changed-code.sh` decides, and the `Classify the change` log says which). A leg that
@@ -60,15 +65,15 @@ Write to the `simplified-english` light rules.
 
 ## 4. Watch `master`
 
-Use the same foreground form as step 1 for each watch, with the same 10 minute timeout, and do
-not repeat it.
+Start each watch with `run_in_background`, as in step 1. Each watch has a limit of 10 minutes
+and no `sleep`. Exit 142 means a stall. Do not repeat a watch.
 
 - **A code merge:** `CI` on `master` builds Linux, macOS and Windows. Find the run, then watch
   it:
 
   ```sh
   gh run list --workflow=ci.yml --branch master -L 1
-  gh run watch <id> --interval 20 --exit-status
+  perl -e 'alarm 600; exec @ARGV' gh run watch <id> --interval 20 --exit-status
   ```
 
   Read every leg's result. Report a red leg with its log excerpt.
