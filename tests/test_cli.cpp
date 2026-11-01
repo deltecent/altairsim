@@ -2923,7 +2923,8 @@ void test_achieved_hz() {
         // A relocatable value carries a trailing apostrophe in the object field.
         {
             std::ofstream f(reloc, std::ios::binary);
-            f << " 0100'314201   START:\tLXI\tSP,STACK\r\n";
+            f << "\tMACRO-80 3.44\t09-Dec-81\tPAGE\t1\r\n"
+                 "  0000'   C3 0000               START:\tJMP\t0\r\n";
         }
 
         Machine mm;
@@ -2994,7 +2995,7 @@ void test_achieved_hz() {
         std::ostringstream s4;
         mon.exec("SYMBOLS LOAD " + reloc, s4);
         CHECK(s4.str().find("relocatable") != std::string::npos, "a relocatable .PRN is refused");
-        CHECK(s4.str().find("line 1") != std::string::npos, "and the line is named");
+        CHECK(s4.str().find("line 2") != std::string::npos, "and the line is named");
 
         // CLEAR empties it.
         mon.exec("SYMBOLS CLEAR", o);

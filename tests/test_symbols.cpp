@@ -2,6 +2,9 @@
 
 #include "core/symbols.h"
 
+#include <fstream>
+#include <iterator>
+
 #include <cstring>
 #include <string>
 
@@ -100,17 +103,64 @@ void test_symbols() {
         CHECK(st.added == 0, "no label in column 17 -> no symbol");
     }
 
-    // ---- .PRN: a relocatable listing is REFUSED, and named ----
+    // ---- .PRN: real listings from the assemblers (tests/programs/symbols/README.md) ----
     {
-        // An M80 relocatable value carries a trailing apostrophe in the object field.
-        std::string p = std::string(" 0100'C30000    START:\tJMP\t0\r\n");
-        SymbolTable t;
-        SymbolTable::LoadStats st;
-        std::string err;
-        CHECK(!loadPrn(sv(p), "reloc.PRN", t, true, st, err), "a relocatable address FAILS");
-        CHECK(err.find("reloc.PRN") != std::string::npos, "and names the file");
-        CHECK(err.find("line 1") != std::string::npos, "and the line");
-        CHECK(err.find("relocatable") != std::string::npos, "and says why");
+        auto load = [](const char* rel, SymbolTable& t, std::string& err) {
+            std::ifstream f(std::string(ALTAIR_SOURCE_DIR) + "/" + rel, std::ios::binary);
+            std::string text((std::istreambuf_iterator<char>(f)), {});
+            SymbolTable::LoadStats st;
+            CHECK(!text.empty(), "fixture is readable");
+            return loadPrn(sv(text), rel, t, true, st, err);
+        };
+        auto value = [](const SymbolTable& t, const char* n) {
+            auto it = t.byName.find(n);
+            return it == t.byName.end() ? 0xFFFFFFFFu : (uint32_t)it->second.value;
+        };
+        auto isLabel = [](const SymbolTable& t, const char* n) {
+            auto it = t.byName.find(n);
+            return it != t.byName.end() && it->second.isAddr;
+        };
+
+        for (bool mac : {false, true}) {
+            const char* rel = mac ? "tests/programs/symbols/CASESMAC.PRN"
+                                  : "tests/programs/symbols/CASESASM.PRN";
+            SymbolTable t;
+            std::string err;
+            CHECK(load(rel, t, err), "an ASM or MAC listing loads");
+            // ASM prints no address on a SET line, so its listing cannot give CNT.
+            CHECK(t.byName.size() == (mac ? 8u : 7u), "every ASM or MAC symbol, and no others");
+            CHECK(value(t, "START") == 0x100 && isLabel(t, "START"), "a colon label");
+            CHECK(value(t, "NOCOL") == 0x108 && isLabel(t, "NOCOL"), "a label with no colon");
+            CHECK(value(t, "BDOS") == 5 && !isLabel(t, "BDOS"), "an EQU is a constant");
+            if (mac) CHECK(value(t, "CNT") == 1 && !isLabel(t, "CNT"), "a MAC SET is a constant");
+        }
+        {
+            SymbolTable t;
+            std::string err;
+            CHECK(load("tests/programs/symbols/M80ABS.PRN", t, err), "an M80 listing loads");
+            CHECK(t.byName.size() == 11, "every M80 symbol, and no DS, ASEG or table entry");
+            CHECK(isLabel(t, "START") && value(t, "START") == 0x100, "an M80 label");
+            CHECK(isLabel(t, "PUB"), "an M80 public label loses both colons");
+            CHECK(value(t, "BDOS") == 5 && !isLabel(t, "BDOS"), "an M80 EQU is a constant");
+            CHECK(value(t, "COUNT") == 2 && !isLabel(t, "COUNT"), "the last SET wins");
+            CHECK(value(t, "STEP") == 3 && !isLabel(t, "STEP"), "DEFL is a constant");
+            CHECK(value(t, "NAME") == 4 && !isLabel(t, "NAME"), "ASET is a constant");
+        }
+        {
+            SymbolTable t;
+            std::string err;
+            CHECK(load("roms/VGMON43/source/MON43.PRN", t, err), "a real absolute M80 ROM loads");
+            CHECK(!t.byName.empty(), "and has symbols");
+        }
+        for (const char* rel : {"tests/programs/symbols/M80REL.PRN",
+                                "roms/SSM-8080MON/SSMSCP.PRN"}) {
+            SymbolTable t;
+            std::string err;
+            CHECK(!load(rel, t, err), "a relocatable M80 listing FAILS");
+            CHECK(err.find(rel) != std::string::npos, "and names the file");
+            CHECK(err.find("line ") != std::string::npos, "and the line");
+            CHECK(err.find("relocatable") != std::string::npos, "and says why");
+        }
     }
 
     // ---- .PRN: a source apostrophe (column 17+) is NOT mistaken for relocation ----

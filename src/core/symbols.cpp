@@ -141,6 +141,61 @@ static bool nextLine(std::span<const uint8_t> d, size_t& i, std::string& line) {
     return true;
 }
 
+namespace {
+
+// True for a MACRO-80 page header: "[title]\tMACRO-80 3.44\tdate\tPAGE\tn". M80 starts every
+// listing with one. Only the first non-blank line is read, so a comment cannot look like it.
+bool isM80Header(const std::string& line) {
+    size_t mark = line.find("\tMACRO-80 ");
+    return mark != std::string::npos && line.find("\tPAGE\t", mark) != std::string::npos;
+}
+
+// The whitespace-delimited token that starts at or after `from`, minus any trailing ':'
+// (M80 writes a public label as `NAME::`).
+std::string sourceToken(const std::string& line, size_t& from, bool stripColons = true) {
+    while (from < line.size() && isBlank(line[from])) ++from;
+    size_t s = from;
+    while (from < line.size() && !isBlank(line[from])) ++from;
+    std::string tok = line.substr(s, from - s);
+    if (stripColons)
+        while (!tok.empty() && tok.back() == ':') tok.pop_back();
+    return tok;
+}
+
+// One M80 listing line. Machine field to index 31, address at index 2-5, its relocation mark
+// at index 6, source from index 32. Returns false only to refuse the file.
+bool m80Line(const std::string& line, int lineNo, const std::string& source, SymbolTable& t,
+             SymbolTable::LoadStats& st, std::string& err) {
+    uint32_t value;
+    if (line.size() <= 32 || isBlank(line[32]) || !isHex4(line, 2, value)) return true;
+
+    size_t pos = 32;
+    std::string first = sourceToken(line, pos, /*stripColons=*/false);
+    size_t second = pos;
+    std::string op = upcase(sourceToken(line, second));
+
+    // M80 requires the colon on a label, so a first token without one is a label only when an
+    // assignment follows it. `DS 4` in column 1 has an address and is no symbol.
+    bool isLabel = first.back() == ':';
+    bool isAssign = op == "EQU" || op == "SET" || op == "DEFL" || op == "ASET";
+    if (!isLabel && !isAssign) return true;
+
+    // Tested only on a line that defines a name: `ASEG` prints 0000' in an absolute listing.
+    char mark = line.size() > 6 ? line[6] : ' ';
+    if (mark == '\'' || mark == '"' || mark == '!') {
+        err = source + ": line " + std::to_string(lineNo) +
+              " has a relocatable address -- link it and load the .SYM, or "
+              "assemble to an absolute origin";
+        return false;
+    }
+
+    while (first.back() == ':') first.pop_back();
+    if (!first.empty()) t.put(first, value, /*isAddr=*/isLabel && !isAssign, source, st);
+    return true;
+}
+
+}  // namespace
+
 bool loadPrn(std::span<const uint8_t> raw, const std::string& source, SymbolTable& t,
              bool replace, SymbolTable::LoadStats& st, std::string& err) {
     if (replace) t.clear();
@@ -149,26 +204,24 @@ bool loadPrn(std::span<const uint8_t> raw, const std::string& source, SymbolTabl
     size_t i = 0;
     std::string line;
     int lineNo = 0;
+    bool sawText = false, m80 = false;
 
     while (nextLine(d, i, line)) {
         ++lineNo;
 
-        // The address lives in columns 2-5 (index 1-4). No address there -- a blank line,
-        // a bare comment, an ORG with no label -- means no symbol on this line.
+        if (!sawText && line.find_first_not_of(" \t\f") != std::string::npos) {
+            sawText = true;
+            m80 = isM80Header(line);
+        }
+        if (m80) {
+            if (!m80Line(line, lineNo, source, t, st, err)) return false;
+            continue;
+        }
+
+        // ASM and MAC. The address lives in columns 2-5 (index 1-4). No address there -- a
+        // blank line, a bare comment, an ORG with no label -- means no symbol on this line.
         uint32_t value;
         if (!isHex4(line, 1, value)) continue;
-
-        // RELOCATION GUARD. An M80 relocatable value carries a trailing apostrophe in the
-        // machine-generated field (columns 1-16). Source apostrophes ('HELLO', a comment)
-        // live at column 17+ and are not scanned, so this fires only on real relocation.
-        size_t scanEnd = line.size() < 16 ? line.size() : 16;
-        for (size_t c = 0; c < scanEnd; ++c)
-            if (line[c] == '\'') {
-                err = source + ": line " + std::to_string(lineNo) +
-                      " has a relocatable address -- link it and load the .SYM, or "
-                      "assemble to an absolute origin";
-                return false;
-            }
 
         // The source field is column 17 (index 16). A label is present only when that
         // column is non-blank; a code/continuation line has whitespace there.
@@ -176,17 +229,16 @@ bool loadPrn(std::span<const uint8_t> raw, const std::string& source, SymbolTabl
 
         // The label is the first whitespace-delimited token of the source field, minus a
         // trailing ':'. Handles `START:` (colon) and `monit` (tabs, no colon) alike.
-        size_t s = 16, e = 16;
-        while (e < line.size() && !isBlank(line[e])) ++e;
-        std::string label = line.substr(s, e - s);
-        if (!label.empty() && label.back() == ':') label.pop_back();
+        size_t pos = 16;
+        std::string label = sourceToken(line, pos);
         if (label.empty()) continue;
 
-        // '=' in column 7 (index 6) marks an EQU. An EQU's value may be a BDOS function
-        // number as easily as an address, and nothing tells them apart, so it feeds
-        // name->value ONLY -- never the reverse map (else 0015 renders as some FWRITE).
-        bool isEqu = line.size() > 6 && line[6] == '=';
-        t.put(label, value, /*isAddr=*/!isEqu, source, st);
+        // Column 7 (index 6) marks a constant: '=' for an EQU, '#' for a MAC SET. Its value
+        // may be a BDOS function number as easily as an address, and nothing tells them
+        // apart, so it feeds name->value ONLY -- never the reverse map (else 0015 renders
+        // as some FWRITE).
+        bool isConst = line.size() > 6 && (line[6] == '=' || line[6] == '#');
+        t.put(label, value, /*isAddr=*/!isConst, source, st);
     }
 
     if (st.added > 0 || replace) t.loadOrder.push_back(source);

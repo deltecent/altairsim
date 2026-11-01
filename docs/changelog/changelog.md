@@ -12,6 +12,8 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Fixed: `SYMBOLS LOAD` read no symbols from a MACRO-80 listing.** It read an M80 `.PRN` with the ASM layout, found no address, and reported `0 symbol(s)`. It did not refuse a relocatable M80 listing, and it took a MAC `SET` as a program label. It now finds the M80 page header and uses the M80 columns, takes `EQU`, `SET`, `DEFL` and `ASET` as constants, and refuses a relocatable listing and names the line.
+
 **Fixed: a machine with a VDB-8024 keyboard held one host core at a prompt when it ran flat out.**
 An `IN` from the board's status port did not reach the keyboard line, so the run loop's idle test
 saw about one empty poll in 2000 instructions and never let the machine idle. `sbc200v` at its monitor

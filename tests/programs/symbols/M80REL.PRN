@@ -1,0 +1,27 @@
+	MACRO-80 3.44	09-Dec-81	PAGE	1
+
+
+                                ; M80REL.MAC - relocatable M80 listing fixture
+                                	.8080
+  0005                          BDOS	EQU	5
+  0000'   11 0009'              START:	LXI	D,MSG
+  0003'   0E 09                 	MVI	C,9
+  0005'   CD 0005               	CALL	BDOS
+  0008'   C9                    	RET
+  0009'   48 49 24              MSG:	DB	'HI',24H
+  000C'   0000'                 TBL:	DW	START
+                                	END	START
+	MACRO-80 3.44	09-Dec-81	PAGE	S
+
+
+Macros:
+
+Symbols:
+0005 	BDOS            0009'	MSG             0000'	START           
+000C'	TBL             
+
+
+
+No Fatal error(s)
+
+

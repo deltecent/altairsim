@@ -12,9 +12,13 @@
 //
 // TWO FORMATS, and the difference is load-bearing:
 //
-//   .PRN  an assembler LISTING (CP/M ASM, Microsoft M80, DR MAC -- one geometry).
-//         It marks an EQU with '=' in column 7, so it can tell a program LABEL from a
-//         constant, and only labels feed the reverse (address->name) map.
+//   .PRN  an assembler LISTING, in one of two geometries. CP/M ASM and DR MAC put the
+//         address in columns 2-5 and the source at column 17, and mark a constant in
+//         column 7 ('=' for an EQU, '#' for a MAC SET). Microsoft M80 starts with a
+//         MACRO-80 page header, puts the address in columns 3-6 and the source at column
+//         33, and marks no constant, so its assignment is read from the source field.
+//         A listing can tell a program LABEL from a constant, and only labels feed the
+//         reverse (address->name) map.
 //   .SYM  the classic CP/M symbol file. A flat, alphabetical list of `HHHH NAME` pairs
 //         with NO label/EQU distinction, so it feeds name->value only. DR MAC/RMAC write
 //         it (every symbol); Microsoft L80 also writes one, but only with `/N/Y` and only
@@ -22,7 +26,8 @@
 //         console instead; that is not a file. Verified against the L80 manual 2026-07-17.)
 //
 // ABSOLUTE ADDRESSES ONLY. A relocatable M80 listing marks its addresses with a
-// trailing apostrophe; loadPrn REFUSES such a file and names the line, because a
+// trailing apostrophe; loadPrn REFUSES a file that defines a name at such an address and
+// names the line, because a
 // module-relative address referenced as if it were absolute is a silent wrong answer
 // (Patrick, 2026-07-17). A .SYM is written after linking and is absolute already.
 

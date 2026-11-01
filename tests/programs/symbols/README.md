@@ -16,6 +16,11 @@ linking the sources through the Host Bridge:
 | `ATEST.ASM` | — | source | Digital Research ASM/MAC syntax, absolute `ORG 0100H` |
 | `ATEST.SYM` | `MAC ATEST` | `MAC ATEST` | the ground-truth CP/M **`.SYM`** |
 | `ATEST.PRN` | `MAC ATEST` | `MAC ATEST` | a MAC assembler **`.PRN`** listing |
+| `CASES.ASM` | — | source | ASM and MAC cases: labels, `EQU`, `SET`, `DS` |
+| `CASESASM.PRN` | `ASM CASES` | `ASM CASES` | `CASES.ASM` listed by ASM |
+| `CASESMAC.PRN` | `MAC CASES` | `MAC CASES` | `CASES.ASM` listed by MAC |
+| `M80ABS.MAC`, `.PRN` | `M80` | `M80 ,M80ABS=M80ABS` | absolute M80: `TITLE`, `ASEG`, `EQU`, `SET`, `DEFL`, `ASET`, `::` |
+| `M80REL.MAC`, `.PRN` | `M80` | `M80 ,M80REL=M80REL` | relocatable M80 |
 
 ## What they establish
 
@@ -25,8 +30,10 @@ linking the sources through the Host Bridge:
 - **`.SYM` format:** tab-stop-aligned `HHHH NAME` records, several per line, `\t`-separated,
   lines end CRLF, file `^Z`-padded, symbols alphabetical, values 4-hex **absolute**. It has
   **no EQU-vs-label distinction** — `BDOS`/`CR` (EQUs) sit beside `START`/`LOOP` (labels).
-- **`.PRN` geometry** (address cols 2–5, `=` at col 7 for an EQU, source at col 17, object
-  field may abut col 16) is identical across CP/M ASM, M80, and MAC — one parser covers all.
+- **`.PRN` has two geometries.** ASM and MAC: address cols 2-5, source col 17, constant
+  mark in col 7 (`=` for `EQU`, `#` for a MAC `SET`). M80: a `MACRO-80` page header (a
+  `TITLE` comes before it), address cols 3-6, relocation mark col 7, source col 33, and no
+  constant mark. An `ASEG` line prints `0000'` in an absolute M80 listing.
 
 `core/symbols.cpp` is written to these bytes; `tests/test_symbols.cpp` re-embeds the exact
 `ATEST.SYM` content so the unit test needs no file I/O.
