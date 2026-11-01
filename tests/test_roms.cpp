@@ -119,6 +119,8 @@ void test_roms() {
         {"vgmon40c", 0x0000, 0x064F, 1616, 0x6662335Cu, true},
         // Monitor 2.0C, mounted at C000 on vgmz. deramp's HEX with B set to D800.
         {"vgmon20c", 0x0000, 0x03D5, 982, 0xF1103B3Du, true},
+        // Monitor 4.1, assembled from the listing. Sum 17 where Vector's sheet says 16.
+        {"vgmon41", 0x0000, 0x07FF, 2048, 0x80011EC9u, true},
         // The Tarbell floppy boot PROM: 32 bytes at 0000, shared by the single- and
         // double-density cards. Reads track 0 sector 1 into 0000 and jumps into it (07D).
         {"tarbell-sd", 0x0000, 0x001F, 32, 0x55E3446Du, true},
