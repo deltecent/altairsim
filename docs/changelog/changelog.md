@@ -12,10 +12,18 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
-**New: the `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines. They replace `vector`.** Each is a Vector Graphic machine: a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ. `builtin:vgmon41` and `builtin:vgmon20c` are new, for Monitor 4.1 and Monitor 2.0C. The `vector` machine is removed. Its boards remain.
+**New: Vector Graphic machines and boards.** The `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines are a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ.
 
-**Fixed: CP/M 2.22 on a Flashwriter II machine with `clock_hz` set stopped with `Bdos Err On A: Not ready`.**
-Bit 5 of port `00` (V BLANK) followed host time, but a paced machine runs in bursts and sleeps. The BIOS counts loops across that pulse to find the processor speed. The count was too low, so the BIOS took a 4 MHz machine for 2 MHz, and its disk timeout became shorter than one disk revolution. With `clock_hz` set, the bit now follows emulated time. At `clock_hz=0`, it follows host time.
+- `vgzcb`: the ZCB processor board. It has a Z80, three PROM sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000. The `baud` property has the eight values of switch S1. A `vgzcb` beside a `vgbsii` needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards overlap at `04`-`09`.
+- `vgfwii`: the Flashwriter II video board. It has an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard port at `00` and `01`. A key can raise `RST 7` through the `interrupt` property.
+- `vgdmdc`: the Dual-Mode Disk Controller. It runs four floppy drives through four ports and a 512-byte RAM, with the real 32-bit ECC.
+- `vgmdc`: the Micropolis Disk Controller. It has four 5.25-inch floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default.
+- `vgbsii`: the Bitstreamer II. It has three 8251 serial channels, the interrupt mask and a 55 Hz clock.
+- `vgbs`: the Bit Streamer. It has one 8251 serial port and two parallel ports, at ports `00`-`03` by default.
+- `bankmem card=vector`: new `window_lo` and `window_hi` properties set the addresses of each plane. A select of a bank that the board does not carry now takes the old bank off the bus, as OASIS needs.
+- Monitors: `builtin:vgmon41`, `builtin:vgmon40`, `builtin:vgmon40c` and `builtin:vgmon20c`. Monitor 4.0 boots a `vgmdc` with the `B` key. Monitor 4.0c does the same with its console on serial port A of a `vgbsii`.
+
+OASIS 5.5A boots from a `vgdmdc` disk, and Vector CP/M boots from a `vgmdc` disk. The package holds no OASIS or Micropolis disk.
 
 **Fixed: `SYMBOLS LOAD` read no symbols from a MACRO-80 listing.** It read an M80 `.PRN` with the ASM layout, found no address, and reported `0 symbol(s)`. It did not refuse a relocatable M80 listing, and it took a MAC `SET` as a program label. It now finds the M80 page header and uses the M80 columns, takes `EQU`, `SET`, `DEFL` and `ASET` as constants, and refuses a relocatable listing and names the line.
 
@@ -28,43 +36,9 @@ same fix.
 
 **Fixed: `CONFIG SAVE` under `--mcp` saved a machine with no console.** The save wrote the
 session's own line, `connect = "scripted"`, for the unit that holds the console. With `--mirror`
-or `--log` it also wrote those endpoints. When you loaded `vector` from that file, `run` stopped
+or `--log` it also wrote those endpoints. When you loaded that file, `run` stopped
 with `no console line`. The save now writes `connect = "console"` for that unit. A unit that
 the machine file connects to `scripted` stays `scripted`.
-
-**New: the `vgbs` board, the Vector Graphic Bit Streamer.** It has one 8251 serial port and two
-parallel ports, at ports `00`-`03` by default.
-
-**New: Monitors 4.0 and 4.0c, the Vector Graphic Monitors for Micropolis disks.** Mount
-`builtin:vgmon40` in a `vgzcb` socket, and the `B` key boots the `vgmdc` board. `builtin:vgmon40c`
-does the same with its console on serial port A of a `vgbsii`. A `vgzcb` beside a `vgbsii`
-needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards
-overlap at `04`-`09`.
-
-**New: `vgmdc`, the Vector Graphic Micropolis Disk Controller.** The board puts four 5.25-inch
-floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default. The processor
-moves each byte, and the board holds it to the speed of the disk, as the real board does. On a machine
-with a `vgzcb` board and 56K of RAM, type `GF800` at the `Mon>` prompt of Monitor 4.3 to boot Vector CP/M
-from `drive0`. The package holds no Micropolis disk.
-
-**New: `vgzcb`, the Vector Graphic ZCB processor board.** One board entry gives a Z80, three PROM
-sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a
-reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000 as
-it does on the real board. The `baud` property has the eight values of switch S1, and the guest's
-clock factor divides the rate.
-
-**New: `vgdmdc`, the Vector Graphic Dual-Mode Disk Controller, and `vgbsii`, the Vector
-Graphic Bitstreamer II. The `vector` machine now boots a disk.** `vgdmdc` runs four floppy drives
-through four ports and a 512-byte RAM, with the real 32-bit ECC. `vgbsii` gives three 8251
-serial channels, the interrupt mask and a 55 Hz clock. On the `vector` machine, type `MOUNT
-dm0:drive1 mydisk.vgi` at the monitor and press `B` at `Mon>`. OASIS 5.5A boots to its `>` prompt
-from such a disk. The package holds no OASIS disk.
-
-**`bankmem`, `card=vector`: a bank with no board now answers nothing.** A select of a bank that the
-board does not carry left the old bank live. OASIS tests each bank by a read-back, so every bank
-looked like RAM, the test changed OASIS's own code, and OASIS overwrote itself. The real board
-compares the select with its own switch, so the old bank now leaves the bus. New `window_lo` and
-`window_hi` properties set the addresses of each plane, which jumper area D does on the real board.
 
 **`CONFIG LOAD` now gives the same machine as the same file at startup.** The loader wrote
 `[console]`, `[display]` and `[terminal]` while it read the file, and it did not reset them first. A
@@ -98,15 +72,6 @@ defaults, and `CONFIG LOAD` kept the values of the last machine. The `sbc200v` f
 `focus = true`, so that its video window is the console. A copy saved with `CONFIG SAVE`
 opened its window behind other windows, and the console kept the keyboard. The saved file now
 has a `[display]` section, and `focus` comes back as `true`.
-
-**New: `vgfwii`, the Vector Graphic Flashwriter II video board, and the `vector` machine.** The
-board gives a machine an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard
-port at `00` and `01`. The ports are read only, as on the real board. A read of port `01` clears
-the key flag, and a key can raise `RST 7` through the `interrupt` property. The character shapes
-come from the printed chart of the manual. The `vector` machine runs Vector Graphic's Monitor
-4.3 from ROM. Type `altairsim vector`, and the Monitor's `Mon>` prompt appears in the video
-window. Press `R` for the registers. The machine has no disk controller yet, so `B` returns to
-the prompt.
 
 **New: `jadedd`, the Jade Double D floppy controller.** The board has its own Z80, 2K of RAM and
 an FD1791. The host sees 1K of the board's RAM through a window at `E000`–`FC00`, and controls
