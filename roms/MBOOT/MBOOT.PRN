@@ -1,0 +1,393 @@
+
+
+                ;**************************************************************************
+                ;
+                ;  Micropolis FDC Boot ROM
+                ;
+                ;  This ROM loads sector 0 on track 0 of drive 0 into RAM and
+                ;  jumps to it.
+                ;
+                ;  The ROM is position independent so the ROM does not have to be rebuilt
+                ;  if the board is jumpered to a different address. Upon entry, the ROM
+                ;  does a position independent copy of the boot code to a fixed location
+                ;  in RAM (A2h) and then executes the boot code from RAM. 
+                ;
+                ;  Prior to jumping to the loaded boot sector, this ROM places the
+                ;  address of the FDC register space in memory location A2h. Also,
+                ;  register DE points to the ROM base address when control is passed
+                ;  to the loaded code. The boot loaders for typical operating systems
+                ;  (e.g., MDOS, VG CP/M 2.2, Lifeboat CP/M 2.2) expect these parameters
+                ;  to have been set. Further, the boot loaders (e.g. the VG CP/M loader)
+                ;  expect the RAM image code to be in place and may make calls to the
+                ;  rdSec routine at A6h to perform disk I/O.
+                ;
+                ;  Disassembled by Mike Douglas, November 2016
+                ;
+                ;***************************************************************************
+                
+ 010C =         SCLEN 	equ	268		;sector len without sync byte and checksum
+ 010A =         PTROFF	equ	010Ah		;offset of load address ptr within sector 0
+                
+                ; FDC Status Register
+                
+                ; Sector register is at FDCBASE+0
+                ;     0-3 sector count
+                ;	4 spare
+                ;	5 spare
+                ;	6 sector interrupt flag
+                ;	7 sector flag
+                
+ 0040 =         SIFLG	equ	040h		;sector interrupt flag
+ 0080 =         SFLG	equ	080h		;sector start flag
+ 0020 =         DTMR	equ	020h		;2mhz/4mhz jumper for timers
+                
+                ; Status register is at FDCBASE+1
+                ;     0-1 unit address
+                ;	2 unit selected (low true)
+                ;	3 track 0
+                ;	4 write protect
+                ;	5 disk ready
+                ;	6 pinte
+                ;	7 transfer flag
+                
+ 0080 =         TFLG	equ	80h		;transfer flag
+ 0040 =         INTE	equ	40h		;interrupt enable
+ 0020 =         RDY	equ	20h		;disk ready
+ 0010 =         WPT	equ	10h		;write protect
+ 0008 =         TK0	equ	08h		;track zero
+ 0004 =         USLT	equ	04h		;unit selected
+                
+                ; Command register at FDCBASE+0 (and again at FDCBASE+1)
+                ;	bits 1-0 command modifier
+                ;	bits 7-5 command
+                
+ 0020 =         SLUN	equ	020h		;select unit
+                ;  Modifier contains unit address
+                
+ 0040 =         SINT	equ	040h		;set interrupt
+                ;  Modifier = 1 enable interrupt
+                ;  	      0 disable interrupt
+                
+ 0060 =         STEP	equ	060h		;step carriage
+ 0000 =         STEPO	equ	000h		;step out modifier
+ 0001 =         STEPI	equ	001h		;step in modifier
+                
+ 0080 =         WTCMD	equ	080h		;enable write
+                ;  No modifier used
+                
+ 00A0 =         RESET	equ	0A0h		;reset controller
+                ;  No modifier used
+                
+                
+                ; An ORG of 6Bh is used so the section of this PROM that ends
+                ;   up in RAM at A2h (RAMIMG) is also at A2h when this file
+                ;   is assembled. The PROM code prior to RAMIMG is position
+                ;   independent, so its assembled address does not matter.
+                ;   Note that the code output by this assembly should NOT be
+                ;   offset when burned into the PROM. 
+                
+ 006B           	org	06Bh
+                
+                ;--------------------------------------------------------------------
+                ; ROM entry point (romEnt)
+                ;    Position independent code to copy the boot code to a fixed
+                ;    location in RAM for execution and to save the address found
+                ;    for the FDC.
+                ;--------------------------------------------------------------------
+ 006B F3        romEnt:	di			;disable interrupts
+                
+                ; Call a "RET" instruction to determine and save the ROM base address
+                ;   in ROMADR
+                
+ 006C 21A200    	lxi	h,RAMIMG	;HL=SP=eventual destination in RAM
+ 006F F9        	sphl
+                
+ 0070 36C9      	mvi	m,ret		;create and call a return instruction
+ 0072 CDA200    	call	RAMIMG		;puts address of "xchg" in ROMADR
+ 0075 EB        	xchg			;DE->RAMIMG
+ 0076 2AA000    	lhld	ROMADR		;HL->"xchg" instruction (above) in ROM
+ 0079 2E00      	mvi	l,0		;HL->base address of ROM
+ 007B E5        	push	h		;ROMADR=base address of boot ROM
+                
+                ; Put the address of the copy loop below in stack memory so we can
+                ;   use an rz instruction instead of a jz instruction for looping.
+                ;   This allows the copy loop to be position independent.
+                
+ 007C 011D00    	lxi	b,(copy-romEnt) AND 0FFh     ;BC=offset of copy loop below
+ 007F 09        	dad	b		;HL=address of copy loop in ROM
+ 0080 E5        	push	h		;save in RAM for "jz" via rz
+ 0081 E1        	pop	h		;restore stack pointer
+                
+ 0082 0E1A      	mvi	c,(RAMIMG-copy) AND 0FFh    ;BC=add'l offset to RAMIMG
+ 0084 09        	dad	b		;HL=address of RAMIMG in ROM
+                
+ 0085 06BD      	mvi	b,(IMGEND-RAMIMG) AND 0FFh  ;B=number of bytes to move
+                
+ 0087 EB        	xchg			;DE->ROM source, HL->RAM dest
+                	
+                ; Position independent loop to copy data starting at RAMIMG in ROM to
+                ;   RAM starting at A2h
+                
+ 0088 3B        copy:	dcx	sp		;(SP)->copy in ROM for jz via rz
+ 0089 3B        	dcx	sp
+                
+ 008A 1A        	ldax	d		;copy byte from ROM to RAM
+ 008B 77        	mov	m,a
+ 008C BE        	cmp	m		;verify value in RAM matches
+ 008D C0        	rnz 	;jz copy	;memory move failed, try again
+                
+ 008E 23        	inx	h		;next RAM location
+ 008F 13        	inx	d		;next ROM location
+ 0090 05        	dcr	b		;decrement byte count
+ 0091 C0        	rnz	;jz copy	;loop until done
+                
+                ; Boot code has been copied to RAM at A2h. Determine the FDC address and save
+                ;   it at fdcAdr for use by boot code. Pass control to the code in RAM.
+                
+ 0092 E1        	pop	h		;fix stack pointer
+                
+ 0093 2AA000    	lhld	ROMADR		;HL->base of boot ROM
+ 0096 110002    	lxi	d,200H		;DE=offset of FDC registers from boot ROM
+ 0099 19        	dad	d		;HL->FDC registers
+ 009A 22A200    	shld	fdcAdr		;save FDC register base
+                
+ 009D 36A0      	mvi	m,RESET		;reset controller
+ 009F C3D400    	jmp	ramEnt		;pass control to RAM
+                
+                ;********************************************************************
+                ; RAM Image
+                ;    The following code from RAMIMG to IMGEND gets copied to RAM
+                ;    starting at location A2h. The entry point is further down
+                ;    at ramEnt.
+                ;********************************************************************
+ 00A2 =         RAMIMG	equ	$
+ 00A0 =         ROMADR	equ	RAMIMG-2	;ROM address saved here
+                
+ 00A2 0000      fdcAdr:	dw	0		;FDC register address placed here
+ 00A4 0000      lodAdr:	dw	0		;sector load address placed here
+                
+                ;--------------------------------------------------------------------
+                ; rdSec - Read sector into RAM
+                ;
+                ; On Entry:
+                ;   DE->RAM buffer
+                ;   B = sector to read
+                ;   C = number of bytes to read/2
+                ;
+                ; On Exit:
+                ;   Z set = read successful
+                ;   Z clear = checksum error
+                ;   A = checksum from disk
+                ;   B = computed checksum
+                ;   C = 0
+                ;   HL->one past last byte of sector
+                ;   DE->FDC Data Register
+                ;--------------------------------------------------------------------
+ 00A6 2AA200    rdSec:	lhld	fdcAdr		;HL->FDC registers (sector register)
+                
+ 00A9 7E        wtSec:	mov	a,m		;sector status
+ 00AA E680      	ani	SFLG		;wait for sector true
+ 00AC CAA900    	jz	wtSec
+                
+ 00AF 7E        	mov	a,m		;re-read sector register to be safe
+ 00B0 E60F      	ani	0Fh		;get sector number alone
+ 00B2 A8        	xra	b		;right sector number?
+ 00B3 C2A900    	jnz	wtSec		;no, keep looking
+                
+ 00B6 23        	inx	h		;HL->status register
+                
+ 00B7 B6        wtXfer:	ora	m		;wait for transfer flag (bit 7)
+ 00B8 F2B700    	jp	wtXfer
+                
+ 00BB 23        	inx	h		;HL->data register
+ 00BC 7E        	mov	a,m		;read data (pull off sync byte)
+ 00BD AF        	xra	a		;start with carry clear
+ 00BE EB        	xchg			;DE->data register
+                
+ 00BF 0600      	mvi	b,0		;B=checksum, init to zero
+ 00C1 00        	nop			;timing for FDC stall logic
+ 00C2 00        	nop
+                
+                ; Read sector data from disk into RAM two bytes at a time
+                
+ 00C3 1A        movSec:	ldax	d		;read data byte
+ 00C4 77        	mov	m,a		;save in buffer
+ 00C5 23        	inx	h
+ 00C6 88        	adc	b		;update checksum
+ 00C7 47        	mov	b,a
+                
+ 00C8 1A        	ldax	d		;repeat for 2nd byte
+ 00C9 77        	mov	m,a
+ 00CA 23        	inx	h
+ 00CB 88        	adc	b
+ 00CC 47        	mov	b,a
+                
+ 00CD 0D        	dcr	c		;decrement byte count
+ 00CE C2C300    	jnz	movSec		;repeat until done
+                
+                ; Read and verify checksum
+                
+ 00D1 1A        	ldax	d		;A=checksum from disk
+ 00D2 B8        	cmp	b		;compare to computed checksum	
+ 00D3 C9        	ret			;return result
+                
+                ;--------------------------------------------------------------------
+                ; RAM entry point (ramEnt)
+                ;    ramEnt is jumped to by the ROM after copying RAMIMG to RAM
+                ;    at A2h. This code selects the drive, restores to track zero,
+                ;    reads sector zero into RAM at a fixed buffer address, then
+                ;    looks for a load address specified at offset 10Ah in the sector.
+                ;    Sector zero is then re-read into the specified RAM address.
+                ;    Finally, control is passed to the loaded code.
+                ;--------------------------------------------------------------------
+ 00D4 2AA200    ramEnt:	lhld	fdcAdr		;HL->FDC command register
+ 00D7 3620      	mvi	m,SLUN+0	;select drive zero
+                
+                ; Verify the drive is selected and ready
+                
+ 00D9 23        	inx	h		;HL->status register
+ 00DA 7E        	mov	a,m		;A=drive status
+ 00DB 2B        	dcx	h		;restore HL->command register
+ 00DC E624      	ani	RDY+USLT	;isolate ready and selected bits
+ 00DE EE20      	xri	RDY		;verify ready and selected (USLT negative)
+ 00E0 C2D400    	jnz	ramEnt		;not ready, start over
+                
+                ; Delay 250ms to allow drive spin-up time
+                
+ 00E3 0E5E      	mvi	c,94		;delay 250ms (94*2.68ms) for drive spin-up
+ 00E5 CD4901    	call	delay
+                
+                ; Verify the drive is still selected and ready
+                
+ 00E8 23        	inx	h		;HL->status register
+ 00E9 7E        	mov	a,m		;A=drive status
+ 00EA 2B        	dcx	h		;restore HL->command register
+ 00EB E624      	ani	RDY+USLT	;isolate ready and selected bits
+ 00ED EE20      	xri	RDY		;verify ready and selected (USLT negative)
+ 00EF C2D400    	jnz	ramEnt		;not ready anymore, start over
+                
+                ; Seek to track zero. If already on track zero, step in 8 tracks and then
+                ;    seek to track zero.
+                
+ 00F2 23        	inx	h		;HL->status register
+ 00F3 7E        	mov	a,m		;A=drive status
+ 00F4 E608      	ani	TK0		;at track zero?
+ 00F6 2B        	dcx	h		;restore HL->command register
+ 00F7 CA0701    	jz	seek0		;not track zero, go seek to zero
+                
+ 00FA 0608      	mvi	b,8		;step in 8 tracks
+                
+ 00FC 3661      seekIn:	mvi	m,STEP+STEPI	;step command with step in modifier
+ 00FE 0E0F      	mvi	c,15		;delay 40 ms (15*2.68ms)
+ 0100 CD4901    	call	delay
+                
+ 0103 05        	dcr	b		;decrement step counter
+ 0104 C2FC00    	jnz	seekIn		;complete all steps
+                
+                ; Execute the seek to track zero
+                
+ 0107 23        seek0:	inx	h		;HL->status register
+ 0108 7E        	mov	a,m
+ 0109 E608      	ani	TK0		;at track zero?
+ 010B 2B        	dcx	h		;restore HL->command register
+ 010C C21901    	jnz	doRead		;at track zero, go do the read
+                
+ 010F 3660      	mvi	m,STEP+STEPO	;step command with step out modifier
+ 0111 0E0F      	mvi	c,15		;delay 40 ms (15*2.68ms)
+ 0113 CD4901    	call	delay
+ 0116 C30701    	jmp	seek0		
+                
+                ; At track zero. Read sector zero into a fixed location in RAM (IMGEND),
+                ;   then look at offset 10Ah in the sector just read to get the load
+                ;   address specified within the boot sector. Re-read sector zero
+                ;   into the specified address and jump to it.
+                
+ 0119 215F01    doRead:	lxi	h,IMGEND	;HL->fixed location in RAM for sector 
+ 011C CD3701    	call	read0		;read sector 0	
+ 011F C2D400    	jnz	ramEnt		;failed, start over
+                
+ 0122 2A6902    	lhld	IMGEND+PTROFF	;HL->requested RAM address for disk's loader
+ 0125 22A400    	shld	lodAdr		;save the final load address
+                
+ 0128 CD3701    	call	read0		;re-read sector zero into specified address
+ 012B C2D400    	jnz	ramEnt		;failed, start over
+                
+ 012E 2AA400    	lhld	lodAdr		;HL->specified load address
+ 0131 110C00    	lxi	d,0Ch		;code starts 12 bytes into the sector
+ 0134 19        	dad	d		;HL->specified entry address
+ 0135 D1        	pop	d		;DE->ROM base address
+ 0136 E9        	pchl			;jump to the boot loader read from disk
+                
+                ;--------------------------------------------------------------------
+                ; read0 - Read sector zero
+                ;
+                ; On Entry:
+                ;   HL->RAM buffer
+                ;
+                ; On Exit:
+                ;   Z set = read successful
+                ;   Z clear = track or sector number error
+                ;   HL->RAM buffer
+                ;
+                ; Clobbers all other registers
+                ;--------------------------------------------------------------------
+ 0137 E5        read0:	push	h		;save buffer address
+ 0138 EB        	xchg			;DE->sector buffer
+                
+ 0139 018600    	lxi	b,SCLEN SHR 1	;B=sector 0, C=bytes to read/2
+ 013C CDA600    	call	rdSec		;read the sector
+ 013F E1        	pop	h		;restore buffer address
+ 0140 C23701    	jnz	read0		;retry if read error
+                
+                ; Verify track and sector on disk is track 0, sector 0
+                
+ 0143 E5        	push	h		;save buffer address
+ 0144 7E        	mov	a,m		;A=track number from disk
+ 0145 23        	inx	h		;HL->sector number from disk
+ 0146 B6        	ora	m		;verify both track and sector are zero
+ 0147 E1        	pop	h		;restore buffer address
+ 0148 C9        	ret			;return with comparison result
+                
+                ;--------------------------------------------------------------------
+                ; delay - Delay 2.68ms times value specified in C. Looks at
+                ;    2mhz/4mhz jumper on the FDC to determine CPU speed.
+                ;
+                ; On Entry:
+                ;   C = delay counter (2.68ms per bit)
+                ;
+                ; On Exit:
+                ;   A = 0
+                ;   C = 0
+                ;--------------------------------------------------------------------
+ 0149 7E        delay:	mov	a,m		;A=sector register from FDC
+ 014A E620      	ani	DTMR		;see if 4mhz jumper in place	
+ 014C 79        	mov	a,c		;A=requested delay
+ 014D C25101    	jnz	not4m		;not 4mhz
+ 0150 07        	rlc			;double the count for 4mhz CPU
+                
+ 0151 4F        not4m:	mov	c,a		;save possibly adjusted delay count
+                
+ 0152 3EFF      dLoop1:	mvi	a,255		;255 times through the inner loop
+                
+ 0154 D601      dLoop2:	sui	1
+ 0156 B7        	ora	a
+ 0157 C25401    	jnz	dLoop2
+                
+ 015A 0D        	dcr	c
+ 015B C25201    	jnz	dLoop1
+ 015E C9        	ret
+                
+ 015F =         IMGEND	equ	$
+                
+ 015F 00        	nop			;match remaining bytes in ROM
+ 0160 00        	nop
+ 0161 00        	nop
+ 0162 00        	nop
+ 0163 00        	nop
+ 0164 00        	nop
+ 0165 00        	nop
+ 0166 00        	nop
+ 0167 00        	nop
+ 0168 C3A600    	jmp	rdSec		;matches ROM, but not a great jump to use
+                
+ 016B           	end

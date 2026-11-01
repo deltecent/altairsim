@@ -603,6 +603,8 @@ add_library(altair_core STATIC
   # The Vector Graphic Dual-Mode Disk Controller, floppy half: a 512-byte buffer RAM behind
   # four ports, and 275-byte hard-sector slots. See vector-dualmode.h.
   src/boards/vector-dualmode.cpp
+  # Vector Graphic Micropolis controller: a 1K memory-mapped block. See vector-micropolis.h.
+  src/boards/vector-micropolis.cpp
   # The Vector Graphic Bitstreamer II: three 8251s, the parallel latches, and the 55 Hz clock
   # that OASIS runs on. See vector-bitstreamer.h.
   src/boards/vector-bitstreamer.cpp
@@ -870,6 +872,7 @@ add_executable(altair_tests
   tests/test_vdb8024.cpp
   tests/test_fwii.cpp
   tests/test_dualmode.cpp
+  tests/test_micropolis.cpp
   tests/test_bitstreamer.cpp
   tests/test_zcb.cpp
   tests/test_terminal.cpp

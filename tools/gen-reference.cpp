@@ -200,7 +200,7 @@ const char* boardCategory(const std::string& n) {
     if (n == "memory" || n == "bankmem" || n == "v2z80rom") return "Memory";
     if (n == "dcdd" || n == "mds" || n == "fdcplus" || n == "hdsk" || n == "versafloppy" ||
         n == "tarbell" || n == "tarbelldd" || n == "jadedd" || n == "disk1" || n == "disk1a" || n == "16fdc" ||
-        n == "64fdc" || n == "icom" || n == "dualsd" || n == "dualide" || n == "mdsa" || n == "mdsad" || n == "dualmode") return "Disk";
+        n == "64fdc" || n == "icom" || n == "dualsd" || n == "dualide" || n == "mdsa" || n == "mdsad" || n == "dualmode" || n == "micropolis") return "Disk";
     if (n == "2sio" || n == "sio" || n == "sbc" || n == "pmmi" ||
         n == "turnkey" || n == "gsio" || n == "io4" || n == "propio" || n == "bitstreamer") return "Serial";
     if (n == "acr" || n == "uio") return "Tape";
