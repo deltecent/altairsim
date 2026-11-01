@@ -63,10 +63,26 @@ an unfamiliar toolchain whose newer diagnostics have not been chased down yet, s
 GCC and Clang have slightly different warning sets, so a clean local build on one is not proof
 the other is clean — that is what the separate CI legs exist to catch.
 
-**MSVC is not in the gate yet.** `/W4` carries a pre-existing backlog (intentional integer
-narrowing, which GCC/Clang do not flag, plus some variable shadowing) that must be cleared
-before `/WX` can go on. That is tracked in issue #238; until it lands, `-DWERROR=on` is a no-op
-on MSVC and its `/W4` warnings stay visible in the log but non-fatal.
+**MSVC is in the gate.** `-DWERROR=on` adds `/WX` on MSVC. MSVC runs `/W4` with two classes
+turned off for the whole tree: `/wd4244 /wd4267`. These classes are the integer narrowing of an
+8-bit emulator. Issue #238 closed that backlog.
+
+Clang also runs `-Wshadow-uncaptured-local`, so a Mac build finds the lambda-local shadowing that
+GCC reports. macOS is the only leg that builds SDL3, so a warning in SDL-guarded code fails macOS
+only. A warning fails the leg before the merge for a core PR, and on `master` after the merge for
+any other PR.
+
+## Local test cadence
+
+Run the unit suites for what you changed, then commit. `altair_tests <names>` runs only the named
+suites. With no names it runs the full suite, as `ctest` does. A mistyped name is a hard error.
+
+A full local run is optional. CI runs `-LE slow` on every push. You choose the suites, and your
+choice can be wrong, so CI is the backstop. Run the full `ctest` for a wide change, or for release
+work that needs the slow processor tests.
+
+The acceptance tests boot real period software on a whole machine through the real CLI. They read
+back what the terminal received.
 
 ## The optional video backend (SDL3)
 

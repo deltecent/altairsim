@@ -7,7 +7,7 @@ contents, and reliable page breaks** — none of which the build's PDF engine ca
 renders our CSS and embeds our fonts, but it does **not** implement CSS Paged Media: no
 `@page` margin boxes (so no running "page N" footer) and no `target-counter()` (so a contents
 entry cannot say which page its chapter is on). A TOC that lists chapters but not their pages
-is the bug `TODO.md` asked to fix, and Chrome alone cannot fix it.
+is the bug this was built to fix, and Chrome alone cannot fix it.
 
 **Paged.js is that missing layer, and nothing more.** It is a single JavaScript polyfill that
 runs *inside the same headless Chrome*, before the print: it reads the rendered DOM, chops it

@@ -197,11 +197,6 @@ parallel-out.txt
 .claude/*
 !.claude/skills/
 
-# TODO.md is an internal, fast-moving brainstorming/working document, not a
-# shipped artifact. Anything in it that is meant for the public becomes a GitHub
-# issue instead; the file itself stays out of the tree. (Untracked 2026-07-22.)
-TODO.md
-
 # This site's release machines: addresses, ssh users, serial port names. The tracked
 # distribution.conf.example is the template; each site keeps its own copy under this name.
 distribution.conf

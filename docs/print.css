@@ -209,7 +209,7 @@ blockquote {
  * target-counter(attr(href), page) is the whole point of adopting Paged.js: it resolves each
  * TOC link to the page number its chapter LANDS on, so the contents finally say where to turn.
  * The browser's own print path cannot do this (it has no target-counter), which is why a
- * contents page that only listed chapter names was the bug TODO.md asked to fix.
+ * contents page that only listed chapter names was the bug to fix.
  *
  * The dots between a title and its number are a leader, so the eye can track across. CSS has a
  * leader() function for exactly this, but Paged.js 0.4.3 does not implement it -- and worse,

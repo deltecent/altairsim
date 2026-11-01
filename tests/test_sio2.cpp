@@ -698,7 +698,7 @@ void test_sio2() {
         // comes back: the 6850 receives the character and raises its own IRQ pin, but
         // that pin now reaches no backplane wire, so the 8080 is never interrupted, the
         // ISR at 0038h never runs, and the guest NOPs on, deaf. It was seen to echo
-        // about one run in twenty under load (TODO.md) -- and "under load" means only
+        // about one run in twenty under load -- and "under load" means only
         // that the host delivered the keystroke at a different instruction each time.
         //
         // A real 6850 cannot care WHEN in the guest's execution the byte lands: the
