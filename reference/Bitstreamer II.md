@@ -220,7 +220,12 @@ state of the parallel latches, of the mask register or of the clock latch.
   input, and this manual does not describe one. The wire, if there is one, is outside this manual.
   **Unresolved.** The System B manual sends the reader to the *Time-Share Multi-User System B
   conversion package* for this class of change ([System B Overview](System%20B%20Overview.md),
-  2-7). That package is not in hand.
+  2-7). That package is not in hand. The older board's manual documents the same pattern
+  ([Bit Streamer](Bitstreamer%20I.md) §4). There, U18 Q goes out on J2 pin 2, and a wire takes it to
+  J2 pin 16, input A6. The program tests that bit on port A, and an `IN` of port B resets the latch.
+  Status = 1 means set, which is the sense that `clock-latch` gives. OASIS does the same with
+  `IN 28` bit 0 and `IN 29`. This is a precedent and an inference. It is not this wire, and the
+  Bitstreamer II has no strobe pins on J4 or J5.
 - **⚠ Q2. The sense of the clock.** Pad A-1 is low while the latch is set (*sheet*). OASIS wants
   bit 0 = 1 for the clock, so a plain wire from A-1 to J4 pin 11 reads backward. The gate of U10 in
   §5 gives the sense OASIS wants: high while the latch is set, low when it is clear and mask bit 6

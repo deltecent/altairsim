@@ -130,6 +130,12 @@ bank. The RAM manual does not describe this split. `SET BANK` in the OASIS manua
 common or global, and gives its size as the first 16K, 32K or 48K. `SET BANK` is for systems with a
 programmable bank size, and on this disk `SET BANK 16` gives `Syntax error.`
 
+The [Early Products](Vector%20Graphic%20Early%20Products.md) sheet says that a 16K static board can
+go in "1 or more" banks. By §1, a board answers when its bit is 1 in the byte. A 16K board set to
+bank 6 therefore answers every byte that OASIS writes, and 16K is a size that `SET BANK` names. A
+64K board always starts at 0000H (§3), so it could not share that range. This is also an inference.
+No document shows this machine.
+
 `machines/vector.toml` gives the split as a `bankmem` window of 4000H–DFFFH, with RAM at 0000H that
 always answers. `SHOW BANK` then reads as below. With `banks = 2`, a line for `Bank #1` with the
 same range follows. `SHOW BANK` puts the nucleus above 3FFFH as well, and its tail at 4000H–4712H
