@@ -1,0 +1,55 @@
+# A Vector Graphic MZ: Z-80, 48K of RAM, two Micropolis drives and a serial console.
+#
+#     altairsim vgmz
+#     *                          <- the Monitor 2.0C prompt
+#
+# Press B to boot drive 0. First mount a disk at the altairsim> monitor:
+# MOUNT mdc0:drive0 <file>. With no disk, the boot PROM waits.
+#
+# The boards are from Vector Graphic's 1979 hardware brochure. The brochure names no Monitor.
+# Monitor 2.0C is a near relative of the 2.1C that the PROM sheet lists for this machine.
+
+[machine]
+name    = "vgmz"
+startup = ["RUN C000"]        # the stand-in below has no jump on reset
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE CONSOLE. The Monitor uses ports 02 and 03: serial data and status at base + 2.
+[[board]]
+type = "vgbs"
+id   = "bs0"
+port = 00
+
+  [board.unit.serial]
+  connect = "console"
+
+# THE DISK CONTROLLER. D800 follows Vector's rule for 48K machines. The brochure gives no address.
+[[board]]
+type = "vgmdc"
+id   = "mdc0"
+base = D800
+
+# MEMORY. A stand-in for the 48K RAM board and the 12K PROM/RAM board.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = C000
+  mount = "builtin:vgmon20c"
+
+  [[board.region]]
+  type = "ram"
+  at   = CC00
+  size = "1K"

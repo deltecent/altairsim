@@ -1,0 +1,56 @@
+# A Vector 3 VIP with Tandon drives: ZCB processor, 56K of RAM, Flashwriter II, Dual-Mode controller.
+#
+#     altairsim vg3vipt
+#     Mon>                       <- the Monitor prompt, ON THE VIDEO SCREEN
+#
+# Press B to boot. Monitor 4.3 boots unit 1, so first mount a disk at the altairsim> monitor:
+# MOUNT dm0:drive1 <file>. With no disk, B prints BOOT FLOPPY and comes back to Mon>.
+#
+# THE CONSOLE IS THE VIDEO BOARD, so the text never reaches the host terminal. Without SDL3 there
+# is no window: DUMP F000-F77F at the altairsim> monitor reads the screen.
+#
+# NOT FROM A VECTOR DOCUMENT. Monitor 4.3, the Flashwriter II and the controller
+# come from the restorer's notes on one machine. No Vector document describes this configuration.
+
+[machine]
+name = "vg3vipt"
+
+# The video window is this machine's console: it comes to the front when it opens and
+# keeps the keyboard when the guest stops.
+[display]
+focus    = true
+keyboard = "console"
+
+# THE PROCESSOR, the Monitor and the 1K of RAM at FC00, on one board.
+[[board]]
+type     = "vgzcb"
+id       = "cpu0"
+clock_hz = 4000000
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:vgmon43"
+
+# THE SCREEN AND THE KEYBOARD: 2K of video RAM at F000 and the keyboard ports at 00/01.
+[[board]]
+type = "vgfwii"
+id   = "fw0"
+
+  [board.unit.keyboard]
+  connect = "console"
+
+# THE DISK CONTROLLER, at the board's default ports C0-C3.
+[[board]]
+type = "vgdmdc"
+id   = "dm0"
+
+# THE RAM: 56K, 0000-DFFF, one bank.
+[[board]]
+type      = "bankmem"
+id        = "ram0"
+card      = "vector"
+window_lo = 0000
+window_hi = DFFF
+banks     = 1
+fill      = "random"
+

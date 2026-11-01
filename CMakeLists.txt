@@ -1150,15 +1150,15 @@ add_test(NAME acceptance-disk1a
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/disk1a.cmake)
 set_tests_properties(acceptance-disk1a PROPERTIES LABELS acceptance TIMEOUT 200)
 
-# Vector Graphic Monitor 4.3 on the FlashWriter II: the banner reaches the screen, the machine
+# The Vector 3 machines, each with its Monitor on the Flashwriter II: the banner reaches the screen, the machine
 # stands down at the prompt, and keys typed at the board run the Monitor's R and D commands.
-add_test(NAME acceptance-vector
+add_test(NAME acceptance-vg3
          COMMAND ${CMAKE_COMMAND}
                  -DSIM=$<TARGET_FILE:altairsim>
                  -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
                  -DBIN=${CMAKE_CURRENT_BINARY_DIR}
-                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vector.cmake)
-set_tests_properties(acceptance-vector PROPERTIES LABELS acceptance TIMEOUT 120)
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vg3.cmake)
+set_tests_properties(acceptance-vg3 PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # The Jade Double D: Jade's own FORMAT.COM makes double-density, single-density and 3740 disks,
 # reformats a disk to a smaller layout and two tracks of another, and the new disk boots.

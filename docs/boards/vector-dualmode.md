@@ -80,7 +80,7 @@ The ports are `port` to `port` + 3. The default base is `C0`. Ports `C4` to `CF`
 
 `./build/altair_tests vgdmdc` checks every port with real bus cycles, on made-up sectors. The suite also boots the real Monitor ROM from a made-up disk, with the head on track 3 at the start. The tests do not hold an OASIS byte.
 
-OASIS 5.5A was checked once by hand, on the `vector` machine. It boots from `drive1`, and a second disk reads from `drive2`. A `RENAME` on a copy of the disk survives a reboot.
+OASIS 5.5A was checked once by hand. It boots from `drive1`, and a second disk reads from `drive2`. A `RENAME` on a copy of the disk survives a reboot.
 
 ## References
 

@@ -1,0 +1,70 @@
+# A Vector System B: Z-80, 56K of RAM, Flashwriter II, Bitstreamer II, two Micropolis drives.
+#
+#     altairsim vg3sb
+#     Mon>                       <- the Monitor prompt, ON THE VIDEO SCREEN
+#
+# Press B to boot drive 0. First mount a disk at the altairsim> monitor:
+# MOUNT mdc0:drive0 <file>. With no disk, the boot PROM waits.
+#
+# THE CONSOLE IS THE VIDEO BOARD, so the text never reaches the host terminal. Without SDL3 there
+# is no window: DUMP F000-F77F at the altairsim> monitor reads the screen.
+
+[machine]
+name    = "vg3sb"
+startup = ["RUN E000"]        # the stand-in below has no jump on reset
+
+# The video window is this machine's console: it comes to the front when it opens and
+# keeps the keyboard when the guest stops.
+[display]
+focus    = true
+keyboard = "console"
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+# THE SCREEN AND THE KEYBOARD: 2K of video RAM at F000 and the keyboard ports at 00/01.
+[[board]]
+type = "vgfwii"
+id   = "fw0"
+
+  [board.unit.keyboard]
+  connect = "console"
+
+# THE DISK CONTROLLER, at the board's default address F800.
+[[board]]
+type = "vgmdc"
+id   = "mdc0"
+
+# THE SERIAL PORTS. Nothing is connected.
+[[board]]
+type = "vgbsii"
+id   = "bs0"
+port = 02
+
+# THE RAM: 56K, 0000-DFFF, one bank.
+[[board]]
+type      = "bankmem"
+id        = "ram0"
+card      = "vector"
+window_lo = 0000
+window_hi = DFFF
+banks     = 1
+fill      = "random"
+
+# A STAND-IN for the PROM/RAM III board: the Monitor at E000 and 1K of RAM at FC00.
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type  = "rom"
+  at    = E000
+  mount = "builtin:vgmon40"
+
+  [[board.region]]
+  type = "ram"
+  at   = FC00
+  size = "1K"

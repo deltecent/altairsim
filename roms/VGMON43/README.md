@@ -28,7 +28,7 @@ at    = 0xE000
 mount = "builtin:vgmon43"
 ```
 
-`altairsim vector` runs this ROM on a FlashWriter II ([`machines/vector.toml`](../../machines/vector.toml)).
+`altairsim vg3vipt` runs this ROM on a FlashWriter II ([`machines/vg3vipt.toml`](../../machines/vg3vipt.toml)).
 
 ## Source
 

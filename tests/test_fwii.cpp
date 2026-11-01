@@ -221,6 +221,18 @@ void test_fwii() {
         g.ns = lineNs(250);
         CHECK(g.status() == kKeyBlank, "host time does");
 
+        // A paced machine runs in bursts, so its raster follows emulated time. A guest counts
+        // loops across one blanking pulse to learn its own speed.
+        g.m.clock.setHz(4000000);
+        g.ns = lineNs(0);
+        g.m.clock.advance(66678 - (g.m.clock.now() % 66678) + 1000);   // near the top of a field
+        CHECK(g.status() == kKey, "paced: the top of a field shows, whatever host time says");
+        g.m.clock.advance(61000);                                // 15.25 ms: line 240 and on
+        CHECK(g.status() == kKeyBlank, "paced: T-states reach blanking");
+        g.ns = lineNs(100);
+        CHECK(g.status() == kKeyBlank, "paced: host time does not end it");
+        g.m.clock.setHz(0);
+
         // The field is 238944 dots of 14.3347 MHz, 59.99 Hz.
         int edges = 0;
         bool was  = true;

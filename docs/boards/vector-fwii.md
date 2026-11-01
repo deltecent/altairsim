@@ -53,7 +53,7 @@ Video RAM is 2K at `base` (default `F000`), read and write. The first 1920 bytes
 - **`write()` to video RAM** stores the byte. The board marks the picture changed only when a byte that shows has changed.
 - **`pump()`** is the host turn. It takes one key from the `keyboard` unit when the key flag is clear. After that, it paints the picture into the injected `Display`, but only when a byte that shows has changed. The board never touches SDL. A headless build paints into a `NullDisplay`.
 - **Picture.** 640 by 480 pixels. The board draws each of the 240 dot lines twice, to give the shape of a 4:3 tube. The color is the VDM-1's green, because the manual names no color. `width` sets the window size, as on the other video boards.
-- **Raster.** The vertical counter runs from the board's own 14.3347 MHz crystal and host time, not from the machine's clock (issue #825). The counter counts 262 lines of 114 character times, which is 59.99 Hz. Bit 5 of the status port is 0 on lines 240 to 261. A guest sees the 60 Hz clock at any `clock_hz`, including flat out.
+- **Raster.** The vertical counter runs from the board's own 14.3347 MHz crystal and host time, not from the machine's clock (issue #825). The counter counts 262 lines of 114 character times, which is 59.99 Hz. Bit 5 of the status port is 0 on lines 240 to 261. A guest sees the 60 Hz clock at any `clock_hz`, including flat out. With `clock_hz` set, the counter reads emulated time, because a paced machine runs in bursts and would otherwise see only a few instructions of each blanking pulse.
 - **Interrupts.** With `interrupt = int`, the board holds pin 73 low while a key waits, until the guest reads the data port. The board has no vector. Nothing answers the interrupt acknowledge, so the bus reads `FF` and a Z80 or an 8080 runs `RST 7`.
 - **DMA:** none.
 - **`peek()`** reads video RAM without effect, so the debugger and `DUMP` do not disturb the board.
@@ -86,13 +86,13 @@ The unit `keyboard` takes `connect`. A machine file connects it to `console`, so
 | Bit 7 of a byte is reverse video, and there is no hardware cursor | Monitor 4.3 shows its cursor by flipping bit 7 of the cell. A board with a cursor of its own shows two |
 | The last 128 bytes of the 2K do not show | The Monitor stops its scroll at `F780`. A guest can keep data in those bytes |
 | All eight bits of the key pass through | A program that sends bit 7 as a key flag still gets it |
-| Bit 5 follows host time | A guest that waits for vertical blanking to draw without tearing sees the 60 Hz clock |
+| Bit 5 is a 60 Hz clock | The CP/M 2.22 H BIOS counts loops across the pulse to find the processor speed. With `clock_hz` set, the bit follows emulated time, and the count is correct |
 | A status read counts as a poll of an empty line | The idle policy lets a machine stand down at the Monitor prompt, instead of using a host core |
 
 ## Limitations and deliberate departures
 
 - **The wait states are not modeled.** On the real board, a processor access to video RAM holds `PRDY` low until horizontal retrace. A block move in video RAM is slower there than in plain RAM. The guest has no flag for the wait, so a guest still runs correctly. With `clock_hz` set, screen writes run faster here than on the real board.
-- **The on-board PROM is not modeled.** Socket U42, the jump on reset (areas C and K) and `PHANTOM*` from the board are absent. The `vector` machine puts the Monitor on a generic `memory` board, and that board stands in for the 12K PROM/RAM board or the `vgzcb` board. The 12K PROM/RAM board does not exist here yet.
+- **The on-board PROM is not modeled.** Socket U42, the jump on reset (areas C and K) and `PHANTOM*` from the board are absent. The `vg3sb` machine puts the Monitor on a generic `memory` board, and that board stands in for the 12K PROM/RAM board. The 12K PROM/RAM board does not exist here yet.
 - **256 characters are not offered.** Areas B, E and I give 256 characters on the real board. This board has the 128 of the shipped setting.
 - **Low intensity is not modeled.** Areas O and P show bit 7 as low intensity on the real board. This board shows reverse video only.
 - **50 Hz is not offered.** The 50 Hz board has a different crystal, 314 lines and a cell of 8 by 12 dots. This board is the 60 Hz board.
@@ -113,13 +113,13 @@ The unit `keyboard` takes `connect`. A machine file connects it to `console`, so
 
 With a `NullDisplay`, the test also checks the dots of a known glyph, the reverse cell and the last 128 bytes. It checks that a frame is owed only when a byte that shows has changed.
 
-`tests/acceptance/vector.cmake` boots the real Monitor 4.3 on the `vector` machine over `--mcp`. It reads the banner and the `Mon>` prompt off `F000` to `F77F`. It types `R` and `DE000E03F`, and it reads the register dump and the hex dump back off the screen. Each `run` must stop as idle.
+`tests/acceptance/vg3.cmake` boots the real Monitor on `vg3vip`, `vg3vipt` and `vg3sb` over `--mcp`. It reads the banner and the `Mon>` prompt off `F000` to `F77F`. It types `R` and `DE000E03F`, and it reads the register dump and the hex dump back off the screen. Each `run` must stop as idle.
 
-The maintainer also ran `altairsim vector` in a real window with SDL3. The banner, the glyph shapes and the typed `R` and `DE000E03F` were correct.
+The maintainer also ran Monitor 4.3 on this board in a real window with SDL3. The banner, the glyph shapes and the typed `R` and `DE000E03F` were correct.
 
 ## References
 
 - `reference/Flashwriter II Manual.md`, the distilled emulation reference.
-- `machines/vector.toml`, the machine.
+- `machines/vg3vip.toml`, `machines/vg3vipt.toml` and `machines/vg3sb.toml`, the machines.
 - `roms/VGMON43/README.md`, the Monitor.
 - `docs/boards/proctech-vdm1.md` and `docs/boards/sd-vdb8024.md`, the other video boards.

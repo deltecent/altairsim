@@ -6,8 +6,7 @@ Vector Graphic *VIP* sales brochure, © 1980, printed 9-80, 4 PDF pages. The pho
 page shows a console with the label `VECTOR 3`. The brochure lists the boards and the software of the
 entry machine. It gives no port, no address and no jumper.
 
-**Not emulated** as a machine. `machines/vector.toml` has these boards, except that a generic Z-80
-and a stand-in memory board take the place of the ZCB.
+**Emulated** as `machines/vg3vip.toml`.
 
 ---
 

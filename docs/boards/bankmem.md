@@ -49,7 +49,7 @@ jumper area D sets its last address: `FFFF`, `DFFF` as shipped, or `BFFF`. The o
 at `E000` has two windows and is not built. A window that starts higher stands for the 16K static
 boards, which the 64K RAM manual says carry the same bank select.
 
-The `vector` machine uses `4000-DFFF`, and a `memory` board answers `0000-3FFF` in every bank. OASIS
+OASIS needs a window of `4000-DFFF` and a `memory` board that answers `0000-3FFF` in every bank. OASIS
 needs that split, because its copy routine and its stack stay in low memory across a switch. The
 *OASIS System Reference Manual* (`SET BANK`) gives 16K, 32K or 48K for this common memory. The
 `oasis` map of the ExpandoRAM III is also `0000-3FFF`. OASIS sets bit 6 in each byte it writes to

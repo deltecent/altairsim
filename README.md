@@ -148,7 +148,7 @@ names them all. The Altairs proper — `default`, `original` (as it left Albuque
 `basic4k`, `basic8k`, `ps2`, `ps2int`. The disk machines — `minidisk`, `tarbell`,
 `tarbelldd`, `icom`, `northstar`, `northstardd`, `disk1`, `disk1a`. Other CPUs and other makers — `z80`, `8085`, `sbc200`,
 `sbc200v`, `dualsd`, `dualide`, `dualidesd`. And the peripheral demos — `vdm1`, `dazzler`,
-`cadzilla`, `sol20`, `vector`, `lineprinter`, `parallel`, `bankmem`, `compupro`.
+`cadzilla`, `sol20`, `vg3vip`, `vg3vipt`, `vg3sb`, `vgmz`, `lineprinter`, `parallel`, `bankmem`, `compupro`.
 
 **All three Intel cores are exerciser-validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the 8085 passes its own 8085EXM; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 
