@@ -100,7 +100,6 @@ private:
     void     refresh();
     uint64_t nextEdge() const;
     void     loadProm();
-    void     setBaud(long long label);
 
     uint8_t serialBase() const { return (uint8_t)(group_ + serial_); }
     uint8_t parallelBase() const { return (uint8_t)(group_ + parallel_); }

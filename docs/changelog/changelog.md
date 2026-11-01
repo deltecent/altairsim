@@ -12,6 +12,9 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: the `vgbs` board, the Vector Graphic Bit Streamer.** It has one 8251 serial port and two
+parallel ports, at ports `00`-`03` by default.
+
 **New: Monitors 4.0 and 4.0c, the Vector Graphic Monitors for Micropolis disks.** Mount
 `builtin:vgmon40` in a `vgzcb` socket, and the `B` key boots the `vgmdc` board. `builtin:vgmon40c`
 does the same with its console on serial port A of a `vgbsii`. A `vgzcb` beside a `vgbsii`

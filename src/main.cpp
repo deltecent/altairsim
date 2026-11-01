@@ -20,6 +20,7 @@
 #include "boards/proctech-vdm1.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/vector-fwii.h"
+#include "boards/vector-bitstreamer.h"
 #include "boards/vector-zcb.h"
 #include "boards/compupro-disk1.h"
 #include "boards/compupro-ss1.h"
@@ -366,6 +367,7 @@ int main(int argc, char** argv) {
     SbcBoard::setResolver(resolveEndpoint);
     Bitstreamer2Board::setResolver(resolveEndpoint);
     ZcbBoard::setResolver(resolveEndpoint);
+    BitstreamerBoard::setResolver(resolveEndpoint);
     UioBoard::setResolver(resolveEndpoint);  // serial half; the cassette half refuses CONNECT
     C700Board::setResolver(resolveEndpoint);
     LpcBoard::setResolver(resolveEndpoint);

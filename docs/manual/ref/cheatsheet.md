@@ -171,6 +171,7 @@ Type the part before the bracket.
 | `sbc` | SD Systems SBC-100/200: Z80 single-board computer |
 | `sio` | MITS 88-SIO: one serial port (COM2502 UART) |
 | `turnkey` | MITS 8800b Turnkey Module: boot PROM, serial, auto-start |
+| `vgbs` | Vector Graphic Bit Streamer: one 8251, two parallel ports |
 | `vgbsii` | Vector Graphic Bitstreamer II: 3 8251s, 55 Hz clock |
 
 **Tape**

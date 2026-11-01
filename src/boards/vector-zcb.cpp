@@ -1,5 +1,6 @@
 #include "boards/vector-zcb.h"
 
+#include "boards/vector-baud.h"
 #include "core/clock.h"
 #include "core/hex.h"
 #include "core/roms.h"
@@ -26,17 +27,6 @@ Clock& deadCard() {
     return stopped;
 }
 
-// Switch S1 (reference 6.2). CLK is 2 MHz, 13 divides it, and the labels are for a clock
-// factor of 16. Each rocker halves the one before, and 110 is the 1200 rate over 11.
-struct Rocker {
-    long long label;
-    long long divide;
-};
-constexpr Rocker kRockers[] = {{9600, 1}, {4800, 2}, {2400, 4}, {1200, 8},
-                               {600, 16}, {300, 32}, {150, 64}, {110, 88}};
-
-constexpr long long kBaudClock = 2000000 / 13;
-
 } // namespace
 
 void ZcbBoard::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
@@ -44,19 +34,11 @@ void ZcbBoard::setResolver(EndpointResolver r) { g_resolver = std::move(r); }
 ZcbBoard::ZcbBoard() {
     u_.disconnect();
     u_.dsrSrc = DsrSource::Line;  // R23 pulls DSR* active with the line open (reference 6.3)
-    setBaud(9600);
+    vgSetBaud(u_, 9600);
 }
 
 ZcbBoard::~ZcbBoard() {
     if (clock_) clock_->cancel(wake_);
-}
-
-void ZcbBoard::setBaud(long long label) {
-    for (const Rocker& r : kRockers)
-        if (r.label == label) {
-            u_.baud  = label;
-            u_.txcHz = kBaudClock / r.divide;
-        }
 }
 
 // ---------------------------------------------------------------------------
@@ -322,20 +304,8 @@ std::vector<UnitDef> ZcbBoard::units() const {
 std::vector<Property> ZcbBoard::unitProperties(const std::string& unit) {
     if (unit != "serial") return {};
     std::vector<Property> p;
-    {
-        Property x;
-        x.name    = "baud";
-        x.help    = "Switch S1, for a guest that selects a clock factor of 16. The 2 MHz clock "
-                    "over 13 makes the label 9600 run at 9615";
-        x.kind    = Kind::Enum;
-        x.choices = {"110", "150", "300", "600", "1200", "2400", "4800", "9600"};
-        x.get     = [this] { return Value::ofStr(std::to_string(u_.baud)); };
-        x.set     = [this](const Value& v, std::string&) {
-            setBaud(std::stoll(v.s()));
-            return true;
-        };
-        p.push_back(std::move(x));
-    }
+    p.push_back(vgBaudProperty(u_, "Switch S1, for a guest that selects a clock factor of 16. The "
+                                   "2 MHz clock over 13 makes the label 9600 run at 9615"));
     {
         Property x;
         x.name = "connect";

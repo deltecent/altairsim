@@ -160,6 +160,7 @@ The boards are in groups, in the same order as the sections below.
 | `io4` | SSM IO-4: two serial ports and four parallel ports |
 | `propio` | S100Computers Console I/O: a serial console built on a Propeller chip |
 | `pmmi` | PMMI MM-103: a Bell 103 telephone modem on one board |
+| `vgbs` | Vector Graphic Bit Streamer: one 8251 serial port and two parallel ports |
 | `vgbsii` | Vector Graphic Bitstreamer II: three 8251 serial channels, a 55 Hz clock and the interrupt mask |
 
 **Cassette**
@@ -924,6 +925,21 @@ property gives the number. The board also raises no interrupts.
 
 `SHOW pmmi0` shows the live character format, baud rate, UART flags and modem lines, with the
 base address. To try the board, add it to `default`. `BOARDS ADD pmmi pmmi0` adds it at `C0`.
+
+### `vgbs`: Vector Graphic Bit Streamer
+
+**One 8251 serial port and two parallel ports, on one board.** The board decodes four ports. The
+`port` property is the first of them, and it must be a multiple of 4. The default is `00`:
+
+| Port | OUT | IN |
+|---|---|---|
+| `00` | Parallel port A latch | The port A lines. They read `FF`, because no cable can be attached |
+| `01` | Parallel port B latch | The port B lines. They read `FF` |
+| `02` | 8251 data | 8251 data |
+| `03` | 8251 mode and command | 8251 status |
+
+The unit is `serial`. Its `baud` property has the eight values of the switch on the board, from
+110 to 9600. The board has no clock and no interrupts.
 
 ### `vgbsii`: Vector Graphic Bitstreamer II
 

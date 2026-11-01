@@ -25,6 +25,7 @@
 #include "boards/sd-sbc.h"
 #include "boards/sd-vdb8024.h"
 #include "boards/vector-fwii.h"
+#include "boards/vector-bitstreamer.h"
 #include "boards/vector-zcb.h"
 #include "boards/terminal-font.h"
 #include "host/display_null.h"
@@ -158,6 +159,7 @@ const struct {
     {"vgmdc", test_micropolis},
     {"vgbsii", test_bitstreamer2},
     {"vgzcb", test_zcb},
+    {"vgbs", test_bitstreamer},
     {"intel8255", test_intel8255},
     {"terminal", test_terminal},
     {"dazzler", test_dazzler},
@@ -204,6 +206,7 @@ int main(int argc, char** argv) {
     altair::SbcBoard::setResolver(altair::resolveEndpoint);
     altair::Bitstreamer2Board::setResolver(altair::resolveEndpoint);
     altair::ZcbBoard::setResolver(altair::resolveEndpoint);
+    altair::BitstreamerBoard::setResolver(altair::resolveEndpoint);
     altair::UioBoard::setResolver(altair::resolveEndpoint);
     altair::C700Board::setResolver(altair::resolveEndpoint);
     altair::LpcBoard::setResolver(altair::resolveEndpoint);
