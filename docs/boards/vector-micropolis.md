@@ -105,9 +105,9 @@ The command is in bits 7-5.
 
 `./build/altair_tests micropolis` checks the decode, each status bit, select, step, write and read back, write protect, the timer, the interrupt, PRDY, snapshot and each property, with real bus cycles on made-up sectors. The real MBOOT ROM also boots a made-up sector on an 8080. A mutation check broke the sector timing, TF, the sync time, the byte time, the sector number, SLTD/, the timer, the step, the stored bytes, the end of a write and the checksum. The suite failed on each one.
 
-Vector's 56K CP/M 2.20 A was checked once by hand, on a `zcb` at 4 MHz with `fwii` and 56K of RAM. It boots to `A>` with `B` on Monitor 4.0, and with `GF800` on Monitor 4.3. `DIR`, `STAT`, `SAVE`, `PIP` and `ERA` work, and the disk image changed. The tests do not hold a Vector disk.
+Vector's 56K CP/M 2.20 A was checked once by hand, on a `zcb` at 4 MHz with `fwii` and 56K of RAM. It boots to `A>` with `B` on Monitor 4.0, `builtin:vgmon40`, and with `GF800` on Monitor 4.3. `DIR`, `STAT`, `SAVE`, `PIP` and `ERA` work, and the disk image changed. The tests do not hold a Vector disk.
 
-All 20 disks of `56K Bootable Disk Images.zip` boot, each checked once (reference section 9). Six use serial port A of a Bitstreamer II at port 02, and these were run with a `bitstreamer` beside the `zcb`. Both boards then drive ports 05 and 07, and the bus reports `CONTENTION`.
+All 20 disks of `56K Bootable Disk Images.zip` boot, each checked once (reference section 9). Six use serial port A of a Bitstreamer II at port 02, and these were run with a `bitstreamer` beside the `zcb`. Both boards decode 04-09 at their default ports, and the bus reports `CONTENTION`. With the `zcb` ports at 0C and 18, VG08 boots on Monitor 4.0c and the bus reports none (`docs/boards/vector-zcb.md`, *Beside a Bitstreamer II*).
 
 ## References
 

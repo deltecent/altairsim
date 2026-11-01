@@ -91,3 +91,6 @@ the Flashwriter board, in a five-user system (page 4).
   four boards, each with its own bank.
 - **⚠ Q4. "Serial port A1" on the ZCB is not a second port.** The ZCB decodes no A1 at its 8251, so 06
   and 07 are copies of 04 and 05. See [ZCB CPU Manual](ZCB%20CPU%20Manual.md) §6.
+- **⚠ Q5. The ZCB and the Bitstreamer II share 04–09 at their factory addresses.** The two boards
+  cannot both be active there. [ZCB CPU Manual](ZCB%20CPU%20Manual.md) §6.1 gives the fix. The table
+  lists nothing at 0C–0F or 18–1F, but the note in §1 puts the time share system at 08–0F (Q3).

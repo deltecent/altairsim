@@ -12,6 +12,12 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: Monitors 4.0 and 4.0c, the Vector Graphic Monitors for Micropolis disks.** Mount
+`builtin:vgmon40` in a `zcb` socket, and the `B` key boots the `micropolis` board. `builtin:vgmon40c`
+does the same with its console on serial port A of a `bitstreamer`. A `zcb` beside a `bitstreamer`
+needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards
+overlap at `04`-`09`.
+
 **New: `micropolis`, the Vector Graphic Micropolis Disk Controller.** The board puts four 5.25-inch
 floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default. The processor
 moves each byte, and the board holds it to the speed of the disk, as the real board does. On a machine
