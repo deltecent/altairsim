@@ -59,6 +59,10 @@ uint8_t PioBoard::read(const BusCycle& c) {
         inFull_ = false;
         return inLatch_;
     }
+    // A guest polling status is looking for a byte, so the input line must hear of it: the
+    // run loop's idle test counts readable() misses (#861). This only asks; the byte still
+    // crosses in pump().
+    if (!inFull_) (void)in_->readable();
     return statusByte();  // CONTROL/STATUS channel
 }
 

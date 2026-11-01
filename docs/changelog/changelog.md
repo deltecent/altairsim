@@ -12,6 +12,13 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Fixed: a machine with a VDB-8024 keyboard held one host core at a prompt when it ran flat out.**
+An `IN` from the board's status port did not reach the keyboard line, so the run loop's idle test
+saw about one empty poll in 2000 instructions and never let the machine idle. `sbc200v` at its monitor
+prompt with `clock_hz=0` took 100% of a core. Each status read with no key waiting now counts as
+an empty poll, and the machine idles at the prompt. The 88-PIO status port had the same fault and has the
+same fix.
+
 **Fixed: `CONFIG SAVE` under `--mcp` saved a machine with no console.** The save wrote the
 session's own line, `connect = "scripted"`, for the unit that holds the console. With `--mirror`
 or `--log` it also wrote those endpoints. When you loaded `vector` from that file, `run` stopped

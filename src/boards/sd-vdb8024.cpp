@@ -144,7 +144,13 @@ bool Vdb8024Board::decodes(const BusCycle& c) const {
 
 uint8_t Vdb8024Board::read(const BusCycle& c) {
     if (c.type != Cycle::IoRead) return 0xFF;
-    if (c.port() == base_) return statusByte();
+    if (c.port() == base_) {
+        // A guest polling this port is looking for a key, so the line must hear of it: the
+        // run loop's idle test counts readable() misses, and pump() alone makes one a slice
+        // (#861). This only asks. The key still crosses in pump(), never in a bus cycle.
+        if (!kbHave_) (void)kb_->readable();
+        return statusByte();
+    }
     // base+1 IN -- the keyboard data byte. Reading it clears the keyboard-ready strobe
     // (status D1), exactly as the physical read pulse clears the latch. That also drops
     // the VI line if we are strapped for interrupts -- the ISR's IN 01H is the implicit

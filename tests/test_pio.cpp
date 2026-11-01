@@ -111,6 +111,19 @@ void test_pio() {
         CHECK(g.out->out() == std::string(line), "every byte, control codes and all, verbatim");
     }
 
+    SECTION("88-PIO -- a status poll reaches the input line (#861)");
+    {
+        Rig g;
+        uint64_t before = g.in->hungry();
+        for (int i = 0; i < 10; ++i) g.status();
+        CHECK(g.in->hungry() - before == 10, "each poll of an empty latch counts as hungry");
+        g.in->feed("K");
+        g.status();
+        CHECK((g.status() & kInFull) == 0, "the poll only asks -- a byte does not cross in a bus cycle");
+        g.m.pump();
+        CHECK((g.status() & kInFull) != 0, "the byte crosses in pump()");
+    }
+
     SECTION("88-PIO -- a byte from the input device is latched and read back");
     {
         Rig g;
