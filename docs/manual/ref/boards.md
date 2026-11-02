@@ -63,6 +63,7 @@ and within a group the boards are in **alphabetical order**.
 |---|---|
 | [`2sio`](#2sio) | MITS 88-2SIO: two 6850 serial ports |
 | [`gsio`](#gsio) | Generic SIO: two strap-configurable serial channels |
+| [`interfacer1`](#interfacer1) | CompuPro Interfacer 1: two serial channels |
 | [`io4`](#io4) | SSM IO-4: two serial + two parallel ports |
 | [`pmmi`](#pmmi) | PMMI MM-103: Bell 103 modem |
 | [`propio`](#propio) | S100Computers Console IO: Propeller console serial port |
@@ -841,6 +842,61 @@ Generic SIO: a strap-configurable serial board with TWO independent channels, un
 | `inverter_gate` | bool | `true` | `on` \| `off` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+
+
+### `interfacer1`
+
+CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a real 1602-family UART at its own 2-port block (switch S2/S3: port, enabled; default A at 00-01, B at 02-03), data at the even address and status at the odd one unless J14 swaps them (swap_ports). An OUT to the status address writes a control latch: each 1 bit inverts that line from its power-up strap and each 0 returns it, for the word format (data_bits 7/8, parity_sense, parity, stop_bits), the RS-232 outputs ca (RTS) and cd (DTR), and the two interrupt enables; reset clears the latch. The status byte is TBMT D0, DAV D1, OPT D2 (opt = cf or eoc), PE D3, OR D4, FE D5, CC D6, CB D7; the RS-232 inputs read 0 when ON. Per channel, RxINT (DAV and the RX enable) and TxINT (TBMT and the TX enable) are jumpered on J11 to vi0..vi7 or none (rx_int/tx_int); J11 has no pin-73 position. Baud from switch S1, 50-19200. CONNECT each channel to a file, socket, serial port, in:/out:
+
+**Units:** `a` (serial, CONNECT), `b` (serial, CONNECT)
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `swap_ports` | bool | `false` | `on` \| `off` | J14: move the trace from B-C to A-B, so both channels have status at the switch address and data at +1. Off (factory) = data first, status second |
+
+#### Unit `a` — `[board.unit.a]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x0` | `0x0` .. `0xFE` | Switch S2 (Channel A) / S3 (Channel B), positions 1-7: the channel's 2-port block, A7-A1, so an even address |
+| `enabled` | bool | `true` | `on` \| `off` | Switch S2/S3 position 8: off = ON = the channel is removed from the I/O space |
+| `baud` | enum | `9600` | `50` \| `75` \| `110` \| `134.5` \| `150` \| `300` \| `600` \| `1200` \| `1800` \| `2000` \| `2400` \| `3600` \| `4800` \| `7200` \| `9600` \| `19200` | Switch S1 (positions 1-4 for A, 5-8 for B): the BR1941 rate |
+| `data_bits` | enum | `8` | `7` \| `8` | Power-up NBI (J7/J8 1-16 = 7, 2-15 = 8). Control bit D7 flips it |
+| `parity_sense` | enum | `odd` | `odd` \| `even` | Power-up EPS (J7/J8 3-14 = odd, 4-13 = even). Control bit D6 flips it |
+| `parity` | enum | `off` | `on` \| `off` | Power-up NP (J7/J8 5-12 = on, 6-11 = off). Control bit D5 flips it |
+| `stop_bits` | enum | `1` | `1` \| `2` | Power-up TSB (J7/J8 7-10 = 1, 8-9 = 2). Control bit D4 flips it |
+| `ca` | enum | `spacing` | `spacing` \| `marking` | Power-up CA, RS-232 RTS (J9/J10 1-16 = spacing/ON, 2-15 = marking/OFF). Control bit D3 flips it |
+| `cd` | enum | `spacing` | `spacing` \| `marking` | Power-up CD, RS-232 DTR (J9/J10 3-14 = spacing/ON, 4-13 = marking/OFF). Control bit D2 flips it |
+| `tx_int_enable` | enum | `off` | `off` \| `on` | Power-up TXINTE (J9/J10 5-12 = off, 6-11 = on). Control bit D1 flips it |
+| `rx_int_enable` | enum | `off` | `off` \| `on` | Power-up RXINTE (J9/J10 7-10 = off, 8-9 = on). Control bit D0 flips it |
+| `opt` | enum | `cf` | `cf` \| `eoc` | J12 (A) / J13 (B): what status bit D2 reads -- cf = the RS-232 CF input (B-A, reads 0 when ON), eoc = the UART's End Of Character (B-C) |
+| `rx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where RxINT (DAV AND RXINTE) is jumpered: none \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where TxINT (TBMT AND TXINTE) is jumpered: none \| vi0..vi7. A LEVEL, held while the transmitter is idle *(interrupt strap)* |
+| `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(read-only — not a key you may set)** |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+
+#### Unit `b` — `[board.unit.b]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x2` | `0x0` .. `0xFE` | Switch S2 (Channel A) / S3 (Channel B), positions 1-7: the channel's 2-port block, A7-A1, so an even address |
+| `enabled` | bool | `true` | `on` \| `off` | Switch S2/S3 position 8: off = ON = the channel is removed from the I/O space |
+| `baud` | enum | `9600` | `50` \| `75` \| `110` \| `134.5` \| `150` \| `300` \| `600` \| `1200` \| `1800` \| `2000` \| `2400` \| `3600` \| `4800` \| `7200` \| `9600` \| `19200` | Switch S1 (positions 1-4 for A, 5-8 for B): the BR1941 rate |
+| `data_bits` | enum | `8` | `7` \| `8` | Power-up NBI (J7/J8 1-16 = 7, 2-15 = 8). Control bit D7 flips it |
+| `parity_sense` | enum | `odd` | `odd` \| `even` | Power-up EPS (J7/J8 3-14 = odd, 4-13 = even). Control bit D6 flips it |
+| `parity` | enum | `off` | `on` \| `off` | Power-up NP (J7/J8 5-12 = on, 6-11 = off). Control bit D5 flips it |
+| `stop_bits` | enum | `1` | `1` \| `2` | Power-up TSB (J7/J8 7-10 = 1, 8-9 = 2). Control bit D4 flips it |
+| `ca` | enum | `spacing` | `spacing` \| `marking` | Power-up CA, RS-232 RTS (J9/J10 1-16 = spacing/ON, 2-15 = marking/OFF). Control bit D3 flips it |
+| `cd` | enum | `spacing` | `spacing` \| `marking` | Power-up CD, RS-232 DTR (J9/J10 3-14 = spacing/ON, 4-13 = marking/OFF). Control bit D2 flips it |
+| `tx_int_enable` | enum | `off` | `off` \| `on` | Power-up TXINTE (J9/J10 5-12 = off, 6-11 = on). Control bit D1 flips it |
+| `rx_int_enable` | enum | `off` | `off` \| `on` | Power-up RXINTE (J9/J10 7-10 = off, 8-9 = on). Control bit D0 flips it |
+| `opt` | enum | `cf` | `cf` \| `eoc` | J12 (A) / J13 (B): what status bit D2 reads -- cf = the RS-232 CF input (B-A, reads 0 when ON), eoc = the UART's End Of Character (B-C) |
+| `rx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where RxINT (DAV AND RXINTE) is jumpered: none \| vi0..vi7 *(interrupt strap)* |
+| `tx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where TxINT (TBMT AND TXINTE) is jumpered: none \| vi0..vi7. A LEVEL, held while the transmitter is idle *(interrupt strap)* |
+| `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(read-only — not a key you may set)** |
+| `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
 
 ### `io4`

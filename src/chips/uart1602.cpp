@@ -28,10 +28,11 @@ void Uart1602::deserialize(StateReader& r) {
 // ---------------------------------------------------------------------------
 
 // A character on the wire is a start bit, the data bits, maybe a parity bit, and the
-// stop bits. Every one of those is a PIN on this chip (NDB1/NDB2, NPB/POE, NSB), and
-// on both cards that use it, those pins are solder pads. The guest cannot change any
-// of it -- which is the deepest difference between this chip and the 6850, where the
-// same numbers come out of a control register the guest wrote.
+// stop bits. Every one of those is a PIN on this chip (NDB1/NDB2, NPB/POE, NSB). On most
+// boards those pins go to solder pads; the PMMI MM-103 and the CompuPro Interfacer 1 drive
+// them from a latch of their own. Either way the frame is the board's, never a chip
+// register -- the deepest difference between this chip and the 6850, where the same
+// numbers come out of a control register the guest wrote.
 int Uart1602::bitsPerChar() const {
     return 1 + dataBits + (parity == LineParity::None ? 0 : 1) + stopBits;
 }

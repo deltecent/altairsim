@@ -382,15 +382,12 @@ void Io4Board::reset(Reset) {
 
 void Io4Board::power() { reset(Reset::PowerOn); }
 
-// THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1): drain the host into each line,
-// then advance each receiver so a byte that just arrived is ready for the next status poll.
+// THE ONE DOOR THE OUTSIDE WORLD COMES THROUGH (DESIGN.md 7.1): drain the host into each line.
+// refresh() at the end advances each receiver, so a byte that just arrived is ready for the
+// next status poll.
 void Io4Board::pump() {
     a_.uart.pump();
     b_.uart.pump();
-    if (clock_) {
-        a_.uart.poll(*clock_);
-        b_.uart.poll(*clock_);
-    }
     // A byte the far end sends IS the external strobe: latch it and set the service-request FF
     // (which the CPU clears by reading the port). The latch is one byte deep, so a byte waits
     // until read -- exactly the 8212's held state on the strobe's falling edge.
