@@ -36,9 +36,9 @@ const BaudRow kBauds[] = {
     {"19200", 19200},
 };
 
-// The power-up strap byte as the factory example and the user's marked-up manual both
-// leave it for a terminal: 8 data bits, odd sense, no parity, 1 stop bit, CA and CD
-// spacing (asserted), both interrupts disabled.
+// The power-up strap byte as the manual's factory example leaves it for a terminal:
+// 8 data bits, odd sense, no parity, 1 stop bit, CA and CD spacing (asserted), both
+// interrupts disabled.
 constexpr uint8_t kDefaultStrap = InterfacerOneBoard::Nbi | InterfacerOneBoard::Np;
 
 } // namespace
@@ -239,11 +239,10 @@ void InterfacerOneBoard::reset(Reset) {
 
 void InterfacerOneBoard::power() { reset(Reset::PowerOn); }
 
+// Drain the host into each line; refresh() advances the receivers and re-drives the VI lines.
 void InterfacerOneBoard::pump() {
-    for (Channel* ch : {&a_, &b_}) {
-        ch->uart.pump();
-        if (clock_) ch->uart.poll(*clock_);
-    }
+    a_.uart.pump();
+    b_.uart.pump();
     refresh();
 }
 

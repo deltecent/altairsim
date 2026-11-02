@@ -12,7 +12,7 @@ using namespace altair;
 
 namespace {
 
-// A scripted line that also records what the card programmed into it, as a real host serial
+// A scripted line that also records what the board programmed into it, as a real host serial
 // port would be told. Counts setParams() calls and keeps the last frame.
 class RecordingStream : public ScriptedStream {
 public:
@@ -209,8 +209,18 @@ void test_interfacer1() {
         c.addr = 0x01;
         c.data = InterfacerOneBoard::Nbi | InterfacerOneBoard::Tsb;  // 7 bits, 2 stop bits
         b.write(c);
-        CHECK(rec->calls > before && rec->last.dataBits == 7 && rec->last.stopBits == 2,
+        CHECK(rec->calls > before && rec->last.dataBits == 7 && rec->last.stopBits == 2 &&
+                  rec->last.parity == LineParity::None,
               "a format change in the latch reaches the host line as 7N2");
+        c.data = InterfacerOneBoard::Np;  // parity on, odd sense (the strap)
+        b.write(c);
+        CHECK(rec->last.dataBits == 8 && rec->last.parity == LineParity::Odd,
+              "D5 flips NP: parity on, odd sense from the strap -> 8O1");
+        c.data = InterfacerOneBoard::Np | InterfacerOneBoard::Eps;
+        b.write(c);
+        CHECK(rec->last.parity == LineParity::Even, "D6 flips EPS: even parity -> 8E1");
+        c.data = InterfacerOneBoard::Nbi | InterfacerOneBoard::Tsb;  // back to 7N2 for RESTORE
+        b.write(c);
         StateWriter w;
         b.serialize(w);
 

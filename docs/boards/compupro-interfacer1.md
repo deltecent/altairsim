@@ -107,7 +107,7 @@ Status byte:
 | The control port **flips** the straps; it does not set the levels. Writing 0 restores the power-up setting. | The manual's own test program starts with `OUT 01H` of `00` to put the port back to its jumpers. If the board set the levels instead, that write would select 7 bits, odd parity and RTS/DTR on, whatever the jumpers say. |
 | An asserted RS-232 input reads **0**. | A driver that waits for CTS would hang, or never wait. |
 | "Spacing" on CA/CD is ON. | Writing a 1 to D2 drops DTR, which closes a socket or hangs up a modem on the far end. |
-| J11 reaches VI0-VI7 only. `rx_int`/`tx_int` do not offer `int`, so a machine file that asks for it gets the usual "must be one of" error. | A machine file could ask for pin-73 interrupts that the card cannot make. |
+| J11 reaches VI0-VI7 only. `rx_int`/`tx_int` do not offer `int`, so a machine file that asks for it gets the usual "must be one of" error. | A machine file could ask for pin-73 interrupts that the board cannot make. |
 | The transmit interrupt is a level held while TBMT is set. | A guest that enables TXINTE with nothing to send takes the interrupt at once and again after every return. |
 
 ## Limitations and deliberate departures

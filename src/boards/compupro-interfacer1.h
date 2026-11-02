@@ -57,7 +57,7 @@ public:
     uint8_t read(const BusCycle& c) override;
     void    write(const BusCycle& c) override;
 
-    // J11 reaches VI0-VI7 only, so this card never pulls pin 73.
+    // J11 reaches VI0-VI7 only, so this board never pulls pin 73.
     bool    assertsInt() const override { return false; }
     uint8_t assertsVi() const override;
 

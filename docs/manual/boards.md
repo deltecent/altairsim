@@ -893,7 +893,7 @@ and the two interrupt enables (`rx_int_enable`, `tx_int_enable`). Each one is a 
 
 An `OUT` to the status port **flips** lines away from their jumpers: a `1` bit changes that
 line, and a `0` bit puts it back. Writing `00` puts every line back to its jumper, and so does
-a reset. `SHOW` lists the live levels in `control`.
+a reset. `SHOW` lists the last byte the guest wrote to the control port in `control`.
 
 #### The status byte
 
