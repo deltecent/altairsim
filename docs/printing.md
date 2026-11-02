@@ -501,8 +501,9 @@ one wrinkle to handle.
 
 **A failed job must be loud and must not be silent data loss.** A queue that has
 gone away, a printer that is off — these produce an error string from both APIs,
-and it has to reach the operator through `Board::drainLog()`, the same route a
-serial port uses to say it cannot do 76800 baud. The precedent to avoid is the
+and it has to reach the operator through `Machine::drainBoardLog()`. That is the route a
+serial port uses to say it cannot do 76800 baud. The machine drains the error from the
+printer's stream itself (issue #893). The precedent to avoid is the
 blank-tape trap: an operation that reports success and produces nothing usable.
 
 **`list_queues` earns a `SHOW`.** The `serial:` endpoint already names the ports

@@ -286,12 +286,9 @@ void InterfacerOneBoard::deserialize(StateReader& r) {
 std::vector<std::string> InterfacerOneBoard::drainLog() {
     auto out = std::move(log_);
     log_.clear();
-    for (Channel* ch : {&a_, &b_}) {
+    // The far end of each line is the machine's to drain (Machine::drainBoardLog).
+    for (Channel* ch : {&a_, &b_})
         for (auto& s : ch->uart.drainLog()) out.push_back(id + ":" + ch->uart.name() + " " + std::move(s));
-        // ...and whatever the far end of the line has to say (a printer that could not spool).
-        for (auto& s : ch->uart.stream().drainLog())
-            out.push_back(id + ":" + ch->uart.name() + " " + std::move(s));
-    }
     return out;
 }
 

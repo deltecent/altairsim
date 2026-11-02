@@ -866,6 +866,7 @@ add_executable(altair_tests
   tests/test_gsio.cpp
   tests/test_io4.cpp
   tests/test_interfacer1.cpp
+  tests/test_boardlog.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_tee.cpp

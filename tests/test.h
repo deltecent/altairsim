@@ -72,6 +72,7 @@ void test_tms5501();
 void test_gsio();
 void test_io4();
 void test_interfacer1();
+void test_boardlog();
 void test_propio();
 void test_88sio();
 void test_sbc();

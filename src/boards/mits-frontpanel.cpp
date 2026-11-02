@@ -301,11 +301,11 @@ void FrontPanelBoard::pump() {
     }
 }
 
-// The base pulls the far end of every serial line (the `socket` layer's own connect/
-// disconnect trace); this adds the board's own edge log. Both reach the operator through
-// the monitor's drain after every command and run.
+// The board's own edge log. The `socket` layer's connect/disconnect trace is on the line's
+// stream, and Machine::drainBoardLog() drains that. Both reach the operator through the
+// monitor's drain after every command and run.
 std::vector<std::string> FrontPanelBoard::drainLog() {
-    std::vector<std::string> out = Board::drainLog();
+    std::vector<std::string> out;
     for (auto& l : log_) out.push_back(id + ": " + std::move(l));
     log_.clear();
     return out;
