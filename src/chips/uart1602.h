@@ -23,10 +23,13 @@
 //
 // There is NO control register. None. The word format -- 5-8 data bits, 1 or 2 stop
 // bits, no/odd/even parity -- arrives on FIVE DEDICATED PINS (NDB1, NDB2, NSB, NPB,
-// POE), and on both cards that use this chip those pins go to solder pads. Software
-// cannot change the frame on the wire; a soldering iron can. That is the deepest
-// difference between this chip and the 6850, where the identical numbers come out
-// of a control register the guest wrote, and it is why they are two files.
+// POE). On most boards that use this chip those pins go to solder pads: software cannot
+// change the frame on the wire; a soldering iron can. Two boards drive them from a latch
+// of their own that the guest writes -- the PMMI MM-103 (PmmiBoard) and the CompuPro
+// Interfacer 1 (InterfacerOneBoard). Even there the register is the BOARD's, never the
+// chip's. That is the deepest difference between this chip and the 6850, where the
+// identical numbers come out of a control register the guest wrote, and it is why they
+// are two files.
 //
 // The status word is real, though, and it IS a register: /SWE (pin 16, Status Word
 // Enable) gates RPE, RFE, ROR, RDA and TBMT onto the bus together, out of the

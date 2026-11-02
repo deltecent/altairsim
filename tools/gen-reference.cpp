@@ -202,7 +202,7 @@ const char* boardCategory(const std::string& n) {
         n == "tarbell" || n == "tarbelldd" || n == "jadedd" || n == "disk1" || n == "disk1a" || n == "16fdc" ||
         n == "64fdc" || n == "icom" || n == "dualsd" || n == "dualide" || n == "mdsa" || n == "mdsad" || n == "vgdmdc" || n == "vgmdc") return "Disk";
     if (n == "2sio" || n == "sio" || n == "sbc" || n == "pmmi" ||
-        n == "turnkey" || n == "gsio" || n == "io4" || n == "propio" || n == "vgbsii" || n == "vgbs") return "Serial";
+        n == "turnkey" || n == "gsio" || n == "io4" || n == "interfacer1" || n == "propio" || n == "vgbsii" || n == "vgbs") return "Serial";
     if (n == "acr" || n == "uio") return "Tape";
     if (n == "pio" || n == "4pio" || n == "d7a" || n == "music6" || n == "c700" ||
         n == "lpc")

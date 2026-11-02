@@ -12,6 +12,8 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: the `interfacer1` board, a CompuPro Interfacer 1.** It has two serial channels, each a 1602-family UART at its own even port pair. An OUT to the status port inverts the power-up straps for the word format, the RTS and DTR outputs and the two interrupt enables. The status byte has the CTS, DSR and carrier inputs, and the receive and transmit interrupts go to VI lines. It can take the place of the `gsio` console in the `disk1` machine.
+
 **New: Vector Graphic machines and boards.** The `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines are a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ.
 
 - `vgzcb`: the ZCB processor board. It has a Z80, three PROM sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000. The `baud` property has the eight values of switch S1. A `vgzcb` beside a `vgbsii` needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards overlap at `04`-`09`.

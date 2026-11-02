@@ -165,6 +165,7 @@ Type the part before the bracket.
 |---|---|
 | `2sio` | MITS 88-2SIO: two 6850 serial ports |
 | `gsio` | Generic SIO: two strap-configurable serial channels |
+| `interfacer1` | CompuPro Interfacer 1: two serial channels |
 | `io4` | SSM IO-4: two serial + two parallel ports |
 | `pmmi` | PMMI MM-103: Bell 103 modem |
 | `propio` | S100Computers Console IO: Propeller console serial port |

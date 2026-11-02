@@ -158,6 +158,7 @@ The boards are in groups, in the same order as the sections below.
 | `sbc` | SD Systems SBC-100/200: the serial console, timer and parallel port of a Z80 single-board computer |
 | `gsio` | a generic serial board with two channels, set up with straps |
 | `io4` | SSM IO-4: two serial ports and four parallel ports |
+| `interfacer1` | CompuPro Interfacer 1: two serial ports with a control port and interrupts |
 | `propio` | S100Computers Console I/O: a serial console built on a Propeller chip |
 | `pmmi` | PMMI MM-103: a Bell 103 telephone modem on one board |
 | `vgbs` | Vector Graphic Bit Streamer: one 8251 serial port and two parallel ports |
@@ -869,6 +870,44 @@ input sets its interrupt on the strobe, also when nothing reads the port. Connec
 `virtc`, and a received character or a parallel strobe goes to the RST that you strapped.
 
 `SHOW io40` shows every unit, its ports and the live state of its lines.
+
+### `interfacer1`: CompuPro Interfacer 1
+
+**`interfacer1`** is the **CompuPro Interfacer 1**, the two-channel serial board of an early
+CompuPro system. Each channel is a real UART with **word length, parity and stop bits that the
+guest can change**, the **RS-232 modem lines**, and **receive and transmit interrupts**. Use it
+in place of the `gsio` console when a program needs more than "send and receive a byte".
+
+The two channels are units **`a`** and **`b`**, each with its own `[board.unit.a]` or
+`[board.unit.b]` table, its own `baud` and its own `connect`. Each channel has its own pair of
+ports, at any even address (`port`). By default `a` uses ports `0` and `1`, and `b` uses ports
+`2` and `3`, the CompuPro standard. The data port is the lower address and the status port is
+the higher one. `swap_ports = true` moves them for both channels, as the J14 jumper does.
+`enabled = false` takes a channel off the bus.
+
+#### The jumpers set the power-up state; the control port flips it
+
+The real board has a jumper for each of eight control lines: the word format (`data_bits`,
+`parity`, `parity_sense`, `stop_bits`), the two RS-232 outputs (`ca` for RTS and `cd` for DTR)
+and the two interrupt enables (`rx_int_enable`, `tx_int_enable`). Each one is a property here.
+
+An `OUT` to the status port **flips** lines away from their jumpers: a `1` bit changes that
+line, and a `0` bit puts it back. Writing `00` puts every line back to its jumper, and so does
+a reset. `SHOW` lists the live levels in `control`.
+
+#### The status byte
+
+D0 is TBMT (ready to send), D1 is DAV (a byte is waiting), and D2 is `opt`: the carrier input
+or the UART's end-of-character. D6 and D7 are the DSR and CTS inputs. **An RS-232 input that is
+ON reads 0**, as on the real board. The parity, overrun and framing error bits always read 0.
+
+#### Interrupts
+
+A channel's receive interrupt is on when a byte waits and `rx_int_enable` is on. Its transmit
+interrupt is on when the transmitter is idle and `tx_int_enable` is on. `rx_int` and `tx_int`
+send each one to a vectored interrupt line, `vi0` to `vi7`, or to `none` (the default). The
+real board cannot reach the plain interrupt pin, so `int` is not a choice. Connect these to a
+`virtc` for vectored interrupts.
 
 ### `propio`: S100Computers Console I/O
 

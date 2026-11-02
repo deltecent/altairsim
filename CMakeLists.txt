@@ -527,6 +527,7 @@ add_library(altair_core STATIC
   src/boards/compupro-disk.cpp
   src/boards/compupro-disk1.cpp
   src/boards/compupro-disk1a.cpp
+  src/boards/compupro-interfacer1.cpp
   # The iCOM FD3712/FD3812 8" floppy -- like the 88-HDSK, a "controller does the work" card
   # (Board directly): two programmed-I/O ports (C0/C1) shift whole sectors, and a boot PROM
   # plus 6810 scratch RAM live in high memory. One superset engine serves both densities.
@@ -864,6 +865,7 @@ add_executable(altair_tests
   tests/test_pmmi.cpp
   tests/test_gsio.cpp
   tests/test_io4.cpp
+  tests/test_interfacer1.cpp
   tests/test_lpc.cpp
   tests/test_printer.cpp
   tests/test_tee.cpp
