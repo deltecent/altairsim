@@ -58,20 +58,9 @@ bool Board::connectStream(const std::string& unit, std::unique_ptr<ByteStream> s
     return false;
 }
 
-// The default: pull the far end of every serial line this card carries, and prefix
-// each line with the card's id so `SHOW`-after-a-run reads "lpt0: print to ...". A
-// card that has no serial units (most of them) returns unitStream() == null for each
-// and this is empty, exactly as before. See the header note -- the board forwards
-// opaque strings and never learns what a printer is.
-std::vector<std::string> Board::drainLog() {
-    std::vector<std::string> out;
-    for (const auto& u : units()) {
-        ByteStream* s = unitStream(u.name);
-        if (!s) continue;
-        for (auto& line : s->drainLog()) out.push_back(id + ": " + std::move(line));
-    }
-    return out;
-}
+// The default is silence. What the far end of a line has to say is not the board's to
+// drain: Machine::drainBoardLog() takes it from every unitStream() itself (issue #893).
+std::vector<std::string> Board::drainLog() { return {}; }
 
 // THE `interrupt` STRAP, FOR EVERY BOARD THAT HAS ONE.
 //

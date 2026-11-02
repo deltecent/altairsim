@@ -473,11 +473,12 @@ std::vector<std::string> Machine::drainBoardLog() {
     std::vector<std::string> out;
     for (auto& b : boards_) {
         for (auto& s : b->drainLog()) out.push_back(s);
-        // ...AND THE FAR END OF EVERY LINE, for a board that speaks for itself. A board
-        // that overrides drainLog() (the 2SIO: "this cable cannot do that baud rate")
-        // returns its chips' messages and never asked the stream, so what the STREAM had
-        // to say was lost: where a `pty` line is (issue #685), a log file that could not
-        // be written. Board's default has already taken these, and then this finds none.
+        // ...AND THE FAR END OF EVERY LINE. This is the ONLY place a stream's log is
+        // drained: a board's drainLog() returns its own and its chips' messages and
+        // never asks the stream. Before #685 nothing asked it for a board that overrides
+        // drainLog(), so where a `pty` line is, or a log file that could not be written,
+        // was lost; before #893 three boards and the Board default drained it too, each
+        // with its own prefix.
         for (const auto& u : b->units()) {
             ByteStream* line = b->unitStream(u.name);
             if (!line) continue;

@@ -215,10 +215,9 @@ void StrapSerialBoard::configChanged() {
 }
 
 std::vector<std::string> StrapSerialBoard::drainLog() {
+    // The far end of each line is the machine's to drain (Machine::drainBoardLog).
     auto out = std::move(log_);
     log_.clear();
-    for (auto& ch : chans_)
-        for (auto& s : ch.stream->drainLog()) out.push_back(id + ":" + ch.name + " " + std::move(s));
     return out;
 }
 

@@ -110,6 +110,7 @@ const struct {
     {"gsio", test_gsio},
     {"io4", test_io4},
     {"interfacer1", test_interfacer1},
+    {"boardlog", test_boardlog},
     {"propio", test_propio},
     {"88sio", test_88sio},
     {"sbc", test_sbc},

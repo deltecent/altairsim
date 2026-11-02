@@ -727,15 +727,14 @@ public:
     // channel or teach the machine about a second board type. Both are the same bug:
     // a general facility with one card's name compiled into it.
     //
-    // THE DEFAULT DRAINS THE FAR END OF EVERY LINE. A card that overrides this (a
-    // memory or disk controller with something to say about its own hardware) speaks
-    // for itself; a card that does not -- the 88-C700, and every printer/serial card
-    // that connects an endpoint -- has the STREAM'S log pulled up through here, so a
-    // print job that could not be spooled reaches the operator with NO per-board code
-    // (docs/printing.md 4). The board forwards opaque strings it never inspects, the
-    // same way Machine::drainBoardLog forwards these up to the monitor: it knows it
-    // has a line, not what is on the far end of it. (Body in board.cpp -- ByteStream
-    // is only forward-declared here.)
+    // THE DEFAULT IS SILENCE, AND A BOARD NEVER DRAINS ITS LINES. An override returns
+    // the board's own messages and its chips' (a bad sector, a baud the cable cannot
+    // do). What the far end of a line has to say -- a print job that could not be
+    // spooled, the name of a `pty:` link -- is drained by Machine::drainBoardLog(),
+    // which walks units() and unitStream() for every board, so it reaches the operator
+    // with NO per-board code and with one prefix, `id:unit: message`. A board that
+    // drained a stream itself took the message first and printed it its own way
+    // (issue #893). (Body in board.cpp.)
     virtual std::vector<std::string> drainLog();
 
     // THERE IS NO "BEHIND THE BUS" ON A BOARD, and there was: rawSize/rawRead/rawWrite

@@ -451,13 +451,11 @@ void Io4Board::deserialize(StateReader& r) {
 std::vector<std::string> Io4Board::drainLog() {
     auto out = std::move(log_);
     log_.clear();
+    // The far end of every line, serial or parallel, is the machine's to drain
+    // (Machine::drainBoardLog).
     for (SerialChannel* ch : {&a_, &b_})
         for (auto& s : ch->uart.drainLog())
             out.push_back(id + ":" + ch->uart.name() + " " + std::move(s));
-    // ...and whatever the far end of a parallel line has to say (a printer that could not spool).
-    for (ParallelChannel* pc : {&pa_, &pb_})
-        for (auto& s : pc->stream->drainLog())
-            out.push_back(id + ":" + pc->name + " " + std::move(s));
     return out;
 }
 

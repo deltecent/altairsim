@@ -42,6 +42,14 @@ or `--log` it also wrote those endpoints. When you loaded that file, `run` stopp
 with `no console line`. The save now writes `connect = "console"` for that unit. A unit that
 the machine file connects to `scripted` stays `scripted`.
 
+**Fixed: a message from a connected line now names the board and the unit in one form.** A
+line can send a message to the monitor, for example the name of a `pty:` link or a print job
+that could not be spooled. Before, the form of the message changed with the board. On a `c700`
+it named only the board, as `lpt0: ...`. On a `gsio`, `propio` or `interfacer1` it had no colon
+after the unit. One `io4` printed `io40:pa pty: ...` for a parallel unit and `io40:b: pty: ...`
+for a serial unit. Now every board prints the board, the unit and a colon, for example
+`lpt0:prn: ...` and `io40:pa: pty: ...`.
+
 **`CONFIG LOAD` now gives the same machine as the same file at startup.** The loader wrote
 `[console]`, `[display]` and `[terminal]` while it read the file, and it did not reset them first. A
 `CONFIG LOAD` that failed kept the boards but changed these settings. A file that did not name a key

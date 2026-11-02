@@ -53,10 +53,10 @@ Two more methods complete the contract, and both exist so a board stays pure:
   `read()`/`write()` is pure computation over its own state; anything that touches the outside
   world happens here, at a known point in emulated time. That seam is what would let a recorded
   session replay identically.
-- **`drainLog()`** is what the far end wants said out loud — a print job that could not be
-  spooled, a serial port that cannot do the baud it was asked for. The board drains it off its
-  units' streams (the default `Board::drainLog()` does exactly this) and the monitor prints it
-  after every command and run.
+- **`drainLog()`** is what the far end wants said out loud. Examples are a print job that
+  could not be spooled and a serial port that cannot do the baud it was asked for.
+  `Machine::drainBoardLog()` drains it from the stream of every unit, and the monitor prints
+  it after every command and run. A board never drains a stream itself.
 
 ### The unconnected line is not a special case
 
@@ -191,11 +191,12 @@ stays up and `write()` discards the bytes, so a board with wired CTS does not st
 that nobody reads. The name of the link reaches the operator two ways: `CONNECT` prints
 `takeNote()` at once, and a machine file gets it through `drainLog()`.
 
-**`Machine::drainBoardLog()` drains each serial line too.** A board that overrides
-`drainLog()`, as the 2SIO does, returns the messages of its chips and never asks the stream.
-The machine therefore walks `units()` and `unitStream()` after each board, and prints what the
-stream has to say as `id:unit: message`. A board that uses the default `Board::drainLog()` has
-already taken those messages, and the walk finds none.
+**`Machine::drainBoardLog()` is the only place that drains a line.** After it calls a board's
+`drainLog()`, it walks `units()` and `unitStream()` and prints what each stream has to say as
+`id:unit: message`. It does this for every board. A board's `drainLog()` returns only the
+messages of the board and of its chips, and the default `Board::drainLog()` returns nothing.
+When a board drained a stream itself, the board took the message first and printed it with
+its own prefix (issue #893). The `boardlog` test suite checks this path.
 
 **The pseudo-terminal has three traps, all in `platform/posix/pty_posix.cpp`.** (1) A master
 whose slave was never opened reads `EAGAIN`, the same as "open and quiet", so `openPty()` opens

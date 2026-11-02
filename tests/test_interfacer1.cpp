@@ -265,20 +265,23 @@ void test_interfacer1() {
         CHECK(!warned, "only once: an unrelated SET does not repeat it");
     }
 
-    SECTION("Interfacer 1 -- the far end of a line is heard in the log");
+    // The machine drains the stream, not the board (issue #893; the boardlog suite).
+    SECTION("Interfacer 1 -- the far end of a line is heard in the machine's log");
     {
-        Clock              clk;
-        InterfacerOneBoard b;
-        b.attachClock(&clk);
-        auto*       rec = new RecordingStream;
+        Machine     m;
         std::string err;
-        CHECK(b.connectStream("b", std::unique_ptr<ByteStream>(rec), err), "a line on B");
-        b.drainLog();
-        rec->farEnd.push_back("could not spool");
-        bool heard = false;
-        for (const auto& l : b.drainLog())
-            if (l.find("could not spool") != std::string::npos) heard = true;
-        CHECK(heard, "drainLog() passes the stream's own messages on, as gsio does");
+        auto*       b = dynamic_cast<InterfacerOneBoard*>(m.add("interfacer1", "if10", err));
+        CHECK(b != nullptr, "the interfacer1 board adds");
+        if (b) {
+            auto* rec = new RecordingStream;
+            CHECK(b->connectStream("b", std::unique_ptr<ByteStream>(rec), err), "a line on B");
+            m.drainBoardLog();
+            rec->farEnd.push_back("could not spool");
+            int heard = 0;
+            for (const auto& l : m.drainBoardLog())
+                if (l == "if10:b: could not spool") ++heard;
+            CHECK(heard == 1, "drainBoardLog() passes the stream's message on, once, as if10:b:");
+        }
     }
 
     SECTION("Interfacer 1 -- from a machine file, on the bus, and back out with CONFIG SAVE");
