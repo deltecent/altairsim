@@ -16,7 +16,7 @@ register, the bit or the command that was wrong.
 
 **New: Vector Graphic machines and boards.** The `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines are a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ.
 
-- `vgzcb`: the ZCB processor board. It has a Z80, three PROM sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000. The `baud` property has the eight values of switch S1. A `vgzcb` beside a `vgbsii` needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards overlap at `04`-`09`.
+- `vgzcb`: the ZCB processor board. It has a Z80, three PROM sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000. The board reads its own PROM, RAM and ports with its data-in buffers off, so a RAM board under it is not bus contention. The `baud` property has the eight values of switch S1. A `vgzcb` beside a `vgbsii` needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards overlap at `04`-`09`.
 - `vgfwii`: the Flashwriter II video board. It has an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard port at `00` and `01`. A key can raise `RST 7` through the `interrupt` property.
 - `vgdmdc`: the Dual-Mode Disk Controller. It runs four floppy drives through four ports and a 512-byte RAM, with the real 32-bit ECC.
 - `vgmdc`: the Micropolis Disk Controller. It has four 5.25-inch floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default.

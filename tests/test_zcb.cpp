@@ -417,6 +417,47 @@ void test_zcb() {
         CHECK(mem->peek(0xFC10, under) && under == 0x77, "and so has the board under it");
     }
 
+    // #896. U3 shuts off the data-in buffers for an on-board read, so a board under the ZCB
+    // that drives DI is heard by nobody. One driver is not contention. The RAM board here does
+    // NOT stand down for PHANTOM*, and it is first in slot order, so only the ZCB's own rule
+    // can make the ZCB the answer.
+    SECTION("vgzcb: an on-board read is not contention with a board under it");
+    {
+        Machine     m;
+        std::string err;
+        m.bus.setVerify(true);
+        m.bus.setContentionPolicy(Contention::Warn);
+        auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+        auto* z   = dynamic_cast<ZcbBoard*>(m.add("vgzcb", "zcb0", err));
+        Board* bs = m.add("vgbsii", "bs0", err);  // decodes 02-09, over the ZCB's 04-0B
+        z->loadSubUnit("socket", {{"at", "E000"}, {"mount", "builtin:vgmon43"}}, err);
+        Region ram;
+        ram.kind = RegionKind::Ram;
+        ram.at   = 0;
+        ram.size = 0x10000;
+        mem->addRegion(ram, err);
+        setProperty(*mem, "honors_phantom", "none", err);
+        m.power();
+        (void)bs;
+
+        CHECK(m.bus.memRead(0x0000) == kPromFirst, "the reset mirror reads the PROM at 0000");
+        CHECK(!m.bus.lastContended() && m.bus.drain().empty(), "with no contention");
+        CHECK(m.bus.respondersTo({Cycle::MemRead, 0x0000}).size() == 1, "WHO names one board");
+        CHECK(m.bus.peek(0x0001) == 0x15, "peek sees the PROM too");
+        m.bus.memRead(0xE000);  // ends the override
+        CHECK(m.bus.memRead(0xE000) == kPromFirst, "E000 is the PROM over the RAM");
+        m.bus.memWrite(0xFC20, 0x3C);
+        CHECK(m.bus.memRead(0xFC20) == 0x3C, "FC00 is the on-board RAM");
+        CHECK(!m.bus.lastContended() && m.bus.drain().empty(), "still no contention");
+        uint8_t under = 0;
+        CHECK(mem->peek(0xFC20, under) && under == 0x3C, "the write reached the RAM under it");
+
+        m.bus.ioRead(0x05);
+        CHECK(!m.bus.lastContended() && m.bus.drain().empty(), "IN 05 is the ZCB's 8251 alone");
+        m.bus.ioWrite(0x05, 0x00);
+        CHECK(m.bus.lastContended(), "but OUT 05 reaches both boards, and that is reported");
+    }
+
     SECTION("vgzcb: after a reset every address reads as the E000 block");
     {
         Rig r;

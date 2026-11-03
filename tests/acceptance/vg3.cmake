@@ -7,12 +7,14 @@
 # Monitor puts it.
 #
 # What it proves, on each machine:
-#   1. the ROM boots from the machine file and the banner, with that machine's Monitor version,
-#      reaches the screen;
+#   1. the ROM, started at E000, puts the banner with that machine's Monitor version on the
+#      screen;
 #   2. the guest polling the board's status port is seen as waiting, so `run` stops as `idle`
 #      and not at its timeout;
 #   3. a key sent to the board reaches the Monitor. `R` prints its name and the registers, and
-#      `D` takes a whole line of keys and prints the memory it was asked for.
+#      `D` takes a whole line of keys and prints the memory it was asked for;
+#   4. a launch with no --mcp runs the machine file's `startup` list, the Monitor is running
+#      after it, and the start reports no contention.
 #
 # Expects: -DSIM=<altairsim> -DSRC=<source dir> -DBIN=<binary dir>
 
@@ -21,6 +23,7 @@ cmake_minimum_required(VERSION 3.16)
 set(work "${BIN}/vg3-work")
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}")
+file(WRITE "${work}/empty.in" "")
 
 # One tools/call line. `args` is the JSON object of the tool's arguments.
 set(session "")
@@ -108,6 +111,30 @@ foreach(entry "vg3vip|VERSION 4\\.1|E000 C3 18 E0 C3"
     endif()
   endforeach()
 
+  # 4. THE LAUNCH (#895). Everything above runs under --mcp, which never runs the machine
+  #    file's `startup` list, so it cannot see a machine that does not start when a person
+  #    launches it. A -x launch runs `startup` first, then REGS. The Monitor must be running
+  #    in its PROM, and the start from reset must not report contention (#896).
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env SDL_VIDEODRIVER=dummy "${SIM}" "${machine}" -x REGS
+    WORKING_DIRECTORY "${work}"
+    INPUT_FILE "${work}/empty.in"
+    OUTPUT_VARIABLE out
+    ERROR_VARIABLE err
+    RESULT_VARIABLE rc
+    TIMEOUT 90)
+  if(NOT rc EQUAL 0)
+    fail("`altairsim ${machine} -x REGS` exited ${rc}, expected 0")
+  endif()
+  if(NOT out MATCHES "startup> RUN")
+    fail("the launch ran no RUN from the machine file's startup list")
+  endif()
+  if(NOT out MATCHES "PC=E[0-9A-F][0-9A-F][0-9A-F]")
+    fail("after the launch the processor is not in the Monitor PROM at E000-EFFF")
+  endif()
+  if("${out}${err}" MATCHES "CONTENTION")
+    fail("the launch reported contention")
+  endif()
 
   message(STATUS "${machine}: Monitor banner, R and D on the Flashwriter II passed")
 endforeach()

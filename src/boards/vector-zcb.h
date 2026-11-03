@@ -47,6 +47,10 @@ public:
     void    write(const BusCycle& c) override;
     bool    peek(uint16_t addr, uint8_t& out) const override;
 
+    // Every on-board read: U3 shuts off the data-in buffers for a read of the PROM, the RAM,
+    // the 8251 or the 8255, and the board does not look at the bus (reference 5).
+    bool    readsOnBoard(const BusCycle& c) const override { return decodes(c); }
+
     // A level, held from reset until the first memory cycle in the block.
     bool assertsPhantom(const BusCycle&) const override { return armed_ && phantom_; }
 

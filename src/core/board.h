@@ -213,6 +213,20 @@ public:
     // with Bus::setVerify(true) and it stops being quiet.
     virtual bool decodes(const BusCycle&) const { return false; }
 
+    // DO I TAKE THIS READ FROM MY OWN CHIPS, WITH MY DATA-IN BUFFERS OFF?
+    //
+    // A CPU board with on-board memory or ports can answer its own processor's
+    // read without the bus: it shuts off its data-in buffers and the processor
+    // takes the byte from the chip on the board. What any other board drives on
+    // the data-in lines is then not seen by anyone. One board driving DI is not
+    // contention, so the bus counts this board as the only answer to the read.
+    // The Vector Graphic ZCB is the case (reference/ZCB CPU Manual.md section 5).
+    //
+    // Asked only of a board that decodes() the cycle, and only for MemRead and
+    // IoRead. Pure and combinational, the same contract as decodes(). A board
+    // whose answer here changes calls decodeChanged(), as for decodes().
+    virtual bool readsOnBoard(const BusCycle&) const { return false; }
+
     // IS MY MEMORY DECODE THE SAME FOR EVERY ADDRESS IN A 256-BYTE PAGE?
     //
     // Nearly always yes: S-100 memory decoding comes off the HIGH address lines,
