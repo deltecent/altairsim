@@ -12,7 +12,8 @@
 # Vector's PROM sheet lists Monitor 4.1 for the VIP.
 
 [machine]
-name = "vg3vip"
+name    = "vg3vip"
+startup = ["RUN"]          # from the reset at 0000, through the ZCB reset latch
 
 # The video window is this machine's console: it comes to the front when it opens and
 # keeps the keyboard when the guest stops.

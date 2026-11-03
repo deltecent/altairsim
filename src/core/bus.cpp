@@ -43,10 +43,22 @@ bool Bus::anyAssertsPhantom(const BusCycle& c) const {
     return false;
 }
 
+// A READ THAT A BOARD TAKES FROM ITS OWN CHIPS (Board::readsOnBoard) has one driver:
+// that board's chip, inside the board. The board's data-in buffers are off, so what
+// another board drives on DI reaches nobody, and that is not contention. Both
+// decoders() and scan() apply the rule, so WHO, the contention report and the
+// verifier all see the same single answer.
+static bool isRead(const BusCycle& c) {
+    return c.type == Cycle::MemRead || c.type == Cycle::IoRead;
+}
+
 std::vector<Board*> Bus::decoders(const BusCycle& c) const {
     std::vector<Board*> out;
     for (Board* b : boards_)
-        if (b->enabled() && b->decodes(c)) out.push_back(b);
+        if (b->enabled() && b->decodes(c)) {
+            if (isRead(c) && b->readsOnBoard(c)) return {b};
+            out.push_back(b);
+        }
     return out;
 }
 
@@ -54,6 +66,7 @@ Bus::Decode Bus::scan(const BusCycle& c) const {
     Decode d;
     for (Board* b : boards_)
         if (b->enabled() && b->decodes(c)) {
+            if (isRead(c) && b->readsOnBoard(c)) return Decode{b, 1};
             if (!d.first) d.first = b;
             ++d.n;
         }
@@ -88,14 +101,14 @@ uint8_t Bus::peek(uint16_t addr) const {
     }
 
     // No cache to trust -- dirty (nothing has rebuilt it yet this run) or a slow page.
-    // The exact first-responder scan, still without building a decoders() vector.
+    // The exact first-responder scan. A slow page is rare, so decoders() may allocate.
     BusCycle c{Cycle::MemRead, addr, 0, false};
     c.phantom = anyAssertsPhantom(c);
-    for (Board* b : boards_)
-        if (b->enabled() && b->decodes(c)) {
-            uint8_t v = 0xFF;
-            if (b->peek(addr, v)) return v;
-        }
+    // A board that reads on-board is the only answer, wherever it sits in slot order.
+    for (Board* b : decoders(c)) {
+        uint8_t v = 0xFF;
+        if (b->peek(addr, v)) return v;
+    }
     return 0xFF;  // nobody could answer without side effects. Neither can we.
 }
 

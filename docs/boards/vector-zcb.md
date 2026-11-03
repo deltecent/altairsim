@@ -46,6 +46,7 @@ Both chips are in one group of 32 ports. The port is `group` + `serial_port`, or
 - **Shape.** `ZcbBoard` is a `CpuZ80Board` that also answers bus cycles, so one `[[board]]` entry is the whole board. `clock_hz` and `idle` come from the base class. `clock_hz` is 0 by default, as on the `z80` board. The real crystal is 4000000.
 - **Decodes** a memory read that hits a PROM or the RAM, and an I/O read or write at the ports of the two chips. A memory write is not decoded. `snoop()` stores the byte in the on-board RAM and the write continues on the bus.
 - **Reset latch.** `armed_` is U27. Every reset sets it. While it is set, `boot` makes every address decode as `E000 | (addr & 1FFF)`, and `phantom` makes the board assert `PHANTOM*`. `snoop()` clears it on the first memory cycle whose bus address is `E000` or higher, and calls `decodeChanged()`. Nothing writes the program counter.
+- **On-board reads.** `readsOnBoard()` returns `decodes()`. U3 shuts off the data-in buffers for a read of any on-board chip, so the bus counts the ZCB as the only answer to that read. A RAM board under it is not contention.
 - **PROM.** Each `[[board.socket]]` has `at` (`E000`, `E400`, `E800` or `EC00`) and `mount`. The size of the image, 1K, 2K or 4K, sets the size of the chip. The chip must start on a boundary of its own size. Overlapping sockets are reported in the log.
 - **Serial.** An embedded `Intel8251`, unit `serial`. The unit property `baud` is switch S1, with its eight labels. The clock at TxC and RxC is 2 MHz / 13, divided as the rocker sets. For example, the label 9600 runs at 9615 baud. The guest's clock factor divides this clock, so a factor of 64 gives a quarter of the label. A real serial port gets the label, divided by the factor.
 - **Parallel.** An embedded `Intel8255`, with mode 0 in all 16 direction sets. Nothing connects to J1, so an input reads `FF`.
@@ -73,7 +74,7 @@ Both chips are in one group of 32 ports. The port is `group` + `serial_port`, or
 
 ## Beside a Bitstreamer II
 
-A `vgbsii` at its default port 02 decodes 02-09. The `vgzcb` decodes 04-07 and 08-0B at its default ports, so the two boards share 04-09 and the bus reports `CONTENTION`. On real hardware, pulling U2, the 74LS42 port decoder, stops the 8251 and the 8255. Lifting pin 2 of U2 stops the 8251 only.
+A `vgbsii` at its default port 02 decodes 02-09. The `vgzcb` decodes 04-07 and 08-0B at its default ports, so the two boards share 04-09. An `IN` from 04-09 reads the ZCB's chip, because the ZCB reads its own chips with its data-in buffers off. An `OUT` to 04-09 reaches both boards, and the bus reports `CONTENTION`. On real hardware, pulling U2, the 74LS42 port decoder, stops the 8251 and the 8255. Lifting pin 2 of U2 stops the 8251 only.
 
 This model has no U2 setting. Move the two chips to free ports with `serial_port = 0C` and `parallel_port = 18`, as area E can do on the real board. The table in the Port Map lists nothing at 0C-0F or 18-1F. A note there puts the multiuser time share system at 08-0F, so these ports are not free on that system. The defaults stay at 04 and 08. A guest that drives the 8255 must use the new port.
 
@@ -85,7 +86,7 @@ This model has no U2 setting. Move the two chips to free ports with `serial_port
 - **CTS does not hold the transmitter.** The 8251 sends even if the line drops RTS. DSR, status bit 7, comes from the line and is active while the line is open, as the pull-ups make it on the real board.
 - **Modes 1 and 2 of the 8255 are stored and set the directions only.** J1 has no device, so the handshake lines have nothing to drive. Monitor 4.3 uses mode 0 only.
 - **An open 8255 input reads `FF`.** No source gives this value (`reference/ZCB CPU Manual.md` Q7). It decides which path the printer driver of Monitor 4.3 takes.
-- **An off-board memory that decodes `E000`-`FFFF` is bus contention here.** The real ZCB ignores the data-in lines on an on-board read. The bus reports contention and the first board in slot order wins. Keep off-board RAM at `0000`-`DFFF`, as the memory map of Vector Graphic does.
+- **The read strobe of a board under the ZCB is not given.** On an on-board read, the real ZCB ignores the data-in lines, and the model gives the read to the ZCB alone. A board at the same address does not see the read. A memory board has no read side effect, so a guest cannot see the difference.
 - **I/O address mirroring, area O, is not modeled.** A board that reads A8 to A15 during an I/O cycle sees the Z-80's own high byte.
 - **All rockers open is not offered.** The real port then has no clock. The `baud` property has only the eight rockers.
 - **Area D is not modeled.** The board always behaves as if it generates MWRITE.

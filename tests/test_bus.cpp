@@ -3,6 +3,8 @@
 #include "boards/s100-memory.h"
 #include "core/machine.h"
 
+#include <memory>
+
 using namespace altair;
 
 static MemoryBoard* addMem(Machine& m, const std::string& id) {
@@ -16,6 +18,21 @@ static Region ram(uint16_t at, uint32_t size) {
     r.size = size;
     return r;
 }
+
+// A CPU board's own chip at 0000-00FF and port 10. It answers its own reads with its data-in
+// buffers off (Board::readsOnBoard), as the Vector Graphic ZCB does.
+class OnBoardChip : public Board {
+public:
+    std::string type() const override { return "onboard"; }
+    std::vector<Property> properties() override { return {}; }
+    bool decodes(const BusCycle& c) const override {
+        if (c.type == Cycle::IoRead || c.type == Cycle::IoWrite) return c.port() == 0x10;
+        return c.addr < 0x100 && c.type == Cycle::MemRead;
+    }
+    bool readsOnBoard(const BusCycle&) const override { return true; }
+    uint8_t read(const BusCycle&) override { return 0x5A; }
+    bool peek(uint16_t, uint8_t& out) const override { out = 0x5A; return true; }
+};
 
 void test_bus() {
     SECTION("the bus (DESIGN.md 4) -- it carries signals; it does not decide");
@@ -54,6 +71,41 @@ void test_bus() {
         CHECK(m.bus.drain()[0].find("mem0") != std::string::npos &&
                   m.bus.drain()[0].find("mem1") != std::string::npos,
               "naming both boards");
+    }
+
+    {
+        // #896. A board that takes a read from its own chip, with its data-in buffers off,
+        // is the only driver of that read. A RAM under it drives DI and nobody hears it.
+        // The RAM is FIRST in slot order, so slot order cannot be what picks the answer.
+        Machine m;
+        std::string err;
+        m.bus.setVerify(true);
+        auto* a = addMem(m, "mem0");
+        a->addRegion(ram(0x0000, 0x1000), err);
+        auto chip = std::make_unique<OnBoardChip>();
+        chip->id = "chip0";
+        auto* c = static_cast<OnBoardChip*>(m.adopt(std::move(chip)));
+        m.power();
+
+        m.bus.clearLog();
+        CHECK(m.bus.memRead(0x0010) == 0x5A, "the on-board chip answers its own read");
+        CHECK(!m.bus.lastContended() && m.bus.drain().empty(), "and that is not contention");
+        CHECK(m.bus.lastResponder() == c, "the chip is the responder, not the RAM before it");
+        CHECK(m.bus.respondersTo({Cycle::MemRead, 0x0010}).size() == 1, "WHO names one board");
+        CHECK(m.bus.peek(0x0010) == 0x5A, "peek sees what the read sees");
+        m.bus.memWrite(0x0010, 0x33);
+        uint8_t v = 0;
+        CHECK(a->peek(0x0010, v) && v == 0x33, "a write still goes out to the RAM");
+        CHECK(m.bus.respondersTo({Cycle::MemRead, 0x0110}).size() == 1, "one driver there too");
+
+        auto* b = addMem(m, "mem1");  // a second RAM on 0000: real contention, chip or not
+        b->addRegion(ram(0x0000, 0x1000), err);
+        m.power();
+        m.bus.clearLog();
+        m.bus.memRead(0x0010);
+        CHECK(!m.bus.lastContended(), "two RAMs under the chip are still heard by nobody");
+        m.bus.memRead(0x0110);
+        CHECK(m.bus.lastContended(), "but where the chip does not decode, two RAMs contend");
     }
 
     {

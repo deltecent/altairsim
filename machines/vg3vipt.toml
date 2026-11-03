@@ -13,7 +13,8 @@
 # come from the restorer's notes on one machine. No Vector document describes this configuration.
 
 [machine]
-name = "vg3vipt"
+name    = "vg3vipt"
+startup = ["RUN"]          # from the reset at 0000, through the ZCB reset latch
 
 # The video window is this machine's console: it comes to the front when it opens and
 # keeps the keyboard when the guest stops.

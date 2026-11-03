@@ -667,6 +667,8 @@ When two boards `decodes()` the same cycle, log a diagnostic naming both board `
 
 The failure that *does* deserve a warning is a memory board strapped **not** to honor PHANTOM\* sitting under a ROM that asserts it. Then both really do drive, and you get the real bug the real backplane would have handed you.
 
+**A read that a CPU board takes from its own chip is not contention either.** Some CPU boards shut off their data-in buffers for a read of an on-board chip, and the processor takes the byte from that chip. Another board can drive the data-in lines in the same cycle, and nothing reads them. One board drives DI, so there is one driver. The board says so with `readsOnBoard()`, and the bus counts it as the only answer to that read, in any slot order. A write still goes out on the bus to every board that decodes it. The Vector Graphic ZCB is the case (`reference/ZCB CPU Manual.md` §5).
+
 ### 4.6.1 The floating bus — one rule, three consequences
 
 > **If no board drives the bus, it floats high. Every read of an unmapped address or port returns `0xFF`. Writes go nowhere.**

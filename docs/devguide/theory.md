@@ -206,6 +206,23 @@ different answers inside page 0. Say `false` and the bus probes every address of
 might be in, and any page whose answer is not uniform is served by the exact, uncached two-pass
 path. **You lose nothing but the cache, and only on the pages you actually touch.**
 
+### `readsOnBoard()` — a CPU board that reads its own chip
+
+```cpp
+virtual bool readsOnBoard(const BusCycle&) const { return false; }
+```
+
+A CPU board with memory or ports on it can answer its own processor's read without the bus. The
+board shuts off its data-in buffers, and the processor takes the byte from the chip on the board.
+Another board can drive the data-in lines in the same cycle, and nothing reads them. That is one
+driver, not contention.
+
+Say `true` for a read that the board takes this way. The bus then counts this board as the only
+answer, whatever the slot order, and reports no contention. WHO, `peek()` and the verifier see the
+same single answer. The bus asks only for a `MemRead` or `IoRead` that the board decodes. A write
+is unchanged: it goes out to every board that decodes it. The Vector Graphic ZCB returns
+`decodes(c)`, because its U3 shuts off the buffers for every on-board chip.
+
 ### `snoop()` — the clocked half, and the only place you may latch
 
 ```cpp
