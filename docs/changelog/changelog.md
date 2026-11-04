@@ -27,6 +27,23 @@ register, the bit or the command that was wrong.
 
 OASIS 5.5A boots from a `vgdmdc` disk, and Vector CP/M boots from a `vgmdc` disk. The package holds no OASIS or Micropolis disk.
 
+**Fixed: a guest sent serial output slower than the line rate.** Each UART chip had one transmit
+register. A write cleared the ready bit (TBMT, TDRE, TxRDY or TBE) for one character time, also
+when the line was idle. Because of this, each byte cost one character time plus the time that the
+guest took to see the bit set again. The real 1602, 6850, 8251, 2651 and TMS 5501 have a holding
+register in front of the shift register. Now a byte written to an idle line moves into the shift
+register after a short transfer delay, and the ready bit sets again. The delay is one bit time on
+the 6850 and 1/16 bit time on the 1602. These are the limits in the data sheets, and measurements on a real
+8800c came close to them. The 8251, 2651 and TMS 5501 have no delay, because our references give no
+value for them. A second byte keeps the ready bit clear until the first byte is sent. For example,
+on `basic4k` a program that sends one byte and counts its status reads until the port is ready
+again counted 72 reads. It now counts 1.
+
+The end-of-character bit (TEOC, TxEMPTY, TxEMT) clears when a byte moves into the shift register,
+and sets one character time later. PMMI MM-103 status bit 2, TEOC, was a copy of TBMT. It now
+shows the shift register. A snapshot from an older version restores, but each board with one of
+these UARTs starts as at power-on.
+
 **Fixed: `SYMBOLS LOAD` read no symbols from a MACRO-80 listing.** It read an M80 `.PRN` with the ASM layout, found no address, and reported `0 symbol(s)`. It did not refuse a relocatable M80 listing, and it took a MAC `SET` as a program label. It now finds the M80 page header and uses the M80 columns, takes `EQU`, `SET`, `DEFL` and `ASET` as constants, and refuses a relocatable listing and names the line.
 
 **Fixed: a machine with a VDB-8024 keyboard held one host core at a prompt when it ran flat out.**

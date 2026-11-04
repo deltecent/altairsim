@@ -11,6 +11,7 @@
 //
 // It knows nothing about S-100. It has a clock, some pins, and a ByteStream.
 
+#include "chips/twostagetx.h"
 #include "core/board.h"     // IrqJumper, irqJumperProperty, Property -- pin 73's vocabulary
 #include "host/filter.h"
 
@@ -202,7 +203,7 @@ public:
     // SNAPSHOT/RESTORE (DESIGN.md 13). The owning card calls these. What travels is
     // the chip's live state -- the control byte, the received character and its
     // flags, the /DCD latch group, the sampled pins, and the two absolute-T-state
-    // deadlines (txFreeAt_/rxNextAt_ stay valid because the Clock's t_ travels).
+    // deadlines (tx_/rxNextAt_ stay valid because the Clock's t_ travels).
     // What does NOT: the straps (jumper/dcdStrap/ctsStrap/baud_ -- config) and the
     // stream_ (a host handle, re-CONNECTed). The card re-arms the Clock from
     // nextEdge() after restore; no Clock::Handle lives here to serialize.
@@ -275,7 +276,7 @@ private:
     //
     //   - `baud` is a DURATION IN T-STATES -- INSIDE emulated time -- so the guest can and
     //     does observe it. TDRE timing is one way (the Mike Douglas CP/M BIOS MEASURES it to
-    //     infer the line speed; see txFreeAt_). The INTER-CHARACTER GAP ON RECEIVE is the
+    //     infer the line speed; see tx_). The INTER-CHARACTER GAP ON RECEIVE is the
     //     other, and it is the one that bites: the 6850 has no handshaking, so THE BAUD RATE
     //     IS THE ONLY FLOW CONTROL THIS CARD HAS. In this simulator it is specifically what
     //     turns a host PASTE -- ten bytes appearing in the pty at once -- into a paced serial
@@ -353,12 +354,13 @@ private:
     std::vector<std::string> log_;
 
     // TDRE IS A DEADLINE, NOT A FLAG (DESIGN.md 7.5, and the reason Clock exists).
-    // The transmit register is empty once the character has had time to leave. A
-    // guest that reads the status port before then sees TDRE clear, which is the
-    // whole point -- the Mike Douglas CP/M BIOS TIMES how long it stays clear to
-    // work out the line speed, and a hardwired TDRE=1 silently changes what that
-    // BIOS decides to do.
-    uint64_t txFreeAt_ = 0;
+    // The 6850 is DOUBLE-buffered (chips/twostagetx.h, reference/6850.md): a byte written
+    // to an idle transmitter moves straight into the shift register and TDRE stays set; a
+    // byte written while another is still shifting holds TDRE clear until that shift ends.
+    // A guest that reads the status port before then sees TDRE clear, which is the whole
+    // point -- the Mike Douglas CP/M BIOS TIMES how long it stays clear to work out the
+    // line speed, and a hardwired TDRE=1 silently changes what that BIOS decides to do.
+    TwoStageTx tx_;
 
     // Receive is paced too, or a byte could never arrive "while the last one was
     // still sitting there" -- which is precisely what an overrun IS.

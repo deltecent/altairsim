@@ -282,7 +282,10 @@ void test_zcb() {
         r.program();
         CHECK(r.in(0x05) == (kTxRDY | kTxEMPTY | kDSR), "idle: DSR is active with the line open");
         r.out(0x04, 'x');
-        CHECK(r.in(0x05) == kDSR, "a byte in the transmitter");
+        CHECK(r.in(0x05) == (kTxRDY | kDSR),
+              "a byte in the shift register: TxEMPTY drops, the holding register is free");
+        r.out(0x04, 'y');
+        CHECK(r.in(0x05) == kDSR, "a byte waiting behind it: TxRDY drops too");
         s->feed("Q");
         r.z->pump();
         r.m.clock.advance(100000);

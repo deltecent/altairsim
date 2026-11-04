@@ -1134,7 +1134,7 @@ Two properties the boards depend on:
 
 And the poll had to go, because it was never how the machine worked (§4.4): a bus does not interrogate a card for its interrupt status. A card **pulls pin 73 and holds it**. Take the poll away and the board is left holding a deadline it has no way to be present for:
 
-> A 6850 with the transmit interrupt jumpered raises IRQ when its shift register drains. **Nobody touches it. No bus cycle happens.** And the guest is sitting in a `HLT` waiting for precisely that interrupt. If the only way the card can act is to *be asked*, and the only thing that would ask is the CPU that is halted waiting for it, **then nothing ever happens again.**
+> A 6850 with the transmit interrupt jumpered raises IRQ when its transmit data register empties. **Nobody touches it. No bus cycle happens.** And the guest is sitting in a `HLT` waiting for precisely that interrupt. If the only way the card can act is to *be asked*, and the only thing that would ask is the CPU that is halted waiting for it, **then nothing ever happens again.**
 
 That is not hypothetical — `tests/test_sio2.cpp` runs exactly that machine, and it is the test that fails without a queue.
 

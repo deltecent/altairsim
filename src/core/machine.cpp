@@ -228,7 +228,8 @@ constexpr char     kMagic[8]     = {'A', 'L', 'T', 'R', 'S', 'N', 'P', '1'};
 // 4: the `ss1` 8253 keeps each counter's phase in pin-49 ticks, not its load T-state.
 // 5: the `cadzilla` board gained its overlay SRAM in its state.
 // 6: the Z80 core keeps the last NMI* level it saw (the edge detector).
-constexpr uint32_t kFormatVersion = 6;
+// 7: every UART keeps two transmit deadlines, the holding and the shift register (#899).
+constexpr uint32_t kFormatVersion = 7;
 
 // The format in which each board's state last changed in a way that a length check cannot
 // see. RESTORE does not trust such a board's section in an older file; the board starts at

@@ -205,22 +205,69 @@ void test_88sio() {
         CHECK((g.status() & kRev0DataAvail) == 0, "reading the data clears bit 5 too");
     }
 
-    SECTION("88-SIO -- TBMT is a DEADLINE, not a flag");
+    SECTION("88-SIO -- TBMT is a DEADLINE, not a flag, and the 1602 is DOUBLE-buffered");
     {
-        // The transmitter is BUSY until the character has had time to leave the
-        // shift register. A hardwired "always ready" is the easy lie, and it changes
-        // what a BIOS that TIMES the line decides to do.
+        // The transmitter has a holding register in front of its shift register
+        // (reference/com2502.md, "Transmitter operation"). A byte written to an IDLE
+        // transmitter moves into the shift register within one TCP period (the 16x clock),
+        // and TBMT is high again from then on. Only a second byte, written while the first
+        // is still shifting, holds TBMT low -- until the first character has left. A
+        // hardwired "always ready" is the easy lie; a full character per byte is the other
+        // one (issue #899, where a real COM2502 had TBMT back within one poll loop).
         Rig g;
+        const uint64_t charT = (uint64_t)(2000000 * 10 / 9600);  // 8N1 at 9600: 2,083 T-states
+        const uint64_t tcp   = (uint64_t)(2000000 / (16 * 9600)); // one TCP period: 13 T-states
         CHECK((g.status() & kOutputNotReady) == 0, "idle: ready");
 
         g.m.bus.ioWrite(0x01, 'X');
-        CHECK((g.status() & kOutputNotReady) != 0,
-              "the instant a character goes out, bit 7 SETS -- NOT ready");
-        CHECK(g.tty->out() == "X", "and the character really is on the line");
-
-        g.lineTime();
+        CHECK((g.status() & kOutputNotReady) != 0, "the write fills the holding register");
+        g.m.clock.advance(tcp - 1);
+        CHECK((g.status() & kOutputNotReady) != 0, "one T-state before the TCP edge: still busy");
+        g.m.clock.advance(1);
         CHECK((g.status() & kOutputNotReady) == 0,
-              "and one character time later it is ready again, with nobody touching it");
+              "one TCP period after the write, X is in the shift register -- ready again");
+
+        g.m.bus.ioWrite(0x01, 'Y');
+        CHECK((g.status() & kOutputNotReady) != 0,
+              "a second byte while the first is shifting: bit 7 SETS -- NOT ready");
+        CHECK(g.tty->out() == "XY", "and both characters really are on the line");
+
+        g.m.clock.advance(charT - 1);
+        CHECK((g.status() & kOutputNotReady) != 0, "one T-state before X has left: still busy");
+        g.m.clock.advance(1);
+        CHECK((g.status() & kOutputNotReady) == 0,
+              "the moment X has left, Y moves to the shift register and TBMT is high again");
+    }
+
+    SECTION("88-SIO -- a guest's output runs AT the line rate, not below it (#899)");
+    {
+        // The poll-and-send loop every console driver has. Ten bytes, nothing typed. With
+        // the holding register, the second byte goes in one TCP period after the first and
+        // each later byte the moment the byte two ahead of it has left -- so the tenth OUT lands about
+        // EIGHT character times after the first. A single-register model takes NINE
+        // character times plus the polls in between.
+        Rig g;
+        const uint64_t charT = (uint64_t)(2000000 * 10 / 9600);
+        for (int i = 0; i < 10; ++i) g.m.bus.memWrite(0x0200 + i, (uint8_t)('0' + i));
+        g.load({
+            0x21, 0x00, 0x02,  // LXI H,0200
+            0x06, 0x0A,        // MVI B,10
+            0xDB, 0x00,        // 0005: IN 00
+            0xE6, 0x80,        // ANI 80     -- bit 7 set = NOT ready
+            0xC2, 0x05, 0x00,  // JNZ 0005
+            0x7E,              // MOV A,M
+            0xD3, 0x01,        // OUT 01
+            0x23,              // INX H
+            0x05,              // DCR B
+            0xC2, 0x05, 0x00,  // JNZ 0005
+            0x76,              // HLT
+        });
+        uint64_t t0 = g.m.clock.now();
+        for (int i = 0; i < 100000 && !g.m.cpu()->halted(); ++i) g.run(1);
+        uint64_t took = g.m.clock.now() - t0;
+        CHECK(g.tty->out() == "0123456789", "all ten bytes went out, in order");
+        CHECK(took >= 8 * charT, "no faster than the line: eight character times at least");
+        CHECK(took < 8 * charT + 200, "and no slower: the polls cost nothing extra");
     }
 
     SECTION("88-SIO -- the control channel holds TWO BITS, and they are the enables");
@@ -291,7 +338,9 @@ void test_88sio() {
         g.load({
             0x31, 0x00, 0x02,  // LXI SP,0200
             0x3E, 'C',         // MVI A,'C'
-            0xD3, 0x01,        // OUT 01     -- send it. TBMT falls; the card sets an alarm
+            0xD3, 0x01,        // OUT 01     -- send it; it is in the shift register one TCP later
+            0x3E, 'D',         // MVI A,'D'
+            0xD3, 0x01,        // OUT 01     -- and a second one. TBMT falls; the card sets an alarm
             0x3E, 0x02,        // MVI A,02
             0xD3, 0x00,        // OUT 00     -- D1: enable the OUTPUT interrupt
             0xFB,              // EI
@@ -304,7 +353,7 @@ void test_88sio() {
         CHECK(r.why == StopReason::Breakpoint,
               "the interrupt ARRIVED -- the halted machine was woken by the card");
         CHECK(g.m.cpu()->pc() == 0x0038, "at RST 7, which is what an empty backplane reads as");
-        CHECK(g.tty->out() == "C", "and the character had really gone out");
+        CHECK(g.tty->out() == "CD", "and the characters had really gone out");
     }
 
     SECTION("88-SIO -- an INTERRUPT-DRIVEN echo, end to end, with no VI board");

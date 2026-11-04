@@ -126,9 +126,10 @@ jumpers.
   belongs to the board and is applied in `Io4Board::statusByte()` (`DESIGN.md` §7.8, *A chip
   is not a card*).
 - **Word format** (`data_bits` 5–8, `parity` none/odd/even, `stop_bits` 1–2 — the S1/S2
-  switches) and **`baud`** are per channel. They pace the emulated line — TBMT falls on a
-  write and rises one character time later, and received characters arrive at no more than
-  the line rate — and they are programmed onto a real serial port when one is connected.
+  switches) and **`baud`** are per channel. They pace the emulated line, and they are
+  programmed onto a real serial port when one is connected. After a write to an idle line, TBMT
+  is clear for one period of the 16x clock, until the byte moves into the shift register. TEOC
+  then clears for one character time. Received characters arrive at no more than the line rate.
 - **Parallel ports** are units `pa` and `pb`, one bidirectional `ByteStream` each. A byte the
   far end sends *is* the external strobe: `pump()` latches it into the input latch and sets the
   service request. The latch is one byte deep, so the next byte waits until the guest reads

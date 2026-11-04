@@ -38,7 +38,7 @@ void Mc6850::serialize(StateWriter& w) const {
     w.boolean(dcdFollow_);
     w.boolean(ctsPin_);
     w.boolean(txRoom_);
-    w.u64(txFreeAt_);
+    tx_.serialize(w);
     w.u64(rxNextAt_);
 }
 
@@ -55,7 +55,7 @@ void Mc6850::deserialize(StateReader& r) {
     dcdFollow_     = r.boolean();
     ctsPin_        = r.boolean();
     txRoom_        = r.boolean();
-    txFreeAt_      = r.u64();
+    tx_.deserialize(r);
     rxNextAt_      = r.u64();
 
     // rxIdle_ is a transient shift-register edge, not part of the on-disk format.
@@ -295,7 +295,7 @@ bool Mc6850::inReset() const { return (control_ & kDivideMask) == kMasterReset; 
 bool Mc6850::tdre(const Clock& clk) const {
     if (inReset()) return false;              // "...or the ACIA being maintained in the
                                               // Reset condition" -- data sheet
-    if (clk.now() < txFreeAt_) return false;  // the character has not finished leaving
+    if (!tx_.holdEmpty(clk.now())) return false;  // the holding register is still full
     if (!ctsPin_) return false;               // "the TDRE bit is inhibited" -- data sheet
     if (!txRoom_) return false;               // ...and the far end has nowhere to put it
     return true;
@@ -495,10 +495,13 @@ void Mc6850::writeData(uint8_t v, const Clock& clk) {
     if (g_ch6850.on(SERIAL))
         dbg::line(g_ch6850) << name_ << " tx " << hex2(v) << "\n";
 
-    // The character is now on the wire, and the transmit register is BUSY until
-    // it has had time to get out. This is the line the Mike Douglas BIOS is
-    // timing.
-    txFreeAt_ = clk.now() + charTStates(clk);
+    // The character goes into the holding register, and on to the shift register as
+    // soon as the shift register is free. TDRE is clear only while a byte waits behind
+    // another one. This is the line the Mike Douglas BIOS is timing.
+    // An idle transmitter takes the TDR "within 1 bit-time of the write"
+    // (reference/6850.md), and only that transfer sets TDRE.
+    uint64_t bitT = baud_ > 0 ? (uint64_t)(clk.hz() / baud_) : 0;
+    tx_.load(clk.now(), charTStates(clk), bitT);
 }
 
 // The reset itself, with the control register left alone. Called two ways -- by a
@@ -508,7 +511,7 @@ void Mc6850::resetAction(const Clock& clk) {
     rdrf_     = false;
     ovrn_     = false;
     rxData_   = 0;
-    txFreeAt_ = clk.now();   // "initializes both the receiver and transmitter"
+    tx_.reset(clk.now());    // "initializes both the receiver and transmitter"
     rxNextAt_ = clk.now();
     rxIdle_   = true;        // shift register empty -- the first byte in is timed afresh
 
@@ -602,7 +605,7 @@ uint64_t Mc6850::nextEdge(const Clock& clk) const {
     // write is not a deadline.
     if (inReset()) return 0;
 
-    // The transmitter drains on its own clock. TDRE goes true at txFreeAt_, and
+    // The transmitter drains on its own clock. TDRE goes true when the holding register empties, and
     // with the transmit interrupt jumpered on, IRQ rises with it -- WITH NOBODY
     // TOUCHING THE CHIP. That is the case the old poll-every-instruction model was
     // quietly covering for, and it is exactly the case a guest sitting in a HLT is
@@ -612,7 +615,7 @@ uint64_t Mc6850::nextEdge(const Clock& clk) const {
     // TDRE is inhibited and no amount of waiting produces it: that edge is not coming
     // from the clock, it is coming from the far end raising a pin, and that arrives
     // through pump() like every other event in the outside world.
-    if ((control_ & kTxCtlMask) == kTxIrqEnabled && ctsPin_ && txRoom_) consider(txFreeAt_);
+    if ((control_ & kTxCtlMask) == kTxIrqEnabled && ctsPin_ && txRoom_) consider(tx_.holdFreeAt());
 
     // The receiver fills on its own too -- but only if there is actually a
     // character on the line to fill it with. If the host has sent nothing, there is

@@ -154,10 +154,11 @@ bool Sig2651::txReady(const Clock& clk) const {
     // Buffer-empty, and the far end has somewhere to put the byte. TxRDY means the
     // holding register is free; it is not gated by TxEN (a guest polls it before enabling
     // the transmitter). Same meaning as the 8251's TxRDY.
-    return clk.now() >= txFreeAt_ && stream_->writable();
+    return tx_.holdEmpty(clk.now()) && stream_->writable();
 }
 
-bool Sig2651::txEmpty(const Clock& clk) const { return clk.now() >= txFreeAt_; }
+// TxEMT: the shift register has finished too -- the last character has left the wire.
+bool Sig2651::txEmpty(const Clock& clk) const { return tx_.lineIdle(clk.now()); }
 
 uint8_t Sig2651::statusByte(const Clock& clk) const {
     uint8_t s = 0;
@@ -188,9 +189,9 @@ uint8_t Sig2651::readMode() {
 void Sig2651::writeData(uint8_t v, const Clock& clk) {
     stream_->write(&v, 1);
     stream_->flush();
-    // The character is on the wire; the transmit register is BUSY until it has had time
-    // to leave -- a deadline, not a flag (the same timing the 8251 and 6850 use).
-    txFreeAt_ = clk.now() + charTStates(clk);
+    // Into the holding register, and on to the shift register as soon as that is free.
+    // TxRDY is a deadline, not a flag: it falls only while a byte waits behind another.
+    tx_.load(clk.now(), charTStates(clk), 0);  // no transfer delay given (twostagetx.h)
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +228,8 @@ void Sig2651::powerOn(const Clock& clk) {
     rxData_ = rxPending_ = 0;
     rxRdy_ = rxActive_ = false;
     rxStart_ = rxDoneAt_ = 0;
-    txFreeAt_ = rxNextAt_ = clk.now();
+    tx_.reset(clk.now());
+    rxNextAt_ = clk.now();
     driveControl();    // command_ is 0: RTS/DTR negated, no break
     programLine();
 }
@@ -294,7 +296,7 @@ void Sig2651::serialize(StateWriter& w) const {
     w.u64(rxDoneAt_);
     w.u64(rxNextAt_);
     w.u64(rxCount_);
-    w.u64(txFreeAt_);
+    tx_.serialize(w);
 }
 
 void Sig2651::deserialize(StateReader& r) {
@@ -310,7 +312,7 @@ void Sig2651::deserialize(StateReader& r) {
     rxDoneAt_ = r.u64();
     rxNextAt_ = r.u64();
     rxCount_  = r.u64();
-    txFreeAt_ = r.u64();
+    tx_.deserialize(r);
     baud      = kBaudTable[mode2_ & 0x0F];  // derived from MR2, not stored separately
 }
 
