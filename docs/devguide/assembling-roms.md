@@ -78,7 +78,7 @@ The L80 switches, in the order they must appear:
 | `/X` | Emit Intel **HEX** (not a `.COM`). |
 | `/E` | Exit, writing the file. |
 
-For a ROM origin above the loader (`F000`+), L80 asks
+For a ROM origin above the loader (`E000` and `F000` in the recorded runs), L80 asks
 `Origin above loader memory, move anyway (Y or N)?` — answer **`Y`**. It builds in
 low memory but writes the `.HEX` at the true logical origin. (Verified byte-for-byte
 against the alternate route below.)
