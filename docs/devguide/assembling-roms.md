@@ -78,10 +78,17 @@ The L80 switches, in the order they must appear:
 | `/X` | Emit Intel **HEX** (not a `.COM`). |
 | `/E` | Exit, writing the file. |
 
-For a ROM origin above the loader (`F000`+), L80 asks
+For a ROM origin above the loader (`E000` and `F000` in the recorded runs), L80 asks
 `Origin above loader memory, move anyway (Y or N)?` — answer **`Y`**. It builds in
 low memory but writes the `.HEX` at the true logical origin. (Verified byte-for-byte
 against the alternate route below.)
+
+The question can come twice. The recorded runs at origin `F000` answer it once;
+at origin `E000`, Link-80 3.44 on CP/M 2.2 asks the same question again after it
+writes the `.HEX`. Answer **`Y`** the first time and **`N`** the second, which
+returns to CP/M. The `VGMON41` and `VGMON43` sources in `roms/` record the same
+sequence with `L80 /P:E000,...`. A script that sends only `Y` hangs at the
+second prompt, and the next CP/M command becomes its answer.
 
 ## Alternate route: DRI `ASM.COM`
 
