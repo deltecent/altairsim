@@ -75,6 +75,11 @@ the chip/drive split is spelled out there and in `src/chips/floppy.h` at length.
   expressible where one global geometry could not say it.
 - **The head position lives in the drive, not the chip's Track Register.** They may disagree;
   that is what a verify catches (Seek Error).
+- **Every write is synced before it returns.** `writeData` calls `DiskImage::sync()` after each
+  sector that lands. `writeTrackImage` and `formatTrack` call it once for the track, also when a
+  sector fails after `setTrackFormat` has changed the image. The boards that hold this drive
+  sync only on unmount, and a killed process never gets to the unmount (#900). A board does not need to
+  add its own per-write sync.
 
 ## Geometry in real time — the FORMAT path
 
