@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -199,6 +200,110 @@ void test_pmmi() {
         CHECK((s & kTbmt) != 0, "out of reset: TBMT set -- the transmitter is ready");
         CHECK((s & kTeoc) != 0, "and TEOC set -- nothing is on the wire");
         CHECK((s & kDav) == 0, "DAV clear -- nothing has arrived yet");
+    }
+
+    SECTION("PMMI MM-103 -- TEOC (bit 2) lags TBMT (bit 0): the 1602 is double-buffered");
+    {
+        // Bit 2 is the UART's TEOC pin, not a second copy of TBMT. One byte to an idle
+        // transmitter moves into the shift register within one TCP period (1/16 bit): TBMT
+        // is low until then and TEOC still high, then TBMT is back and TEOC drops. A second
+        // byte fills the holding register: TBMT drops until the first has left, and TEOC
+        // stays low until the second has left too (#899).
+        Rig g;
+        g.send('A');
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTeoc,
+              "one byte: TBMT low, TEOC still high -- the shift register has not started");
+        uint64_t xfer = 0;
+        while (xfer < 1000000 && !(g.status() & kTbmt)) {
+            g.m.clock.advance(1);
+            ++xfer;
+        }
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTbmt, "after the transfer: TBMT high, TEOC low");
+        g.send('B');
+        CHECK((g.status() & (kTbmt | kTeoc)) == 0, "two bytes: both low");
+        uint64_t first = 0, second = 0;
+        for (uint64_t t = 1; t < 1000000 && !(g.status() & kTbmt); ++t) {
+            g.m.clock.advance(1);
+            first = t;
+        }
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTbmt,
+              "A has left: TBMT is back, and TEOC is still low while B shifts");
+        for (uint64_t t = 1; t < 1000000 && !(g.status() & kTeoc); ++t) {
+            g.m.clock.advance(1);
+            second = t;
+        }
+        CHECK((g.status() & kTeoc) != 0, "B has left: TEOC is back");
+        CHECK(first > 0 && second == first, "each stage took one character time");
+        const uint64_t tcp = (uint64_t)(g.m.clock.hz() / (16LL * std::stoi(prop(*g.pmmi, "baud"))));
+        CHECK(xfer > 0 && xfer == tcp, "and the transfer took one TCP period, 1/16 of a bit");
+    }
+
+    SECTION("PMMI MM-103 -- a snapshot mid-shift brings back BOTH transmit deadlines");
+    {
+        // The holding register's deadline and the shift register's deadline are two
+        // numbers, and both must travel: restore mid-character and TBMT and TEOC must
+        // each come back at the moment they would have.
+        Rig  g;
+        auto sendShifting = [&](uint8_t c) {  // to an idle line: wait for the transfer
+            g.send(c);
+            for (int i = 0; i < 1000000 && !(g.status() & kTbmt); ++i) g.m.clock.advance(1);
+        };
+        sendShifting('A');
+        g.send('B');
+        uint64_t charT = 0;
+        while (charT < 1000000 && !(g.status() & kTbmt)) {
+            g.m.clock.advance(1);
+            ++charT;
+        }
+        g.m.clock.advance(charT / 2);  // half-way through B
+        std::string path =
+            (std::filesystem::temp_directory_path() / "altairsim-pmmi-tx.snap").string();
+        std::string err;
+        CHECK(g.m.snapshot(path, err), "snapshot writes");
+
+        // Move both deadlines away from the saved ones, so a deadline restore forgets
+        // cannot pass by luck: drain the line, then fill both registers again.
+        g.m.clock.advance(10 * charT);
+        sendShifting('C');
+        g.send('D');
+        CHECK((g.status() & (kTbmt | kTeoc)) == 0, "both registers full again before restore");
+
+        std::vector<std::string> notes;
+        CHECK(g.m.restore(path, err, notes), "restore reads");
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTbmt, "restored: TBMT high, TEOC low -- B shifts");
+        g.m.clock.advance(charT - charT / 2 - 1);
+        CHECK((g.status() & kTeoc) == 0, "one T-state before B has left: TEOC still low");
+        g.m.clock.advance(1);
+        CHECK((g.status() & kTeoc) != 0, "and then high, on time");
+        std::filesystem::remove(path);
+    }
+
+    SECTION("PMMI MM-103 -- a snapshot during the transfer delay keeps TEOC high");
+    {
+        // Between /TDS and the next TCP edge the byte is in the holding register and the
+        // shift register has not started: TBMT low, TEOC high. That third deadline must
+        // travel too, or a restore inside that window reads TEOC low.
+        Rig g;
+        g.send('A');
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTeoc, "A waits for the TCP edge");
+        std::string path =
+            (std::filesystem::temp_directory_path() / "altairsim-pmmi-xfer.snap").string();
+        std::string err;
+        CHECK(g.m.snapshot(path, err), "snapshot writes");
+
+        uint64_t tcp = 0;  // let A transfer: TEOC drops
+        while (tcp < 1000000 && !(g.status() & kTbmt)) {
+            g.m.clock.advance(1);
+            ++tcp;
+        }
+        CHECK((g.status() & kTeoc) == 0, "after the transfer TEOC is low");
+
+        std::vector<std::string> notes;
+        CHECK(g.m.restore(path, err, notes), "restore reads");
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTeoc, "restored: TBMT low, TEOC high again");
+        g.m.clock.advance(tcp);
+        CHECK((g.status() & (kTbmt | kTeoc)) == kTbmt, "and the transfer comes on time");
+        std::filesystem::remove(path);
     }
 
     SECTION("PMMI MM-103 -- a character written to the data port lands on the line");

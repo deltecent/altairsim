@@ -34,6 +34,7 @@
 // is exactly the guess the design forbids (DESIGN.md 0.1).
 // ---------------------------------------------------------------------------
 
+#include "chips/twostagetx.h"
 #include "core/board.h"     // IrqJumper, irqJumperProperty, Property, PinStrap-free
 #include "chips/mc6850.h"   // PinStrap, EndpointResolver -- shared serial vocabulary
 
@@ -230,10 +231,11 @@ private:
 
     std::vector<std::string> log_;
 
-    // TBE/RDA are DEADLINES, not flags (DESIGN.md 7.5). The transmit register is empty
-    // once the character has had time to leave; receive is paced too, so a byte cannot
+    // TBE/RDA are DEADLINES, not flags (DESIGN.md 7.5). The transmitter is DOUBLE-buffered
+    // (chips/twostagetx.h): TBE falls only while a byte waits behind the one being shifted
+    // out. Receive is paced too, so a byte cannot
     // arrive "while the last one was still sitting there" (which is what an overrun is).
-    uint64_t txFreeAt_ = 0;
+    TwoStageTx tx_;
     uint64_t rxNextAt_ = 0;
 };
 

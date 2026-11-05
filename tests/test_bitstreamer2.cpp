@@ -294,8 +294,12 @@ void test_bitstreamer2() {
             r.out(k.status, 0x05);
             CHECK(r.m.bus.intPending(), "r.m.bus.intPending()");
 
-            // TxRDY falls with a byte, and comes back with no bus cycle and no pump.
+            // One byte goes straight to the shift register (the 8251 is double-buffered,
+            // #899), so TxRDY stays up. A second fills the holding register: TxRDY falls,
+            // and comes back with no bus cycle and no pump.
             r.out(k.data, 'x');
+            CHECK(r.m.bus.intPending(), "one byte: the holding register is free at once");
+            r.out(k.data, 'y');
             CHECK(!r.m.bus.intPending(), "!r.m.bus.intPending()");
             r.m.clock.advance(1000000);
             CHECK(r.m.bus.intPending(), "r.m.bus.intPending()");

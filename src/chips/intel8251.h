@@ -22,6 +22,7 @@
 //      emulated T-states and can report the current RxD line state in D7. See
 //      DsrSource and dsrBit().
 
+#include "chips/twostagetx.h"
 #include "core/board.h"     // IrqJumper, irqJumperProperty, Property
 #include "host/stream.h"    // ByteStream, LineParams, LineParity
 
@@ -105,7 +106,7 @@ public:
     void poll(const Clock& clk);
 
     // Deadlines the CARD's nextEdge() needs. Absolute T-states; 0 where n/a.
-    uint64_t txFreeAt() const { return txFreeAt_; }
+    uint64_t txFreeAt() const { return tx_.holdFreeAt(); }  // when TxRDY next rises
     uint64_t rxDoneAt() const { return rxDoneAt_; }   // when the in-flight frame ends
     uint64_t rxNextAt() const { return rxNextAt_; }   // earliest a new frame may start
     bool     rxFrameActive() const { return rxActive_; }
@@ -156,8 +157,8 @@ private:
     uint64_t rxNextAt_  = 0;       // earliest a NEW frame may begin (flow-control pacing)
     uint64_t rxCount_   = 0;       // bytes taken off the line -- the run loop's traffic signal
 
-    // ---- transmit (mirrors Mc6850's TDRE deadline) ----
-    uint64_t txFreeAt_  = 0;       // the transmit buffer is free at this T-state
+    // ---- transmit: DOUBLE-buffered (chips/twostagetx.h) ----
+    TwoStageTx tx_;                // TxRDY = holding register free, TxEMPTY = shift register too
 };
 
 } // namespace altair

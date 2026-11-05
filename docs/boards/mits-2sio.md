@@ -185,7 +185,9 @@ If the host cannot do the strapped rate (an FTDI cable and 76800 baud), the card
 
 > The Mike Douglas Altair CP/M BIOS **infers the line speed by timing how long TDRE stays clear**. It counts ~21 µs ticks while polling; if the 16-bit counter's high byte reaches ≥ 11, it concludes **110 baud Teletype** and sets `sndNull`, so a NULL is sent after every CR.
 
-Hardwire TDRE and you **silently change what the guest decides to do**. So a write to the data register records `now + charTime` and the status bit is a *comparison against the clock*, not a stored flag. `tests/test_sio2.cpp` checks that TDRE is still clear one T-state early and set one T-state later.
+Hardwire TDRE and you **silently change what the guest decides to do**. For this reason, the status bit is a *comparison against the clock*, not a stored flag. The 6850 has two transmit registers (`src/chips/twostagetx.h`). A byte written to an idle transmitter moves into the shift register one bit time after the write, and the transfer sets TDRE. The data sheet gives this limit: *"within 1 bit-time of the write if the transmitter is idle"* (`reference/6850.md`). A real 8800c measured 0.6 to 1.5 bit times (issue #899). A second byte waits in the transmit data register, and TDRE stays clear until the first byte is sent. `tests/test_sio2.cpp` checks each edge one T-state early and at the edge. It also checks the cost of each byte. A guest that writes and then polls loses one bit time for each byte. A guest that polls and then writes loses none.
+
+The Mike Douglas BIOS times the wait between two bytes of its sign-on message. With two registers, each wait after the second byte is one character time, so the BIOS still finds 110 baud on a 110-baud line.
 
 **The character time follows the word format**, and falls out of the control register the guest wrote — 8N2 is 11 bits on the wire, 7E1 is 10. A guest that configures a Teletype gets a Teletype's timing, and nothing in the code was ever told what a Teletype is.
 

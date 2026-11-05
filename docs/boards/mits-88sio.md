@@ -189,7 +189,7 @@ unrepresentable.
 |---|---|
 | **The ready bits are INVERTED.** Bit 7 clear = ready to send; bit 0 clear = a byte is waiting. The 88-2SIO's are true-sense, and both cards can be in the same machine. | A driver polls forever, or transmits into a busy register and drops every other character. This is *the* trap of this board and it is why it shares no code with the 2SIO. |
 | **There is no control register.** The only thing an `OUT` to the control channel can change is the two interrupt-enable flip-flops. Word format and baud are soldered pads. | A port of a 2SIO driver "configures" the UART with a control byte, silently enables an interrupt it never meant to (bits 0/1 of whatever it wrote), and hangs on an unhandled `RST 7`. |
-| **TBMT is a deadline, not a flag.** The transmitter is busy for one character time. | A BIOS that *times* the line to work out its speed reaches a different conclusion. Hardwiring "always ready" is the easy lie. |
+| **TBMT is a deadline, not a flag.** The COM2502 has a holding register and a shift register. TBMT is clear while the holding register is full, and TEOC is clear while the shift register sends a byte. | A BIOS that *times* the line to work out its speed reaches a different conclusion. Hardwiring "always ready" is the easy lie. |
 | **MITS software sets bit 7 of the last character of a message.** It is a string terminator. The card passes it; a Teletype ignores it. Use `strip7out` on the line — **not** `data_bits = 7`. | Every prompt in the machine ends in a garbage byte (`MEMORY SIZ?`) — or, if you "fix" it in the UART, it comes out clean and every 8-bit binary transfer through the port (XMODEM) is silently corrupted instead. Caught by `tests/acceptance/basic4k.cmake`. |
 | **The interrupt fires with nobody touching the card.** A driver that enables the output interrupt, sends a character and `HLT`s is ordinary, and only a deadline the card set for itself can wake it. | The run loop declares the machine *finished* ~2000 T-states before its interrupt arrives. This is a real bug we shipped and fixed; see DESIGN.md §4.4.1. |
 | **A `vi*` strap goes nowhere unless an 88-VI is in the machine** — correctly, exactly as a wire into an empty slot does. (The card exists as of 2026-07-13 — `docs/boards/mits-88virtc.md` — so the strap now *arrives* somewhere when one is plugged in. With no VI card present the behaviour is unchanged.) | Fabricated vectored behaviour on a machine that has no VI card in it. |
@@ -247,8 +247,9 @@ cached wire on every instruction.
 3. **Rev 1 is the default**, and the whole idle status byte is pinned at `0x63`.
 4. **Rev 0 also exposes DAV at bit 5 and TBMT at bit 1**, and its idle byte is a *different*
    `0x43`.
-5. **TBMT is a deadline** — bit 7 sets the instant a character goes out and clears one
-   character time later, with nobody touching the card.
+5. **TBMT is a deadline** — a write to an idle line makes bit 7 busy for one period of the 16x
+   clock (1/16 bit time). A second write makes it busy until the first character is sent, and
+   it is ready again with nobody touching the card.
 6. **The control channel holds two bits** — a waiting character does *not* pull pin 73 until
    software enables the interrupt, and D1 enables a *different* wire from D0.
 7. **`IN` and `OUT` are two straps** — the receiver on `vi3` and the transmitter on `int`, and

@@ -671,9 +671,15 @@ void test_io4() {
         g.set("a", "tx_int", "vi2");
         CHECK(g.b.assertsVi() == viBit(IrqJumper::Vi2),
               "an idle transmitter holds TBMT -- the strap pulls VI2 with nothing to gate it");
-        g.out(0x01, 'X');  // send a character: TBMT falls while it drains
+        g.out(0x01, 'X');  // to an idle transmitter: the shift register takes it one TCP later
         CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) == 0,
-              "sending a character drops it -- the transmitter is busy");
+              "the write fills the holding register -- VI2 drops");
+        g.clk.advance((uint64_t)(g.clk.hz() / (16 * 9600)));  // one TCP period (the 16x clock)
+        CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) != 0,
+              "one TCP period later the holding register is empty again -- asking again");
+        g.out(0x01, 'Y');  // a second, while X shifts: TBMT falls until X has left
+        CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) == 0,
+              "a second character drops it -- the holding register is full");
         for (int i = 0; i < 100; ++i) g.clk.advance(1000);  // let the character leave
         CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) != 0,
               "and it rises again the moment the buffer empties");

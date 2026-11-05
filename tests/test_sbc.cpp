@@ -135,14 +135,24 @@ void test_sbc() {
         g.program();
         CHECK((g.status() & kTxRDY) != 0, "idle: ready");
 
+        // DOUBLE-buffered (#899): a byte to an idle transmitter goes straight to the shift
+        // register, so TxRDY stays set and only TxEMPTY drops. A second byte fills the holding
+        // register and drops TxRDY until the first has left.
         g.u.writeData('X', g.clk);
-        CHECK((g.status() & kTxRDY) == 0, "the instant a character goes out, TxRDY clears -- BUSY");
-        CHECK((g.status() & kTxEMPTY) == 0, "and TxEMPTY (D2) too: the shift register is busy");
-        CHECK(g.tty->out() == "X", "and the character really is on the line");
+        CHECK((g.status() & kTxRDY) != 0, "one byte: straight to the shift register -- still ready");
+        CHECK((g.status() & kTxEMPTY) == 0, "but TxEMPTY (D2) drops: the shift register is busy");
+        g.u.writeData('Y', g.clk);
+        CHECK((g.status() & kTxRDY) == 0, "a second byte while the first shifts: TxRDY clears -- BUSY");
+        CHECK(g.tty->out() == "XY", "and both characters really are on the line");
 
-        g.advance(kChar + kBit);
-        CHECK((g.status() & kTxRDY) != 0, "one character time later it is ready again");
-        CHECK((g.status() & kTxEMPTY) != 0, "and TxEMPTY set: nothing left to send");
+        g.advance(kChar - kBit);
+        CHECK((g.status() & kTxRDY) == 0, "a bit time before X has left: still busy");
+        g.advance(2 * kBit);
+        CHECK((g.status() & kTxRDY) != 0, "X has left: Y moves to the shift register, TxRDY set");
+        CHECK((g.status() & kTxEMPTY) == 0, "and TxEMPTY still clear while Y shifts");
+
+        g.advance(kChar);
+        CHECK((g.status() & kTxEMPTY) != 0, "Y has left too: TxEMPTY set, nothing left to send");
     }
 
     SECTION("SBC 8251 -- DSR follows the RxD line: the auto-baud model");

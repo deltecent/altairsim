@@ -127,7 +127,7 @@ bool Tms5501::ctsNow() const {
 // nowhere to put the byte (a full TCP send buffer is the same situation as a modem
 // holding CTS low). The 5501 has no "held in reset" latch, unlike the 6850.
 bool Tms5501::tbe(const Clock& clk) const {
-    if (clk.now() < txFreeAt_) return false;  // the character has not finished leaving
+    if (!tx_.holdEmpty(clk.now())) return false;  // the holding register is still full
     if (!ctsPin_) return false;
     if (!txRoom_) return false;
     return true;
@@ -206,7 +206,7 @@ void Tms5501::writeBaud(uint8_t v) {
 void Tms5501::writeData(uint8_t v, const Clock& clk) {
     stream_->write(&v, 1);
     stream_->flush();
-    txFreeAt_ = clk.now() + charTStates(clk);  // busy until the character gets out
+    tx_.load(clk.now(), charTStates(clk), 0);  // full only while a byte waits behind another
 }
 
 // OUT 02: the command register. HBD (D4) octuples the rate; RES (D0) resets the chip
@@ -280,7 +280,7 @@ void Tms5501::resetAction(const Clock& clk) {
     rdrf_     = false;
     ovrn_     = false;
     rxData_   = 0;
-    txFreeAt_ = clk.now();
+    tx_.reset(clk.now());
     rxNextAt_ = clk.now();
     for (bool& a : timerArmed_) a = false;  // one-shot timers cleared; latches drop
 
@@ -321,7 +321,7 @@ void Tms5501::serialize(StateWriter& w) const {
     w.boolean(ovrn_);
     w.boolean(ctsPin_);
     w.boolean(txRoom_);
-    w.u64(txFreeAt_);
+    tx_.serialize(w);
     w.u64(rxNextAt_);
 }
 
@@ -341,7 +341,7 @@ void Tms5501::deserialize(StateReader& r) {
     ovrn_        = r.boolean();
     ctsPin_      = r.boolean();
     txRoom_      = r.boolean();
-    txFreeAt_    = r.u64();
+    tx_.deserialize(r);
     rxNextAt_    = r.u64();
 }
 

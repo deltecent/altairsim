@@ -163,8 +163,20 @@ void test_sio2() {
 
         CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "TDRE set before we send");
 
+        // The 6850 is DOUBLE-buffered (reference/6850.md): a byte to an idle transmitter
+        // moves to the shift register "within 1 bit-time of the write", and only that
+        // transfer sets TDRE. A real MC68B50 measured on #899 had TDRE back 0.6 to 1.5
+        // bit times after the write. A second byte waits in the transmit data register
+        // until the first has left.
+        const uint64_t bitT = (uint64_t)(2000000 / 9600);  // 208 T-states
         g.m.bus.ioWrite(0x11, 'X');
-        CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "TDRE CLEAR the instant we send");
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "one byte: TDRE clear until the transfer");
+        g.m.clock.advance(bitT - 1);
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "still clear one T-state before one bit time");
+        g.m.clock.advance(1);
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "one bit time later: X is in the shift register");
+        g.m.bus.ioWrite(0x11, 'Y');
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "TDRE CLEAR the instant a second byte waits");
 
         // 9600 baud, 11 bits, 2 MHz -> 2,291 T-states. Just short of it: still busy.
         uint64_t charT = (uint64_t)(2000000 * 11 / 9600);
@@ -172,9 +184,65 @@ void test_sio2() {
         CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "still clear one T-state early");
 
         g.m.clock.advance(2);
-        CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "set once the character has left");
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) != 0, "set once the first character has left");
 
-        CHECK(g.tty->out() == "X", "and the byte really went out the line");
+        CHECK(g.tty->out() == "XY", "and both bytes really went out the line");
+    }
+
+    SECTION("88-2SIO -- write-then-poll pays one bit time per byte, poll-then-write none (#899)");
+    {
+        // The reporter's test on a real 88-2SIO (MC68B50, 9600 baud, 8N2): send bytes
+        // with 3,000 T-states of work after each, longer than a character. Poll first and
+        // then write, and the line is always free. Write first and then poll, and each
+        // byte also waits for the transfer to the shift register. The real board measured
+        // 129 us (258 T-states) more per byte. The model must give one bit time, to within
+        // one pass of the poll loop (IN + ANI + JZ = 27 T-states).
+        auto perByte = [](bool writeFirst) {
+            Rig g;
+            g.m.bus.ioWrite(0x10, 0x11);  // 8N2
+            const uint8_t n = 20;
+            if (writeFirst)
+                g.load({
+                    0x06, n,           // 0000: MVI B,n
+                    0x3E, 'U',         // 0002: MVI A,'U'
+                    0xD3, 0x11,        // 0004: OUT 11
+                    0xDB, 0x10,        // 0006: IN 10
+                    0xE6, 0x02,        // 0008: ANI 02
+                    0xCA, 0x06, 0x00,  // 000A: JZ 0006
+                    0x0E, 200,         // 000D: MVI C,200  -- 15 x 200 = 3,000 T of work
+                    0x0D,              // 000F: DCR C
+                    0xC2, 0x0F, 0x00,  // 0010: JNZ 000F
+                    0x05,              // 0013: DCR B
+                    0xC2, 0x02, 0x00,  // 0014: JNZ 0002
+                    0x76,              // 0017: HLT
+                });
+            else
+                g.load({
+                    0x06, n,           // 0000: MVI B,n
+                    0xDB, 0x10,        // 0002: IN 10
+                    0xE6, 0x02,        // 0004: ANI 02
+                    0xCA, 0x02, 0x00,  // 0006: JZ 0002
+                    0x3E, 'U',         // 0009: MVI A,'U'
+                    0xD3, 0x11,        // 000B: OUT 11
+                    0x0E, 200,         // 000D: MVI C,200
+                    0x0D,              // 000F: DCR C
+                    0xC2, 0x0F, 0x00,  // 0010: JNZ 000F
+                    0x05,              // 0013: DCR B
+                    0xC2, 0x02, 0x00,  // 0014: JNZ 0002
+                    0x76,              // 0017: HLT
+                });
+            uint64_t t0 = g.m.clock.now();
+            for (int i = 0; i < 1000000 && !g.m.cpu()->halted(); ++i) g.run(1);
+            CHECK(g.tty->out() == std::string(n, 'U'), "every byte went out");
+            return (long long)(g.m.clock.now() - t0) / n;
+        };
+        long long pollFirst  = perByte(false);
+        long long writeFirst = perByte(true);
+        long long extra      = writeFirst - pollFirst;
+        const long long bitT = 2000000 / 9600;
+        CHECK(pollFirst > 3000 && pollFirst < 3200, "poll, then write: the work and the loop only");
+        CHECK(extra >= bitT - 27 && extra <= bitT + 27,
+              "write, then poll: one bit time more per byte, to within one poll pass");
     }
 
     SECTION("88-2SIO -- THERE IS NO baud = 0, and the receiver's gap is why");
@@ -232,7 +300,9 @@ void test_sio2() {
         // told what a Teletype is -- it falls out of the control register.
         Rig g;
         g.m.bus.ioWrite(0x10, 0x08);  // word select 010: 7 data, even parity, 1 stop
-        g.m.bus.ioWrite(0x11, 'X');
+        g.m.bus.ioWrite(0x11, 'X');   // to the shift register, one bit time later...
+        g.m.clock.advance((uint64_t)(2000000 / 9600));
+        g.m.bus.ioWrite(0x11, 'Y');   // ...and this one waits for it to leave
         uint64_t ten = (uint64_t)(2000000 * 10 / 9600);
         g.m.clock.advance(ten - 1);
         CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "7E1: still busy at 10 bits - 1");
@@ -428,8 +498,12 @@ void test_sio2() {
         g.m.bus.ioWrite(0x10, 0x36);
         CHECK(g.m.bus.intPending(), "TDRE is true on an idle transmitter, so it is already asking");
 
-        g.m.bus.ioWrite(0x11, 'A');  // a character goes out; the register is now busy
-        CHECK(!g.m.bus.intPending(), "TDRE fell: the character is still on the wire");
+        g.m.bus.ioWrite(0x11, 'A');  // the data register is full until the transfer
+        CHECK(!g.m.bus.intPending(), "one character: TDRE clear until the shift register takes it");
+        g.m.clock.advance((uint64_t)(2000000 / 9600));  // one bit time
+        CHECK(g.m.bus.intPending(), "one bit time later the data register is empty: asking again");
+        g.m.bus.ioWrite(0x11, 'B');  // a second one waits; the register is now busy
+        CHECK(!g.m.bus.intPending(), "TDRE fell: a character waits behind the one on the wire");
 
         // EI ; HLT. The guest is now doing nothing whatever, and neither is the bus:
         // no cycle runs, no register is touched, and the CPU is parked. The ONLY

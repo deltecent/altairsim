@@ -29,6 +29,7 @@
 //      read ASSERTED (1) for a byte-clean transport. PE/OE/FE stay 0 (the house stance --
 //      a ByteStream has no line noise to report; see the .cpp).
 
+#include "chips/twostagetx.h"
 #include "core/board.h"   // IrqJumper, irqJumperProperty, Property
 #include "host/stream.h"  // ByteStream, LineParams, LineParity
 
@@ -92,7 +93,7 @@ public:
     void poll(const Clock& clk);
 
     // Deadlines the CARD's nextEdge() needs. Absolute T-states; 0 where n/a.
-    uint64_t txFreeAt() const { return txFreeAt_; }
+    uint64_t txFreeAt() const { return tx_.holdFreeAt(); }  // when TxRDY next rises
     uint64_t rxDoneAt() const { return rxDoneAt_; }
     uint64_t rxNextAt() const { return rxNextAt_; }
     bool     rxFrameActive() const { return rxActive_; }
@@ -141,8 +142,8 @@ private:
     uint64_t rxNextAt_  = 0;
     uint64_t rxCount_   = 0;
 
-    // ---- transmit (a TxRDY deadline, like the 8251/6850) ----
-    uint64_t txFreeAt_  = 0;
+    // ---- transmit: DOUBLE-buffered (chips/twostagetx.h) ----
+    TwoStageTx tx_;                // TxRDY = holding register free, TxEMT = shift register too
 };
 
 }  // namespace altair

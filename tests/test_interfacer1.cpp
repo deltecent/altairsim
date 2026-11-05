@@ -109,9 +109,14 @@ void test_interfacer1() {
         CHECK((g.in(0x01) & 0x02) == 0x02, "a character arrived: DAV set");
         CHECK(g.in(0x00) == 'K', "the data port hands it over");
         CHECK((g.in(0x01) & 0x02) == 0, "and the read cleared DAV (RDAV tied to RDE)");
+        const uint64_t tcp = (uint64_t)(g.clk.hz() / (16 * 9600));  // one TCP period
         g.out(0x00, 'X');
-        CHECK((g.in(0x01) & 0x01) == 0, "a character going out drops TBMT");
-        CHECK(g.a->out() == "X", "and it reached the line");
+        CHECK((g.in(0x01) & 0x01) == 0, "the write fills the holding register: TBMT low");
+        g.clk.advance(tcp);
+        CHECK((g.in(0x01) & 0x01) == 0x01, "one TCP period later it is in the shift register");
+        g.out(0x00, 'Y');
+        CHECK((g.in(0x01) & 0x01) == 0, "a second, while the first shifts, drops TBMT");
+        CHECK(g.a->out() == "XY", "and both reached the line");
         for (int i = 0; i < 100; ++i) g.clk.advance(1000);
         CHECK((g.in(0x01) & 0x01) == 0x01, "TBMT returns when it has left");
         CHECK(g.bb->out().empty(), "channel B saw nothing");
@@ -161,6 +166,14 @@ void test_interfacer1() {
         CHECK((g.in(0x01) & 0xC4) == 0x44, "only CD marking: CC and CF read 1, CB is back to 0");
         g.set("a", "opt", "eoc");
         CHECK((g.in(0x01) & 0x04) == 0x04, "J12 B-C: D2 is the UART's EOC, idle = 1");
+        g.out(0x00, 'X');
+        CHECK((g.in(0x01) & 0x05) == 0x04,
+              "one character: TBMT (D0) low, EOC (D2) still high until the shift starts");
+        g.clk.advance((uint64_t)(g.clk.hz() / (16 * 9600)));  // one TCP period
+        CHECK((g.in(0x01) & 0x05) == 0x01,
+              "one TCP period later: TBMT (D0) is back, EOC (D2) is low while it shifts");
+        for (int i = 0; i < 100; ++i) g.clk.advance(1000);
+        CHECK((g.in(0x01) & 0x05) == 0x05, "and EOC returns when it has left");
     }
 
     SECTION("Interfacer 1 -- interrupts: gated by the enable, on a VI line, never pin 73");
@@ -173,7 +186,8 @@ void test_interfacer1() {
         g.out(0x01, InterfacerOneBoard::TxIntE);
         CHECK(g.b.assertsVi() == viBit(IrqJumper::Vi2), "TXINTE on, idle transmitter: VI2");
         g.out(0x00, 'X');
-        CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) == 0, "busy transmitter drops it");
+        g.out(0x00, 'Y');
+        CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) == 0, "a full holding register drops it");
         for (int i = 0; i < 100; ++i) g.clk.advance(1000);
         CHECK((g.b.assertsVi() & viBit(IrqJumper::Vi2)) != 0, "and it rises when TBMT returns");
         g.out(0x01, InterfacerOneBoard::RxIntE);

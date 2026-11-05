@@ -160,22 +160,25 @@ void test_tms5501() {
 
     SECTION("TMS 5501 -- TBE is a DEADLINE, not a flag");
     {
-        // The character occupies the line for its whole character time; TBE is false
-        // until it has finished leaving. Same mechanism the 6850's TDRE is built on,
-        // and the same reason a guest can time the line by watching it. rate=real.
+        // DOUBLE-buffered (#899): a byte to an idle transmitter goes straight to the shift
+        // register and TBE stays set; a second byte waits in the buffer, and TBE is false
+        // until the first has finished leaving. Same mechanism the 6850's TDRE is built
+        // on, and the same reason a guest can time the line by watching it. rate=real.
         Rig g;
         g.pace();
         CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "TBE set before we send");
 
         g.chip.writeData('X', g.clk);
-        CHECK((g.chip.readStatus(g.clk) & 0x80) == 0, "TBE CLEAR the instant we send");
+        CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "one byte: straight to the shift register");
+        g.chip.writeData('Y', g.clk);
+        CHECK((g.chip.readStatus(g.clk) & 0x80) == 0, "TBE CLEAR the instant a second byte waits");
 
         g.clk.advance(g.charT() - 2);
         CHECK((g.chip.readStatus(g.clk) & 0x80) == 0, "still clear one bit-time early");
 
         g.clk.advance(2);
-        CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "set once the character has left");
-        CHECK(g.tty->out() == "X", "and the byte really went out the line");
+        CHECK((g.chip.readStatus(g.clk) & 0x80) != 0, "set once the first character has left");
+        CHECK(g.tty->out() == "XY", "and both bytes really went out the line");
     }
 
     SECTION("TMS 5501 -- the receiver is PACED: a second byte waits its character time");

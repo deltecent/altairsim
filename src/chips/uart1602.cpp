@@ -11,7 +11,7 @@ void Uart1602::serialize(StateWriter& w) const {
     w.u8(rxData_);
     w.u64(rxCount_);
     w.boolean(rda_);
-    w.u64(txFreeAt_);
+    tx_.serialize(w);
     w.u64(rxNextAt_);
 }
 
@@ -19,7 +19,7 @@ void Uart1602::deserialize(StateReader& r) {
     rxData_   = r.u8();
     rxCount_  = r.u64();
     rda_      = r.boolean();
-    txFreeAt_ = r.u64();
+    tx_.deserialize(r);
     rxNextAt_ = r.u64();
 }
 
@@ -42,10 +42,12 @@ uint64_t Uart1602::charTStates(const Clock& clk) const {
     return (uint64_t)(clk.hz() * (long long)bitsPerChar() / baud);
 }
 
-// TBMT -- the transmit buffer is empty once the character has had time to LEAVE. This
-// is the bit the Mike Douglas CP/M BIOS times to work out the line speed, and a
-// hardwired TBMT=1 silently changes what such a BIOS decides to do.
-bool Uart1602::txBufferEmpty(const Clock& clk) const { return clk.now() >= txFreeAt_; }
+// TBMT -- the transmit holding register is empty. A hardwired TBMT=1 would silently change
+// what a guest that times this bit decides about the line speed.
+bool Uart1602::txBufferEmpty(const Clock& clk) const { return tx_.holdEmpty(clk.now()); }
+
+// TEOC -- the shift register is empty too: the last character has left the wire.
+bool Uart1602::txEndOfChar(const Clock& clk) const { return tx_.lineIdle(clk.now()); }
 
 // ---------------------------------------------------------------------------
 // The line
@@ -125,7 +127,10 @@ uint8_t Uart1602::readData() {
 void Uart1602::writeData(uint8_t v, const Clock& clk) {
     stream_->write(&v, 1);
     stream_->flush();
-    txFreeAt_ = clk.now() + charTStates(clk);
+    // An idle transmitter starts within one TCP period (the 16x clock) of /TDS:
+    // reference/com2502.md, "Start bit appears within one clock period (TCP)".
+    uint64_t tcp = baud > 0 ? (uint64_t)(clk.hz() / (16LL * baud)) : 0;
+    tx_.load(clk.now(), charTStates(clk), tcp);
 }
 
 // MR, pin 21. The data sheet: "sets TSO, TEOC and TBMT high, and clears RDA, RPE, RFE
@@ -138,7 +143,7 @@ void Uart1602::writeData(uint8_t v, const Clock& clk) {
 void Uart1602::masterReset(const Clock& clk) {
     rda_      = false;
     rxData_   = 0;
-    txFreeAt_ = clk.now();  // TBMT high: the transmitter is immediately ready
+    tx_.reset(clk.now());   // TBMT and TEOC high: the transmitter is immediately ready
     rxNextAt_ = clk.now();
 
     // The endpoint STAYS CONNECTED. A reset does not unplug the terminal, and a guest

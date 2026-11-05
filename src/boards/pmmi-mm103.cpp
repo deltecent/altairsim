@@ -160,7 +160,7 @@ uint8_t PmmiBoard::uartStatus() const {
     uint8_t s    = 0;
     if (tbmt)               s |= 0x01;  // bit 0 TBMT -- transmit buffer empty
     if (u_.dataAvailable()) s |= 0x02;  // bit 1 DAV  -- received char available
-    if (tbmt)               s |= 0x04;  // bit 2 TEOC -- serializer done (shares tx deadline)
+    if (u_.txEndOfChar(clk)) s |= 0x04;  // bit 2 TEOC -- the serializer is done
     // bits 3-5 RPE/OR/FE: the chip hardwires its error flags false -- there is no line to
     // have noise on (uart1602.h) -- so they read 0 here.
     if (u_.parityError())  s |= 0x08;

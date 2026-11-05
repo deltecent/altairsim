@@ -37,6 +37,7 @@
 // which way up -- but the chip is what HAS them.
 // ---------------------------------------------------------------------------
 
+#include "chips/twostagetx.h"
 #include "core/board.h"   // Clock
 #include "host/stream.h"  // ByteStream, LineParams, LineParity
 
@@ -69,16 +70,13 @@ public:
     bool txBufferEmpty(const Clock& clk) const;        // TBMT -- pin 22
 
     // TEOC -- Transmitter End Of Character (pin 24). High when the transmitter is idle:
-    // the last character has fully left the wire. On the real DOUBLE-buffered UART, TEOC
-    // LAGS TBMT by up to one character time -- TBMT frees the holding register as soon as
-    // its byte moves into the shift register, while TEOC waits for the shift register to
-    // finish clocking that byte out. This model does not split the holding and shift
-    // registers (writeData occupies the line for one character and no more -- see the .cpp),
-    // so there is no interval in which the two disagree and TEOC coincides with TBMT. The
-    // SSM IO-4's status header can strap TEOC to a data bit (the 8251-emulation recipe
-    // does), which is the one card that reads it -- so it EXISTS and is honest rather than
-    // invented. If a two-stage transmitter is ever modeled, this is where the lag lands.
-    bool txEndOfChar(const Clock& clk) const { return txBufferEmpty(clk); }
+    // the last character has fully left the wire. The chip is DOUBLE-buffered
+    // (chips/twostagetx.h), so TEOC LAGS TBMT: TBMT goes high again as soon as the holding
+    // register's byte moves into the shift register, and TEOC waits for the shift register
+    // to finish clocking that byte out. The SSM IO-4's status header can strap TEOC to a
+    // data bit (the 8251-emulation recipe does), the Interfacer 1 can, and the PMMI MM-103
+    // wires it to status bit 2.
+    bool txEndOfChar(const Clock& clk) const;
 
     // The three error flags EXIST and are always FALSE, deliberately -- they report
     // line noise, and there is no line. A ByteStream delivers the byte that was sent
@@ -98,10 +96,11 @@ public:
     // a real UART hands you whatever was last in it and does not error.
     uint8_t readData();
 
-    // ...and writeData() is /TDS. The character goes out, and TBMT falls until it has
-    // had time to leave. TBMT IS A DEADLINE, NOT A FLAG (DESIGN.md 7.5): the transmit
-    // buffer is empty once the character has had time to get off the wire, and a
-    // guest that polls it sooner sees it busy, which is the whole point.
+    // ...and writeData() is /TDS. The character goes out. TBMT IS A DEADLINE, NOT A FLAG
+    // (DESIGN.md 7.5): to an idle transmitter the byte moves straight into the shift
+    // register and TBMT stays high; a byte written while another is still shifting holds
+    // TBMT low until that shift ends. A guest that polls sooner sees it busy, which is
+    // the whole point.
     void writeData(uint8_t v, const Clock& clk);
 
     // MASTER RESET -- pin 21, and unlike the 6850 this chip really has the pin. The
@@ -167,7 +166,7 @@ public:
     // flip-flops are a separate IC on the card (IC B), and the card ANDs them with
     // these deadlines itself. So the chip reports when its registers next change,
     // and the board works out whether anyone was listening.
-    uint64_t txFreeAt() const { return txFreeAt_; }
+    uint64_t txFreeAt() const { return tx_.holdFreeAt(); }  // when TBMT next rises
     uint64_t rxNextAt() const { return rxNextAt_; }
 
     // ...and whether there is anything on the line to arrive AT rxNextAt_. A byte
@@ -182,7 +181,7 @@ public:
     int bitsPerChar() const;
 
     // SNAPSHOT/RESTORE (DESIGN.md 13). The card calls these. State only -- the
-    // received byte, the RDA flip-flop, and the two absolute deadlines (valid past
+    // received byte, the RDA flip-flop, and the absolute deadlines (valid past
     // restore because the Clock's t_ travels). The format pins (baud/dataBits/...)
     // are straps and the stream_ is a host handle: neither travels.
     void serialize(StateWriter& w) const;
@@ -203,7 +202,7 @@ private:
     uint64_t rxCount_ = 0;  // rxBytes() -- the run loop's live-traffic signal
     bool    rda_    = false;  // Data Available -- the RDAV flip-flop
 
-    uint64_t txFreeAt_ = 0;  // TBMT is a deadline, not a flag
+    TwoStageTx tx_;          // TBMT and TEOC are deadlines, not flags
     uint64_t rxNextAt_ = 0;  // ...and receive is paced too, or nothing could overrun
 };
 

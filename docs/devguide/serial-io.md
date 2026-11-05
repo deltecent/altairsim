@@ -318,12 +318,43 @@ and the whole serial mechanism comes with it.
 ### TDRE is a deadline, not a flag
 
 A UART does not know a character has finished going out because the guest asked — it knows because
-*time passed*. So a serial section sets a `Clock` deadline for the moment the byte clears the
-shift register, and `writable()`/TDRE reflects that deadline, not an instantaneous flag. `pump()`
-takes an arriving byte off the line; if the line has not yet had time to deliver it, the deadline
-covers the gap. This is the single most common thing a naive UART gets wrong — read §4.4.1 of
-DESIGN.md before you put any work inside `assertsInt()` (theory.md explains why the poll must
-never be doing the card's clocking).
+*time passed*. Because of this, a serial section keeps `Clock` deadlines, and TDRE is a comparison against the
+clock, not a stored flag. `pump()` takes an arriving byte off the line; if the line has not yet
+had time to deliver it, the deadline covers the gap. This is the single most common thing a naive
+UART gets wrong — read §4.4.1 of DESIGN.md before you put any work inside `assertsInt()`
+(theory.md explains why the poll must never be doing the card's clocking).
+
+Every UART chip here has two transmit registers. The guest writes the holding register, and the
+shift register sends the byte onto the line. `TwoStageTx` (`src/chips/twostagetx.h`) keeps
+one deadline for each register:
+
+| Deadline | Status bit |
+|---|---|
+| `holdFreeAt()`: the holding register is empty | TBMT (1602), TDRE (6850), TxRDY (8251, 2651), TBE (5501) |
+| `lineFreeAt()`: the shift register is empty too | TEOC (1602), TxEMPTY (8251), TxEMT (2651) |
+
+A byte written to an idle transmitter moves into the shift register after a short transfer
+delay. Until the transfer, the holding register is full and the ready bit is clear. The
+end-of-character bit stays set, because the shift register has not started. Each chip gives its
+own delay to `TwoStageTx::load()`:
+
+| Chip | Transfer delay | Source |
+|---|---|---|
+| 1602 | One period of the 16x clock (1/16 bit time) | `reference/com2502.md` |
+| 6850 | One bit time | `reference/6850.md` |
+| 8251, 2651, 5501 | 0 | Our references give no figure. |
+
+The 1602 and 6850 values are the upper limits in the data sheets. Measurements on a real 8800c
+came close (issue #899). After a write to an idle line, a 6850 set TDRE 0.6 to 1.5 bit times
+later. A COM2502 set TBMT within two poll loops. The real delay changes with the phase of the bit clock. The model does
+not keep that phase, so it uses one fixed value.
+
+A byte written while another byte is in the shift register waits in the holding register until
+that byte is sent. Because of this, output written as fast as the guest can goes at the line
+rate: one character time for each byte. A chip with one register clears TDRE for one character
+time after each write. Each byte then also costs the guest's poll time, and output is slower
+than the line rate (issue #899). Use `TwoStageTx` in a new UART chip, and give its `txFreeAt()`
+the holding register's deadline.
 
 ## Interrupts
 

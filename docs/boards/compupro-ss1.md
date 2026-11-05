@@ -102,9 +102,10 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
 - **No Clock/EventQueue for the clock:** the MSM5832 has nothing to schedule; the board's 6 µs /
   150 µs wait states are modelled as instant (the reference notes this is safe unless a program
   times the wait, which none does).
-- **The 2651 UART** (`src/chips/sig2651.h`) is modelled on the same lines as the 8251: a
-  transmit character occupies the line for one frame-time (a TxRDY deadline), and a receive frame
-  is clocked in over that same time before RxRDY rises. Its **baud rate comes from Mode Register
+- **The 2651 UART** (`src/chips/sig2651.h`) is modelled on the same lines as the 8251. A
+  transmit character occupies the line for one frame-time (TxEMT clear), and TxRDY clears only
+  when a second character waits behind it. A receive frame is clocked in over that same time
+  before RxRDY rises. Its **baud rate comes from Mode Register
   2** (the on-chip generator), so the guest's MR2 write sets the line rate. The four ports remove
   the 8251's data-vs-control ambiguity; the only internal sequencing is the MR1/MR2 pointer. DCD
   and DSR status bits read asserted and PE/OE/FE read 0 — a byte-clean transport has no modem
