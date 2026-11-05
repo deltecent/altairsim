@@ -679,17 +679,18 @@ void test_upd765() {
         CHECK(m->syncs() == before, "...and a write that did not land is not synced");
 
         // Write Track: a raw IBM 3740 stream of 26 x 128, the same geometry the track has.
+        // Sized up front and filled by index: GCC 15 -Warray-bounds misfires on a grown vector.
         auto stream = [](int sectors, size_t dataLen) {
-            std::vector<uint8_t> t(40, 0xFF);
-            t.push_back(0xFC);
-            for (int s = 1; s <= sectors; ++s) {
-                for (uint8_t v : {(uint8_t)0xFE, (uint8_t)2, (uint8_t)0, (uint8_t)s, (uint8_t)0, (uint8_t)0xF7})
-                    t.push_back(v);
-                t.insert(t.end(), 11, (uint8_t)0xFF);
-                t.push_back(0xFB);
-                t.insert(t.end(), dataLen, (uint8_t)0xE5);
-                t.push_back(0xF7);
-                t.insert(t.end(), 27, (uint8_t)0xFF);
+            const size_t         per = 6 + 11 + 1 + dataLen + 1 + 27;  // ID, gap, FB, data, F7, gap
+            std::vector<uint8_t> t(41 + (size_t)sectors * per, 0xFF);  // 0xFF gap everywhere
+            t[40] = 0xFC;                                              // index mark
+            for (int s = 0; s < sectors; ++s) {
+                const size_t b   = 41 + (size_t)s * per;
+                const uint8_t hdr[6] = {0xFE, 2, 0, (uint8_t)(s + 1), 0, 0xF7};
+                for (size_t k = 0; k < 6; ++k) t[b + k] = hdr[k];
+                t[b + 17] = 0xFB;
+                for (size_t k = 0; k < dataLen; ++k) t[b + 18 + k] = 0xE5;
+                t[b + 18 + dataLen] = 0xF7;
             }
             return t;
         };
