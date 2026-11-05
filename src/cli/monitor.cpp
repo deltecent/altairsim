@@ -1545,12 +1545,60 @@ void Monitor::showSymbols(const std::vector<std::string>& a, std::ostream& out) 
         out << "no symbol matches '" << a[2] << "'\n";
 }
 
+// One cell of the board table, wrapped to `width` so the table fits a terminal. It breaks
+// ONLY between list items -- after ", " (the comma stays) or at a two-space field gap (the
+// gap goes) -- so a unit name, an address range or a chip name is never split. A piece
+// longer than `width` by itself gets a line of its own, whole: the table never cuts text.
+// Each continuation line starts with `indent` spaces.
+static std::vector<std::string> wrapCell(const std::string& s, size_t width, size_t indent) {
+    struct Piece {
+        std::string text;
+        std::string join;  // the spaces before it in `s`, kept when it shares the line
+    };
+    std::vector<Piece> pieces;
+    std::string join;
+    size_t start = 0;
+    for (size_t i = 0; i + 1 < s.size(); ++i) {
+        if (s[i] == ',' && s[i + 1] == ' ') {
+            pieces.push_back({s.substr(start, i + 1 - start), join});
+            join = " ";
+            start = i + 2;
+            ++i;
+        } else if (s[i] == ' ' && s[i + 1] == ' ') {
+            size_t j = i;
+            while (j < s.size() && s[j] == ' ') ++j;  // the whole gap, padding included
+            pieces.push_back({s.substr(start, i - start), join});
+            join = s.substr(i, j - i);
+            start = j;
+            i = j - 1;
+        }
+    }
+    pieces.push_back({s.substr(start), join});
+
+    std::vector<std::string> lines;
+    std::string line;
+    for (const auto& p : pieces) {
+        if (line.empty()) {
+            line = p.text;
+        } else if (line.size() + p.join.size() + p.text.size() <= width) {
+            line += p.join + p.text;
+        } else {
+            lines.push_back(line);
+            line = std::string(indent, ' ') + p.text;
+        }
+    }
+    lines.push_back(line);
+    return lines;
+}
+
 void Monitor::showBoards(std::ostream& out, const Machine& m) {
     char buf[256];
+    constexpr size_t kWrap = 32;  // the widest UNITS or MEMORY line, where it can break
 
     struct Row {
-        std::string id, type, io, units;
-        std::vector<std::string> mem;  // one line per DECODED range
+        std::string id, type, io;
+        std::vector<std::string> units;  // wrapped lines; each unit kind starts a new one
+        std::vector<std::string> mem;    // wrapped lines; each DECODED range starts a new one
         bool disabled = false;
     };
     std::vector<Row> rows;
@@ -1576,9 +1624,11 @@ void Monitor::showBoards(std::ostream& out, const Machine& m) {
                 detail = sizeText(e.hi - e.lo + 1);
                 if (!e.note.empty()) detail += "  " + e.note;  // "bank 3 of 8"
             }
-            std::snprintf(buf, sizeof buf, "%s-%s  %-3s  %s", fmtWord(e.lo).c_str(),
-                          fmtWord(e.hi).c_str(), e.what.c_str(), detail.c_str());
-            r.mem.push_back(buf);
+            std::snprintf(buf, sizeof buf, "%s-%s  %-3s", fmtWord(e.lo).c_str(),
+                          fmtWord(e.hi).c_str(), e.what.c_str());
+            // A wrapped detail sits under the column after "XXXX-XXXX  ".
+            for (auto& l : wrapCell(std::string(buf) + "  " + detail, kWrap, 11))
+                r.mem.push_back(std::move(l));
         }
 
         // Units, grouped by kind and IN THE BOARD'S OWN ORDER: "2 serial: a*, b".
@@ -1602,8 +1652,10 @@ void Monitor::showBoards(std::ostream& out, const Machine& m) {
         for (const auto& [kind, names] : byKind) {
             std::string list;
             for (const auto& n : names) list += (list.empty() ? "" : ", ") + n;
-            if (!r.units.empty()) r.units += "; ";
-            r.units += std::to_string(names.size()) + " " + unitKindName(kind) + ": " + list;
+            for (auto& l : wrapCell(std::to_string(names.size()) + " " + unitKindName(kind) +
+                                        ": " + list,
+                                    kWrap, 2))
+                r.units.push_back(std::move(l));
         }
 
         rows.push_back(std::move(r));
@@ -1611,37 +1663,51 @@ void Monitor::showBoards(std::ostream& out, const Machine& m) {
 
     // Widths from the DATA, so nothing is ever truncated and nothing is padded to
     // a width that a longer id would have blown out anyway.
+    // Widths from the wrapped lines. Built as strings, not into a fixed buffer, so a row
+    // with a piece that cannot wrap is still printed whole.
     size_t wId = 2, wType = 4, wIo = 3, wUn = 5, wMem = 6;
     for (const auto& r : rows) {
         wId = std::max(wId, r.id.size());
         wType = std::max(wType, r.type.size());
         wIo = std::max(wIo, r.io.empty() ? 1 : r.io.size());
-        wUn = std::max(wUn, r.units.empty() ? 1 : r.units.size());
+        for (const auto& ur : r.units) wUn = std::max(wUn, ur.size());
         for (const auto& mr : r.mem) wMem = std::max(wMem, mr.size());
     }
 
-    std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %-*s  %-*s  %s", (int)wId, "ID", (int)wType,
-                  "TYPE", (int)wIo, "I/O", (int)wUn, "UNITS", "MEMORY");
-    out << buf << "\n";
+    auto pad = [](const std::string& s, size_t w) {
+        return s.size() < w ? s + std::string(w - s.size(), ' ') : s;
+    };
+    auto line = [&](const std::string& id, const std::string& type, const std::string& io,
+                    const std::string& un, const std::string& mem) {
+        std::string l = "  " + pad(id, wId) + "  " + pad(type, wType) + "  " + pad(io, wIo) +
+                        "  " + pad(un, wUn) + "  " + mem;
+        while (!l.empty() && l.back() == ' ') l.pop_back();
+        return l;
+    };
 
-    std::string rule = "  " + std::string(wId, '-') + "  " + std::string(wType, '-') + "  " +
-                       std::string(wIo, '-') + "  " + std::string(wUn, '-') + "  " +
-                       std::string(wMem, '-');
-    out << rule << "\n";
-
-    // Where a continuation line has to start to sit under MEMORY.
-    const size_t memCol = 2 + wId + 2 + wType + 2 + wIo + 2 + wUn + 2;
+    out << line("ID", "TYPE", "I/O", "UNITS", "MEMORY") << "\n";
+    out << "  " + std::string(wId, '-') + "  " + std::string(wType, '-') + "  " +
+               std::string(wIo, '-') + "  " + std::string(wUn, '-') + "  " +
+               std::string(wMem, '-')
+        << "\n";
 
     for (const auto& r : rows) {
-        std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %-*s  %-*s  %s", (int)wId, r.id.c_str(),
-                      (int)wType, r.type.c_str(), (int)wIo, r.io.empty() ? "-" : r.io.c_str(),
-                      (int)wUn, r.units.empty() ? "-" : r.units.c_str(),
-                      r.mem.empty() ? "-" : r.mem[0].c_str());
-        out << buf;
-        if (r.disabled) out << "   [DISABLED]";
-        out << "\n";
-        for (size_t i = 1; i < r.mem.size(); ++i)
-            out << std::string(memCol, ' ') << r.mem[i] << "\n";
+        const size_t n = std::max<size_t>({1, r.units.size(), r.mem.size()});
+        for (size_t i = 0; i < n; ++i) {
+            // The first line names the board and says "-" for an empty column; a
+            // continuation line is blank wherever that column has run out.
+            const std::string un =
+                i < r.units.size() ? r.units[i] : (i == 0 ? std::string("-") : std::string());
+            const std::string mem =
+                i < r.mem.size() ? r.mem[i] : (i == 0 ? std::string("-") : std::string());
+            if (i == 0) {
+                out << line(r.id, r.type, r.io.empty() ? "-" : r.io, un, mem);
+                if (r.disabled) out << "   [DISABLED]";
+            } else {
+                out << line("", "", "", un, mem);
+            }
+            out << "\n";
+        }
     }
 
     if (anyConsole) out << "\n  * holds the console\n";
