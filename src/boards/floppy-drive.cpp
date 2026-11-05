@@ -92,12 +92,18 @@ bool DiskImageDrive::readData(const SectorId& id, uint8_t* buf, size_t* n) {
     return img_->readSector(head_, side_, id.sector, buf, n);
 }
 
+// EVERY WRITE GOES TO THE HOST FILE NOW. The file is the diskette: a write the guest was told
+// succeeded must survive a killed simulator, so it is synced before the call returns -- as every
+// other disk board does. The cards that hold this drive sync only on unmount, which a SIGTERM or
+// a SIGKILL never reaches (#900). A failed write changed nothing, so it has nothing to sync.
 bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n) {
     if (!img_) return false;
     // writeSector wants a byte count it can bound against the geometry; a short write is a
     // failure, never a truncation (host/disk.h).
     size_t len = n;
-    return img_->writeSector(head_, side_, id.sector, buf, &len);
+    if (!img_->writeSector(head_, side_, id.sector, buf, &len)) return false;
+    img_->sync();
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,12 +200,15 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
 
     // Write each sector's fill by a SEQUENTIAL counter from startSector, ignoring the header's
     // possibly-skewed sector number, so the fill stays contiguous and the file grows in order.
-    for (size_t s = 0; s < fields.size(); ++s) {
+    bool ok = true;
+    for (size_t s = 0; ok && s < fields.size(); ++s) {
         size_t len = fields[s].len;
-        if (!img_->writeSector(head_, side_, startSector + (int)s, in.data() + fields[s].off, &len))
-            return false;  // a write that will not land -> WRITE FAULT
+        ok = img_->writeSector(head_, side_, startSector + (int)s, in.data() + fields[s].off, &len);
     }
-    return true;
+    // One sync for the track (see writeData). setTrackFormat has already changed the image, so a
+    // track that faults part way (false -> WRITE FAULT) is synced too: the file holds what landed.
+    img_->sync();
+    return ok;
 }
 
 // TS: an image with two heads is a two-sided diskette.
@@ -240,11 +249,13 @@ bool DiskImageDrive::formatTrack(const std::vector<SectorId>& ids, uint8_t fill)
 
     // In ascending order, so a blank image grows in order, with no gap to fill.
     const std::vector<uint8_t> data((size_t)size, fill);
-    for (int s = 0; s < tf.sectors; ++s) {
+    bool ok = true;
+    for (int s = 0; ok && s < tf.sectors; ++s) {
         size_t len = data.size();
-        if (!img_->writeSector(head_, side_, lo + s, data.data(), &len)) return false;
+        ok = img_->writeSector(head_, side_, lo + s, data.data(), &len);
     }
-    return true;
+    img_->sync();  // one per track, on every path past setTrackFormat (see writeTrackImage)
+    return ok;
 }
 
 } // namespace altair

@@ -44,6 +44,14 @@ and sets one character time later. PMMI MM-103 status bit 2, TEOC, was a copy of
 shows the shift register. A snapshot from an older version restores, but each board with one of
 these UARTs starts as at power-on.
 
+**Fixed: a killed simulator lost the disk writes on some floppy boards.** On the `tarbell`,
+`tarbelldd`, `versafloppy`, `jadedd`, `disk1`, `disk1a`, `16fdc` and `64fdc` boards, a sector that
+the guest wrote stayed in memory. It went to the disk file on your computer only at `UNMOUNT` or a
+clean exit. If the process stopped on a signal, such as `kill` or a crash, the write was lost. For
+example, on a `tarbell` machine, a file that CP/M `SAVE` wrote was not in the disk file after
+`kill -9`. Now each sector write, and each track that the guest formats, goes to the disk file
+before the board reports it done. The other disk boards did this already.
+
 **Fixed: `SYMBOLS LOAD` read no symbols from a MACRO-80 listing.** It read an M80 `.PRN` with the ASM layout, found no address, and reported `0 symbol(s)`. It did not refuse a relocatable M80 listing, and it took a MAC `SET` as a program label. It now finds the M80 page header and uses the M80 columns, takes `EQU`, `SET`, `DEFL` and `ASET` as constants, and refuses a relocatable listing and names the line.
 
 **Fixed: a machine with a VDB-8024 keyboard held one host core at a prompt when it ran flat out.**

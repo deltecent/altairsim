@@ -651,6 +651,89 @@ void test_upd765() {
         CHECK(!dd.formatTrack(ids, 0xE5), "...nor does a sector number twice");
     }
 
+    SECTION("DiskImageDrive -- every write reaches the host file (#900)");
+    {
+        // The boards that hold this drive sync only on unmount, which a killed simulator never
+        // reaches. So the drive syncs: once per sector written, once per track formatted, and
+        // never for a write that did not land.
+        auto         owned = std::make_unique<MemoryMedia>("t.dsk", std::vector<uint8_t>(256256, 0x00));
+        MemoryMedia* m     = owned.get();
+        DiskImage    img(std::move(owned));
+        img.init(77, 1, false);
+        img.initFormat(0, 76, 0, 0, Density::SD, 26, 128, 1);
+        DiskImageDrive dd;
+        dd.mount(&img, false);
+        dd.setHeadTrack(2);
+
+        FloppyDrive::SectorId id;
+        id.track = 2, id.sector = 5, id.size = 128;
+        const std::vector<uint8_t> sec(128, 0x5A);
+        int before = m->syncs();
+        CHECK(dd.writeData(id, sec.data(), sec.size()), "a sector write lands");
+        CHECK(m->syncs() == before + 1, "...and is synced to the host file before it returns");
+        CHECK(m->bytes()[(size_t)(2 * 26 + 4) * 128] == 0x5A, "...at track 2 sector 5");
+
+        id.sector = 27;
+        before    = m->syncs();
+        CHECK(!dd.writeData(id, sec.data(), sec.size()), "a sector the track does not have fails");
+        CHECK(m->syncs() == before, "...and a write that did not land is not synced");
+
+        // Write Track: a raw IBM 3740 stream of 26 x 128, the same geometry the track has.
+        // Sized up front and filled by index: GCC 15 -Warray-bounds misfires on a grown vector.
+        auto stream = [](int sectors, size_t dataLen) {
+            const size_t         per = 6 + 11 + 1 + dataLen + 1 + 27;  // ID, gap, FB, data, F7, gap
+            std::vector<uint8_t> t(41 + (size_t)sectors * per, 0xFF);  // 0xFF gap everywhere
+            t[40] = 0xFC;                                              // index mark
+            for (int s = 0; s < sectors; ++s) {
+                const size_t b   = 41 + (size_t)s * per;
+                const uint8_t hdr[6] = {0xFE, 2, 0, (uint8_t)(s + 1), 0, 0xF7};
+                for (size_t k = 0; k < 6; ++k) t[b + k] = hdr[k];
+                t[b + 17] = 0xFB;
+                for (size_t k = 0; k < dataLen; ++k) t[b + 18 + k] = 0xE5;
+                t[b + 18 + dataLen] = 0xF7;
+            }
+            return t;
+        };
+        dd.setFormatting(true);
+        before = m->syncs();
+        CHECK(dd.writeTrackImage(stream(26, 128), false), "Write Track lays down a whole track");
+        CHECK(m->syncs() == before + 1, "...and syncs once for the track, not once per sector");
+
+        // formatTrack (the uPD765's Format a Track), in order 1..26.
+        std::vector<FloppyDrive::SectorId> ids;
+        for (int k = 1; k <= 26; ++k) {
+            FloppyDrive::SectorId f;
+            f.track = 2, f.sector = k, f.size = 128;
+            ids.push_back(f);
+        }
+        before = m->syncs();
+        CHECK(dd.formatTrack(ids, 0xE5), "Format a Track lays down a whole track");
+        CHECK(m->syncs() == before + 1, "...and syncs once for the track");
+        ids[3].sector = 99;
+        before        = m->syncs();
+        CHECK(!dd.formatTrack(ids, 0xE5), "an ID list with no image form is refused");
+        CHECK(m->syncs() == before, "...before it touches the image, so nothing is synced");
+
+        // A data field shorter than the sector: the track's new geometry is already in the image
+        // when the first sector write fails, so the file is synced even though the command faults.
+        before = m->syncs();
+        CHECK(!dd.writeTrackImage(stream(26, 100), false), "a short data field is a WRITE FAULT");
+        CHECK(m->syncs() == before + 1, "...and what changed in the image still reaches the file");
+
+        // A write-protected medium: nothing lands, nothing is synced.
+        auto         roOwned = std::make_unique<MemoryMedia>("ro.dsk", std::vector<uint8_t>(256256, 0x00), true);
+        MemoryMedia* ro      = roOwned.get();
+        DiskImage    roImg(std::move(roOwned));
+        roImg.init(77, 1, false);
+        roImg.initFormat(0, 76, 0, 0, Density::SD, 26, 128, 1);
+        DiskImageDrive rd;
+        rd.mount(&roImg, false);
+        id.sector = 1;
+        before    = ro->syncs();
+        CHECK(!rd.writeData(id, sec.data(), sec.size()), "a read-only medium refuses the write");
+        CHECK(ro->syncs() == before, "...and syncs nothing");
+    }
+
     SECTION("uPD765 -- snapshot and restore in the middle of a read");
     {
         Rig a;
