@@ -27,6 +27,13 @@ register, the bit or the command that was wrong.
 
 OASIS 5.5A boots from a `vgdmdc` disk, and Vector CP/M boots from a `vgmdc` disk. The package holds no OASIS or Micropolis disk.
 
+**`BOARDS` and `SHOW MACHINE` now fit a terminal.** The UNITS and MEMORY columns were as wide as
+their longest entry. One board with four disk drives made the table 130 characters
+wide. Each column now wraps at 32 characters, and a long entry continues on the lines below it.
+A line breaks only after a comma or between two fields, so a unit name or an address range is
+never split. Each kind of unit starts a new line. Before, a row longer than 255 characters was
+cut off. Now the table prints every entry in full.
+
 **Fixed: a guest sent serial output slower than the line rate.** Each UART chip had one transmit
 register. A write cleared the ready bit (TBMT, TDRE, TxRDY or TBE) for one character time, also
 when the line was idle. Because of this, each byte cost one character time plus the time that the

@@ -1175,6 +1175,72 @@ void test_cli() {
           "and the chip goes back into the SAME socket it came out of");
 
     // -----------------------------------------------------------------------
+    SECTION("BOARDS -- UNITS and MEMORY wrap at 32, only between items, and never cut");
+    {
+        // A chip name with no break point in it, longer than the 32 the columns wrap at.
+        const std::string chip = "a-rom-image-name-with-no-break-point-at-all.bin";
+        const auto romPath = std::filesystem::temp_directory_path() / chip;
+        {
+            std::ofstream f(romPath, std::ios::binary);
+            f << std::string(256, '\xFF');
+        }
+
+        Machine mw;
+        Monitor monW(mw);
+        std::ostringstream sw;
+        monW.exec("BOARDS ADD dcdd dsk0", sw);
+        monW.exec("BOARDS ADD vgmdc mdc0", sw);
+        monW.exec("BOARDS ADD memory mem0", sw);
+        monW.exec("REGION ADD mem0 type=ram at=0 size=48K", sw);
+        monW.exec("REGION ADD mem0 type=rom at=EF00 mount=" + romPath.string(), sw);
+        std::ostringstream bw;
+        monW.exec("BOARDS", bw);
+        std::filesystem::remove(romPath);
+
+        std::vector<std::string> wrapped;
+        {
+            std::istringstream inW(bw.str());
+            for (std::string l; std::getline(inW, l);) wrapped.push_back(l);
+        }
+        auto lineWith = [&](const std::string& s) -> std::string {
+            for (const auto& l : wrapped)
+                if (l.find(s) != std::string::npos) return l;
+            return {};
+        };
+        // Where a column starts, from the header.
+        const size_t unCol = lineWith("UNITS").find("UNITS");
+        const size_t memCol = lineWith("MEMORY").find("MEMORY");
+
+        const std::string dsk0Line = lineWith("4 disk: drive0(empty),");
+        CHECK(dsk0Line.rfind("  dsk0", 0) == 0, "the first UNITS line is on the board's own row");
+        CHECK(dsk0Line.find("drive2") == std::string::npos, "and the list wraps before drive2");
+        const std::string dsk1Line = lineWith("drive1(empty), drive2(empty),");
+        CHECK(dsk1Line.find_first_not_of(' ') == unCol + 2,
+              "a UNITS continuation has no ID and is indented 2 under UNITS");
+        CHECK(lineWith("drive3(empty)").find_first_not_of(' ') == unCol + 2,
+              "and so is the last one");
+
+        const std::string rw = lineWith("read/write  512 bytes");
+        CHECK(rw.find("sector") == std::string::npos, "a long MEMORY note wraps");
+        CHECK(lineWith("sector, status, data,").find_first_not_of(' ') == memCol + 11,
+              "and a wrapped note sits under the column after the address range");
+        CHECK(lineWith("command, repeated").find_first_not_of(' ') == memCol + 11,
+              "at a comma, never inside a word");
+
+        CHECK(lineWith("EF00-EFFF  rom").find(chip) == std::string::npos,
+              "a piece too long for the address line goes on a line of its own");
+        const std::string chipLine = lineWith(chip);
+        CHECK(chipLine.find_first_not_of(' ') == memCol + 11 && chipLine.size() > memCol + 32,
+              "where it is printed whole, past the wrap -- never cut");
+
+        CHECK(memCol - unCol <= 32 + 2, "the UNITS column is no wider than the wrap");
+        for (const auto& l : wrapped) {
+            if (l.find(chip) != std::string::npos || l.rfind("  --", 0) == 0) continue;
+            CHECK(l.size() <= memCol + 32, ("no other line passes the wrap: " + l).c_str());
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Subcommand SELECTORS abbreviate by prefix, the way every command word does
     // (resolveKeyword). `BOARDS REM` was the report that started this; the rest ride
     // the same helper. This drives the real dispatcher, not the resolver in isolation.

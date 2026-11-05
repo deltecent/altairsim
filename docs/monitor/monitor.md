@@ -262,21 +262,24 @@ id, must use the full id and the full unit name.
 
 ```
 altairsim> BOARDS
-  ID    TYPE        I/O       UNITS                                                               MEMORY
-  ----  ----------  --------  ------------------------------------------------------------------  --------------------------------
-  fp0   fp          FF        -                                                                   -
-  cpu0  8080        -         1 cpu: 8080                                                         -
-  sio0  2sio        10,12     2 serial: a*, b                                                     -
-  dsk0  dcdd        08,09,0A  4 disk: drive0(empty), drive1(empty), drive2(empty), drive3(empty)  -
-  hb0   hostbridge  B0,B1     -                                                                   -
-  mem0  memory      -         1 rom: rom0                                                         0000-DFFF  ram  56K
-                                                                                                  FF00-FFFF  rom  dbl  phantom:all
+  ID    TYPE        I/O       UNITS                            MEMORY
+  ----  ----------  --------  -------------------------------  --------------------------------
+  fp0   fp          FF        -                                -
+  cpu0  8080        -         1 cpu: 8080                      -
+  sio0  2sio        10,12     2 serial: a*, b                  -
+  dsk0  dcdd        08,09,0A  4 disk: drive0(empty),           -
+                                drive1(empty), drive2(empty),
+                                drive3(empty)
+  hb0   hostbridge  B0,B1     -                                -
+  mem0  memory      -         1 rom: rom0                      0000-DFFF  ram  56K
+                                                               FF00-FFFF  rom  dbl  phantom:all
 
   * holds the console
 ```
 
 The `BOARDS` output is the backplane. It shows each board in the machine, the ports and memory that the board
-decodes, and what is in its units.
+decodes, and what is in its units. A UNITS or MEMORY entry longer than 32 characters continues
+on the lines below it. A line breaks only after a comma or between two fields.
 
 | Command | Shows |
 |---|---|
