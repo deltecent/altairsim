@@ -773,6 +773,8 @@ struct FreeRun {
     clk::time_point nextSlice{};
     clk::time_point idleSince{};     // when this unbroken quiet began; unset = busy
     bool            servedSinceSlice = false;  // fairness: see runMcp
+    // `achieved_hz` (#903), counted from `tStates` for the same reason pacing is.
+    AchievedHzMeter meter;
 
     void rebase(clk::time_point wallNow, long long hz) {
         baseW     = wallNow;
@@ -1082,6 +1084,7 @@ void publishFree(Machine& m, McpSession& sess) {
 }
 
 void endFreeRun(Machine& m, McpSession& sess, const std::string& why) {
+    sess.free.meter.finish(m.cpuCard(), sess.free.tStates, FreeRun::clk::now());
     sess.free.running = false;
     sess.free.stopped = why;
     publishFree(m, sess);
@@ -1126,6 +1129,8 @@ void freeRunSlice(Machine& m, McpSession& sess) {
     f.steps += r.steps;
     f.tStates += r.tStates;
     f.sinceBase += r.tStates;
+    // Looked up each slice: a request served between two slices may have replaced the machine.
+    f.meter.sample(m.cpuCard(), f.tStates, clk::now());
 
     // What this slice did, taken BEFORE the held output is trimmed below.
     const SliceWork work{r.steps, con ? con->out().size() - outBefore : 0,
@@ -1551,6 +1556,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         f.idleSince = FreeRun::clk::time_point{};
         f.nextSlice = now;
         f.rebase(now, m.clock.free() ? 0 : m.clock.hz());
+        f.meter.start(0, now);
         publishFree(m, sess);
 
         Json d = Json::obj();
@@ -1705,6 +1711,11 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
             if (!o.empty()) { out += o; con->clearOut(); }
         };
 
+        // `achieved_hz` (#903), as the monitor's RUN measures it, from this call's own T-states.
+        CpuCard* const  card = m.cpuCard();
+        AchievedHzMeter meter;
+        meter.start(0, start);
+
         // `stop_at` is NEXT's one-shot PC target (Debugger::setStepTarget): no breakpoint id,
         // nothing for BREAK to list. Set for this call only -- every exit from the loop below is
         // a `break`, so the clear after it always runs.
@@ -1751,6 +1762,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
                 if (want > got)
                     std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
             }
+            meter.sample(card, tStates, clk::now());
 
             const size_t wroteBefore = out.size();
             drain();
@@ -1794,6 +1806,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         }
 
         m.debug.setStepTarget(-1);
+        meter.finish(card, tStates, clk::now());
 
         publishStatus(steps);  // #490: this call is done -- the next status poll's `steps`/`pc`
                                 // are this call's own final values (its `in_flight` comes from

@@ -21,6 +21,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -2363,6 +2365,46 @@ void test_mcp() {
         CHECK(waitFor([&] { return done.load(); }, 5000),
               "EOF on stdin ends the session while the guest free-runs");
         closer.join();
+    }
+
+    SECTION("MCP: run and the free run report achieved_hz (#903)");
+    {
+        // SHOW cpu0's achieved_hz row, read through the monitor tool -- on the worker, so
+        // nothing reads the card from another thread. -1 when the row is not there.
+        auto achieved = [](LiveMcp& mcp) -> long long {
+            const Json r = mcp.call("monitor", R"({"command":"SHOW cpu0"})");
+            const std::string text = r.at("content").items().at(0).at("text").str();
+            const size_t at = text.find("achieved_hz");
+            if (at == std::string::npos) return -1;
+            return std::atoll(text.c_str() + at + std::strlen("achieved_hz"));
+        };
+        const char* loop = R"({"addr":256,"bytes":"C3 00 01"})";  // JMP 0100
+
+        {
+            Machine m;
+            if (!loadAltmon(m)) return;
+            LiveMcp mcp(m);
+            CHECK(achieved(mcp) == 0, "achieved_hz reads 0 before the guest runs");
+            mcp.call("mem_deposit", loop);
+            const Json run = mcp.data("run", R"({"from":256,"timeout_ms":300})");
+            CHECK(run.at("stopped").str() == "timeout", "the loop runs until the timeout");
+            const long long hz = achieved(mcp);
+            CHECK(hz > 0, ("after a `run`, achieved_hz reports the rate (" +
+                           std::to_string(hz) + ")").c_str());
+        }
+        {
+            Machine m;
+            if (!loadAltmon(m)) return;
+            LiveMcp mcp(m);
+            CHECK(achieved(mcp) == 0, "a new machine reads 0 again");
+            mcp.call("mem_deposit", loop);
+            mcp.call("start", R"({"from":256})");
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            CHECK(mcp.data("stop").at("stopped").str() == "requested", "stop ends the free run");
+            const long long hz = achieved(mcp);
+            CHECK(hz > 0, ("after a free run, achieved_hz reports the rate (" +
+                           std::to_string(hz) + ")").c_str());
+        }
     }
 
     SECTION("MCP: CONFIG SAVE writes the console, not the session's line (#873)");
