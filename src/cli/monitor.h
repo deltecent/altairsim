@@ -9,6 +9,8 @@
 
 #include "core/machine.h"
 
+#include <chrono>
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <iosfwd>
@@ -402,5 +404,37 @@ bool unitHoldsDevice(const std::string& state, const std::string& device);
 // unpaced: at 2 MHz a 2,000-instruction slice is about 8 ms of guest time and it got a 4 ms
 // nap, so a guest at a prompt ran 1.3 times its crystal (#606).
 bool mayNap(bool idle, bool anyConsole, bool tty, bool paced);
+
+// THE ACHIEVED CRYSTAL: T-states per real second, published to the CPU card for SHOW
+// (`achieved_hz`). Every loop that runs the guest keeps one -- the monitor's RUN, the MCP
+// `run` tool and the MCP free run (#903: the two MCP loops kept none, and SHOW read 0).
+//
+// The caller passes its own T-state count, so a loop that counts its own (the free run, which
+// a CONFIG LOAD between two slices can give a new machine clock) is not thrown off. The window
+// counts ALL real time -- naps and pacing sleeps too: a machine that naps through a prompt
+// really is retiring few T-states a second, and that is the honest reading. It is sampled long
+// enough (kWindow) that the divide is not noise, short enough that SHOW reflects what the
+// machine is doing now rather than an average over the whole run. A null card is a no-op.
+class AchievedHzMeter {
+public:
+    using clk = std::chrono::steady_clock;
+    static constexpr double kWindow = 0.25;  // seconds; ~4 updates/sec while running
+    static constexpr double kFloor  = 0.02;  // shortest run worth a reading at all
+
+    void start(uint64_t t, clk::time_point now) { t_ = t; w_ = now; }
+
+    // Report and start the next window once this one has kWindow of real time behind it.
+    // True when it did, so a caller can hang other once-a-window work on it.
+    bool sample(CpuCard* card, uint64_t t, clk::time_point now);
+
+    // The tail, when the run stops: a run shorter than one window (a CPU test, a GO to a
+    // HLT) still leaves a reading. Below kFloor the divide is noise, so the last good
+    // sample stands.
+    void finish(CpuCard* card, uint64_t t, clk::time_point now);
+
+private:
+    uint64_t        t_ = 0;
+    clk::time_point w_{};
+};
 
 } // namespace altair

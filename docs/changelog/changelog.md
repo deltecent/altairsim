@@ -44,6 +44,12 @@ and sets one character time later. PMMI MM-103 status bit 2, TEOC, was a copy of
 shows the shift register. A snapshot from an older version restores, but each board with one of
 these UARTs starts as at power-on.
 
+**Fixed: `achieved_hz` stayed at 0 under `--mcp`.** Only the monitor's `RUN` measured the clock
+speed that the processor reached. The MCP `run` tool and the `start` and `stop` free run did not
+measure it. For example, after a `run` of 300 ms on the `basic4k` machine, `SHOW cpu0` showed
+`achieved_hz 0`. Now the `run` tool and the free run measure it in the same way as `RUN`. After a
+`run` or a `stop`, `SHOW cpu0` shows the clock speed that the guest ran at.
+
 **Fixed: a killed simulator lost the disk writes on some floppy boards.** On the `tarbell`,
 `tarbelldd`, `versafloppy`, `jadedd`, `disk1`, `disk1a`, `16fdc` and `64fdc` boards, a sector that
 the guest wrote stayed in memory. It went to the disk file on your computer only at `UNMOUNT` or a
