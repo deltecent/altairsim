@@ -1078,8 +1078,10 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         } else {
             out << "  regions:\n";
             for (size_t i = 0; i < rs.size(); ++i) {
-                std::snprintf(buf, sizeof buf, "    %zu  %s", i, rs[i].describe().c_str());
-                out << buf << "\n";
+                // The line ends in a mount path of any length, so it is not formatted
+                // into the buffer (#905).
+                std::snprintf(buf, sizeof buf, "    %zu  ", i);
+                out << buf << rs[i].describe() << "\n";
             }
         }
     }
@@ -1090,9 +1092,9 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
     if (!us.empty()) {
         out << "\n  unit     kind    holds\n";
         for (const auto& u : us) {
-            std::snprintf(buf, sizeof buf, "    %-7s %-7s %s%s", u.name.c_str(),
-                          unitKindName(u.kind), u.state.c_str(), roNote(u).c_str());
-            out << buf << "\n";
+            std::snprintf(buf, sizeof buf, "    %-7s %-7s ", u.name.c_str(),
+                          unitKindName(u.kind));
+            out << buf << u.state << roNote(u) << "\n";
         }
     }
 
@@ -1300,9 +1302,10 @@ void Monitor::showMounts(std::ostream& out) {
                   "HOLDS");
     out << buf << "\n";
     for (const auto& r : rows) {
-        std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %s", (int)wUnit, r.unit.c_str(),
-                      (int)wKind, r.kind.c_str(), r.holds.c_str());
-        out << buf << "\n";
+        // `holds` is a path of any length, so it goes on after the buffer (#905).
+        std::snprintf(buf, sizeof buf, "  %-*s  %-*s  ", (int)wUnit, r.unit.c_str(),
+                      (int)wKind, r.kind.c_str());
+        out << buf << r.holds << "\n";
     }
     out << "\n  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.\n";
 }
@@ -1322,8 +1325,8 @@ void Monitor::showPaths(std::ostream& out) {
     char buf[512];
     // One column for the label so the values line up under a single left edge.
     auto row = [&](const std::string& label, const std::string& value) {
-        std::snprintf(buf, sizeof buf, "  %-17s  %s", label.c_str(), value.c_str());
-        out << buf << "\n";
+        std::snprintf(buf, sizeof buf, "  %-17s  ", label.c_str());
+        out << buf << value << "\n";
     };
     const char* pad = "                     ";  // under the value column, for the prose
 

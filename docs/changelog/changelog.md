@@ -51,6 +51,12 @@ and sets one character time later. PMMI MM-103 status bit 2, TEOC, was a copy of
 shows the shift register. A snapshot from an older version restores, but each board with one of
 these UARTs starts as at power-on.
 
+**Fixed: a long ROM or disk path was cut off in the monitor's output.** The monitor wrote each
+line into a buffer of fixed size. The `REGION ADD` reply cut a ROM path off after about 110
+characters. `SHOW <board>` cut a region or unit line off at 256 characters, and `SHOW MOUNTS`
+and `SHOW PATHS` cut a line off at 512 characters. Nothing showed that text was missing. Now
+these lines show the whole path.
+
 **Fixed: `achieved_hz` stayed at 0 under `--mcp`.** Only the monitor's `RUN` measured the clock
 speed that the processor reached. The MCP `run` tool and the `start` and `stop` free run did not
 measure it. For example, after a `run` of 300 ms on the `basic4k` machine, `SHOW cpu0` showed

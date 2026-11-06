@@ -1175,6 +1175,46 @@ void test_cli() {
           "and the chip goes back into the SAME socket it came out of");
 
     // -----------------------------------------------------------------------
+    SECTION("REGION ADD, SHOW <board> and SHOW MOUNTS print a long ROM path whole (#905)");
+    {
+        // Each line was formatted into a fixed buffer, so a long mount path was cut off with
+        // nothing to show it. The path here is long only as WRITTEN: the machine has a
+        // directory, as one loaded from a file does, so a typed path is resolved against it
+        // and normalized, and what the board opens is short. That keeps the test off the
+        // host's own path length limit.
+        const auto dir = std::filesystem::temp_directory_path() / "altairsim-905";
+        std::filesystem::create_directories(dir);
+        {
+            std::ofstream f(dir / "rom.bin", std::ios::binary);
+            f << std::string(256, '\xFF');
+        }
+        std::string longPath;
+        while (longPath.size() < 600) longPath += "./";  // past every buffer: 128, 256, 512
+        longPath += "rom.bin";
+
+        Machine ml;
+        Monitor monL(ml);
+        std::ostringstream sl;
+        ml.dir = dir.generic_string();
+        monL.exec("BOARDS ADD memory mem0", sl);
+        std::ostringstream ra;
+        monL.exec("REGION ADD mem0 type=rom at=F000 mount=" + longPath, ra);
+        CHECK(ra.str() == "mem0:0: rom  F000-F0FF  " + longPath + "\n",
+              "the REGION ADD reply holds the whole path");
+        std::ostringstream sb;
+        monL.exec("SHOW mem0", sb);
+        CHECK(sb.str().find("0  rom  F000-F0FF  " + longPath + "\n") != std::string::npos,
+              "SHOW <board> lists the region with the whole path");
+        CHECK(sb.str().find(" " + longPath, sb.str().find("holds")) != std::string::npos,
+              "SHOW <board> lists the unit with the whole path");
+        std::ostringstream sm;
+        monL.exec("SHOW MOUNTS", sm);
+        CHECK(sm.str().find(" " + longPath) != std::string::npos,
+              "SHOW MOUNTS holds the whole path");
+        std::filesystem::remove_all(dir);
+    }
+
+    // -----------------------------------------------------------------------
     SECTION("BOARDS -- UNITS and MEMORY wrap at 32, only between items, and never cut");
     {
         // A chip name with no break point in it, longer than the 32 the columns wrap at.
