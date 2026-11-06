@@ -31,6 +31,14 @@ void test_memory() {
     std::string err;
 
     {
+        // A ROM's line ends in its mount path, and the path has no length limit. The line
+        // was formatted into 128 bytes, so a long path was cut off with no sign of it (#905).
+        Region r = rom(0xF000, "/" + std::string(300, 'p') + "/rom.bin");
+        r.size   = 0x100;
+        CHECK(r.describe() == "rom  F000-F0FF  " + r.mount, "describe() holds the whole path");
+    }
+
+    {
         // AN EMPTY SOCKET IS EMPTY WHATEVER ITS `size` SAYS (#576). A rom takes its extent
         // from its image, so `size` on one is ignored -- and an empty socket given one used
         // to decode that range and answer 00 from the store, where the bus floats FF. The
