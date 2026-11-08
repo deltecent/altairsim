@@ -113,6 +113,8 @@ It expects **itself at F800**, **RAM below C000** (it sets its stack there and p
 
 > **A trap, from ALTMON's own listing.** Its `ahex` routine reads exactly four hex digits and **aborts to the prompt on any byte below `'0'`** — so a space is not a separator, it is a *cancel*. Type `DF800F80F`, not `D F800 F80F`. The spaces in ALTMON's own printed command summary are typography, not grammar.
 
+The full guide to ALTMON's commands, its input rules and its HEX loader is [`reference/ALTMON.md`](../reference/ALTMON.md).
+
 **How `dbl` was verified.** All 16 Intel HEX records checksum clean and cover `FF00`–`FFFF` contiguously with no gaps and no overlap. Every one of the 256 bytes in `DBL.HEX` matches the address/opcode columns of the `DBL.PRN` assembler listing exactly. The image ends `... C9 00 00` — the trailing zeros are the listing's own `DW 00H` ("FILLS THE EPROM OUT WITH 00'S"), so this is a **complete 256-byte part, not a truncated one**.
 
 **One caveat, stated plainly.** The chain is *EPROM → Eberhard's disassembly → reassembly*, not a raw dump. The bytes are therefore only as faithful as the disassembly, and I cannot close that last link without the physical part. This is still far better than a bare `.bin`, because the listing makes every byte auditable — but it is not the same as a dump, and the table should not pretend it is.
