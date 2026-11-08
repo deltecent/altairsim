@@ -2509,10 +2509,11 @@ with the mode, count and output of each counter.
 The interrupt system is two **Intel 8259A** controllers at `50`–`53`, cascaded as master and
 slave:
 
-- The master watches the eight vectored interrupt lines of the bus, and drives the processor's
-  interrupt pin.
-- The slave collects the sources on the board, which are the three timer outputs and the UART's
-  transmit-ready and receive-ready signals. It sends them to the master.
+- The master watches seven vectored interrupt lines of the bus, VI0 to VI6, and drives the
+  processor's interrupt pin.
+- The slave watches VI7 and the sources on the board. These are the three timer outputs, the
+  math chip, and the UART's transmit-ready and receive-ready signals. The slave sends them to
+  the master.
 
 A guest sets them up in the usual 8259A way, with the ICW and OCW words, and unmasks the sources
 that it wants. On an interrupt, the controller gives the processor a `CALL` to the vector of the

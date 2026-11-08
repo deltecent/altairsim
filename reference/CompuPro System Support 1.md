@@ -210,7 +210,8 @@ interrupt jumper matrix (J7/J8, §4).
 Two Intel (or NEC) **8259A** Programmable Interrupt Controllers in a **master/slave cascade**
 (p.38, p.89–90), giving 15 usable interrupt sources: the master's 7 lower inputs are wired to
 7 of the 8 S-100 bus vectored interrupts (VI0*–VI6*), the master's IR7 is wired to the slave's
-INT output, and the slave's 8 inputs are all **on-board** sources. This is the standard
+INT output, the slave's IR0 is the eighth bus line (VI7*), and the slave's other 7 inputs are
+**on-board** sources (p.13). This is the standard
 "factory" jumper configuration (a dip-shunt at J8, J7 left open); a dip-header instead of the
 shunt lets every source/destination be rewired arbitrarily (p.13–14).
 
@@ -227,14 +228,50 @@ shunt lets every source/destination be rewired arbitrarily (p.13–14).
 
 | Master IRQ | Source | Slave IRQ | Source |
 |:---:|---|:---:|---|
-| 0–6 | S-100 VI0*–VI6* | 0–3 | Timer 0 OUT, Timer 1 OUT, Timer 2 OUT (IRQ1–3) |
-| 7 | Slave INT output | 4 | 9511/9512 SVRQ |
+| 0–6 | S-100 VI0*–VI6* | 0 | S-100 VI7* (through J8 pins 8–9) |
+| 7 | Slave INT output | 1–3 | Timer 0 OUT, Timer 1 OUT, Timer 2 OUT |
+| | | 4 | 9511/9512 SVRQ |
 | | | 5 | 9511/9512 END |
 | | | 6 | 2651 TxRDY |
 | | | 7 | 2651 RxRDY |
 
-(Slave IRQ0 is unassigned in the standard wiring — see the jumper diagram, p.13, which shows
-`|---|IRQ0` with no source line feeding it.)
+The figure on p.13 draws VI7* down past the master to the slave's IRQ0, and the J8 table on
+p.14 lists VI7* as the source on pin 8.
+
+### 4.2a Jumpers J7 and J8 (p.14)
+
+J7 and J8 are 16-pin DIP sockets. Each source is on one side and each destination is on the
+other. A DIP shunt joins pin *n* to pin 17 − *n*. The standard setting is a shunt in J8 and
+J7 empty. A DIP header in place of a shunt lets any source go to any destination.
+
+**J8: sources to the slave 8259A**
+
+| Pin | Source | | Pin | Destination |
+|:---:|---|---|:---:|---|
+| 8 | S-100 VI7* | | 9 | Slave IRQ0 |
+| 7 | Timer 0 OUT | | 10 | Slave IRQ1 |
+| 6 | Timer 1 OUT | | 11 | Slave IRQ2 |
+| 5 | Timer 2 OUT | | 12 | Slave IRQ3 |
+| 4 | 9511/9512 SVRQ | | 13 | Slave IRQ4 |
+| 3 | 9511/9512 END (through J6) | | 14 | Slave IRQ5 |
+| 2 | 2651 TxRDY | | 15 | Slave IRQ6 |
+| 1 | 2651 RxRDY | | 16 | Slave IRQ7 |
+
+**J7: sources to the S-100 bus**
+
+| Pin | Source | | Pin | Destination |
+|:---:|---|---|:---:|---|
+| 16 | 9512 ERROR | | 1 | S-100 VI7* |
+| 15 | 9511/9512 END (through J6) | | 2 | S-100 VI6* |
+| 14 | 9511/9512 SVRQ | | 3 | S-100 VI5* |
+| 13 | Timer 2 OUT | | 4 | S-100 VI4* |
+| 12 | Timer 1 OUT | | 5 | S-100 VI3* |
+| 11 | Timer 0 OUT | | 6 | S-100 VI2* |
+| 10 | 2651 TxRDY | | 7 | S-100 VI1* |
+| 9 | 2651 RxRDY | | 8 | S-100 VI0* |
+
+A slave input with no link in J8 reads 1. On a real board with only the J8 link 7–10 in place,
+slave IRQ6 and IRQ7 read 1 all the time (measured, #908).
 
 ### 4.3 Chip programming
 
@@ -428,8 +465,8 @@ on "pages 70-81"; they are on pp.73–86.
   favors **Mode 0 (Interrupt on Terminal Count)** for interrupt use; clock/gate default to
   2 MHz, cut-and-jumper (J4) to cascade or externally clock.
 - **Dual 8259A**: standard cascade, master IR0–6 = S-100 VI0*–VI6*, master IR7 = slave INT,
-  slave IR0–7 = Timer0/1/2 OUT, math-chip SVRQ, math-chip END, 2651 TxRDY, 2651 RxRDY (slave
-  IRQ0 unassigned in the stock jumpering) — but this is a dip-shunt convention, fully
+  slave IR0–7 = S-100 VI7*, Timer0/1/2 OUT, math-chip SVRQ, math-chip END, 2651 TxRDY,
+  2651 RxRDY (§4.2a) — but this is a dip-shunt convention, fully
   rewireable via dip-headers at J7/J8. **2 wait states auto-inserted on every INTA cycle.**
   **8080/Z80 systems must disable all system RAM/ROM during the CALL-opcode follow-on memory
   reads of an interrupt acknowledge (PHANTOM\*)** — 8085/8088/8086 systems don't need this

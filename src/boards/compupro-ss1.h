@@ -45,7 +45,7 @@
 //     slave  IR7    = 2651 RxRDY
 //     slave  IR4    = math chip SVRQ        (inactive with the socket empty)
 //     slave  IR5    = math chip END         (inactive with the socket empty)
-//     slave  IR0    = unassigned (tied inactive)
+//     slave  IR0    = S-100 VI7*          (through J8 pins 8-9)
 //
 // The master's INT output is the card's pin-73 (pINT) driver, and the card claims the
 // IntAck cycle to feed the 8259A's CALL vector -- see read()/the INTA sequence in the
@@ -105,9 +105,9 @@ public:
     bool    assertsInt() const override;
     uint8_t assertsVi() const override;
 
-    // THE MASTER WATCHES VI0*-VI6*, so it is a VI priority encoder like the 88-VI: the
-    // bus tells it when a VI line moves, and it claims the IntAck cycle to drive the
-    // CALL vector. Do not put an SS-1 (with its 8259As programmed) and an 88-VI in the
+    // THE MASTER WATCHES VI0*-VI6* AND THE SLAVE VI7*, so the board is a VI priority
+    // encoder like the 88-VI: the bus tells it when a VI line moves, and it claims the
+    // IntAck cycle to drive the CALL vector. Do not put an SS-1 (with its 8259As programmed) and an 88-VI in the
     // same machine -- both would claim IntAck and the contention detector says so.
     bool    watchesVi() const override { return true; }
     int     intWinner() const override;
@@ -199,6 +199,7 @@ private:
     uint64_t mathAccess(bool pauses);
 
     // The slave IR each on-board source is wired to (reference sec. 4.2, stock shunt).
+    static constexpr int kSlaveVi7 = 0;
     static constexpr int kSlaveTimer0 = 1, kSlaveTimer1 = 2, kSlaveTimer2 = 3;
     static constexpr int kSlaveSvrq = 4, kSlaveEnd = 5;
     static constexpr int kSlaveTxRdy = 6, kSlaveRxRdy = 7;

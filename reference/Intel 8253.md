@@ -96,8 +96,18 @@ command does not disturb counting or change the format.
   when an OUT that feeds an enabled interrupt is about to change.
 - **The clock input is 2 MHz on the SS-1** (S-100 bus pin 49), independent of the CPU clock:
   one counter tick takes `cpu_hz / 2_000_000` T-states.
-- **Modes 0/2/4** count-read exactly; **mode 3** decrements by two per tick and its read-back
-  is rarely relied upon — OUT is what feeds interrupts, and OUT is exact.
+- **Modes 0/2/4** count-read exactly.
+- **Mode 3 read-back (measured on a real SS-1, #908).** The count goes down by 2 on each
+  clock and loads N again at the start of each half period. It never reads 0 and never reads
+  more than N. With *p* = clocks since the load, modulo N:
+  - **Even N:** the first half (*p* < N/2) reads N − 2*p*. The second half reads
+    N − 2(*p* − N/2).
+  - **Odd N**, with *h* = (N + 1)/2: *p* = 0 reads N, and 1 ≤ *p* < *h* reads N + 1 − 2*p*.
+    In the second half, with *q* = *p* − *h*: *q* = 0 reads N, and other values read
+    N − 1 − 2*q*.
+  - Latched reads of N = 1000, 1001 and 1003, 76 clocks apart, all fit this rule. For example,
+    N = 1000 read 936, 784, 632, 480, 328, 176, 24, 872, 720.
+  - The halves agree with OUT: the odd clock of an odd N is in the high half.
 - **Modes 1 and 5** are gate-triggered; with the gate tied high and no edge modeled they idle
   at their initial OUT (high). This is the faithful ungated behaviour, not a stub.
 - **BCD** counting decodes the written value from BCD, counts in decimal against a 10000

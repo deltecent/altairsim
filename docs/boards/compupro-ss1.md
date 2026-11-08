@@ -74,15 +74,16 @@ status bits are in `reference/AMD 9511A.md` and `reference/AMD 9512.md`.
 
 | Master IR | Source | Slave IR | Source |
 |:--:|---|:--:|---|
-| 0–6 | S-100 VI0*–VI6* | 1–3 | Timer 0 / 1 / 2 OUT |
-| 7 | slave INT (cascade) | 6 | 2651 TxRDY |
+| 0–6 | S-100 VI0*–VI6* | 0 | S-100 VI7* (J8 pins 8–9) |
+| 7 | slave INT (cascade) | 1–3 | Timer 0 / 1 / 2 OUT |
 | | | 4 | math chip SVREQ |
 | | | 5 | math chip END |
+| | | 6 | 2651 TxRDY |
 | | | 7 | 2651 RxRDY |
 
-So the master is the machine's VI priority encoder, its INT drives pin 73, and the on-board
-sources reach the CPU through the slave and the cascade. Slave IR0 is unassigned and tied
-inactive. With the socket empty, IR4 and IR5 are inactive too.
+The two controllers are the machine's VI priority encoder, and the master's INT drives pin 73.
+VI7* and the on-board sources reach the CPU through the slave and the cascade. With the socket
+empty, IR4 and IR5 are inactive.
 
 ## How it is simulated
 
@@ -104,7 +105,9 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
   times the wait, which none does).
 - **The 2651 UART** (`src/chips/sig2651.h`) is modelled on the same lines as the 8251. A
   transmit character occupies the line for one frame-time (TxEMT clear), and TxRDY clears only
-  when a second character waits behind it. A receive frame is clocked in over that same time
+  when a second character waits behind it. TxRDY and TxEMT read 0 while the command register's
+  TxEN bit (D0) is 0, as on a real SS-1. After TxEN is set, TxEMT stays 0 until a character has
+  left. A byte written with TxEN at 0 waits in the chip and is sent when TxEN is set. A receive frame is clocked in over that same time
   before RxRDY rises. Its **baud rate comes from Mode Register
   2** (the on-chip generator), so the guest's MR2 write sets the line rate. The four ports remove
   the 8251's data-vs-control ambiguity; the only internal sequencing is the MR1/MR2 pointer. DCD
@@ -118,8 +121,9 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
   (`BusClock`, `src/core/busclock.h`). The count is 2 MHz of real time at every `clock_hz`. With
   a crystal set, one tick takes `cpu_hz / 2_000_000` T-states. Flat out, one tick is 500 ns of
   host time. Modes 0, 2, 3
-  and 4 have their real OUT behaviour; mode 3's count read-back is approximate (a real chip
-  decrements it by two per tick), but OUT is exact. Modes 1 and 5 are gate-triggered and the
+  and 4 have their real OUT behaviour and their real count read-back. In mode 3 the count goes
+  down by 2 on each tick and loads N again at each half period. This was measured on a real
+  SS-1 (`reference/Intel 8253.md` §5). Modes 1 and 5 are gate-triggered and the
   board ties every gate high, so they idle (no gate edge ever arrives). The Counter Latch Command
   and BCD counting are modelled. Its OUT lines now feed the slave 8259A (see below).
 - **The dual 8259A** (`src/chips/intel8259a.h`) are two controllers in the standard master/slave
@@ -127,8 +131,8 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
   card hands them the current levels (a timer OUT off the clock, a VI line off the bus, the UART's
   ready flags) on every query, so `assertsInt()` stays const and combinational while its inputs
   move on other chips' clocks (the same stance as the 88-VI). The master watches VI0–6, IR7 is the
-  slave, and its INT output is the card's pin-73 driver; the slave takes the timer OUTs (IR1–3) and
-  the UART's TxRDY/RxRDY (IR6/IR7). The model covers ICW1–4 init, OCW1/2/3, fully-nested priority
+  slave, and its INT output is the card's pin-73 driver; the slave takes VI7 (IR0), the timer
+  OUTs (IR1–3) and the UART's TxRDY/RxRDY (IR6/IR7). The model covers ICW1–4 init, OCW1/2/3, fully-nested priority
   with rotation, the EOI family, edge/level triggering, and the acknowledge — which drives the
   **MCS-80/85 3-byte CALL** the CPU executes. The card owns a Clock deadline (`refresh()`/
   `nextEdge()`) that folds in each **unmasked** timer OUT's next edge, so a terminal count wakes
@@ -159,10 +163,15 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
     clears only on a chip access or a reset, and SVREQ clears only when a command with SR = 0
     ends. J6 is taken as set to match the chip (9511A END is active low, 9512 END is active
     high), so END reaches slave IR5 active high. SVREQ goes to slave IR4.
-  - **9511A arithmetic:** fixed point is exact two's complement. The four float operations
-    round to the 24-bit mantissa, to nearest even. The derived functions (SQRT … PWR) follow
-    the ch.9 algorithms of AMD's manual, with the Chebyshev coefficients, and each step is
-    rounded as the chip's own float operations round it.
+  - **9511A arithmetic:** the model follows measurements of two real chips (#908,
+    `reference/AMD 9511A.md` §6.1). Fixed point is two's complement. With the most negative
+    value as an operand, SMUL and DMUL return the low half of the product and set overflow.
+    The four float operations truncate, with no guard bits. FMUL is a shift-and-add, and FDIV
+    gives 23 quotient bits when B's mantissa is smaller than A's. FLTD truncates, and PUPI
+    pushes π cut to 24 bits (`02C90FDA`). The derived functions (SQRT … PWR) follow the ch.9
+    algorithms of AMD's manual, with the steps that the real chip uses. Each step uses the
+    four float operations above. An argument error, such as SQRT of a negative value, stops
+    early with the real chip's result and status.
   - **9512 arithmetic:** single (24-bit mantissa, 8-bit exponent) and double (53-bit mantissa,
     11-bit exponent), rounded to nearest even. An exponent field of 0 is zero. The documents
     define no denormals, infinities or NaNs, so there are none. A zero result is all zero
@@ -229,10 +238,10 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
 - **2651 modem-control and line noise are not simulated.** DCD/DSR read asserted and PE/OE/FE
   read 0 for a byte-clean transport; a real serial-port endpoint would make those real events.
   Sync mode, auto-echo and the loopback operating modes (command bits 6/7) are not modelled — the
-  SS-1 uses normal async only. The transmitter is not gated on TxEN (a guest polls TxRDY first).
+  SS-1 uses normal async only.
 - **8253 gate inputs are tied high (ungated).** The SS-1 pulls every gate high, so counting is
   always enabled and the gate-triggered one-shot modes (1 and 5) never trigger — no gate edge is
-  modelled. **Mode 3's count read-back is approximate** (OUT is exact); the terminal-count timing
+  modelled. The terminal-count timing
   folds the load clock into the write instant rather than modelling the extra load cycle.
 - **The 8253 counts only the bus CLOCK.** The external clock input on J4, and a counter cascaded
   into another, are not modelled. Every counter counts pin 49.
@@ -252,15 +261,15 @@ inactive. With the socket empty, IR4 and IR5 are inactive too.
   the VI lines and both claim the IntAck cycle, which is genuine bus contention — the contention
   detector reports it. A machine picks one interrupt controller.
 - The optional 4K RAM/EPROM block is not modelled.
-- ⚠ **9511A rounding is not verified.** The 9511A data sheet does not say how its float
-  operations round. The model rounds to nearest even, as the 9512 data sheet says the 9512 does.
-  A trace from a real chip would settle it (#393).
 - ⚠ **9512 overflow and underflow results are not documented.** The model keeps the rounded
   mantissa, wraps the exponent field (by 256 or 2048) and sets V or U. That is what the 9511A
   data sheet says its own float operations do. No real 9512 was available to compare against.
-- **9511A derived functions: the low bits are not verified.** The results follow AMD's
-  algorithms and fall inside the manual's error graphs, but the last bit may differ from a real
-  chip.
+- **9511A: some results differ from a real chip in the last bits.** The model gives the real
+  status and result in 507 of 550 measured cases. In 35 cases of SIN, COS, ATAN, ASIN, ACOS, EXP
+  and PWR, the result is 1 or 2 LSB from the real one. In 8 SIN and COS cases, the real chip
+  keeps one more bit of the reduced argument, and no rule for that bit is known. SDIV and DDIV
+  of the most negative value by a negative value give a real result that fits no known rule.
+  The model returns the low bits of the quotient there (`reference/AMD 9511A.md` §6.1).
 - **Cycle counts are the top of each range.** A real chip often ends sooner, for example an
   FADD of two close operands. A guest that polls BUSY or waits for END sees the longer time.
 - **The scratch stack cells** that a command leaves "undefined" keep what was there. An
@@ -274,11 +283,13 @@ at power-on, a programmed set reads back exactly (including Feb 29 in a leap yea
 are forced to 0 on a set, the Hours-10 mode bit and Days-10 leap bit are correct, the set time
 survives RESET/power-on and a SNAPSHOT/RESTORE round-trip, and the `base` strap moves the block.
 The 2651 is pinned both as a bare chip and over the bus: the MR1-then-MR2 pointer, the full MR2
-baud table, the status polarity, TxRDY as a deadline, a character clocked in over a frame time,
-the RxEN gate, snapshot of the programmed frame/baud, the four-port decode, an end-to-end
+baud table, the status polarity, TxRDY as a deadline, TxRDY and TxEMT gated by TxEN with the
+status values of a real SS-1, a byte held while TxEN is 0, a character clocked in over a frame
+time, the RxEN gate, snapshot of the programmed frame/baud, the four-port decode, an end-to-end
 receive/transmit through the bus, and the RxRDY interrupt jumper. The 8253 is pinned as a bare
 chip and over the bus: mode 0 interrupt-on-terminal-count, the Counter Latch Command freezing a
-16-bit read, the mode 2 rate generator and mode 3 square wave (even and odd counts), `nextEdge`,
+16-bit read, the mode 2 rate generator and mode 3 square wave (even and odd counts), the mode 3 read-back
+against latched reads of a real 8253 (N = 1000, 1001 and 1003), `nextEdge`,
 BCD counting, the 2 MHz counter clock being independent of the CPU clock, the counters keeping
 real time flat out (a mode 0 terminal count interrupts through the slave 8259A after host time,
 not T-states, reaches it), a snapshot round-trip,
@@ -288,13 +299,15 @@ and fully-nested in-service blocking, the EOI variants and priority rotation, ed
 level-triggered request sensing, the 8086 single vector byte, and the master/slave cascade. On the
 bus: a timer terminal count and a UART RxRDY each interrupt through the cascade (returning the
 slave's CALL vector over three INTA cycles), the master prioritizes an S-100 VI line (returning
-the master's vector), an interrupt **actually vectors a running CPU** to the CALL target, the board
+the master's vector), VI7 reaches the CPU through slave IR0 and the cascade, slave IR6 waits for
+TxEN, an interrupt **actually vectors a running CPU** to the CALL target, the board
 never asserts `PHANTOM*`, and a snapshot carries the 8259A registers and in-service state.
 
 `tests/test_am9511a.cpp` and `tests/test_am9512.cpp` pin the two math chips as bare chips:
-every command against the data sheets' worked examples, the number formats, rounding (ties,
-the carry into a new exponent, and for the 9512, 32,000 random results compared with host IEEE
-arithmetic), the error bits, the stack ring and its byte order, the cycle counts, BUSY, END,
+every command against the data sheets' worked examples, the number formats, rounding (for the
+9512: ties, the carry into a new exponent, and 32,000 random results compared with host IEEE
+arithmetic), 550 results measured on real 9511A chips (status and result, with the cases that
+still differ listed), the error bits, the stack ring and its byte order, the cycle counts, BUSY, END,
 SVREQ, ERR and a snapshot. On the bus, `tests/test_ss1.cpp` checks the empty socket floats, the
 2 wait states and PAUSE, END on slave IR5 vectoring an interrupt, reset, the snapshot, and the
 SS-1 manual's 9512 test (1.0 + 1.0 = 2.0). `acceptance-ss1-math` boots CP/M 2.2N on the Disk 1

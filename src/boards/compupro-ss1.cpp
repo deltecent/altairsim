@@ -244,6 +244,10 @@ uint8_t Ss1Board::slaveLive() const {
     const Clock& clk = clock_ ? *clock_ : deadCard();
     uint64_t     now = pin49();
     uint8_t      v   = 0;
+    // slave IR0 = S-100 VI7*, through the stock J8 jumper (pins 8-9). Our own VI output is
+    // OR'd in for the reason masterLive() gives.
+    uint8_t vi = (uint8_t)((bus_ ? bus_->viLines() : 0) | assertsVi());
+    if (vi & 0x80) v |= (uint8_t)(1u << kSlaveVi7);
     if (timer_.out(0, now)) v |= (uint8_t)(1u << kSlaveTimer0);  // slave IR1 = Timer 0 OUT
     if (timer_.out(1, now)) v |= (uint8_t)(1u << kSlaveTimer1);  // slave IR2 = Timer 1 OUT
     if (timer_.out(2, now)) v |= (uint8_t)(1u << kSlaveTimer2);  // slave IR3 = Timer 2 OUT
@@ -253,7 +257,6 @@ uint8_t Ss1Board::slaveLive() const {
         if (chip().svreqOut(now)) v |= (uint8_t)(1u << kSlaveSvrq);  // slave IR4 = math SVRQ
         if (chip().endOut(now))   v |= (uint8_t)(1u << kSlaveEnd);   // slave IR5 = math END (J6)
     }
-    // slave IR0 is unassigned -- always inactive.
     return v;
 }
 
@@ -290,11 +293,14 @@ uint8_t Ss1Board::assertsVi() const {
 }
 
 // Which VI level the master would acknowledge, for SHOW BUS IRQ. Master IR0-6 map to
-// VI0-6; IR7 is the slave cascade, not a VI line, so it reports -1 there.
+// VI0-6. Master IR7 is the slave cascade: it is VI7 when the slave's winner is its IR0
+// (VI7*), and an on-board source (no VI line, -1) for any other slave input.
 int Ss1Board::intWinner() const {
     if (!clock_) return -1;
     int w = master_.winner(masterLive());
-    return (w >= 0 && w <= 6) ? w : -1;
+    if (w >= 0 && w <= 6) return w;
+    if (w == kMasterCascadeIr && slave_.winner(slaveLive()) == kSlaveVi7) return 7;
+    return -1;
 }
 
 // The MSM5832 is battery-backed: neither the front-panel RESET nor a power cycle changes
