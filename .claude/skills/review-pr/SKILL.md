@@ -174,7 +174,9 @@ three platforms for a core change, Linux only otherwise (`tools/ci-changed-code.
 
 ## 10. After the merge
 
-- **Comment on each linked issue:** `Fixed by #<N> (merged <sha>)`, signed
-  `--AltairSim Claude`. **Never close someone else's issue** — the person who opened it does.
+- **Comment on each linked issue,** signed `--AltairSim Claude`. Start with
+  `Fixed by #<N> (merged <sha>).` only when the PR fixes all of the issue. Otherwise start with
+  `#<N> is merged (<sha>).`, then say what the PR did for the issue and what is still open.
+  **Never close someone else's issue.** The person who opened it does.
 - Clean up: `git worktree remove .claude/worktrees/pr-<N>`, then `git branch -D pr-<N>`.
 - Sync: `git switch master && git pull --ff-only`.
