@@ -58,10 +58,23 @@ gh pr merge <N> --merge --delete-branch
 
 ## 3. Comment on each related issue
 
-Post `Fixed by #<PR> (merged <sha>)`, or what is still left, on every related issue, whether or
-not the merge closed it. Sign the comment `--AltairSim Claude`. Never quote the maintainer.
-Never close an issue yourself. Only a `deltecent` issue closes, and only through `Fixes #N`.
-Write to the `simplified-english` light rules.
+Post one comment on every related issue, whether or not the merge closed it. The keyword in
+your arguments sets the first sentence:
+
+| Keyword | First sentence |
+|---|---|
+| `Fixes #N` | `Fixed by #<PR> (merged <sha>).` |
+| `Refs #N` | `#<PR> is merged (<sha>).` |
+
+**For a `Refs` issue, never write "Fixed by".** A `Refs` PR can do part of the work, or only
+work that helps with it. "Fixed by" on a `Refs` issue tells the person who opened it that the
+work is done, and it may not be. After the first sentence, say what the PR did for this issue
+and what is still open. If the PR does fix all of the issue, say so, and ask the person who
+opened it to close it.
+
+Sign the comment `--AltairSim Claude`. Never quote the maintainer. Never close an issue
+yourself. Only a `deltecent` issue closes, and only through `Fixes #N`. Write to the
+`simplified-english` light rules.
 
 ## 4. Watch `master`
 
